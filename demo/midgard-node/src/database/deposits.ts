@@ -6,6 +6,10 @@ import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
 import {
+  withHistoryIngestion,
+  withHistoryWrite,
+} from "../services/event-history-producer.js";
+import {
   clearTable,
   DatabaseError,
   logDatabaseError,
@@ -21,6 +25,7 @@ export enum Columns {
   ID = UserEvents.Columns.ID,
   INFO = UserEvents.Columns.INFO,
   INCLUSION_TIME = UserEvents.Columns.INCLUSION_TIME,
+  // Latest authenticated history location; admission identity is the stable ID.
   DEPOSIT_L1_TX_HASH = "deposit_l1_tx_hash",
   LEDGER_TX_ID = "ledger_tx_id",
   LEDGER_OUTPUT = "ledger_output",
@@ -88,48 +93,6 @@ const sameEntryPayload = (left: Entry, right: Entry): boolean =>
   left[Columns.LEDGER_OUTPUT].equals(right[Columns.LEDGER_OUTPUT]) &&
   left[Columns.LEDGER_ADDRESS] === right[Columns.LEDGER_ADDRESS];
 
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.ID)} BYTEA NOT NULL,
-          ${sql(Columns.INFO)} BYTEA NOT NULL,
-          ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
-          ${sql(Columns.DEPOSIT_L1_TX_HASH)} BYTEA NOT NULL,
-          ${sql(Columns.LEDGER_TX_ID)} BYTEA NOT NULL,
-          ${sql(Columns.LEDGER_OUTPUT)} BYTEA NOT NULL,
-          ${sql(Columns.LEDGER_ADDRESS)} TEXT NOT NULL,
-          ${sql(Columns.PROJECTED_HEADER_HASH)} BYTEA,
-          ${sql(Columns.STATUS)} TEXT NOT NULL,
-          PRIMARY KEY (${sql(Columns.ID)}),
-          CHECK (${sql(Columns.STATUS)} IN ('awaiting', 'projected', 'consumed')),
-          CHECK (
-            ${sql(Columns.STATUS)} <> 'awaiting'
-            OR ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL
-          )
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.STATUS}_${Columns.INCLUSION_TIME}_${Columns.ID}`,
-        )} ON ${sql(tableName)} (
-          ${sql(Columns.STATUS)},
-          ${sql(Columns.INCLUSION_TIME)},
-          ${sql(Columns.ID)}
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.PROJECTED_HEADER_HASH}`,
-        )} ON ${sql(tableName)} (${sql(Columns.PROJECTED_HEADER_HASH)});`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.DEPOSIT_L1_TX_HASH}`,
-        )} ON ${sql(tableName)} (${sql(Columns.DEPOSIT_L1_TX_HASH)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
-
 export const insertEntries = (
   entries: readonly Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -158,41 +121,46 @@ export const insertEntries = (
       incomingById.set(key, incoming);
     }
     const normalizedEntries = [...incomingById.values()];
-    const rows = yield* sql<{ [Columns.ID]: Buffer }>`
-      INSERT INTO ${sql(tableName)} ${sql.insert(normalizedEntries)}
-      ON CONFLICT (${sql(Columns.ID)}) DO UPDATE SET
-        ${sql(Columns.ID)} = ${sql(tableName)}.${sql(Columns.ID)}
-      WHERE ${sql(tableName)}.${sql(Columns.INFO)} = EXCLUDED.${sql(
-        Columns.INFO,
-      )}
-        AND ${sql(tableName)}.${sql(Columns.INCLUSION_TIME)} = EXCLUDED.${sql(
-          Columns.INCLUSION_TIME,
-        )}
-        AND ${sql(tableName)}.${sql(Columns.DEPOSIT_L1_TX_HASH)} = EXCLUDED.${sql(
-          Columns.DEPOSIT_L1_TX_HASH,
-        )}
-        AND ${sql(tableName)}.${sql(Columns.LEDGER_TX_ID)} = EXCLUDED.${sql(
-          Columns.LEDGER_TX_ID,
-        )}
-        AND ${sql(tableName)}.${sql(Columns.LEDGER_OUTPUT)} = EXCLUDED.${sql(
-          Columns.LEDGER_OUTPUT,
-        )}
-        AND ${sql(tableName)}.${sql(Columns.LEDGER_ADDRESS)} = EXCLUDED.${sql(
-          Columns.LEDGER_ADDRESS,
-        )}
-      RETURNING ${sql(Columns.ID)}
-    `;
-    if (rows.length !== normalizedEntries.length) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message:
-            "Refusing to upsert deposit because the same event_id has conflicting persisted payload",
-          cause: `requested=${normalizedEntries.length},upserted=${rows.length}`,
-        }),
-      );
-    }
+    // Ingestion may observe a continuation at a new output. Refresh only that
+    // location: projection, settlement classification and event content survive.
+    // Reject the entire batch if any immutable payload differs.
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const rows = yield* sql<{ [Columns.ID]: Buffer }>`
+          INSERT INTO ${sql(tableName)} ${sql.insert(normalizedEntries)}
+          ON CONFLICT (${sql(Columns.ID)}) DO UPDATE SET
+            ${sql(Columns.DEPOSIT_L1_TX_HASH)} = EXCLUDED.${sql(Columns.DEPOSIT_L1_TX_HASH)}
+          WHERE ${sql(tableName)}.${sql(Columns.INFO)} = EXCLUDED.${sql(
+            Columns.INFO,
+          )}
+            AND ${sql(tableName)}.${sql(Columns.INCLUSION_TIME)} = EXCLUDED.${sql(
+              Columns.INCLUSION_TIME,
+            )}
+            AND ${sql(tableName)}.${sql(Columns.LEDGER_TX_ID)} = EXCLUDED.${sql(
+              Columns.LEDGER_TX_ID,
+            )}
+            AND ${sql(tableName)}.${sql(Columns.LEDGER_OUTPUT)} = EXCLUDED.${sql(
+              Columns.LEDGER_OUTPUT,
+            )}
+            AND ${sql(tableName)}.${sql(Columns.LEDGER_ADDRESS)} = EXCLUDED.${sql(
+              Columns.LEDGER_ADDRESS,
+            )}
+          RETURNING ${sql(Columns.ID)}
+        `;
+        if (rows.length !== normalizedEntries.length) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message:
+                "Refusing to upsert deposit because the same event_id has conflicting persisted payload",
+              cause: `requested=${normalizedEntries.length},upserted=${rows.length}`,
+            }),
+          );
+        }
+      }),
+    );
   }).pipe(
+    withHistoryIngestion,
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
       logDatabaseError(tableName, "insertEntries", e),
@@ -331,22 +299,23 @@ export const retrieveProjectedEntries = (): Effect.Effect<
 export const markAwaitingAsProjected = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter.markAwaitingAsProjected(ids);
+  projectedEventAdapter.markAwaitingAsProjected(ids).pipe(withHistoryWrite);
 
 export const markProjectedByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter.markProjectedByEventIds(ids, projectedHeaderHash);
+  projectedEventAdapter
+    .markProjectedByEventIds(ids, projectedHeaderHash)
+    .pipe(withHistoryWrite);
 
 export const clearProjectedHeaderAssignmentByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter.clearProjectedHeaderAssignmentByEventIds(
-    ids,
-    projectedHeaderHash,
-  );
+  projectedEventAdapter
+    .clearProjectedHeaderAssignmentByEventIds(ids, projectedHeaderHash)
+    .pipe(withHistoryWrite);
 
 export const reopenAfterStateQueueCorrectionByEventIds = (
   ids: readonly Buffer[],
@@ -356,7 +325,7 @@ export const reopenAfterStateQueueCorrectionByEventIds = (
     projectedEventsTable,
     ids,
     removedHeaderHash,
-  );
+  ).pipe(withHistoryWrite);
 
 export const markConsumedByEventIds = (
   ids: readonly Buffer[],
@@ -371,6 +340,7 @@ export const markConsumedByEventIds = (
       WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
         AND ${sql(Columns.STATUS)} IN (${Status.Projected}, ${Status.Consumed})`;
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markConsumedByEventIds ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -437,6 +407,7 @@ export const delEntries = (
       Columns.ID,
     )} IN ${sql.in(ids)}`;
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`delEntries ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to delete deposit UTxOs"),
   );
@@ -461,6 +432,7 @@ export const pruneOlderThan = (
       RETURNING ${sql(Columns.ID)}`;
     return deleted.length;
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`pruneOlderThan ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to prune old deposits"),
   );

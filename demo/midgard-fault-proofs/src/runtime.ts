@@ -113,6 +113,7 @@ import {
   parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "./inspect-contracts.js";
 import { aikenSerialisedPlutusDataCbor } from "./plutus-data-cbor.js";
+import { TRANSITION_TRACE_YIELD_REFERENCES } from "./transition-trace/yield-references.js";
 
 const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
 
@@ -1087,7 +1088,13 @@ const buildOneCategoryFaultProofContracts = async ({
       );
     case "transitionTrace":
       return await Effect.runPromise(
-        buildTransitionTraceFaultProofContracts(params),
+        buildTransitionTraceFaultProofContracts({
+          ...params,
+          eventHistoryBounds: contractDeploymentHistoryBounds(
+            deploymentInfo,
+            "transitionTrace",
+          ),
+        }),
       );
     case "zeroInput":
       return await Effect.runPromise(buildZeroInputFaultProofContracts(params));
@@ -1399,6 +1406,37 @@ export const resolveFaultProofDeploymentContracts = async ({
     )
       throw new Error(
         `${entry} retained-data address does not match the reapplied history validator`,
+      );
+  }
+  if (categoryName === "transitionTrace") {
+    const transition = contracts.transitionTrace;
+    if (transition === undefined)
+      throw new Error("transitionTrace deployed chain absent");
+    for (const [key, reference] of Object.entries(
+      TRANSITION_TRACE_YIELD_REFERENCES,
+    )) {
+      requireMatchingScriptHash({
+        label: reference.entry,
+        deployed: requireDeploymentScriptHash(
+          parsedDeploymentInfo,
+          reference.entry,
+        ),
+        derived:
+          transition.yields[
+            key as keyof typeof TRANSITION_TRACE_YIELD_REFERENCES
+          ].withdrawalScriptHash,
+      });
+    }
+    const expected = contracts.transitionTrace?.history.retentionAddresses;
+    const declared =
+      parsedDeploymentInfo.fraudProofTransitionTrace
+        ?.eventHistoryRetentionAddresses;
+    if (
+      expected?.deposit !== declared?.deposit ||
+      expected?.withdrawal !== declared?.withdrawal
+    )
+      throw new Error(
+        "fraudProofTransitionTrace retained-data addresses do not match the reapplied history validators",
       );
   }
   const derivedFirstStepHash = categoryContracts.firstStep.spendingScriptHash;

@@ -40,6 +40,10 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -534,14 +538,20 @@ const historyOpening = (
   datum = withdrawalEventDatum(),
   assets = historyAssets,
 ) =>
-  Data.to(
-    {
-      RetainedEventData: {
-        payload: historyPayload(datum),
-        original_assets: assets,
+  replacePlutusConstrFieldCbor(
+    Data.to(
+      {
+        RetainedEventData: {
+          payload: historyPayload(datum),
+          original_assets: assets,
+        },
       },
-    },
-    SDK.FabricatedWithdrawalAuthenticContentOpening,
+      SDK.FabricatedWithdrawalAuthenticContentOpening,
+    ),
+    [0],
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      Data.to(historyPayload(datum), SDK.EventHistoryPayload),
+    ),
   );
 const historyCommitment = SDK.eventHistoryCommitment(
   "30".repeat(28),

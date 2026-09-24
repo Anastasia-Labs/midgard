@@ -4,37 +4,44 @@ import { Data } from "@lucid-evolution/lucid";
 import { mpfProofFromWitness, normalizedMpfRoot } from "./detect.js";
 import { nextTransitionOutputPhase } from "./output-phases.js";
 import { transitionTraceProofChunks } from "./proof-carriage.js";
+import {
+  readTransitionProof,
+  type TransitionProofInput,
+} from "./proof-material.js";
 import type { transitionTraceYieldData } from "./yield-data.js";
 import type { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 export const initialTransitionTraceState = (
-  proof: SDK.TransitionFaultProof,
-): SDK.TransitionTraceFinalState => ({
-  kind:
-    "AcceptedTransactionTransitionMismatch" in proof.fault
-      ? 2n
-      : "InvalidOneStepTransition" in proof.fault &&
-          "ValidDepositTransition" in
-            proof.fault.InvalidOneStepTransition.witness
-        ? 1n
-        : 0n,
-  phase: "AcceptedTransactionTransitionMismatch" in proof.fault ? 0n : 6n,
-  proof_commitment: { hash: transitionTraceProofChunks(proof).hash },
-  opened: { spend_input_keys: [], output_hashes: [] },
-  input_index: 0n,
-  output_index: 0n,
-  current_root: "",
-  summaries: { summaries: [] },
-  scan_cbor: "",
-  value_cbor: "",
-  value_start: 0n,
-  value_end: 0n,
-  value_summary: null,
-  descriptor_cbor: "",
-  deposit_index: 0n,
-  deposit_source_cbor: "",
-  deposit_asset_count: 0n,
-});
+  proofInput: TransitionProofInput,
+): SDK.TransitionTraceFinalState => {
+  const proof = readTransitionProof(proofInput);
+  return {
+    kind:
+      "AcceptedTransactionTransitionMismatch" in proof.fault
+        ? 2n
+        : "InvalidOneStepTransition" in proof.fault &&
+            "ValidDepositTransition" in
+              proof.fault.InvalidOneStepTransition.witness
+          ? 1n
+          : 0n,
+    phase: "AcceptedTransactionTransitionMismatch" in proof.fault ? 0n : 6n,
+    proof_commitment: { hash: transitionTraceProofChunks(proofInput).hash },
+    opened: { spend_input_keys: [], output_hashes: [] },
+    input_index: 0n,
+    output_index: 0n,
+    current_root: "",
+    summaries: { summaries: [] },
+    scan_cbor: "",
+    value_cbor: "",
+    value_start: 0n,
+    value_end: 0n,
+    value_summary: null,
+    descriptor_cbor: "",
+    deposit_index: 0n,
+    deposit_source_cbor: "",
+    deposit_asset_count: 0n,
+  };
+};
 export const transitionTracePhaseIsTerminal = (
   state: SDK.TransitionTraceFinalState,
 ) => state.phase === (state.kind === 2n ? 3n : 5n);
@@ -78,13 +85,14 @@ export const transitionTracePhaseYield = (
 };
 export const nextTransitionTracePhase = ({
   state,
-  proof,
+  proof: proofInput,
   yields,
 }: {
   state: SDK.TransitionTraceFinalState;
-  proof: SDK.TransitionFaultProof;
+  proof: TransitionProofInput;
   yields: ReturnType<typeof transitionTraceYieldData>;
 }): { state: SDK.TransitionTraceFinalState; redeemer: string } => {
+  const proof = readTransitionProof(proofInput);
   if (state.kind !== 2n && (state.phase === 2n || state.phase === 7n)) {
     const output = yields.find((item) => item.outputCbors !== undefined)
       ?.outputCbors?.[Number(state.output_index)];

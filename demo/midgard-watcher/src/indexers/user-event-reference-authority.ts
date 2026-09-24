@@ -277,7 +277,7 @@ export const createWatcherLocalUserEventReferenceAuthority = async ({
 /**
  * Uses the target's live admission and reference-input hash commitments.
  * Creating bodies are preimages, with no invented inclusion
- * point, provider receipt or is_valid claim. Only W15's ordinary target/finality
+ * point, provider receipt or is_valid claim. Only the ordinary target/finality
  * verifier can establish that these outputs were available to a valid target.
  */
 const createBodyReferenceAuthority = ({
@@ -357,7 +357,7 @@ const createBodyReferenceAuthority = ({
               usedBodies.add(txHash!);
               return boundedReferenceOutput(
                 outRef,
-                output.to_canonical_cbor_hex(),
+                output.to_cbor_hex(),
                 referenceBudget,
               );
             } finally {
@@ -396,28 +396,10 @@ const createBodyReferenceAuthority = ({
   }
 };
 
-export const createWatcherExternalUserEventReferenceAuthority = ({
-  targetBlock,
-  deploymentIdentity,
-  creatingTransactionBodies,
-}: {
-  readonly targetBlock: WatcherNormalizedL1Block;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly creatingTransactionBodies: readonly string[];
-}): WatcherUserEventReferenceAuthority =>
-  createBodyReferenceAuthority({
-    targetBlock,
-    deploymentIdentity,
-    creatingTransactionBodies,
-    sourceMode: "external_providers",
-    assertLive: () =>
-      assertTarget(targetBlock, deploymentIdentity, "external_providers"),
-  });
-
 /**
  * Explicit local preimage admission also supports pending native observations.
  * It preserves native/Kupo/Ogmios agreement and never retries through the
- * release-final raw resolver. W15 alone decides the target's finality status.
+ * release-final raw resolver. It does not decide the target's finality status.
  */
 export const createWatcherLocalUserEventReferenceAuthorityFromBodies = ({
   localObservation,

@@ -78,7 +78,7 @@ export type WatcherDurableRuntime = Readonly<{
   }): Promise<WatcherRollbackDurableRecoveryResult>;
 }>;
 
-/** Process-local proof of structural publication only; never W15 authority. */
+/** Process-local proof of structural publication only; never user-event admission authority. */
 export type WatcherProtectedUserEventCheckpoint = Readonly<{
   schemaVersion: "midgard-watcher-protected-user-event-checkpoint-v1";
 }>;

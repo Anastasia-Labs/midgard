@@ -104,14 +104,8 @@ validator main(
 
 // ## Family selectors (GOAL_SPEC.md §9.1 output 4)
 
-/// A transaction spending a script-locked output without carrying any script
-/// witness.
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn challenged_inputs() -> List<MidgardTxInput> {
-  challenged_block().tx.body.inputs
+  fixture.challenged_block_v1().tx.body.inputs
 }
 
 fn first_challenged_input() -> MidgardTxInput {
@@ -166,7 +160,7 @@ fn run_step_02(
 /// script-locked input reaches step-03 alongside the bad transaction id.
 test missing_native_script_tx_step_02_forwards_the_spent_input() {
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     challenged_inputs(),
     0,
     first_challenged_input(),
@@ -180,5 +174,5 @@ test missing_native_script_tx_step_02_rejects_a_substituted_preimage() fail {
     tx_id: #"3535353535353535353535353535353535353535353535353535353535353535",
     output_index: 0,
   }
-  run_step_02(challenged_block(), [injected], 0, injected)
+  run_step_02(fixture.challenged_block_v1(), [injected], 0, injected)
 }

@@ -8,6 +8,8 @@ use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
 use midgard/common/utils
+use midgard/event_history/order_facts
+use midgard/event_history/proof_fixture as history
 use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
@@ -15,6 +17,7 @@ use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
+use midgard/fraud_proofs/transition_trace/timing_fixture
 use midgard/hub_oracle
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
@@ -22,9 +25,7 @@ use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
-use midgard/user_events/deposit
 use midgard/user_events/tx_order_v1 as tx_order
-use midgard/user_events/withdrawal
 use midgard/validation_claim_v1
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_trace_v1
@@ -450,9 +451,8 @@ fn sample_deposit_info(network_id: Int) -> ledger_state.DepositInfo {
   }
 }
 
-fn deposit_value(event_asset_name: ByteArray) {
+fn deposit_value() {
   assets.from_lovelace(2_000_000)
-    |> assets.add(h28_a, event_asset_name, 1)
     |> assets.add(h28_b, #"aa", 7)
 }
 
@@ -480,23 +480,14 @@ fn native_deposit_output_cbor(network_id: Int) -> ByteArray {
 fn deposit_reference_input(
   deposit_id: ledger_state.DepositId,
   info: ledger_state.DepositInfo,
-  event_asset_name: ByteArray,
 ) -> Input {
-  let deposit_datum = deposit.DepositDatum {
-    event: ledger_state.DepositEvent { id: deposit_id, info },
-    inclusion_time: 15,
-    witness: h28_a,
-  }
-  let deposit_datum_data: Data = deposit_datum
-  Input {
-    output_reference: out_ref(99),
-    output: Output {
-      address: dummy_address(),
-      value: deposit_value(event_asset_name),
-      datum: InlineDatum(deposit_datum_data),
-      reference_script: None,
-    },
-  }
+  timing_fixture.deposit_reference(
+    h28_a,
+    deposit_id,
+    info,
+    deposit_value(),
+    3_000_000,
+  )
 }
 
 fn ledger_delete_witness(
@@ -634,8 +625,9 @@ fn tx_order_reference_input(
 }
 
 fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
-  let header = base_header()
   let event_asset_name = #"01"
+
+  let header = base_header()
   proof.validate_l1_event_fault_proof(
     prove(
       header,
@@ -653,7 +645,10 @@ fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [tx_order_reference_input(inclusion_time, event_asset_name)],
+    timing_fixture.evidence(
+      header,
+      [tx_order_reference_input(inclusion_time, event_asset_name)],
+    ),
   )
 }
 
@@ -888,6 +883,7 @@ fn valid_against_header(
     asset_name_for(header),
     dummy_hub_datum(),
     [],
+    None,
   )
 }
 
@@ -928,6 +924,7 @@ test rejects_trace_boundary_when_header_binding_is_wrong() {
     asset_name_for(header),
     dummy_hub_datum(),
     [],
+    None,
   )
 }
 
@@ -950,6 +947,7 @@ test rejects_trace_fault_for_wrong_fraud_category_prefix() {
     #"00000003" |> bytearray.concat(utils.serialise_and_hash_28(header)),
     dummy_hub_datum(),
     [],
+    None,
   )
 }
 
@@ -1159,30 +1157,20 @@ fn valid_withdrawal_info() -> ledger_state.WithdrawalInfo {
   }
 }
 
-fn withdrawal_reference_input(
-  inclusion_time: Int,
-  event_asset_name: ByteArray,
-) -> Input {
-  let datum: withdrawal.Datum = user_events.OptimisticDatum {
-    event: ledger_state.WithdrawalEvent {
-      id: out_ref(0),
-      info: valid_withdrawal_info(),
+fn withdrawal_reference_input(inclusion_time: Int) -> Input {
+  history.order_reference(
+    h28_a,
+    user_events.out_ref_to_nonce(out_ref(0)),
+    order_facts.WithdrawalPayload {
+      event: ledger_state.WithdrawalEvent {
+        id: out_ref(0),
+        info: valid_withdrawal_info(),
+      },
+      refund_address: dummy_address(),
+      refund_datum: NoDatum,
     },
     inclusion_time,
-    witness: h28_a,
-    refund_address: dummy_address(),
-    refund_datum: NoDatum,
-  }
-  let datum_data: Data = datum
-  Input {
-    output_reference: out_ref(99),
-    output: Output {
-      address: dummy_address(),
-      value: assets.from_asset(h28_a, event_asset_name, 1),
-      datum: InlineDatum(datum_data),
-      reference_script: None,
-    },
-  }
+  )
 }
 
 fn omitted_withdrawal_event_is_valid(
@@ -1192,33 +1180,38 @@ fn omitted_withdrawal_event_is_valid(
     ledger_state.WithdrawalId,
   >,
 ) -> Bool {
-  let event_asset_name = #"01"
   proof.validate_l1_event_fault_proof(
     prove(
       header,
       proof.OmittedDueL1Event {
-        witness: proof.OmittedDueWithdrawal {
-          event_ref_input_index: 0,
-          event_asset_name,
-          source_non_membership,
-        },
+        witness: proof.OmittedDueWithdrawal { source_non_membership },
       },
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [withdrawal_reference_input(inclusion_time, event_asset_name)],
+    timing_fixture.evidence(
+      header,
+      [withdrawal_reference_input(inclusion_time)],
+    ),
   )
 }
 
 fn out_of_window_withdrawal_is_valid(
   inclusion_time: Int,
-  validity_override: ledger_state.WithdrawalValidity,
+  mutate_body: Bool,
   committed_validity: ledger_state.WithdrawalValidity,
 ) -> Bool {
-  let event_asset_name = #"01"
   let committed_info = ledger_state.WithdrawalInfo {
     ..valid_withdrawal_info(),
     validity: committed_validity,
+    body: if mutate_body {
+      ledger_state.WithdrawalBody {
+        ..valid_withdrawal_info().body,
+        l2_outref: out_ref(999),
+      }
+    } else {
+      valid_withdrawal_info().body
+    },
   }
   let source_membership = withdrawal_source_membership(
     out_ref(0),
@@ -1233,17 +1226,15 @@ fn out_of_window_withdrawal_is_valid(
     prove(
       header,
       proof.OutOfWindowSourceEvent {
-        witness: proof.OutOfWindowWithdrawal {
-          event_ref_input_index: 0,
-          event_asset_name,
-          validity_override,
-          source_membership,
-        },
+        witness: proof.OutOfWindowWithdrawal { source_membership },
       },
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [withdrawal_reference_input(inclusion_time, event_asset_name)],
+    timing_fixture.evidence(
+      header,
+      [withdrawal_reference_input(inclusion_time)],
+    ),
   )
 }
 
@@ -1624,7 +1615,6 @@ test accepts_valid_deposit_transition_fault() {
     ledger_state.Deposit,
   )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
-  let event_asset_name = #"01"
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     deposits_root: source_membership.root,
@@ -1644,15 +1634,19 @@ test accepts_valid_deposit_transition_fault() {
           trace_proof,
           event_to_step,
           source_membership,
-          event_ref_input_index: 0,
-          event_asset_name,
           projected_utxo: ledger_insert_witness(projected_key, projected_value),
         },
       },
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [deposit_reference_input(deposit_id, deposit_info, event_asset_name)],
+    [deposit_reference_input(deposit_id, deposit_info)],
+    Some(
+      timing_fixture.evidence(
+        header,
+        [deposit_reference_input(deposit_id, deposit_info)],
+      ),
+    ),
   )
 }
 
@@ -1675,7 +1669,6 @@ test rejects_valid_deposit_transition_with_arbitrary_projected_output() {
     ledger_state.Deposit,
   )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
-  let event_asset_name = #"01"
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     deposits_root: source_membership.root,
@@ -1694,15 +1687,19 @@ test rejects_valid_deposit_transition_with_arbitrary_projected_output() {
           trace_proof,
           event_to_step,
           source_membership,
-          event_ref_input_index: 0,
-          event_asset_name,
           projected_utxo: ledger_insert_witness(projected_key, #"deadbeef"),
         },
       },
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [deposit_reference_input(deposit_id, deposit_info, event_asset_name)],
+    [deposit_reference_input(deposit_id, deposit_info)],
+    Some(
+      timing_fixture.evidence(
+        header,
+        [deposit_reference_input(deposit_id, deposit_info)],
+      ),
+    ),
   )
 }
 
@@ -1729,7 +1726,6 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
     ledger_state.Deposit,
   )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
-  let event_asset_name = #"01"
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     deposits_root: source_membership.root,
@@ -1748,8 +1744,6 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
           trace_proof,
           event_to_step,
           source_membership,
-          event_ref_input_index: 0,
-          event_asset_name,
           projected_utxo: ledger_insert_witness(
             projected_key,
             wrong_network_projected_value,
@@ -1759,7 +1753,13 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [deposit_reference_input(deposit_id, deposit_info, event_asset_name)],
+    [deposit_reference_input(deposit_id, deposit_info)],
+    Some(
+      timing_fixture.evidence(
+        header,
+        [deposit_reference_input(deposit_id, deposit_info)],
+      ),
+    ),
   )
 }
 
@@ -1799,7 +1799,6 @@ test rejects_deposit_transition_replaying_full_output_bytes() {
     ledger_state.Deposit,
   )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
-  let event_asset_name = #"01"
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     deposits_root: source_membership.root,
@@ -1825,8 +1824,6 @@ test rejects_deposit_transition_replaying_full_output_bytes() {
           trace_proof,
           event_to_step,
           source_membership,
-          event_ref_input_index: 0,
-          event_asset_name,
           projected_utxo: ledger_insert_witness(
             projected_key,
             full_output_bytes,
@@ -1836,7 +1833,13 @@ test rejects_deposit_transition_replaying_full_output_bytes() {
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [deposit_reference_input(deposit_id, deposit_info, event_asset_name)],
+    [deposit_reference_input(deposit_id, deposit_info)],
+    Some(
+      timing_fixture.evidence(
+        header,
+        [deposit_reference_input(deposit_id, deposit_info)],
+      ),
+    ),
   )
 }
 
@@ -2597,22 +2600,14 @@ test rejects_event_to_step_root_count_mismatch_when_count_matches() {
 
 test accepts_omitted_due_deposit_fault() {
   let deposit_info = sample_deposit_info(0)
-  let deposit_datum = deposit.DepositDatum {
-    event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
-    inclusion_time: 15,
-    witness: h28_a,
-  }
-  let deposit_datum_data: Data = deposit_datum
-  let event_asset_name = #"01"
-  let reference_input = Input {
-    output_reference: out_ref(99),
-    output: Output {
-      address: dummy_address(),
-      value: assets.from_asset(h28_a, event_asset_name, 1),
-      datum: InlineDatum(deposit_datum_data),
-      reference_script: None,
+  let reference_input = history.order_reference(
+    h28_a,
+    user_events.out_ref_to_nonce(out_ref(0)),
+    order_facts.DepositPayload {
+      event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
     },
-  }
+    15,
+  )
   let header = base_header()
 
   proof.validate_transition_fault_proof(
@@ -2620,8 +2615,6 @@ test accepts_omitted_due_deposit_fault() {
       header,
       proof.OmittedDueL1Event {
         witness: proof.OmittedDueDeposit {
-          event_ref_input_index: 0,
-          event_asset_name,
           source_non_membership: empty_non_membership(
             transition_trace.DepositsRootDomain,
             out_ref(0),
@@ -2632,6 +2625,7 @@ test accepts_omitted_due_deposit_fault() {
     asset_name_for(header),
     dummy_hub_datum(),
     [reference_input],
+    Some(timing_fixture.evidence(header, [reference_input])),
   )
 }
 
@@ -2693,6 +2687,7 @@ test rejects_omitted_forced_order_published_after_challenged_block() {
 
 test accepts_late_forced_order_as_out_of_window_source_event() {
   let event_asset_name = #"01"
+
   let source_membership = forced_source_membership(
     out_ref(0),
     authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
@@ -2716,7 +2711,10 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [tx_order_reference_input(header.end_time + 1, event_asset_name)],
+    timing_fixture.evidence(
+      header,
+      [tx_order_reference_input(header.end_time + 1, event_asset_name)],
+    ),
   )
 }
 
@@ -2766,7 +2764,10 @@ fn late_rejected_forced_source_is_valid(
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [tx_order_reference_input(header.end_time + 1, #"01")],
+    timing_fixture.evidence(
+      header,
+      [tx_order_reference_input(header.end_time + 1, #"01")],
+    ),
   )
 }
 
@@ -2785,7 +2786,7 @@ test rejects_late_rejected_forced_order_with_changed_verdict() {
 test accepts_late_withdrawal_as_out_of_window_source_event() {
   out_of_window_withdrawal_is_valid(
     base_header().end_time + 1,
-    ledger_state.IncorrectWithdrawalSignature,
+    False,
     ledger_state.IncorrectWithdrawalSignature,
   )
 }
@@ -2793,38 +2794,30 @@ test accepts_late_withdrawal_as_out_of_window_source_event() {
 test rejects_in_window_withdrawal_as_out_of_window_source_event() {
   !out_of_window_withdrawal_is_valid(
     base_header().end_time,
-    ledger_state.IncorrectWithdrawalSignature,
+    False,
     ledger_state.IncorrectWithdrawalSignature,
   )
 }
 
-test rejects_out_of_window_withdrawal_with_mismatched_validity_override() {
+test rejects_out_of_window_withdrawal_with_mismatched_submitted_body() {
   !out_of_window_withdrawal_is_valid(
     base_header().end_time + 1,
-    ledger_state.IncorrectWithdrawalSignature,
+    True,
     ledger_state.WithdrawalIsValid,
   )
 }
 
 test accepts_out_of_window_deposit_fault() {
   let deposit_info = sample_deposit_info(0)
-  let deposit_datum = deposit.DepositDatum {
-    event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
-    inclusion_time: 30,
-    witness: h28_a,
-  }
-  let deposit_datum_data: Data = deposit_datum
-  let event_asset_name = #"01"
   let source_membership = deposit_source_membership(out_ref(0), deposit_info)
-  let reference_input = Input {
-    output_reference: out_ref(99),
-    output: Output {
-      address: dummy_address(),
-      value: assets.from_asset(h28_a, event_asset_name, 1),
-      datum: InlineDatum(deposit_datum_data),
-      reference_script: None,
+  let reference_input = history.order_reference(
+    h28_a,
+    user_events.out_ref_to_nonce(out_ref(0)),
+    order_facts.DepositPayload {
+      event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
     },
-  }
+    30,
+  )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     deposits_root: source_membership.root,
@@ -2835,15 +2828,12 @@ test accepts_out_of_window_deposit_fault() {
     prove(
       header,
       proof.OutOfWindowSourceEvent {
-        witness: proof.OutOfWindowDeposit {
-          event_ref_input_index: 0,
-          event_asset_name,
-          source_membership,
-        },
+        witness: proof.OutOfWindowDeposit { source_membership },
       },
     ),
     asset_name_for(header),
     dummy_hub_datum(),
     [reference_input],
+    Some(timing_fixture.evidence(header, [reference_input])),
   )
 }

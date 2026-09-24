@@ -137,10 +137,6 @@ validator main(
   }
 }
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 const missing_reference_input_tx_id = fixture.absent_native_tx_id
 
 fn run_finalize_with(
@@ -149,7 +145,7 @@ fn run_finalize_with(
   extra_redeemers: Pairs<ScriptPurpose, Redeemer>,
   reference_inputs: List<Input>,
 ) -> Bool {
-  let asset_name = fixture.ct_token_asset_name(challenged_block())
+  let asset_name = fixture.ct_token_asset_name(fixture.challenged_block_v1())
   let base = fixture.finalize_step_l1_tx_v1(asset_name)
   let l1_tx = Transaction {
     ..base,
@@ -240,7 +236,7 @@ fn run_finalize_published_with_claim(
 }
 
 test no_reference_input_step_04_accepts_fitting_direct_non_membership() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   and {
     nibble(blake2b_256(missing_reference_input_tx_id), 0) != nibble(
       blake2b_256(block.tx_id),
@@ -274,7 +270,7 @@ test no_reference_input_step_04_rejects_reordered_published_claim() fail {
 }
 
 test no_reference_input_step_04_rejects_direct_claim_for_another_key() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_direct(
     block.transactions_phas_root,
     block.transactions_phas_root,

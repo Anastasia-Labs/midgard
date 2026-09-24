@@ -6,6 +6,10 @@ import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
 import { expect } from "vitest";
 
+import {
+  APPLICATION_TABLE_NAMES,
+  MIGRATIONS,
+} from "../src/database/migrations/index.js";
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import * as LedgerUtils from "../src/database/utils/ledger.js";
 import {
@@ -19,6 +23,7 @@ import {
 } from "../src/services/admission-writer.js";
 import { NodeConfig } from "../src/services/config.js";
 import { AdmissionSql, Database } from "../src/services/database.js";
+import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
 import { applyMidgardNodeTestEnv } from "./test-env.js";
 
@@ -54,11 +59,48 @@ const admissionWriterLayer =
 
 export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   eff.pipe(
+    Effect.provideService(UnownedHistoryFixture, true),
     Effect.provide(WriteBehindLive),
     Effect.provide(admissionWriterLayer),
     Effect.provide(Database.layer),
     Effect.provide(NodeConfig.layer),
   );
+
+/**
+ * Marks the section of a migration that inserts rows a migrated database must
+ * always contain (e.g. the `commit_build_calibration` singleton). A reset
+ * replays these so it leaves the database exactly as a fresh migration would.
+ */
+const MIGRATION_SEED_ROWS_MARKER = "-- Required singleton seed rows";
+
+const migrationSeedRowsSql: readonly string[] = MIGRATIONS.flatMap(
+  (migration) => {
+    const start = migration.sql.indexOf(MIGRATION_SEED_ROWS_MARKER);
+    return start === -1 ? [] : [migration.sql.slice(start)];
+  },
+);
+
+const truncateApplicationTablesSql = `TRUNCATE TABLE ${APPLICATION_TABLE_NAMES.map(
+  (table) => `"${table}"`,
+).join(", ")} RESTART IDENTITY CASCADE`;
+
+/**
+ * Returns the migration-built schema to its freshly migrated contents: every
+ * application table is emptied (identities restarted) and the migrations' seed
+ * rows are restored, in one transaction. The table list is the one the
+ * migration runner checks, so a new table is reset without editing tests.
+ */
+export const resetApplicationTables = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      yield* sql.unsafe(truncateApplicationTablesSql);
+      for (const seedRowsSql of migrationSeedRowsSql) {
+        yield* sql.unsafe(seedRowsSql);
+      }
+    }),
+  );
+});
 
 export const deterministicFixtureBytes = (
   label: string,

@@ -36,6 +36,7 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "../../src/transactions/register-active-operator.js";
+import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../../src/transactions/script-reward-registration.js";
 import { alignUnixTimeToSlotBoundary } from "../../src/workers/utils/commit-end-time.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
@@ -177,6 +178,12 @@ const buildDeploymentSnapshot = async (
   );
   const publishedReferenceScripts = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(
+      referenceScriptsLucid,
+      contracts,
+    ),
+  );
+  await Effect.runPromise(
+    ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
     ),

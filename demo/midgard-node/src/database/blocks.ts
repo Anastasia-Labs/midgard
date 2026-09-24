@@ -57,27 +57,6 @@ const assertNoConflictingHeaderHashes = (
     }
   });
 
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Columns.HEIGHT)} SERIAL PRIMARY KEY,
-      ${sql(Columns.HEADER_HASH)} BYTEA NOT NULL,
-      ${sql(Columns.TX_ID)} BYTEA NOT NULL UNIQUE,
-      ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
-    );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          ColumnsIndices.HEADER_HASH,
-        )} ON ${sql(tableName)} (${sql(Columns.HEADER_HASH)});`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          ColumnsIndices.TX_ID,
-        )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
-      }),
-    );
-  }).pipe(sqlErrorToDatabaseError(tableName, "Failed to create the table"));
-
 export const insert = (
   headerHash: Buffer,
   txHashes: Buffer[],

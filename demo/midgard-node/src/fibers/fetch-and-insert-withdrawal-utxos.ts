@@ -1,9 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, LucidEvolution } from "@lucid-evolution/lucid";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Ref, Schedule } from "effect";
 
 import { WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { withdrawalDataToEntry } from "../l1-event-history-entries.js";
 import {
   Database,
   Globals,
@@ -31,75 +32,23 @@ const fetchWithdrawalUTxOs = (
   config?: UserEventFetchBounds,
 ): Effect.Effect<SDK.WithdrawalUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
-    const { withdrawal } = yield* MidgardContracts;
-    const fetchConfig: SDK.UserEventFetchConfig = {
-      eventAddress: withdrawal.spendingScriptAddress,
-      eventPolicyId: withdrawal.policyId,
+    const contracts = yield* MidgardContracts;
+    const fetchConfig: SDK.EventHistoryFetchConfig = {
+      ...SDK.eventHistoryDeploymentFromContracts(
+        SDK.requireEventHistoryContracts(contracts).withdrawal,
+      ),
       ...config,
     };
     return yield* SDK.fetchWithdrawalUTxOsProgram(lucid, fetchConfig);
   });
 
-const cborBuffer = (value: unknown, schema: unknown): Buffer =>
-  Buffer.from(Data.to(value as never, schema as never), "hex");
-
-const withdrawalUTxOToEntry = (
+export const withdrawalUTxOToEntry = (
   withdrawalUTxO: SDK.WithdrawalUTxO,
 ): Effect.Effect<WithdrawalsDB.Entry, SDK.LucidError> =>
-  Effect.try({
-    try: () => {
-      const { body } = withdrawalUTxO.datum.event.info;
-      return {
-        [WithdrawalsDB.Columns.ID]: Buffer.from(withdrawalUTxO.idCbor),
-        [WithdrawalsDB.Columns.RAW_EVENT_INFO]: Buffer.from(
-          withdrawalUTxO.infoCbor,
-        ),
-        [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]: null,
-        [WithdrawalsDB.Columns.INCLUSION_TIME]: withdrawalUTxO.inclusionTime,
-        [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: Buffer.from(
-          withdrawalUTxO.utxo.txHash,
-          "hex",
-        ),
-        [WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]:
-          withdrawalUTxO.utxo.outputIndex,
-        [WithdrawalsDB.Columns.ASSET_NAME]: Buffer.from(
-          withdrawalUTxO.assetName,
-          "hex",
-        ),
-        [WithdrawalsDB.Columns.L2_OUTREF]: cborBuffer(
-          body.l2_outref,
-          SDK.OutputReference,
-        ),
-        [WithdrawalsDB.Columns.L2_OWNER]: Buffer.from(body.l2_owner, "hex"),
-        [WithdrawalsDB.Columns.L2_VALUE]: cborBuffer(body.l2_value, SDK.Value),
-        [WithdrawalsDB.Columns.L1_ADDRESS]: cborBuffer(
-          body.l1_address,
-          SDK.AddressData,
-        ),
-        [WithdrawalsDB.Columns.L1_DATUM]: cborBuffer(
-          body.l1_datum,
-          SDK.CardanoDatum,
-        ),
-        [WithdrawalsDB.Columns.REFUND_ADDRESS]: cborBuffer(
-          withdrawalUTxO.datum.refund_address,
-          SDK.AddressData,
-        ),
-        [WithdrawalsDB.Columns.REFUND_DATUM]: cborBuffer(
-          withdrawalUTxO.datum.refund_datum,
-          SDK.CardanoDatum,
-        ),
-        [WithdrawalsDB.Columns.VALIDITY]: null,
-        [WithdrawalsDB.Columns.VALIDITY_DETAIL]: {},
-        [WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]: null,
-        [WithdrawalsDB.Columns.STATUS]: WithdrawalsDB.Status.Awaiting,
-      };
-    },
-    catch: (cause) =>
-      new SDK.LucidError({
-        message:
-          "Failed to project withdrawal UTxO into an offchain withdrawal entry",
-        cause,
-      }),
+  withdrawalDataToEntry({
+    ...withdrawalUTxO,
+    location: withdrawalUTxO.utxo,
+    payloadCbor: withdrawalUTxO.history.payloadCbor,
   });
 
 export const reconcileVisibleWithdrawalUTxOs = (

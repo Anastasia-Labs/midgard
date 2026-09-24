@@ -72,7 +72,7 @@ The emulator must advance a block before cold restart so outputs are queryable;
 mempool acknowledgement alone is not confirmation.
 
 Run those scenarios together with the workflow-plan, workflow-runtime,
-typed-reason-disposition, watcher application and proof-thread-indexer tests.
+typed-reason-disposition and watcher application tests.
 Use the real blueprint for SDK contract-builder scenarios and verify that each
 selected scenario collects rather than returning early because the blueprint
 variable is absent. Parameter-order and composed-length assertions must execute.

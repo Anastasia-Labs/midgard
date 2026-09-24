@@ -76,7 +76,7 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
+import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-snapshot.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
   evaluateWatcherHeaderRootReconstruction,

@@ -15,7 +15,6 @@ import {
 import { Effect, Option } from "effect";
 
 import * as WithdrawalsDB from "../database/withdrawals.js";
-import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   Database,
   Lucid,
@@ -94,8 +93,9 @@ const fetchDepositUtxoByEventId = (
     const { api: lucid } = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const deposits = yield* SDK.fetchDepositUTxOsProgram(lucid, {
-      eventAddress: contracts.deposit.spendingScriptAddress,
-      eventPolicyId: contracts.deposit.policyId,
+      ...SDK.eventHistoryDeploymentFromContracts(
+        SDK.requireEventHistoryContracts(contracts).deposit,
+      ),
     });
     const match = deposits.find((deposit) =>
       Buffer.from(deposit.idCbor).equals(eventId),
@@ -121,8 +121,9 @@ const fetchWithdrawalUtxoByEventId = (
     const { api: lucid } = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const withdrawals = yield* SDK.fetchWithdrawalUTxOsProgram(lucid, {
-      eventAddress: contracts.withdrawal.spendingScriptAddress,
-      eventPolicyId: contracts.withdrawal.policyId,
+      ...SDK.eventHistoryDeploymentFromContracts(
+        SDK.requireEventHistoryContracts(contracts).withdrawal,
+      ),
     });
     const match = withdrawals.find((withdrawal) =>
       Buffer.from(withdrawal.idCbor).equals(eventId),
@@ -170,15 +171,12 @@ export const absorbConfirmedDepositToReserveProgram = (
       "deposit",
     );
     const deposit = yield* fetchDepositUtxoByEventId(eventId);
-    const membershipProofWithdrawal = {
-      script: loadPhasMembershipWithdrawalScript(),
-    };
+    const history = SDK.requireEventHistoryContracts(contracts);
     const refs = yield* fetchReferenceScripts([
-      { name: "deposit minting", script: contracts.deposit.mintingScript },
-      { name: "deposit spending", script: contracts.deposit.spendingScript },
+      { name: "deposit spending", script: history.deposit.list.spendingScript },
       {
-        name: "membership proof withdrawal",
-        script: membershipProofWithdrawal.script,
+        name: "deposit history retirement",
+        script: history.deposit.retirement.withdrawalScript,
       },
     ]);
     const txHash = yield* submitAbsorbConfirmedDepositToReserveProgram(
@@ -188,7 +186,6 @@ export const absorbConfirmedDepositToReserveProgram = (
         deposit,
         settlementRefInput: resolution.settlementRefInput,
         membershipProof: resolution.proof,
-        membershipProofWithdrawal,
         referenceScripts: refs,
       },
     );
@@ -230,23 +227,17 @@ export const initializePayoutProgram = (
       );
     }
     const withdrawal = yield* fetchWithdrawalUtxoByEventId(eventId);
-    const membershipProofWithdrawal = {
-      script: loadPhasMembershipWithdrawalScript(),
-    };
+    const history = SDK.requireEventHistoryContracts(contracts);
     const refs = yield* fetchReferenceScripts([
       {
-        name: "withdrawal minting",
-        script: contracts.withdrawal.mintingScript,
+        name: "withdrawal spending",
+        script: history.withdrawal.list.spendingScript,
       },
       {
-        name: "withdrawal spending",
-        script: contracts.withdrawal.spendingScript,
+        name: "withdrawal history retirement",
+        script: history.withdrawal.retirement.withdrawalScript,
       },
       { name: "payout minting", script: contracts.payout.mintingScript },
-      {
-        name: "membership proof withdrawal",
-        script: membershipProofWithdrawal.script,
-      },
     ]);
     const txHash = yield* submitInitializePayoutProgram(
       lucidService.api,
@@ -255,7 +246,6 @@ export const initializePayoutProgram = (
         withdrawal,
         settlementRefInput: resolution.settlementRefInput,
         membershipProof: resolution.proof,
-        membershipProofWithdrawal,
         referenceScripts: refs,
       },
     );

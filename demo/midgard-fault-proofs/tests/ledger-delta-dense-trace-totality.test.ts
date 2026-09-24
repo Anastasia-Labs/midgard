@@ -841,8 +841,6 @@ const omittedDueL1EventProbe = async (): Promise<
       {
         kind: "deposit",
         depositId: outRef(650),
-        eventRefInputIndex: 0n,
-        eventAssetName: "aa",
       },
     ],
   });
@@ -918,8 +916,6 @@ const outOfWindowSourceEventProbe = async (): Promise<
       {
         kind: "deposit",
         depositId,
-        eventRefInputIndex: 0n,
-        eventAssetName: "aa",
       },
     ],
   });

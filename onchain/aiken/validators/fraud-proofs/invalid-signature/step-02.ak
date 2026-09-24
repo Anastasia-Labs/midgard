@@ -131,10 +131,6 @@ validator main(
 
 // ## Family selectors (GOAL_SPEC.md §9.1 output 4)
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 /// Runs the step with the thread anchored to `anchored_block` while the
 /// redeemer's opening is taken from `opened_block`.
 ///
@@ -207,7 +203,7 @@ fn run_finalize(
 /// The authenticated field-7 preimage of the committed transaction reveals an
 /// invalid signature over the native transaction ID, finalizing the proof.
 test invalid_signature_step_02_accepts_invalid_signature_witness() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize(
     block,
     block.witness_set_compact,
@@ -220,7 +216,7 @@ test invalid_signature_step_02_accepts_invalid_signature_witness() {
 /// collection) fails the door's authenticate-once check and cannot be used as
 /// witness evidence.
 test invalid_signature_step_02_rejects_mismatched_witness_preimage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize(block, block.witness_set_compact, [], 0)
 }
 
@@ -229,7 +225,7 @@ test invalid_signature_step_02_rejects_mismatched_witness_preimage() fail {
 /// before any witness is read. This is the guard step-01 used to run a step
 /// early, against a redeemer-supplied preimage nothing downstream re-checked.
 test invalid_signature_step_02_rejects_a_forged_witness_set() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let forged = NativeTxWitnessSetCompact {
     ..block.witness_set_compact,
     addr_tx_wits_hash: #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -251,7 +247,7 @@ test invalid_signature_step_02_rejects_a_forged_witness_set() fail {
 /// would prove an invalid-signature fault against a transaction whose real
 /// witnesses are all sound, and slash an honest operator.
 test invalid_signature_step_02_rejects_a_forged_witness_set_and_compact() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let invented = [
     MidgardAddressWitness {
       verification_key: #"9090909090909090909090909090909090909090909090909090909090909090",
@@ -273,7 +269,7 @@ test invalid_signature_step_02_rejects_a_forged_witness_set_and_compact() fail {
 /// §7.3 abort-never-clamp: a witness index past the committed collection fails
 /// the read instead of returning the nearest witness.
 test invalid_signature_step_02_rejects_an_out_of_range_witness_index() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize(
     block,
     block.witness_set_compact,

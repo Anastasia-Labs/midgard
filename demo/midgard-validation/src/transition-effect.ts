@@ -75,36 +75,22 @@ const depositNetwork = (
   throw new Error("unsupported committed deposit L2 network id");
 };
 
-const projectedDepositValue = (input: {
-  readonly l1Assets: Readonly<Record<string, bigint>>;
-  readonly depositPolicyId: string;
-  readonly depositAssetNameHex: string;
-}): MidgardValue => {
-  const authenticationUnit = `${input.depositPolicyId}${input.depositAssetNameHex}`;
-  if (input.l1Assets[authenticationUnit] !== 1n) {
-    throw new Error("deposit authentication NFT quantity must equal one");
-  }
+const projectedOriginalDepositValue = (
+  originalAssets: Readonly<Record<string, bigint>>,
+): MidgardValue => {
   const policies = new Map<string, Map<string, bigint>>();
-  for (const [unit, quantity] of Object.entries(input.l1Assets)) {
-    if (unit === "lovelace" || unit === "" || unit === authenticationUnit) {
-      continue;
-    }
-    if (unit.length < 56 || quantity <= 0n) {
+  for (const [unit, quantity] of Object.entries(originalAssets)) {
+    if (unit === "lovelace") continue;
+    if (!/^[0-9a-f]{56}([0-9a-f]{2}){0,32}$/u.test(unit) || quantity <= 0n)
       throw new Error("deposit contains an invalid projected asset");
-    }
     const policyId = unit.slice(0, 56);
     const assetName = unit.slice(56);
     const policy = policies.get(policyId) ?? new Map<string, bigint>();
-    if (policy.has(assetName)) {
-      throw new Error("deposit contains a duplicate projected asset");
-    }
     policy.set(assetName, quantity);
     policies.set(policyId, policy);
   }
-  const lovelace = input.l1Assets.lovelace ?? input.l1Assets[""];
-  if (lovelace === undefined || lovelace < 0n) {
-    throw new Error("deposit is missing a valid lovelace quantity");
-  }
+  const lovelace = originalAssets.lovelace ?? 0n;
+  if (lovelace < 0n) throw new Error("deposit contains negative lovelace");
   return Object.freeze({ lovelace, assets: policies });
 };
 
@@ -211,8 +197,8 @@ export const canonicalDepositTransitionEffect = (entry: {
     },
   ]);
 
-/** Exact deposit producer projection used by both ingestion and replay. */
-export const deriveCanonicalDepositTransitionEffect = (input: {
+/** Projection of authenticated original funds, excluding list and storage funds. */
+export const deriveCanonicalOriginalDepositTransitionEffect = (input: {
   readonly configuredNetwork: Network;
   readonly eventId: Readonly<{
     transactionId: string;
@@ -221,9 +207,7 @@ export const deriveCanonicalDepositTransitionEffect = (input: {
   readonly l2NetworkId: bigint;
   readonly l2Address: CanonicalDepositAddressData;
   readonly l2DatumCbor: Uint8Array | null;
-  readonly l1Assets: Readonly<Record<string, bigint>>;
-  readonly depositPolicyId: string;
-  readonly depositAssetNameHex: string;
+  readonly originalAssets: Readonly<Record<string, bigint>>;
 }): CanonicalTransitionEffect => {
   const network = depositNetwork(input.configuredNetwork, input.l2NetworkId);
   const stakeCredential =
@@ -239,7 +223,7 @@ export const deriveCanonicalDepositTransitionEffect = (input: {
   );
   const outputCbor = encodeMidgardTxOutput({
     address: midgardAddressFromText(addressText),
-    value: projectedDepositValue(input),
+    value: projectedOriginalDepositValue(input.originalAssets),
     ...(input.l2DatumCbor === null
       ? {}
       : {
@@ -254,6 +238,34 @@ export const deriveCanonicalDepositTransitionEffect = (input: {
     outputIndex: Number(input.eventId.outputIndex),
   });
   return canonicalDepositTransitionEffect({ outRefCbor, outputCbor });
+};
+
+/** Legacy ingestion projection; migrate callers to authenticated original funds. */
+export const deriveCanonicalDepositTransitionEffect = (
+  input: Omit<
+    Parameters<typeof deriveCanonicalOriginalDepositTransitionEffect>[0],
+    "originalAssets"
+  > & {
+    readonly l1Assets: Readonly<Record<string, bigint>>;
+    readonly depositPolicyId: string;
+    readonly depositAssetNameHex: string;
+  },
+): CanonicalTransitionEffect => {
+  const unit = input.depositPolicyId + input.depositAssetNameHex;
+  if (input.l1Assets[unit] !== 1n)
+    throw new Error("deposit authentication NFT quantity must equal one");
+  const originalAssets = { ...input.l1Assets };
+  delete originalAssets[unit];
+  if (originalAssets.lovelace === undefined && originalAssets[""] === undefined)
+    throw new Error("deposit is missing a valid lovelace quantity");
+  if (originalAssets[""] !== undefined) {
+    originalAssets.lovelace ??= originalAssets[""];
+    delete originalAssets[""];
+  }
+  return deriveCanonicalOriginalDepositTransitionEffect({
+    ...input,
+    originalAssets,
+  });
 };
 
 export const canonicalCommittedWithdrawalTransitionEffect = (input: {

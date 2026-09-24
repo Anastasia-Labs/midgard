@@ -12,6 +12,7 @@ import {
   decideUnsubmittedPendingBlockRecovery,
   type PendingBlockConfirmation,
   pendingBlockHasSubmittedTx,
+  pendingBlockLookupTxHash,
   shouldDeferUnsubmittedPendingBlockRecovery,
   shouldRunFullStateQueueConfirmationScan,
 } from "../src/workers/utils/confirm-block-commitments.js";
@@ -245,4 +246,26 @@ describe("confirm-block-commitments utilities", () => {
       }),
     ).toBe("recover_stale");
   });
+});
+
+it("retains an unresolved durable signed intent past expiry and looks up its exact hash", () => {
+  const pending = { ...pendingBlock(""), intendedTxHash: "12".repeat(32) };
+  expect(pendingBlockHasSubmittedTx(pending)).toBe(true);
+  expect(pendingBlockLookupTxHash(pending)).toBe(pending.intendedTxHash);
+  expect(
+    decideUnsubmittedPendingBlockRecovery({
+      canonicalMatchFound: false,
+      pendingBlock: pending,
+      nowMs: pending.blockEndTimeMs + 1_000_000,
+      recoveryGraceMs: 30_000,
+    }),
+  ).toBe("defer");
+  expect(
+    decideUnsubmittedPendingBlockRecovery({
+      canonicalMatchFound: true,
+      pendingBlock: pending,
+      nowMs: pending.blockEndTimeMs + 1_000_000,
+      recoveryGraceMs: 30_000,
+    }),
+  ).toBe("recover_canonical");
 });

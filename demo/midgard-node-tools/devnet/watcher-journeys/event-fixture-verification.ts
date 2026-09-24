@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import {
   authenticatedStateQueueObservationDigest,
-  bindFraudProofWorkflowDeployment,
   classifyHeader,
   createCatalogueCompleteCanonicalReplay,
   createCrossBlockSettlementAuthority,
@@ -15,14 +14,10 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   headerDecisionCanonicalEvidence,
   type RetainedDaPayloadSource,
-  TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import {
-  CrossBlockDuplicateEventStep02DatumSchema,
-  FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
 
+import { bindJourneyEventAuthorities } from "./event-history-bindings.js";
 import type { JourneyContext } from "./fixture.js";
 import type { VerifiableJourneyBlock } from "./fixture-verification.js";
 
@@ -50,28 +45,8 @@ export const classifyJourneyEventFixture = async (input: {
     headerHash: input.block.headerHash,
     proverCredential: "00".repeat(28),
   };
-  const [transition, settlement] = await Promise.all([
-    bindFraudProofWorkflowDeployment({
-      ...bindingInput,
-      category: "transitionTrace",
-      stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
-    }),
-    bindFraudProofWorkflowDeployment({
-      ...bindingInput,
-      category: "crossBlockDuplicateEvent",
-      stepDatumSchemas: [
-        FraudProofComputationThreadStepDatum,
-        CrossBlockDuplicateEventStep02DatumSchema,
-      ],
-    }),
-  ]);
-  if (
-    transition.deploymentFingerprint !== deploymentFingerprint ||
-    settlement.deploymentFingerprint !== deploymentFingerprint
-  )
-    throw new Error(
-      "Event fixture authorities differ from its deployed identity",
-    );
+  const { transition, settlement, history } =
+    await bindJourneyEventAuthorities(bindingInput);
   const directory = await mkdtemp("/var/tmp/midgard-event-fixture-");
   try {
     const historySource = createHistoricalNativeScriptHistorySource({
@@ -107,6 +82,7 @@ export const classifyJourneyEventFixture = async (input: {
       hubOraclePolicyId: deployment.contracts.hubOracle.policyId,
       minimumConfirmationDepth: policy.confirmationDepth,
       owner: input.block.header.operatorVkey,
+      history,
     });
     const classifier = await createHeaderClassifier({
       deploymentFingerprint,

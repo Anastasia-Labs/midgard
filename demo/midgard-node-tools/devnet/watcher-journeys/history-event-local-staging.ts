@@ -1,3 +1,11 @@
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  buildCountedRoot,
+  keyValuePhasProof,
+} from "@al-ft/midgard-fault-proofs";
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -20,8 +28,12 @@ import {
   type JourneyEventPublicationRequest,
   journeyLedgerOwnerKey,
   journeyWithdrawalEventRequest,
+  readJourneyHistoryEvent,
 } from "./history-event-staging.js";
-import type { StagedHistoryEvent } from "./history-events.js";
+import {
+  captureStagedHistoryEvent,
+  type StagedHistoryEvent,
+} from "./history-events.js";
 
 /** A published event together with the inclusion time its datum authenticates. */
 export type StagedLocalHistoryEvent = StagedHistoryEvent & {
@@ -54,10 +66,22 @@ export type LocalHistoryEventStage = {
   /**
    * Commit, attest and merge one block through the protocol's own state queue
    * so that its settlement output exists on the staging chain. Maturity is
-   * reached by advancing the emulator clock, so no event may be published on
-   * this chain afterwards: the SDK dates events by the wall clock.
+   * reached by advancing the emulator clock. Callers publishing later events
+   * must synchronize Date with that clock because the SDK dates admissions.
    */
   settle(block: VerifiableJourneyBlock): Promise<UTxO>;
+  /** Commit against the current queue tail without attesting or merging. */
+  commit(block: VerifiableJourneyBlock): Promise<UTxO>;
+  /** Retire an actual source leaf against its merged settlement and current frontier. */
+  retire(
+    event: StagedLocalHistoryEvent,
+    settled: VerifiableJourneyBlock & { payload: SDK.DaPayload },
+    settlement: UTxO,
+  ): Promise<{
+    txHash: string;
+    signedCbor: string;
+    witness: SDK.EventHistoryWitness;
+  }>;
   close(): void;
 };
 
@@ -97,6 +121,7 @@ export const openLocalHistoryEventStage =
       const operatorVkey = paymentCredentialOf(address).hash;
       const publish = async (
         request: JourneyEventPublicationRequest,
+        kind: "deposit" | "withdrawal",
       ): Promise<StagedLocalHistoryEvent> => {
         const funding = (await lucid.utxosAt(address)).filter(
           isOrdinaryFunding,
@@ -104,9 +129,40 @@ export const openLocalHistoryEventStage =
         if (funding.length === 0)
           throw new Error("No ordinary funding inputs for event publication");
         lucid.overrideUTxOs(funding);
+        // Respect actual predecessor protection before using the SDK's
+        // 60-second validity backoff. Tests synchronize Date with this advance.
+        const history = SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(deployment.contracts)[kind],
+        );
+        const nodes = SDK.authenticateHistoryNodes(
+          await lucid.utxosAt(history.address),
+          history,
+        );
+        if (!nodes.some(({ key }) => key === null))
+          throw new Error("History admission requires its initialized root");
+        const protectedUntil = nodes.reduce(
+          (latest, { node }) =>
+            node.protected_until > latest ? node.protected_until : latest,
+          0n,
+        );
+        const readyAt = Number(protectedUntil) + 60_000;
+        if (!Number.isSafeInteger(readyAt))
+          throw new Error(
+            "History protection exceeds the emulator clock range",
+          );
+        const buildTime = Math.max(Date.now(), readyAt);
+        await deployment.chain.awaitLedgerTime(buildTime);
+        if (deployment.chain.now() < buildTime)
+          throw new Error("Event staging clock did not reach the build window");
         const built = await request.build();
         const signed = await built.tx.sign.withWallet().complete();
-        const txHash = await signed.submit();
+        const submitted = await signed.submitSafe();
+        if (submitted._tag === "Left")
+          throw new Error(
+            `Published ${request.name} submission failed: ${submitted.left.message}`,
+            { cause: submitted.left },
+          );
+        const txHash = submitted.right;
         await lucid.awaitTx(txHash, 200);
         lucid.overrideUTxOs(await lucid.utxosAt(address));
         const outputs = (
@@ -121,9 +177,11 @@ export const openLocalHistoryEventStage =
             `Published ${request.name} has no unique event output`,
           );
         return {
-          event,
-          policyId: built.metadata.unit.slice(0, 56),
-          assetName: built.metadata.unit.slice(56),
+          ...(await readJourneyHistoryEvent(
+            lucid,
+            deployment.contracts,
+            built.metadata.unit,
+          )),
           inclusionTime: BigInt(built.metadata.inclusionTime),
         };
       };
@@ -163,26 +221,53 @@ export const openLocalHistoryEventStage =
       const awaitTime = async (time: number) => {
         await chain.awaitLedgerTime(time);
       };
-      const settle = async (block: VerifiableJourneyBlock) => {
-        const actor = await createPublishedWatcherBlockActor({
-          deployment,
-          lucid,
-          daSignerConfig: {
-            NETWORK: "Custom",
-            L1_OPERATOR_SEED_PHRASE: accounts.operator.seedPhrase,
-            DA_COSIGNER_SEED_PHRASE: accounts.cosigner.seedPhrase,
-          },
-        });
-        await actor.onboardOperator();
+      let blockActor:
+        | Awaited<ReturnType<typeof createPublishedWatcherBlockActor>>
+        | undefined;
+      const actorForCommit = async () => {
+        if (blockActor === undefined) {
+          blockActor = await createPublishedWatcherBlockActor({
+            deployment,
+            lucid,
+            daSignerConfig: {
+              NETWORK: "Custom",
+              L1_OPERATOR_SEED_PHRASE: accounts.operator.seedPhrase,
+              DA_COSIGNER_SEED_PHRASE: accounts.cosigner.seedPhrase,
+            },
+          });
+          await blockActor.onboardOperator();
+        }
+        return blockActor;
+      };
+      const commit = async (block: VerifiableJourneyBlock) => {
+        // Proof builders select an enterprise prover wallet on this Lucid instance.
+        lucid.selectWallet.fromSeed(ownerSeedPhrase);
+        const actor = await actorForCommit();
         // The commit's short validity range fixes the header end time (Q60),
         // so the chain clock must first reach the block's closing minute.
         await awaitTime(Number(block.header.endTime) - 59_999);
         lucid.overrideUTxOs(await lucid.utxosAt(address));
-        const anchor = await one(
-          contracts.stateQueue.spendingScriptAddress,
-          rootUnit,
+        const queue = await Effect.runPromise(
+          SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
+            stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+            stateQueuePolicyId: contracts.stateQueue.policyId,
+          }),
         );
-        await actor.commit(block, anchor);
+        const tail = queue[queue.length - 1];
+        if (tail === undefined)
+          throw new Error("History commit has no queue root");
+        await actor.commit(block, tail.utxo, queue[1]?.utxo);
+        lucid.overrideUTxOs(await lucid.utxosAt(address));
+        return one(
+          contracts.stateQueue.spendingScriptAddress,
+          contracts.stateQueue.policyId +
+            SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
+            block.headerHash,
+        );
+      };
+      const settle = async (block: VerifiableJourneyBlock) => {
+        await commit(block);
+        const actor = await actorForCommit();
         const attested = await actor.attest({
           ...block,
           payloadEnvelopeCbor: Buffer.from(block.payloadEnvelopeCbor),
@@ -260,11 +345,117 @@ export const openLocalHistoryEventStage =
           contracts.settlement.policyId + block.headerHash,
         );
         const datum = Data.from(settlement.datum!, SDK.SettlementDatum);
-        if (datum.deposits_root !== block.header.depositsRoot)
+        if (
+          datum.deposits_root !== block.header.depositsRoot ||
+          datum.withdrawals_root !== block.header.withdrawalsRoot
+        )
           throw new Error(
-            "Settlement does not preserve the retained deposit root",
+            "Settlement does not preserve the retained event roots",
           );
         return settlement;
+      };
+      const retire: LocalHistoryEventStage["retire"] = async (
+        event,
+        settled,
+        settlement,
+      ) => {
+        const order = event.order;
+        const deposit = order.kind === "Deposit";
+        const entries = deposit
+          ? settled.payload.block_body.deposits
+          : settled.payload.block_body.withdrawals;
+        const key = deposit
+          ? SDK.committedDepositKeyBytes(order.event.id)
+          : SDK.committedWithdrawalKeyBytes(order.event.id);
+        const captured = captureStagedHistoryEvent(event);
+        const value = canonical(
+          plutusConstrFieldCbor(captured.openingCbor, [0, 0, 1]),
+        );
+        const entry = entries.find(([candidate]) => candidate === key);
+        if (entry?.[1] !== value)
+          throw new Error(
+            "Retirement source does not contain the exact admitted event",
+          );
+        const tree = await buildCountedRoot(
+          deposit ? SDK.ROOT_DOMAINS.deposits : SDK.ROOT_DOMAINS.withdrawals,
+          entries.map(([key, value]) => ({
+            key: Buffer.from(key, "hex"),
+            value: Buffer.from(value, "hex"),
+          })),
+        );
+        const root = deposit
+          ? settled.header.depositsRoot
+          : settled.header.withdrawalsRoot;
+        if (
+          tree.root !== root ||
+          settlement.assets[
+            contracts.settlement.policyId + settled.headerHash
+          ] !== 1n
+        )
+          throw new Error(
+            "Retirement source differs from its actual settlement",
+          );
+        const proof = await keyValuePhasProof(
+          { ...tree, root: tree.phasRoot },
+          Buffer.from(key, "hex"),
+          Buffer.from(value, "hex"),
+        );
+        const funding = (await lucid.utxosAt(address)).filter(
+          isOrdinaryFunding,
+        );
+        if (funding[0] === undefined)
+          throw new Error("Retirement has no ordinary funding input");
+        lucid.overrideUTxOs(funding);
+        const name = deposit ? "deposit" : "withdrawal";
+        const config = {
+          feeInput: funding[0],
+          settlementRefInput: settlement,
+          membershipProof: {
+            key,
+            value,
+            domain: tree.domain,
+            root: tree.root,
+            phas_root: tree.phasRoot,
+            count: tree.count,
+            proof,
+          },
+          nowMs: chain.now(),
+          referenceScripts: {
+            historyList: reference(`${name}Spend`),
+            historyRetirement: reference(`${name}HistoryRetirementWithdraw`),
+            ...(deposit ? {} : { payoutMinting: reference("payoutMint") }),
+          },
+        };
+        const built =
+          order.kind === "Deposit"
+            ? await Effect.runPromise(
+                SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
+                  lucid,
+                  contracts,
+                  { ...config, deposit: order },
+                ),
+              )
+            : await Effect.runPromise(
+                SDK.buildInitializePayoutTxProgram(lucid, contracts, {
+                  ...config,
+                  withdrawal: order,
+                }),
+              );
+        const signed = await built.tx.sign.withWallet().complete();
+        const txHash = await signed.submit();
+        await lucid.awaitTx(txHash, 200);
+        lucid.overrideUTxOs(await lucid.utxosAt(address));
+        // Re-read the complete authenticated list after the retirement lands.
+        const witness = await SDK.fetchEventHistoryWitness(
+          { utxosAt: (address) => lucid.utxosAt(address) },
+          SDK.eventHistoryDeploymentFromContracts(
+            SDK.requireEventHistoryContracts(contracts)[name],
+          ),
+          order.event.id,
+        );
+        if (witness.kind !== "Absent")
+          throw new Error("Retired event remains in the authenticated history");
+        return { txHash, signedCbor: signed.toCBOR(), witness };
       };
       return {
         deployment,
@@ -273,9 +464,14 @@ export const openLocalHistoryEventStage =
         ownerKey,
         rawAuthority: recorder.authority,
         confirmedState,
+        commit,
         settle,
+        retire,
         publishDeposit: () =>
-          publish(journeyDepositEventRequest({ deployment, ownerKey })),
+          publish(
+            journeyDepositEventRequest({ deployment, ownerKey }),
+            "deposit",
+          ),
         publishWithdrawal: (body: SDK.WithdrawalBody, ordinal: number) =>
           publish(
             journeyWithdrawalEventRequest({
@@ -284,6 +480,7 @@ export const openLocalHistoryEventStage =
               body,
               ordinal,
             }),
+            "withdrawal",
           ),
         close: () => recorder.restore(),
       };

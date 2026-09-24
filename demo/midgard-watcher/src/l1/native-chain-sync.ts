@@ -474,6 +474,7 @@ const productionSpawn: SpawnProcess = (binaryPath) =>
 type NativeStreamInput = {
   readonly binaryPath: string;
   readonly watcherConfig: WatcherConfig;
+  readonly signal?: AbortSignal;
   readonly intersection: WatcherNativeChainSyncPoint;
   readonly startupTimeoutMs: number;
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;

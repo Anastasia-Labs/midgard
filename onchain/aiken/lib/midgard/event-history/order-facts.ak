@@ -163,7 +163,11 @@ pub fn admit(
           facts.structural_lovelace == 0,
           output.value == expected_value,
           event.info.validity == ledger_state.WithdrawalIsValid,
-          funding.withdrawal_is_funded(original_assets, event.info.body, refund_datum),
+          funding.withdrawal_is_funded(
+            original_assets,
+            event.info.body,
+            refund_datum,
+          ),
         }
       }
     }
@@ -236,6 +240,40 @@ pub fn capture(
   node_reference_index: Int,
   external_reference_index: Option<Int>,
 ) -> Commitment {
+  let (retained, _, _) = capture_open(
+    tx,
+    policy,
+    list_address,
+    retention_address,
+    kind,
+    target,
+    authenticated_header_end,
+    inline_limit,
+    max_payload_bytes,
+    max_payload_nodes,
+    node_reference_index,
+    external_reference_index,
+  )
+  retained
+}
+
+/// Timing predicates need authenticated metadata/content, but not an original
+/// Value commitment. Keep the shared L1 authentication here so those scripts
+/// do not carry deposit projection/accounting code they never use.
+pub fn capture_payload(
+  tx: Transaction,
+  policy: PolicyId,
+  list_address: Address,
+  retention_address: Address,
+  kind: Kind,
+  target: OutputReference,
+  authenticated_header_end: Int,
+  inline_limit: Int,
+  max_payload_bytes: Int,
+  max_payload_nodes: Int,
+  node_reference_index: Int,
+  external_reference_index: Option<Int>,
+) -> (Facts, Payload, Value) {
   let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
     tx.validity_range,
   )
@@ -259,13 +297,51 @@ pub fn capture(
     external_reference_index,
   )
   expect matches_kind(payload, kind)
+  (facts, payload, input.output.value)
+}
+
+/// Capture and return the exact immutable opening while the node and optional
+/// retained datum are authenticated. Staged transition proofs keep the commitment
+/// and reopen these facts after pointer changes, retirement or L1 data reclamation.
+pub fn capture_open(
+  tx: Transaction,
+  policy: PolicyId,
+  list_address: Address,
+  retention_address: Address,
+  kind: Kind,
+  target: OutputReference,
+  authenticated_header_end: Int,
+  inline_limit: Int,
+  max_payload_bytes: Int,
+  max_payload_nodes: Int,
+  node_reference_index: Int,
+  external_reference_index: Option<Int>,
+) -> (Commitment, Payload, Value) {
+  let (facts, payload, locked_value) = capture_payload(
+    tx,
+    policy,
+    list_address,
+    retention_address,
+    kind,
+    target,
+    authenticated_header_end,
+    inline_limit,
+    max_payload_bytes,
+    max_payload_nodes,
+    node_reference_index,
+    external_reference_index,
+  )
   let original_assets = funding.order_assets(
-    input.output.value,
+    locked_value,
     policy,
     user_events.out_ref_to_nonce(target),
     facts.structural_lovelace,
   )
-  commitment(policy, kind, facts, payload, original_assets)
+  (
+    commitment(policy, kind, facts, payload, original_assets),
+    payload,
+    original_assets,
+  )
 }
 
 /// Later stages reopen only authenticated immutable facts. No spent node or
@@ -283,4 +359,24 @@ pub fn opens(
     ( cbor.serialise(payload) |> blake2b_256 ) == retained.payload_hash,
     ( cbor.serialise(original_assets) |> blake2b_256 ) == retained.original_assets_hash,
   }
+}
+
+/// Immutable material carried by a later stage, authenticated by Commitment.
+pub type Opening {
+  payload: Payload,
+  original_assets: Data,
+}
+
+/// Reconstruct only the Value whose complete canonical encoding was captured
+/// from L1. Structural ADA and the list NFT have already been removed at capture;
+/// callers must project this original Value without subtracting another token.
+/// Public redeemers use Data because the standard-library Value type is opaque.
+pub fn reopen(
+  retained: Commitment,
+  payload: Payload,
+  original_assets: Data,
+) -> Value {
+  expect opens(retained, payload, original_assets)
+  expect pairs: Pairs<PolicyId, Pairs<ByteArray, Int>> = original_assets
+  assets.from_asset_list(pairs)
 }

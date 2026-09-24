@@ -106,7 +106,7 @@ The same topology is represented in:
 - node/core deployment-manifest identity;
 - runtime reference-script deployment entries;
 - contract inspection and catalogue membership proofs;
-- watcher deployment identity and proof-thread indexer.
+- watcher deployment identity.
 
 Every family step named by deployment identity is consumed as an authenticated
 reference script. Derive the catalogue root from the applied deployment identity;

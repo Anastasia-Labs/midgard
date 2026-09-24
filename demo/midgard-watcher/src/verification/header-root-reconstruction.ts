@@ -21,8 +21,8 @@
  *    regardless of the order the producer emits them in.
  *
  * 2. NON-CIRCULAR BINDING. The expected root/count set comes from ONE place:
- *    the W14 authenticated state-queue index record
- *    (`WatcherStateQueueHeader`, read from the L1 state-queue UTxO datum).
+ *    the state-queue header record
+ *    (`WatcherStateQueueHeader`, decoded from the L1 state-queue UTxO datum).
  *    `makeWatcherAuthenticatedHeaderObservation` rebuilds the `Header`
  *    struct from that record's fields only, re-encodes it and requires the
  *    bytes to equal the datum's own `headerCborHex`, and then hands it to
@@ -75,7 +75,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { WatcherStateQueueHeader } from "../indexers/state-queue-indexer.js";
+import type { WatcherStateQueueHeader } from "../indexers/state-queue-snapshot.js";
 import {
   makeWatcherDurablePayload,
   type WatcherReconstructedState,
@@ -242,15 +242,15 @@ const natural = (value: string, path: string): bigint => {
 };
 
 // ---------------------------------------------------------------------------
-// Non-circular header binding: the W14 record is the only header source
+// Non-circular header binding: the state-queue header record is the only header source
 // ---------------------------------------------------------------------------
 
 /**
- * Rebuilds the canonical `Header` struct from a W14 state-queue index record
+ * Rebuilds the canonical `Header` struct from a state-queue header record
  * and admits it as an authenticated L1 observation.
  *
  * Provenance of every field: `header` is the decoded L1 state-queue node datum
- * (`state-queue-indexer.ts` `WatcherStateQueueHeader`); `chainPoint`,
+ * (`state-queue-snapshot.ts` `WatcherStateQueueHeader`); `chainPoint`,
  * `confirmationDepth`, and `sourceMode` describe the L1 read that produced it;
  * `provenance` must be `authenticated_cardano_l1` (enforced by the SDK
  * admission). No argument of this function may originate from a DA payload.
@@ -330,8 +330,8 @@ export const makeWatcherAuthenticatedHeaderObservation = async (input: {
   if (!HEX_BYTES.test(record.headerCborHex)) {
     fail("invalid_header_record", "$.header.headerCborHex");
   }
-  // The rebuilt struct must re-encode to the exact datum bytes the W14 indexer
-  // read from L1. Field-level drift between the record and the struct handed to
+  // The rebuilt struct must re-encode to the exact datum bytes read from the
+  // L1 state-queue UTxO. Field-level drift between the record and the struct handed to
   // the canonical hasher is impossible past this point.
   if (Data.to(header, Header) !== record.headerCborHex) {
     fail("header_cbor_mismatch", "$.header.headerCborHex");

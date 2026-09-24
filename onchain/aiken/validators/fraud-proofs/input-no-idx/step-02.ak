@@ -113,12 +113,8 @@ validator main(
 // door and selects the input whose producing output index the family goes on to
 // prove does not exist.
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn challenged_inputs() -> List<MidgardTxInput> {
-  challenged_block().tx.body.inputs
+  fixture.challenged_block_v1().tx.body.inputs
 }
 
 fn first_challenged_input() -> MidgardTxInput {
@@ -167,7 +163,7 @@ fn run_step_02(
 /// challenged input's id and output index reach step-03.
 test input_no_idx_step_02_forwards_the_challenged_input() {
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     challenged_inputs(),
     0,
     first_challenged_input(),
@@ -182,14 +178,14 @@ test input_no_idx_step_02_rejects_a_substituted_preimage() fail {
     tx_id: #"3636363636363636363636363636363636363636363636363636363636363636",
     output_index: 0,
   }
-  run_step_02(challenged_block(), [injected], 0, injected)
+  run_step_02(fixture.challenged_block_v1(), [injected], 0, injected)
 }
 
 /// §7.3 abort-never-clamp at the family's own call site: the index is a range
 /// guard the door enforces, not a clamp that silently returns the last input.
 test input_no_idx_step_02_rejects_an_out_of_range_input_index() fail {
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     challenged_inputs(),
     3,
     first_challenged_input(),

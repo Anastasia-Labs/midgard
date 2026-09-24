@@ -51,7 +51,7 @@ struct FullIndex {
     branch_merkle: Vec<[Hash; 15]>,
     keys: Vec<u8>,
     values: Vec<u8>,
-    root: u32,
+    root: Option<u32>,
     branches: usize,
     leaves: usize,
     edges: usize,
@@ -262,9 +262,13 @@ impl RuntimeOwner {
             index.append(record)?;
         }
         index.resolve_child_ids_from(child_start)?;
-        index.root = *index.ids.get(&candidate).ok_or_else(|| {
-            "Architecture G promoted root is absent from resident index".to_owned()
-        })?;
+        index.root = if candidate == EMPTY_ROOT {
+            None
+        } else {
+            Some(*index.ids.get(&candidate).ok_or_else(|| {
+                "Architecture G promoted root is absent from resident index".to_owned()
+            })?)
+        };
         self.marker = Some(candidate);
         self.generations.remove(&id);
         self.generations.clear();
@@ -401,7 +405,7 @@ impl FullIndex {
             branch_merkle: Vec::new(),
             keys: Vec::new(),
             values: Vec::new(),
-            root: 0,
+            root: None,
             branches: 0,
             leaves: 0,
             edges: 0,
@@ -414,10 +418,13 @@ impl FullIndex {
         if reader.remaining() != 0 {
             return Err("Architecture G full-index payload has trailing bytes".to_owned());
         }
-        index.root = *index
-            .ids
-            .get(&marker)
-            .ok_or_else(|| "Architecture G full index is missing the durable root".to_owned())?;
+        index.root = if marker == EMPTY_ROOT {
+            None
+        } else {
+            Some(*index.ids.get(&marker).ok_or_else(|| {
+                "Architecture G full index is missing the durable root".to_owned()
+            })?)
+        };
         index.authenticate_complete_closure()?;
         if index.estimated_bytes() > MAX_RESIDENT_BYTES {
             return Err("Architecture G full index exceeds the 2 GiB resident cap".to_owned());
@@ -664,13 +671,9 @@ impl FullIndex {
         let mut parents = vec![0u8; self.nodes.len()];
         let mut path = Vec::with_capacity(64);
         let mut visited = 0usize;
-        self.visit(
-            self.root,
-            &mut path,
-            &mut colors,
-            &mut parents,
-            &mut visited,
-        )?;
+        if let Some(root) = self.root {
+            self.visit(root, &mut path, &mut colors, &mut parents, &mut visited)?;
+        }
         if visited != self.nodes.len() {
             return Err(format!(
                 "Architecture G full index has unreachable records: reachable={},records={}",
@@ -780,9 +783,16 @@ impl FullIndex {
     }
 
     fn proof_arena(&self, stream: &EventStream) -> Result<Arena, String> {
-        if stream.base_root != self.nodes[self.root as usize].hash {
+        let marker = self
+            .root
+            .map(|id| self.nodes[id as usize].hash)
+            .unwrap_or(EMPTY_ROOT);
+        if stream.base_root != marker {
             return Err("Architecture G replay log base root is stale".to_owned());
         }
+        let Some(root) = self.root else {
+            return Ok(Arena::new());
+        };
         let touched: Vec<(Vec<u8>, bool)> = stream
             .events
             .iter()
@@ -794,7 +804,7 @@ impl FullIndex {
             .collect();
         let mut selected = HashSet::new();
         let candidates: Vec<usize> = (0..touched.len()).collect();
-        self.select_proof_union(self.root, 0, &candidates, &touched, &mut selected)?;
+        self.select_proof_union(root, 0, &candidates, &touched, &mut selected)?;
         let mut ids: Vec<u32> = selected.into_iter().collect();
         ids.sort_unstable_by_key(|id| self.nodes[*id as usize].hash);
         let mut arena = Arena::new();
@@ -1175,6 +1185,9 @@ fn encode_node_record(node: &Node) -> Result<Vec<u8>, String> {
 }
 
 fn generated_reachable_nodes(arena: &Arena, candidate: Hash) -> Result<Vec<Node>, String> {
+    if candidate == EMPTY_ROOT {
+        return Ok(Vec::new());
+    }
     let root = arena.resolve(&candidate)?;
     let mut pending = vec![root];
     let mut visited = HashSet::new();
@@ -1602,7 +1615,7 @@ mod tests {
             branch_merkle: Vec::new(),
             keys: Vec::new(),
             values: Vec::new(),
-            root: 0,
+            root: None,
             branches: 0,
             leaves: 0,
             edges: 0,
@@ -1612,6 +1625,7 @@ mod tests {
     fn index_with_root(root: Node) -> FullIndex {
         let mut index = empty_index();
         index.append(root).unwrap();
+        index.root = Some(0);
         index
     }
 
@@ -1645,7 +1659,7 @@ mod tests {
         for node in arena.dirty_records() {
             index.append(node.clone()).unwrap();
         }
-        index.root = *index.ids.get(&marker).unwrap();
+        index.root = Some(*index.ids.get(&marker).unwrap());
         index.resolve_child_ids_from(0).unwrap();
         index.authenticate_complete_closure().unwrap();
         index

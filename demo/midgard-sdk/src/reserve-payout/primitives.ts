@@ -26,11 +26,4 @@ export type {
   RootMembershipProof,
 } from "../transition-trace.js";
 export type { DepositUTxO } from "../user-events/deposit.js";
-export { DepositSpendRedeemer } from "../user-events/deposit.js";
-export {
-  buildUserEventWitnessCertificateValidator,
-  encodeUserEventWitnessMintOrBurnRedeemer,
-  UserEventMintRedeemer,
-} from "../user-events/internals.js";
 export type { WithdrawalUTxO } from "../user-events/withdrawal.js";
-export { WithdrawalSpendRedeemer } from "../user-events/withdrawal.js";

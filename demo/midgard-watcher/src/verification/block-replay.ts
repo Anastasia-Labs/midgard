@@ -55,11 +55,14 @@
  * WHAT `verified` REQUIRES. W29 may map this block to `verified` only on
  * `action: "accept"`, and `WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT` is
  * carried inside every result so the contract travels with the record. A
- * non-L2 step is applied from its originating W15 and DA claim-bound effect in
- * the exact W22-authenticated transition order, and every resulting root is
- * checked against the committed trace. W25 proves root-exact replay only;
- * W26 remains responsible for due/omitted/fabricated/duplicate event
- * classification before the decision engine can treat the block as ready.
+ * non-L2 step is applied from its locally published user event and DA
+ * claim-bound effect in the exact W22-authenticated transition order, and
+ * every resulting root is checked against the committed trace. W25 proves
+ * root-exact replay only; it does not classify an event as due, omitted,
+ * fabricated or duplicated. The W26 classification verifier that the
+ * carried contract names has been removed (see
+ * docs/midgard/decisions/watcher-external-provider-evaluator-removal.md); the
+ * contract text is unchanged because it is part of the durable result format.
  *
  * NON-CIRCULAR INPUT BINDING. The transaction bytes are never taken from a
  * caller-supplied list: they come from
@@ -90,7 +93,6 @@
  * committed trace by construction, consequently can never return `accept`: it
  * is an evaluation surface, not an acceptance authority.
  */
-
 import { createHash } from "node:crypto";
 
 import {
@@ -103,6 +105,7 @@ import {
   encodeCborBytes,
 } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import {
@@ -133,7 +136,7 @@ import {
   canonicalCommittedWithdrawalTransitionEffect,
   type CanonicalTransitionEffect,
   canonicalTransitionEffectFromStatePatch,
-  deriveCanonicalDepositTransitionEffect,
+  deriveCanonicalOriginalDepositTransitionEffect,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
@@ -149,11 +152,10 @@ import type {
   RejectedTx,
 } from "@al-ft/midgard-validation/types";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
-import { CML, Data as LucidData } from "@lucid-evolution/lucid";
+import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import {
   assertWatcherLocalUserEventAuthorityCurrent,
-  parseWatcherUserEventIndexerResult,
   readWatcherLocalUserEventAuthority,
   WATCHER_FORCED_TX_VALID,
   type WatcherForcedOperatorVerdict,
@@ -161,10 +163,7 @@ import {
   type WatcherLocalUserEventAuthority,
   type WatcherLocalUserEventHeaderCutoff,
   type WatcherTerminalUserEvent,
-  type WatcherUserEventIndexerResult,
 } from "../indexers/user-event-indexer.js";
-import type { WatcherUserEventReferenceAuthority } from "../indexers/user-event-reference-authority.js";
-import type { WatcherL1TransportAttestationContext } from "../l1/l1-adapter.js";
 import {
   makeWatcherDurablePayload,
   type WatcherReconstructedState,
@@ -176,6 +175,7 @@ import {
 } from "./event-claims.js";
 import type { WatcherHeaderRootReconstructionResult } from "./header-root-reconstruction.js";
 import { WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION } from "./header-root-reconstruction.js";
+import { watcherOriginalDepositAssets } from "./history-original-assets.js";
 import {
   makeWatcherPhaseAConfig,
   WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
@@ -656,41 +656,6 @@ export type WatcherBlockReplayResult = Readonly<{
 
 const admittedFullBlockReplayResults = new WeakSet<object>();
 
-export type WatcherBlockReplayClassificationEvidence = Readonly<{
-  headerHash: string;
-  payloadEnvelopeSha256: string;
-  priorStateRoot: string;
-  claims: readonly WatcherCommittedEventClaim[];
-  priorState: readonly WatcherBlockReplayPriorUtxo[];
-}>;
-const classificationEvidence = new WeakMap<
-  object,
-  WatcherBlockReplayClassificationEvidence
->();
-
-/** A full replay re-authenticates these raw inputs; W26 independently derives
- * classification from them. Deserialized results must be replayed first.
- */
-export const watcherBlockReplayClassificationEvidence = (
-  result: WatcherBlockReplayResult,
-): WatcherBlockReplayClassificationEvidence => {
-  assertWatcherFullBlockReplayResult(result);
-  const evidence = classificationEvidence.get(result);
-  if (
-    evidence === undefined ||
-    result.action !== "accept" ||
-    evidence.headerHash !== result.headerHash ||
-    evidence.payloadEnvelopeSha256 !== result.payloadEnvelopeSha256 ||
-    evidence.priorStateRoot !== result.priorStateRoot ||
-    evidence.priorStateRoot !== result.expectedPriorStateRoot
-  ) {
-    throw new Error(
-      "watcher block replay classification evidence is not admitted",
-    );
-  }
-  return evidence;
-};
-
 /**
  * Production replay artifacts may consume only a result minted by the full
  * W21/W22/W23/W24-bound entry point below. A digest-correct structural clone
@@ -841,7 +806,8 @@ const normalizeRootHex = (root: string): string =>
   root === ZERO_ROOT ? EMPTY_MERKLE_TREE_ROOT : root;
 
 /**
- * Exact canonical rejection-to-forced-verdict partition consumed by W26.
+ * Exact canonical rejection-to-forced-verdict partition used by forced-order
+ * replay below.
  *
  * The class boundaries this partition has always published are unchanged;
  * #640 re-spells each one as the `RejectionReasonV1` constructor tag the
@@ -1116,56 +1082,33 @@ export type WatcherBlockReplayCommittedStep = Readonly<{
   eventToStepPhase: string | null;
 }>;
 
-export type WatcherBlockReplayUserEventVerificationContext = Readonly<{
-  policy: unknown;
-  previousState: unknown;
-  observation: unknown;
-  publicContext: unknown;
-  transportAttestations: readonly WatcherL1TransportAttestationContext[];
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[];
-}>;
-
-export type WatcherBlockReplayUserEventAuthority = Readonly<{
-  result: unknown;
-  context: WatcherBlockReplayUserEventVerificationContext;
-}>;
-
 /**
- * An event effect requires originating W15 authority from parser replay or
- * private local publication, plus the exact operator claim authenticated by
- * the block DA roots. W16 settlement is
- * a later accounting authority, never a prerequisite for challenge-period replay.
+ * An event effect requires originating authority from private local
+ * user-event publication, plus the exact operator claim authenticated by the
+ * block DA roots. Settlement accounting is never a prerequisite for
+ * challenge-period replay.
  */
 export type WatcherBlockReplayEventAuthority = Readonly<
   {
     eventKey: EventKey;
+    localUserEvent: WatcherLocalUserEventAuthority;
   } & (
     | {
-        userEvent: WatcherBlockReplayUserEventAuthority;
-        localUserEvent?: never;
+        phase: "Withdrawal" | "Deposit";
+        transitionEffect: CanonicalTransitionEffect;
+        canonicalNativeTxCbor?: never;
+        programMaterialSidecarCbor?: never;
       }
     | {
-        localUserEvent: WatcherLocalUserEventAuthority;
-        userEvent?: never;
+        phase: "ForcedTransaction";
+        /** Exact bytes compact/commitment-bound to the originating user-event order. */
+        canonicalNativeTxCbor: Uint8Array;
+        /** Canonical Phase-A program material for the forced native transaction. */
+        programMaterialSidecarCbor?: Uint8Array | null;
+        /** W25 derives the effect against its current canonical ledger. */
+        transitionEffect?: never;
       }
-  ) &
-    (
-      | {
-          phase: "Withdrawal" | "Deposit";
-          transitionEffect: CanonicalTransitionEffect;
-          canonicalNativeTxCbor?: never;
-          programMaterialSidecarCbor?: never;
-        }
-      | {
-          phase: "ForcedTransaction";
-          /** Exact bytes compact/commitment-bound to the originating W15 order. */
-          canonicalNativeTxCbor: Uint8Array;
-          /** Canonical Phase-A program material for the forced native transaction. */
-          programMaterialSidecarCbor?: Uint8Array | null;
-          /** W25 derives the effect against its current canonical ledger. */
-          transitionEffect?: never;
-        }
-    )
+  )
 >;
 
 export type WatcherBlockReplayEventRoot = Readonly<{
@@ -1209,20 +1152,17 @@ const eventKeyFingerprint = (eventKey: EventKey): string => {
   return `ForcedTransaction:${id.transactionId}:${id.outputIndex.toString()}`;
 };
 
-export type WatcherBlockReplayEventOriginRecord = Readonly<
-  { snapshotDigest: string; historyEntryDigests: readonly string[] } & (
-    | {
-        source: "local_publication";
-        deploymentManifestId: string;
-        blueprintHash: string;
-        checkpointDigest: string;
-        checkpointPayloadDigest: string;
-        headEntryDigest: string;
-        throughHeader: WatcherLocalUserEventHeaderCutoff | null;
-      }
-    | { source: "parser_replay"; resultDigest: string; stateDigest: string }
-  )
->;
+export type WatcherBlockReplayEventOriginRecord = Readonly<{
+  source: "local_publication";
+  snapshotDigest: string;
+  historyEntryDigests: readonly string[];
+  deploymentManifestId: string;
+  blueprintHash: string;
+  checkpointDigest: string;
+  checkpointPayloadDigest: string;
+  headEntryDigest: string;
+  throughHeader: WatcherLocalUserEventHeaderCutoff | null;
+}>;
 
 export type WatcherBlockReplayEffectRecord = Readonly<{
   canonicalCborHex: string;
@@ -1269,27 +1209,17 @@ export const watcherBlockReplayEventAuthorityManifest = (
   >,
 ): Readonly<Record<string, unknown>> => {
   const { event, origin } = record;
-  const provenance =
-    origin.source === "local_publication"
-      ? {
-          authoritySource: origin.source,
-          deploymentManifestId: origin.deploymentManifestId,
-          blueprintHash: origin.blueprintHash,
-          checkpointDigest: origin.checkpointDigest,
-          checkpointPayloadDigest: origin.checkpointPayloadDigest,
-          userEventSnapshotDigest: origin.snapshotDigest,
-          headEntryDigest: origin.headEntryDigest,
-          throughHeader: origin.throughHeader,
-        }
-      : {
-          userEventResultDigest: origin.resultDigest,
-          userEventStateDigest: origin.stateDigest,
-          userEventSnapshotDigest: origin.snapshotDigest,
-        };
   return Object.freeze({
     phase: record.phase,
     eventKeyFingerprint: eventKeyFingerprint(record.eventKey),
-    ...provenance,
+    authoritySource: origin.source,
+    deploymentManifestId: origin.deploymentManifestId,
+    blueprintHash: origin.blueprintHash,
+    checkpointDigest: origin.checkpointDigest,
+    checkpointPayloadDigest: origin.checkpointPayloadDigest,
+    userEventSnapshotDigest: origin.snapshotDigest,
+    headEntryDigest: origin.headEntryDigest,
+    throughHeader: origin.throughHeader,
     historyEntryDigests: origin.historyEntryDigests,
     eventId: event.eventId,
     eventOutRef: event.outRef,
@@ -1365,34 +1295,6 @@ const ledgerOutRefCborHex = (value: {
     outputIndex: Number(value.outputIndex),
   }).toString("hex");
 
-const l1AssetsFromOutputCbor = (
-  outputCborHex: string,
-): Readonly<Record<string, bigint>> => {
-  const output = CML.TransactionOutput.from_cbor_hex(outputCborHex);
-  const value = output.amount();
-  const assets: Record<string, bigint> = { lovelace: value.coin() };
-  const multiasset = value.multi_asset();
-  if (multiasset !== undefined) {
-    const policies = multiasset.keys();
-    for (let policyIndex = 0; policyIndex < policies.len(); policyIndex += 1) {
-      const policy = policies.get(policyIndex);
-      const policyAssets = multiasset.get_assets(policy);
-      if (policyAssets === undefined) {
-        continue;
-      }
-      const names = policyAssets.keys();
-      for (let nameIndex = 0; nameIndex < names.len(); nameIndex += 1) {
-        const name = names.get(nameIndex);
-        const quantity = policyAssets.get(name);
-        if (quantity !== undefined) {
-          assets[`${policy.to_hex()}${name.to_hex()}`] = quantity;
-        }
-      }
-    }
-  }
-  return Object.freeze(assets);
-};
-
 const decodeUserEventIdCborHex = (
   event: WatcherIndexedUserEvent,
 ): string | null => {
@@ -1411,40 +1313,6 @@ const decodeUserEventIdCborHex = (
     return null;
   }
 };
-
-const allUserEvents = (
-  result: WatcherUserEventIndexerResult,
-): readonly (WatcherIndexedUserEvent | WatcherTerminalUserEvent)[] =>
-  result.state === null
-    ? []
-    : [
-        ...result.state.snapshot.activeEvents,
-        ...result.state.snapshot.terminalEvents,
-      ];
-
-const authoritativeHistoryDigests = (
-  result: WatcherUserEventIndexerResult,
-  event: WatcherIndexedUserEvent,
-): readonly string[] =>
-  result.state === null
-    ? []
-    : Object.freeze(
-        result.state.history
-          .filter(({ observation }) =>
-            [
-              ...observation.snapshot.activeEvents,
-              ...observation.snapshot.terminalEvents,
-            ].some(
-              (candidate) =>
-                candidate.eventId === event.eventId &&
-                candidate.eventContentDigest === event.eventContentDigest &&
-                candidate.datumDigest === event.datumDigest &&
-                candidate.outputDigest === event.outputDigest &&
-                candidate.originPointDigest === event.originPointDigest,
-            ),
-          )
-          .map(({ entryDigest }) => entryDigest),
-      );
 
 const canonicalEffectFromAuthority = (
   authority: Extract<
@@ -1515,94 +1383,43 @@ const validateEventAuthority = async (
   const eventId = eventIdForKeyCborHex(authority.eventKey);
   const eventOutRef = eventIdForKey(authority.eventKey);
   const expectedKind = userEventKindForPhase(authority.phase);
-  let event: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
-  let network: WatcherRuleBundle["network"];
-  let historyEntryDigests: readonly string[];
-  let origin: WatcherBlockReplayEventOriginRecord;
-  if (authority.localUserEvent !== undefined) {
-    if (authority.userEvent !== undefined) {
-      return fail("user_event_authority_invalid", "$.localUserEvent");
-    }
-    const local = await readLocalEventAuthority(authority.localUserEvent);
-    if (
-      local.deploymentManifestId !== deployment.deploymentManifestId ||
-      local.blueprintHash !== deployment.blueprintHash ||
-      local.network !== deployment.network
-    ) {
-      return fail(
-        "user_event_authority_identity_mismatch",
-        "$.localUserEvent.deployment",
-      );
-    }
-    if (
-      local.throughHeader !== null &&
-      (local.throughHeader.headerHash !== header.headerHash ||
-        local.throughHeader.headerCborHex !== header.headerCborHex ||
-        local.throughHeader.observedBlockHash !== header.observedBlockHash ||
-        local.throughHeader.observedSlot !== header.observedSlot)
-    ) {
-      return fail(
-        "user_event_authority_identity_mismatch",
-        "$.localUserEvent.throughHeader",
-      );
-    }
-    event = local.event;
-    network = local.network;
-    historyEntryDigests = local.historyEntryDigests;
-    origin = Object.freeze({
-      source: "local_publication",
-      historyEntryDigests: local.historyEntryDigests,
-      deploymentManifestId: local.deploymentManifestId,
-      blueprintHash: local.blueprintHash,
-      checkpointDigest: local.checkpointDigest,
-      checkpointPayloadDigest: local.checkpointPayloadDigest,
-      snapshotDigest: local.snapshotDigest,
-      headEntryDigest: local.headEntryDigest,
-      throughHeader: local.throughHeader,
-    });
-  } else {
-    if (authority.userEvent === undefined) {
-      return fail("user_event_authority_invalid", "$.userEvent");
-    }
-    const parsed = parseWatcherUserEventIndexerResult(
-      authority.userEvent.result,
-      authority.userEvent.context,
+  const local = await readLocalEventAuthority(authority.localUserEvent);
+  if (
+    local.deploymentManifestId !== deployment.deploymentManifestId ||
+    local.blueprintHash !== deployment.blueprintHash ||
+    local.network !== deployment.network
+  ) {
+    return fail(
+      "user_event_authority_identity_mismatch",
+      "$.localUserEvent.deployment",
     );
-    if (parsed === null) {
-      return fail("user_event_authority_invalid", "$.userEvent.result");
-    }
-    if (
-      parsed.action !== "accept" ||
-      parsed.protocolDecision !== "indexed" ||
-      parsed.state === null ||
-      parsed.state.snapshot.quarantined
-    ) {
-      return fail(
-        "user_event_authority_not_indexed",
-        "$.userEvent.result.action",
-      );
-    }
-    const matches = allUserEvents(parsed).filter(
-      (candidate) =>
-        candidate.kind === expectedKind && candidate.eventId === eventId,
-    );
-    if (matches.length !== 1) {
-      return fail(
-        "user_event_authority_identity_mismatch",
-        "$.userEvent.result.state.snapshot",
-      );
-    }
-    event = matches[0]!;
-    network = parsed.state.network;
-    historyEntryDigests = authoritativeHistoryDigests(parsed, event);
-    origin = Object.freeze({
-      source: "parser_replay",
-      resultDigest: parsed.resultDigest,
-      stateDigest: parsed.state.stateDigest,
-      snapshotDigest: parsed.state.snapshot.snapshotDigest,
-      historyEntryDigests,
-    });
   }
+  if (
+    local.throughHeader !== null &&
+    (local.throughHeader.headerHash !== header.headerHash ||
+      local.throughHeader.headerCborHex !== header.headerCborHex ||
+      local.throughHeader.observedBlockHash !== header.observedBlockHash ||
+      local.throughHeader.observedSlot !== header.observedSlot)
+  ) {
+    return fail(
+      "user_event_authority_identity_mismatch",
+      "$.localUserEvent.throughHeader",
+    );
+  }
+  const event: WatcherIndexedUserEvent | WatcherTerminalUserEvent = local.event;
+  const network: WatcherRuleBundle["network"] = local.network;
+  const historyEntryDigests: readonly string[] = local.historyEntryDigests;
+  const origin: WatcherBlockReplayEventOriginRecord = Object.freeze({
+    source: "local_publication",
+    historyEntryDigests: local.historyEntryDigests,
+    deploymentManifestId: local.deploymentManifestId,
+    blueprintHash: local.blueprintHash,
+    checkpointDigest: local.checkpointDigest,
+    checkpointPayloadDigest: local.checkpointPayloadDigest,
+    snapshotDigest: local.snapshotDigest,
+    headEntryDigest: local.headEntryDigest,
+    throughHeader: local.throughHeader,
+  });
   if (
     event.kind !== expectedKind ||
     event.eventId !== eventId ||
@@ -1623,13 +1440,13 @@ const validateEventAuthority = async (
   ) {
     return fail(
       "user_event_authority_identity_mismatch",
-      "$.userEvent.result.state.snapshot.digest",
+      "$.localUserEvent.event.digest",
     );
   }
   if (historyEntryDigests.length === 0) {
     return fail(
       "user_event_authority_identity_mismatch",
-      "$.userEvent.result.state.history",
+      "$.localUserEvent.history",
     );
   }
   const matchesClaim = claims.filter(
@@ -1698,12 +1515,12 @@ const validateEventAuthority = async (
       readonly info: {
         readonly l2_network_id: bigint;
         readonly l2_address: Parameters<
-          typeof deriveCanonicalDepositTransitionEffect
+          typeof deriveCanonicalOriginalDepositTransitionEffect
         >[0]["l2Address"];
         readonly l2_datum: unknown | null;
       };
     };
-    const derivedEffect = deriveCanonicalDepositTransitionEffect({
+    const derivedEffect = deriveCanonicalOriginalDepositTransitionEffect({
       configuredNetwork: network,
       eventId: decoded.id,
       l2NetworkId: decoded.info.l2_network_id,
@@ -1711,10 +1528,11 @@ const validateEventAuthority = async (
       l2DatumCbor:
         decoded.info.l2_datum === null
           ? null
-          : Buffer.from(LucidData.to(decoded.info.l2_datum as never), "hex"),
-      l1Assets: l1AssetsFromOutputCbor(event.outputCborHex),
-      depositPolicyId: event.policyId,
-      depositAssetNameHex: event.assetNameHex,
+          : Buffer.from(
+              plutusConstrFieldCbor(event.eventCborHex, [1, 2, 0]),
+              "hex",
+            ),
+      originalAssets: watcherOriginalDepositAssets(event),
     });
     if (
       effect.operations.length !== 1 ||
@@ -2194,7 +2012,7 @@ const replayForcedTransitionEffect = async (input: {
 
 /**
  * Replays the authenticated transition sequence exactly. Non-L2 deltas are
- * complete W15/W16 witnesses bound by the committed trace roots; contiguous
+ * local user-event authority effects bound by the committed trace roots; contiguous
  * L2 runs are evaluated by canonical Phase B against the state produced by all
  * preceding events, so event/L2 interleavings cannot observe a stale ledger.
  */
@@ -2643,10 +2461,10 @@ const replayCommittedBlock = async (input: {
  * `prevUtxosRoot`, and each committed `post_utxos_root` must equal the root the
  * watcher recomputed for that transaction.
  *
- * A non-L2 step is bounded by the same chain, using the complete W15/W16
+ * A non-L2 step is bounded by the same chain, using the local user-event
  * authority-derived effect that the replay core passed through the canonical ledger
  * mutator. This binder does not classify whether the event was due or
- * legitimate; that semantic partition remains W26's responsibility.
+ * legitimate.
  */
 const bindCommittedSteps = (input: {
   readonly core: ReplayCore;
@@ -2818,8 +2636,7 @@ const finalizeResult = (input: {
     reasonCodes.add("post_state_binding_unrun");
   }
 
-  // `accept` means root-exact replay only. W26 remains mandatory downstream
-  // before classification/decision readiness; W25 does not adjudicate whether
+  // `accept` means root-exact replay only. W25 does not adjudicate whether
   // an authenticated event was due, omitted, fabricated, or duplicated.
   const action: WatcherBlockReplayAction =
     committedTraceBound && postStateRootBound && reasonCodes.size === 0
@@ -2874,7 +2691,7 @@ export type EvaluateWatcherBlockReplayInput = {
   /** The W23 rule bundle, with its commitment. */
   readonly ruleBundle: WatcherRuleBundle;
   readonly ruleBundleCommitment: string;
-  /** Parser-recomputed W15 originating authorities and shared canonical effects. */
+  /** Local user-event publication authorities and shared canonical effects. */
   readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthority[];
   readonly minimumConfirmationDepth?: number;
 };
@@ -3026,41 +2843,7 @@ export const snapshotWatcherBlockReplayEventAuthorities = (
 ): readonly WatcherBlockReplayEventAuthority[] =>
   Object.freeze(
     authorities.map((authority) => {
-      if (
-        authority.localUserEvent !== undefined &&
-        authority.userEvent !== undefined
-      ) {
-        return fail("user_event_authority_invalid", "$.localUserEvent");
-      }
-      const origin =
-        authority.localUserEvent === undefined
-          ? {
-              userEvent: (() => {
-                const source =
-                  authority.userEvent ??
-                  fail("user_event_authority_invalid", "$.userEvent");
-                return Object.freeze({
-                  result: structuredClone(source.result),
-                  context: Object.freeze({
-                    policy: structuredClone(source.context.policy),
-                    previousState: structuredClone(
-                      source.context.previousState,
-                    ),
-                    observation: structuredClone(source.context.observation),
-                    publicContext: structuredClone(
-                      source.context.publicContext,
-                    ),
-                    transportAttestations: Object.freeze([
-                      ...source.context.transportAttestations,
-                    ]),
-                    referenceAuthorities: Object.freeze([
-                      ...source.context.referenceAuthorities,
-                    ]),
-                  }),
-                });
-              })(),
-            }
-          : { localUserEvent: authority.localUserEvent };
+      const origin = { localUserEvent: authority.localUserEvent };
       const eventKey = structuredClone(authority.eventKey);
       if (authority.phase === "ForcedTransaction") {
         if (
@@ -3136,9 +2919,7 @@ export const evaluateWatcherBlockReplay = async (
       input.eventAuthorities ?? [],
     );
     if (
-      eventAuthorities.some(
-        (authority) => authority.localUserEvent !== undefined,
-      ) &&
+      eventAuthorities.length > 0 &&
       computeWatcherRuleBundleCommitment(ruleBundle) !== ruleBundleCommitment
     ) {
       return fail(
@@ -3291,17 +3072,13 @@ export const evaluateWatcherBlockReplay = async (
     // handles after that work so a closed, rolled-back or replaced head cannot
     // authorize a newly admitted W25 record.
     for (const authority of eventAuthorities) {
-      if (authority.localUserEvent !== undefined) {
-        await readLocalEventAuthority(authority.localUserEvent);
-      }
+      await readLocalEventAuthority(authority.localUserEvent);
     }
     for (const authority of eventAuthorities) {
-      if (authority.localUserEvent !== undefined) {
-        try {
-          assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
-        } catch {
-          return fail("user_event_authority_invalid", "$.localUserEvent");
-        }
+      try {
+        assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
+      } catch {
+        return fail("user_event_authority_invalid", "$.localUserEvent");
       }
     }
     const replay = admitFullBlockReplayResult(
@@ -3315,21 +3092,6 @@ export const evaluateWatcherBlockReplay = async (
       }),
     );
     fullReplayEventRecords.set(replay, core.eventAuthorityRecords ?? []);
-    if (
-      replay.action === "accept" &&
-      replay.priorStateRoot === evidence.header.prevUtxosRoot
-    ) {
-      classificationEvidence.set(
-        replay,
-        Object.freeze({
-          headerHash: evidence.headerHash,
-          payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
-          priorStateRoot: evidence.header.prevUtxosRoot,
-          claims: committedEventClaims,
-          priorState,
-        }),
-      );
-    }
     return replay;
   } catch (error) {
     return admitFullBlockReplayResult(

@@ -1,6 +1,7 @@
 /** Real list initialization/admission for complete fabricated-family fixtures. */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type Assets,
   CML,
   Data,
   type TxSignBuilder,
@@ -40,7 +41,15 @@ export const recordFamilyTransaction = (
 };
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
-export const prepareFamilyHistory = async (h: Harness, records: unknown[]) => {
+export const prepareFamilyHistory = async (
+  h: Harness,
+  records: unknown[],
+  bounds: SDK.EventHistoryPayloadBounds = {
+    inlineLimitBytes: 512n,
+    maxPayloadBytes: 5000n,
+    maxPayloadNodes: 512n,
+  },
+) => {
   const lucid = h.proverLucid;
   h.proverSigner.selectWallet(lucid);
   const submit = async (label: string, unsigned: TxSignBuilder) => {
@@ -86,7 +95,10 @@ export const prepareFamilyHistory = async (h: Harness, records: unknown[]) => {
   expect(reserved).toHaveLength(4);
   const funding = async () =>
     (await lucid.wallet().getUtxos()).filter(
-      (u) => !reserved.some((n) => same(u, n)) && u.scriptRef == null,
+      (u) =>
+        !reserved.some((n) => same(u, n)) &&
+        u.scriptRef == null &&
+        u.datum == null,
     );
   const recipes = (["Deposit", "Withdrawal"] as const).map(
     (kind, i): SDK.EventHistoryRecipe => ({
@@ -97,9 +109,7 @@ export const prepareFamilyHistory = async (h: Harness, records: unknown[]) => {
         outputIndex: BigInt(reserved[i]!.outputIndex),
       },
       protectionDurationMs: 120_000n,
-      inlineLimitBytes: 512n,
-      maxPayloadBytes: 5000n,
-      maxPayloadNodes: 512n,
+      ...bounds,
     }),
   );
   const applied = recipes.map((recipe) =>
@@ -220,6 +230,7 @@ export const prepareFamilyHistory = async (h: Harness, records: unknown[]) => {
       hub: UTxO,
       payload: SDK.EventHistoryPayload,
       header: SDK.Header,
+      lockedAssets?: Assets,
     ) => {
       const i = "DepositPayload" in payload ? 0 : 1;
       const a = applied[i]!;
@@ -264,7 +275,9 @@ export const prepareFamilyHistory = async (h: Harness, records: unknown[]) => {
           payload,
           reclaimAuth,
           nonce: reserved[i + 2]!,
-          assets: { lovelace: i === 0 ? 25_000_000n : 10_000_000n },
+          assets: lockedAssets ?? {
+            lovelace: i === 0 ? 25_000_000n : 10_000_000n,
+          },
           structuralLovelace: i === 0 ? 5_000_000n : 0n,
           structuralRefundKey: h.proverSigner.paymentKeyHash,
           externalData,

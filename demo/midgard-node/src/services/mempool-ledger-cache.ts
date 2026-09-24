@@ -48,25 +48,46 @@ export class ValidationPipelineEpochError extends Data.TaggedError(
 export type MempoolLedgerCacheService = {
   readonly withClaimLock: <A, E, R>(
     effect: Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, E, R>;
+  ) => Effect.Effect<A, E | ValidationPipelineEpochError, R>;
   /** Register while holding withClaimLock, immediately after a non-empty claim. */
   readonly registerPhaseBSequence: Effect.Effect<PhaseBSequence>;
   readonly withPhaseBLock: <A, E, R>(
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>;
   /** Must be called while holding withPhaseBLock. */
-  readonly currentState: Effect.Effect<MempoolLedgerState, DatabaseError>;
+  readonly currentState: Effect.Effect<
+    MempoolLedgerState,
+    DatabaseError | ValidationPipelineEpochError
+  >;
   /** Must be called while holding withPhaseBLock, before ordered persistence. */
   readonly applyPatchAndSync: (
     patch: UTxOStatePatch,
-  ) => Effect.Effect<void, DatabaseError>;
+  ) => Effect.Effect<void, DatabaseError | ValidationPipelineEpochError>;
   /** Must be called by its matching sequence while holding withPhaseBLock. */
   readonly applySpeculativePatch: (
     sequence: bigint,
     patch: UTxOStatePatch,
-  ) => Effect.Effect<void, DatabaseError>;
+  ) => Effect.Effect<void, DatabaseError | ValidationPipelineEpochError>;
   /** Reloads durable state and advances beyond a poisoned validation epoch. */
   readonly recoverPoisonedEpoch: Effect.Effect<void, DatabaseError>;
+  /** Immediately fence every old sequence, without awaiting the cache locks.
+   * Commit durable authority suspension before running the returned recovery. */
+  readonly retireCanonicalEpoch: Effect.Effect<CanonicalCacheRecovery>;
+};
+
+export type CanonicalCacheRecovery = {
+  readonly epoch: number;
+  /** Runs under claim -> Phase B -> persistence. Both callbacks may take the
+   * SQL authority lock, but must not reacquire cache locks or publish deltas.
+   * The owner must first drain all external delta producers/worker sessions. */
+  readonly runRecovery: <A, E, R, E2, R2>(
+    repairDurable: Effect.Effect<A, E, R>,
+    publishReady: Effect.Effect<void, E2, R2>,
+  ) => Effect.Effect<
+    A,
+    E | E2 | DatabaseError | ValidationPipelineEpochError,
+    R | R2
+  >;
 };
 
 export class MempoolLedgerCache extends Context.Tag("MempoolLedgerCache")<
@@ -120,7 +141,8 @@ export const makeMempoolLedgerCacheService = (
     const pipeline = yield* Ref.make<{
       readonly epoch: number;
       readonly poison: EpochPoison | undefined;
-    }>({ epoch: 0, poison: undefined });
+      readonly canonicalSuspended: boolean;
+    }>({ epoch: 0, poison: undefined, canonicalSuspended: false });
     const durableState: MempoolLedgerState = new Map();
     const state: MempoolLedgerState = new Map();
     const speculativePatches = new Map<bigint, UTxOStatePatch>();
@@ -262,7 +284,7 @@ export const makeMempoolLedgerCacheService = (
     ): Effect.Effect<void, ValidationPipelineEpochError> =>
       Ref.get(pipeline).pipe(
         Effect.flatMap((current) => {
-          if (current.epoch !== epoch) {
+          if (current.epoch !== epoch || current.canonicalSuspended) {
             return Effect.fail(epochError(epoch, sequence, sequence));
           }
           if (
@@ -283,7 +305,8 @@ export const makeMempoolLedgerCacheService = (
       priorPersistence: Deferred.Deferred<void>,
     ): Effect.Effect<void> =>
       Ref.update(pipeline, (current) => {
-        if (current.epoch !== epoch) return current;
+        if (current.epoch !== epoch || current.canonicalSuspended)
+          return current;
         if (
           current.poison !== undefined &&
           current.poison.sequence <= sequence
@@ -310,13 +333,27 @@ export const makeMempoolLedgerCacheService = (
             persistenceLock.withPermits(1)(
               Effect.gen(function* () {
                 const current = yield* Ref.get(pipeline);
-                if (current.poison === undefined) return;
+                if (
+                  current.epoch !== observed.epoch ||
+                  current.poison !== observed ||
+                  current.canonicalSuspended
+                )
+                  return;
                 speculativePatches.clear();
                 yield* fullReload;
-                yield* Ref.set(pipeline, {
-                  epoch: current.epoch + 1,
-                  poison: undefined,
-                });
+                // Canonical retirement can arrive while fullReload awaits SQL.
+                // An older poisoned recovery must never clear that suspension.
+                yield* Ref.update(pipeline, (latest) =>
+                  latest.epoch === current.epoch &&
+                  latest.poison === observed &&
+                  !latest.canonicalSuspended
+                    ? {
+                        epoch: current.epoch + 1,
+                        poison: undefined,
+                        canonicalSuspended: false,
+                      }
+                    : latest,
+                );
               }),
             ),
           ),
@@ -324,8 +361,82 @@ export const makeMempoolLedgerCacheService = (
       },
     );
 
+    const requireCanonicalReady = Ref.get(pipeline).pipe(
+      Effect.flatMap((current) =>
+        current.canonicalSuspended
+          ? Effect.fail(
+              new ValidationPipelineEpochError({
+                epoch: current.epoch,
+                sequence: 0n,
+                failedSequence: 0n,
+                message:
+                  "Validation cache is suspended for canonical history recovery",
+              }),
+            )
+          : Effect.void,
+      ),
+    );
+
+    const retireCanonicalEpoch = Effect.gen(function* () {
+      const retired = yield* Ref.updateAndGet(pipeline, (current) => ({
+        epoch: current.epoch + 1,
+        poison: undefined,
+        canonicalSuspended: true,
+      }));
+      const requireCurrent = Ref.get(pipeline).pipe(
+        Effect.flatMap((current) =>
+          current.epoch === retired.epoch && current.canonicalSuspended
+            ? Effect.void
+            : Effect.fail(epochError(retired.epoch, 0n, 0n)),
+        ),
+      );
+      return {
+        epoch: retired.epoch,
+        runRecovery: (repairDurable, publishReady) =>
+          claimLock.withPermits(1)(
+            withPhaseBLock(
+              persistenceLock.withPermits(1)(
+                Effect.gen(function* () {
+                  yield* requireCurrent;
+                  const result = yield* repairDurable;
+                  yield* requireCurrent;
+                  speculativePatches.clear();
+                  yield* fullReload;
+                  yield* requireCurrent;
+                  // Parked retired Phase-A jobs retain old ordering tails.
+                  // Their epoch checks fence writes; fresh work must not wait
+                  // for their eventual worker response or cancellation.
+                  const ready = yield* Deferred.make<void>();
+                  yield* Deferred.succeed(ready, undefined);
+                  yield* Ref.set(phaseBTail, ready);
+                  yield* Ref.set(persistenceTail, ready);
+                  yield* publishReady;
+                  const resumed = yield* Ref.modify(pipeline, (current) =>
+                    current.epoch === retired.epoch &&
+                    current.canonicalSuspended
+                      ? ([
+                          true,
+                          { ...current, canonicalSuspended: false },
+                        ] as const)
+                      : ([false, current] as const),
+                  );
+                  if (!resumed)
+                    return yield* Effect.fail(
+                      epochError(retired.epoch, 0n, 0n),
+                    );
+                  return result;
+                }),
+              ),
+            ),
+          ),
+      } satisfies CanonicalCacheRecovery;
+    });
+
     const service: MempoolLedgerCacheService = {
-      withClaimLock: (effect) => claimLock.withPermits(1)(effect),
+      withClaimLock: (effect) =>
+        claimLock.withPermits(1)(
+          requireCanonicalReady.pipe(Effect.zipRight(effect)),
+        ),
       registerPhaseBSequence: Effect.gen(function* () {
         const currentEpoch = (yield* Ref.get(pipeline)).epoch;
         const sequence = yield* Ref.getAndUpdate(
@@ -439,15 +550,23 @@ export const makeMempoolLedgerCacheService = (
         } satisfies PhaseBSequence;
       }),
       withPhaseBLock,
-      currentState: synchronize.pipe(Effect.as(state)),
+      currentState: requireCanonicalReady.pipe(
+        Effect.zipRight(synchronize),
+        Effect.zipRight(requireCanonicalReady),
+        Effect.as(state),
+      ),
       applyPatchAndSync: (patch) =>
-        synchronize.pipe(
+        requireCanonicalReady.pipe(
+          Effect.zipRight(synchronize),
+          Effect.zipRight(requireCanonicalReady),
           Effect.tap(() =>
             Effect.sync(() => applyUTxOStatePatch(state, patch)),
           ),
         ),
       applySpeculativePatch: (sequence, patch) =>
-        synchronize.pipe(
+        requireCanonicalReady.pipe(
+          Effect.zipRight(synchronize),
+          Effect.zipRight(requireCanonicalReady),
           Effect.tap(() =>
             Effect.sync(() => {
               speculativePatches.set(sequence, patch);
@@ -456,6 +575,7 @@ export const makeMempoolLedgerCacheService = (
           ),
         ),
       recoverPoisonedEpoch,
+      retireCanonicalEpoch,
     };
     return service;
   });

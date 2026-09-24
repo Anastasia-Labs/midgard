@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import { Constr, Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -525,8 +525,6 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
           source_membership: depositSourceMembership,
-          event_ref_input_index: 0n,
-          event_asset_name: "aa",
           projected_utxo: ledgerInsertWitness,
         },
       }),
@@ -544,15 +542,11 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       }),
     "transition-fault.omitted-deposit": SDK.omittedDueL1EventFault({
       OmittedDueDeposit: {
-        event_ref_input_index: 0n,
-        event_asset_name: "aa",
         source_non_membership: depositSourceNonMembership,
       },
     }),
     "transition-fault.omitted-withdrawal": SDK.omittedDueL1EventFault({
       OmittedDueWithdrawal: {
-        event_ref_input_index: 1n,
-        event_asset_name: "bb",
         source_non_membership: withdrawalSourceNonMembership,
       },
     }),
@@ -574,17 +568,12 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     }),
     "transition-fault.out-of-window-deposit": SDK.outOfWindowSourceEventFault({
       OutOfWindowDeposit: {
-        event_ref_input_index: 0n,
-        event_asset_name: "aa",
         source_membership: depositSourceMembership,
       },
     }),
     "transition-fault.out-of-window-withdrawal":
       SDK.outOfWindowSourceEventFault({
         OutOfWindowWithdrawal: {
-          event_ref_input_index: 1n,
-          event_asset_name: "bb",
-          validity_override: "IncorrectWithdrawalSignature",
           source_membership: withdrawalSourceMembership,
         },
       }),
@@ -925,15 +914,47 @@ describe("SDK canonical ABI fixtures", () => {
     expect(
       fields(
         constructor(
-          "midgard/fraud_proofs/transition_trace/proof/OmittedDueL1EventWitness",
-          "OmittedDueDeposit",
+          "midgard/fraud_proofs/transition_trace/proof/InvalidOneStepTransitionWitness",
+          "ValidDepositTransition",
         ),
       ),
     ).toEqual([
-      "event_ref_input_index",
-      "event_asset_name",
-      "source_non_membership",
+      "trace_proof",
+      "event_to_step",
+      "source_membership",
+      "projected_utxo",
     ]);
+    for (const [definition, variant, sourceField] of [
+      [
+        "OmittedDueL1EventWitness",
+        "OmittedDueDeposit",
+        "source_non_membership",
+      ],
+      [
+        "OmittedDueL1EventWitness",
+        "OmittedDueWithdrawal",
+        "source_non_membership",
+      ],
+      [
+        "OutOfWindowSourceEventWitness",
+        "OutOfWindowDeposit",
+        "source_membership",
+      ],
+      [
+        "OutOfWindowSourceEventWitness",
+        "OutOfWindowWithdrawal",
+        "source_membership",
+      ],
+    ] as const) {
+      expect(
+        fields(
+          constructor(
+            `midgard/fraud_proofs/transition_trace/proof/${definition}`,
+            variant,
+          ),
+        ),
+      ).toEqual([sourceField]);
+    }
     expect(
       fields(
         constructor("fraud_proofs/transition_trace/route_v1/Args", "Args"),
@@ -972,7 +993,7 @@ describe("SDK canonical ABI fixtures", () => {
     ).toEqual([
       "withdrawal_utxo_out_ref",
       "withdrawal_input_index",
-      "withdrawal_spend_redeemer_index",
+      "retirement_withdraw_redeemer_index",
       "hub_ref_input_index",
     ]);
     expect(
@@ -1016,6 +1037,19 @@ describe("SDK canonical ABI fixtures", () => {
       "payout_spend_redeemer_index",
       "hub_ref_input_index",
     ]);
+  });
+
+  it("rejects the obsolete deposit transition pointer fields", () => {
+    const fixture =
+      buildTransitionTraceAbiFixtures()[
+        "transition-fault.valid-deposit-transition.fault"
+      ]!;
+    const raw = Data.from(Data.to(fixture.value, fixture.schema));
+    if (!(raw instanceof Constr) || !(raw.fields[0] instanceof Constr))
+      throw new Error("Expected deposit fault witness");
+    expect(raw.fields[0].fields).toHaveLength(4);
+    raw.fields[0].fields.splice(3, 0, 999n, "00");
+    expect(() => Data.from(Data.to(raw), SDK.TransitionFault)).toThrow();
   });
 
   it("matches transition trace golden ABI fixture files", () => {
@@ -1703,7 +1737,7 @@ describe("SDK canonical ABI fixtures", () => {
         MintPayout: {
           withdrawal_utxo_out_ref: { transactionId: h32, outputIndex: 0n },
           withdrawal_input_index: 1n,
-          withdrawal_spend_redeemer_index: 2n,
+          retirement_withdraw_redeemer_index: 2n,
           hub_ref_input_index: 3n,
         },
       },

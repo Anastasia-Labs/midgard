@@ -1,11 +1,11 @@
-use aiken/builtin
 use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Credential}
+use cardano/address.{Address, Credential}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
+use midgard/event_history/order_facts
 use midgard/fraud_proofs/native_tx/components
 use midgard/fraud_proofs/transition_trace/deposit_source
 use midgard/fraud_proofs/transition_trace/final_yield.{
@@ -17,22 +17,23 @@ use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/transition_trace.{IndexedTraceProof, RootMembershipProof}
 
-validator projection(dispatcher: ScriptHash, hub_oracle: PolicyId) {
+validator projection(
+  dispatcher: ScriptHash,
+  hub_oracle: PolicyId,
+  retention_address: Address,
+  inline_limit: Int,
+  max_payload_bytes: Int,
+  max_payload_nodes: Int,
+) {
   withdraw(opened: OpenedOutputs, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
     expect state.kind == 1
     if state.phase == 10 {
-      let (reference, policy, asset) = deposit_source.open(
-        state,
-        args,
-        tx.reference_inputs,
-      )
-      let expected = proof.projected_deposit_output(
+      let reference = deposit_source.open(state, args)
+      let expected = proof.projected_original_deposit_output(
         reference.event.info,
-        assets.from_asset(policy, asset, 1),
-        policy,
-        asset,
+        assets.zero,
       )
         |> components.encode_midgard_tx_output
       expect
@@ -48,16 +49,16 @@ validator projection(dispatcher: ScriptHash, hub_oracle: PolicyId) {
       )
     } else {
       expect state.phase == 0
-      let (_, fault, _) = dispatched(
+      let (header_data, fault, _) = dispatched(
         dispatcher,
         tx.inputs,
         tx.redeemers,
         tx.reference_inputs,
       )
+      expect header: ledger_state.HeaderV1 = header_data
+      expect args.deposit_opening == None
       expect [trace_data,
-            _,
-            source_data,
-            _, asset_data, projected_data] = one_step_witness(fault, 3)
+            _, source_data, projected_data] = one_step_witness(fault, 3)
       expect trace_proof: IndexedTraceProof = trace_data
       expect
           source: RootMembershipProof<
@@ -65,20 +66,28 @@ validator projection(dispatcher: ScriptHash, hub_oracle: PolicyId) {
             ledger_state.DepositInfo,
           >
         = source_data
-      expect event_asset_name: ByteArray = asset_data
       expect projected: proof.LedgerInsertWitness = projected_data
       let hub_datum = hub.get_datum(
         tx.reference_inputs,
         hub_oracle,
         args.hub_ref_input_index,
       )
-      let reference = proof.get_authenticated_deposit_reference(
-        tx.reference_inputs,
+      let (commitment, payload, original_assets) = order_facts.capture_open(
+        tx,
         hub_datum.deposit,
-        event_asset_name,
+        hub_datum.deposit_addr,
+        retention_address,
+        order_facts.Deposit,
+        source.key,
+        header.end_time,
+        inline_limit,
+        max_payload_bytes,
+        max_payload_nodes,
         args.deposit_event_ref_index,
+        args.deposit_external_ref_index,
       )
-      let count = reference.value
+      expect order_facts.DepositPayload { event } = payload
+      let count = original_assets
         |> assets.to_pairs
         |> list.foldl(
             0,
@@ -90,11 +99,9 @@ validator projection(dispatcher: ScriptHash, hub_oracle: PolicyId) {
               }
             },
           )
-      let out_ref: Data = reference.out_ref
-      expect count > 0
       and {
-        reference.event.id == source.key,
-        reference.event.info == source.value,
+        event.id == source.key,
+        event.info == source.value,
         projected.key == proof.ledger_outref_key(source.key),
         opened.spend_input_keys == [],
         list.length(opened.output_hashes) == 1,
@@ -106,14 +113,8 @@ validator projection(dispatcher: ScriptHash, hub_oracle: PolicyId) {
             ..state,
             opened,
             phase: 2,
-            deposit_source_cbor: cbor.serialise(
-              [
-                out_ref,
-                builtin.b_data(hub_datum.deposit),
-                builtin.b_data(event_asset_name),
-              ],
-            ),
-            deposit_asset_count: count - 1,
+            deposit_source_cbor: cbor.serialise(commitment),
+            deposit_asset_count: count,
             deposit_index: source.key.output_index,
             current_root: trace_proof.value.pre_utxos_root,
           },

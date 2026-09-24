@@ -26,30 +26,6 @@ export type Entry = {
 
 export type EntryNoTimestamp = Omit<Entry, Columns.CREATED_AT>;
 
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-          ${sql(Columns.REJECT_CODE)} TEXT NOT NULL,
-          ${sql(Columns.REJECT_DETAIL)} TEXT,
-          ${sql(Columns.CREATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.TX_ID}`,
-        )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.CREATED_AT}`,
-        )} ON ${sql(tableName)} (${sql(Columns.CREATED_AT)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create tx_rejections table"),
-  );
-
 export const insert = (
   entry: EntryNoTimestamp,
 ): Effect.Effect<void, DatabaseError, Database> =>

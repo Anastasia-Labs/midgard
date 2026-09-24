@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
 
 import {
-  TransitionFaultProof,
-  type TransitionFaultProof as TransitionFaultProofData,
   type ValidationClaimWitness,
   ValidationClaimWitness as ValidationClaimWitnessSchema,
   ValidationTraceDescriptor,
@@ -22,6 +20,10 @@ import {
   type TransitionTraceDetectionEvidence,
   transitionTraceFinalIndex,
 } from "../transition-trace/index.js";
+import {
+  makeTransitionProofMaterial,
+  type TransitionProofMaterial,
+} from "../transition-trace/proof-material.js";
 
 export const W25_CHALLENGE_COORDINATE =
   "midgard-production-w25-challenge-coordinate-v1" as const;
@@ -70,7 +72,7 @@ export type ValidationTraceChallenge = Readonly<{
 const admittedTransitionChallenges = new WeakSet<object>();
 const transitionProofByChallenge = new WeakMap<
   object,
-  TransitionFaultProofData
+  TransitionProofMaterial
 >();
 const admittedValidationChallenges = new WeakSet<object>();
 const validationTraceByChallenge = new WeakMap<
@@ -176,7 +178,11 @@ export const admitTransitionTraceChallenge = async ({
       "W25 transition replay did not reproduce the selected fault",
     );
   }
-  const proofCbor = Data.to(selected.proof, TransitionFaultProof);
+  const material = makeTransitionProofMaterial(
+    evidence.reconstruction,
+    selected.proof,
+  );
+  const { proofCbor } = material;
   const references = exactOutRefs(exactL1ReferenceOutRefs);
   const finalIndex = transitionTraceFinalIndex(selected.proof);
   const challengeInput = Object.freeze({
@@ -204,7 +210,7 @@ export const admitTransitionTraceChallenge = async ({
     ),
   });
   admittedTransitionChallenges.add(challenge);
-  transitionProofByChallenge.set(challenge, selected.proof);
+  transitionProofByChallenge.set(challenge, material);
   return challenge;
 };
 
@@ -223,7 +229,7 @@ export const requireTransitionTraceChallenge = (
 
 export const transitionTraceProof = (
   challenge: TransitionTraceChallenge,
-): TransitionFaultProofData => {
+): TransitionProofMaterial => {
   requireTransitionTraceChallenge(challenge);
   return transitionProofByChallenge.get(challenge)!;
 };

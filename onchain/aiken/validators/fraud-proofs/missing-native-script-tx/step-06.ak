@@ -204,10 +204,6 @@ fn scan_script_witness(
   }
 }
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 /// Runs the step with the thread anchored to `anchored_block` while the
 /// redeemer's field-6 opening is taken from `opened_block`. They are the same
 /// fixture in every selector but the both-sides forgery.
@@ -258,7 +254,7 @@ fn run_finalize_with(
   witness_set: NativeTxWitnessSetCompact,
   carried_scripts: List<MidgardVersionedScript>,
 ) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_against(
     expected_missing_script_hash,
     block,
@@ -268,7 +264,7 @@ fn run_finalize_with(
 }
 
 fn run_finalize(expected_missing_script_hash: ByteArray) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_with(
     expected_missing_script_hash,
     block.witness_set_compact,
@@ -305,7 +301,7 @@ test missing_native_script_tx_step_06_rejects_valid_block_challenge() fail {
 /// authenticate-once hash check is what stands between this rule and a
 /// trivially satisfiable one.
 test missing_native_script_tx_step_06_rejects_a_truncated_preimage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_with(
     script_proof_v1.versioned_script_hash(
       fixture.sample_native_script_witness(),
@@ -320,7 +316,7 @@ test missing_native_script_tx_step_06_rejects_a_truncated_preimage() fail {
 /// the walk starts. This selector forges **one** side, leaving the honest
 /// compact bytes in place.
 test missing_native_script_tx_step_06_rejects_a_forged_witness_set() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let forged = NativeTxWitnessSetCompact {
     ..block.witness_set_compact,
     script_tx_wits_hash: #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -354,7 +350,7 @@ test missing_native_script_tx_step_06_rejects_a_forged_witness_set() fail {
 /// What refuses it is the thread-anchored `bad_tx_witness_set_hash`. Neutralise
 /// that one `expect` in `anchored_native_tx` and this test passes.
 test missing_native_script_tx_step_06_rejects_a_forged_witness_set_and_compact() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_against(
     // The script IS in the committed witness set — the fixture's own.
     script_proof_v1.versioned_script_hash(
@@ -373,7 +369,7 @@ test missing_native_script_tx_step_06_rejects_a_forged_witness_set_and_compact()
 /// the one script being declared missing. It fails for the same reason: the
 /// guard is on the anchor, not on the collection being empty.
 test missing_native_script_tx_step_06_rejects_a_forged_substituted_witness_set() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let without_the_script = MidgardTransactionWitnessSet {
     ..block.tx.witness_set,
     script_tx_wits: [],
@@ -405,7 +401,7 @@ test missing_native_script_tx_step_06_rejects_a_non_canonical_item() fail {
   let honest = fixture.sample_native_script_witness()
   let with_trailing_junk = encode_midgard_versioned_script(honest)
     |> bytearray.concat(#"ff")
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   // A block whose field-6 collection is the single junk-carrying item, and
   // whose compact structure commits the witness set that commits it.
   let junk_block = fixture.forged_witness_set_block_v1(

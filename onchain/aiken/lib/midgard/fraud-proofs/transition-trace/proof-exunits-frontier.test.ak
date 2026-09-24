@@ -45,12 +45,12 @@ use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
+use midgard/fraud_proofs/transition_trace/timing_fixture
 use midgard/hub_oracle
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1
 use midgard/transition_trace
-use midgard/user_events/deposit
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -324,15 +324,14 @@ fn sweep_deposit_info(width: Int) -> ledger_state.DepositInfo {
   }
 }
 
-fn deposit_value(event_asset_name: ByteArray) {
+fn deposit_value() {
   assets.from_lovelace(2_000_000)
-    |> assets.add(h28_a, event_asset_name, 1)
     |> assets.add(h28_b, #"aa", 7)
 }
 
 /// The exact L2 output bytes a deposit at this rung projects.
 ///
-/// Mirrors `projected_deposit_output_cbor`: the datum the user supplied is
+/// Mirrors the original-Value deposit projection: the datum the user supplied is
 /// serialised into the projected output, so the descriptor derived from it
 /// grows with the rung.
 fn sweep_deposit_output_cbor(width: Int) -> ByteArray {
@@ -361,23 +360,14 @@ fn sweep_deposit_output_cbor(width: Int) -> ByteArray {
 fn deposit_reference_input(
   deposit_id: ledger_state.DepositId,
   info: ledger_state.DepositInfo,
-  event_asset_name: ByteArray,
 ) -> Input {
-  let deposit_datum = deposit.DepositDatum {
-    event: ledger_state.DepositEvent { id: deposit_id, info },
-    inclusion_time: 15,
-    witness: h28_a,
-  }
-  let deposit_datum_data: Data = deposit_datum
-  Input {
-    output_reference: out_ref(99),
-    output: Output {
-      address: dummy_address(),
-      value: deposit_value(event_asset_name),
-      datum: InlineDatum(deposit_datum_data),
-      reference_script: None,
-    },
-  }
+  timing_fixture.deposit_reference(
+    h28_a,
+    deposit_id,
+    info,
+    deposit_value(),
+    3_000_000,
+  )
 }
 
 type DepositParts {
@@ -419,7 +409,6 @@ fn deposit_parts(width: Int) -> DepositParts {
     ledger_state.Deposit,
   )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
-  let event_asset_name = #"01"
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     deposits_root: source_membership.root,
@@ -436,14 +425,10 @@ fn deposit_parts(width: Int) -> DepositParts {
         trace_proof,
         event_to_step,
         source_membership,
-        event_ref_input_index: 0,
-        event_asset_name,
         projected_utxo: ledger_insert_witness(projected_key, projected_value),
       },
     },
-    reference_inputs: [
-      deposit_reference_input(deposit_id, deposit_info, event_asset_name),
-    ],
+    reference_inputs: [deposit_reference_input(deposit_id, deposit_info)],
     projected_value,
     expected_post_root,
     opened_post_root: opened_step.post_utxos_root,
@@ -463,7 +448,6 @@ fn deposit_fixtures_forced(parts: DepositParts) -> Bool {
         event_to_step,
         source_membership,
         projected_utxo,
-        ..
       }
     = witness
   let header_data: Data = parts.header
@@ -488,6 +472,7 @@ fn deposit_arm(width: Int) -> Bool {
     asset_name_for(parts.header),
     dummy_hub_datum(),
     parts.reference_inputs,
+    Some(timing_fixture.evidence(parts.header, parts.reference_inputs)),
   )
 }
 
@@ -875,8 +860,6 @@ test deposit_arm_rejects_arbitrary_projected_value() {
         trace_proof,
         event_to_step,
         source_membership,
-        event_ref_input_index,
-        event_asset_name,
         projected_utxo,
       }
     = witness
@@ -885,8 +868,6 @@ test deposit_arm_rejects_arbitrary_projected_value() {
       trace_proof,
       event_to_step,
       source_membership,
-      event_ref_input_index,
-      event_asset_name,
       projected_utxo: ledger_insert_witness(projected_utxo.key, #"deadbeef"),
     },
   }
@@ -895,6 +876,7 @@ test deposit_arm_rejects_arbitrary_projected_value() {
     asset_name_for(parts.header),
     dummy_hub_datum(),
     parts.reference_inputs,
+    Some(timing_fixture.evidence(parts.header, parts.reference_inputs)),
   )
 }
 

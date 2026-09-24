@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import { reconstructDaPayload } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalTransitionEffect } from "@al-ft/midgard-validation";
@@ -519,7 +523,6 @@ const EVENT_KEYS = [
   "spendScriptHash",
   "addressHex",
   "assetNameHex",
-  "witnessScriptHash",
   "inclusionTime",
   "eventCborHex",
   "datumCborHex",
@@ -555,8 +558,12 @@ const parseEvent = (
     value,
     "terminalClassification",
   );
+  const history =
+    "kind" in value &&
+    (value.kind === "deposit" || value.kind === "withdrawal");
   const keys = [
     ...EVENT_KEYS,
+    ...(history ? ["historyPayloadCborHex"] : ["witnessScriptHash"]),
     ...(terminal ? TERMINAL_KEYS : []),
     ...(classified ? ["terminalClassification"] : []),
   ];
@@ -596,10 +603,27 @@ const parseEvent = (
   );
   stringFields(
     r,
-    ["policyId", "spendScriptHash", "witnessScriptHash"],
+    ["policyId", "spendScriptHash", ...(history ? [] : ["witnessScriptHash"])],
     "event",
     HEX28,
   );
+  if (history) {
+    const payload = Data.from(
+      text(r.historyPayloadCborHex, "event.historyPayloadCborHex", HEX),
+      SDK.EventHistoryPayload,
+    );
+    const serializedEvent =
+      r.kind === "deposit" && "DepositPayload" in payload
+        ? aikenSerialisedPlutusDataCborPreservingMapOrder(
+            plutusConstrFieldCbor(String(r.historyPayloadCborHex), [0]),
+          )
+        : r.kind === "withdrawal" && "WithdrawalPayload" in payload
+          ? aikenSerialisedPlutusDataCborPreservingMapOrder(
+              plutusConstrFieldCbor(String(r.historyPayloadCborHex), [0]),
+            )
+          : null;
+    equal(serializedEvent, r.eventCborHex, "event history payload");
+  }
   stringFields(
     r,
     ["outputIndex", "inclusionTime", "originSlot", "originBlockNo"],
@@ -720,47 +744,32 @@ const parseAuthority = (
     typeof r.origin === "object" && r.origin !== null,
     "event origin",
   );
-  const local = Reflect.get(r.origin, "source") === "local_publication";
   const origin = record(
     r.origin,
-    local
-      ? [
-          "source",
-          "deploymentManifestId",
-          "blueprintHash",
-          "checkpointDigest",
-          "checkpointPayloadDigest",
-          "snapshotDigest",
-          "headEntryDigest",
-          "historyEntryDigests",
-          "throughHeader",
-        ]
-      : [
-          "source",
-          "resultDigest",
-          "stateDigest",
-          "snapshotDigest",
-          "historyEntryDigests",
-        ],
+    [
+      "source",
+      "deploymentManifestId",
+      "blueprintHash",
+      "checkpointDigest",
+      "checkpointPayloadDigest",
+      "snapshotDigest",
+      "headEntryDigest",
+      "historyEntryDigests",
+      "throughHeader",
+    ],
     "event origin",
   );
-  equal(
-    origin.source,
-    local ? "local_publication" : "parser_replay",
-    "event authority source",
-  );
+  equal(origin.source, "local_publication", "event authority source");
   stringFields(
     origin,
-    local
-      ? [
-          "deploymentManifestId",
-          "blueprintHash",
-          "checkpointDigest",
-          "checkpointPayloadDigest",
-          "snapshotDigest",
-          "headEntryDigest",
-        ]
-      : ["resultDigest", "stateDigest", "snapshotDigest"],
+    [
+      "deploymentManifestId",
+      "blueprintHash",
+      "checkpointDigest",
+      "checkpointPayloadDigest",
+      "snapshotDigest",
+      "headEntryDigest",
+    ],
     "event origin",
     HEX32,
   );
@@ -769,7 +778,7 @@ const parseAuthority = (
     list(origin.historyEntryDigests, "event history").length > 0,
     "event history",
   );
-  if (local && origin.throughHeader !== null) {
+  if (origin.throughHeader !== null) {
     const cutoff = record(
       origin.throughHeader,
       [
@@ -1416,7 +1425,9 @@ export const watcherReplayTranscriptSemanticProjection = (
         spendScriptHash: event.event.spendScriptHash,
         addressHex: event.event.addressHex,
         assetNameHex: event.event.assetNameHex,
-        witnessScriptHash: event.event.witnessScriptHash,
+        ...(event.event.kind === "forced_order"
+          ? { witnessScriptHash: event.event.witnessScriptHash }
+          : { historyPayloadCborHex: event.event.historyPayloadCborHex }),
         inclusionTime: event.event.inclusionTime,
         eventCborHex: event.event.eventCborHex,
         datumCborHex: event.event.datumCborHex,

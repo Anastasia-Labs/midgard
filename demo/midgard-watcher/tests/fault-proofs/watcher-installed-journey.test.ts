@@ -1,4 +1,11 @@
-import { copyFile, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -7,6 +14,8 @@ import { setTimeout as pause } from "node:timers/promises";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalEntry,
+  LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+  LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
   resolveProverSigner,
 } from "@al-ft/midgard-fault-proofs";
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
@@ -150,6 +159,27 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       publishWorkflowDeployment({ network: "Preprod", accounts }),
     );
     vi.spyOn(Date, "now").mockImplementation(() => deployment.emulator.now());
+    await stage("deposit history admission readiness", async () => {
+      const history = SDK.eventHistoryDeploymentFromContracts(
+        SDK.requireEventHistoryContracts(deployment.contracts).deposit,
+      );
+      const nodes = SDK.authenticateHistoryNodes(
+        await deployment.operatorLucid.utxosAt(history.address),
+        history,
+      );
+      expect(nodes.some(({ key }) => key === null)).toBe(true);
+      const protectedUntil = nodes.reduce(
+        (latest, { node }) =>
+          node.protected_until > latest ? node.protected_until : latest,
+        0n,
+      );
+      // Admission backdates its lower bound by sixty seconds. Advance the
+      // actual ledger so that bound respects the published root's protection.
+      const readyAt = Number(protectedUntil) + 60_000;
+      expect(Number.isSafeInteger(readyAt)).toBe(true);
+      await deployment.chain.awaitLedgerTime(readyAt);
+      expect(deployment.emulator.now()).toBeGreaterThanOrEqual(readyAt);
+    });
     const staged = await stage("known invalid block fixture", () =>
       stagePublishedDepositTrace(deployment, {
         daSignerConfig: {
@@ -663,6 +693,42 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       );
       expect(locks).toHaveLength(1);
       expect(Data.from(locks[0]!.datum!, SDK.CorrectionLockDatum)).toBe("Idle");
+      const intents = (await readWorkflow()).flatMap(({ event }) =>
+        event.kind === "submission_intent" ? [event] : [],
+      );
+      const coordinated = intents.filter(
+        (intent) =>
+          intent.durableRecovery?.stateQueueMutationLease !== undefined,
+      );
+      expect(coordinated).toHaveLength(1);
+      const checkpoint = coordinated[0]!;
+      expect(checkpoint.actionInput).toMatchObject({
+        category: "transitionTrace",
+        stage: "step_07",
+        ordinal: 7,
+        requiresMutationLease: true,
+      });
+      expect(checkpoint.txHash).toBe(completion.proofToken.createdByTxHash);
+      // Production uses local retry/reconciliation. This identity is durable;
+      // it does not claim to fence another node's commitment/merge workers.
+      expect(checkpoint.durableRecovery).toEqual({
+        stateQueueMutationLease: {
+          source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+          token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+        },
+      });
+      const removals = intents.filter(
+        ({ actionInput }) => actionInput.stage === "remove",
+      );
+      expect(removals).toHaveLength(1);
+      expect(removals[0]!.actionInput.requiresMutationLease).toBe(false);
+      expect(removals[0]!.txHash).toBe(completion.correction.removalTxHash);
+      expect(
+        removals.flatMap(
+          ({ durableRecovery }) =>
+            durableRecovery?.stateQueueMutationLease ?? [],
+        ),
+      ).toEqual([]);
     });
     requireLiveRuntime();
     // The following commitment is supplied by the fixture's second operator;
@@ -706,6 +772,36 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       // confirmation blocks for all proof and replacement-operator actions.
       3_000_000,
     );
+    const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+    if (evidenceDirectory !== undefined) {
+      await mkdir(evidenceDirectory, { recursive: true });
+      await writeFile(
+        join(evidenceDirectory, "watcher-installed-history-journey.json"),
+        JSON.stringify(
+          {
+            scope:
+              "Applied emulator deployment and real watcher service; synthetic native transport, not live Cardano acceptance",
+            manifest: deployment.manifest,
+            protocolParameters:
+              deployment.operatorLucid.config().protocolParameters,
+            completion,
+            honestSuccessorHeaderHash: successor.headerHash,
+            decisions: await readDecisions(),
+            workflow: await readWorkflow(),
+            acceptedTransactions: [...recorder.signedCbors].map(
+              ([txHash, signedCbor]) => ({ txHash, signedCbor }),
+            ),
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ) + "\n",
+      );
+      await copyFile(
+        nativeBlocksPath!,
+        join(evidenceDirectory, "watcher-installed-history-native-blocks.json"),
+      );
+    }
     succeeded = true;
   } catch (cause) {
     console.error(`Watcher journey stopped at ${activeStage}`, cause);

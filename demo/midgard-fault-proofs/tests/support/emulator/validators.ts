@@ -142,6 +142,15 @@ export const makeAlwaysSucceedsContracts = (
     nonExistentInputNoIndex: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
     invalidRange: scaffoldChain(invalidRangeFirstStep, 2),
     transitionTrace: {
+      history: {
+        inlineLimitBytes: 512n,
+        maxPayloadBytes: 5000n,
+        maxPayloadNodes: 512n,
+        retentionAddresses: {
+          deposit: appendedFamilyFallback.spendingScriptAddress,
+          withdrawal: appendedFamilyFallback.spendingScriptAddress,
+        },
+      },
       ...scaffoldChain(transitionTraceFirstStep, 9),
       route: transitionTraceFirstStep,
       finals: repeatValidator(transitionTraceFirstStep, 8),
@@ -186,6 +195,12 @@ export const makeAlwaysSucceedsContracts = (
           transitionTraceFirstStep.spendingScriptCBOR,
         ),
         depositProjection: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l1Event: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        forcedTiming: makeWithdrawalValidator(
           transitionTraceFirstStep.spendingScriptCBOR,
         ),
         depositSummaries: makeWithdrawalValidator(
@@ -561,6 +576,7 @@ export const makeAlwaysSucceedsContracts = (
     fraudProof: alwaysAuthenticated(blueprint, "fraud_proof"),
     chunkedVerify: reserve,
     pexcludes: reserve,
+    eventHistory: null,
     deposit: alwaysAuthenticated(blueprint, "deposit"),
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),

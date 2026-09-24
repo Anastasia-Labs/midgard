@@ -21,8 +21,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import { admitCrossBlockDuplicateArtifact } from "../src/cross-block-duplicate-event/artifact.js";
 import {
-  submitCrossBlockDuplicateEventCancel,
-  submitCrossBlockDuplicateEventInit,
   submitCrossBlockDuplicateEventStep01,
   submitCrossBlockDuplicateEventStep02,
 } from "../src/cross-block-duplicate-event/index.js";
@@ -56,13 +54,16 @@ import { fileURLToPath } from "node:url";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
+import { CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL } from "../src/cross-block-duplicate-event/contracts.js";
 import { createCrossBlockDuplicateEventTransactionPort } from "../src/cross-block-duplicate-event/workflow.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import { CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
@@ -735,7 +736,8 @@ it.each(["deposit", "withdrawal", "forced-transaction"] as const)(
       )
     )[0]!;
     const init = () =>
-      submitCrossBlockDuplicateEventInit({
+      submitResolvedInit({
+        label: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
         lucid: h.proverLucid,
         blueprint: h.realBlueprint,
         network: "Custom",
@@ -768,9 +770,12 @@ it.each(["deposit", "withdrawal", "forced-transaction"] as const)(
       });
     if (kind === "deposit") {
       await measure("cancel-01", () =>
-        submitCrossBlockDuplicateEventCancel({
+        submitLinearFaultCancel({
           lucid: h.proverLucid,
-          contracts: family,
+          family: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
+          steps: family.steps,
+          computationThread: family.computationThread,
+          categoryId: SDK.CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
           signer: h.proverSigner,
           threadOutRef: thread.nextThreadOutRef,
           referenceScriptUtxo: references[0],
@@ -782,9 +787,12 @@ it.each(["deposit", "withdrawal", "forced-transaction"] as const)(
         step01(thread.nextThreadOutRef),
       );
       await measure("cancel-02", () =>
-        submitCrossBlockDuplicateEventCancel({
+        submitLinearFaultCancel({
           lucid: h.proverLucid,
-          contracts: family,
+          family: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
+          steps: family.steps,
+          computationThread: family.computationThread,
+          categoryId: SDK.CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
           signer: h.proverSigner,
           threadOutRef: advanced.nextThreadOutRef,
           referenceScriptUtxo: references[1],

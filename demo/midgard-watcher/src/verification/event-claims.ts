@@ -5,8 +5,11 @@ import {
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
-  committedDepositValueBytes,
-  committedWithdrawalValueBytes,
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
+import {
   DepositEvent,
   ForcedInclusionTxV1,
   OutputReference,
@@ -46,7 +49,9 @@ export const bindWatcherOriginEventClaim = (
     const origin = Data.from(event.eventCborHex, DepositEvent);
     if (
       Data.to(origin.id, OutputReference) !== claim.eventIdCborHex ||
-      committedDepositValueBytes(origin.info) !== claim.valueCborHex
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
+        plutusConstrFieldCbor(event.eventCborHex, [1]),
+      ) !== claim.valueCborHex
     ) {
       throw new Error("committed deposit differs from its originating event");
     }
@@ -57,10 +62,13 @@ export const bindWatcherOriginEventClaim = (
     const committed = Data.from(claim.valueCborHex, WithdrawalInfo);
     if (
       Data.to(origin.id, OutputReference) !== claim.eventIdCborHex ||
-      committedWithdrawalValueBytes({
-        ...origin.info,
-        validity: committed.validity,
-      }) !== claim.valueCborHex
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
+        replacePlutusConstrFieldCbor(
+          plutusConstrFieldCbor(event.eventCborHex, [1]),
+          [2],
+          plutusConstrFieldCbor(claim.valueCborHex, [2]),
+        ),
+      ) !== claim.valueCborHex
     ) {
       throw new Error(
         "committed withdrawal differs from its originating event",

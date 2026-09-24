@@ -1,20 +1,18 @@
-use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Address}
+use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
   InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Spend, Transaction,
+  Withdraw,
 }
 use cardano/transaction as tx
 use midgard/common/utils
+use midgard/event_history/retirement
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/payout
 use midgard/reserve
-use midgard/transition_trace
-use midgard/user_events/withdrawal as withdrawal_lib
 
 fn singleton_asset_name_with_policy(
   value: Value,
@@ -397,7 +395,10 @@ validator spend(hub_oracle: ScriptHash) {
   }
 }
 
-validator mint(hub_oracle: ScriptHash) {
+validator mint(
+  hub_oracle: ScriptHash,
+  withdrawal_retirement_observer: ScriptHash,
+) {
   mint(redeemer: payout.MintRedeemer, own_policy: PolicyId, tx: Transaction) {
     let Transaction { inputs, reference_inputs, redeemers, mint, .. } = tx
 
@@ -405,7 +406,7 @@ validator mint(hub_oracle: ScriptHash) {
       payout.MintPayout {
         withdrawal_utxo_out_ref,
         withdrawal_input_index,
-        withdrawal_spend_redeemer_index,
+        retirement_withdraw_redeemer_index,
         hub_ref_input_index,
       } -> {
         let
@@ -450,16 +451,22 @@ validator mint(hub_oracle: ScriptHash) {
             withdrawal_asset_name,
           ) == 1
 
+        // The deployment pins this semantic observer. Its exact zero-valued
+        // withdrawal validates history removal, finality, membership and funds.
         expect
-            withdrawal_lib.SpendRedeemer {
-              purpose: withdrawal_lib.InitializePayout,
-              ..
-            }: withdrawal_lib.SpendRedeemer
-          = utils.get_redeemer_at(
+          list.has(
+            tx.withdrawals,
+            Pair(Script(withdrawal_retirement_observer), 0),
+          )
+        expect delegated: retirement.Args = utils.get_redeemer_at(
           redeemers,
-          Spend(withdrawal_utxo_out_ref),
-          withdrawal_spend_redeemer_index,
+          Withdraw(Script(withdrawal_retirement_observer)),
+          retirement_withdraw_redeemer_index,
         )
+        expect delegated.hub_reference_index == hub_ref_input_index
+        expect delegated.witness.order_input_index == withdrawal_input_index
+        expect
+          delegated.witness.purpose == retirement.InitializeWithdrawalPayout
 
         True
       }
@@ -564,13 +571,6 @@ const withdrawal_ref: OutputReference =
 
 const withdrawal_phas_root =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
-const withdrawal_root =
-  transition_trace.commit_counted_root(
-    transition_trace.WithdrawalsRootDomain,
-    withdrawal_phas_root,
-    1,
-  )
 
 fn ada(quantity: Int) -> Value {
   assets.from_lovelace(quantity)
@@ -1212,6 +1212,7 @@ test payout_conclude_accepts_exact_burn_and_destination() {
     ),
     mint.mint(
       hub_policy,
+      withdrawal_retirement_observer,
       payout_burn_redeemer(),
       payout_policy,
       valid_payout_conclusion_tx(),
@@ -1313,6 +1314,7 @@ test payout_conclude_rejects_continuing_payout_output() fail {
 test payout_burn_rejects_unrelated_mint() fail {
   mint.mint(
     hub_policy,
+    withdrawal_retirement_observer,
     payout_burn_redeemer(),
     payout_policy,
     payout_conclusion_tx(
@@ -1331,39 +1333,28 @@ test payout_burn_rejects_unrelated_mint() fail {
   )
 }
 
-fn withdrawal_spend_redeemer_data() -> Data {
-  let redeemer: Data = withdrawal_lib.SpendRedeemer {
-    input_index: 0,
-    output_index: 0,
-    hub_ref_input_index: 0,
-    settlement_ref_input_index: 0,
-    burn_redeemer_index: 0,
-    payout_mint_redeemer_index: 1,
-    membership_proof: transition_trace.RootMembershipProof {
-      domain: transition_trace.WithdrawalsRootDomain,
-      root: withdrawal_root,
-      phas_root: withdrawal_phas_root,
-      count: 1,
-      key: cbor.serialise(withdrawal_ref),
-      value: cbor.serialise(
-        ledger_state.WithdrawalInfo {
-          body: ledger_state.WithdrawalBody {
-            l2_outref: withdrawal_ref,
-            l2_owner: #"11111111111111111111111111111111111111111111111111111111",
-            l2_value: payout_value_pairs(7),
-            l1_address: address.from_script(
-              #"66666666666666666666666666666666666666666666666666666666",
-            ),
-            l1_datum: NoDatum,
-          },
-          signature: Pair(#"01", #"02"),
-          validity: ledger_state.WithdrawalIsValid,
-        },
-      ),
-      proof: [],
+const withdrawal_retirement_observer: ScriptHash =
+  #"93939393939393939393939393939393939393939393939393939393"
+
+fn retirement_redeemer_data() -> Data {
+  let redeemer: Data = retirement.Args {
+    hub_reference_index: 0,
+    witness: retirement.Witness {
+      predecessor_input_index: 1,
+      order_input_index: 0,
+      predecessor_output_index: 0,
+      funds_output_index: 1,
+      structural_refund_output_index: None,
+      confirmed_reference_index: 1,
+      settlement_reference_index: 2,
+      external_reference_index: None,
+      membership: retirement.Membership {
+        phas_root: withdrawal_phas_root,
+        count: 1,
+        proof: [],
+      },
+      purpose: retirement.InitializeWithdrawalPayout,
     },
-    inclusion_proof_script_withdraw_redeemer_index: 0,
-    purpose: withdrawal_lib.InitializePayout,
   }
   redeemer
 }
@@ -1372,7 +1363,7 @@ fn mint_payout_tx(minted_value: Value) -> Transaction {
   let mint_redeemer: Data = payout.MintPayout {
     withdrawal_utxo_out_ref: withdrawal_ref,
     withdrawal_input_index: 0,
-    withdrawal_spend_redeemer_index: 0,
+    retirement_withdraw_redeemer_index: 0,
     hub_ref_input_index: 0,
   }
   Transaction {
@@ -1390,20 +1381,25 @@ fn mint_payout_tx(minted_value: Value) -> Transaction {
     ],
     reference_inputs: [hub_ref_input()],
     redeemers: [
-      Pair(Spend(withdrawal_ref), withdrawal_spend_redeemer_data()),
+      Pair(
+        Withdraw(Script(withdrawal_retirement_observer)),
+        retirement_redeemer_data(),
+      ),
       Pair(Mint(payout_policy), mint_redeemer),
     ],
     mint: minted_value,
+    withdrawals: [Pair(Script(withdrawal_retirement_observer), 0)],
   }
 }
 
 test payout_mint_accepts_matching_withdrawal_burn() {
   mint.mint(
     hub_policy,
+    withdrawal_retirement_observer,
     payout.MintPayout {
       withdrawal_utxo_out_ref: withdrawal_ref,
       withdrawal_input_index: 0,
-      withdrawal_spend_redeemer_index: 0,
+      retirement_withdraw_redeemer_index: 0,
       hub_ref_input_index: 0,
     },
     payout_policy,
@@ -1419,10 +1415,11 @@ test payout_mint_accepts_matching_withdrawal_burn() {
 test payout_mint_rejects_asset_name_mismatch() fail {
   mint.mint(
     hub_policy,
+    withdrawal_retirement_observer,
     payout.MintPayout {
       withdrawal_utxo_out_ref: withdrawal_ref,
       withdrawal_input_index: 0,
-      withdrawal_spend_redeemer_index: 0,
+      retirement_withdraw_redeemer_index: 0,
       hub_ref_input_index: 0,
     },
     payout_policy,
@@ -1432,5 +1429,109 @@ test payout_mint_rejects_asset_name_mismatch() fail {
         assets.from_asset(withdrawal_policy, payout_asset, -1),
       ),
     ),
+  )
+}
+
+fn check_history_payout_mint(transaction: Transaction) -> Bool {
+  mint.mint(
+    hub_policy,
+    withdrawal_retirement_observer,
+    payout.MintPayout {
+      withdrawal_utxo_out_ref: withdrawal_ref,
+      withdrawal_input_index: 0,
+      retirement_withdraw_redeemer_index: 0,
+      hub_ref_input_index: 0,
+    },
+    payout_policy,
+    transaction,
+  )
+}
+
+fn valid_history_payout_mint() -> Transaction {
+  mint_payout_tx(
+    assets.merge(
+      assets.from_asset(payout_policy, payout_asset, 1),
+      assets.from_asset(withdrawal_policy, payout_asset, -1),
+    ),
+  )
+}
+
+test payout_mint_requires_retirement_withdrawal() fail {
+  check_history_payout_mint(
+    Transaction { ..valid_history_payout_mint(), withdrawals: [] },
+  )
+}
+
+test payout_mint_requires_zero_retirement_withdrawal() fail {
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      withdrawals: [Pair(Script(withdrawal_retirement_observer), 1)],
+    },
+  )
+}
+
+test payout_mint_rejects_different_retirement_purpose() fail {
+  expect args: retirement.Args = retirement_redeemer_data()
+  let wrong: Data = retirement.Args {
+    ..args,
+    witness: retirement.Witness {
+      ..args.witness,
+      purpose: retirement.AbsorbDeposit,
+    },
+  }
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [Pair(Withdraw(Script(withdrawal_retirement_observer)), wrong)],
+    },
+  )
+}
+
+test payout_mint_binds_retiring_order_input() fail {
+  expect args: retirement.Args = retirement_redeemer_data()
+  let wrong: Data = retirement.Args {
+    ..args,
+    witness: retirement.Witness { ..args.witness, order_input_index: 1 },
+  }
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [Pair(Withdraw(Script(withdrawal_retirement_observer)), wrong)],
+    },
+  )
+}
+
+test payout_mint_binds_retirement_hub_reference() fail {
+  expect args: retirement.Args = retirement_redeemer_data()
+  let wrong: Data = retirement.Args { ..args, hub_reference_index: 1 }
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [Pair(Withdraw(Script(withdrawal_retirement_observer)), wrong)],
+    },
+  )
+}
+
+test payout_mint_rejects_unrelated_observer_redeemer() fail {
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [
+        Pair(Withdraw(Script(withdrawal_policy)), retirement_redeemer_data()),
+      ],
+    },
+  )
+}
+
+test payout_mint_allows_other_withdrawals_with_exact_retirement() {
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      withdrawals: [
+        Pair(Script(withdrawal_retirement_observer), 0),
+        Pair(Script(withdrawal_policy), 0),
+      ],
+    },
   )
 }

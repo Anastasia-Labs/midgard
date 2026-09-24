@@ -202,8 +202,10 @@ const parseMutationLeaseRecovery = (
 };
 
 const requiresMutationLease = (action: FraudProofWorkflowAction): boolean =>
-  action.input.stage === "remove" &&
-  action.input.requiresMutationLease === true;
+  action.input.requiresMutationLease === true &&
+  (action.input.stage === "remove" ||
+    (action.input.category === "transitionTrace" &&
+      (action.input.stage === "step_07" || action.input.stage === "step_08")));
 
 /**
  * Crash-safe mechanics for explicitly specified one-to-eight-step state

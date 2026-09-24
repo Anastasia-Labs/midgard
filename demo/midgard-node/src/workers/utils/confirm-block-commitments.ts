@@ -10,6 +10,7 @@ import {
 export type PendingBlockConfirmation = {
   expectedHeaderHash: string;
   submittedTxHash: "" | TxHash;
+  intendedTxHash?: TxHash | null;
   blockEndTimeMs: number;
   updatedAtMs: number;
 };
@@ -59,7 +60,11 @@ export type SerializedCanonicalCommittedHeader = {
 
 export const pendingBlockHasSubmittedTx = (
   pendingBlock: PendingBlockConfirmation,
-): boolean => pendingBlock.submittedTxHash.length > 0;
+): boolean => pendingBlockLookupTxHash(pendingBlock).length > 0;
+
+export const pendingBlockLookupTxHash = (
+  pendingBlock: PendingBlockConfirmation,
+): string => pendingBlock.intendedTxHash ?? pendingBlock.submittedTxHash;
 
 export const TARGETED_MISS_FULL_SCAN_INTERVAL_MS = 20_000;
 
@@ -108,6 +113,7 @@ export const decideUnsubmittedPendingBlockRecovery = ({
   if (canonicalMatchFound) {
     return "recover_canonical";
   }
+  if (pendingBlock.intendedTxHash != null) return "defer";
   return shouldDeferUnsubmittedPendingBlockRecovery({
     pendingBlock,
     nowMs,

@@ -4,9 +4,10 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalDepositTransitionEffect } from "@al-ft/midgard-validation";
-import { Data, type Network, type UTxO } from "@lucid-evolution/lucid";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import { Data, type Network } from "@lucid-evolution/lucid";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
@@ -15,6 +16,10 @@ import {
   detectTransitionTraceFaults,
   type TransitionTraceDetectionEvidence,
 } from "./detect.js";
+import {
+  reopenTransitionDeposit,
+  type TransitionDepositOpening,
+} from "./history-opening.js";
 import { createTransitionTraceLedgerReplay } from "./ledger-replay.js";
 import {
   eventKeyFingerprint,
@@ -26,9 +31,7 @@ import { buildRetainedValidationClaimWitness } from "./witnesses.js";
 /** Exact L1 event preimages; the installed caller must admit their raw snapshot
  * before invoking this pure replay builder. This type grants no replay authority. */
 export type TransitionTraceDepositPreimage = Readonly<{
-  event: UTxO;
-  eventAssetName: string;
-  eventRefInputIndex: bigint;
+  history: TransitionDepositOpening;
 }>;
 
 /** Derives witnesses from the predecessor descriptor trie and retained source
@@ -224,11 +227,13 @@ export const deriveTransitionTraceReplayEvidence = async ({
         });
       }
     } else {
-      const selected = deposits.filter(({ event }) => {
-        if (event.datum === undefined || event.datum === null) return false;
-        const decoded = Data.from(event.datum, SDK.DepositDatum).event;
+      const selected = deposits.filter(({ history }) => {
+        const commitment = Data.from(
+          history.commitmentCbor,
+          SDK.EventHistoryCommitment,
+        );
         return (
-          Data.to(decoded.id, SDK.OutputReference) ===
+          Data.to(commitment.event_id, SDK.OutputReference) ===
           Data.to(source.entry.key, SDK.OutputReference)
         );
       });
@@ -238,31 +243,39 @@ export const deriveTransitionTraceReplayEvidence = async ({
         );
       // Decision 0007: a committed deposit with no authentic L1 origin is the
       // `fabricatedDeposit` fraud, not a replay abort. Only that family's
-      // finding at this leaf discharges the prerequisite, which keeps a merely
-      // consumed/settled origin fail-closed: the family proves absence from the
-      // authenticated live output-reference set and refuses a consumed outref.
+      // finding at this leaf discharges the prerequisite. L1 history Orders,
+      // authenticated gaps and previously captured commitments decide authority;
+      // a consumed pointer alone is never evidence of a fabricated event.
       if (selected.length === 0)
         throw replayPrerequisiteFailure(
           current.headerHash,
           step.event_key,
           "present_source_origin",
         );
-      const { event, eventAssetName, eventRefInputIndex } = selected[0]!;
-      const decoded = Data.from(event.datum!, SDK.DepositDatum).event;
-      // Decision 0007: an authentic deposit whose content differs from the
-      // committed leaf is the `fabricatedDeposit` fraud at that leaf.
-      if (
-        Data.to(decoded.info, SDK.DepositInfo) !==
-          source.entry.valueBytes.toString("hex") ||
-        event.assets[depositPolicyId + eventAssetName] !== 1n
-      )
+      const { history } = selected[0]!;
+      let opened: ReturnType<typeof reopenTransitionDeposit>;
+      try {
+        opened = reopenTransitionDeposit(history, depositPolicyId, {
+          ...source.entry,
+          valueCbor: source.entry.valueBytes.toString("hex"),
+        });
+      } catch {
         throw replayPrerequisiteFailure(
           current.headerHash,
           step.event_key,
           "matching_source_origin",
         );
+      }
+      const originalAssets = Object.fromEntries(
+        [...opened.opening.original_assets].flatMap(([policy, names]) =>
+          [...names].map(([name, quantity]) => [
+            policy === "" ? "lovelace" : policy + name,
+            quantity,
+          ]),
+        ),
+      );
       const info = source.entry.value;
-      const effect = deriveCanonicalDepositTransitionEffect({
+      const effect = deriveCanonicalOriginalDepositTransitionEffect({
         configuredNetwork: network,
         eventId: source.entry.key,
         l2NetworkId: info.l2_network_id,
@@ -270,10 +283,11 @@ export const deriveTransitionTraceReplayEvidence = async ({
         l2DatumCbor:
           info.l2_datum === null
             ? null
-            : Buffer.from(Data.to(info.l2_datum), "hex"),
-        l1Assets: event.assets,
-        depositPolicyId,
-        depositAssetNameHex: eventAssetName,
+            : Buffer.from(
+                plutusConstrFieldCbor(opened.infoCbor, [2, 0]),
+                "hex",
+              ),
+        originalAssets,
       });
       const op = effect.operations[0];
       if (op?.type !== "insert" || effect.operations.length !== 1)
@@ -288,8 +302,6 @@ export const deriveTransitionTraceReplayEvidence = async ({
         );
       deposit.push({
         stepIndex: index,
-        eventRefInputIndex,
-        eventAssetName,
         projectedUtxo: await ledger.insert(op.outRefCbor, op.outputCbor),
       });
     }

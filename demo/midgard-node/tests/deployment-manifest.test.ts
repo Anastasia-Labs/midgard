@@ -110,6 +110,28 @@ const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
         contractName,
         {
           refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
+          ...(contractName === "depositMint" ||
+          contractName === "withdrawalMint"
+            ? {
+                eventHistoryRecipe: {
+                  kind:
+                    contractName === "depositMint"
+                      ? ("Deposit" as const)
+                      : ("Withdrawal" as const),
+                  hubPolicyId: CONTRACT_SCRIPT_HASH,
+                  initializationNonce: {
+                    txHash: "11".repeat(32),
+                    outputIndex: 0,
+                  },
+                  protectionDurationMs: "2000",
+                  bounds: {
+                    inlineLimitBytes: "512",
+                    maxPayloadBytes: "5000",
+                    maxPayloadNodes: "512",
+                  },
+                },
+              }
+            : {}),
           ...(contractName === "fraudProofFabricatedDeposit" ||
           contractName === "fraudProofFabricatedWithdrawal"
             ? {
@@ -122,6 +144,25 @@ const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
                   type: "Script",
                   hash: "ee".repeat(28),
                 }),
+              }
+            : {}),
+          ...(contractName === "fraudProofTransitionTrace"
+            ? {
+                eventHistoryBounds: {
+                  inlineLimitBytes: "512",
+                  maxPayloadBytes: "5000",
+                  maxPayloadNodes: "512",
+                },
+                eventHistoryRetentionAddresses: {
+                  deposit: credentialToAddress("Preview", {
+                    type: "Script",
+                    hash: "dd".repeat(28),
+                  }),
+                  withdrawal: credentialToAddress("Preview", {
+                    type: "Script",
+                    hash: "ee".repeat(28),
+                  }),
+                },
               }
             : {}),
           contract: {

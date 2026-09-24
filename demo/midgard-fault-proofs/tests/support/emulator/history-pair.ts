@@ -346,6 +346,7 @@ export const setupHistoryPair = async ({
     lucid,
     emulator,
     applied,
+    recipes,
     hub,
     scripts,
     owner,
@@ -505,7 +506,10 @@ export const promoteHistoryPair = async (
 };
 
 export const insertHistoryFillerAfter = async (
-  h: Awaited<ReturnType<typeof setupHistoryPair>>,
+  h: Pick<
+    Awaited<ReturnType<typeof setupHistoryPair>>,
+    "applied" | "lucid" | "funding" | "hub" | "scripts" | "bounds" | "owner"
+  >,
   kind: "Deposit" | "Withdrawal",
   witness: EventHistoryWitness,
   key: string,

@@ -558,6 +558,10 @@ CREATE TABLE public.pending_block_finalization_withdrawals (
     header_hash bytea NOT NULL,
     member_id bytea NOT NULL,
     ordinal integer NOT NULL,
+    validity text NOT NULL,
+    validity_detail jsonb NOT NULL,
+    classification_revision integer NOT NULL CHECK (classification_revision >= 0),
+    classification_sha256 bytea NOT NULL CHECK (octet_length(classification_sha256) = 32),
     payload_cbor bytea NOT NULL,
     payload_sha256 bytea NOT NULL,
     source_table text NOT NULL,
@@ -572,8 +576,20 @@ CREATE TABLE public.pending_block_finalization_withdrawals (
 --
 
 CREATE TABLE public.pending_block_finalizations (
+    correction_transition_digest text CHECK (correction_transition_digest ~ '^[0-9a-f]{64}$'),
     header_hash bytea NOT NULL,
     submitted_tx_hash bytea,
+    prepared_tx_hash bytea CHECK (prepared_tx_hash IS NULL OR octet_length(prepared_tx_hash) = 32),
+    intended_tx_hash bytea,
+    signed_tx_cbor bytea,
+    CONSTRAINT pending_signed_intent_pair CHECK (
+      (intended_tx_hash IS NULL AND signed_tx_cbor IS NULL) OR
+      (intended_tx_hash IS NOT NULL AND octet_length(intended_tx_hash) = 32 AND
+       signed_tx_cbor IS NOT NULL AND octet_length(signed_tx_cbor) > 0)),
+    CONSTRAINT pending_signed_intent_matches_prepared CHECK (
+      intended_tx_hash IS NULL OR (prepared_tx_hash IS NOT NULL AND intended_tx_hash = prepared_tx_hash)),
+    CONSTRAINT pending_signed_ack_matches_intent CHECK (
+      intended_tx_hash IS NULL OR submitted_tx_hash IS NULL OR intended_tx_hash = submitted_tx_hash),
     block_end_time timestamp with time zone NOT NULL,
     status text NOT NULL,
     observed_confirmed_at_ms bigint,
@@ -849,6 +865,8 @@ CREATE TABLE public.tx_rejections (
 --
 
 CREATE TABLE public.withdrawal_utxos (
+    classification_revision integer DEFAULT 0 NOT NULL CHECK (classification_revision >= 0),
+    reopened_from_header_hash bytea CHECK (octet_length(reopened_from_header_hash) = 28),
     event_id bytea NOT NULL,
     raw_event_info bytea NOT NULL,
     settlement_event_info bytea,
@@ -1521,14 +1539,6 @@ ALTER TABLE ONLY public.pending_block_finalization_deposits
 
 
 --
--- Name: pending_block_finalization_deposits pending_block_finalization_deposits_member_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_deposits
-    ADD CONSTRAINT pending_block_finalization_deposits_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.deposits_utxos(event_id) ON DELETE RESTRICT;
-
-
---
 -- Name: pending_block_finalization_event_to_step pending_block_finalization_event_to_step_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1579,14 +1589,6 @@ ALTER TABLE ONLY public.pending_block_finalization_withdrawals
 
 
 --
--- Name: pending_block_finalization_withdrawals pending_block_finalization_withdrawals_member_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_withdrawals
-    ADD CONSTRAINT pending_block_finalization_withdrawals_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.withdrawal_utxos(event_id) ON DELETE RESTRICT;
-
-
---
 -- Name: tx_admission_payloads tx_admission_payloads_tx_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1603,3 +1605,255 @@ INSERT INTO public.commit_build_calibration (
     ms_per_tx_ewma,
     sample_count
 ) VALUES (1, 1.0, 0);
+
+
+-- Durable user intent and exact completed bodies, committed before signing.
+-- Nonces remain reserved after confirmation: a rollback must resume the same
+-- intent, not assign its event ID to an unrelated request.
+CREATE TABLE public.event_history_submissions (
+    submission_id text PRIMARY KEY CHECK (length(submission_id) BETWEEN 1 AND 128),
+    kind text NOT NULL CHECK (kind IN ('Deposit', 'Withdrawal')),
+    policy_id text NOT NULL CHECK (policy_id ~ '^[0-9a-f]{56}$'),
+    wallet_address text NOT NULL,
+    intent_hash text NOT NULL CHECK (intent_hash ~ '^[0-9a-f]{64}$'),
+    nonce_out_ref text NOT NULL UNIQUE,
+    request jsonb NOT NULL CHECK (jsonb_typeof(request) = 'object'),
+    checkpoint jsonb NOT NULL CHECK (jsonb_typeof(checkpoint) = 'object'),
+    revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+
+CREATE TABLE public.event_history_submission_inputs (
+    out_ref text PRIMARY KEY,
+    submission_id text NOT NULL REFERENCES public.event_history_submissions(submission_id) ON DELETE RESTRICT
+);
+
+-- Node-private canonical history ownership. A stored ready row is a checkpoint,
+-- never permission for a new process to resume without revalidation.
+CREATE TABLE public.event_history_authority (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    deployment_identity bytea NOT NULL CHECK (octet_length(deployment_identity) = 32),
+    owner_token uuid NOT NULL,
+    generation bigint NOT NULL CHECK (generation >= 0),
+    state text NOT NULL CHECK (state IN ('recovering', 'ready', 'suspended')),
+    reason text NOT NULL CHECK (length(reason) > 0),
+    lease_until timestamptz NOT NULL,
+    point_slot bigint CHECK (point_slot >= 0),
+    point_hash bytea CHECK (octet_length(point_hash) = 32),
+    snapshot_digest bytea CHECK (octet_length(snapshot_digest) = 32),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CHECK ((point_slot IS NULL) = (point_hash IS NULL)),
+    CHECK ((point_slot IS NULL) = (snapshot_digest IS NULL)),
+    CHECK (state <> 'ready' OR point_slot IS NOT NULL)
+);
+
+-- Immutable source replay chunks can precede the first projection cursor.
+-- Parent links retain every intermediate receipt without rescanning the entire
+-- range inside the final seed transaction. Only the owned recovery writer adds
+-- rows; no runtime API updates or deletes them.
+CREATE TABLE public.event_history_replay_receipts (
+    binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
+    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    block_slot bigint NOT NULL CHECK (block_slot >= 0),
+    block_height bigint NOT NULL CHECK (block_height >= 0),
+    parent_hash bytea NOT NULL CHECK (octet_length(parent_hash) = 32),
+    predecessor_hash bytea CHECK (octet_length(predecessor_hash) = 32),
+    activation_hash bytea NOT NULL CHECK (octet_length(activation_hash) = 32),
+    blocks_replayed bigint NOT NULL CHECK (blocks_replayed > 0),
+    receipt text NOT NULL CHECK (length(receipt) > 0),
+    receipt_digest bytea NOT NULL CHECK (octet_length(receipt_digest) = 32),
+    range_digest bytea NOT NULL CHECK (octet_length(range_digest) = 32),
+    PRIMARY KEY (binding_digest, block_hash),
+    FOREIGN KEY (binding_digest, predecessor_hash)
+      REFERENCES public.event_history_replay_receipts(binding_digest, block_hash) ON DELETE RESTRICT,
+    FOREIGN KEY (binding_digest, activation_hash)
+      REFERENCES public.event_history_replay_receipts(binding_digest, block_hash) ON DELETE RESTRICT,
+    CONSTRAINT event_history_replay_receipts_frontier_check
+    CHECK ((blocks_replayed = 1 AND predecessor_hash IS NULL AND activation_hash = block_hash)
+       OR (blocks_replayed > 1 AND predecessor_hash IS NOT NULL AND predecessor_hash = parent_hash AND predecessor_hash <> block_hash))
+);
+
+-- Node-private source replay projection. A saved cursor is not readiness or
+-- source authority; startup must acquire a new owner and re-admit its ancestry.
+CREATE TABLE public.event_history_cursor (
+    binding_digest bytea PRIMARY KEY CHECK (octet_length(binding_digest) = 32),
+    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    origin_receipt text NOT NULL CHECK (length(origin_receipt) > 0),
+    origin_receipt_digest bytea NOT NULL CHECK (octet_length(origin_receipt_digest) = 32),
+    anchor_hash bytea NOT NULL CHECK (octet_length(anchor_hash) = 32),
+    anchor_slot bigint NOT NULL CHECK (anchor_slot >= 0),
+    anchor_height bigint NOT NULL CHECK (anchor_height >= 0),
+    anchor_snapshot_digest bytea NOT NULL CHECK (octet_length(anchor_snapshot_digest) = 32),
+    head_hash bytea NOT NULL CHECK (octet_length(head_hash) = 32),
+    head_slot bigint NOT NULL CHECK (head_slot >= anchor_slot),
+    head_height bigint NOT NULL CHECK (head_height >= anchor_height),
+    head_application_revision bigint CHECK (head_application_revision > 0),
+    snapshot_digest bytea NOT NULL CHECK (octet_length(snapshot_digest) = 32),
+    revision bigint NOT NULL CHECK (revision >= 0),
+    addresses jsonb NOT NULL CHECK (jsonb_typeof(addresses) = 'array'),
+    CHECK (head_application_revision IS NOT NULL OR
+           (head_hash = anchor_hash AND head_slot = anchor_slot AND head_height = anchor_height AND snapshot_digest = anchor_snapshot_digest)),
+    CHECK (head_application_revision IS NULL OR head_application_revision <= revision)
+);
+
+-- A block can have several applications after rollback. Immutable ledger
+-- receipts are checked equal across them; undo belongs to the application.
+CREATE TABLE public.event_history_block_applications (
+    binding_digest bytea NOT NULL REFERENCES public.event_history_cursor(binding_digest) ON DELETE RESTRICT,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    application_revision bigint NOT NULL CHECK (application_revision > 0),
+    parent_hash bytea NOT NULL CHECK (octet_length(parent_hash) = 32),
+    parent_application_revision bigint CHECK (parent_application_revision > 0),
+    block_slot bigint NOT NULL CHECK (block_slot >= 0),
+    block_height bigint NOT NULL CHECK (block_height >= 0),
+    before_snapshot_digest bytea NOT NULL CHECK (octet_length(before_snapshot_digest) = 32),
+    after_snapshot_digest bytea NOT NULL CHECK (octet_length(after_snapshot_digest) = 32),
+    ledger_receipt text NOT NULL,
+    ledger_receipt_digest bytea NOT NULL CHECK (octet_length(ledger_receipt_digest) = 32),
+    undo_record text NOT NULL,
+    undo_digest bytea NOT NULL CHECK (octet_length(undo_digest) = 32),
+    canonical boolean NOT NULL,
+    PRIMARY KEY (binding_digest, block_hash, application_revision),
+    UNIQUE (binding_digest, application_revision),
+    FOREIGN KEY (binding_digest, parent_hash, parent_application_revision)
+      REFERENCES public.event_history_block_applications(binding_digest, block_hash, application_revision) ON DELETE RESTRICT,
+    CHECK (parent_application_revision IS NULL OR parent_application_revision < application_revision)
+);
+CREATE UNIQUE INDEX uniq_event_history_canonical_block
+    ON public.event_history_block_applications(binding_digest, block_hash) WHERE canonical;
+CREATE UNIQUE INDEX uniq_event_history_canonical_height
+    ON public.event_history_block_applications(binding_digest, block_height) WHERE canonical;
+
+CREATE TABLE public.event_history_live_outputs (
+    binding_digest bytea NOT NULL REFERENCES public.event_history_cursor(binding_digest) ON DELETE RESTRICT,
+    tx_hash bytea NOT NULL CHECK (octet_length(tx_hash) = 32),
+    output_index integer NOT NULL CHECK (output_index >= 0),
+    output_record text NOT NULL,
+    output_digest bytea NOT NULL CHECK (octet_length(output_digest) = 32),
+    PRIMARY KEY (binding_digest, tx_hash, output_index)
+);
+
+CREATE TABLE public.event_history_incarnations (
+    binding_digest bytea NOT NULL REFERENCES public.event_history_cursor(binding_digest) ON DELETE RESTRICT,
+    incarnation_id bytea NOT NULL CHECK (octet_length(incarnation_id) = 32),
+    kind text NOT NULL CHECK (kind IN ('deposit', 'withdrawal')),
+    event_id bytea NOT NULL CHECK (octet_length(event_id) > 0),
+    event_key bytea NOT NULL CHECK (octet_length(event_key) = 32),
+    origin_canonical boolean NOT NULL,
+    incarnation_record text NOT NULL,
+    incarnation_digest bytea NOT NULL CHECK (octet_length(incarnation_digest) = 32),
+    PRIMARY KEY (binding_digest, incarnation_id)
+);
+-- Archived signed membership survives removal of a live projection. Bind its
+-- public ID to the retained incarnation so later ID reuse cannot rebind it.
+CREATE UNIQUE INDEX uniq_event_history_incarnation_event
+    ON public.event_history_incarnations(binding_digest, incarnation_id, event_id);
+-- A legitimate retirement preserves its canonical origin and reservation.
+CREATE UNIQUE INDEX uniq_event_history_canonical_event
+    ON public.event_history_incarnations(binding_digest, kind, event_id) WHERE origin_canonical;
+CREATE UNIQUE INDEX uniq_event_history_canonical_key
+    ON public.event_history_incarnations(binding_digest, kind, event_key) WHERE origin_canonical;
+
+-- Private association to the exact authenticated admission incarnation. Null is
+-- an unassociated local row, never production history eligibility; the source
+-- owner's reconciler refuses to adopt existing rows by public ID alone.
+ALTER TABLE public.deposits_utxos
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT deposits_utxos_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT deposits_utxos_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT;
+ALTER TABLE public.withdrawal_utxos
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT withdrawal_utxos_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT withdrawal_utxos_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT;
+ALTER TABLE public.pending_block_finalization_deposits
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT pending_block_finalization_deposits_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT pending_block_finalization_deposits_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT,
+    ADD CONSTRAINT pending_block_finalization_deposits_member_id_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id, member_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id, event_id)
+      MATCH SIMPLE ON DELETE RESTRICT;
+ALTER TABLE public.pending_block_finalization_withdrawals
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT pending_block_finalization_withdrawals_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT pending_block_finalization_withdrawals_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT,
+    ADD CONSTRAINT pending_block_finalization_withdrawals_member_id_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id, member_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id, event_id)
+      MATCH SIMPLE ON DELETE RESTRICT;
+
+-- Logged inverse evidence for locally accepted ledger batches. Ordering is
+-- established under the Ready authority lock, not admission arrival or clocks.
+-- A receipt alone never authorizes undo of a published L2 header.
+CREATE TABLE public.event_history_l2_ledger_receipts (
+    sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
+    owner_generation bigint NOT NULL CHECK (owner_generation >= 0),
+    checkpoint_revision bigint NOT NULL CHECK (checkpoint_revision >= 0),
+    head_hash bytea NOT NULL CHECK (octet_length(head_hash) = 32),
+    snapshot_digest bytea NOT NULL CHECK (octet_length(snapshot_digest) = 32),
+    tx_ids bytea[] NOT NULL CHECK (cardinality(tx_ids) > 0),
+    reference_outrefs bytea[] NOT NULL,
+    ledger_before jsonb NOT NULL CHECK (jsonb_typeof(ledger_before) = 'array'),
+    reference_before jsonb NOT NULL CHECK (jsonb_typeof(reference_before) = 'array'),
+    deposits_before jsonb NOT NULL CHECK (jsonb_typeof(deposits_before) = 'array'),
+    payloads_before jsonb NOT NULL CHECK (jsonb_typeof(payloads_before) = 'array'),
+    ledger_after jsonb CHECK (jsonb_typeof(ledger_after) = 'array'),
+    reversed_at_revision bigint CHECK (reversed_at_revision >= 0),
+    FOREIGN KEY (binding_digest) REFERENCES public.event_history_cursor(binding_digest)
+      ON DELETE RESTRICT
+);
+CREATE INDEX event_history_l2_ledger_receipts_unreversed
+    ON public.event_history_l2_ledger_receipts(binding_digest, sequence)
+    WHERE reversed_at_revision IS NULL;
+
+-- Durable bridge between source-authorized native CAS and atomic dependent SQL.
+-- Retain applied receipts: they bind retired journal memberships to incarnations.
+CREATE TABLE public.event_history_recovery_plans (
+    recovery_id bytea PRIMARY KEY CHECK (octet_length(recovery_id) = 32),
+    binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
+    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    header_hash bytea NOT NULL CHECK (octet_length(header_hash) = 28),
+    intent text NOT NULL,
+    evidence_digest bytea NOT NULL CHECK (octet_length(evidence_digest) = 32),
+    checkpoint_revision bigint NOT NULL CHECK (checkpoint_revision >= 0),
+    head_hash bytea NOT NULL CHECK (octet_length(head_hash) = 32),
+    snapshot_digest bytea NOT NULL CHECK (octet_length(snapshot_digest) = 32),
+    owner_generation bigint NOT NULL CHECK (owner_generation >= 0),
+    state text NOT NULL CHECK (state IN ('prepared', 'applied')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX event_history_recovery_plans_prepared
+    ON public.event_history_recovery_plans (binding_digest) WHERE state = 'prepared';

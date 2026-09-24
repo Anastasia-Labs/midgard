@@ -15,44 +15,39 @@ import {
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
+import {
   classifyWithdrawalFromLedger,
-  committedWithdrawalValueBytes,
-  DepositDatum,
+  type DepositEvent,
   DepositInfo,
-  type DepositInfo as DepositInfoValue,
   EMPTY_MERKLE_TREE_ROOT,
+  EventHistoryCommitment,
+  EventHistoryOpening,
   EventKey,
   ForcedTxProofSource,
   GENESIS_HEADER_HASH,
-  HUB_ORACLE_ASSET_NAME,
-  HubOracleDatum,
+  opensEventHistoryCommitmentCbor,
   OutputReference,
   type RejectionReason,
   TxOrderDatum,
   ValidationTraceDescriptor,
   validationTraceDescriptorDataFromCore,
-  Value,
-  WithdrawalInfo,
-  type WithdrawalInfo as WithdrawalInfoValue,
-  WithdrawalOrderDatum,
+  valueToAssets,
+  withdrawalContentBytesCbor,
+  type WithdrawalEvent,
 } from "@al-ft/midgard-sdk";
 import {
   applyUTxOStatePatch,
-  deriveCanonicalDepositTransitionEffect,
+  deriveCanonicalOriginalDepositTransitionEffect,
   DirectValidationTraceUnavailable,
   RejectCodes,
   replayValidationMachineEvent,
   type ValidationMachineEventReplay,
   validationMachineLedgerRoot,
 } from "@al-ft/midgard-validation";
-import {
-  CML,
-  coreToTxOutput,
-  Data,
-  getAddressDetails,
-  type Network,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type Assets, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -60,7 +55,7 @@ import {
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../evidence/canonical-block-evidence.js";
 import {
-  requireTransitionTraceL1Events,
+  readFreshTransitionTraceL1Events,
   type TransitionTraceL1Events,
 } from "../transition-trace/l1-events.js";
 import {
@@ -147,89 +142,77 @@ const sameEvidenceIdentity = (
   left.payloadEnvelopeSha256 === right.payloadEnvelopeSha256 &&
   left.payloadSha256 === right.payloadSha256;
 
-type OriginEvent = Readonly<{
-  kind: "deposit" | "withdrawal" | "forcedTransaction";
-  event: UTxO;
-  assetName: string;
-}>;
+type OriginEvent = Readonly<{ event: UTxO; assetName: string }> &
+  (
+    | Readonly<{ kind: "forcedTransaction" }>
+    | Readonly<{
+        kind: "deposit";
+        original: DepositEvent;
+        infoCbor: string;
+        originalAssets: Assets;
+      }>
+    | Readonly<{
+        kind: "withdrawal";
+        original: WithdrawalEvent;
+        infoCbor: string;
+      }>
+  );
 
-/** Reopens raw snapshot bytes rather than exposing or trusting mutable projections. */
+/** Reopen the frozen result of raw snapshot admission through its opaque handle.
+ * Its deposit/withdrawal entries are authenticated Orders with captured openings;
+ * roots, fillers and unrelated donations were excluded during list admission. */
 const readOriginEvents = (
   evidence: CanonicalBlockEvidence,
   handle: TransitionTraceL1Events,
 ) => {
-  const admitted = requireTransitionTraceL1Events(handle);
-  const serialized = JSON.stringify(admitted.snapshot);
+  const admitted = readFreshTransitionTraceL1Events(handle);
   if (
     handle.headerHash !== evidence.headerHash ||
     admitted.snapshot.headerHash !== evidence.headerHash ||
-    createHash("sha256").update(serialized).digest("hex") !==
-      handle.snapshotDigest
+    createHash("sha256")
+      .update(JSON.stringify(admitted.snapshot))
+      .digest("hex") !== handle.snapshotDigest
   )
     throw new Error("validation replay originating event snapshot changed");
-  const snapshot: typeof admitted.snapshot = JSON.parse(serialized);
-  const hubScope = snapshot.scopes.find(({ role }) => role === "hub_oracle");
-  if (hubScope === undefined)
-    throw new Error("validation replay origin snapshot omits its hub");
-  const details = getAddressDetails(hubScope.address);
-  if (details.paymentCredential?.type !== "Script")
-    throw new Error("validation replay origin hub is not script-bound");
-  const hubUnit = details.paymentCredential.hash + HUB_ORACLE_ASSET_NAME;
-  const decodeOutput = (raw: (typeof hubScope.utxos)[number]): UTxO => {
-    const [txHash, index] = raw.outRef.split("#");
-    return {
-      ...coreToTxOutput(CML.TransactionOutput.from_cbor_hex(raw.outputCbor)),
-      txHash: txHash!,
-      outputIndex: Number(index),
-    };
-  };
-  const hubs = hubScope.utxos
-    .map(decodeOutput)
-    .filter(({ assets }) => assets[hubUnit] === 1n);
-  if (hubs.length !== 1 || hubs[0]!.datum == null)
-    throw new Error(
-      "validation replay origin snapshot lacks the exact hub NFT",
+  const events: OriginEvent[] = admitted.events.map((entry): OriginEvent => {
+    const base = { event: entry.utxo, assetName: entry.assetName };
+    if (entry.kind === "forcedTransaction")
+      return { ...base, kind: entry.kind };
+    const commitment = Data.from(
+      entry.history.commitmentCbor,
+      EventHistoryCommitment,
     );
-  const hub = hubs[0]!;
-  const parameters = Data.from(hub.datum!, HubOracleDatum);
-  const definitions = [
-    { role: "deposit_event", kind: "deposit", policy: parameters.deposit },
-    {
-      role: "withdrawal_event",
-      kind: "withdrawal",
-      policy: parameters.withdrawal,
-    },
-    {
-      role: "forced_transaction_event",
-      kind: "forcedTransaction",
-      policy: parameters.tx_order,
-    },
-  ] as const;
-  const events: OriginEvent[] = [];
-  for (const definition of definitions) {
-    const scope = snapshot.scopes.find(({ role }) => role === definition.role);
-    if (scope === undefined)
+    const opening = Data.from(entry.history.openingCbor, EventHistoryOpening);
+    if (
+      !opensEventHistoryCommitmentCbor(
+        commitment,
+        plutusConstrFieldCbor(entry.history.openingCbor, [0]),
+        plutusConstrFieldCbor(entry.history.openingCbor, [1]),
+      )
+    )
       throw new Error(
-        "validation replay originating event coverage is incomplete",
+        "Validation replay history opening differs from its admitted commitment",
       );
-    for (const raw of scope.utxos) {
-      const event = decodeOutput(raw);
-      const tokens = Object.entries(event.assets).filter(([unit]) =>
-        unit.startsWith(definition.policy),
-      );
-      if (tokens.length === 0) continue;
-      if (tokens.length !== 1 || tokens[0]![1] !== 1n || event.datum == null)
-        throw new Error("validation replay originating event NFT is ambiguous");
-      events.push({
-        kind: definition.kind,
-        event,
-        assetName: tokens[0]![0].slice(56),
-      });
-    }
-  }
-  // Preview and preprod use the same Cardano network id in the projected bytes.
-  const network: Network = details.networkId === 1 ? "Mainnet" : "Preprod";
-  return { events, hub, network, depositPolicyId: parameters.deposit };
+    if (entry.kind === "deposit" && "DepositPayload" in opening.payload)
+      return {
+        ...base,
+        kind: "deposit",
+        original: opening.payload.DepositPayload.event,
+        infoCbor: plutusConstrFieldCbor(entry.history.openingCbor, [0, 0, 1]),
+        originalAssets: valueToAssets(opening.original_assets),
+      };
+    if (entry.kind === "withdrawal" && "WithdrawalPayload" in opening.payload)
+      return {
+        ...base,
+        kind: "withdrawal",
+        original: opening.payload.WithdrawalPayload.event,
+        infoCbor: plutusConstrFieldCbor(entry.history.openingCbor, [0, 0, 1]),
+      };
+    throw new Error(
+      "Validation replay history payload has the wrong event kind",
+    );
+  });
+  return { events, hub: admitted.hub, network: admitted.network };
 };
 
 const matchingOrigin = (
@@ -245,11 +228,9 @@ const matchingOrigin = (
   const matches = origins.events.filter((origin) => {
     if (origin.kind !== kind) return false;
     const id =
-      origin.kind === "deposit"
-        ? Data.from(origin.event.datum!, DepositDatum).event.id
-        : origin.kind === "withdrawal"
-          ? Data.from(origin.event.datum!, WithdrawalOrderDatum).event.id
-          : Data.from(origin.event.datum!, TxOrderDatum).event.id;
+      origin.kind === "forcedTransaction"
+        ? Data.from(origin.event.datum!, TxOrderDatum).event.id
+        : origin.original.id;
     return (
       Data.to(id, OutputReference) ===
       Data.to(source.entry.key, OutputReference)
@@ -262,12 +243,11 @@ const matchingOrigin = (
   if (matches.length === 0) {
     // Decision 0007: a committed deposit or withdrawal with no L1 origin is
     // the fabricated-family fraud, not a replay abort. The caller turns the
-    // absence into a prerequisite that only that family's finding discharges,
-    // which is also what keeps a merely consumed/settled origin fail-closed:
-    // the fabricated families prove absence from the authenticated live
-    // output-reference set and refuse a consumed outref, so no finding exists
-    // to discharge it. Forced transactions have no fabricated family, so an
-    // absent forced origin stays an abort.
+    // absence into a prerequisite that only that family's finding discharges.
+    // A current absence alone is not proof of fraud: history capture and the
+    // accused interval/finalized frontier determine whether that finding is
+    // admissible. Forced transactions have no fabricated family, so their
+    // absent origin stays an abort.
     if (source.phase === "ForcedTransaction")
       throw new Error(
         "validation replay requires one captured originating forced event; absent or consumed origins require retained history",
@@ -280,35 +260,33 @@ const matchingOrigin = (
 /** Decision 0007: the fabricated-deposit comparison is the authentic deposit's
  * whole committed body; a deposit carries no operator-owned verdict. */
 export const committedDepositMatchesOrigin = ({
-  originInfo,
+  originInfoCbor,
   committedValueBytes,
 }: {
-  readonly originInfo: DepositInfoValue;
+  readonly originInfoCbor: string;
   readonly committedValueBytes: string;
-}): boolean => Data.to(originInfo, DepositInfo) === committedValueBytes;
+}): boolean => {
+  Data.from(originInfoCbor, DepositInfo);
+  Data.from(committedValueBytes, DepositInfo);
+  return (
+    aikenSerialisedPlutusDataCborPreservingMapOrder(originInfoCbor) ===
+    committedValueBytes
+  );
+};
 
-/**
- * Decision 0007: the operator owns the committed validity verdict, so the
- * fabricated-withdrawal comparison substitutes the committed leaf's validity
- * into the authentic L1 order and judges only its body and signature. A
- * committed validity that differs from the L1 order's placeholder is not
- * fabricated content; a wrong verdict belongs to `withdrawalMistag`.
- */
+/** The operator owns validity; fabricated content compares only the raw body
+ * and signature. The original user-signed body must survive typed decoding. */
 export const committedWithdrawalMatchesOrigin = ({
-  originInfo,
-  committedValidity,
+  originInfoCbor,
   committedValueBytes,
 }: {
-  readonly originInfo: WithdrawalInfoValue;
-  readonly committedValidity: WithdrawalInfoValue["validity"];
+  readonly originInfoCbor: string;
   readonly committedValueBytes: string;
 }): boolean =>
-  // The producer and Aiken serialiseData commit definite asset maps, so the
-  // committed leaf is compared in its canonical committed encoding.
-  committedWithdrawalValueBytes({
-    ...originInfo,
-    validity: committedValidity,
-  }) === committedValueBytes;
+  aikenSerialisedPlutusDataCborPreservingMapOrder(committedValueBytes) ===
+    committedValueBytes &&
+  withdrawalContentBytesCbor(originInfoCbor) ===
+    withdrawalContentBytesCbor(committedValueBytes);
 
 /**
  * The direct reason catalogue owns every non-Plutus route. Descriptor drift
@@ -515,10 +493,12 @@ export const admitValidationTraceReplayContext = async ({
       continue;
     }
     if (source.phase === "Deposit") {
-      const original = Data.from(origin!.event.datum!, DepositDatum).event;
+      if (origin?.kind !== "deposit")
+        throw new Error("Validation replay deposit origin kind differs");
+      const original = origin.original;
       if (
         !committedDepositMatchesOrigin({
-          originInfo: original.info,
+          originInfoCbor: origin.infoCbor,
           committedValueBytes: source.entry.valueBytes.toString("hex"),
         })
       ) {
@@ -533,7 +513,7 @@ export const admitValidationTraceReplayContext = async ({
         );
         continue;
       }
-      const effect = deriveCanonicalDepositTransitionEffect({
+      const effect = deriveCanonicalOriginalDepositTransitionEffect({
         configuredNetwork: origins!.network,
         eventId: original.id,
         l2NetworkId: original.info.l2_network_id,
@@ -541,10 +521,11 @@ export const admitValidationTraceReplayContext = async ({
         l2DatumCbor:
           original.info.l2_datum === null
             ? null
-            : Buffer.from(Data.to(original.info.l2_datum), "hex"),
-        l1Assets: origin!.event.assets,
-        depositPolicyId: origins!.depositPolicyId,
-        depositAssetNameHex: origin!.assetName,
+            : Buffer.from(
+                plutusConstrFieldCbor(origin.infoCbor, [2, 0]),
+                "hex",
+              ),
+        originalAssets: origin.originalAssets,
       });
       if (
         effect.operations.some(
@@ -579,14 +560,12 @@ export const admitValidationTraceReplayContext = async ({
       continue;
     }
     if (source.phase === "Withdrawal") {
-      const original = Data.from(
-        origin!.event.datum!,
-        WithdrawalOrderDatum,
-      ).event;
+      if (origin?.kind !== "withdrawal")
+        throw new Error("Validation replay withdrawal origin kind differs");
+      const original = origin.original;
       if (
         !committedWithdrawalMatchesOrigin({
-          originInfo: original.info,
-          committedValidity: source.entry.value.validity,
+          originInfoCbor: origin.infoCbor,
           committedValueBytes: source.entry.valueBytes.toString("hex"),
         })
       ) {
@@ -608,8 +587,8 @@ export const admitValidationTraceReplayContext = async ({
       const classification = await Effect.runPromise(
         classifyWithdrawalFromLedger({
           l2Owner: original.info.body.l2_owner,
-          l2ValueCbor: Data.to(original.info.body.l2_value, Value),
-          eventInfoCbor: Data.to(original.info, WithdrawalInfo),
+          l2ValueCbor: plutusConstrFieldCbor(origin.infoCbor, [0, 2]),
+          eventInfoCbor: origin.infoCbor,
           ledgerOutRef: outRef,
           ledgerOutput: state.get(outRef.toString("hex")) ?? null,
         }),

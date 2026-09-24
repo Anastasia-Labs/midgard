@@ -1,6 +1,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  type Assets,
   Data,
   LucidEvolution,
   TxSignBuilder,
@@ -19,7 +19,6 @@ import {
   POSIXTimeSchema,
 } from "../common.js";
 import { HubOracleError } from "../hub-oracle.js";
-import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
@@ -29,17 +28,33 @@ import {
   WithdrawalValiditySchema,
 } from "../ledger-state.js";
 import { RawRootMembershipProofSchema } from "../transition-trace.js";
+import { EventHistoryPayload } from "./history.js";
+import { buildEventHistoryAdmission } from "./history-build.js";
 import {
-  buildCompletedUserEventMintTxProgram,
-  encodeUserEventWitnessMintOrBurnRedeemer,
-  fetchUserEventUTxOsProgram,
+  type EventHistoryFetchConfig,
+  fetchHistoryEventsProgram,
+  historyEventFromPresence,
+  historyEventReadError,
+  type WithdrawalUTxO,
+} from "./history-events.js";
+import {
+  type EventHistoryDeployment,
+  type EventHistoryPresence,
+  readEventHistoryOrders,
+} from "./history-query.js";
+import {
+  historyUserBuildError,
+  prepareUserHistoryContextProgram,
+  quoteUserHistoryFunding,
+  type UserHistoryBuildOptions,
+  type UserHistoryContracts,
+  userHistoryValidity,
+} from "./history-user.js";
+import {
   outputReferenceToPlutusDataCbor,
-  prepareUserEventMintContext,
   UserEventBuildError,
-  userEventCborFieldsFromInlineDatum,
-  UserEventExtraFields,
-  UserEventFetchConfig,
 } from "./internals.js";
+export type { WithdrawalUTxO } from "./history-events.js";
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
@@ -86,53 +101,64 @@ export const WithdrawalSpendRedeemer = asDataType<WithdrawalSpendRedeemer>(
   WithdrawalSpendRedeemerSchema,
 );
 
-export type WithdrawalUTxO = AuthenticUTxO<
-  WithdrawalOrderDatum,
-  UserEventExtraFields
->;
+const toWithdrawalUTxO = (
+  history: EventHistoryPresence,
+  deployment: EventHistoryDeployment,
+): WithdrawalUTxO => {
+  const event = historyEventFromPresence(history, deployment);
+  if (event.kind !== "Withdrawal")
+    throw new Error(
+      "Authenticated withdrawal history contains a different event kind",
+    );
+  return event;
+};
 
-/**
- * Silently drops invalid UTxOs.
- */
+/** Reads a complete authenticated list and actual retained data; rejects partial
+ * or malformed authenticated state instead of silently dropping events. */
 export const utxosToWithdrawalUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<WithdrawalUTxO[]> =>
-  authenticateUTxOs<WithdrawalOrderDatum, UserEventExtraFields>(
-    utxos,
-    nftPolicy,
-    WithdrawalOrderDatum,
-    (datum, utxo) => ({
-      ...userEventCborFieldsFromInlineDatum(utxo),
-      inclusionTime: new Date(Number(datum.inclusion_time)),
-    }),
-  );
+  utxos: readonly UTxO[],
+  retainedUtxos: readonly UTxO[],
+  deployment: EventHistoryDeployment,
+): Effect.Effect<WithdrawalUTxO[], LucidError> =>
+  Effect.try({
+    try: () =>
+      readEventHistoryOrders(utxos, retainedUtxos, deployment).map((history) =>
+        toWithdrawalUTxO(history, deployment),
+      ),
+    catch: historyEventReadError,
+  });
 
 export const fetchWithdrawalUTxOsProgram = (
-  lucid: LucidEvolution,
-  config: UserEventFetchConfig,
+  lucid: { utxosAt(address: string): Promise<UTxO[]> },
+  config: EventHistoryFetchConfig,
 ): Effect.Effect<WithdrawalUTxO[], LucidError> =>
-  fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
-    utxosToWithdrawalUTxOs(utxos, config.eventPolicyId),
-  );
+  fetchHistoryEventsProgram(lucid, config, toWithdrawalUTxO);
 
 export const fetchWithdrawalUTxOs = (
-  lucid: LucidEvolution,
-  config: UserEventFetchConfig,
+  lucid: { utxosAt(address: string): Promise<UTxO[]> },
+  config: EventHistoryFetchConfig,
 ) => makeReturn(fetchWithdrawalUTxOsProgram(lucid, config));
 
 export type SubmitWithdrawalReferenceScripts = {
   readonly withdrawalMinting: UTxO;
 };
 
-export type SubmitWithdrawalConfig = {
-  readonly body: WithdrawalBody;
-  readonly signature: WithdrawalSignature;
-  readonly refundAddress: AddressData;
-  readonly refundDatum?: CardanoDatum;
-  readonly lovelace?: bigint;
-  readonly referenceScripts?: SubmitWithdrawalReferenceScripts;
-};
+export type WithdrawalBodyInput =
+  | { readonly body: WithdrawalBody; readonly bodyCbor?: never }
+  | { readonly body?: never; readonly bodyCbor: string };
+
+export type WithdrawalRefundDatumInput =
+  | { readonly refundDatum?: CardanoDatum; readonly refundDatumCbor?: never }
+  | { readonly refundDatum?: never; readonly refundDatumCbor: string };
+
+export type SubmitWithdrawalConfig = UserHistoryBuildOptions &
+  WithdrawalBodyInput &
+  WithdrawalRefundDatumInput & {
+    readonly signature: WithdrawalSignature;
+    readonly refundAddress: AddressData;
+    readonly lovelace?: bigint;
+    readonly referenceScripts?: SubmitWithdrawalReferenceScripts;
+  };
 
 export type WithdrawalBuildMetadata = {
   readonly withdrawalAddress: string;
@@ -141,107 +167,137 @@ export type WithdrawalBuildMetadata = {
   readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
   readonly validTo: number;
   readonly inclusionTime: number;
+  readonly lockedLovelace: bigint;
+  readonly orderOutputIndex: number;
 };
 
-const DEFAULT_WITHDRAWAL_ORDER_LOVELACE = 3_000_000n;
+/** Stable withdrawal payload and nonce shared by unsigned and automatic flows. */
+export const prepareWithdrawalSubmissionProgram = (
+  lucid: LucidEvolution,
+  contracts: UserHistoryContracts,
+  config: SubmitWithdrawalConfig,
+) =>
+  Effect.gen(function* () {
+    const prepared = yield* prepareUserHistoryContextProgram(
+      lucid,
+      contracts,
+      "Withdrawal",
+      config,
+      config.referenceScripts?.withdrawalMinting,
+    );
+    const payloadCbor = yield* Effect.try({
+      try: () => {
+        if (
+          (config.body !== undefined && config.bodyCbor !== undefined) ||
+          (config.refundDatum !== undefined &&
+            config.refundDatumCbor !== undefined)
+        )
+          throw new Error(
+            "Withdrawal body and refund datum must each have one encoding source",
+          );
+        const bodyCbor =
+          config.bodyCbor ?? Data.to(config.body, WithdrawalBody);
+        const refundCbor =
+          config.refundDatumCbor ??
+          Data.to(config.refundDatum ?? "NoDatum", CardanoDatum);
+        const payload: EventHistoryPayload = {
+          WithdrawalPayload: {
+            event: {
+              id: {
+                transactionId: prepared.nonce.txHash,
+                outputIndex: BigInt(prepared.nonce.outputIndex),
+              },
+              info: {
+                body: Data.from(bodyCbor, WithdrawalBody),
+                signature: config.signature,
+                validity: "WithdrawalIsValid",
+              },
+            },
+            refund_address: config.refundAddress,
+            refund_datum: Data.from(refundCbor, CardanoDatum),
+          },
+        };
+        return replacePlutusConstrFieldCbor(
+          replacePlutusConstrFieldCbor(
+            Data.to(payload, EventHistoryPayload),
+            [0, 1, 0],
+            bodyCbor,
+          ),
+          [2],
+          refundCbor,
+        );
+      },
+      catch: historyUserBuildError,
+    });
+    const funding = yield* Effect.try({
+      try: () =>
+        quoteUserHistoryFunding({
+          context: prepared.context,
+          payloadCbor,
+          reclaimAuth: prepared.reclaimAuth,
+          structuralRefundKey: prepared.structuralRefundKey,
+          withdrawalLovelace: config.lovelace,
+        }),
+      catch: historyUserBuildError,
+    });
+    return {
+      context: prepared.context,
+      plan: funding.plan,
+      request: {
+        payloadCbor,
+        reclaimAuth: prepared.reclaimAuth,
+        nonce: prepared.nonce,
+        assets: funding.assets,
+        structuralLovelace: funding.structuralLovelace,
+        structuralRefundKey: prepared.structuralRefundKey,
+      },
+    };
+  });
 
 export const buildUnsignedWithdrawalTxWithMetadataProgram = (
   lucid: LucidEvolution,
-  contracts: MidgardValidators,
+  contracts: UserHistoryContracts,
   config: SubmitWithdrawalConfig,
-): Effect.Effect<
-  {
-    readonly tx: TxSignBuilder;
-    readonly metadata: WithdrawalBuildMetadata;
-  },
-  | HubOracleError
-  | LucidError
-  | Bech32DeserializationError
-  | HashingError
-  | UserEventBuildError
-> =>
+) =>
   Effect.gen(function* () {
-    const context = yield* prepareUserEventMintContext({
+    const prepared = yield* prepareWithdrawalSubmissionProgram(
       lucid,
       contracts,
-      label: "withdrawal",
-      eventPolicyId: contracts.withdrawal.policyId,
-      hubOraclePolicyField: "withdrawal",
-      hubOracleAddressField: "withdrawal_addr",
-    });
-    const {
-      eventUnit: withdrawalUnit,
-      hubOracleRefInput,
-      inclusionTime,
-      network,
-      nonceInput,
-      validTo,
-      witnessScript,
-      witnessScriptHash,
-    } = context;
-    const withdrawalEventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
-
-    const withdrawalOrderDatum: WithdrawalOrderDatum = {
-      event: {
-        id: {
-          transactionId: nonceInput.txHash,
-          outputIndex: BigInt(nonceInput.outputIndex),
-        },
-        info: {
-          body: config.body,
-          signature: config.signature,
-          validity: "WithdrawalIsValid",
-        },
-      },
-      inclusion_time: BigInt(inclusionTime),
-      witness: witnessScriptHash,
-      refund_address: config.refundAddress,
-      refund_datum: config.refundDatum ?? "NoDatum",
-    };
-    const withdrawalOrderDatumCBOR = Data.to(
-      withdrawalOrderDatum,
-      WithdrawalOrderDatum,
+      config,
     );
-    const outputAssets: Assets = {
-      lovelace: config.lovelace ?? DEFAULT_WITHDRAWAL_ORDER_LOVELACE,
-      [withdrawalUnit]: 1n,
-    };
-    const referenceInputs =
-      config.referenceScripts === undefined
-        ? [hubOracleRefInput]
-        : [hubOracleRefInput, config.referenceScripts.withdrawalMinting];
-    const witnessRegistrationRedeemer =
-      encodeUserEventWitnessMintOrBurnRedeemer(contracts.withdrawal.policyId);
-
-    const tx = yield* buildCompletedUserEventMintTxProgram({
-      lucid,
-      network,
-      nonceInput,
-      eventUnit: withdrawalUnit,
-      eventAddress: contracts.withdrawal.spendingScriptAddress,
-      eventDatumCbor: withdrawalOrderDatumCBOR,
-      outputAssets,
-      validTo,
-      mintingPolicy: contracts.withdrawal.mintingScript,
-      attachMintingPolicy: config.referenceScripts === undefined,
-      referenceInputs,
-      hubOracleRefInput,
-      witnessScript,
-      witnessRegistrationRedeemer,
-      label: "withdrawal",
+    const validity = userHistoryValidity(lucid, config);
+    const built = yield* Effect.tryPromise({
+      try: () =>
+        buildEventHistoryAdmission(prepared.context, {
+          ...prepared.request,
+          ...validity,
+          externalData: config.externalData,
+        }),
+      catch: historyUserBuildError,
     });
-
-    return {
-      tx,
-      metadata: {
-        withdrawalAddress: contracts.withdrawal.spendingScriptAddress,
-        withdrawalEventIdCbor,
-        withdrawalAuthUnit: withdrawalUnit,
-        nonceInput,
-        validTo,
-        inclusionTime,
+    if (
+      built.node.payload === "RootContent" ||
+      !("Order" in built.node.payload)
+    )
+      return yield* Effect.fail(
+        historyUserBuildError("Missing admitted Order facts"),
+      );
+    const metadata: WithdrawalBuildMetadata = {
+      withdrawalAddress: prepared.context.applied.address,
+      withdrawalEventIdCbor: outputReferenceToPlutusDataCbor(
+        prepared.request.nonce,
+      ),
+      withdrawalAuthUnit: prepared.context.applied.policyId + built.plan.key,
+      nonceInput: {
+        txHash: prepared.request.nonce.txHash,
+        outputIndex: prepared.request.nonce.outputIndex,
       },
+      validTo: validity.validTo,
+      inclusionTime: Number(built.node.payload.Order.facts.inclusion_time),
+      lockedLovelace: prepared.request.assets.lovelace,
+      orderOutputIndex: built.orderOutputIndex,
     };
+    return { tx: built.tx, metadata };
   });
 
 export const unsignedWithdrawalTxProgram = (

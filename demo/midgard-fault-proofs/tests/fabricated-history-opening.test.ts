@@ -1,5 +1,10 @@
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { credentialToAddress, Data } from "@lucid-evolution/lucid";
+import { credentialToAddress, Data, datumToHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -86,12 +91,14 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
       supplied = opening(payload),
       absent = false,
       stateId = id,
+      rawPayload,
     }: {
       inclusionTime?: bigint;
       committedHash?: string;
       supplied?: string | null;
       absent?: boolean;
       stateId?: SDK.OutputReference;
+      rawPayload?: string;
     } = {}) => {
       const common = {
         state_queue_policy: policy,
@@ -106,6 +113,10 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
         payload,
         originalAssets,
       );
+      if (rawPayload !== undefined)
+        commitment.payload_hash = datumToHash(
+          aikenSerialisedPlutusDataCborPreservingMapOrder(rawPayload),
+        );
       return kind === "Deposit"
         ? deriveFabricatedDepositStep03Handoff({
             state: {
@@ -130,6 +141,66 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
             openingCbor: supplied ?? undefined,
           });
     };
+    it("binds raw duplicate-pair content through the retained handoff", async () => {
+      let raw = Data.to(payload, SDK.EventHistoryPayload);
+      const datum = "a302c2410101d86682008002c2420001";
+      raw = replacePlutusConstrFieldCbor(
+        raw,
+        kind === "Deposit" ? [0, 1, 2] : [0, 1, 0, 4],
+        kind === "Deposit" ? `d8799f${datum}ff` : `d87b9f${datum}ff`,
+      );
+      const supplied = replacePlutusConstrFieldCbor(opening(payload), [0], raw);
+      const info = plutusConstrFieldCbor(raw, [0, 1]);
+      const rawHash = Effect.runSync(
+        kind === "Deposit"
+          ? SDK.depositInfoCommitmentCbor(info)
+          : SDK.withdrawalContentCommitmentCbor(info),
+      );
+      const typedHash = Effect.runSync(
+        kind === "Deposit"
+          ? SDK.depositInfoCommitment(Data.from(info, SDK.DepositInfo))
+          : SDK.withdrawalContentCommitment(
+              Data.from(info, SDK.WithdrawalInfo),
+            ),
+      );
+      expect(rawHash).not.toBe(typedHash);
+      const result = await run({
+        rawPayload: raw,
+        supplied,
+        committedHash: typedHash,
+      });
+      expect(result.openingCbor).toBe(supplied);
+      expect(result.fault).toMatchObject({
+        [`Mismatched${kind}Content`]: {
+          [kind === "Deposit"
+            ? "authentic_deposit_info_hash"
+            : "authentic_withdrawal_content_hash"]: rawHash,
+        },
+      });
+      await expect(
+        run({ rawPayload: raw, supplied, committedHash: rawHash }),
+      ).rejects.toThrow(/matches/);
+      await expect(
+        run({
+          rawPayload: raw,
+          supplied: Data.to(
+            Data.from(supplied, SDK.FabricatedDepositAuthenticContentOpening),
+            SDK.FabricatedDepositAuthenticContentOpening,
+          ),
+          committedHash: typedHash,
+        }),
+      ).rejects.toThrow(/commitment/);
+      if (kind === "Withdrawal") {
+        const relabelled = replacePlutusConstrFieldCbor(
+          info,
+          [2],
+          Data.to("NonExistentWithdrawalUtxo", SDK.WithdrawalValidity),
+        );
+        expect(
+          Effect.runSync(SDK.withdrawalContentCommitmentCbor(relabelled)),
+        ).toBe(rawHash);
+      }
+    });
     it("classifies authenticated absence with no opening", async () => {
       expect((await run({ absent: true, supplied: null })).fault).toBe(
         `Nonexistent${kind}Identity`,
@@ -239,71 +310,94 @@ it("bounds stage transactions before maturity without backdating into the header
 });
 
 for (const kind of ["Deposit", "Withdrawal"] as const)
-  it(`${kind}: stage-one handoff carries queue authority and rejects counted-root substitution`, async () => {
-    const base = await buildCanonicalBlockFixture({
-      transactions: [],
-      startTime: 100n,
-      endTime: 200n,
-    });
-    const payload = payloadFor(kind);
-    const keyCbor = SDK.committedWithdrawalKeyBytes(id);
-    const valueCbor =
-      "DepositPayload" in payload
-        ? Data.to(payload.DepositPayload.event.info, SDK.DepositInfo)
-        : SDK.committedWithdrawalValueBytes(
-            payload.WithdrawalPayload.event.info,
-          );
-    const key = Buffer.from(keyCbor, "hex");
-    const value = Buffer.from(valueCbor, "hex");
-    const root = await buildCountedRoot(
-      kind === "Deposit"
-        ? SDK.ROOT_DOMAINS.deposits
-        : SDK.ROOT_DOMAINS.withdrawals,
-      [{ key, value }],
-    );
-    const proof = await keyValuePhasProof(
-      { ...root, root: root.phasRoot },
-      key,
-      value,
-    );
-    const header = {
-      ...base.header,
-      depositsRoot: kind === "Deposit" ? root.root : base.header.depositsRoot,
-      depositCount: kind === "Deposit" ? 1n : 0n,
-      withdrawalsRoot:
-        kind === "Withdrawal" ? root.root : base.header.withdrawalsRoot,
-      withdrawalCount: kind === "Withdrawal" ? 1n : 0n,
-    };
-    const run = (phasRoot: string) =>
-      kind === "Deposit"
-        ? deriveFabricatedDepositStep01Handoff({
-            stateQueuePolicyId: policy,
-            header,
-            headerHash: "cc".repeat(28),
-            inclusion: {
-              committedDepositIdCbor: keyCbor,
-              committedDepositInfoCbor: valueCbor,
-              depositsPhasRoot: phasRoot,
-              depositMembershipProof: proof,
-              depositMembershipProofCbor: Data.to(proof, SDK.Proof),
-            },
-          })
-        : deriveFabricatedWithdrawalStep01Handoff({
-            stateQueuePolicyId: policy,
-            header,
-            headerHash: "cc".repeat(28),
-            inclusion: {
-              committedWithdrawalIdCbor: keyCbor,
-              committedWithdrawalInfoCbor: valueCbor,
-              withdrawalsPhasRoot: phasRoot,
-              withdrawalMembershipProof: proof,
-              withdrawalMembershipProofCbor: Data.to(proof, SDK.Proof),
-            },
-          });
-    const result = await run(root.phasRoot);
-    expect(result.step02State.state_queue_policy).toBe(policy);
-    expect(result.step02State.header_end_time).toBe(200n);
-    await expect(run("ff".repeat(32))).rejects.toThrow(
-      "does not open the committed",
-    );
-  });
+  it.each([false, true])(
+    `${kind}: stage-one handoff binds raw source with opaque map: %s`,
+    async (rawDatum) => {
+      const base = await buildCanonicalBlockFixture({
+        transactions: [],
+        startTime: 100n,
+        endTime: 200n,
+      });
+      const payload = payloadFor(kind);
+      const keyCbor = SDK.committedWithdrawalKeyBytes(id);
+      let valueCbor =
+        "DepositPayload" in payload
+          ? Data.to(payload.DepositPayload.event.info, SDK.DepositInfo)
+          : SDK.committedWithdrawalValueBytes(
+              payload.WithdrawalPayload.event.info,
+            );
+      if (rawDatum)
+        valueCbor = aikenSerialisedPlutusDataCborPreservingMapOrder(
+          replacePlutusConstrFieldCbor(
+            valueCbor,
+            kind === "Deposit" ? [2] : [0, 4],
+            kind === "Deposit"
+              ? "d8799fa3020a010b020cff"
+              : "d87b9fa3020a010b020cff",
+          ),
+        );
+      const key = Buffer.from(keyCbor, "hex");
+      const value = Buffer.from(valueCbor, "hex");
+      const root = await buildCountedRoot(
+        kind === "Deposit"
+          ? SDK.ROOT_DOMAINS.deposits
+          : SDK.ROOT_DOMAINS.withdrawals,
+        [{ key, value }],
+      );
+      const proof = await keyValuePhasProof(
+        { ...root, root: root.phasRoot },
+        key,
+        value,
+      );
+      const header = {
+        ...base.header,
+        depositsRoot: kind === "Deposit" ? root.root : base.header.depositsRoot,
+        depositCount: kind === "Deposit" ? 1n : 0n,
+        withdrawalsRoot:
+          kind === "Withdrawal" ? root.root : base.header.withdrawalsRoot,
+        withdrawalCount: kind === "Withdrawal" ? 1n : 0n,
+      };
+      const run = (phasRoot: string) =>
+        kind === "Deposit"
+          ? deriveFabricatedDepositStep01Handoff({
+              stateQueuePolicyId: policy,
+              header,
+              headerHash: "cc".repeat(28),
+              inclusion: {
+                committedDepositIdCbor: keyCbor,
+                committedDepositInfoCbor: valueCbor,
+                depositsPhasRoot: phasRoot,
+                depositMembershipProof: proof,
+                depositMembershipProofCbor: Data.to(proof, SDK.Proof),
+              },
+            })
+          : deriveFabricatedWithdrawalStep01Handoff({
+              stateQueuePolicyId: policy,
+              header,
+              headerHash: "cc".repeat(28),
+              inclusion: {
+                committedWithdrawalIdCbor: keyCbor,
+                committedWithdrawalInfoCbor: valueCbor,
+                withdrawalsPhasRoot: phasRoot,
+                withdrawalMembershipProof: proof,
+                withdrawalMembershipProofCbor: Data.to(proof, SDK.Proof),
+              },
+            });
+      const result = await run(root.phasRoot);
+      expect(result.step02State.state_queue_policy).toBe(policy);
+      expect(result.step02State.header_end_time).toBe(200n);
+      const expectedHash = Effect.runSync(
+        kind === "Deposit"
+          ? SDK.depositInfoCommitmentCbor(valueCbor)
+          : SDK.withdrawalContentCommitmentCbor(valueCbor),
+      );
+      expect(result.step02State).toMatchObject({
+        [kind === "Deposit"
+          ? "committed_deposit_info_hash"
+          : "committed_withdrawal_content_hash"]: expectedHash,
+      });
+      await expect(run("ff".repeat(32))).rejects.toThrow(
+        "does not open the committed",
+      );
+    },
+  );

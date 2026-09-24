@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it, vi } from "vitest";
 
+import { withHistoryWrite } from "../src/services/event-history-producer.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -291,8 +292,10 @@ describe.sequential("deposit flow emulator", () => {
             programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
             submitSource: "native",
           });
-          yield* sql.withTransaction(
-            MempoolDB.insertMultipleCore([processedNormal]),
+          yield* withHistoryWrite(
+            sql.withTransaction(
+              MempoolDB.insertMultipleCore([processedNormal]),
+            ),
           );
           yield* sql`UPDATE ${sql(MempoolDB.tableName)}
             SET time_stamp_tz = ${eventTime}
@@ -640,7 +643,9 @@ describe.sequential("deposit flow emulator", () => {
             { concurrency: 1 },
           );
           yield* MempoolLedgerDB.insert(sourceLedger);
-          yield* sql.withTransaction(MempoolDB.insertMultipleCore(processed));
+          yield* withHistoryWrite(
+            sql.withTransaction(MempoolDB.insertMultipleCore(processed)),
+          );
           for (let index = 0; index < processed.length; index += 1) {
             yield* sql`UPDATE ${sql(MempoolDB.tableName)}
               SET time_stamp_tz = ${timestamps[index]!}

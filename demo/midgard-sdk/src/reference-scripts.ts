@@ -256,6 +256,10 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "retired-operators minting": "RetiredOperatorsMint",
   "fraud-proof-catalogue minting": "FraudProofCatalogueMint",
   "deposit minting": "DepositMint",
+  "deposit history retention": "DepositHistoryRetention",
+  "deposit history retirement": "DepositHistoryRetirement",
+  "withdrawal history retention": "WithdrawalHistoryRetention",
+  "withdrawal history retirement": "WithdrawalHistoryRetirement",
   "deposit spending": "DepositSpend",
   "withdrawal minting": "WithdrawalMint",
   "withdrawal spending": "WithdrawalSpend",
@@ -575,6 +579,10 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1FpTtF4ClaimEndsYield",
   "V1 fraud-proof transition-trace final-5 projection yield":
     "V1FpTtF5ProjectionYield",
+  "V1 fraud-proof transition-trace final-6 L1 event yield":
+    "V1FpTtF6L1EventYield",
+  "V1 fraud-proof transition-trace final-6 forced timing yield":
+    "V1FpTtF6ForcedTimeYield",
   "V1 fraud-proof transition-trace final-5 summaries yield":
     "V1FpTtF5SummariesYield",
 

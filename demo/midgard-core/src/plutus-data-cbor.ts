@@ -372,10 +372,79 @@ const encodeCborHeader = (major: number, value: bigint | null): Buffer => {
   return out;
 };
 
+/** Logical Data children exclude constructor framing and bignum magnitudes. */
+const plutusDataChildren = function* (node: CborNode): Generator<CborNode> {
+  if (node.kind === "array") yield* node.items;
+  else if (node.kind === "map") {
+    for (const [key, value] of node.entries) {
+      yield key;
+      yield value;
+    }
+  } else if (node.kind === "tag") {
+    if (node.tag === 2n || node.tag === 3n) {
+      if (node.value.kind !== "bytes")
+        throw new Error("PlutusData bignum requires bytes");
+      return;
+    }
+    if (node.tag === 102n) {
+      if (
+        node.value.kind !== "array" ||
+        node.value.items.length !== 2 ||
+        node.value.items[0]!.kind !== "uint" ||
+        node.value.items[1]!.kind !== "array"
+      )
+        throw new Error("Invalid general PlutusData constructor");
+      yield* node.value.items[1]!.items;
+    } else if (
+      (node.tag >= 121n && node.tag <= 127n) ||
+      (node.tag >= 1280n && node.tag <= 1400n)
+    ) {
+      if (node.value.kind !== "array")
+        throw new Error("PlutusData constructor requires fields");
+      yield* node.value.items;
+    } else throw new Error("Unsupported PlutusData tag");
+  }
+};
+
+const countPlutusDataNodes = (node: CborNode, maximum?: bigint): bigint => {
+  const work: Iterator<CborNode>[] = [[node][Symbol.iterator]()];
+  let count = 0n;
+  while (work.length > 0) {
+    const next = work[work.length - 1]!.next();
+    if (next.done) {
+      work.pop();
+      continue;
+    }
+    ++count;
+    if (maximum !== undefined && count > maximum)
+      throw new Error("PlutusData exceeds the Data-node bound");
+    work.push(plutusDataChildren(next.value));
+  }
+  return count;
+};
+
+const parseCompletePlutusData = (cbor: string): CborNode => {
+  if (!/^(?:[0-9a-fA-F]{2})+$/u.test(cbor))
+    throw new Error("Expected complete PlutusData CBOR hex");
+  const input = Buffer.from(cbor, "hex");
+  const parsed = parseCborNode(input, 0);
+  if (parsed.offset !== input.length)
+    throw new Error("Unexpected trailing bytes in PlutusData CBOR");
+  return parsed.node;
+};
+
+/** Count actual ordered map pairs, including repeated keys, without a JS Map
+ * conversion. Constructors and lists count once; encoding wrappers do not. */
+export const countPlutusDataCborNodes = (
+  cbor: string,
+  maximum: bigint,
+): bigint => countPlutusDataNodes(parseCompletePlutusData(cbor), maximum);
+
 const encodeCborNodeWithDefiniteMaps = (
   node: CborNode,
   sortMaps: boolean,
   chunkByteStrings = true,
+  normalizeData = false,
 ): Buffer => {
   type EncodeVisit = {
     readonly node: CborNode;
@@ -476,6 +545,57 @@ const encodeCborNodeWithDefiniteMaps = (
         break;
       }
       case "tag":
+        if (
+          normalizeData &&
+          (current.tag === 2n || current.tag === 3n) &&
+          current.value.kind === "bytes"
+        ) {
+          let first = 0;
+          while (
+            first < current.value.value.length &&
+            current.value.value[first] === 0
+          )
+            first++;
+          const magnitude = current.value.value.subarray(first);
+          encoded.set(
+            current,
+            magnitude.length <= 8
+              ? encodeCborHeader(
+                  current.tag === 2n ? 0 : 1,
+                  magnitude.length === 0
+                    ? 0n
+                    : BigInt(`0x${magnitude.toString("hex")}`),
+                )
+              : Buffer.concat([
+                  encodeCborHeader(6, current.tag),
+                  encodeCborNodeWithDefiniteMaps(
+                    { kind: "bytes", value: magnitude },
+                    sortMaps,
+                    chunkByteStrings,
+                  ),
+                ]),
+          );
+          break;
+        }
+        if (
+          normalizeData &&
+          current.tag === 102n &&
+          current.value.kind === "array"
+        ) {
+          const index = current.value.items[0]!;
+          const fields = current.value.items[1]!;
+          if (index.kind !== "uint" || fields.kind !== "array")
+            throw new Error("Invalid general PlutusData constructor");
+          if (index.value < 128n) {
+            const tag =
+              index.value < 7n ? 121n + index.value : 1280n + index.value - 7n;
+            encoded.set(
+              current,
+              Buffer.concat([encodeCborHeader(6, tag), encoded.get(fields)!]),
+            );
+            break;
+          }
+        }
         encoded.set(
           current,
           current.tag === 102n &&
@@ -513,12 +633,11 @@ const aikenSerialisedPlutusDataCborWithMapOrder = (
   cbor: string,
   sortMaps: boolean,
 ): string => {
-  const input = Buffer.from(cbor, "hex");
-  const parsed = parseCborNode(input, 0);
-  if (parsed.offset !== input.length) {
-    throw new Error("Unexpected trailing bytes in PlutusData CBOR");
-  }
-  return encodeCborNodeWithDefiniteMaps(parsed.node, sortMaps).toString("hex");
+  const node = parseCompletePlutusData(cbor);
+  countPlutusDataNodes(node);
+  return encodeCborNodeWithDefiniteMaps(node, sortMaps, true, true).toString(
+    "hex",
+  );
 };
 
 export const aikenSerialisedPlutusDataCbor = (cbor: string): string =>
@@ -554,6 +673,44 @@ export const aikenSerialisedPlutusConstrFieldCbor = (
   fieldPath: readonly number[],
 ): string =>
   aikenSerialisedPlutusDataCbor(plutusConstrFieldCbor(cbor, fieldPath));
+
+/** Replace one constructor field without decoding arbitrary Data through a JS
+ * Map. Parent encodings and all other fields stay byte-for-byte unchanged;
+ * repeated map keys and pair order in the replacement remain observable. */
+export const replacePlutusConstrFieldCbor = (
+  cbor: string,
+  fieldPath: readonly number[],
+  replacementCbor: string,
+): string => {
+  const checked = (value: string) => {
+    if (!/^(?:[0-9a-fA-F]{2})+$/u.test(value))
+      throw new Error("Expected complete PlutusData CBOR hex");
+    const bytes = Buffer.from(value, "hex");
+    if (parseCborNode(bytes, 0).offset !== bytes.length)
+      throw new Error("Unexpected trailing bytes in PlutusData CBOR");
+    const decoded = CML.PlutusData.from_cbor_hex(value);
+    decoded.free();
+    return bytes;
+  };
+  const original = checked(cbor);
+  const replacement = checked(replacementCbor);
+  let current = original;
+  let offset = 0;
+  for (const index of fieldPath) {
+    if (!Number.isSafeInteger(index) || index < 0)
+      throw new Error("Constructor field index must be a safe natural number");
+    const field = constrFieldRanges(current).items[index];
+    if (field === undefined)
+      throw new Error(`Constructor field ${index.toString()} is missing`);
+    offset += field.start;
+    current = current.subarray(field.start, field.end);
+  }
+  return Buffer.concat([
+    original.subarray(0, offset),
+    replacement,
+    original.subarray(offset + current.length),
+  ]).toString("hex");
+};
 
 export const canonicalPlutusDataCbor = (cbor: string): string =>
   CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();

@@ -458,6 +458,7 @@ type OgmiosSession = {
   readonly request: (
     method: string,
     params: Record<string, unknown>,
+    options?: { readonly timeoutMs: number | null },
   ) => Promise<unknown>;
   readonly close: () => void;
 };
@@ -465,15 +466,20 @@ type OgmiosSession = {
 const defaultWebSocketFactory: WebSocketFactory = (url) =>
   new WebSocket(url) as unknown as WebSocketLike;
 
-const openOgmiosSession = async ({
+export const openOgmiosSession = async ({
   url,
   timeoutMs,
   webSocketFactory,
+  parseMessage = JSON.parse,
+  signal,
 }: {
   readonly url: string;
   readonly timeoutMs: number;
   readonly webSocketFactory: WebSocketFactory;
+  readonly parseMessage?: (text: string) => unknown;
+  readonly signal?: AbortSignal;
 }): Promise<OgmiosSession> => {
+  signal?.throwIfAborted();
   const socket = webSocketFactory(url);
   const pending = new Map<
     number,
@@ -481,13 +487,24 @@ const openOgmiosSession = async ({
   >();
   let terminal: Error | null = null;
   let nextId = 0;
+  let rejectOpening: ((error: Error) => void) | undefined;
 
   const failAll = (error: Error): void => {
     terminal ??= error;
+    rejectOpening?.(error);
     for (const waiter of pending.values()) {
       waiter.reject(error);
     }
     pending.clear();
+  };
+  const close = () => {
+    signal?.removeEventListener("abort", abort);
+    failAll(new Error("Ogmios session closed"));
+    socket.close();
+  };
+  const abort = () => {
+    failAll(new Error("Ogmios session aborted", { cause: signal?.reason }));
+    close();
   };
 
   socket.addEventListener("message", ((event: { data: unknown }) => {
@@ -501,7 +518,15 @@ const openOgmiosSession = async ({
       error?: unknown;
     };
     try {
-      message = JSON.parse(event.data) as typeof message;
+      const parsed = parseMessage(event.data);
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error("Ogmios response is not an object");
+      }
+      message = parsed as typeof message;
     } catch (cause) {
       failAll(new Error("Ogmios chain-sync sent malformed JSON", { cause }));
       return;
@@ -518,7 +543,9 @@ const openOgmiosSession = async ({
     pending.delete(message.id);
     if (message.error !== undefined) {
       waiter.reject(
-        new Error(`Ogmios chain-sync error: ${JSON.stringify(message.error)}`),
+        new Error(
+          `Ogmios chain-sync error: ${JSON.stringify(message.error, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value))}`,
+        ),
       );
       return;
     }
@@ -526,48 +553,72 @@ const openOgmiosSession = async ({
   }) as (event: never) => void);
   socket.addEventListener("error", (() => {
     failAll(new Error("Ogmios chain-sync socket failed"));
+    close();
   }) as (event: never) => void);
   socket.addEventListener("close", (() => {
+    signal?.removeEventListener("abort", abort);
     failAll(new Error("Ogmios chain-sync socket closed"));
   }) as (event: never) => void);
 
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      socket.close();
-      reject(new Error(`Ogmios chain-sync did not open within ${timeoutMs}ms`));
-    }, timeoutMs);
-    socket.addEventListener(
-      "open",
-      (() => {
+  try {
+    signal?.addEventListener("abort", abort, { once: true });
+    signal?.throwIfAborted();
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        failAll(
+          new Error(`Ogmios chain-sync did not open within ${timeoutMs}ms`),
+        );
+        close();
+      }, timeoutMs);
+      rejectOpening = (error) => {
         clearTimeout(timer);
-        resolve();
-      }) as (event: never) => void,
-      { once: true },
-    );
-    socket.addEventListener(
-      "error",
-      (() => {
-        clearTimeout(timer);
-        reject(new Error("Ogmios chain-sync socket failed while opening"));
-      }) as (event: never) => void,
-      { once: true },
-    );
-  });
+        rejectOpening = undefined;
+        reject(error);
+      };
+      socket.addEventListener(
+        "open",
+        (() => {
+          clearTimeout(timer);
+          rejectOpening = undefined;
+          if (terminal !== null) reject(terminal);
+          else resolve();
+        }) as (event: never) => void,
+        { once: true },
+      );
+    });
+  } catch (error) {
+    close();
+    throw error;
+  }
 
   return {
-    request: async (method, params) => {
+    request: async (method, params, options) => {
       if (terminal !== null) {
         throw terminal;
       }
       const id = nextId;
       nextId += 1;
+      // ChainSync nextBlock legitimately waits at tip. Its caller must own a
+      // separate transport-health deadline and close this session on failure.
+      const requestTimeout =
+        options === undefined ? timeoutMs : options.timeoutMs;
+      if (
+        requestTimeout !== null &&
+        (!Number.isSafeInteger(requestTimeout) || requestTimeout <= 0)
+      )
+        throw new Error("Ogmios request timeout must be positive or null");
       return await new Promise<unknown>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          pending.delete(id);
-          reject(
-            new Error(`Ogmios ${method} did not answer within ${timeoutMs}ms`),
-          );
-        }, timeoutMs);
+        const timer =
+          requestTimeout === null
+            ? undefined
+            : setTimeout(() => {
+                pending.delete(id);
+                reject(
+                  new Error(
+                    `Ogmios ${method} did not answer within ${requestTimeout}ms`,
+                  ),
+                );
+              }, requestTimeout);
         pending.set(id, {
           resolve: (value) => {
             clearTimeout(timer);
@@ -587,9 +638,7 @@ const openOgmiosSession = async ({
         }
       });
     },
-    close: () => {
-      socket.close();
-    },
+    close,
   };
 };
 

@@ -9,7 +9,7 @@ import {
   watcherForcedOperatorVerdict,
 } from "../../src/indexers/user-event-indexer.js";
 import { watcherBlockReplayForcedValidityForRejectCode } from "../../src/verification/block-replay.js";
-import { userEventForcedOperatorVerdictForClassification } from "../support/user-event-authority-scenarios.js";
+import { userEventForcedOperatorVerdictForClassification } from "../support/user-event-forced-order-fixture.js";
 
 /**
  * The #640 forced-inclusion verdict vocabulary, at the watcher's boundary.
@@ -20,7 +20,7 @@ import { userEventForcedOperatorVerdictForClassification } from "../support/user
  * canonical-JSON digested and the reason payloads are `bigint` ordinals. That
  * projection is the hinge the forced classification comparison in
  * `bindForcedTransitionEffectV1` turns on, so it is pinned here directly rather
- * than only through the W25/W26 replay fixtures.
+ * than only through the W25 replay fixtures.
  *
  * This file is deliberately independent of those fixtures' ledger state: the
  * watcher's forced replay fixtures are currently blocked short of the verdict

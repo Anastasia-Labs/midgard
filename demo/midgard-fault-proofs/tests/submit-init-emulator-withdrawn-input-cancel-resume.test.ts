@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  submitWithdrawnInputCancel,
   submitWithdrawnInputStep01,
   submitWithdrawnInputStep02,
 } from "../src/index.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { WITHDRAWN_INPUT_CATEGORY_LABEL } from "../src/withdrawn-input/contracts.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import { makeWithdrawnInputEmulatorScenario } from "./support/withdrawn-input-emulator.js";
 
@@ -53,9 +54,11 @@ describe("withdrawn-input resume and cancellation", () => {
       },
       referenceScriptUtxo: scenario.references[1],
     });
-    const cancelled = await submitWithdrawnInputCancel({
+    const cancelled = await submitLinearFaultCancel({
       lucid: scenario.harness.proverLucid,
-      contracts: scenario.contracts,
+      family: WITHDRAWN_INPUT_CATEGORY_LABEL,
+      steps: scenario.contracts.steps,
+      computationThread: scenario.contracts.computationThread,
       categoryId: scenario.category.categoryId,
       signer: scenario.harness.proverSigner,
       threadOutRef: step02.nextThreadOutRef,

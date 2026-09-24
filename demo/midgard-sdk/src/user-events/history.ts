@@ -17,6 +17,7 @@ import {
   OutputReference,
   OutputReferenceSchema,
   ProofSchema,
+  ValueSchema,
 } from "../common.js";
 import {
   applyBlueprintParams,
@@ -37,6 +38,12 @@ import {
 const keySchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 const signerSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export const EVENT_HISTORY_MAX_PROTECTION_TIME = 9_223_372_036_854_775_807n;
+export const EVENT_HISTORY_CONTRACT_TITLES = Object.freeze({
+  spend: "user_events/history.history.spend",
+  mint: "user_events/history.history.mint",
+  withdraw: "user_events/history.history.withdraw",
+  retirement: "user_events/history_retirement.retirement_observer.withdraw",
+});
 
 export const EventHistoryPayloadSchema = Data.Enum([
   Data.Object({ DepositPayload: Data.Object({ event: DepositEventSchema }) }),
@@ -84,6 +91,16 @@ export type EventHistoryCommitment = Data.Static<
 >;
 export const EventHistoryCommitment = asDataType<EventHistoryCommitment>(
   EventHistoryCommitmentSchema,
+);
+
+/** Preimage reopened against a commitment already authenticated on L1. */
+export const EventHistoryOpeningSchema = Data.Object({
+  payload: EventHistoryPayloadSchema,
+  original_assets: ValueSchema,
+});
+export type EventHistoryOpening = Data.Static<typeof EventHistoryOpeningSchema>;
+export const EventHistoryOpening = asDataType<EventHistoryOpening>(
+  EventHistoryOpeningSchema,
 );
 
 export const EventHistoryNodeSchema = Data.Object({
@@ -135,6 +152,17 @@ export const EventHistoryRetirementWitness =
   asDataType<EventHistoryRetirementWitness>(
     EventHistoryRetirementWitnessSchema,
   );
+
+/** Exact redeemer of the deployment's zero-withdrawal retirement observer. */
+export const EventHistoryRetirementArgsSchema = Data.Object({
+  hub_reference_index: Data.Integer(),
+  witness: EventHistoryRetirementWitnessSchema,
+});
+export type EventHistoryRetirementArgs = Data.Static<
+  typeof EventHistoryRetirementArgsSchema
+>;
+export const EventHistoryRetirementArgs =
+  asDataType<EventHistoryRetirementArgs>(EventHistoryRetirementArgsSchema);
 
 /** Output claims are derived from these operations by both list observers. */
 export const EventHistoryOperationSchema = Data.Enum([
@@ -254,7 +282,7 @@ export const applyEventHistoryValidators = (
     type: "PlutusV3",
     script: applyBlueprintParams(
       blueprint,
-      "user_events/history_retirement.retirement_observer.withdraw",
+      EVENT_HISTORY_CONTRACT_TITLES.retirement,
       [
         recipe.hubPolicyId,
         Data.from(Data.to(recipe.kind, EventHistoryKind)),
@@ -270,7 +298,7 @@ export const applyEventHistoryValidators = (
     type: "PlutusV3",
     script: applyBlueprintParams(
       blueprint,
-      "user_events/history.history.spend",
+      EVENT_HISTORY_CONTRACT_TITLES.spend,
       [
         recipe.hubPolicyId,
         Data.from(Data.to(recipe.kind, EventHistoryKind)),

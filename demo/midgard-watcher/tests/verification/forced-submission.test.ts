@@ -18,13 +18,22 @@ import {
   bindWatcherOriginEventClaim,
   type WatcherCommittedEventClaim,
 } from "../../src/verification/event-claims.js";
-import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
-import { makeGenuineReplayPublicReplayFixture } from "../support/replay-authority-fixtures.js";
 import {
-  createGenuineUserEventDepositWithdrawalAuthorities,
-  type GenuineUserEventAuthorityFixtureSet,
-  genuineUserEventForcedPayloadForCanonicalTx,
-} from "../support/user-event-authority-scenarios.js";
+  buildPublicReplayFixture,
+  committedStepsForEffects,
+  localEventAuthority,
+  localEventWindow,
+  type LocalReplayEvent,
+  publicEventFromLocal,
+  publicInput,
+  readLocalReplayEvent,
+} from "../support/block-replay-public-fixture.js";
+import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
+import {
+  createLocalReplayUserEventAuthorities,
+  type LocalReplayUserEventAuthorities,
+} from "../support/local-user-event-authority-fixture.js";
+import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
 
 const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 7));
 const address = Buffer.from(
@@ -53,23 +62,32 @@ const effect = buildCanonicalTransitionEffect([
   { type: "insert", outRefCbor: next, outputCbor: output },
 ]);
 const noOp = buildCanonicalTransitionEffect([]);
-let authorities: GenuineUserEventAuthorityFixtureSet;
+let authorities: LocalReplayUserEventAuthorities;
+let forcedOrigin: LocalReplayEvent;
 
 beforeAll(async () => {
-  authorities = await createGenuineUserEventDepositWithdrawalAuthorities({
-    forcedPayloadOverride: genuineUserEventForcedPayloadForCanonicalTx(
-      submitted.txCbor,
-    ),
+  authorities = await createLocalReplayUserEventAuthorities({
+    forcedOrders: [
+      {
+        key: "submitted",
+        nonceByte: "e1",
+        payload: genuineUserEventForcedPayloadForCanonicalTx(submitted.txCbor),
+      },
+    ],
   });
+  const capability = authorities.forcedOrders.submitted;
+  if (capability === undefined)
+    throw new Error("local forced order was not published");
+  forcedOrigin = await readLocalReplayEvent(capability);
 }, 120_000);
 afterAll(async () => {
-  await authorities?.dispose();
+  await authorities?.close();
 });
 
 const claim = (
   verdict: SDK.OperatorVerdict = "ForcedTxValid",
 ): WatcherCommittedEventClaim => {
-  const event = authorities.forcedOrigin.event;
+  const event = forcedOrigin.event;
   const origin = Data.from(event.eventCborHex, SDK.TxOrderEvent);
   return {
     phase: "ForcedTransaction",
@@ -88,23 +106,40 @@ const claim = (
 
 const replay = async (verdict: SDK.OperatorVerdict, missingInput = false) => {
   const accepted = verdict === "ForcedTxValid";
-  const fixture = await makeGenuineReplayPublicReplayFixture({
-    userEvent: authorities.forcedOrigin,
-    canonicalNativeTxCbor: submitted.txCbor,
+  const transitionEffect = accepted && !missingInput ? effect : noOp;
+  const priorState = missingInput ? [] : prior;
+  const event = publicEventFromLocal(forcedOrigin, {
+    forcedNative: submitted,
     forcedVerdict: verdict,
-    transitionEffect: accepted && !missingInput ? effect : noOp,
-    priorState: missingInput ? [] : prior,
-    postState: missingInput ? [] : accepted ? entries(next) : prior,
   });
-  return evaluateWatcherBlockReplay(fixture.replayInput);
+  const fixture = await buildPublicReplayFixture({
+    events: [event],
+    steps: await committedStepsForEffects(priorState, [
+      {
+        eventKey: event.eventKey,
+        phase: "ForcedTransaction",
+        effect: transitionEffect,
+      },
+    ]),
+    priorState,
+    postState: missingInput ? [] : accepted ? entries(next) : prior,
+    eventAuthorities: [
+      localEventAuthority({
+        event,
+        local: forcedOrigin,
+        effect: transitionEffect,
+        forcedNative: submitted,
+      }),
+    ],
+    eventWindow: localEventWindow(forcedOrigin),
+    ruleBundle: authorities.ruleBundle,
+  });
+  return evaluateWatcherBlockReplay(publicInput(fixture));
 };
 
-describe("immutable forced submission through public watcher authority", () => {
+describe("immutable forced submission through local watcher authority", () => {
   it("reconstructs the unchanged L1 submission and applies the exact independently accepted DA effect", async () => {
-    const bound = bindWatcherOriginEventClaim(
-      authorities.forcedOrigin.event,
-      claim(),
-    );
+    const bound = bindWatcherOriginEventClaim(forcedOrigin.event, claim());
     expect(bound.phase).toBe("ForcedTransaction");
     expect(
       decodeMidgardForcedTxFullFromCanonicalCbor(submitted.txCbor),
@@ -161,10 +196,7 @@ describe("immutable forced submission through public watcher authority", () => {
       },
     });
     const bind = (value: WatcherCommittedEventClaim) => {
-      const bound = bindWatcherOriginEventClaim(
-        authorities.forcedOrigin.event,
-        value,
-      );
+      const bound = bindWatcherOriginEventClaim(forcedOrigin.event, value);
       if (bound.phase !== "ForcedTransaction")
         throw new Error("expected forced claim");
       return bound;
@@ -209,14 +241,14 @@ describe("immutable forced submission through public watcher authority", () => {
       ),
     };
     expect(() =>
-      bindWatcherOriginEventClaim(authorities.forcedOrigin.event, replacement),
+      bindWatcherOriginEventClaim(forcedOrigin.event, replacement),
     ).toThrow("originating order");
   });
 
   it("refuses missing public material and another order's otherwise identical claim", () => {
     const original = claim();
     expect(() =>
-      bindWatcherOriginEventClaim(authorities.forcedOrigin.event, {
+      bindWatcherOriginEventClaim(forcedOrigin.event, {
         ...original,
         canonicalNativeTxCborHex: null,
       }),
@@ -226,7 +258,7 @@ describe("immutable forced submission through public watcher authority", () => {
       SDK.OutputReference,
     );
     expect(() =>
-      bindWatcherOriginEventClaim(authorities.forcedOrigin.event, {
+      bindWatcherOriginEventClaim(forcedOrigin.event, {
         ...original,
         eventIdCborHex: foreignId,
       }),

@@ -3,6 +3,7 @@ import {
   midgardAddressFromText,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -18,6 +19,7 @@ import {
 } from "../src/commands/submit-withdrawal.js";
 import {
   parseCardanoDatum,
+  parseCardanoDatumCbor,
   parseWithdrawalTxOutRefLabel,
 } from "../src/commands/withdrawal-utils.js";
 import { assetsToValue } from "../src/transactions/reserve-payout.js";
@@ -171,6 +173,8 @@ describe("withdrawal CLI parsers", () => {
         nonceInput,
         validTo: 123,
         inclusionTime: 456,
+        lockedLovelace: 3_000_000n,
+        orderOutputIndex: 0,
       }),
     ).toEqual(expectedEventId);
     expect(expectedEventId).not.toEqual(
@@ -179,6 +183,10 @@ describe("withdrawal CLI parsers", () => {
   });
 
   it("parses absent and inline datum arguments", () => {
+    const duplicatePairs = "a3020a010b020c";
+    expect(
+      plutusConstrFieldCbor(parseCardanoDatumCbor(duplicatePairs), [0]),
+    ).toBe(duplicatePairs);
     expect(parseCardanoDatum(undefined)).toEqual("NoDatum");
     expect(parseCardanoDatum("   ")).toEqual("NoDatum");
     const datum = parseCardanoDatum("d87980");

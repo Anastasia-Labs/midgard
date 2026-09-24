@@ -25,6 +25,10 @@ import {
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { canonicalSlotConfigForLucid } from "../lucid-time.js";
+import {
+  HistoryProducer,
+  runHistoryProducer,
+} from "../services/event-history-producer.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
 import {
   type CommitPipelinePhase,
@@ -40,6 +44,7 @@ import type {
   NativeMpfOwnerService,
   PersistedNativeMpfReplay,
 } from "../services/mpf-native-owner/index.js";
+import { recoverNativeMpfForLocalFinalization } from "../services/native-mpf-local-finalization.js";
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
@@ -143,7 +148,9 @@ export const resolveAuthoritativeLocalFinalizationPreflight = ({
   readonly recoveredRacedJournal: boolean;
 } => {
   const hasSubmittedActiveJournal =
-    activeJournalSubmittedTxHash !== null &&
+    (activeJournalSubmittedTxHash !== null ||
+      activeJournalStatus ===
+        PendingBlockFinalizationsDB.Status.ObservedWaitingStability) &&
     (activeJournalStatus ===
       PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed ||
       activeJournalStatus ===
@@ -255,7 +262,9 @@ const recoverNativeMpfFromActiveJournalAfterWorkerFailure = (
         owner,
         submitted:
           journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
-          null,
+            null ||
+          journal[PendingBlockFinalizationsDB.Columns.STATUS] ===
+            PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
         replay: persistedReplay,
       }),
     );
@@ -308,7 +317,9 @@ export const promoteOrRecoverNativeMpf = ({
             handle,
             submitted:
               journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
-              null,
+                null ||
+              journal[PendingBlockFinalizationsDB.Columns.STATUS] ===
+                PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
             replay: persistedReplay,
           }),
         );
@@ -833,6 +844,7 @@ export const buildAndSubmitCommitmentBlockAction = (
   stateQueueLeaseToken?: string,
 ) =>
   Effect.gen(function* () {
+    const history = yield* HistoryProducer;
     const workerStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
@@ -925,6 +937,16 @@ export const buildAndSubmitCommitmentBlockAction = (
         }),
       );
     }
+    if (
+      nativeMpfOwner !== undefined &&
+      LOCAL_FINALIZATION_PENDING &&
+      AVAILABLE_LOCAL_FINALIZATION_BLOCK !== ""
+    ) {
+      yield* recoverNativeMpfForLocalFinalization(
+        nativeMpfOwner,
+        AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+      );
+    }
     const nativeMpfInput =
       nativeMpfOwner === undefined
         ? undefined
@@ -956,6 +978,7 @@ export const buildAndSubmitCommitmentBlockAction = (
         {
           workerData: {
             nativeMpf: nativeMpfInput,
+            history,
             data: {
               availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
               availableLocalFinalizationBlock:
@@ -1294,7 +1317,7 @@ export const buildAndSubmitCommitmentBlockAction = (
     );
     yield* emitQueueStateMetrics;
     return workerOutput;
-  });
+  }).pipe(runHistoryProducer);
 
 /**
  * Single scheduled commitment tick with a guard that prevents overlapping

@@ -267,56 +267,6 @@ export const watcherSameCanonicalJson = (
   }
 };
 
-const canonicalJsonOrNull = (value: unknown): string | null => {
-  try {
-    return watcherCanonicalJson(value);
-  } catch {
-    return null;
-  }
-};
-
-const canonicalJsonSet = (members: readonly unknown[]): ReadonlySet<string> => {
-  const encodings = new Set<string>();
-  for (const member of members) {
-    const encoded = canonicalJsonOrNull(member);
-    if (encoded !== null) encodings.add(encoded);
-  }
-  return encodings;
-};
-
-/**
- * `previous.every((entry) => next.some((candidate) => same(candidate, entry)))`
- * at linear cost. Retained collections grow with the chain, so the pairwise
- * scan turned every block into a quadratic comparison of canonical encodings.
- * A member whose encoding fails matches nothing, exactly as before.
- */
-export const watcherRetainsCanonicalMembers = (
-  previous: readonly unknown[],
-  next: readonly unknown[],
-): boolean => {
-  if (previous.length === 0) return true;
-  const retained = canonicalJsonSet(next);
-  return previous.every((entry) => {
-    const encoded = canonicalJsonOrNull(entry);
-    return encoded !== null && retained.has(encoded);
-  });
-};
-
-/**
- * `members.filter((entry) => !from.some((candidate) => same(candidate, entry)))`
- * at linear cost; a member whose encoding fails is kept, exactly as before.
- */
-export const watcherCanonicalMembersAbsentFrom = <T>(
-  members: readonly T[],
-  from: readonly unknown[],
-): T[] => {
-  const present = canonicalJsonSet(from);
-  return members.filter((entry) => {
-    const encoded = canonicalJsonOrNull(entry);
-    return encoded === null || !present.has(encoded);
-  });
-};
-
 export type WatcherDurablePayload = Readonly<{
   cborHex: string;
   sha256: string;

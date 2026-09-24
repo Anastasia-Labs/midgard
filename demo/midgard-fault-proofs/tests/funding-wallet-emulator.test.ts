@@ -83,6 +83,10 @@ it.each([
     };
     lucid.selectWallet.fromAPI(api);
     const datum = Data.to(new Constr(0, ["12".repeat(28), new Constr(1, [])]));
+    // Ledger canonicalization must retain the exact requested Plutus datum.
+    expect(datum).not.toBe(
+      CML.PlutusData.from_cbor_hex(datum).to_canonical_cbor_hex(),
+    );
     const build = lucid
       .newTx()
       .collectFrom(
@@ -99,7 +103,7 @@ it.each([
         },
         {},
       )
-      .complete({ canonical: mode === "canonical" });
+      .complete({ canonical: mode === "canonical", localUPLCEval: true });
     if (emptyCollateral) {
       await expect(build).rejects.toThrow("collateral");
       return;
@@ -116,11 +120,7 @@ it.each([
         (await emulator.getProtocolParameters()).coinsPerUtxoByte,
       ),
     );
-    expect(custody.datum()?.as_datum()?.to_cbor_hex()).toBe(
-      mode === "default"
-        ? datum
-        : CML.PlutusData.from_cbor_hex(datum).to_canonical_cbor_hex(),
-    );
+    expect(custody.datum()?.as_datum()?.to_cbor_hex()).toBe(datum);
     const ordinary = body.inputs();
     expect(
       Array.from({ length: ordinary.len() }, (_, index) =>

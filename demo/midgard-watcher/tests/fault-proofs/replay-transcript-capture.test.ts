@@ -23,6 +23,7 @@ import {
   buildRetainedPlutusUnboundVariableFixture,
   captureRetainedPlutusIdentityOrigins,
 } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
+import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "@al-ft/midgard-fault-proofs/test-support/transition-history-fixture";
 import { requireTransitionTraceL1Events } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -72,7 +73,7 @@ import {
   createSyntheticStateQueueObservationFixture,
   type SyntheticStateQueueObservationCapture,
 } from "../support/state-queue-observation-fixture.js";
-import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-authority-scenarios.js";
+import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 
 const legacyTransport = vi.hoisted(() => ({ raw: undefined as unknown }));
@@ -470,6 +471,9 @@ const classify = async (
       network: "Preprod",
       releaseFinality,
       resolvedContracts: {
+        contracts: {
+          transitionTrace: { history: TRANSITION_HISTORY_FIXTURE_PARAMETERS },
+        },
         hubOraclePolicyId: getAddressDetails(hub.address).paymentCredential!
           .hash,
       },

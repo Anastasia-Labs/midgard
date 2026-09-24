@@ -3,7 +3,7 @@ import { DA_ATTESTATION_TIMEOUT_MS } from "@al-ft/midgard-sdk";
 import {
   parseWatcherStateQueueSnapshot,
   type WatcherStateQueueSnapshot,
-} from "./state-queue-indexer.js";
+} from "./state-queue-snapshot.js";
 
 export type WatcherAttestationTimeoutObservation = Readonly<
   | {

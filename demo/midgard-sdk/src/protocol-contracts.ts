@@ -14,6 +14,7 @@ import type {
   SpendingValidator,
   WithdrawalValidator,
 } from "./common.js";
+import type { MidgardValidators } from "./common.js";
 import {
   applyBlueprintParams,
   asAddressDataParam,
@@ -28,6 +29,7 @@ import {
   MPF_CHUNKED_VERIFY_WITHDRAW_TITLE,
   PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
 } from "./fraud-proof/native.js";
+import { requireEventHistoryContracts } from "./user-events/history-deployment.js";
 
 export const DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
   mint: "da_params_governor.da_params_governor.mint",
@@ -374,12 +376,19 @@ export const buildReserveValidator = (
 export const buildPayoutValidator = (
   blueprint: FaultProofBlueprint,
   network: Network,
-  contracts: { readonly hubOracle: { readonly policyId: string } },
+  contracts: Pick<
+    MidgardValidators,
+    "hubOracle" | "deposit" | "withdrawal" | "eventHistory"
+  >,
 ): AuthenticatedValidator =>
   buildAuthenticatedBlueprintValidator(
     blueprint,
     network,
     PAYOUT_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
+    [
+      contracts.hubOracle.policyId,
+      requireEventHistoryContracts(contracts).withdrawal.retirement
+        .withdrawalScriptHash,
+    ],
     () => [contracts.hubOracle.policyId],
   );

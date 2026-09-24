@@ -2,12 +2,13 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
+import { CANONICAL_DECODABILITY_CATEGORY_LABEL } from "../src/canonical-decodability/contracts.js";
 import {
-  submitCanonicalDecodabilityCancel,
   submitCanonicalDecodabilityInit,
   submitCanonicalDecodabilityStep01,
   submitCanonicalDecodabilityStep02,
 } from "../src/index.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import {
   buildCanonicalDecodabilityBodyFixture,
   makeCanonicalDecodabilityEmulatorHarness,
@@ -56,9 +57,11 @@ describe("canonical-decodability cancellation and resume", () => {
       init.firstStepAddress,
       init.computationThreadUnit,
     );
-    const cancelled = await submitCanonicalDecodabilityCancel({
+    const cancelled = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.canonicalDecodability,
+      family: CANONICAL_DECODABILITY_CATEGORY_LABEL,
+      steps: harness.canonicalDecodability.steps,
+      computationThread: harness.canonicalDecodability.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: outRefLabel(thread),
@@ -145,9 +148,11 @@ describe("canonical-decodability cancellation and resume", () => {
       referenceScriptUtxo: step01Ref,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const cancelled = await submitCanonicalDecodabilityCancel({
+    const cancelled = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.canonicalDecodability,
+      family: CANONICAL_DECODABILITY_CATEGORY_LABEL,
+      steps: harness.canonicalDecodability.steps,
+      computationThread: harness.canonicalDecodability.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: bound.nextThreadOutRef,

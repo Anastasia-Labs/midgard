@@ -25,12 +25,13 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
+import { submitLinearFaultCancel } from "../../src/linear-fault-cancel.js";
+import { MIN_FEE_CATEGORY_LABEL } from "../../src/min-fee-contracts.js";
 import {
   MIN_FEE_FORCED_ARTIFACT,
   prepareMinFeeForcedArtifact,
 } from "../../src/min-fee-forced-artifact.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { submitMinFeeCancel } from "../../src/submit-min-fee-cancel.js";
 import { submitMinFeeStep01Forced } from "../../src/submit-min-fee-forced-step-01.js";
 import { submitMinFeeInit } from "../../src/submit-min-fee-init.js";
 import {
@@ -341,9 +342,11 @@ export const makeMinFeeWrongfulRejectionScenario = async (
       unsafeSkipLocalViolationCheckForTest,
     });
   const cancel = (threadOutRef: string, step: number) =>
-    submitMinFeeCancel({
+    submitLinearFaultCancel({
       lucid: h.proverLucid,
-      contracts,
+      family: MIN_FEE_CATEGORY_LABEL,
+      steps: contracts.steps,
+      computationThread: contracts.computationThread,
       categoryId: category.categoryId,
       signer: h.proverSigner,
       threadOutRef,

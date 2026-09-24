@@ -192,6 +192,15 @@ pub fn native_block_fixture_v1(
   native_block_fixture_with_withdrawals_v1(tx, env.empty_merkle_tree_root, 0)
 }
 
+/// The block the later step selectors challenge: the single-transaction block
+/// fixture over `valid_native_tx_v1`. Its header is the one that authenticated
+/// the challenged transaction at step-01, so its `prev_utxos_root` and
+/// authenticated raw transactions root are the exact values the earlier steps
+/// forward, and a step's tests run on real roots rather than placeholders.
+pub fn challenged_block_v1() -> NativeBlockFixtureV1 {
+  native_block_fixture_v1(valid_native_tx_v1())
+}
+
 pub fn native_block_fixture_with_withdrawals_v1(
   tx: native_types.MidgardTransaction,
   withdrawals_phas_root: ByteArray,
@@ -1081,6 +1090,28 @@ pub fn deep_transactions_root_block_fixture_v1(
     header,
     header_hash: utils.serialise_and_hash_28(header_data),
   }
+}
+
+/// The deep-trie fixture the published-chunk selectors share: the
+/// single-transaction block fixture over `tx`, re-committed (see
+/// `deep_transactions_root_block_fixture_v1`) under the root an all-`Branch`
+/// membership ladder of `branch_levels` levels proves, at a 1,000,000
+/// transaction count. Returns the re-committed block with that ladder, whose
+/// published chunks the step transaction references.
+pub fn deep_membership_block_fixture_v1(
+  tx: native_types.MidgardTransaction,
+  branch_levels: Int,
+) -> (NativeBlockFixtureV1, mpf.Proof) {
+  let base = native_block_fixture_v1(tx)
+  let steps = adversarial_branch_steps(branch_levels)
+  (
+    deep_transactions_root_block_fixture_v1(
+      base,
+      adversarial_membership_root(base.tx_id, base.source_cbor, steps),
+      1_000_000,
+    ),
+    steps,
+  )
 }
 
 /// Publication UTxOs for `steps`, packed to the per-chunk step bound. A chunk

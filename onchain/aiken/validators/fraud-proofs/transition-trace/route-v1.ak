@@ -121,39 +121,54 @@ validator main(
                 expect hash: ByteArray = hash_data
                 expect header: ledger_state.HeaderV1 = header_data
                 expect [witness] = builtin.unconstr_fields(fault)
-                let kind = if builtin.unconstr_index(fault) == 9 {
-                  2
-                } else {
-                  expect builtin.unconstr_index(fault) == 4
-                  when builtin.unconstr_index(witness) is {
-                    3 -> 1
-                    4 -> 0
-                    _ -> fail
-                  }
-                }
-                let index = if kind == 1 {
-                  5
-                } else {
-                  4
-                }
                 expect
                   rules.validate_transition_header_envelope(
                     hash,
                     header,
                     computation_thread_token_asset_name,
                   )
-                // Each authenticated phase checks the exact narrow witness
-                // fields it consumes; routing never materializes MPF lists.
-                let expected_output_state: Data = final_yield.initial(
-                  kind,
-                  commitment,
-                )
-                and {
-                  output_script_hash == list.expect_at(
-                    final_validator_script_hashes,
-                    index,
-                  ),
-                  output_state == expected_output_state,
+                let fault_tag = builtin.unconstr_index(fault)
+                if fault_tag == 5 || fault_tag == 7 {
+                  let event_kind = builtin.unconstr_index(witness)
+                  expect event_kind >= 0 && event_kind <= 2
+                  // Existing proof chunks transport the exact inline proof once.
+                  // Event history and retention authority are checked by final-6.
+                  and {
+                    output_script_hash == list.expect_at(
+                      final_validator_script_hashes,
+                      6,
+                    ),
+                    output_state == data,
+                  }
+                } else {
+                  let kind = if builtin.unconstr_index(fault) == 9 {
+                    2
+                  } else {
+                    expect builtin.unconstr_index(fault) == 4
+                    when builtin.unconstr_index(witness) is {
+                      3 -> 1
+                      4 -> 0
+                      _ -> fail
+                    }
+                  }
+                  let index = if kind == 1 {
+                    5
+                  } else {
+                    4
+                  }
+                  // Each authenticated phase checks the exact narrow witness
+                  // fields it consumes; routing never materializes MPF lists.
+                  let expected_output_state: Data = final_yield.initial(
+                    kind,
+                    commitment,
+                  )
+                  and {
+                    output_script_hash == list.expect_at(
+                      final_validator_script_hashes,
+                      index,
+                    ),
+                    output_state == expected_output_state,
+                  }
                 }
               }
             }

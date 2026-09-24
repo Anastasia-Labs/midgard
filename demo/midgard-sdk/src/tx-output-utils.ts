@@ -1,5 +1,5 @@
 import { LOVELACE_UNIT } from "@al-ft/midgard-core/assets";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { Assets, TxOutput, UTxO } from "@lucid-evolution/lucid";
 
 export const outputDatumCborMatches = (
@@ -7,7 +7,8 @@ export const outputDatumCborMatches = (
   datumCbor: string,
 ): boolean =>
   output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
+  aikenSerialisedPlutusDataCborPreservingMapOrder(output.datum) ===
+    aikenSerialisedPlutusDataCborPreservingMapOrder(datumCbor);
 
 const positiveAssetEntries = (
   assets: Readonly<Assets>,

@@ -184,15 +184,9 @@ const adversarial_branch_levels: Int = 22
 const adversarial_chunk_count: Int = 2
 
 fn deep_zero_input_block() -> (fixture.NativeBlockFixtureV1, mpf.Proof) {
-  let base = fixture.native_block_fixture_v1(zero_input_bad_tx())
-  let steps = fixture.adversarial_branch_steps(adversarial_branch_levels)
-  (
-    fixture.deep_transactions_root_block_fixture_v1(
-      base,
-      fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
-      1_000_000,
-    ),
-    steps,
+  fixture.deep_membership_block_fixture_v1(
+    zero_input_bad_tx(),
+    adversarial_branch_levels,
   )
 }
 

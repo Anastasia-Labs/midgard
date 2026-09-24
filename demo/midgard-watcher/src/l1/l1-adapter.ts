@@ -115,12 +115,6 @@ type WatcherAuthenticatedL1ProviderBase = Readonly<{
   }>;
 }>;
 
-export type WatcherAuthenticatedL1Provider = Readonly<
-  WatcherAuthenticatedL1ProviderBase & {
-    source: WatcherL1SourceIdentity;
-  }
->;
-
 /**
  * Opaque authority created only after the watcher transport boundary has
  * verified an external provider TLS peer. A future local-node adapter may

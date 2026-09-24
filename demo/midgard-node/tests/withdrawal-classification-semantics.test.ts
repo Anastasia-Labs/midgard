@@ -84,6 +84,8 @@ const fixture = async (
     refund_datum: Buffer.alloc(0),
     validity: null,
     validity_detail: {},
+    classification_revision: 0,
+    reopened_from_header_hash: null,
     projected_header_hash: null,
     status: WithdrawalsDB.Status.Awaiting,
   };

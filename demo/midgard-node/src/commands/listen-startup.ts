@@ -295,6 +295,7 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const globals = yield* Globals;
+  const config = yield* NodeConfig;
 
   const snapshot = yield* fetchStateQueueSnapshotProgram(
     lucid.api,
@@ -316,12 +317,18 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
     );
     const onChainUtxoRoot = snapshot.tailCommitBase.roots.utxosRoot;
     if (confirmedLedgerRoot === onChainUtxoRoot) {
-      const syncResult = yield* synchronizeCommitMpfStoresFromLedgerEntries(
-        confirmedLedgerEntries,
-      );
-      yield* Effect.logInfo(
-        `Startup synchronized clean-queue commit MPFs from confirmed ledger (ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
-      );
+      if (config.MPF_ENGINE === "architecture_g") {
+        yield* Effect.logInfo(
+          "Startup verified confirmed ledger against the clean state queue; native owner will establish the durable MPF root before Ready.",
+        );
+      } else {
+        const syncResult = yield* synchronizeCommitMpfStoresFromLedgerEntries(
+          confirmedLedgerEntries,
+        );
+        yield* Effect.logInfo(
+          `Startup synchronized clean-queue commit MPFs from confirmed ledger (ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+        );
+      }
     } else {
       const finalizedJournal =
         snapshot.tailCommitBase.headerHash === null
@@ -340,13 +347,19 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
         if (finalizedSnapshot.root === onChainUtxoRoot) {
           const recoveredEntries =
             yield* applyConfirmedLedgerDeltaChainTransaction(finalizedSnapshot);
-          const syncResult =
-            yield* synchronizeCommitMpfStoresFromLedgerEntries(
-              recoveredEntries,
+          if (config.MPF_ENGINE === "architecture_g") {
+            yield* Effect.logInfo(
+              "Startup repaired confirmed ledger from authenticated journals; native owner must recover the corresponding durable root before Ready.",
             );
-          yield* Effect.logWarning(
-            `Startup applied ${finalizedSnapshot.deltaChain.length.toString()} authenticated finalized-journal delta(s) to confirmed_ledger and synchronized commit MPFs (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
-          );
+          } else {
+            const syncResult =
+              yield* synchronizeCommitMpfStoresFromLedgerEntries(
+                recoveredEntries,
+              );
+            yield* Effect.logWarning(
+              `Startup applied ${finalizedSnapshot.deltaChain.length.toString()} authenticated finalized-journal delta(s) to confirmed_ledger and synchronized commit MPFs (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
+            );
+          }
         } else if (confirmedLedgerEntries.length > 0) {
           return yield* Effect.fail(
             new SDK.StateQueueError({
@@ -468,7 +481,10 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
       record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH];
     yield* Ref.set(
       globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-      submittedTxHash === null ? "" : submittedTxHash.toString("hex"),
+      (
+        submittedTxHash ??
+        record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH]
+      )?.toString("hex") ?? "",
     );
     yield* Ref.set(
       globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,

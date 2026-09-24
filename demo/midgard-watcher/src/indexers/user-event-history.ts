@@ -31,6 +31,7 @@ import {
   closeWatcherLocalUserEventReadmission,
   createWatcherLocalUserEventHistory,
   prepareWatcherLocalUserEventAnchor,
+  prepareWatcherLocalUserEventCanonicalReplay,
   prepareWatcherLocalUserEventReadmission,
   prepareWatcherLocalUserEventTransition,
   readWatcherLocalUserEventAnchor,
@@ -465,6 +466,25 @@ export const recoverWatcherLocalUserEventPublisher = async (
     runtime,
     archive,
   });
+  return publishReadmission(readmission, runtime, archive);
+};
+
+export const replaceWatcherLocalUserEventPublisher = async (
+  input: Parameters<typeof prepareWatcherLocalUserEventCanonicalReplay>[0],
+): Promise<ReturnType<typeof makeLocalUserEventPublisher>> =>
+  publishReadmission(
+    await prepareWatcherLocalUserEventCanonicalReplay(input),
+    input.runtime,
+    input.archive,
+  );
+
+const publishReadmission = async (
+  readmission: Awaited<
+    ReturnType<typeof prepareWatcherLocalUserEventReadmission>
+  >,
+  runtime: WatcherDurableRuntime,
+  archive: WatcherUserEventArchive,
+): Promise<ReturnType<typeof makeLocalUserEventPublisher>> => {
   try {
     const prepared = readWatcherLocalUserEventReadmission(readmission);
     for (const object of prepared.archiveObjects) {

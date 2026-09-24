@@ -2,6 +2,10 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
@@ -10,7 +14,11 @@ import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/supp
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneySuccessor } from "./fixture.js";
-import { buildJourneyRepeatedDeposit } from "./history-events.js";
+import {
+  buildJourneyRepeatedDeposit,
+  type CapturedEventHistoryWitness,
+  captureStagedHistoryEvent,
+} from "./history-events.js";
 import { verifyJourneyResultEvidence } from "./readiness-evidence.js";
 import {
   createPreparedJourneyFixture,
@@ -30,14 +38,14 @@ type SettlementCheckpoint = {
 export type DuplicateEventHistory = {
   deploymentFingerprint: string;
   source: JourneySuccessor;
-  depositDatumCbor: string;
+  deposit: CapturedEventHistoryWitness;
   readyAt: bigint;
 };
 
 /** Content binding only; canonical commitment and healthy verdict are separate gates. */
 export const verifyDuplicateEventSource = async (
   source: JourneySuccessor,
-  depositDatumCbor: string,
+  deposit: CapturedEventHistoryWitness,
 ) => {
   if (
     (await Effect.runPromise(SDK.hashBlockHeader(source.header))) !==
@@ -45,15 +53,32 @@ export const verifyDuplicateEventSource = async (
   )
     throw new Error("Duplicate-event source header hash changed");
   const retained = await decodeJourneyRetainedBlock(source);
-  const datum = Data.from(depositDatumCbor, SDK.DepositDatum);
+  const commitment = Data.from(
+    deposit.commitmentCbor,
+    SDK.EventHistoryCommitment,
+  );
+  const opening = Data.from(deposit.openingCbor, SDK.EventHistoryOpening);
+  if (
+    commitment.kind !== "Deposit" ||
+    !("DepositPayload" in opening.payload) ||
+    !SDK.opensEventHistoryCommitmentCbor(
+      commitment,
+      plutusConstrFieldCbor(deposit.openingCbor, [0]),
+      plutusConstrFieldCbor(deposit.openingCbor, [1]),
+    )
+  )
+    throw new Error(
+      "Duplicate-event source does not contain the exact genuine deposit",
+    );
+  const payloadCbor = plutusConstrFieldCbor(deposit.openingCbor, [0]);
   const entries = retained.payload.block_body.deposits;
   if (
     entries.length !== 1 ||
     source.header.depositCount !== 1n ||
-    entries[0]?.[0] !== Data.to(datum.event.id, SDK.OutputReference) ||
-    entries[0]?.[1] !== Data.to(datum.event.info, SDK.DepositInfo) ||
-    datum.inclusion_time <= source.header.startTime ||
-    datum.inclusion_time > source.header.endTime
+    entries[0]?.[0] !== canonical(plutusConstrFieldCbor(payloadCbor, [0, 0])) ||
+    entries[0]?.[1] !== canonical(plutusConstrFieldCbor(payloadCbor, [0, 1])) ||
+    commitment.inclusion_time <= source.header.startTime ||
+    commitment.inclusion_time > source.header.endTime
   )
     throw new Error(
       "Duplicate-event source does not contain the exact genuine deposit",
@@ -86,10 +111,7 @@ export const prepareDuplicateEventHistory = async (
       throw new Error("Duplicate-event history belongs to another deployment");
     if (
       existing.readyAt !==
-      (await verifyDuplicateEventSource(
-        existing.source,
-        existing.depositDatumCbor,
-      ))
+      (await verifyDuplicateEventSource(existing.source, existing.deposit))
     )
       throw new Error(
         "Recorded duplicate-event maturity differs from the protocol",
@@ -115,27 +137,58 @@ export const prepareDuplicateEventHistory = async (
   const staged = await readJourneyArtifact<PublishedDepositTraceCheckpoint>(
     join(traceDirectory, "staged.json"),
   );
-  const events = await input.context.provider.getUtxosByOutRef([
-    staged.depositEvent,
-  ]);
-  const event = events[0];
+  const contracts = input.context.deployment.contracts;
+  const historyDeployment = SDK.eventHistoryDeploymentFromContracts(
+    SDK.requireEventHistoryContracts(contracts).deposit,
+  );
+  const orders = await Effect.runPromise(
+    SDK.fetchDepositUTxOsProgram(
+      input.context.deployment.operatorLucid,
+      historyDeployment,
+    ),
+  );
+  const order = orders.find(
+    (candidate) =>
+      candidate.assetName === staged.depositMetadata.depositAssetName,
+  );
   if (
-    events.length !== 1 ||
-    event?.datum !== staged.depositEvent.datum ||
-    event?.address !==
-      input.context.deployment.contracts.deposit.spendingScriptAddress ||
+    order === undefined ||
+    staged.depositEvent.datum == null ||
     staged.depositMetadata.depositAuthUnit !==
-      input.context.deployment.contracts.deposit.policyId +
-        staged.depositMetadata.depositAssetName ||
-    event?.assets[staged.depositMetadata.depositAuthUnit] !== 1n
+      historyDeployment.policyId + staged.depositMetadata.depositAssetName
   )
     throw new Error("Trace source deposit lacks its exact live L1 event role");
-  const readyAt = await verifyDuplicateEventSource(source, event.datum!);
+  const prior = Data.from(staged.depositEvent.datum, SDK.EventHistoryNode);
+  if (
+    prior.payload === "RootContent" ||
+    !("Order" in prior.payload) ||
+    order.history.anchor.utxo.datum == null ||
+    canonical(plutusConstrFieldCbor(staged.depositEvent.datum, [3, 0])) !==
+      canonical(
+        plutusConstrFieldCbor(order.history.anchor.utxo.datum, [3, 0]),
+      ) ||
+    !SDK.assetsEqual(
+      SDK.eventHistoryOriginalAssets(
+        prior,
+        staged.depositEvent.assets,
+        historyDeployment.policyId,
+      ),
+      order.originalAssets,
+    )
+  )
+    throw new Error(
+      "Trace source deposit immutable facts or original funds changed",
+    );
+  const deposit = captureStagedHistoryEvent({
+    order,
+    policyId: historyDeployment.policyId,
+  });
+  const readyAt = await verifyDuplicateEventSource(source, deposit);
   await input.retain(source, source.commitTxHash);
   const history: DuplicateEventHistory = {
     deploymentFingerprint: input.context.deployment.manifest.manifestId,
     source,
-    depositDatumCbor: event.datum!,
+    deposit,
     readyAt,
   };
   await writeJourneyArtifact(path, history);

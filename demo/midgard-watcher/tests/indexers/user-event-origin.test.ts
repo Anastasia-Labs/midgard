@@ -9,10 +9,8 @@ import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/mi
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import {
-  buildDepositValidators,
   buildHubOracleMintingValidator,
   buildTxOrderValidators,
-  buildWithdrawalValidators,
   HubOracleDatum,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
@@ -51,9 +49,13 @@ import {
 import {
   makeWatcherAuthorityContracts,
   makeWatcherDeploymentAuthorityFixture,
+  WATCHER_EMULATOR_HISTORY_RECIPE,
 } from "../support/deployment-authority-fixture.js";
 import { createEmulatorInitialization } from "../support/emulator-initialization.js";
-import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
+import {
+  buildWatcherOriginFixtureHistoryDeployments,
+  createSyntheticUserEventOriginFixture,
+} from "../support/user-event-origin-fixture.js";
 
 // The unchanged Conway capture adapter below comes from local-historical-capture.test.ts.
 // Native/W12 admission stays real; only executable and HTTP/WebSocket peers use local test data.
@@ -621,8 +623,12 @@ const makeOriginDeployment = () => {
     network: "Preprod" as const,
     hubOraclePolicyId: hub.policyId,
   };
-  const deposit = buildDepositValidators(input);
-  const withdrawal = buildWithdrawalValidators(input);
+  const history = buildWatcherOriginFixtureHistoryDeployments(
+    emulatorInitialization.canonicalOneShotOutRef,
+    hub.policyId,
+  );
+  const deposit = history.deposit.list;
+  const withdrawal = history.withdrawal.list;
   const { txOrder, fieldPreimageCertificate } = buildTxOrderValidators(input);
   const scripts = {
     hubOracleMint: hub.mintingScript,
@@ -630,6 +636,13 @@ const makeOriginDeployment = () => {
     depositSpend: deposit.spendingScript,
     withdrawalMint: withdrawal.mintingScript,
     withdrawalSpend: withdrawal.spendingScript,
+    depositHistoryRetentionSpend: history.deposit.retention.spendingScript,
+    depositHistoryRetirementWithdraw:
+      history.deposit.retirement.withdrawalScript,
+    withdrawalHistoryRetentionSpend:
+      history.withdrawal.retention.spendingScript,
+    withdrawalHistoryRetirementWithdraw:
+      history.withdrawal.retirement.withdrawalScript,
     txOrderMint: txOrder.mintingScript,
     txOrderSpend: txOrder.spendingScript,
     fieldPreimageCertificateMint: fieldPreimageCertificate.mintingScript,
@@ -653,6 +666,7 @@ const makeOriginDeployment = () => {
     contractSet,
     blueprintHash: createHash("sha256").update(blueprintBytes).digest("hex"),
     hubOracleOneShotOutRef: emulatorInitialization.canonicalOneShotOutRef,
+    eventHistoryRecipe: WATCHER_EMULATOR_HISTORY_RECIPE,
   });
 };
 
@@ -668,6 +682,41 @@ describe("user-event activation origin", () => {
     expect(CML.hash_transaction(transaction.body()).to_hex()).toBe(
       emulatorInitialization.transactionId,
     );
+    const expectedScripts = readWatcherUserEventScriptBinding({
+      binding: scriptBinding,
+      deploymentIdentity: deployment.result,
+    });
+    const candidate = Array.from(
+      { length: transaction.body().outputs().len() },
+      (_, index) => transaction.body().outputs().get(index),
+    ).find(
+      (output) =>
+        output
+          .amount()
+          .multi_asset()
+          .get(
+            CML.ScriptHash.from_hex(expectedScripts.hub.policyId),
+            CML.AssetName.from_hex(expectedScripts.hub.assetName),
+          ) === 1n,
+    )!;
+    const openedHub = Data.from(
+      candidate.datum()!.as_datum()!.to_cbor_hex(),
+      HubOracleDatum,
+    );
+    expect({
+      deposit: openedHub.deposit,
+      withdrawal: openedHub.withdrawal,
+      tx_order: openedHub.tx_order,
+    }).toEqual({
+      deposit: expectedScripts.deposit.policyId,
+      withdrawal: expectedScripts.withdrawal.policyId,
+      tx_order: expectedScripts.forcedOrder.policyId,
+    });
+    expect(
+      CML.PlutusData.from_cbor_hex(
+        Data.to(openedHub, HubOracleDatum),
+      ).to_canonical_cbor_hex(),
+    ).toBe(candidate.datum()!.as_datum()!.to_canonical_cbor_hex());
     const facts = unsafeInspectWatcherUserEventActivationTransactionForTest({
       deploymentIdentity: deployment.result,
       scriptBinding,
@@ -698,6 +747,62 @@ describe("user-event activation origin", () => {
         observation: {} as WatcherLocalBackfillObservationReceipt,
       }),
     ).toThrow("not privately admitted");
+  });
+
+  it("preserves definite and indefinite hub datum bytes and rejects malformed or mismatched data", () => {
+    const original = CML.Transaction.from_cbor_hex(
+      emulatorInitialization.transactionCbor,
+    );
+    const baseline = unsafeInspectWatcherUserEventActivationTransactionForTest({
+      deploymentIdentity: deployment.result,
+      scriptBinding,
+      transactionCbor: emulatorInitialization.transactionCbor,
+    })!;
+    const hub = original.body().outputs().get(baseline.hubOutputIndex);
+    const datum = Data.from(baseline.hubDatumCbor, HubOracleDatum);
+    // These edited frames exercise the descriptive decoder only; their original
+    // signatures no longer authenticate the rebuilt body and confer no L1 authority.
+    const withDatum = (cbor: string) => {
+      const outputs = CML.TransactionOutputList.new();
+      for (let index = 0; index < original.body().outputs().len(); index++)
+        outputs.add(
+          index === baseline.hubOutputIndex
+            ? CML.TransactionOutput.new(
+                hub.address(),
+                hub.amount(),
+                CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(cbor)),
+                hub.script_ref(),
+              )
+            : original.body().outputs().get(index),
+        );
+      const body = CML.TransactionBody.new(
+        original.body().inputs(),
+        outputs,
+        original.body().fee(),
+      );
+      body.set_mint(original.body().mint()!);
+      return CML.Transaction.new(
+        body,
+        CML.TransactionWitnessSet.new(),
+        true,
+      ).to_cbor_hex();
+    };
+    const inspect = (cbor: string) =>
+      unsafeInspectWatcherUserEventActivationTransactionForTest({
+        deploymentIdentity: deployment.result,
+        scriptBinding,
+        transactionCbor: withDatum(cbor),
+      });
+    const indefinite = Data.to(datum, HubOracleDatum);
+    const definite =
+      CML.PlutusData.from_cbor_hex(indefinite).to_canonical_cbor_hex();
+    expect(indefinite).not.toBe(definite);
+    for (const cbor of [definite, indefinite])
+      expect(inspect(cbor)?.hubDatumCbor).toBe(cbor);
+    expect(() => inspect(Data.to(0n))).toThrow();
+    expect(() =>
+      inspect(Data.to({ ...datum, deposit: "ff".repeat(28) }, HubOracleDatum)),
+    ).toThrow("hub datum differs");
   });
 
   it("finds no activation in any unchanged ordinary Conway transaction", () => {

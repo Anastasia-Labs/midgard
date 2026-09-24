@@ -18,6 +18,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
+import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { expect, it } from "vitest";
 
@@ -61,6 +62,10 @@ it
         "utf8",
       ),
     );
+    const deposit = readPublishedDepositHistory(
+      staged.depositHistory,
+      staged.depositMetadata,
+    );
     const predecessor = await depositEventsRetainedBlock({
       operatorVkey: staged.current.header.operatorVkey,
       startTime: staged.predecessor.header.endTime,
@@ -71,9 +76,8 @@ it
       priorLedger: staged.predecessor.payload.block_body.utxos,
       events: [
         {
-          event: staged.depositEvent,
-          depositPolicyId: staged.depositMetadata.depositAuthUnit.slice(0, 56),
-          assetName: staged.depositMetadata.depositAssetName,
+          event: deposit.event,
+          originalAssets: deposit.originalAssets,
           honest: true,
         },
       ],

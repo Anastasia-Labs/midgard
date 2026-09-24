@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as EffectData, Effect, Option } from "effect";
 
 import * as DepositsDB from "../database/deposits.js";
+import * as DepositSubmissionAttemptsDB from "../database/depositSubmissionAttempts.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { Database } from "../services/database.js";
 import { parseEventId, parseHexBytes } from "./command-utils.js";
@@ -21,6 +22,7 @@ export type SerializedDepositStatus = {
   readonly eventId: string;
   readonly eventInfo: string;
   readonly inclusionTime: string;
+  /** Latest observed history output transaction; admission may have an older hash. */
   readonly cardanoTxHash: string;
   readonly ledgerTxId: string;
   readonly ledgerOutput: string;
@@ -123,8 +125,17 @@ export const resolveDepositStatusProgram = (
       return byEventId.value;
     }
 
+    const submission = yield* DepositSubmissionAttemptsDB.retrieveByTxHash(
+      lookup.cardanoTxHash,
+    );
     if (Option.isSome(byEventId)) {
+      const matchesSubmission =
+        Option.isSome(submission) &&
+        submission.value[
+          DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
+        ].equals(byEventId.value[DepositsDB.Columns.ID]);
       if (
+        !matchesSubmission &&
         !byEventId.value[DepositsDB.Columns.DEPOSIT_L1_TX_HASH].equals(
           lookup.cardanoTxHash,
         )
@@ -140,9 +151,23 @@ export const resolveDepositStatusProgram = (
       return byEventId.value;
     }
 
-    const matches = yield* DepositsDB.retrieveByCardanoTxHash(
-      lookup.cardanoTxHash,
-    );
+    const matches = [
+      ...(yield* DepositsDB.retrieveByCardanoTxHash(lookup.cardanoTxHash)),
+    ];
+    if (Option.isSome(submission)) {
+      const bySubmission = yield* DepositsDB.retrieveByEventId(
+        submission.value[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID],
+      );
+      if (
+        Option.isSome(bySubmission) &&
+        !matches.some((entry) =>
+          entry[DepositsDB.Columns.ID].equals(
+            bySubmission.value[DepositsDB.Columns.ID],
+          ),
+        )
+      )
+        matches.push(bySubmission.value);
+    }
     if (matches.length <= 0) {
       return yield* Effect.fail(
         new DepositStatusCommandError({

@@ -16,9 +16,11 @@ import {
   makeLucidRuntimeService,
   makeNodeConfigForFixture,
   NodeConfig,
+  normalizeT1RecoveryGlobals,
   Option,
   PendingBlockFinalizationsDB,
   resetActiveRuntimePaths,
+  runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runConfirmationJournalInsertionRace,
   runNodeDatabaseEffect,
@@ -27,6 +29,7 @@ import {
   type SpeculativeCommitWorkerInstruction,
   submitDepositAndRefreshBarriers,
 } from "./deposit-flow-emulator-shared.js";
+import { correctAcceptedT1BlockAfterTimeout } from "./helpers/history-timeout-correction-fixture.js";
 
 describe.sequential("deposit flow emulator", () => {
   it("preserves a newer submitted journal when a delayed confirmation worker captured no pending journal", async () => {
@@ -89,6 +92,11 @@ describe.sequential("deposit flow emulator", () => {
               baseBlockEndTimeMs: blockN.blockEndTimeMs,
               candidateEndTimeMs: candidate.endTimeMs,
             });
+            const journalBefore =
+              yield* PendingBlockFinalizationsDB.retrieveActive();
+            const globalsBefore = yield* Effect.promise(() =>
+              normalizeT1RecoveryGlobals(globals),
+            );
             const serializedRecoveredBase =
               yield* serializeStateQueueUTxO(recoveredBase);
             yield* buildBlockConfirmationAction(() =>
@@ -102,6 +110,30 @@ describe.sequential("deposit flow emulator", () => {
             ).pipe(
               Effect.provideService(Globals, globals),
               Effect.provideService(NodeConfig, testNodeConfig),
+            );
+            expect(yield* PendingBlockFinalizationsDB.retrieveActive()).toEqual(
+              journalBefore,
+            );
+            expect(
+              yield* Effect.promise(() => normalizeT1RecoveryGlobals(globals)),
+            ).toEqual(globalsBefore);
+            yield* Effect.promise(() =>
+              correctAcceptedT1BlockAfterTimeout({
+                fixture,
+                targetHeaderHash: blockN.submittedHeaderHash,
+                requiredFinalityDepth: BigInt(
+                  testNodeConfig.STATE_QUEUE_CORRECTION_FINALITY_DEPTH,
+                ),
+                runDatabase: runNodeDatabaseEffect,
+              }),
+            );
+            yield* Effect.promise(() =>
+              runBlockConfirmation(
+                globals,
+                fixture.contracts,
+                lucidService,
+                testNodeConfig,
+              ),
             );
             return {
               type: "InvalidateSpeculativeCandidate",

@@ -13,11 +13,13 @@ import {
   type DeploymentManifest,
   type DeploymentManifestAvailabilityChallenge,
   type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentManifestEventHistoryRecipe,
   type DeploymentMarker,
   makeDeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestCardanoProtocolParameters,
   parseDeploymentManifestEconomics,
+  parseDeploymentManifestEventHistoryRecipe,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
@@ -38,10 +40,9 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import {
   type AuthenticatedValidator,
-  buildDepositValidators,
+  buildEventHistoryDeployments,
   buildHubOracleMintingValidator,
   buildTxOrderValidators,
-  buildWithdrawalValidators,
   HUB_ORACLE_ASSET_NAME,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
@@ -840,6 +841,10 @@ const USER_EVENT_SIGNED_CONTRACT_NAMES = [
   "depositSpend",
   "withdrawalMint",
   "withdrawalSpend",
+  "depositHistoryRetentionSpend",
+  "depositHistoryRetirementWithdraw",
+  "withdrawalHistoryRetentionSpend",
+  "withdrawalHistoryRetirementWithdraw",
   "txOrderMint",
   "txOrderSpend",
   "fieldPreimageCertificateMint",
@@ -855,6 +860,9 @@ const userEventScriptsByDeploymentIdentity = new WeakMap<
   object,
   Readonly<{
     blueprintSha256: string;
+    historyRecipes: Readonly<
+      Record<"deposit" | "withdrawal", DeploymentManifestEventHistoryRecipe>
+    >;
     contracts: Readonly<
       Record<UserEventSignedContractName, SignedUserEventScript>
     >;
@@ -958,10 +966,36 @@ export const verifyWatcherUserEventScriptBinding = (input: {
         network: deploymentIdentity.network,
         hubOraclePolicyId: hub.policyId,
       };
+      const historyFor = (name: "deposit" | "withdrawal") => {
+        const recipe = signed.historyRecipes[name];
+        if (
+          recipe.hubPolicyId !== hub.policyId ||
+          recipe.kind !== (name === "deposit" ? "Deposit" : "Withdrawal") ||
+          `${recipe.initializationNonce.txHash}#${recipe.initializationNonce.outputIndex}` !==
+            protocol.hubOracleOneShotOutRef
+        )
+          throw new Error(
+            "History recipe differs from its canonical deployment",
+          );
+        return buildEventHistoryDeployments({
+          ...parameters,
+          initializationNonce: recipe.initializationNonce,
+          protectionDurationMs: BigInt(recipe.protectionDurationMs),
+          bounds: {
+            inlineLimitBytes: BigInt(recipe.bounds.inlineLimitBytes),
+            maxPayloadBytes: BigInt(recipe.bounds.maxPayloadBytes),
+            maxPayloadNodes: BigInt(recipe.bounds.maxPayloadNodes),
+          },
+        })[name];
+      };
+      const depositHistory = historyFor("deposit");
+      const withdrawalHistory = historyFor("withdrawal");
       return {
         hub,
-        deposit: buildDepositValidators(parameters),
-        withdrawal: buildWithdrawalValidators(parameters),
+        depositHistory,
+        withdrawalHistory,
+        deposit: depositHistory.list,
+        withdrawal: withdrawalHistory.list,
         ...buildTxOrderValidators(parameters),
       };
     } catch {
@@ -993,6 +1027,26 @@ export const verifyWatcherUserEventScriptBinding = (input: {
       type: derived.withdrawal.spendingScript.type,
       cborHex: derived.withdrawal.spendingScriptCBOR,
       scriptHash: derived.withdrawal.spendingScriptHash,
+    },
+    depositHistoryRetentionSpend: {
+      type: derived.depositHistory.retention.spendingScript.type,
+      cborHex: derived.depositHistory.retention.spendingScriptCBOR,
+      scriptHash: derived.depositHistory.retention.spendingScriptHash,
+    },
+    depositHistoryRetirementWithdraw: {
+      type: derived.depositHistory.retirement.withdrawalScript.type,
+      cborHex: derived.depositHistory.retirement.withdrawalScriptCBOR,
+      scriptHash: derived.depositHistory.retirement.withdrawalScriptHash,
+    },
+    withdrawalHistoryRetentionSpend: {
+      type: derived.withdrawalHistory.retention.spendingScript.type,
+      cborHex: derived.withdrawalHistory.retention.spendingScriptCBOR,
+      scriptHash: derived.withdrawalHistory.retention.spendingScriptHash,
+    },
+    withdrawalHistoryRetirementWithdraw: {
+      type: derived.withdrawalHistory.retirement.withdrawalScript.type,
+      cborHex: derived.withdrawalHistory.retirement.withdrawalScriptCBOR,
+      scriptHash: derived.withdrawalHistory.retirement.withdrawalScriptHash,
     },
     txOrderMint: {
       type: derived.txOrder.mintingScript.type,
@@ -1468,6 +1522,14 @@ export const verifyWatcherDeploymentIdentity = (input: {
     verified,
     Object.freeze({
       blueprintSha256: policy.blueprintHash,
+      historyRecipes: Object.freeze({
+        deposit: parseDeploymentManifestEventHistoryRecipe(
+          manifest.contracts.depositMint.eventHistoryRecipe,
+        ),
+        withdrawal: parseDeploymentManifestEventHistoryRecipe(
+          manifest.contracts.withdrawalMint.eventHistoryRecipe,
+        ),
+      }),
       contracts: signedUserEventContracts,
     }),
   );

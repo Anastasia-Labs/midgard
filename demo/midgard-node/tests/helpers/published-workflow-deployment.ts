@@ -48,7 +48,10 @@ import {
 } from "../../src/transactions/initialization.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "../../src/transactions/phas-membership-registration.js";
 import { nodeRuntimeReferenceScriptTargets } from "../../src/transactions/reference-scripts.js";
-import { ensureRuntimeRewardAccountsRegisteredProgram } from "../../src/transactions/script-reward-registration.js";
+import {
+  ensureEventHistoryRewardAccountsRegisteredProgram,
+  ensureRuntimeRewardAccountsRegisteredProgram,
+} from "../../src/transactions/script-reward-registration.js";
 import {
   inspectSignedTxValidityInterval,
   parseOutsideValidityIntervalDetails,
@@ -490,6 +493,12 @@ export const publishWorkflowDeploymentOnChain = async ({
     DA_COSIGNER_SEED_PHRASE: cosigner.seedPhrase,
     NETWORK: "Preprod" as const,
   };
+  await Effect.runPromise(
+    ensureEventHistoryRewardAccountsRegisteredProgram(
+      publisherLucid,
+      contracts,
+    ),
+  );
   let initCbor = resume?.initializationCbor;
   if (initCbor === undefined) {
     const initBuilder = await Effect.runPromise(
@@ -502,7 +511,7 @@ export const publishWorkflowDeploymentOnChain = async ({
         atomicProtocolInitReferenceScriptsFromPublications(publications),
       ),
     );
-    const init = await initBuilder.complete();
+    const init = await initBuilder.complete({ localUPLCEval: true });
     const initSigned = await init.sign.withWallet().complete();
     initCbor = initSigned.toCBOR();
   }

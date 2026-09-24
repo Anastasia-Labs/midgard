@@ -1,0 +1,97 @@
+{
+  "package": {
+    "file": "builders-midgard-uplc-0.2.23-constant-cost.tgz",
+    "bytes": 664270,
+    "sha256": "9c63778c1c8868925b262015425c4ce5fb5dcbe46979f0d7624f4f8e63e0b381",
+    "sha512": "11c3837b4485265eff2a741c08aee9b5f8e27aee54952b10a2e9eb6bb5bf7b202946095517354bea6d924470f09cb803597d8be4149f87e7b3c4293c2c49fb4b",
+    "integrity": "sha512-EcODe0SFJl7/KnQcCK7ptfjieu5UlSsQounra7W/eyApRglVFzVL6m2SRHDwnLgDWX2L5BSfh+ezxCk8LEn7Sw=="
+  },
+  "members": [
+    {
+      "path": "package/LICENSE",
+      "bytes": 1071,
+      "sha256": "42c6b79f8d093684b826b84622347de452079c9820526df3e25d6d8afe7f9b47"
+    },
+    {
+      "path": "package/LICENSE-UPLC-APACHE-2.0",
+      "bytes": 11456,
+      "sha256": "5dcae70ec2e7d4166d33f0546e8e6327e41e8dddf924de16db554085973e1a26"
+    },
+    {
+      "path": "package/NOTICE-MIDGARD-UPLC.txt",
+      "bytes": 1024,
+      "sha256": "f83bfb943ceac6ddf40eb5ac0a34d98abffdc3fc19691f8e011512bb3dd413f5"
+    },
+    {
+      "path": "package/README.md",
+      "bytes": 560,
+      "sha256": "8af379bf22b5f420c7c18ec7f662ee5092972ad0f3f485a318227e0e6c20bacf"
+    },
+    {
+      "path": "package/dist/browser/uplc_tx.d.ts",
+      "bytes": 461,
+      "sha256": "f9f4f395b5e76a69e749bcba708855b55356956ca00bc7e572d5ccb3a39493af"
+    },
+    {
+      "path": "package/dist/browser/uplc_tx.js",
+      "bytes": 173,
+      "sha256": "44231b517691b7f7f9863d2e930aa2cf4bd2616e61550951208cba60f93bcbab"
+    },
+    {
+      "path": "package/dist/browser/uplc_tx_bg.js",
+      "bytes": 5621,
+      "sha256": "b5ce9cd3c4d13fd76ee8798d0266de384380b159abe0734865121d81ce0cdf9e"
+    },
+    {
+      "path": "package/dist/browser/uplc_tx_bg.wasm",
+      "bytes": 952460,
+      "sha256": "8f53bc2bd1d1fe2a842535fdf4617f50291a318f89ab91d330ab0b480c4e0543"
+    },
+    {
+      "path": "package/dist/browser/uplc_tx_bg.wasm.d.ts",
+      "bytes": 873,
+      "sha256": "a80f63896e3bd77fc55b1d57edf849eae93eef64def26f7f5f65bb96cb6adb32"
+    },
+    {
+      "path": "package/dist/node/uplc_tx.d.ts",
+      "bytes": 461,
+      "sha256": "f9f4f395b5e76a69e749bcba708855b55356956ca00bc7e572d5ccb3a39493af"
+    },
+    {
+      "path": "package/dist/node/uplc_tx.js",
+      "bytes": 5993,
+      "sha256": "aab60c5107c2d99649466527d62361f8655b185cab110881f86fd40688acdd38"
+    },
+    {
+      "path": "package/dist/node/uplc_tx_bg.wasm",
+      "bytes": 952541,
+      "sha256": "c502161a99733836812a8e943b3a5eee38356f0d7a28adfd84e86a43bc262e4f"
+    },
+    {
+      "path": "package/dist/node/uplc_tx_bg.wasm.d.ts",
+      "bytes": 873,
+      "sha256": "a80f63896e3bd77fc55b1d57edf849eae93eef64def26f7f5f65bb96cb6adb32"
+    },
+    {
+      "path": "package/package.json",
+      "bytes": 675,
+      "sha256": "70c4a68dde7e672965abc9967ab03fdf53d1f13429b8393f773a9df9e5bd8289"
+    }
+  ],
+  "unchangedPublishedMembers": [
+    "LICENSE",
+    "README.md",
+    "dist/browser/uplc_tx.d.ts",
+    "dist/browser/uplc_tx.js",
+    "dist/browser/uplc_tx_bg.js",
+    "dist/browser/uplc_tx_bg.wasm.d.ts",
+    "dist/node/uplc_tx.d.ts",
+    "dist/node/uplc_tx.js",
+    "dist/node/uplc_tx_bg.wasm.d.ts",
+    "package.json"
+  ],
+  "modifiedPublishedMembers": [
+    "dist/browser/uplc_tx_bg.wasm",
+    "dist/node/uplc_tx_bg.wasm"
+  ]
+}

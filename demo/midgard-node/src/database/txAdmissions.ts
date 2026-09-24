@@ -12,11 +12,16 @@ import { Data, Duration, Effect, Metric } from "effect";
 import { emitPhase1AcceptCommitCheckpoint } from "../e2e/phase1-accept-crash-checkpoint.js";
 import { NodeConfig } from "../services/config.js";
 import { Database } from "../services/database.js";
+import { withHistoryWrite } from "../services/event-history-producer.js";
 import { WriteBehind } from "../services/write-behind.js";
 import { sha256 } from "../sha256.js";
 import { ProcessedTx } from "../utils.js";
 import * as CekProgramMaterialDB from "./cekProgramMaterial.js";
 import * as DepositsDB from "./deposits.js";
+import {
+  beginAcceptedLedgerReceipt,
+  finishAcceptedLedgerReceipt,
+} from "./eventHistoryLedgerReceipts.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as TxRejectionsDB from "./txRejections.js";
@@ -1401,13 +1406,14 @@ export const markAccepted = ({
     const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const acceptedPayloads = yield* sql<{
-          readonly tx_id: Buffer;
-          readonly tx_canonical_cbor: Buffer;
-          readonly cek_program_material_sidecar_cbor: Buffer;
-        }>`SELECT
+    yield* withHistoryWrite(
+      sql.withTransaction(
+        Effect.gen(function* () {
+          const acceptedPayloads = yield* sql<{
+            readonly tx_id: Buffer;
+            readonly tx_canonical_cbor: Buffer;
+            readonly cek_program_material_sidecar_cbor: Buffer;
+          }>`SELECT
             admission.${sql(Columns.TX_ID)},
             payload.${sql(Columns.TX_CANONICAL_CBOR)},
             payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
@@ -1419,78 +1425,81 @@ export const markAccepted = ({
             AND admission.${sql(Columns.TX_ID)} =
               ANY(${pg.array(acceptedTxIdArray)}::bytea[])
           ORDER BY admission.${sql(Columns.TX_ID)} ASC`;
-        if (acceptedPayloads.length !== processedTxs.length) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: payloadTableName,
-              message:
-                "Failed to load every accepted CEK sidecar under the active validation lease",
-              cause: `expected=${processedTxs.length},loaded=${acceptedPayloads.length}`,
-            }),
-          );
-        }
-        yield* Effect.forEach(
-          acceptedPayloads,
-          (payload) => {
-            const txIdHex = payload.tx_id.toString("hex");
-            const referenceProgramEnvelopes =
-              referenceProgramEnvelopesByTxId?.get(txIdHex);
-            if (
-              referenceProgramEnvelopesByTxId !== undefined &&
-              referenceProgramEnvelopes === undefined
-            ) {
-              return Effect.fail(
-                new DatabaseError({
-                  table: payloadTableName,
-                  message:
-                    "Accepted admission is missing its Phase B reference-program resolution",
-                  cause: txIdHex,
-                }),
-              );
-            }
-            return CekProgramMaterialDB.persistVerifiedAdmissionBundle({
-              txId: payload.tx_id,
-              txCanonicalCbor: payload.tx_canonical_cbor,
-              sidecarCbor: payload.cek_program_material_sidecar_cbor,
-              ...(referenceProgramEnvelopes === undefined
-                ? {}
-                : { referenceProgramEnvelopes }),
-            });
-          },
-          { discard: true },
-        );
-
-        const mempoolStartedAt = Date.now();
-        const { produced, spent } =
-          MempoolDB.compactLedgerEffects(processedTxs);
-        const compactArrays =
-          produced.length > 0 && spent.length > 0
-            ? {
-                producedTxIds: postgresByteaArray(
-                  produced.map((entry) => entry[MempoolLedgerDB.Columns.TX_ID]),
-                ),
-                producedOutrefs: postgresByteaArray(
-                  produced.map(
-                    (entry) => entry[MempoolLedgerDB.Columns.OUTREF],
-                  ),
-                ),
-                producedOutputs: postgresByteaArray(
-                  produced.map(
-                    (entry) => entry[MempoolLedgerDB.Columns.OUTPUT],
-                  ),
-                ),
-                producedAddresses: produced.map(
-                  (entry) => entry[MempoolLedgerDB.Columns.ADDRESS],
-                ),
-                producedTimestamps: postgresLedgerTimestampArray(produced),
-                spentOutrefs: postgresByteaArray(spent),
+          if (acceptedPayloads.length !== processedTxs.length) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: payloadTableName,
+                message:
+                  "Failed to load every accepted CEK sidecar under the active validation lease",
+                cause: `expected=${processedTxs.length},loaded=${acceptedPayloads.length}`,
+              }),
+            );
+          }
+          yield* Effect.forEach(
+            acceptedPayloads,
+            (payload) => {
+              const txIdHex = payload.tx_id.toString("hex");
+              const referenceProgramEnvelopes =
+                referenceProgramEnvelopesByTxId?.get(txIdHex);
+              if (
+                referenceProgramEnvelopesByTxId !== undefined &&
+                referenceProgramEnvelopes === undefined
+              ) {
+                return Effect.fail(
+                  new DatabaseError({
+                    table: payloadTableName,
+                    message:
+                      "Accepted admission is missing its Phase B reference-program resolution",
+                    cause: txIdHex,
+                  }),
+                );
               }
-            : null;
-        let fallbackMempoolCount = 0;
-        if (compactArrays === null) {
-          const insertedMemberships = yield* sql<
-            Pick<RawEntry, Columns.TX_ID>
-          >`INSERT INTO ${sql(MempoolDB.tableName)} (tx_id, tx)
+              return CekProgramMaterialDB.persistVerifiedAdmissionBundle({
+                txId: payload.tx_id,
+                txCanonicalCbor: payload.tx_canonical_cbor,
+                sidecarCbor: payload.cek_program_material_sidecar_cbor,
+                ...(referenceProgramEnvelopes === undefined
+                  ? {}
+                  : { referenceProgramEnvelopes }),
+              });
+            },
+            { discard: true },
+          );
+
+          const ledgerReceipt = yield* beginAcceptedLedgerReceipt(processedTxs);
+          const mempoolStartedAt = Date.now();
+          const { produced, spent } =
+            MempoolDB.compactLedgerEffects(processedTxs);
+          const compactArrays =
+            produced.length > 0 && spent.length > 0
+              ? {
+                  producedTxIds: postgresByteaArray(
+                    produced.map(
+                      (entry) => entry[MempoolLedgerDB.Columns.TX_ID],
+                    ),
+                  ),
+                  producedOutrefs: postgresByteaArray(
+                    produced.map(
+                      (entry) => entry[MempoolLedgerDB.Columns.OUTREF],
+                    ),
+                  ),
+                  producedOutputs: postgresByteaArray(
+                    produced.map(
+                      (entry) => entry[MempoolLedgerDB.Columns.OUTPUT],
+                    ),
+                  ),
+                  producedAddresses: produced.map(
+                    (entry) => entry[MempoolLedgerDB.Columns.ADDRESS],
+                  ),
+                  producedTimestamps: postgresLedgerTimestampArray(produced),
+                  spentOutrefs: postgresByteaArray(spent),
+                }
+              : null;
+          let fallbackMempoolCount = 0;
+          if (compactArrays === null) {
+            const insertedMemberships = yield* sql<
+              Pick<RawEntry, Columns.TX_ID>
+            >`INSERT INTO ${sql(MempoolDB.tableName)} (tx_id, tx)
             SELECT
               admission.${sql(Columns.TX_ID)},
               payload.${sql(Columns.TX_CANONICAL_CBOR)}
@@ -1503,26 +1512,26 @@ export const markAccepted = ({
                 ANY(${pg.array(acceptedTxIdArray)}::bytea[])
             ON CONFLICT (tx_id) DO NOTHING
             RETURNING ${sql(Columns.TX_ID)}`;
-          fallbackMempoolCount = insertedMemberships.length;
-          if (fallbackMempoolCount !== processedTxs.length) {
-            return yield* Effect.fail(
-              new DatabaseError({
-                table: MempoolDB.tableName,
-                message:
-                  "Failed to persist accepted mempool memberships exactly once with durable admission payloads",
-                cause: `expected=${processedTxs.length},inserted=${fallbackMempoolCount}`,
-              }),
-            );
+            fallbackMempoolCount = insertedMemberships.length;
+            if (fallbackMempoolCount !== processedTxs.length) {
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: MempoolDB.tableName,
+                  message:
+                    "Failed to persist accepted mempool memberships exactly once with durable admission payloads",
+                  cause: `expected=${processedTxs.length},inserted=${fallbackMempoolCount}`,
+                }),
+              );
+            }
+            yield* MempoolDB.applyLedgerEffectsCore(processedTxs);
           }
-          yield* MempoolDB.applyLedgerEffectsCore(processedTxs);
-        }
-        yield* txAdmissionAcceptedMempoolDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - mempoolStartedAt)),
-        );
-        const terminalStartedAt = Date.now();
-        const counts =
-          compactArrays !== null
-            ? yield* sql<AcceptedPersistenceCounts>`
+          yield* txAdmissionAcceptedMempoolDurationTimer(
+            Effect.succeed(Duration.millis(Date.now() - mempoolStartedAt)),
+          );
+          const terminalStartedAt = Date.now();
+          const counts =
+            compactArrays !== null
+              ? yield* sql<AcceptedPersistenceCounts>`
                 WITH accepted_admissions AS (
                   UPDATE ${sql(tableName)} AS admission
                   SET
@@ -1627,7 +1636,7 @@ export const markAccepted = ({
                   (SELECT COUNT(*)::bigint FROM deposit_update)
                     AS updated_deposit_count
               `
-            : yield* sql<AcceptedPersistenceCounts>`
+              : yield* sql<AcceptedPersistenceCounts>`
                 WITH accepted_admissions AS (
                   UPDATE ${sql(tableName)} AS admission
                   SET
@@ -1669,58 +1678,62 @@ export const markAccepted = ({
                   0::bigint AS consumed_deposit_count,
                   0::bigint AS updated_deposit_count
               `;
-        const result = counts[0];
-        const expected = {
-          accepted_count: processedTxs.length,
-          ...(compactArrays === null ? {} : { spent_count: spent.length }),
-        } as const;
-        const mismatch = Object.entries(expected).find(
-          ([key, value]) =>
-            Number(result?.[key as keyof AcceptedPersistenceCounts] ?? -1) !==
-            value,
-        );
-        const consumedDepositCount = Number(
-          result?.consumed_deposit_count ?? -1,
-        );
-        const updatedDepositCount = Number(result?.updated_deposit_count ?? -1);
-        if (
-          mismatch !== undefined ||
-          consumedDepositCount !== updatedDepositCount
-        ) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: tableName,
-              message:
-                "Failed to mark accepted admissions exactly once under the active validation lease",
-              cause: `expected=${JSON.stringify(expected)},actual=${JSON.stringify(result)},claimed=${rows.length}`,
-            }),
+          const result = counts[0];
+          const expected = {
+            accepted_count: processedTxs.length,
+            ...(compactArrays === null ? {} : { spent_count: spent.length }),
+          } as const;
+          const mismatch = Object.entries(expected).find(
+            ([key, value]) =>
+              Number(result?.[key as keyof AcceptedPersistenceCounts] ?? -1) !==
+              value,
           );
-        }
-        // Accepted rows retain the original sidecar digest for exact duplicate
-        // identity but no longer retain attacker-sized sidecar bytes. Global
-        // material promotion above and this tombstone update share the terminal
-        // acceptance transaction.
-        const scrubbedPayloads = yield* sql<{ readonly tx_id: Buffer }>`UPDATE
+          const consumedDepositCount = Number(
+            result?.consumed_deposit_count ?? -1,
+          );
+          const updatedDepositCount = Number(
+            result?.updated_deposit_count ?? -1,
+          );
+          if (
+            mismatch !== undefined ||
+            consumedDepositCount !== updatedDepositCount
+          ) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: tableName,
+                message:
+                  "Failed to mark accepted admissions exactly once under the active validation lease",
+                cause: `expected=${JSON.stringify(expected)},actual=${JSON.stringify(result)},claimed=${rows.length}`,
+              }),
+            );
+          }
+          yield* finishAcceptedLedgerReceipt(ledgerReceipt);
+          // Accepted rows retain the original sidecar digest for exact duplicate
+          // identity but no longer retain attacker-sized sidecar bytes. Global
+          // material promotion above and this tombstone update share the terminal
+          // acceptance transaction.
+          const scrubbedPayloads = yield* sql<{ readonly tx_id: Buffer }>`UPDATE
             ${sql(payloadTableName)}
           SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
             ${terminalSidecar}
           WHERE ${sql(Columns.TX_ID)} =
             ANY(${pg.array(acceptedTxIdArray)}::bytea[])
           RETURNING ${sql(Columns.TX_ID)}`;
-        if (scrubbedPayloads.length !== acceptedTxIds.length) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: payloadTableName,
-              message:
-                "Failed to scrub every accepted CEK sidecar in the terminal transaction",
-              cause: `expected=${acceptedTxIds.length},scrubbed=${scrubbedPayloads.length}`,
-            }),
+          if (scrubbedPayloads.length !== acceptedTxIds.length) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: payloadTableName,
+                message:
+                  "Failed to scrub every accepted CEK sidecar in the terminal transaction",
+                cause: `expected=${acceptedTxIds.length},scrubbed=${scrubbedPayloads.length}`,
+              }),
+            );
+          }
+          yield* txAdmissionAcceptedTerminalDurationTimer(
+            Effect.succeed(Duration.millis(Date.now() - terminalStartedAt)),
           );
-        }
-        yield* txAdmissionAcceptedTerminalDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - terminalStartedAt)),
-        );
-      }),
+        }),
+      ),
     );
     yield* emitPhase1AcceptCommitCheckpoint(acceptedTxIds);
     yield* MempoolDB.enqueueAcceptedWriteBehind(processedTxs);
@@ -1756,13 +1769,14 @@ export const markRejected = ({
       (rejectedTx) =>
         sql`(${rejectedTx.txId}, ${rejectedTx.code}, ${rejectedTx.detail})`,
     );
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const persistedRejections = yield* sql<
-          Pick<TxRejectionsDB.Entry, TxRejectionsDB.Columns.TX_ID>
-        >`INSERT INTO ${sql(TxRejectionsDB.tableName)} ${sql.insert(
-          rejectionRows,
-        )}
+    yield* withHistoryWrite(
+      sql.withTransaction(
+        Effect.gen(function* () {
+          const persistedRejections = yield* sql<
+            Pick<TxRejectionsDB.Entry, TxRejectionsDB.Columns.TX_ID>
+          >`INSERT INTO ${sql(TxRejectionsDB.tableName)} ${sql.insert(
+            rejectionRows,
+          )}
           ON CONFLICT (${sql(TxRejectionsDB.Columns.TX_ID)}) DO UPDATE SET
             ${sql(TxRejectionsDB.Columns.TX_ID)} = ${sql(
               TxRejectionsDB.tableName,
@@ -1777,17 +1791,17 @@ export const markRejected = ({
               TxRejectionsDB.Columns.REJECT_DETAIL,
             )}
           RETURNING ${sql(TxRejectionsDB.Columns.TX_ID)}`;
-        if (persistedRejections.length !== rejectedTxs.length) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: TxRejectionsDB.tableName,
-              message:
-                "Failed to persist rejected transactions exactly once with matching rejection metadata",
-              cause: `expected=${rejectedTxs.length},persisted=${persistedRejections.length}`,
-            }),
-          );
-        }
-        const updated = yield* sql<Pick<RawEntry, Columns.TX_ID>>`
+          if (persistedRejections.length !== rejectedTxs.length) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: TxRejectionsDB.tableName,
+                message:
+                  "Failed to persist rejected transactions exactly once with matching rejection metadata",
+                cause: `expected=${rejectedTxs.length},persisted=${persistedRejections.length}`,
+              }),
+            );
+          }
+          const updated = yield* sql<Pick<RawEntry, Columns.TX_ID>>`
           UPDATE ${sql(tableName)} AS admissions
           SET
             ${sql(Columns.STATUS)} = 'rejected',
@@ -1821,26 +1835,27 @@ export const markRejected = ({
             AND admissions.${sql(Columns.STATUS)} = 'validating'
             AND admissions.${sql(Columns.LEASE_OWNER)} = ${leaseOwner}
           RETURNING admissions.${sql(Columns.TX_ID)}`;
-        if (updated.length !== txIds.length) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: tableName,
-              message:
-                "Failed to mark rejected admissions exactly once under the active validation lease",
-              cause: `expected=${txIds.length},updated=${updated.length},claimed=${rows.length}`,
-            }),
-          );
-        }
-        // Terminal rejections retain the original sidecar digest for exact
-        // duplicate matching but do not retain attacker-sized sidecar bytes.
-        // Rejected rows are never claimable, so the canonical empty sidecar is
-        // a tombstone rather than validation input.
-        const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
-        yield* sql`UPDATE ${sql(payloadTableName)}
+          if (updated.length !== txIds.length) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: tableName,
+                message:
+                  "Failed to mark rejected admissions exactly once under the active validation lease",
+                cause: `expected=${txIds.length},updated=${updated.length},claimed=${rows.length}`,
+              }),
+            );
+          }
+          // Terminal rejections retain the original sidecar digest for exact
+          // duplicate matching but do not retain attacker-sized sidecar bytes.
+          // Rejected rows are never claimable, so the canonical empty sidecar is
+          // a tombstone rather than validation input.
+          const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
+          yield* sql`UPDATE ${sql(payloadTableName)}
           SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
             ${terminalSidecar}
           WHERE ${sql.in(Columns.TX_ID, txIds)}`;
-      }),
+        }),
+      ),
     );
     yield* txAdmissionMarkRejectedDurationTimer(
       Effect.succeed(Duration.millis(Date.now() - startedAt)),

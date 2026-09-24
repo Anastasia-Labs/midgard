@@ -108,12 +108,8 @@ validator main(
 // Step-02 opens field 4 of the disputed transaction through the one door and
 // selects the required signer whose signature step-04 proves absent.
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn challenged_required_signers() -> List<ByteArray> {
-  challenged_block().tx.body.required_signers
+  fixture.challenged_block_v1().tx.body.required_signers
 }
 
 fn first_required_signer() -> ByteArray {
@@ -168,7 +164,7 @@ fn run_step_02(
 /// selected required signer reaches step-03 with the transaction id.
 test missing_signature_step_02_forwards_the_required_signer() {
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     challenged_required_signers(),
     0,
     first_required_signer(),
@@ -180,13 +176,13 @@ test missing_signature_step_02_forwards_the_required_signer() {
 /// be carried onward.
 test missing_signature_step_02_rejects_a_substituted_signer_list() fail {
   let injected = #"30303030303030303030303030303030303030303030303030303030"
-  run_step_02(challenged_block(), [injected], 0, injected)
+  run_step_02(fixture.challenged_block_v1(), [injected], 0, injected)
 }
 
 /// §7.3 abort-never-clamp at the family's own call site.
 test missing_signature_step_02_rejects_an_out_of_range_signer_index() fail {
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     challenged_required_signers(),
     4,
     first_required_signer(),

@@ -1097,9 +1097,6 @@ describe("transition-trace challenger tooling", () => {
     const outOfWindowEvidence: OutOfWindowSourceEventEvidence = {
       kind: "withdrawal",
       withdrawalId,
-      eventRefInputIndex: 1n,
-      eventAssetName: "bb",
-      validityOverride: "IncorrectWithdrawalSignature",
     };
     const outOfWindow = await buildOutOfWindowSourceEventFault({
       reconstruction,
@@ -2155,14 +2152,10 @@ describe("transition-trace challenger tooling", () => {
           {
             kind: "deposit",
             depositId: outRef(8),
-            eventRefInputIndex: 0n,
-            eventAssetName: "dd",
           },
           {
             kind: "withdrawal",
             withdrawalId: outRef(9),
-            eventRefInputIndex: 1n,
-            eventAssetName: "ee",
           },
           {
             kind: "forcedTransaction",
@@ -2270,15 +2263,10 @@ describe("transition-trace challenger tooling", () => {
           {
             kind: "deposit",
             depositId,
-            eventRefInputIndex: 0n,
-            eventAssetName: "aa",
           },
           {
             kind: "withdrawal",
             withdrawalId,
-            eventRefInputIndex: 1n,
-            eventAssetName: "bb",
-            validityOverride: "IncorrectWithdrawalSignature",
           },
           {
             kind: "forcedTransaction",
@@ -2704,8 +2692,6 @@ describe("transition trace single ledger mutation replay", () => {
             depositTransitions: [
               {
                 stepIndex: 0n,
-                eventRefInputIndex: 0n,
-                eventAssetName: h32(82),
                 projectedUtxo: mutation as SDK.LedgerInsertWitness,
               },
             ],

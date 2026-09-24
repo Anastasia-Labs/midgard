@@ -44,7 +44,10 @@ export const publishTransitionTraceYields = async (
     );
     if (!(await lucid.rewardAccountAt(reward)).registered) {
       const signed = await (
-        await lucid.newTx().register.Stake(reward).complete()
+        await lucid
+          .newTx()
+          .register.Stake(reward)
+          .complete({ localUPLCEval: true })
       ).sign
         .withWallet()
         .complete();

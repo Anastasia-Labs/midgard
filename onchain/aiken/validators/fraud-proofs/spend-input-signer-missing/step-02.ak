@@ -163,10 +163,6 @@ const credential_b = #"31313131313131313131313131313131313131313131313131313131"
 /// is the successor the fixture hand-off transaction pays to.
 const scan_successor = fixture.catalogue_script_hash
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn bound_input(block: fixture.NativeBlockFixtureV1) -> MidgardTxInput {
   expect [input] = block.tx.body.inputs
   input
@@ -375,7 +371,7 @@ fn run_direct_exit(
 /// A pub-key spend input under an accepted subject forwards its credential
 /// to the witness scan.
 test spend_input_step_02_forwards_a_pub_key_credential() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, PubKeyCredential(credential_a))
   let state = bound_state(block, accepted_subject(block), 0, root)
   run_scan_handoff(
@@ -392,7 +388,7 @@ test spend_input_step_02_forwards_a_pub_key_credential() {
 
 /// A pub-key spend input under a forced subject takes the same scan door.
 test spend_input_step_02_forwards_a_forced_pub_key_credential() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, PubKeyCredential(credential_a))
   let state = bound_state(block, forced_subject(block, 0), 0, root)
   run_scan_handoff(
@@ -410,7 +406,7 @@ test spend_input_step_02_forwards_a_forced_pub_key_credential() {
 /// A script-locked spend input needs no signer, so the forced rejection is
 /// contradicted straight at the terminal.
 test spend_input_step_02_closes_a_forced_script_locked_coordinate_directly() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, ScriptCredential(credential_a))
   let subject = forced_subject(block, 0)
   let state = bound_state(block, subject, 0, root)
@@ -424,7 +420,7 @@ test spend_input_step_02_closes_a_forced_script_locked_coordinate_directly() {
 /// A forced coordinate past the authenticated field-0 count is never
 /// evaluated by canonical validation; it closes without any membership.
 test spend_input_step_02_closes_a_forced_out_of_range_coordinate_directly() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (_, root) = prior_material(block, PubKeyCredential(credential_a))
   let subject = forced_subject(block, 1)
   let state = bound_state(block, subject, 1, root)
@@ -443,7 +439,7 @@ test spend_input_step_02_closes_a_forced_out_of_range_coordinate_directly() {
 
 /// Honest refusal: an accepted subject has no fault at a script-locked input.
 test spend_input_step_02_refuses_an_accepted_script_locked_coordinate() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, ScriptCredential(credential_a))
   let subject = accepted_subject(block)
   let state = bound_state(block, subject, 0, root)
@@ -456,7 +452,7 @@ test spend_input_step_02_refuses_an_accepted_script_locked_coordinate() fail {
 
 /// Honest refusal: an accepted subject has no fault past the field's count.
 test spend_input_step_02_refuses_an_accepted_out_of_range_coordinate() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (_, root) = prior_material(block, PubKeyCredential(credential_a))
   let subject = accepted_subject(block)
   let state = bound_state(block, subject, 1, root)
@@ -476,7 +472,7 @@ test spend_input_step_02_refuses_an_accepted_out_of_range_coordinate() fail {
 /// The direct verdict is exact: a thread claiming the signer was required
 /// and missing at a script-locked input is refused.
 test spend_input_step_02_refuses_a_direct_verdict_claiming_a_required_signer() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, ScriptCredential(credential_a))
   let subject = forced_subject(block, 0)
   let state = bound_state(block, subject, 0, root)
@@ -494,7 +490,7 @@ test spend_input_step_02_refuses_a_direct_verdict_claiming_a_required_signer() f
 
 /// Credential seam: a pub-key coordinate cannot skip the witness scan.
 test spend_input_step_02_refuses_a_direct_verdict_for_a_pub_key_coordinate() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, PubKeyCredential(credential_a))
   let subject = forced_subject(block, 0)
   let state = bound_state(block, subject, 0, root)
@@ -507,7 +503,7 @@ test spend_input_step_02_refuses_a_direct_verdict_for_a_pub_key_coordinate() fai
 
 /// Subject coordinate: the direct verdict must carry the bound subject.
 test spend_input_step_02_refuses_a_substituted_direct_verdict_subject() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, ScriptCredential(credential_a))
   let subject = forced_subject(block, 0)
   let state = bound_state(block, subject, 0, root)
@@ -526,7 +522,7 @@ test spend_input_step_02_refuses_a_substituted_direct_verdict_subject() fail {
 /// Descriptor seam: the forwarded credential is the resolved one, not a
 /// credential the datum names.
 test spend_input_step_02_refuses_a_substituted_descriptor_credential() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, PubKeyCredential(credential_a))
   let state = bound_state(block, accepted_subject(block), 0, root)
   run_scan_handoff(
@@ -544,7 +540,7 @@ test spend_input_step_02_refuses_a_substituted_descriptor_credential() fail {
 /// Prior-root seam: a descriptor under a root the thread did not bind is
 /// refused by the delegated membership.
 test spend_input_step_02_refuses_a_substituted_prior_root() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, ScriptCredential(credential_a))
   let (_, other_root) = prior_material(block, PubKeyCredential(credential_b))
   let subject = forced_subject(block, 0)
@@ -558,7 +554,7 @@ test spend_input_step_02_refuses_a_substituted_prior_root() fail {
 
 /// The direct verdict may only continue at step 05.
 test spend_input_step_02_refuses_the_direct_exit_at_the_scan_successor() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, ScriptCredential(credential_a))
   let subject = forced_subject(block, 0)
   let state = bound_state(block, subject, 0, root)
@@ -571,7 +567,7 @@ test spend_input_step_02_refuses_the_direct_exit_at_the_scan_successor() fail {
 
 /// The credential hand-off may only continue at step 03.
 test spend_input_step_02_refuses_the_scan_hand_off_at_the_terminal_successor() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, PubKeyCredential(credential_a))
   let state = bound_state(block, forced_subject(block, 0), 0, root)
   run_direct_exit(

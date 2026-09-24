@@ -1,3 +1,7 @@
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 /**
  * `fabricated-deposit` step-01 submitter (Goal task `Q39`, §9.1 output 8).
  *
@@ -21,10 +25,10 @@
 import {
   commitCountedRootProgram,
   DepositInfo,
+  depositInfoCommitmentCbor,
   FabricatedDepositStep01SpendRedeemer,
   FabricatedDepositStep02Datum,
   type FabricatedDepositStep02State,
-  fabricatedDepositStep02State,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   type Header,
@@ -198,6 +202,14 @@ export const deriveFabricatedDepositStep01Handoff = async ({
   }
   const key = Data.from(inclusion.committedDepositIdCbor, OutputReference);
   const value = Data.from(inclusion.committedDepositInfoCbor, DepositInfo);
+  if (
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      inclusion.committedDepositInfoCbor,
+    ) !== inclusion.committedDepositInfoCbor
+  )
+    throw new Error(
+      "--deposit-inclusion.committedDepositInfoCbor is not in serialiseData form",
+    );
   const committedDeposit: RootMembershipProof<OutputReference, DepositInfo> = {
     domain: ROOT_DOMAINS.deposits,
     root: header.depositsRoot,
@@ -207,15 +219,16 @@ export const deriveFabricatedDepositStep01Handoff = async ({
     value,
     proof: inclusion.depositMembershipProof,
   };
-  const step02State = await Effect.runPromise(
-    fabricatedDepositStep02State({
-      stateQueuePolicy: stateQueuePolicyId,
-      challengedHeaderHash: headerHash,
-      headerStartTime: header.startTime,
-      headerEndTime: header.endTime,
-      committedDeposit,
-    }),
-  );
+  const step02State: FabricatedDepositStep02State = {
+    state_queue_policy: stateQueuePolicyId,
+    challenged_header_hash: headerHash,
+    header_start_time: header.startTime,
+    header_end_time: header.endTime,
+    committed_deposit_id: key,
+    committed_deposit_info_hash: await Effect.runPromise(
+      depositInfoCommitmentCbor(inclusion.committedDepositInfoCbor),
+    ),
+  };
   return { committedDeposit, step02State };
 };
 
@@ -390,20 +403,24 @@ export const submitFabricatedDepositStep01 = async ({
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      {
-        Continue: [
-          {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-            committed_deposit: committedDeposit,
-          },
-        ],
-      },
-      FabricatedDepositStep01SpendRedeemer,
+    return replacePlutusConstrFieldCbor(
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              hub_ref_input_index: layout.hubOracleRefInputIndex,
+              state_queue_node_ref_input_index:
+                layout.stateQueueNodeRefInputIndex,
+              committed_deposit: committedDeposit,
+            },
+          ],
+        },
+        FabricatedDepositStep01SpendRedeemer,
+      ),
+      [0, 4, 5],
+      depositInclusion.committedDepositInfoCbor,
     );
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {

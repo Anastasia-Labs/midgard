@@ -146,14 +146,8 @@ validator main(
 // in `validators/pexcludes.ak` execute the very same claim bytes through the
 // merkelized `exclusion` validator.
 
-/// The block whose header authenticated the challenged transaction at step-01;
-/// its authenticated raw transactions root is what step-03 threads forward.
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn transactions_root() -> ByteArray {
-  challenged_block().transactions_phas_root
+  fixture.challenged_block_v1().transactions_phas_root
 }
 
 const missing_input_tx_id = fixture.absent_native_tx_id
@@ -164,7 +158,7 @@ fn run_finalize_with(
   extra_redeemers: Pairs<ScriptPurpose, Redeemer>,
   reference_inputs: List<Input>,
 ) -> Bool {
-  let asset_name = fixture.ct_token_asset_name(challenged_block())
+  let asset_name = fixture.ct_token_asset_name(fixture.challenged_block_v1())
   let base = fixture.finalize_step_l1_tx_v1(asset_name)
   let l1_tx = Transaction {
     ..base,
@@ -277,7 +271,7 @@ fn run_finalize_published(
 /// carried witness is the block's real committed leaf, so the claim is one
 /// the merkelized `exclusion` validator itself accepts.
 test no_input_step_04_excludes_the_producing_transaction() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   and {
     // The absent id's path really diverges from the committed leaf's at the
     // first nibble, which is what the single-leaf witness attests.
@@ -303,7 +297,7 @@ test no_input_step_04_rejects_valid_block_challenge() fail {
   run_finalize(
     unrelated_root,
     missing_input_tx_id,
-    fixture.transactions_phas_absence_witness(challenged_block()),
+    fixture.transactions_phas_absence_witness(fixture.challenged_block_v1()),
   )
 }
 

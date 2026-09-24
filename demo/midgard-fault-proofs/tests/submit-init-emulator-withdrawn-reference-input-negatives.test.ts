@@ -8,9 +8,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { resolveProverSigner } from "../src/runtime.js";
+import { WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL } from "../src/withdrawn-reference-input/contracts.js";
 import {
-  submitWithdrawnReferenceInputCancel,
   submitWithdrawnReferenceInputInit,
   submitWithdrawnReferenceInputStep01,
   submitWithdrawnReferenceInputStep02,
@@ -92,9 +93,11 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       if (cancelAt >= 2) {
         threadOutRef = (await step02(threadOutRef)).nextThreadOutRef;
       }
-      const cancelled = await submitWithdrawnReferenceInputCancel({
+      const cancelled = await submitLinearFaultCancel({
         lucid: harness.proverLucid,
-        contracts: harness.family,
+        family: WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
+        steps: harness.family.steps,
+        computationThread: harness.family.computationThread,
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
         threadOutRef,
@@ -206,16 +209,18 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       }),
     ).rejects.toThrow(/not the signing wallet/);
     await expect(
-      submitWithdrawnReferenceInputCancel({
+      submitLinearFaultCancel({
         lucid: outsiderLucid,
-        contracts: harness.family,
+        family: WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
+        steps: harness.family.steps,
+        computationThread: harness.family.computationThread,
         categoryId: harness.category.categoryId,
         signer: outsider,
         threadOutRef: bound.nextThreadOutRef,
         referenceScriptUtxo: refs[1],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
-    ).rejects.toThrow(/only the prover can cancel/);
+    ).rejects.toThrow(/withdrawn-reference-input: signer does not own thread/u);
 
     const takeoverDatum = Data.to(
       {

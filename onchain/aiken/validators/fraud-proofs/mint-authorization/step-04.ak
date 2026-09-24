@@ -225,10 +225,6 @@ validator main(
 const accused_policy_id: ByteArray =
   #"42424242424242424242424242424242424242424242424242424242"
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 /// The fixture transaction's single reference input.
 fn fixture_outpoint_key(block: fixture.NativeBlockFixtureV1) -> ByteArray {
   expect Some(outpoint) = list.at(block.tx.body.reference_inputs, 0)
@@ -254,7 +250,7 @@ fn run_resolve(
   ref_cursor: Int,
   carried_items: List<ByteArray>,
 ) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let state = State {
     policy_id,
     bad_tx_id: block.tx_id,
@@ -296,7 +292,7 @@ fn run_resolve(
 }
 
 fn run_resolve_language(policy_id: ByteArray, language: Int) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let descriptor_cbor = descriptor_cbor_of(language)
   run_resolve(
     policy_id,
@@ -329,7 +325,7 @@ test mint_authorization_step_04_rejects_a_resolved_policy_source() fail {
 /// The cursor is bounded by the authenticated field-1 item count: an
 /// ordinal past the committed collection fails the read.
 test mint_authorization_step_04_rejects_an_out_of_range_cursor() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let descriptor_cbor = descriptor_cbor_of(-1)
   run_resolve(
     accused_policy_id,
@@ -343,7 +339,7 @@ test mint_authorization_step_04_rejects_an_out_of_range_cursor() fail {
 /// The descriptor must be the pre-state trie's answer for the outpoint: a
 /// membership claim against a root that maps the key elsewhere fails.
 test mint_authorization_step_04_rejects_a_non_member_descriptor() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_resolve(
     accused_policy_id,
     descriptor_cbor_of(-1),
@@ -359,7 +355,7 @@ test mint_authorization_step_04_rejects_a_non_member_descriptor() fail {
 /// The scanned collection is only as good as the walked preimage: a
 /// truncated field-1 carriage fails the door's authenticate-once check.
 test mint_authorization_step_04_rejects_a_truncated_field_1_preimage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let descriptor_cbor = descriptor_cbor_of(-1)
   run_resolve(
     accused_policy_id,
@@ -373,7 +369,7 @@ test mint_authorization_step_04_rejects_a_truncated_field_1_preimage() fail {
 // ### Completion
 
 fn run_complete(ref_cursor: Int, carried_items: List<ByteArray>) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let state = State {
     policy_id: accused_policy_id,
     bad_tx_id: block.tx_id,
@@ -413,14 +409,14 @@ fn run_complete(ref_cursor: Int, carried_items: List<ByteArray>) -> Bool {
 /// Once the cursor has covered the authenticated item count the scan closes
 /// to the terminal step with the direction-A verdict.
 test mint_authorization_step_04_completes_at_the_item_count() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_complete(1, field_1_items(block))
 }
 
 /// The scan cannot close early: a cursor short of the item count leaves
 /// unresolved reference inputs the policy could hide in.
 test mint_authorization_step_04_rejects_an_early_completion() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_complete(0, field_1_items(block))
 }
 
@@ -433,7 +429,7 @@ test mint_authorization_step_04_rejects_completion_over_a_truncated_preimage() f
 // ## Cancellation
 
 fn run_cancel(signed_by_prover: Bool) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let asset_name = fixture.ct_token_asset_name(block)
   main.spend(
     fixture.next_step_script_hash,

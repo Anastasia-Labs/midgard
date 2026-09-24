@@ -132,7 +132,10 @@ const inspectActivationTransaction = (
       return refuse("hub output has no inline datum");
     const datum = Data.from(hubDatumCbor, HubOracleDatum);
     if (
-      Data.to(datum, HubOracleDatum) !== hubDatumCbor ||
+      CML.PlutusData.from_cbor_hex(
+        Data.to(datum, HubOracleDatum),
+      ).to_canonical_cbor_hex() !==
+        CML.PlutusData.from_cbor_hex(hubDatumCbor).to_canonical_cbor_hex() ||
       datum.deposit !== scripts.deposit.policyId ||
       datum.withdrawal !== scripts.withdrawal.policyId ||
       datum.tx_order !== scripts.forcedOrder.policyId ||

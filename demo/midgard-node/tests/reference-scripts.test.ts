@@ -25,6 +25,7 @@ import {
   resolveSpendableWalletUtxos,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "../src/transactions/reference-scripts.js";
+import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const REFERENCE_SCRIPT_ADDRESS = "addr_test1reference";
@@ -94,7 +95,10 @@ describe("node-runtime reference-script registry", () => {
   it("contains the static scripts currently used by node runtime flows", async () => {
     const contracts = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
+        return withRealEventHistoryForTest(yield* AlwaysSucceedsContract, {
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+        });
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
@@ -161,7 +165,10 @@ describe("node-runtime reference-script registry", () => {
   it("derives protocol-init as a strict subset of node-runtime", async () => {
     const contracts = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
+        return withRealEventHistoryForTest(yield* AlwaysSucceedsContract, {
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+        });
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
     const byCommand = referenceScriptTargetsByCommand(contracts);
@@ -177,7 +184,10 @@ describe("node-runtime reference-script registry", () => {
   it("exposes reserve and payout script sets as explicit deployment commands", async () => {
     const contracts = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
+        return withRealEventHistoryForTest(yield* AlwaysSucceedsContract, {
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+        });
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
     const byCommand = referenceScriptTargetsByCommand(contracts);
@@ -187,10 +197,14 @@ describe("node-runtime reference-script registry", () => {
     expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("withdrawal");
     expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("phas-membership");
     expect(byCommand.deposit.map(({ name }) => name)).toEqual([
+      "deposit history retention",
+      "deposit history retirement",
       "deposit minting",
       "deposit spending",
     ]);
     expect(byCommand.withdrawal.map(({ name }) => name)).toEqual([
+      "withdrawal history retention",
+      "withdrawal history retirement",
       "withdrawal minting",
       "withdrawal spending",
     ]);
@@ -210,7 +224,10 @@ describe("node-runtime reference-script registry", () => {
   it("accepts a complete published node-runtime reference-script set", async () => {
     const contracts = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
+        return withRealEventHistoryForTest(yield* AlwaysSucceedsContract, {
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+        });
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
@@ -251,7 +268,10 @@ describe("node-runtime reference-script registry", () => {
   it("fails startup verification with a complete missing-reference diagnostic", async () => {
     const contracts = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
+        return withRealEventHistoryForTest(yield* AlwaysSucceedsContract, {
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+        });
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
     const emptyLucid = {
@@ -282,7 +302,10 @@ describe("node-runtime reference-script registry", () => {
   it("rejects a complete script-ref set without auth role tokens", async () => {
     const contracts = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
+        return withRealEventHistoryForTest(yield* AlwaysSucceedsContract, {
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+        });
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
     const targets = nodeRuntimeReferenceScriptTargets(contracts);

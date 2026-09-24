@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   prepareMissingNativeScriptTx,
-  submitMissingNativeScriptTxCancel,
-  submitMissingNativeScriptTxInit,
   submitMissingNativeScriptTxStep01,
   submitMissingNativeScriptTxStep02,
   submitMissingNativeScriptTxStep03,
@@ -12,6 +10,9 @@ import {
   submitMissingNativeScriptTxStep05,
   submitMissingNativeScriptTxStep06,
 } from "../src/index.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL } from "../src/missing-native-script-tx/contracts.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   fundMissingNativeScriptTxOutsider,
   makeMissingNativeScriptTxEmulatorHarness,
@@ -73,7 +74,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
     ).toThrow(/known native script preimage hashes/u);
 
     const init = async () =>
-      await submitMissingNativeScriptTxInit({
+      await submitResolvedInit({
+        label: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -208,16 +210,18 @@ describe("missing-native-script-tx adversarial emulator", () => {
 
     // A third wallet cannot cancel the prover's still-live step-06 thread.
     await expect(
-      submitMissingNativeScriptTxCancel({
+      submitLinearFaultCancel({
         lucid: harness.outsiderLucid,
-        contracts: harness.family,
+        family: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
+        steps: harness.family.steps,
+        computationThread: harness.family.computationThread,
         categoryId: harness.category.categoryId,
         signer: harness.outsiderSigner,
         threadOutRef: classified.nextThreadOutRef,
         referenceScriptUtxo: refs[5],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
-    ).rejects.toThrow(/cannot cancel|names prover/u);
+    ).rejects.toThrow(/missing-native-script-tx: signer does not own thread/u);
     await expectOnchainRefusal(() =>
       submitRawMissingNativeScriptTxOutsiderCancel({
         harness,
@@ -226,9 +230,11 @@ describe("missing-native-script-tx adversarial emulator", () => {
         referenceScriptUtxo: refs[5],
       }),
     );
-    await submitMissingNativeScriptTxCancel({
+    await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.family,
+      family: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
+      steps: harness.family.steps,
+      computationThread: harness.family.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: classified.nextThreadOutRef,
@@ -261,9 +267,11 @@ describe("missing-native-script-tx adversarial emulator", () => {
         referenceScriptUtxo: refs[2],
       }),
     );
-    await submitMissingNativeScriptTxCancel({
+    await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.family,
+      family: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
+      steps: harness.family.steps,
+      computationThread: harness.family.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: wrongProducing.nextThreadOutRef,
@@ -287,9 +295,11 @@ describe("missing-native-script-tx adversarial emulator", () => {
         referenceScriptUtxo: refs[3],
       }),
     );
-    await submitMissingNativeScriptTxCancel({
+    await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.family,
+      family: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
+      steps: harness.family.steps,
+      computationThread: harness.family.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: keyProduced.nextThreadOutRef,
@@ -325,9 +335,11 @@ describe("missing-native-script-tx adversarial emulator", () => {
         referenceScriptUtxo: refs[4],
       }),
     );
-    await submitMissingNativeScriptTxCancel({
+    await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.family,
+      family: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
+      steps: harness.family.steps,
+      computationThread: harness.family.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: mismatchOpened.nextThreadOutRef,

@@ -2,8 +2,10 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   type DeploymentManifestEventHistoryBounds,
+  type DeploymentManifestEventHistoryRetentionAddresses,
   parseDeploymentManifestEventHistoryBounds,
   parseDeploymentManifestEventHistoryRetentionAddress,
+  parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
@@ -51,6 +53,7 @@ export type ContractDeploymentInfoEntry = {
   readonly fraudProofCatalogue?: FraudProofCatalogueDeploymentInfo;
   readonly eventHistoryBounds?: DeploymentManifestEventHistoryBounds;
   readonly eventHistoryRetentionAddress?: string;
+  readonly eventHistoryRetentionAddresses?: DeploymentManifestEventHistoryRetentionAddresses;
 };
 
 export type ContractDeploymentInfo = Readonly<
@@ -530,12 +533,14 @@ const trieRootHex = (trie: Trie): string => {
 /** Script reapplication below binds these declared integers to deployed hashes. */
 export const contractDeploymentHistoryBounds = (
   info: ContractDeploymentInfo,
-  family: "fabricatedDeposit" | "fabricatedWithdrawal",
+  family: "fabricatedDeposit" | "fabricatedWithdrawal" | "transitionTrace",
 ) => {
   const name =
     family === "fabricatedDeposit"
       ? "fraudProofFabricatedDeposit"
-      : "fraudProofFabricatedWithdrawal";
+      : family === "fabricatedWithdrawal"
+        ? "fraudProofFabricatedWithdrawal"
+        : "fraudProofTransitionTrace";
   const bounds = parseDeploymentManifestEventHistoryBounds(
     info[name]?.eventHistoryBounds,
     `contracts.${name}.eventHistoryBounds`,
@@ -570,6 +575,7 @@ export const parseContractDeploymentInfo = (
       readonly fraudProofCatalogue?: unknown;
       readonly eventHistoryBounds?: unknown;
       readonly eventHistoryRetentionAddress?: unknown;
+      readonly eventHistoryRetentionAddresses?: unknown;
     };
     entries[name] = {
       scriptHash: normalizeHex(
@@ -589,6 +595,14 @@ export const parseContractDeploymentInfo = (
             ),
           }
         : {}),
+      ...(candidate.eventHistoryRetentionAddresses === undefined
+        ? {}
+        : {
+            eventHistoryRetentionAddresses:
+              parseDeploymentManifestEventHistoryRetentionAddresses(
+                candidate.eventHistoryRetentionAddresses,
+              ),
+          }),
       ...(candidate.eventHistoryRetentionAddress === undefined
         ? {}
         : {
@@ -1074,14 +1088,22 @@ export const inspectContracts = ({
       parsedDeploymentInfo,
       "fabricatedWithdrawal",
     );
+    const transitionBounds = contractDeploymentHistoryBounds(
+      parsedDeploymentInfo,
+      "transitionTrace",
+    );
     if (
+      eventHistoryBounds.inlineLimitBytes !==
+        transitionBounds.inlineLimitBytes ||
+      eventHistoryBounds.maxPayloadBytes !== transitionBounds.maxPayloadBytes ||
+      eventHistoryBounds.maxPayloadNodes !== transitionBounds.maxPayloadNodes ||
       eventHistoryBounds.inlineLimitBytes !==
         withdrawalBounds.inlineLimitBytes ||
       eventHistoryBounds.maxPayloadBytes !== withdrawalBounds.maxPayloadBytes ||
       eventHistoryBounds.maxPayloadNodes !== withdrawalBounds.maxPayloadNodes
     )
       throw new Error(
-        "Full catalogue construction requires matching deposit and withdrawal history payload bounds",
+        "Full catalogue construction requires matching event history payload bounds across proof families",
       );
     const contracts = yield* buildFaultProofContracts({
       eventHistoryBounds,
@@ -1109,6 +1131,19 @@ export const inspectContracts = ({
         );
       }
     }
+
+    const transitionRetention =
+      parsedDeploymentInfo.fraudProofTransitionTrace
+        ?.eventHistoryRetentionAddresses;
+    if (
+      contracts.transitionTrace.history.retentionAddresses.deposit !==
+        transitionRetention?.deposit ||
+      contracts.transitionTrace.history.retentionAddresses.withdrawal !==
+        transitionRetention?.withdrawal
+    )
+      throw new Error(
+        "fraudProofTransitionTrace history retention addresses do not match applied parameters",
+      );
 
     expectScriptHash(
       "fraudProofMint.scriptHash",

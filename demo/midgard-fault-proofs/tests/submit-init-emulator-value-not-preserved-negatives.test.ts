@@ -28,11 +28,12 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { submitResolvedInit } from "../src/submit-init.js";
+import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "../src/value-not-preserved/contracts.js";
 import {
   buildSpentInputValueWitness,
   spendInputsOpening as spendInputsOpeningV1,
 } from "../src/value-not-preserved/evidence.js";
-import { submitValueNotPreservedInit } from "../src/value-not-preserved/submit-value-not-preserved-init.js";
 import { submitValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01.js";
 import { submitValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02.js";
 import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts.js";
@@ -59,7 +60,8 @@ const initThread = async (
   fraudulentBlockOutRef: string,
   witnessReferenceScripts: FaultProofWitnessReferenceScripts,
 ) =>
-  submitValueNotPreservedInit({
+  submitResolvedInit({
+    label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,

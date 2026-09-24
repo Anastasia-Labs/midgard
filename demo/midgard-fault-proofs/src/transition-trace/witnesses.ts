@@ -484,8 +484,6 @@ export type ValidWithdrawalTransitionEvidence = {
 };
 
 export type ValidDepositTransitionEvidence = {
-  readonly eventRefInputIndex: bigint;
-  readonly eventAssetName: string;
   readonly projectedUtxo: SDK.LedgerInsertWitness;
 };
 
@@ -644,8 +642,6 @@ export const buildValidDepositTransitionWitness = async ({
         root: reconstruction.rootData.deposits,
         entry: source.entry,
       }),
-      event_ref_input_index: evidence.eventRefInputIndex,
-      event_asset_name: evidence.eventAssetName,
       projected_utxo: evidence.projectedUtxo,
     },
   };
@@ -706,14 +702,10 @@ export type OmittedDueL1EventEvidence =
   | {
       readonly kind: "deposit";
       readonly depositId: SDK.OutputReference;
-      readonly eventRefInputIndex: bigint;
-      readonly eventAssetName: string;
     }
   | {
       readonly kind: "withdrawal";
       readonly withdrawalId: SDK.OutputReference;
-      readonly eventRefInputIndex: bigint;
-      readonly eventAssetName: string;
     }
   | {
       readonly kind: "forcedTransaction";
@@ -760,8 +752,6 @@ export const buildOmittedDueL1EventFault = async ({
       }
       return SDK.omittedDueL1EventFault({
         OmittedDueDeposit: {
-          event_ref_input_index: evidence.eventRefInputIndex,
-          event_asset_name: evidence.eventAssetName,
           source_non_membership:
             sourceNonMembership.DepositSourceNonMembership.non_membership,
         },
@@ -775,8 +765,6 @@ export const buildOmittedDueL1EventFault = async ({
       }
       return SDK.omittedDueL1EventFault({
         OmittedDueWithdrawal: {
-          event_ref_input_index: evidence.eventRefInputIndex,
-          event_asset_name: evidence.eventAssetName,
           source_non_membership:
             sourceNonMembership.WithdrawalSourceNonMembership.non_membership,
         },
@@ -805,15 +793,10 @@ export type OutOfWindowSourceEventEvidence =
   | {
       readonly kind: "deposit";
       readonly depositId: SDK.OutputReference;
-      readonly eventRefInputIndex: bigint;
-      readonly eventAssetName: string;
     }
   | {
       readonly kind: "withdrawal";
       readonly withdrawalId: SDK.OutputReference;
-      readonly eventRefInputIndex: bigint;
-      readonly eventAssetName: string;
-      readonly validityOverride: SDK.WithdrawalValidity;
     }
   | {
       readonly kind: "forcedTransaction";
@@ -863,8 +846,6 @@ export const buildOutOfWindowSourceEventFault = async ({
       }
       return SDK.outOfWindowSourceEventFault({
         OutOfWindowDeposit: {
-          event_ref_input_index: evidence.eventRefInputIndex,
-          event_asset_name: evidence.eventAssetName,
           source_membership: await membershipProof({
             root: reconstruction.rootData.deposits,
             entry: source.entry,
@@ -880,9 +861,6 @@ export const buildOutOfWindowSourceEventFault = async ({
       }
       return SDK.outOfWindowSourceEventFault({
         OutOfWindowWithdrawal: {
-          event_ref_input_index: evidence.eventRefInputIndex,
-          event_asset_name: evidence.eventAssetName,
-          validity_override: evidence.validityOverride,
           source_membership: await membershipProof({
             root: reconstruction.rootData.withdrawals,
             entry: source.entry,

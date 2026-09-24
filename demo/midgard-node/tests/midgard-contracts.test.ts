@@ -46,6 +46,7 @@ import {
   TEST_AVAILABILITY_PARAMETERS,
 } from "./helpers/availability-challenge.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./helpers/cardano-protocol-parameters.js";
+import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import {
   collectScriptInventory,
   scriptInventoryId,
@@ -102,6 +103,7 @@ describe("midgard contracts registry", () => {
         {
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+          eventHistoryProtectionDurationMs: 2_000n,
           eventHistoryBounds: {
             inlineLimitBytes: 512n,
             maxPayloadBytes: 5000n,
@@ -111,7 +113,9 @@ describe("midgard contracts registry", () => {
       );
 
       // Applied recipes include the completed-fraud queue marker and explicit
-      // history bounds/retention metadata; normalize bigint parameters as decimal strings.
+      // history bounds/retention metadata, both authenticated timing yields, and
+      // the paired list/retention/retirement deployment recipes;
+      // normalize bigint parameters as decimal strings.
       expect(
         createHash("sha256")
           .update(
@@ -119,7 +123,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "e5d05d35e13019de51cf0e8af3ce6c60d440afc82f086d1dff57b3ab78122283",
+        "aa57086c9b9b2708e73ea4f605f271e1199bc78c9e685a4372e57cab50c41bff",
       );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -242,6 +246,7 @@ describe("midgard contracts registry", () => {
           {
             referenceScriptAuth: placeholderContracts.referenceScriptAuth,
             availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+            eventHistoryProtectionDurationMs: 2_000n,
             eventHistoryBounds: {
               inlineLimitBytes: 512n,
               maxPayloadBytes: 5000n,
@@ -312,10 +317,13 @@ describe("midgard contracts registry", () => {
       try {
         await writeFile(blueprintPath, JSON.stringify(raw));
         vi.stubEnv("MIDGARD_REAL_BLUEPRINT_PATH", blueprintPath);
-        const contracts = await Effect.runPromise(
-          AlwaysSucceedsContract.pipe(
-            Effect.provide(AlwaysSucceedsContract.Default),
+        const contracts = withRealEventHistoryForTest(
+          await Effect.runPromise(
+            AlwaysSucceedsContract.pipe(
+              Effect.provide(AlwaysSucceedsContract.Default),
+            ),
           ),
+          { txHash: "ab".repeat(32), outputIndex: 0 },
         );
         await expect(
           Effect.runPromise(
@@ -326,6 +334,7 @@ describe("midgard contracts registry", () => {
               {
                 referenceScriptAuth: contracts.referenceScriptAuth,
                 availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+                eventHistoryProtectionDurationMs: 2_000n,
                 eventHistoryBounds: {
                   inlineLimitBytes: 512n,
                   maxPayloadBytes: 5000n,
@@ -364,10 +373,13 @@ describe("midgard contracts registry", () => {
           readRuntimeDeploymentManifestFile(unsupportedPath, true),
         ).toThrow(/schemaVersion must be midgard-deployment-manifest-v1/);
 
-        const contracts = await Effect.runPromise(
-          AlwaysSucceedsContract.pipe(
-            Effect.provide(AlwaysSucceedsContract.Default),
+        const contracts = withRealEventHistoryForTest(
+          await Effect.runPromise(
+            AlwaysSucceedsContract.pipe(
+              Effect.provide(AlwaysSucceedsContract.Default),
+            ),
           ),
+          { txHash: "ab".repeat(32), outputIndex: 0 },
         );
         const nativeScriptCbor = "820501";
         const authPolicy = {

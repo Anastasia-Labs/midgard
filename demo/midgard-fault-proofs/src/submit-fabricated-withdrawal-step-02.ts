@@ -1,7 +1,6 @@
 /** Capture authenticated current history facts. Pointer references are discovered
  * afresh; the retained payload and original funds survive later list mutations. */
 import {
-  FabricatedWithdrawalAuthenticContentOpening,
   type FabricatedWithdrawalEvidence,
   type FabricatedWithdrawalEvidenceVerdict,
   FabricatedWithdrawalStep02Datum,
@@ -22,7 +21,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { fetchCurrentHistory } from "./fabricated-history-witness.js";
+import {
+  fabricatedHistoryOpeningCbor,
+  fetchCurrentHistory,
+} from "./fabricated-history-witness.js";
 import { fabricatedProofValidity } from "./fabricated-proof-validity.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import {
@@ -176,17 +178,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
     throw new Error("History hub changed the authenticated state queue policy");
   const { witness, captured, hubOracleUtxo } = current;
   const evidenceKind = captured ? "present_event" : "absent_identity";
-  const openingCbor = captured
-    ? Data.to(
-        {
-          RetainedEventData: {
-            payload: captured.payload,
-            original_assets: captured.originalAssets,
-          },
-        },
-        FabricatedWithdrawalAuthenticContentOpening,
-      )
-    : null;
+  const openingCbor = captured ? fabricatedHistoryOpeningCbor(captured) : null;
   if (
     evidence.kind !== evidenceKind ||
     (expectedOpeningCbor !== undefined && expectedOpeningCbor !== openingCbor)

@@ -33,32 +33,6 @@ export type EntryWithTimeStamp = EntryNoTimeStamp & {
 export type Entry = EntryNoTimeStamp | EntryWithTimeStamp;
 
 /**
- * Creates the transaction table and a timestamp index used by retention jobs.
- */
-export const createTable = (
-  tableName: string,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-          ${sql(Columns.TX)} BYTEA NOT NULL,
-          ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-          PRIMARY KEY (${sql(Columns.TX_ID)})
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.TIMESTAMPTZ}`,
-        )} ON ${sql(tableName)} (${sql(Columns.TIMESTAMPTZ)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
-
-/**
  * Deletes multiple transactions by id and logs how many rows were actually
  * removed.
  */

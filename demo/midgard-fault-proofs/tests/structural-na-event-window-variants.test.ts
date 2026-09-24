@@ -34,7 +34,6 @@ const OUT_OF_WINDOW_WITNESS_DEF =
   "midgard/fraud_proofs/transition_trace/proof/OutOfWindowSourceEventWitness";
 const ROOT_DOMAIN_DEF = "midgard/transition_trace/RootDomain";
 const OPERATOR_VERDICT_DEF = "midgard/rejection_reason_v1/OperatorVerdictV1";
-const WITHDRAWAL_VALIDITY_DEF = "midgard/ledger_state/WithdrawalValidity";
 const EVENT_KEY_DEF = "midgard/ledger_state/EventKey";
 const nonMembershipProofDef = (idType: string): string =>
   `midgard/transition_trace/RootNonMembershipProof<midgard/ledger_state/${idType}>`;
@@ -305,8 +304,6 @@ const ASSET_NAME = `B${EVENT_ASSET_NAME}`;
 const omittedDepositFault = (): SDK.TransitionFault =>
   SDK.omittedDueL1EventFault({
     OmittedDueDeposit: {
-      event_ref_input_index: EVENT_REF_INPUT_INDEX,
-      event_asset_name: EVENT_ASSET_NAME,
       source_non_membership: nonMembership({
         domain: SDK.ROOT_DOMAINS.deposits,
         key: outRef(0n),
@@ -323,8 +320,6 @@ const omittedWithdrawalFault = ({
 } = {}): SDK.TransitionFault =>
   SDK.omittedDueL1EventFault({
     OmittedDueWithdrawal: {
-      event_ref_input_index: EVENT_REF_INPUT_INDEX,
-      event_asset_name: EVENT_ASSET_NAME,
       source_non_membership: nonMembership({
         domain,
         key,
@@ -348,8 +343,6 @@ const omittedForcedFault = (): SDK.TransitionFault =>
 const outOfWindowDepositFault = (): SDK.TransitionFault =>
   SDK.outOfWindowSourceEventFault({
     OutOfWindowDeposit: {
-      event_ref_input_index: EVENT_REF_INPUT_INDEX,
-      event_asset_name: EVENT_ASSET_NAME,
       source_membership: membership({
         domain: SDK.ROOT_DOMAINS.deposits,
         key: outRef(0n),
@@ -361,9 +354,6 @@ const outOfWindowDepositFault = (): SDK.TransitionFault =>
 const outOfWindowWithdrawalFault = (): SDK.TransitionFault =>
   SDK.outOfWindowSourceEventFault({
     OutOfWindowWithdrawal: {
-      event_ref_input_index: EVENT_REF_INPUT_INDEX,
-      event_asset_name: EVENT_ASSET_NAME,
-      validity_override: "WithdrawalIsValid",
       source_membership: membership({
         domain: SDK.ROOT_DOMAINS.withdrawals,
         key: outRef(0n),
@@ -393,15 +383,8 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       outerTitle: "OmittedDueL1Event",
       witnessDefinition: OMITTED_WITNESS_DEF,
       witnessTitle: "OmittedDueDeposit",
-      expectedFieldTitles: [
-        "event_ref_input_index",
-        "event_asset_name",
-        "source_non_membership",
-      ],
-      expectedScalars: {
-        event_ref_input_index: REF_INDEX,
-        event_asset_name: ASSET_NAME,
-      },
+      expectedFieldTitles: ["source_non_membership"],
+      expectedScalars: {},
       proof: {
         definitionKey: nonMembershipProofDef("DepositId"),
         constructorTitle: "RootNonMembershipProof",
@@ -417,15 +400,8 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       outerTitle: "OmittedDueL1Event",
       witnessDefinition: OMITTED_WITNESS_DEF,
       witnessTitle: "OmittedDueWithdrawal",
-      expectedFieldTitles: [
-        "event_ref_input_index",
-        "event_asset_name",
-        "source_non_membership",
-      ],
-      expectedScalars: {
-        event_ref_input_index: REF_INDEX,
-        event_asset_name: ASSET_NAME,
-      },
+      expectedFieldTitles: ["source_non_membership"],
+      expectedScalars: {},
       proof: {
         definitionKey: nonMembershipProofDef("WithdrawalId"),
         constructorTitle: "RootNonMembershipProof",
@@ -470,15 +446,8 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       outerTitle: "OutOfWindowSourceEvent",
       witnessDefinition: OUT_OF_WINDOW_WITNESS_DEF,
       witnessTitle: "OutOfWindowDeposit",
-      expectedFieldTitles: [
-        "event_ref_input_index",
-        "event_asset_name",
-        "source_membership",
-      ],
-      expectedScalars: {
-        event_ref_input_index: REF_INDEX,
-        event_asset_name: ASSET_NAME,
-      },
+      expectedFieldTitles: ["source_membership"],
+      expectedScalars: {},
       proof: {
         definitionKey: membershipProofDef("DepositId", "DepositInfo"),
         constructorTitle: "RootMembershipProof",
@@ -488,26 +457,14 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
     });
   });
 
-  it("encodes the out-of-window withdrawal variant with its validity override", () => {
+  it("encodes the out-of-window withdrawal source leaf without a separate verdict override", () => {
     expectArmMatchesBlueprint({
       fault: outOfWindowWithdrawalFault(),
       outerTitle: "OutOfWindowSourceEvent",
       witnessDefinition: OUT_OF_WINDOW_WITNESS_DEF,
       witnessTitle: "OutOfWindowWithdrawal",
-      expectedFieldTitles: [
-        "event_ref_input_index",
-        "event_asset_name",
-        "validity_override",
-        "source_membership",
-      ],
-      expectedScalars: {
-        event_ref_input_index: REF_INDEX,
-        event_asset_name: ASSET_NAME,
-        validity_override: constructorRendering(
-          WITHDRAWAL_VALIDITY_DEF,
-          "WithdrawalIsValid",
-        ),
-      },
+      expectedFieldTitles: ["source_membership"],
+      expectedScalars: {},
       proof: {
         definitionKey: membershipProofDef("WithdrawalId", "WithdrawalInfo"),
         constructorTitle: "RootMembershipProof",
@@ -546,13 +503,33 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
     });
   });
 
+  it.each([
+    ["omitted deposit", omittedDepositFault],
+    ["omitted withdrawal", omittedWithdrawalFault],
+    ["outside deposit", outOfWindowDepositFault],
+    ["outside withdrawal", outOfWindowWithdrawalFault],
+  ] as const)(
+    "rejects obsolete pointer-bearing %s witness bytes",
+    (_name, fixture) => {
+      const raw = Data.from(Data.to(fixture(), SDK.TransitionFault));
+      if (!(raw instanceof Constr) || !(raw.fields[0] instanceof Constr))
+        throw new Error("Expected a timed fault and its witness constructor");
+      const witness = raw.fields[0];
+      expect(witness.fields).toHaveLength(1);
+      witness.fields.unshift(999n, "00");
+      if (raw.index === 7 && witness.index === 1)
+        witness.fields.splice(2, 0, new Constr(0, []));
+      expect(() => Data.from(Data.to(raw), SDK.TransitionFault)).toThrow();
+    },
+  );
+
   it("keeps the root domain a load-bearing discriminator off-chain", () => {
     // Twin of the Aiken selector q47_wrong_domain_rejects: only the domain
     // differs, the root and count are identical, yet the difference must land
     // on the blueprint's `domain` leaf of the non-membership proof so the
     // on-chain domain equality check cannot be bypassed.
     const proofFields = (fault: SDK.TransitionFault): readonly unknown[] => {
-      const proof = encodedFault(fault).witnessFields[2];
+      const proof = encodedFault(fault).witnessFields[0];
       if (!(proof instanceof Constr)) {
         throw new Error("source_non_membership must encode as a constructor.");
       }
@@ -578,7 +555,7 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
   it("keeps the event id a load-bearing discriminator off-chain", () => {
     // Twin of the Aiken selector q47_wrong_event_id_rejects.
     const proofFields = (fault: SDK.TransitionFault): readonly unknown[] => {
-      const proof = encodedFault(fault).witnessFields[2];
+      const proof = encodedFault(fault).witnessFields[0];
       if (!(proof instanceof Constr)) {
         throw new Error("source_non_membership must encode as a constructor.");
       }

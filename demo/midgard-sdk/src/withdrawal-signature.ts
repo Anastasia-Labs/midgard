@@ -21,14 +21,19 @@ export type WithdrawalSignatureVerification =
 
 const isHex = (value: string): boolean => /^[0-9a-fA-F]*$/.test(value);
 
-export const withdrawalSigningMessage = (body: WithdrawalBody): Uint8Array => {
+export const withdrawalSigningMessage = (body: WithdrawalBody): Uint8Array =>
+  withdrawalSigningMessageCbor(LucidData.to(body, WithdrawalBody));
+
+export const withdrawalSigningMessageCbor = (
+  rawBodyCbor: string,
+): Uint8Array => {
+  // Validate the structure without re-encoding the opaque destination datum.
+  LucidData.from(rawBodyCbor, WithdrawalBody);
   // The signed preimage is the body exactly as `cbor.serialise` renders it
   // on-chain (`withdrawal_signature_is_valid_v1`): definite asset maps, which
   // Lucid's own encoder does not emit.
   const bodyCbor = Buffer.from(
-    aikenSerialisedPlutusDataCborPreservingMapOrder(
-      LucidData.to(body, WithdrawalBody),
-    ),
+    aikenSerialisedPlutusDataCborPreservingMapOrder(rawBodyCbor),
     "hex",
   );
   const preimage = Buffer.concat([
@@ -41,8 +46,14 @@ export const withdrawalSigningMessage = (body: WithdrawalBody): Uint8Array => {
 export const signWithdrawalBody = (
   privateKey: ReturnType<typeof CML.PrivateKey.from_bech32>,
   body: WithdrawalBody,
+): WithdrawalSignature =>
+  signWithdrawalBodyCbor(privateKey, LucidData.to(body, WithdrawalBody));
+
+export const signWithdrawalBodyCbor = (
+  privateKey: ReturnType<typeof CML.PrivateKey.from_bech32>,
+  bodyCbor: string,
 ): WithdrawalSignature => {
-  const message = withdrawalSigningMessage(body);
+  const message = withdrawalSigningMessageCbor(bodyCbor);
   const publicKey = privateKey.to_public();
   const signature = privateKey.sign(message);
   return [
@@ -69,6 +80,17 @@ export const publicKeyHashFromWithdrawalSignature = (
 
 export const verifyWithdrawalSignature = (
   body: WithdrawalBody,
+  signature: WithdrawalSignature,
+  expectedOwnerHash: string,
+): WithdrawalSignatureVerification =>
+  verifyWithdrawalSignatureCbor(
+    LucidData.to(body, WithdrawalBody),
+    signature,
+    expectedOwnerHash,
+  );
+
+export const verifyWithdrawalSignatureCbor = (
+  bodyCbor: string,
   signature: WithdrawalSignature,
   expectedOwnerHash: string,
 ): WithdrawalSignatureVerification => {
@@ -107,7 +129,7 @@ export const verifyWithdrawalSignature = (
       };
     }
     const verified = publicKey.verify(
-      withdrawalSigningMessage(body),
+      withdrawalSigningMessageCbor(bodyCbor),
       CML.Ed25519Signature.from_hex(signatureHex),
     );
     return verified

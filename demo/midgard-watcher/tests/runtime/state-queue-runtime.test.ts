@@ -622,6 +622,12 @@ describe("production state-queue runtime V1", () => {
       "rollback_finished",
       "availability_recovered",
     ]);
+    expect(decisionBridge.prepareForRecovery).not.toHaveBeenCalled();
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(101, "45"),
+      localObservation: null,
+      relevance: "quiet",
+    });
     expect(decisionBridge.prepareForRecovery).toHaveBeenCalledWith(before);
   });
 

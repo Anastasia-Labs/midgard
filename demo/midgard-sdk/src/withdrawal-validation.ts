@@ -6,14 +6,18 @@ import {
   encodeMidgardAddressText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
 import { Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect, type Either } from "effect";
 
 import { Value } from "./common.js";
-import { committedWithdrawalValueBytes } from "./fraud-proof/fabricated-withdrawal.js";
-import { WithdrawalInfo, type WithdrawalValidity } from "./ledger-state.js";
-import { verifyWithdrawalSignature } from "./withdrawal-signature.js";
+import { WithdrawalInfo, WithdrawalValidity } from "./ledger-state.js";
+import { verifyWithdrawalSignatureCbor } from "./withdrawal-signature.js";
 
 /** A deterministic computation over caller-authenticated event and selected-base ledger bytes.
  * Callers must bind the projected owner/value to the originating event. This
@@ -67,14 +71,17 @@ const encodeWithdrawalSettlementInfo = (
   validity: WithdrawalLedgerClassification["validity"],
 ): Effect.Effect<Buffer, WithdrawalValidationError, never> =>
   Effect.gen(function* () {
-    const rawInfo = yield* decodeWithdrawalInfo(input);
+    yield* decodeWithdrawalInfo(input);
     return yield* Effect.try({
       try: () =>
         Buffer.from(
-          committedWithdrawalValueBytes({
-            ...rawInfo,
-            validity,
-          }),
+          aikenSerialisedPlutusDataCborPreservingMapOrder(
+            replacePlutusConstrFieldCbor(
+              input.eventInfoCbor,
+              [2],
+              LucidData.to(validity, WithdrawalValidity),
+            ),
+          ),
           "hex",
         ),
       catch: (cause) =>
@@ -187,8 +194,8 @@ export const classifyWithdrawalFromLedger = (
           validity = "TooManyTokensInWithdrawal";
         } else {
           const withdrawalInfo = yield* decodeWithdrawalInfo(input);
-          const verification = verifyWithdrawalSignature(
-            withdrawalInfo.body,
+          const verification = verifyWithdrawalSignatureCbor(
+            plutusConstrFieldCbor(input.eventInfoCbor, [0]),
             withdrawalInfo.signature,
             input.l2Owner,
           );

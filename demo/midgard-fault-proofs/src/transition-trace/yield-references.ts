@@ -1,5 +1,13 @@
 /** Authenticated deployment identities of the terminal semantic yields. */
 export const TRANSITION_TRACE_YIELD_REFERENCES = {
+  forcedTiming: {
+    entry: "fraudProofTransitionTraceForcedTimingWithdraw",
+    role: "V1 fraud-proof transition-trace final-6 forced timing yield",
+  },
+  l1Event: {
+    entry: "fraudProofTransitionTraceL1EventWithdraw",
+    role: "V1 fraud-proof transition-trace final-6 L1 event yield",
+  },
   l2Open: {
     entry: "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
     role: "V1 fraud-proof transition-trace final-4 L2 open yield",

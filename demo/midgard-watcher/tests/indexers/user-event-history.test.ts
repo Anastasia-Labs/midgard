@@ -2,50 +2,30 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardForcedTxCanonical,
-} from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { compareOutRefs, parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
-  AddressData,
-  DepositDatum,
   DepositEvent,
   DepositInfo,
-  DepositSpendRedeemer,
+  EventHistoryNode,
   ForcedInclusionTxV1,
-  HubOracleDatum,
-  MerkleRoot,
-  outputReferenceToPlutusDataCbor,
-  Proof,
-  resolveEventInclusionTime,
-  RootDomain,
-  SettlementDatum,
-  TxOrderDatum,
-  TxOrderMintRedeemer,
-  UserEventMintRedeemer,
-  UserEventWitnessPublishRedeemer,
-  userEventWitnessScriptHash,
   WithdrawalEvent,
   WithdrawalInfo,
-  WithdrawalOrderDatum,
 } from "@al-ft/midgard-sdk";
 import { makeNativeTx } from "@al-ft/midgard-validation/tests/validation-fixtures";
-import {
-  CML,
-  Data,
-  SLOT_CONFIG_NETWORK,
-  slotToBeginUnixTime,
-} from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  historyRawField,
+  historyWithdrawalPayoutDatum,
+} from "../../src/indexers/authenticated-event-history.js";
+import {
   createWatcherLocalUserEventPublisher,
   recoverWatcherLocalUserEventPublisher,
+  replaceWatcherLocalUserEventPublisher,
   resumeWatcherLocalUserEventPublisher,
 } from "../../src/indexers/user-event-history.js";
 import {
@@ -62,21 +42,11 @@ import {
   type WatcherUserEventSnapshot,
 } from "../../src/indexers/user-event-indexer.js";
 import {
-  admitWatcherUserEventOrigin,
-  readWatcherUserEventOrigin,
-  type WatcherUserEventOriginFacts,
-} from "../../src/indexers/user-event-origin.js";
-import type { WatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
-import {
-  makeWatcherFinalityBootstrapState,
-  readWatcherLocalBackfillFinality,
-} from "../../src/l1/finality-engine.js";
-import {
-  initializeWatcherRollbackDurableAuthority,
-  type WatcherRollbackDurableTrustedHead,
-} from "../../src/l1/rollback-engine.js";
+  readWatcherUserEventReferenceEvidence,
+  watcherUserEventReferenceOutput,
+} from "../../src/indexers/user-event-reference-authority.js";
+import { readWatcherLocalBackfillFinality } from "../../src/l1/finality-engine.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "../../src/runtime/deployment-authority.js";
-import type { WatcherTrustedHeadAuthorityClient } from "../../src/runtime/trusted-head-authority.js";
 import {
   assertWatcherUserEventRuntime,
   createWatcherUserEventRuntime,
@@ -87,10 +57,6 @@ import {
   readWatcherProtectedUserEventCheckpoint,
   readWatcherProtectedUserEventCheckpointReceipt,
 } from "../../src/storage/durable-runtime.js";
-import type {
-  WatcherDurableAtomicBackend,
-  WatcherDurableStore,
-} from "../../src/storage/durable-store.js";
 import {
   makeEmptyWatcherDurableStore,
   makeWatcherDurableStore,
@@ -127,8 +93,16 @@ import {
 } from "../../src/verification/rule-bundle.js";
 import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-authority-fixture.js";
 import { makeLocalDepositReplayFixture } from "../support/local-event-replay-fixture.js";
+import {
+  durableFixture,
+  historyLifecycle,
+  historyPointerContinuation,
+  openOrigin,
+  ordinaryLocalOrderCreation,
+  syntheticUserEventTransaction as transaction,
+  transactionInput,
+} from "../support/local-user-event-authority-fixture.js";
 import { createSyntheticStateQueueObservationFixture } from "../support/state-queue-observation-fixture.js";
-import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-authority-scenarios.js";
 import {
   createSyntheticUserEventOriginFixture,
   type SyntheticUserEventBlock,
@@ -148,448 +122,117 @@ const expectSameArchiveBytes = (
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 const h32 = (byte: string): string => byte.repeat(32);
-const addressHex = (address: AddressData): string => {
-  const credential = address.paymentCredential;
-  if (address.stakeCredential !== null || !("ScriptCredential" in credential))
-    throw new Error("fixture needs an enterprise script address");
-  return `70${credential.ScriptCredential[0]}`;
-};
-const transactionInput = (outRef: string) => {
-  const [transactionId, index] = outRef.split("#");
-  return CML.TransactionInput.new(
-    CML.TransactionHash.from_hex(transactionId!),
-    BigInt(index!),
-  );
-};
-const ledgerReferenceIndex = (
-  inputs: CML.TransactionInputList,
-  outRef: string,
-): bigint => {
-  const ordered = Array.from({ length: inputs.len() }, (_, index) => {
-    const input = inputs.get(index);
-    return {
-      txHash: input.transaction_id().to_hex(),
-      outputIndex: Number(input.index()),
-    };
-  }).sort(compareOutRefs);
-  const target = parseOutRefLabel(outRef);
-  const index = ordered.findIndex(
-    (input) => compareOutRefs(input, target) === 0,
-  );
-  if (index < 0) throw new Error("Missing fixture reference input");
-  return BigInt(index);
-};
-const transaction = (
-  body: CML.TransactionBody,
-  values: readonly Readonly<{
-    tag: CML.RedeemerTag;
-    index: bigint;
-    cbor: string;
-  }>[],
-  preserveDataEncoding = false,
-): string => {
-  const witness = CML.TransactionWitnessSet.new();
-  const redeemers = CML.LegacyRedeemerList.new();
-  for (const value of values)
-    redeemers.add(
-      CML.LegacyRedeemer.new(
-        value.tag,
-        value.index,
-        CML.PlutusData.from_cbor_hex(value.cbor),
-        CML.ExUnits.new(0n, 0n),
-      ),
-    );
-  if (values.length > 0) {
-    witness.set_redeemers(CML.Redeemers.new_arr_legacy_redeemer(redeemers));
-    body.set_script_data_hash(
-      CML.ScriptDataHash.from_raw_bytes(Buffer.alloc(32, 0x6a)),
-    );
-  }
-  const complete = CML.Transaction.new(body, witness, true, undefined);
-  return preserveDataEncoding
-    ? complete.to_cbor_hex()
-    : complete.to_canonical_cbor_hex();
-};
 
-/** Ordinary semantic unit transaction bytes for a synthetic local block.
- * These do not claim ledger acceptance or public-chain transaction inclusion.
- * The checks mirror the existing deposit lifecycle fixture with this deployment's
- * real hub datum and parameter-derived scripts.
- */
-const depositLifecycle = (
-  facts: WatcherUserEventOriginFacts,
-  preserveDataEncoding = false,
-) => {
-  const hub = Data.from(facts.activation.hubDatumCbor, HubOracleDatum);
-  const nonceOutRef = `${h32("b2")}#0`;
-  const eventId = { transactionId: h32("b2"), outputIndex: 0n };
-  const assetName = Buffer.from(
-    blake2b(
-      Buffer.from(
-        outputReferenceToPlutusDataCbor({
-          txHash: eventId.transactionId,
-          outputIndex: 0,
-        }),
-        "hex",
-      ),
-      { dkLen: 32 },
-    ),
-  ).toString("hex");
-  const witnessHash = userEventWitnessScriptHash(assetName);
-  const l2Address: AddressData = {
-    paymentCredential: { PublicKeyCredential: ["88".repeat(28)] },
-    stakeCredential: null,
-  };
-  const event = {
-    id: eventId,
-    info: { l2_address: l2Address, l2_network_id: 0n, l2_datum: null },
-  };
-  const datum = Data.to(
-    {
-      event,
-      inclusion_time: BigInt(
-        resolveEventInclusionTime(
-          slotToBeginUnixTime(1_000, SLOT_CONFIG_NETWORK.Preprod),
-          "Preprod",
-        ),
-      ),
-      witness: witnessHash,
-    },
-    DepositDatum,
-  );
-  const mint = CML.Mint.new();
-  const policy = CML.ScriptHash.from_hex(facts.scripts.deposit.policyId);
-  mint.set(policy, CML.AssetName.from_hex(assetName), 1n);
-  const assets = CML.MultiAsset.new();
-  assets.set(policy, CML.AssetName.from_hex(assetName), 1n);
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_hex(facts.scripts.deposit.addressHex),
-      CML.Value.new(3_000_000n, assets),
-      CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datum)),
-    ),
-  );
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(transactionInput(nonceOutRef));
-  const refs = CML.TransactionInputList.new();
-  const createReferences = preserveDataEncoding
-    ? [
-        facts.activation.hubOutRef,
-        `${facts.activation.transactionId}#${facts.activation.hubOutputIndex === 0 ? 1 : 0}`,
-      ].sort((left, right) =>
-        compareOutRefs(parseOutRefLabel(right), parseOutRefLabel(left)),
-      )
-    : [facts.activation.hubOutRef];
-  for (const outRef of createReferences) refs.add(transactionInput(outRef));
-  const certificates = CML.CertificateList.new();
-  certificates.add(
-    CML.Certificate.new_reg_cert(
-      CML.Credential.new_script(CML.ScriptHash.from_hex(witnessHash)),
-      0n,
-    ),
-  );
-  const body = CML.TransactionBody.new(inputs, outputs, 200_000n);
-  body.set_mint(mint);
-  body.set_certs(certificates);
-  body.set_reference_inputs(refs);
-  body.set_ttl(1_000n);
-  const create = transaction(
-    body,
-    [
-      {
-        tag: CML.RedeemerTag.Mint,
-        index: 0n,
-        cbor: Data.to(
-          {
-            AuthenticateEvent: {
-              nonce_input_index: 0n,
-              event_output_index: 0n,
-              hub_ref_input_index: ledgerReferenceIndex(
-                refs,
-                facts.activation.hubOutRef,
-              ),
-              witness_registration_redeemer_index: 1n,
-            },
-          },
-          UserEventMintRedeemer,
-        ),
-      },
-      {
-        tag: CML.RedeemerTag.Cert,
-        index: 0n,
-        cbor: Data.to(
-          { MintOrBurn: { targetPolicy: facts.scripts.deposit.policyId } },
-          UserEventWitnessPublishRedeemer,
-        ),
-      },
-    ],
-    preserveDataEncoding,
-  );
-  const createId = CML.hash_transaction(
-    CML.Transaction.from_cbor_hex(create).body(),
-  ).to_hex();
-  const phasRoot = h32("a4");
-  const root = Buffer.from(
-    blake2b(
-      Buffer.concat([
-        Buffer.from("MidgardRootCountV1"),
-        Buffer.from(Data.to("DepositsRootDomain", RootDomain), "hex"),
-        Buffer.from(phasRoot, "hex"),
-        Buffer.from(Data.to(1n), "hex"),
-      ]),
-      { dkLen: 32 },
-    ),
-  ).toString("hex");
-  const settlementAssets = CML.MultiAsset.new();
-  settlementAssets.set(
-    CML.ScriptHash.from_hex(hub.settlement),
-    CML.AssetName.from_hex(""),
-    1n,
-  );
-  const settlementOutputs = CML.TransactionOutputList.new();
-  settlementOutputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_hex(addressHex(hub.settlement_addr)),
-      CML.Value.new(5_000_000n, settlementAssets),
-      CML.DatumOption.new_datum(
-        CML.PlutusData.from_cbor_hex(
-          Data.to(
-            {
-              deposits_root: root,
-              withdrawals_root: h32("a5"),
-              forced_transactions_root: h32("a6"),
-              transactions_root: h32("a7"),
-              resolution_claim: null,
-            },
-            SettlementDatum,
-          ),
-        ),
-      ),
-    ),
-  );
-  const settlementInputs = CML.TransactionInputList.new();
-  settlementInputs.add(transactionInput(`${h32("f0")}#0`));
-  const settlementBody = CML.TransactionBody.new(
-    settlementInputs,
-    settlementOutputs,
-    200_000n,
-  ).to_cbor_hex();
-  const settlementId = CML.hash_transaction(
-    CML.TransactionBody.from_cbor_hex(settlementBody),
-  ).to_hex();
-  const eventFields = CML.PlutusData.from_cbor_hex(Data.to(event, DepositEvent))
-    .as_constr_plutus_data()!
-    .fields();
-  const membership = {
-    domain: "DepositsRootDomain" as const,
-    root,
-    phas_root: phasRoot,
-    count: 1n,
-    key: eventFields.get(0).to_cbor_hex(),
-    value: eventFields.get(1).to_cbor_hex(),
-    proof: [],
-  };
-  const consumeInputs = CML.TransactionInputList.new();
-  consumeInputs.add(transactionInput(`${createId}#0`));
-  const consumeOutputs = CML.TransactionOutputList.new();
-  consumeOutputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_hex(addressHex(hub.reserve_addr)),
-      CML.Value.from_coin(3_000_000n),
-    ),
-  );
-  const burn = CML.Mint.new();
-  burn.set(policy, CML.AssetName.from_hex(assetName), -1n);
-  const unregister = CML.CertificateList.new();
-  unregister.add(
-    CML.Certificate.new_unreg_cert(
-      CML.Credential.new_script(CML.ScriptHash.from_hex(witnessHash)),
-      0n,
-    ),
-  );
-  const consumeRefs = CML.TransactionInputList.new();
-  consumeRefs.add(transactionInput(facts.activation.hubOutRef));
-  consumeRefs.add(transactionInput(`${settlementId}#0`));
-  const consumeBody = CML.TransactionBody.new(
-    consumeInputs,
-    consumeOutputs,
-    200_000n,
-  );
-  consumeBody.set_mint(burn);
-  consumeBody.set_certs(unregister);
-  consumeBody.set_reference_inputs(consumeRefs);
-  const membershipItems = CML.PlutusDataList.new();
-  membershipItems.add(
-    CML.PlutusData.from_cbor_hex(Data.to(phasRoot, MerkleRoot)),
-  );
-  membershipItems.add(
-    CML.PlutusData.new_bytes(Buffer.from(membership.key, "hex")),
-  );
-  membershipItems.add(
-    CML.PlutusData.new_bytes(Buffer.from(membership.value, "hex")),
-  );
-  membershipItems.add(CML.PlutusData.from_cbor_hex(Data.to([], Proof)));
-  const consume = transaction(consumeBody, [
-    {
-      tag: CML.RedeemerTag.Spend,
-      index: 0n,
-      cbor: Data.to(
-        {
-          input_index: 0n,
-          output_index: 0n,
-          hub_ref_input_index: ledgerReferenceIndex(
-            consumeRefs,
-            facts.activation.hubOutRef,
-          ),
-          settlement_ref_input_index: ledgerReferenceIndex(
-            consumeRefs,
-            `${settlementId}#0`,
-          ),
-          mint_redeemer_index: 1n,
-          membership_proof: membership,
-          inclusion_proof_script_withdraw_redeemer_index: 3n,
-        },
-        DepositSpendRedeemer,
-      ),
-    },
-    {
-      tag: CML.RedeemerTag.Mint,
-      index: 0n,
-      cbor: Data.to(
-        {
-          BurnEventNFT: {
-            nonce_asset_name: assetName,
-            witness_unregistration_redeemer_index: 2n,
-          },
-        },
-        UserEventMintRedeemer,
-      ),
-    },
-    {
-      tag: CML.RedeemerTag.Cert,
-      index: 0n,
-      cbor: Data.to(
-        { MintOrBurn: { targetPolicy: facts.scripts.deposit.policyId } },
-        UserEventWitnessPublishRedeemer,
-      ),
-    },
-    {
-      tag: CML.RedeemerTag.Reward,
-      index: 0n,
-      cbor: CML.PlutusData.new_list(membershipItems).to_cbor_hex(),
-    },
-  ]);
-  return Object.freeze({
-    create,
-    consume,
-    createId,
-    settlementBody,
-    expectedEventId: outputReferenceToPlutusDataCbor({
-      txHash: eventId.transactionId,
-      outputIndex: 0,
-    }),
-  });
-};
-
-const durableFixture = async (
-  policy: WatcherFinalityPolicy,
-  bootstrapStore?: WatcherDurableStore,
-) => {
-  let bytes: Uint8Array | null = null;
-  let currentHead: WatcherRollbackDurableTrustedHead | null = null;
-  let failAfterCas = false;
-  let failNextRead = false;
-  let beforePut: (() => Promise<void>) | null = null;
-  let casCount = 0;
-  const backend: WatcherDurableAtomicBackend = {
-    read: async () => (bytes === null ? null : Uint8Array.from(bytes)),
-    compareAndSwap: async (expected, next) => {
-      if ((bytes === null ? null : sha256(bytes)) !== expected) return false;
-      bytes = Uint8Array.from(next);
-      return true;
-    },
-  };
-  const client: WatcherTrustedHeadAuthorityClient = {
-    readRecordAuthenticationKeyId: async () => h32("99"),
-    readCurrent: async () => {
-      if (failNextRead) {
-        failNextRead = false;
-        throw new Error("fixture read-back interruption");
+describe("native history retirement frontier", () => {
+  it.each([
+    { kind: "deposit", offset: -1n },
+    { kind: "deposit", offset: 0n },
+    { kind: "deposit", offset: 1n },
+    { kind: "withdrawal", offset: -1n },
+    { kind: "withdrawal", offset: 0n },
+    { kind: "withdrawal", offset: 1n },
+  ] as const)(
+    "binds $kind retirement to confirmed inclusion frontier offset $offset",
+    async ({ kind, offset }) => {
+      const fixture = await createSyntheticUserEventOriginFixture();
+      let publisher:
+        | Awaited<ReturnType<typeof createWatcherLocalUserEventPublisher>>
+        | undefined;
+      try {
+        const initial = await openOrigin(fixture);
+        const durable = await durableFixture(
+          readWatcherLocalBackfillFinality(initial.pair.finality).policy,
+        );
+        publisher = await createWatcherLocalUserEventPublisher({
+          ...initial.input,
+          origin: initial.origin,
+          runtime: durable.runtime,
+          archive: durable.archive,
+        });
+        await publisher.publish(initial.pair);
+        await initial.pair.close();
+        const empty = await fixture.openFinalizedBlock(
+          fixture.emptySuccessorBlock,
+        );
+        await publisher.publish(empty);
+        await empty.close();
+        const lifecycle = historyLifecycle(initial.facts, false, {
+          kind,
+          confirmedEndOffset: offset,
+        });
+        const admission = await fixture.makeBlock({
+          parent: fixture.emptySuccessorBlock,
+          transactions: [lifecycle.create],
+          creatingBodies: [fixture.initializationBodyCbor],
+        });
+        const admitted = await fixture.openFinalizedBlock(admission);
+        await publisher.publish(admitted);
+        await admitted.close();
+        const original = publisher.read().snapshot.activeEvents[0]!;
+        expect(original.kind).toBe(kind);
+        const readCheckpoint = async () =>
+          readWatcherProtectedUserEventCheckpointReceipt(
+            await readWatcherProtectedUserEventCheckpoint(durable.runtime),
+          );
+        const before = await readCheckpoint();
+        const casBefore = durable.casCount();
+        const snapshotBefore = publisher.read().snapshot;
+        const retirement = await fixture.makeBlock({
+          parent: admission,
+          transactions: [lifecycle.consume],
+          creatingBodies: [
+            fixture.initializationBodyCbor,
+            lifecycle.settlementBody,
+          ],
+        });
+        const retired = await fixture.openFinalizedBlock(retirement);
+        try {
+          if (offset < 0n) {
+            await expect(publisher.publish(retired)).rejects.toThrow(
+              "whole-block event semantics differ",
+            );
+            const after = await readCheckpoint();
+            expect(after.checkpoint).toEqual(before.checkpoint);
+            expect(after.trustedHead).toEqual(before.trustedHead);
+            expectSameArchiveBytes(after.payload, before.payload!);
+            expect(durable.casCount()).toBe(casBefore);
+            expect(publisher.read().snapshot).toEqual(snapshotBefore);
+            expect(publisher.read().snapshot.activeEvents).toHaveLength(1);
+            expect(publisher.read().snapshot.terminalEvents).toHaveLength(0);
+          } else {
+            await publisher.publish(retired);
+            expect(publisher.read().snapshot.activeEvents).toHaveLength(0);
+            const terminal = publisher.read().snapshot.terminalEvents;
+            expect(terminal).toHaveLength(1);
+            expect(terminal[0]).toMatchObject({
+              eventId: original.eventId,
+              eventCborHex: original.eventCborHex,
+              historyPayloadCborHex: original.historyPayloadCborHex,
+              inclusionTime: original.inclusionTime,
+              originPointDigest: original.originPointDigest,
+              terminalStatus: kind === "deposit" ? "absorbed" : "refunded",
+              terminalFinalityStatus: "final",
+            });
+            const after = await readCheckpoint();
+            expect(after.checkpoint?.checkpointSequence).toBe(
+              (BigInt(before.checkpoint!.checkpointSequence) + 1n).toString(),
+            );
+            expect(after.checkpoint?.rollbackGeneration).toBe(
+              before.checkpoint?.rollbackGeneration,
+            );
+            expect(durable.casCount()).toBe(casBefore + 1);
+          }
+        } finally {
+          await retired.close();
+        }
+      } finally {
+        publisher?.close();
+        await fixture.close();
       }
-      return currentHead;
     },
-    compareAndSwap: async ({ expectedTrustedHead, nextTrustedHead }) => {
-      if (!watcherSameCanonicalJson(expectedTrustedHead, currentHead))
-        return false;
-      currentHead = nextTrustedHead;
-      casCount += 1;
-      if (failAfterCas) {
-        failAfterCas = false;
-        failNextRead = true;
-      }
-      return true;
-    },
-  };
-  const objects = new Map<string, Uint8Array>();
-  const archive = {
-    put: async (value: Uint8Array) => {
-      await beforePut?.();
-      const digest = watcherUserEventArchiveDigest(value);
-      objects.set(digest, Uint8Array.from(value));
-      return digest;
-    },
-    read: async (digest: string) => {
-      const value = objects.get(digest);
-      return value === undefined ? null : Uint8Array.from(value);
-    },
-  };
-  const runtimeInput = {
-    backend,
-    policy,
-    authenticationKey: Uint8Array.from({ length: 32 }, (_, index) => index + 1),
-    client,
-    userEventArchive: archive,
-  };
-  if (bootstrapStore !== undefined)
-    await initializeWatcherRollbackDurableAuthority({
-      backend,
-      policy,
-      authenticationKey: runtimeInput.authenticationKey,
-      trustedHead: null,
-      bootstrapStore,
-      bootstrapFinalityState: makeWatcherFinalityBootstrapState(policy)!,
-    });
-  const runtime = await createWatcherDurableRuntime(runtimeInput);
-  return {
-    runtime,
-    runtimeInput,
-    archive,
-    objects,
-    casCount: () => casCount,
-    interruptNextReadBack: () => {
-      failAfterCas = true;
-    },
-    setBeforePut: (callback: (() => Promise<void>) | null) => {
-      beforePut = callback;
-    },
-  };
-};
-
-const openOrigin = async (
-  fixture: Awaited<ReturnType<typeof createSyntheticUserEventOriginFixture>>,
-) => {
-  const pair = await fixture.openFinalizedBlock(fixture.activationBlock);
-  const input = {
-    deploymentIdentity: fixture.deploymentIdentity,
-    scriptBinding: fixture.scriptBinding,
-    finality: pair.finality,
-    observation: pair.observation,
-  };
-  const origin = admitWatcherUserEventOrigin(input);
-  const facts = readWatcherUserEventOrigin({ ...input, origin });
-  return { pair, input, origin, facts };
-};
+    120_000,
+  );
+});
 
 describe("bounded local user-event semantic publication (synthetic local blocks)", () => {
   it.each([false, true])(
@@ -731,7 +374,7 @@ describe("bounded local user-event semantic publication (synthetic local blocks)
           store: { revision: "2" },
         });
         expect(publisher.read().store.l1Observations).toHaveLength(2);
-        const lifecycle = depositLifecycle(facts, preserveDataEncoding);
+        const lifecycle = historyLifecycle(facts, preserveDataEncoding);
         const eventBlock = await fixture.makeBlock({
           parent: fixture.emptySuccessorBlock,
           transactions: [lifecycle.create, lifecycle.consume],
@@ -1243,6 +886,365 @@ describe("bounded local user-event semantic publication (synthetic local blocks)
   }, 120_000);
 });
 
+describe("native withdrawal payout retirement", () => {
+  it("rejects Spend and other Withdraw pointers without CAS, then publishes payout initialization and restores it", async () => {
+    const fixture = await createSyntheticUserEventOriginFixture();
+    const pairs: Awaited<ReturnType<typeof fixture.openFinalizedBlock>>[] = [];
+    let publisher:
+      | Awaited<ReturnType<typeof createWatcherLocalUserEventPublisher>>
+      | undefined;
+    try {
+      const initial = await openOrigin(fixture);
+      pairs.push(initial.pair);
+      const durable = await durableFixture(
+        readWatcherLocalBackfillFinality(initial.pair.finality).policy,
+      );
+      publisher = await createWatcherLocalUserEventPublisher({
+        ...initial.input,
+        origin: initial.origin,
+        runtime: durable.runtime,
+        archive: durable.archive,
+      });
+      await publisher.publish(initial.pair);
+      const empty = await fixture.openFinalizedBlock(
+        fixture.emptySuccessorBlock,
+      );
+      pairs.push(empty);
+      await publisher.publish(empty);
+      const options = { kind: "withdrawal" as const, withdrawalPayout: true };
+      const lifecycle = historyLifecycle(initial.facts, false, options);
+      const admission = await fixture.makeBlock({
+        parent: fixture.emptySuccessorBlock,
+        transactions: [lifecycle.create],
+        creatingBodies: [fixture.initializationBodyCbor],
+      });
+      const admitted = await fixture.openFinalizedBlock(admission);
+      pairs.push(admitted);
+      await publisher.publish(admitted);
+      const savedAdmission = publisher.read();
+      expect(savedAdmission.snapshot.activeEvents).toHaveLength(1);
+      const authorityPair = await fixture.openFinalizedBlock(admission);
+      pairs.push(authorityPair);
+      const admittedAuthority = await publisher.eventAuthority({
+        ...authorityPair,
+        kind: "withdrawal",
+        eventId: lifecycle.expectedEventId,
+      });
+      const checkpointBefore = readWatcherProtectedUserEventCheckpointReceipt(
+        await readWatcherProtectedUserEventCheckpoint(durable.runtime),
+      );
+      const casBefore = durable.casCount();
+      const consumeBody = CML.Transaction.from_cbor_hex(
+        lifecycle.consume,
+      ).body();
+      const rewards = consumeBody.withdrawals()!.keys();
+      const listIndex = Array.from(
+        { length: rewards.len() },
+        (_, index) => index,
+      ).find(
+        (index) =>
+          rewards.get(index).payment().as_script()?.to_hex() ===
+          initial.facts.scripts.withdrawal.policyId,
+      );
+      if (listIndex === undefined) throw new Error("Missing list observer");
+      // Both tempting substitutions are wrong: a Spend pointer and the list's
+      // own zero Withdraw pointer. Only the exact retirement Withdraw authorizes payout.
+      const wrongIndexes = [
+        0n,
+        BigInt(2 + consumeBody.mint()!.keys().len() + listIndex),
+      ];
+      for (const [index, wrong] of wrongIndexes.entries()) {
+        const invalid = historyLifecycle(initial.facts, false, {
+          ...options,
+          payoutRetirementRedeemerIndex: wrong,
+        });
+        const tx = CML.Transaction.from_cbor_hex(invalid.consume);
+        const invalidBody = tx.body();
+        // Give these deliberately non-ledger-valid native candidates distinct
+        // body identities as well as distinct redeemer bytes.
+        invalidBody.set_script_data_hash(
+          CML.ScriptDataHash.from_hex(h32(index === 0 ? "c8" : "c9")),
+        );
+        const bad = await fixture.makeBlock({
+          parent: admission,
+          transactions: [
+            CML.Transaction.new(
+              invalidBody,
+              tx.witness_set(),
+              true,
+            ).to_canonical_cbor_hex(),
+          ],
+          creatingBodies: [
+            fixture.initializationBodyCbor,
+            invalid.settlementBody,
+          ],
+        });
+        const badPair = await fixture.openFinalizedBlock(bad);
+        pairs.push(badPair);
+        await expect(publisher.publish(badPair)).rejects.toThrow(
+          "whole-block event semantics differ",
+        );
+        const after = readWatcherProtectedUserEventCheckpointReceipt(
+          await readWatcherProtectedUserEventCheckpoint(durable.runtime),
+        );
+        expect(after.checkpoint).toEqual(checkpointBefore.checkpoint);
+        expect(after.trustedHead).toEqual(checkpointBefore.trustedHead);
+        expectSameArchiveBytes(after.payload, checkpointBefore.payload!);
+        expect(durable.casCount()).toBe(casBefore);
+        expect(publisher.read().snapshot).toEqual(savedAdmission.snapshot);
+        expect(publisher.read().cursor).toEqual(admission.point);
+        expect(
+          (await readWatcherLocalUserEventAuthority(admittedAuthority)).event,
+        ).toEqual(savedAdmission.snapshot.activeEvents[0]);
+        await fixture.selectCanonicalBranch(admission.point);
+      }
+      const retirement = await fixture.makeBlock({
+        parent: admission,
+        transactions: [lifecycle.consume],
+        creatingBodies: [
+          fixture.initializationBodyCbor,
+          lifecycle.settlementBody,
+        ],
+      });
+      const retired = await fixture.openFinalizedBlock(retirement);
+      pairs.push(retired);
+      await publisher.publish(retired);
+      const saved = publisher.read();
+      expect(saved.snapshot.activeEvents).toHaveLength(0);
+      expect(saved.snapshot.terminalEvents).toHaveLength(1);
+      const original = savedAdmission.snapshot.activeEvents[0]!;
+      expect(saved.snapshot.terminalEvents[0]).toMatchObject({
+        kind: "withdrawal",
+        eventId: original.eventId,
+        eventCborHex: original.eventCborHex,
+        historyPayloadCborHex: original.historyPayloadCborHex,
+        inclusionTime: original.inclusionTime,
+        originPointDigest: original.originPointDigest,
+        terminalStatus: "payout_initialized",
+        terminalFinalityStatus: "final",
+      });
+      expect(saved.checkpoint?.checkpointSequence).toBe(
+        (
+          BigInt(checkpointBefore.checkpoint!.checkpointSequence) + 1n
+        ).toString(),
+      );
+      expect(saved.checkpoint?.rollbackGeneration).toBe(
+        checkpointBefore.checkpoint?.rollbackGeneration,
+      );
+      expect(durable.casCount()).toBe(casBefore + 1);
+      expect(() =>
+        assertWatcherLocalUserEventAuthorityCurrent(admittedAuthority),
+      ).toThrow();
+      const terminalPair = await fixture.openFinalizedBlock(retirement);
+      pairs.push(terminalPair);
+      const terminalAuthority = await publisher.eventAuthority({
+        ...terminalPair,
+        kind: "withdrawal",
+        eventId: lifecycle.expectedEventId,
+      });
+      expect(
+        (await readWatcherLocalUserEventAuthority(terminalAuthority)).event,
+      ).toEqual(saved.snapshot.terminalEvents[0]);
+      publisher.close();
+      publisher = undefined;
+      expect(() =>
+        assertWatcherLocalUserEventAuthorityCurrent(terminalAuthority),
+      ).toThrow();
+      for (const pair of pairs) await pair.close();
+      pairs.length = 0;
+      const runtime = await createWatcherDurableRuntime(durable.runtimeInput);
+      const fresh = await openOrigin(fixture);
+      pairs.push(fresh.pair);
+      publisher = await resumeWatcherLocalUserEventPublisher({
+        ...fresh.input,
+        origin: fresh.origin,
+        referenceAuthority: fresh.pair.referenceAuthority,
+        runtime,
+        archive: durable.archive,
+        readHead: (point) => {
+          expect(point).toEqual(retirement.point);
+          return fixture.openFinalizedBlock(retirement);
+        },
+      });
+      expect(publisher.read().checkpoint).toEqual(saved.checkpoint);
+      expect(publisher.read().snapshot).toEqual(saved.snapshot);
+      expect(publisher.read().cursor).toEqual(retirement.point);
+      expect(durable.casCount()).toBe(casBefore + 1);
+      const renewedPair = await fixture.openFinalizedBlock(retirement);
+      pairs.push(renewedPair);
+      const renewed = await publisher.eventAuthority({
+        ...renewedPair,
+        kind: "withdrawal",
+        eventId: lifecycle.expectedEventId,
+      });
+      expect((await readWatcherLocalUserEventAuthority(renewed)).event).toEqual(
+        saved.snapshot.terminalEvents[0],
+      );
+    } finally {
+      publisher?.close();
+      await Promise.allSettled(pairs.map((pair) => pair.close()));
+      await fixture.close();
+    }
+  }, 120_000);
+});
+
+describe("retired history IDs across durable restart", () => {
+  it.each(["deposit", "withdrawal"] as const)(
+    "refuses a distinct native %s re-admission of a retired ID after reopening",
+    async (kind) => {
+      const fixture = await createSyntheticUserEventOriginFixture();
+      const pairs: Awaited<ReturnType<typeof fixture.openFinalizedBlock>>[] =
+        [];
+      let publisher:
+        | Awaited<ReturnType<typeof createWatcherLocalUserEventPublisher>>
+        | undefined;
+      try {
+        const initial = await openOrigin(fixture);
+        pairs.push(initial.pair);
+        const durable = await durableFixture(
+          readWatcherLocalBackfillFinality(initial.pair.finality).policy,
+        );
+        publisher = await createWatcherLocalUserEventPublisher({
+          ...initial.input,
+          origin: initial.origin,
+          runtime: durable.runtime,
+          archive: durable.archive,
+        });
+        await publisher.publish(initial.pair);
+        const empty = await fixture.openFinalizedBlock(
+          fixture.emptySuccessorBlock,
+        );
+        pairs.push(empty);
+        await publisher.publish(empty);
+        const lifecycle = historyLifecycle(initial.facts, false, { kind });
+        const admission = await fixture.makeBlock({
+          parent: fixture.emptySuccessorBlock,
+          transactions: [lifecycle.create],
+          creatingBodies: [fixture.initializationBodyCbor],
+        });
+        const admitted = await fixture.openFinalizedBlock(admission);
+        pairs.push(admitted);
+        await publisher.publish(admitted);
+        expect(publisher.read().snapshot.activeEvents).toHaveLength(1);
+        const retirement = await fixture.makeBlock({
+          parent: admission,
+          transactions: [lifecycle.consume],
+          creatingBodies: [
+            fixture.initializationBodyCbor,
+            lifecycle.settlementBody,
+          ],
+        });
+        const retired = await fixture.openFinalizedBlock(retirement);
+        pairs.push(retired);
+        await publisher.publish(retired);
+        const saved = publisher.read();
+        expect(saved.snapshot.activeEvents).toHaveLength(0);
+        expect(saved.snapshot.terminalEvents).toHaveLength(1);
+        expect(saved.snapshot.terminalEvents[0]).toMatchObject({
+          eventId: lifecycle.expectedEventId,
+          terminalStatus: kind === "deposit" ? "absorbed" : "refunded",
+          terminalFinalityStatus: "final",
+        });
+        publisher.close();
+        publisher = undefined;
+        for (const pair of pairs) await pair.close();
+        pairs.length = 0;
+        let runtime = await createWatcherDurableRuntime(durable.runtimeInput);
+        const reopen = async () => {
+          const fresh = await openOrigin(fixture);
+          pairs.push(fresh.pair);
+          return resumeWatcherLocalUserEventPublisher({
+            ...fresh.input,
+            origin: fresh.origin,
+            referenceAuthority: fresh.pair.referenceAuthority,
+            runtime,
+            archive: durable.archive,
+            readHead: async (point) => {
+              expect(point).toEqual(retirement.point);
+              return fixture.openFinalizedBlock(retirement);
+            },
+          });
+        };
+        const casBefore = durable.casCount();
+        publisher = await reopen();
+        expect(publisher.read().checkpoint).toEqual(saved.checkpoint);
+        expect(publisher.read().snapshot).toEqual(saved.snapshot);
+        const terminalPair = await fixture.openFinalizedBlock(retirement);
+        pairs.push(terminalPair);
+        const terminalAuthority = await publisher.eventAuthority({
+          ...terminalPair,
+          kind,
+          eventId: lifecycle.expectedEventId,
+        });
+        expect(
+          (await readWatcherLocalUserEventAuthority(terminalAuthority)).event,
+        ).toEqual(saved.snapshot.terminalEvents[0]);
+        const before = readWatcherProtectedUserEventCheckpointReceipt(
+          await readWatcherProtectedUserEventCheckpoint(runtime),
+        );
+
+        // A different transaction/outref with the exact retired ID exercises
+        // the ID guard, not a repeated transaction-hash check. This synthetic
+        // native frame does not claim that Cardano permits nonce re-spending.
+        const original = CML.Transaction.from_cbor_hex(lifecycle.create);
+        const reusedBody = original.body();
+        reusedBody.set_validity_interval_start(0n);
+        const reused = CML.Transaction.new(
+          reusedBody,
+          original.witness_set(),
+          true,
+        ).to_canonical_cbor_hex();
+        const reusedHash = CML.hash_transaction(reusedBody).to_hex();
+        expect(reusedHash).not.toBe(lifecycle.createId);
+        expect(reusedBody.outputs().get(0).to_cbor_hex()).toBe(
+          original.body().outputs().get(0).to_cbor_hex(),
+        );
+        const duplicate = await fixture.makeBlock({
+          parent: retirement,
+          transactions: [reused],
+          creatingBodies: [fixture.initializationBodyCbor],
+        });
+        const duplicatePair = await fixture.openFinalizedBlock(duplicate);
+        pairs.push(duplicatePair);
+        await expect(publisher.publish(duplicatePair)).rejects.toThrow(
+          "whole-block event semantics differ",
+        );
+        const after = readWatcherProtectedUserEventCheckpointReceipt(
+          await readWatcherProtectedUserEventCheckpoint(runtime),
+        );
+        expect(after.checkpoint).toEqual(before.checkpoint);
+        expect(after.trustedHead).toEqual(before.trustedHead);
+        expectSameArchiveBytes(after.payload, before.payload!);
+        expect(durable.casCount()).toBe(casBefore);
+        expect(publisher.read().snapshot).toEqual(saved.snapshot);
+        expect(publisher.read().cursor).toEqual(retirement.point);
+        expect(
+          (await readWatcherLocalUserEventAuthority(terminalAuthority)).event,
+        ).toEqual(saved.snapshot.terminalEvents[0]);
+
+        publisher.close();
+        publisher = undefined;
+        expect(() =>
+          assertWatcherLocalUserEventAuthorityCurrent(terminalAuthority),
+        ).toThrow();
+        for (const pair of pairs) await pair.close();
+        pairs.length = 0;
+        runtime = await createWatcherDurableRuntime(durable.runtimeInput);
+        publisher = await reopen();
+        expect(publisher.read().checkpoint).toEqual(saved.checkpoint);
+        expect(publisher.read().snapshot).toEqual(saved.snapshot);
+        expect(publisher.read().cursor).toEqual(retirement.point);
+        expect(durable.casCount()).toBe(casBefore);
+      } finally {
+        publisher?.close();
+        await Promise.allSettled(pairs.map((pair) => pair.close()));
+        await fixture.close();
+      }
+    },
+    120_000,
+  );
+});
+
 describe("durable local user-event restart", () => {
   it("restores validated events using only the current head, preserves progress, and continues incrementally", async () => {
     const fixture = await createSyntheticUserEventOriginFixture();
@@ -1263,7 +1265,7 @@ describe("durable local user-event restart", () => {
       );
       await publisher.publish(empty);
       await empty.close();
-      const lifecycle = depositLifecycle(initial.facts);
+      const lifecycle = historyLifecycle(initial.facts);
       const block = await fixture.makeBlock({
         parent: fixture.emptySuccessorBlock,
         transactions: [lifecycle.create, lifecycle.consume],
@@ -1393,7 +1395,7 @@ describe("explicit local user-event semantic recovery (synthetic local blocks)",
         fixture.emptySuccessorBlock,
       );
       await publisher.publish(emptyPair);
-      const lifecycle = depositLifecycle(facts);
+      const lifecycle = historyLifecycle(facts);
       const eventBlock = await fixture.makeBlock({
         parent: fixture.emptySuccessorBlock,
         transactions: [lifecycle.create, lifecycle.consume],
@@ -1661,7 +1663,7 @@ describe("local deposit transcript semantic renewal", () => {
         fixture.emptySuccessorBlock,
       );
       await publisher.publish(empty);
-      const lifecycle = depositLifecycle(facts);
+      const lifecycle = historyLifecycle(facts);
       const eventBlock = await fixture.makeBlock({
         parent: fixture.emptySuccessorBlock,
         transactions: [lifecycle.create, lifecycle.consume],
@@ -1849,7 +1851,7 @@ describe("local user-event materialized history (synthetic local blocks)", () =>
       );
       await publisher.publish(emptyPair);
       await emptyPair.close();
-      const lifecycle = depositLifecycle(facts);
+      const lifecycle = historyLifecycle(facts);
       const eventBlock = await fixture.makeBlock({
         parent: fixture.emptySuccessorBlock,
         transactions: [lifecycle.create, lifecycle.consume],
@@ -2229,163 +2231,6 @@ describe("local user-event materialized history (synthetic local blocks)", () =>
   }, 600_000);
 });
 
-/** Existing ordinary order creation shapes, parameterized by this actual local
- * origin's scripts. Synthetic block admission does not assert ledger validity.
- */
-const ordinaryLocalOrderCreation = (
-  facts: WatcherUserEventOriginFacts,
-  kind: "withdrawal" | "forced_order",
-  nativeCbor: Uint8Array,
-) => {
-  const eventId = {
-    transactionId: h32(kind === "withdrawal" ? "c2" : "c3"),
-    outputIndex: 0n,
-  };
-  const eventIdCborHex = outputReferenceToPlutusDataCbor({
-    txHash: eventId.transactionId,
-    outputIndex: 0,
-  });
-  const assetName = Buffer.from(
-    blake2b(Buffer.from(eventIdCborHex, "hex"), { dkLen: 32 }),
-  ).toString("hex");
-  const witness = userEventWitnessScriptHash(assetName);
-  const scripts =
-    kind === "withdrawal"
-      ? facts.scripts.withdrawal
-      : facts.scripts.forcedOrder;
-  const address: {
-    paymentCredential: { PublicKeyCredential: [string] };
-    stakeCredential: null;
-  } = {
-    paymentCredential: { PublicKeyCredential: ["88".repeat(28)] },
-    stakeCredential: null,
-  };
-  const common = {
-    inclusion_time: BigInt(
-      resolveEventInclusionTime(
-        slotToBeginUnixTime(1_000, SLOT_CONFIG_NETWORK.Preprod),
-        "Preprod",
-      ),
-    ),
-    witness,
-    refund_address: address,
-    refund_datum: "NoDatum" as const,
-  };
-  const payload = genuineUserEventForcedPayloadForCanonicalTx(
-    encodeMidgardForcedTxCanonical(
-      decodeMidgardNativeTxFullFromCanonicalCbor(nativeCbor),
-    ),
-  );
-  const datum =
-    kind === "withdrawal"
-      ? Data.to(
-          {
-            ...common,
-            event: {
-              id: eventId,
-              info: {
-                body: {
-                  l2_outref: eventId,
-                  l2_owner: "89".repeat(28),
-                  l2_value: new Map(),
-                  l1_address: address,
-                  l1_datum: "NoDatum",
-                },
-                signature: ["aa", "bb"],
-                validity: "WithdrawalIsValid",
-              },
-            },
-          },
-          WithdrawalOrderDatum,
-        )
-      : Data.to(
-          {
-            ...common,
-            event: {
-              id: eventId,
-              tx: {
-                tx_id: payload.tx_id,
-                transaction_commitment: payload.transaction_commitment,
-                submitted_source: payload.submitted_source,
-              },
-            },
-          },
-          TxOrderDatum,
-        );
-  const policy = CML.ScriptHash.from_hex(scripts.policyId);
-  const assets = CML.MultiAsset.new();
-  assets.set(policy, CML.AssetName.from_hex(assetName), 1n);
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_hex(scripts.addressHex),
-      CML.Value.new(3_000_000n, assets),
-      CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datum)),
-    ),
-  );
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(transactionInput(`${eventId.transactionId}#0`));
-  const refs = CML.TransactionInputList.new();
-  refs.add(transactionInput(facts.activation.hubOutRef));
-  const certificates = CML.CertificateList.new();
-  certificates.add(
-    CML.Certificate.new_reg_cert(
-      CML.Credential.new_script(CML.ScriptHash.from_hex(witness)),
-      0n,
-    ),
-  );
-  const mint = CML.Mint.new();
-  mint.set(policy, CML.AssetName.from_hex(assetName), 1n);
-  const body = CML.TransactionBody.new(inputs, outputs, 200_000n);
-  body.set_reference_inputs(refs);
-  body.set_certs(certificates);
-  body.set_mint(mint);
-  body.set_ttl(1_000n);
-  const mintEvent = {
-    AuthenticateEvent: {
-      nonce_input_index: 0n,
-      event_output_index: 0n,
-      hub_ref_input_index: 0n,
-      witness_registration_redeemer_index: 1n,
-    },
-  };
-  const materialCarriage = payload.carriage.map((entry) => {
-    if (
-      typeof entry !== "object" ||
-      entry === null ||
-      !("Inline" in entry) ||
-      typeof entry.Inline !== "object" ||
-      entry.Inline === null ||
-      !("preimage" in entry.Inline) ||
-      typeof entry.Inline.preimage !== "string"
-    )
-      throw new Error("ordinary forced fixture requires inline carriage");
-    return { Inline: { preimage: entry.Inline.preimage } };
-  });
-  const cbor = transaction(body, [
-    {
-      tag: CML.RedeemerTag.Mint,
-      index: 0n,
-      cbor:
-        kind === "withdrawal"
-          ? Data.to(mintEvent, UserEventMintRedeemer)
-          : Data.to(
-              { event: mintEvent, material_carriage: materialCarriage },
-              TxOrderMintRedeemer,
-            ),
-    },
-    {
-      tag: CML.RedeemerTag.Cert,
-      index: 0n,
-      cbor: Data.to(
-        { MintOrBurn: { targetPolicy: scripts.policyId } },
-        UserEventWitnessPublishRedeemer,
-      ),
-    },
-  ]);
-  return { cbor, eventId, eventIdCborHex, payload };
-};
-
 describe("local event replay authority derivation", () => {
   it("derives ordinary deposit, withdrawal and forced inputs from actual capabilities and snapshots awaited sources", async () => {
     const fixture = await createSyntheticUserEventOriginFixture();
@@ -2409,7 +2254,7 @@ describe("local event replay authority derivation", () => {
       );
       await publisher.publish(empty);
       const native = makeNativeTx();
-      const deposit = depositLifecycle(facts);
+      const deposit = historyLifecycle(facts);
       const withdrawal = ordinaryLocalOrderCreation(
         facts,
         "withdrawal",
@@ -2589,16 +2434,138 @@ describe("local event replay authority derivation", () => {
 });
 
 describe("local user-event challenged-header cutoff (synthetic local blocks)", () => {
+  it.each(
+    (["deposit", "withdrawal"] as const).flatMap((kind) =>
+      (["before_creation", "before_pointer", "later_pointer"] as const).map(
+        (order) => ({ kind, order }),
+      ),
+    ),
+  )(
+    "keeps immutable $kind admission at header cutoff after pointer movement: $order",
+    async ({ kind, order }) => {
+      const state: {
+        lifecycle: ReturnType<typeof historyLifecycle> | null;
+        pointer: string | null;
+      } = { lifecycle: null, pointer: null };
+      const fixture = await createSyntheticStateQueueObservationFixture({
+        composeCommitBlock: async ({ transport, commitTransactionCbor }) => {
+          const origin = await openOrigin(transport);
+          state.lifecycle = historyLifecycle(origin.facts, false, { kind });
+          state.pointer = historyPointerContinuation(
+            origin.facts,
+            state.lifecycle,
+            kind,
+          );
+          await origin.pair.close();
+          const create = state.lifecycle.create;
+          return {
+            transactions:
+              order === "before_creation"
+                ? [commitTransactionCbor, create, state.pointer]
+                : order === "before_pointer"
+                  ? [create, commitTransactionCbor, state.pointer]
+                  : [create, commitTransactionCbor],
+            creatingBodies: [transport.initializationBodyCbor],
+          };
+        },
+      });
+      try {
+        const lifecycle = state.lifecycle!;
+        const pointer = state.pointer!;
+        const head =
+          order === "later_pointer"
+            ? await fixture.transport.makeBlock({
+                parent: fixture.commitBlock,
+                transactions: [pointer],
+                creatingBodies: [fixture.transport.initializationBodyCbor],
+              })
+            : fixture.commitBlock;
+        const { pair, input, origin } = await openOrigin(fixture.transport);
+        const durable = await durableFixture(
+          readWatcherLocalBackfillFinality(pair.finality).policy,
+        );
+        const publisher = await createWatcherLocalUserEventPublisher({
+          ...input,
+          origin,
+          runtime: durable.runtime,
+          archive: durable.archive,
+        });
+        await publisher.publish(pair);
+        await pair.close();
+        for (const block of [
+          fixture.transport.emptySuccessorBlock,
+          fixture.initializationBlock,
+          fixture.commitBlock,
+          ...(head === fixture.commitBlock ? [] : [head]),
+        ]) {
+          const finalized = await fixture.transport.openFinalizedBlock(block);
+          try {
+            await publisher.publish(finalized);
+          } finally {
+            await finalized.close();
+          }
+        }
+        const pointerId = CML.hash_transaction(
+          CML.Transaction.from_cbor_hex(pointer).body(),
+        ).to_hex();
+        expect(publisher.read().snapshot.activeEvents).toHaveLength(1);
+        expect(publisher.read().snapshot.activeEvents[0]).toMatchObject({
+          kind,
+          eventId: lifecycle.expectedEventId,
+          transactionHash: pointerId,
+          outRef: `${pointerId}#0`,
+          originBlockHash: fixture.commitBlock.point.blockHash,
+        });
+        const captured = await fixture.observeFresh();
+        const fresh = await fixture.transport.openFinalizedBlock(head);
+        try {
+          const request = {
+            ...fresh,
+            kind,
+            eventId: lifecycle.expectedEventId,
+            throughHeader: captured.header,
+          };
+          if (order === "before_creation") {
+            await expect(publisher.eventAuthority(request)).rejects.toThrow(
+              "origin occurs after the challenged header",
+            );
+          } else {
+            const receipt = await publisher.eventAuthority(request);
+            const scoped = await readWatcherLocalUserEventAuthority(receipt);
+            expect(scoped.event).toMatchObject({
+              kind,
+              eventId: lifecycle.expectedEventId,
+              transactionHash: pointerId,
+              outRef: `${pointerId}#0`,
+              eventCborHex:
+                publisher.read().snapshot.activeEvents[0]!.eventCborHex,
+            });
+            expect("terminalStatus" in scoped.event).toBe(false);
+            expect(scoped.throughHeader).toMatchObject({
+              observedBlockHash: fixture.commitBlock.point.blockHash,
+              observedTransactionHash: captured.header.observedTransactionHash,
+              transactionIndex: "1",
+            });
+          }
+        } finally {
+          await fresh.close();
+        }
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
   it.each(["before_creation", "before_terminal", "after_terminal"] as const)(
     "uses actual same-block SQ/event order: %s",
     async (order) => {
-      const state: { lifecycle: ReturnType<typeof depositLifecycle> | null } = {
+      const state: { lifecycle: ReturnType<typeof historyLifecycle> | null } = {
         lifecycle: null,
       };
       const fixture = await createSyntheticStateQueueObservationFixture({
         composeCommitBlock: async ({ transport, commitTransactionCbor }) => {
           const origin = await openOrigin(transport);
-          state.lifecycle = depositLifecycle(origin.facts);
+          state.lifecycle = historyLifecycle(origin.facts);
           await origin.pair.close();
           const { create, consume, settlementBody } = state.lifecycle;
           return {
@@ -2692,7 +2659,7 @@ describe("local user-event challenged-header cutoff (synthetic local blocks)", (
 
   it("scopes an older sealed header without future terminal facts and retains the same cutoff through cold replay", async () => {
     const state: {
-      lifecycle: ReturnType<typeof depositLifecycle> | null;
+      lifecycle: ReturnType<typeof historyLifecycle> | null;
       creation: SyntheticUserEventBlock | null;
     } = { lifecycle: null, creation: null };
     const fixture = await createSyntheticStateQueueObservationFixture({
@@ -2702,7 +2669,7 @@ describe("local user-event challenged-header cutoff (synthetic local blocks)", (
         commitTransactionCbor,
       }) => {
         const origin = await openOrigin(transport);
-        state.lifecycle = depositLifecycle(origin.facts);
+        state.lifecycle = historyLifecycle(origin.facts);
         await origin.pair.close();
         state.creation = await transport.makeBlock({
           parent: initializationBlock,
@@ -2896,7 +2863,7 @@ const ordinaryDepositReplayTemplate = async () => {
     await publisher.publish(
       await fixture.openFinalizedBlock(fixture.emptySuccessorBlock),
     );
-    const deposit = depositLifecycle(facts);
+    const deposit = historyLifecycle(facts);
     const block = await fixture.makeBlock({
       transactions: [deposit.create],
       creatingBodies: [fixture.initializationBodyCbor],
@@ -2930,7 +2897,7 @@ describe("header-scoped replay authorities", () => {
       composeCommitBlock: async ({ transport, commitTransactionCbor }) => {
         const source = await openOrigin(transport);
         try {
-          const deposit = depositLifecycle(source.facts);
+          const deposit = historyLifecycle(source.facts);
           eventId = deposit.expectedEventId;
           return {
             transactions: [
@@ -3230,7 +3197,7 @@ describe("local user-event same-process rollback suspension", () => {
       );
       await publisher.publish(empty);
       await empty.close();
-      const lifecycle = depositLifecycle(facts);
+      const lifecycle = historyLifecycle(facts);
       const block = await fixture.makeBlock({
         transactions: [lifecycle.create],
         creatingBodies: [fixture.initializationBodyCbor],
@@ -3315,14 +3282,14 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
     });
     await construction.close();
     const state: {
-      lifecycle: ReturnType<typeof depositLifecycle> | null;
+      lifecycle: ReturnType<typeof historyLifecycle> | null;
       depositAddressHex: string | null;
     } = { lifecycle: null, depositAddressHex: null };
     const fixture = await createSyntheticStateQueueObservationFixture({
       ruleBundleCommitment: computeWatcherRuleBundleCommitment(ruleBundle),
       composeCommitBlock: async ({ transport, commitTransactionCbor }) => {
         const origin = await openOrigin(transport);
-        state.lifecycle = depositLifecycle(origin.facts);
+        state.lifecycle = historyLifecycle(origin.facts);
         state.depositAddressHex = origin.facts.scripts.deposit.addressHex;
         await origin.pair.close();
         return {
@@ -3453,4 +3420,559 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
       await fixture.close();
     }
   }, 120_000);
+});
+
+describe("canonical semantic rollback replacement", () => {
+  it.each([
+    "admission",
+    "pointer",
+    "retirement",
+    "withdrawal payout retirement",
+  ] as const)(
+    "replays %s rollback from fresh native blocks, publishes once and restores on restart",
+    async (scenario) => {
+      const fixture = await createSyntheticUserEventOriginFixture();
+      try {
+        const initial = await openOrigin(fixture);
+        const durable = await durableFixture(
+          readWatcherLocalBackfillFinality(initial.pair.finality).policy,
+        );
+        const publisher = await createWatcherLocalUserEventPublisher({
+          ...initial.input,
+          origin: initial.origin,
+          runtime: durable.runtime,
+          archive: durable.archive,
+        });
+        await publisher.publish(initial.pair);
+        const empty = await fixture.openFinalizedBlock(
+          fixture.emptySuccessorBlock,
+        );
+        await publisher.publish(empty);
+        await empty.close();
+        const kind =
+          scenario === "withdrawal payout retirement"
+            ? "withdrawal"
+            : "deposit";
+        const lifecycle = historyLifecycle(initial.facts, false, {
+          kind,
+          withdrawalPayout: kind === "withdrawal",
+        });
+        const common =
+          scenario === "admission"
+            ? fixture.emptySuccessorBlock
+            : await fixture.makeBlock({
+                parent: fixture.emptySuccessorBlock,
+                transactions: [lifecycle.create],
+                creatingBodies: [fixture.initializationBodyCbor],
+              });
+        if (scenario !== "admission") {
+          const pair = await fixture.openFinalizedBlock(common);
+          await publisher.publish(pair);
+          await pair.close();
+        }
+        let operation =
+          scenario === "admission" ? lifecycle.create : lifecycle.consume;
+        if (scenario === "pointer")
+          operation = historyPointerContinuation(
+            initial.facts,
+            lifecycle,
+            kind,
+          );
+        const old = await fixture.makeBlock({
+          parent: common,
+          transactions: [operation],
+          creatingBodies: [
+            fixture.initializationBodyCbor,
+            lifecycle.settlementBody,
+          ],
+        });
+        const oldPair = await fixture.openFinalizedBlock(old);
+        await publisher.publish(oldPair);
+        const prior = publisher.read();
+        if (kind === "withdrawal")
+          expect(prior.snapshot.terminalEvents[0]).toMatchObject({
+            kind: "withdrawal",
+            terminalStatus: "payout_initialized",
+            terminalFinalityStatus: "final",
+          });
+        const authorityPair = await fixture.openFinalizedBlock(old);
+        const issued = await publisher.eventAuthority({
+          ...authorityPair,
+          kind,
+          eventId: lifecycle.expectedEventId,
+        });
+        publisher.suspend();
+        expect(() =>
+          assertWatcherLocalUserEventAuthorityCurrent(issued),
+        ).toThrow();
+        const replacement = await fixture.makeBlock({
+          parent: common,
+          transactions: [],
+          slot: Number(old.point.slot) + 1,
+        });
+        await fixture.selectCanonicalBranch(replacement.point);
+        const fresh = await openOrigin(fixture);
+        const replay = [
+          fixture.emptySuccessorBlock,
+          ...(scenario === "admission" ? [] : [common]),
+          replacement,
+        ];
+        const request = {
+          ...fresh.input,
+          origin: fresh.origin,
+          referenceAuthority: fresh.pair.referenceAuthority,
+          runtime: durable.runtime,
+          archive: durable.archive,
+          replayCanonical: async function* () {
+            for (const block of replay)
+              yield await fixture.openFinalizedBlock(block);
+          },
+        };
+        const casBefore = durable.casCount();
+        const recovered = await replaceWatcherLocalUserEventPublisher(request);
+        expect(durable.casCount()).toBe(casBefore + 1);
+        expect(recovered.read().checkpoint).toMatchObject({
+          rollbackGeneration: "1",
+          predecessorCheckpointDigest: prior.checkpoint!.checkpointDigest,
+          checkpointSequence: (
+            BigInt(prior.checkpoint!.checkpointSequence) + 1n
+          ).toString(),
+        });
+        expect(recovered.read().snapshot.terminalEvents).toHaveLength(0);
+        expect(recovered.read().snapshot.activeEvents).toHaveLength(
+          scenario === "admission" ? 0 : 1,
+        );
+        if (scenario !== "admission")
+          expect(recovered.read().snapshot.activeEvents[0]!.outRef).toBe(
+            `${lifecycle.createId}#0`,
+          );
+        expect(() =>
+          assertWatcherLocalUserEventAuthorityCurrent(issued),
+        ).toThrow();
+        const checkpoint = recovered.read().checkpoint;
+        recovered.close();
+        publisher.close();
+        await authorityPair.close();
+        await oldPair.close();
+        await initial.pair.close();
+        await fresh.pair.close();
+        const restarted = await createWatcherDurableRuntime(
+          durable.runtimeInput,
+        );
+        const restartOrigin = await openOrigin(fixture);
+        const resumed = await resumeWatcherLocalUserEventPublisher({
+          ...restartOrigin.input,
+          origin: restartOrigin.origin,
+          referenceAuthority: restartOrigin.pair.referenceAuthority,
+          runtime: restarted,
+          archive: durable.archive,
+          readHead: () => fixture.openFinalizedBlock(replacement),
+        });
+        expect(resumed.read().checkpoint).toEqual(checkpoint);
+        expect(durable.casCount()).toBe(casBefore + 1);
+        resumed.close();
+        await restartOrigin.pair.close();
+      } finally {
+        await fixture.close();
+      }
+    },
+    120_000,
+  );
+
+  it("requires a positive conflicting full-height branch and preserves the protected head on failed replay", async () => {
+    const fixture = await createSyntheticUserEventOriginFixture();
+    try {
+      const initial = await openOrigin(fixture);
+      const durable = await durableFixture(
+        readWatcherLocalBackfillFinality(initial.pair.finality).policy,
+      );
+      const publisher = await createWatcherLocalUserEventPublisher({
+        ...initial.input,
+        origin: initial.origin,
+        runtime: durable.runtime,
+        archive: durable.archive,
+      });
+      await publisher.publish(initial.pair);
+      const pair = await fixture.openFinalizedBlock(
+        fixture.emptySuccessorBlock,
+      );
+      await publisher.publish(pair);
+      const checkpoint = publisher.read().checkpoint;
+      const fresh = await openOrigin(fixture);
+      const base = {
+        ...fresh.input,
+        origin: fresh.origin,
+        referenceAuthority: fresh.pair.referenceAuthority,
+        runtime: durable.runtime,
+        archive: durable.archive,
+      };
+      await expect(
+        replaceWatcherLocalUserEventPublisher({
+          ...base,
+          replayCanonical: async function* () {
+            yield await fixture.openFinalizedBlock(fixture.emptySuccessorBlock);
+          },
+        }),
+      ).rejects.toThrow("no conflicting");
+      await expect(
+        replaceWatcherLocalUserEventPublisher({
+          ...base,
+          replayCanonical: async function* () {
+            yield await Promise.reject(new Error("source unavailable"));
+          },
+        }),
+      ).rejects.toThrow("source unavailable");
+      expect(
+        readWatcherProtectedUserEventCheckpointReceipt(
+          await readWatcherProtectedUserEventCheckpoint(durable.runtime),
+        ).checkpoint,
+      ).toEqual(checkpoint);
+      publisher.close();
+      await pair.close();
+      await initial.pair.close();
+      await fresh.pair.close();
+    } finally {
+      await fixture.close();
+    }
+  }, 120_000);
+});
+
+describe("raw history payload publication", () => {
+  it.each([
+    { kind: "deposit", withdrawalPayout: false, pointerOnly: false },
+    { kind: "withdrawal", withdrawalPayout: false, pointerOnly: false },
+    { kind: "withdrawal", withdrawalPayout: true, pointerOnly: false },
+    { kind: "deposit", withdrawalPayout: false, pointerOnly: true },
+    { kind: "withdrawal", withdrawalPayout: false, pointerOnly: true },
+  ] as const)(
+    "retains duplicate map pairs through $kind transition payout=$withdrawalPayout pointer=$pointerOnly and restart",
+    async ({ kind, withdrawalPayout, pointerOnly }) => {
+      const fixture = await createSyntheticUserEventOriginFixture();
+      let publisher:
+        | Awaited<ReturnType<typeof createWatcherLocalUserEventPublisher>>
+        | undefined;
+      const pairs: Awaited<ReturnType<typeof fixture.openFinalizedBlock>>[] =
+        [];
+      try {
+        const initial = await openOrigin(fixture);
+        pairs.push(initial.pair);
+        const durable = await durableFixture(
+          readWatcherLocalBackfillFinality(initial.pair.finality).policy,
+        );
+        publisher = await createWatcherLocalUserEventPublisher({
+          ...initial.input,
+          origin: initial.origin,
+          runtime: durable.runtime,
+          archive: durable.archive,
+        });
+        await publisher.publish(initial.pair);
+        const empty = await fixture.openFinalizedBlock(
+          fixture.emptySuccessorBlock,
+        );
+        pairs.push(empty);
+        await publisher.publish(empty);
+        const rawDatumCbor = "a302a20102010301000102";
+        const lifecycle = historyLifecycle(initial.facts, true, {
+          kind,
+          withdrawalPayout,
+          rawDatumCbor,
+        });
+        const admission = await fixture.makeBlock({
+          parent: fixture.emptySuccessorBlock,
+          transactions: [lifecycle.create],
+          creatingBodies: [fixture.initializationBodyCbor],
+        });
+        const admitted = await fixture.openFinalizedBlock(admission);
+        pairs.push(admitted);
+        await publisher.publish(admitted);
+        const original = publisher.read().snapshot.activeEvents[0]!;
+        expect(original.historyPayloadCborHex).toContain(rawDatumCbor);
+        expect(original.eventCborHex).toContain(rawDatumCbor);
+        if (kind === "withdrawal") {
+          const funds = CML.Transaction.from_cbor_hex(lifecycle.consume)
+            .body()
+            .outputs()
+            .get(0);
+          expect(
+            historyRawField(funds.datum()!.as_datum()!.to_cbor_hex(), []),
+          ).toBe(
+            withdrawalPayout
+              ? historyWithdrawalPayoutDatum(original.historyPayloadCborHex!)
+              : rawDatumCbor,
+          );
+        }
+        const retirement = await fixture.makeBlock({
+          parent: admission,
+          transactions: [
+            pointerOnly
+              ? historyPointerContinuation(initial.facts, lifecycle, kind)
+              : lifecycle.consume,
+          ],
+          creatingBodies: [
+            fixture.initializationBodyCbor,
+            lifecycle.settlementBody,
+          ],
+        });
+        const retired = await fixture.openFinalizedBlock(retirement);
+        pairs.push(retired);
+        await publisher.publish(retired);
+        const saved = publisher.read();
+        if (pointerOnly) {
+          expect(saved.snapshot.activeEvents).toHaveLength(1);
+          const continued = saved.snapshot.activeEvents[0]!;
+          expect(continued.outRef).not.toBe(original.outRef);
+          expect(continued.outputCborHex).toContain(rawDatumCbor);
+          expect(continued.datumCborHex).toContain(rawDatumCbor);
+          expect(continued.historyPayloadCborHex).toBe(
+            original.historyPayloadCborHex,
+          );
+          expect(continued.eventCborHex).toBe(original.eventCborHex);
+        } else {
+          expect(saved.snapshot.activeEvents).toHaveLength(0);
+          expect(saved.snapshot.terminalEvents[0]).toMatchObject({
+            eventCborHex: original.eventCborHex,
+            historyPayloadCborHex: original.historyPayloadCborHex,
+            terminalStatus:
+              kind === "deposit"
+                ? "absorbed"
+                : withdrawalPayout
+                  ? "payout_initialized"
+                  : "refunded",
+          });
+        }
+        publisher.close();
+        for (const pair of pairs.splice(0)) await pair.close();
+        const fresh = await openOrigin(fixture);
+        pairs.push(fresh.pair);
+        publisher = await resumeWatcherLocalUserEventPublisher({
+          ...fresh.input,
+          origin: fresh.origin,
+          referenceAuthority: fresh.pair.referenceAuthority,
+          runtime: await createWatcherDurableRuntime(durable.runtimeInput),
+          archive: durable.archive,
+          readHead: () => fixture.openFinalizedBlock(retirement),
+        });
+        expect(publisher.read().snapshot).toEqual(saved.snapshot);
+        const authorityPair = await fixture.openFinalizedBlock(retirement);
+        pairs.push(authorityPair);
+        const authority = await publisher.eventAuthority({
+          ...authorityPair,
+          kind,
+          eventId: lifecycle.expectedEventId,
+        });
+        expect(
+          (await readWatcherLocalUserEventAuthority(authority)).event
+            .historyPayloadCborHex,
+        ).toBe(original.historyPayloadCborHex);
+      } finally {
+        publisher?.close();
+        for (const pair of pairs) await pair.close();
+        await fixture.close();
+      }
+    },
+    120_000,
+  );
+});
+
+/** Native creating-body references are authenticated by the fixture's local
+ * follower. These synthetic blocks do not claim public-chain ledger acceptance. */
+describe("raw external history native lifecycle", () => {
+  const cases = (["deposit", "withdrawal"] as const).flatMap((kind) => [
+    { kind, fault: null },
+    ...(["admission", "retirement"] as const).flatMap((stage) =>
+      (["missing", "substituted"] as const).map((faultKind) => ({
+        kind,
+        fault: { stage, kind: faultKind },
+      })),
+    ),
+  ]);
+  it.each(cases)(
+    "$kind preserves external raw history through pointer/retirement/restart; fault=$fault",
+    async ({ kind, fault }) => {
+      const fixture = await createSyntheticUserEventOriginFixture();
+      let publisher:
+        | Awaited<ReturnType<typeof createWatcherLocalUserEventPublisher>>
+        | undefined;
+      const pairs: Awaited<ReturnType<typeof fixture.openFinalizedBlock>>[] =
+        [];
+      try {
+        const initial = await openOrigin(fixture);
+        pairs.push(initial.pair);
+        const durable = await durableFixture(
+          readWatcherLocalBackfillFinality(initial.pair.finality).policy,
+        );
+        publisher = await createWatcherLocalUserEventPublisher({
+          ...initial.input,
+          origin: initial.origin,
+          runtime: durable.runtime,
+          archive: durable.archive,
+        });
+        await publisher.publish(initial.pair);
+        const empty = await fixture.openFinalizedBlock(
+          fixture.emptySuccessorBlock,
+        );
+        pairs.push(empty);
+        await publisher.publish(empty);
+        const rawDatumCbor = historyRawField(
+          `a402a2010201030100010203590400${"ab".repeat(1024)}`,
+          [],
+        );
+        const options = {
+          kind,
+          external: true,
+          rawDatumCbor,
+          ...(fault === null ? {} : { externalFault: fault }),
+        };
+        const lifecycle = historyLifecycle(initial.facts, true, options);
+        expect(lifecycle.expectedPayloadCbor).toContain(
+          "a402a20102010301000102",
+        );
+        const readCheckpoint = async () =>
+          readWatcherProtectedUserEventCheckpointReceipt(
+            await readWatcherProtectedUserEventCheckpoint(durable.runtime),
+          );
+        const assertRefused = async (pair: typeof empty) => {
+          const before = await readCheckpoint();
+          const snapshot = publisher!.read().snapshot;
+          const cas = durable.casCount();
+          await expect(publisher!.publish(pair)).rejects.toThrow(
+            "whole-block event semantics differ",
+          );
+          const after = await readCheckpoint();
+          expect(after.checkpoint).toEqual(before.checkpoint);
+          expect(after.trustedHead).toEqual(before.trustedHead);
+          expectSameArchiveBytes(after.payload, before.payload!);
+          expect(durable.casCount()).toBe(cas);
+          expect(publisher!.read().snapshot).toEqual(snapshot);
+        };
+        const admission = await fixture.makeBlock({
+          parent: fixture.emptySuccessorBlock,
+          transactions: [lifecycle.create],
+          creatingBodies: [
+            fixture.initializationBodyCbor,
+            ...lifecycle.externalBodies,
+          ],
+        });
+        const admitted = await fixture.openFinalizedBlock(admission);
+        pairs.push(admitted);
+        if (fault?.stage === "admission") {
+          await assertRefused(admitted);
+          return;
+        }
+        const retainedBody = CML.TransactionBody.from_cbor_hex(
+          lifecycle.externalBodies[0]!,
+        );
+        const retainedOutRef = `${CML.hash_transaction(retainedBody).to_hex()}#0`;
+        const actualRetainedOutput = watcherUserEventReferenceOutput(
+          readWatcherUserEventReferenceEvidence(admitted.referenceAuthority),
+          lifecycle.createId,
+          retainedOutRef,
+        )!;
+        expect(actualRetainedOutput.to_cbor_hex()).toBe(
+          retainedBody.outputs().get(0).to_cbor_hex(),
+        );
+        expect(actualRetainedOutput.to_cbor_hex()).not.toBe(
+          actualRetainedOutput.to_canonical_cbor_hex(),
+        );
+        expect(
+          historyRawField(
+            actualRetainedOutput.datum()!.as_datum()!.to_cbor_hex(),
+            [1],
+          ),
+        ).toBe(lifecycle.expectedPayloadCbor);
+        await publisher.publish(admitted);
+        const original = publisher.read().snapshot.activeEvents[0]!;
+        expect(original.historyPayloadCborHex).toBe(
+          lifecycle.expectedPayloadCbor,
+        );
+        expect(original.eventCborHex).toBe(
+          historyRawField(lifecycle.expectedPayloadCbor!, [0]),
+        );
+        const admittedNode = Data.from(original.datumCborHex, EventHistoryNode);
+        expect(admittedNode.payload).toMatchObject({
+          Order: { facts: { location: { External: {} } } },
+        });
+        const pointerTx = historyPointerContinuation(
+          initial.facts,
+          lifecycle,
+          kind,
+        );
+        const pointer = await fixture.makeBlock({
+          parent: admission,
+          transactions: [pointerTx],
+          creatingBodies: [fixture.initializationBodyCbor],
+        });
+        const pointed = await fixture.openFinalizedBlock(pointer);
+        pairs.push(pointed);
+        await publisher.publish(pointed);
+        const continued = publisher.read().snapshot.activeEvents[0]!;
+        expect(continued.outRef).not.toBe(original.outRef);
+        expect(continued.historyPayloadCborHex).toBe(
+          original.historyPayloadCborHex,
+        );
+        expect(continued.eventCborHex).toBe(original.eventCborHex);
+        expect(continued.inclusionTime).toBe(original.inclusionTime);
+        const retirementLifecycle = historyLifecycle(initial.facts, true, {
+          ...options,
+          retirementOrderOutRef: continued.outRef,
+          retirementOrderNext: "ff".repeat(32),
+        });
+        expect(retirementLifecycle.create).toBe(lifecycle.create);
+        const retirement = await fixture.makeBlock({
+          parent: pointer,
+          transactions: [retirementLifecycle.consume],
+          creatingBodies: [
+            fixture.initializationBodyCbor,
+            retirementLifecycle.settlementBody,
+            ...retirementLifecycle.externalBodies,
+          ],
+        });
+        const retired = await fixture.openFinalizedBlock(retirement);
+        pairs.push(retired);
+        if (fault?.stage === "retirement") {
+          await assertRefused(retired);
+          return;
+        }
+        await publisher.publish(retired);
+        const saved = publisher.read();
+        expect(saved.snapshot.activeEvents).toHaveLength(0);
+        expect(saved.snapshot.terminalEvents).toHaveLength(1);
+        expect(saved.snapshot.terminalEvents[0]).toMatchObject({
+          eventCborHex: original.eventCborHex,
+          historyPayloadCborHex: original.historyPayloadCborHex,
+          inclusionTime: original.inclusionTime,
+          terminalStatus: kind === "deposit" ? "absorbed" : "refunded",
+        });
+        publisher.close();
+        for (const pair of pairs.splice(0)) await pair.close();
+        const fresh = await openOrigin(fixture);
+        pairs.push(fresh.pair);
+        publisher = await resumeWatcherLocalUserEventPublisher({
+          ...fresh.input,
+          origin: fresh.origin,
+          referenceAuthority: fresh.pair.referenceAuthority,
+          runtime: await createWatcherDurableRuntime(durable.runtimeInput),
+          archive: durable.archive,
+          readHead: () => fixture.openFinalizedBlock(retirement),
+        });
+        expect(publisher.read().snapshot).toEqual(saved.snapshot);
+        const current = await fixture.openFinalizedBlock(retirement);
+        pairs.push(current);
+        const authority = await publisher.eventAuthority({
+          ...current,
+          kind,
+          eventId: lifecycle.expectedEventId,
+        });
+        expect(
+          (await readWatcherLocalUserEventAuthority(authority)).event
+            .historyPayloadCborHex,
+        ).toBe(lifecycle.expectedPayloadCbor);
+      } finally {
+        publisher?.close();
+        for (const pair of pairs) await pair.close();
+        await fixture.close();
+      }
+    },
+    120_000,
+  );
 });

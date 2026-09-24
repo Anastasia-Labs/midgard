@@ -57,11 +57,19 @@ import {
 import { structuredDataPublicationPlan } from "../workflow/structured-data-preimage.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { RetainedDaPayloadSource } from "./fetch.js";
+import { type TransitionDepositOpening } from "./history-opening.js";
 import {
   captureTransitionTraceL1Events,
   requireTransitionTraceL1Events,
 } from "./l1-events.js";
-import { transitionTraceProofChunks } from "./proof-carriage.js";
+import {
+  transitionTraceProofChunks,
+  transitionTraceTimedProofNeedsChunks,
+} from "./proof-carriage.js";
+import {
+  makeTransitionProofMaterial,
+  type TransitionProofInput,
+} from "./proof-material.js";
 import {
   replayTransitionTraceFromRetainedHistory,
   transitionTraceDetectionId,
@@ -76,6 +84,7 @@ import {
   createTransitionTraceWorkflowArtifact,
   requireTransitionTraceWorkflowArtifact,
 } from "./workflow-artifact.js";
+import { transitionDepositCheckpointRequiresQueueLease } from "./workflow-checkpoint.js";
 import { bindTransitionTraceProofEvent } from "./workflow-proof.js";
 import { TRANSITION_TRACE_CURSOR_SPEC } from "./workflow-spec.js";
 import { transitionTraceYieldData } from "./yield-data.js";
@@ -102,14 +111,16 @@ export const TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES = Object.freeze(
     "computationThreadMint",
     "fraudProofMint",
     "phasMembershipWithdraw",
+    "stateQueueSpend",
   ],
 );
 
 type Prepared = Readonly<{
-  proof: SDK.TransitionFaultProof;
+  proof: TransitionProofInput;
   artifact: JournalJsonObject;
   references: readonly UTxO[];
   depositPolicyId: string;
+  depositOpening?: TransitionDepositOpening;
 }>;
 type ReplayCell = {
   evidence?: CanonicalBlockEvidence;
@@ -178,6 +189,49 @@ const bindRun = (context: TransitionContext) => {
     requireTransitionTraceWorkflowArtifact(artifact, fresh.artifact);
     return fresh;
   };
+  const refineAction = async ({
+    action,
+    artifact,
+  }: {
+    action: FraudProofWorkflowAction;
+    artifact: JournalJsonObject;
+  }): Promise<JournalJsonObject> => {
+    if (action.input.stage === "step_08") {
+      const prepared = admit(artifact);
+      if (transitionTraceFinalIndex(prepared.proof) !== 6)
+        throw new Error(
+          "Timed transition mutation action selected another proof route",
+        );
+      return { requiresMutationLease: true };
+    }
+    if (action.input.stage !== "step_07") return {};
+    const prepared = admit(artifact);
+    const input = cursorFamilyActionInput({
+      category: "transitionTrace",
+      action,
+    });
+    const thread = await fetchUtxoByOutRef({
+      label: "transition deposit mutation checkpoint",
+      lucid: config.lucid,
+      outRef: parseOutRef(
+        cursorStringField(input, "threadOutRef"),
+        "transition deposit checkpoint",
+      ),
+    });
+    const requiresMutationLease = transitionDepositCheckpointRequiresQueueLease(
+      {
+        thread,
+        address: binding.definition.computationThread.steps[6]!.address,
+        unit:
+          binding.definition.computationThread.policyId +
+          binding.definition.categoryId +
+          binding.definition.headerHash,
+        prover: config.signer.paymentKeyHash,
+        proofHash: transitionTraceProofChunks(prepared.proof).hash,
+      },
+    );
+    return { requiresMutationLease };
+  };
   const requirementForAction = async ({
     action,
     artifact,
@@ -191,7 +245,12 @@ const bindRun = (context: TransitionContext) => {
       action,
     });
     const finalIndex = transitionTraceFinalIndex(prepared.proof);
-    if (input.stage === "step_01" && (finalIndex === 4 || finalIndex === 5))
+    if (
+      input.stage === "step_01" &&
+      (finalIndex === 4 ||
+        finalIndex === 5 ||
+        transitionTraceTimedProofNeedsChunks(prepared.proof))
+    )
       return createChunkedRawDatumPreimageRequirement({
         preimage: Buffer.from(
           transitionTraceProofChunks(prepared.proof).chunks.join(""),
@@ -227,7 +286,7 @@ const bindRun = (context: TransitionContext) => {
       proof: prepared.proof,
       network: binding.network,
       depositPolicyId: prepared.depositPolicyId,
-      additionalReferenceInputs: prepared.references,
+      depositOpening: prepared.depositOpening,
     }).find((item) => item.outputCbors !== undefined)?.outputCbors;
     const output = outputs?.[Number(state.output_index)];
     if (output === undefined) return null;
@@ -286,9 +345,23 @@ const bindRun = (context: TransitionContext) => {
           action,
           artifact,
         });
-      return {
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
+      const fields = await refineAction({ action, artifact });
+      if (fields.requiresMutationLease !== input.requiresMutationLease)
+        throw new Error(
+          "Transition checkpoint queue mutation changed before capture",
+        );
+      const mutationLease =
+        fields.requiresMutationLease === true
+          ? await config.stateQueueMutationLeaseCoordinator.acquire()
+          : undefined;
+      try {
+        await mutationLease?.renew();
+        const transaction = await captureLocallyEvaluatedTransaction(
+          async (boundary) => {
+            const preSubmitBoundary: typeof boundary = async (built) => {
+              await mutationLease?.renew();
+              await boundary(built);
+            };
             const common = {
               lucid: config.lucid,
               blueprint: binding.blueprint,
@@ -330,14 +403,30 @@ const bindRun = (context: TransitionContext) => {
               threadOutRef,
               proof: prepared.proof,
               additionalReferenceInputs: prepared.references,
+              depositOpening: prepared.depositOpening,
             });
           },
-        ),
-      };
+        );
+        return {
+          transaction,
+          ...(mutationLease === undefined ? {} : { mutationLease }),
+        };
+      } catch (error) {
+        await mutationLease?.fail(
+          `Terminal transition proof capture failed: ${String(error)}`,
+        );
+        throw error;
+      }
     },
   };
 
-  return { transactions, requirementForAction, references, witnesses };
+  return {
+    transactions,
+    requirementForAction,
+    references,
+    witnesses,
+    refineAction,
+  };
 };
 const runFor = (context: TransitionContext) => {
   const existing = boundRuns.get(context);
@@ -361,12 +450,15 @@ export const TRANSITION_TRACE_FAMILY_DEFINITION = defineFamily<
     "phasMembershipWithdraw",
   ],
   fieldPreimageCertificate: false,
-  auxiliaryReferenceScripts: Object.fromEntries(
-    Object.values(TRANSITION_TRACE_YIELD_REFERENCES).map(({ entry }) => [
-      entry,
-      entry,
-    ]),
-  ),
+  auxiliaryReferenceScripts: {
+    ...Object.fromEntries(
+      Object.values(TRANSITION_TRACE_YIELD_REFERENCES).map(({ entry }) => [
+        entry,
+        entry,
+      ]),
+    ),
+    stateQueueSpend: "stateQueueSpend",
+  },
   replayer: (context) =>
     createTransitionTraceCompleteCanonicalReplayFromRetainedHistory(
       () => {
@@ -393,6 +485,7 @@ export const TRANSITION_TRACE_FAMILY_DEFINITION = defineFamily<
       "fraudProofTransitionTrace",
       ...TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
     ],
+    createRefineAction: (context) => runFor(context).refineAction,
     transactionPort: (context) => runFor(context).transactions,
   },
   fieldCarriage: [
@@ -503,30 +596,32 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
       throw new Error("Transition replay finding is not buildable");
     const finalIndex = transitionTraceFinalIndex(detection.proof);
     const bound = bindTransitionTraceProofEvent({
-      proof: detection.proof,
+      proof: makeTransitionProofMaterial(
+        evidence.reconstruction,
+        detection.proof,
+      ),
       events: replay.referencesByEvent,
-      finalReferences: [
-        raw.hub,
-        workflow.references[
-          TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES[finalIndex]!
-        ]!,
-        workflow.references.computationThreadMint!,
-        workflow.references.fraudProofMint!,
-      ],
     });
     const detectionId = transitionTraceDetectionId(index, detection.kind);
+    const depositOpening =
+      finalIndex === 5 && bound.event?.kind === "deposit"
+        ? bound.event.history
+        : null;
     prepared.set(detectionId, {
       proof: bound.proof,
       references: bound.event === null ? [] : [bound.event.utxo],
       depositPolicyId: raw.depositPolicyId,
+      ...(depositOpening === null ? {} : { depositOpening }),
       artifact: createTransitionTraceWorkflowArtifact({
         evidence,
         corpus,
         proof: bound.proof,
         detectionId,
         l1Snapshot: replay.l1Snapshot,
+        depositOpening,
         eventOutRef:
-          bound.event === null
+          bound.event === null ||
+          (finalIndex === 6 && bound.event.kind !== "forcedTransaction")
             ? null
             : `${bound.event.utxo.txHash}#${bound.event.utxo.outputIndex}`,
       }),

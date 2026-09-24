@@ -50,6 +50,11 @@ export type Metadata = {
   };
   readonly validTo: number;
   readonly inclusionTime: number;
+  readonly structuralLovelace: string;
+  readonly orderOutputIndex: number;
+  readonly l2DatumCbor: string | null;
+  /** Completed body and witnesses persisted before signing or broadcast. */
+  readonly transactionCbor: string;
 };
 
 export type Row = {
@@ -216,9 +221,9 @@ export const insertSubmitted = (
         ${input[Columns.EXPECTED_DEPOSIT_OUT_REF]},
         ${input[Columns.EXPECTED_L2_ADDRESS]},
         ${input[Columns.EXPECTED_LOVELACE]},
-        CAST(${stableStringify(input[Columns.EXPECTED_ASSETS])} AS JSONB),
-        CAST(${stableStringify(input[Columns.METADATA])} AS JSONB),
-        CAST(${stableStringify(input[Columns.FUNDING_OUT_REFS])} AS JSONB),
+        CAST(${stableStringify(input[Columns.EXPECTED_ASSETS])} AS TEXT)::JSONB,
+        CAST(${stableStringify(input[Columns.METADATA])} AS TEXT)::JSONB,
+        CAST(${stableStringify(input[Columns.FUNDING_OUT_REFS])} AS TEXT)::JSONB,
         ${Status.SubmittedConfirmationUnknown}
       )
       RETURNING *`;

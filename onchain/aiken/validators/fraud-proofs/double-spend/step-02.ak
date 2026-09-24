@@ -148,12 +148,9 @@ const adversarial_chunk_count: Int = 2
 /// direct route can carry — and the distinctness argument is unchanged.
 test double_spend_step_02_binds_a_published_chunk_membership_proof() {
   let tx1_block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-  let base = fixture.native_block_fixture_v1(conflicting_native_tx_v1())
-  let steps = fixture.adversarial_branch_steps(adversarial_branch_levels)
-  let tx2_block = fixture.deep_transactions_root_block_fixture_v1(
-    base,
-    fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
-    1_000_000,
+  let (tx2_block, steps) = fixture.deep_membership_block_fixture_v1(
+    conflicting_native_tx_v1(),
+    adversarial_branch_levels,
   )
   let expected_output_state: Data = step_03.State {
     verified_tx1_id: tx1_block.tx_id,

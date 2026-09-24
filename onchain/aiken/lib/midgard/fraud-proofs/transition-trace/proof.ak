@@ -7,10 +7,14 @@ use cardano/address.{
   Address, Credential, Inline, Pointer, Script, StakeCredential, VerificationKey,
 }
 use cardano/assets.{AssetName, Value}
-use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
+}
 use env
 use midgard/common/types.{Proof}
 use midgard/common/utils
+use midgard/event_history/order_facts
+use midgard/event_history/proof_evidence
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/field_opening_v1.{
   AnchoredNativeTxV1, BodyAnchor, BodyTxOpening, anchored_field_walk,
@@ -20,6 +24,7 @@ use midgard/fraud_proofs/field_opening_v1.{
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/transition_trace/timed_history
 use midgard/hub_oracle as hub
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
@@ -30,7 +35,6 @@ use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
-use midgard/user_events/withdrawal
 use midgard/validation_claim_v1
 use midgard/validation_trace_v1
 
@@ -194,8 +198,6 @@ pub type InvalidOneStepTransitionWitness {
       ledger_state.DepositId,
       ledger_state.DepositInfo,
     >,
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     projected_utxo: LedgerInsertWitness,
   }
   L2TransactionTransition {
@@ -222,15 +224,11 @@ pub type AcceptedTransactionTransitionMismatchWitness {
 
 pub type OmittedDueL1EventWitness {
   OmittedDueDeposit {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     source_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.DepositId,
     >,
   }
   OmittedDueWithdrawal {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     source_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.WithdrawalId,
     >,
@@ -247,17 +245,12 @@ pub type OmittedDueL1EventWitness {
 
 pub type OutOfWindowSourceEventWitness {
   OutOfWindowDeposit {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.DepositId,
       ledger_state.DepositInfo,
     >,
   }
   OutOfWindowWithdrawal {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
-    validity_override: ledger_state.WithdrawalValidity,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.WithdrawalId,
       ledger_state.WithdrawalInfo,
@@ -282,16 +275,11 @@ pub type CountFaultWitness {
   TransitionTraceRootCountMismatch { proof: transition_trace.RootCountProof }
 }
 
-type TimedDepositEvent {
-  event: ledger_state.DepositEvent,
-  inclusion_time: Int,
-}
-
-pub type AuthenticatedDepositReference {
-  out_ref: OutputReference,
-  event: ledger_state.DepositEvent,
-  inclusion_time: Int,
-  value: Value,
+/// Transaction-local history evidence, separate from the immutable semantic proof.
+pub type L1EventEvidence {
+  transaction: Transaction,
+  history_data: proof_evidence.Parameters,
+  reference: timed_history.Reference,
 }
 
 const transition_trace_fraud_category_id = #"00000004"
@@ -864,24 +852,6 @@ fn cardano_asset_pairs_to_midgard(
   }
 }
 
-fn projected_deposit_value(
-  value: Value,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-) -> native_types.MidgardValue {
-  expect assets.quantity_of(value, deposit_policy_id, event_asset_name) == 1
-  let projected_value = value
-    |> assets.add(deposit_policy_id, event_asset_name, -1)
-  let lovelace = assets.lovelace_of(projected_value)
-  expect lovelace >= 0
-  native_types.MidgardValue {
-    lovelace,
-    assets: projected_value
-      |> assets.flatten
-      |> cardano_asset_pairs_to_midgard,
-  }
-}
-
 fn deposit_datum_cbor(datum: Option<Data>) -> Option<ByteArray> {
   when datum is {
     Some(datum) -> Some(cbor.serialise(datum))
@@ -889,45 +859,28 @@ fn deposit_datum_cbor(datum: Option<Data>) -> Option<ByteArray> {
   }
 }
 
-/// The canonical L2 output bytes a valid deposit projects into the ledger.
-///
-/// These are the bytes the descriptor is derived from, not the value inserted
-/// into `utxos_root`; see `apply_l2_outputs` for why the two differ.
-pub fn projected_deposit_output(
+/// Project the original admitted assets retained by the history commitment.
+/// Neither structural ADA nor the history NFT is present in this Value.
+pub fn projected_original_deposit_output(
   deposit_info: ledger_state.DepositInfo,
-  deposit_value: Value,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
+  original_assets: Value,
 ) -> native_types.MidgardTxOutput {
+  let lovelace = assets.lovelace_of(original_assets)
+  expect lovelace >= 0
   native_types.MidgardTxOutput {
     address: deposit_address_to_midgard(
       deposit_info.l2_address,
       deposit_info.l2_network_id,
     ),
-    value: projected_deposit_value(
-      deposit_value,
-      deposit_policy_id,
-      event_asset_name,
-    ),
+    value: native_types.MidgardValue {
+      lovelace,
+      assets: original_assets
+        |> assets.flatten
+        |> cardano_asset_pairs_to_midgard,
+    },
     datum_cbor: deposit_datum_cbor(deposit_info.l2_datum),
     script_ref: None,
   }
-}
-
-fn projected_deposit_output_cbor(
-  deposit_info: ledger_state.DepositInfo,
-  deposit_value: Value,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-) -> ByteArray {
-  native_components.encode_midgard_tx_output(
-    projected_deposit_output(
-      deposit_info,
-      deposit_value,
-      deposit_policy_id,
-      event_asset_name,
-    ),
-  )
 }
 
 fn verify_l2_source_membership(
@@ -1116,7 +1069,7 @@ fn validate_invalid_forced_transaction_no_op_transition(
 pub fn validate_valid_deposit_transition(
   header: ledger_state.HeaderV1,
   hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
+  evidence: L1EventEvidence,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -1126,25 +1079,28 @@ pub fn validate_valid_deposit_transition(
     ledger_state.DepositId,
     ledger_state.DepositInfo,
   >,
-  event_ref_input_index: Int,
-  event_asset_name: AssetName,
   projected_utxo: LedgerInsertWitness,
 ) -> Bool {
-  let AuthenticatedDepositReference { event, value, .. } = get_authenticated_deposit_reference(
-    reference_inputs,
+  let (_, payload, original_assets) = order_facts.capture_open(
+    evidence.transaction,
     hub_datum.deposit,
-    event_asset_name,
-    event_ref_input_index,
+    hub_datum.deposit_addr,
+    evidence.history_data.retention_address,
+    order_facts.Deposit,
+    source_membership.key,
+    header.end_time,
+    evidence.history_data.inline_limit,
+    evidence.history_data.max_payload_bytes,
+    evidence.history_data.max_payload_nodes,
+    evidence.reference.order_index,
+    evidence.reference.external_data_index,
   )
+  expect order_facts.DepositPayload { event } = payload
   let expected_key = ledger_outref_key(source_membership.key)
   expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
     source_membership.key.output_index,
-    projected_deposit_output_cbor(
-      source_membership.value,
-      value,
-      hub_datum.deposit,
-      event_asset_name,
-    ),
+    projected_original_deposit_output(source_membership.value, original_assets)
+      |> native_components.encode_midgard_tx_output,
   )
   let checked_projected_utxo = LedgerInsertWitness {
     key: expected_key,
@@ -1331,6 +1287,7 @@ fn validate_invalid_one_step_transition(
   hub_datum: hub.Datum,
   reference_inputs: List<Input>,
   witness: InvalidOneStepTransitionWitness,
+  l1_event_evidence: Option<L1EventEvidence>,
 ) -> Bool {
   when witness is {
     ValidWithdrawalTransition {
@@ -1372,21 +1329,20 @@ fn validate_invalid_one_step_transition(
       trace_proof,
       event_to_step,
       source_membership,
-      event_ref_input_index,
-      event_asset_name,
       projected_utxo,
-    } ->
+    } -> {
+      expect Some(evidence) = l1_event_evidence
+      expect evidence.transaction.reference_inputs == reference_inputs
       validate_valid_deposit_transition(
         header,
         hub_datum,
-        reference_inputs,
+        evidence,
         trace_proof,
         event_to_step,
         source_membership,
-        event_ref_input_index,
-        event_asset_name,
         projected_utxo,
       )
+    }
     L2TransactionTransition {
       trace_proof,
       event_to_step,
@@ -1498,67 +1454,6 @@ fn tx_order_compact_body(
   verified.tx_compact.body
 }
 
-pub fn get_authenticated_deposit_reference(
-  reference_inputs: List<Input>,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-  event_ref_input_index: Int,
-) -> AuthenticatedDepositReference {
-  expect Some(reference_input) = list.at(
-    reference_inputs,
-    event_ref_input_index,
-  )
-  let Input { output, .. } = reference_input
-  let Output { datum, value, .. } = output
-  expect InlineDatum(datum_data) = datum
-  expect assets.quantity_of(value, deposit_policy_id, event_asset_name) == 1
-  expect [event_data,
-        inclusion_time_data, ..] = builtin.unconstr_fields(datum_data)
-  let Pair(deposit_id_data, deposit_info_data) = ledger_state.unsafe_event_to_key_value_pair(
-    event_data,
-  )
-  expect deposit_id: ledger_state.DepositId = deposit_id_data
-  expect deposit_info: ledger_state.DepositInfo = deposit_info_data
-
-  AuthenticatedDepositReference {
-    out_ref: reference_input.output_reference,
-    event: ledger_state.DepositEvent { id: deposit_id, info: deposit_info },
-    inclusion_time: builtin.un_i_data(inclusion_time_data),
-    value,
-  }
-}
-
-fn get_deposit_event_with_nft(
-  reference_inputs: List<Input>,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-  event_ref_input_index: Int,
-) -> TimedDepositEvent {
-  let AuthenticatedDepositReference { event, inclusion_time, .. } = get_authenticated_deposit_reference(
-    reference_inputs,
-    deposit_policy_id,
-    event_asset_name,
-    event_ref_input_index,
-  )
-  TimedDepositEvent { event, inclusion_time }
-}
-
-fn get_withdrawal_datum_with_nft(
-  reference_inputs: List<Input>,
-  withdrawal_policy_id: ByteArray,
-  event_asset_name: AssetName,
-  event_ref_input_index: Int,
-) -> withdrawal.Datum {
-  expect Input { output: Output { datum: InlineDatum(datum_data), .. }, .. } = utils.get_authentic_input_with_nft_at(
-    reference_inputs,
-    withdrawal_policy_id,
-    event_asset_name,
-    event_ref_input_index,
-  )
-  expect datum: withdrawal.Datum = datum_data
-  datum
-}
-
 fn get_tx_order_datum_with_nft(
   reference_inputs: List<Input>,
   tx_order_policy_id: ByteArray,
@@ -1575,176 +1470,77 @@ fn get_tx_order_datum_with_nft(
   datum
 }
 
-fn validate_omitted_due_l1_event(
+fn validate_l1_event_fault(
   header: ledger_state.HeaderV1,
+  fault: TransitionFault,
   hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
-  witness: OmittedDueL1EventWitness,
+  evidence: L1EventEvidence,
 ) -> Bool {
-  when witness is {
-    OmittedDueDeposit {
-      event_ref_input_index,
-      event_asset_name,
-      source_non_membership,
-    } -> {
-      let TimedDepositEvent { event, inclusion_time } = get_deposit_event_with_nft(
-        reference_inputs,
-        hub_datum.deposit,
-        event_asset_name,
-        event_ref_input_index,
-      )
-      and {
-        timed_l1_event_is_due(header, inclusion_time),
-        source_non_membership.key == event.id,
-        transition_trace.verify_root_non_membership_with_key_bytes(
-          source_non_membership,
-          transition_trace.DepositsRootDomain,
-          header.deposits_root,
-          header.deposit_count,
-          cbor.serialise(source_non_membership.key),
-        ),
-      }
-    }
-    OmittedDueWithdrawal {
-      event_ref_input_index,
-      event_asset_name,
-      source_non_membership,
-    } -> {
-      let withdrawal_datum = get_withdrawal_datum_with_nft(
-        reference_inputs,
-        hub_datum.withdrawal,
-        event_asset_name,
-        event_ref_input_index,
-      )
-      let user_events.OptimisticDatum { event, inclusion_time, .. } = withdrawal_datum
-      and {
-        timed_l1_event_is_due(header, inclusion_time),
-        source_non_membership.key == event.id,
-        transition_trace.verify_root_non_membership_with_key_bytes(
-          source_non_membership,
-          transition_trace.WithdrawalsRootDomain,
-          header.withdrawals_root,
-          header.withdrawal_count,
-          cbor.serialise(source_non_membership.key),
-        ),
-      }
-    }
-    OmittedDueForcedTransaction {
-      event_ref_input_index,
-      event_asset_name,
-      validity_override: _validity_override,
-      source_non_membership,
-    } -> {
-      let tx_order_datum = get_tx_order_datum_with_nft(
-        reference_inputs,
-        hub_datum.tx_order,
-        event_asset_name,
-        event_ref_input_index,
-      )
-      let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
-      let compact_body = tx_order_compact_body(event.tx)
-      and {
-        forced_event_is_due(header, inclusion_time, compact_body),
-        source_non_membership.key == event.id,
-        transition_trace.verify_root_non_membership_with_key_bytes(
-          source_non_membership,
-          transition_trace.ForcedTransactionsV1RootDomain,
-          header.forced_transactions_root,
-          header.forced_transaction_count,
-          cbor.serialise(source_non_membership.key),
-        ),
-      }
+  let parameters = fn(policy) {
+    timed_history.Parameters {
+      policy,
+      list_address: address.from_script(policy),
+      data: evidence.history_data,
     }
   }
-}
-
-fn validate_out_of_window_source_event(
-  header: ledger_state.HeaderV1,
-  hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
-  witness: OutOfWindowSourceEventWitness,
-) -> Bool {
-  when witness is {
-    OutOfWindowDeposit {
-      event_ref_input_index,
-      event_asset_name,
-      source_membership,
-    } -> {
-      let TimedDepositEvent { event, inclusion_time } = get_deposit_event_with_nft(
-        reference_inputs,
-        hub_datum.deposit,
-        event_asset_name,
-        event_ref_input_index,
-      )
-      and {
-        !timed_l1_event_is_due(header, inclusion_time),
-        source_membership.key == event.id,
-        source_membership.value == event.info,
-        verify_source_membership(
-          header,
-          DepositSourceMembership { membership: source_membership },
-        ),
+  when fault is {
+    OmittedDueL1Event { witness } ->
+      when witness is {
+        OmittedDueDeposit { source_non_membership } ->
+          timed_history.omitted(
+            evidence.transaction,
+            parameters(hub_datum.deposit),
+            evidence.reference,
+            order_facts.Deposit,
+            header,
+            source_non_membership,
+          )
+        OmittedDueWithdrawal { source_non_membership } ->
+          timed_history.omitted(
+            evidence.transaction,
+            parameters(hub_datum.withdrawal),
+            evidence.reference,
+            order_facts.Withdrawal,
+            header,
+            source_non_membership,
+          )
+        OmittedDueForcedTransaction { .. } ->
+          validate_forced_l1_event_fault(
+            header,
+            fault,
+            hub_datum,
+            evidence.transaction.reference_inputs,
+            evidence.reference.order_index,
+          )
       }
-    }
-    OutOfWindowWithdrawal {
-      event_ref_input_index,
-      event_asset_name,
-      validity_override,
-      source_membership,
-    } -> {
-      let withdrawal_datum = get_withdrawal_datum_with_nft(
-        reference_inputs,
-        hub_datum.withdrawal,
-        event_asset_name,
-        event_ref_input_index,
-      )
-      let user_events.OptimisticDatum { event, inclusion_time, .. } = withdrawal_datum
-      let expected_info = ledger_state.WithdrawalInfo {
-        ..event.info,
-        validity: validity_override,
+    OutOfWindowSourceEvent { witness } ->
+      when witness is {
+        OutOfWindowDeposit { source_membership } ->
+          timed_history.out_of_window_deposit(
+            evidence.transaction,
+            parameters(hub_datum.deposit),
+            evidence.reference,
+            header,
+            source_membership,
+          )
+        OutOfWindowWithdrawal { source_membership } ->
+          timed_history.out_of_window_withdrawal(
+            evidence.transaction,
+            parameters(hub_datum.withdrawal),
+            evidence.reference,
+            header,
+            source_membership,
+          )
+        OutOfWindowForcedTransaction { .. } ->
+          validate_forced_l1_event_fault(
+            header,
+            fault,
+            hub_datum,
+            evidence.transaction.reference_inputs,
+            evidence.reference.order_index,
+          )
       }
-      and {
-        !timed_l1_event_is_due(header, inclusion_time),
-        source_membership.key == event.id,
-        source_membership.value == expected_info,
-        verify_source_membership(
-          header,
-          WithdrawalSourceMembership { membership: source_membership },
-        ),
-      }
-    }
-    OutOfWindowForcedTransaction {
-      event_ref_input_index,
-      event_asset_name,
-      validity_override,
-      source_membership,
-    } -> {
-      let tx_order_datum = get_tx_order_datum_with_nft(
-        reference_inputs,
-        hub_datum.tx_order,
-        event_asset_name,
-        event_ref_input_index,
-      )
-      let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
-      let expected_source_value = ledger_state.ForcedInclusionTxV1 {
-        tx_id: event.tx.tx_id,
-        submitted_source: event.tx.submitted_source,
-        verdict: validity_override,
-      }
-      let compact_body = native_compact.verify_forced_tx_compact_cbor_v1(
-        event.tx.tx_id,
-        event.tx.submitted_source.compact_cbor,
-      ).tx_compact.body
-      and {
-        !forced_event_is_due(header, inclusion_time, compact_body),
-        source_membership.key == event.id,
-        source_membership.value == expected_source_value,
-        verify_source_membership(
-          header,
-          ForcedTransactionSourceMembership { membership: source_membership },
-        ),
-      }
-    }
+    _ -> False
   }
 }
 
@@ -1844,6 +1640,7 @@ fn validate_transition_fault(
   fault: TransitionFault,
   hub_datum: hub.Datum,
   reference_inputs: List<Input>,
+  l1_event_evidence: Option<L1EventEvidence>,
 ) -> Bool {
   when fault is {
     TraceBoundaryFault { side, trace_proof } ->
@@ -1859,23 +1656,20 @@ fn validate_transition_fault(
         hub_datum,
         reference_inputs,
         witness,
+        l1_event_evidence,
       )
-    OmittedDueL1Event { witness } ->
-      validate_omitted_due_l1_event(
-        header,
-        hub_datum,
-        reference_inputs,
-        witness,
-      )
+    OmittedDueL1Event { .. } -> {
+      expect Some(evidence) = l1_event_evidence
+      expect evidence.transaction.reference_inputs == reference_inputs
+      validate_l1_event_fault(header, fault, hub_datum, evidence)
+    }
     DuplicateTraceEvent { left_trace, right_trace } ->
       validate_duplicate_trace_event(header, left_trace, right_trace)
-    OutOfWindowSourceEvent { witness } ->
-      validate_out_of_window_source_event(
-        header,
-        hub_datum,
-        reference_inputs,
-        witness,
-      )
+    OutOfWindowSourceEvent { .. } -> {
+      expect Some(evidence) = l1_event_evidence
+      expect evidence.transaction.reference_inputs == reference_inputs
+      validate_l1_event_fault(header, fault, hub_datum, evidence)
+    }
     CountFault { witness } -> validate_count_fault(header, witness)
     AcceptedTransactionTransitionMismatch { witness } ->
       validate_accepted_transaction_transition_mismatch(header, witness)
@@ -2069,7 +1863,7 @@ pub fn validate_deposit_fault_proof(
   proof: TransitionFaultProof,
   computation_thread_token_asset_name: AssetName,
   hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
+  evidence: L1EventEvidence,
 ) -> Bool {
   and {
     validate_transition_fault_proof_envelope(
@@ -2083,19 +1877,15 @@ pub fn validate_deposit_fault_proof(
             trace_proof,
             event_to_step,
             source_membership,
-            event_ref_input_index,
-            event_asset_name,
             projected_utxo,
           } ->
             validate_valid_deposit_transition(
               proof.header,
               hub_datum,
-              reference_inputs,
+              evidence,
               trace_proof,
               event_to_step,
               source_membership,
-              event_ref_input_index,
-              event_asset_name,
               projected_utxo,
             )
           _ -> False
@@ -2109,30 +1899,14 @@ pub fn validate_l1_event_fault_proof(
   proof: TransitionFaultProof,
   computation_thread_token_asset_name: AssetName,
   hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
+  evidence: L1EventEvidence,
 ) -> Bool {
   and {
     validate_transition_fault_proof_envelope(
       proof,
       computation_thread_token_asset_name,
     ),
-    when proof.fault is {
-      OmittedDueL1Event { witness } ->
-        validate_omitted_due_l1_event(
-          proof.header,
-          hub_datum,
-          reference_inputs,
-          witness,
-        )
-      OutOfWindowSourceEvent { witness } ->
-        validate_out_of_window_source_event(
-          proof.header,
-          hub_datum,
-          reference_inputs,
-          witness,
-        )
-      _ -> False
-    },
+    validate_l1_event_fault(proof.header, proof.fault, hub_datum, evidence),
   }
 }
 
@@ -2158,6 +1932,7 @@ pub fn validate_transition_fault_proof(
   computation_thread_token_asset_name: AssetName,
   hub_datum: hub.Datum,
   reference_inputs: List<Input>,
+  l1_event_evidence: Option<L1EventEvidence>,
 ) -> Bool {
   and {
     validate_transition_fault_proof_envelope(
@@ -2169,6 +1944,7 @@ pub fn validate_transition_fault_proof(
       proof.fault,
       hub_datum,
       reference_inputs,
+      l1_event_evidence,
     ),
   }
 }
@@ -2275,4 +2051,87 @@ test canonical_fork_rejects_dropped_prefix_root() fail {
 test canonical_insertion_rejects_dropped_prefix_root() fail {
   let v = prefix_fixture.fork()
   insert_root(prefix_fixture.dropped_fork_prefix_root, v.key, v.value, v.proof) == v.before
+}
+
+/// Forced-event timing remains on its existing submission domain. This entry
+/// keeps the production history final from retaining legacy deposit/withdrawal
+/// decoders merely to reach the unchanged forced-event branches.
+pub fn validate_forced_l1_event_fault(
+  header: ledger_state.HeaderV1,
+  fault: TransitionFault,
+  hub_datum: hub.Datum,
+  reference_inputs: List<Input>,
+  current_event_reference_index: Int,
+) -> Bool {
+  when fault is {
+    OmittedDueL1Event { witness } ->
+      when witness is {
+        OmittedDueForcedTransaction {
+          event_ref_input_index: _,
+          event_asset_name,
+          validity_override: _validity_override,
+          source_non_membership,
+        } -> {
+          let tx_order_datum = get_tx_order_datum_with_nft(
+            reference_inputs,
+            hub_datum.tx_order,
+            event_asset_name,
+            current_event_reference_index,
+          )
+          let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
+          let compact_body = tx_order_compact_body(event.tx)
+          and {
+            forced_event_is_due(header, inclusion_time, compact_body),
+            source_non_membership.key == event.id,
+            transition_trace.verify_root_non_membership_with_key_bytes(
+              source_non_membership,
+              transition_trace.ForcedTransactionsV1RootDomain,
+              header.forced_transactions_root,
+              header.forced_transaction_count,
+              cbor.serialise(source_non_membership.key),
+            ),
+          }
+        }
+        _ -> False
+      }
+    OutOfWindowSourceEvent { witness } ->
+      when witness is {
+        OutOfWindowForcedTransaction {
+          event_ref_input_index: _,
+          event_asset_name,
+          validity_override,
+          source_membership,
+        } -> {
+          let tx_order_datum = get_tx_order_datum_with_nft(
+            reference_inputs,
+            hub_datum.tx_order,
+            event_asset_name,
+            current_event_reference_index,
+          )
+          let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
+          let expected_source_value = ledger_state.ForcedInclusionTxV1 {
+            tx_id: event.tx.tx_id,
+            submitted_source: event.tx.submitted_source,
+            verdict: validity_override,
+          }
+          let compact_body = native_compact.verify_forced_tx_compact_cbor_v1(
+            event.tx.tx_id,
+            event.tx.submitted_source.compact_cbor,
+          ).tx_compact.body
+          and {
+            !forced_event_is_due(header, inclusion_time, compact_body),
+            source_membership.key == event.id,
+            source_membership.value == expected_source_value,
+            verify_source_membership(
+              header,
+              ForcedTransactionSourceMembership {
+                membership: source_membership,
+              },
+            ),
+          }
+        }
+        _ -> False
+      }
+    _ -> False
+  }
 }

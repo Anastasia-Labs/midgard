@@ -14,9 +14,9 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../../src/mint-authorization/contracts.js";
 import { buildMintAuthorizationStep02Evidence } from "../../src/mint-authorization/evidence.js";
 import {
-  submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
   submitMintAuthorizationStep03WitnessAbsence,
@@ -27,6 +27,7 @@ import {
 import type { VanRossemFitMeasurement } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import { publishProofChunks } from "../../src/publish-proof-chunks.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+import { submitResolvedInit } from "../../src/submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
 import { createStructuredDataPreimageRequirement } from "../../src/workflow/raw-datum-preimage.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
@@ -229,7 +230,8 @@ export const runMintAuthorizationProofMaximum = async (
     witnessSet: subject.witnessSetCompact,
   };
   const init = await capture("init", "lifecycle", () =>
-    submitMintAuthorizationInit({
+    submitResolvedInit({
+      label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       ...common,
       blueprint: h.realBlueprint,
       network,

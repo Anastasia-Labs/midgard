@@ -3,9 +3,10 @@ import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { MISSING_SIGNATURE_CATEGORY_LABEL } from "../src/missing-signature/contracts.js";
 import {
   proveMissingSignatureFault,
-  submitMissingSignatureCancel,
   submitMissingSignatureInit,
   submitMissingSignatureStep01,
   submitMissingSignatureStep02,
@@ -115,9 +116,11 @@ describe("missing-signature negatives and resume", () => {
         references,
         stepIndex,
       );
-      const cancelled = await submitMissingSignatureCancel({
+      const cancelled = await submitLinearFaultCancel({
         lucid: harness.proverLucid,
-        contracts: harness.missingSignature,
+        family: MISSING_SIGNATURE_CATEGORY_LABEL,
+        steps: harness.missingSignature.steps,
+        computationThread: harness.missingSignature.computationThread,
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
         threadOutRef,
@@ -215,9 +218,11 @@ describe("missing-signature negatives and resume", () => {
     if (resumed.kind === "proven") expect(resumed.txHashes).toHaveLength(1);
 
     const cancellable = await buildInterior();
-    const cancelled = await submitMissingSignatureCancel({
+    const cancelled = await submitLinearFaultCancel({
       lucid: cancellable.harness.proverLucid,
-      contracts: cancellable.harness.missingSignature,
+      family: MISSING_SIGNATURE_CATEGORY_LABEL,
+      steps: cancellable.harness.missingSignature.steps,
+      computationThread: cancellable.harness.missingSignature.computationThread,
       categoryId: cancellable.harness.category.categoryId,
       signer: cancellable.harness.proverSigner,
       threadOutRef: cancellable.scan.nextThreadOutRef,

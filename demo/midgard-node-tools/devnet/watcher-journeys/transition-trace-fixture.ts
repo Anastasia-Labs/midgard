@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
+import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import {
   type PublishedDepositTraceCheckpoint,
   stagePublishedDepositTrace,
@@ -39,20 +40,25 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       // header removal only has to be that deep before the watcher starts.
       finalityDepth: JOURNEY_ACTION_DEPTH,
     });
-    const { depositEvent, depositMetadata } = staged.checkpoint;
-    const datum = Data.from(depositEvent.datum!, SDK.DepositDatum);
-    const projected = deriveCanonicalDepositTransitionEffect({
+    const deposit = readPublishedDepositHistory(
+      staged.checkpoint.depositHistory,
+      staged.checkpoint.depositMetadata,
+    );
+    const projected = deriveCanonicalOriginalDepositTransitionEffect({
       configuredNetwork: "Custom",
-      eventId: datum.event.id,
-      l2Address: datum.event.info.l2_address,
-      l2NetworkId: datum.event.info.l2_network_id,
+      eventId: deposit.event.id,
+      l2Address: deposit.event.info.l2_address,
+      l2NetworkId: deposit.event.info.l2_network_id,
       l2DatumCbor:
-        datum.event.info.l2_datum === null
+        deposit.event.info.l2_datum === null
           ? null
-          : Buffer.from(Data.to(datum.event.info.l2_datum), "hex"),
-      l1Assets: depositEvent.assets,
-      depositPolicyId: deployment.contracts.deposit.policyId,
-      depositAssetNameHex: depositMetadata.depositAssetName,
+          : Buffer.from(
+              aikenSerialisedPlutusDataCborPreservingMapOrder(
+                Data.to(deposit.event.info.l2_datum),
+              ),
+              "hex",
+            ),
+      originalAssets: deposit.originalAssets,
     });
     const insertion = projected.operations[0];
     if (

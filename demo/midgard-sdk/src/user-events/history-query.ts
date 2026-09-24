@@ -1,4 +1,7 @@
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data, datumToHash, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -101,6 +104,149 @@ export const selectHistoryWitness = (
   return candidates[0]!;
 };
 
+export type EventHistoryPresence = Extract<
+  EventHistoryWitness,
+  { kind: "Present" }
+>;
+
+/** Open only a node authenticated by its complete list NFT. Payload bytes and
+ * operator archives alone never confer authority. */
+const openHistoryOrder = (
+  anchor: AuthenticatedHistoryNode,
+  deployment: EventHistoryDeployment,
+  retainedUtxos: readonly UTxO[],
+): EventHistoryPresence => {
+  if (
+    anchor.key === null ||
+    anchor.node.payload === "RootContent" ||
+    !("Order" in anchor.node.payload)
+  )
+    throw new Error("History presence requires an authenticated Order");
+  const facts = anchor.node.payload.Order.facts;
+  if (datumToHash(Data.to(facts.event_id, OutputReference)) !== anchor.key) {
+    throw new Error(
+      "History order identity differs from its authenticated key",
+    );
+  }
+  let loaded: { payload: EventHistoryPayload; retainedDataUtxo?: UTxO };
+  let rawPayload: string;
+  if ("Inline" in facts.location) {
+    rawPayload = plutusConstrFieldCbor(anchor.utxo.datum!, [3, 0, 2, 0]);
+    loaded = { payload: Data.from(rawPayload, EventHistoryPayload) };
+  } else {
+    const expectedHash = facts.location.External.storage_datum_hash;
+    const candidates = retainedUtxos;
+    const utxo = candidates.find(
+      (candidate) =>
+        candidate.address === deployment.retentionAddress &&
+        candidate.scriptRef == null &&
+        candidate.datum != null &&
+        datumToHash(
+          aikenSerialisedPlutusDataCborPreservingMapOrder(candidate.datum),
+        ) === expectedHash,
+    );
+    if (utxo?.datum == null)
+      throw new Error("Authenticated retained event data is unavailable on L1");
+    const retained = Data.from(utxo.datum, EventHistoryData);
+    if (retained.event_key !== anchor.key)
+      throw new Error(
+        "Retained event data does not bind its authenticated order",
+      );
+    rawPayload = plutusConstrFieldCbor(utxo.datum, [1]);
+    loaded = {
+      payload: Data.from(rawPayload, EventHistoryPayload),
+      retainedDataUtxo: utxo,
+    };
+  }
+  const { payload } = loaded;
+  // Definite maps match the validators' serialiseData commitments and bound.
+  const payloadCbor =
+    aikenSerialisedPlutusDataCborPreservingMapOrder(rawPayload);
+  if (
+    "Inline" in facts.location &&
+    BigInt(payloadCbor.length / 2) > deployment.inlineLimitBytes
+  ) {
+    throw new Error(
+      "Authenticated inline payload exceeds the deployment bound",
+    );
+  }
+  const payloadId =
+    "DepositPayload" in payload
+      ? payload.DepositPayload.event.id
+      : payload.WithdrawalPayload.event.id;
+  if (
+    payloadId.transactionId !== facts.event_id.transactionId ||
+    payloadId.outputIndex !== facts.event_id.outputIndex
+  ) {
+    throw new Error("Payload identity differs from the authenticated order");
+  }
+  return { kind: "Present", anchor, payloadCbor, ...loaded };
+};
+
+/** A full event scan must not silently accept a partial provider snapshot. */
+const completeHistorySnapshot = (
+  nodes: readonly AuthenticatedHistoryNode[],
+) => {
+  const ordered = [...nodes].sort((left, right) =>
+    left.key === null
+      ? -1
+      : right.key === null
+        ? 1
+        : left.key.localeCompare(right.key),
+  );
+  if (ordered[0]?.key !== null)
+    throw new Error(
+      "Authenticated history Root is unavailable; refresh the L1 snapshot",
+    );
+  for (let index = 0; index < ordered.length; index++) {
+    if (ordered[index]!.node.next !== (ordered[index + 1]?.key ?? null))
+      throw new Error(
+        "Authenticated history snapshot has missing or disconnected nodes; refresh L1",
+      );
+  }
+  return ordered;
+};
+
+/** Convert a complete current list plus actual retention UTxOs. Roots and
+ * fillers are structural nodes, and are never returned as user events. */
+export const readEventHistoryOrders = (
+  utxos: readonly UTxO[],
+  retainedUtxos: readonly UTxO[],
+  deployment: EventHistoryDeployment,
+): EventHistoryPresence[] =>
+  completeHistorySnapshot(authenticateHistoryNodes(utxos, deployment))
+    .filter(
+      (entry) =>
+        entry.node.payload !== "RootContent" && "Order" in entry.node.payload,
+    )
+    .map((anchor) => openHistoryOrder(anchor, deployment, retainedUtxos));
+
+export const fetchEventHistoryOrders = async (
+  provider: { utxosAt(address: string): Promise<UTxO[]> },
+  deployment: EventHistoryDeployment,
+): Promise<EventHistoryPresence[]> => {
+  const nodes = completeHistorySnapshot(
+    authenticateHistoryNodes(
+      await provider.utxosAt(deployment.address),
+      deployment,
+    ),
+  );
+  const orders = nodes.filter(
+    (entry) =>
+      entry.node.payload !== "RootContent" && "Order" in entry.node.payload,
+  );
+  const external = orders.some(
+    (entry) =>
+      entry.node.payload !== "RootContent" &&
+      "Order" in entry.node.payload &&
+      "External" in entry.node.payload.Order.facts.location,
+  );
+  const retained = external
+    ? await provider.utxosAt(deployment.retentionAddress)
+    : [];
+  return orders.map((anchor) => openHistoryOrder(anchor, deployment, retained));
+};
+
 /** Canonical chain UTxOs provide authority. Returned bytes are only preimages. */
 export const fetchEventHistoryWitness = async (
   provider: { utxosAt(address: string): Promise<UTxO[]> },
@@ -117,67 +263,11 @@ export const fetchEventHistoryWitness = async (
     anchor.key !== key ||
     anchor.node.payload === "RootContent" ||
     "Filler" in anchor.node.payload
-  ) {
+  )
     return { kind: "Absent", anchor };
-  }
-  const facts = anchor.node.payload.Order.facts;
-  if (
-    facts.event_id.transactionId !== id.transactionId ||
-    facts.event_id.outputIndex !== id.outputIndex
-  ) {
-    throw new Error(
-      "History order identity differs from its authenticated key",
-    );
-  }
-  let loaded: { payload: EventHistoryPayload; retainedDataUtxo?: UTxO };
-  if ("Inline" in facts.location) {
-    loaded = { payload: facts.location.Inline.payload };
-  } else {
-    const expectedHash = facts.location.External.storage_datum_hash;
-    const candidates = await provider.utxosAt(deployment.retentionAddress);
-    const utxo = candidates.find(
-      (candidate) =>
-        candidate.address === deployment.retentionAddress &&
-        candidate.scriptRef == null &&
-        candidate.datum != null &&
-        datumToHash(
-          aikenSerialisedPlutusDataCborPreservingMapOrder(candidate.datum),
-        ) === expectedHash,
-    );
-    if (utxo?.datum == null)
-      throw new Error("Authenticated retained event data is unavailable on L1");
-    const retained = Data.from(utxo.datum, EventHistoryData);
-    if (retained.event_key !== key)
-      throw new Error(
-        "Retained event data does not bind its authenticated order",
-      );
-    loaded = {
-      payload: Data.from(Data.to(retained.event_payload), EventHistoryPayload),
-      retainedDataUtxo: utxo,
-    };
-  }
-  const { payload } = loaded;
-  // Definite maps match the validators' serialiseData commitments and bound.
-  const payloadCbor = aikenSerialisedPlutusDataCborPreservingMapOrder(
-    Data.to(payload, EventHistoryPayload),
-  );
-  if (
-    "Inline" in facts.location &&
-    BigInt(payloadCbor.length / 2) > deployment.inlineLimitBytes
-  ) {
-    throw new Error(
-      "Authenticated inline payload exceeds the deployment bound",
-    );
-  }
-  const payloadId =
-    "DepositPayload" in payload
-      ? payload.DepositPayload.event.id
-      : payload.WithdrawalPayload.event.id;
-  if (
-    payloadId.transactionId !== id.transactionId ||
-    payloadId.outputIndex !== id.outputIndex
-  ) {
-    throw new Error("Payload identity differs from the authenticated order");
-  }
-  return { kind: "Present", anchor, payloadCbor, ...loaded };
+  const retained =
+    "External" in anchor.node.payload.Order.facts.location
+      ? await provider.utxosAt(deployment.retentionAddress)
+      : [];
+  return openHistoryOrder(anchor, deployment, retained);
 };

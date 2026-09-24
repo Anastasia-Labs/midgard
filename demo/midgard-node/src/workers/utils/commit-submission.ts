@@ -10,6 +10,7 @@ import { fromHex } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric, Option, Schedule } from "effect";
 
 import { seedDaPayloadPublicationOutboxFromEnv } from "../../da/libp2p-producer.js";
+import { currentOwnedTransaction } from "../../database/eventHistoryAuthority.js";
 import {
   BlocksDB,
   CekProgramMaterialDB,
@@ -31,6 +32,7 @@ import {
 } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import type { MidgardMpf, MpfError } from "../../mpf/index.js";
+import { withHistoryWrite } from "../../services/event-history-producer.js";
 import { type Database, Lucid } from "../../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import type { TxSubmitError } from "../../transactions/utils.js";
@@ -259,6 +261,26 @@ export const finalizeCommittedBlockLocally = (
     const mempoolLedgerDeletedOutRefHexes = yield* sql
       .withTransaction(
         Effect.gen(function* () {
+          const journal =
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              newHeaderHashBuffer,
+            );
+          if (
+            Option.isNone(journal) &&
+            Option.isSome(yield* currentOwnedTransaction)
+          )
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: PendingBlockFinalizationsDB.tableName,
+                message:
+                  "Local finalization requires its durable event journal",
+                cause: newHeaderHash,
+              }),
+            );
+          if (Option.isSome(journal))
+            yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(
+              journal.value,
+            );
           yield* Effect.forEach(
             filteredBatches,
             (batch, i) =>
@@ -301,6 +323,7 @@ export const finalizeCommittedBlockLocally = (
         }),
       )
       .pipe(
+        withHistoryWrite,
         sqlErrorToDatabaseError(
           "local_block_finalization",
           "Failed to finalize committed block locally",

@@ -4,7 +4,7 @@ import { deriveWatcherAttestationTimeoutObservation } from "../../src/indexers/a
 import {
   makeWatcherStateQueueHeader,
   makeWatcherStateQueueSnapshot,
-} from "../../src/indexers/state-queue-indexer.js";
+} from "../../src/indexers/state-queue-snapshot.js";
 
 const h28 = (byte: string): string => byte.repeat(56);
 const h32 = (byte: string): string => byte.repeat(64);

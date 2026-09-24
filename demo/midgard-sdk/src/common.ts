@@ -25,6 +25,7 @@ import {
 import type { FaultProofContractChains } from "./fraud-proof/contracts/index.js";
 import { getStateToken } from "./internals.js";
 import { RetiredOperatorUTxO } from "./retired-operators.js";
+import type { EventHistoryContractPair } from "./user-events/history-deployment.js";
 
 export * from "./errors.js";
 
@@ -385,6 +386,8 @@ export type MidgardValidators = {
   chunkedVerify: WithdrawalValidator;
   /** Shared published verifier for direct MPF non-membership claims. */
   pexcludes: WithdrawalValidator;
+  /** Null only in the explicit always-succeeds scaffold, which cannot bootstrap history. */
+  eventHistory: EventHistoryContractPair | null;
   deposit: AuthenticatedValidator;
   withdrawal: AuthenticatedValidator;
   txOrder: AuthenticatedValidator;

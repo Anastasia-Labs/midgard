@@ -1,24 +1,15 @@
 /**
- * The single signed-deployment-authority fixture the watcher indexer suites
- * share.
+ * The single signed-deployment-authority fixture the watcher suites share.
  *
- * Every authenticated indexer suite needs the same thing before it can assert
- * anything: a deployment manifest whose contracts, reference scripts, DA
- * identity and release bindings all hang together, signed by a trust root the
- * watcher will accept. That fixture was copied into
- * `settlement-indexer`, `state-queue-indexer`, `user-event-indexer` and
- * `proof-thread-indexer` (and again into `w15-`/`w16-authority-scenarios`),
- * so a manifest-shape change had to be made six times or the suites silently
- * disagreed about what a valid deployment looks like. This module is the one
- * copy.
+ * Every suite that admits a deployment needs the same thing before it can
+ * assert anything: a deployment manifest whose contracts, reference scripts,
+ * DA identity and release bindings all hang together, signed by a trust root
+ * the watcher will accept. This module is the one copy, so a manifest-shape
+ * change is made once and the suites cannot silently disagree about what a
+ * valid deployment looks like.
  *
- * Note this is deliberately NOT the same fixture as
- * `watcher-opaque-authority-harness.ts`'s
- * `createWatcherAuthorityDeploymentFixtureV1`. That one signs with a fixed
- * ed25519 key and freezes its result, so every call yields an identical
- * attestation; this one calls `generateKeyPairSync` per call and leaves the
- * result mutable, which is what the indexer suites' forgery and
- * substitution tests depend on. The two are not interchangeable.
+ * It calls `generateKeyPairSync` per call and leaves the result mutable,
+ * which is what forgery and substitution tests depend on.
  */
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
@@ -43,7 +34,10 @@ import {
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import {
+  validatorToAddress,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 
 import {
   makeWatcherDeploymentIdentitySignaturePayload,
@@ -72,8 +66,8 @@ export const NATIVE_SCRIPT_HASH = validatorToScriptHash({
 export const DA_SIGNERS_HASH =
   "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";
 
-/** The release/rule-bundle bytes the settlement, state-queue and user-event
- * suites pin. The proof-thread suite pins its own — see the options below. */
+/** The default release/rule-bundle bytes. Suites that need their own pass
+ * them through the options below. */
 export const WATCHER_AUTHORITY_BLUEPRINT_HASH = h32("55");
 export const WATCHER_AUTHORITY_RULE_BUNDLE_COMMITMENT = h32("44");
 export const WATCHER_AUTHORITY_PROGRAM_COMMITMENTS = {
@@ -101,6 +95,82 @@ export type AuthorityContractFixture = Readonly<{
   fraudProofCatalogue?: ReturnType<typeof canonicalFraudProofCatalogueFixture>;
 };
 
+/** Explicit unit-fixture parameters; these are not measured deployment defaults. */
+export const WATCHER_HISTORY_FIXTURE_BOUNDS = Object.freeze({
+  inlineLimitBytes: "1024",
+  maxPayloadBytes: "8192",
+  maxPayloadNodes: "512",
+});
+
+export type WatcherHistoryFixtureRecipe = Readonly<{
+  protectionDurationMs: string;
+  bounds: Readonly<{
+    inlineLimitBytes: string;
+    maxPayloadBytes: string;
+    maxPayloadNodes: string;
+  }>;
+}>;
+export const WATCHER_EMULATOR_HISTORY_RECIPE: WatcherHistoryFixtureRecipe =
+  Object.freeze({
+    protectionDurationMs: "2000",
+    bounds: Object.freeze({
+      inlineLimitBytes: "512",
+      maxPayloadBytes: "5000",
+      maxPayloadNodes: "512",
+    }),
+  });
+
+export const addWatcherHistoryFixtureMetadata = (
+  contracts: Record<string, AuthorityContractFixture>,
+  initializationNonce: { txHash: string; outputIndex: number },
+  recipe?: WatcherHistoryFixtureRecipe,
+): void => {
+  const bounds = recipe?.bounds ?? WATCHER_HISTORY_FIXTURE_BOUNDS;
+  for (const [name, kind] of [
+    ["deposit", "Deposit"],
+    ["withdrawal", "Withdrawal"],
+  ] as const) {
+    contracts[name + "Mint"] = Object.assign({}, contracts[name + "Mint"], {
+      eventHistoryRecipe: {
+        kind,
+        hubPolicyId: contracts.hubOracleMint!.scriptHash,
+        initializationNonce,
+        protectionDurationMs: recipe?.protectionDurationMs ?? "60000",
+        bounds,
+      },
+    });
+    const address = validatorToAddress("Preprod", {
+      type: "PlutusV3",
+      script: contracts[name + "HistoryRetentionSpend"]!.contract.cborHex,
+    });
+    const family =
+      name === "deposit"
+        ? "fraudProofFabricatedDeposit"
+        : "fraudProofFabricatedWithdrawal";
+    contracts[family] = Object.assign({}, contracts[family], {
+      eventHistoryBounds: bounds,
+      eventHistoryRetentionAddress: address,
+    });
+  }
+  contracts.fraudProofTransitionTrace = Object.assign(
+    {},
+    contracts.fraudProofTransitionTrace,
+    {
+      eventHistoryBounds: bounds,
+      eventHistoryRetentionAddresses: {
+        deposit: validatorToAddress("Preprod", {
+          type: "PlutusV3",
+          script: contracts.depositHistoryRetentionSpend!.contract.cborHex,
+        }),
+        withdrawal: validatorToAddress("Preprod", {
+          type: "PlutusV3",
+          script: contracts.withdrawalHistoryRetentionSpend!.contract.cborHex,
+        }),
+      },
+    },
+  );
+};
+
 export type AuthorityReferenceScriptFixture = Readonly<{
   status: string;
   roleUnit: string;
@@ -118,10 +188,9 @@ export type WatcherAuthorityContractSet = Readonly<{
  * The applied contracts, catalogue and reference scripts, built without
  * committing to a release identity yet.
  *
- * Split out because the proof-thread suite derives its
- * `proof-thread-catalogue-v1` program commitment from the catalogue's own
- * category script hashes — it has to see the contracts before it can say what
- * the manifest commits to.
+ * Split out so a suite can inspect the contracts (for example, to derive a
+ * program commitment from the catalogue's category script hashes) before it
+ * says what the manifest commits to.
  */
 const buildWatcherAuthorityContracts = (): WatcherAuthorityContractSet => {
   const referenceOutRefByContract = new Map<
@@ -140,7 +209,13 @@ const buildWatcherAuthorityContracts = (): WatcherAuthorityContractSet => {
       const native = contractName === "referenceScriptAuthMint";
       const script = native
         ? NATIVE_SCRIPT_CBOR
-        : positionalContractScriptCbor(contractName);
+        : positionalContractScriptCbor(
+            contractName === "depositSpend"
+              ? "depositMint"
+              : contractName === "withdrawalSpend"
+                ? "withdrawalMint"
+                : contractName,
+          );
       return [
         contractName,
         {
@@ -203,6 +278,7 @@ export type WatcherDeploymentAuthorityFixtureOptions = Readonly<{
   blueprintHash?: string;
   /** Bind an existing ordinary initialization frame to its actual nonce. */
   hubOracleOneShotOutRef?: string;
+  eventHistoryRecipe?: WatcherHistoryFixtureRecipe;
   ruleBundleCommitment?: string;
   programCommitments?: Readonly<Record<string, string>>;
 }>;
@@ -249,6 +325,14 @@ const buildWatcherDeploymentAuthorityFixture = (
     outRef: `${oneShot.txHash}#${oneShot.outputIndex.toString()}`,
     status: "consumed_by_init",
   };
+  addWatcherHistoryFixtureMetadata(
+    contracts,
+    {
+      txHash: hubOracleOneShot.txHash,
+      outputIndex: hubOracleOneShot.outputIndex,
+    },
+    options.eventHistoryRecipe,
+  );
   const daIdentity = {
     committeeVkeys: [h32("44")],
     committeeSignersHash: DA_SIGNERS_HASH,
@@ -495,7 +579,6 @@ export const makeWatcherDeploymentAuthorityFixture = (
   );
 };
 
-/** The default-parameter authority the settlement, state-queue and user-event
- * suites all pin. */
+/** The default-parameter authority. */
 export const makeDeploymentAuthority = () =>
   makeWatcherDeploymentAuthorityFixture();

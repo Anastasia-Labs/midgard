@@ -259,11 +259,33 @@ export const processMpfs = (
       },
     );
 
-    const effectiveEndTime = establishEffectiveEndTimeFromDecodedMempool(
-      decodedMempoolTxs,
-      config?.processedOnlyEndTime,
-      config?.depositOnlyEndTime,
-    );
+    const effectiveEndTime =
+      config?.fixedBlockEndTime ??
+      establishEffectiveEndTimeFromDecodedMempool(
+        decodedMempoolTxs,
+        config?.processedOnlyEndTime,
+        config?.depositOnlyEndTime,
+      );
+
+    if (config?.fixedBlockEndTime !== undefined) {
+      const fixedEnd = config.fixedBlockEndTime.getTime();
+      if (
+        !Number.isSafeInteger(fixedEnd) ||
+        (config.currentBlockStartTime !== undefined &&
+          fixedEnd <= config.currentBlockStartTime.getTime()) ||
+        decodedMempoolTxs.some(
+          ({ entry }) => entry[Tx.Columns.TIMESTAMPTZ].getTime() > fixedEnd,
+        )
+      )
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: "event_history_cursor",
+            message:
+              "Fixed authenticated block window does not cover the selected transaction timestamps",
+            cause: `fixed_end=${fixedEnd}`,
+          }),
+        );
+    }
 
     if (
       effectiveEndTime !== undefined &&
@@ -442,15 +464,19 @@ export const processMpfs = (
         yield* WithdrawalsDB.setSettlementInfoForEventIds(
           classifiedWithdrawals.map((classified) => ({
             eventId: classified.entry[WithdrawalsDB.Columns.ID],
+            expectedClassificationRevision:
+              classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
             settlementEventInfo: classified.settlementEventInfo,
             validity: classified.validity,
             validityDetail: classified.validityDetail,
           })),
         );
         yield* WithdrawalsDB.markAwaitingAsProjected(
-          classifiedWithdrawals.map(
-            (classified) => classified.entry[WithdrawalsDB.Columns.ID],
-          ),
+          classifiedWithdrawals.map((classified) => ({
+            eventId: classified.entry[WithdrawalsDB.Columns.ID],
+            expectedClassificationRevision:
+              classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+          })),
         );
       }
 

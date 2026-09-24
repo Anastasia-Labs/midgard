@@ -47,7 +47,7 @@ export type WatcherUserEventCheckpointBinding = Readonly<{
 /**
  * Structural publication only. The archived payload owns the event view,
  * cursor, state, anchor and their semantic cross-bindings. A valid frame or
- * archive object does not establish W15 admission or challenge authority.
+ * archive object does not establish user-event admission or challenge authority.
  */
 export type WatcherUserEventCheckpoint = WatcherUserEventCheckpointBinding &
   Readonly<{

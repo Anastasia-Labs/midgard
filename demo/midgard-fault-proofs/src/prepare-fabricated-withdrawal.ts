@@ -50,12 +50,17 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
   authenticateFabricatedHistoryWitness,
+  fabricatedHistoryOpeningCbor,
   type FabricatedHistoryWitness,
 } from "./fabricated-history-witness.js";
 import { stringifyJson } from "./json-file.js";
@@ -149,8 +154,9 @@ const decodeCommittedWithdrawalLeaf = async (
   if (
     SDK.committedWithdrawalKeyBytes(committedWithdrawalId) !==
       committedWithdrawalIdCbor ||
-    SDK.committedWithdrawalValueBytes(committedWithdrawalInfo) !==
-      committedWithdrawalInfoCbor
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      committedWithdrawalInfoCbor,
+    ) !== committedWithdrawalInfoCbor
   ) {
     throw new FabricatedWithdrawalRejection(
       "non_canonical_da_payload",
@@ -158,7 +164,7 @@ const decodeCommittedWithdrawalLeaf = async (
     );
   }
   const committedWithdrawalContentHash = await Effect.runPromise(
-    SDK.withdrawalContentCommitment(committedWithdrawalInfo),
+    SDK.withdrawalContentCommitmentCbor(committedWithdrawalInfoCbor),
   );
   return {
     index,
@@ -222,14 +228,16 @@ export const classifyFabricatedWithdrawalFault = async ({
       stateQueuePolicyId,
       openingCbor: null,
     };
-  const { commitment, payload, originalAssets } = captured;
+  const { commitment, payload } = captured;
   if (!("WithdrawalPayload" in payload))
     throw new FabricatedWithdrawalRejection(
       "history_witness_invalid",
       "Wrong authenticated event kind",
     );
   const authenticWithdrawalContentHash = await Effect.runPromise(
-    SDK.withdrawalContentCommitment(payload.WithdrawalPayload.event.info),
+    SDK.withdrawalContentCommitmentCbor(
+      plutusConstrFieldCbor(captured.payloadCbor, [0, 1]),
+    ),
   );
   const inclusionTime = commitment.inclusion_time;
   const eligible =
@@ -255,10 +263,7 @@ export const classifyFabricatedWithdrawalFault = async ({
         }
       : { IneligibleWithdrawalEvent: { event_inclusion_time: inclusionTime } },
     stateQueuePolicyId,
-    openingCbor: Data.to(
-      { RetainedEventData: { payload, original_assets: originalAssets } },
-      SDK.FabricatedWithdrawalAuthenticContentOpening,
-    ),
+    openingCbor: fabricatedHistoryOpeningCbor(captured),
     authenticWithdrawalContentHash,
     eventInclusionTime: inclusionTime,
   };

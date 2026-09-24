@@ -1,11 +1,16 @@
 import { compactPlutusDataCarriageCbor } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { TransitionFaultProof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-export const transitionTraceProofChunks = (proof: TransitionFaultProof) => {
+import {
+  readTransitionProof,
+  transitionProofCbor,
+  type TransitionProofInput,
+} from "./proof-material.js";
+
+export const transitionTraceProofChunks = (proof: TransitionProofInput) => {
   const bytes = Buffer.from(
-    compactPlutusDataCarriageCbor(Data.to(proof, TransitionFaultProof)),
+    compactPlutusDataCarriageCbor(transitionProofCbor(proof)),
     "hex",
   );
   return {
@@ -15,13 +20,21 @@ export const transitionTraceProofChunks = (proof: TransitionFaultProof) => {
     ),
   };
 };
+/** Avoid duplicating large timing proofs in the route redeemer and output. */
+export const transitionTraceTimedProofNeedsChunks = (
+  proof: TransitionProofInput,
+): boolean =>
+  ("OmittedDueL1Event" in readTransitionProof(proof).fault ||
+    "OutOfWindowSourceEvent" in readTransitionProof(proof).fault) &&
+  transitionTraceProofChunks(proof).chunks.length > 1;
+
 export const resolveTransitionTraceProofCarriage = async ({
   lucid,
   proof,
   publish = false,
 }: {
   lucid: LucidEvolution;
-  proof: TransitionFaultProof;
+  proof: TransitionProofInput;
   publish?: boolean;
 }): Promise<readonly UTxO[]> => {
   return resolveTransitionTraceByteCarriage({
@@ -76,7 +89,7 @@ export const resolveTransitionTraceDataCarriage = async ({
             { kind: "inline", value: datum },
             { lovelace: 0n },
           )
-          .complete()
+          .complete({ localUPLCEval: true })
       ).sign
         .withWallet()
         .complete();

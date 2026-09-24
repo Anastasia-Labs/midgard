@@ -231,12 +231,9 @@ const adversarial_chunk_count: Int = 2
 /// proof carried by published chunks; the step's own semantics — the
 /// acceptance guard included — are unchanged.
 test input_set_uniqueness_step_01_binds_a_published_chunk_membership_proof() {
-  let base = fixture.native_block_fixture_v1(duplicate_spend_bad_tx())
-  let steps = fixture.adversarial_branch_steps(adversarial_branch_levels)
-  let block = fixture.deep_transactions_root_block_fixture_v1(
-    base,
-    fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
-    1_000_000,
+  let (block, steps) = fixture.deep_membership_block_fixture_v1(
+    duplicate_spend_bad_tx(),
+    adversarial_branch_levels,
   )
   let expected_output_state: Data = step_02.State { bad_tx_id: block.tx_id }
   main.spend(

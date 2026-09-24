@@ -19,6 +19,7 @@ import {
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
 import { Database } from "./database.js";
+import { withHistoryWrite } from "./event-history-producer.js";
 
 export type CorrectedBlockReinclusionResult = {
   readonly headerHash: string;
@@ -91,6 +92,7 @@ export const authorizeStateQueueCorrectionReinclusion = (
  */
 const reincludeStateQueueCorrectedBlockPayloadHashes = (
   removedHeaderHashes: readonly string[],
+  transitionDigest: string,
 ): Effect.Effect<
   readonly CorrectedBlockReinclusionResult[],
   DatabaseError,
@@ -107,6 +109,7 @@ const reincludeStateQueueCorrectedBlockPayloadHashes = (
             const journal =
               yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
                 headerHash,
+                true,
               );
             if (Option.isNone(journal)) {
               return {
@@ -118,6 +121,36 @@ const reincludeStateQueueCorrectedBlockPayloadHashes = (
               } satisfies CorrectedBlockReinclusionResult;
             }
             const record = journal.value;
+            yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(
+              record,
+            );
+            if (
+              record[PendingBlockFinalizationsDB.Columns.STATUS] ===
+              PendingBlockFinalizationsDB.Status.Abandoned
+            ) {
+              if (
+                record[
+                  PendingBlockFinalizationsDB.Columns
+                    .CORRECTION_TRANSITION_DIGEST
+                ] !== transitionDigest
+              ) {
+                return yield* Effect.fail(
+                  new DatabaseError({
+                    table: PendingBlockFinalizationsDB.tableName,
+                    message:
+                      "Abandoned journal does not identify this correction",
+                    cause: headerHashHex,
+                  }),
+                );
+              }
+              return {
+                headerHash: headerHashHex,
+                journalFound: true,
+                restoredMempoolTransactions: 0,
+                restoredProcessedTransactions: 0,
+                reopenedEvents: 0,
+              } satisfies CorrectedBlockReinclusionResult;
+            }
             const unknownMember = record.txMembers.find(
               (member) =>
                 member[
@@ -154,9 +187,6 @@ const reincludeStateQueueCorrectedBlockPayloadHashes = (
               )
               .map(PendingBlockFinalizationsDB.txMemberToEntry);
 
-            yield* MempoolDB.restoreJournalEntries(mempoolEntries);
-            yield* ProcessedMempoolDB.insertTxs([...processedEntries]);
-            yield* BlocksDB.clearBlock(headerHash);
             yield* DepositsDB.reopenAfterStateQueueCorrectionByEventIds(
               record.depositEventIds,
               headerHash,
@@ -169,8 +199,12 @@ const reincludeStateQueueCorrectedBlockPayloadHashes = (
               record.withdrawalEventIds,
               headerHash,
             );
+            yield* MempoolDB.restoreJournalEntries(mempoolEntries);
+            yield* ProcessedMempoolDB.insertTxs([...processedEntries]);
+            yield* BlocksDB.clearBlock(headerHash);
             yield* PendingBlockFinalizationsDB.markCorrectedAfterStateQueueRemoval(
               headerHash,
+              transitionDigest,
             );
             return {
               headerHash: headerHashHex,
@@ -187,6 +221,7 @@ const reincludeStateQueueCorrectedBlockPayloadHashes = (
       ),
     );
   }).pipe(
+    withHistoryWrite,
     sqlErrorToDatabaseError(
       "state_queue_correction_recovery",
       "Failed to reinclude state-queue-corrected payloads",
@@ -207,6 +242,7 @@ export const reincludeFinalizedStateQueueCorrectionTransition = (
   );
   return reincludeStateQueueCorrectedBlockPayloadHashes(
     transition.removedHeaderHashes,
+    transition.transitionDigest,
   );
 };
 
@@ -239,6 +275,7 @@ export const restoreRetractedStateQueueCorrectionTransition = (
             const journal =
               yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
                 headerHash,
+                true,
               );
             if (Option.isNone(journal)) {
               return {
@@ -248,6 +285,22 @@ export const restoreRetractedStateQueueCorrectionTransition = (
               } satisfies CorrectedBlockRollbackRestoreResult;
             }
             const record = journal.value;
+            yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(
+              record,
+            );
+            if (
+              record[
+                PendingBlockFinalizationsDB.Columns.CORRECTION_TRANSITION_DIGEST
+              ] !== transition.transitionDigest
+            ) {
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: PendingBlockFinalizationsDB.tableName,
+                  message: "Journal does not identify the retracted correction",
+                  cause: headerHashHex,
+                }),
+              );
+            }
             const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
             if (status === PendingBlockFinalizationsDB.Status.Finalized) {
               return {
@@ -295,9 +348,6 @@ export const restoreRetractedStateQueueCorrectionTransition = (
                 member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
               ),
             );
-            yield* MempoolDB.clearTxs(mempoolTxIds);
-            yield* ProcessedMempoolDB.clearTxs(processedTxIds);
-            yield* BlocksDB.insert(headerHash, allTxIds);
             yield* DepositsDB.markProjectedByEventIds(
               record.depositEventIds,
               headerHash,
@@ -306,8 +356,24 @@ export const restoreRetractedStateQueueCorrectionTransition = (
               record.forcedTransactionEventIds,
               headerHash,
             );
-            yield* WithdrawalsDB.markProjectedByEventIds(
-              record.withdrawalEventIds,
+            yield* WithdrawalsDB.restoreCorrectedClassification(
+              record.withdrawalMembers.map((member) => ({
+                eventId:
+                  member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
+                settlementEventInfo:
+                  member[
+                    PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR
+                  ],
+                validity:
+                  member[
+                    PendingBlockFinalizationsDB.WithdrawalMemberColumns.VALIDITY
+                  ],
+                validityDetail:
+                  member[
+                    PendingBlockFinalizationsDB.WithdrawalMemberColumns
+                      .VALIDITY_DETAIL
+                  ],
+              })),
               headerHash,
             );
             yield* DepositsDB.markConsumedByEventIds(record.depositEventIds);
@@ -319,6 +385,11 @@ export const restoreRetractedStateQueueCorrectionTransition = (
               record.forcedTransactionEventIds,
               headerHash,
             );
+            if (mempoolTxIds.length > 0)
+              yield* MempoolDB.clearTxs(mempoolTxIds);
+            if (processedTxIds.length > 0)
+              yield* ProcessedMempoolDB.clearTxs(processedTxIds);
+            yield* BlocksDB.insert(headerHash, allTxIds);
             yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
               headerHash,
               BigInt(Date.now()),
@@ -334,6 +405,7 @@ export const restoreRetractedStateQueueCorrectionTransition = (
       ),
     );
   }).pipe(
+    withHistoryWrite,
     sqlErrorToDatabaseError(
       "state_queue_correction_recovery",
       "Failed to restore a post-finality rolled-back state-queue correction",

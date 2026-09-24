@@ -29,7 +29,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   prepareMissingNativeScriptTx,
-  submitMissingNativeScriptTxInit,
   submitMissingNativeScriptTxStep01,
   submitMissingNativeScriptTxStep02,
   submitMissingNativeScriptTxStep03,
@@ -37,6 +36,8 @@ import {
   submitMissingNativeScriptTxStep05,
   submitMissingNativeScriptTxStep06,
 } from "../src/index.js";
+import { MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL } from "../src/missing-native-script-tx/contracts.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   makeMissingNativeScriptTxEmulatorHarness,
   publishMissingNativeScriptTxReferenceScripts,
@@ -95,7 +96,8 @@ describe("missing-native-script-tx emulator tier-2 carriage", () => {
       owner: harness.proverSigner.paymentKeyHash,
     });
     expect(prepared.expectedMissingScriptHash).toBe(fixture.expectedScriptHash);
-    const init = await submitMissingNativeScriptTxInit({
+    const init = await submitResolvedInit({
+      label: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

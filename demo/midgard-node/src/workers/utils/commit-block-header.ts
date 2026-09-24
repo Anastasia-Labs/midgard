@@ -25,6 +25,7 @@ export type SpeculativeCommitBaseInput = {
 };
 
 export type WorkerInput = {
+  readonly history?: import("../../services/event-history-producer.js").HistoryProducerPermit;
   readonly nativeMpf?: {
     readonly port: MessagePort;
     readonly durableRoot: string;

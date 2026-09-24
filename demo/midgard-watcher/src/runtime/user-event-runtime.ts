@@ -15,6 +15,7 @@ import {
 } from "../indexers/authenticated-state-queue-observation.js";
 import {
   createWatcherLocalUserEventPublisher,
+  replaceWatcherLocalUserEventPublisher,
   resumeWatcherLocalUserEventPublisher,
 } from "../indexers/user-event-history.js";
 import {
@@ -119,6 +120,9 @@ type FirstObservation = Readonly<{
   evidenceBytes: number;
 }>;
 const runtimeBrand = Symbol("watcher-user-event-runtime");
+/** An operation cancelled by an authenticated-source generation change. */
+export class WatcherUserEventOperationRetired extends Error {}
+
 export type WatcherUserEventRuntime = Readonly<{
   [runtimeBrand]: true;
   deploymentFingerprint: string;
@@ -816,9 +820,10 @@ export const createWatcherUserEventRuntime = async (
    */
   const enumerateRound = async (
     from: FraudProofRawL1Point,
-    through: FraudProofRawL1Point,
+    through: FraudProofRawL1Point | Readonly<{ blockNo: string }>,
     maximumTouched: number,
     operationSignal: AbortSignal,
+    replayAll = false,
   ): Promise<readonly RoundItem[]> => {
     if (maximumTouched < 1 || maximumTouched > MAX_BATCH)
       throw new Error("Invalid user-event enumeration bound");
@@ -882,12 +887,16 @@ export const createWatcherUserEventRuntime = async (
               throw new Error(
                 "User-event native enumeration is not a strict contiguous prefix",
               );
-            if (point.blockNo === through.blockNo && !same(point, through))
+            if (
+              point.blockNo === through.blockNo &&
+              "blockHash" in through &&
+              !same(point, through)
+            )
               throw new Error(
                 "User-event native target is on a different fork",
               );
             const block = admitWatcherNativeRollForwardBlock(event);
-            if (classify(block) === "quiet") {
+            if (!replayAll && classify(block) === "quiet") {
               items.push({
                 kind: "quiet",
                 header: Object.freeze({
@@ -907,7 +916,7 @@ export const createWatcherUserEventRuntime = async (
             }
             previous = point;
             if (
-              same(point, through) ||
+              point.blockNo === through.blockNo ||
               touched === maximumTouched ||
               items.length >= MAX_ROUND_ITEMS ||
               plannedBytes >= 24 * 1024 * 1024
@@ -945,62 +954,225 @@ export const createWatcherUserEventRuntime = async (
     const expected = generation;
     const operationSignal = AbortSignal.any([signal, operationAbort.signal]);
     const task = tail.then(async () => {
+      if (expected !== generation)
+        throw new WatcherUserEventOperationRetired(
+          "User-event operation was retired",
+        );
       assertReady();
       operationSignal.throwIfAborted();
-      if (expected !== generation)
-        throw new Error("User-event operation was retired");
       const value = await work(operationSignal);
+      if (expected !== generation)
+        throw new WatcherUserEventOperationRetired(
+          "User-event operation changed generation",
+        );
       assertReady();
       operationSignal.throwIfAborted();
-      if (expected !== generation)
-        throw new Error("User-event operation changed generation");
       return value;
     });
     tail = task.catch((error: unknown) => {
-      if (status === "ready") fail(error);
+      if (
+        status === "ready" &&
+        !(error instanceof WatcherUserEventOperationRetired)
+      )
+        fail(error);
     });
     return task;
+  };
+  /** A saved head already carries its height. FindIntersect checks its hash and
+   * slot without waiting for a future child; the mandatory exact-head capture
+   * that follows independently binds height, raw bytes and release finality. */
+  const intersectsCanonicalChain = async (
+    point: FraudProofRawL1Point,
+  ): Promise<boolean> => {
+    signal.throwIfAborted();
+    let stream: WatcherNativeChainSyncRuntime | null = null;
+    let contradicted = false;
+    try {
+      try {
+        stream = await startWatcherNativeChainSync({
+          binaryPath: nativeChainSyncBinaryPath,
+          watcherConfig,
+          signal,
+          intersection: {
+            kind: "point",
+            blockHash: point.blockHash,
+            slot: point.slot,
+          },
+          startupTimeoutMs: LOOKUP_TIMEOUT_MS,
+          onEvent: async (event) => {
+            if (
+              event.kind === "roll_backward" &&
+              (event.point.kind !== "point" ||
+                event.point.blockHash !== point.blockHash ||
+                event.point.slot !== point.slot)
+            )
+              contradicted = true;
+          },
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "NativeChainSyncStartupFailure" &&
+          (error as { code?: unknown }).code === "intersection_failed"
+        )
+          return false;
+        throw error;
+      }
+      streams.add(stream);
+      signal.throwIfAborted();
+      const details = watcherNativeChainSyncAuthorityDetails(stream.authority);
+      if (details === null)
+        throw new Error("Canonical intersection has no native authority");
+      return (
+        !contradicted &&
+        details.selectedIntersection.kind === "point" &&
+        details.selectedIntersection.blockHash === point.blockHash &&
+        details.selectedIntersection.slot === point.slot
+      );
+    } finally {
+      if (stream !== null) {
+        streams.delete(stream);
+        await stream.close();
+      }
+    }
+  };
+  let activationPointForReplay: FraudProofRawL1Point | null = null;
+  const replaceCanonical = async () => {
+    if (activationPointForReplay === null)
+      throw new Error("Canonical replay activation is unavailable");
+    const activation = await onePair(activationPointForReplay, signal);
+    try {
+      const origin = admitWatcherUserEventOrigin({
+        deploymentIdentity,
+        scriptBinding,
+        ...activation,
+      });
+      const protectedHead = readWatcherProtectedUserEventCheckpointReceipt(
+        await readWatcherProtectedUserEventCheckpoint(durableRuntime),
+      );
+      if (protectedHead.payload !== null) {
+        const payload = JSON.parse(
+          new TextDecoder("utf-8", { fatal: true }).decode(
+            protectedHead.payload,
+          ),
+        ) as { head: { cursor: unknown } };
+        const target = admitFraudProofRawL1Point(payload.head.cursor);
+        if (await intersectsCanonicalChain(target))
+          return await resumeWatcherLocalUserEventPublisher({
+            origin,
+            deploymentIdentity,
+            scriptBinding,
+            ...activation,
+            runtime: durableRuntime,
+            archive,
+            readHead: (point) => onePair(point, signal),
+          });
+      }
+      return await replaceWatcherLocalUserEventPublisher({
+        origin,
+        deploymentIdentity,
+        scriptBinding,
+        ...activation,
+        runtime: durableRuntime,
+        archive,
+        replayCanonical: async function* (savedHead) {
+          let cursor = activationPointForReplay!;
+          while (BigInt(cursor.blockNo) < BigInt(savedHead.blockNo)) {
+            const items = await enumerateRound(
+              cursor,
+              { blockNo: savedHead.blockNo },
+              MAX_BATCH,
+              signal,
+              true,
+            );
+            if (items.length === 0)
+              throw new Error("Canonical replay made no progress");
+            for (const item of items) {
+              if (item.kind !== "touched")
+                throw new Error(
+                  "Canonical replay skipped native block evidence",
+                );
+              const pair = await onePair(item.plan.point, signal);
+              yield pair;
+              cursor = item.plan.point;
+            }
+          }
+        },
+      });
+    } finally {
+      await activation.close();
+    }
   };
   /**
    * The fork is the node's rollback point. A fresh capture at the head entry
    * corroborates that the last observation survived. Then the coverage
    * checkpoint moves: a fork inside the quiet stretch rewinds it in place,
    * with the height resolved from the covered ring or one node lookup; a fork
-   * below the head entry is not a coverage matter and fails closed for
-   * restart reconciliation, which drops observations above the fork.
+   * below the head requires a fresh canonical fold and one protected CAS.
+   * Failed acquisition leaves the runtime suspended for a later native retry.
    */
   const handleRollback = (
     point: WatcherNativeChainSyncPoint,
   ): Promise<void> => {
-    if (recovery !== null && same(point, recoveryPoint)) return recovery;
-    if (status !== "ready" || publisher === null) {
+    if (recovery !== null) {
+      if (same(point, recoveryPoint)) return recovery;
+      return recovery.then(
+        () => handleRollback(point),
+        () => handleRollback(point),
+      );
+    }
+    if ((status !== "ready" && status !== "suspended") || publisher === null) {
       const error = new Error(
         "User-event rollback cannot recover this runtime state",
       );
       fail(error);
       return Promise.reject(error);
     }
-    status = "suspended";
-    generation += 1;
+    const head =
+      status === "ready"
+        ? readPoints().headCursor
+        : lastKnownPoints!.headCursor;
+    if (status === "ready") {
+      status = "suspended";
+      generation += 1;
+      publisher.suspend();
+    }
     prefetchedFirst.clear();
     recoveryPoint = Object.freeze({ ...point });
-    const head = headCursor();
-    publisher.suspend();
-    operationAbort.abort(new Error("User-event source rolled back"));
+    operationAbort.abort(
+      new WatcherUserEventOperationRetired("User-event source rolled back"),
+    );
     const settled = tail;
     const releasing = releaseLease();
     recovery = (async () => {
       await settled;
       await releasing;
       signal.throwIfAborted();
-      if (point.kind === "origin")
-        throw new Error(
-          "User-event rollback to origin requires restart reconciliation",
-        );
-      if (BigInt(point.slot) < BigInt(head.slot))
-        throw new Error(
-          "User-event rollback below the last event observation requires restart reconciliation",
-        );
+      if (
+        point.kind === "origin" ||
+        BigInt(point.slot) < BigInt(head.slot) ||
+        (point.slot === head.slot && point.blockHash !== head.blockHash)
+      ) {
+        const replacement = await replaceCanonical();
+        if (status !== "suspended") {
+          replacement.close();
+          throw new Error("Canonical replay was retired");
+        }
+        publisher!.close();
+        publisher = replacement;
+        coverageStore.clear();
+        coveredRing.clear();
+        persistCoverage();
+        remember(headCursor());
+        lastKnownPoints = {
+          currentPoint: coveragePoint(),
+          headCursor: headCursor(),
+        };
+        operationAbort = new AbortController();
+        status = "ready";
+        recoveryPoint = null;
+        return;
+      }
       const pair = await onePair(head, signal);
       try {
         if (status !== "suspended")
@@ -1037,15 +1209,10 @@ export const createWatcherUserEventRuntime = async (
       } finally {
         await pair.close();
       }
-    })()
-      .catch((error: unknown) => {
-        fail(error);
-        throw error;
-      })
-      .finally(() => {
-        recovery = null;
-        recoveryPoint = null;
-      });
+    })().finally(() => {
+      recovery = null;
+      if (status === "ready") recoveryPoint = null;
+    });
     return recovery;
   };
   /** Amortizes first captures without publishing beyond the requested prefix. */
@@ -1244,6 +1411,7 @@ export const createWatcherUserEventRuntime = async (
     if (activationCandidates.length !== 1)
       throw new Error("User-event activation discovery is absent or ambiguous");
     const activationPoint = activationCandidates[0]!;
+    activationPointForReplay = activationPoint;
     const activation = await onePair(activationPoint, signal);
     try {
       const origin = admitWatcherUserEventOrigin({
@@ -1279,11 +1447,16 @@ export const createWatcherUserEventRuntime = async (
         const target = admitFraudProofRawL1Point(
           (payload as { head?: { cursor?: unknown } })?.head?.cursor,
         );
-        publisher = await resumeWatcherLocalUserEventPublisher({
-          ...bootstrap,
-          readHead: (point) => onePair(point, signal),
-        });
-        if (!same(publisher.read().cursor, target))
+        // A negative lookup only chooses the replay path. Replacement still
+        // requires a positively admitted conflicting block at the saved height.
+        const savedCanonical = await intersectsCanonicalChain(target);
+        publisher = savedCanonical
+          ? await resumeWatcherLocalUserEventPublisher({
+              ...bootstrap,
+              readHead: (point) => onePair(point, signal),
+            })
+          : await replaceCanonical();
+        if (savedCanonical && !same(publisher.read().cursor, target))
           throw new Error(
             "User-event restart did not restore the exact saved head",
           );
@@ -1338,7 +1511,13 @@ export const createWatcherUserEventRuntime = async (
           )
             return;
           if (event.kind === "roll_backward")
-            void handleRollback(event.point).catch(fail);
+            void handleRollback(event.point).catch(() => undefined);
+          else if (
+            status === "suspended" &&
+            recovery === null &&
+            recoveryPoint !== null
+          )
+            void handleRollback(recoveryPoint).catch(() => undefined);
         },
       });
       nativeMonitor = monitor;

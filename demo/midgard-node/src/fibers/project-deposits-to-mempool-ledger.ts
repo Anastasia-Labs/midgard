@@ -6,6 +6,7 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
+import { withHistoryIngestion } from "../services/event-history-producer.js";
 import {
   Database,
   Globals,
@@ -108,33 +109,44 @@ const reconcileAlreadyProjectedDeposits = Effect.gen(function* () {
   };
 });
 
-const projectAwaitingDeposits = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  return yield* sql.withTransaction(
-    Effect.gen(function* () {
-      const awaitingEntries = yield* DepositsDB.retrieveAwaitingEntriesDueBy(
-        new Date(),
-      );
-      if (awaitingEntries.length <= 0) {
-        return 0;
-      }
-      const mempoolEntries = yield* Effect.forEach(
-        awaitingEntries,
-        DepositsDB.toMempoolLedgerEntry,
-      );
-      yield* MempoolLedgerDB.reconcileDepositEntries(mempoolEntries);
-      yield* DepositsDB.markAwaitingAsProjected(
-        awaitingEntries.map((entry) => entry[DepositsDB.Columns.ID]),
-      );
-      return mempoolEntries.length;
-    }),
+const projectAwaitingDeposits = (upTo: Date) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const awaitingEntries =
+          yield* DepositsDB.retrieveAwaitingEntriesDueBy(upTo);
+        if (awaitingEntries.length <= 0) {
+          return 0;
+        }
+        const mempoolEntries = yield* Effect.forEach(
+          awaitingEntries,
+          DepositsDB.toMempoolLedgerEntry,
+        );
+        yield* MempoolLedgerDB.reconcileDepositEntries(mempoolEntries);
+        yield* DepositsDB.markAwaitingAsProjected(
+          awaitingEntries.map((entry) => entry[DepositsDB.Columns.ID]),
+        );
+        return mempoolEntries.length;
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      MempoolLedgerDB.tableName,
+      "Failed to project awaiting deposits into mempool ledger",
+    ),
   );
-}).pipe(
-  sqlErrorToDatabaseError(
-    MempoolLedgerDB.tableName,
-    "Failed to project awaiting deposits into mempool ledger",
-  ),
-);
+
+/** SQL only. The history owner calls this under its existing recovery
+ * transaction and publishes the cache by completing that recovery generation.
+ * The cutoff is the authenticated source frontier, never a polling timestamp.
+ */
+export const reconcileDepositProjection = (upTo: Date) =>
+  Effect.gen(function* () {
+    const reconciled = yield* reconcileAlreadyProjectedDeposits;
+    const projectedCount = yield* projectAwaitingDeposits(upTo);
+    return { reconciled, projectedCount };
+  }).pipe(withHistoryIngestion);
 
 export const projectDepositsToMempoolLedger: Effect.Effect<
   void,
@@ -143,9 +155,8 @@ export const projectDepositsToMempoolLedger: Effect.Effect<
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const config = yield* NodeConfig;
-  const [reconciled, projectedCount] = yield* Effect.all(
-    [reconcileAlreadyProjectedDeposits, projectAwaitingDeposits],
-    { concurrency: 1 },
+  const { reconciled, projectedCount } = yield* reconcileDepositProjection(
+    new Date(),
   );
   const reconciledCount = reconciled.mutationCount;
   const totalMutations = reconciledCount + projectedCount;

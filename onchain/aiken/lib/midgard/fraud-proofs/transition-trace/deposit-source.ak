@@ -1,25 +1,27 @@
-use aiken/builtin
 use aiken/cbor
-use cardano/transaction.{Input, OutputReference}
+use midgard/event_history/order_facts
 use midgard/fraud_proofs/transition_trace/final_yield.{Args, State}
-use midgard/fraud_proofs/transition_trace/proof
+use midgard/ledger_state
 
-pub fn open(
-  state: State,
-  args: Args,
-  references: List<Input>,
-) -> (proof.AuthenticatedDepositReference, ByteArray, ByteArray) {
+pub type Source {
+  commitment: order_facts.Commitment,
+  event: ledger_state.DepositEvent,
+  value: Data,
+}
+
+/// The first projection stage captured these facts from the authenticated list.
+/// Subsequent stages need neither the original out-ref nor any current node.
+pub fn open(state: State, args: Args) -> Source {
   expect Some(data) = cbor.deserialise(state.deposit_source_cbor)
-  expect [out_ref_data, policy_data, asset_data] = builtin.un_list_data(data)
-  expect out_ref: OutputReference = out_ref_data
-  expect policy: ByteArray = policy_data
-  expect asset: ByteArray = asset_data
-  let reference = proof.get_authenticated_deposit_reference(
-    references,
-    policy,
-    asset,
-    args.deposit_event_ref_index,
-  )
-  expect reference.out_ref == out_ref
-  (reference, policy, asset)
+  expect commitment: order_facts.Commitment = data
+  expect commitment.kind == order_facts.Deposit
+  expect Some(raw_opening) = args.deposit_opening
+  expect opening: order_facts.Opening = raw_opening
+  expect order_facts.opens(commitment, opening.payload, opening.original_assets)
+  expect order_facts.DepositPayload { event } = opening.payload
+  // The complete hash was captured from a canonical L1 Value. Keep that exact
+  // Data here: rebuilding and validating every token at every four-asset step
+  // exceeds the maximum-Value reopening budget. Consumers inspect only the
+  // authenticated entries they use; this is not an unchecked external Value.
+  Source { commitment, event, value: opening.original_assets }
 }

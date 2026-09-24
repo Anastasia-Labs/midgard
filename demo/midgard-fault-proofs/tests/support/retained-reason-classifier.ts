@@ -107,6 +107,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "../helpers/transition-history-fixture.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 
 /** Retains existing machine states under the operator's exact claimed verdict. */
@@ -770,7 +771,12 @@ export const captureRetainedPlutusIdentityOrigins = async (
   const binding = {
     network: "Preprod",
     releaseFinality: finality,
-    resolvedContracts: { hubOraclePolicyId: hubPolicy },
+    resolvedContracts: {
+      hubOraclePolicyId: hubPolicy,
+      contracts: {
+        transitionTrace: { history: TRANSITION_HISTORY_FIXTURE_PARAMETERS },
+      },
+    },
     definition: { headerHash: fixture.block.headerHash },
   } as Parameters<typeof captureTransitionTraceL1Events>[0]["binding"];
   return captureTransitionTraceL1Events({ binding, authority });

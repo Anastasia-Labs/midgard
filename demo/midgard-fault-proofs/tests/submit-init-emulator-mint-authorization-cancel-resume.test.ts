@@ -3,14 +3,15 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import {
-  submitMintAuthorizationCancel,
-  submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
   submitMintAuthorizationStep03WitnessAbsence,
   submitMintAuthorizationStep04AdvanceComplete,
 } from "../src/mint-authorization/index.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   buildMintAuthorizationSubject,
   makeMintAuthorizationEmulatorHarness,
@@ -45,7 +46,8 @@ describe("mint-authorization cancellation and restart", () => {
         harness.contracts.fraudProofCatalogue.spendingScriptAddress,
       root: harness.catalogue.root,
     };
-    const init = await submitMintAuthorizationInit({
+    const init = await submitResolvedInit({
+      label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -104,9 +106,11 @@ describe("mint-authorization cancellation and restart", () => {
       referenceScriptUtxo: refs[3],
     });
 
-    const cancelled = await submitMintAuthorizationCancel({
+    const cancelled = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.family,
+      family: MINT_AUTHORIZATION_CATEGORY_LABEL,
+      steps: harness.family.steps,
+      computationThread: harness.family.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step04.nextThreadOutRef,
@@ -124,7 +128,8 @@ describe("mint-authorization cancellation and restart", () => {
       ).resolves.toHaveLength(0);
     }
 
-    const restarted = await submitMintAuthorizationInit({
+    const restarted = await submitResolvedInit({
+      label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

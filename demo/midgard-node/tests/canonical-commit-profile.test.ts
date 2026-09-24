@@ -298,6 +298,7 @@ describe("canonical V1 commit profile", () => {
   it("fails closed on missing forced program material before journal preparation", async () => {
     vi.mocked(buildUnsignedCommitTx).mockReturnValue(
       Effect.succeed({
+        preparedTxHash: "22".repeat(32),
         newHeaderHash: HEADER_HASH,
         newHeader: {} as never,
         newHeaderCbor: Buffer.from("header"),
@@ -332,6 +333,7 @@ describe("canonical V1 commit profile", () => {
     );
     vi.mocked(buildUnsignedCommitTx).mockReturnValue(
       Effect.succeed({
+        preparedTxHash: "22".repeat(32),
         newHeaderHash: HEADER_HASH,
         newHeader: {} as never,
         newHeaderCbor: Buffer.from("header"),

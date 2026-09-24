@@ -1,29 +1,166 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 54ade4cc06055f06a13b9a5134d4ea79f072004b..8b24c3757901d7db8c364be476546af688b66752 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -636,7 +636,11 @@ var addOutput = (config, outputBuilder, assets) => (0, import_core_utils5.withCM
+@@ -1890,7 +1890,7 @@
+ var makeSubmit = (wallet, txSigned) => {
+   const submit = (options) => import_effect17.Effect.tryPromise({
+     try: () => wallet.submitTx(
+-      options.canonical ? txSigned.to_canonical_cbor_hex() : txSigned.to_cbor_hex()
++      options.canonical ? canonicalTransactionHex(txSigned) : txSigned.to_cbor_hex()
+     ),
+     catch: (cause) => new TxSubmitError({ cause })
+   });
+@@ -1898,7 +1898,7 @@
+     submit: (options = { canonical: false }) => makeReturn(submit(options)).unsafeRun(),
+     submitProgram: (options = { canonical: false }) => submit(options),
+     submitSafe: (options = { canonical: false }) => makeReturn(submit(options)).safeRun(),
+-    toCBOR: (options = { canonical: false }) => options.canonical ? txSigned.to_canonical_cbor_hex() : txSigned.to_cbor_hex(),
++    toCBOR: (options = { canonical: false }) => options.canonical ? canonicalTransactionHex(txSigned) : txSigned.to_cbor_hex(),
+     toTransaction: () => txSigned,
+     toJSON: () => S2.decodeUnknownSync(S2.parseJson(S2.Object))(txSigned.to_json()),
+     toHash: () => CML.hash_transaction(txSigned.body()).to_hex()
+@@ -2535,7 +2535,7 @@
+ var normalizeGovernanceRedeemerIndices = (tx, voteWitnessKeys, proposalWitnessIndices) => (0, import_core_utils11.withCMLScope)((own) => {
+   const transaction = CML.Transaction.from_cbor_bytes(tx.to_cbor_bytes());
+   const ledgerIndexTransaction = own(
+-    CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes())
++    canonicalTransaction(tx)
+   );
+   const witnessSet = own(transaction.witness_set());
+   const redeemers = own(witnessSet.redeemers());
+@@ -2755,9 +2755,7 @@
+   return purposes;
  });
- var ToAddressWithData = (address, outputDatum, assets, scriptRef) => import_effect7.Effect.gen(function* () {
-   const { config } = yield* TxConfig;
--  const outputBuilder = buildBaseOutput(address, outputDatum, scriptRef);
-+  const datum = config.canonicalOutputs && outputDatum?.kind === "inline" ? {
-+    ...outputDatum,
-+    value: (0, import_core_utils5.withCMLScope)((own) => own(CML.PlutusData.from_cbor_hex(outputDatum.value)).to_canonical_cbor_hex())
-+  } : outputDatum;
-+  const outputBuilder = buildBaseOutput(address, datum, scriptRef);
-   assets ??= {};
-   addOutput(config, outputBuilder, assets);
- });
-@@ -3977,6 +3981,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
-     catch: (error) => completeTxError(error)
-   }) : presetWalletInputs;
-   config.walletInputs = walletInputs;
-+  config.canonicalOutputs = canonical || internalOptions.forceCanonical === true;
-   yield* import_effect22.Effect.all(config.programs);
-   yield* finalizeVotes();
-   yield* applyTreasuryDonationToBuilder(config);
-@@ -4005,10 +4010,14 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+ var buildCanonicalRedeemerInfo = (tx, resolvedInputs) => import_effect20.Effect.gen(function* () {
+-  const canonicalTx = CML.Transaction.from_cbor_bytes(
+-    tx.to_canonical_cbor_bytes()
+-  );
++  const canonicalTx = canonicalTransaction(tx);
+   const txBody = canonicalTx.body();
+   const inputs = yield* resolveCanonicalInputs(canonicalTx, resolvedInputs);
+   const referenceInputs = yield* resolveCanonicalReferenceInputs(
+@@ -2951,7 +2949,7 @@
+   return true;
+ };
+ var transactionFixedPointFingerprint = (tx) => (0, import_core_utils11.withCMLScope)((own) => {
+-  const body = own(tx.body()).to_canonical_cbor_hex();
++  const body = own(own(canonicalTransaction(tx)).body()).to_cbor_hex();
+   const redeemers = own(own(tx.witness_set()).redeemers());
+   const redeemerData = [];
+   const redeemerExUnits = [];
+@@ -2961,7 +2959,7 @@
+       for (const redeemer of entries) {
+         const index = redeemer.index.toString();
+         redeemerData.push(
+-          `${redeemer.tag}:${index}:${redeemer.data.to_canonical_cbor_hex()}`
++          `${redeemer.tag}:${index}:${redeemer.data.to_cbor_hex()}`
+         );
+         redeemerExUnits.push(
+           `${redeemer.tag}:${index}:${redeemer.exUnits.mem()}:${redeemer.exUnits.steps()}`
+@@ -3780,7 +3778,74 @@
+     txInfoTreasuryDonation: body.donation() ?? null
+   };
+ };
+-var canonicalTransaction = (tx) => CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes());
++// Canonicalize ledger containers without changing ordered Plutus maps or datum hashes.
++var canonicalTransaction = (tx) => (0, import_core_utils11.withCMLScope)((own) => {
++  const canonical = own(CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes()));
++  const originalBody = own(tx.body());
++  const canonicalBody = own(canonical.body());
++  const restoreOutput = (output, original) => {
++    const conway = own(output.as_conway_format_tx_out());
++    const datum = own(original.datum());
++    if (!conway || !datum) return output;
++    conway.set_datum_option(datum);
++    return own(CML.TransactionOutput.new_conway_format_tx_out(conway));
++  };
++  const originalOutputs = own(originalBody.outputs());
++  const canonicalOutputs = own(canonicalBody.outputs());
++  const outputs = own(CML.TransactionOutputList.new());
++  for (let i = 0; i < canonicalOutputs.len(); i++) {
++    outputs.add(restoreOutput(own(canonicalOutputs.get(i)), own(originalOutputs.get(i))));
++  }
++  const body = own(CML.TransactionBody.new(own(canonicalBody.inputs()), outputs, canonicalBody.fee()));
++  // All optional Conway body fields: copy canonical ledger ordering and encoding.
++  for (const field of [
++    "auxiliary_data_hash", "certs", "collateral_inputs", "current_treasury_value",
++    "donation", "mint", "network_id", "proposal_procedures", "reference_inputs",
++    "required_signers", "script_data_hash", "total_collateral", "ttl",
++    "validity_interval_start", "voting_procedures", "withdrawals"
++  ]) {
++    const value = canonicalBody[field]();
++    if (value !== undefined) body[`set_${field}`](typeof value === "object" ? own(value) : value);
++  }
++  const collateral = own(canonicalBody.collateral_return());
++  if (collateral) body.set_collateral_return(restoreOutput(collateral, own(originalBody.collateral_return())));
++  const witnesses = own(canonical.witness_set());
++  const originalWitnesses = own(tx.witness_set());
++  const datums = own(originalWitnesses.plutus_datums());
++  if (datums) witnesses.set_plutus_datums(datums);
++  const originalRedeemers = own(originalWitnesses.redeemers());
++  const canonicalRedeemers = own(witnesses.redeemers());
++  if (originalRedeemers && canonicalRedeemers) {
++    // Compact redeemer encoding is safe only when the ordered Plutus value is
++    // unchanged. CML JSON retains map entry order and exact integer literals;
++    // compare the strings directly, without a lossy JavaScript JSON parse.
++    const preserveValue = (original, canonical) =>
++      own(original.data()).to_json() === own(canonical.data()).to_json()
++        ? canonical : original;
++    const originalMap = own(originalRedeemers.as_map_redeemer_key_to_redeemer_val());
++    const canonicalMap = own(canonicalRedeemers.as_map_redeemer_key_to_redeemer_val());
++    if (originalMap && canonicalMap) {
++      const restored = own(CML.MapRedeemerKeyToRedeemerVal.new());
++      const keys = own(canonicalMap.keys());
++      for (let i = 0; i < keys.len(); i++) {
++        const key = own(keys.get(i));
++        restored.insert(key, preserveValue(own(originalMap.get(key)), own(canonicalMap.get(key))));
++      }
++      witnesses.set_redeemers(own(CML.Redeemers.new_map_redeemer_key_to_redeemer_val(restored)));
++    } else {
++      // Legacy redeemers are a sequence, not a map; their order is unchanged.
++      const originalList = own(originalRedeemers.as_arr_legacy_redeemer());
++      const canonicalList = own(canonicalRedeemers.as_arr_legacy_redeemer());
++      const restored = own(CML.LegacyRedeemerList.new());
++      for (let i = 0; i < canonicalList.len(); i++) {
++        restored.add(preserveValue(own(originalList.get(i)), own(canonicalList.get(i))));
++      }
++      witnesses.set_redeemers(own(CML.Redeemers.new_arr_legacy_redeemer(restored)));
++    }
++  }
++  return CML.Transaction.new(body, witnesses, tx.is_valid(), canonical.auxiliary_data());
++});
++var canonicalTransactionHex = (tx) => (0, import_core_utils11.withCMLScope)((own) => own(canonicalTransaction(tx)).to_cbor_hex());
+ var canonicalInfo = (tx, resolvedInputs) => import_effect21.Effect.runSync(buildCanonicalRedeemerInfo(tx, resolvedInputs));
+ var makeScriptContexts = (tx, options = {}) => {
+   const txInfoId = CML.hash_transaction(tx.body()).to_hex();
+@@ -3903,7 +3968,7 @@
+       config.programs.push(program);
+       return txSignBuilder;
+     },
+-    toCBOR: (options2 = { canonical: false }) => options2.canonical ? config.txComplete.to_canonical_cbor_hex() : config.txComplete.to_cbor_hex(),
++    toCBOR: (options2 = { canonical: false }) => options2.canonical ? canonicalTransactionHex(config.txComplete) : config.txComplete.to_cbor_hex(),
+     toTransaction: () => config.txComplete,
+     toScriptContext: (purpose, options2) => makeScriptContext(
+       config.txComplete,
+@@ -3983,6 +4048,7 @@
+   const hasPlutusScriptExecutions = Array.from(
+     config.scripts.values()
+   ).some((value) => value.type !== "Native");
++  const provisionalEvaluation = hasPlutusScriptExecutions && internalOptions.provisionalEvaluation === true;
+   let evaluatedScriptBody = yield* selectionAndEvaluation(
+     walletInputs,
+     changeAddress,
+@@ -3993,7 +4059,8 @@
+     false,
+     internalOptions.bootstrapExUnits === true,
+     internalOptions.knownRedeemerExUnits,
+-    internalOptions.redeemerInputFingerprint
++    internalOptions.redeemerInputFingerprint,
++    provisionalEvaluation
+   );
+   if (hasPlutusScriptExecutions) {
+     const estimatedFee = yield* estimateFee(config, true);
+@@ -4005,10 +4072,14 @@
          )
        )
      );
@@ -39,23 +176,62 @@ index 54ade4cc06055f06a13b9a5134d4ea79f072004b..8b24c3757901d7db8c364be476546af6
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -4087,6 +4096,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+@@ -4043,9 +4114,7 @@
+     catch: (error) => completeTxError(error)
+   });
+   const shouldCanonicalize = canonical || internalOptions.forceCanonical;
+-  const transactionBeforeScriptDataHash = shouldCanonicalize ? CML.Transaction.from_cbor_bytes(
+-    builtTransaction.to_canonical_cbor_bytes()
+-  ) : builtTransaction;
++  const transactionBeforeScriptDataHash = shouldCanonicalize ? canonicalTransaction(builtTransaction) : builtTransaction;
+   const normalizedTransaction = yield* import_effect22.Effect.try({
+     try: () => normalizeGovernanceRedeemerIndices(
+       transactionBeforeScriptDataHash,
+@@ -4060,6 +4129,19 @@
+     config
+   );
+   if (transaction !== normalizedTransaction) normalizedTransaction.free();
++  if (provisionalEvaluation) {
++    const { fee, collateral } = (0, import_core_utils14.withCMLScope)((own) => {
++      const body = own(transaction.body());
++      return { fee: body.fee(), collateral: body.total_collateral() ?? 0n };
++    });
++    const requiredCollateral = (fee * BigInt(config.lucidConfig.protocolParameters.collateralPercentage) + 99n) / 100n;
++    if (collateral < requiredCollateral) {
++      transaction.free();
++      return yield* completeTxError(
++        `Final transaction requires ${requiredCollateral} Lovelace collateral, but only ${collateral} was selected. Rebuild with setCollateral covering the final fee.`
++      );
++    }
++  }
+   const derivedInputs = deriveInputsFromTransaction(transaction);
+   const derivedWalletInputs = derivedInputs.filter(
+     (utxo) => utxo.address === walletAddress
+@@ -4085,12 +4167,12 @@
+     })
+   );
  }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
- var completeStaticFromActions = (sourceConfig, options) => {
+-var completeStaticFromActions = (sourceConfig, options) => {
++var completeStaticFromActions = (sourceConfig, options, internalOptions = {}) => {
    const replayConfig = makeReplayConfig(sourceConfig);
-+  replayConfig.canonicalOutputs = options.canonical === true;
    return (0, import_effect22.pipe)(
      import_effect22.Effect.gen(function* () {
        yield* replayTxActions(sourceConfig.actions);
-@@ -4116,6 +4126,7 @@ var completeDelayedFromActions = (sourceConfig, options) => import_effect22.Effe
-   let bootstrapWalletInputs = [];
-   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-     const replayConfig = makeReplayConfig(sourceConfig);
-+    replayConfig.canonicalOutputs = true;
-     let usedBootstrapExUnits = false;
-     const completion = yield* (0, import_effect22.pipe)(
-       import_effect22.Effect.gen(function* () {
-@@ -4266,12 +4277,18 @@ var collectKnownRedeemerExUnits = (tx, config) => import_effect22.Effect.gen(fun
+-      return yield* completeCurrentConfig(options);
++      return yield* completeCurrentConfig(options, internalOptions);
+     }),
+     import_effect22.Effect.provide(import_effect22.Layer.succeed(TxConfig, { config: replayConfig })),
+     // The completed transaction is copied out of the builder; nothing keeps
+@@ -4213,7 +4295,7 @@
+ });
+ var canonicalInputFingerprint = (tx) => (0, import_core_utils14.withCMLScope)((own) => {
+   const canonical = own(
+-    CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes())
++    canonicalTransaction(tx)
+   );
+   const inputs = own(own(canonical.body()).inputs());
+   return Array.from(
+@@ -4266,14 +4348,25 @@
  });
  var complete = (options = {}) => import_effect22.Effect.gen(function* () {
    const { config } = yield* TxConfig;
@@ -65,19 +241,59 @@ index 54ade4cc06055f06a13b9a5134d4ea79f072004b..8b24c3757901d7db8c364be476546af6
 +    options.evaluator == null && config.lucidConfig.evaluator == null
 +    ? { ...options, evaluator: makeDefaultAikenEvaluator() }
 +    : options;
++  const internalOptions = {
++    provisionalEvaluation: options.coinSelection === false &&
++      options.localUPLCEval !== false && options.evaluator == null &&
++      config.lucidConfig.evaluator == null && !hasDelayedActions(config)
++  };
    if (config.actions.length === 0)
 -    return yield* completeCurrentConfig(options);
-+    return yield* completeCurrentConfig(completionOptions);
++    return yield* completeCurrentConfig(completionOptions, internalOptions);
    if (hasDelayedActions(config)) {
 -    return yield* completeDelayedFromActions(config, options);
-+    return yield* completeDelayedFromActions(config, completionOptions);
-   }
+-  }
 -  return yield* completeStaticFromActions(config, options);
-+  return yield* completeStaticFromActions(config, completionOptions);
- });
- var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => import_effect22.Effect.gen(function* () {
+-});
+-var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => import_effect22.Effect.gen(function* () {
++    return yield* completeDelayedFromActions(config, completionOptions);
++  }
++  return yield* completeStaticFromActions(config, completionOptions, internalOptions);
++});
++var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint, provisionalEvaluation = false) => import_effect22.Effect.gen(function* () {
    const { config } = yield* TxConfig;
-@@ -5012,8 +5029,11 @@ var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculati
+   const refScriptInputs = config.readInputs.filter(
+     (input) => input.scriptRef
+@@ -4334,7 +4427,8 @@
+     localUPLCEval,
+     evaluator,
+     bootstrapExUnits,
+-    redeemerInputFingerprint
++    redeemerInputFingerprint,
++    provisionalEvaluation
+   );
+ }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
+ var completePartialPrograms = () => import_effect22.Effect.gen(function* () {
+@@ -4907,9 +5001,7 @@
+   return yield* buildEvaluationDraft(config, changeAddress);
+ });
+ var prepareRedeemerContextCandidate = (candidate, config) => import_effect22.Effect.gen(function* () {
+-  const canonical = CML.Transaction.from_cbor_bytes(
+-    candidate.to_canonical_cbor_bytes()
+-  );
++  const canonical = canonicalTransaction(candidate);
+   const normalized = yield* import_effect22.Effect.try({
+     try: () => normalizeGovernanceRedeemerIndices(
+       canonical,
+@@ -4990,7 +5082,7 @@
+     if (zeroed !== tx) zeroed.free();
+   }
+ };
+-var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculation, localUPLCEval, evaluator, bootstrapExUnits, redeemerInputFingerprint) => import_effect22.Effect.gen(function* () {
++var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculation, localUPLCEval, evaluator, bootstrapExUnits, redeemerInputFingerprint, provisionalEvaluation = false) => import_effect22.Effect.gen(function* () {
+   let previousFingerprint;
+   let forceExplicitFee = config.minFee !== void 0;
+   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
+@@ -5012,8 +5104,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -91,7 +307,17 @@ index 54ade4cc06055f06a13b9a5134d4ea79f072004b..8b24c3757901d7db8c364be476546af6
        );
        (0, import_core_utils14.freeCML)(redeemers, candidate);
        return true;
-@@ -5063,32 +5083,78 @@ var makeProviderEvaluator = (provider) => ({
+@@ -5041,6 +5136,9 @@
+       localUPLCEval,
+       evaluator
+     ).pipe(import_effect22.Effect.ensuring(import_effect22.Effect.sync(() => candidate.free())));
++    // This estimate is provisional: completeCurrentConfig must still add
++    // collateral and run the full final-context convergence loop.
++    if (provisionalEvaluation) return true;
+   }
+   return yield* completeTxError(
+     `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
+@@ -5063,32 +5161,78 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });
@@ -197,31 +423,168 @@ index 54ade4cc06055f06a13b9a5134d4ea79f072004b..8b24c3757901d7db8c364be476546af6
  var makeEvaluationContext = (config) => ({
    network: config.lucidConfig.network,
 diff --git a/dist/index.js b/dist/index.js
-index 2fb0a21504d818b19e60bedee4f41c0db999ad62..6f7011db80ec2d5fd2ebb2b3ce065f6bd392bae4 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -499,7 +499,11 @@ var addOutput = (config, outputBuilder, assets) => withCMLScope5((own) => {
+@@ -1763,7 +1763,7 @@
+ var makeSubmit = (wallet, txSigned) => {
+   const submit = (options) => Effect16.tryPromise({
+     try: () => wallet.submitTx(
+-      options.canonical ? txSigned.to_canonical_cbor_hex() : txSigned.to_cbor_hex()
++      options.canonical ? canonicalTransactionHex(txSigned) : txSigned.to_cbor_hex()
+     ),
+     catch: (cause) => new TxSubmitError({ cause })
+   });
+@@ -1771,7 +1771,7 @@
+     submit: (options = { canonical: false }) => makeReturn(submit(options)).unsafeRun(),
+     submitProgram: (options = { canonical: false }) => submit(options),
+     submitSafe: (options = { canonical: false }) => makeReturn(submit(options)).safeRun(),
+-    toCBOR: (options = { canonical: false }) => options.canonical ? txSigned.to_canonical_cbor_hex() : txSigned.to_cbor_hex(),
++    toCBOR: (options = { canonical: false }) => options.canonical ? canonicalTransactionHex(txSigned) : txSigned.to_cbor_hex(),
+     toTransaction: () => txSigned,
+     toJSON: () => S2.decodeUnknownSync(S2.parseJson(S2.Object))(txSigned.to_json()),
+     toHash: () => CML.hash_transaction(txSigned.body()).to_hex()
+@@ -2420,7 +2420,7 @@
+ var normalizeGovernanceRedeemerIndices = (tx, voteWitnessKeys, proposalWitnessIndices) => withCMLScope9((own) => {
+   const transaction = CML.Transaction.from_cbor_bytes(tx.to_cbor_bytes());
+   const ledgerIndexTransaction = own(
+-    CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes())
++    canonicalTransaction(tx)
+   );
+   const witnessSet = own(transaction.witness_set());
+   const redeemers = own(witnessSet.redeemers());
+@@ -2640,9 +2640,7 @@
+   return purposes;
  });
- var ToAddressWithData = (address, outputDatum, assets, scriptRef) => Effect6.gen(function* () {
-   const { config } = yield* TxConfig;
--  const outputBuilder = buildBaseOutput(address, outputDatum, scriptRef);
-+  const datum = config.canonicalOutputs && outputDatum?.kind === "inline" ? {
-+    ...outputDatum,
-+    value: withCMLScope5((own) => own(CML.PlutusData.from_cbor_hex(outputDatum.value)).to_canonical_cbor_hex())
-+  } : outputDatum;
-+  const outputBuilder = buildBaseOutput(address, datum, scriptRef);
-   assets ??= {};
-   addOutput(config, outputBuilder, assets);
- });
-@@ -3875,6 +3879,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
-     catch: (error) => completeTxError(error)
-   }) : presetWalletInputs;
-   config.walletInputs = walletInputs;
-+  config.canonicalOutputs = canonical || internalOptions.forceCanonical === true;
-   yield* Effect21.all(config.programs);
-   yield* finalizeVotes();
-   yield* applyTreasuryDonationToBuilder(config);
-@@ -3903,10 +3908,14 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+ var buildCanonicalRedeemerInfo = (tx, resolvedInputs) => Effect19.gen(function* () {
+-  const canonicalTx = CML.Transaction.from_cbor_bytes(
+-    tx.to_canonical_cbor_bytes()
+-  );
++  const canonicalTx = canonicalTransaction(tx);
+   const txBody = canonicalTx.body();
+   const inputs = yield* resolveCanonicalInputs(canonicalTx, resolvedInputs);
+   const referenceInputs = yield* resolveCanonicalReferenceInputs(
+@@ -2836,7 +2834,7 @@
+   return true;
+ };
+ var transactionFixedPointFingerprint = (tx) => withCMLScope9((own) => {
+-  const body = own(tx.body()).to_canonical_cbor_hex();
++  const body = own(own(canonicalTransaction(tx)).body()).to_cbor_hex();
+   const redeemers = own(own(tx.witness_set()).redeemers());
+   const redeemerData = [];
+   const redeemerExUnits = [];
+@@ -2846,7 +2844,7 @@
+       for (const redeemer of entries) {
+         const index = redeemer.index.toString();
+         redeemerData.push(
+-          `${redeemer.tag}:${index}:${redeemer.data.to_canonical_cbor_hex()}`
++          `${redeemer.tag}:${index}:${redeemer.data.to_cbor_hex()}`
+         );
+         redeemerExUnits.push(
+           `${redeemer.tag}:${index}:${redeemer.exUnits.mem()}:${redeemer.exUnits.steps()}`
+@@ -3665,7 +3663,74 @@
+     txInfoTreasuryDonation: body.donation() ?? null
+   };
+ };
+-var canonicalTransaction = (tx) => CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes());
++// Canonicalize ledger containers without changing ordered Plutus maps or datum hashes.
++var canonicalTransaction = (tx) => withCMLScope9((own) => {
++  const canonical = own(CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes()));
++  const originalBody = own(tx.body());
++  const canonicalBody = own(canonical.body());
++  const restoreOutput = (output, original) => {
++    const conway = own(output.as_conway_format_tx_out());
++    const datum = own(original.datum());
++    if (!conway || !datum) return output;
++    conway.set_datum_option(datum);
++    return own(CML.TransactionOutput.new_conway_format_tx_out(conway));
++  };
++  const originalOutputs = own(originalBody.outputs());
++  const canonicalOutputs = own(canonicalBody.outputs());
++  const outputs = own(CML.TransactionOutputList.new());
++  for (let i = 0; i < canonicalOutputs.len(); i++) {
++    outputs.add(restoreOutput(own(canonicalOutputs.get(i)), own(originalOutputs.get(i))));
++  }
++  const body = own(CML.TransactionBody.new(own(canonicalBody.inputs()), outputs, canonicalBody.fee()));
++  // All optional Conway body fields: copy canonical ledger ordering and encoding.
++  for (const field of [
++    "auxiliary_data_hash", "certs", "collateral_inputs", "current_treasury_value",
++    "donation", "mint", "network_id", "proposal_procedures", "reference_inputs",
++    "required_signers", "script_data_hash", "total_collateral", "ttl",
++    "validity_interval_start", "voting_procedures", "withdrawals"
++  ]) {
++    const value = canonicalBody[field]();
++    if (value !== undefined) body[`set_${field}`](typeof value === "object" ? own(value) : value);
++  }
++  const collateral = own(canonicalBody.collateral_return());
++  if (collateral) body.set_collateral_return(restoreOutput(collateral, own(originalBody.collateral_return())));
++  const witnesses = own(canonical.witness_set());
++  const originalWitnesses = own(tx.witness_set());
++  const datums = own(originalWitnesses.plutus_datums());
++  if (datums) witnesses.set_plutus_datums(datums);
++  const originalRedeemers = own(originalWitnesses.redeemers());
++  const canonicalRedeemers = own(witnesses.redeemers());
++  if (originalRedeemers && canonicalRedeemers) {
++    // Compact redeemer encoding is safe only when the ordered Plutus value is
++    // unchanged. CML JSON retains map entry order and exact integer literals;
++    // compare the strings directly, without a lossy JavaScript JSON parse.
++    const preserveValue = (original, canonical) =>
++      own(original.data()).to_json() === own(canonical.data()).to_json()
++        ? canonical : original;
++    const originalMap = own(originalRedeemers.as_map_redeemer_key_to_redeemer_val());
++    const canonicalMap = own(canonicalRedeemers.as_map_redeemer_key_to_redeemer_val());
++    if (originalMap && canonicalMap) {
++      const restored = own(CML.MapRedeemerKeyToRedeemerVal.new());
++      const keys = own(canonicalMap.keys());
++      for (let i = 0; i < keys.len(); i++) {
++        const key = own(keys.get(i));
++        restored.insert(key, preserveValue(own(originalMap.get(key)), own(canonicalMap.get(key))));
++      }
++      witnesses.set_redeemers(own(CML.Redeemers.new_map_redeemer_key_to_redeemer_val(restored)));
++    } else {
++      // Legacy redeemers are a sequence, not a map; their order is unchanged.
++      const originalList = own(originalRedeemers.as_arr_legacy_redeemer());
++      const canonicalList = own(canonicalRedeemers.as_arr_legacy_redeemer());
++      const restored = own(CML.LegacyRedeemerList.new());
++      for (let i = 0; i < canonicalList.len(); i++) {
++        restored.add(preserveValue(own(originalList.get(i)), own(canonicalList.get(i))));
++      }
++      witnesses.set_redeemers(own(CML.Redeemers.new_arr_legacy_redeemer(restored)));
++    }
++  }
++  return CML.Transaction.new(body, witnesses, tx.is_valid(), canonical.auxiliary_data());
++});
++var canonicalTransactionHex = (tx) => withCMLScope9((own) => own(canonicalTransaction(tx)).to_cbor_hex());
+ var canonicalInfo = (tx, resolvedInputs) => Effect20.runSync(buildCanonicalRedeemerInfo(tx, resolvedInputs));
+ var makeScriptContexts = (tx, options = {}) => {
+   const txInfoId = CML.hash_transaction(tx.body()).to_hex();
+@@ -3788,7 +3853,7 @@
+       config.programs.push(program);
+       return txSignBuilder;
+     },
+-    toCBOR: (options2 = { canonical: false }) => options2.canonical ? config.txComplete.to_canonical_cbor_hex() : config.txComplete.to_cbor_hex(),
++    toCBOR: (options2 = { canonical: false }) => options2.canonical ? canonicalTransactionHex(config.txComplete) : config.txComplete.to_cbor_hex(),
+     toTransaction: () => config.txComplete,
+     toScriptContext: (purpose, options2) => makeScriptContext(
+       config.txComplete,
+@@ -3881,6 +3946,7 @@
+   const hasPlutusScriptExecutions = Array.from(
+     config.scripts.values()
+   ).some((value) => value.type !== "Native");
++  const provisionalEvaluation = hasPlutusScriptExecutions && internalOptions.provisionalEvaluation === true;
+   let evaluatedScriptBody = yield* selectionAndEvaluation(
+     walletInputs,
+     changeAddress,
+@@ -3891,7 +3957,8 @@
+     false,
+     internalOptions.bootstrapExUnits === true,
+     internalOptions.knownRedeemerExUnits,
+-    internalOptions.redeemerInputFingerprint
++    internalOptions.redeemerInputFingerprint,
++    provisionalEvaluation
+   );
+   if (hasPlutusScriptExecutions) {
+     const estimatedFee = yield* estimateFee(config, true);
+@@ -3903,10 +3970,14 @@
          )
        )
      );
@@ -237,23 +600,62 @@ index 2fb0a21504d818b19e60bedee4f41c0db999ad62..6f7011db80ec2d5fd2ebb2b3ce065f6b
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -3985,6 +3994,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+@@ -3941,9 +4012,7 @@
+     catch: (error) => completeTxError(error)
+   });
+   const shouldCanonicalize = canonical || internalOptions.forceCanonical;
+-  const transactionBeforeScriptDataHash = shouldCanonicalize ? CML.Transaction.from_cbor_bytes(
+-    builtTransaction.to_canonical_cbor_bytes()
+-  ) : builtTransaction;
++  const transactionBeforeScriptDataHash = shouldCanonicalize ? canonicalTransaction(builtTransaction) : builtTransaction;
+   const normalizedTransaction = yield* Effect21.try({
+     try: () => normalizeGovernanceRedeemerIndices(
+       transactionBeforeScriptDataHash,
+@@ -3958,6 +4027,19 @@
+     config
+   );
+   if (transaction !== normalizedTransaction) normalizedTransaction.free();
++  if (provisionalEvaluation) {
++    const { fee, collateral } = withCMLScope12((own) => {
++      const body = own(transaction.body());
++      return { fee: body.fee(), collateral: body.total_collateral() ?? 0n };
++    });
++    const requiredCollateral = (fee * BigInt(config.lucidConfig.protocolParameters.collateralPercentage) + 99n) / 100n;
++    if (collateral < requiredCollateral) {
++      transaction.free();
++      return yield* completeTxError(
++        `Final transaction requires ${requiredCollateral} Lovelace collateral, but only ${collateral} was selected. Rebuild with setCollateral covering the final fee.`
++      );
++    }
++  }
+   const derivedInputs = deriveInputsFromTransaction(transaction);
+   const derivedWalletInputs = derivedInputs.filter(
+     (utxo) => utxo.address === walletAddress
+@@ -3983,12 +4065,12 @@
+     })
+   );
  }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
- var completeStaticFromActions = (sourceConfig, options) => {
+-var completeStaticFromActions = (sourceConfig, options) => {
++var completeStaticFromActions = (sourceConfig, options, internalOptions = {}) => {
    const replayConfig = makeReplayConfig(sourceConfig);
-+  replayConfig.canonicalOutputs = options.canonical === true;
    return pipe10(
      Effect21.gen(function* () {
        yield* replayTxActions(sourceConfig.actions);
-@@ -4014,6 +4024,7 @@ var completeDelayedFromActions = (sourceConfig, options) => Effect21.gen(functio
-   let bootstrapWalletInputs = [];
-   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-     const replayConfig = makeReplayConfig(sourceConfig);
-+    replayConfig.canonicalOutputs = true;
-     let usedBootstrapExUnits = false;
-     const completion = yield* pipe10(
-       Effect21.gen(function* () {
-@@ -4164,12 +4175,18 @@ var collectKnownRedeemerExUnits = (tx, config) => Effect21.gen(function* () {
+-      return yield* completeCurrentConfig(options);
++      return yield* completeCurrentConfig(options, internalOptions);
+     }),
+     Effect21.provide(Layer.succeed(TxConfig, { config: replayConfig })),
+     // The completed transaction is copied out of the builder; nothing keeps
+@@ -4111,7 +4193,7 @@
+ });
+ var canonicalInputFingerprint = (tx) => withCMLScope12((own) => {
+   const canonical = own(
+-    CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes())
++    canonicalTransaction(tx)
+   );
+   const inputs = own(own(canonical.body()).inputs());
+   return Array.from(
+@@ -4164,14 +4246,25 @@
  });
  var complete = (options = {}) => Effect21.gen(function* () {
    const { config } = yield* TxConfig;
@@ -263,19 +665,59 @@ index 2fb0a21504d818b19e60bedee4f41c0db999ad62..6f7011db80ec2d5fd2ebb2b3ce065f6b
 +    options.evaluator == null && config.lucidConfig.evaluator == null
 +    ? { ...options, evaluator: makeDefaultAikenEvaluator() }
 +    : options;
++  const internalOptions = {
++    provisionalEvaluation: options.coinSelection === false &&
++      options.localUPLCEval !== false && options.evaluator == null &&
++      config.lucidConfig.evaluator == null && !hasDelayedActions(config)
++  };
    if (config.actions.length === 0)
 -    return yield* completeCurrentConfig(options);
-+    return yield* completeCurrentConfig(completionOptions);
++    return yield* completeCurrentConfig(completionOptions, internalOptions);
    if (hasDelayedActions(config)) {
 -    return yield* completeDelayedFromActions(config, options);
-+    return yield* completeDelayedFromActions(config, completionOptions);
-   }
+-  }
 -  return yield* completeStaticFromActions(config, options);
-+  return yield* completeStaticFromActions(config, completionOptions);
- });
- var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => Effect21.gen(function* () {
+-});
+-var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => Effect21.gen(function* () {
++    return yield* completeDelayedFromActions(config, completionOptions);
++  }
++  return yield* completeStaticFromActions(config, completionOptions, internalOptions);
++});
++var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint, provisionalEvaluation = false) => Effect21.gen(function* () {
    const { config } = yield* TxConfig;
-@@ -4910,8 +4927,11 @@ var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculati
+   const refScriptInputs = config.readInputs.filter(
+     (input) => input.scriptRef
+@@ -4232,7 +4325,8 @@
+     localUPLCEval,
+     evaluator,
+     bootstrapExUnits,
+-    redeemerInputFingerprint
++    redeemerInputFingerprint,
++    provisionalEvaluation
+   );
+ }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
+ var completePartialPrograms = () => Effect21.gen(function* () {
+@@ -4805,9 +4899,7 @@
+   return yield* buildEvaluationDraft(config, changeAddress);
+ });
+ var prepareRedeemerContextCandidate = (candidate, config) => Effect21.gen(function* () {
+-  const canonical = CML.Transaction.from_cbor_bytes(
+-    candidate.to_canonical_cbor_bytes()
+-  );
++  const canonical = canonicalTransaction(candidate);
+   const normalized = yield* Effect21.try({
+     try: () => normalizeGovernanceRedeemerIndices(
+       canonical,
+@@ -4888,7 +4980,7 @@
+     if (zeroed !== tx) zeroed.free();
+   }
+ };
+-var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculation, localUPLCEval, evaluator, bootstrapExUnits, redeemerInputFingerprint) => Effect21.gen(function* () {
++var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculation, localUPLCEval, evaluator, bootstrapExUnits, redeemerInputFingerprint, provisionalEvaluation = false) => Effect21.gen(function* () {
+   let previousFingerprint;
+   let forceExplicitFee = config.minFee !== void 0;
+   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
+@@ -4910,8 +5002,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -289,7 +731,17 @@ index 2fb0a21504d818b19e60bedee4f41c0db999ad62..6f7011db80ec2d5fd2ebb2b3ce065f6b
        );
        freeCML(redeemers, candidate);
        return true;
-@@ -4961,32 +4981,78 @@ var makeProviderEvaluator = (provider) => ({
+@@ -4939,6 +5034,9 @@
+       localUPLCEval,
+       evaluator
+     ).pipe(Effect21.ensuring(Effect21.sync(() => candidate.free())));
++    // This estimate is provisional: completeCurrentConfig must still add
++    // collateral and run the full final-context convergence loop.
++    if (provisionalEvaluation) return true;
+   }
+   return yield* completeTxError(
+     `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
+@@ -4961,32 +5059,78 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });

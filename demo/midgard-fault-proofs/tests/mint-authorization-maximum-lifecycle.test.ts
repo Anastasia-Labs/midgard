@@ -20,16 +20,17 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import { mintAuthorizationEvaluationPreimage } from "../src/mint-authorization/evaluate.js";
 import {
-  submitMintAuthorizationCancel,
   submitMintAuthorizationEvaluate,
-  submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
   submitMintAuthorizationStep03EvaluateUnsatisfied,
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage-prerequisite.js";
 import {
   addressWitnessItemCbors,
@@ -89,7 +90,8 @@ it.each(["signers", "native", "cancel"])(
         lucid: h.funderLucid,
         contracts: h.family,
       });
-      const init = await submitMintAuthorizationInit({
+      const init = await submitResolvedInit({
+        label: MINT_AUTHORIZATION_CATEGORY_LABEL,
         lucid: h.proverLucid,
         blueprint: h.realBlueprint,
         network,
@@ -281,8 +283,11 @@ it.each(["signers", "native", "cancel"])(
             referenceScriptUtxo: refs[5],
           }),
         ).rejects.toThrow("preimage differs");
-        const cancelled = await submitMintAuthorizationCancel({
+        const cancelled = await submitLinearFaultCancel({
           ...common,
+          family: MINT_AUTHORIZATION_CATEGORY_LABEL,
+          steps: h.family.steps,
+          computationThread: h.family.computationThread,
           threadOutRef: three.nextThreadOutRef,
           referenceScriptUtxo: refs[5],
           witnessReferenceScripts: setup.witnessReferenceScripts,

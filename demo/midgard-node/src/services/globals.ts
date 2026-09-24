@@ -8,6 +8,7 @@ import {
 } from "../fibers/speculative-commit-state.js";
 import type { SubmitSlotSnapshot } from "../local-ogmios-slot.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import type { EventHistoryOwner } from "./event-history-owner.js";
 import type { NativeMpfOwnerService } from "./mpf-native-owner/index.js";
 
 export type CommitPipelinePhase =
@@ -300,6 +301,10 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Architecture G is the only component allowed to hold the ledger Level
     // lock. Workers receive opaque MessagePorts and never see this service or
     // its Level path directly.
+    const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
+      undefined,
+    );
+
     const NATIVE_MPF_OWNER = yield* Ref.make<NativeMpfOwnerService | undefined>(
       undefined,
     );
@@ -354,6 +359,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       TX_QUEUE_PROCESSOR_ACTIVE,
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,
+      EVENT_HISTORY_OWNER,
       ADMISSION_BACKLOG_GAUGE,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,

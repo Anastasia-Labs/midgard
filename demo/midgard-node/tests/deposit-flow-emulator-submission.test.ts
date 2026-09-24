@@ -1,7 +1,9 @@
+import { coreToTxOutput } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   advanceEmulatorPastLatestBlockEndTime,
+  advanceHistoryAdmissionClock,
   buildUnsignedDepositTxFromFundingContextProgram,
   CML,
   configureEmulatorDaRuntimeManifest,
@@ -9,11 +11,10 @@ import {
   DaPayloadsDB,
   Data,
   Database,
-  DepositDraftDatumWithWitnessSchema,
   DepositsDB,
   Effect,
+  ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
-  extractDraftDepositOutput,
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
   Globals,
@@ -40,7 +41,6 @@ import {
   SDK,
   seedLatestLocalBlockBoundaryOnStartup,
   submitDepositWithDiagnostics,
-  submitSignedDepositTxWithHarnessWorkaround,
   toUnit,
   unwrapDaPayload,
   UserEventsUtils,
@@ -52,6 +52,8 @@ describe.sequential("deposit flow emulator", () => {
     const fixture = await makeFixture();
     await initializeProtocol(fixture);
 
+    await ensureSeparateCollateralUtxo(fixture.depositorLucid);
+    await advanceHistoryAdmissionClock(fixture, "deposit");
     const fundingAddress = await fixture.depositorLucid.wallet().address();
     const depositAddress = fixture.contracts.deposit.spendingScriptAddress;
     const fundingUtxos = await fixture.depositorLucid.wallet().getUtxos();
@@ -59,6 +61,7 @@ describe.sequential("deposit flow emulator", () => {
       l2Address: fundingAddress,
       l2Datum: null,
       lovelace: 12_000_000n,
+      structuralLovelace: 2_000_000n,
       additionalAssets: {},
     } as const;
 
@@ -75,43 +78,77 @@ describe.sequential("deposit flow emulator", () => {
       ),
     );
     const builtTx = CML.Transaction.from_cbor_hex(built.unsignedTxCbor);
-    const builtDepositOutput = extractDraftDepositOutput({
-      tx: builtTx,
-      depositAddress,
-      depositPolicyId: fixture.contracts.deposit.policyId,
-    });
-    const expectedWitnessHash = builtDepositOutput.datum.witness;
+    const deployment = SDK.eventHistoryDeploymentFromContracts(
+      SDK.requireEventHistoryContracts(fixture.contracts).deposit,
+    );
+    const outputs = builtTx.body().outputs();
+    const orders = SDK.authenticateHistoryNodes(
+      Array.from({ length: outputs.len() }, (_, outputIndex) => ({
+        ...coreToTxOutput(outputs.get(outputIndex)),
+        txHash: CML.hash_transaction(builtTx.body()).to_hex(),
+        outputIndex,
+      })).filter((output) => output.address === depositAddress),
+      deployment,
+    ).filter(
+      ({ node }) => node.payload !== "RootContent" && "Order" in node.payload,
+    );
+    expect(orders).toHaveLength(1);
+    const builtOrder = orders[0]!;
+    const depositAuthUnit = deployment.policyId + builtOrder.key;
     const signed = await Effect.runPromise(
       fixture.depositorLucid
         .fromTx(built.unsignedTxCbor)
         .sign.withWallet()
         .completeProgram(),
     );
-    const txHash = await submitSignedDepositTxWithHarnessWorkaround({
-      lucid: fixture.depositorLucid,
-      signedTx: signed,
-      expectedWitnessHash,
-    });
+    const txHash = await signed.submit();
+    await fixture.depositorLucid.awaitTx(txHash);
     const depositUtxos = await fixture.depositorLucid.utxosAt(depositAddress);
     const deposited = depositUtxos.find(
-      (utxo) => (utxo.assets[builtDepositOutput.depositAuthUnit] ?? 0n) === 1n,
+      (utxo) => (utxo.assets[depositAuthUnit] ?? 0n) === 1n,
     );
 
     expect(built.unsignedTxCbor).toMatch(/^[0-9a-f]+$/);
     expect(txHash).toEqual(signed.toHash());
     expect(deposited).toBeDefined();
     expect(deposited!.address).toEqual(depositAddress);
-    expect(deposited!.assets.lovelace).toEqual(config.lovelace);
-    expect(deposited!.assets[builtDepositOutput.depositAuthUnit]).toEqual(1n);
+    expect(
+      SDK.eventHistoryOriginalAssets(
+        builtOrder.node,
+        deposited!.assets,
+        deployment.policyId,
+      ),
+    ).toEqual({ lovelace: config.lovelace });
+    expect(deposited!.assets[depositAuthUnit]).toEqual(1n);
 
     const depositedDatum = Data.from(
       deposited!.datum ?? "",
-      DepositDraftDatumWithWitnessSchema,
+      SDK.EventHistoryNode,
     );
-    expect(depositedDatum.witness).toEqual(expectedWitnessHash);
-    expect(depositedDatum.inclusion_time).toEqual(
-      builtDepositOutput.datum.inclusion_time,
+    expect(depositedDatum).toEqual(builtOrder.node);
+    if (
+      depositedDatum.payload === "RootContent" ||
+      !("Order" in depositedDatum.payload)
+    )
+      throw new Error(
+        "Published deposit must be an authenticated history Order",
+      );
+    expect(depositedDatum.payload.Order.facts.structural_lovelace).toBe(
+      config.structuralLovelace,
     );
+    expect(deposited!.assets.lovelace).toBe(
+      config.lovelace + depositedDatum.payload.Order.facts.structural_lovelace,
+    );
+    const read = await Effect.runPromise(
+      SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, deployment),
+    );
+    expect(read).toHaveLength(1);
+    expect(read[0]!.facts).toEqual(depositedDatum.payload.Order.facts);
+    expect(read[0]!.originalAssets).toEqual({ lovelace: config.lovelace });
+    expect(read[0]!.event.info.l2_address).toEqual(
+      await Effect.runPromise(SDK.addressDataFromBech32(fundingAddress)),
+    );
+    expect(read[0]!.event.info.l2_datum).toBeNull();
   });
 
   // 900s leaves headroom for the full real-contract workflow. Protocol
@@ -148,8 +185,9 @@ describe.sequential("deposit flow emulator", () => {
 
     const fetchedDepositUtxos = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
-        eventAddress: fixture.contracts.deposit.spendingScriptAddress,
-        eventPolicyId: fixture.contracts.deposit.policyId,
+        ...SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(fixture.contracts).deposit,
+        ),
       }),
     );
     expect(fetchedDepositUtxos).toHaveLength(1);
@@ -161,7 +199,7 @@ describe.sequential("deposit flow emulator", () => {
     );
     const inclusionSlot =
       fixture.operatorLucid.unixTimeToSlot(
-        Number(depositUtxo.datum.inclusion_time),
+        Number(depositUtxo.facts.inclusion_time),
       ) + 1;
     fixture.emulator.awaitSlot(inclusionSlot);
 
@@ -172,8 +210,8 @@ describe.sequential("deposit flow emulator", () => {
     );
     expect(depositEntries).toHaveLength(0);
 
-    const utxosBeforeProjection = await Effect.runPromise(
-      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    const utxosBeforeProjection = await runNodeDatabaseEffect(
+      utxosProgram(l2Address),
     );
     expect(utxosBeforeProjection.utxoCount).toEqual(0);
 
@@ -195,8 +233,8 @@ describe.sequential("deposit flow emulator", () => {
     );
     expect(rawUtxosAfterBackgroundProjection).toHaveLength(1);
 
-    const spendableUtxosAfterBackgroundProjection = await Effect.runPromise(
-      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    const spendableUtxosAfterBackgroundProjection = await runNodeDatabaseEffect(
+      utxosProgram(l2Address),
     );
     expect(spendableUtxosAfterBackgroundProjection.utxoCount).toEqual(0);
 
@@ -225,8 +263,8 @@ describe.sequential("deposit flow emulator", () => {
     );
     expect(depositEntry[DepositsDB.Columns.PROJECTED_HEADER_HASH]).toBeNull();
 
-    const projectedUtxosBeforeConfirmation = await Effect.runPromise(
-      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    const projectedUtxosBeforeConfirmation = await runNodeDatabaseEffect(
+      utxosProgram(l2Address),
     );
     expect(projectedUtxosBeforeConfirmation.utxoCount).toEqual(0);
 
@@ -299,8 +337,8 @@ describe.sequential("deposit flow emulator", () => {
     expect(recoverableConfirmedBlockAfterObservation).not.toBe("");
     expect(localBoundaryAfterObservation).toBe(commitOutput.blockEndTimeMs);
 
-    const projectedUtxosAfterConfirmation = await Effect.runPromise(
-      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    const projectedUtxosAfterConfirmation = await runNodeDatabaseEffect(
+      utxosProgram(l2Address),
     );
     expect(projectedUtxosAfterConfirmation.utxoCount).toEqual(1);
     expect(projectedUtxosAfterConfirmation.totals.lovelace).toEqual(
@@ -402,7 +440,7 @@ describe.sequential("deposit flow emulator", () => {
 
     const coldStartGlobals = await makeGlobalsService();
     const coldStartNodeConfig = await makeNodeConfigForFixture(fixture);
-    await Effect.runPromise(
+    await runNodeDatabaseEffect(
       seedLatestLocalBlockBoundaryOnStartup.pipe(
         Effect.provideService(Globals, coldStartGlobals),
         Effect.provideService(LucidService, lucidService as any),

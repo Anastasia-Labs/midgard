@@ -1,8 +1,12 @@
+import {
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 /** Reopen payload and original Value authenticated by the history-capture stage.
  * Pointer churn cannot change the retained facts. No operator archive supplies
  * authority: every opening must match the commitment in the authentic thread. */
 import {
-  depositInfoCommitment,
+  depositInfoCommitmentCbor,
   FabricatedDepositAuthenticContentOpening,
   type FabricatedDepositFault,
   FabricatedDepositStep03Datum,
@@ -12,7 +16,7 @@ import {
   type FabricatedDepositStep04State,
   fabricatedDepositStep04State,
   isFabricatedDepositFault,
-  opensEventHistoryCommitment,
+  opensEventHistoryCommitmentCbor,
   OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -57,6 +61,7 @@ import {
 /** The step-03 handoff: the opening the redeemer carries and the fault it yields. */
 export type FabricatedDepositStep03Handoff = {
   readonly opening: FabricatedDepositAuthenticContentOpening;
+  readonly openingCbor: string;
   readonly fault: FabricatedDepositFault;
   readonly step04State: FabricatedDepositStep04State;
 };
@@ -99,6 +104,9 @@ export const deriveFabricatedDepositStep03Handoff = async ({
     openingCbor === undefined
       ? "NoAuthenticContent"
       : Data.from(openingCbor, FabricatedDepositAuthenticContentOpening);
+  const retainedCbor =
+    openingCbor ??
+    Data.to("NoAuthenticContent", FabricatedDepositAuthenticContentOpening);
   let fault: FabricatedDepositFault;
   if (state.verdict === "DepositIdentityAbsent") {
     if (opening !== "NoAuthenticContent")
@@ -110,12 +118,16 @@ export const deriveFabricatedDepositStep03Handoff = async ({
         "Observed Order requires its retained payload and original Value",
       );
     const { commitment } = state.verdict.DepositEventObserved;
-    const { payload, original_assets } = opening.RetainedEventData;
+    const { payload } = opening.RetainedEventData;
     if (
       commitment.kind !== "Deposit" ||
       Data.to(commitment.event_id, OutputReference) !==
         Data.to(state.committed_deposit_id, OutputReference) ||
-      !opensEventHistoryCommitment(commitment, payload, original_assets)
+      !opensEventHistoryCommitmentCbor(
+        commitment,
+        plutusConstrFieldCbor(retainedCbor, [0]),
+        plutusConstrFieldCbor(retainedCbor, [1]),
+      )
     )
       throw new Error(
         "Retained event opening does not match the authenticated history commitment",
@@ -132,7 +144,9 @@ export const deriveFabricatedDepositStep03Handoff = async ({
       fault = { IneligibleDepositEvent: { event_inclusion_time } };
     } else {
       const authenticHash = await Effect.runPromise(
-        depositInfoCommitment(payload.DepositPayload.event.info),
+        depositInfoCommitmentCbor(
+          plutusConstrFieldCbor(retainedCbor, [0, 0, 1]),
+        ),
       );
       if (authenticHash === state.committed_deposit_info_hash)
         throw new Error(
@@ -150,7 +164,7 @@ export const deriveFabricatedDepositStep03Handoff = async ({
   const step04State = fabricatedDepositStep04State(state, fault);
   if (!isFabricatedDepositFault(step04State))
     throw new Error("Retained event does not establish the classified fault");
-  return { opening, fault, step04State };
+  return { opening, openingCbor: retainedCbor, fault, step04State };
 };
 
 export type SubmitFabricatedDepositStep03CliConfig = SubmitProviderConfig & {
@@ -276,17 +290,21 @@ export const submitFabricatedDepositStep03 = async ({
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      {
-        Continue: [
-          {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            authentic_content: handoff.opening,
-          },
-        ],
-      },
-      FabricatedDepositStep03SpendRedeemer,
+    return replacePlutusConstrFieldCbor(
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              authentic_content: handoff.opening,
+            },
+          ],
+        },
+        FabricatedDepositStep03SpendRedeemer,
+      ),
+      [0, 2],
+      handoff.openingCbor,
     );
   }) satisfies BuildTxWithRedeemer;
 

@@ -20,6 +20,10 @@
     "./testing/installed-workflow-l1": {
       "midgard-source": "./src/workflow/family-l1-observation.ts"
     },
+    "./test-support/transition-history-fixture": {
+      "midgard-source": "./tests/helpers/transition-history-fixture.ts",
+      "types": "./tests/helpers/transition-history-fixture.ts"
+    },
     "./test-support/retained-reason-classifier": {
       "midgard-source": "./tests/support/retained-reason-classifier.ts",
       "types": "./tests/support/retained-reason-classifier.ts"
@@ -63,6 +67,14 @@
     "./test-support/forced-order-settlement": {
       "midgard-source": "./tests/support/forced-order-settlement.ts",
       "types": "./tests/support/forced-order-settlement.ts"
+    },
+    "./test-support/retired-family-proof": {
+      "midgard-source": "./tests/support/emulator/retired-family-proof.ts",
+      "types": "./tests/support/emulator/retired-family-proof.ts"
+    },
+    "./test-support/history-pair": {
+      "midgard-source": "./tests/support/emulator/history-pair.ts",
+      "types": "./tests/support/emulator/history-pair.ts"
     }
   },
   "type": "module",

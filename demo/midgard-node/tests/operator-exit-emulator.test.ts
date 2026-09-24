@@ -28,6 +28,7 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
+import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { alignUnixTimeToSlotBoundary } from "../src/workers/utils/commit-end-time.js";
 import {
   appointFirstSchedulerOperator,
@@ -206,6 +207,12 @@ const buildOperatorExitSnapshot = async (): Promise<OperatorExitSnapshot> => {
   );
   const referenceScriptPublications = await runProgram(
     ensureAtomicProtocolInitReferenceScriptsProgram(
+      referenceScriptsLucid,
+      contracts,
+    ),
+  );
+  await runProgram(
+    ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
     ),

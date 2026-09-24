@@ -30,27 +30,6 @@ export const addressHistoryInsertSqlDurationTimer = Metric.timer(
   "Duration of the address-history insert SQL statement",
 );
 
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
-          ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
-          ${sql(Columns.CREATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          UNIQUE (tx_id, address)
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.CREATED_AT}`,
-        )} ON ${sql(tableName)} (${sql(Columns.CREATED_AT)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
-
 export const insertEntries = (
   entries: Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>

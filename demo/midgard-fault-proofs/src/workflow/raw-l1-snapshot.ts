@@ -36,6 +36,8 @@ export type FraudProofRawL1ComputationStepRole =
 export type FraudProofRawL1ScopeRole =
   | "deposit_event"
   | "withdrawal_event"
+  | "deposit_history_data"
+  | "withdrawal_history_data"
   | "forced_transaction_event"
   | "hub_oracle"
   | "settlement"
@@ -205,6 +207,8 @@ const MAX_COLLECTION_SIZE = 100_000;
 const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRole>([
   "deposit_event",
   "withdrawal_event",
+  "deposit_history_data",
+  "withdrawal_history_data",
   "forced_transaction_event",
   "hub_oracle",
   "settlement",

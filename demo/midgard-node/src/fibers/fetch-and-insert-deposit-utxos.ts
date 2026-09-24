@@ -1,19 +1,10 @@
-import {
-  decodeMidgardTxOutput,
-  encodeMidgardAddressText,
-} from "@al-ft/midgard-core/codec";
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalDepositTransitionEffect } from "@al-ft/midgard-validation";
-import {
-  Data as LucidData,
-  LucidEvolution,
-  type Network,
-} from "@lucid-evolution/lucid";
+import { LucidEvolution, type Network } from "@lucid-evolution/lucid";
 import { Effect, Ref, Schedule } from "effect";
 
-import { DepositsDB, UserEventsUtils } from "../database/index.js";
+import { DepositsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { depositDataToEntry } from "../l1-event-history-entries.js";
 import {
   Database,
   Globals,
@@ -31,8 +22,8 @@ import {
 } from "./user-event-ingestion.js";
 
 /**
- * Background ingestion for deposit UTxOs into the authoritative off-chain
- * deposit log.
+ * Background ingestion for deposit UTxOs into the off-chain
+ * deposit observation log.
  *
  * Projection into the mempool ledger is intentionally handled by a separate
  * step so ingestion remains idempotent and projection can enforce its own
@@ -43,57 +34,11 @@ import {
  * Projects one deposit UTxO into the database row shape used by the off-chain
  * deposits ledger.
  */
-const depositUTxOToEntry = (
+export const depositUTxOToEntry = (
   depositUTxO: SDK.DepositUTxO,
   network: Network,
-  depositPolicyId: string,
 ): Effect.Effect<DepositsDB.Entry, SDK.LucidError> =>
-  Effect.try({
-    try: () => {
-      const l2Datum = depositUTxO.datum.event.info.l2_datum;
-      const effect = deriveCanonicalDepositTransitionEffect({
-        configuredNetwork: network,
-        eventId: depositUTxO.datum.event.id,
-        l2NetworkId: depositUTxO.datum.event.info.l2_network_id,
-        l2Address: depositUTxO.datum.event.info.l2_address,
-        l2DatumCbor:
-          l2Datum === null ? null : Buffer.from(LucidData.to(l2Datum), "hex"),
-        l1Assets: depositUTxO.utxo.assets,
-        depositPolicyId,
-        depositAssetNameHex: depositUTxO.assetName,
-      });
-      const operation = effect.operations[0];
-      if (operation === undefined || operation.type !== "insert") {
-        throw new Error(
-          "canonical deposit projection did not produce an insert",
-        );
-      }
-      const output = Buffer.from(operation.outputCbor);
-      const l2Address = encodeMidgardAddressText(
-        decodeMidgardTxOutput(output).address,
-      );
-
-      return {
-        [UserEventsUtils.Columns.ID]: depositUTxO.idCbor,
-        [UserEventsUtils.Columns.INFO]: depositUTxO.infoCbor,
-        [UserEventsUtils.Columns.INCLUSION_TIME]: depositUTxO.inclusionTime,
-        [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: Buffer.from(
-          depositUTxO.utxo.txHash,
-          "hex",
-        ),
-        [DepositsDB.Columns.LEDGER_TX_ID]: computeHash32(depositUTxO.idCbor),
-        [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from(output),
-        [DepositsDB.Columns.LEDGER_ADDRESS]: l2Address,
-        [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
-        [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
-      };
-    },
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to project deposit UTxO into an offchain ledger entry",
-        cause,
-      }),
-  });
+  depositDataToEntry({ ...depositUTxO, location: depositUTxO.utxo }, network);
 
 /**
  * Fetches the currently visible deposit UTxO set.
@@ -107,13 +52,27 @@ const fetchDepositUTxOs = (
   config?: UserEventFetchBounds,
 ): Effect.Effect<SDK.DepositUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
-    const { deposit: depositAuthValidator } = yield* MidgardContracts;
-    const fetchConfig: SDK.UserEventFetchConfig = {
-      eventAddress: depositAuthValidator.spendingScriptAddress,
-      eventPolicyId: depositAuthValidator.policyId,
+    const contracts = yield* MidgardContracts;
+    const fetchConfig: SDK.EventHistoryFetchConfig = {
+      ...SDK.eventHistoryDeploymentFromContracts(
+        SDK.requireEventHistoryContracts(contracts).deposit,
+      ),
       ...config,
     };
     return yield* SDK.fetchDepositUTxOsProgram(lucid, fetchConfig);
+  });
+
+/** Persist the exact authenticated snapshot already read by the caller. */
+export const persistDepositUTxOs = (
+  depositUTxOs: readonly SDK.DepositUTxO[],
+  network: Network,
+) =>
+  persistVisibleUserEventUTxOs({
+    visibleUtxos: depositUTxOs,
+    toEntry: (utxo) => depositUTxOToEntry(utxo, network),
+    insertEntries: DepositsDB.insertEntries,
+    emptyLogMessage: "🏦 No deposit UTxOs found.",
+    foundLogMessage: (count) => `🏦 ${count} deposit UTxOs found.`,
   });
 
 export const reconcileVisibleDepositUTxOs = (
@@ -125,30 +84,18 @@ export const reconcileVisibleDepositUTxOs = (
 > =>
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
-    const { deposit: depositAuthValidator } = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
 
     const depositUTxOs: SDK.DepositUTxO[] = yield* fetchDepositUTxOs(
       lucid,
       config,
     );
-    return yield* persistVisibleUserEventUTxOs({
-      visibleUtxos: depositUTxOs,
-      toEntry: (utxo) =>
-        depositUTxOToEntry(
-          utxo,
-          nodeConfig.NETWORK,
-          depositAuthValidator.policyId,
-        ),
-      insertEntries: DepositsDB.insertEntries,
-      emptyLogMessage: "🏦 No deposit UTxOs found.",
-      foundLogMessage: (count) => `🏦 ${count} deposit UTxOs found.`,
-    });
+    return yield* persistDepositUTxOs(depositUTxOs, nodeConfig.NETWORK);
   });
 
 /**
  * Runs one deposit-discovery pass and persists newly visible deposits into the
- * authoritative deposit log.
+ * deposit observation log.
  */
 export const fetchAndInsertDepositUTxOs: Effect.Effect<
   void,

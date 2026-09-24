@@ -53,37 +53,6 @@ const normalizeEntry = (entry: Ledger.Entry | Entry): EntryNoTimeStamp => ({
       : null,
 });
 
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-          ${sql(Columns.OUTREF)} BYTEA NOT NULL,
-          ${sql(Columns.OUTPUT)} BYTEA NOT NULL,
-          ${sql(Columns.ADDRESS)} TEXT NOT NULL,
-          ${sql(Columns.SOURCE_EVENT_ID)} BYTEA,
-          ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-          PRIMARY KEY (${sql(Columns.OUTREF)}),
-          FOREIGN KEY (${sql(Columns.SOURCE_EVENT_ID)})
-            REFERENCES ${sql("deposits_utxos")}(${sql("event_id")})
-            ON DELETE RESTRICT
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.ADDRESS}`,
-        )} ON ${sql(tableName)} (${sql(Columns.ADDRESS)});`;
-        yield* sql`CREATE UNIQUE INDEX IF NOT EXISTS ${sql(
-          `uniq_${tableName}_${Columns.SOURCE_EVENT_ID}`,
-        )} ON ${sql(tableName)} (${sql(Columns.SOURCE_EVENT_ID)})
-          WHERE ${sql(Columns.SOURCE_EVENT_ID)} IS NOT NULL;`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
-
 export const insert = (
   entries: readonly (Ledger.Entry | Entry)[],
 ): Effect.Effect<void, DatabaseError, Database> =>

@@ -6,6 +6,7 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -167,7 +168,7 @@ const decodeData = <A>(
   hex: string,
   schema: DataSchema,
   fieldName: string,
-  canonicalEncoder?: (value: A) => string,
+  canonicalEncoder?: (value: A, raw: string) => string,
 ): A => {
   const normalized = normalizeEntryHex(hex, fieldName);
   try {
@@ -175,7 +176,7 @@ const decodeData = <A>(
     const canonical =
       canonicalEncoder === undefined
         ? Data.to(decoded as never, schema as never)
-        : canonicalEncoder(decoded);
+        : canonicalEncoder(decoded, normalized);
     if (canonical !== normalized) {
       throw new Error(`${fieldName} is not canonical for its schema`);
     }
@@ -399,7 +400,7 @@ const decodeTypedEntries = <K, V>({
   readonly entries: readonly SDK.DaPayloadEntry[];
   readonly keySchema: DataSchema;
   readonly valueSchema: DataSchema;
-  readonly valueEncoder?: (value: V) => string;
+  readonly valueEncoder?: (value: V, raw: string) => string;
 }): readonly DecodedRootEntry<K, V>[] =>
   entries.map(([keyHex, valueHex], index) => {
     const keyBytes = entryBuffer(keyHex, `${fieldName}[${index}].key`);
@@ -964,9 +965,10 @@ export const reconstructDaPayload = async ({
     entries: body.withdrawals,
     keySchema: SDK.OutputReference as never,
     valueSchema: SDK.WithdrawalInfoSchema,
-    // The producer and Aiken serialiseData commit definite asset maps.
-    // Lucid Data.to alone emits different map framing.
-    valueEncoder: SDK.committedWithdrawalValueBytes,
+    // The authenticated leaf is already serialiseData, including opaque map
+    // pair order/multiplicity. Typed decoding validates the schema only.
+    valueEncoder: (_value, raw) =>
+      aikenSerialisedPlutusDataCborPreservingMapOrder(raw),
   });
   const decodedForcedTransactions = decodeTypedEntries<
     SDK.OutputReference,
@@ -986,6 +988,8 @@ export const reconstructDaPayload = async ({
     entries: body.deposits,
     keySchema: SDK.OutputReference as never,
     valueSchema: SDK.DepositInfoSchema,
+    valueEncoder: (_value, raw) =>
+      aikenSerialisedPlutusDataCborPreservingMapOrder(raw),
   });
   const transitionTrace = decodeTypedEntries<bigint, SDK.TransitionStep>({
     fieldName: "transition_trace",

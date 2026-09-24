@@ -62,6 +62,14 @@ import {
   withMpfRootTransactions,
 } from "../mpf/index.js";
 import {
+  assertHistoryProducer,
+  HistoryProducer,
+} from "../services/event-history-producer.js";
+import {
+  HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  historyEligibilityHorizon,
+} from "../services/history-commit-window.js";
+import {
   ConfigError,
   ContractDeploymentIdentity,
   type ContractDeploymentIdentityValue,
@@ -123,6 +131,7 @@ import {
   updateCommitBuildEwma,
 } from "./utils/commit-block-planner.js";
 import {
+  alignUnixTimeToSlotBoundary,
   COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveCommitEndTimeFit,
@@ -753,6 +762,8 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
         }
         return Effect.succeed({
           eventId: entry[WithdrawalsDB.Columns.ID],
+          expectedClassificationRevision:
+            entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
           settlementEventInfo,
           validity,
           validityDetail: entry[WithdrawalsDB.Columns.VALIDITY_DETAIL],
@@ -761,7 +772,11 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
     );
     yield* WithdrawalsDB.setSettlementInfoForEventIds(withdrawalAssignments);
     yield* WithdrawalsDB.markAwaitingAsProjected(
-      includedWithdrawalEntries.map((entry) => entry[WithdrawalsDB.Columns.ID]),
+      includedWithdrawalEntries.map((entry) => ({
+        eventId: entry[WithdrawalsDB.Columns.ID],
+        expectedClassificationRevision:
+          entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+      })),
     );
 
     if (rejectedMempoolTxs.length > 0) {
@@ -1645,6 +1660,7 @@ const databaseOperationsProgram = (
           )
         : Effect.succeed(acquiredCommitLucid),
     );
+    yield* assertHistoryProducer(workerInput.history);
     const workerStartedAtMs = Date.now();
     let baseHydrationPasses = 0;
     let mpfProcessingPasses = 0;
@@ -1820,26 +1836,34 @@ const databaseOperationsProgram = (
         }
       }
     }
+    const historyEndTime =
+      workerInput.history === undefined
+        ? undefined
+        : new Date(historyEligibilityHorizon(workerInput.history.coverage));
     const depositIngestionBarrierTime =
-      speculativeBuild === undefined
-        ? yield* acquireCommitLucidOnce.pipe(
-            Effect.flatMap((lucid) =>
-              fetchAndInsertDepositUTxOsForCommitBarrier(new Date()).pipe(
-                Effect.provideService(Lucid, lucid),
+      workerInput.history !== undefined
+        ? historyEndTime!
+        : speculativeBuild === undefined
+          ? yield* acquireCommitLucidOnce.pipe(
+              Effect.flatMap((lucid) =>
+                fetchAndInsertDepositUTxOsForCommitBarrier(new Date()).pipe(
+                  Effect.provideService(Lucid, lucid),
+                ),
               ),
-            ),
-          )
-        : new Date(speculativeBuild.watermarks.depositMs);
+            )
+          : new Date(speculativeBuild.watermarks.depositMs);
     const withdrawalIngestionBarrierTime =
-      speculativeBuild === undefined
-        ? yield* acquireCommitLucidOnce.pipe(
-            Effect.flatMap((lucid) =>
-              fetchAndInsertWithdrawalUTxOsForCommitBarrier(
-                depositIngestionBarrierTime,
-              ).pipe(Effect.provideService(Lucid, lucid)),
-            ),
-          )
-        : new Date(speculativeBuild.watermarks.withdrawalMs);
+      workerInput.history !== undefined
+        ? historyEndTime!
+        : speculativeBuild === undefined
+          ? yield* acquireCommitLucidOnce.pipe(
+              Effect.flatMap((lucid) =>
+                fetchAndInsertWithdrawalUTxOsForCommitBarrier(
+                  depositIngestionBarrierTime,
+                ).pipe(Effect.provideService(Lucid, lucid)),
+              ),
+            )
+          : new Date(speculativeBuild.watermarks.withdrawalMs);
     const txOrderIngestionBarrierTime =
       speculativeBuild === undefined
         ? yield* acquireCommitLucidOnce.pipe(
@@ -1884,7 +1908,10 @@ const databaseOperationsProgram = (
           latestEndTime: latestEndTimeMs,
           candidateEndTime: candidateEndTimeMs,
           nowMs: schedulerPlanningNowMs,
-          minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+          minimumFutureBufferMs:
+            workerInput.history === undefined
+              ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
+              : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
           maximumEndTimeMs: currentSchedulerWindow.endTimeMs,
         });
       }
@@ -1895,8 +1922,14 @@ const databaseOperationsProgram = (
       currentSchedulerWindow,
       currentBlockStartTimeMs: currentBlockStartTime.getTime(),
       nowMs: schedulerPlanningNowMs,
-      minimumCurrentWindowBudgetMs: COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
-      productionMinimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      minimumCurrentWindowBudgetMs:
+        workerInput.history === undefined
+          ? COMMIT_MIN_PRE_WITNESS_BUDGET_MS
+          : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      productionMinimumFutureBufferMs:
+        workerInput.history === undefined
+          ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
+          : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       currentWindowCommitEndTimeFit,
     });
     if (
@@ -1951,7 +1984,23 @@ const databaseOperationsProgram = (
     );
     const effectiveUserEventOnlyEndTime =
       schedulerAwareCommitSelection.userEventOnlyEndTime;
-    const blockEndTimeCapMs = schedulerAwareCommitSelection.blockEndTimeCapMs;
+    const blockEndTimeCapMs =
+      historyEndTime === undefined
+        ? schedulerAwareCommitSelection.blockEndTimeCapMs
+        : Math.min(
+            historyEndTime.getTime(),
+            schedulerAwareCommitSelection.blockEndTimeCapMs ??
+              historyEndTime.getTime(),
+          );
+    const fixedHistoryEndTime =
+      blockEndTimeCapMs === undefined || historyEndTime === undefined
+        ? undefined
+        : new Date(
+            alignUnixTimeToSlotBoundary(
+              (yield* acquireCommitLucidOnce).api,
+              blockEndTimeCapMs + 1,
+            ) - 1,
+          );
     if (
       shouldDeferCommitSubmission({
         localFinalizationPending: workerInput.data.localFinalizationPending,
@@ -2110,6 +2159,7 @@ const databaseOperationsProgram = (
       transactionsMpf,
       candidateSelection.candidateTxs,
       {
+        fixedBlockEndTime: fixedHistoryEndTime,
         currentBlockStartTime: canBuildOnConfirmedBlock
           ? currentBlockStartTime
           : undefined,
@@ -2302,9 +2352,11 @@ const databaseOperationsProgram = (
           }),
         );
       }
-      const candidateEndTime = Option.isSome(optEndTime)
-        ? optEndTime.value
-        : effectiveUserEventOnlyEndTime;
+      const candidateEndTime =
+        fixedHistoryEndTime ??
+        (Option.isSome(optEndTime)
+          ? optEndTime.value
+          : effectiveUserEventOnlyEndTime);
       const candidateId = randomUUID();
       const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
         yield* Effect.all(
@@ -2477,7 +2529,10 @@ const databaseOperationsProgram = (
           latestEndTime: confirmedEndTimeMs,
           candidateEndTime: candidateEndTime.getTime(),
           nowMs: Date.now(),
-          minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+          minimumFutureBufferMs:
+            workerInput.history === undefined
+              ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
+              : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
           maximumEndTimeMs: submitSchedulerWindow.endTimeMs,
         });
         if (submitFit.status === "exceeds_cap") {
@@ -2521,6 +2576,7 @@ const databaseOperationsProgram = (
         });
       submitAvailableConfirmedBlock = instruction.confirmedBlock;
       submitWorkerInput = {
+        ...workerInput,
         data: {
           ...workerInput.data,
           availableConfirmedBlock: instruction.confirmedBlock,
@@ -2580,7 +2636,7 @@ const databaseOperationsProgram = (
           consensusProfile: deploymentIdentity.consensusProfile,
           deploymentMarker,
           latestBlock,
-          endTime: effectiveUserEventOnlyEndTime,
+          endTime: fixedHistoryEndTime ?? effectiveUserEventOnlyEndTime,
           includedDepositEntries,
           includedDepositEventIds,
           includedForcedTransactionEntries,
@@ -2615,7 +2671,7 @@ const databaseOperationsProgram = (
         // One or more transactions found in either `ProcessedMempoolDB` or
         // `MempoolDB`. Use the shared max-candidate timestamp rule as the upper
         // bound of the block we are about to submit.
-        const endTime = optEndTime.value;
+        const endTime = fixedHistoryEndTime ?? optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
         const output = yield* submitTxBackedCommit({
@@ -3074,7 +3130,11 @@ export const runCommitBlockHeaderWorkerProgram = (
       );
     }
     return result;
-  });
+  }).pipe(
+    workerInput.history === undefined
+      ? (effect) => effect
+      : Effect.provideService(HistoryProducer, workerInput.history),
+  );
 
 /**
  * Runs the exact production speculative commit-candidate path and stops at the
@@ -3128,6 +3188,19 @@ export const runCommitBlockHeaderCandidateBuildProgram = (
     return captured;
   });
 
+/** The worker's outgoing failure boundary, shared with in-process acceptance. */
+export const captureCommitWorkerFailure = <E, R>(
+  program: Effect.Effect<WorkerOutput, E, R>,
+) =>
+  program.pipe(
+    Effect.catchAllCause((cause) =>
+      Effect.succeed({
+        type: "FailureOutput",
+        error: `Block commitment worker failure: ${Cause.pretty(cause)}`,
+      } satisfies WorkerOutput),
+    ),
+  );
+
 if (parentPort !== null) {
   const workerParentPort = parentPort;
   const inputData = workerData as WorkerInput;
@@ -3165,16 +3238,7 @@ if (parentPort !== null) {
     ),
   );
 
-  void Effect.runPromise(
-    program.pipe(
-      Effect.catchAllCause((cause) =>
-        Effect.succeed({
-          type: "FailureOutput",
-          error: `Block commitment worker failure: ${Cause.pretty(cause)}`,
-        }),
-      ),
-    ),
-  ).then((output) => {
+  void Effect.runPromise(captureCommitWorkerFailure(program)).then((output) => {
     Effect.runSync(
       Effect.logInfo(
         `👷 Block commitment work completed (${JSON.stringify(output)}).`,

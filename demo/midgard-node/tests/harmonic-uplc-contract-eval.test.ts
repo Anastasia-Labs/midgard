@@ -102,6 +102,7 @@ const loadRealContracts = () =>
         {
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+          eventHistoryProtectionDurationMs: 2_000n,
           eventHistoryBounds: {
             inlineLimitBytes: 512n,
             maxPayloadBytes: 5000n,

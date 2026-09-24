@@ -14,6 +14,7 @@ import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
 } from "midgard-node/transactions/initialization";
+import { ensureEventHistoryRewardAccountsRegisteredProgram } from "midgard-node/transactions/script-reward-registration";
 
 /** Signed and confirmed by the emulator using the current deployed script recipes. */
 export const createEmulatorInitialization = async () => {
@@ -37,6 +38,12 @@ export const createEmulatorInitialization = async () => {
   );
   const references = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(publisherLucid, contracts),
+  );
+  await Effect.runPromise(
+    ensureEventHistoryRewardAccountsRegisteredProgram(
+      publisherLucid,
+      contracts,
+    ),
   );
   const builder = await Effect.runPromise(
     buildAtomicProtocolInitTxProgram(

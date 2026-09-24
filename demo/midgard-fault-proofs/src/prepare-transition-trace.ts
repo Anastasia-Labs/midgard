@@ -1,9 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
-
 import { stringifyJson } from "./json-file.js";
 import {
   detectTransitionTraceFaults,
@@ -11,6 +8,7 @@ import {
   type TransitionTraceDetection,
   transitionTraceFinalIndex,
 } from "./transition-trace/index.js";
+import { makeTransitionProofMaterial } from "./transition-trace/proof-material.js";
 import { readValidationDisputeCborFile } from "./validation-dispute/from-files.js";
 
 export const TRANSITION_TRACE_PREPARE_SCHEMA_VERSION =
@@ -137,7 +135,10 @@ export const prepareTransitionTraceFromDaEnvelope = async ({
     }
     const fileName = proofFileName(index, detection.kind);
     const proofPath = join(resolvedOutputDir, fileName);
-    const proofCbor = Data.to(detection.proof, SDK.TransitionFaultProof);
+    const { proofCbor } = makeTransitionProofMaterial(
+      reconstruction,
+      detection.proof,
+    );
     proofPaths.push(proofPath);
     proofWrites.push(writeFile(proofPath, `${proofCbor}\n`, "utf8"));
     preparedDetections.push({

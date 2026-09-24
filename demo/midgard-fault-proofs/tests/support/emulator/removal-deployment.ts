@@ -211,7 +211,8 @@ export const buildRemovalDeploymentInfo = (
               scriptHash: steps[index]!.spendingScriptHash,
               ...(index === 0 &&
               (categoryName === "fabricatedDeposit" ||
-                categoryName === "fabricatedWithdrawal")
+                categoryName === "fabricatedWithdrawal" ||
+                categoryName === "transitionTrace")
                 ? {
                     eventHistoryBounds: {
                       inlineLimitBytes:
@@ -227,9 +228,17 @@ export const buildRemovalDeploymentInfo = (
                           categoryName
                         ].history.maxPayloadNodes.toString(),
                     },
-                    eventHistoryRetentionAddress:
-                      contracts.fraudProofContracts[categoryName].history
-                        .retentionAddress,
+                    ...(categoryName === "transitionTrace"
+                      ? {
+                          eventHistoryRetentionAddresses:
+                            contracts.fraudProofContracts.transitionTrace
+                              .history.retentionAddresses,
+                        }
+                      : {
+                          eventHistoryRetentionAddress:
+                            contracts.fraudProofContracts[categoryName].history
+                              .retentionAddress,
+                        }),
                   }
                 : {}),
               ...(published === undefined

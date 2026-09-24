@@ -9,6 +9,7 @@ export * as DaPayloadsDB from "./daPayloads.js";
 export * as DaPayloadTerminalOutcomesDB from "./daPayloadTerminalOutcomes.js";
 export * as DepositsDB from "./deposits.js";
 export * as DepositSubmissionAttemptsDB from "./depositSubmissionAttempts.js";
+export * as EventHistorySubmissionsDB from "./eventHistorySubmissions.js";
 export * as ForcedTransactionsDB from "./forcedTransactions.js";
 export * as ForeignTipReconciliationsDB from "./foreignTipReconciliations.js";
 export * as ImmutableDB from "./immutable.js";

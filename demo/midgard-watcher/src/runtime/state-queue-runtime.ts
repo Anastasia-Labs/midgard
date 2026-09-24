@@ -190,6 +190,12 @@ const createRuntime = async (input: {
         throw new Error("state-queue runtime already has a decision bridge");
       }
       bound = true;
+      let recoveryPreparationPending = false;
+      const prepareRecoveredBridge = async () => {
+        if (!recoveryPreparationPending) return;
+        await bridge.prepareForRecovery(previous);
+        recoveryPreparationPending = false;
+      };
       return Object.freeze({
         onRollback: async (point: WatcherNativeChainSyncPoint) => {
           // This must remain before the first await: already-running proof
@@ -197,6 +203,7 @@ const createRuntime = async (input: {
           bridge.invalidateForRollback();
           availability?.invalidateForRollback(point);
           classificationDirty = false;
+          recoveryPreparationPending = true;
           await input.store.rollbackTo(point);
           const retained = await input.store.readAll();
           if (retained.length === 0) {
@@ -220,7 +227,6 @@ const createRuntime = async (input: {
             }
           }
           await availability?.reconcile(previous, false);
-          await bridge.prepareForRecovery(previous);
         },
         onIncluded: async ({ nativeBlock, localObservation, relevance }) => {
           if (!caughtUp || input.source.observeIncluded === undefined) return;
@@ -228,6 +234,7 @@ const createRuntime = async (input: {
             BigInt(nativeBlock.blockNo) <= BigInt(included.nativePoint.blockNo)
           )
             return;
+          await prepareRecoveredBridge();
           if (relevance === "touched") {
             if (localObservation === null)
               throw new Error(
@@ -260,6 +267,7 @@ const createRuntime = async (input: {
           localObservation: WatcherLocalKupmiosNativeObservation | null;
           relevance: WatcherBlockRelevance;
         }>) => {
+          await prepareRecoveredBridge();
           if (relevance === "quiet") {
             // Keep queue evidence cached while waking yielded proofs on fresh
             // canonical progress. Inclusion-capable sources wake once later in

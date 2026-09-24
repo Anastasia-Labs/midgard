@@ -32,11 +32,14 @@ use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
 use midgard/common/utils
+use midgard/event_history/order_facts
+use midgard/event_history/proof_fixture as history
 use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
+use midgard/fraud_proofs/transition_trace/timing_fixture
 use midgard/hub_oracle
 use midgard/ledger_state
 use midgard/rejection_reason_v1
@@ -192,26 +195,19 @@ fn withdrawal_info(
 /// (validators/user-events/withdrawal.ak), so the authenticated reference
 /// datum is pinned to that tag here.
 fn withdrawal_reference_input(inclusion_time: Int) -> Input {
-  let datum: withdrawal.Datum = user_events.OptimisticDatum {
-    event: ledger_state.WithdrawalEvent {
-      id: out_ref(0),
-      info: withdrawal_info(ledger_state.WithdrawalIsValid),
+  history.order_reference(
+    h28_a,
+    user_events.out_ref_to_nonce(out_ref(0)),
+    order_facts.WithdrawalPayload {
+      event: ledger_state.WithdrawalEvent {
+        id: out_ref(0),
+        info: withdrawal_info(ledger_state.WithdrawalIsValid),
+      },
+      refund_address: dummy_address(),
+      refund_datum: NoDatum,
     },
     inclusion_time,
-    witness: h28_a,
-    refund_address: dummy_address(),
-    refund_datum: NoDatum,
-  }
-  let datum_data: Data = datum
-  Input {
-    output_reference: out_ref(99),
-    output: Output {
-      address: dummy_address(),
-      value: assets.from_asset(h28_a, event_asset_name, 1),
-      datum: InlineDatum(datum_data),
-      reference_script: None,
-    },
-  }
+  )
 }
 
 fn withdrawal_source_membership(
@@ -365,8 +361,6 @@ fn omitted_due_withdrawal_is_valid(
       header,
       proof.OmittedDueL1Event {
         witness: proof.OmittedDueWithdrawal {
-          event_ref_input_index: 0,
-          event_asset_name,
           source_non_membership: empty_non_membership(
             non_membership_domain,
             non_membership_key,
@@ -376,7 +370,10 @@ fn omitted_due_withdrawal_is_valid(
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [withdrawal_reference_input(inclusion_time)],
+    timing_fixture.evidence(
+      header,
+      [withdrawal_reference_input(inclusion_time)],
+    ),
   )
 }
 
@@ -397,17 +394,15 @@ fn out_of_window_withdrawal_is_valid(inclusion_time: Int) -> Bool {
     prove(
       header,
       proof.OutOfWindowSourceEvent {
-        witness: proof.OutOfWindowWithdrawal {
-          event_ref_input_index: 0,
-          event_asset_name,
-          validity_override,
-          source_membership,
-        },
+        witness: proof.OutOfWindowWithdrawal { source_membership },
       },
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [withdrawal_reference_input(inclusion_time)],
+    timing_fixture.evidence(
+      header,
+      [withdrawal_reference_input(inclusion_time)],
+    ),
   )
 }
 
@@ -433,7 +428,7 @@ fn omitted_due_forced_is_valid(inclusion_time: Int) -> Bool {
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [tx_order_reference_input(inclusion_time)],
+    timing_fixture.evidence(header, [tx_order_reference_input(inclusion_time)]),
   )
 }
 
@@ -463,7 +458,7 @@ fn out_of_window_forced_is_valid(inclusion_time: Int) -> Bool {
     ),
     asset_name_for(header),
     dummy_hub_datum(),
-    [tx_order_reference_input(inclusion_time)],
+    timing_fixture.evidence(header, [tx_order_reference_input(inclusion_time)]),
   )
 }
 
@@ -525,7 +520,7 @@ test q47_wrong_domain_rejects() {
 
 /// Control: the non-membership key must equal the authenticated L1 event id.
 /// A different `WithdrawalId` proves nothing about the referenced order.
-test q47_wrong_event_id_rejects() {
+test q47_wrong_event_id_rejects() fail {
   !omitted_due_withdrawal_is_valid(
     base_header().end_time,
     transition_trace.WithdrawalsRootDomain,

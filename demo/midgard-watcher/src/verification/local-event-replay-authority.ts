@@ -1,9 +1,9 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   canonicalCommittedWithdrawalTransitionEffect,
-  deriveCanonicalDepositTransitionEffect,
+  deriveCanonicalOriginalDepositTransitionEffect,
 } from "@al-ft/midgard-validation";
-import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import {
   assertWatcherLocalUserEventAuthorityCurrent,
@@ -15,6 +15,7 @@ import {
   bindWatcherOriginEventClaim,
   type WatcherCommittedEventClaim,
 } from "./event-claims.js";
+import { watcherOriginalDepositAssets } from "./history-original-assets.js";
 import { watcherPhaseAQueuedTxs } from "./phase-a-verifier.js";
 
 /** Adapts an actual local event capability to W25's canonical replay input.
@@ -42,7 +43,7 @@ export const deriveWatcherLocalEventReplayAuthority = async (
       localUserEvent,
       phase: "Deposit",
       eventKey: { DepositEventKey: { deposit_id: bound.origin.id } },
-      transitionEffect: deriveCanonicalDepositTransitionEffect({
+      transitionEffect: deriveCanonicalOriginalDepositTransitionEffect({
         configuredNetwork: local.network,
         eventId: bound.origin.id,
         l2NetworkId: bound.origin.info.l2_network_id,
@@ -50,12 +51,11 @@ export const deriveWatcherLocalEventReplayAuthority = async (
         l2DatumCbor:
           bound.origin.info.l2_datum === null
             ? null
-            : Buffer.from(Data.to(bound.origin.info.l2_datum), "hex"),
-        l1Assets: coreToTxOutput(
-          CML.TransactionOutput.from_cbor_hex(local.event.outputCborHex),
-        ).assets,
-        depositPolicyId: local.event.policyId,
-        depositAssetNameHex: local.event.assetNameHex,
+            : Buffer.from(
+                plutusConstrFieldCbor(local.event.eventCborHex, [1, 2, 0]),
+                "hex",
+              ),
+        originalAssets: watcherOriginalDepositAssets(local.event),
       }),
     };
   } else if (bound.phase === "Withdrawal") {

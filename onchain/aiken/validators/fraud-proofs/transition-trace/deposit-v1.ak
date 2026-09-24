@@ -7,7 +7,9 @@ use midgard/fraud_proofs/transition_trace/final_yield.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/transition_trace/final_yield as delegation
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/fraud_proofs/transition_trace/proof_carriage
+use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/state_queue
 use midgard/state_queue_yield
 use midgard/transition_trace.{IndexedTraceProof, RootMembershipProof}
 
@@ -16,6 +18,7 @@ validator main(
   fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
   reference_script_auth_policy_id: PolicyId,
+  hub_oracle: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -71,7 +74,7 @@ validator main(
             True
           }
         if state.phase == 5 {
-          let _, _, _, _ <- finalize(
+          let _, proof_asset, _, _ <- finalize(
             computation_thread_token_policy_id,
             fraud_proof_token_policy_id,
             fraud_proof_token_address,
@@ -84,7 +87,19 @@ validator main(
             tx.outputs,
             tx.redeemers,
           )
-          True
+          expect Some(raw_witness) = args.completed_fraud_witness
+          expect witness: state_queue.CompletedFraudWitness = raw_witness
+          let hub_datum = hub.get_datum(
+            tx.reference_inputs,
+            hub_oracle,
+            args.hub_ref_input_index,
+          )
+          state_queue.require_completed_fraud_witness(
+            tx,
+            hub_datum.state_queue,
+            proof_asset,
+            witness,
+          )
         } else {
           expect
             if state.phase == 6 {
@@ -97,8 +112,7 @@ validator main(
               expect header: ledger_state.HeaderV1 = header_data
               expect [trace_data,
                     event_data,
-                    source_data,
-                    _, _, _] = delegation.one_step_witness(fault, 3)
+                    source_data, _] = delegation.one_step_witness(fault, 3)
               expect trace_proof: IndexedTraceProof = trace_data
               expect
                   event: RootMembershipProof<

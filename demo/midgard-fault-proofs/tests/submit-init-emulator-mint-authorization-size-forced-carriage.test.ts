@@ -19,8 +19,8 @@ import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import {
-  submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
   submitMintAuthorizationStep03EvaluateUnsatisfied,
@@ -28,6 +28,7 @@ import {
   submitMintAuthorizationStep04AdvanceComplete,
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   buildMintAuthorizationSubject,
   directionBNativeScript,
@@ -90,7 +91,8 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
         lucid: funderLucid,
         contracts: family,
       });
-    const initResult = await submitMintAuthorizationInit({
+    const initResult = await submitResolvedInit({
+      label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: realBlueprint,
       network,
@@ -210,7 +212,8 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
         lucid: funderLucid,
         contracts: family,
       });
-    const initResult = await submitMintAuthorizationInit({
+    const initResult = await submitResolvedInit({
+      label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: realBlueprint,
       network,

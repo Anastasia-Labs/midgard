@@ -9,6 +9,7 @@ import {
   TxAdmissionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { runHistoryProducer } from "../services/event-history-producer.js";
 import {
   Database,
   Globals,
@@ -604,6 +605,7 @@ export const mergeFiber = (
   Effect.gen(function* () {
     yield* Effect.logInfo("🟠 Merge fiber started.");
     const action = mergeAction().pipe(
+      runHistoryProducer,
       Effect.withSpan("merge-confirmed-state-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );

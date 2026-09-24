@@ -22,7 +22,7 @@
  * - **Outcome as data:** proven, refused (classification/policy, with the
  *   reason), or stalled (unexpected abort — surfaced loudly, never
  *   silently cancelled; cancellation is its own explicit call,
- *   `submitNativeScriptDecodingCancel`).
+ *   `submitLinearFaultCancel`).
  */
 import {
   type MidgardNativeScriptDecodingDirection,

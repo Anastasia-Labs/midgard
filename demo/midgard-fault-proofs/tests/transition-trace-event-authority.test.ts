@@ -10,6 +10,7 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
+import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 import {
   buildRetainedPlutusIdentityFixture,
   captureRetainedPlutusIdentityOrigins,
@@ -38,7 +39,12 @@ describe("transition event authority raw test transport", () => {
         policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
         policy,
       },
-      resolvedContracts: { hubOraclePolicyId: "61".repeat(28) },
+      resolvedContracts: {
+        hubOraclePolicyId: "61".repeat(28),
+        contracts: {
+          transitionTrace: { history: TRANSITION_HISTORY_FIXTURE_PARAMETERS },
+        },
+      },
       definition: { headerHash: fixture.block.headerHash },
     } as Parameters<
       typeof unsafeCreateTransitionTraceEventAuthorityFromRawForTest

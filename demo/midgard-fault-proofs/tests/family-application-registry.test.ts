@@ -478,6 +478,14 @@ describe("family application records bind the admitted decision digest", () => {
             // Terminal history proofs mark the queue; this is not the full removal set.
             expect(roster, category).toContain(name);
             expect(definitions[category]?.witnessRoles).toContain(name);
+          } else if (
+            category === "transitionTrace" &&
+            name === "stateQueueSpend"
+          ) {
+            expect(roster, category).toContain(name);
+            expect(
+              definitions[category]?.auxiliaryReferenceScripts?.stateQueueSpend,
+            ).toBe("stateQueueSpend");
           } else {
             expect(roster, category).not.toContain(name);
           }

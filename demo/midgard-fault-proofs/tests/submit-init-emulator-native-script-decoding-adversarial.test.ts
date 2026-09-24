@@ -40,6 +40,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "../src/native-script-decoding/contracts.js";
 import {
   buildNativeScriptDecodingChunkProof,
   buildNativeScriptDecodingLedgerMembership,
@@ -52,7 +54,6 @@ import {
   type NativeScriptDecodingVerdictPlan,
   nativeScriptDecodingWindowProofs,
   requireNativeScriptDecodingThreadUtxo,
-  submitNativeScriptDecodingCancel,
   submitNativeScriptDecodingInit,
   submitNativeScriptDecodingStep01BindNormal,
   submitNativeScriptDecodingStep01RecordForced,
@@ -907,10 +908,12 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     // acceptance. Pinning which one rides the follow-up trace work; the
     // security property — an adversary cannot manufacture a rejection leaf
     // the block never committed — holds under either.
-    await submitNativeScriptDecodingCancel({
+    await submitLinearFaultCancel({
       lucid: harness.proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
-      contracts: harness.decoding,
+      family: NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
+      steps: harness.decoding.steps,
+      computationThread: harness.decoding.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step02OutRef,
@@ -1002,16 +1005,18 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
 
     // Offchain plane, cancel.
     await expect(
-      submitNativeScriptDecodingCancel({
+      submitLinearFaultCancel({
         lucid: outsiderLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
-        contracts: harness.decoding,
+        family: NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
+        steps: harness.decoding.steps,
+        computationThread: harness.decoding.computationThread,
         categoryId: harness.category.categoryId,
         signer: outsider,
         threadOutRef: bind.nextThreadOutRef,
         referenceScriptUtxo: refs[4],
       }),
-    ).rejects.toThrow(/only the prover can cancel/);
+    ).rejects.toThrow(/native-script-decoding: signer does not own thread/u);
 
     // On-chain plane, drive: the theft an adversary would actually attempt is
     // re-datuming the thread to itself, which the shared `continue` helper

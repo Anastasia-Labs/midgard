@@ -6,18 +6,20 @@ import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   aikenSerialisedPlutusDataCbor,
   aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   type BuildTxWithRedeemer,
+  Constr,
   type Credential,
   credentialToAddress,
   Data,
   type LucidEvolution,
   type Network,
   type OutputDatum,
-  type Script,
-  scriptHashToCredential,
+  type RedeemerContext,
   toUnit,
   type TxBuilder,
   type TxOutput,
@@ -26,6 +28,9 @@ import {
 import { Effect } from "effect";
 
 import { scriptRewardAddress } from "./cardano-addresses.js";
+import { WithdrawalBody } from "./ledger-state.js";
+import { getLinkedListNodeViewFromUTxO } from "./linked-list.js";
+import { MAX_VALIDITY_RANGE_LENGTH_MS } from "./protocol-parameters.js";
 import {
   addAssets,
   assertAssetsNonNegative,
@@ -44,6 +49,7 @@ import {
 } from "./reserve-payout/completion.js";
 import { formatLayout } from "./reserve-payout/diagnostics.js";
 import { fail, ReservePayoutTxError } from "./reserve-payout/errors.js";
+import { fetchHubOracleReferenceProgram } from "./reserve-payout/hub-reference.js";
 import {
   disposableFeeInputCandidates,
   selectFeeInputProgram,
@@ -63,6 +69,8 @@ import {
   type ReservePayoutReferenceScripts,
   resolveReferenceScriptsProgram,
 } from "./reserve-payout/references.js";
+import { getConfirmedStateFromStateQueueDatum } from "./state-queue.js";
+import { STATE_QUEUE_ROOT_ASSET_NAME } from "./state-queue.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -70,12 +78,28 @@ import {
   requireOwnRedeemerIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
-  requireSinglePublishRedeemerIndex,
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
 } from "./tx-context-redeemer.js";
 import { outputDatumCborMatches } from "./tx-output-utils.js";
+import {
+  EVENT_HISTORY_MAX_PROTECTION_TIME,
+  EventHistoryObserve,
+  EventHistoryRetirementArgs,
+  eventHistoryRetirementOperation,
+  type EventHistoryRetirementWitness,
+} from "./user-events/history.js";
+import {
+  eventHistoryDeploymentFromContracts,
+  requireEventHistoryContracts,
+} from "./user-events/history-deployment.js";
+import { historyEventFromPresence } from "./user-events/history-events.js";
+import { eventHistoryMinimumOutputLovelace } from "./user-events/history-funding.js";
+import {
+  authenticateHistoryNodes,
+  readEventHistoryOrders,
+} from "./user-events/history-query.js";
 
 export {
   addAssets,
@@ -90,11 +114,6 @@ export { ReservePayoutTxError } from "./reserve-payout/errors.js";
 export type { ReservePayoutReferenceScripts } from "./reserve-payout/references.js";
 export { mergeReferenceScripts } from "./reserve-payout/references.js";
 
-export type MembershipProofWithdrawalWitness = {
-  readonly script: Script;
-  readonly amount?: bigint;
-};
-
 type CommonBuilderConfig = {
   readonly hubOracleRefInput?: UTxO;
   readonly feeInput?: UTxO;
@@ -106,14 +125,16 @@ export type AbsorbConfirmedDepositConfig = CommonBuilderConfig & {
   readonly deposit: SDK.DepositUTxO;
   readonly settlementRefInput: UTxO;
   readonly membershipProof: SDK.RawRootMembershipProof;
-  readonly membershipProofWithdrawal: MembershipProofWithdrawalWitness;
+  readonly confirmedRefInput?: UTxO;
+  readonly nowMs?: number;
 };
 
 export type InitializePayoutConfig = CommonBuilderConfig & {
   readonly withdrawal: SDK.WithdrawalUTxO;
   readonly settlementRefInput: UTxO;
   readonly membershipProof: SDK.RawRootMembershipProof;
-  readonly membershipProofWithdrawal: MembershipProofWithdrawalWitness;
+  readonly confirmedRefInput?: UTxO;
+  readonly nowMs?: number;
 };
 
 export type AddReserveFundsConfig = CommonBuilderConfig & {
@@ -129,7 +150,8 @@ export type RefundInvalidWithdrawalConfig = CommonBuilderConfig & {
   readonly withdrawal: SDK.WithdrawalUTxO;
   readonly settlementRefInput: UTxO;
   readonly membershipProof: SDK.RawRootMembershipProof;
-  readonly membershipProofWithdrawal: MembershipProofWithdrawalWitness;
+  readonly confirmedRefInput?: UTxO;
+  readonly nowMs?: number;
   readonly validityOverride: Exclude<
     SDK.WithdrawalValidity,
     "WithdrawalIsValid"
@@ -182,9 +204,30 @@ const addressDataToBech32 = (
   );
 };
 
-const cardanoDatumToOutputDatum = (
-  datum: SDK.CardanoDatum,
+const withdrawalPayoutDatumCbor = (payloadCbor: string): string => {
+  const bodyCbor = plutusConstrFieldCbor(payloadCbor, [0, 1, 0]);
+  const body = Data.from(bodyCbor, WithdrawalBody);
+  let payoutCbor = Data.to(
+    {
+      l2_value: body.l2_value,
+      l1_address: body.l1_address,
+      l1_datum: body.l1_datum,
+    },
+    SDK.PayoutDatum,
+  );
+  for (let field = 0; field < 3; field++)
+    payoutCbor = replacePlutusConstrFieldCbor(
+      payoutCbor,
+      [field],
+      plutusConstrFieldCbor(bodyCbor, [field + 2]),
+    );
+  return payoutCbor;
+};
+
+const cardanoDatumCborToOutputDatum = (
+  datumCbor: string,
 ): OutputDatum | undefined => {
+  const datum = Data.from(datumCbor, SDK.CardanoDatum);
   if (datum === "NoDatum") {
     return undefined;
   }
@@ -196,108 +239,21 @@ const cardanoDatumToOutputDatum = (
   }
   return {
     kind: "inline",
-    value: Data.to(datum.InlineDatum.data, asLucidSchema(Data.Any())),
+    value: plutusConstrFieldCbor(datumCbor, [0]),
   };
 };
 
 const payToAddressWithCardanoDatum = (
   tx: TxBuilder,
   address: string,
-  datum: SDK.CardanoDatum,
+  datumCbor: string,
   assets: Assets,
 ): TxBuilder => {
-  const outputDatum = cardanoDatumToOutputDatum(datum);
+  const outputDatum = cardanoDatumCborToOutputDatum(datumCbor);
   return outputDatum === undefined
     ? tx.pay.ToAddress(address, assets)
     : tx.pay.ToAddressWithData(address, outputDatum, assets);
 };
-
-const validateHubOracleReferenceProgram = (
-  contracts: SDK.MidgardValidators,
-  actual: UTxO,
-): Effect.Effect<UTxO, ReservePayoutTxError | SDK.Bech32DeserializationError> =>
-  Effect.gen(function* () {
-    const hubOracleUnit = toUnit(
-      contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
-    );
-    if ((actual.assets[hubOracleUnit] ?? 0n) !== 1n) {
-      return yield* fail("Hub oracle reference UTxO is not authenticated", {
-        hubOracleRefInput: outRefLabel(actual),
-        unit: hubOracleUnit,
-        quantity: (actual.assets[hubOracleUnit] ?? 0n).toString(),
-      });
-    }
-    if (actual.datum === undefined) {
-      return yield* fail("Hub oracle reference UTxO has no inline datum", {
-        hubOracleRefInput: outRefLabel(actual),
-      });
-    }
-    const expectedDatum = yield* SDK.makeHubOracleDatum(contracts);
-    const actualDatum = yield* Effect.try({
-      try: () => Data.from(actual.datum!, SDK.HubOracleDatum),
-      catch: (cause) =>
-        new ReservePayoutTxError({
-          message: "Failed to decode hub oracle reference datum",
-          cause,
-        }),
-    });
-    const actualDatumCbor = Data.to(actualDatum, SDK.HubOracleDatum);
-    const expectedDatumCbor = Data.to(expectedDatum, SDK.HubOracleDatum);
-    if (actualDatumCbor !== expectedDatumCbor) {
-      return yield* fail(
-        "On-chain hub oracle deployment does not match the locally configured contracts",
-        {
-          expectedDatumCbor,
-          actualDatumCbor,
-        },
-      );
-    }
-    return actual;
-  });
-
-const fetchHubOracleReferenceProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  explicit: UTxO | undefined,
-): Effect.Effect<
-  UTxO,
-  | ReservePayoutTxError
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-> =>
-  Effect.gen(function* () {
-    const hubOracleUnit = toUnit(
-      contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
-    );
-    if (explicit !== undefined) {
-      return yield* validateHubOracleReferenceProgram(contracts, explicit);
-    }
-    const network = yield* requireNetwork(lucid);
-    const hubOracleAddress = credentialToAddress(
-      network,
-      scriptHashToCredential(contracts.hubOracle.policyId),
-    );
-    const hubOracleUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to fetch hub oracle reference UTxO",
-          cause,
-        }),
-    });
-    if (hubOracleUtxos.length !== 1) {
-      return yield* fail("Failed to fetch the hub oracle reference UTxO", {
-        address: hubOracleAddress,
-        unit: hubOracleUnit,
-        found: hubOracleUtxos.map(outRefLabel),
-      });
-    }
-    const actual = hubOracleUtxos[0]!;
-    return yield* validateHubOracleReferenceProgram(contracts, actual);
-  });
 
 const encodeMembershipProofWithdrawalRedeemer = (
   keyCbor: string,
@@ -314,52 +270,18 @@ const encodeMembershipProofWithdrawalRedeemer = (
   );
 };
 
-const applyEventWitnessUnregistration = (
-  tx: TxBuilder,
-  network: Network,
-  witnessScript: Script,
-  redeemer: string,
-  referenceScript: UTxO | undefined,
-): TxBuilder =>
-  attachIfMissing(
-    tx.deregister.Stake(scriptRewardAddress(network, witnessScript), redeemer),
-    witnessScript,
-    referenceScript,
-  );
-
-const applyMembershipProofWithdrawal = (
-  tx: TxBuilder,
-  network: Network,
-  witness: MembershipProofWithdrawalWitness,
-  redeemer: string,
-  referenceScript: UTxO | undefined,
-): TxBuilder =>
-  (referenceScript === undefined
-    ? tx.attach.Script(witness.script)
-    : tx
-  ).withdraw(
-    scriptRewardAddress(network, witness.script),
-    witness.amount ?? 0n,
-    redeemer,
-  );
-
 const outputHasNoDatum = (output: TxOutput): boolean =>
   output.datum == null && output.datumHash == null;
 
-const outputDatumMatches = (
-  output: TxOutput,
-  datum: SDK.CardanoDatum,
-): boolean => {
+const outputDatumMatches = (output: TxOutput, datumCbor: string): boolean => {
+  const datum = Data.from(datumCbor, SDK.CardanoDatum);
   if (datum === "NoDatum") {
     return outputHasNoDatum(output);
   }
   if ("DatumHash" in datum) {
     return output.datumHash === datum.DatumHash.hash && output.datum == null;
   }
-  return outputDatumCborMatches(
-    output,
-    Data.to(datum.InlineDatum.data, asLucidSchema(Data.Any())),
-  );
+  return outputDatumCborMatches(output, plutusConstrFieldCbor(datumCbor, [0]));
 };
 
 const reserveOutputIndex = (
@@ -399,7 +321,7 @@ const outputWithDatumIndex = (
 const outputWithCardanoDatumIndex = (
   outputs: readonly TxOutput[],
   address: string,
-  datum: SDK.CardanoDatum,
+  datumCbor: string,
   assets: Assets,
   label: string,
 ): bigint =>
@@ -407,7 +329,7 @@ const outputWithCardanoDatumIndex = (
     outputs,
     (output) =>
       output.address === address &&
-      outputDatumMatches(output, datum) &&
+      outputDatumMatches(output, datumCbor) &&
       output.scriptRef === undefined &&
       assetsEqual(output.assets, assets),
     label,
@@ -420,542 +342,550 @@ const requireResolvedLayout = <L>(layout: L | undefined, label: string): L => {
   return layout;
 };
 
-export const buildAbsorbConfirmedDepositToReserveTxProgram = (
+type RetirementConfig = CommonBuilderConfig & {
+  readonly settlementRefInput: UTxO;
+  readonly confirmedRefInput?: UTxO;
+  readonly membershipProof: SDK.RawRootMembershipProof;
+  readonly nowMs?: number;
+};
+
+type RetirementLayout = {
+  readonly witness: EventHistoryRetirementWitness;
+  readonly hubRefInputIndex: bigint;
+  readonly settlementRefInputIndex: bigint;
+  readonly retirementWithdrawalRedeemerIndex: bigint;
+  readonly listWithdrawalRedeemerIndex: bigint;
+  readonly burnRedeemerIndex: bigint;
+  readonly payoutMintRedeemerIndex: bigint | null;
+};
+
+/** Rebuild from current authenticated nodes. Pointer churn is allowed, immutable
+ * event facts and original Value must still match the caller's settlement leaf. */
+const buildHistoryRetirementProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
-  config: AbsorbConfirmedDepositConfig,
-): Effect.Effect<
-  BuiltReservePayoutTx<AbsorbDepositLayout>,
-  | ReservePayoutTxError
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.StateQueueError
-> =>
+  config: RetirementConfig,
+  requested: SDK.DepositUTxO | SDK.WithdrawalUTxO,
+  purpose: EventHistoryRetirementWitness["purpose"],
+) =>
   Effect.gen(function* () {
     const network = yield* requireNetwork(lucid);
-    const hubOracleRefInput = yield* fetchHubOracleReferenceProgram(
+    const hub = yield* fetchHubOracleReferenceProgram(
       lucid,
       contracts,
       config.hubOracleRefInput,
     );
-    const witnessScript = SDK.buildUserEventWitnessCertificateValidator(
-      config.deposit.assetName,
+    const prepared = yield* Effect.tryPromise({
+      try: async () => {
+        const pair = requireEventHistoryContracts(contracts);
+        const history =
+          requested.kind === "Deposit" ? pair.deposit : pair.withdrawal;
+        const configured =
+          requested.kind === "Deposit"
+            ? contracts.deposit
+            : contracts.withdrawal;
+        if (
+          history.recipe.kind !== requested.kind ||
+          history.recipe.hubPolicyId !== contracts.hubOracle.policyId ||
+          history.list.policyId !== configured.policyId ||
+          history.list.spendingScriptAddress !==
+            configured.spendingScriptAddress
+        )
+          throw new Error("History recipe differs from configured deployment");
+        const deployment = eventHistoryDeploymentFromContracts(history);
+        const nodeUtxos = await lucid.utxosAt(deployment.address);
+        const retained = await lucid.utxosAt(deployment.retentionAddress);
+        const orders = readEventHistoryOrders(nodeUtxos, retained, deployment);
+        const presence = orders.find(
+          ({ anchor }) => anchor.key === requested.assetName,
+        );
+        if (presence === undefined)
+          throw new Error("Event is no longer an authenticated live Order");
+        const event = historyEventFromPresence(presence, deployment);
+        if (
+          event.kind !== requested.kind ||
+          aikenSerialisedPlutusDataCborPreservingMapOrder(
+            plutusConstrFieldCbor(event.utxo.datum!, [3, 0]),
+          ) !==
+            aikenSerialisedPlutusDataCborPreservingMapOrder(
+              plutusConstrFieldCbor(requested.utxo.datum!, [3, 0]),
+            ) ||
+          event.history.payloadCbor !== requested.history.payloadCbor ||
+          !assetsEqual(event.originalAssets, requested.originalAssets) ||
+          !event.idCbor.equals(requested.idCbor) ||
+          !event.infoCbor.equals(requested.infoCbor)
+        ) {
+          throw new Error(
+            "Authenticated event immutable facts or original Value changed",
+          );
+        }
+        const nodes = authenticateHistoryNodes(nodeUtxos, deployment);
+        const predecessors = nodes.filter(
+          ({ node }) => node.next === event.assetName,
+        );
+        if (predecessors.length !== 1)
+          throw new Error("Event has no unique current predecessor");
+        const predecessor = predecessors[0]!;
+        const confirmedUnit =
+          contracts.stateQueue.policyId + STATE_QUEUE_ROOT_ASSET_NAME;
+        const confirmedCandidates =
+          config.confirmedRefInput === undefined
+            ? await lucid.utxosAtWithUnit(
+                contracts.stateQueue.spendingScriptAddress,
+                confirmedUnit,
+              )
+            : await lucid.utxosByOutRef([config.confirmedRefInput]);
+        if (
+          confirmedCandidates.length !== 1 ||
+          confirmedCandidates[0]!.assets[confirmedUnit] !== 1n ||
+          confirmedCandidates[0]!.address !==
+            contracts.stateQueue.spendingScriptAddress ||
+          confirmedCandidates[0]!.datum == null
+        )
+          throw new Error("Missing authenticated confirmed-state reference");
+        const confirmedNode = await Effect.runPromise(
+          getLinkedListNodeViewFromUTxO(confirmedCandidates[0]!),
+        );
+        const confirmedState = await Effect.runPromise(
+          getConfirmedStateFromStateQueueDatum(confirmedNode),
+        );
+        if (
+          event.facts.inclusion_time <= 0n ||
+          event.facts.inclusion_time > confirmedState.data.endTime
+        )
+          throw new Error("Event eligibility interval is not confirmed");
+        const settlementCandidates = await lucid.utxosByOutRef([
+          config.settlementRefInput,
+        ]);
+        const settlement = settlementCandidates[0];
+        if (
+          settlementCandidates.length !== 1 ||
+          settlement?.datum == null ||
+          settlement.address !== contracts.settlement.spendingScriptAddress ||
+          Object.entries(settlement.assets).filter(
+            ([unit, quantity]) =>
+              unit.startsWith(contracts.settlement.policyId) && quantity === 1n,
+          ).length !== 1
+        )
+          throw new Error("Missing current authenticated settlement reference");
+        Data.from(settlement.datum, SDK.SettlementDatum);
+        const now = config.nowMs ?? Date.now();
+        if (!Number.isSafeInteger(now))
+          throw new Error("Retirement clock must be a safe integer timestamp");
+        const protocolLower =
+          predecessor.node.protected_until >
+          presence.anchor.node.protected_until
+            ? predecessor.node.protected_until
+            : presence.anchor.node.protected_until;
+        if (protocolLower > BigInt(now))
+          throw new Error("History predecessor or Order is still protected");
+        const desiredLower = Number(
+          protocolLower > BigInt(now - 60_000)
+            ? protocolLower
+            : BigInt(now - 60_000),
+        );
+        // Round upward so slot conversion never backdates below protection.
+        let lowerSlot = lucid.unixTimeToSlot(desiredLower);
+        if (lucid.slotToUnixTime(lowerSlot) < desiredLower) lowerSlot++;
+        const validFrom = lucid.slotToUnixTime(lowerSlot);
+        const validTo = validFrom + Number(MAX_VALIDITY_RANGE_LENGTH_MS);
+        const upper =
+          BigInt(lucid.slotToUnixTime(lucid.unixTimeToSlot(validTo))) - 1n;
+        if (
+          upper + history.recipe.protectionDurationMs >
+          EVENT_HISTORY_MAX_PROTECTION_TIME
+        )
+          throw new Error("History protection exceeds funded encoding width");
+        const continuedCbor = replacePlutusConstrFieldCbor(
+          replacePlutusConstrFieldCbor(
+            predecessor.utxo.datum!,
+            [1],
+            Data.to(
+              presence.anchor.node.next === null
+                ? new Constr(1, [])
+                : new Constr(0, [presence.anchor.node.next]),
+            ),
+          ),
+          [2],
+          Data.to(upper + history.recipe.protectionDurationMs),
+        );
+        return {
+          history,
+          event,
+          predecessor,
+          confirmed: confirmedCandidates[0]!,
+          settlement,
+          validFrom,
+          validTo,
+          continuedCbor,
+        };
+      },
+      catch: (cause) =>
+        new ReservePayoutTxError({
+          message: "Failed to resolve authenticated retirement state",
+          cause,
+        }),
+    });
+    const {
+      history,
+      event,
+      predecessor,
+      confirmed,
+      settlement,
+      validFrom,
+      validTo,
+      continuedCbor,
+    } = prepared;
+    const initialize = purpose === "InitializeWithdrawalPayout";
+    let fundsAddress: string;
+    let fundsDatum = Data.to("NoDatum", SDK.CardanoDatum);
+    let fundsAssets = event.originalAssets;
+    if (purpose === "AbsorbDeposit")
+      fundsAddress = contracts.reserve.spendingScriptAddress;
+    else {
+      if (event.kind !== "Withdrawal")
+        return yield* fail(
+          "Withdrawal retirement requires a withdrawal Order",
+          event.kind,
+        );
+      if (initialize) {
+        if (event.event.info.validity !== "WithdrawalIsValid")
+          return yield* fail(
+            "Payout requires valid withdrawal",
+            event.event.info.validity,
+          );
+        const body = event.event.info.body;
+        assertNoAssetExceeds(
+          event.originalAssets,
+          valueToAssets(body.l2_value),
+          "Initial payout accumulator",
+        );
+        fundsAddress = contracts.payout.spendingScriptAddress;
+        fundsAssets = addAssets(event.originalAssets, {
+          [contracts.payout.policyId + event.assetName]: 1n,
+        });
+        const payoutCbor = withdrawalPayoutDatumCbor(event.history.payloadCbor);
+        fundsDatum = replacePlutusConstrFieldCbor(
+          Data.to({ InlineDatum: { data: 0n } }, SDK.CardanoDatum),
+          [0],
+          payoutCbor,
+        );
+      } else {
+        fundsAddress = addressDataToBech32(network, event.refundAddress);
+        fundsDatum = plutusConstrFieldCbor(event.history.payloadCbor, [2]);
+      }
+    }
+    const refundAddress = credentialToAddress(network, {
+      type: "Key",
+      hash: event.facts.structural_refund_key,
+    });
+    const structuralMinimum = eventHistoryMinimumOutputLovelace(
+      { lovelace: event.facts.structural_lovelace },
+      "NoDatum",
     );
-    const resolvedReferenceScripts = yield* resolveReferenceScriptsProgram(
+    const structuralRefundAssets = {
+      lovelace:
+        event.facts.structural_lovelace > structuralMinimum
+          ? event.facts.structural_lovelace
+          : structuralMinimum,
+    };
+    const resolved = yield* resolveReferenceScriptsProgram(
       lucid,
       config.referenceScriptsAddress,
       [
-        { name: "deposit minting", script: contracts.deposit.mintingScript },
-        { name: "deposit spending", script: contracts.deposit.spendingScript },
-        { name: "deposit witness certificate", script: witnessScript },
         {
-          name: "membership proof withdrawal",
-          script: config.membershipProofWithdrawal.script,
+          name:
+            event.kind === "Deposit"
+              ? "deposit spending"
+              : "withdrawal spending",
+          script: history.list.spendingScript,
         },
+        {
+          name:
+            event.kind === "Deposit"
+              ? "deposit history retirement"
+              : "withdrawal history retirement",
+          script: history.retirement.withdrawalScript,
+        },
+        ...(initialize
+          ? [{ name: "payout minting", script: contracts.payout.mintingScript }]
+          : []),
       ],
       config.referenceScripts,
     );
-    const refs = mergeReferenceScripts(
-      config.referenceScripts,
-      resolvedReferenceScripts,
-    );
-    const depositUnit = toUnit(
-      contracts.deposit.policyId,
-      config.deposit.assetName,
-    );
-    const reserveAssets = removeAssetUnit(
-      config.deposit.utxo.assets,
-      depositUnit,
-      1n,
-    );
-    const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
-      config.deposit.idCbor.toString("hex"),
-      config.deposit.infoCbor.toString("hex"),
-      config.membershipProof,
-    );
-    const witnessRedeemer = SDK.encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.deposit.policyId,
-    );
+    const refs = mergeReferenceScripts(config.referenceScripts, resolved);
+    const listReference =
+      refs.historyList ??
+      (event.kind === "Deposit"
+        ? refs.depositSpending
+        : refs.withdrawalSpending);
+    const references = referenceInputs(hub, [
+      confirmed,
+      settlement,
+      event.history.retainedDataUtxo,
+      listReference,
+      refs.historyRetirement,
+      ...(initialize ? [refs.payoutMinting] : []),
+    ]);
     const feeInput = yield* selectFeeInputProgram(lucid, config.feeInput, [
-      config.deposit.utxo,
-      config.settlementRefInput,
-      hubOracleRefInput,
-      ...(refs.depositMinting === undefined ? [] : [refs.depositMinting]),
-      ...(refs.depositSpending === undefined ? [] : [refs.depositSpending]),
-      ...(refs.depositWitnessCertificate === undefined
-        ? []
-        : [refs.depositWitnessCertificate]),
-      ...(refs.membershipProofWithdrawal === undefined
-        ? []
-        : [refs.membershipProofWithdrawal]),
+      event.utxo,
+      predecessor.utxo,
+      ...references,
     ]);
-    const txInputs = [config.deposit.utxo, feeInput];
-    const txReferenceInputs = referenceInputs(hubOracleRefInput, [
-      config.settlementRefInput,
-      refs.depositMinting,
-      refs.depositSpending,
-      refs.depositWitnessCertificate,
-      refs.membershipProofWithdrawal,
-    ]);
-    const membershipRewardAddress = scriptRewardAddress(
+    const retirementAddress = scriptRewardAddress(
       network,
-      config.membershipProofWithdrawal.script,
+      history.retirement.withdrawalScript,
     );
-    type AbsorbSpendLayout = Omit<
-      AbsorbDepositLayout,
-      "witnessUnregistrationRedeemerIndex"
-    >;
-    let absorbSpendLayout: AbsorbSpendLayout | undefined;
-    let witnessUnregistrationRedeemerIndex: bigint | undefined;
-    const depositSpendRedeemer = ((ctx) => {
-      requireOwnSpendPurpose(ctx, config.deposit.utxo, "deposit absorption");
-      const layout: AbsorbSpendLayout = {
-        depositInputIndex: requireInputIndex(
+    const listAddress = scriptRewardAddress(
+      network,
+      history.list.withdrawalScript,
+    );
+    let layout: RetirementLayout | undefined;
+    const resolve = (ctx: RedeemerContext): RetirementLayout => {
+      const structuralRefundIndex =
+        event.facts.structural_lovelace === 0n
+          ? null
+          : requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address === refundAddress &&
+                outputHasNoDatum(output) &&
+                output.scriptRef === undefined &&
+                assetsEqual(output.assets, structuralRefundAssets),
+              "structural refund",
+            );
+      const witness: EventHistoryRetirementWitness = {
+        predecessor_input_index: requireInputIndex(
           ctx,
-          config.deposit.utxo,
-          "deposit absorption",
+          predecessor.utxo,
+          "retirement predecessor",
         ),
-        reserveOutputIndex: reserveOutputIndex(
+        order_input_index: requireInputIndex(
+          ctx,
+          event.utxo,
+          "retirement Order",
+        ),
+        predecessor_output_index: outputWithDatumIndex(
           ctx.outputs,
-          contracts.reserve.spendingScriptAddress,
-          reserveAssets,
-          "reserve absorption",
+          predecessor.utxo.address,
+          continuedCbor,
+          predecessor.utxo.assets,
+          "continued predecessor",
         ),
-        hubRefInputIndex: requireReferenceInputIndex(
-          ctx,
-          hubOracleRefInput,
-          "deposit absorption hub oracle",
+        funds_output_index: outputWithCardanoDatumIndex(
+          ctx.outputs,
+          fundsAddress,
+          fundsDatum,
+          fundsAssets,
+          "retirement funds",
         ),
-        settlementRefInputIndex: requireReferenceInputIndex(
+        structural_refund_output_index: structuralRefundIndex,
+        confirmed_reference_index: requireReferenceInputIndex(
           ctx,
-          config.settlementRefInput,
-          "deposit absorption settlement",
+          confirmed,
+          "confirmed state",
+        ),
+        settlement_reference_index: requireReferenceInputIndex(
+          ctx,
+          settlement,
+          "settlement",
+        ),
+        external_reference_index:
+          event.history.retainedDataUtxo === undefined
+            ? null
+            : requireReferenceInputIndex(
+                ctx,
+                event.history.retainedDataUtxo,
+                "retained data",
+              ),
+        membership: {
+          phas_root: config.membershipProof.phas_root,
+          count: config.membershipProof.count,
+          proof: config.membershipProof.proof,
+        },
+        purpose,
+      };
+      layout = {
+        witness,
+        hubRefInputIndex: requireReferenceInputIndex(ctx, hub, "hub oracle"),
+        settlementRefInputIndex: witness.settlement_reference_index,
+        retirementWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
+          ctx,
+          retirementAddress,
+          "retirement observer",
+        ),
+        listWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
+          ctx,
+          listAddress,
+          "list observer",
         ),
         burnRedeemerIndex: requireMintRedeemerIndex(
           ctx,
-          contracts.deposit.policyId,
-          "deposit burn",
+          history.list.policyId,
+          "Order burn",
         ),
-        inclusionProofWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
-          ctx,
-          membershipRewardAddress,
-          "deposit membership proof",
-        ),
+        payoutMintRedeemerIndex: initialize
+          ? requireMintRedeemerIndex(
+              ctx,
+              contracts.payout.policyId,
+              "payout mint",
+            )
+          : null,
       };
-      absorbSpendLayout = layout;
-      return Data.to(
-        {
-          input_index: layout.depositInputIndex,
-          output_index: layout.reserveOutputIndex,
-          hub_ref_input_index: layout.hubRefInputIndex,
-          settlement_ref_input_index: layout.settlementRefInputIndex,
-          mint_redeemer_index: layout.burnRedeemerIndex,
-          membership_proof: config.membershipProof,
-          inclusion_proof_script_withdraw_redeemer_index:
-            layout.inclusionProofWithdrawalRedeemerIndex,
-        } satisfies SDK.DepositSpendRedeemer,
-        SDK.DepositSpendRedeemer,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const depositBurnRedeemer = ((ctx) => {
-      requireOwnMintPurpose(ctx, contracts.deposit.policyId, "deposit burn");
-      witnessUnregistrationRedeemerIndex = requireSinglePublishRedeemerIndex(
-        ctx,
-        "deposit witness unregistration",
-      );
-      return Data.to(
-        {
-          BurnEventNFT: {
-            nonce_asset_name: config.deposit.assetName,
-            witness_unregistration_redeemer_index:
-              witnessUnregistrationRedeemerIndex,
-          },
-        } satisfies SDK.UserEventMintRedeemer,
-        SDK.UserEventMintRedeemer,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const makeTx = (): TxBuilder => {
-      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
-      tx = attachIfMissing(
-        tx,
-        contracts.deposit.spendingScript,
-        refs.depositSpending,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.deposit.mintingScript,
-        refs.depositMinting,
-      );
-      tx = attachIfMissing(tx, witnessScript, refs.depositWitnessCertificate);
-      tx = attachIfMissing(
-        tx,
-        config.membershipProofWithdrawal.script,
-        refs.membershipProofWithdrawal,
-      );
-      tx = tx
-        .collectFrom([config.deposit.utxo], depositSpendRedeemer)
-        .collectFrom([feeInput])
-        .mintAssets({ [depositUnit]: -1n }, depositBurnRedeemer)
-        .pay.ToAddress(contracts.reserve.spendingScriptAddress, reserveAssets);
-      tx = applyEventWitnessUnregistration(
-        tx,
-        network,
-        witnessScript,
-        witnessRedeemer,
-        refs.depositWitnessCertificate,
-      );
-      tx = applyMembershipProofWithdrawal(
-        tx,
-        network,
-        config.membershipProofWithdrawal,
-        membershipRedeemer,
-        refs.membershipProofWithdrawal,
-      );
-      return tx;
+      return layout;
     };
+    const spend =
+      (input: UTxO): BuildTxWithRedeemer =>
+      (ctx) => {
+        requireOwnSpendPurpose(ctx, input, "history node");
+        return Data.to(requireInputIndex(ctx, input, "history node"));
+      };
     return yield* completeWithFinalLayoutProgram({
-      label: "deposit absorption",
+      label: "event history retirement",
       lucid,
-      walletInputExclusions: [...txInputs, ...txReferenceInputs],
-      makeTx,
-      resolveLayout: () => ({
-        ...requireResolvedLayout(absorbSpendLayout, "deposit absorption"),
-        witnessUnregistrationRedeemerIndex: requireResolvedLayout(
-          witnessUnregistrationRedeemerIndex,
-          "deposit witness unregistration",
-        ),
-      }),
-    }).pipe(
-      Effect.mapError((cause) =>
-        cause instanceof ReservePayoutTxError
-          ? cause
-          : new ReservePayoutTxError({
-              message: "Failed to build deposit absorption transaction",
-              cause,
-            }),
-      ),
-    );
-  }).pipe(
-    Effect.tap((built) =>
-      Effect.logInfo(
-        `Reserve deposit absorption layout: ${formatLayout(built.layout)}`,
-      ),
-    ),
+      walletInputExclusions: [
+        event.utxo,
+        predecessor.utxo,
+        feeInput,
+        ...references,
+      ],
+      resolveLayout: () =>
+        requireResolvedLayout(layout, "event history retirement"),
+      makeTx: () => {
+        let tx = lucid.newTx().readFrom([...references]);
+        tx = attachIfMissing(tx, history.list.spendingScript, listReference);
+        tx = attachIfMissing(
+          tx,
+          history.retirement.withdrawalScript,
+          refs.historyRetirement,
+        );
+        tx = tx
+          .collectFrom([predecessor.utxo], spend(predecessor.utxo))
+          .collectFrom([event.utxo], spend(event.utxo))
+          .collectFrom([feeInput])
+          .mintAssets(
+            { [history.list.policyId + event.assetName]: -1n },
+            Data.void(),
+          )
+          .pay.ToAddressWithData(
+            predecessor.utxo.address,
+            { kind: "inline", value: continuedCbor },
+            predecessor.utxo.assets,
+          )
+          .withdraw(listAddress, 0n, ((ctx) => {
+            const resolved = resolve(ctx);
+            return Data.to(
+              {
+                Apply: {
+                  hub_reference_index: resolved.hubRefInputIndex,
+                  operation: eventHistoryRetirementOperation(resolved.witness),
+                },
+              },
+              EventHistoryObserve,
+            );
+          }) satisfies BuildTxWithRedeemer)
+          .withdraw(retirementAddress, 0n, ((ctx) => {
+            const resolved = resolve(ctx);
+            return Data.to(
+              {
+                hub_reference_index: resolved.hubRefInputIndex,
+                witness: resolved.witness,
+              },
+              EventHistoryRetirementArgs,
+            );
+          }) satisfies BuildTxWithRedeemer)
+          .validFrom(validFrom)
+          .validTo(validTo);
+        tx = payToAddressWithCardanoDatum(
+          tx,
+          fundsAddress,
+          fundsDatum,
+          fundsAssets,
+        );
+        if (event.facts.structural_lovelace > 0n)
+          tx = tx.pay.ToAddress(refundAddress, structuralRefundAssets);
+        if (initialize) {
+          tx = attachIfMissing(
+            tx,
+            contracts.payout.mintingScript,
+            refs.payoutMinting,
+          );
+          tx = tx.mintAssets(
+            { [contracts.payout.policyId + event.assetName]: 1n },
+            ((ctx) => {
+              requireOwnMintPurpose(
+                ctx,
+                contracts.payout.policyId,
+                "payout mint",
+              );
+              const resolved = resolve(ctx);
+              return Data.to(
+                {
+                  MintPayout: {
+                    withdrawal_utxo_out_ref: {
+                      transactionId: event.utxo.txHash,
+                      outputIndex: BigInt(event.utxo.outputIndex),
+                    },
+                    withdrawal_input_index: resolved.witness.order_input_index,
+                    retirement_withdraw_redeemer_index:
+                      resolved.retirementWithdrawalRedeemerIndex,
+                    hub_ref_input_index: resolved.hubRefInputIndex,
+                  },
+                },
+                SDK.PayoutMintRedeemer,
+              );
+            }) satisfies BuildTxWithRedeemer,
+          );
+        }
+        return tx;
+      },
+    });
+  });
+
+export const buildAbsorbConfirmedDepositToReserveTxProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  config: AbsorbConfirmedDepositConfig,
+) =>
+  buildHistoryRetirementProgram(
+    lucid,
+    contracts,
+    config,
+    config.deposit,
+    "AbsorbDeposit",
+  ).pipe(
+    Effect.map(({ tx, layout }) => ({
+      tx,
+      layout: {
+        ...layout,
+        depositInputIndex: layout.witness.order_input_index,
+        reserveOutputIndex: layout.witness.funds_output_index,
+      } satisfies AbsorbDepositLayout,
+    })),
   );
 
 export const buildInitializePayoutTxProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: InitializePayoutConfig,
-): Effect.Effect<
-  BuiltReservePayoutTx<InitializePayoutLayout>,
-  | ReservePayoutTxError
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.StateQueueError
-> =>
-  Effect.gen(function* () {
-    const network = yield* requireNetwork(lucid);
-    const hubOracleRefInput = yield* fetchHubOracleReferenceProgram(
-      lucid,
-      contracts,
-      config.hubOracleRefInput,
-    );
-    const witnessScript = SDK.buildUserEventWitnessCertificateValidator(
-      config.withdrawal.assetName,
-    );
-    const resolvedReferenceScripts = yield* resolveReferenceScriptsProgram(
-      lucid,
-      config.referenceScriptsAddress,
-      [
-        {
-          name: "withdrawal minting",
-          script: contracts.withdrawal.mintingScript,
-        },
-        {
-          name: "withdrawal spending",
-          script: contracts.withdrawal.spendingScript,
-        },
-        { name: "payout minting", script: contracts.payout.mintingScript },
-        { name: "withdrawal witness certificate", script: witnessScript },
-        {
-          name: "membership proof withdrawal",
-          script: config.membershipProofWithdrawal.script,
-        },
-      ],
-      config.referenceScripts,
-    );
-    const refs = mergeReferenceScripts(
-      config.referenceScripts,
-      resolvedReferenceScripts,
-    );
-    const withdrawalUnit = toUnit(
-      contracts.withdrawal.policyId,
-      config.withdrawal.assetName,
-    );
-    const payoutUnit = toUnit(
-      contracts.payout.policyId,
-      config.withdrawal.assetName,
-    );
-    const payoutAssets = addAssets(
-      removeAssetUnit(config.withdrawal.utxo.assets, withdrawalUnit, 1n),
-      { [payoutUnit]: 1n },
-    );
-    const payoutDatum: SDK.PayoutDatum = {
-      l2_value: config.withdrawal.datum.event.info.body.l2_value,
-      l1_address: config.withdrawal.datum.event.info.body.l1_address,
-      l1_datum: config.withdrawal.datum.event.info.body.l1_datum,
-    };
-    const payoutDatumCbor = Data.to(payoutDatum, SDK.PayoutDatum);
-    const initialAccumulatorAssets = removeAssetUnit(
-      payoutAssets,
-      payoutUnit,
-      1n,
-    );
-    const targetAssets = valueToAssets(payoutDatum.l2_value);
-    assertNoAssetExceeds(
-      initialAccumulatorAssets,
-      targetAssets,
-      "Initial payout accumulator",
-    );
-    const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
-      config.withdrawal.idCbor.toString("hex"),
-      config.withdrawal.infoCbor.toString("hex"),
-      config.membershipProof,
-    );
-    const witnessRedeemer = SDK.encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.withdrawal.policyId,
-    );
-    const feeInput = yield* selectFeeInputProgram(lucid, config.feeInput, [
-      config.withdrawal.utxo,
-      config.settlementRefInput,
-      hubOracleRefInput,
-      ...(refs.payoutMinting === undefined ? [] : [refs.payoutMinting]),
-      ...(refs.withdrawalMinting === undefined ? [] : [refs.withdrawalMinting]),
-      ...(refs.withdrawalSpending === undefined
-        ? []
-        : [refs.withdrawalSpending]),
-      ...(refs.withdrawalWitnessCertificate === undefined
-        ? []
-        : [refs.withdrawalWitnessCertificate]),
-      ...(refs.membershipProofWithdrawal === undefined
-        ? []
-        : [refs.membershipProofWithdrawal]),
-    ]);
-    const txInputs = [config.withdrawal.utxo, feeInput];
-    const txReferenceInputs = referenceInputs(hubOracleRefInput, [
-      config.settlementRefInput,
-      refs.payoutMinting,
-      refs.withdrawalMinting,
-      refs.withdrawalSpending,
-      refs.withdrawalWitnessCertificate,
-      refs.membershipProofWithdrawal,
-    ]);
-    const membershipRewardAddress = scriptRewardAddress(
-      network,
-      config.membershipProofWithdrawal.script,
-    );
-    type InitializeSpendLayout = Omit<
-      InitializePayoutLayout,
-      "withdrawalSpendRedeemerIndex" | "witnessUnregistrationRedeemerIndex"
-    >;
-    let initializeSpendLayout: InitializeSpendLayout | undefined;
-    let withdrawalSpendRedeemerIndex: bigint | undefined;
-    let witnessUnregistrationRedeemerIndex: bigint | undefined;
-    const withdrawalSpendRedeemer = ((ctx) => {
-      requireOwnSpendPurpose(
-        ctx,
-        config.withdrawal.utxo,
-        "payout initialization",
-      );
-      const layout: InitializeSpendLayout = {
-        withdrawalInputIndex: requireInputIndex(
-          ctx,
-          config.withdrawal.utxo,
-          "payout initialization",
-        ),
-        payoutOutputIndex: outputWithDatumIndex(
-          ctx.outputs,
-          contracts.payout.spendingScriptAddress,
-          payoutDatumCbor,
-          payoutAssets,
-          "payout initialization",
-        ),
-        hubRefInputIndex: requireReferenceInputIndex(
-          ctx,
-          hubOracleRefInput,
-          "payout initialization hub oracle",
-        ),
-        settlementRefInputIndex: requireReferenceInputIndex(
-          ctx,
-          config.settlementRefInput,
-          "payout initialization settlement",
-        ),
-        withdrawalBurnRedeemerIndex: requireMintRedeemerIndex(
-          ctx,
-          contracts.withdrawal.policyId,
-          "withdrawal burn",
-        ),
-        payoutMintRedeemerIndex: requireMintRedeemerIndex(
-          ctx,
-          contracts.payout.policyId,
-          "payout mint",
-        ),
-        inclusionProofWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
-          ctx,
-          membershipRewardAddress,
-          "withdrawal membership proof",
-        ),
-      };
-      initializeSpendLayout = layout;
-      return Data.to(
-        {
-          input_index: layout.withdrawalInputIndex,
-          output_index: layout.payoutOutputIndex,
-          hub_ref_input_index: layout.hubRefInputIndex,
-          settlement_ref_input_index: layout.settlementRefInputIndex,
-          burn_redeemer_index: layout.withdrawalBurnRedeemerIndex,
-          payout_mint_redeemer_index: layout.payoutMintRedeemerIndex,
-          membership_proof: config.membershipProof,
-          inclusion_proof_script_withdraw_redeemer_index:
-            layout.inclusionProofWithdrawalRedeemerIndex,
-          purpose: "InitializePayout",
-        } satisfies SDK.WithdrawalSpendRedeemer,
-        SDK.WithdrawalSpendRedeemer,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const withdrawalBurnRedeemer = ((ctx) => {
-      requireOwnMintPurpose(
-        ctx,
-        contracts.withdrawal.policyId,
-        "withdrawal burn",
-      );
-      witnessUnregistrationRedeemerIndex = requireSinglePublishRedeemerIndex(
-        ctx,
-        "withdrawal witness unregistration",
-      );
-      return Data.to(
-        {
-          BurnEventNFT: {
-            nonce_asset_name: config.withdrawal.assetName,
-            witness_unregistration_redeemer_index:
-              witnessUnregistrationRedeemerIndex,
-          },
-        } satisfies SDK.UserEventMintRedeemer,
-        SDK.UserEventMintRedeemer,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const payoutMintRedeemer = ((ctx) => {
-      requireOwnMintPurpose(ctx, contracts.payout.policyId, "payout mint");
-      withdrawalSpendRedeemerIndex = requireSpendRedeemerIndex(
-        ctx,
-        config.withdrawal.utxo,
-        "payout mint withdrawal",
-      );
-      return Data.to(
-        {
-          MintPayout: {
-            withdrawal_utxo_out_ref: {
-              transactionId: config.withdrawal.utxo.txHash,
-              outputIndex: BigInt(config.withdrawal.utxo.outputIndex),
-            },
-            withdrawal_input_index: requireInputIndex(
-              ctx,
-              config.withdrawal.utxo,
-              "payout mint withdrawal",
-            ),
-            withdrawal_spend_redeemer_index: withdrawalSpendRedeemerIndex,
-            hub_ref_input_index: requireReferenceInputIndex(
-              ctx,
-              hubOracleRefInput,
-              "payout mint hub oracle",
-            ),
-          },
-        } satisfies SDK.PayoutMintRedeemer,
-        SDK.PayoutMintRedeemer,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const makeTx = (): TxBuilder => {
-      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.spendingScript,
-        refs.withdrawalSpending,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.mintingScript,
-        refs.withdrawalMinting,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.payout.mintingScript,
-        refs.payoutMinting,
-      );
-      tx = attachIfMissing(
-        tx,
-        witnessScript,
-        refs.withdrawalWitnessCertificate,
-      );
-      tx = attachIfMissing(
-        tx,
-        config.membershipProofWithdrawal.script,
-        refs.membershipProofWithdrawal,
-      );
-      tx = tx
-        .collectFrom([config.withdrawal.utxo], withdrawalSpendRedeemer)
-        .collectFrom([feeInput])
-        .mintAssets({ [withdrawalUnit]: -1n }, withdrawalBurnRedeemer)
-        .mintAssets({ [payoutUnit]: 1n }, payoutMintRedeemer)
-        .pay.ToAddressWithData(
-          contracts.payout.spendingScriptAddress,
-          { kind: "inline", value: payoutDatumCbor },
-          payoutAssets,
-        );
-      tx = applyEventWitnessUnregistration(
-        tx,
-        network,
-        witnessScript,
-        witnessRedeemer,
-        refs.withdrawalWitnessCertificate,
-      );
-      tx = applyMembershipProofWithdrawal(
-        tx,
-        network,
-        config.membershipProofWithdrawal,
-        membershipRedeemer,
-        refs.membershipProofWithdrawal,
-      );
-      return tx;
-    };
-    return yield* completeWithFinalLayoutProgram({
-      label: "payout initialization",
-      lucid,
-      walletInputExclusions: [...txInputs, ...txReferenceInputs],
-      makeTx,
-      resolveLayout: () => ({
-        ...requireResolvedLayout(
-          initializeSpendLayout,
-          "payout initialization",
-        ),
-        withdrawalSpendRedeemerIndex: requireResolvedLayout(
-          withdrawalSpendRedeemerIndex,
-          "payout initialization withdrawal spend redeemer",
-        ),
-        witnessUnregistrationRedeemerIndex: requireResolvedLayout(
-          witnessUnregistrationRedeemerIndex,
-          "payout initialization witness unregistration",
-        ),
-      }),
-    });
-  }).pipe(
-    Effect.tap((built) =>
-      Effect.logInfo(
-        `Payout initialization layout: ${formatLayout(built.layout)}`,
-      ),
-    ),
+) =>
+  buildHistoryRetirementProgram(
+    lucid,
+    contracts,
+    config,
+    config.withdrawal,
+    "InitializeWithdrawalPayout",
+  ).pipe(
+    Effect.map(({ tx, layout }) => ({
+      tx,
+      layout: {
+        ...layout,
+        withdrawalInputIndex: layout.witness.order_input_index,
+        payoutOutputIndex: layout.witness.funds_output_index,
+        withdrawalBurnRedeemerIndex: layout.burnRedeemerIndex,
+        payoutMintRedeemerIndex: layout.payoutMintRedeemerIndex!,
+      } satisfies InitializePayoutLayout,
+    })),
   );
 
 const decodePayoutDatum = (payoutInput: UTxO): SDK.PayoutDatum => {
@@ -1285,7 +1215,7 @@ export const buildConcludePayoutTxProgram = (
         l1OutputIndex: outputWithCardanoDatumIndex(
           ctx.outputs,
           l1Address,
-          payoutDatum.l1_datum,
+          plutusConstrFieldCbor(config.payoutInput.datum!, [2]),
           l1Assets,
           "payout destination",
         ),
@@ -1362,7 +1292,7 @@ export const buildConcludePayoutTxProgram = (
       tx = payToAddressWithCardanoDatum(
         tx,
         l1Address,
-        payoutDatum.l1_datum,
+        plutusConstrFieldCbor(config.payoutInput.datum!, [2]),
         l1Assets,
       );
       return tx;
@@ -1385,259 +1315,26 @@ export const buildRefundInvalidWithdrawalTxProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: RefundInvalidWithdrawalConfig,
-): Effect.Effect<
-  BuiltReservePayoutTx<RefundWithdrawalLayout>,
-  | ReservePayoutTxError
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.StateQueueError
-> =>
-  Effect.gen(function* () {
-    const network = yield* requireNetwork(lucid);
-    const hubOracleRefInput = yield* fetchHubOracleReferenceProgram(
-      lucid,
-      contracts,
-      config.hubOracleRefInput,
-    );
-    const witnessScript = SDK.buildUserEventWitnessCertificateValidator(
-      config.withdrawal.assetName,
-    );
-    const resolvedReferenceScripts = yield* resolveReferenceScriptsProgram(
-      lucid,
-      config.referenceScriptsAddress,
-      [
-        {
-          name: "withdrawal minting",
-          script: contracts.withdrawal.mintingScript,
-        },
-        {
-          name: "withdrawal spending",
-          script: contracts.withdrawal.spendingScript,
-        },
-        { name: "withdrawal witness certificate", script: witnessScript },
-        {
-          name: "membership proof withdrawal",
-          script: config.membershipProofWithdrawal.script,
-        },
-      ],
-      config.referenceScripts,
-    );
-    const refs = mergeReferenceScripts(
-      config.referenceScripts,
-      resolvedReferenceScripts,
-    );
-    const withdrawalUnit = toUnit(
-      contracts.withdrawal.policyId,
-      config.withdrawal.assetName,
-    );
-    const refundAssets = removeAssetUnit(
-      config.withdrawal.utxo.assets,
-      withdrawalUnit,
-      1n,
-    );
-    const refundAddress = addressDataToBech32(
-      network,
-      config.withdrawal.datum.refund_address,
-    );
-    const overriddenWithdrawalInfo: SDK.WithdrawalInfo = {
-      ...config.withdrawal.datum.event.info,
-      validity: config.validityOverride,
-    };
-    const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
-      config.withdrawal.idCbor.toString("hex"),
-      aikenSerialisedPlutusDataCborPreservingMapOrder(
-        Data.to(overriddenWithdrawalInfo, SDK.WithdrawalInfo),
-      ),
-      config.membershipProof,
-    );
-    const witnessRedeemer = SDK.encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.withdrawal.policyId,
-    );
-    const feeInput = yield* selectFeeInputProgram(lucid, config.feeInput, [
-      config.withdrawal.utxo,
-      config.settlementRefInput,
-      hubOracleRefInput,
-      ...(refs.withdrawalMinting === undefined ? [] : [refs.withdrawalMinting]),
-      ...(refs.withdrawalSpending === undefined
-        ? []
-        : [refs.withdrawalSpending]),
-      ...(refs.withdrawalWitnessCertificate === undefined
-        ? []
-        : [refs.withdrawalWitnessCertificate]),
-      ...(refs.membershipProofWithdrawal === undefined
-        ? []
-        : [refs.membershipProofWithdrawal]),
-    ]);
-    const txInputs = [config.withdrawal.utxo, feeInput];
-    const txReferenceInputs = referenceInputs(hubOracleRefInput, [
-      config.settlementRefInput,
-      refs.withdrawalMinting,
-      refs.withdrawalSpending,
-      refs.withdrawalWitnessCertificate,
-      refs.membershipProofWithdrawal,
-    ]);
-    const membershipRewardAddress = scriptRewardAddress(
-      network,
-      config.membershipProofWithdrawal.script,
-    );
-    type RefundSpendLayout = Omit<
-      RefundWithdrawalLayout,
-      "witnessUnregistrationRedeemerIndex"
-    >;
-    let refundSpendLayout: RefundSpendLayout | undefined;
-    let witnessUnregistrationRedeemerIndex: bigint | undefined;
-    const withdrawalSpendRedeemer = ((ctx) => {
-      requireOwnSpendPurpose(ctx, config.withdrawal.utxo, "withdrawal refund");
-      const layout: RefundSpendLayout = {
-        withdrawalInputIndex: requireInputIndex(
-          ctx,
-          config.withdrawal.utxo,
-          "withdrawal refund",
-        ),
-        refundOutputIndex: outputWithCardanoDatumIndex(
-          ctx.outputs,
-          refundAddress,
-          config.withdrawal.datum.refund_datum,
-          refundAssets,
-          "withdrawal refund",
-        ),
-        hubRefInputIndex: requireReferenceInputIndex(
-          ctx,
-          hubOracleRefInput,
-          "withdrawal refund hub oracle",
-        ),
-        settlementRefInputIndex: requireReferenceInputIndex(
-          ctx,
-          config.settlementRefInput,
-          "withdrawal refund settlement",
-        ),
-        burnRedeemerIndex: requireMintRedeemerIndex(
-          ctx,
-          contracts.withdrawal.policyId,
-          "withdrawal refund burn",
-        ),
-        inclusionProofWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
-          ctx,
-          membershipRewardAddress,
-          "withdrawal refund membership proof",
-        ),
-      };
-      refundSpendLayout = layout;
-      return Data.to(
-        {
-          input_index: layout.withdrawalInputIndex,
-          output_index: layout.refundOutputIndex,
-          hub_ref_input_index: layout.hubRefInputIndex,
-          settlement_ref_input_index: layout.settlementRefInputIndex,
-          burn_redeemer_index: layout.burnRedeemerIndex,
-          payout_mint_redeemer_index: 0n,
-          membership_proof: config.membershipProof,
-          inclusion_proof_script_withdraw_redeemer_index:
-            layout.inclusionProofWithdrawalRedeemerIndex,
-          purpose: {
-            Refund: {
-              validity_override: config.validityOverride,
-            },
-          },
-        } satisfies SDK.WithdrawalSpendRedeemer,
-        SDK.WithdrawalSpendRedeemer,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const withdrawalBurnRedeemer = ((ctx) => {
-      requireOwnMintPurpose(
-        ctx,
-        contracts.withdrawal.policyId,
-        "withdrawal refund burn",
-      );
-      witnessUnregistrationRedeemerIndex = requireSinglePublishRedeemerIndex(
-        ctx,
-        "withdrawal refund witness unregistration",
-      );
-      return Data.to(
-        {
-          BurnEventNFT: {
-            nonce_asset_name: config.withdrawal.assetName,
-            witness_unregistration_redeemer_index:
-              witnessUnregistrationRedeemerIndex,
-          },
-        } satisfies SDK.UserEventMintRedeemer,
-        SDK.UserEventMintRedeemer,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const makeTx = (): TxBuilder => {
-      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.spendingScript,
-        refs.withdrawalSpending,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.mintingScript,
-        refs.withdrawalMinting,
-      );
-      tx = attachIfMissing(
-        tx,
-        witnessScript,
-        refs.withdrawalWitnessCertificate,
-      );
-      tx = attachIfMissing(
-        tx,
-        config.membershipProofWithdrawal.script,
-        refs.membershipProofWithdrawal,
-      );
-      tx = tx
-        .collectFrom([config.withdrawal.utxo], withdrawalSpendRedeemer)
-        .collectFrom([feeInput])
-        .mintAssets({ [withdrawalUnit]: -1n }, withdrawalBurnRedeemer);
-      tx = payToAddressWithCardanoDatum(
-        tx,
-        refundAddress,
-        config.withdrawal.datum.refund_datum,
-        refundAssets,
-      );
-      tx = applyEventWitnessUnregistration(
-        tx,
-        network,
-        witnessScript,
-        witnessRedeemer,
-        refs.withdrawalWitnessCertificate,
-      );
-      tx = applyMembershipProofWithdrawal(
-        tx,
-        network,
-        config.membershipProofWithdrawal,
-        membershipRedeemer,
-        refs.membershipProofWithdrawal,
-      );
-      return tx;
-    };
-    return yield* completeWithFinalLayoutProgram({
-      label: "invalid withdrawal refund",
-      lucid,
-      walletInputExclusions: [...txInputs, ...txReferenceInputs],
-      makeTx,
-      resolveLayout: () => ({
-        ...requireResolvedLayout(
-          refundSpendLayout,
-          "invalid withdrawal refund",
-        ),
-        witnessUnregistrationRedeemerIndex: requireResolvedLayout(
-          witnessUnregistrationRedeemerIndex,
-          "invalid withdrawal refund witness unregistration",
-        ),
-      }),
-    });
+) =>
+  buildHistoryRetirementProgram(lucid, contracts, config, config.withdrawal, {
+    RefundInvalidWithdrawal: { validity: config.validityOverride },
   }).pipe(
-    Effect.tap((built) =>
-      Effect.logInfo(
-        `Invalid withdrawal refund layout: ${formatLayout(built.layout)}`,
-      ),
-    ),
+    Effect.map(({ tx, layout }) => ({
+      tx,
+      layout: {
+        ...layout,
+        withdrawalInputIndex: layout.witness.order_input_index,
+        refundOutputIndex: layout.witness.funds_output_index,
+      } satisfies RefundWithdrawalLayout,
+    })),
   );
 
 export const __reservePayoutTest = {
+  cardanoDatumCborToOutputDatum,
+  payToAddressWithCardanoDatum,
+  outputDatumMatches,
+  outputWithCardanoDatumIndex,
+  withdrawalPayoutDatumCbor,
   addAssets,
   assetsToValue,
   assetsEqual,

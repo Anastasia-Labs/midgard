@@ -7,8 +7,6 @@ export * from "./prepare.js";
 export * from "./staged-field-opening.js";
 export * from "./staged-walk.js";
 export * from "./submit-common.js";
-export * from "./submit-missing-native-script-tx-cancel.js";
-export * from "./submit-missing-native-script-tx-init.js";
 export * from "./submit-missing-native-script-tx-step-01.js";
 export * from "./submit-missing-native-script-tx-step-02.js";
 export * from "./submit-missing-native-script-tx-step-03.js";

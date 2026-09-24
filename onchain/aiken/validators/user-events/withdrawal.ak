@@ -244,7 +244,7 @@ validator spend(hub_oracle: ScriptHash) {
             payout.MintPayout {
               withdrawal_utxo_out_ref,
               withdrawal_input_index,
-              withdrawal_spend_redeemer_index,
+              retirement_withdraw_redeemer_index,
               hub_ref_input_index: payout_mint_hub_ref_input_index,
             }: payout.MintRedeemer
           = utils.get_redeemer_at(
@@ -266,7 +266,7 @@ validator spend(hub_oracle: ScriptHash) {
           = utils.get_redeemer_at(
           redeemers,
           Spend(own_out_ref),
-          withdrawal_spend_redeemer_index,
+          retirement_withdraw_redeemer_index,
         )
         expect withdrawal_redeemer_input_index == input_index
         expect

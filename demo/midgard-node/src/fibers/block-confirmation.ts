@@ -24,6 +24,10 @@ import {
   withCanonicalHeaderJournals,
 } from "../services/canonical-journal-recovery.js";
 import {
+  runHistoryProducer,
+  withHistoryWrite,
+} from "../services/event-history-producer.js";
+import {
   Database,
   Globals,
   Lucid,
@@ -79,6 +83,7 @@ export const shouldObserveConfirmationDetectionLag = (
 export type ActivePendingFinalizationIdentity = {
   readonly headerHash: string;
   readonly submittedTxHash: string | null;
+  readonly intendedTxHash?: string | null;
   readonly status: PendingBlockFinalizationsDB.Status;
 };
 
@@ -94,6 +99,10 @@ const activePendingFinalizationIdentity = (
         row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
           "hex",
         ) ?? null,
+      intendedTxHash:
+        row[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH]?.toString(
+          "hex",
+        ) ?? null,
       status: row[PendingBlockFinalizationsDB.Columns.STATUS],
     }),
   });
@@ -107,6 +116,7 @@ export const confirmationPendingSnapshotChanged = ({
 }): boolean =>
   captured?.headerHash !== current?.headerHash ||
   captured?.submittedTxHash !== current?.submittedTxHash ||
+  captured?.intendedTxHash !== current?.intendedTxHash ||
   captured?.status !== current?.status;
 
 export const staleRecoveryMustPreserveNewActiveJournal = ({
@@ -170,6 +180,10 @@ const toPendingWorkerInput = (
         record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
           "hex",
         ) ?? "",
+      intendedTxHash:
+        record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH]?.toString(
+          "hex",
+        ) ?? null,
       blockEndTimeMs:
         record[PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME].getTime(),
       updatedAtMs:
@@ -204,17 +218,52 @@ const observeConfirmedPendingBlock = (
     const config = yield* NodeConfig;
     const journalHeaderHash =
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
-    yield* DepositsDB.markProjectedByEventIds(
-      record.depositEventIds,
-      journalHeaderHash,
-    );
-    yield* ForcedTransactionsDB.markProjectedByEventIds(
-      record.forcedTransactionEventIds,
-      journalHeaderHash,
-    );
-    yield* WithdrawalsDB.markProjectedByEventIds(
-      record.withdrawalEventIds,
-      journalHeaderHash,
+    const requiresLocalFinalizationRecovery = yield* withHistoryWrite(
+      Effect.gen(function* () {
+        yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(record);
+        yield* DepositsDB.markProjectedByEventIds(
+          record.depositEventIds,
+          journalHeaderHash,
+        );
+        yield* ForcedTransactionsDB.markProjectedByEventIds(
+          record.forcedTransactionEventIds,
+          journalHeaderHash,
+        );
+        yield* WithdrawalsDB.markProjectedByEventIds(
+          record.withdrawalMembers.map(
+            PendingBlockFinalizationsDB.withdrawalMemberToAssignment,
+          ),
+          journalHeaderHash,
+        );
+        const requiresLocalFinalizationRecovery =
+          pendingRecordRequiresLocalFinalizationRecovery(record);
+        if (!requiresLocalFinalizationRecovery) {
+          yield* WithdrawalsDB.markFinalizedByEventIds(
+            record.withdrawalEventIds,
+            journalHeaderHash,
+          );
+          yield* ForcedTransactionsDB.markFinalizedByEventIds(
+            record.forcedTransactionEventIds,
+            journalHeaderHash,
+          );
+        }
+        yield* requiresLocalFinalizationRecovery
+          ? PendingBlockFinalizationsDB.markObservedWaitingStability(
+              journalHeaderHash,
+              BigInt(Date.now()),
+              // A linked-list continuation changes the current outref, not the
+              // transaction that originally signed this pending commitment.
+              record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] !=
+                null &&
+                !record[
+                  PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH
+                ]!.equals(recoveredSubmittedTxHash ?? Buffer.alloc(0))
+                ? undefined
+                : (recoveredSubmittedTxHash ?? undefined),
+            )
+          : PendingBlockFinalizationsDB.markFinalized(journalHeaderHash);
+        return requiresLocalFinalizationRecovery;
+      }),
     );
     if (record.depositEventIds.length > 0) {
       const projectedEntries = yield* MempoolLedgerDB.retrieveBySourceEventIds(
@@ -233,25 +282,6 @@ const observeConfirmedPendingBlock = (
         config.VALIDATION_LEDGER_DELTA_LOG_MAX,
       );
     }
-    const requiresLocalFinalizationRecovery =
-      pendingRecordRequiresLocalFinalizationRecovery(record);
-    if (!requiresLocalFinalizationRecovery) {
-      yield* WithdrawalsDB.markFinalizedByEventIds(
-        record.withdrawalEventIds,
-        journalHeaderHash,
-      );
-      yield* ForcedTransactionsDB.markFinalizedByEventIds(
-        record.forcedTransactionEventIds,
-        journalHeaderHash,
-      );
-    }
-    yield* requiresLocalFinalizationRecovery
-      ? PendingBlockFinalizationsDB.markObservedWaitingStability(
-          journalHeaderHash,
-          BigInt(Date.now()),
-          recoveredSubmittedTxHash ?? undefined,
-        )
-      : PendingBlockFinalizationsDB.markFinalized(journalHeaderHash);
     return requiresLocalFinalizationRecovery;
   });
 
@@ -259,6 +289,7 @@ const abandonPendingBlockIfPresent = (
   record: PendingBlockFinalizationsDB.Record,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
+    yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(record);
     const headerHash = record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
     yield* DepositsDB.clearProjectedHeaderAssignmentByEventIds(
       record.depositEventIds,
@@ -273,12 +304,13 @@ const abandonPendingBlockIfPresent = (
       headerHash,
     );
     yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);
-  });
+  }).pipe(withHistoryWrite);
 
 const abandonUnsubmittedPendingBlockIfStillPresent = (
   record: PendingBlockFinalizationsDB.Record,
 ): Effect.Effect<boolean, DatabaseError, Database> =>
   Effect.gen(function* () {
+    yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(record);
     const headerHash = record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
     const abandoned =
       yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(headerHash);
@@ -298,7 +330,7 @@ const abandonUnsubmittedPendingBlockIfStillPresent = (
       headerHash,
     );
     return true;
-  });
+  }).pipe(withHistoryWrite);
 
 const reviveCanonicalPayloadJournalFromWorkerSnapshot = (
   canonicalHeaders: readonly SerializedCanonicalCommittedHeader[],
@@ -701,6 +733,16 @@ export const buildBlockConfirmationAction = (
         break;
       }
       case "StaleUnconfirmedRecoveryOutput": {
+        if (
+          Option.isSome(pending) &&
+          pending.value[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] !=
+            null
+        ) {
+          yield* Effect.logWarning(
+            "Refusing stale recovery for an unresolved signed commit intent.",
+          );
+          return;
+        }
         const metadata = yield* stateQueueTipMetadata(
           workerOutput.latestBlocksUTxO,
         ).pipe(Effect.orDie);
@@ -774,7 +816,8 @@ export const buildBlockConfirmationAction = (
     yield* emitQueueStateMetrics;
   });
 
-export const blockConfirmationAction = buildBlockConfirmationAction();
+export const blockConfirmationAction =
+  buildBlockConfirmationAction().pipe(runHistoryProducer);
 
 export const blockConfirmationFiber = (
   schedule: Schedule.Schedule<number>,

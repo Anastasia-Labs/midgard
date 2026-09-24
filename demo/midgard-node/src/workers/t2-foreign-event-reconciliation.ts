@@ -15,6 +15,7 @@ import {
   WithdrawalsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { withHistoryWrite } from "../services/event-history-producer.js";
 import { ContractDeploymentIdentity, Database } from "../services/index.js";
 import { computeDaPayloadRoots } from "./commit-block-header/da-payload.js";
 
@@ -627,9 +628,11 @@ const reconcileRetainedForeignTipEntry = (
         }
         if (candidateWithdrawals.length > 0) {
           yield* WithdrawalsDB.markAwaitingAsProjected(
-            candidateWithdrawals.map(
-              (candidate) => candidate[WithdrawalsDB.Columns.ID],
-            ),
+            candidateWithdrawals.map((candidate) => ({
+              eventId: candidate[WithdrawalsDB.Columns.ID],
+              expectedClassificationRevision:
+                candidate[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+            })),
           );
         }
         const requiresDaEvidence =
@@ -663,6 +666,7 @@ const reconcileRetainedForeignTipEntry = (
       }),
     );
   }).pipe(
+    withHistoryWrite,
     Effect.mapError((cause) =>
       cause instanceof DatabaseError
         ? cause

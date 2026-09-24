@@ -42,11 +42,13 @@
       "blake2b@2.1.4": "patches/blake2b@2.1.4.patch",
       "@lucid-evolution/lucid@0.6.5": "patches/@lucid-evolution__lucid@0.6.5.patch",
       "@lucid-evolution/core-types@0.3.0": "patches/@lucid-evolution__core-types@0.3.0.patch",
-      "@lucid-evolution/wallet@0.2.2": "patches/@lucid-evolution__wallet@0.2.2.patch"
+      "@lucid-evolution/wallet@0.2.2": "patches/@lucid-evolution__wallet@0.2.2.patch",
+      "@lucid-evolution/provider@0.2.4": "patches/@lucid-evolution__provider@0.2.4.patch"
     },
     "overrides": {
       "@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1": "6.2.0-2",
-      "@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1": "6.2.0-2"
+      "@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1": "6.2.0-2",
+      "@lucid-evolution/uplc@0.2.23": "file:vendor/uplc-0.2.23-midgard.1.tgz"
     }
   }
 }

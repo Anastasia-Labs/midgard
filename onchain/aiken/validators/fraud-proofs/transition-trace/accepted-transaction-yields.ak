@@ -103,8 +103,7 @@ validator l2_replay(dispatcher: ScriptHash) {
       (trace_data, spent_data, produced_data)
     } else {
       expect state.kind == 1
-      expect [trace_data,
-            _, _, _, _, projected_data] = one_step_witness(fault, 3)
+      expect [trace_data, _, _, projected_data] = one_step_witness(fault, 3)
       let empty: Data = []
       let produced: Data = [projected_data]
       (trace_data, empty, produced)
@@ -118,7 +117,7 @@ validator l2_replay(dispatcher: ScriptHash) {
           MidgardTxInput { tx_id: source.key, output_index: state.output_index },
         )
       } else {
-        expect [_, _, source_data, _, _, _] = one_step_witness(fault, 3)
+        expect [_, _, source_data, _] = one_step_witness(fault, 3)
         expect
             source: RootMembershipProof<
               ledger_state.DepositId,

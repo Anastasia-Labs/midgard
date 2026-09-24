@@ -456,6 +456,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
   "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
   "fraudProofTransitionTraceDepositProjectionWithdraw",
+  "fraudProofTransitionTraceL1EventWithdraw",
+  "fraudProofTransitionTraceForcedTimingWithdraw",
   "fraudProofTransitionTraceDepositSummariesWithdraw",
 
   "fraudProofMinAdaStep02UtxoWithdraw",
@@ -595,6 +597,10 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "stateQueueUnavailableTimeoutWithdraw",
   "stateQueueFraudRemovalWithdraw",
   "stateQueueMergeWithdraw",
+  "depositHistoryRetentionSpend",
+  "depositHistoryRetirementWithdraw",
+  "withdrawalHistoryRetentionSpend",
+  "withdrawalHistoryRetirementWithdraw",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
@@ -827,6 +833,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "retired-operators spending": "retiredOperatorsSpend",
     "retired-operators minting": "retiredOperatorsMint",
     "fraud-proof-catalogue minting": "fraudProofCatalogueMint",
+    "deposit history retention": "depositHistoryRetentionSpend",
+    "deposit history retirement": "depositHistoryRetirementWithdraw",
+    "withdrawal history retention": "withdrawalHistoryRetentionSpend",
+    "withdrawal history retirement": "withdrawalHistoryRetirementWithdraw",
     "deposit spending": "depositSpend",
     "deposit minting": "depositMint",
     "withdrawal spending": "withdrawalSpend",
@@ -1503,6 +1513,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
     "V1 fraud-proof transition-trace final-5 projection yield":
       "fraudProofTransitionTraceDepositProjectionWithdraw",
+    "V1 fraud-proof transition-trace final-6 L1 event yield":
+      "fraudProofTransitionTraceL1EventWithdraw",
+    "V1 fraud-proof transition-trace final-6 forced timing yield":
+      "fraudProofTransitionTraceForcedTimingWithdraw",
     "V1 fraud-proof transition-trace final-5 summaries yield":
       "fraudProofTransitionTraceDepositSummariesWithdraw",
 
@@ -1989,6 +2003,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "retired-operators spending": "RetiredOperatorsSpend",
   "retired-operators minting": "RetiredOperatorsMint",
   "fraud-proof-catalogue minting": "FraudProofCatalogueMint",
+  "deposit history retention": "DepositHistoryRetention",
+  "deposit history retirement": "DepositHistoryRetirement",
+  "withdrawal history retention": "WithdrawalHistoryRetention",
+  "withdrawal history retirement": "WithdrawalHistoryRetirement",
   "deposit spending": "DepositSpend",
   "deposit minting": "DepositMint",
   "withdrawal spending": "WithdrawalSpend",
@@ -2310,6 +2328,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpTtF4ClaimEndsYield",
   "V1 fraud-proof transition-trace final-5 projection yield":
     "V1FpTtF5ProjectionYield",
+  "V1 fraud-proof transition-trace final-6 L1 event yield":
+    "V1FpTtF6L1EventYield",
+  "V1 fraud-proof transition-trace final-6 forced timing yield":
+    "V1FpTtF6ForcedTimeYield",
   "V1 fraud-proof transition-trace final-5 summaries yield":
     "V1FpTtF5SummariesYield",
 
@@ -2653,6 +2675,64 @@ export const parseDeploymentManifestEventHistoryBounds = (
   return Object.freeze(bounds);
 };
 
+/** Exact list deployment parameters, included in the manifest identity. */
+export type DeploymentManifestEventHistoryRecipe = Readonly<{
+  kind: "Deposit" | "Withdrawal";
+  hubPolicyId: string;
+  initializationNonce: Readonly<{ txHash: string; outputIndex: number }>;
+  protectionDurationMs: string;
+  bounds: DeploymentManifestEventHistoryBounds;
+}>;
+
+export const parseDeploymentManifestEventHistoryRecipe = (
+  value: unknown,
+  field = "eventHistoryRecipe",
+): DeploymentManifestEventHistoryRecipe => {
+  const record = requireRecord(value, `Deployment manifest ${field}`);
+  requireExactKeys(
+    record,
+    [
+      "kind",
+      "hubPolicyId",
+      "initializationNonce",
+      "protectionDurationMs",
+      "bounds",
+    ],
+    [],
+    field,
+  );
+  if (record.kind !== "Deposit" && record.kind !== "Withdrawal")
+    throw new Error(`Deployment manifest ${field}.kind is invalid`);
+  const hubPolicyId = requireHex(
+    record.hubPolicyId,
+    28,
+    `${field}.hubPolicyId`,
+  );
+  const nonce = requireFinalOutRef(
+    record.initializationNonce,
+    `${field}.initializationNonce`,
+  );
+  const protectionDurationMs = record.protectionDurationMs;
+  if (
+    typeof protectionDurationMs !== "string" ||
+    !/^[1-9][0-9]{0,15}$/u.test(protectionDurationMs) ||
+    BigInt(protectionDurationMs) > BigInt(Number.MAX_SAFE_INTEGER)
+  )
+    throw new Error(
+      `Deployment manifest ${field}.protectionDurationMs must be a positive canonical safe integer string`,
+    );
+  return Object.freeze({
+    kind: record.kind,
+    hubPolicyId,
+    initializationNonce: Object.freeze(nonce),
+    protectionDurationMs,
+    bounds: parseDeploymentManifestEventHistoryBounds(
+      record.bounds,
+      `${field}.bounds`,
+    ),
+  });
+};
+
 export const parseDeploymentManifestEventHistoryRetentionAddress = (
   value: unknown,
 ): string => {
@@ -2662,6 +2742,31 @@ export const parseDeploymentManifestEventHistoryRetentionAddress = (
       "Deployment manifest eventHistoryRetentionAddress must have a script payment credential",
     );
   return address;
+};
+
+export type DeploymentManifestEventHistoryRetentionAddresses = Readonly<{
+  deposit: string;
+  withdrawal: string;
+}>;
+
+export const parseDeploymentManifestEventHistoryRetentionAddresses = (
+  value: unknown,
+): DeploymentManifestEventHistoryRetentionAddresses => {
+  const record = requireRecord(value, "eventHistoryRetentionAddresses");
+  requireExactKeys(
+    record,
+    ["deposit", "withdrawal"],
+    [],
+    "eventHistoryRetentionAddresses",
+  );
+  return Object.freeze({
+    deposit: parseDeploymentManifestEventHistoryRetentionAddress(
+      record.deposit,
+    ),
+    withdrawal: parseDeploymentManifestEventHistoryRetentionAddress(
+      record.withdrawal,
+    ),
+  });
 };
 
 export type DeploymentManifestContractEntry = {
@@ -2675,8 +2780,10 @@ export type DeploymentManifestContractEntry = {
   };
   readonly scriptHash: string;
   readonly fraudProofCatalogue?: DeploymentManifestFraudProofCatalogueIdentity;
+  readonly eventHistoryRecipe?: DeploymentManifestEventHistoryRecipe;
   readonly eventHistoryBounds?: DeploymentManifestEventHistoryBounds;
   readonly eventHistoryRetentionAddress?: string;
+  readonly eventHistoryRetentionAddresses?: DeploymentManifestEventHistoryRetentionAddresses;
 };
 
 export type DeploymentManifestStepStatus =
@@ -4139,27 +4246,43 @@ const validateFinalizedContracts = (
     const historyFamily =
       contractName === "fraudProofFabricatedDeposit" ||
       contractName === "fraudProofFabricatedWithdrawal";
+    const transitionHistory = contractName === "fraudProofTransitionTrace";
+    const historyList =
+      contractName === "depositMint" || contractName === "withdrawalMint";
     requireExactKeys(
       entry,
       [
         "refScriptUTxO",
         "contract",
         "scriptHash",
+        ...(historyList ? ["eventHistoryRecipe"] : []),
         ...(historyFamily
           ? ["eventHistoryBounds", "eventHistoryRetentionAddress"]
-          : []),
+          : transitionHistory
+            ? ["eventHistoryBounds", "eventHistoryRetentionAddresses"]
+            : []),
       ],
       contractName === "fraudProofCatalogueMint" ? ["fraudProofCatalogue"] : [],
       field,
     );
-    if (historyFamily) {
+    if (historyList)
+      parseDeploymentManifestEventHistoryRecipe(
+        entry.eventHistoryRecipe,
+        `${field}.eventHistoryRecipe`,
+      );
+    if (historyFamily || transitionHistory) {
       parseDeploymentManifestEventHistoryBounds(
         entry.eventHistoryBounds,
         `${field}.eventHistoryBounds`,
       );
-      parseDeploymentManifestEventHistoryRetentionAddress(
-        entry.eventHistoryRetentionAddress,
-      );
+      if (transitionHistory)
+        parseDeploymentManifestEventHistoryRetentionAddresses(
+          entry.eventHistoryRetentionAddresses,
+        );
+      else
+        parseDeploymentManifestEventHistoryRetentionAddress(
+          entry.eventHistoryRetentionAddress,
+        );
     }
     if (referenceScriptContractNames.has(contractName)) {
       requireFinalOutRef(entry.refScriptUTxO, `${field}.refScriptUTxO`);
@@ -4756,6 +4879,36 @@ export const verifyFinalizedDeploymentManifest = (
     "Deployment manifest contracts",
   );
   validateFinalizedContracts(contracts);
+  for (const [name, kind] of [
+    ["deposit", "Deposit"],
+    ["withdrawal", "Withdrawal"],
+  ] as const) {
+    const mint = requireRecord(
+      contracts[`${name}Mint`],
+      `contracts.${name}Mint`,
+    );
+    const spend = requireRecord(
+      contracts[`${name}Spend`],
+      `contracts.${name}Spend`,
+    );
+    const recipe = parseDeploymentManifestEventHistoryRecipe(
+      mint.eventHistoryRecipe,
+    );
+    const hub = requireRecord(
+      contracts.hubOracleMint,
+      "contracts.hubOracleMint",
+    );
+    if (
+      recipe.kind !== kind ||
+      recipe.hubPolicyId !== hub.scriptHash ||
+      recipe.initializationNonce.txHash !== oneShotTxHash ||
+      recipe.initializationNonce.outputIndex !== oneShotOutputIndex ||
+      mint.scriptHash !== spend.scriptHash
+    )
+      throw new Error(
+        `Deployment manifest ${name} history recipe or list roles differ from its deployment`,
+      );
+  }
   const authContract = requireRecord(
     contracts.referenceScriptAuthMint,
     "contracts.referenceScriptAuthMint",

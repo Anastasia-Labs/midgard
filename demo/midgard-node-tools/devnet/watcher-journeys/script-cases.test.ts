@@ -9,6 +9,7 @@ import {
 import * as FP from "@al-ft/midgard-fault-proofs";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
+import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { expect, it } from "vitest";
 
@@ -62,6 +63,10 @@ const loadRetainedDeposit = async () => {
       "utf8",
     ),
   );
+  const deposit = readPublishedDepositHistory(
+    staged.depositHistory,
+    staged.depositMetadata,
+  );
   const predecessor = await depositEventsRetainedBlock({
     operatorVkey: staged.current.header.operatorVkey,
     startTime: staged.predecessor.header.endTime,
@@ -72,9 +77,8 @@ const loadRetainedDeposit = async () => {
     priorLedger: staged.predecessor.payload.block_body.utxos,
     events: [
       {
-        event: staged.depositEvent,
-        depositPolicyId: staged.depositMetadata.depositAuthUnit.slice(0, 56),
-        assetName: staged.depositMetadata.depositAssetName,
+        event: deposit.event,
+        originalAssets: deposit.originalAssets,
         honest: true,
       },
     ],

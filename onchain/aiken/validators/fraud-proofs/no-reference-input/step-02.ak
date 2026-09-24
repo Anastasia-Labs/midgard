@@ -204,12 +204,8 @@ validator main(
 // compact structures, so a substituted preimage cannot be opened; and because
 // §5.3 fixes the item width, the read is arithmetic at any index.
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn challenged_reference_inputs() -> List<MidgardTxInput> {
-  challenged_block().tx.body.reference_inputs
+  fixture.challenged_block_v1().tx.body.reference_inputs
 }
 
 fn first_challenged_reference_input() -> MidgardTxInput {
@@ -265,7 +261,7 @@ fn run_step_02(
 /// transaction's field-1 commitment authenticates, so the challenged reference
 /// input reaches step-03 with both block roots.
 test no_reference_input_step_02_forwards_the_challenged_reference_input() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_02(
     block,
     challenged_reference_inputs(),
@@ -278,7 +274,7 @@ test no_reference_input_step_02_forwards_the_challenged_reference_input() {
 /// reference-input collection, so a prover who carries a different preimage
 /// fails the door's authenticate-once check.
 test no_reference_input_step_02_rejects_a_substituted_preimage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let injected = MidgardTxInput {
     tx_id: #"3333333333333333333333333333333333333333333333333333333333333333",
     output_index: 0,
@@ -291,7 +287,7 @@ test no_reference_input_step_02_rejects_a_substituted_preimage() fail {
 /// index the door is opened at. Carrying the transaction's *spend*-input
 /// preimage here is rejected because it is not what field 1 commits.
 test no_reference_input_step_02_rejects_the_spend_inputs_preimage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_02(
     block,
     block.tx.body.inputs,

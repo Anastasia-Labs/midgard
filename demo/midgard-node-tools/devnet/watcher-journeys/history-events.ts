@@ -4,11 +4,16 @@ import {
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -25,19 +30,75 @@ export type HistoryEventBlockInput = {
   blockSlot: bigint;
 };
 
-/** An exact event output supplied by the common real-chain staging owner. */
+/** An event resolved by the shared authenticated history reader. */
 export type StagedHistoryEvent = {
-  event: UTxO;
+  order: SDK.DepositUTxO | SDK.WithdrawalUTxO;
   policyId: string;
-  assetName: string;
+};
+
+/** Canonical bytes survive journey JSON persistence, including arbitrary Data maps. */
+export type CapturedEventHistoryWitness = {
+  commitmentCbor: string;
+  openingCbor: string;
 };
 
 const authenticateEvent = (input: StagedHistoryEvent) => {
-  if (!input.event.datum)
-    throw new Error("Staged history event has no inline datum");
-  if (input.event.assets[input.policyId + input.assetName] !== 1n)
-    throw new Error("Staged history event lacks its exact role token");
-  return input.event.datum;
+  const captured = SDK.captureEventHistoryWitness(
+    input.order.history,
+    input.policyId,
+    input.order.kind,
+  );
+  const canonicalEvent =
+    "DepositPayload" in captured.payload
+      ? captured.payload.DepositPayload.event
+      : captured.payload.WithdrawalPayload.event;
+  const schema =
+    input.order.kind === "Deposit" ? SDK.DepositEvent : SDK.WithdrawalEvent;
+  if (
+    Data.to(canonicalEvent, schema) !== Data.to(input.order.event, schema) ||
+    input.order.idCbor.toString("hex") !==
+      canonical(plutusConstrFieldCbor(captured.payloadCbor, [0, 0])) ||
+    input.order.infoCbor.toString("hex") !==
+      canonical(plutusConstrFieldCbor(captured.payloadCbor, [0, 1])) ||
+    input.order.history.anchor.utxo.datum == null ||
+    captured.factsCbor !==
+      canonical(
+        plutusConstrFieldCbor(input.order.history.anchor.utxo.datum, [3, 0]),
+      )
+  )
+    throw new Error(
+      "Staged history event content differs from its authenticated Order",
+    );
+  if (
+    !SDK.assetsEqual(
+      SDK.valueToAssets(captured.originalAssets),
+      input.order.originalAssets,
+    ) ||
+    Data.to(captured.commitment.event_id, SDK.OutputReference) !==
+      Data.to(input.order.event.id, SDK.OutputReference) ||
+    captured.commitment.inclusion_time !== input.order.facts.inclusion_time
+  )
+    throw new Error(
+      "Staged history event differs from its authenticated Order",
+    );
+  return input.order;
+};
+
+/** Content capture only. It preserves facts already authenticated by the reader;
+ * later reads of this archive do not create new L1 observation authority. */
+export const captureStagedHistoryEvent = (
+  input: StagedHistoryEvent,
+): CapturedEventHistoryWitness => {
+  authenticateEvent(input);
+  const captured = SDK.captureEventHistoryWitness(
+    input.order.history,
+    input.policyId,
+    input.order.kind,
+  );
+  return {
+    commitmentCbor: Data.to(captured.commitment, SDK.EventHistoryCommitment),
+    openingCbor: canonical(captured.openingCbor),
+  };
 };
 
 const requireEventWindow = (time: bigint, input: HistoryEventBlockInput) => {
@@ -54,8 +115,10 @@ export const buildJourneyFabricatedDeposit = async (
     honest?: boolean;
   },
 ) => {
-  const datum = Data.from(authenticateEvent(input.deposit), SDK.DepositDatum);
-  requireEventWindow(datum.inclusion_time, input);
+  const datum = authenticateEvent(input.deposit);
+  if (datum.kind !== "Deposit")
+    throw new Error("Deposit journey requires an authenticated deposit Order");
+  requireEventWindow(datum.facts.inclusion_time, input);
   const payment = datum.event.info.l2_address.paymentCredential;
   const hash =
     "PublicKeyCredential" in payment
@@ -89,12 +152,14 @@ export const buildJourneyFabricatedDeposit = async (
     priorLedger: input.predecessor.payload.block_body.utxos,
     events: [
       {
-        event: {
-          ...input.deposit.event,
-          datum: Data.to(committed, SDK.DepositDatum),
-        },
-        depositPolicyId: input.deposit.policyId,
-        assetName: input.deposit.assetName,
+        eventCbor: canonical(
+          replacePlutusConstrFieldCbor(
+            plutusConstrFieldCbor(datum.history.payloadCbor, [0]),
+            [1, 0],
+            Data.to(committed.event.info.l2_address, SDK.AddressData),
+          ),
+        ),
+        originalAssets: datum.originalAssets,
         honest: true,
       },
     ],
@@ -102,7 +167,7 @@ export const buildJourneyFabricatedDeposit = async (
   return { ...block, actualDeposit: input.deposit };
 };
 
-type WithdrawalClaim = { id: SDK.OutputReference; info: SDK.WithdrawalInfo };
+type WithdrawalClaim = { id: SDK.OutputReference; infoCbor: string };
 
 /**
  * Commit withdrawal events and their operator-selected verdicts against the
@@ -142,32 +207,31 @@ export const retainJourneyWithdrawals = async (
     ),
   );
   for (const [index, claim] of claims.entries()) {
+    const infoCbor = canonical(claim.infoCbor);
+    const info = Data.from(infoCbor, SDK.WithdrawalInfo);
     const reference = encodeMidgardSpendInputItem({
-      txId: Buffer.from(claim.info.body.l2_outref.transactionId, "hex"),
-      outputIndex: Number(claim.info.body.l2_outref.outputIndex),
+      txId: Buffer.from(info.body.l2_outref.transactionId, "hex"),
+      outputIndex: Number(info.body.l2_outref.outputIndex),
     });
     const output = ledger.get(reference.toString("hex"));
     const classification = await Effect.runPromise(
       SDK.classifyWithdrawalFromLedger({
-        l2Owner: claim.info.body.l2_owner,
-        l2ValueCbor: Data.to(claim.info.body.l2_value, SDK.Value),
-        eventInfoCbor: SDK.committedWithdrawalValueBytes(claim.info),
+        l2Owner: info.body.l2_owner,
+        l2ValueCbor: canonical(plutusConstrFieldCbor(infoCbor, [0, 2])),
+        eventInfoCbor: infoCbor,
         ledgerOutRef: reference,
         ledgerOutput: output === undefined ? null : Buffer.from(output, "hex"),
       }),
     );
     classifications.push(classification);
     const preRoot = base.header.utxosRoot;
-    if (SDK.withdrawalClaimsValid(claim.info))
+    if (SDK.withdrawalClaimsValid(info))
       ledger.delete(reference.toString("hex"));
     base = await ledgerBlock();
     const eventKey: SDK.EventKey = {
       WithdrawalEventKey: { withdrawal_id: claim.id },
     };
-    withdrawals.push([
-      SDK.committedWithdrawalKeyBytes(claim.id),
-      SDK.committedWithdrawalValueBytes(claim.info),
-    ]);
+    withdrawals.push([SDK.committedWithdrawalKeyBytes(claim.id), infoCbor]);
     mappings.push([
       Data.to(eventKey, SDK.EventKey),
       Data.to(
@@ -253,12 +317,13 @@ export const buildJourneyWithdrawalEvent = async (
   },
 ) => {
   const events = input.withdrawals.map((withdrawal) => {
-    const datum = Data.from(
-      authenticateEvent(withdrawal),
-      SDK.WithdrawalOrderDatum,
-    );
-    requireEventWindow(datum.inclusion_time, input);
-    return datum.event;
+    const datum = authenticateEvent(withdrawal);
+    if (datum.kind !== "Withdrawal")
+      throw new Error(
+        "Withdrawal journey requires an authenticated withdrawal Order",
+      );
+    requireEventWindow(datum.facts.inclusion_time, input);
+    return { ...datum.event, infoCbor: datum.infoCbor.toString("hex") };
   });
   const first = events[0];
   if (first === undefined)
@@ -287,39 +352,47 @@ export const buildJourneyWithdrawalEvent = async (
       ),
     );
     const claims = ordered.map((event, index) => ({
-      ...event,
-      info: {
-        ...event.info,
-        validity:
+      id: event.id,
+      infoCbor: replacePlutusConstrFieldCbor(
+        event.infoCbor,
+        [2],
+        Data.to(
           input.honest && index === 1
-            ? ("NonExistentWithdrawalUtxo" as const)
-            : ("WithdrawalIsValid" as const),
-      },
+            ? "NonExistentWithdrawalUtxo"
+            : "WithdrawalIsValid",
+          SDK.WithdrawalValidity,
+        ),
+      ),
     }));
     return retainJourneyWithdrawals({ ...input, claims });
   }
   if (events.length !== 1)
     throw new Error("Withdrawal journey needs exactly one staged event");
-  let info = first.info;
+  let infoCbor = first.infoCbor;
   if (!input.honest && input.category === "withdrawalMistag")
-    info = { ...info, validity: "NonExistentWithdrawalUtxo" };
+    infoCbor = replacePlutusConstrFieldCbor(
+      infoCbor,
+      [2],
+      Data.to("NonExistentWithdrawalUtxo", SDK.WithdrawalValidity),
+    );
   if (!input.honest && input.category === "fabricatedWithdrawal") {
     const key = first.info.body.l2_owner;
     const diverted = (key.startsWith("00") ? "01" : "00") + key.slice(2);
-    info = {
-      ...info,
-      body: {
-        ...info.body,
-        l1_address: {
+    infoCbor = replacePlutusConstrFieldCbor(
+      infoCbor,
+      [0, 3],
+      Data.to(
+        {
           paymentCredential: { PublicKeyCredential: [diverted] },
           stakeCredential: null,
         },
-      },
-    };
+        SDK.AddressData,
+      ),
+    );
   }
   return retainJourneyWithdrawals({
     ...input,
-    claims: [{ id: first.id, info }],
+    claims: [{ id: first.id, infoCbor }],
   });
 };
 
@@ -367,11 +440,12 @@ export const buildJourneyWithdrawnTransaction = async (
     honest?: boolean;
   },
 ) => {
-  const datum = Data.from(
-    authenticateEvent(input.withdrawal),
-    SDK.WithdrawalOrderDatum,
-  );
-  requireEventWindow(datum.inclusion_time, input);
+  const datum = authenticateEvent(input.withdrawal);
+  if (datum.kind !== "Withdrawal")
+    throw new Error(
+      "Withdrawal journey requires an authenticated withdrawal Order",
+    );
+  requireEventWindow(datum.facts.inclusion_time, input);
   const withdrawn = encodeMidgardSpendInputItem({
     txId: Buffer.from(datum.event.info.body.l2_outref.transactionId, "hex"),
     outputIndex: Number(datum.event.info.body.l2_outref.outputIndex),
@@ -399,7 +473,7 @@ export const buildJourneyWithdrawnTransaction = async (
     );
   const withdrawalBlock = await retainJourneyWithdrawals({
     ...input,
-    claims: [datum.event],
+    claims: [{ id: datum.event.id, infoCbor: datum.infoCbor.toString("hex") }],
   });
   if (withdrawalBlock.classifications[0]?.validity !== "WithdrawalIsValid")
     throw new Error(
@@ -624,4 +698,26 @@ export const buildJourneyRepeatedDeposit = async (
       mode: "identity",
     }),
   };
+};
+
+/** Deliberately repeat the unchanged withdrawal leaf from an earlier settled block. */
+export const buildJourneyRepeatedWithdrawal = async (
+  input: HistoryEventBlockInput & { settled: HistoryPredecessor },
+) => {
+  const entry = input.settled.payload.block_body.withdrawals[0];
+  if (entry === undefined)
+    throw new Error("Settled ancestor has no retained withdrawal event");
+  if (input.settled.header.endTime > input.predecessor.header.endTime)
+    throw new Error(
+      "Repeated-withdrawal history is newer than the predecessor",
+    );
+  return retainJourneyWithdrawals({
+    ...input,
+    claims: [
+      {
+        id: Data.from(entry[0], SDK.OutputReference),
+        infoCbor: entry[1],
+      },
+    ],
+  });
 };

@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   FABRICATED_WITHDRAWAL_VIOLATION_ID,
-  FabricatedWithdrawalAuthenticContentOpening,
   OutputReference,
 } from "@al-ft/midgard-sdk";
 import {
@@ -17,6 +16,7 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import {
   authenticateFabricatedHistoryWitness,
   type FabricatedHistoryEnvironment,
+  fabricatedHistoryOpeningCbor,
   fetchCurrentHistory,
   fetchFabricatedHistoryWitness,
 } from "../fabricated-history-witness.js";
@@ -361,15 +361,7 @@ export const createFabricatedWithdrawalEvidenceAuthority = ({
       });
       const captured = current.captured;
       const currentOpening = captured
-        ? Data.to(
-            {
-              RetainedEventData: {
-                payload: captured.payload,
-                original_assets: captured.originalAssets,
-              },
-            },
-            FabricatedWithdrawalAuthenticContentOpening,
-          )
+        ? fabricatedHistoryOpeningCbor(captured)
         : null;
       const currentKind = captured ? "present_event" : "absent_identity";
       if (

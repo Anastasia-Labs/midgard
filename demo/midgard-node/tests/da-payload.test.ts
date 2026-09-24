@@ -292,7 +292,16 @@ const record = ({
     ),
     depositMembers,
     forcedTransactionMembers,
-    withdrawalMembers,
+    withdrawalMembers: withdrawalMembers.map((member) => ({
+      ...member,
+      [PendingBlockFinalizationsDB.WithdrawalMemberColumns
+        .CLASSIFICATION_REVISION]: 0,
+      [PendingBlockFinalizationsDB.WithdrawalMemberColumns.VALIDITY]:
+        "WithdrawalIsValid",
+      [PendingBlockFinalizationsDB.WithdrawalMemberColumns.VALIDITY_DETAIL]: {},
+      [PendingBlockFinalizationsDB.WithdrawalMemberColumns
+        .CLASSIFICATION_SHA256]: Buffer.alloc(32),
+    })),
     txMembers,
     transitionTraceMembers,
     eventToStepMembers,

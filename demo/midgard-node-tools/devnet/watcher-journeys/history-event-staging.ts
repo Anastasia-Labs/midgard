@@ -8,7 +8,10 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
+  coreToTxOutput,
   credentialToAddress,
+  Data,
+  type LucidEvolution,
   type TxSignBuilder,
   type UTxO,
   walletFromSeed,
@@ -49,6 +52,72 @@ export type HistoryEventCheckpoint = {
   metadata: EventMetadata;
   outcome: "prepared" | "submitted" | "confirmed" | "unknown";
   event?: UTxO;
+};
+
+/** Read the full authenticated list, including actual retained payload bytes. */
+export const readJourneyHistoryEvent = async (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  unit: string,
+): Promise<StagedHistoryEvent> => {
+  const pair = SDK.requireEventHistoryContracts(contracts);
+  const policyId = unit.slice(0, 56);
+  const orders =
+    policyId === pair.deposit.list.policyId
+      ? await Effect.runPromise(
+          SDK.fetchDepositUTxOsProgram(
+            lucid,
+            SDK.eventHistoryDeploymentFromContracts(pair.deposit),
+          ),
+        )
+      : policyId === pair.withdrawal.list.policyId
+        ? await Effect.runPromise(
+            SDK.fetchWithdrawalUTxOsProgram(
+              lucid,
+              SDK.eventHistoryDeploymentFromContracts(pair.withdrawal),
+            ),
+          )
+        : undefined;
+  if (orders === undefined)
+    throw new Error("Journey history policy differs from the deployment");
+  const matches = orders.filter((order) => order.assetName === unit.slice(56));
+  if (matches.length !== 1)
+    throw new Error("Journey event is absent from its authenticated history");
+  return { order: matches[0]!, policyId };
+};
+
+const assertRecordedHistoryFacts = (
+  event: StagedHistoryEvent,
+  signedCbor: string,
+  unit: string,
+) => {
+  const outputs = CML.Transaction.from_cbor_hex(signedCbor).body().outputs();
+  const matches: UTxO[] = [];
+  for (let index = 0; index < outputs.len(); index++) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (
+      output.address === event.order.utxo.address &&
+      output.assets[unit] === 1n
+    )
+      matches.push({ ...output, txHash: "00".repeat(32), outputIndex: index });
+  }
+  const expected = matches[0];
+  if (matches.length !== 1 || expected?.datum == null)
+    throw new Error("Recorded transaction lacks a unique history Order");
+  const node = Data.from(expected.datum, SDK.EventHistoryNode);
+  if (
+    node.payload === "RootContent" ||
+    !("Order" in node.payload) ||
+    Data.to(node.payload.Order.facts, SDK.EventHistoryFacts) !==
+      Data.to(event.order.facts, SDK.EventHistoryFacts) ||
+    !SDK.assetsEqual(
+      SDK.eventHistoryOriginalAssets(node, expected.assets, event.policyId),
+      event.order.originalAssets,
+    )
+  )
+    throw new Error(
+      "Current history differs from the recorded immutable event and funds",
+    );
 };
 
 /**
@@ -143,11 +212,7 @@ const publishEvent = async (
     outputs = await eventOutputs();
   }
   const event = outputs[0];
-  if (
-    outputs.length !== 1 ||
-    event === undefined ||
-    event.txHash !== checkpoint.txHash
-  )
+  if (outputs.length !== 1 || event === undefined)
     throw new Error("Confirmed event differs from the recorded transaction");
   checkpoint.outcome = "confirmed";
   checkpoint.event = event;
@@ -160,11 +225,17 @@ const publishEvent = async (
     input.predecessor.header.endTime
   )
     throw new Error("Event is not after the retained predecessor");
-  return {
-    event,
-    policyId: checkpoint.metadata.unit.slice(0, 56),
-    assetName: checkpoint.metadata.unit.slice(56),
-  };
+  const staged = await readJourneyHistoryEvent(
+    lucid,
+    deployment.contracts,
+    checkpoint.metadata.unit,
+  );
+  assertRecordedHistoryFacts(
+    staged,
+    checkpoint.signedCbor,
+    checkpoint.metadata.unit,
+  );
+  return staged;
 };
 
 /** The retained ledger output owner, derived from its actual seed phrase. */

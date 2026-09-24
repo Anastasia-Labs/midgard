@@ -1,7 +1,12 @@
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
+  CML,
+  Constr,
   credentialToAddress,
   Data,
   datumToHash,
@@ -31,15 +36,21 @@ import {
   type EventHistoryRecipe,
 } from "./history.js";
 import { assertEventHistoryAdmissionFunding } from "./history-funding.js";
-import { prepareEventHistoryPayload } from "./history-payload.js";
+import {
+  prepareEventHistoryPayload,
+  prepareEventHistoryPayloadCbor,
+} from "./history-payload.js";
 import { fetchEventHistoryWitness } from "./history-query.js";
 
 export type EventHistoryBuildContext = {
   readonly lucid: LucidEvolution;
-  readonly applied: ReturnType<typeof applyEventHistoryValidators>;
+  readonly applied: Pick<
+    ReturnType<typeof applyEventHistoryValidators>,
+    "validator" | "policyId" | "address" | "rewardAddress" | "retention"
+  >;
   readonly recipe: EventHistoryRecipe;
   readonly hubReference: UTxO;
-  readonly scriptReference: UTxO;
+  readonly scriptReference?: UTxO;
   /** Explicit funding keeps a publication from accidentally consuming its event nonce. */
   readonly fundingInputs: readonly UTxO[];
 };
@@ -76,8 +87,9 @@ const authenticateContext = (context: EventHistoryBuildContext) => {
     throw new Error("History deployment does not match the authenticated hub");
   }
   if (
-    scriptReference.scriptRef == null ||
-    validatorToScriptHash(scriptReference.scriptRef) !== applied.policyId
+    scriptReference !== undefined &&
+    (scriptReference.scriptRef == null ||
+      validatorToScriptHash(scriptReference.scriptRef) !== applied.policyId)
   ) {
     throw new Error("History reference script does not match its policy");
   }
@@ -86,17 +98,20 @@ const authenticateContext = (context: EventHistoryBuildContext) => {
 /** Separate publication only; callers confirm this exact output before admission. */
 export const buildEventHistoryPublication = async (
   context: EventHistoryBuildContext,
-  payload: EventHistoryPayload,
+  payload: EventHistoryPayload | string,
   reclaimAuth: CredentialD,
 ) => {
   authenticateContext(context);
-  const plan = prepareEventHistoryPayload(payload, reclaimAuth, context.recipe);
+  const plan =
+    typeof payload === "string"
+      ? prepareEventHistoryPayloadCbor(payload, reclaimAuth, context.recipe)
+      : prepareEventHistoryPayload(payload, reclaimAuth, context.recipe);
   if (plan.kind !== "External")
     throw new Error("Inline history data needs no publication");
   const id =
-    "DepositPayload" in payload
-      ? payload.DepositPayload.event.id
-      : payload.WithdrawalPayload.event.id;
+    "DepositPayload" in plan.payload
+      ? plan.payload.DepositPayload.event.id
+      : plan.payload.WithdrawalPayload.event.id;
   if (
     context.fundingInputs.some(
       (input) =>
@@ -119,8 +134,11 @@ export const buildEventHistoryPublication = async (
   return { tx, plan, publicationOutputIndex: 0 };
 };
 
-export type EventHistoryAdmission = {
-  readonly payload: EventHistoryPayload;
+export type EventHistoryPayloadInput =
+  | { readonly payload: EventHistoryPayload; readonly payloadCbor?: never }
+  | { readonly payload?: never; readonly payloadCbor: string };
+
+export type EventHistoryAdmission = EventHistoryPayloadInput & {
   readonly reclaimAuth: CredentialD;
   readonly nonce: UTxO;
   /** Locked funds before adding the authentication NFT; structural ADA is explicit. */
@@ -132,6 +150,25 @@ export type EventHistoryAdmission = {
   readonly validTo: number;
 };
 
+export class EventHistoryPredecessorProtectedError extends Error {
+  constructor(readonly protectedUntil: bigint) {
+    super("History predecessor is still protected");
+    this.name = "EventHistoryPredecessorProtectedError";
+  }
+}
+
+export class EventHistoryPredecessorConflictError extends Error {
+  constructor(
+    readonly predecessor: UTxO,
+    readonly cause: unknown,
+  ) {
+    super(
+      "History predecessor changed before transaction construction completed",
+    );
+    this.name = "EventHistoryPredecessorConflictError";
+  }
+}
+
 /** Build against the current authenticated gap/filler. A retry reruns this
  * function and refreshes indices and time; the nonce and prepublished data stay fixed. */
 export const buildEventHistoryAdmission = async (
@@ -140,17 +177,23 @@ export const buildEventHistoryAdmission = async (
 ) => {
   authenticateContext(context);
   const { lucid, applied, recipe } = context;
-  const plan = prepareEventHistoryPayload(
-    request.payload,
-    request.reclaimAuth,
-    recipe,
-  );
+  if (request.payload !== undefined && request.payloadCbor !== undefined)
+    throw new Error("History payload must have exactly one encoding source");
+  const plan =
+    request.payloadCbor === undefined
+      ? prepareEventHistoryPayload(request.payload, request.reclaimAuth, recipe)
+      : prepareEventHistoryPayloadCbor(
+          request.payloadCbor,
+          request.reclaimAuth,
+          recipe,
+        );
+  const payload = plan.payload;
   const id =
-    "DepositPayload" in request.payload
-      ? request.payload.DepositPayload.event.id
-      : request.payload.WithdrawalPayload.event.id;
+    "DepositPayload" in payload
+      ? payload.DepositPayload.event.id
+      : payload.WithdrawalPayload.event.id;
   if (
-    "DepositPayload" in request.payload !== (recipe.kind === "Deposit") ||
+    "DepositPayload" in payload !== (recipe.kind === "Deposit") ||
     request.nonce.txHash !== id.transactionId ||
     BigInt(request.nonce.outputIndex) !== id.outputIndex
   ) {
@@ -163,6 +206,11 @@ export const buildEventHistoryAdmission = async (
   ) {
     throw new Error("History admission funding cannot contain history tokens");
   }
+  if (
+    !Number.isSafeInteger(request.validFrom) ||
+    !Number.isSafeInteger(request.validTo)
+  )
+    throw new Error("History admission requires safe integer validity times");
   const lower = BigInt(
     lucid.slotToUnixTime(lucid.unixTimeToSlot(request.validFrom)),
   );
@@ -186,7 +234,9 @@ export const buildEventHistoryAdmission = async (
     throw new Error("History event is already admitted");
   const { anchor } = witness;
   if (lower < anchor.node.protected_until)
-    throw new Error("History predecessor is still protected");
+    throw new EventHistoryPredecessorProtectedError(
+      anchor.node.protected_until,
+    );
   let retained: UTxO | undefined;
   if (plan.kind === "External") {
     if (request.externalData === undefined)
@@ -209,7 +259,7 @@ export const buildEventHistoryAdmission = async (
   const inputs = [...context.fundingInputs, request.nonce, anchor.utxo];
   const references = [
     context.hubReference,
-    context.scriptReference,
+    ...(context.scriptReference === undefined ? [] : [context.scriptReference]),
     ...(retained === undefined ? [] : [retained]),
   ];
   requireDistinct(inputs);
@@ -238,11 +288,19 @@ export const buildEventHistoryAdmission = async (
       },
     },
   };
+  const nodeCbor =
+    plan.kind === "Inline"
+      ? replacePlutusConstrFieldCbor(
+          Data.to(node, EventHistoryNode),
+          [3, 0, 2, 0],
+          plan.payloadCbor,
+        )
+      : Data.to(node, EventHistoryNode);
   assertEventHistoryAdmissionFunding(
-    node,
+    nodeCbor,
     { ...request.assets, [applied.policyId + plan.key]: 1n },
     applied.policyId,
-    request.payload,
+    plan.payloadCbor,
     request.structuralLovelace,
   );
   const promotion = anchor.key === plan.key;
@@ -288,6 +346,8 @@ export const buildEventHistoryAdmission = async (
     )
     .validFrom(request.validFrom)
     .validTo(request.validTo);
+  if (context.scriptReference === undefined)
+    tx = tx.attach.Script(applied.validator);
   if (!promotion) {
     tx = tx
       .mintAssets({ [applied.policyId + plan.key]: 1n }, Data.void())
@@ -295,9 +355,14 @@ export const buildEventHistoryAdmission = async (
         applied.address,
         {
           kind: "inline",
-          value: Data.to(
-            { ...anchor.node, next: plan.key, protected_until: protectedUntil },
-            EventHistoryNode,
+          value: replacePlutusConstrFieldCbor(
+            replacePlutusConstrFieldCbor(
+              anchor.utxo.datum!,
+              [1],
+              Data.to(new Constr(0, [plan.key])),
+            ),
+            [2],
+            Data.to(protectedUntil),
           ),
         },
         anchor.utxo.assets,
@@ -305,7 +370,7 @@ export const buildEventHistoryAdmission = async (
   }
   tx = tx.pay.ToContract(
     applied.address,
-    { kind: "inline", value: Data.to(node, EventHistoryNode) },
+    { kind: "inline", value: nodeCbor },
     { ...request.assets, [applied.policyId + plan.key]: 1n },
   );
   if (promotion) {
@@ -325,8 +390,42 @@ export const buildEventHistoryAdmission = async (
       { lovelace: anchor.utxo.assets.lovelace },
     );
   }
+  let completed;
+  try {
+    completed = await tx.complete({
+      coinSelection: false,
+      localUPLCEval: true,
+      // Lucid chooses collateral independently of coinSelection. Restrict it
+      // to this admission's consumed wallet inputs, preserving other nonces.
+      presetWalletInputs: [...context.fundingInputs, request.nonce],
+    });
+  } catch (cause) {
+    // Nothing was broadcast. A disappeared predecessor permits a fresh build;
+    // an unchanged predecessor preserves the original construction failure.
+    if ((await lucid.utxosByOutRef([anchor.utxo])).length === 0)
+      throw new EventHistoryPredecessorConflictError(anchor.utxo, cause);
+    throw cause;
+  }
+  const body = CML.Transaction.from_cbor_hex(completed.toCBOR()).body();
+  const collateral = body.collateral_inputs();
+  const approved = new Set(
+    [...context.fundingInputs, request.nonce].map(outRefLabel),
+  );
+  if (collateral !== undefined) {
+    for (let index = 0; index < collateral.len(); index++) {
+      const input = collateral.get(index);
+      if (
+        !approved.has(
+          `${input.transaction_id().to_hex()}#${input.index().toString()}`,
+        )
+      )
+        throw new Error(
+          "History admission collateral must come from its consumed wallet inputs",
+        );
+    }
+  }
   return {
-    tx: await tx.complete({ coinSelection: false, localUPLCEval: true }),
+    tx: completed,
     plan,
     node,
     anchor,

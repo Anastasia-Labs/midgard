@@ -4382,25 +4382,26 @@ The original owner wiring, canonical incarnation eligibility, producer fencing,
 L2 descendant/published correction, below-anchor recovery and full acceptance
 matrix gates remain open. Main retains its unrelated dirty work.
 
-### Active critical path — production owner integration (2026-09-23)
+### Active critical path — delivery checkpoint (updated 2026-09-24)
 
-This is the current critical-path checklist; preceding checkpoints are historical
-records. Implementation, integrated verification and live verification are
-separate gates. Root owns schemas, ingestion, reconciliation, production
-composition, final integration and the single coordinated live deployment.
+This is the single current critical-path checklist; preceding and subsequent dated
+entries retain historical evidence. The user stopped recovery expansion after the
+current observed-header case. That case passed; all agent implementation is now
+frozen. Root owns consolidation and final verification. See
+[event-history-delivery-checkpoint.md](event-history-delivery-checkpoint.md) for
+the concrete delivered flow, commands, evidence and full-acceptance blockers.
 
 | Gate | Implementation | Integrated verification | Live verification |
 | --- | --- | --- | --- |
-| Exact raw proof data in every affected consumer | Complete in candidate: private proof material, nine source branches, export/file submission/W25 and tooling consumers | Root 56/56 focused proof cases and 19/19 tooling cases pass; independent 139 signed receipts verified. Required node passes. Required emulator: node64 pass, FP583 pass/6 obsolete fault-injection failures; final raw-boundary injection fix passes12/12. Full immutable suite: 4718 pass/2 obsolete funding-datum fixture failures/4 skipped; exact raw datum fix passes4/4. Corrected immutable full suite **4720 passed/4 skipped**; exact required FP emulator **589/589 across117 files**, all source hashes unchanged (`root-raw-proof-funding-fixed-run.json`, `root-required-proof-emulator-run.json`) | Pending |
-| Future accepted observations for owner-driven journey | Builders completed streaming transport in isolated node staging: fixed append/close interface, immutable published points and actual accepted bodies | Transport8/8 plus static checks pass; complete streaming production journey1/1, independent root rerun1/1 and receipt/journal verification pass | Test harness only; real transport acceptance remains separate |
-| Production owner and canonical D/W materialization | Root implemented in staging: byte-to-row conversion, incarnation associations, fixed production materialization/projection, source binding and listen composition; producer/recovery closure remains in progress | Complete deposit → settlement → absorption → invalid refund → valid withdrawal/payout → three reclaims through production owner and native Architecture G. Root independently reran1/1 and verified41 signed receipts,36 cache/SQL checkpoints,8 bootstrap receipts and47 journal applications. Frozen typecheck and required node123/123 pass; required node emulator51 pass/13 ownership-fixture failures. Current stricter ingestion/final-frontier edits require a fresh integrated rerun | Pending |
-| Complete authenticated event interval at final commit | Root implemented ABI-preserving fixed header end within canonical source time+59999ms, known Awaiting lookahead selection, slot rounding and30/20/10s timing reserves; final D/W polling removed from owned commits. Observed coverage remains unchanged | Earlier passing journey did not prove temporal completeness. Narrow timing/source checks7/7 and typecheck pass; focused review closed three findings. Builders fresh applied journey/known-future/refusal assertions in progress | Pending |
-| Producer, submission and confirmation ownership | Root in progress: polling D/W fibers removed from listen; owner coverage enters commit IPC; generation-fenced pending preparation retains exact member incarnation. Confirmation, other writers and recovery closure still under integration | Pending stale-generation, admission/prepare/confirm and restart checks | Pending |
-| L1 rollback and L2 dependent repair | Root: preserve retirement credit, revoke orphan eligibility; exact unpublished descendant reconstruction and actual published-header correction authority | Pending rollback/reinclusion/restart and native/cache/SQL agreement | Pending |
-| Final candidate integration into preserved main tree | Pending preservation-aware integration; unrelated main changes stay intact | Required affected suites and source/compiler/manifest-bound evidence | Pending |
-| One verified deployment and full acceptance matrix | Root centrally coordinates one deployment; no new deployment in this checkpoint | Immutable integrated source and parameters must pass first | Pending deposit/withdrawal journey followed by required failures/races/recovery |
+| Current recovery variant | Complete: authenticated full-range absence/expiry/finality, retained native plan, atomic journal/SQL inverse and exact lease release, cache/Globals before Ready. No further variants started | Checkpoint28 observed-header 1/1 and noEmit PASS. Checkpoint27 dependent spend, descendant and pending service restart PASS; reference case fails before the reference path at duplicate admission | Not run |
+| Deposit AND withdrawal journey | Combined two sorted authenticated UTxO lists and affected validators, SDK, watcher, proof and production-owner consumers are in original checkout | Checkpoint25 actual D/W plus spend/descendant 3/3 PASS; root independently verified 41 signed receipts, exact refund/payout, retirements/reclaims and native/SQL agreement | Not run |
+| Consolidation and preservation | APPLIED: 435 source paths, 413 verified build outputs and one native executable. Other work, Git HEAD/index and both conflicting ledgers retained | Root independently rehashed all 7,937 manifest paths; zero application/preservation mismatches. Original checkout dependency graph verified; noEmit and normal node/worker build PASS | Not applicable |
+| Named required checks | Existing fixture defects corrected without removing assertions | Checkpoint28 node 125/125, emulator64/64, observed1/1 and noEmit PASS; source/dependencies unchanged. Final docs links PASS:543 Markdown/MDX files | Not applicable |
+| Full recovery/crash matrix | Deferred at user delivery boundary; other signed/mixed/multi-header/published/merged/below-anchor shapes remain fenced or unverified | Reference fixture, OS-process crash and additional interruption/race acceptance remain open; service restart is not OS crash evidence | Not run |
+| Final-identity proof/consumer and ABI readiness | Two sorted lists selected; no ABI freeze. Existing contract/proof work retained | Acceptance29 fresh pinned blueprint reproduces delivery; Aiken history195/195, proof noEmit and installed transition13/13 PASS. Ledger regenerated and1,340 receipts independently verified. Other installed families/packages, missing proof polarities and maximum-size/accounting/authentication/eligibility/retirement/deadline/pointer churn gates remain | Not run |
+| Existing durable-state migration and one verified deployment | No DB reset, config change, service start or deployment performed | Initial-schema checksum change requires a reviewed existing-DB path. Docker/provider/config/parameter/manifest/reference-script prerequisites remain open | Both live lifecycles, contention/economics and recovery acceptance remain incomplete |
 
-Current proof snapshot: `artifacts/event-history/parallel/root-raw-proof-funding-fixed-source.json`;
+Historical context (superseded by the delivery checklist above). Proof snapshot: `artifacts/event-history/parallel/root-raw-proof-funding-fixed-source.json`;
 exact checks: `root-raw-proof-checkpoint-run.json` (preserved failure) and
 `root-raw-proof-funding-fixed-run.json` (passing current full-suite run). Independent receipt verification:
 `root-transition-raw-verified.json`. Frozen snapshot tests continue while root and
@@ -4455,3 +4456,1102 @@ rounding findings. The builders agent owns the streaming acceptance extension;
 root retains pending-journal persistence and reconciliation. Native-only restart
 evidence (`builders-native-only-run-1-evidence.json`) remains scoped to its exact
 five-overlay snapshot and does not establish current temporal completeness.
+
+Credential-interruption reconciliation: prior runners are terminal, not restarted.
+`root-fixed-window-checkpoint-run.json` preserves journey1/1, noEmit and required
+node123/123 passes and required emulator61pass/3fail. Root independent receipt,
+owner-journal and signed-header timing verifiers pass (`root-fixed-window-*-verified.json`).
+The three failed emulator cases remain assigned to bounded diagnosis; no broad
+pass is claimed. Signed-intent narrow checks5/5 and consumer checks50/50 passed
+before the latest prepared-body binding. An applied acceptance/response-loss
+fixture is being implemented independently by builders; root retains schemas,
+persistence, reconciliation and integration. Main has advanced to409dfdaa6 on
+`colll78/canonical-v1-watcher-l1-source-checkpoint` with unrelated work preserved
+in `root-resume-preservation-baseline.json`; no staging implementation copied to
+main and no deployment/live run occurred. External main-tree test processes are
+left untouched; further heavy tests are centrally scheduled after checking load.
+
+
+### Resumption reconciliation — 2026-09-24 UTC (2026-09-23 local)
+
+User resumed the full original goal and authorized up to four concurrent agents.
+The previous assessment completed without source integration or deployment.
+Its current staging `pnpm exec tsc --noEmit` returned exit0; the saved earlier
+prepared-hash fixture type errors are superseded by that exact static check,
+not by an applied response-loss result. The response-loss test file did not exist
+at resumption. Prior root test runners are terminal. Six retained run-log hashes
+and all538 files in the root fixed-window node snapshot were independently
+rechecked with zero mismatches (`root-resumption-assessment-evidence.json`).
+Candidate blueprint remains7b7a0abae2db62e3ecb9e26e7907bbc1d4793eeee1a522470cc1c1014d1c8d74.
+
+Current original checkout HEAD is1f3280f93cfc903c2532bb7d041f5a7ff4cdb7aa,
+on colll78/canonical-v1-watcher-l1-source-checkpoint. Its dirty state changed
+from162 to170 entries between read-only assessments; external work is active.
+Candidate and node staging are copied working directories, not Git worktrees;
+only staging's demo/midgard-node is independently copied, while other paths
+link to candidate. Keep those editing lanes. Build immutable combined snapshots
+for verification; final integration into the original is a separate preservation
+step. No directory-wide copy into the original is authorized by an old inventory.
+
+At resumption, independent processes included a fault-proof Vitest parent711385
+with eight workers in the original checkout, node Vitest653756, and Aiken704847
+in an external scratchpad baseline. Leave them untouched; process IDs are only
+a point-in-time record, and root must recheck before heavy tests. The process
+inventory's first parser failed on command names containing spaces; corrected
+parsing completed without acting on any process. Root owns test scheduling.
+
+Current file ownership: root owns schemas, production source, ingestion,
+persistence, T2 reconciliation, integration and this log. retirement_builders
+owns only new node test l1-event-history-signed-intent-emulator.test.ts.
+selection_fixture_fix owns only tests/deposit-flow-emulator-commit-selection.test.ts.
+consumer_acceptance_audit reads only the T2 patch/call context and concrete
+acceptance gaps. integration_inventory reads candidate/original baselines and
+writes only its ignored inventory reports. Every agent must report changed
+files, exact commands/results and remaining gaps; no agent starts emulator/PG
+or heavy suites without the central lane assignment.
+
+Shared interfaces stay fixed: preparedTxHash from the completed transaction body;
+prepared_tx_hash/intended_tx_hash/signed_tx_cbor persisted before provider submit;
+submitted_tx_hash records acknowledgement, while canonical header observation
+may legitimately recover without it. Exact history binding/incarnation and owner
+coverage remain authority. Queue pointer continuation cannot replace intended
+transaction identity. No schema or public SDK interface change is planned for
+the first failure/response-loss checkpoint.
+
+Root applied the minimal T2 source correction: withHistoryWrite surrounds the
+existing per-entry SQL transaction, before its reads/locks and all event/evidence
+mutations. This source change has not yet passed the original T2 emulator case.
+The bounded failure report is audit-fixed-window-failure-resumption.md.
+Unpublished orphan-funded L2 repair remains unimplemented: current materializer
+explicitly refuses readiness. No acceptance gap is closed by refusal alone.
+
+Checks at this resumption: staged node noEmit exit0; runbook validator exit0
+(17 command references,22 recovery drills); retained log/snapshot hash validation
+passed. Exact commands and subsequent checks are recorded under
+artifacts/event-history/parallel/root-resumption-*. Original required failures,
+new signed-intent applied coverage, full recovery/ABI matrix, final integration
+and live acceptance remain open. No on-chain/durable state was reset.
+
+
+### Resumption checkpoint results and native recovery defect
+
+Root created event-history-resumption-checkpoint-1 with 5,075 copied source files
+(identity ab6af414c11ae1f23047a1c7b5c89a14df7f47ab49141b259658e0931b215d72).
+Workspace dependency links point inside that checkpoint; only third-party pnpm
+store content is shared. No source was copied into the original checkout.
+Typecheck passed. All three original failing emulator cases now pass: two seed
+authority-order fixtures and the original T2 recovery case, 3 passed / 4 filtered
+out, 103.40 seconds, one fork and isolated midgard_test_history_resume_1 shards.
+All checkpoint source hashes were unchanged. The prior required suite result
+61/64 is retained; these narrow passes are not a rerun of the full required gate.
+
+The new response-loss fixture failed 1/1 in 45.22 seconds. It independently read
+committed prepared/intended hashes and exact signed bytes before real provider
+acceptance, then verified retained pending intent, canonical acknowledgement and
+SQL local-finalization recovery. Its native durable-root equality assertion
+failed: empty native root versus the nonempty confirmed deposit root. Root and
+auditor traced a production omission: after response loss there is no promotion
+handle, and later successful local finalization finalized SQL without native
+replay. This is not classified as a fixture failure. Logs, actual signed receipts
+and failed assertions remain in root-resumption-signed-intent-{run,evidence}.json
+and root-resumption-signed-intent.log, with unchanged source hashes.
+
+Root implemented private native replay before local finalization. Production
+parent and direct-worker fixture both check exact confirmed header/journal roots,
+accepted or canonically observed status and canonical member associations, then
+recover the native owner outside SQL and recheck authority. Intent alone cannot
+authorize replay. A worker refuses SQL finalization when its supplied native
+durable root differs from the confirmed header. No SDK/schema/native RPC change.
+Bounded source review found no additional defect; applied verification remains.
+
+Builders saved an additive service-restart helper and a new restart fixture: same
+SQL, Level, deployment and transport, fresh Globals/cache/owner/runtime/native
+child; no restart TRUNCATE or initialization. It explicitly excludes OS-process
+crash and pre-acknowledgement pointer continuation. Checkpoint2 (5,077 files,
+identity7f22f124d356647ffbc34132a9f6cac7f3d54213d1bb11905d355240c7c3824f)
+retains the native fix and restart additions. Its typecheck found one missing
+SqlClient provision in the new test's old-owner refusal assertion; builders is
+correcting that fixture while this failed snapshot is retained. No runtime pass
+is claimed for the native fix or restart yet.
+
+Current original integration inventory has a verified Aiken common-ancestor
+bridge and exact baseline content for all34 non-documentation overlaps. The
+combined sample contains16 mechanically clean overlaps,10 text conflicts,7
+original-deleted/task-modified paths,1 path changed during the probe and3 docs
+without a saved copy baseline. Two original watcher files changed during the
+final hash check; the seven deleted paths were already absent at initial capture.
+See integration-resume-inventory.{md,json}. Preserve original additions, removals
+and outside-scope work; rehash before any final application.
+
+Additional current checks: scoped root/agent lint and formatting passed; root
+docs command pnpm --dir docs-site run check:links passed480 Markdown/MDX files;
+git diff --check on this progress log passed. No deployment/live acceptance,
+ABI freeze or complete rollback/repair claim is made.
+
+
+### Resumption checkpoint3 — independently verified journeys
+
+Checkpoint2 remains a failed immutable typecheck record. Builders supplied the
+missing Database.layer only in the new restart test; old-owner refusal assertions
+are unchanged. Root captured checkpoint3 with5,077 files and source identity
+61ca4bac45c4e11bec72dafeca861f4d734bafc423a5eb044563ff23ab33fb19.
+
+Exact checks from its demo/midgard-node, Node22.22.2/pnpm9.15.4:
+
+- `pnpm exec tsc --noEmit`: exit0.
+- `pnpm exec vitest run tests/l1-event-history-signed-intent-emulator.test.ts tests/l1-event-history-signed-intent-restart-emulator.test.ts tests/l1-event-history-streaming-production-lifecycle-emulator.test.ts`:3/3 passed,146.97s, one fork, isolated midgard_test_history_resume_3 shards.
+- Independent signed-CBOR receipt/header/native verification: response-loss8 receipts; service-restart4 receipts; full streaming journey41 receipts,3 admissions/retirements/publications/reclaims, exact12M withdrawal payout. Each decoded hash, signed bytes, fee and execution budget matched its retained receipt.
+- Independent owner/timing verification:504 creating transactions,40 Ready SQL/cache checkpoints,48 journal applications,8 bootstrap replay receipts;3 exact signed header/TTL windows and2 known-future events; unchanged production limits.
+- All5,077 checkpoint source hashes unchanged after execution.
+
+Runner and reports are artifacts/event-history/parallel/
+run-resumption-checkpoint-3-journeys.py,
+root-resumption-checkpoint-3-journeys-run.json,
+root-resumption-checkpoint-3-{signed-intent,restart}-verified.json and
+root-resumption-checkpoint-3-streaming-{receipts,owner,timing}-verified.json.
+Journey log SHA256 fd9b4330cb4af297c215561dc4d32254e5a52eb8a4302ff04c47baa36cdd2ef1.
+Compiler/blueprint identities remain the previously verified pinned build; no
+new Aiken build is claimed. Blueprint SHA256
+7b7a0abae2db62e3ecb9e26e7907bbc1d4793eeee1a522470cc1c1014d1c8d74.
+
+Response loss now demonstrably recovers the native root before SQL finalization
+and reaches mature merge. Service restart recreates Globals/cache/source owner,
+ManagedRuntime and native child while preserving SQL/Level/deployment/transport;
+it is not an OS-process crash. Actual provider acceptance is exercised, but the
+fixture does not execute the production FailureOutput-to-mutation-lease classifier.
+Pointer continuation, cancellation, intent conflict/expiry/non-inclusion, dependent
+L2 rollback repair and full recovery coverage remain open.
+
+Current parallel ownership: builders adds only a new pointer-continuation fixture;
+fixture agent adds only native-local-finalization negative tests after interface
+review; auditor reads only the unpublished-orphan repair boundary; inventory agent
+produces a watcher semantic-port plan. Root retains production changes, shared
+interfaces, integration and all heavy/live scheduling. Required broad checks are
+queued while the original checkout's external fault-proof suite is active.
+No original implementation was overwritten, no deployment was reset, and live
+acceptance plus final integration remain incomplete.
+
+
+### Preservation-aware integration workspace and continuation checkpoint
+
+Root captured current original source separately into
+event-history-original-integration-workspace:7,358 files, identity
+89aa37dda51fb5f8181e12bc81c2661ef19515d9c784f5feafadc1f456ca7a9a.
+Initial capture encountered an inaccessible runtime wallet file under logs; the
+partial root-created copy alone was discarded, runtime logs/env files excluded,
+and the complete retry passed before/after hashes. Original source and state
+were untouched. Exact source/composition records are
+root-original-integration-base-source.json and
+root-original-integration-composition.json. This is a mutable integration lane,
+not the verified release and not an overwrite of original.
+
+Composition applied366 task paths and2 subsequent node additions; preserved226
+original changes/deletions;16 clean text merges still require semantic checks;
+11 text conflicts,7 deletion conflicts,3 missing documentation baselines and the
+generated blueprint required deliberate integration. Root resolved seven node
+conflicts preserving newer credential validation, centralized deployment-script
+catalogue, migrations and test resets. Authenticated-history retention/retirement
+and L1-event/forced-timing entries now extend the central catalogue. The watcher
+agent ports shared scanners/local recovery and meaningful tests onto original
+local origin/publisher APIs, preserving removed global authority paths.
+
+Bounded root-node integration review found a real reset interaction: the newer
+reset helper replays everything after the seed marker, but task history DDL was
+appended below it. Root moved only the unchanged singleton seed block to the end
+of the initial migration. Source review confirms resolution; runtime verification
+remains pending. The catalogue test receives real history fixture contracts; its
+old full-order/count pins still need reviewed update plus added script assertions.
+First node integration noEmit reported only9 missing json-bigint resolutions;
+root linked the exact declared/pinned package and types from the verified store.
+A subsequent integration typecheck and runtime gates are still required.
+
+Checkpoint4 identity65d0e35c0fad5263c9f814678d8416d02cbdf51ab0ee82efa83106f8a2c6804d
+contains5,079 source files. noEmit passed. Its actual signed-intent continuation
+journey passed1/1: authorized operator submits an honest empty child before node
+confirmation; parent outref changes, original header/full Value and intended
+signed body remain unchanged. Canonical observation keeps acknowledgement NULL
+instead of substituting the child transaction hash. Parent native finalization
+restores exactly12M. Independent verifier decoded all5 signed receipts, verified
+actual input/output/pointer/header/empty-child relations and native equality;
+root-resumption-checkpoint-4-continuation-verified.json is passing evidence.
+Scope excludes automatic-worker child scheduling, OS crash and the production
+FailureOutput-to-lease classifier.
+
+The same run's five new SQL authority-negative cases failed during fixture setup:
+missing FK closure in reset. Checkpoint5 corrected reset/setup order but then
+failed all5 because its modeled queue UTxO lacked an authentication NFT. Both
+failures remain recorded; assertions were not weakened, and no negative-coverage
+pass is claimed. Source unchanged in each run. The test author is correcting the
+modeled queue serialization before another narrow immutable run.
+
+Latest docs check: pinned pnpm --dir docs-site run check:links passed488
+Markdown/MDX files. Full D/W measured maxima across41 independently decoded
+transactions:3,394 signed bytes,1,111,140 lovelace fee,3,962,496 memory and
+1,594,730,662 steps; maxima may come from different transactions. Limits unchanged.
+Broad required checkpoint3 node/emulator gates and integrated pinned Aiken build
+remain centrally queued behind the external original fault-proof suite.
+
+Concrete orphan-repair plan is audit-unpublished-orphan-repair-plan.md. Existing
+mempool deltas are UNLOGGED best-effort spend references, not durable consumed
+output preimages; they cannot reverse accepted deposit-funded descendants. Full
+suffix inverse/baseline replay, reference-input dependencies, recovery-only
+requeue, published correction and below-anchor recovery remain implementation
+gates. No refusal-only behavior is counted as completed repair.
+
+
+### Current queued verification and retained original baseline
+
+Required checkpoint3 node gate passed125/125 (7 files,26.84s); log SHA256
+f50b43981c827b7996eab0aff7fd5aa5da583986d694f6b197d72d3d1b299f4c.
+The scheduling guard deferred the emulator step when another external proof run
+started, then resumed only the remaining step after those workers exited; no
+repeat of the passing node gate. Required emulator is currently running in one
+fork with separate test shards. See root-resumption-checkpoint-3-required-run.json.
+
+Original capture bytes are retained in event-history-original-integration-baseline
+against all7,358 captured hashes. A concurrently updated workflow-fit ledger was
+recovered from its exact matching HEAD blob; progress log bytes came from the
+unchanged integration copy. Original source was never replaced. Future final
+application must three-way compare this retained baseline against then-current
+original, preserving later edits.
+
+First watcher port changes six files; preserves all16 candidate local-history
+test groups and all six removed globals. Agent typecheck, scoped format and
+lint passed; no watcher runtime acceptance claimed. Retired reserve/payout and
+malformed observer/spend/forced-terminal assertions not yet relocated remain
+explicit gaps with bounded follow-up owners.
+
+Root captured integrated checkpoint1 with7,494 files, identity
+119316ba4492ff7f4800698b6fad617b36ece1d7e4f418fddd149767bf02f506;
+root-original-integration-checkpoint-1-source.json records every byte. Root node
+typecheck is running on it. Its captured source contains no plutus.json;
+a freshly rebuilt integrated identity is still required. Separately prepared1,226 Aiken source files
+in event-history-integrated-aiken-build-1, identity
+feb05fba9a26a6c6dcdcfd95110a74ee5c3f53b1e3e6044b5f384d0e033081c3,
+without build cache or blueprint. Pinned compiler version and binary hash match
+CI; compiler build awaits the central heavy lane.
+
+Read-only live preflight: Docker default unix socket is unreachable, service
+inactive and no dockerd process. Alternate context is a Windows npipe endpoint.
+Existing deploymentInfo manifest is legacy v2/Preprod, identity
+bbdfca85031de1c9adea89239f51180c1ba804e926f9c66c2b11294b666f7ea5,
+40 contract entries and no history descriptors. It is preserved and has not been
+validated for this source; it cannot supply final history acceptance identity.
+root-resumption-live-prerequisites.json records observations. Service remediation
+and one verified new/resumed deployment remain live prerequisites after lower
+gates; no reset, service start or chain transaction has occurred this resumption.
+
+
+### Required suite and first integrated narrow results
+
+Checkpoint3 required emulator finished61 passed/3 failed in622.76s (8 files),
+all source hashes unchanged. These are different remaining failures from the
+previous61/64 run: original selection/T2 fixes pass. Two failures use synthetic
+T1 stale recovery after an actual signed submission; the new unresolved-intent
+guard correctly refuses abandonment without admitted correction/non-inclusion.
+The third standalone deposit fixture omitted its explicit unowned fixture permit
+for protected UTxO reads. All failed assertions are retained. Root supplied that
+existing fixture context in staging/integration (four reads and startup boundary);
+authenticated timeout-correction fixture work proceeds separately. General signed
+expiry/non-inclusion disposition remains missing production functionality.
+Full log hash7760f606e7ad1047660fdfe5843520988546290d55b642e48bf9b0ebe455dded.
+
+Root integrated checkpoint1 node noEmit passed. Narrow command:
+`pnpm exec vitest run tests/native-mpf-local-finalization.test.ts tests/migration-runner.test.ts tests/migration-locking.test.ts`
+passed16/16 across3 files in34.68s with isolated midgard_test_history_integrate_1
+shards. This includes all five corrected SQL/native-boundary model cases, actual
+migration constraints and independent-pool migration locking; it does not turn
+the native boundary spy into real native replay evidence. Log hash
+d9d06ea0e9b6cd4dae9c23134db37fd368d781759dad2e5bf624f1840945c22a.
+
+First integrated watcher command ran the four planned files with one worker.
+Pure authenticated-history decoder7/7 passed; three suites collected0 because
+the captured snapshot has no onchain/aiken/plutus.json. Record is
+root-original-integration-checkpoint-1-narrow-run.json; no applied watcher pass
+is claimed. All7,494 source hashes unchanged. Root started the prepared clean
+pinned Aiken build with explicit testnet/verbose/all traces, recorded in
+root-original-integration-aiken-build-1-run.json; schema/hash verification awaits
+completion. No test timeout, production limit or assertion was weakened.
+
+New watcher-only rejection fixture is saved separately in mutable integration:
+26 malformed variants with five valid controls, typecheck/lint/format passed;
+runtime and remaining reserve/payout applied negatives are pending. Root's scoped
+integration node lint/format passed. Final integration and live acceptance remain
+incomplete.
+
+
+### Integrated normal blueprint and next bounded checkpoint
+
+Fresh pinned normal command `/home/gumbo/.aiken-fork/bin/aiken build --env testnet`
+completed successfully in clean event-history-integrated-aiken-build-2. All1,226
+source hashes stayed unchanged; source identity
+feb05fba9a26a6c6dcdcfd95110a74ee5c3f53b1e3e6044b5f384d0e033081c3.
+Blueprint hash7b7a0abae2db62e3ecb9e26e7907bbc1d4793eeee1a522470cc1c1014d1c8d74
+matches verified checkpoint3 exactly:1,162 validators,1,881 definitions, zero
+changed script hashes. Root independently verified all10 history definitions,
+complete retained datum, insertion/promotion reference fields and retirement
+parameters. Normal build run/verification evidence is in
+root-original-integration-aiken-build-2-{run,verified}.json. Earlier verbose
+build1 is diagnostic only; its trace-dependent hashes are not deployment inputs.
+No ABI freeze or final integrated acceptance follows from this build alone.
+
+Root copied the verified normal blueprint and four bounded fixture files into
+mutable original-integration only, with before/after hashes in
+root-original-integration-new-fixture-ports.json. New timeout helper and two T1
+callers retain unsafe stale injection as a refusal, then require an actual
+accepted timeout removal and existing authenticated correction observer path.
+Original terminal assertions remain; runtime/typecheck are pending. A separate
+new reserve payout economics fixture has five evaluator-only negative variants
+and submitted honest controls, with no runtime pass yet. Watcher malformed
+retirement coverage remains pending runtime. Agent ownership is now catalogue
+fixture only and read-only T1 review; root owns integration/runtime scheduling.
+
+Process reconciliation found unrelated original proof Vitest and Aiken checks
+active again, plus independent review tests. No additional heavy root tests were
+launched during that overlap. Pending narrow runs will use an immutable second
+integrated snapshot after catalogue expectations and fixture review settle.
+General signed-intent non-inclusion/expiry, orphan-dependent L2 ledger repair,
+final consumer integration and one verified live deployment remain open gates.
+
+
+Integrated checkpoint2 captured7,498 immutable files, identity
+cc73bc02c59926db6ed2e6d4e8e71040c02b6c5e6a10d99e07b7dfb6313bc774.
+Node noEmit FAILED with four unsupported TransactionInputList.to_cbor_hex calls
+in the new payout fixture only. All source hashes unchanged; failure retained in
+root-original-integration-checkpoint-2-typecheck-{run.json,log}. Builders owns the
+precise per-input comparison correction in staging, preserving assertions; no
+runtime on this failed checkpoint is claimed. Catalogue static derivation verified
+all six historical order digests after excluding exactly the six additions;
+full counts534/527/526 and permanent old-projection assertions are retained.
+
+Root read-only final-application preview compared captured original baseline,
+checkpoint2 and current original:7,092 preserve-current,405 apply-task, one
+conflict (generated transition-trace-workflow-fit-ledger.json), no concurrent
+source drift during preview. No original implementation writes occurred. That
+ledger contains measurements bound to differing source/blueprint identities;
+retain both records and regenerate/check final integrated evidence, never merge
+measurement claims textually or discard another task's evidence. Root original
+progress changes are already preserved by the three-way baseline rule.
+Docs links passed496 Markdown/MDX files after current log additions; exact command
+`pnpm --dir docs-site run check:links`, pinned pnpm10.11.0/Node22.22.2.
+
+
+User confirms the parallel Claude cleanup has finished editing original files;
+retain its work during application. Remaining external verification processes are
+separate, observed/read-only; no external jobs were terminated. Exact per-input
+CML comparison remedy was ported into integrated checkpoint3 (7,498 files,
+4f68b23170a71481212315acb6114fb219eaecb169e24800105619699234766a).
+Node noEmit now PASSED with unchanged immutable hashes.
+
+Checkpoint2 watcher runtime is active. Admission/retirement authority25/25 passed;
+block replay currently20/21, rejection fixture4/5. Two diagnosed fixture defects:
+public replay support used full L1 deposit assets including structural ADA; forced
+settlement reference hashed pre-canonical object instead of the exact registered
+serialized bytes. Scoped fixture repairs are authorized, assertions preserved.
+CLI maxWorkers did not override watcher poolOptions: four file workers ran,
+contrary to the intended one. This scheduling correction is explicitly retained;
+next watcher run sets MIDGARD_WATCHER_FORKS=1. No broad root suite was launched.
+Parent lease audit did not establish unsafe subsequent mutation: failed operation
+lease may release, but signed journal guards replacement before provider submit.
+A generic journal-dependent lease block would risk freezing recovery/merge and
+was not added. Applied exact parent/classifier/SQL lease composition is still a
+specific acceptance gap; a separate bounded fixture is being scoped.
+
+
+### Root primary: dependent L2 rollback repair implementation started
+
+Per user priority, root began production recovery work without waiting for remaining
+fixture/catalogue integration. Private node schema adds logged
+`event_history_l2_ledger_receipts`, ordered under the checked Ready authority
+lock. New `eventHistoryLedgerReceipts.ts` captures complete net consumed rows,
+reference dependencies, exact deposit incarnation rows and original canonical
+transaction/CEK payloads before either optimized or fallback acceptance mutation.
+Finish verifies net outputs and complete consumption in the same transaction,
+before the original sidecar scrub. Canonical transaction IDs, inputs and outputs
+are checked against the submitted body. Explicit isolated unowned fixtures do
+not manufacture production inverse receipts.
+
+Root wired markAccepted/markRejected SQL through the existing history write gate;
+the complete validation tick now registers with runHistoryProducer. Recovery
+adds a private drainBeforeRepair callback after producer drain and before SQL;
+production composition uses real WriteBehind.flushNow. Failure cannot open Ready.
+The production-owner lifecycle fixture now provides that real service and includes
+the new FK table in its disposable initial cleanup. No deployment ABI changes.
+
+Initial WIP noEmit found a missing DatabaseError type import and the fixture's
+missing WriteBehind service; both corrected, next noEmit pending. Scoped format
+passed; lint pending. This is implementation in progress, NOT validated rollback:
+actual inverse application/requeue, native accepted-baseline proof, published and
+possibly-broadcast constraints, unsigned candidate disposition, classified
+withdrawal revalidation, receipt retention/pruning and all recovery matrix cases
+remain open. Existing orphan readiness refusal is deliberately still in place.
+Recovery fixtures are delegated against the fixed private begin/finish interface;
+root retains all persistence, source authority, SQL repair and integration edits.
+
+Integrated checkpoint3 narrow results: catalogue8/8 PASS; the two original T1
+failures now2/2 PASS (five unrelated filtered tests not run); standalone original
+deposit submission failure1/1 PASS (one unrelated filtered test not run). These
+narrow filters do not replace required full-suite acceptance. All7,498 source
+hashes remained unchanged. Payout economics FAILED at retirement-output matching;
+agent traced installed dependency realization, not a reason to weaken raw-map
+assertions. Current integration links resolve old Lucid patch despite unchanged
+committed patch/lock; precise local dependency repair is underway. Node's passing
+normal compiler blueprint identity remains separately verified.
+
+Checkpoint2 watcher finished103 passed/2 failed over105 tests; failed fixture
+repairs now authored and typechecked separately, runtime rerun pending. Runtime
+log hash5c72ff51667eedc1e391e6a47f0c37e547114473f4870dc43a8a1fafe6fffd50.
+The4-file run took419.70s; record the actual four-worker scheduling correction.
+
+Live investigation found the installed Windows Docker Desktop backend stopped
+under WSL2. Missing Linux dockerd/service is expected; do not install a competing
+engine. Root can start existing Docker Desktop, recheck Ubuntu integration and
+preserve original provider data mounts. Integrated CLIs/config, genesis pin,
+measured history parameters and DA role configuration remain prerequisites.
+Runbook/skill validators pass. No services, reset, deployment or value submission
+occurred; audit-live-prerequisites-docker-wsl.md records exact nonsecret remedies.
+
+
+### Dependent rollback: first production inverse wired; receipt checkpoint verified
+
+Supersedes the WIP statement above: root implemented eventHistoryLedgerRepair.ts
+and wired it into canonical materialization under the source-owned recovery SQL
+transaction. Complete unpublished accepted batches reverse in descending durable
+receipt sequence; exact after-images/payloads are checked, consumed ledger rows
+and CEK payloads restored, accepted admissions requeued, and derived mempool,
+deltas/address history and unassigned withdrawal classifications invalidated.
+Signed/pending candidates, published/immutable membership, missing baselines and
+image mismatches remain fenced. Auditor found immutable-table coverage missing;
+root added it to baseline coverage and per-batch refusal. This is conservative
+unpublished-overlay repair, not published/native baseline reconstruction.
+
+Immutable resumption checkpoint6 identity
+4692b3dabcc1ac37d0d5c521809a1527b3b7c78172e2097dda37ff7dab61ddff:
+node tsc --noEmit PASS; vitest receipt/recovery/migration files37/37 PASS,
+including14 new receipt cases. All4596 captured source hashes unchanged.
+SQL log SHA25602a361ea56e5928f079a84820667ee6459f5b12b4cf7b8f9f0df2dc7984363f2.
+This run does NOT exercise the inverse application, newly added drain fixture
+or actual-owner dependent rollback. Those fixtures are the next narrow gate.
+
+Root retains persistence/ingestion/reconciliation/final integration. Builders own
+the new SQL inverse fixture and the exact obsolete refusal fixture update.
+Selection agent owns new actual-owner rollback transport/test against fixed
+private harness callbacks; root owns shared helper changes. Auditor owns bounded
+signed-intent evidence review; inventory agent traces live configuration evidence.
+No subagent runs heavy checks or live actions. New implementation stays in staging
+until independently verified and preservation-aware integration completes.
+
+Integrated checkpoint4 identity
+2f9d1d0e21d9d804e492ff28d6873bbe2316517b67956f6d039c6a15ada6874f
+contains repaired watcher fixtures and dependency realization: integration-local
+Lucid/UPLC aliases now match the declared locked patches/vendor. Original checkout
+and shared stores unchanged. Runtime revalidation and independent dependency
+rehashing remain pending; checkpoint3 failed payout evidence remains retained.
+
+Checkpoint7 (cf725067a1803b373f55c3eb7c67fa4519da29fb511e66848502b0c044af45f0)
+noEmit PASS; inverse/drain/journal47 tests:44 PASS/3 FAIL. All source hashes
+unchanged. Journal30/30 and deferred drain5/5 passed; inverse9/12 passed.
+Retained failures: modeled reference-input acceptance lacks Phase B resolved
+bytes; withdrawal assertion expected forward pointer after authenticated undo;
+signed-pending setup inherited a SQL transaction which production correctly
+refuses. Auditor owns those exact fixture remedies, with all safety assertions
+preserved. Log SHA256e3642085f96faa73300a59c865ce7dc6cd63254e77e1b7b544aaf655d347a928.
+
+Root integrated20 rollback production/fixture files into the mutable preservation
+workspace using exact checkpoint3 baselines; original implementation untouched.
+Schema conflict resolved by inserting exact new receipt DDL before the preserved
+relocated singleton seed. root-rollback-integration-result.json binds before/after
+hashes. Runtime validation of that combined state remains pending.
+
+Root independently checked12 repaired aliases,18 critical packages/126 files and
+all14 installed UPLC files against the locked vendor tar. Dependency identity
+c8b1f41f815a074dee92a8a4c444b86a8cd9dd15ba13a3af08e158ce0ec689db.
+Integrated checkpoint4 payout and two complete watcher fixture files now run
+sequentially with explicit package fork count1. This immutable checkpoint does
+not include new rollback source; edits continue separately.
+
+Integrated checkpoint4 watcher rerun26/26 PASS (both complete affected files),
+source and126 dependency hashes unchanged. Payout passed the former byte-preservation
+blocker, then failed an obsolete new-fixture phase expectation: initialization
+carries original withdrawal funds, so it is partially_funded. Root corrected the
+expectation and added exact original/current/remaining Value plus NFT assertions;
+production semantics and all adversarial assertions unchanged.
+
+Integrated checkpoint5 (8eb8c0f97d6021a72137cd6293344a1bd617232ac76dfd203603481277e1ec42)
+noEmit failed TS2742 from duplicated original/candidate Effect installation roots
+after Lucid alias repair; runtime not started. Integration agent is repairing only
+integration-local dependency aliases to the identical locked candidate graph.
+Resumption checkpoint8 (adb02a6ae194dbf3d0a698bcdbc5236d62edabedbd608dbfe005673fd9fd7069)
+noEmit found two new fixture interface errors: factory inferred private socket
+class and nullable generated sidecar. Root exposes the existing transport protocol
+type; author requires actual sidecar bytes explicitly. Runtime not started.
+All failed checkpoints/logs retained; no check or production guard weakened.
+Docs required command passed: pnpm --dir docs-site run check:links,514 files,
+root-resumption-docs-links-after-rollback.log.
+
+Dependency repair settled:22 integration-local Effect-family aliases now use one
+locked installed graph. Root independently compared4790 files across12 affected
+package roots, all byte-identical, identity
+af0000a46055f8493f0efe15f537c70e4c9f94ea1bba2656a37dc6f9c3d1c480.
+TS2742 portability errors gone. Integratedcp6 then caught one modeled source
+binding literal widening; cp7 exposed anonymous socket private-type leakage.
+Both fixture type interfaces corrected without changing checks: typed source
+facts and WebSocketLike return boundary. Preserved failures; cp8 queued.
+
+Next production recovery gap traced concretely: current correction APIs repair
+assignments/journal membership only; confirmed-ledger reconstruction is forward,
+native recover only base-to-candidate/idempotent. No authenticated published
+baseline restoration API, signed-expiry/noninclusion authority or below-anchor
+reconstruction exists in inspected path. Spent-key-only published deltas cannot
+serve as inverse output evidence. Do not mark those gates closed from the new
+unpublished overlay path; root owns that subsequent design/implementation.
+
+Integrated checkpoint8 d7daf4c04beb52a0f6b874fd27f7515857ee8c048d1048adb1c1c6bb9f80db69:
+noEmit PASS; all12 real-SQL unpublished inverse cases PASS,223.50s. Exact log
+root-original-integration-checkpoint-8-repair.log SHA256
+c3b788aaf1b53e7f1ce747d193ec31f25207c7cf1e328f3a3438ad07d7f13736.
+This includes actual admission persistence + retained CEK/reference bytes, whole
+spend-chain reversal/requeue, orphan withdrawal reclassification, same-ID fresh
+incarnation, signed/published/immutable/missing/corrupt evidence refusals and
+late-child-inverse atomic rollback. L1 ancestry is modeled in these SQL cases.
+Actual deployed-validator/source-owner rollback, parent lease and economics
+journeys are now running sequentially; those stronger gates remain pending.
+
+### 2026-09-24 — Integrated checkpoint 9 and dependent-recovery correction
+
+Root retained the original checkout and all prior failed snapshots. Immutable
+integrated checkpoint 9 has source identity
+`517a306bf76dbd1b5c67be0a0076b9d8ab7307fba1bfbcd586e4a261cd172bcb`.
+The centrally serialized Node22/pnpm9 batch (`run-original-integration-checkpoint-9-recovery.py`)
+completed: `tsc --noEmit` PASS; payout economics 1/1 PASS; actual parent-lease
+signed-response-loss journey 1/1 PASS; actual owner rollback 0/1 FAIL;
+`database.test.ts -t 'keeps submit latency isolated while the batch pool is held'`
+1/1 PASS. Source and verified dependency hashes were unchanged. Exact commands,
+timestamps and logs are retained in `root-original-integration-checkpoint-9-receipts-run.json`.
+The complete three-journey invocation therefore FAILED; no full acceptance claim.
+
+The rollback failure is a production readiness gap, not an assertion to relax:
+`mempoolLedger.retrieveSpendable` excludes unassigned deposits. A genuine deposit
+must first have a real confirmed header assignment before an L2 transaction can
+spend it. The current conservative inverse repair refuses those assigned/published
+events. Thus the previously passing 12 modeled SQL inverse cases prove their
+bounded inverse mechanics, not a real orphan-funded L2 recovery journey. The
+positive fixture remains required and failing. No fake header assignment, removal
+of the spendability predicate, or replacement with an unrelated funding scenario
+is authorized as a substitute.
+
+The signed-intent offline auditor independently verified all 8 retained signed
+receipts, one provider submission, distinct leases, exact intent and unchanged
+journal, confirmation and final native/settlement state. Verifier source-loading
+imports were corrected for the immutable source snapshot; all assertions retained.
+See `audit-parent-lease-checkpoint-9-verification.{json,md}`. Payout independent
+verification is still being reconciled against retained complete creator bytes.
+
+The single active critical-path checklist above is updated with this result.
+Native restoration is a prerequisite only; the positive assigned-deposit/L2
+rollback, canonical signed-intent disposition, SQL baseline restoration, final
+original integration, broad suites and live verification remain incomplete.
+
+Assignments: root owns native restore, persistence/ingestion/reconciliation,
+shared interfaces, SQL recovery and final integration. Selection agent owns only
+new native recovery test file after the interface is fixed; original rollback
+fixture is frozen pending real published recovery. Auditor reviews only new native
+primitive races/failure ordering. Builders own offline payout/rollback evidence
+verifiers. Inventory completed read-only native/SQL recovery traces. No concurrent
+heavy test processes remain from checkpoint 9; future checks stay centrally scheduled.
+
+
+### 2026-09-24 — Native primitive applied verification and pending source recovery
+
+Root implemented `restoreCanonicalRoot` in the production native owner: exact
+expected-root CAS, independently loaded retained trie closure, fresh child epoch,
+per-recovery-ID durable plan record and synchronous marker batch, drained-operation
+and generation refusal, and post-marker failure fencing until restart. All native
+operations are tracked across their full asynchronous lifetime. Root captured the
+caller's plan before any await after the auditor found a mutable-alias race.
+This parent-only primitive does not authenticate L1 or authorize SQL rollback.
+
+Root also added a typed pending reconciliation result. Production preflight
+recognizes orphan-associated pending/assigned headers without changing dependent
+SQL; the source journal continues collecting canonical blocks while cache and
+producers remain fenced. On restart, convergence refreshes disposition under
+recovery authority before native preparation. The auditor identified and root
+fixed the initial same-head restart ordering gap. Strict inverse/materialization
+refusals remain intact; no funds are released by this pending path.
+
+Checkpoint10 retained its noEmit failure (TS7030, explicit undefined return fixed).
+Immutable integrated checkpoint11 identity
+`130eda560900ec58c21f9bc9b51481d4c47c1e2b7dbd5fe34cce5cb60d666e70`:
+Node22/pnpm9 `tsc --noEmit` PASS;
+`vitest run tests/mpf-native-canonical-recovery.test.ts tests/mpf-native-owner-service.test.ts`
+16/16 PASS (9 new actual-binary/LevelDB recovery cases +7 existing cases);
+`vitest run tests/history-source-owner-streaming.test.ts`8/8 PASS (transport model).
+All7,508 source hashes and bound dependency hashes remained unchanged. Exact
+commands, logs and timings: `root-original-integration-checkpoint-11-receipts-run.json`.
+New pending-owner PostgreSQL/restart fixture is authored but not included in this
+checkpoint; it still requires centralized applied verification.
+
+Independent checkpoint9 payout evidence verification PASS:22 signed receipts,
+485 complete hash-checked creating transactions, exact12M payout,2 honest evaluator
+controls and5 evaluator-only mutants. The verifier corrected reference-set ordering
+and indexed already-retained source-point creator bytes without weakening exact
+output/accounting/index assertions. It did not rerun UPLC or establish live behavior.
+See `builders-checkpoint-9-payout-verification.json` and verifier handoff.
+
+Required root docs check with Node22/pnpm10:
+`pnpm --dir docs-site run check:links` PASS525 Markdown/MDX files, log
+`root-resumption-docs-links-after-native-recovery.log`. Scoped new production
+native and pending-reconciliation ESLint checks PASS. No deployment, service reset,
+original implementation application or broad-suite completion is claimed.
+
+### 2026-09-24 — Signed range loader, acceptance progression and current ownership
+
+Root owns new `eventHistoryCanonicalCoverage.ts`: under recovery authority, it
+checks the exact current binding/generation/checkpoint, follows the retained
+activation-to-anchor predecessor chain, then the canonical post-anchor applications.
+It verifies complete receipt digests/domains/indexes, exact endpoints/ancestry and
+all transaction-ID/disposition rosters, including failed transactions. It excludes
+retained orphan applications. These are freshly source-bound recovery bytes;
+an imported archive or merely persisted cursor never supplies L1 authority.
+Root added an exact-point, socket-authenticated recovery ledger capture for extra
+protocol addresses, including renewed hub verification, needed to establish the
+canonical native/SQL target independently of old local journal roots.
+
+Builders supplied the isolated signed-coverage classifier and27 authored fixtures.
+Its result is inclusion, pending, or covered absence based on the exact signed
+body hash/TTL, whole contiguous roster and required descendant depth. Queue absence
+and elapsed wall-clock time are never release authority. Root still must establish
+the earliest-inclusion boundary, recheck the source generation, persist the exact
+plan, and implement authorized journal/SQL/native disposition. These transitions
+are not yet implemented; the new components do not release funds.
+
+Immutable integrated checkpoint12 retained the fixture timestamp-field noEmit
+failure. Integration corrected it to the actual schema enum. Checkpoint13 identity
+`c8a047ab00dced1dd10fb89c73e1a268e53d0aec3790be8fcbb276fd40354c27`:
+noEmit PASS and complete production streaming D/W lifecycle1/1 PASS after the new
+source-owner/native changes. Pending-owner fixture failed only on expected point
+shape after its pending/restart assertions: runtime includes height. The fixture
+now checks the exact full current point; assertions were not dropped.
+Checkpoint14 retained four noEmit errors in the new evidence component/fixture;
+source Array.isArray narrowing and closed Effect environments are being corrected
+by their existing owners. No runtime pass for new coverage/pending fixtures yet.
+
+The actual rollback acceptance fixture now uses a genuine deposit header commit,
+canonical confirmation and native local finalization before spending. After
+rollback it requires unchanged signed intent, accepted dependent receipt/native
+root and closed producer/cache gates; it streams actual fork intervals past the
+signed TTL plus configured finality before demanding repair. Fresh incarnation
+must be genuinely recommitted before the queued signed L2 transaction is accepted
+again. This positive remains blocked by the missing production disposition; no
+synthetic assignment or unrelated-funding scenario replaced it. Reference-input,
+multiple-descendant and restart extension follows this first real positive.
+
+Root's next production composition must connect complete current-branch signed
+coverage plus a bound state-queue snapshot to a durable recovery plan, authenticate
+the restored baseline, execute native CAS outside SQL, then atomically dispose of
+journal assignments and invert dependent SQL before cache reload/Ready. On restart,
+a native owner must be opened for this controlled repair without replaying an
+orphaned journal first. Multi-header/published-L2/merged confirmed-ledger cases also
+need complete full-output preimages; the existing delta stores spent keys only.
+These remain explicit implementation gates, not verified behavior.
+
+Live preparation is artifact-only. Existing Desktop/WSL daemon is stopped;
+starting it may auto-resume the legacy operator (`restart: always`). Root controls
+startup containment and deployment, preserving provider DBs/Preprod markers. New
+`live-readiness-root-plan.md`, read-only preflight script and current observations
+record exact commands and prerequisites. No service, reset, deployment, SQL or live
+transaction has been performed. Final original application and broad required
+suites remain open; the single active checklist above remains authoritative.
+
+
+### 2026-09-24 — Current narrow acceptance checkpoint 15 PASS
+
+All current narrow failures are resolved without dropping assertions. Immutable
+integrated checkpoint15 source identity:
+`97c58cc1ff1942c9049fe3939f80009e44d77ad95295eac971dac1e11a22686f`.
+Root ran centrally with pinned Node22.22.2/pnpm9.15.4:
+
+- `pnpm exec tsc --noEmit` — PASS.
+- `pnpm exec vitest run tests/signed-intent-canonical-coverage.test.ts tests/event-history-canonical-coverage.test.ts tests/history-source-owner-pending-recovery.test.ts`
+  —29/29 PASS across3 files. Includes27 signed-body/roster cases, one actual SQL
+  source-bound activation/branch/corruption case, and one complete pending rollback,
+  continued ingestion, same-head restart, current-frontier readiness/source-loss case.
+- Source7,513 files and all three bound dependency sets unchanged before/after.
+- Root docs command `pnpm --dir docs-site run check:links` — PASS527 Markdown/MDX.
+
+Exact commands, timestamps and hashes are retained in
+`root-original-integration-checkpoint-15-receipts-run.json`; test log SHA256
+`1242bfb422090f1151c290ce2f8fbb9026255a1f069531e2bd8b1a31c43e1e70`.
+Root independently parsed the live-preflight script without executing environmental
+commands. No heavy test job remains from checkpoint15. Earlier failed snapshots
+and logs are retained, not relabeled as passing.
+
+This is a verified foundation milestone, not completion of dependent L2 rollback.
+The revised actual orphan-funded positive fixture is frozen in node staging at
+`268f20cf414704793fd4039baba6f341944814cd4a1f76ef14c61c4ace7437aa` and is not
+in checkpoint15. Root must still implement durable signed-header disposition and
+atomic native/SQL/cache recovery before it can pass. The strict gate currently
+keeps pending headers and funds fenced. New exact-point recovery capture is
+compiled, but its use to authorize a state-queue/native recovery target remains
+unverified. Original implementation application, required broad/applied fit gates,
+ABI readiness, full adversarial matrix and one-deployment live acceptance remain
+open. No unrelated proof gap or live gate is closed by these results.
+
+### 2026-09-24 — Production signed-header recovery implementation in progress
+
+Root added a durable SQL/native recovery plan and the production pending-repair
+hook. The operation ID binds the immutable header, signed bytes, incarnation-bound
+journal digest and native source/target roots; refreshed canonical evidence can
+resume the same operation after an interrupted native CAS. Applied SQL receipts
+are retained. The source owner repeats bounded reconciliation after pending
+preparation and never uses callback success alone to publish Ready.
+
+The initial production caller handles a deposit-only, locally finalized header
+whose admissions are all orphaned, whose exact original confirmed queue root is
+freshly restored at the current checkpoint, and whose signed transaction is absent
+through its complete eligible range, finite TTL and configured descendant depth.
+It verifies the retained confirmed SQL root, persists intent, restores native bytes,
+then atomically reverses unpublished dependent receipts, clears the exact retired
+assignment, retains signed journal/membership evidence and reconciles projection.
+Published L2/merged baselines and broader signed-submission shapes remain fenced.
+This implementation is staged and NOT yet typechecked or accepted end to end.
+
+Existing agents have concrete non-overlapping follow-ons: builders own signed
+coverage boundary fixtures and durable plan SQL fixtures; rollback owner owns exact
+historical state-queue capture and pending-hook/producer-drain fixtures; integration
+owner supplied the isolated strict SDK queue-target validator and22 cases; live
+owner supplied offline trusted genesis pin provenance and root-run containment
+commands. Root owns all production/SQL/runtime edits and final application.
+No broad inventory/audit restarted. Immutable checkpoint16 is being prepared for
+central narrow verification while independent fixture work continues separately.
+
+Live scripts are preparation only. Normal Desktop startup cannot guarantee a
+zero-execution window for the old restart:always producer before the daemon API
+responds. No services/configuration/deployments/live transactions changed. The
+independently derived Preprod genesis candidate is retained with image/config
+provenance; actual running-provider comparison remains a live gate.
+
+### 2026-09-24 — Integrated checkpoint17 narrow PASS; actual journey still open
+
+Immutable integrated source identity
+`acd5a76995a903a00cb57cb75965bf21ea2297da4647079d8eaa59744631dba6`:
+root ran pinned Node22/pnpm9 `pnpm exec tsc --noEmit` PASS and
+`pnpm exec vitest run tests/signed-intent-canonical-coverage.test.ts tests/history-recovery-state-queue.test.ts tests/history-source-owner-pending-recovery.test.ts`
+PASS62/62 (39 signed boundary/expiry,22 strict queue-target,1 actual owner hook/drain/
+restart case). Source7,518 files and all bound dependency sets unchanged.
+Logs/results: `root-original-integration-checkpoint-17-receipts-run.json`;
+coverage log SHA `b2a03b15338e62e1c177a1ae9ac9c3f48b43cfdcc97bada0fd13b570051563b5`.
+
+Then, serially on that SAME immutable identity,
+`pnpm exec vitest run tests/l1-event-history-owner-rollback-emulator.test.ts`
+FAIL at first genuine commit: its historical commit end1788741024000 predates
+scheduler refresh window1788744963000. No recovery-pass claim. Fixture owner is
+correcting actual timing/source setup while preserving production timing checks.
+Evidence retained in `root-original-integration-checkpoint-17-actual-rollback-run.json`
+and its rollback evidence/log; no heavy job remains from these two runs.
+
+A bounded review found a crash/source-supersession safety defect before further
+acceptance: after native restore but before SQL disposition, re-canonicalized origins
+could evade orphan-only pending detection. Root now makes every durable prepared
+recovery plan independently gate Ready, even with no current orphan. This new guard
+is staging-only after checkpoint17; component regression is being authored.
+Resolving a changed branch's outstanding plan remains an explicit liveness gate,
+not authority to cancel/erase its native obligation. Full production interruption
+and restart evidence is still required; isolated native/SQL/hook passes do not
+substitute for that journey.
+
+Root independently reran the offline image/config/provenance-linked Preprod pin
+derivation, exit0 (`root-preprod-pin-derivation.log`). Expected candidate remains
+`f21798e4d0efc1747999aaa74257d08e8f24a268b800e7d18210557e52f7a759`.
+Actual running-provider identity/result comparison and all live acceptance remain
+unperformed. No services or runtime configuration were changed.
+
+### 2026-09-24 — Durable SQL checkpoint18 PASS; first actual worker prerequisite
+
+Checkpoint18 immutable source identity
+`5d7f480ee587de7689a2f20658a62acba994d014257eade5da5913aa9eb42d52`:
+pinned `pnpm exec tsc --noEmit` PASS, followed serially by
+`pnpm exec vitest run tests/event-history-recovery-plans.test.ts tests/event-history-ledger-repair.test.ts`
+PASS32/32 (20 durable plan cases and12 unchanged inverse-repair cases).
+Includes generation0, immutable plan/caller snapshots, refreshed evidence,
+prepared obligation despite canonical origins, authority/generation rejection,
+transactional repair failure and idempotence. Complete source7,519 files and all
+three dependency sets unchanged. Plan log SHA
+`12db86326b12285b6a9ed2b57262291e682d090b3c0c66fa57a91dfd597d6927`.
+
+Root added bounded Globals publication after successful SQL commit in the same
+cancellation mask: exact confirmed queue/boundary, submission/local-finalization
+flags, queue count and stale wake entries. Target decoding/serialization happens
+before native mutation. Source supersession can keep readiness closed but cannot
+skip the postcommit in-memory refresh. Process restart rebuilds these refs.
+The bounded review found no further concrete defect; runtime interruption evidence
+remains open. Fixture now asserts these globals against fresh queue state.
+
+Checkpoint19 identity
+`c970d2bc0cb71dccd71b3f39ad19aae0d52a5d13812dccc8340bbd77adc95b26`:
+noEmit PASS. The corrected actual rollback journey now passes its original real
+signed deposit header commitment/confirmation/native finalization, then FAILS at
+first L2 validation because the immutable source snapshot excludes compiled
+`dist/validation.js`. Failed log SHA
+`1c1b8d76728b4505ae929aab7afe2144506d15bfbca74db251a2b21bf52c7d1d`.
+This is not an accepted dependent rollback or permission to substitute the worker.
+Integration owner is preparing an isolated declared-toolchain core/validation/
+actual-worker build; root will execute centrally, bind every output to exact source
+and dependencies, and include it before sealing the next immutable snapshot.
+
+Root independently ran actual lossless genesis helper parity against checkpoint19,
+exit0, preserving a separate `root-preprod-pin-node-parity.json`; expected pin and
+2808 canonical bytes agree with the offline publisher/config derivation. Original
+agent parity artifact retained. Required root docs command after these changes
+PASS530 Markdown/MDX (`root-resumption-docs-links-after-dependent-recovery.log`).
+No service/deployment/live action or original implementation application performed.
+
+### Recovery checkpoint21 failure and checkpoint22 schema correction (2026-09-24)
+
+Checkpoint21 source identity `17e5f2f6efbe24e4e089542188a160dfbdc7f5c8bb3128755856f046bfc07624`
+passed node noEmit. Actual-owner acceptance failed after the genuine compiled
+validation worker accepted the orphan-funded spend and native recovery restored
+R0. Failure diagnostics retained a prepared recovery plan and Recovering authority;
+SQL inverse did not commit. Log SHA256
+`86033d2affc591ec1f372182c57e57025d1a75ccfcf042bfe4882f256837b5ea`.
+
+Root identified incompatible archived-membership foreign keys to live event rows.
+Archived signed headers must survive live-row removal and later public-ID reuse.
+Staging and integration now bind member IDs to retained binding/incarnation/event
+triples; pair MATCH FULL and nullable-association checks remain. This is not release
+authority: signed coverage, canonical queue, native CAS and owned SQL gates remain.
+Checkpoint22 contains 7,932 files including the 413 verified normal runtime outputs;
+identity `7a64e28551a9f6de08edf34ca7d4a7798e35603e265282594d62a49dcecf6f61`.
+Central noEmit and actual-owner rerun are active. Retired-member PostgreSQL regression
+and actual reference/descendant fixture work continue separately. No original
+implementation application, deployment or live acceptance occurred. Full recovery,
+ABI readiness, original integration and live gates remain open.
+
+Checkpoint22 terminal result: noEmit PASS; actual rollback FAIL during the fresh
+recommit fixture assertion (native root already reflected the submitted header,
+while fork synchronize still expected R0). The native/SQL inverse, durable applied
+plan, exact admission/payload requeue, cache equality and recovered Globals checks
+were reached and passed before this failure. Log SHA256
+`9cdbe4940aeea7dd896a5e6358e16cf6aa4aaadc45c5beb76759fd534b61ef55`;
+source and all dependency manifests unchanged. Fixture owner is correcting the
+expected-root transition without dropping assertions. Full positive recovery is
+not yet claimed. Read-only exact schema review found no integrity defect; existing
+DBs with previous migration1 checksum refuse migration and require an explicit
+deployment/upgrade decision. Required docs links check PASS (531 files), log
+`root-resumption-docs-links-after-retained-membership.log`.
+
+Checkpoint23 central run started on immutable identity
+`329c9ab7b5090efc63dc4143863f0d234a49c5be861adcb08af5b232c7de3702`
+(7,933 files). Root independently reviewed/applied the fixture-only expectation
+patch: derive the native expectation from the retained signed transaction's exact
+queue header, verify body hash/NFT/header hash/root against journal, then preserve
+the native diagnostic equality before synchronization. Included ten PostgreSQL
+retained-member cases (both event kinds); root caught and agent corrected the
+new recovery-plan FK table omission in test cleanup. noEmit PASS; actual-owner
+and retained-membership runtime checks active serially in one fork. Broader
+reference/descendant fixtures and cancellation-across-COMMIT component coverage
+continue in separate owned staging files. No production migration reset or live
+service change.
+
+### Production dependent recovery first positive — checkpoint23
+
+Central noEmit PASS and runtime11/11 PASS (one actual-owner rollback + ten retained
+member SQL cases). Command: pinned Node22/pnpm9 `exec vitest run
+tests/l1-event-history-owner-rollback-emulator.test.ts
+tests/event-history-retired-membership.test.ts`; runtime log SHA256
+`de70d7786cdc5463f316785ecfae8a8ec2ad7be06dc683fb43899756f9f5305b`.
+All source/dependency hashes unchanged. The emitted journey reaches complete:
+real original signed header/native finalization, actual dependent L2 acceptance,
+signed-TTL and finality fencing, retained native restoration and atomic SQL inverse,
+cache/Globals agreement before Ready, fresh same-public-ID incarnation, real
+recommit and reacceptance of the same signed L2 transaction. Modeled source fork
+and emulator ledger remain explicit limitations. Independent offline verifier
+initially failed due mixed ESM/CommonJS Constr instances; failed log retained,
+artifact import fix delegated with every assertion preserved.
+
+Stable milestone checkpoint24 is active (7,934 files; source identity
+`3591688845574c778528b7ed799c6635972e53b5adbb5a697d2d392c25731a1c`):
+node noEmit, real-SQL recovery cancellation/negative cases plus full production
+D/W streaming journey, required `test:tx-prep:node` and
+`test:tx-prep:emulator` scheduled serially. Three coordinator component cases
+replace only native RPC, not SQL/authority/cache; they do not establish real
+process-crash or exact post-COMMIT supersession acceptance.
+
+Root recovery remains incomplete for other signed/non-finalized journal states,
+multi-header or mixed canonical/orphan published members, merged immutable
+confirmed-ledger reconstruction, changed-branch prepared-plan disposition and
+below-anchor recovery. Reference-input/descendant/restart acceptance remains open.
+Original checkout implementation and one verified live deployment are still gates;
+no service mutation, state reset, deployment or ABI freeze occurred.
+
+Root independently reran checkpoint23 offline verifier PASS, preserving failed
+initial verifier log. Verifier fixes bind the ledger spend outref to decoded
+public event transactionId/outputIndex (matching production deposits.toLedgerEntry),
+while retaining both distinct hashed ledger_tx_id/tx_id assertions. No proof,
+identity, original-Value, signature or native/SQL checks were removed. Evidence
+SHA256 `79624f39ea14bce341a030b77ba601ad318e94bfed36e6bf6d2c001b9254b618`;
+report `root-original-integration-checkpoint-23-rollback-verified.json`.
+
+Checkpoint24 noEmit PASS; production D/W plus ordering4/4 PASS (log
+`ace195710c0218aca282abf3b9f59727c6ec6f604923f3ee13c5a77dd7671283`);
+required node125/125 PASS (log
+`aacfc42479d50940cd6226416b291c174ba46ed036bf7e83a0bce4a9e5528207`).
+Required emulator still active and has a concrete merge-payout fixture failure;
+exact diagnosis delegated, no broad-suite pass claimed.
+
+Descendant fixture captured independently in checkpoint25 (7,936 files, identity
+`5c323772b8f825406afe2ebabb70c659c768f19a2a20d7cbe1fe96c22af00f30`).
+Central execution queued after cp24 finishes; includes unchanged original spend
+through extracted helper, genuine signed child rollback/reacceptance, and fresh
+D/W evidence emission (cp24 D/W passed but its optional JSON env was unset).
+Reference fixture continues in staging while frozen descendant is tested.
+
+Checkpoint24 terminal required emulator result:63/64 PASS, one model-fixture
+failure (`event_history_authority`: Current authenticated history producer is
+required; Missing producer permit). Log SHA256
+`ad5e891e7ad7b918979742d46d1ccb7744d96108b88be41b757f39421296fd2b`.
+All source/dependency hashes unchanged. Agent corrected only direct modeled
+markAccepted provisioning in merge-payout test using its existing explicit fixture
+context; no production ownership bypass or assertion changes. Central rerun pending.
+Checkpoint25 now active after cp24 terminal; source remains isolated.
+
+Root next production slice (STAGING ONLY, not integrated/runtime verified):
+`prepareRetainedNativeHistoryRecoveryPlan` fixes the interface for choosing drained
+native R0/R1 and preserving a matching prepared operation across prior native CAS
+and newer evidence/generation. Actual caller stages observed deposit-only recovery
+before any local-finalization job/DA state. Both signed absence and exact fresh
+queue/confirmed SQL baseline remain mandatory. It refuses any other native root,
+keeps partial finalization fenced, and atomically CASes exact prior header status
+to abandoned before inverse (failure rolls it back). Existing journal/member
+archives remain; the native operation persists before native mutation. Root ESLint
+and formatting PASS. Builders added13 realSQL selection/retry/refusal cases while
+preserving the previous20; runtime pending. Separate actual observed fixture is
+assigned, with promoted R1 first and response-loss R0 explicitly still a gate.
+
+### User-directed delivery checkpoint boundary (2026-09-24)
+
+User explicitly requested finishing the current observed-header recovery case,
+then no further recovery variants. Root is consolidating candidate, node staging
+and preserved original into a concrete delivery checkpoint, with remaining full
+acceptance blockers enumerated separately. No R0 response-loss or additional
+recovery implementation will be started. Existing descendant/reference/restart
+fixtures are preserved; their current verification results will be reported.
+
+Checkpoint25 noEmit and original-spend/descendant/full-DW journeys3/3 PASS;
+source/dependencies unchanged. Root independent streaming owner and raw-receipt
+verification PASS, plus repeated original-spend rollback verifier PASS.
+Runtime log `ea8d146e5620d4b1cf31b4e5443a21a943740fdb73506b91c916e0b7885c08f6`.
+Checkpoint26 stopped at typecheck: payout model helper signature omitted BatchSql
+in its context; restored original scoped layers with local explicit fixture permit,
+no cast or assertion change. Failed log retained
+`c75e5334897b663e335f7c54c2ff8183c145c81102757b7006a5664a262ab382`.
+Checkpoint27 identity `20d34fb70c3ed97462443d1f2cf21dcd67b605a6118e88cc9405b67b467b009e`
+(7,937 files) passed noEmit. Current observed fixture reached recovery/retained
+signed evidence/root/SQL/cache/Globals assertions then failed at final WriteBehind
+service read because h.command tried to synchronize the sealed original recorder.
+Owner is fixing only that final read, preserving depth/Ready assertions. Remaining
+central checks continue on the immutable snapshot.
+
+Delivery preview against cp27: sole source/evidence conflict is the preexisting
+transition-trace workflow fit ledger. Original and candidate versions will remain
+separately retained; current measurements cannot be text-merged. Ninety-five other
+conflicts are regenerated dist outputs, not divergent authored source. Root will
+archive prior outputs before applying verified replacements. Original progress log
+and unrelated work remain preserved. A different preexisting native executable
+will be retained in backup before installing the verified checkpoint executable;
+no native durable data or environment/deployment state will be reset.
+
+### Delivery checkpoint28 applied (2026-09-24)
+
+Current observed-header recovery passed1/1; its depth and Ready assertions are
+unchanged. Recovery development is stopped per the user's delivery boundary.
+Checkpoint28 identity `c3ede1c6b0020e1e8c006d1fd0320c0116e435520bee1ac07563806a5e20a776`
+contains7,937 files. Root applied435 source paths,413 verified generated outputs
+and one verified native executable to the original checkout, preserving7,087 paths
+and the original conflicting fit ledger, with both versions archived separately.
+No source conflict was silently overwritten; no Git stage/commit or state reset.
+Independent full-manifest rehash found zero mismatches and unchanged HEAD/index:
+`root-delivery-checkpoint-28-independent-application-verification.json`.
+Application report and prior-byte backups are retained alongside it. Required
+node125/125 and noEmit passed; required emulator verification continues centrally.
+The reference fixture still fails on duplicate admission before reference-only
+recovery and is explicitly deferred, not weakened or removed.
+
+Checkpoint28 terminal verification PASSED: noEmit, current observed1/1, required
+node125/125 and required emulator64/64. No source/dependency hash changes.
+Emulator log SHA256 `b09994b04608b06aa74a1de2502eb210bbc56330be17aed7deccd885a976385c`.
+The delivery-only integration owner is aligning original installed package aliases
+and generated wrappers with the verified candidate dependency set; source, locks,
+package stores and recovery implementation remain frozen. Root will verify the
+original checkout's typecheck/build after this bounded environment application.
+
+### Delivered original-checkout verification (2026-09-24)
+
+Root independently ran pinned Node22.22.2/pnpm9.15.4 `exec tsc --noEmit` and
+`run build` in original `demo/midgard-node`: both exit0. The normal build covers
+node CLI, all worker bundles and declarations; previous node dist files are backed
+up. Build log SHA256 `d418ebd8ba9dfa3a81e9781e248fadbb44bc5cda7a96d71643bf582f6a849d84`.
+Dependency owner applied245 aliases/107 wrappers with backups;42 workspace aliases
+remain original-local. Static declared graph650 roots: no missing required deps or
+old-store singleton split. Candidate package store remains an installed dependency;
+keep workspaces until separately verifying a standard frozen install. No package
+stores, source, lockfile or service state changed during dependency realization.
+All implementation agents are idle; no more recovery variants are underway.
+Full original acceptance remains incomplete for the seven explicit gate groups in
+`event-history-delivery-checkpoint.md`; current checkpoint is uncommitted and
+keeps the user's Git index/history intact.
+
+Required root command `pnpm --dir docs-site run check:links` PASS (exit0),543
+Markdown/MDX files. Pinned Node22.22.2/docs pnpm10.11.0; exact argv and log hash
+retained in `root-delivery-docs-links.json`. No live services, deployment or
+transactions were started. Checkpoint delivery is complete; full protocol
+acceptance is explicitly not complete.
+
+### Post-delivery acceptance continuation29 (2026-09-24)
+
+Previous goal turn classified as progress: checkpoint28 source applied and
+independently verified, original dependency alignment/typecheck/build completed,
+required node125/125 and emulator64/64 plus docs543 passed. Full goal remains
+incomplete. The user boundary forbidding further recovery variants remains in
+force. Root now takes the available acceptance-only step: fresh pinned normal
+Aiken build and installed transition-trace lifecycle/fit verification against a
+copy of checkpoint28. Only the suite's generated measurement ledger/blueprint are
+permitted output changes; all implementation inputs remain immutable. Old ledger
+versions stay archived; no replacement claim until the complete suite passes.
+Auditor reviews only that suite's concrete assertion coverage. No service,
+deployment, DB migration or new recovery implementation is authorized by this
+continuation plan beyond existing scope.
+
+Acceptance29 terminal evidence: fresh pinned `aiken build --env testnet` PASS,
+1,162 validator entries and exact delivered blueprint SHA256 unchanged; proof
+package noEmit PASS; complete installed transition-trace suite13/13 PASS. Only
+the expected generated fit ledger changed; no implementation input changes.
+A separate pinned Aiken invocation selected all14 history test modules and
+verified the exact195 expected names:195 passed,0 failed (all unit tests).
+Root independently decoded1,340 signed receipts and matched body hashes, fees,
+redeemer budgets and ledger entries. Original conflicting ledger was atomically
+replaced only after checking its prior hash, with both prior versions retained.
+New ledger SHA256 `66acac392bb0da73a66afb89e56ab532c4361362a05e53d73fefe6d49b117642`.
+Run/evidence/application records are `root-delivery-acceptance-29-*.json`.
+
+The bounded auditor review prevents overclaiming: this installed suite lacks
+arbitrary absent IDs, substituted content, honest eligible withdrawals, direct
+wrongful-challenge refusal and retired-ID reuse; its real emulator submissions
+still use fixture catalogue/binding/header assumptions. Timing covers selected
+start/end boundaries. Original deposit Value is checked as90M from95M total minus
+5M structural funds, but not multiassets. Existing source tests were neither
+weakened nor altered. No recovery variants, service operations or live acceptance
+were added. Remaining gates stay in the single active checklist and delivery report.
+
+### User-authorized checkpoint commit and push (2026-09-24)
+
+Staged the combined source/cleanup/docs/generated blueprint and vendored source
+receipts; excluded the untracked `.env` backup and ignored local artifacts.
+Installed and ran the normal pre-commit hooks without bypasses: PASS. Formatting
+changed27 files, including one sorted import. Fresh isolated pinned Aiken normal
+build after formatting reproduced the delivered blueprint exactly. Original
+node noEmit, required node125/125 and watcher original-asset projection tests
+passed. Expected unified-patch blank context whitespace is retained in the
+integrity-bound vendored patch; all Aiken source trailing whitespace normalized.
+Commit message explicitly records incomplete full acceptance and references the
+delivery report. No recovery variants, deployment or live transactions added.

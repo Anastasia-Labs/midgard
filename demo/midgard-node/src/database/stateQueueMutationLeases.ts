@@ -202,16 +202,15 @@ export const tryAcquire = ({
     const sql = yield* SqlClient.SqlClient;
     const token = `${holder}:${randomUUID()}`;
     yield* expireTimedOutLeases;
-    const expiresAt = new Date(Date.now() + Math.max(1, ttlMs));
-    const rows = yield* sql<{ [Columns.TOKEN]: string }>`INSERT INTO ${sql(
-      tableName,
-    )} ${sql.insert({
-      [Columns.TOKEN]: token,
-      [Columns.SCOPE]: SCOPE,
-      [Columns.HOLDER]: holder,
-      [Columns.STATUS]: Status.Active,
-      [Columns.EXPIRES_AT]: expiresAt,
-    })} ON CONFLICT DO NOTHING RETURNING ${sql(Columns.TOKEN)}`;
+    const normalizedTtlMs = normalizeTtlMs(ttlMs);
+    // Acquisition, renewal and expiry share the database clock.
+    const rows = yield* sql<Entry>`INSERT INTO ${sql(tableName)} (
+      ${sql(Columns.TOKEN)}, ${sql(Columns.SCOPE)}, ${sql(Columns.HOLDER)},
+      ${sql(Columns.STATUS)}, ${sql(Columns.EXPIRES_AT)}
+    ) VALUES (
+      ${token}, ${SCOPE}, ${holder}, ${Status.Active},
+      NOW() + (${normalizedTtlMs} * INTERVAL '1 millisecond')
+    ) ON CONFLICT DO NOTHING RETURNING *`;
     if (rows.length !== 1) {
       const activeLease = yield* retrieveActive();
       return {
@@ -220,7 +219,7 @@ export const tryAcquire = ({
       };
     }
     yield* Effect.logInfo(
-      `Acquired state-queue mutation lease token=${token},holder=${holder},expires_at=${expiresAt.toISOString()}`,
+      `Acquired state-queue mutation lease token=${token},holder=${holder},expires_at=${rows[0]![Columns.EXPIRES_AT].toISOString()}`,
     );
     return {
       _tag: "Acquired" as const,

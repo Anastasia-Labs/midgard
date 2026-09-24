@@ -55,6 +55,7 @@ import {
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
+import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const testReferenceScriptAuthPolicy = (
@@ -225,7 +226,10 @@ describe("contract deployment info", () => {
     "builds explicit script entries for the current validator bundle",
     () =>
       Effect.gen(function* () {
-        const contracts = yield* AlwaysSucceedsContract;
+        const contracts = withRealEventHistoryForTest(
+          yield* AlwaysSucceedsContract,
+          { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+        );
         const authPolicy = testReferenceScriptAuthPolicy(
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -334,7 +338,10 @@ describe("contract deployment info", () => {
 
   it.effect("can attach fraud-proof catalogue deployment metadata", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -360,7 +367,10 @@ describe("contract deployment info", () => {
     "requires the matching role token before recording a ref script",
     () =>
       Effect.gen(function* () {
-        const contracts = yield* AlwaysSucceedsContract;
+        const contracts = withRealEventHistoryForTest(
+          yield* AlwaysSucceedsContract,
+          { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+        );
         const authPolicy = testReferenceScriptAuthPolicy(
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -394,7 +404,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects duplicate live UTxOs for one reference-script role", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -433,7 +446,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects a role token attached to the wrong reference script", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -476,7 +492,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects a non-unit reference-script role-token quantity", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -516,7 +535,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects a role token without an attached reference script", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -556,7 +578,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects a reference UTxO bundling multiple auth-role tokens", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -620,7 +645,10 @@ describe("contract deployment info", () => {
     "authenticates every canonical V1 manifest field in its identity",
     () =>
       Effect.gen(function* () {
-        const contracts = yield* AlwaysSucceedsContract;
+        const contracts = withRealEventHistoryForTest(
+          yield* AlwaysSucceedsContract,
+          { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+        );
         const authPolicy = testReferenceScriptAuthPolicy(
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -667,7 +695,10 @@ describe("contract deployment info", () => {
     "builds the V1 manifest with the exact contracts and dispute schedule",
     () =>
       Effect.gen(function* () {
-        const contracts = yield* AlwaysSucceedsContract;
+        const contracts = withRealEventHistoryForTest(
+          yield* AlwaysSucceedsContract,
+          { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+        );
         const authPolicy = testReferenceScriptAuthPolicy(
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -711,7 +742,10 @@ describe("contract deployment info", () => {
 
   it.effect("reports manifest/config drift", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -745,7 +779,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects manifests with a tampered identity hash or profile", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -800,7 +837,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects a deployment manifest with an unknown network", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -827,7 +867,10 @@ describe("contract deployment info", () => {
     "reconstructs validators from deployment manifest contract bytes",
     () =>
       Effect.gen(function* () {
-        const contracts = yield* AlwaysSucceedsContract;
+        const contracts = withRealEventHistoryForTest(
+          yield* AlwaysSucceedsContract,
+          { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+        );
         const authPolicy = testReferenceScriptAuthPolicy(
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -924,7 +967,10 @@ describe("contract deployment info", () => {
     "publishes and restores the network-id forced (wrongful-rejection) step and scan",
     () =>
       Effect.gen(function* () {
-        const contracts = yield* AlwaysSucceedsContract;
+        const contracts = withRealEventHistoryForTest(
+          yield* AlwaysSucceedsContract,
+          { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+        );
         const authPolicy = testReferenceScriptAuthPolicy(
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
@@ -1093,7 +1139,10 @@ describe("contract deployment info", () => {
 
   it.effect("rejects deployment manifest contract hash drift", () =>
     Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
+      const contracts = withRealEventHistoryForTest(
+        yield* AlwaysSucceedsContract,
+        { txHash: ONE_SHOT_TX_HASH, outputIndex: 0 },
+      );
       const authPolicy = testReferenceScriptAuthPolicy(
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,

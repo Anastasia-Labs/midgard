@@ -1,25 +1,36 @@
 import { decodeMidgardNativeByteListPreimage } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerOutputMaterial,
-  deriveCanonicalDepositTransitionEffect,
+  deriveCanonicalOriginalDepositTransitionEffect,
 } from "@al-ft/midgard-validation";
-import { Data, type Network, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type Network } from "@lucid-evolution/lucid";
 
+import {
+  reopenTransitionDeposit,
+  type TransitionDepositOpening,
+} from "./history-opening.js";
+import {
+  readTransitionProof,
+  transitionProofCbor,
+  type TransitionProofInput,
+} from "./proof-material.js";
+import { transitionProofHistorySource } from "./proof-material.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 type YieldKey = keyof typeof TRANSITION_TRACE_YIELD_REFERENCES;
 const deriveTransitionTraceYieldData = ({
-  proof,
+  proof: proofInput,
   network,
   depositPolicyId,
-  additionalReferenceInputs,
+  depositOpening,
 }: {
-  proof: SDK.TransitionFaultProof;
+  proof: TransitionProofInput;
   network: Network;
   depositPolicyId: string;
-  additionalReferenceInputs: readonly UTxO[];
+  depositOpening?: TransitionDepositOpening;
 }): readonly {
   key: YieldKey;
   redeemer: string;
@@ -28,6 +39,28 @@ const deriveTransitionTraceYieldData = ({
   depositAssetCount?: number;
   depositAssetIndexes?: Readonly<Record<string, number>>;
 }[] => {
+  const proof = readTransitionProof(proofInput);
+  if ("OmittedDueL1Event" in proof.fault)
+    return [
+      {
+        key:
+          "OmittedDueForcedTransaction" in proof.fault.OmittedDueL1Event.witness
+            ? "forcedTiming"
+            : "l1Event",
+        redeemer: Data.void(),
+      },
+    ];
+  if ("OutOfWindowSourceEvent" in proof.fault)
+    return [
+      {
+        key:
+          "OutOfWindowForcedTransaction" in
+          proof.fault.OutOfWindowSourceEvent.witness
+            ? "forcedTiming"
+            : "l1Event",
+        redeemer: Data.void(),
+      },
+    ];
   if ("AcceptedTransactionTransitionMismatch" in proof.fault)
     return ["claimStructure", "claimSource", "claimEndpoints"].map((key) => ({
       key: key as YieldKey,
@@ -59,47 +92,41 @@ const deriveTransitionTraceYieldData = ({
     summaryKey = "l2Summaries";
   } else if ("ValidDepositTransition" in witness) {
     const deposit = witness.ValidDepositTransition;
-    const unit = depositPolicyId + deposit.event_asset_name;
-    const candidates = additionalReferenceInputs.filter(
-      (utxo) => utxo.assets[unit] === 1n,
-    );
-    if (candidates.length !== 1)
+    if (depositOpening === undefined)
       throw new Error(
-        "transition deposit projection requires its unique authenticated event reference",
+        "Transition deposit projection requires its retained opening",
       );
     const source = deposit.source_membership;
-    const value = new Map<string, Map<string, bigint>>();
-    for (const [unit, quantity] of Object.entries(candidates[0]!.assets)) {
-      const policy = unit === "lovelace" ? "" : unit.slice(0, 56);
-      const name = unit === "lovelace" ? "" : unit.slice(56);
-      const names = value.get(policy) ?? new Map<string, bigint>();
-      names.set(name, quantity);
-      value.set(policy, names);
-    }
-    depositSourceCbor = Data.to([
-      Data.from(
-        Data.to(
-          {
-            transactionId: candidates[0]!.txHash,
-            outputIndex: BigInt(candidates[0]!.outputIndex),
-          },
-          SDK.OutputReference,
-        ),
-      ),
+    const { commitment, opening, infoCbor } = reopenTransitionDeposit(
+      depositOpening,
       depositPolicyId,
-      deposit.event_asset_name,
-    ]);
+      {
+        ...source,
+        valueCbor: transitionProofHistorySource(proofInput)!.valueCbor,
+      },
+    );
+    const value = opening.original_assets;
+    depositSourceCbor = Data.to(commitment, SDK.EventHistoryCommitment);
     depositAssetIndexes = Object.fromEntries(
+      [...value]
+        .filter(([policy]) => policy !== "")
+        .flatMap(([policy, names]) =>
+          [...names.keys()].sort().map((name, index) => [policy + name, index]),
+        ),
+    );
+    depositAssetCount = [...value].reduce(
+      (count, [policy, names]) => count + (policy === "" ? 0 : names.size),
+      0,
+    );
+    const originalAssets = Object.fromEntries(
       [...value].flatMap(([policy, names]) =>
-        [...names.keys()].sort().map((name, index) => [policy + name, index]),
+        [...names].map(([name, quantity]) => [
+          policy === "" ? "lovelace" : policy + name,
+          quantity,
+        ]),
       ),
     );
-    depositAssetCount = Object.keys(candidates[0]!.assets).filter(
-      (unit) =>
-        unit !== "lovelace" &&
-        unit !== depositPolicyId + deposit.event_asset_name,
-    ).length;
-    const effect = deriveCanonicalDepositTransitionEffect({
+    const effect = deriveCanonicalOriginalDepositTransitionEffect({
       configuredNetwork: network,
       eventId: {
         transactionId: source.key.transactionId,
@@ -110,10 +137,8 @@ const deriveTransitionTraceYieldData = ({
       l2DatumCbor:
         source.value.l2_datum === null
           ? null
-          : Buffer.from(Data.to(source.value.l2_datum), "hex"),
-      l1Assets: candidates[0]!.assets,
-      depositPolicyId,
-      depositAssetNameHex: deposit.event_asset_name,
+          : Buffer.from(plutusConstrFieldCbor(infoCbor, [2, 0]), "hex"),
+      originalAssets,
     });
     const operation = effect.operations[0];
     if (operation?.type !== "insert")
@@ -184,8 +209,8 @@ export const transitionTraceYieldData = (
     {
       network: input.network,
       depositPolicyId: input.depositPolicyId,
-      proofCbor: Data.to(input.proof, SDK.TransitionFaultProof),
-      references: input.additionalReferenceInputs,
+      proofCbor: transitionProofCbor(input.proof),
+      depositOpening: input.depositOpening,
     },
     (_key, value: unknown) =>
       typeof value === "bigint" ? value.toString() : value,

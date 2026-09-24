@@ -5,6 +5,7 @@ import {
   Data,
   getAddressDetails,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
@@ -35,6 +36,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 import {
   buildRetainedPlutusIdentityFixture,
   captureRetainedPlutusIdentityOrigins,
@@ -96,6 +98,9 @@ const captureInput = (snapshot: FraudProofRawL1Snapshot) => {
       },
     },
     resolvedContracts: {
+      contracts: {
+        transitionTrace: { history: TRANSITION_HISTORY_FIXTURE_PARAMETERS },
+      },
       hubOraclePolicyId: getAddressDetails(hubScope.address).paymentCredential!
         .hash,
     },
@@ -890,7 +895,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
     ).toMatch(/^[0-9a-f]{64}$/u);
   });
 
-  it("detaches cached event IDs and preserves fresh withdrawal validity overrides", async () => {
+  it("detaches cached event IDs and keeps withdrawal timing identity independent of verdicts", async () => {
     const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
       observation: authenticatedHeaderObservation(retained.block),
       payloadEnvelopeCbor: retained.block.payloadEnvelopeCbor,
@@ -939,14 +944,41 @@ describe("immutable event parsing failure and contextual outputs", () => {
       .hash;
     const oldUnit =
       getAddressDetails(forcedScope.address).paymentCredential!.hash + "01";
-    const unit = policy + "01";
+    const key = await Effect.runPromise(SDK.eventHistoryKey(datum.event.id));
+    const unit = policy + key;
+    const order: SDK.EventHistoryNode = {
+      position: { Key: [key] },
+      next: null,
+      protected_until: 0n,
+      payload: {
+        Order: {
+          facts: {
+            event_id: datum.event.id,
+            inclusion_time: datum.inclusion_time,
+            structural_lovelace: 1_000_000n,
+            structural_refund_key: "aa".repeat(28),
+            location: {
+              Inline: {
+                payload: {
+                  WithdrawalPayload: {
+                    event: datum.event,
+                    refund_address: datum.refund_address,
+                    refund_datum: datum.refund_datum,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
     const changed = replaceBody(seed, (body) => {
       const outputs = CML.TransactionOutputList.new();
       outputs.add(body.outputs().get(0));
       const assets = CML.MultiAsset.new();
       assets.set(
         CML.ScriptHash.from_hex(policy),
-        CML.AssetName.from_hex("01"),
+        CML.AssetName.from_hex(key),
         1n,
       );
       outputs.add(
@@ -954,9 +986,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
           CML.Address.from_bech32(withdrawalScope.address),
           CML.Value.new(3_000_000n, assets),
           CML.DatumOption.new_datum(
-            CML.PlutusData.from_cbor_hex(
-              Data.to(datum, SDK.WithdrawalOrderDatum),
-            ),
+            CML.PlutusData.from_cbor_hex(Data.to(order, SDK.EventHistoryNode)),
           ),
         ),
       );
@@ -1071,7 +1101,11 @@ describe("immutable event parsing failure and contextual outputs", () => {
         return item;
       };
       const first = await read();
-      expect(first.validityOverride).toBe("IncorrectWithdrawalOwner");
+      expect(first).toEqual({
+        kind: "withdrawal",
+        withdrawalId: datum.event.id,
+      });
+      expect(first).not.toHaveProperty("validityOverride");
       first.withdrawalId.transactionId = "ff".repeat(32);
       expect((await read()).withdrawalId).toEqual(datum.event.id);
       sources.set(fingerprint, {
@@ -1081,23 +1115,319 @@ describe("immutable event parsing failure and contextual outputs", () => {
           value: { ...info, validity: "IncorrectWithdrawalSignature" },
         },
       });
-      expect((await read()).validityOverride).toBe(
-        "IncorrectWithdrawalSignature",
-      );
+      expect(await read()).toEqual({
+        kind: "withdrawal",
+        withdrawalId: datum.event.id,
+      });
       const forcedSource = evidence.reconstruction.sourceEvents.find(
         (entry) => entry.phase === "ForcedTransaction",
       );
       if (forcedSource === undefined)
         throw new Error("fixture requires forced source");
       sources.set(fingerprint, { ...forcedSource, fingerprint });
-      const fallback = (await read()).validityOverride;
-      if (typeof fallback !== "object" || !("SpentWithdrawalUtxo" in fallback))
-        throw new Error("expected original withdrawal fallback");
-      fallback.SpentWithdrawalUtxo.l2_tx_id = "ff".repeat(32);
-      expect((await read()).validityOverride).toEqual(info.validity);
+      const fallback = await read();
+      expect(fallback).not.toHaveProperty("validityOverride");
+      fallback.withdrawalId.outputIndex = 999n;
+      expect((await read()).withdrawalId).toEqual(datum.event.id);
     } finally {
       history.mockRestore();
       detection.mockRestore();
     }
+  });
+});
+
+const appendHistoryOutput = (
+  snapshot: FraudProofRawL1Snapshot,
+  role:
+    | "deposit_event"
+    | "deposit_history_data"
+    | "withdrawal_event"
+    | "withdrawal_history_data",
+  datum: string,
+  nonce: string,
+  assets: Record<string, bigint>,
+  reference?: FraudProofRawL1Snapshot["scopes"][number]["utxos"][number],
+) => {
+  const scope = snapshot.scopes.find((entry) => entry.role === role)!;
+  const multi = CML.MultiAsset.new();
+  const mint = CML.Mint.new();
+  for (const [unit, quantity] of Object.entries(assets)) {
+    if (unit === "lovelace") continue;
+    multi.set(
+      CML.ScriptHash.from_hex(unit.slice(0, 56)),
+      CML.AssetName.from_hex(unit.slice(56)),
+      quantity,
+    );
+    mint.set(
+      CML.ScriptHash.from_hex(unit.slice(0, 56)),
+      CML.AssetName.from_hex(unit.slice(56)),
+      quantity,
+    );
+  }
+  const output = CML.TransactionOutput.new(
+    CML.Address.from_bech32(scope.address),
+    CML.Value.new(assets.lovelace!, multi),
+    CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datum)),
+  );
+  const outputs = CML.TransactionOutputList.new();
+  outputs.add(output);
+  const inputs = CML.TransactionInputList.new();
+  inputs.add(CML.TransactionInput.new(CML.TransactionHash.from_hex(nonce), 0n));
+  const body = CML.TransactionBody.new(inputs, outputs, 170_000n);
+  if (Object.keys(assets).some((unit) => unit !== "lovelace"))
+    body.set_mint(mint);
+  if (reference !== undefined) {
+    const refs = CML.TransactionInputList.new();
+    const [hash, index] = reference.outRef.split("#");
+    refs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(hash!),
+        BigInt(index!),
+      ),
+    );
+    body.set_reference_inputs(refs);
+  }
+  const txHash = CML.hash_transaction(body).to_hex();
+  const raw = {
+    outRef: `${txHash}#0`,
+    outputCbor: output.to_canonical_cbor_hex(),
+    datumCbor: coreToTxOutput(
+      CML.TransactionOutput.from_cbor_hex(output.to_canonical_cbor_hex()),
+    ).datum!,
+    referenceScriptCbor: null,
+  };
+  const units = Object.keys(assets).filter((unit) => unit !== "lovelace");
+  const next: FraudProofRawL1Snapshot = {
+    ...snapshot,
+    scopes: snapshot.scopes.map((entry) =>
+      entry.role === role ? { ...entry, utxos: [...entry.utxos, raw] } : entry,
+    ),
+    historyUnits: [...snapshot.historyUnits, ...units],
+    history: [
+      ...snapshot.history,
+      ...units.map((unit) => ({
+        unit,
+        fromGenesis: true as const,
+        completeThroughPointId: snapshot.cursor.point.pointId,
+        transactionHashes: [txHash],
+      })),
+    ],
+    transactions: [
+      ...snapshot.transactions,
+      {
+        ...snapshot.transactions[0]!,
+        txHash,
+        bodyCbor: body.to_cbor_hex(),
+        resolvedInputs: [
+          {
+            ...snapshot.transactions[0]!.resolvedInputs[0]!,
+            outRef: nonce + "#0",
+          },
+        ],
+        resolvedReferenceInputs: reference === undefined ? [] : [reference],
+      },
+    ],
+  };
+  return { snapshot: next, raw };
+};
+
+const historyDepositSnapshot = async (
+  external: boolean,
+  kind: "deposit" | "withdrawal" = "deposit",
+) => {
+  const policy = (kind === "deposit" ? "62" : "63").repeat(28);
+  const id = { transactionId: "a1".repeat(32), outputIndex: 0n };
+  const key = await Effect.runPromise(SDK.eventHistoryKey(id));
+  let payload: SDK.EventHistoryPayload = {
+    DepositPayload: {
+      event: {
+        id,
+        info: {
+          l2_address: {
+            paymentCredential: { PublicKeyCredential: ["aa".repeat(28)] },
+            stakeCredential: null,
+          },
+          l2_network_id: 0n,
+          l2_datum: external ? "ab".repeat(2000) : null,
+        },
+      },
+    },
+  };
+  if (kind === "withdrawal") {
+    const address = {
+      paymentCredential: { PublicKeyCredential: ["aa".repeat(28)] as [string] },
+      stakeCredential: null,
+    };
+    payload = {
+      WithdrawalPayload: {
+        event: {
+          id,
+          info: {
+            body: {
+              l2_outref: id,
+              l2_owner: "aa".repeat(28),
+              l2_value: new Map([["", new Map([["", 3_000_000n]])]]),
+              l1_address: address,
+              l1_datum: external
+                ? { InlineDatum: { data: "ab".repeat(2000) } }
+                : "NoDatum",
+            },
+            signature: ["", ""],
+            validity: "WithdrawalIsValid",
+          },
+        },
+        refund_address: address,
+        refund_datum: "NoDatum",
+      },
+    };
+  }
+  let snapshot = seed;
+  let reference:
+    | FraudProofRawL1Snapshot["scopes"][number]["utxos"][number]
+    | undefined;
+  const data: SDK.EventHistoryData = {
+    event_key: key,
+    event_payload: Data.from(Data.to(payload, SDK.EventHistoryPayload)),
+    reclaim_auth: { PublicKeyCredential: ["aa".repeat(28)] },
+  };
+  if (external) {
+    const published = appendHistoryOutput(
+      snapshot,
+      kind === "deposit" ? "deposit_history_data" : "withdrawal_history_data",
+      SDK.encodeEventHistoryData(data),
+      "a2".repeat(32),
+      { lovelace: 5_000_000n },
+    );
+    snapshot = published.snapshot;
+    reference = published.raw;
+  }
+  const node: SDK.EventHistoryNode = {
+    position: { Key: [key] },
+    next: "ff".repeat(32),
+    protected_until: 0n,
+    payload: {
+      Order: {
+        facts: {
+          event_id: id,
+          inclusion_time: 1_749_999_999_000n,
+          structural_lovelace: 5_000_000n,
+          structural_refund_key: "aa".repeat(28),
+          location: external
+            ? {
+                External: {
+                  storage_datum_hash: SDK.eventHistoryDataHash(data),
+                },
+              }
+            : { Inline: { payload } },
+        },
+      },
+    },
+  };
+  snapshot = appendHistoryOutput(
+    snapshot,
+    kind === "deposit" ? "deposit_event" : "withdrawal_event",
+    Data.to(node, SDK.EventHistoryNode),
+    id.transactionId,
+    {
+      lovelace: 25_000_000n,
+      [policy + key]: 1n,
+      ["ab".repeat(28) + "00"]: 17n,
+    },
+    reference,
+  ).snapshot;
+  snapshot = appendHistoryOutput(
+    snapshot,
+    kind === "deposit" ? "deposit_event" : "withdrawal_event",
+    Data.to(
+      {
+        position: "Root",
+        next: key,
+        protected_until: 0n,
+        payload: "RootContent",
+      },
+      SDK.EventHistoryNode,
+    ),
+    "a3".repeat(32),
+    { lovelace: 5_000_000n, [policy]: 1n },
+  ).snapshot;
+  snapshot = appendHistoryOutput(
+    snapshot,
+    kind === "deposit" ? "deposit_event" : "withdrawal_event",
+    Data.to(
+      {
+        position: { Key: ["ff".repeat(32)] },
+        next: null,
+        protected_until: 0n,
+        payload: { Filler: { refund_key: "aa".repeat(28) } },
+      },
+      SDK.EventHistoryNode,
+    ),
+    "a4".repeat(32),
+    { lovelace: 9_000_000n, [policy + "ff".repeat(32)]: 1n },
+  ).snapshot;
+  return { snapshot, payload, key, policy };
+};
+
+describe("authenticated history Order capture", () => {
+  it.each([
+    { kind: "deposit", external: false },
+    { kind: "deposit", external: true },
+    { kind: "withdrawal", external: false },
+    { kind: "withdrawal", external: true },
+  ] as const)(
+    "captures $kind original funds and filters structure; external=$external",
+    async ({ kind, external }) => {
+      const fixture = await historyDepositSnapshot(external, kind);
+      const handle = await capture(fixture.snapshot);
+      const deposits = readFreshTransitionTraceL1Events(handle).events.filter(
+        (event) => event.kind === kind,
+      );
+      expect(deposits).toHaveLength(1);
+      const event = deposits[0]!;
+      if (event.kind === "forcedTransaction")
+        throw new Error("unexpected forced event");
+      expect(event.assetName).toBe(fixture.key);
+      const opening = Data.from(
+        event.history.openingCbor,
+        SDK.EventHistoryOpening,
+      );
+      expect(opening.payload).toEqual(fixture.payload);
+      expect(opening.original_assets).toEqual(
+        new Map([
+          ["", new Map([["", 20_000_000n]])],
+          ["ab".repeat(28), new Map([["00", 17n]])],
+        ]),
+      );
+      expect(event.retainedDataUtxo !== undefined).toBe(external);
+      expect(Object.isFrozen(event.history)).toBe(true);
+    },
+  );
+  it("rejects a hash promise without the existing retained output", async () => {
+    const { snapshot } = await historyDepositSnapshot(true);
+    await expect(
+      capture({
+        ...snapshot,
+        scopes: snapshot.scopes.map((scope) =>
+          scope.role === "deposit_history_data"
+            ? { ...scope, utxos: [] }
+            : scope,
+        ),
+      }),
+    ).rejects.toThrow(/retained event data is unavailable/);
+  });
+  it("rejects a malformed full-key NFT before admitting it as an event", async () => {
+    const fixture = await historyDepositSnapshot(false);
+    const scope = fixture.snapshot.scopes.find(
+      (entry) => entry.role === "deposit_event",
+    )!;
+    const order = Data.from(scope.utxos[0]!.datumCbor!, SDK.EventHistoryNode);
+    const invalid = appendHistoryOutput(
+      seed,
+      "deposit_event",
+      Data.to(order, SDK.EventHistoryNode),
+      "a5".repeat(32),
+      { lovelace: 25_000_000n, [fixture.policy + "00".repeat(32)]: 1n },
+    ).snapshot;
+    await expect(capture(invalid)).rejects.toThrow(/complete key/);
   });
 });

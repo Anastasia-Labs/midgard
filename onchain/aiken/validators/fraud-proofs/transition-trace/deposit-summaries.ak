@@ -17,11 +17,7 @@ validator summaries(dispatcher: ScriptHash) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
     expect state.kind == 1 && state.phase == 8
-    let (reference, _, _) = deposit_source.open(
-      state,
-      args,
-      tx.reference_inputs,
-    )
+    let reference = deposit_source.open(state, args)
     let info = reference.event.info
     let output = MidgardTxOutput {
       address: proof.deposit_address_to_midgard(

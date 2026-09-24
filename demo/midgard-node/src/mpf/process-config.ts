@@ -25,6 +25,8 @@ export type ProcessMpfsConfig = {
     readonly slotForUnixTime: (unixTimeMs: number) => bigint;
   };
   readonly currentBlockStartTime?: Date;
+  /** Fixed source-owned header end, shared by event selection and validation. */
+  readonly fixedBlockEndTime?: Date;
   readonly processedOnlyEndTime?: Date;
   readonly depositOnlyEndTime?: Date;
   readonly depositVisibilityBarrierTime?: Date;

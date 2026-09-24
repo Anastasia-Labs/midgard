@@ -34,10 +34,10 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  credentialToAddress,
   Data,
-  Emulator,
   getAddressDetails,
-  Lucid,
+  type LucidEvolution,
 } from "@lucid-evolution/lucid";
 
 import type { VerifiableJourneyBlock } from "./fixture-verification.js";
@@ -192,6 +192,23 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
       path: join(directory, "history.sqlite"),
       rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
     });
+    // Explicit synthetic parameters for this transaction-only raw fixture.
+    // Neither address is a deployed history authority.
+    const historyParameters = {
+      inlineLimitBytes: 512n,
+      maxPayloadBytes: 5000n,
+      maxPayloadNodes: 512n,
+      retentionAddresses: {
+        deposit: credentialToAddress("Preprod", {
+          type: "Script",
+          hash: "70".repeat(28),
+        }),
+        withdrawal: credentialToAddress("Preprod", {
+          type: "Script",
+          hash: "71".repeat(28),
+        }),
+      },
+    };
     // As in the established catalogue-retained classifier unit test, these are
     // only the fields consumed by raw authority admission; no deployment claim.
     const bindingFields = {
@@ -199,7 +216,10 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
       blueprintHash: releaseFinality.blueprintHash,
       network: "Preprod" as const,
       releaseFinality,
-      resolvedContracts: { hubOraclePolicyId },
+      resolvedContracts: {
+        hubOraclePolicyId,
+        contracts: { transitionTrace: { history: historyParameters } },
+      },
       definition: { headerHash: input.block.headerHash },
     };
     const transitionTraceEventAuthority =
@@ -217,13 +237,27 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
         raw,
         historySource,
       });
-    const lucid = await Lucid(new Emulator([]), "Preprod");
+    const lucid = {
+      utxosAt: async () => {
+        throw new Error("Transaction-only fixture cannot read event history");
+      },
+    } as unknown as LucidEvolution;
     const replayer = createCatalogueCompleteCanonicalReplay({
       lucid,
       network: "Preprod",
       hubOraclePolicyId,
       minimumConfirmationDepth: policy.confirmationDepth,
       owner: "b1".repeat(28),
+      history: {
+        deposit: {
+          ...historyParameters,
+          retentionAddress: historyParameters.retentionAddresses.deposit,
+        },
+        withdrawal: {
+          ...historyParameters,
+          retentionAddress: historyParameters.retentionAddresses.withdrawal,
+        },
+      },
     });
     const classifier = await createHeaderClassifier({
       deploymentFingerprint,

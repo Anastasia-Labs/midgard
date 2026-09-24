@@ -160,12 +160,8 @@ validator main(
   }
 }
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn transactions_root() -> ByteArray {
-  challenged_block().transactions_phas_root
+  fixture.challenged_block_v1().transactions_phas_root
 }
 
 fn challenged_reference_input() -> MidgardTxInput {
@@ -183,7 +179,7 @@ fn run_step_03_with(
     missing_reference_input_tx_id: missing_reference_input.tx_id,
     blocks_transactions_root: transactions_root(),
   }
-  let asset_name = fixture.ct_token_asset_name(challenged_block())
+  let asset_name = fixture.ct_token_asset_name(fixture.challenged_block_v1())
   let l1_tx = Transaction {
     ..transaction.placeholder,
     inputs: [fixture.ct_thread_input(asset_name)],

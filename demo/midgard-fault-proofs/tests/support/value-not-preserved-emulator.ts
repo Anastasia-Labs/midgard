@@ -84,6 +84,7 @@ import {
   phasMembershipRewardAddress,
   requireSingletonUtxo,
 } from "../../src/runtime.js";
+import { submitResolvedInit } from "../../src/submit-init.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -91,7 +92,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import type { ValueNotPreservedContracts } from "../../src/value-not-preserved/contracts.js";
+import {
+  VALUE_NOT_PRESERVED_CATEGORY_LABEL,
+  type ValueNotPreservedContracts,
+} from "../../src/value-not-preserved/contracts.js";
 import {
   buildSpentInputValueWitness,
   spendInputsOpening as spendInputsOpeningV1,
@@ -106,7 +110,6 @@ import {
   ValueNotPreservedStep04SpendRedeemer,
 } from "../../src/value-not-preserved/schemas.js";
 import { requireValueNotPreservedThreadUtxo } from "../../src/value-not-preserved/submit-common.js";
-import { submitValueNotPreservedInit } from "../../src/value-not-preserved/submit-value-not-preserved-init.js";
 import { submitValueNotPreservedStep01 } from "../../src/value-not-preserved/submit-value-not-preserved-step-01.js";
 import {
   submitValueNotPreservedStep02Finish,
@@ -843,7 +846,8 @@ export const runValueNotPreservedThread = async ({
   };
 
   const initCapture = await captureEmulatorSubmission(emulator, async () =>
-    submitValueNotPreservedInit({
+    submitResolvedInit({
+      label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
       network: emulatorNetwork,

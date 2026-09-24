@@ -31,10 +31,17 @@ export type TransitionTraceL1Events = Readonly<{
   evidenceDigest: string;
 }>;
 export type TransitionTraceL1Event = Readonly<{
-  kind: "deposit" | "withdrawal" | "forcedTransaction";
   utxo: UTxO;
   assetName: string;
-}>;
+}> &
+  (
+    | Readonly<{ kind: "forcedTransaction" }>
+    | Readonly<{
+        kind: "deposit" | "withdrawal";
+        history: Readonly<{ commitmentCbor: string; openingCbor: string }>;
+        retainedDataUtxo?: UTxO;
+      }>
+  );
 type AdmittedTransitionTraceL1Events = Readonly<{
   events: readonly TransitionTraceL1Event[];
   hub: UTxO;
@@ -159,7 +166,21 @@ export const captureTransitionTraceL1Events = async ({
       address: hub.data.tx_order_addr,
     },
   ] as const;
+  const historyDeployment =
+    binding.resolvedContracts.contracts.transitionTrace?.history;
+  if (historyDeployment === undefined)
+    throw new Error(
+      "Transition event capture requires applied history parameters",
+    );
   const scopes = [
+    {
+      role: "deposit_history_data" as const,
+      address: historyDeployment.retentionAddresses.deposit,
+    },
+    {
+      role: "withdrawal_history_data" as const,
+      address: historyDeployment.retentionAddresses.withdrawal,
+    },
     hubScope,
     ...definitions.map((entry) => ({
       role: entry.role,
@@ -185,11 +206,74 @@ export const captureTransitionTraceL1Events = async ({
         );
       const events: TransitionTraceL1Event[] = [];
       const newUnits = new Set<string>();
-      for (const definition of definitions)
-        for (const raw of snapshot.scopes.find(
-          (scope) => scope.role === definition.role,
-        )!.utxos) {
-          const event = utxo(raw);
+      const scopedUtxos = new Map(
+        snapshot.scopes.map((scope) => [scope.address, scope.utxos.map(utxo)]),
+      );
+      const provider = {
+        utxosAt: async (address: string) => {
+          const outputs = scopedUtxos.get(address);
+          if (outputs === undefined)
+            throw new Error(
+              "Transition retained-data address was not captured",
+            );
+          return [...outputs];
+        },
+      };
+      for (const definition of definitions) {
+        const outputs = snapshot.scopes
+          .find((scope) => scope.role === definition.role)!
+          .utxos.map(utxo);
+        if (definition.kind !== "forcedTransaction") {
+          const deployment: SDK.EventHistoryDeployment = {
+            policyId: definition.policy,
+            address: eventAddress(binding.network, definition.address),
+            retentionAddress:
+              historyDeployment.retentionAddresses[definition.kind],
+            inlineLimitBytes: historyDeployment.inlineLimitBytes,
+          };
+          for (const anchor of SDK.authenticateHistoryNodes(
+            outputs,
+            deployment,
+          )) {
+            const unit = definition.policy + (anchor.key ?? "");
+            if (!units.has(unit)) newUnits.add(unit);
+            // Roots, fillers and pointer-only continuations are list structure.
+            if (
+              anchor.node.payload === "RootContent" ||
+              !("Order" in anchor.node.payload)
+            )
+              continue;
+            const witness = await SDK.fetchEventHistoryWitness(
+              provider,
+              deployment,
+              anchor.node.payload.Order.facts.event_id,
+            );
+            if (witness.kind !== "Present")
+              throw new Error("Transition Order has no authenticated presence");
+            const captured = SDK.captureEventHistoryWitness(
+              witness,
+              definition.policy,
+              definition.kind === "deposit" ? "Deposit" : "Withdrawal",
+            );
+            events.push({
+              kind: definition.kind,
+              utxo: witness.anchor.utxo,
+              assetName: witness.anchor.key!,
+              history: {
+                commitmentCbor: Data.to(
+                  captured.commitment,
+                  SDK.EventHistoryCommitment,
+                ),
+                openingCbor: captured.openingCbor,
+              },
+              ...(witness.retainedDataUtxo === undefined
+                ? {}
+                : { retainedDataUtxo: witness.retainedDataUtxo }),
+            });
+          }
+          continue;
+        }
+        for (const event of outputs) {
           const tokens = Object.entries(event.assets).filter(([unit]) =>
             unit.startsWith(definition.policy),
           );
@@ -202,12 +286,7 @@ export const captureTransitionTraceL1Events = async ({
             throw new Error(
               "Transition replay event NFT coverage is ambiguous",
             );
-          // Validate every event before treating incomplete coverage as drift.
-          if (definition.kind === "deposit")
-            Data.from(event.datum, SDK.DepositDatum);
-          else if (definition.kind === "withdrawal")
-            Data.from(event.datum, SDK.WithdrawalOrderDatum);
-          else Data.from(event.datum, SDK.TxOrderDatum);
+          Data.from(event.datum, SDK.TxOrderDatum);
           if (!units.has(tokens[0]![0])) newUnits.add(tokens[0]![0]);
           events.push({
             kind: definition.kind,
@@ -215,6 +294,7 @@ export const captureTransitionTraceL1Events = async ({
             assetName: tokens[0]![0].slice(56),
           });
         }
+      }
       if (newUnits.size === 0) return { snapshot, finalHub, events };
       // Address discovery and history acquisition pin independent snapshots.
       // A new NFT requires its full history at a newly admitted common point.

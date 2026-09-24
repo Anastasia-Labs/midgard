@@ -1,3 +1,7 @@
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 /**
  * `fabricated-withdrawal` step-01 submitter (Goal task `Q40`, §9.1 output 8).
  *
@@ -30,11 +34,9 @@
 import {
   commitCountedRootProgram,
   committedWithdrawalKeyBytes,
-  committedWithdrawalValueBytes,
   FabricatedWithdrawalStep01SpendRedeemer,
   FabricatedWithdrawalStep02Datum,
   type FabricatedWithdrawalStep02State,
-  fabricatedWithdrawalStep02State,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   type Header,
@@ -47,6 +49,7 @@ import {
   requireUniqueOutputIndex,
   ROOT_DOMAINS,
   type RootMembershipProof,
+  withdrawalContentCommitmentCbor,
   WithdrawalInfo,
 } from "@al-ft/midgard-sdk";
 import {
@@ -228,11 +231,12 @@ export const deriveFabricatedWithdrawalStep01Handoff = async ({
     );
   }
   if (
-    committedWithdrawalValueBytes(value) !==
-    inclusion.committedWithdrawalInfoCbor
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      inclusion.committedWithdrawalInfoCbor,
+    ) !== inclusion.committedWithdrawalInfoCbor
   ) {
     throw new Error(
-      `--withdrawal-inclusion.committedWithdrawalInfoCbor is not in serialiseData form: the on-chain membership check will hash ${committedWithdrawalValueBytes(value)}, not ${inclusion.committedWithdrawalInfoCbor}.`,
+      `--withdrawal-inclusion.committedWithdrawalInfoCbor is not in serialiseData form: the on-chain membership check will hash ${aikenSerialisedPlutusDataCborPreservingMapOrder(inclusion.committedWithdrawalInfoCbor)}, not ${inclusion.committedWithdrawalInfoCbor}.`,
     );
   }
   const committedWithdrawal: RootMembershipProof<
@@ -247,15 +251,16 @@ export const deriveFabricatedWithdrawalStep01Handoff = async ({
     value,
     proof: inclusion.withdrawalMembershipProof,
   };
-  const step02State = await Effect.runPromise(
-    fabricatedWithdrawalStep02State({
-      stateQueuePolicy: stateQueuePolicyId,
-      challengedHeaderHash: headerHash,
-      headerStartTime: header.startTime,
-      headerEndTime: header.endTime,
-      committedWithdrawal,
-    }),
-  );
+  const step02State: FabricatedWithdrawalStep02State = {
+    state_queue_policy: stateQueuePolicyId,
+    challenged_header_hash: headerHash,
+    header_start_time: header.startTime,
+    header_end_time: header.endTime,
+    committed_withdrawal_id: key,
+    committed_withdrawal_content_hash: await Effect.runPromise(
+      withdrawalContentCommitmentCbor(inclusion.committedWithdrawalInfoCbor),
+    ),
+  };
   return { committedWithdrawal, step02State };
 };
 
@@ -430,20 +435,24 @@ export const submitFabricatedWithdrawalStep01 = async ({
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      {
-        Continue: [
-          {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-            committed_withdrawal: committedWithdrawal,
-          },
-        ],
-      },
-      FabricatedWithdrawalStep01SpendRedeemer,
+    return replacePlutusConstrFieldCbor(
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              hub_ref_input_index: layout.hubOracleRefInputIndex,
+              state_queue_node_ref_input_index:
+                layout.stateQueueNodeRefInputIndex,
+              committed_withdrawal: committedWithdrawal,
+            },
+          ],
+        },
+        FabricatedWithdrawalStep01SpendRedeemer,
+      ),
+      [0, 4, 5],
+      withdrawalInclusion.committedWithdrawalInfoCbor,
     );
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {

@@ -59,6 +59,7 @@ import {
   fetchOperatorWalletView,
 } from "../../operator-wallet-view.js";
 import type { NodeConfigDep } from "../../services/config.js";
+import { withHistoryWrite } from "../../services/event-history-producer.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   assertNativeMpfHashHex,
@@ -159,6 +160,7 @@ export const finalizeConfirmedMergeTransaction = ({
       }),
     );
   }).pipe(
+    withHistoryWrite,
     sqlErrorToDatabaseError(
       "confirmed_merge_finalization",
       "Failed to finalize confirmed-state merge locally",

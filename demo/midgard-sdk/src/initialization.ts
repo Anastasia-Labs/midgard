@@ -66,8 +66,11 @@ import {
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
 } from "./state-queue.js";
+import { appendEventHistoryInitialization } from "./user-events/history-initialization.js";
 
 export type AtomicProtocolInitReferenceScripts = {
+  readonly depositHistory: UTxO;
+  readonly withdrawalHistory: UTxO;
   readonly hubOracleMinting: UTxO;
   readonly daParamsGovernorMinting: UTxO;
   readonly schedulerMinting: UTxO;
@@ -136,6 +139,15 @@ export const incompleteInitializationTxProgram = (
         "Protocol initialization requires an exact compiled consensus profile",
       );
     }
+    const history = midgardValidators.eventHistory;
+    if (
+      history === null ||
+      history.deposit.list.policyId !== midgardValidators.deposit.policyId ||
+      history.withdrawal.list.policyId !== midgardValidators.withdrawal.policyId
+    )
+      throw new Error(
+        "Protocol initialization requires both declared history deployments",
+      );
     const hubOracleDatum = yield* makeHubOracleDatum(midgardValidators);
     const encodedHubOracleDatum = Data.to(hubOracleDatum, HubOracleDatum);
     const stateQueueGenesisTime = params.validityRange.validTo - 1n;
@@ -352,6 +364,21 @@ export const incompleteInitializationTxProgram = (
         scriptRewardAddress(network, validator.withdrawalScript),
       );
     }
+
+    appendEventHistoryInitialization(lucid, tx, {
+      contracts: history,
+      nonce: params.oneShotNonceUTxO,
+      validFrom: Number(params.validityRange.validFrom),
+      validTo: Number(params.validityRange.validTo),
+      ...(params.referenceScripts === undefined
+        ? {}
+        : {
+            referenceScripts: {
+              deposit: params.referenceScripts.depositHistory,
+              withdrawal: params.referenceScripts.withdrawalHistory,
+            },
+          }),
+    });
 
     if (params.referenceScripts !== undefined) {
       return tx.readFrom([

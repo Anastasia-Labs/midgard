@@ -25,6 +25,16 @@ export const EventHistoryData = asDataType<EventHistoryData>(
   EventHistoryDataSchema,
 );
 
+/** Reclamation proves absence in the deployment's current authenticated list. */
+export const EventHistoryReclaimSchema = Data.Object({
+  absence_reference_index: Data.Integer(),
+  hub_reference_index: Data.Integer(),
+});
+export type EventHistoryReclaim = Data.Static<typeof EventHistoryReclaimSchema>;
+export const EventHistoryReclaim = asDataType<EventHistoryReclaim>(
+  EventHistoryReclaimSchema,
+);
+
 /** Match serialiseData, including maps nested inside arbitrary user data. */
 export const encodeEventHistoryData = (datum: EventHistoryData): string =>
   aikenSerialisedPlutusDataCborPreservingMapOrder(

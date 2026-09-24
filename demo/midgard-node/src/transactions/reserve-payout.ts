@@ -15,7 +15,6 @@ export type {
   BuiltReservePayoutTx,
   ConcludePayoutConfig,
   InitializePayoutConfig,
-  MembershipProofWithdrawalWitness,
   RefundInvalidWithdrawalConfig,
   ReservePayoutReferenceScripts,
 } from "@al-ft/midgard-sdk";
@@ -52,7 +51,9 @@ export const submitAbsorbConfirmedDepositToReserveProgram = (
       contracts,
       config,
     );
-    return yield* handleSignSubmit(lucid, built.tx);
+    return yield* handleSignSubmit(lucid, built.tx, {
+      requiredOutputIndexes: [Number(built.layout.reserveOutputIndex)],
+    });
   });
 
 export const submitInitializePayoutProgram = (
@@ -66,7 +67,9 @@ export const submitInitializePayoutProgram = (
       contracts,
       config,
     );
-    return yield* handleSignSubmit(lucid, built.tx);
+    return yield* handleSignSubmit(lucid, built.tx, {
+      requiredOutputIndexes: [Number(built.layout.payoutOutputIndex)],
+    });
   });
 
 export const submitAddReserveFundsToPayoutProgram = (
@@ -80,7 +83,9 @@ export const submitAddReserveFundsToPayoutProgram = (
       contracts,
       config,
     );
-    return yield* handleSignSubmit(lucid, built.tx);
+    return yield* handleSignSubmit(lucid, built.tx, {
+      requiredOutputIndexes: [Number(built.layout.payoutOutputIndex)],
+    });
   });
 
 export const submitConcludePayoutProgram = (

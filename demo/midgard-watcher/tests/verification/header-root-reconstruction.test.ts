@@ -4,11 +4,11 @@
  * PROVENANCE OF EVERY INPUT USED BY THESE TESTS (the non-circularity argument
  * these cases exist to demonstrate):
  *
- * - The expected root/count set: `WatcherStateQueueHeader`, the W14 record
+ * - The expected root/count set: `WatcherStateQueueHeader`, the header record
  *   decoded from the L1 state-queue node datum
- *   (demo/midgard-watcher/src/indexers/state-queue-indexer.ts). In these tests
+ *   (demo/midgard-watcher/src/indexers/state-queue-snapshot.ts). In these tests
  *   the record is derived from the fixture's `Header` by re-encoding it the
- *   way the indexer does, so no test ever feeds a header field that did not
+ *   way the datum parser does, so no test ever feeds a header field that did not
  *   come from a committed header.
  * - The header hash: never taken from the caller. It is re-derived from the
  *   header struct by `admitAuthenticatedStateQueueHeaderObservation`.
@@ -45,7 +45,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
+import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-snapshot.js";
 import {
   evaluateWatcherHeaderRootReconstruction,
   makeWatcherAuthenticatedHeaderObservation,
@@ -62,8 +62,8 @@ import {
 // ---------------------------------------------------------------------------
 
 /** The canonical header hash: blake2b-224 over the header's CBOR, exactly as
- * `hashBlockHeader` (demo/midgard-sdk/src/ledger-state.ts:467) and the W14
- * indexer (state-queue-indexer.ts:566) derive it. */
+ * `hashBlockHeader` (demo/midgard-sdk/src/ledger-state.ts:467) and the
+ * state-queue datum parser (state-queue-snapshot.ts) derive it. */
 const headerHashOf = (header: SDK.Header): string =>
   Buffer.from(
     blake2b(Buffer.from(Data.to(header, SDK.Header), "hex"), { dkLen: 28 }),
@@ -499,7 +499,7 @@ const evaluateFixture = async (
 // ---------------------------------------------------------------------------
 
 describe("W22 authenticated header observation (non-circular binding)", () => {
-  it("admits a W14 index record and re-derives its header hash", async () => {
+  it("admits a state-queue header record and re-derives its header hash", async () => {
     const fixture = await buildFixture({
       transactions: [corpusTransaction(0)],
     });
@@ -989,7 +989,7 @@ describe("W22 malformed payload bytes", () => {
 
 describe("W22 fail-closed and non-circularity", () => {
   /**
-   * PROVENANCE: the observation is the W14 record for block A; the payload is a
+   * PROVENANCE: the observation is the state-queue header record for block A; the payload is a
    * complete, internally consistent public payload for block B (its embedded
    * header hashes to its own header_hash, and its own roots/counts agree with
    * it). The only correct outcome is rejection, and the reported expected root
@@ -1025,7 +1025,7 @@ describe("W22 fail-closed and non-circularity", () => {
    * while the header hash is the real L1-observed one. Admission re-derives the
    * hash, so the pairing is refused.
    */
-  it("rejects a caller header that is not the one the W14 index committed", async () => {
+  it("rejects a caller header that is not the one the state-queue record committed", async () => {
     const blockA = await buildFixture({ transactions: [corpusTransaction(0)] });
     const blockB = await buildFixture({ depositBytes: [11] });
     const forged: SDK.AuthenticatedStateQueueHeaderObservation = {

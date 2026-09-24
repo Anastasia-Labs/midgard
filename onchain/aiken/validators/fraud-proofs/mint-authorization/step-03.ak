@@ -442,10 +442,6 @@ fn absent_key() -> ByteArray {
   tf.h28_y
 }
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn state_of(
   block: fixture.NativeBlockFixtureV1,
   policy_id: ByteArray,
@@ -545,7 +541,7 @@ fn honest_field_6_items_of(
 /// so the inline half of the absence claim holds and the thread routes into
 /// the reference-input scan at cursor 0.
 test mint_authorization_step_03_clears_an_absent_inline_witness() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_witness_absence(
     block,
     accused_policy_id,
@@ -557,7 +553,7 @@ test mint_authorization_step_03_clears_an_absent_inline_witness() {
 /// A field-6 native witness that IS the claimed policy refuses the absence
 /// arm: the machine had the source, so the accusation is false.
 test mint_authorization_step_03_rejects_absence_when_the_policy_is_inline() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_witness_absence(
     block,
     native_policy_of(fixture.sample_native_script_bytes()),
@@ -594,7 +590,7 @@ test mint_authorization_step_03_rejects_absence_when_a_plutus_source_matches() f
 /// The absence claim is only as good as the walked preimage: a truncated
 /// field-6 carriage fails the door's authenticate-once check.
 test mint_authorization_step_03_rejects_a_truncated_field_6_preimage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_witness_absence(
     block,
     native_policy_of(fixture.sample_native_script_bytes()),
@@ -606,7 +602,7 @@ test mint_authorization_step_03_rejects_a_truncated_field_6_preimage() fail {
 /// The arm demands its own direction: a direction-B claim cannot take the
 /// absence route.
 test mint_authorization_step_03_rejects_absence_under_direction_b() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_witness_absence(
     block,
     accused_policy_id,
@@ -625,7 +621,7 @@ fn run_evaluate_with_interval(
   validity_interval_end: Int,
   carried_witness_items: List<ByteArray>,
 ) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let state = state_of(
     block,
     policy_id,
@@ -809,7 +805,7 @@ test mint_authorization_step_03_rejects_evaluation_under_direction_a() fail {
 // ## Cancellation
 
 fn run_cancel(signed_by_prover: Bool) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let asset_name = fixture.ct_token_asset_name(block)
   main.spend(
     fixture.next_step_script_hash,

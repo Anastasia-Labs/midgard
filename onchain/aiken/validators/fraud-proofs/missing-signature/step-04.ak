@@ -214,10 +214,6 @@ fn witness_presence_fold(
   }
 }
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 /// Runs the step with the thread anchored to `anchored_block` while the
 /// redeemer's field-7 opening is taken from `opened_block`.
 ///
@@ -320,7 +316,7 @@ fn run_finalize_with(
   witness_set: NativeTxWitnessSetCompact,
   carried_witnesses: List<MidgardAddressWitness>,
 ) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_against(
     missing_required_signer_vkey,
     block,
@@ -330,7 +326,7 @@ fn run_finalize_with(
 }
 
 fn run_finalize(missing_required_signer_vkey: ByteArray) -> Bool {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_with(
     missing_required_signer_vkey,
     block.witness_set_compact,
@@ -676,7 +672,7 @@ test missing_signature_step_04_rejects_a_truncated_witness_preimage() fail {
 /// walk starts. This selector forges **one** side — the honest compact bytes are
 /// left in place, so the mismatch is visible to any check at all.
 test missing_signature_step_04_rejects_a_forged_witness_set() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let forged = NativeTxWitnessSetCompact {
     ..block.witness_set_compact,
     addr_tx_wits_hash: #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -708,7 +704,7 @@ test missing_signature_step_04_rejects_a_forged_witness_set() fail {
 /// can restate. Neutralise that one `expect` in `anchored_native_tx` and this test
 /// passes.
 test missing_signature_step_04_rejects_a_forged_witness_set_and_compact() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_finalize_against(
     // The key IS in the committed witness set — the fixture's own signer.
     fixture.sample_witness_verification_key(),
@@ -726,7 +722,7 @@ test missing_signature_step_04_rejects_a_forged_witness_set_and_compact() fail {
 /// it wants declared missing. It fails for the same reason, which is the point
 /// — the guard is on the anchor, not on the collection being empty.
 test missing_signature_step_04_rejects_a_forged_substituted_witness_set() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let without_the_signer = MidgardTransactionWitnessSet {
     ..block.tx.witness_set,
     addr_tx_wits: [],
@@ -785,7 +781,7 @@ fn tier_three_decoy_preimage() -> ByteArray {
 /// real step. E2's disposition in `docs/spec/midgard-tx.md` §8.3 records the
 /// repair.
 test missing_signature_step_04_rejects_certified_carriage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let preimage = tier_three_decoy_preimage()
   run_finalize_with_opening(
     // The key IS in the committed witness set — the fixture's own signer.

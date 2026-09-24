@@ -17,6 +17,7 @@ import {
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   resolveFaultProofDeploymentContracts,
 } from "../src/runtime.js";
+import { TRANSITION_TRACE_YIELD_REFERENCES } from "../src/transition-trace/yield-references.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 
 const rawBlueprint: unknown = JSON.parse(
@@ -35,7 +36,11 @@ const referenceScriptAuthPolicy = {
   tokenNames: SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
 };
 
-for (const category of ["fabricatedDeposit", "fabricatedWithdrawal"] as const)
+for (const category of [
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "transitionTrace",
+] as const)
   describe(`${category} applied bounds resolution`, () => {
     let fixture: {
       referenceScriptAuthPolicy: typeof referenceScriptAuthPolicy;
@@ -59,13 +64,19 @@ for (const category of ["fabricatedDeposit", "fabricatedWithdrawal"] as const)
           ? await Effect.runPromise(
               SDK.buildFabricatedDepositFaultProofContracts(params),
             )
-          : await Effect.runPromise(
-              SDK.buildFabricatedWithdrawalFaultProofContracts(params),
-            );
+          : category === "fabricatedWithdrawal"
+            ? await Effect.runPromise(
+                SDK.buildFabricatedWithdrawalFaultProofContracts(params),
+              )
+            : await Effect.runPromise(
+                SDK.buildTransitionTraceFaultProofContracts(params),
+              );
       const chain =
         "fabricatedDeposit" in built
           ? built.fabricatedDeposit
-          : built.fabricatedWithdrawal;
+          : "fabricatedWithdrawal" in built
+            ? built.fabricatedWithdrawal
+            : built.transitionTrace;
       const ids = SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS;
       const names = SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER;
       const scriptHash = (name: (typeof names)[number]) =>
@@ -112,6 +123,21 @@ for (const category of ["fabricatedDeposit", "fabricatedWithdrawal"] as const)
           },
           fraudProofMint: { scriptHash: built.fraudProof.policyId },
           fraudProofSpend: { scriptHash: built.fraudProof.spendingScriptHash },
+          ...("transitionTrace" in built
+            ? Object.fromEntries(
+                Object.entries(TRANSITION_TRACE_YIELD_REFERENCES).map(
+                  ([key, reference]) => [
+                    reference.entry,
+                    {
+                      scriptHash:
+                        built.transitionTrace.yields[
+                          key as keyof typeof TRANSITION_TRACE_YIELD_REFERENCES
+                        ].withdrawalScriptHash,
+                    },
+                  ],
+                ),
+              )
+            : {}),
           ...Object.fromEntries(
             FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY[category].map(
               (name, index) => [
@@ -121,8 +147,15 @@ for (const category of ["fabricatedDeposit", "fabricatedWithdrawal"] as const)
                   ...(index === 0
                     ? {
                         eventHistoryBounds: bounds,
-                        eventHistoryRetentionAddress:
-                          chain.history.retentionAddress,
+                        ...("retentionAddresses" in chain.history
+                          ? {
+                              eventHistoryRetentionAddresses:
+                                chain.history.retentionAddresses,
+                            }
+                          : {
+                              eventHistoryRetentionAddress:
+                                chain.history.retentionAddress,
+                            }),
                       }
                     : {}),
                 },
@@ -154,13 +187,25 @@ for (const category of ["fabricatedDeposit", "fabricatedWithdrawal"] as const)
       const name = FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY[category][0]!;
       changed.contracts[name] = {
         ...changed.contracts[name]!,
-        eventHistoryRetentionAddress: credentialToAddress("Preview", {
-          type: "Script",
-          hash: "ee".repeat(28),
-        }),
+        ...(category === "transitionTrace"
+          ? {
+              eventHistoryRetentionAddresses: {
+                ...changed.contracts[name]!.eventHistoryRetentionAddresses!,
+                deposit: credentialToAddress("Preview", {
+                  type: "Script",
+                  hash: "ee".repeat(28),
+                }),
+              },
+            }
+          : {
+              eventHistoryRetentionAddress: credentialToAddress("Preview", {
+                type: "Script",
+                hash: "ee".repeat(28),
+              }),
+            }),
       };
       await expect(resolve(changed)).rejects.toThrow(
-        "retained-data address does not match",
+        /retained-data address(?:es)? do(?:es)? not match/,
       );
     });
     it("refuses omitted bounds rather than choosing defaults", async () => {

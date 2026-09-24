@@ -16,6 +16,7 @@ import { Duration, Effect, Exit, Metric, Ref, Schedule } from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { runHistoryProducer } from "../services/event-history-producer.js";
 import {
   BatchSql,
   Globals,
@@ -737,7 +738,7 @@ const txQueueProcessorAction = (
         );
       },
     );
-  });
+  }).pipe(runHistoryProducer);
 
 const txQueueProcessorDrainLoop = (): Effect.Effect<
   bigint,

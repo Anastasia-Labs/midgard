@@ -122,12 +122,8 @@ const test_withdrawals_root: ByteArray =
 
 const test_withdrawal_count: Int = 3
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn challenged_spend_inputs() -> List<MidgardTxInput> {
-  challenged_block().tx.body.inputs
+  fixture.challenged_block_v1().tx.body.inputs
 }
 
 fn first_challenged_spend_input() -> MidgardTxInput {
@@ -183,7 +179,7 @@ fn run_step_02(
 /// transaction's field-0 commitment authenticates, so the challenged spend
 /// input reaches step-03 with the counted withdrawals commitment intact.
 test withdrawn_input_step_02_forwards_the_challenged_spend_input() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_02(
     block,
     challenged_spend_inputs(),
@@ -196,7 +192,7 @@ test withdrawn_input_step_02_forwards_the_challenged_spend_input() {
 /// fails the door's authenticate-once check, so no spend input the
 /// transaction did not use can be carried onward.
 test withdrawn_input_step_02_rejects_a_substituted_preimage() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   let injected = MidgardTxInput {
     tx_id: #"3434343434343434343434343434343434343434343434343434343434343434",
     output_index: 2,
@@ -206,7 +202,7 @@ test withdrawn_input_step_02_rejects_a_substituted_preimage() fail {
 
 /// §7.3 abort-never-clamp at the family's own call site.
 test withdrawn_input_step_02_rejects_an_out_of_range_index() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_02(
     block,
     challenged_spend_inputs(),

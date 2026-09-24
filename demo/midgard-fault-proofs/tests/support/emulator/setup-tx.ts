@@ -1145,7 +1145,6 @@ export const submitSetupTx = async ({
     "registered-operators root after setup",
   );
 
-  await beforeHeaderCommit?.(hubOracleUtxo);
   const appointedSchedulerUtxo = await submitSchedulerAppointmentTx({
     lucid,
     contracts,
@@ -1155,6 +1154,9 @@ export const submitSetupTx = async ({
     activeOperatorNode,
     registeredOperatorsRoot,
   });
+  // Appointment must precede the header start. Admission may wait within the
+  // header window, so perform that setup hook only after appointment.
+  await beforeHeaderCommit?.(hubOracleUtxo);
   const { fraudulentBlockUtxo, continuedActiveOperatorNode } =
     await submitHeaderCommitTx({
       lucid,

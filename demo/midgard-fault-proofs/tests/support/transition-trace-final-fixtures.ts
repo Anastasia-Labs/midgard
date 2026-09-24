@@ -196,7 +196,6 @@ export const buildDepositTransitionFixture = async ({
   now,
   id,
   info,
-  eventAssetName,
   outputCbor,
   honest = false,
   depth = 0,
@@ -205,7 +204,6 @@ export const buildDepositTransitionFixture = async ({
   now: number;
   id: SDK.OutputReference;
   info: SDK.DepositInfo;
-  eventAssetName: string;
   outputCbor: Buffer;
   honest?: boolean;
   depth?: number;
@@ -311,8 +309,6 @@ export const buildDepositTransitionFixture = async ({
               value: info,
               proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
             },
-            event_ref_input_index: 0n,
-            event_asset_name: eventAssetName,
             projected_utxo: {
               key: key.toString("hex"),
               value: value.toString("hex"),

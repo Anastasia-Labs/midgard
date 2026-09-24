@@ -4,7 +4,8 @@ import { registerTransitionTraceFinalCases } from "./support/transition-trace-fi
 registerTransitionTraceFinalCases(
   [
     {
-      assetCount: 1295,
+      // Full 32-byte history NFT leaves room for 1,287 assets at exactly 5,000 bytes.
+      assetCount: 1287,
       outputCount: 1,
       kind: "deposit",
       datumBytes: 256,

@@ -22,10 +22,9 @@ import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/mi
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import {
-  buildDepositValidators,
+  buildEventHistoryDeployments,
   buildHubOracleMintingValidator,
   buildTxOrderValidators,
-  buildWithdrawalValidators,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
 import { CML, validatorToScriptHash } from "@lucid-evolution/lucid";
@@ -51,6 +50,7 @@ import {
 import {
   makeWatcherAuthorityContracts,
   makeWatcherDeploymentAuthorityFixture,
+  WATCHER_EMULATOR_HISTORY_RECIPE,
 } from "../support/deployment-authority-fixture.js";
 // Explicitly synthetic local test chain. The initialization and reference frames
 // came from a passing ordinary emulator scenario. Header keys/signatures are dummy
@@ -157,6 +157,30 @@ const blueprintBytes = readFileSync(
 const blueprint = parseFaultProofBlueprint(
   JSON.parse(blueprintBytes.toString("utf8")) as unknown,
 );
+export const buildWatcherOriginFixtureHistoryDeployments = (
+  oneShot: string,
+  hubOraclePolicyId: string,
+) =>
+  buildEventHistoryDeployments({
+    blueprint,
+    network: "Preprod",
+    hubOraclePolicyId,
+    initializationNonce: parseOutRefLabel(oneShot),
+    protectionDurationMs: BigInt(
+      WATCHER_EMULATOR_HISTORY_RECIPE.protectionDurationMs,
+    ),
+    bounds: {
+      inlineLimitBytes: BigInt(
+        WATCHER_EMULATOR_HISTORY_RECIPE.bounds.inlineLimitBytes,
+      ),
+      maxPayloadBytes: BigInt(
+        WATCHER_EMULATOR_HISTORY_RECIPE.bounds.maxPayloadBytes,
+      ),
+      maxPayloadNodes: BigInt(
+        WATCHER_EMULATOR_HISTORY_RECIPE.bounds.maxPayloadNodes,
+      ),
+    },
+  });
 const makeOriginDeployment = (ruleBundleCommitment?: string) => {
   const contractSet = makeWatcherAuthorityContracts();
   const hub = buildHubOracleMintingValidator({
@@ -168,8 +192,12 @@ const makeOriginDeployment = (ruleBundleCommitment?: string) => {
     network: "Preprod" as const,
     hubOraclePolicyId: hub.policyId,
   };
-  const deposit = buildDepositValidators(input);
-  const withdrawal = buildWithdrawalValidators(input);
+  const history = buildWatcherOriginFixtureHistoryDeployments(
+    INITIALIZATION.canonicalOneShotOutRef,
+    hub.policyId,
+  );
+  const deposit = history.deposit.list;
+  const withdrawal = history.withdrawal.list;
   const { txOrder, fieldPreimageCertificate } = buildTxOrderValidators(input);
   const scripts = {
     hubOracleMint: hub.mintingScript,
@@ -177,6 +205,13 @@ const makeOriginDeployment = (ruleBundleCommitment?: string) => {
     depositSpend: deposit.spendingScript,
     withdrawalMint: withdrawal.mintingScript,
     withdrawalSpend: withdrawal.spendingScript,
+    depositHistoryRetentionSpend: history.deposit.retention.spendingScript,
+    depositHistoryRetirementWithdraw:
+      history.deposit.retirement.withdrawalScript,
+    withdrawalHistoryRetentionSpend:
+      history.withdrawal.retention.spendingScript,
+    withdrawalHistoryRetirementWithdraw:
+      history.withdrawal.retirement.withdrawalScript,
     txOrderMint: txOrder.mintingScript,
     txOrderSpend: txOrder.spendingScript,
     fieldPreimageCertificateMint: fieldPreimageCertificate.mintingScript,
@@ -200,6 +235,7 @@ const makeOriginDeployment = (ruleBundleCommitment?: string) => {
     contractSet,
     blueprintHash: createHash("sha256").update(blueprintBytes).digest("hex"),
     hubOracleOneShotOutRef: INITIALIZATION.canonicalOneShotOutRef,
+    eventHistoryRecipe: WATCHER_EMULATOR_HISTORY_RECIPE,
     ...(ruleBundleCommitment === undefined ? {} : { ruleBundleCommitment }),
   });
 };
@@ -420,6 +456,8 @@ export type SyntheticUserEventOriginFixture = Readonly<{
     minimumFirstSlot?: number,
   ) => Promise<SyntheticNativeTip>;
   rollbackNativeStream: (point: SyntheticNativeTip | "origin") => Promise<void>;
+  /** Select a registered branch; orphan exact-point queries and intersections fail. */
+  selectCanonicalBranch: (tip: SyntheticNativeTip) => Promise<void>;
   exitNativeStream: (exitCode?: number) => Promise<void>;
   /** Descriptive acquisitions recorded by the actual helper subprocess. */
   readNativeQueries: () => Promise<readonly SyntheticNativeQuery[]>;
@@ -549,7 +587,9 @@ export const createSyntheticUserEventOriginFixture = async (
     tip: SyntheticNativeTip;
     commands: StreamCommand[];
     closed: boolean;
+    canonicalBranchSelected: boolean;
   } = {
+    canonicalBranchSelected: false,
     mode: nativeTipMode,
     tip: {
       blockHash: createHash("sha256")
@@ -784,6 +824,11 @@ if(initialControl.closed) throw new Error('Synthetic fixture is closed');
 if(startup.operation.kind!=='exact_point'&&startup.operation.kind!=='stream') throw new Error('Unknown synthetic native operation');
 const exact=startup.operation.kind==='exact_point';
 const block=exact?readBlocks().find(block=>block.point.blockHash===startup.operation.target.blockHash):null;
+if(initialControl.canonicalBranchSelected) {
+  const requested=exact?startup.operation.target:startup.intersection;
+  const registered=requested.kind==='origin'||readBlocks().some(candidate=>candidate.point.blockHash===requested.blockHash||candidate.parentPoint.blockHash===requested.blockHash);
+  if(!registered||exact&&!block){process.stdout.write(JSON.stringify({code:'intersection_failed',kind:'error',schemaVersion:startup.schemaVersion})+'\\n');process.exit(1);}
+}
 if(exact&&!block) throw new Error('Unknown synthetic fixture block');
 let legacyTip;
 if(initialControl.mode==='query_counter') {
@@ -815,7 +860,7 @@ let commandCursor=initialControl.commands.length;
 setInterval(()=>{
   const control=readControl();
   if(control.closed) process.exit(0);
-  if(exact) return;
+  if(exact&&!control.canonicalBranchSelected) return;
   const tip=tipAt(control);
   while(commandCursor<control.commands.length) {
     const command=control.commands[commandCursor++];
@@ -826,6 +871,7 @@ setInterval(()=>{
     position=command.point==='origin'?{kind:'origin'}:{kind:'point',blockHash:command.point.blockHash,slot:command.point.slot};
     emit({schemaVersion:startup.schemaVersion,kind:'roll_backward',point:position,tip});
   }
+  if(exact) return;
   const blocks=readBlocks();
   const next=position.kind==='origin'?blocks[0]:blocks.find(block=>block.parentPoint.blockHash===position.blockHash&&block.parentPoint.slot===position.slot);
   if(!next||BigInt(next.point.blockNo)>BigInt(tip.blockNo)||BigInt(next.point.slot)>BigInt(tip.slot)) return;
@@ -1241,6 +1287,60 @@ setInterval(()=>{
       control.commands.push(command);
       await persistControl();
     });
+  const selectCanonicalBranch = (tip: SyntheticNativeTip) =>
+    changeControl(async () => {
+      const retained = new Set<string>();
+      let cursor = blocks.find(
+        (block) => block.point.blockHash === tip.blockHash,
+      );
+      if (
+        cursor === undefined ||
+        cursor.point.blockNo !== tip.blockNo ||
+        cursor.point.slot !== tip.slot
+      )
+        throw new Error("Canonical fixture branch tip is not registered");
+      while (cursor !== undefined) {
+        if (retained.has(cursor.point.blockHash))
+          throw new Error("Canonical fixture branch is cyclic");
+        retained.add(cursor.point.blockHash);
+        cursor = blocks.find(
+          (block) => block.point.blockHash === cursor!.parentPoint.blockHash,
+        );
+      }
+      const removed = new Set(
+        blocks
+          .filter((block) => !retained.has(block.point.blockHash))
+          .map((block) => block.point.blockHash),
+      );
+      blocks.splice(
+        0,
+        blocks.length,
+        ...blocks.filter((block) => retained.has(block.point.blockHash)),
+      );
+      for (const row of creating)
+        if (removed.has(row.creatingPoint.blockHash))
+          creatingByHash.delete(row.txHash);
+      creating.splice(
+        0,
+        creating.length,
+        ...creating.filter((row) => !removed.has(row.creatingPoint.blockHash)),
+      );
+      for (const index of [outputsByAddress, outputsByUnit])
+        for (const [key, rows] of index)
+          index.set(
+            key,
+            rows.filter((row) => !removed.has(row.created_at.header_hash)),
+          );
+      for (const [key, rows] of consumptionsByOutRef)
+        consumptionsByOutRef.set(
+          key,
+          rows.filter((row) => !removed.has(row.header_hash)),
+        );
+      control.canonicalBranchSelected = true;
+      if (nativeTipMode === "controlled") control.tip = snapshotTip(tip);
+      await persistBlocks();
+      await persistControl();
+    });
   const rollbackNativeStream = (point: SyntheticNativeTip | "origin") =>
     appendStreamCommand({
       kind: "rollback",
@@ -1362,6 +1462,7 @@ setInterval(()=>{
     appendNativeBlock,
     growNativeTip,
     rollbackNativeStream,
+    selectCanonicalBranch,
     exitNativeStream,
     readNativeQueries,
     close,

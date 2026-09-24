@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { isProxy } from "node:util/types";
 
 import {
   computeMidgardForcedTxProofCommitment,
@@ -19,15 +18,17 @@ import {
   computeFraudProofRawL1PointId,
 } from "@al-ft/midgard-fault-proofs";
 import {
+  ConfirmedState,
   DepositDatumSchema,
   DepositEventSchema,
-  DepositSpendRedeemerSchema,
   EVENT_WAIT_DURATION_MS,
+  EventHistoryOperation,
+  eventHistoryRetirementOperation,
   ForcedInclusionTxV1Schema,
   HubOracleDatumSchema,
+  LinkedListDatum,
   MerkleRoot,
   outputReferenceToPlutusDataCbor,
-  PayoutDatumSchema,
   PayoutMintRedeemerSchema,
   Proof,
   rejectionCodeOf,
@@ -45,7 +46,6 @@ import {
   userEventWitnessScriptHash,
   WithdrawalEventSchema,
   WithdrawalOrderDatumSchema,
-  WithdrawalSpendRedeemerSchema,
 } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -56,32 +56,16 @@ import {
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
-  evaluateWatcherFinality,
-  parseWatcherFinalityPolicy,
   readWatcherLocalBackfillFinalityObservation,
   readWatcherLocalBackfillFinalityOriginalWitness,
-  watcherFinalityConfiguredSource,
   type WatcherFinalityPolicy,
-  type WatcherFinalityResult,
   type WatcherLocalBackfillFinalityReceipt,
 } from "../l1/finality-engine.js";
 import {
   encodeWatcherNormalizedL1Block,
-  normalizeWatcherL1Block,
-  type WatcherL1TransportAttestationContext,
-  watcherL1TransportAttestationDetails,
   type WatcherLocalBackfillObservationReceipt,
   type WatcherNormalizedL1Block,
 } from "../l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistency } from "../l1/multi-provider-consistency.js";
-import {
-  parseWatcherPostFinalityRecoveryResult,
-  parseWatcherRollbackResult,
-  type WatcherPostFinalityRecoveryInput,
-  type WatcherPostFinalityRecoveryResult,
-  type WatcherRollbackResult,
-  type WatcherRollbackVerificationContext,
-} from "../l1/rollback-engine.js";
 import {
   parseWatcherCustomNetwork,
   type WatcherCustomNetwork,
@@ -89,7 +73,7 @@ import {
 import {
   readWatcherUserEventScriptBinding,
   type VerifiedWatcherDeploymentIdentity,
-  verifyWatcherDeploymentIdentity,
+  watcherDeploymentAppliedScriptHashes,
   type WatcherDeploymentIdentityPolicy,
   type WatcherDeploymentTrustRoot,
   type WatcherUserEventScriptBinding,
@@ -122,6 +106,16 @@ import {
   type WatcherUserEventValidation,
 } from "../storage/user-event-checkpoint.js";
 import {
+  historyCardanoDatumMatches,
+  historyListObservation,
+  historyNodeFromOutput,
+  historyOrderContinuationMatches,
+  historyPayloadFromNode,
+  historyRawField,
+  historyRetirementObservation,
+  historyWithdrawalPayoutDatum,
+} from "./authenticated-event-history.js";
+import {
   assertWatcherStateQueueHeaderObservation,
   type WatcherStateQueueHeaderObservation,
 } from "./authenticated-state-queue-observation.js";
@@ -138,7 +132,6 @@ import {
 } from "./user-event-origin.js";
 import {
   admitWatcherLocalBackfillUserEventReferenceEvidence,
-  admitWatcherUserEventReferenceEvidence,
   readWatcherUserEventReferenceEvidence,
   type WatcherUserEventReferenceAuthority,
   type WatcherUserEventReferenceEvidence,
@@ -151,14 +144,6 @@ export const WATCHER_USER_EVENT_SNAPSHOT_SCHEMA_VERSION =
   "midgard-watcher-user-event-snapshot-v1" as const;
 export const WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-user-event-observation-v1" as const;
-export const WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION =
-  "midgard-watcher-user-event-history-entry-v1" as const;
-export const WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION =
-  "midgard-watcher-user-event-indexer-state-v1" as const;
-export const WATCHER_USER_EVENT_INDEXER_RESULT_SCHEMA_VERSION =
-  "midgard-watcher-user-event-indexer-result-v1" as const;
-export const WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION =
-  "midgard-watcher-user-event-public-context-v1" as const;
 export const WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION =
   "midgard-watcher-forced-terminal-classification-v1" as const;
 
@@ -177,45 +162,6 @@ export const WATCHER_USER_EVENT_INDEXER_BOUNDS = Object.freeze({
   cumulativeEvidenceBytes: 134_217_728,
   cumulativeEvidenceNodes: 2_000_000,
 });
-
-export const WATCHER_USER_EVENT_INDEXER_REASON_CODES = [
-  "block_authenticated",
-  "rollback_authenticated",
-  "duplicate_observation",
-  "malformed_policy",
-  "malformed_state",
-  "malformed_observation",
-  "malformed_public_context",
-  "binding_mismatch",
-  "public_evidence_mismatch",
-  "durable_evidence_mismatch",
-  "event_output_mismatch",
-  "event_datum_mismatch",
-  "event_nft_mismatch",
-  "event_witness_mismatch",
-  "event_inclusion_time_mismatch",
-  "event_redeemer_mismatch",
-  "event_content_mismatch",
-  "event_topology_mismatch",
-  "identity_collision",
-  "stale_chain_point",
-  "history_limit_exceeded",
-  "rollback_authority_mismatch",
-  "unknown_rollback_target",
-  "post_finality_quarantine",
-] as const;
-
-export const WATCHER_USER_EVENT_INDEXER_ALERT_CODES = [
-  "watcher_user_event_input_rejected",
-  "watcher_user_event_binding_rejected",
-  "watcher_user_event_transition_rejected",
-  "watcher_user_event_rollback_quarantined",
-] as const;
-
-export type WatcherUserEventIndexerReasonCode =
-  (typeof WATCHER_USER_EVENT_INDEXER_REASON_CODES)[number];
-export type WatcherUserEventIndexerAlertCode =
-  (typeof WATCHER_USER_EVENT_INDEXER_ALERT_CODES)[number];
 export type WatcherUserEventNetwork =
   | "Mainnet"
   | "Preprod"
@@ -271,7 +217,9 @@ export type WatcherIndexedUserEvent = Readonly<{
   spendScriptHash: string;
   addressHex: string;
   assetNameHex: string;
-  witnessScriptHash: string;
+  witnessScriptHash?: string;
+  /** Original payload retained from actual authenticated L1 admission. */
+  historyPayloadCborHex?: string;
   inclusionTime: string;
   eventCborHex: string;
   datumCborHex: string;
@@ -349,104 +297,6 @@ export type WatcherUserEventObservation = Readonly<{
   snapshot: WatcherUserEventSnapshot;
   observationDigest: string;
 }>;
-
-export type WatcherUserEventRollbackAuthority = Readonly<{
-  result: unknown;
-  context:
-    | WatcherRollbackVerificationContext
-    | WatcherPostFinalityRecoveryInput;
-}>;
-
-export type WatcherUserEventFinalityAuthority = Readonly<{
-  policy: unknown;
-  lineage: readonly Readonly<{
-    observations: readonly Readonly<{
-      authenticatedProvider: unknown;
-      l1Observation: unknown;
-    }>[];
-    consistency: unknown;
-    result: unknown;
-  }>[];
-  previousState: unknown;
-  observations: readonly Readonly<{
-    authenticatedProvider: unknown;
-    l1Observation: unknown;
-  }>[];
-  consistency: unknown;
-  result: unknown;
-}>;
-
-export type WatcherUserEventPublicContext = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION;
-  authenticatedProvider: unknown | null;
-  l1Observation: unknown | null;
-  referenceEvidence: WatcherUserEventReferenceEvidence | null;
-  sourceDurableStore: unknown;
-  durableStore: unknown;
-  deploymentAuthority: WatcherUserEventDeploymentAuthority;
-  rollbackRestoredEventUtxos: readonly unknown[];
-  finalityAuthority: WatcherUserEventFinalityAuthority | null;
-  rollbackAuthority: WatcherUserEventRollbackAuthority | null;
-}>;
-
-export type WatcherUserEventHistoryEntry = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION;
-  predecessorStateDigest: string | null;
-  observation: WatcherUserEventObservation;
-  publicContext: WatcherUserEventPublicContext;
-  entryDigest: string;
-}>;
-
-export type WatcherUserEventIndexerState = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION;
-  policyDigest: string;
-  network: WatcherUserEventNetwork;
-  blueprintHash: string;
-  deploymentMarker: DeploymentMarker;
-  durableStoreDigest: string;
-  durableStoreRevision: string;
-  snapshot: WatcherUserEventSnapshot;
-  history: readonly WatcherUserEventHistoryEntry[];
-  activeEntryDigests: readonly string[];
-  stateDigest: string;
-}>;
-
-export type WatcherUserEventIndexerResult = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_RESULT_SCHEMA_VERSION;
-  action: "accept" | "duplicate" | "reject" | "quarantine";
-  protocolDecision: "indexed" | "hold" | "quarantined";
-  reasonCodes: readonly WatcherUserEventIndexerReasonCode[];
-  alertCodes: readonly WatcherUserEventIndexerAlertCode[];
-  state: WatcherUserEventIndexerState | null;
-  resultDigest: string;
-}>;
-
-export type WatcherUserEventViewTransitionInput = Readonly<{
-  policy: unknown;
-  previousState: unknown;
-  sourceDurableStore: unknown;
-  authenticatedProvider: unknown;
-  l1Observation: unknown;
-  referenceEvidence: WatcherUserEventReferenceEvidence;
-  deploymentAuthority: WatcherUserEventDeploymentAuthority;
-  finalityAuthority: WatcherUserEventFinalityAuthority;
-  transportAttestations: readonly WatcherL1TransportAttestationContext[];
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[];
-}>;
-
-export type WatcherUserEventViewTransitionResult =
-  | Readonly<{
-      status: "derived";
-      sourceStore: WatcherDurableStore;
-      nextStore: WatcherDurableStore;
-      publicContext: WatcherUserEventPublicContext;
-      observation: WatcherUserEventObservation;
-      result: WatcherUserEventIndexerResult;
-    }>
-  | Readonly<{
-      status: "refused";
-      reason: WatcherUserEventIndexerReasonCode;
-    }>;
 
 type PlainRecord = Record<string, unknown>;
 type EventSchema = Parameters<typeof Data.from>[1];
@@ -591,16 +441,6 @@ const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
 const sha256Canonical = watcherSha256CanonicalJson;
 const same = watcherSameCanonicalJson;
-const samePlutusData = (left: unknown, right: unknown): boolean => {
-  if (left === right) {
-    return true;
-  }
-  try {
-    return Data.to(left as never) === Data.to(right as never);
-  } catch {
-    return watcherSameCanonicalJson(left, right);
-  }
-};
 
 const exactRecord = (
   value: unknown,
@@ -1399,6 +1239,163 @@ const eventIdMatchesNonce = (
   );
 };
 
+const scanHistoryOutput = (
+  policy: WatcherUserEventIndexerPolicy,
+  block: WatcherNormalizedL1Block,
+  transaction: WatcherNormalizedL1Block["transactions"][number],
+  references: WatcherUserEventReferenceEvidence,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
+  kind: "deposit" | "withdrawal",
+  outputIndex: number,
+): { event?: WatcherIndexedUserEvent } | null => {
+  const fields = eventPolicy(policy, kind);
+  const body = canonicalBody(transaction.body.bytesHex)!;
+  const output = body.outputs().get(outputIndex);
+  const authenticated = historyNodeFromOutput(output, fields.policyId);
+  const observed = historyListObservation(transaction, fields.policyId);
+  if (
+    authenticated === null ||
+    observed === null ||
+    output.address().to_hex() !== fields.addressHex
+  )
+    return null;
+  const { node, key } = authenticated;
+  const observe = observed.observe;
+  if ("Initialize" in observe)
+    return node.payload === "RootContent" &&
+      observe.Initialize.root_output_index === BigInt(outputIndex)
+      ? {}
+      : null;
+  const hub = decodeHubAt(
+    references,
+    transaction.txHash,
+    body,
+    observe.Apply.hub_reference_index,
+    deployment,
+  );
+  if (
+    hub === null ||
+    hub[kind] !== fields.policyId ||
+    !addressMatchesData(output.address(), hub[kind + "_addr"])
+  )
+    return null;
+  const operation = observe.Apply.operation;
+  if (node.payload === "RootContent" || !("Order" in node.payload)) return {};
+  const admission =
+    "InsertOrder" in operation
+      ? operation.InsertOrder
+      : "PromoteFiller" in operation
+        ? operation.PromoteFiller
+        : null;
+  if (
+    admission === null ||
+    admission.order_output_index !== BigInt(outputIndex)
+  ) {
+    return "predecessor_output_index" in Object.values(operation)[0]! &&
+      (Object.values(operation)[0] as { predecessor_output_index: bigint })
+        .predecessor_output_index === BigInt(outputIndex)
+      ? {}
+      : null;
+  }
+  const nonceIndex = admission.nonce_input_index;
+  if (nonceIndex < 0n || nonceIndex >= BigInt(body.inputs().len())) return null;
+  const nonce = body.inputs().get(Number(nonceIndex));
+  const facts = node.payload.Order.facts;
+  const external =
+    admission.external_reference_index === null
+      ? null
+      : watcherUserEventReferenceOutput(
+          references,
+          transaction.txHash,
+          referencedOutRefAt(body, admission.external_reference_index),
+        );
+  const opened = historyPayloadFromNode(
+    authenticated,
+    kind,
+    key,
+    external,
+    deployment.appliedScriptHashes[kind + "HistoryRetentionSpend"],
+  );
+  const ttl = body.ttl();
+  const mint = body
+    .mint()
+    ?.get_assets(CML.ScriptHash.from_hex(fields.policyId));
+  const expectedMint = "PromoteFiller" in operation ? 0n : 1n;
+  if (expectedMint === 1n) {
+    const index =
+      body.mint() === undefined
+        ? -1
+        : mintPolicyIndex(body.mint()!, fields.policyId);
+    if (index < 0 || matchingRedeemer(transaction, "mint", index) === null)
+      return null;
+  }
+  if (
+    opened === null ||
+    key !== nonceAssetName(nonce) ||
+    ttl === undefined ||
+    ttl > BigInt(Number.MAX_SAFE_INTEGER) ||
+    facts.inclusion_time !==
+      BigInt(
+        resolveEventInclusionTime(
+          slotToBeginUnixTime(
+            Number(ttl),
+            policy.customNetwork?.slotConfig ??
+              SLOT_CONFIG_NETWORK[policy.network],
+          ),
+          policy.network,
+        ),
+      ) ||
+    (expectedMint === 0n
+      ? mint !== undefined && mint.len() !== 0
+      : mint?.len() !== 1 || mint.get(CML.AssetName.from_hex(key)) !== 1n)
+  )
+    return null;
+  const { payload, payloadCbor, eventCbor: eventCborHex } = opened;
+  const event =
+    "DepositPayload" in payload
+      ? payload.DepositPayload.event
+      : payload.WithdrawalPayload.event;
+  if (
+    !eventIdMatchesNonce(kind, event, nonce) ||
+    output.amount().coin() < facts.structural_lovelace
+  )
+    return null;
+  const datum = canonicalDatumForOutput(transaction, outputIndex, output);
+  if (datum === null) return null;
+  const outputCborHex = output.to_cbor_hex();
+  return {
+    event: Object.freeze({
+      kind,
+      eventId: outputReferenceToPlutusDataCbor({
+        txHash: nonce.transaction_id().to_hex(),
+        outputIndex: Number(nonce.index()),
+      }),
+      outRef: `${transaction.txHash}#${outputIndex}`,
+      transactionHash: transaction.txHash,
+      outputIndex: String(outputIndex),
+      nonceOutRef: outputReference(nonce),
+      policyId: fields.policyId,
+      spendScriptHash: fields.spendScriptHash,
+      addressHex: fields.addressHex,
+      assetNameHex: key,
+      inclusionTime: String(facts.inclusion_time),
+      eventCborHex,
+      historyPayloadCborHex: payloadCbor,
+      datumCborHex: datum.cborHex,
+      outputCborHex,
+      eventContentDigest: sha256Bytes(Buffer.from(eventCborHex, "hex")),
+      datumDigest: datum.digest,
+      outputDigest: sha256Bytes(Buffer.from(outputCborHex, "hex")),
+      originPointDigest: block.chainPoint.pointDigest,
+      originChainPointId: block.chainPoint.chainPointId,
+      originBlockHash: block.chainPoint.blockHash,
+      originSlot: block.chainPoint.slot,
+      originBlockNo: block.chainPoint.blockNo,
+      finalityStatus: "pending",
+    }),
+  };
+};
+
 const scanCreatedTransactionEvents = (
   policy: WatcherUserEventIndexerPolicy,
   block: WatcherNormalizedL1Block,
@@ -1407,13 +1404,12 @@ const scanCreatedTransactionEvents = (
   deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
   events: WatcherIndexedUserEvent[],
 ): true | null => {
-  const failCreated = (_label: string): null => null;
   if (!transaction.isValid) {
     return true;
   }
   const body = canonicalBody(transaction.body.bytesHex);
   if (body === null) {
-    return failCreated("body");
+    return null;
   }
   const outputs = body.outputs();
   const inputs = body.inputs();
@@ -1429,11 +1425,26 @@ const scanCreatedTransactionEvents = (
     if (knownPolicies.length === 0) {
       continue;
     }
-    if (knownPolicies.length !== 1 || mint === undefined) {
-      return failCreated("known-policy");
+    if (knownPolicies.length !== 1) {
+      return null;
     }
     const [policyId, kind] = knownPolicies[0]!;
     const fields = eventPolicy(policy, kind);
+    if (kind !== "forced_order") {
+      const admitted = scanHistoryOutput(
+        policy,
+        block,
+        transaction,
+        referenceEvidence,
+        deployment,
+        kind,
+        outputIndex,
+      );
+      if (admitted === null) return null;
+      if (admitted.event !== undefined) events.push(admitted.event);
+      continue;
+    }
+    if (mint === undefined) return null;
     const nft = exactlyOneAsset(output, policyId);
     const policyIndex = mintPolicyIndex(mint, policyId);
     const redeemer =
@@ -1456,7 +1467,7 @@ const scanCreatedTransactionEvents = (
       decoded === null ||
       !("AuthenticateEvent" in decoded.event)
     ) {
-      return failCreated("nft-or-mint");
+      return null;
     }
     const auth = decoded.event.AuthenticateEvent;
     if (
@@ -1466,7 +1477,7 @@ const scanCreatedTransactionEvents = (
       auth.hub_ref_input_index < 0n ||
       auth.witness_registration_redeemer_index < 0n
     ) {
-      return failCreated("auth-indices");
+      return null;
     }
     const nonceInput = inputs.get(Number(auth.nonce_input_index));
     const expectedAssetName = nonceAssetName(nonceInput);
@@ -1493,18 +1504,8 @@ const scanCreatedTransactionEvents = (
       auth.hub_ref_input_index,
       deployment,
     );
-    const expectedHubPolicy =
-      kind === "deposit"
-        ? hubDatum?.deposit
-        : kind === "withdrawal"
-          ? hubDatum?.withdrawal
-          : hubDatum?.tx_order;
-    const expectedHubAddress =
-      kind === "deposit"
-        ? hubDatum?.deposit_addr
-        : kind === "withdrawal"
-          ? hubDatum?.withdrawal_addr
-          : hubDatum?.tx_order_addr;
+    const expectedHubPolicy = hubDatum?.tx_order;
+    const expectedHubAddress = hubDatum?.tx_order_addr;
     if (
       nft.assetNameHex !== expectedAssetName ||
       output.address().to_hex() !== fields.addressHex ||
@@ -1520,11 +1521,7 @@ const scanCreatedTransactionEvents = (
       !("MintOrBurn" in witnessRedeemer) ||
       witnessRedeemer.MintOrBurn.targetPolicy !== policyId
     ) {
-      return failCreated(
-        `output-witness datum=${String(datum === null)} cert=${String(
-          registeredScriptHashAt(body, certificateIndex, true),
-        )} expected=${expectedWitness}`,
-      );
+      return null;
     }
     const parsedDatum = parseEventDatum(kind, datum.cborHex);
     const ttl = body.ttl();
@@ -1569,9 +1566,7 @@ const scanCreatedTransactionEvents = (
           decoded.materialCarriage.length !==
             forcedOrderMaterialFieldCount(forcedEvent.tx)))
     ) {
-      return failCreated(
-        `datum-time parsed=${String(parsedDatum === null)} ttl=${String(ttl)}`,
-      );
+      return null;
     }
     const policies = outputPolicies(output);
     const nonNftAssetCount = policies.reduce((count, candidatePolicy) => {
@@ -1587,13 +1582,8 @@ const scanCreatedTransactionEvents = (
           ?.len() ?? 0)
       );
     }, 1);
-    if (
-      (kind === "deposit" &&
-        nonNftAssetCount >
-          WATCHER_USER_EVENT_INDEXER_BOUNDS.maximumDepositNonNftAssets) ||
-      (kind !== "deposit" && (policies.length !== 1 || nonNftAssetCount !== 1))
-    ) {
-      return failCreated("asset-count");
+    if (policies.length !== 1 || nonNftAssetCount !== 1) {
+      return null;
     }
     const outRef = `${transaction.txHash}#${outputIndex.toString()}`;
     const outputCborHex = output.to_cbor_hex();
@@ -1635,41 +1625,6 @@ const scanCreatedTransactionEvents = (
   return true;
 };
 
-const scanCreatedEvents = (
-  policy: WatcherUserEventIndexerPolicy,
-  block: WatcherNormalizedL1Block,
-  referenceEvidence: WatcherUserEventReferenceEvidence,
-  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
-): readonly WatcherIndexedUserEvent[] | null => {
-  const failCreated = (_label: string): null => null;
-  const events: WatcherIndexedUserEvent[] = [];
-  for (const transaction of block.transactions) {
-    if (
-      scanCreatedTransactionEvents(
-        policy,
-        block,
-        transaction,
-        referenceEvidence,
-        deployment,
-        events,
-      ) === null
-    ) {
-      return null;
-    }
-  }
-  const sorted = events.sort((left, right) =>
-    left.outRef.localeCompare(right.outRef),
-  );
-  if (
-    sorted.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.activeEvents ||
-    new Set(sorted.map(({ outRef }) => outRef)).size !== sorted.length ||
-    new Set(sorted.map(({ eventId }) => eventId)).size !== sorted.length
-  ) {
-    return failCreated("identity");
-  }
-  return Object.freeze(sorted);
-};
-
 type DecodedTerminalSpend = Readonly<{
   terminalStatus: WatcherUserEventTerminalStatus;
   outputIndex: bigint;
@@ -1695,31 +1650,6 @@ const decodeTerminalSpend = (
   bytesHex: string,
   inputIndex: number,
 ): DecodedTerminalSpend | null => {
-  if (kind === "deposit") {
-    const decoded = dataRoundTrip<{
-      input_index: bigint;
-      output_index: bigint;
-      hub_ref_input_index: bigint;
-      settlement_ref_input_index: bigint;
-      mint_redeemer_index: bigint;
-      membership_proof: DecodedTerminalSpend["membershipProof"];
-      inclusion_proof_script_withdraw_redeemer_index: bigint;
-    }>(bytesHex, DepositSpendRedeemerSchema);
-    return decoded?.input_index === BigInt(inputIndex)
-      ? {
-          terminalStatus: "absorbed",
-          outputIndex: decoded.output_index,
-          hubRefInputIndex: decoded.hub_ref_input_index,
-          settlementRefInputIndex: decoded.settlement_ref_input_index,
-          mintRedeemerIndex: decoded.mint_redeemer_index,
-          payoutMintRedeemerIndex: null,
-          membershipProof: decoded.membership_proof,
-          inclusionProofRedeemerIndex:
-            decoded.inclusion_proof_script_withdraw_redeemer_index,
-          purpose: null,
-        }
-      : null;
-  }
   if (kind === "forced_order") {
     const decoded = dataRoundTrip<{
       input_index: bigint;
@@ -1746,43 +1676,7 @@ const decodeTerminalSpend = (
         }
       : null;
   }
-  const decoded = dataRoundTrip<{
-    input_index: bigint;
-    output_index: bigint;
-    hub_ref_input_index: bigint;
-    settlement_ref_input_index: bigint;
-    burn_redeemer_index: bigint;
-    payout_mint_redeemer_index: bigint;
-    membership_proof: DecodedTerminalSpend["membershipProof"];
-    inclusion_proof_script_withdraw_redeemer_index: bigint;
-    purpose: "InitializePayout" | { Refund: { validity_override: unknown } };
-  }>(bytesHex, WithdrawalSpendRedeemerSchema);
-  if (decoded === null) {
-    return null;
-  }
-  if (decoded.input_index !== BigInt(inputIndex)) {
-    return null;
-  }
-  const terminalStatus =
-    decoded.purpose === "InitializePayout"
-      ? "payout_initialized"
-      : "Refund" in decoded.purpose
-        ? "refunded"
-        : null;
-  return terminalStatus === null
-    ? null
-    : {
-        terminalStatus,
-        outputIndex: decoded.output_index,
-        hubRefInputIndex: decoded.hub_ref_input_index,
-        settlementRefInputIndex: decoded.settlement_ref_input_index,
-        mintRedeemerIndex: decoded.burn_redeemer_index,
-        payoutMintRedeemerIndex: decoded.payout_mint_redeemer_index,
-        membershipProof: decoded.membership_proof,
-        inclusionProofRedeemerIndex:
-          decoded.inclusion_proof_script_withdraw_redeemer_index,
-        purpose: decoded.purpose,
-      };
+  return null;
 };
 
 const outputValue = (
@@ -2157,7 +2051,6 @@ const verifyTerminalSemantics = (
   referenceEvidence: WatcherUserEventReferenceEvidence,
   transaction: WatcherNormalizedL1Block["transactions"][number],
   body: CML.TransactionBody,
-  inputIndex: number,
   spend: DecodedTerminalSpend,
   deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
 ): boolean => {
@@ -2284,42 +2177,267 @@ const verifyTerminalSemantics = (
     refund_address?: unknown;
     refund_datum?: unknown;
   };
-  if (event.kind === "deposit") {
-    return (
-      addressMatchesData(produced.address(), hubDatum.reserve_addr) &&
-      produced.datum() === undefined
-    );
+  return (
+    event.kind === "forced_order" &&
+    isHex32(datum.event.id?.transactionId) &&
+    typeof datum.event.id.outputIndex === "bigint" &&
+    forcedPayloadMatchesSubmittedSource(datum.event.tx) &&
+    addressMatchesData(produced.address(), datum.refund_address) &&
+    cardanoDatumMatches(produced, datum.refund_datum)
+  );
+};
+
+/** Classify a consumed history order using the deployed observer. A consumed
+ * predecessor continues the same event; it is never a settlement by itself. */
+const consumeHistoryOrder = (
+  event: WatcherIndexedUserEvent,
+  transaction: WatcherNormalizedL1Block["transactions"][number],
+  references: WatcherUserEventReferenceEvidence,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
+  inputIndex: number,
+):
+  | { continuation: WatcherIndexedUserEvent }
+  | { terminalStatus: WatcherUserEventTerminalStatus }
+  | null => {
+  if (event.kind === "forced_order") return null;
+  const body = canonicalBody(transaction.body.bytesHex)!;
+  const observed = historyListObservation(transaction, event.policyId);
+  const input = CML.TransactionOutput.from_cbor_hex(event.outputCborHex);
+  const node = historyNodeFromOutput(input, event.policyId);
+  if (
+    observed === null ||
+    !("Apply" in observed.observe) ||
+    node === null ||
+    node.node.payload === "RootContent" ||
+    !("Order" in node.node.payload)
+  ) {
+    return null;
   }
-  if (event.kind === "forced_order") {
-    return (
-      isHex32(datum.event.id?.transactionId) &&
-      typeof datum.event.id.outputIndex === "bigint" &&
-      forcedPayloadMatchesSubmittedSource(datum.event.tx) &&
-      addressMatchesData(produced.address(), datum.refund_address) &&
-      cardanoDatumMatches(produced, datum.refund_datum)
-    );
+  const spend = matchingRedeemer(transaction, "spend", inputIndex);
+  if (
+    spend === null ||
+    dataRoundTrip<bigint>(
+      spend.bytes.bytesHex,
+      Data.Integer() as EventSchema,
+    ) !== BigInt(inputIndex)
+  )
+    return null;
+  const operation = observed.observe.Apply.operation;
+  const operationFields = Object.values(operation)[0]!;
+  const continuingIndex =
+    "predecessor_output_index" in operationFields
+      ? operationFields.predecessor_output_index
+      : null;
+  if (
+    continuingIndex !== null &&
+    continuingIndex >= 0n &&
+    continuingIndex < BigInt(body.outputs().len())
+  ) {
+    const output = body.outputs().get(Number(continuingIndex));
+    if (historyOrderContinuationMatches(input, output, event.policyId)) {
+      const datum = canonicalDatumForOutput(
+        transaction,
+        Number(continuingIndex),
+        output,
+      );
+      if (datum === null) return null;
+      const outputCborHex = output.to_cbor_hex();
+      return {
+        continuation: Object.freeze({
+          ...event,
+          outRef: `${transaction.txHash}#${continuingIndex}`,
+          transactionHash: transaction.txHash,
+          outputIndex: String(continuingIndex),
+          datumCborHex: datum.cborHex,
+          datumDigest: datum.digest,
+          outputCborHex,
+          outputDigest: sha256Bytes(Buffer.from(outputCborHex, "hex")),
+        }),
+      };
+    }
   }
-  if (spend.terminalStatus === "refunded") {
-    return (
-      addressMatchesData(produced.address(), datum.refund_address) &&
-      cardanoDatumMatches(produced, datum.refund_datum)
-    );
-  }
-  const withdrawalInfo = datum.event.info as {
-    body?: {
-      l2_value?: unknown;
-      l1_address?: unknown;
-      l1_datum?: unknown;
-    };
-    validity?: unknown;
-  };
-  const payoutPolicy = hubDatum.payout;
-  const payoutMint =
-    spend.payoutMintRedeemerIndex === null
+  if (!("RetireOrder" in operation)) return null;
+  const retirementHash =
+    deployment.appliedScriptHashes[event.kind + "HistoryRetirementWithdraw"];
+  if (!isHex28(retirementHash)) return null;
+  const retired = historyRetirementObservation(transaction, retirementHash);
+  if (retired === null) return null;
+  const { witness, hub_reference_index } = retired.args;
+  if (
+    witness.order_input_index !== BigInt(inputIndex) ||
+    hub_reference_index !== observed.observe.Apply.hub_reference_index ||
+    Data.to(eventHistoryRetirementOperation(witness), EventHistoryOperation) !==
+      Data.to(operation, EventHistoryOperation)
+  )
+    return null;
+  const hub = decodeHubAt(
+    references,
+    transaction.txHash,
+    body,
+    hub_reference_index,
+    deployment,
+  );
+  if (
+    hub === null ||
+    hub[event.kind] !== event.policyId ||
+    !addressMatchesData(input.address(), hub[event.kind + "_addr"])
+  )
+    return null;
+  const facts = node.node.payload.Order.facts;
+  const external =
+    witness.external_reference_index === null
       ? null
-      : redeemerAtGlobalIndex(transaction, spend.payoutMintRedeemerIndex);
-  const decodedPayout =
-    payoutMint === null
+      : watcherUserEventReferenceOutput(
+          references,
+          transaction.txHash,
+          referencedOutRefAt(body, witness.external_reference_index),
+        );
+  const opened = historyPayloadFromNode(
+    node,
+    event.kind,
+    node.key,
+    external,
+    deployment.appliedScriptHashes[event.kind + "HistoryRetentionSpend"],
+  );
+  if (opened === null || event.historyPayloadCborHex !== opened.payloadCbor)
+    return null;
+  const { payload, payloadCbor } = opened;
+  const confirmedOutput = watcherUserEventReferenceOutput(
+    references,
+    transaction.txHash,
+    referencedOutRefAt(body, witness.confirmed_reference_index),
+  );
+  try {
+    if (
+      confirmedOutput === null ||
+      !isHex28(hub.state_queue) ||
+      !addressMatchesData(confirmedOutput.address(), hub.state_queue_addr) ||
+      confirmedOutput.script_ref() !== undefined ||
+      exactlyOneAsset(confirmedOutput, hub.state_queue)?.assetNameHex !==
+        Buffer.from("MIDGARD_CONFIRMED_STATE").toString("hex") ||
+      exactlyOneAsset(confirmedOutput, hub.state_queue)?.quantity !== 1n
+    )
+      return null;
+    const confirmedNode = Data.from(
+      inlineDatumCbor(confirmedOutput)!,
+      LinkedListDatum,
+    );
+    if (!("Root" in confirmedNode.data)) return null;
+    const confirmed = Data.castFrom(
+      confirmedNode.data.Root.data,
+      ConfirmedState,
+    );
+    if (facts.inclusion_time <= 0n || facts.inclusion_time > confirmed.endTime)
+      return null;
+  } catch {
+    return null;
+  }
+  const settlement = isHex28(hub.settlement)
+    ? authenticReferenceDatum(
+        references,
+        transaction.txHash,
+        body,
+        witness.settlement_reference_index,
+        hub.settlement,
+        asDataType<EventSchema>(SettlementDatumSchema),
+      )
+    : null;
+  const root =
+    settlement?.datum[
+      event.kind === "deposit" ? "deposits_root" : "withdrawals_root"
+    ];
+  if (
+    settlement === null ||
+    !addressMatchesData(settlement.output.address(), hub.settlement_addr) ||
+    settlement.output.script_ref() !== undefined ||
+    !countedRootMatches(
+      {
+        ...witness.membership,
+        domain:
+          event.kind === "deposit"
+            ? "DepositsRootDomain"
+            : "WithdrawalsRootDomain",
+        root: root as string,
+        key: "",
+        value: "",
+      },
+      event.kind === "deposit" ? "DepositsRootDomain" : "WithdrawalsRootDomain",
+      root,
+    )
+  )
+    return null;
+  const mint = body.mint()?.get_assets(CML.ScriptHash.from_hex(event.policyId));
+  if (
+    mint?.len() !== 1 ||
+    mint.get(CML.AssetName.from_hex(event.assetNameHex)) !== -1n ||
+    witness.funds_output_index < 0n ||
+    witness.funds_output_index >= BigInt(body.outputs().len()) ||
+    witness.funds_output_index === witness.predecessor_output_index
+  )
+    return null;
+  const output = body.outputs().get(Number(witness.funds_output_index));
+  const original = new Map(outputValue(input));
+  original.delete(event.policyId + event.assetNameHex);
+  original.set(
+    "lovelace",
+    (original.get("lovelace") ?? 0n) - facts.structural_lovelace,
+  );
+  if (
+    (original.get("lovelace") ?? -1n) < 0n ||
+    output.script_ref() !== undefined
+  )
+    return null;
+  if (facts.structural_lovelace === 0n) {
+    if (witness.structural_refund_output_index !== null) return null;
+  } else {
+    const index = witness.structural_refund_output_index;
+    if (
+      index === null ||
+      index < 0n ||
+      index >= BigInt(body.outputs().len()) ||
+      index === witness.funds_output_index ||
+      index === witness.predecessor_output_index
+    )
+      return null;
+    const refund = body.outputs().get(Number(index));
+    if (
+      CML.EnterpriseAddress.from_address(refund.address()) === undefined ||
+      refund.address().payment_cred()?.as_pub_key()?.to_hex() !==
+        facts.structural_refund_key ||
+      refund.datum() !== undefined ||
+      refund.script_ref() !== undefined ||
+      refund.amount().has_multiassets() ||
+      refund.amount().coin() < facts.structural_lovelace
+    )
+      return null;
+  }
+  if (witness.purpose === "AbsorbDeposit")
+    return event.kind === "deposit" &&
+      "DepositPayload" in payload &&
+      addressMatchesData(output.address(), hub.reserve_addr) &&
+      output.datum() === undefined &&
+      sameValue(original, outputValue(output))
+      ? { terminalStatus: "absorbed" }
+      : null;
+  if (event.kind !== "withdrawal" || !("WithdrawalPayload" in payload))
+    return null;
+  const withdrawal = payload.WithdrawalPayload;
+  if (typeof witness.purpose === "object")
+    return witness.purpose.RefundInvalidWithdrawal.validity !==
+      "WithdrawalIsValid" &&
+      addressMatchesData(output.address(), withdrawal.refund_address) &&
+      historyCardanoDatumMatches(output, historyRawField(payloadCbor, [2])) &&
+      sameValue(original, outputValue(output))
+      ? { terminalStatus: "refunded" }
+      : null;
+  if (witness.purpose !== "InitializeWithdrawalPayout" || !isHex28(hub.payout))
+    return null;
+  const payoutIndex =
+    body.mint() === undefined ? -1 : mintPolicyIndex(body.mint()!, hub.payout);
+  const payoutRedeemer =
+    payoutIndex < 0 ? null : matchingRedeemer(transaction, "mint", payoutIndex);
+  const payout =
+    payoutRedeemer === null
       ? null
       : dataRoundTrip<{
           MintPayout: {
@@ -2328,55 +2446,40 @@ const verifyTerminalSemantics = (
               outputIndex: bigint;
             };
             withdrawal_input_index: bigint;
-            withdrawal_spend_redeemer_index: bigint;
+            retirement_withdraw_redeemer_index: bigint;
             hub_ref_input_index: bigint;
           };
         }>(
-          payoutMint.bytes.bytesHex,
+          payoutRedeemer.bytes.bytesHex,
           asDataType<EventSchema>(PayoutMintRedeemerSchema),
         );
-  const payoutDatumHex = inlineDatumCbor(produced);
-  const payoutDatum =
-    payoutDatumHex === null
-      ? null
-      : dataRoundTrip<Record<string, unknown>>(
-          payoutDatumHex,
-          asDataType<EventSchema>(PayoutDatumSchema),
-        );
-  const payoutPolicyIndex =
-    isHex28(payoutPolicy) && body.mint() !== undefined
-      ? mintPolicyIndex(body.mint()!, payoutPolicy)
-      : -1;
-  const withdrawalSpendRedeemerIndex = transaction.redeemers.findIndex(
-    (redeemer) =>
-      redeemer.purpose === "spend" && redeemer.index === inputIndex.toString(),
-  );
-  const payoutAssets =
-    isHex28(payoutPolicy) && body.mint() !== undefined
-      ? body.mint()!.get_assets(CML.ScriptHash.from_hex(payoutPolicy))
-      : undefined;
-  return (
-    isHex28(payoutPolicy) &&
-    payoutMint?.purpose === "mint" &&
-    payoutMint.index === payoutPolicyIndex.toString() &&
-    decodedPayout !== null &&
-    decodedPayout.MintPayout.withdrawal_utxo_out_ref.transactionId ===
-      event.transactionHash &&
-    decodedPayout.MintPayout.withdrawal_utxo_out_ref.outputIndex ===
-      BigInt(event.outputIndex) &&
-    decodedPayout.MintPayout.withdrawal_input_index === BigInt(inputIndex) &&
-    decodedPayout.MintPayout.withdrawal_spend_redeemer_index ===
-      BigInt(withdrawalSpendRedeemerIndex) &&
-    decodedPayout.MintPayout.hub_ref_input_index === spend.hubRefInputIndex &&
-    payoutAssets?.len() === 1 &&
+  if (
+    payout === null ||
+    !("MintPayout" in payout) ||
+    payout.MintPayout.retirement_withdraw_redeemer_index !==
+      BigInt(retired.globalIndex) ||
+    payout.MintPayout.withdrawal_input_index !== BigInt(inputIndex) ||
+    payout.MintPayout.hub_ref_input_index !== hub_reference_index ||
+    payout.MintPayout.withdrawal_utxo_out_ref.transactionId !==
+      event.transactionHash ||
+    payout.MintPayout.withdrawal_utxo_out_ref.outputIndex !==
+      BigInt(event.outputIndex) ||
+    withdrawal.event.info.validity !== "WithdrawalIsValid" ||
+    !addressMatchesData(output.address(), hub.payout_addr)
+  )
+    return null;
+  original.set(hub.payout + event.assetNameHex, 1n);
+  const payoutAssets = body
+    .mint()
+    ?.get_assets(CML.ScriptHash.from_hex(hub.payout));
+  const datum = inlineDatumCbor(output);
+  return payoutAssets?.len() === 1 &&
     payoutAssets.get(CML.AssetName.from_hex(event.assetNameHex)) === 1n &&
-    withdrawalInfo.validity === "WithdrawalIsValid" &&
-    addressMatchesData(produced.address(), hubDatum.payout_addr) &&
-    payoutDatum !== null &&
-    samePlutusData(payoutDatum.l2_value, withdrawalInfo.body?.l2_value) &&
-    samePlutusData(payoutDatum.l1_address, withdrawalInfo.body?.l1_address) &&
-    samePlutusData(payoutDatum.l1_datum, withdrawalInfo.body?.l1_datum)
-  );
+    sameValue(original, outputValue(output)) &&
+    datum !== null &&
+    historyRawField(datum, []) === historyWithdrawalPayoutDatum(payloadCbor)
+    ? { terminalStatus: "payout_initialized" }
+    : null;
 };
 
 const scanConsumedTransactionEvents = (
@@ -2399,6 +2502,33 @@ const scanConsumedTransactionEvents = (
   for (let inputIndex = 0; inputIndex < inputs.len(); inputIndex += 1) {
     const event = active.get(outputReference(inputs.get(inputIndex)));
     if (event === undefined) {
+      continue;
+    }
+    if (event.kind !== "forced_order") {
+      const disposition = consumeHistoryOrder(
+        event,
+        transaction,
+        referenceEvidence,
+        deployment,
+        inputIndex,
+      );
+      if (disposition === null) return null;
+      active.delete(event.outRef);
+      if ("continuation" in disposition)
+        active.set(disposition.continuation.outRef, disposition.continuation);
+      else
+        terminal.push(
+          Object.freeze({
+            ...event,
+            terminalStatus: disposition.terminalStatus,
+            terminalTransactionHash: transaction.txHash,
+            terminalPointDigest: block.chainPoint.pointDigest,
+            terminalBlockHash: block.chainPoint.blockHash,
+            terminalSlot: block.chainPoint.slot,
+            terminalBlockNo: block.chainPoint.blockNo,
+            terminalFinalityStatus: "pending",
+          }),
+        );
       continue;
     }
     const spendRedeemer = matchingRedeemer(transaction, "spend", inputIndex);
@@ -2431,7 +2561,6 @@ const scanConsumedTransactionEvents = (
         referenceEvidence,
         transaction,
         body,
-        inputIndex,
         terminalSpend,
         deployment,
       )
@@ -2517,43 +2646,6 @@ const scanConsumedTransactionEvents = (
   return true;
 };
 
-const scanConsumedEvents = (
-  block: WatcherNormalizedL1Block,
-  referenceEvidence: WatcherUserEventReferenceEvidence,
-  activeEvents: readonly WatcherIndexedUserEvent[],
-  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
-): Readonly<{
-  remaining: readonly WatcherIndexedUserEvent[];
-  terminal: readonly WatcherTerminalUserEvent[];
-}> | null => {
-  const active = new Map(activeEvents.map((event) => [event.outRef, event]));
-  const terminal: WatcherTerminalUserEvent[] = [];
-  for (const transaction of block.transactions) {
-    if (
-      scanConsumedTransactionEvents(
-        block,
-        transaction,
-        referenceEvidence,
-        active,
-        terminal,
-        deployment,
-      ) === null
-    ) {
-      return null;
-    }
-  }
-  return Object.freeze({
-    remaining: Object.freeze(
-      [...active.values()].sort((left, right) =>
-        left.outRef.localeCompare(right.outRef),
-      ),
-    ),
-    terminal: Object.freeze(
-      terminal.sort((left, right) => left.outRef.localeCompare(right.outRef)),
-    ),
-  });
-};
-
 const snapshotWithoutDigest = (
   value: Omit<WatcherUserEventSnapshot, "snapshotDigest">,
 ) => ({
@@ -2611,7 +2703,9 @@ const topologyMatches = (
         event !== undefined &&
         utxo.outRef === event.outRef &&
         utxo.role === protocolRole(event.kind) &&
-        utxo.chainPointId === event.originChainPointId &&
+        store.chainPoints.some(
+          ({ chainPointId }) => chainPointId === utxo.chainPointId,
+        ) &&
         utxo.output.cborHex === event.outputCborHex &&
         utxo.output.sha256 === event.outputDigest
       );
@@ -2619,184 +2713,8 @@ const topologyMatches = (
   );
 };
 
-type VerifiedBlockInputs = Readonly<{
-  block: WatcherNormalizedL1Block;
-  lineageBlocks: readonly WatcherNormalizedL1Block[];
-  referenceEvidence: WatcherUserEventReferenceEvidence;
-  sourceStore: WatcherDurableStore;
-  finalityPolicy: WatcherFinalityPolicy;
-  finalityResult: WatcherFinalityResult;
-  context: Omit<WatcherUserEventPublicContext, "durableStore">;
-}>;
-
-type VerifiedBlockContext = VerifiedBlockInputs &
-  Readonly<{
-    store: WatcherDurableStore;
-    context: WatcherUserEventPublicContext;
-  }>;
-
-const transportAttestationForProvider = (
-  provider: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-): WatcherL1TransportAttestationContext | null => {
-  if (
-    !Array.isArray(transportAttestations) ||
-    transportAttestations.length >
-      WATCHER_USER_EVENT_INDEXER_BOUNDS.observationsPerFinalityStep
-  ) {
-    return null;
-  }
-  const matches = transportAttestations.filter((candidate) => {
-    const details = watcherL1TransportAttestationDetails(candidate);
-    return details !== null && same(details.provider, provider);
-  });
-  return matches.length === 1 ? matches[0]! : null;
-};
-
-const normalizeTransportAttestedBlock = (
-  provider: unknown,
-  observation: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-): Readonly<{
-  block: WatcherNormalizedL1Block;
-  transportAttestation: WatcherL1TransportAttestationContext;
-}> | null => {
-  const transportAttestation = transportAttestationForProvider(
-    provider,
-    transportAttestations,
-  );
-  if (transportAttestation === null) {
-    return null;
-  }
-  return Object.freeze({
-    block: normalizeWatcherL1Block(transportAttestation, observation),
-    transportAttestation,
-  });
-};
-
 const storeDigest = (store: WatcherDurableStore): string =>
   watcherDurableStoreBytesSha256(encodeWatcherDurableStore(store));
-
-const canonicalSuccessor = (
-  prior: WatcherUserEventObservation,
-  next: WatcherNormalizedL1Block,
-  lineage: readonly WatcherNormalizedL1Block[],
-): boolean => {
-  if (
-    prior.transitionKind !== "apply_block" ||
-    prior.pointDigest === null ||
-    prior.blockHash === null ||
-    prior.slot === null ||
-    prior.blockNo === null
-  ) {
-    return false;
-  }
-  if (next.chainPoint.pointDigest === prior.pointDigest) {
-    return (
-      next.chainPoint.blockHash === prior.blockHash &&
-      next.chainPoint.slot === prior.slot &&
-      next.chainPoint.blockNo === prior.blockNo
-    );
-  }
-  if (
-    BigInt(next.chainPoint.blockNo) <= BigInt(prior.blockNo) ||
-    BigInt(next.chainPoint.slot) <= BigInt(prior.slot)
-  ) {
-    return false;
-  }
-  const ancestors = new Map<string, WatcherNormalizedL1Block>();
-  for (const candidate of lineage) {
-    const existing = ancestors.get(candidate.chainPoint.blockHash);
-    if (
-      existing !== undefined &&
-      (existing.chainPoint.pointDigest !== candidate.chainPoint.pointDigest ||
-        existing.chainPoint.parentBlockHash !==
-          candidate.chainPoint.parentBlockHash)
-    ) {
-      return false;
-    }
-    ancestors.set(candidate.chainPoint.blockHash, candidate);
-  }
-  let cursor = next;
-  const visited = new Set<string>();
-  while (!visited.has(cursor.chainPoint.blockHash)) {
-    visited.add(cursor.chainPoint.blockHash);
-    const parentHash = cursor.chainPoint.parentBlockHash;
-    if (parentHash === prior.blockHash) {
-      return (
-        BigInt(cursor.chainPoint.blockNo) === BigInt(prior.blockNo) + 1n &&
-        BigInt(cursor.chainPoint.slot) > BigInt(prior.slot)
-      );
-    }
-    if (parentHash === null) {
-      return false;
-    }
-    const parent = ancestors.get(parentHash);
-    if (
-      parent === undefined ||
-      BigInt(cursor.chainPoint.blockNo) !==
-        BigInt(parent.chainPoint.blockNo) + 1n ||
-      BigInt(cursor.chainPoint.slot) <= BigInt(parent.chainPoint.slot)
-    ) {
-      return false;
-    }
-    cursor = parent;
-  }
-  return false;
-};
-
-const canonicalSuccessorAfterRollback = (
-  source: WatcherDurableStore,
-  next: WatcherNormalizedL1Block,
-): boolean => {
-  const prior = [...source.chainPoints]
-    .filter(
-      ({ blockNo, slot }) =>
-        BigInt(blockNo) < BigInt(next.chainPoint.blockNo) &&
-        BigInt(slot) < BigInt(next.chainPoint.slot),
-    )
-    .sort((left, right) =>
-      BigInt(left.blockNo) < BigInt(right.blockNo) ? 1 : -1,
-    )
-    .at(0);
-  if (
-    prior === undefined ||
-    BigInt(next.chainPoint.blockNo) !== BigInt(prior.blockNo) + 1n
-  ) {
-    return false;
-  }
-  return next.chainPoint.parentBlockHash === prior.blockHash;
-};
-
-const verifyDeploymentAuthority = (
-  policy: WatcherUserEventIndexerPolicy,
-  authority: WatcherUserEventDeploymentAuthority,
-): VerifiedWatcherDeploymentIdentity | null => {
-  try {
-    const verified = verifyWatcherDeploymentIdentity({
-      signedIdentity: authority.signedIdentity,
-      policy: authority.policy,
-      trustRoots: authority.trustRoots,
-      durableMarker: policy.deploymentMarker,
-    });
-    const applied = authority.policy.appliedScriptHashes;
-    return same(verified, authority.result) &&
-      verified.network === policy.network &&
-      verified.blueprintHash === policy.blueprintHash &&
-      verified.trustRootId === policy.deploymentTrustRootId &&
-      same(verified.durableMarker, policy.deploymentMarker) &&
-      applied.depositMint === policy.deposit.policyId &&
-      applied.depositSpend === policy.deposit.spendScriptHash &&
-      applied.withdrawalMint === policy.withdrawal.policyId &&
-      applied.withdrawalSpend === policy.withdrawal.spendScriptHash &&
-      applied.txOrderMint === policy.forcedOrder.policyId &&
-      applied.txOrderSpend === policy.forcedOrder.spendScriptHash
-      ? verified
-      : null;
-  } catch {
-    return null;
-  }
-};
 
 const sameRecordSet = <T>(left: readonly T[], right: readonly T[]): boolean =>
   same(left, right);
@@ -2884,563 +2802,6 @@ const storeTransitionMatches = (
     return false;
   }
 };
-
-const rollbackSourceExtends = (
-  prior: WatcherDurableStore,
-  source: WatcherDurableStore,
-  recoverableEventOutRefs: ReadonlySet<string> | null = null,
-): boolean => {
-  const retainsExactRecords = <T>(
-    priorRecords: readonly T[],
-    sourceRecords: readonly T[],
-    keyOf: (record: T) => string,
-  ): boolean => {
-    const sourceByKey = new Map(
-      sourceRecords.map((entry) => [keyOf(entry), entry]),
-    );
-    return priorRecords.every((entry) =>
-      same(sourceByKey.get(keyOf(entry)), entry),
-    );
-  };
-  const eventRoles = new Set(["deposit", "withdrawal", "forced_transaction"]);
-  const priorEventUtxos = prior.protocolUtxos.filter(({ role }) =>
-    eventRoles.has(role),
-  );
-  const sourceEventUtxos = source.protocolUtxos.filter(({ role }) =>
-    eventRoles.has(role),
-  );
-  const priorUnrelatedUtxos = prior.protocolUtxos.filter(
-    ({ role }) => !eventRoles.has(role),
-  );
-  const sourceUnrelatedUtxos = source.protocolUtxos.filter(
-    ({ role }) => !eventRoles.has(role),
-  );
-  const priorSpentEventUtxos = prior.spentProtocolUtxos.filter(({ role }) =>
-    eventRoles.has(role),
-  );
-  const sourceSpentEventUtxos = source.spentProtocolUtxos.filter(({ role }) =>
-    eventRoles.has(role),
-  );
-  const priorUnrelatedSpentUtxos = prior.spentProtocolUtxos.filter(
-    ({ role }) => !eventRoles.has(role),
-  );
-  const sourceUnrelatedSpentUtxos = source.spentProtocolUtxos.filter(
-    ({ role }) => !eventRoles.has(role),
-  );
-  const retainsRecoverableEventRecords = <
-    T extends { readonly outRef: string },
-  >(
-    priorRecords: readonly T[],
-    sourceRecords: readonly T[],
-  ): boolean =>
-    retainsExactRecords(priorRecords, sourceRecords, (entry) => entry.outRef) &&
-    sourceRecords.every(
-      (entry) =>
-        priorRecords.some(
-          (priorEntry) =>
-            priorEntry.outRef === entry.outRef && same(priorEntry, entry),
-        ) || recoverableEventOutRefs?.has(entry.outRef) === true,
-    );
-  return (
-    (BigInt(source.revision) > BigInt(prior.revision) || same(source, prior)) &&
-    same(source.deploymentMarker, prior.deploymentMarker) &&
-    (recoverableEventOutRefs === null
-      ? same(sourceEventUtxos, priorEventUtxos) &&
-        same(sourceSpentEventUtxos, priorSpentEventUtxos)
-      : retainsRecoverableEventRecords(priorEventUtxos, sourceEventUtxos) &&
-        retainsRecoverableEventRecords(
-          priorSpentEventUtxos,
-          sourceSpentEventUtxos,
-        )) &&
-    retainsExactRecords(
-      priorUnrelatedUtxos,
-      sourceUnrelatedUtxos,
-      (entry) => entry.outRef,
-    ) &&
-    retainsExactRecords(
-      priorUnrelatedSpentUtxos,
-      sourceUnrelatedSpentUtxos,
-      (entry) => entry.outRef,
-    ) &&
-    retainsExactRecords(
-      prior.daProofInputs,
-      source.daProofInputs,
-      (entry) => entry.inputId,
-    ) &&
-    retainsExactRecords(
-      prior.reconstructedStates,
-      source.reconstructedStates,
-      (entry) => entry.blockHash,
-    ) &&
-    retainsExactRecords(
-      prior.decisions,
-      source.decisions,
-      (entry) => entry.blockHash,
-    ) &&
-    retainsExactRecords(
-      prior.faults,
-      source.faults,
-      (entry) => entry.faultId,
-    ) &&
-    retainsExactRecords(
-      prior.submissions,
-      source.submissions,
-      (entry) => entry.submissionId,
-    ) &&
-    retainsExactRecords(
-      prior.confirmations,
-      source.confirmations,
-      (entry) => entry.confirmationId,
-    ) &&
-    retainsExactRecords(
-      prior.retries,
-      source.retries,
-      (entry) => entry.retryId,
-    ) &&
-    retainsExactRecords(
-      prior.deadlines,
-      source.deadlines,
-      (entry) => entry.deadlineId,
-    ) &&
-    retainsExactRecords(
-      prior.correctionResults,
-      source.correctionResults,
-      (entry) => entry.correctionId,
-    ) &&
-    retainsExactRecords(
-      prior.l1Observations,
-      source.l1Observations,
-      (entry) => entry.observationId,
-    ) &&
-    retainsExactRecords(
-      prior.chainPoints,
-      source.chainPoints,
-      (entry) => entry.chainPointId,
-    )
-  );
-};
-
-const parsePublicContext = (
-  value: unknown,
-): WatcherUserEventPublicContext | null => {
-  if (!evidenceWithinBounds(value)) {
-    return null;
-  }
-  const record = exactRecord(value, [
-    "schemaVersion",
-    "authenticatedProvider",
-    "l1Observation",
-    "referenceEvidence",
-    "sourceDurableStore",
-    "durableStore",
-    "deploymentAuthority",
-    "rollbackRestoredEventUtxos",
-    "finalityAuthority",
-    "rollbackAuthority",
-  ]);
-  if (
-    record === null ||
-    record.schemaVersion !== WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION
-  ) {
-    return null;
-  }
-  const rollbackAuthority =
-    record.rollbackAuthority === null
-      ? null
-      : exactRecord(record.rollbackAuthority, ["result", "context"]);
-  if (record.rollbackAuthority !== null && rollbackAuthority === null) {
-    return null;
-  }
-  const finalityAuthority =
-    record.finalityAuthority === null
-      ? null
-      : exactRecord(record.finalityAuthority, [
-          "policy",
-          "lineage",
-          "previousState",
-          "observations",
-          "consistency",
-          "result",
-        ]);
-  if (
-    record.finalityAuthority !== null &&
-    (finalityAuthority === null ||
-      !Array.isArray(finalityAuthority.lineage) ||
-      finalityAuthority.lineage.length >
-        WATCHER_USER_EVENT_INDEXER_BOUNDS.finalityLineageSteps ||
-      !Array.isArray(finalityAuthority.observations) ||
-      finalityAuthority.observations.length >
-        WATCHER_USER_EVENT_INDEXER_BOUNDS.observationsPerFinalityStep)
-  ) {
-    return null;
-  }
-  const finalityObservations: {
-    authenticatedProvider: unknown;
-    l1Observation: unknown;
-  }[] = [];
-  const finalityLineage: {
-    observations: readonly {
-      authenticatedProvider: unknown;
-      l1Observation: unknown;
-    }[];
-    consistency: unknown;
-    result: unknown;
-  }[] = [];
-  if (finalityAuthority !== null) {
-    for (const candidate of finalityAuthority.lineage as readonly unknown[]) {
-      const step = exactRecord(candidate, [
-        "observations",
-        "consistency",
-        "result",
-      ]);
-      if (
-        step === null ||
-        !Array.isArray(step.observations) ||
-        step.observations.length >
-          WATCHER_USER_EVENT_INDEXER_BOUNDS.observationsPerFinalityStep
-      ) {
-        return null;
-      }
-      const observations: {
-        authenticatedProvider: unknown;
-        l1Observation: unknown;
-      }[] = [];
-      for (const stepCandidate of step.observations) {
-        const observation = exactRecord(stepCandidate, [
-          "authenticatedProvider",
-          "l1Observation",
-        ]);
-        if (observation === null) {
-          return null;
-        }
-        observations.push({
-          authenticatedProvider: observation.authenticatedProvider,
-          l1Observation: observation.l1Observation,
-        });
-      }
-      finalityLineage.push({
-        observations: Object.freeze(observations),
-        consistency: step.consistency,
-        result: step.result,
-      });
-    }
-    for (const candidate of finalityAuthority.observations as readonly unknown[]) {
-      const observation = exactRecord(candidate, [
-        "authenticatedProvider",
-        "l1Observation",
-      ]);
-      if (observation === null) {
-        return null;
-      }
-      finalityObservations.push({
-        authenticatedProvider: observation.authenticatedProvider,
-        l1Observation: observation.l1Observation,
-      });
-    }
-  }
-  const deploymentAuthority = exactRecord(record.deploymentAuthority, [
-    "signedIdentity",
-    "policy",
-    "trustRoots",
-    "result",
-  ]);
-  if (
-    deploymentAuthority === null ||
-    !Array.isArray(deploymentAuthority.trustRoots) ||
-    !Array.isArray(record.rollbackRestoredEventUtxos)
-  ) {
-    return null;
-  }
-  return Object.freeze({
-    schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
-    authenticatedProvider: record.authenticatedProvider,
-    l1Observation: record.l1Observation,
-    referenceEvidence:
-      record.referenceEvidence as WatcherUserEventReferenceEvidence | null,
-    sourceDurableStore: record.sourceDurableStore,
-    durableStore: record.durableStore,
-    deploymentAuthority: {
-      signedIdentity: deploymentAuthority.signedIdentity,
-      policy: deploymentAuthority.policy as WatcherDeploymentIdentityPolicy,
-      trustRoots:
-        deploymentAuthority.trustRoots as readonly WatcherDeploymentTrustRoot[],
-      result: deploymentAuthority.result as VerifiedWatcherDeploymentIdentity,
-    },
-    rollbackRestoredEventUtxos:
-      record.rollbackRestoredEventUtxos as readonly unknown[],
-    finalityAuthority:
-      finalityAuthority === null
-        ? null
-        : {
-            policy: finalityAuthority.policy,
-            lineage: Object.freeze(finalityLineage),
-            previousState: finalityAuthority.previousState,
-            observations: Object.freeze(finalityObservations),
-            consistency: finalityAuthority.consistency,
-            result: finalityAuthority.result,
-          },
-    rollbackAuthority:
-      rollbackAuthority === null
-        ? null
-        : {
-            result: rollbackAuthority.result,
-            context:
-              rollbackAuthority.context as WatcherRollbackVerificationContext,
-          },
-  });
-};
-
-const verifyBlockInputs = (
-  policy: WatcherUserEventIndexerPolicy,
-  context: Omit<WatcherUserEventPublicContext, "durableStore">,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
-): VerifiedBlockInputs | null => {
-  if (
-    context.authenticatedProvider === null ||
-    context.l1Observation === null ||
-    context.finalityAuthority === null ||
-    context.rollbackAuthority !== null ||
-    context.rollbackRestoredEventUtxos.length !== 0
-  ) {
-    return null;
-  }
-  try {
-    const normalizedBlock = normalizeTransportAttestedBlock(
-      context.authenticatedProvider,
-      context.l1Observation,
-      transportAttestations,
-    );
-    if (normalizedBlock === null) {
-      return null;
-    }
-    const block = normalizedBlock.block;
-    const sourceStore = parseWatcherDurableStore(context.sourceDurableStore);
-    const finalityPolicy = parseWatcherFinalityPolicy(
-      context.finalityAuthority.policy,
-    );
-    const deploymentIdentity = verifyDeploymentAuthority(
-      policy,
-      context.deploymentAuthority,
-    );
-    if (
-      finalityPolicy === null ||
-      deploymentIdentity === null ||
-      finalityPolicy.network !== policy.network ||
-      finalityPolicy.blueprintHash !== policy.blueprintHash ||
-      !same(finalityPolicy.deploymentMarker, policy.deploymentMarker) ||
-      finalityPolicy.confirmationDepth !== policy.requiredFinalityDepth
-    ) {
-      return null;
-    }
-    if (
-      finalityPolicy.sourceMode === "local_node" &&
-      (finalityPolicy.authorityNodeId === null ||
-        finalityPolicy.authorityGenesisIdentitySha256 === null)
-    ) {
-      return null;
-    }
-    let replayedState: unknown = null;
-    const lineageBlocks: WatcherNormalizedL1Block[] = [];
-    for (const step of context.finalityAuthority.lineage) {
-      const normalizedStepWithAttestations = step.observations.map(
-        ({ authenticatedProvider, l1Observation }) =>
-          normalizeTransportAttestedBlock(
-            authenticatedProvider,
-            l1Observation,
-            transportAttestations,
-          ),
-      );
-      if (normalizedStepWithAttestations.some((entry) => entry === null)) {
-        return null;
-      }
-      const normalizedStep = normalizedStepWithAttestations.map(
-        (entry) => entry!.block,
-      );
-      lineageBlocks.push(...normalizedStep);
-      const stepConsistency = evaluateWatcherMultiProviderConsistency(
-        watcherFinalityConfiguredSource(finalityPolicy),
-        normalizedStep,
-        normalizedStepWithAttestations.map(
-          (entry) => entry!.transportAttestation,
-        ),
-      );
-      const stepResult = evaluateWatcherFinality(
-        finalityPolicy,
-        replayedState,
-        stepConsistency,
-      );
-      if (
-        !same(stepConsistency, step.consistency) ||
-        !same(stepResult, step.result) ||
-        stepResult.state === null
-      ) {
-        return null;
-      }
-      replayedState = stepResult.state;
-    }
-    if (!same(replayedState, context.finalityAuthority.previousState)) {
-      return null;
-    }
-    const normalizedWithAttestations =
-      context.finalityAuthority.observations.map(
-        ({ authenticatedProvider, l1Observation }) =>
-          normalizeTransportAttestedBlock(
-            authenticatedProvider,
-            l1Observation,
-            transportAttestations,
-          ),
-      );
-    if (normalizedWithAttestations.some((entry) => entry === null)) {
-      return null;
-    }
-    const normalized = normalizedWithAttestations.map((entry) => entry!.block);
-    const consistency = evaluateWatcherMultiProviderConsistency(
-      watcherFinalityConfiguredSource(finalityPolicy),
-      normalized,
-      normalizedWithAttestations.map((entry) => entry!.transportAttestation),
-    );
-    const finalityResult = evaluateWatcherFinality(
-      finalityPolicy,
-      context.finalityAuthority.previousState,
-      consistency,
-    );
-    const bound =
-      finalityResult.state?.finalized ?? finalityResult.state?.pending;
-    const source = block.provider.source;
-    const sourceMatchesFinality =
-      source.sourceMode === finalityPolicy.sourceMode &&
-      (source.sourceMode === "local_node"
-        ? source.surface === "chain_sync" &&
-          source.authorityNodeId === finalityPolicy.authorityNodeId &&
-          block.provider.authentication.kind === "cardano_node_genesis_v1" &&
-          block.provider.authentication.publicIdentitySha256 ===
-            finalityPolicy.authorityGenesisIdentitySha256 &&
-          consistency.chainAuthorityObservationDigest ===
-            block.observationDigest
-        : consistency.observationEvidenceDigests.includes(
-            block.observationDigest,
-          ));
-    const normalFinalityDecision =
-      (finalityResult.protocolDecision === "hold" &&
-        ["observe_pending", "advance_pending", "duplicate"].includes(
-          finalityResult.action,
-        )) ||
-      (finalityResult.protocolDecision === "finality_granted" &&
-        finalityResult.action === "finalize") ||
-      // A point-only rewind can be the existing skipped-block ancestry path;
-      // same-point content and depth rewinds remain rollback-only.
-      (finalityResult.protocolDecision === "rewind_required" &&
-        finalityResult.action === "rewind_pending" &&
-        finalityResult.rewindInstruction?.kind === "pending_point_changed");
-    if (
-      !same(consistency, context.finalityAuthority.consistency) ||
-      !same(finalityResult, context.finalityAuthority.result) ||
-      !normalFinalityDecision ||
-      !sourceMatchesFinality ||
-      !normalized.some(
-        (candidate) => candidate.observationDigest === block.observationDigest,
-      ) ||
-      bound?.pointDigest !== block.chainPoint.pointDigest ||
-      bound.blockContentDigest !== block.blockContentDigest
-    ) {
-      return null;
-    }
-    if (
-      block.network !== policy.network ||
-      !same(sourceStore.deploymentMarker, policy.deploymentMarker)
-    ) {
-      return null;
-    }
-    const referenceEvidence = admitWatcherUserEventReferenceEvidence({
-      evidence: context.referenceEvidence,
-      targetBlock: block,
-      deploymentIdentity,
-      referenceAuthorities,
-    });
-    if (
-      referenceEvidence === null ||
-      (referenceEvidence.evidenceKind === "resolved_block" &&
-        referenceEvidence.confirmationDepth !== policy.requiredFinalityDepth)
-    )
-      return null;
-    return Object.freeze({
-      block,
-      referenceEvidence,
-      lineageBlocks: Object.freeze(lineageBlocks),
-      sourceStore,
-      finalityPolicy,
-      finalityResult,
-      context,
-    });
-  } catch {
-    return null;
-  }
-};
-
-const verifyBlockContext = (
-  policy: WatcherUserEventIndexerPolicy,
-  rawContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
-): VerifiedBlockContext | null => {
-  const context = parsePublicContext(rawContext);
-  if (context === null) return null;
-  const verified = verifyBlockInputs(
-    policy,
-    context,
-    transportAttestations,
-    referenceAuthorities,
-  );
-  if (verified === null) return null;
-  try {
-    const store = parseWatcherDurableStore(context.durableStore);
-    const { block, sourceStore } = verified;
-    const persistedBytes =
-      encodeWatcherNormalizedL1Block(block).toString("hex");
-    if (
-      block.network !== policy.network ||
-      !same(sourceStore.deploymentMarker, policy.deploymentMarker) ||
-      !same(store.deploymentMarker, policy.deploymentMarker) ||
-      store.l1Observations.filter(
-        ({ providerId, chainPointId, payload }) =>
-          providerId === block.provider.providerId &&
-          chainPointId === block.chainPoint.chainPointId &&
-          payload.cborHex === persistedBytes &&
-          payload.sha256 === sha256Bytes(Buffer.from(persistedBytes, "hex")),
-      ).length !== 1 ||
-      store.chainPoints.filter(
-        (point) =>
-          point.providerId === block.provider.providerId &&
-          point.chainPointId === block.chainPoint.chainPointId &&
-          point.blockHash === block.chainPoint.blockHash &&
-          point.slot === block.chainPoint.slot &&
-          point.blockNo === block.chainPoint.blockNo &&
-          point.depth === block.chainPoint.depth,
-      ).length !== 1
-    ) {
-      return null;
-    }
-    return Object.freeze({ ...verified, store, context });
-  } catch {
-    return null;
-  }
-};
-
-const withCurrentFinality = (
-  currentPointDigest: string,
-  finalityGranted: boolean,
-  events: readonly WatcherIndexedUserEvent[],
-): readonly WatcherIndexedUserEvent[] =>
-  Object.freeze(
-    events.map((event) => ({
-      ...event,
-      finalityStatus:
-        finalityGranted && event.originPointDigest === currentPointDigest
-          ? "final"
-          : event.finalityStatus,
-    })),
-  );
 
 const withCurrentTerminalFinality = (
   currentPointDigest: string,
@@ -3562,874 +2923,6 @@ const deriveLocalBlockEventSnapshot = (
   );
 };
 
-const deriveBlockSnapshot = (
-  policy: WatcherUserEventIndexerPolicy,
-  previous: WatcherUserEventIndexerState | null,
-  verified: VerifiedBlockInputs,
-): WatcherUserEventSnapshot | null => {
-  if (previous?.snapshot.quarantined === true) {
-    return null;
-  }
-  const sourceDigest = storeDigest(verified.sourceStore);
-  const priorEntry =
-    previous === null
-      ? null
-      : ([...previous.activeEntryDigests]
-          .reverse()
-          .map((digest) =>
-            previous.history.find(({ entryDigest }) => entryDigest === digest),
-          )
-          .find(
-            (entry) => entry?.observation.transitionKind === "apply_block",
-          ) ?? null);
-  const followsRollback =
-    previous?.history.at(-1)?.observation.transitionKind === "rollback";
-  let priorStore: WatcherDurableStore | null = null;
-  try {
-    priorStore =
-      previous === null
-        ? null
-        : parseWatcherDurableStore(
-            previous.history.at(-1)?.publicContext.durableStore,
-          );
-  } catch {
-    return null;
-  }
-  if (
-    sourceDigest !==
-      (previous?.durableStoreDigest ?? policy.bootstrapStoreDigest) ||
-    verified.sourceStore.revision !== (previous?.durableStoreRevision ?? "0") ||
-    (priorStore !== null && !same(priorStore, verified.sourceStore)) ||
-    (followsRollback &&
-      !canonicalSuccessorAfterRollback(verified.sourceStore, verified.block)) ||
-    (!followsRollback &&
-      priorEntry !== null &&
-      !canonicalSuccessor(
-        priorEntry.observation,
-        verified.block,
-        verified.lineageBlocks,
-      ))
-  ) {
-    return null;
-  }
-  const priorActive = previous?.snapshot.activeEvents ?? [];
-  const consumed = scanConsumedEvents(
-    verified.block,
-    verified.referenceEvidence,
-    priorActive,
-    verified.context.deploymentAuthority.policy,
-  );
-  const created = scanCreatedEvents(
-    policy,
-    verified.block,
-    verified.referenceEvidence,
-    verified.context.deploymentAuthority.policy,
-  );
-  if (consumed === null || created === null) {
-    return null;
-  }
-  const activeByOutRef = new Map(
-    consumed.remaining.map((event) => [event.outRef, event]),
-  );
-  const activeEventIds = new Set(
-    consumed.remaining.map((event) => event.eventId),
-  );
-  for (const event of created) {
-    const existing = activeByOutRef.get(event.outRef);
-    if (existing !== undefined) {
-      if (
-        same(
-          {
-            ...existing,
-            originChainPointId: "",
-            finalityStatus: "pending",
-          },
-          {
-            ...event,
-            originChainPointId: "",
-            finalityStatus: "pending",
-          },
-        )
-      ) {
-        continue;
-      }
-      return null;
-    }
-    if (
-      activeEventIds.has(event.eventId) ||
-      (previous?.snapshot.terminalEvents ?? []).some(
-        (prior) => prior.eventId === event.eventId,
-      )
-    ) {
-      return null;
-    }
-    activeByOutRef.set(event.outRef, event);
-    activeEventIds.add(event.eventId);
-  }
-  const active = withCurrentFinality(
-    verified.block.chainPoint.pointDigest,
-    verified.finalityResult.protocolDecision === "finality_granted",
-    [...activeByOutRef.values()].sort((left, right) =>
-      left.outRef.localeCompare(right.outRef),
-    ),
-  );
-  const terminal = withCurrentTerminalFinality(
-    verified.block.chainPoint.pointDigest,
-    verified.finalityResult.protocolDecision === "finality_granted",
-    [...(previous?.snapshot.terminalEvents ?? []), ...consumed.terminal].sort(
-      (left, right) =>
-        `${left.terminalPointDigest}:${left.outRef}`.localeCompare(
-          `${right.terminalPointDigest}:${right.outRef}`,
-        ),
-    ),
-  );
-  const snapshot = makeSnapshot(active, terminal);
-  return snapshot;
-};
-
-const deriveBlockObservation = (
-  policy: WatcherUserEventIndexerPolicy,
-  previous: WatcherUserEventIndexerState | null,
-  rawContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
-): WatcherUserEventObservation | null => {
-  const verified = verifyBlockContext(
-    policy,
-    rawContext,
-    transportAttestations,
-    referenceAuthorities,
-  );
-  if (verified === null) {
-    return null;
-  }
-  const snapshot = deriveBlockSnapshot(policy, previous, verified);
-  if (
-    snapshot === null ||
-    !storeTransitionMatches(
-      verified.sourceStore,
-      verified.store,
-      verified.block,
-      snapshot,
-    )
-  ) {
-    return null;
-  }
-  return makeObservation({
-    schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
-    policyDigest: policy.policyDigest,
-    network: policy.network,
-    blueprintHash: policy.blueprintHash,
-    deploymentMarker: policy.deploymentMarker,
-    transitionKind: "apply_block",
-    pointDigest: verified.block.chainPoint.pointDigest,
-    blockHash: verified.block.chainPoint.blockHash,
-    slot: verified.block.chainPoint.slot,
-    blockNo: verified.block.chainPoint.blockNo,
-    sourceObservationDigest: verified.block.observationDigest,
-    chainPointId: verified.block.chainPoint.chainPointId,
-    sourceDurableStoreDigest: storeDigest(verified.sourceStore),
-    sourceDurableStoreRevision: verified.sourceStore.revision,
-    durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStore(verified.store),
-    ),
-    durableStoreRevision: verified.store.revision,
-    rollbackTargetEntryDigest: null,
-    snapshot,
-  });
-};
-
-type VerifiedRollbackContextBase = Readonly<{
-  sourceStore: WatcherDurableStore;
-  store: WatcherDurableStore;
-  context: WatcherUserEventPublicContext;
-}>;
-type VerifiedRollbackContext =
-  | (VerifiedRollbackContextBase &
-      Readonly<{
-        kind: "pre_finality_rollback";
-        result: WatcherRollbackResult;
-      }>)
-  | (VerifiedRollbackContextBase &
-      Readonly<{
-        kind: "post_finality_recovery";
-        result: WatcherPostFinalityRecoveryResult;
-      }>);
-
-const verifyRollbackContext = (
-  policy: WatcherUserEventIndexerPolicy,
-  rawContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-): VerifiedRollbackContext | null => {
-  const context = parsePublicContext(rawContext);
-  if (
-    context === null ||
-    context.authenticatedProvider !== null ||
-    context.l1Observation !== null ||
-    context.referenceEvidence !== null ||
-    context.finalityAuthority !== null ||
-    context.rollbackAuthority === null ||
-    verifyDeploymentAuthority(policy, context.deploymentAuthority) === null
-  ) {
-    return null;
-  }
-  try {
-    const rollbackResult = parseWatcherRollbackResult(
-      context.rollbackAuthority.result,
-      {
-        ...(context.rollbackAuthority
-          .context as WatcherRollbackVerificationContext),
-        transportAttestations,
-      },
-    );
-    const recoveryResult =
-      rollbackResult === null
-        ? parseWatcherPostFinalityRecoveryResult(
-            context.rollbackAuthority.result,
-            {
-              ...(context.rollbackAuthority
-                .context as WatcherPostFinalityRecoveryInput),
-              transportAttestations,
-            },
-          )
-        : null;
-    const result = rollbackResult ?? recoveryResult;
-    if (
-      result === null ||
-      (rollbackResult !== null
-        ? !["apply_rewind", "quarantine_incident"].includes(result.action)
-        : result.action !== "rewind_and_replay") ||
-      result.nextStore === null
-    ) {
-      return null;
-    }
-    const sourceStore = parseWatcherDurableStore(context.sourceDurableStore);
-    const store = parseWatcherDurableStore(context.durableStore);
-    if (
-      !same(sourceStore, context.rollbackAuthority.context.sourceStore) ||
-      storeDigest(sourceStore) !== result.sourceStoreDigest ||
-      !same(store, result.nextStore) ||
-      !same(store.deploymentMarker, policy.deploymentMarker) ||
-      (rollbackResult === null &&
-        (recoveryResult === null ||
-          recoveryResult.recoveryState === null ||
-          recoveryResult.resumableFinalityState === null ||
-          recoveryResult.recoveryState.network !== policy.network ||
-          recoveryResult.recoveryState.blueprintHash !== policy.blueprintHash ||
-          !same(
-            recoveryResult.recoveryState.deploymentMarker,
-            policy.deploymentMarker,
-          )))
-    ) {
-      return null;
-    }
-    return rollbackResult !== null
-      ? Object.freeze({
-          kind: "pre_finality_rollback" as const,
-          result: rollbackResult,
-          sourceStore,
-          store,
-          context,
-        })
-      : Object.freeze({
-          kind: "post_finality_recovery" as const,
-          result: recoveryResult!,
-          sourceStore,
-          store,
-          context,
-        });
-  } catch {
-    return null;
-  }
-};
-
-const historyEntryForDigest = (
-  state: WatcherUserEventIndexerState,
-  digest: string,
-): WatcherUserEventHistoryEntry | null =>
-  state.history.find(({ entryDigest }) => entryDigest === digest) ?? null;
-
-const deriveRollbackObservation = (
-  policy: WatcherUserEventIndexerPolicy,
-  previous: WatcherUserEventIndexerState,
-  rawContext: unknown,
-  requestedRollbackTargetEntryDigest: string | null,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-): WatcherUserEventObservation | null => {
-  const verified = verifyRollbackContext(
-    policy,
-    rawContext,
-    transportAttestations,
-  );
-  if (verified === null) {
-    return null;
-  }
-  let previousStore: WatcherDurableStore;
-  try {
-    previousStore = parseWatcherDurableStore(
-      previous.history.at(-1)?.publicContext.durableStore,
-    );
-  } catch {
-    return null;
-  }
-  if (
-    storeDigest(previousStore) !== previous.durableStoreDigest ||
-    !rollbackSourceExtends(
-      previousStore,
-      verified.sourceStore,
-      verified.kind === "post_finality_recovery"
-        ? new Set(verified.result.removedRecords.protocolUtxoOutRefs)
-        : null,
-    )
-  ) {
-    return null;
-  }
-  if (
-    verified.kind === "pre_finality_rollback" &&
-    verified.result.action === "quarantine_incident"
-  ) {
-    const snapshot = makeSnapshot(
-      previous.snapshot.activeEvents,
-      previous.snapshot.terminalEvents,
-      true,
-    );
-    return snapshot === null
-      ? null
-      : makeObservation({
-          schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
-          policyDigest: policy.policyDigest,
-          network: policy.network,
-          blueprintHash: policy.blueprintHash,
-          deploymentMarker: policy.deploymentMarker,
-          transitionKind: "rollback",
-          pointDigest: null,
-          blockHash: null,
-          slot: null,
-          blockNo: null,
-          sourceObservationDigest: null,
-          chainPointId: null,
-          sourceDurableStoreDigest: storeDigest(verified.sourceStore),
-          sourceDurableStoreRevision: verified.sourceStore.revision,
-          durableStoreDigest: watcherDurableStoreBytesSha256(
-            encodeWatcherDurableStore(verified.store),
-          ),
-          durableStoreRevision: verified.store.revision,
-          rollbackTargetEntryDigest: null,
-          snapshot,
-        });
-  }
-  const activeEntries = previous.activeEntryDigests
-    .map((digest) => historyEntryForDigest(previous, digest))
-    .filter(
-      (entry): entry is WatcherUserEventHistoryEntry =>
-        entry !== null && entry.observation.transitionKind === "apply_block",
-    );
-  const commonAncestorBlockNo =
-    verified.kind === "post_finality_recovery"
-      ? (verified.result.recoveryState?.path.commonAncestorBlockNo ?? null)
-      : null;
-  const target =
-    verified.kind === "post_finality_recovery"
-      ? commonAncestorBlockNo === null
-        ? null
-        : (activeEntries
-            .filter(
-              (entry) =>
-                entry.observation.blockNo !== null &&
-                BigInt(entry.observation.blockNo) <=
-                  BigInt(commonAncestorBlockNo),
-            )
-            .at(-1) ?? null)
-      : requestedRollbackTargetEntryDigest === null
-        ? null
-        : historyEntryForDigest(previous, requestedRollbackTargetEntryDigest);
-  const rollbackTargetEntryDigest = target?.entryDigest ?? null;
-  if (
-    verified.kind === "pre_finality_rollback" &&
-    (rollbackTargetEntryDigest === null ||
-      !previous.activeEntryDigests.includes(rollbackTargetEntryDigest))
-  ) {
-    return null;
-  }
-  const removedPoints = new Set(verified.result.removedRecords.chainPointIds);
-  const removedObservations = new Set(
-    verified.result.removedRecords.l1ObservationIds,
-  );
-  const removed = (entry: WatcherUserEventHistoryEntry): boolean =>
-    (entry.observation.chainPointId !== null &&
-      removedPoints.has(entry.observation.chainPointId)) ||
-    (entry.observation.sourceObservationDigest !== null &&
-      removedObservations.has(entry.observation.sourceObservationDigest));
-  const retained =
-    verified.kind === "post_finality_recovery"
-      ? activeEntries.filter(
-          (entry) =>
-            entry.observation.blockNo !== null &&
-            commonAncestorBlockNo !== null &&
-            BigInt(entry.observation.blockNo) <= BigInt(commonAncestorBlockNo),
-        )
-      : activeEntries.filter((entry) => !removed(entry));
-  const orphaned =
-    verified.kind === "post_finality_recovery"
-      ? activeEntries.slice(retained.length)
-      : activeEntries.filter((entry) => removed(entry));
-  if (
-    (target !== null && target.observation.transitionKind !== "apply_block") ||
-    (target === null && retained.length !== 0) ||
-    retained.at(-1)?.entryDigest !== rollbackTargetEntryDigest ||
-    (verified.kind === "post_finality_recovery" &&
-      (retained.some((entry) => removed(entry)) ||
-        orphaned.some((entry) => !removed(entry))))
-  ) {
-    return null;
-  }
-  let targetStore: WatcherDurableStore | null = null;
-  if (target !== null) {
-    try {
-      targetStore = parseWatcherDurableStore(target.publicContext.durableStore);
-    } catch {
-      return null;
-    }
-  }
-  const sourceOutRefs = new Set(
-    verified.sourceStore.protocolUtxos.map(({ outRef }) => outRef),
-  );
-  const restored = (targetStore?.protocolUtxos ?? []).filter(
-    ({ outRef, role }) =>
-      ["deposit", "withdrawal", "forced_transaction"].includes(role) &&
-      !sourceOutRefs.has(outRef) &&
-      verified.store.protocolUtxos.some(
-        (candidate) => candidate.outRef === outRef,
-      ) &&
-      target?.observation.snapshot.activeEvents.some(
-        (event) => event.outRef === outRef,
-      ) === true,
-  );
-  const targetSnapshot =
-    target?.observation.snapshot ?? makeSnapshot([], [], false);
-  if (
-    targetSnapshot === null ||
-    !same(restored, verified.context.rollbackRestoredEventUtxos) ||
-    !topologyMatches(verified.store, targetSnapshot)
-  ) {
-    return null;
-  }
-  const removedOutRefs = new Set(
-    verified.result.removedRecords.protocolUtxoOutRefs,
-  );
-  const targetActive = new Set(
-    targetSnapshot.activeEvents.map(({ outRef }) => outRef),
-  );
-  for (const event of previous.snapshot.activeEvents) {
-    if (!targetActive.has(event.outRef) && !removedOutRefs.has(event.outRef)) {
-      return null;
-    }
-  }
-  return makeObservation({
-    schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
-    policyDigest: policy.policyDigest,
-    network: policy.network,
-    blueprintHash: policy.blueprintHash,
-    deploymentMarker: policy.deploymentMarker,
-    transitionKind: "rollback",
-    pointDigest: null,
-    blockHash: null,
-    slot: null,
-    blockNo: null,
-    sourceObservationDigest: null,
-    chainPointId: null,
-    sourceDurableStoreDigest: storeDigest(verified.sourceStore),
-    sourceDurableStoreRevision: verified.sourceStore.revision,
-    durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStore(verified.store),
-    ),
-    durableStoreRevision: verified.store.revision,
-    rollbackTargetEntryDigest,
-    snapshot: targetSnapshot,
-  });
-};
-
-export const deriveWatcherUserEventObservation = (
-  rawPolicy: unknown,
-  rawPreviousState: unknown,
-  rawPublicContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
-  rollbackTargetEntryDigest: string | null = null,
-): WatcherUserEventObservation | null => {
-  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
-  if (
-    !evidenceWithinBounds(rawPolicy, evidenceBudget) ||
-    (rawPreviousState !== null &&
-      !evidenceWithinBounds(rawPreviousState, evidenceBudget)) ||
-    !evidenceWithinBounds(rawPublicContext, evidenceBudget)
-  ) {
-    return null;
-  }
-  const policy = parseWatcherUserEventIndexerPolicy(rawPolicy);
-  if (policy === null) {
-    return null;
-  }
-  const previous =
-    rawPreviousState === null
-      ? null
-      : parseWatcherUserEventIndexerState(
-          rawPreviousState,
-          policy,
-          transportAttestations,
-          referenceAuthorities,
-        );
-  if (rawPreviousState !== null && previous === null) {
-    return null;
-  }
-  const context = parsePublicContext(rawPublicContext);
-  if (context === null) {
-    return null;
-  }
-  return context.rollbackAuthority === null
-    ? deriveBlockObservation(
-        policy,
-        previous,
-        context,
-        transportAttestations,
-        referenceAuthorities,
-      )
-    : previous === null
-      ? null
-      : deriveRollbackObservation(
-          policy,
-          previous,
-          context,
-          rollbackTargetEntryDigest,
-          transportAttestations,
-        );
-};
-
-const authorityCollectionWithinBounds = (
-  value: unknown,
-): value is readonly unknown[] => {
-  if (
-    !Array.isArray(value) ||
-    isProxy(value) ||
-    Object.getPrototypeOf(value) !== Array.prototype ||
-    value.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries
-  )
-    return false;
-  const keys = Reflect.ownKeys(value);
-  return (
-    keys.length === value.length + 1 &&
-    keys.every((key) => {
-      if (key === "length") return true;
-      if (
-        typeof key !== "string" ||
-        !NATURAL.test(key) ||
-        BigInt(key) >= BigInt(value.length)
-      )
-        return false;
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      return (
-        descriptor !== undefined &&
-        descriptor.enumerable === true &&
-        descriptor.get === undefined &&
-        descriptor.set === undefined
-      );
-    })
-  );
-};
-
-/**
- * Constructs one canonical apply-block candidate from admitted evidence.
- * Existing verification still admits every representation allowed by its store
- * predicates. This operation does not publish a store or mint durable authority.
- */
-export const deriveWatcherUserEventViewTransition = (
-  input: WatcherUserEventViewTransitionInput,
-): WatcherUserEventViewTransitionResult => {
-  const refuse = (
-    reason: WatcherUserEventIndexerReasonCode,
-  ): WatcherUserEventViewTransitionResult =>
-    Object.freeze({ status: "refused", reason });
-  try {
-    if (typeof input === "object" && input !== null && isProxy(input)) {
-      return refuse("malformed_public_context");
-    }
-    const record = exactRecord(input, [
-      "policy",
-      "previousState",
-      "sourceDurableStore",
-      "authenticatedProvider",
-      "l1Observation",
-      "referenceEvidence",
-      "deploymentAuthority",
-      "finalityAuthority",
-      "transportAttestations",
-      "referenceAuthorities",
-    ]);
-    if (
-      record === null ||
-      !authorityCollectionWithinBounds(record.transportAttestations) ||
-      !authorityCollectionWithinBounds(record.referenceAuthorities)
-    ) {
-      return refuse("malformed_public_context");
-    }
-    // Parse the existing public context shape before a destination exists. The
-    // structural parser does not grant authority to this null placeholder.
-    const rawContext = {
-      schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
-      authenticatedProvider: record.authenticatedProvider,
-      l1Observation: record.l1Observation,
-      referenceEvidence: record.referenceEvidence,
-      sourceDurableStore: record.sourceDurableStore,
-      durableStore: null,
-      deploymentAuthority: record.deploymentAuthority,
-      rollbackRestoredEventUtxos: [],
-      finalityAuthority: record.finalityAuthority,
-      rollbackAuthority: null,
-    };
-    const budget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
-    if (!evidenceWithinBounds(record.policy, budget))
-      return refuse("malformed_policy");
-    if (
-      record.previousState !== null &&
-      !evidenceWithinBounds(record.previousState, budget)
-    )
-      return refuse("malformed_state");
-    if (!evidenceWithinBounds(rawContext, budget))
-      return refuse("malformed_public_context");
-    const policy = parseWatcherUserEventIndexerPolicy(record.policy);
-    if (policy === null) return refuse("malformed_policy");
-    const transportAttestations =
-      record.transportAttestations as readonly WatcherL1TransportAttestationContext[];
-    const referenceAuthorities =
-      record.referenceAuthorities as readonly WatcherUserEventReferenceAuthority[];
-    const previous =
-      record.previousState === null
-        ? null
-        : parseWatcherUserEventIndexerState(
-            record.previousState,
-            policy,
-            transportAttestations,
-            referenceAuthorities,
-          );
-    if (record.previousState !== null && previous === null)
-      return refuse("malformed_state");
-    const context = parsePublicContext(rawContext);
-    if (context === null) return refuse("malformed_public_context");
-    const verified = verifyBlockInputs(
-      policy,
-      context,
-      transportAttestations,
-      referenceAuthorities,
-    );
-    if (verified === null) return refuse("public_evidence_mismatch");
-    const snapshot = deriveBlockSnapshot(policy, previous, verified);
-    if (snapshot === null) return refuse("public_evidence_mismatch");
-    const { sourceStore, block } = verified;
-    const targetObservation = {
-      observationId: block.observationDigest,
-      providerId: block.provider.providerId,
-      chainPointId: block.chainPoint.chainPointId,
-      payload: makeWatcherDurablePayload(
-        encodeWatcherNormalizedL1Block(block).toString("hex"),
-      ),
-    };
-    const existingObservation = sourceStore.l1Observations.find(
-      ({ observationId }) => observationId === targetObservation.observationId,
-    );
-    if (
-      existingObservation !== undefined &&
-      !same(existingObservation, targetObservation)
-    ) {
-      return refuse("durable_evidence_mismatch");
-    }
-    const chainPoints = [
-      ...sourceStore.chainPoints.filter(
-        ({ chainPointId }) => chainPointId !== block.chainPoint.chainPointId,
-      ),
-      {
-        chainPointId: block.chainPoint.chainPointId,
-        providerId: block.provider.providerId,
-        blockHash: block.chainPoint.blockHash,
-        slot: block.chainPoint.slot,
-        blockNo: block.chainPoint.blockNo,
-        depth: block.chainPoint.depth,
-      },
-    ];
-    const protocolUtxos = [
-      ...sourceStore.protocolUtxos.filter(
-        ({ role }) =>
-          !["deposit", "withdrawal", "forced_transaction"].includes(role),
-      ),
-      ...snapshot.activeEvents.map((event) => ({
-        outRef: event.outRef,
-        role: protocolRole(event.kind),
-        chainPointId: event.originChainPointId,
-        output: makeWatcherDurablePayload(event.outputCborHex),
-      })),
-    ];
-    const journal = journalWatcherProtocolUtxoTransition({
-      sourceStore,
-      nextChainPoints: chainPoints,
-      nextProtocolUtxos: protocolUtxos,
-      spentAtChainPointId: block.chainPoint.chainPointId,
-    });
-    const nextStore = makeWatcherDurableStore({
-      deploymentMarker: sourceStore.deploymentMarker,
-      revision: (BigInt(sourceStore.revision) + 1n).toString(),
-      records: {
-        l1Observations:
-          existingObservation === undefined
-            ? [...sourceStore.l1Observations, targetObservation]
-            : sourceStore.l1Observations,
-        chainPoints,
-        ...journal,
-        daProofInputs: sourceStore.daProofInputs,
-        reconstructedStates: sourceStore.reconstructedStates,
-        decisions: sourceStore.decisions,
-        faults: sourceStore.faults,
-        submissions: sourceStore.submissions,
-        confirmations: sourceStore.confirmations,
-        retries: sourceStore.retries,
-        deadlines: sourceStore.deadlines,
-        correctionResults: sourceStore.correctionResults,
-      },
-    });
-    const candidateContext = { ...context, durableStore: nextStore };
-    // The generated destination and observation add wire evidence. Apply the
-    // existing cumulative budget before cloning the complete verification input.
-    const candidateBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
-    if (
-      !evidenceWithinBounds(policy, candidateBudget) ||
-      (previous !== null && !evidenceWithinBounds(previous, candidateBudget)) ||
-      !evidenceWithinBounds(candidateContext, candidateBudget)
-    ) {
-      return refuse("malformed_public_context");
-    }
-    const publicContext = immutableWireValue(candidateContext);
-    const observation = deriveWatcherUserEventObservation(
-      policy,
-      previous,
-      publicContext,
-      transportAttestations,
-      referenceAuthorities,
-    );
-    if (observation === null) return refuse("public_evidence_mismatch");
-    const indexed = evaluateWatcherUserEventIndexer(
-      policy,
-      previous,
-      observation,
-      publicContext,
-      transportAttestations,
-      referenceAuthorities,
-    );
-    const parsed = parseWatcherUserEventIndexerResult(indexed, {
-      policy,
-      previousState: previous,
-      observation,
-      publicContext,
-      transportAttestations,
-      referenceAuthorities,
-    });
-    if (
-      parsed === null ||
-      parsed.action !== "accept" ||
-      parsed.protocolDecision !== "indexed" ||
-      parsed.state === null
-    ) {
-      return refuse(indexed.reasonCodes[0] ?? "public_evidence_mismatch");
-    }
-    return Object.freeze({
-      status: "derived",
-      sourceStore: parseWatcherDurableStore(publicContext.sourceDurableStore),
-      nextStore: parseWatcherDurableStore(publicContext.durableStore),
-      publicContext,
-      observation,
-      result: parsed,
-    });
-  } catch {
-    return refuse("durable_evidence_mismatch");
-  }
-};
-
-const historyEntryWithoutDigest = (
-  value: Omit<WatcherUserEventHistoryEntry, "entryDigest">,
-) => ({
-  schemaVersion: WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION,
-  predecessorStateDigest: value.predecessorStateDigest,
-  observation: value.observation,
-  publicContext: value.publicContext,
-});
-
-const stateWithoutDigest = (
-  value: Omit<WatcherUserEventIndexerState, "stateDigest">,
-) => ({
-  schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION,
-  policyDigest: value.policyDigest,
-  network: value.network,
-  blueprintHash: value.blueprintHash,
-  deploymentMarker: value.deploymentMarker,
-  durableStoreDigest: value.durableStoreDigest,
-  durableStoreRevision: value.durableStoreRevision,
-  snapshot: value.snapshot,
-  history: value.history,
-  activeEntryDigests: value.activeEntryDigests,
-});
-
-const applyObservation = (
-  policy: WatcherUserEventIndexerPolicy,
-  previous: WatcherUserEventIndexerState | null,
-  observation: WatcherUserEventObservation,
-  publicContext: WatcherUserEventPublicContext,
-): WatcherUserEventIndexerState | null => {
-  const entryCanonical = historyEntryWithoutDigest({
-    schemaVersion: WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION,
-    predecessorStateDigest: previous?.stateDigest ?? null,
-    observation,
-    publicContext,
-  });
-  const entry = Object.freeze({
-    ...entryCanonical,
-    entryDigest: sha256Canonical(entryCanonical),
-  });
-  const history = Object.freeze([...(previous?.history ?? []), entry]);
-  let activeEntryDigests =
-    observation.transitionKind === "rollback"
-      ? observation.rollbackTargetEntryDigest === null
-        ? observation.snapshot.quarantined
-          ? [...(previous?.activeEntryDigests ?? [])]
-          : []
-        : (previous?.activeEntryDigests.slice(
-            0,
-            previous.activeEntryDigests.indexOf(
-              observation.rollbackTargetEntryDigest,
-            ) + 1,
-          ) ?? [])
-      : [...(previous?.activeEntryDigests ?? [])];
-  activeEntryDigests = [...activeEntryDigests, entry.entryDigest];
-  if (
-    history.length > BigInt(policy.maximumAuditHistoryEntries) ||
-    activeEntryDigests.length > BigInt(policy.maximumActiveHistoryEntries)
-  ) {
-    return null;
-  }
-  const canonical = stateWithoutDigest({
-    schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION,
-    policyDigest: policy.policyDigest,
-    network: policy.network,
-    blueprintHash: policy.blueprintHash,
-    deploymentMarker: policy.deploymentMarker,
-    durableStoreDigest: observation.durableStoreDigest,
-    durableStoreRevision: observation.durableStoreRevision,
-    snapshot: observation.snapshot,
-    history,
-    activeEntryDigests: Object.freeze(activeEntryDigests),
-  });
-  return immutableWireValue({
-    ...canonical,
-    stateDigest: sha256Canonical(canonical),
-  });
-};
-
 const parseObservationStructural = (
   value: unknown,
 ): WatcherUserEventObservation | null => {
@@ -4476,290 +2969,6 @@ const parseObservationStructural = (
   return sha256Canonical(canonical) === candidate.observationDigest
     ? candidate
     : null;
-};
-
-export const parseWatcherUserEventIndexerState = (
-  value: unknown,
-  rawPolicy: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
-): WatcherUserEventIndexerState | null => {
-  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
-  if (
-    !evidenceWithinBounds(rawPolicy, evidenceBudget) ||
-    !evidenceWithinBounds(value, evidenceBudget)
-  ) {
-    return null;
-  }
-  const policy = parseWatcherUserEventIndexerPolicy(rawPolicy);
-  const record = exactRecord(value, [
-    "schemaVersion",
-    "policyDigest",
-    "network",
-    "blueprintHash",
-    "deploymentMarker",
-    "durableStoreDigest",
-    "durableStoreRevision",
-    "snapshot",
-    "history",
-    "activeEntryDigests",
-    "stateDigest",
-  ]);
-  if (
-    policy === null ||
-    record === null ||
-    record.schemaVersion !== WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION ||
-    !Array.isArray(record.history) ||
-    !Array.isArray(record.activeEntryDigests) ||
-    !isHex32(record.stateDigest) ||
-    !isHex32(record.durableStoreDigest) ||
-    !isNatural(record.durableStoreRevision) ||
-    record.policyDigest !== policy.policyDigest ||
-    record.network !== policy.network ||
-    record.blueprintHash !== policy.blueprintHash ||
-    !same(record.deploymentMarker, policy.deploymentMarker) ||
-    !snapshotTerminalClassificationsAreExact(record.snapshot)
-  ) {
-    return null;
-  }
-  let replay: WatcherUserEventIndexerState | null = null;
-  for (const rawEntry of record.history) {
-    const entryRecord = exactRecord(rawEntry, [
-      "schemaVersion",
-      "predecessorStateDigest",
-      "observation",
-      "publicContext",
-      "entryDigest",
-    ]);
-    const observation =
-      entryRecord === null
-        ? null
-        : parseObservationStructural(entryRecord.observation);
-    const publicContext =
-      entryRecord === null
-        ? null
-        : parsePublicContext(entryRecord.publicContext);
-    if (
-      entryRecord === null ||
-      observation === null ||
-      publicContext === null ||
-      entryRecord.schemaVersion !==
-        WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION ||
-      entryRecord.predecessorStateDigest !== (replay?.stateDigest ?? null) ||
-      !isHex32(entryRecord.entryDigest)
-    ) {
-      return null;
-    }
-    const expectedObservation =
-      publicContext.rollbackAuthority === null
-        ? deriveBlockObservation(
-            policy,
-            replay,
-            publicContext,
-            transportAttestations,
-            referenceAuthorities,
-          )
-        : replay === null
-          ? null
-          : deriveRollbackObservation(
-              policy,
-              replay,
-              publicContext,
-              observation.rollbackTargetEntryDigest,
-              transportAttestations,
-            );
-    if (
-      expectedObservation === null ||
-      !same(expectedObservation, observation)
-    ) {
-      return null;
-    }
-    replay = applyObservation(policy, replay, observation, publicContext);
-    if (
-      replay === null ||
-      replay.history.at(-1)?.entryDigest !== entryRecord.entryDigest
-    ) {
-      return null;
-    }
-  }
-  return replay !== null && same(replay, value) ? replay : null;
-};
-
-const result = (
-  action: WatcherUserEventIndexerResult["action"],
-  protocolDecision: WatcherUserEventIndexerResult["protocolDecision"],
-  reasonCodes: readonly WatcherUserEventIndexerReasonCode[],
-  alertCodes: readonly WatcherUserEventIndexerAlertCode[],
-  state: WatcherUserEventIndexerState | null,
-): WatcherUserEventIndexerResult => {
-  const canonical = {
-    schemaVersion: WATCHER_USER_EVENT_INDEXER_RESULT_SCHEMA_VERSION,
-    action,
-    protocolDecision,
-    reasonCodes,
-    alertCodes,
-    state,
-  };
-  return immutableWireValue({
-    ...canonical,
-    resultDigest: sha256Canonical(canonical),
-  });
-};
-
-const reject = (
-  reason: WatcherUserEventIndexerReasonCode,
-  alert: WatcherUserEventIndexerAlertCode = "watcher_user_event_input_rejected",
-): WatcherUserEventIndexerResult =>
-  result("reject", "hold", [reason], [alert], null);
-
-export const evaluateWatcherUserEventIndexer = (
-  rawPolicy: unknown,
-  rawState: unknown,
-  rawObservation: unknown,
-  rawPublicContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
-): WatcherUserEventIndexerResult => {
-  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
-  if (!evidenceWithinBounds(rawPolicy, evidenceBudget)) {
-    return reject("malformed_policy");
-  }
-  if (rawState !== null && !evidenceWithinBounds(rawState, evidenceBudget)) {
-    return reject("malformed_state");
-  }
-  if (!evidenceWithinBounds(rawObservation, evidenceBudget)) {
-    return reject("malformed_observation");
-  }
-  if (!evidenceWithinBounds(rawPublicContext, evidenceBudget)) {
-    return reject("malformed_public_context");
-  }
-  const policy = parseWatcherUserEventIndexerPolicy(rawPolicy);
-  if (policy === null) {
-    return reject("malformed_policy");
-  }
-  const previous =
-    rawState === null
-      ? null
-      : parseWatcherUserEventIndexerState(
-          rawState,
-          policy,
-          transportAttestations,
-          referenceAuthorities,
-        );
-  if (rawState !== null && previous === null) {
-    return reject("malformed_state");
-  }
-  const observation = parseObservationStructural(rawObservation);
-  if (observation === null) {
-    return reject("malformed_observation");
-  }
-  const publicContext = parsePublicContext(rawPublicContext);
-  if (publicContext === null) {
-    return reject("malformed_public_context");
-  }
-  if (
-    observation.policyDigest !== policy.policyDigest ||
-    observation.network !== policy.network ||
-    observation.blueprintHash !== policy.blueprintHash ||
-    !same(observation.deploymentMarker, policy.deploymentMarker)
-  ) {
-    return reject("binding_mismatch", "watcher_user_event_binding_rejected");
-  }
-  const duplicateEntry = previous?.activeEntryDigests
-    .map((digest) => historyEntryForDigest(previous, digest))
-    .find(
-      (entry) =>
-        entry?.observation.observationDigest === observation.observationDigest,
-    );
-  if (duplicateEntry !== undefined && duplicateEntry !== null) {
-    return same(duplicateEntry.publicContext, publicContext)
-      ? result(
-          "duplicate",
-          previous?.snapshot.quarantined === true ? "quarantined" : "indexed",
-          ["duplicate_observation"],
-          [],
-          previous ?? null,
-        )
-      : reject("identity_collision", "watcher_user_event_binding_rejected");
-  }
-  const expected =
-    publicContext.rollbackAuthority === null
-      ? deriveBlockObservation(
-          policy,
-          previous,
-          publicContext,
-          transportAttestations,
-          referenceAuthorities,
-        )
-      : previous === null
-        ? null
-        : deriveRollbackObservation(
-            policy,
-            previous,
-            publicContext,
-            observation.rollbackTargetEntryDigest,
-            transportAttestations,
-          );
-  if (expected === null || !same(expected, observation)) {
-    return reject(
-      publicContext.rollbackAuthority === null
-        ? "public_evidence_mismatch"
-        : "rollback_authority_mismatch",
-      "watcher_user_event_transition_rejected",
-    );
-  }
-  const next = applyObservation(policy, previous, observation, publicContext);
-  if (next === null) {
-    return reject("history_limit_exceeded");
-  }
-  if (observation.snapshot.quarantined) {
-    return result(
-      "quarantine",
-      "quarantined",
-      ["post_finality_quarantine"],
-      ["watcher_user_event_rollback_quarantined"],
-      next,
-    );
-  }
-  return result(
-    "accept",
-    "indexed",
-    [
-      observation.transitionKind === "rollback"
-        ? "rollback_authenticated"
-        : "block_authenticated",
-    ],
-    [],
-    next,
-  );
-};
-
-export const parseWatcherUserEventIndexerResult = (
-  value: unknown,
-  context: Readonly<{
-    policy: unknown;
-    previousState: unknown;
-    observation: unknown;
-    publicContext: unknown;
-    transportAttestations: readonly WatcherL1TransportAttestationContext[];
-    referenceAuthorities: readonly WatcherUserEventReferenceAuthority[];
-  }>,
-): WatcherUserEventIndexerResult | null => {
-  if (typeof value === "object" && value !== null && isProxy(value)) {
-    return null;
-  }
-  if (!evidenceWithinBounds(value)) {
-    return null;
-  }
-  const expected = evaluateWatcherUserEventIndexer(
-    context.policy,
-    context.previousState,
-    context.observation,
-    context.publicContext,
-    context.transportAttestations,
-    context.referenceAuthorities,
-  );
-  return same(expected, value) ? expected : null;
 };
 
 const localHistoryBrand = Symbol("watcher-local-user-event-history");
@@ -5469,7 +3678,9 @@ const prepareLocalUserEventTransition = (
     block,
     referenceEvidence,
     {
-      appliedScriptHashes: { hubOracleMint: owner.origin.scripts.hub.policyId },
+      appliedScriptHashes: watcherDeploymentAppliedScriptHashes(
+        owner.deploymentIdentity,
+      ),
     },
   );
   if (derivedSnapshot === null)
@@ -5499,7 +3710,10 @@ const prepareLocalUserEventTransition = (
       ...snapshot.activeEvents.map((event) => ({
         outRef: event.outRef,
         role: protocolRole(event.kind),
-        chainPointId: event.originChainPointId,
+        chainPointId:
+          sourceStore.protocolUtxos.find(
+            ({ outRef }) => outRef === event.outRef,
+          )?.chainPointId ?? block.chainPoint.chainPointId,
         output: makeWatcherDurablePayload(event.outputCborHex),
       })),
     ],
@@ -6296,7 +4510,23 @@ const localEventAtHeaderCutoff = async (
       return localRefuse("event cutoff transaction is not validly included");
     return index <= transactionIndex;
   };
-  if (!occursThroughHeader(originEvidence, event.transactionHash))
+  // Pointer continuations replace transactionHash/outRef, but admission remains
+  // the unique valid transaction that consumed the immutable event nonce in
+  // the authenticated origin block. Archived bytes describe this live owner's
+  // accepted lineage; they do not establish a new origin or fresh authority.
+  const originOrder = localCutoffTransactionOrder(originEvidence);
+  const admissions = originOrder.transactionIds.filter((_, index) => {
+    if (originOrder.invalidTransactions.has(index)) return false;
+    const inputs = originOrder.bodies.get(index).inputs();
+    for (let inputIndex = 0; inputIndex < inputs.len(); inputIndex += 1) {
+      if (outputReference(inputs.get(inputIndex)) === event.nonceOutRef)
+        return true;
+    }
+    return false;
+  });
+  if (admissions.length !== 1)
+    return localRefuse("event origin nonce is not uniquely consumed");
+  if (!occursThroughHeader(originEvidence, admissions[0]!))
     return localAuthorityUnavailable(
       "event origin occurs after the challenged header",
     );
@@ -6794,7 +5024,16 @@ const localStableSnapshot = (value: unknown): unknown => {
       "spendScriptHash",
       "addressHex",
       "assetNameHex",
-      "witnessScriptHash",
+      ...(typeof value === "object" &&
+      value !== null &&
+      Object.hasOwn(value, "witnessScriptHash")
+        ? ["witnessScriptHash"]
+        : []),
+      ...(typeof value === "object" &&
+      value !== null &&
+      Object.hasOwn(value, "historyPayloadCborHex")
+        ? ["historyPayloadCborHex"]
+        : []),
       "inclusionTime",
       "eventCborHex",
       "datumCborHex",
@@ -6830,6 +5069,12 @@ const localStableSnapshot = (value: unknown): unknown => {
     ]);
     if (
       event === null ||
+      (event.kind === "forced_order"
+        ? !isHex28(event.witnessScriptHash) ||
+          Object.hasOwn(event, "historyPayloadCborHex")
+        : (event.kind !== "deposit" && event.kind !== "withdrawal") ||
+          !isHexBytes(event.historyPayloadCborHex) ||
+          Object.hasOwn(event, "witnessScriptHash")) ||
       !isHex32(event.originPointDigest) ||
       !isHex32(event.originChainPointId) ||
       event.finalityStatus !== "final" ||
@@ -7455,7 +5700,10 @@ export const prepareWatcherLocalUserEventReadmission = async (
             (event) => ({
               outRef: event.outRef,
               role: protocolRole(event.kind),
-              chainPointId: event.originChainPointId,
+              chainPointId:
+                archivedSourceStore.protocolUtxos.find(
+                  ({ outRef }) => outRef === event.outRef,
+                )?.chainPointId ?? oldPoint.chainPointId,
               output: makeWatcherDurablePayload(event.outputCborHex),
             }),
           ),
@@ -7743,6 +5991,175 @@ export const prepareWatcherLocalUserEventReadmission = async (
     closeWatcherLocalUserEventHistory(history);
     await replayState.retainedSource?.close();
     throw error;
+  }
+};
+
+/** Rebuild a replacement branch from fresh native evidence. Unlike archived
+ * readmission, this requires a positive conflicting block at the saved head's
+ * height; an unavailable Order, missing block, or transport error proves nothing. */
+export const prepareWatcherLocalUserEventCanonicalReplay = async (
+  input: Omit<
+    Parameters<typeof prepareWatcherLocalUserEventReadmission>[0],
+    "replayBlock"
+  > &
+    Readonly<{
+      replayCanonical: (
+        savedHead: WatcherUserEventOriginFacts["parentPoint"],
+      ) => AsyncIterable<
+        Awaited<ReturnType<WatcherLocalUserEventReplaySource>>
+      >;
+    }>,
+): Promise<WatcherLocalUserEventReadmission> => {
+  const publication = await readWatcherProtectedUserEventCheckpoint(
+    input.runtime,
+  );
+  const published = readWatcherProtectedUserEventCheckpointReceipt(publication);
+  const previous = published.checkpoint;
+  if (
+    previous === null ||
+    published.payload === null ||
+    published.validation?.checkpointDigest !== previous.checkpointDigest ||
+    published.validation.payloadDigest !== previous.payloadDigest
+  )
+    return localRefuse(
+      "canonical replay requires a validated protected checkpoint",
+    );
+  const payload = objectForLocalRestart(published.payload);
+  const savedHead = localArchivedEntry(payload.head);
+  const history = createLocalUserEventHistory({
+    ...input,
+    publication,
+    semanticReplay: true,
+  });
+  const owner = localOwner(history);
+  let retained: Awaited<ReturnType<WatcherLocalUserEventReplaySource>> | null =
+    null;
+  try {
+    if (
+      !same(payload.policy, owner.policy) ||
+      previous.userEventPolicyDigest !== owner.policy.policyDigest ||
+      previous.finalityPolicyDigest !== owner.finalityPolicy.policyDigest ||
+      !isHex32(payload.originArchiveDigest)
+    )
+      return localRefuse("canonical replay deployment or policy differs");
+    const oldOriginBytes = await input.archive.read(
+      payload.originArchiveDigest,
+    );
+    if (
+      oldOriginBytes === null ||
+      sha256Bytes(oldOriginBytes) !== payload.originArchiveDigest
+    )
+      return localRefuse("canonical replay original provenance is absent");
+    const oldOrigin = objectForLocalRestart(oldOriginBytes);
+    if (
+      !same(
+        localStableOrigin(oldOrigin.facts),
+        localArchiveEvidence(localStableOrigin(owner.origin)),
+      )
+    )
+      return localRefuse("canonical replay activation differs");
+    const firstPair = {
+      finality: input.finality,
+      observation: input.observation,
+      referenceAuthority: input.referenceAuthority,
+    };
+    commitLocalUserEventTransition(
+      history,
+      prepareLocalUserEventTransition(history, firstPair),
+    );
+    let replacement: WatcherUserEventOriginFacts["parentPoint"] | null = null;
+    const writeObjects = async () => {
+      for (const object of owner.archiveObjects) {
+        if (
+          (await input.archive.put(Buffer.from(object.bytesHex, "hex"))) !==
+          object.digest
+        )
+          return localRefuse("canonical replay archive write differs");
+      }
+    };
+    for await (const pair of input.replayCanonical(savedHead.cursor)) {
+      try {
+        const current = localLivePair(owner, pair).witness.current.observation
+          .capture.point;
+        if (BigInt(current.blockNo) > BigInt(savedHead.cursor.blockNo))
+          return localRefuse("canonical replay skipped the saved head height");
+        commitLocalUserEventTransition(
+          history,
+          prepareLocalUserEventTransition(history, pair),
+        );
+        await retained?.close();
+        retained = pair;
+        if (localAnchorDue(owner)) {
+          await writeObjects();
+          const anchor = await prepareLocalUserEventAnchor(
+            history,
+            pair,
+            input.archive,
+          );
+          commitLocalUserEventAnchor(anchor);
+        }
+        if (current.blockNo === savedHead.cursor.blockNo) {
+          if (current.blockHash === savedHead.cursor.blockHash)
+            return localRefuse(
+              "canonical replay has no conflicting head block",
+            );
+          replacement = current;
+          break;
+        }
+      } finally {
+        if (retained !== pair) await pair.close();
+      }
+    }
+    if (replacement === null || retained === null)
+      return localRefuse(
+        "canonical replacement has not reached the saved head height",
+      );
+    // Historical predecessor evidence remains inspectable, but only this fresh
+    // contiguous fold and its live final head authorize the replacement.
+    const provenance = localArchiveObject({
+      kind: "canonical_branch_replacement",
+      previousCheckpoint: previous,
+      previousHead: savedHead,
+      replacementHead: replacement,
+    });
+    const archiveObjects = localArchiveClosure([
+      ...owner.archiveObjects,
+      provenance,
+    ]);
+    const nextCheckpoint = makeWatcherUserEventCheckpoint({
+      ...previous,
+      checkpointSequence: (BigInt(previous.checkpointSequence) + 1n).toString(),
+      predecessorCheckpointDigest: previous.checkpointDigest,
+      rollbackGeneration: (BigInt(previous.rollbackGeneration) + 1n).toString(),
+      payloadDigest: owner.checkpoint!.payloadDigest,
+      requiredArchiveDigests: archiveObjects.map(({ digest }) => digest).sort(),
+    });
+    const refreshed = readWatcherProtectedUserEventCheckpointReceipt(
+      await readWatcherProtectedUserEventCheckpoint(input.runtime),
+    );
+    if (!same(refreshed.checkpoint, previous))
+      return localRefuse("protected head changed during canonical replay");
+    const receipt = Object.freeze({ [localReadmissionBrand]: true as const });
+    const headPair = retained;
+    localReadmissions.set(receipt, {
+      runtime: input.runtime,
+      history,
+      pair: headPair,
+      generation: owner.generation,
+      previousCheckpoint: previous,
+      nextCheckpoint,
+      archiveObjects,
+      release: () => headPair.close(),
+      accepted: false,
+    });
+    readWatcherLocalUserEventReadmission(receipt);
+    retained = null;
+    return receipt;
+  } catch (error) {
+    closeWatcherLocalUserEventHistory(history);
+    throw error;
+  } finally {
+    await retained?.close();
   }
 };
 

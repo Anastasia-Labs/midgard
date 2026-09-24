@@ -52,6 +52,7 @@ import {
   registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 describe("fault-proof emulator integration", () => {
   it("submits and removes a tail transition-trace fraud proof end to end", async () => {
@@ -128,6 +129,10 @@ describe("fault-proof emulator integration", () => {
         entryNames: FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transitionTrace,
         familyLabel: "transition-trace",
       });
+    const transitionTraceYieldReferences = await publishTransitionTraceYields(
+      proverLucid,
+      contracts,
+    );
     const funderPaymentCredential = getAddressDetails(
       await funderLucid.wallet().address(),
     ).paymentCredential;
@@ -162,7 +167,10 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      fraudProofReferenceScripts: transitionTraceReferenceScripts,
+      fraudProofReferenceScripts: {
+        ...transitionTraceReferenceScripts,
+        ...transitionTraceYieldReferences,
+      },
     });
     const initResult = await submitInit({
       lucid: proverLucid,

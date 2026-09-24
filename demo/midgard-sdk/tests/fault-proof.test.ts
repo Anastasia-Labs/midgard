@@ -1422,6 +1422,46 @@ describe("fault-proof contract builder", () => {
       contracts.transitionTrace.steps[0],
     );
     expect(contracts.transitionTrace.steps).toHaveLength(9);
+
+    const history = contracts.transitionTrace.history;
+    const depositRetention = SDK.applyEventHistoryRetentionValidator(
+      blueprint,
+      "Preprod",
+      h28b,
+      "Deposit",
+    );
+    const withdrawalRetention = SDK.applyEventHistoryRetentionValidator(
+      blueprint,
+      "Preprod",
+      h28b,
+      "Withdrawal",
+    );
+    expect(history.retentionAddresses).toEqual({
+      deposit: depositRetention.address,
+      withdrawal: withdrawalRetention.address,
+    });
+    const depositRetentionData = await Effect.runPromise(
+      addressDataFromBech32(depositRetention.address),
+    );
+    expect(
+      contracts.transitionTrace.yields.depositProjection.withdrawalScript
+        .script,
+    ).toBe(
+      applyParamsToScript(
+        compiledScript(
+          blueprint,
+          SDK.TRANSITION_TRACE_YIELD_TITLES.depositProjection,
+        ),
+        [
+          contracts.transitionTrace.finals[5].spendingScriptHash,
+          h28b,
+          Data.from<Data>(Data.to(depositRetentionData, AddressData)),
+          512n,
+          5000n,
+          512n,
+        ],
+      ),
+    );
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
@@ -1872,6 +1912,11 @@ describe("fault-proof contract builder", () => {
 
     const contracts = await Effect.runPromise(
       buildTransitionTraceFaultProofContracts({
+        eventHistoryBounds: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+        },
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28b,
@@ -1893,6 +1938,19 @@ describe("fault-proof contract builder", () => {
         AddressData,
       ),
     );
+    const historyRetentionData = await Promise.all(
+      [
+        contracts.transitionTrace.history.retentionAddresses.deposit,
+        contracts.transitionTrace.history.retentionAddresses.withdrawal,
+      ].map(async (address) =>
+        Data.from(
+          Data.to(
+            await Effect.runPromise(addressDataFromBech32(address)),
+            AddressData,
+          ),
+        ),
+      ),
+    );
     const finalNames = [
       "control",
       "source",
@@ -1911,7 +1969,8 @@ describe("fault-proof contract builder", () => {
           contracts.fraudProof.policyId,
           fraudProofTokenAddressData,
           ...(name === "accepted" || name === "deposit" ? [h28b] : []),
-          ...(name === "l1Event" ? [h28b] : []),
+          ...(name === "deposit" ? [h28b] : []),
+          ...(name === "l1Event" ? [h28b, h28b] : []),
         ],
       ),
     );
@@ -1920,6 +1979,37 @@ describe("fault-proof contract builder", () => {
         ({ spendingScriptCBOR }) => spendingScriptCBOR,
       ),
     ).toEqual(expectedFinalCbors);
+    expect(
+      contracts.transitionTrace.yields.l1Event.withdrawalScript.script,
+    ).toEqual(
+      applyParamsToScript(
+        compiledScript(blueprint, SDK.TRANSITION_TRACE_YIELD_TITLES.l1Event),
+        [
+          contracts.transitionTrace.finals[6].spendingScriptHash,
+          contracts.computationThread.policyId,
+          h28b,
+          ...historyRetentionData,
+          512n,
+          5000n,
+          512n,
+        ],
+      ),
+    );
+    expect(
+      contracts.transitionTrace.yields.forcedTiming.withdrawalScript.script,
+    ).toEqual(
+      applyParamsToScript(
+        compiledScript(
+          blueprint,
+          SDK.TRANSITION_TRACE_YIELD_TITLES.forcedTiming,
+        ),
+        [
+          contracts.transitionTrace.finals[6].spendingScriptHash,
+          contracts.computationThread.policyId,
+          h28b,
+        ],
+      ),
+    );
     const finalHashesSchema = Data.Array(Data.Bytes());
     type FinalHashes = Data.Static<typeof finalHashesSchema>;
     const FinalHashes = asDataType<FinalHashes>(finalHashesSchema);

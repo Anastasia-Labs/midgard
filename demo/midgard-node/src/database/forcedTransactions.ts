@@ -387,56 +387,6 @@ export const encodeForcedInclusionValueV1 = ({
     return { ...material, value };
   });
 
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.TX_ORDER_ID)} BYTEA PRIMARY KEY,
-          ${sql(Columns.TX_ORDER_L1_TX_HASH)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TX_ORDER_L1_TX_HASH)}) = 32),
-          ${sql(Columns.TX_ORDER_L1_OUTPUT_INDEX)} INTEGER NOT NULL CHECK (${sql(Columns.TX_ORDER_L1_OUTPUT_INDEX)} >= 0),
-          ${sql(Columns.ASSET_NAME)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.ASSET_NAME)}) BETWEEN 1 AND 32),
-          ${sql(Columns.RAW_DATUM)} BYTEA NOT NULL,
-          ${sql(Columns.TX_ID)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TX_ID)}) = 32),
-          ${sql(Columns.TX_COMPACT)} BYTEA NOT NULL,
-          ${sql(Columns.FORCED_INCLUSION_VALUE)} BYTEA NOT NULL,
-	          ${sql(Columns.CONSENSUS_PROFILE_ID)} TEXT NOT NULL CHECK (${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_ID}),
-	          ${sql(Columns.NATIVE_TX_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.NATIVE_TX_CBOR)}) <= 295041),
-	          ${sql(Columns.TRANSACTION_COMMITMENT)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TRANSACTION_COMMITMENT)}) = 32),
-	          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}) > 0),
-	          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}) = 32),
-          ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
-          ${sql(Columns.PROJECTED_HEADER_HASH)} BYTEA,
-          ${sql(Columns.STATUS)} TEXT NOT NULL CHECK (${sql(Columns.STATUS)} IN ('awaiting', 'projected', 'finalized')),
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          UNIQUE (${sql(Columns.TX_ORDER_L1_TX_HASH)}, ${sql(Columns.TX_ORDER_L1_OUTPUT_INDEX)}),
-	          CHECK (${sql(Columns.STATUS)} <> 'awaiting' OR ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL)
-	        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.STATUS}_${Columns.INCLUSION_TIME}_${Columns.TX_ORDER_ID}`,
-        )} ON ${sql(tableName)} (
-          ${sql(Columns.STATUS)},
-          ${sql(Columns.INCLUSION_TIME)},
-          ${sql(Columns.TX_ORDER_ID)}
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.PROJECTED_HEADER_HASH}`,
-        )} ON ${sql(tableName)} (${sql(Columns.PROJECTED_HEADER_HASH)});`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.TX_ID}`,
-        )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to create forced transactions table",
-    ),
-  );
-
 export const insertEntries = (
   entries: readonly Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>

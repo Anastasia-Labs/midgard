@@ -178,14 +178,8 @@ validator main(
 // shared single-leaf `fixture.absence_witness()` trie — never an arbitrary
 // placeholder no absence proof can exist for.
 
-/// The block whose header authenticated the challenged transaction at step-01;
-/// its authenticated raw transactions root is what this step threads forward.
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn transactions_root() -> ByteArray {
-  challenged_block().transactions_phas_root
+  fixture.challenged_block_v1().transactions_phas_root
 }
 
 fn challenged_input() -> MidgardTxInput {
@@ -203,7 +197,7 @@ fn run_step_03_with(
     missing_input_tx_id: missing_input.tx_id,
     blocks_transactions_root: transactions_root(),
   }
-  let asset_name = fixture.ct_token_asset_name(challenged_block())
+  let asset_name = fixture.ct_token_asset_name(fixture.challenged_block_v1())
   let l1_tx = Transaction {
     ..transaction.placeholder,
     inputs: [fixture.ct_thread_input(asset_name)],

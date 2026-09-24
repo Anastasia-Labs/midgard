@@ -1,3 +1,4 @@
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -35,8 +36,10 @@ export const submitTransitionTraceProofFromCborFile = async (
     config.transitionFaultProofPath,
     "--transition-fault-proof",
   );
-  const proof = Data.from(proofCbor, SDK.TransitionFaultProof);
-  if (Data.to(proof, SDK.TransitionFaultProof) !== proofCbor) {
+  Data.from(proofCbor, SDK.TransitionFaultProof);
+  if (
+    aikenSerialisedPlutusDataCborPreservingMapOrder(proofCbor) !== proofCbor
+  ) {
     throw new Error(
       "--transition-fault-proof must contain canonical TransitionFaultProof CBOR",
     );
@@ -69,7 +72,7 @@ export const submitTransitionTraceProofFromCborFile = async (
     network: config.network,
     signer: resolveProverSigner(config),
     threadOutRef: config.threadOutRef,
-    proof,
+    proof: Object.freeze({ proofCbor }),
     additionalReferenceInputs,
     awaitConfirmation: config.awaitConfirmation,
   });

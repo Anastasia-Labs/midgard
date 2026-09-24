@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -29,6 +30,8 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
+import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import { handleSignSubmit } from "../src/transactions/utils.js";
 import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
@@ -100,6 +103,9 @@ const buildAtomicInitializationTx = async (
       contracts,
     ),
   );
+  await Effect.runPromise(
+    ensureEventHistoryRewardAccountsRegisteredProgram(lucid, contracts),
+  );
   return Effect.runPromise(
     buildAtomicProtocolInitTxProgram(
       lucid,
@@ -139,7 +145,20 @@ const initEmulatorLucid = async () => {
   );
   lucid.selectWallet.fromSeed(operator.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
-  const nonceUtxo = (await lucid.wallet().getUtxos())[0];
+  // Reserve the one-shot before deriving scripts; registration spends separate funding.
+  const split = await (
+    await lucid
+      .newTx()
+      .pay.ToAddress(operator.address, { lovelace: 5_000_000n })
+      .complete({ localUPLCEval: true })
+  ).sign
+    .withWallet()
+    .complete();
+  const splitHash = await split.submit();
+  await lucid.awaitTx(splitHash);
+  const [nonceUtxo] = await lucid.utxosByOutRef([
+    { txHash: splitHash, outputIndex: 0 },
+  ]);
   if (!nonceUtxo) {
     throw new Error("Expected at least one wallet UTxO in emulator");
   }
@@ -236,6 +255,7 @@ describe("initialization emulator", () => {
           },
         ),
       },
+      withdraw: vi.fn(() => txBuilder),
       register: { Stake: vi.fn(() => txBuilder) },
       readFrom: vi.fn(() => txBuilder),
       attach: {
@@ -248,6 +268,8 @@ describe("initialization emulator", () => {
     });
     const fakeLucid = {
       config: () => lucid.config(),
+      unixTimeToSlot: lucid.unixTimeToSlot,
+      slotToUnixTime: lucid.slotToUnixTime,
       newTx: () => txBuilder,
       wallet,
     } as unknown as typeof lucid;
@@ -272,9 +294,13 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
-        true,
-      );
+      expect(
+        outputAssets.slice(0, 9).every((assets) => !("lovelace" in assets)),
+      ).toBe(true);
+      expect(outputAssets).toHaveLength(11);
+      expect(
+        outputAssets.slice(9).every((assets) => assets.lovelace > 0n),
+      ).toBe(true);
       const hubOracleUnit = toUnit(
         contracts.hubOracle.policyId,
         SDK.HUB_ORACLE_ASSET_NAME,
@@ -334,6 +360,7 @@ describe("initialization emulator", () => {
       nonceUtxo,
       operatorSeedPhrase,
     );
+    expect(await lucid.utxosByOutRef([nonceUtxo])).toHaveLength(1);
     const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
       .complete();
@@ -378,6 +405,8 @@ describe("initialization emulator", () => {
     expect(schedulerInitialized).toBe(true);
     expect(schedulerDatum).toEqual("NoActiveOperators");
     expect(status.complete).toBe(true);
+    expect(status.depositHistoryInitialized).toBe(true);
+    expect(status.withdrawalHistoryInitialized).toBe(true);
     expect({
       rewardAddress: status.phasMembershipRewardAddress,
       scriptHash: status.phasMembershipScriptHash,
@@ -401,6 +430,37 @@ describe("initialization emulator", () => {
         true,
       );
     }
+    for (const [name, history] of Object.entries(
+      SDK.requireEventHistoryContracts(contracts),
+    )) {
+      for (const { withdrawalScript } of [history.list, history.retirement]) {
+        expect(
+          (
+            await lucid.rewardAccountAt(
+              SDK.scriptRewardAddress("Preprod", withdrawalScript),
+            )
+          ).registered,
+        ).toBe(true);
+      }
+      const originalUtxosAt = lucid.utxosAt.bind(lucid);
+      const hiddenRoot = vi
+        .spyOn(lucid, "utxosAt")
+        .mockImplementation(async (address) =>
+          address === history.list.spendingScriptAddress
+            ? []
+            : originalUtxosAt(address),
+        );
+      try {
+        const incomplete = await Effect.runPromise(
+          fetchProtocolDeploymentStatus(lucid, contracts),
+        );
+        expect(incomplete.complete).toBe(false);
+        expect(incomplete.empty).toBe(false);
+        expect(incomplete.missingComponents).toContain(`${name}-history`);
+      } finally {
+        hiddenRoot.mockRestore();
+      }
+    }
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
     expect(runtimeReferenceScriptNames).toContain("deposit minting");
     expect(runtimeReferenceScriptNames).toContain("settlement minting");
@@ -408,6 +468,38 @@ describe("initialization emulator", () => {
       "membership proof withdrawal",
     );
     capture.mockRestore();
+    const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+    if (evidenceDirectory !== undefined) {
+      await mkdir(evidenceDirectory, { recursive: true });
+      const blueprintBytes = await readFile(
+        process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+      );
+      await writeFile(
+        join(evidenceDirectory, "node-atomic-history-bootstrap.json"),
+        JSON.stringify(
+          {
+            blueprintSha256: createHash("sha256")
+              .update(blueprintBytes)
+              .digest("hex"),
+            protocolParameters: EMULATOR_PROTOCOL_PARAMETERS,
+            recipes: Object.values(
+              SDK.requireEventHistoryContracts(contracts),
+            ).map(({ recipe }) => recipe),
+            initializationTxHash: txHash,
+            records: [...acceptedFrames].map(
+              ([transactionId, transactionCbor]) => ({
+                transactionId,
+                transactionCbor,
+              }),
+            ),
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
     if (process.env.MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE === "1") {
       const references = body.reference_inputs();
       const creatingIds = new Set<string>();
@@ -589,13 +681,12 @@ describe("initialization emulator", () => {
       nonceUtxo,
       operatorSeedPhrase,
     );
-    const firstSigned = await (
-      await firstInit.complete({ localUPLCEval: true })
-    ).sign
-      .withWallet()
-      .complete();
-    const firstTxHash = await firstSigned.submit();
-    await lucid.awaitTx(firstTxHash);
+    await Effect.runPromise(
+      handleSignSubmit(
+        lucid,
+        await firstInit.complete({ localUPLCEval: true }),
+      ),
+    );
     const walletUtxosAfterFirstInit = await lucid.wallet().getUtxos();
     expect(
       walletUtxosAfterFirstInit.some(

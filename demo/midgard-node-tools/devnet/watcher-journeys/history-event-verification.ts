@@ -5,14 +5,12 @@ import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
   type CompleteCanonicalReplay,
-  computeFraudProofReleaseFinalityPolicyDigest,
   createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
   createHistoricalNativeScriptHistorySource,
   createHistoricalNativeScriptProviderRoster,
   createSqliteHistoricalNativeScriptCheckpointStore,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   headerDecisionCanonicalEvidence,
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
@@ -20,14 +18,9 @@ import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test
 import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/cross-block-settlement-authority";
 import { unsafeCreateTransitionTraceEventAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
 
+import { bindJourneyEventAuthorities } from "./event-history-bindings.js";
 import type { VerifiableJourneyBlock } from "./fixture-verification.js";
 import type { LocalHistoryEventStage } from "./history-event-local-staging.js";
-
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
 
 /**
  * Run the unmodified installed selector over an event-bearing retained block.
@@ -54,13 +47,17 @@ export const classifyLocalHistoryEventFixture = async (input: {
     return block;
   };
   const deploymentFingerprint = deployment.manifest.manifestId;
-  const releaseFinality = {
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: deploymentFingerprint,
-    blueprintHash: deployment.manifest.artifacts.blueprintHash,
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-    policy,
-  };
+  const { transition, settlement, history } = await bindJourneyEventAuthorities(
+    {
+      manifest: deployment.manifest,
+      blueprintJson: deployment.blueprintJson,
+      deploymentInfo: deployment.deploymentInfo,
+      headerHash: input.block.headerHash,
+      proverCredential: input.stage.operatorVkey,
+    },
+  );
+  const releaseFinality = transition.releaseFinality;
+  const policy = releaseFinality.policy;
   const hubOraclePolicyId = deployment.contracts.hubOracle.policyId;
   const directory = await mkdtemp("/var/tmp/midgard-history-event-local-");
   try {
@@ -85,22 +82,9 @@ export const classifyLocalHistoryEventFixture = async (input: {
       path: join(directory, "history.sqlite"),
       rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
     });
-    // Only the fields raw authority admission consumes, as in the established
-    // catalogue-retained classifier test. The deployment identity is the real
-    // published manifest, so a foreign snapshot cannot be admitted here.
-    const bindingFields = {
-      deploymentFingerprint,
-      blueprintHash: releaseFinality.blueprintHash,
-      network: "Custom" as const,
-      releaseFinality,
-      resolvedContracts: { hubOraclePolicyId },
-      definition: { headerHash: input.block.headerHash },
-    };
     const transitionTraceEventAuthority =
       unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
-        binding: bindingFields as Parameters<
-          typeof unsafeCreateTransitionTraceEventAuthorityFromRawForTest
-        >[0]["binding"],
+        binding: transition,
         authority: input.stage.rawAuthority,
       });
     // A settled ancestor's payload is its exact retained bytes; the authority
@@ -122,9 +106,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
     };
     const settlementAuthority =
       unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-        binding: bindingFields as Parameters<
-          typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
-        >[0]["binding"],
+        binding: settlement,
         raw: input.stage.rawAuthority,
         historySource: settlementHistorySource,
       });
@@ -136,6 +118,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
         hubOraclePolicyId,
         minimumConfirmationDepth: policy.confirmationDepth,
         owner: input.stage.operatorVkey,
+        history,
       });
     const classifier = await createHeaderClassifier({
       deploymentFingerprint,

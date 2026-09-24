@@ -1,8 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import type { OperatorWalletView } from "../../operator-wallet-view.js";
+import { HistoryProducer } from "../../services/event-history-producer.js";
+import {
+  HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  historyCommitTimingBudget,
+  historyEligibilityHorizon,
+} from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
   Lucid,
@@ -39,6 +45,7 @@ const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 
 export type BuiltCommitTx = {
+  readonly preparedTxHash: string;
   readonly newHeaderHash: string;
   readonly newHeader: SDK.Header;
   readonly newHeaderCbor: Buffer;
@@ -83,6 +90,11 @@ export const buildUnsignedCommitTx = (
   Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
+    const history = yield* Effect.serviceOption(HistoryProducer);
+    const ownedWindow = Option.isSome(history);
+    const checkTimingBudget = ownedWindow
+      ? historyCommitTimingBudget
+      : commitTimingBudget;
     const lucid = yield* Lucid;
     const nodeConfig = yield* NodeConfig;
     const submitSlotSnapshot = lucid.submitSlotSnapshot;
@@ -127,19 +139,31 @@ export const buildUnsignedCommitTx = (
         latestEndTime,
         candidateEndTime: candidateEndTimeMs,
         nowMs: commitValidityResolutionNow,
-        minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        minimumFutureBufferMs: ownedWindow
+          ? HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS
+          : COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
+    const fixedHistoryEnd = Option.isSome(history)
+      ? Math.min(
+          candidateEndTimeMs,
+          historyEligibilityHorizon(history.value.coverage),
+        )
+      : undefined;
+    const finalEndTimeCap =
+      fixedHistoryEnd === undefined
+        ? maximumEndTimeMs
+        : Math.min(fixedHistoryEnd, maximumEndTimeMs ?? fixedHistoryEnd);
     const enforceCommitValidityCap = (
       commitValidityWindow: ReturnType<typeof resolveCommitValidityWindow>,
       stage: string,
     ) =>
-      maximumEndTimeMs !== undefined &&
-      commitValidityWindow.resolvedEndTime - 1 > maximumEndTimeMs
+      finalEndTimeCap !== undefined &&
+      commitValidityWindow.resolvedEndTime - 1 > finalEndTimeCap
         ? Effect.fail(
             new SDK.StateQueueError({
               message:
                 "Resolved commit transaction validity exceeds the selected scheduler window cap",
-              cause: `stage=${stage},resolved_valid_to_ms=${commitValidityWindow.resolvedEndTime.toString()},resolved_header_end_time_ms=${(commitValidityWindow.resolvedEndTime - 1).toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},candidate_end_time_ms=${candidateEndTimeMs.toString()},aligned_candidate_valid_to_ms=${commitValidityWindow.alignedCandidateEndTime.toString()},minimum_monotonic_valid_to_ms=${commitValidityWindow.minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${commitValidityWindow.minimumCurrentTimeEndTime.toString()}`,
+              cause: `stage=${stage},resolved_valid_to_ms=${commitValidityWindow.resolvedEndTime.toString()},resolved_header_end_time_ms=${(commitValidityWindow.resolvedEndTime - 1).toString()},maximum_end_time_ms=${finalEndTimeCap.toString()},candidate_end_time_ms=${candidateEndTimeMs.toString()},aligned_candidate_valid_to_ms=${commitValidityWindow.alignedCandidateEndTime.toString()},minimum_monotonic_valid_to_ms=${commitValidityWindow.minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${commitValidityWindow.minimumCurrentTimeEndTime.toString()}`,
             }),
           )
         : Effect.void;
@@ -152,7 +176,7 @@ export const buildUnsignedCommitTx = (
       stabilizationAttempts <= COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS;
       stabilizationAttempts += 1
     ) {
-      const preWitnessBudget = commitTimingBudget({
+      const preWitnessBudget = checkTimingBudget({
         checkpoint: "pre_witness",
         resolvedEndTimeMs: commitValidityWindow.resolvedEndTime,
         nowMs: anchoredNowMs(),
@@ -199,7 +223,7 @@ export const buildUnsignedCommitTx = (
           latestBlock,
         );
       witnessContext = { ...witnessResult, ...appendFenceReferences };
-      const preBuildBudget = commitTimingBudget({
+      const preBuildBudget = checkTimingBudget({
         checkpoint: "pre_build",
         resolvedEndTimeMs: witnessEndTime,
         nowMs: anchoredNowMs(),
@@ -284,7 +308,7 @@ export const buildUnsignedCommitTx = (
         `🔹 Transaction built successfully. Size: ${txSize}`,
       );
 
-      const preSubmitBudget = commitTimingBudget({
+      const preSubmitBudget = checkTimingBudget({
         checkpoint: "pre_submit",
         resolvedEndTimeMs: txValidToMs,
         nowMs: anchoredNowMs(),
@@ -343,6 +367,7 @@ export const buildUnsignedCommitTx = (
         .pipe(Effect.withSpan("handleSignSubmit-commit-block"));
 
       return {
+        preparedTxHash: txBuilder.toHash(),
         newHeaderHash,
         newHeader,
         newHeaderCbor: Buffer.from(

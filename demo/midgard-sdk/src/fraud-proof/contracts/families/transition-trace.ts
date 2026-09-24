@@ -3,11 +3,15 @@ import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
+  AddressData,
+  addressDataFromBech32,
   AuthenticatedValidator,
   MintingValidator,
   SpendingValidator,
   WithdrawalValidator,
 } from "../../../common.js";
+import { applyEventHistoryRetentionValidator } from "../../../user-events/history-data.js";
+import { type EventHistoryPayloadBounds } from "../../../user-events/history-payload.js";
 import {
   applyBlueprintParams,
   type FaultProofBlueprint,
@@ -41,6 +45,9 @@ export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
 } as const;
 
 export const TRANSITION_TRACE_YIELD_TITLES = {
+  l1Event: "fraud_proofs/transition_trace/l1_event_yield.timing.withdraw",
+  forcedTiming:
+    "fraud_proofs/transition_trace/l1_event_yield.forced_timing.withdraw",
   l2Scan: "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
   l2Value: "fraud_proofs/transition_trace/output_value.value_output.withdraw",
   depositScan: "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
@@ -74,6 +81,12 @@ export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly transitionTrace: FraudProofChain & {
+    readonly history: EventHistoryPayloadBounds & {
+      readonly retentionAddresses: {
+        readonly deposit: string;
+        readonly withdrawal: string;
+      };
+    };
     readonly route: SpendingValidator;
     readonly yields: Readonly<
       Record<keyof typeof TRANSITION_TRACE_YIELD_TITLES, WithdrawalValidator>
@@ -105,6 +118,7 @@ export type TransitionTraceFaultProofContracts = {
 export type BuildTransitionTraceFaultProofContractsParams =
   BuildFaultProofContractsParams & {
     readonly referenceScriptAuthPolicyId: string;
+    readonly eventHistoryBounds: EventHistoryPayloadBounds;
   };
 
 export const buildTransitionTraceChain = ({
@@ -115,7 +129,9 @@ export const buildTransitionTraceChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  eventHistoryBounds,
 }: {
+  readonly eventHistoryBounds: EventHistoryPayloadBounds;
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
@@ -128,6 +144,38 @@ export const buildTransitionTraceChain = ({
   Error
 > =>
   Effect.gen(function* () {
+    if (
+      eventHistoryBounds.inlineLimitBytes <= 0n ||
+      eventHistoryBounds.maxPayloadBytes <
+        eventHistoryBounds.inlineLimitBytes ||
+      eventHistoryBounds.maxPayloadNodes <= 0n
+    )
+      return yield* Effect.fail(
+        new Error("History proofs require explicit measured payload bounds"),
+      );
+    const retentionAddresses = yield* tryBuild(
+      "Failed to apply transition history retention",
+      () => ({
+        deposit: applyEventHistoryRetentionValidator(
+          blueprint,
+          network,
+          hubOraclePolicyId,
+          "Deposit",
+        ).address,
+        withdrawal: applyEventHistoryRetentionValidator(
+          blueprint,
+          network,
+          hubOraclePolicyId,
+          "Withdrawal",
+        ).address,
+      }),
+    );
+    const depositRetentionAddress = yield* addressDataFromBech32(
+      retentionAddresses.deposit,
+    );
+    const withdrawalRetentionAddress = yield* addressDataFromBech32(
+      retentionAddresses.withdrawal,
+    );
     const finalSpecs = [
       ["control", false],
       ["source", false],
@@ -154,9 +202,12 @@ export const buildTransitionTraceChain = ({
                   fraudProof.policyId,
                   fraudProofTokenAddressData,
                   ...(name === "accepted" || name === "deposit"
-                    ? [referenceScriptAuthPolicyId]
+                    ? [
+                        referenceScriptAuthPolicyId,
+                        ...(name === "deposit" ? [hubOraclePolicyId] : []),
+                      ]
                     : needsHub
-                      ? [hubOraclePolicyId]
+                      ? [referenceScriptAuthPolicyId, hubOraclePolicyId]
                       : []),
                 ],
               ),
@@ -235,12 +286,31 @@ export const buildTransitionTraceChain = ({
     const depositProjection = yield* buildYield("depositProjection", [
       depositHash,
       hubOraclePolicyId,
+      Data.from(Data.to(depositRetentionAddress, AddressData)),
+      eventHistoryBounds.inlineLimitBytes,
+      eventHistoryBounds.maxPayloadBytes,
+      eventHistoryBounds.maxPayloadNodes,
     ]);
     const l2Summaries = yield* buildYield("l2Summaries", [acceptedHash]);
     const depositSummaries = yield* buildYield("depositSummaries", [
       depositHash,
     ]);
     const yields = {
+      forcedTiming: yield* buildYield("forcedTiming", [
+        finals[6].spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ]),
+      l1Event: yield* buildYield("l1Event", [
+        finals[6].spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+        Data.from(Data.to(depositRetentionAddress, AddressData)),
+        Data.from(Data.to(withdrawalRetentionAddress, AddressData)),
+        eventHistoryBounds.inlineLimitBytes,
+        eventHistoryBounds.maxPayloadBytes,
+        eventHistoryBounds.maxPayloadNodes,
+      ]),
       l2Scan: yield* buildYield("l2Scan", [acceptedHash]),
       l2Value: yield* buildYield("l2Value", [acceptedHash]),
       depositScan: yield* buildYield("depositScan", [depositHash]),
@@ -259,6 +329,7 @@ export const buildTransitionTraceChain = ({
       depositAssembly: yield* buildYield("depositAssembly", [depositHash]),
     };
     return {
+      history: { ...eventHistoryBounds, retentionAddresses },
       firstStep: route,
       yields,
       route,

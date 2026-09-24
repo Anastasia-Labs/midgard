@@ -121,14 +121,10 @@ fn run_step_05(block: fixture.NativeBlockFixtureV1, verdict: VerdictV1) -> Bool 
   )
 }
 
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 /// Wrongful acceptance closes: the operator accepted a protected output whose
 /// signer the complete scan never found.
 test protected_output_step_05_mints_for_an_accepted_missing_signer() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -141,7 +137,7 @@ test protected_output_step_05_mints_for_an_accepted_missing_signer() {
 
 /// Honest accepted block: the signer was present, so nothing closes.
 test protected_output_step_05_refuses_an_accepted_present_signer() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -155,7 +151,7 @@ test protected_output_step_05_refuses_an_accepted_present_signer() fail {
 /// Wrongful forced rejection closes: the operator rejected for a missing
 /// signer the complete scan found.
 test protected_output_step_05_mints_for_a_forced_present_signer() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -169,7 +165,7 @@ test protected_output_step_05_mints_for_a_forced_present_signer() {
 /// Honest forced rejection: the signer really was missing, so the operator's
 /// verdict stands.
 test protected_output_step_05_refuses_a_forced_missing_signer() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -183,7 +179,7 @@ test protected_output_step_05_refuses_a_forced_missing_signer() fail {
 /// A forced subject that lost its reason on the way is not canonical and
 /// cannot close either way.
 test protected_output_step_05_refuses_a_forced_subject_without_a_reason() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -199,7 +195,7 @@ test protected_output_step_05_refuses_a_forced_subject_without_a_reason() fail {
 
 /// An accepted-root subject carrying a reason is likewise non-canonical.
 test protected_output_step_05_refuses_an_accepted_subject_with_a_reason() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -221,7 +217,7 @@ test protected_output_step_05_refuses_an_accepted_subject_with_a_reason() fail {
 
 /// Wrongful forced rejection closes on the direct verdict.
 test protected_output_step_05_mints_for_a_forced_unrequired_signer() {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -235,7 +231,7 @@ test protected_output_step_05_mints_for_a_forced_unrequired_signer() {
 /// An accepted subject has no fault where no signer is required, whatever the
 /// carried scan answer says.
 test protected_output_step_05_refuses_an_accepted_unrequired_signer() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {
@@ -248,7 +244,7 @@ test protected_output_step_05_refuses_an_accepted_unrequired_signer() fail {
 
 /// The direct verdict still needs a canonical forced subject.
 test protected_output_step_05_refuses_an_unrequired_signer_without_a_reason() fail {
-  let block = challenged_block()
+  let block = fixture.challenged_block_v1()
   run_step_05(
     block,
     VerdictV1 {

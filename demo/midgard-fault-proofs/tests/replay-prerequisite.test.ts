@@ -534,8 +534,6 @@ describe("deposit replay prerequisites", () => {
     ).failures[0]!;
     const fault: TransitionFault = outOfWindowSourceEventFault({
       OutOfWindowDeposit: {
-        event_ref_input_index: 0n,
-        event_asset_name: "ab".repeat(32),
         source_membership: {
           domain: "d",
           root: "00".repeat(32),

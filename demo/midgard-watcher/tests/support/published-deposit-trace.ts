@@ -24,6 +24,11 @@ import {
   PublishedTransactionExpiredError,
   type PublishedWatcherBlock,
 } from "./published-block-actor.js";
+import {
+  capturePublishedDepositHistory,
+  type PublishedDepositHistory,
+  readPublishedDepositHistory,
+} from "./published-deposit-history.js";
 
 type Published = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
 
@@ -31,6 +36,7 @@ export type PublishedDepositTraceCheckpoint = {
   predecessor: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
   current: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
   depositEvent: UTxO;
+  depositHistory: PublishedDepositHistory;
   depositMetadata: Pick<
     Effect.Effect.Success<
       ReturnType<typeof SDK.buildUnsignedDepositTxWithMetadataProgram>
@@ -41,6 +47,7 @@ export type PublishedDepositTraceCheckpoint = {
   attestationsComplete: boolean;
   priorDeposits?: readonly {
     event: UTxO;
+    history: PublishedDepositHistory;
     metadata: PublishedDepositTraceCheckpoint["depositMetadata"];
   }[];
 };
@@ -92,6 +99,21 @@ export const stagePublishedDepositTrace = async (
     finalityDepth?: number;
   },
 ) => {
+  if (resume !== undefined) {
+    const retained = readPublishedDepositHistory(
+      resume.depositHistory,
+      resume.depositMetadata,
+    );
+    if (retained.commitment.policy !== deployment.contracts.deposit.policyId)
+      throw new Error("Captured deposit belongs to another deployment");
+    for (const prior of resume.priorDeposits ?? []) {
+      if (
+        readPublishedDepositHistory(prior.history, prior.metadata).commitment
+          .policy !== deployment.contracts.deposit.policyId
+      )
+        throw new Error("Captured prior deposit belongs to another deployment");
+    }
+  }
   const { contracts, chain, references } = deployment;
   let lucid = deployment.operatorLucid;
   let address = await lucid.wallet().address();
@@ -199,18 +221,53 @@ export const stagePublishedDepositTrace = async (
       }
     }
   };
-  const buildDepositedBlock = ({
+  const readDeposits = () =>
+    Effect.runPromise(
+      SDK.fetchDepositUTxOsProgram(
+        lucid,
+        SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(contracts).deposit,
+        ),
+      ),
+    );
+  const readMatchingDeposit = async (
+    history: PublishedDepositHistory,
+    metadata: PublishedDepositTraceCheckpoint["depositMetadata"],
+  ) => {
+    const retained = readPublishedDepositHistory(history, metadata);
+    if (retained.commitment.policy !== contracts.deposit.policyId)
+      throw new Error("Captured deposit belongs to another deployment");
+    const order = (await readDeposits()).find(
+      (candidate) => candidate.assetName === metadata.depositAssetName,
+    );
+    if (order === undefined)
+      throw new Error("Published deposit is no longer an authenticated Order");
+    const current = capturePublishedDepositHistory(
+      order,
+      contracts.deposit.policyId,
+    );
+    if (
+      current.commitmentCbor !== history.commitmentCbor ||
+      current.openingCbor !== history.openingCbor
+    )
+      throw new Error(
+        "Published deposit immutable commitment or opening changed",
+      );
+    return order;
+  };
+  const buildDepositedBlock = async ({
     empty,
-    event,
-    depositAssetName,
+    history,
+    metadata,
     endTime,
   }: {
     empty: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
-    event: UTxO;
-    depositAssetName: string;
+    history: PublishedDepositHistory;
+    metadata: PublishedDepositTraceCheckpoint["depositMetadata"];
     endTime: bigint;
-  }) =>
-    depositEventsRetainedBlock({
+  }) => {
+    const order = await readMatchingDeposit(history, metadata);
+    return depositEventsRetainedBlock({
       operatorVkey,
       prevHeaderHash: empty.headerHash,
       prevUtxosRoot: empty.header.utxosRoot,
@@ -220,41 +277,32 @@ export const stagePublishedDepositTrace = async (
       blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
       events: [
         {
-          event,
-          depositPolicyId: contracts.deposit.policyId,
-          assetName: depositAssetName,
+          event: order.event,
+          originalAssets: order.originalAssets,
           honest,
         },
       ],
     });
+  };
   const prepare = async () => {
     await removeAbandonedHeaders();
     // A stopped preparation may have published an event before its block was
     // checkpointed. Recover every real pending deposit from the isolated chain.
+    const priorOrders = await readDeposits();
     const priorDeposits: NonNullable<
       PublishedDepositTraceCheckpoint["priorDeposits"]
-    > = (await lucid.utxosAt(contracts.deposit.spendingScriptAddress)).map(
-      (event) => {
-        if (event.datum == null)
-          throw new Error("Published deposit has no datum");
-        const datum = Data.from(event.datum, SDK.DepositDatum);
-        const units = Object.entries(event.assets).filter(
-          ([unit, amount]) =>
-            unit.startsWith(contracts.deposit.policyId) && amount === 1n,
-        );
-        if (units.length !== 1)
-          throw new Error("Published deposit authentication is ambiguous");
-        const depositAuthUnit = units[0]![0];
-        return {
-          event,
-          metadata: {
-            depositAuthUnit,
-            depositAssetName: depositAuthUnit.slice(56),
-            inclusionTime: Number(datum.inclusion_time),
-          },
-        };
+    > = priorOrders.map((order) => ({
+      event: order.utxo,
+      history: capturePublishedDepositHistory(
+        order,
+        contracts.deposit.policyId,
+      ),
+      metadata: {
+        depositAuthUnit: contracts.deposit.policyId + order.assetName,
+        depositAssetName: order.assetName,
+        inclusionTime: Number(order.facts.inclusion_time),
       },
-    );
+    }));
     // Validate the ledger before publishing another transaction.
     await depositEventsRetainedBlock({
       operatorVkey,
@@ -299,9 +347,15 @@ export const stagePublishedDepositTrace = async (
     const signedDeposit = await deposit.tx.sign.withWallet().complete();
     const depositTxHash = await signedDeposit.submit();
     await awaitConfirmed(depositTxHash);
-    const event = await one(
-      contracts.deposit.spendingScriptAddress,
-      deposit.metadata.depositAuthUnit,
+    const admitted = (await readDeposits()).find(
+      (order) => order.assetName === deposit.metadata.depositAssetName,
+    );
+    if (admitted === undefined)
+      throw new Error("Confirmed deposit is absent from authenticated history");
+    const event = admitted.utxo;
+    const depositHistory = capturePublishedDepositHistory(
+      admitted,
+      contracts.deposit.policyId,
     );
     const emptyEnd = BigInt(
       Math.min(
@@ -332,17 +386,16 @@ export const stagePublishedDepositTrace = async (
       prevHeaderHash: genesis.data.headerHash,
       prevUtxosRoot: genesis.data.utxoRoot,
       priorLedger: [],
-      events: priorDeposits.map(({ event, metadata }) => ({
-        event,
-        depositPolicyId: contracts.deposit.policyId,
-        assetName: metadata.depositAssetName,
+      events: priorOrders.map((order) => ({
+        event: order.event,
+        originalAssets: order.originalAssets,
         honest: true,
       })),
     });
     const deposited = await buildDepositedBlock({
       empty,
-      event,
-      depositAssetName: deposit.metadata.depositAssetName,
+      history: depositHistory,
+      metadata: deposit.metadata,
       endTime: BigInt(
         Math.ceil(deposit.metadata.inclusionTime / 1000) * 1000 +
           DEPOSIT_BLOCK_INTERVAL_MS,
@@ -352,6 +405,7 @@ export const stagePublishedDepositTrace = async (
       predecessor: empty,
       current: deposited,
       depositEvent: event,
+      depositHistory,
       depositMetadata: deposit.metadata,
       commits: [],
       attestationsComplete: false,
@@ -371,6 +425,7 @@ export const stagePublishedDepositTrace = async (
     predecessor: empty,
     current: deposited,
     depositEvent: event,
+    depositHistory,
     depositMetadata,
   } = prepared;
   // A stopped run may have registered the successor before its correction
@@ -470,6 +525,7 @@ export const stagePublishedDepositTrace = async (
     predecessor: empty,
     current: deposited,
     depositEvent: event,
+    depositHistory,
     depositMetadata,
     commits,
     attestationsComplete: prepared.attestationsComplete,
@@ -516,11 +572,13 @@ export const stagePublishedDepositTrace = async (
             predecessor: empty,
             current: deposited,
             depositEvent: event,
+            depositHistory,
             depositMetadata,
           } = again);
           checkpoint.predecessor = empty;
           checkpoint.current = deposited;
           checkpoint.depositEvent = event;
+          checkpoint.depositHistory = depositHistory;
           checkpoint.depositMetadata = depositMetadata;
           checkpoint.priorDeposits = again.priorDeposits;
           anchor = await one(
@@ -551,8 +609,8 @@ export const stagePublishedDepositTrace = async (
           );
           deposited = await buildDepositedBlock({
             empty,
-            event,
-            depositAssetName: depositMetadata.depositAssetName,
+            history: depositHistory,
+            metadata: depositMetadata,
             endTime: BigInt(
               Math.ceil(chain.now() / 1000) * 1000 + DEPOSIT_BLOCK_INTERVAL_MS,
             ),
@@ -700,17 +758,16 @@ export const stagePublishedDepositTrace = async (
         await attest(resumedBlock);
         return { ...resumedBlock, commitTxHash };
       }
-      const liveEvent = await one(
-        contracts.deposit.spendingScriptAddress,
-        depositMetadata.depositAuthUnit,
+      const actualDeposit = await readMatchingDeposit(
+        depositHistory,
+        depositMetadata,
       );
-      const actualDeposit = Data.from(liveEvent.datum!, SDK.DepositDatum);
       const buildSuccessor = async (): Promise<PublishedWatcherBlock> => {
         const endTime = BigInt(chain.now() + SUCCESSOR_HEADER_INTERVAL_MS);
         if (
           !(
-            predecessor.endTime < actualDeposit.inclusion_time &&
-            actualDeposit.inclusion_time <= endTime
+            predecessor.endTime < actualDeposit.facts.inclusion_time &&
+            actualDeposit.facts.inclusion_time <= endTime
           )
         )
           throw new Error(
@@ -726,9 +783,8 @@ export const stagePublishedDepositTrace = async (
           blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
           events: [
             {
-              event: liveEvent,
-              depositPolicyId: contracts.deposit.policyId,
-              assetName: depositMetadata.depositAssetName,
+              event: actualDeposit.event,
+              originalAssets: actualDeposit.originalAssets,
               honest: true,
             },
           ],

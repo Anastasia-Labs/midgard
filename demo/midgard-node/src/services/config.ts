@@ -146,6 +146,8 @@ export type NodeConfigDep = {
   L1_RECENT_TX_404_MAX_DELAY_MS: number;
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
+  /** Operator-approved lossless Shelley query result hash; required by listen. */
+  L1_HISTORY_GENESIS_LOSSLESS_SHA256: string;
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
@@ -330,6 +332,9 @@ const makeConfig = Effect.gen(function* () {
   const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
+  const historyGenesis = yield* Config.string(
+    "L1_HISTORY_GENESIS_LOSSLESS_SHA256",
+  ).pipe(Config.withDefault(""));
   const operatorSeedPhrase = yield* requiredSeedPhrase(
     "L1_OPERATOR_SEED_PHRASE",
   );
@@ -1401,6 +1406,7 @@ const makeConfig = Effect.gen(function* () {
     L1_RECENT_TX_404_MAX_DELAY_MS: l1RecentTx404MaxDelayMs,
     L1_OGMIOS_KEY: ogmiosKey,
     L1_KUPO_KEY: kupoKey,
+    L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesis,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, parse } from "node:path";
 
 import { outRefLabel } from "@al-ft/midgard-core";
@@ -34,6 +34,10 @@ import {
   writeVanRossemFitLedger,
 } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import {
+  type TransitionDepositOpening,
+  transitionDepositOpening,
+} from "../../src/transition-trace/history-opening.js";
+import {
   submitTransitionTraceCancel,
   submitTransitionTraceFinal,
   submitTransitionTraceRoute,
@@ -51,6 +55,7 @@ import {
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
 } from "./emulator/reference-scripts.js";
+import { makeIsolatedAlwaysSucceedsAuthenticatedValidator } from "./emulator/validators.js";
 import { submitInit } from "./legacy-submit-emulator.js";
 import { expectStateQueueHeaderOrder } from "./submit-init-emulator-fixtures.js";
 import {
@@ -98,10 +103,30 @@ export const registerTransitionTraceFinalCases = (
   fitLedgerSuffix?: "many-assets" | "deep-deposit",
 ): void => {
   const fitRows: VanRossemFitMeasurement[] = [];
+  const records: unknown[] = [];
   const measuredBlueprintSha256 = createHash("sha256")
     .update(readFileSync(realBlueprintPath))
     .digest("hex");
   afterAll(async () => {
+    const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+    if (directory !== undefined) {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, `transition-final-${fitLedgerSuffix ?? "cases"}.json`),
+        JSON.stringify(
+          {
+            scope:
+              "Synthetic proof-consumer stress; scaffold event policy, not genuine admission or live acceptance",
+            blueprintSha256: measuredBlueprintSha256,
+            protocolParameters: EMULATOR_PROTOCOL_PARAMETERS,
+            records,
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ) + "\n",
+      );
+    }
     const configuredPath = process.env.TRANSITION_TRACE_FIT_LEDGER_PATH;
     // Split files emit sibling ledgers instead of overwriting each other's rows.
     const parsed = configuredPath ? parse(configuredPath) : undefined;
@@ -173,6 +198,13 @@ export const registerTransitionTraceFinalCases = (
           for (let i = 0; i < outputs.len(); i++)
             if (outputs.get(i).script_ref() != null) publication = true;
           const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumBytes}-corrupt-index-${corruptAssetIndex}-corrupt-datum-${corruptDatum}-corrupt-source-${corruptSourceReference}`;
+          records.push({
+            label: `${shape}/tx-${measuredIndex}`,
+            txHash: result,
+            transactionCbor: cbor,
+            measurement: m,
+            fee: CML.Transaction.from_cbor_hex(cbor).body().fee(),
+          });
           fitRows.push({
             name: `${shape}/tx-${measuredIndex++}`,
             kind: publication ? "publication" : "lifecycle",
@@ -204,6 +236,13 @@ export const registerTransitionTraceFinalCases = (
         await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
         const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
           await createReferenceScriptPublisher(funderLucid, emulator.now());
+        // Explicit stress-fixture parameters, shared by every applied proof recipe.
+        // This scaffold exercises proof consumers, not genuine list admission.
+        const historyBounds = {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 14000n,
+          maxPayloadNodes: 512n,
+        };
         const baseContracts = {
           ...(await buildMinimalFaultProofContracts(
             realBlueprint,
@@ -211,10 +250,12 @@ export const registerTransitionTraceFinalCases = (
             nonceUtxo,
             {
               realTransitionTrace: true,
+              eventHistoryBounds: historyBounds,
               alwaysFraudProofCatalogue: true,
               referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
             },
           )),
+          deposit: makeIsolatedAlwaysSucceedsAuthenticatedValidator(),
           referenceScriptAuth,
           referenceScriptPublisher,
         };
@@ -346,6 +387,7 @@ export const registerTransitionTraceFinalCases = (
             honest,
           });
         const additionalReferenceInputs: UTxO[] = [];
+        let depositOpening: TransitionDepositOpening | undefined;
         if (kind === "deposit") {
           proverLucid.selectWallet.fromSeed(depositor.seedPhrase);
           const nonce = (await proverLucid.wallet().getUtxos()).find(
@@ -363,20 +405,71 @@ export const registerTransitionTraceFinalCases = (
             l2_network_id: 0n,
             l2_datum: datumBytes > 0 ? "ab".repeat(datumBytes) : null,
           };
-          const eventAssetName = "ab";
-          const unit = contracts.deposit.policyId + eventAssetName;
-          const datum = Data.to(
-            {
-              event: { id, info },
-              inclusion_time: BigInt(headerStartTime + 1),
-              witness: "11".repeat(28),
-            },
-            SDK.DepositDatum,
+          const payload: SDK.EventHistoryPayload = {
+            DepositPayload: { event: { id, info } },
+          };
+          const reclaimKey = getAddressDetails(
+            await proverLucid.wallet().address(),
+          ).paymentCredential!.hash;
+          const plan = SDK.prepareEventHistoryPayload(
+            payload,
+            { PublicKeyCredential: [reclaimKey] },
+            historyBounds,
           );
+          const unit = contracts.deposit.policyId + plan.key;
+          const retention = SDK.applyEventHistoryRetentionValidator(
+            SDK.parseFaultProofBlueprint(realBlueprint),
+            "Custom",
+            contracts.hubOracle.policyId,
+            "Deposit",
+          );
+          // Publish from the prover wallet so the event nonce remains unspent.
+          // The later Order transaction references this existing output.
+          if (plan.kind === "External") {
+            proverSigner.selectWallet(proverLucid);
+            const publication = await (
+              await proverLucid
+                .newTx()
+                .pay.ToContract(
+                  retention.address,
+                  { kind: "inline", value: plan.datumCbor },
+                  { lovelace: 90_000_000n },
+                )
+                .complete({ localUPLCEval: true })
+            ).sign
+              .withWallet()
+              .complete();
+            const txHash = await publication.submit();
+            await proverLucid.awaitTx(txHash);
+            additionalReferenceInputs.push(
+              (
+                await proverLucid.utxosByOutRef([{ txHash, outputIndex: 0 }])
+              )[0]!,
+            );
+            proverLucid.selectWallet.fromSeed(depositor.seedPhrase);
+          }
+          const node: SDK.EventHistoryNode = {
+            position: { Key: [plan.key] },
+            next: null,
+            protected_until: BigInt(headerStartTime + 120_000),
+            payload: {
+              Order: {
+                facts: {
+                  event_id: id,
+                  inclusion_time: BigInt(headerStartTime + 1),
+                  location: plan.location,
+                  structural_lovelace: 5_000_000n,
+                  structural_refund_key: reclaimKey,
+                },
+              },
+            },
+          };
+          const datum = Data.to(node, SDK.EventHistoryNode);
+          let admission = proverLucid.newTx().collectFrom([nonce]);
+          if (additionalReferenceInputs.length > 0)
+            admission = admission.readFrom(additionalReferenceInputs);
           const signed = await (
-            await proverLucid
-              .newTx()
-              .collectFrom([nonce])
+            await admission
               .mintAssets({ [unit]: 1n }, Data.void())
               .attach.MintingPolicy(contracts.deposit.mintingScript)
               .pay.ToContract(
@@ -384,11 +477,12 @@ export const registerTransitionTraceFinalCases = (
                 { kind: "inline", value: datum },
                 {
                   lovelace:
-                    datumBytes > 0
+                    5_000_000n +
+                    (datumBytes > 0
                       ? 90_000_000n
                       : kind === "deposit" && assetCount > 0
                         ? 30_000_000n
-                        : 2_000_000n,
+                        : 2_000_000n),
                   [unit]: 1n,
                   ...Object.fromEntries(
                     [...names].map(([name, quantity]) => [
@@ -398,7 +492,7 @@ export const registerTransitionTraceFinalCases = (
                   ),
                 },
               )
-              .complete()
+              .complete({ localUPLCEval: true })
           ).sign
             .withWallet()
             .complete();
@@ -410,11 +504,28 @@ export const registerTransitionTraceFinalCases = (
               unit,
             ),
           );
-          if (assetCount === 1295)
+          const witness = await SDK.fetchEventHistoryWitness(
+            { utxosAt: (address) => proverLucid.utxosAt(address) },
+            {
+              policyId: contracts.deposit.policyId,
+              address: contracts.deposit.spendingScriptAddress,
+              retentionAddress: retention.address,
+              inlineLimitBytes: historyBounds.inlineLimitBytes,
+            },
+            id,
+          );
+          if (witness.kind !== "Present")
+            throw new Error("Missing stress fixture Order");
+          depositOpening = transitionDepositOpening(
+            SDK.captureEventHistoryWitness(
+              witness,
+              contracts.deposit.policyId,
+              "Deposit",
+            ),
+          );
+          if (fitLedgerSuffix === "deep-deposit")
             expect(
-              assetsToValue(
-                additionalReferenceInputs[0]!.assets,
-              ).to_cbor_bytes().length,
+              assetsToValue(witness.anchor.utxo.assets).to_cbor_bytes().length,
             ).toBe(5000);
           proverSigner.selectWallet(proverLucid);
           traceFixture = await buildDepositTransitionFixture({
@@ -422,7 +533,6 @@ export const registerTransitionTraceFinalCases = (
             now: headerStartTime,
             id,
             info,
-            eventAssetName,
             outputCbor,
             honest,
             depth,
@@ -459,6 +569,17 @@ export const registerTransitionTraceFinalCases = (
             },
           },
         );
+        records.push({
+          label: "deployment",
+          kind,
+          assetCount,
+          datumBytes,
+          depth,
+          eventHistoryBounds: historyBounds,
+          hubPolicy: contracts.hubOracle.policyId,
+          depositPolicy: contracts.deposit.policyId,
+          deploymentInfo,
+        });
         const initialize = () =>
           submitInit({
             lucid: proverLucid,
@@ -529,6 +650,7 @@ export const registerTransitionTraceFinalCases = (
                   threadOutRef: outRefLabel(checkpoint),
                   proof: traceFixture.proof,
                   additionalReferenceInputs,
+                  depositOpening,
                   witnessReferenceScripts,
                   preSubmitBoundary: boundary,
                 }),
@@ -603,6 +725,7 @@ export const registerTransitionTraceFinalCases = (
             threadOutRef: outRefLabel(firstStepUtxo),
             proof: traceFixture.proof,
             additionalReferenceInputs,
+            depositOpening,
             witnessReferenceScripts,
             awaitConfirmation: true,
           });
@@ -639,20 +762,22 @@ export const registerTransitionTraceFinalCases = (
             .mockImplementation((input) =>
               derive(input).map((entry) => {
                 if (entry.depositSourceCbor === undefined) return entry;
-                const source = Data.from(entry.depositSourceCbor);
-                if (!Array.isArray(source))
-                  throw new Error("Expected deposit source tuple");
+                const source = Data.from(
+                  entry.depositSourceCbor,
+                  SDK.EventHistoryCommitment,
+                );
                 return {
                   ...entry,
-                  depositSourceCbor: Data.to([
-                    Data.from(
-                      Data.to(
-                        { transactionId: "00".repeat(32), outputIndex: 0n },
-                        SDK.OutputReference,
-                      ),
-                    ),
-                    ...source.slice(1),
-                  ]),
+                  depositSourceCbor: Data.to(
+                    {
+                      ...source,
+                      event_id: {
+                        transactionId: "00".repeat(32),
+                        outputIndex: 0n,
+                      },
+                    },
+                    SDK.EventHistoryCommitment,
+                  ),
                 };
               }),
             );

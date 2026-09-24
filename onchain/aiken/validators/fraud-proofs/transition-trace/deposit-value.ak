@@ -1,4 +1,4 @@
-use aiken/collection/dict
+use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
@@ -10,6 +10,7 @@ use midgard/fraud_proofs/transition_trace/deposit_source
 use midgard/fraud_proofs/transition_trace/final_yield as delegation
 use midgard/ledger_output_scan_v1 as scan
 use midgard/ledger_output_value_v1 as value
+use midgard/user_events
 
 fn batch(
   control: value.LedgerOutputValueControlV1,
@@ -38,10 +39,10 @@ fn policy_of(item: (value.LedgerOutputValueWitnessV1, Int)) -> ByteArray {
 
 fn source_matches(
   requested: List<(value.LedgerOutputValueWitnessV1, Int)>,
-  source: assets.Value,
+  source: Data,
   current_policy: ByteArray,
   next_index: Int,
-  remaining: List<Pair<ByteArray, Int>>,
+  remaining: List<Pair<Data, Data>>,
   event_policy: ByteArray,
   event_asset: ByteArray,
 ) -> Bool {
@@ -54,13 +55,13 @@ fn source_matches(
       let (start, tokens) = if policy_id == current_policy {
         (next_index, remaining)
       } else {
-        (0, source |> assets.tokens(policy_id) |> dict.to_pairs)
+        (0, source_tokens(source, policy_id))
       }
       expect item.2nd >= start
       expect [actual, ..tail] = list.drop(tokens, item.2nd - start)
       and {
         policy_id != event_policy || asset_name != event_asset,
-        actual == Pair(asset_name, quantity),
+        actual == Pair(builtin.b_data(asset_name), builtin.i_data(quantity)),
         source_matches(
           rest,
           source,
@@ -72,6 +73,32 @@ fn source_matches(
         ),
       }
     }
+  }
+}
+
+// Source has passed the complete captured-Value hash check in deposit_source.open.
+// Decode only the requested policy and entries; revalidating the full map on
+// every bounded step needlessly scales each transaction with all source assets.
+fn source_tokens(source: Data, policy: ByteArray) -> List<Pair<Data, Data>> {
+  when
+    list.find(
+      builtin.un_map_data(source),
+      fn(pair) { pair.1st == builtin.b_data(policy) },
+    )
+  is {
+    None -> []
+    Some(Pair(_, tokens)) -> builtin.un_map_data(tokens)
+  }
+}
+
+fn source_lovelace(source: Data) -> Int {
+  when source_tokens(source, #"") is {
+    [] -> 0
+    [Pair(name, quantity)] -> {
+      expect name == builtin.b_data(#"")
+      builtin.un_i_data(quantity)
+    }
+    _ -> fail
   }
 }
 
@@ -87,13 +114,11 @@ validator value_output(dispatcher: ScriptHash) {
     let witnesses = list.map(indexed, fn(pair) { pair.1st })
     expect !list.is_empty(witnesses) && list.length(witnesses) <= 4
     let facts = scan.decode_control_v1(state.scan_cbor)
-    let (reference, policy, asset) = deposit_source.open(
-      state,
-      args,
-      tx.reference_inputs,
-    )
+    let reference = deposit_source.open(state, args)
+    let policy = reference.commitment.policy
+    let asset = user_events.out_ref_to_nonce(reference.commitment.event_id)
     expect facts.asset_count == state.deposit_asset_count
-    expect facts.lovelace == assets.lovelace_of(reference.value)
+    expect facts.lovelace == source_lovelace(reference.value)
     expect
       list.all(
         indexed,

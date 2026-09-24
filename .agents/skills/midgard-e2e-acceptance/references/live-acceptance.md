@@ -19,7 +19,7 @@ it completely before changing live state.
 Start from the repository root. Keep local Preprod provider state intact.
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel)}"
 NODE_DIR="$REPO_ROOT/demo/midgard-node"
 # The e2e step runner, service supervisor, finalizer, and stress commands live
 # in the tooling binary; operator commands stay on the node's dist/index.js.
@@ -46,6 +46,19 @@ Verify `.env` without printing seed phrases:
 - `MIDGARD_DEPLOYMENT_MANIFEST_PATH` points to the producer runtime manifest;
   and
 - `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity.
+
+For a fresh deployment, configure explicit positive integers for
+`MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES`,
+`MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES`,
+`MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_NODES`, and
+`MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS` before deriving scripts or
+publishing references. Inline bytes must not exceed maximum payload bytes.
+Use bounds verified for the intended subsequent list operations and retain
+their measurement evidence; emulator fixture values are not production defaults.
+Attach/resume reads these parameters and the complete history recipes from the
+finalized manifest. Verify both deposit and withdrawal list, retention, and
+retirement identities against that manifest. Preserve a mismatching old
+deployment and its durable state while preparing a separate fresh identity.
 
 Before submitting, verify the current protocol tuple, finalized deployment
 manifest, and actual deployed validators using the attach/resume checks below.
@@ -503,8 +516,11 @@ DEST_B="$(node --input-type=module -e '
   }).address);
 ')"
 
+# Preserve RUN_ID and this submission ID for every retry of this operation.
+# A new operation needs a distinct ID; changed intent under the same ID fails.
 DEPOSIT_LOG="logs/$RUN_ID/submit-deposit.log"
 DEPOSIT_STEP="$E2E_STEP_DIR/submit-deposit.json"
+DEPOSIT_SUBMISSION_ID="$RUN_ID:deposit"
 node "$TOOLS_CLI" e2e-run-step \
   --id submit-deposit \
   --cwd "$NODE_DIR" \
@@ -514,6 +530,7 @@ node "$TOOLS_CLI" e2e-run-step \
   -- \
   env POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433 \
   node dist/index.js submit-deposit \
+  --submission-id "$DEPOSIT_SUBMISSION_ID" \
   --wallet-seed-phrase-env USER_SEED_PHRASE \
   --l2-address "$USER_L2_ADDRESS" \
   --lovelace 12000000

@@ -649,7 +649,7 @@ const vectors: readonly Vector[] = [
       MintPayout: {
         withdrawal_utxo_out_ref: OUTPUT_REFERENCE,
         withdrawal_input_index: 1n,
-        withdrawal_spend_redeemer_index: 2n,
+        retirement_withdraw_redeemer_index: 2n,
         hub_ref_input_index: 3n,
       },
     },

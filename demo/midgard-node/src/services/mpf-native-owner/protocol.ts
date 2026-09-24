@@ -108,10 +108,20 @@ export interface NativeMpfOwnerClient {
   discard(handle: NativeMpfGenerationHandle): Promise<void>;
 }
 
+/** A durable, source-authorized recovery plan supplied by the parent owner.
+ * These hashes identify the plan and native states; they do not authenticate L1.
+ */
+export type NativeMpfCanonicalRootRecovery = Readonly<{
+  recoveryId: string;
+  expectedRoot: string;
+  targetRoot: string;
+}>;
+
 export interface NativeMpfOwnerService extends NativeMpfOwnerClient {
   createWorkerPort(): MessagePort;
   promote(handle: NativeMpfGenerationHandle): Promise<void>;
   recover(replay: PersistedNativeMpfReplay): Promise<void>;
+  restoreCanonicalRoot(plan: NativeMpfCanonicalRootRecovery): Promise<void>;
   diagnostics(): Promise<NativeMpfOwnerDiagnostics>;
   close(): Promise<void>;
 }

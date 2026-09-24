@@ -35,8 +35,8 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { submitCommittedFieldShapeCancel } from "../committed-field-shape/submit-committed-field-shape-cancel.js";
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -116,7 +116,7 @@ export const submitFieldPreimageLengthInit = async ({
     awaitConfirmation,
   });
 
-/** Real generic cancel, adapted to one of the four physical validators. */
+/** Shared linear cancel over the four physical validators. */
 export const submitFieldPreimageLengthCancel = async ({
   config,
   threadOutRef,
@@ -130,11 +130,6 @@ export const submitFieldPreimageLengthCancel = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const step = config.contracts.fieldPreimageLengthMismatch.steps[stepIndex];
-  const contracts = {
-    ...initAdapterContracts(config),
-    steps: [step, step] as const,
-  };
   const referenceScriptUtxo =
     stepIndex === 0
       ? config.referenceScripts.step01
@@ -143,9 +138,11 @@ export const submitFieldPreimageLengthCancel = async ({
         : stepIndex === 2
           ? config.referenceScripts.step02Forced
           : config.referenceScripts.step03;
-  return await submitCommittedFieldShapeCancel({
+  return await submitLinearFaultCancel({
     lucid: config.lucid,
-    contracts,
+    family: LABEL,
+    steps: config.contracts.fieldPreimageLengthMismatch.steps,
+    computationThread: config.contracts.computationThread,
     categoryId: config.binding.resolvedContracts.category.categoryId,
     signer: config.signer,
     threadOutRef,

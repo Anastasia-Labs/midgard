@@ -5,6 +5,7 @@ import {
   decodeMidgardForcedTxCompact,
 } from "@al-ft/midgard-core";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
 
@@ -42,18 +43,45 @@ const parseEventFacts = (
 ) => ({
   hub: Data.from(l1.hub.datum!, SDK.HubOracleDatum),
   events: l1.events.map((entry) => {
-    if (entry.kind === "deposit")
-      return {
-        kind: "deposit" as const,
-        entry,
-        datum: Data.from(entry.utxo.datum!, SDK.DepositDatum),
-      };
-    if (entry.kind === "withdrawal")
-      return {
-        kind: "withdrawal" as const,
-        entry,
-        datum: Data.from(entry.utxo.datum!, SDK.WithdrawalOrderDatum),
-      };
+    if (entry.kind !== "forcedTransaction") {
+      const commitment = Data.from(
+        entry.history.commitmentCbor,
+        SDK.EventHistoryCommitment,
+      );
+      const opening = Data.from(
+        entry.history.openingCbor,
+        SDK.EventHistoryOpening,
+      );
+      if (
+        !SDK.opensEventHistoryCommitmentCbor(
+          commitment,
+          plutusConstrFieldCbor(entry.history.openingCbor, [0]),
+          plutusConstrFieldCbor(entry.history.openingCbor, [1]),
+        )
+      )
+        throw new Error(
+          "Transition history preimage differs from admitted commitment",
+        );
+      if (entry.kind === "deposit" && "DepositPayload" in opening.payload)
+        return {
+          kind: "deposit" as const,
+          entry,
+          datum: {
+            event: opening.payload.DepositPayload.event,
+            inclusion_time: commitment.inclusion_time,
+          },
+        };
+      if (entry.kind === "withdrawal" && "WithdrawalPayload" in opening.payload)
+        return {
+          kind: "withdrawal" as const,
+          entry,
+          datum: {
+            ...opening.payload.WithdrawalPayload,
+            inclusion_time: commitment.inclusion_time,
+          },
+        };
+      throw new Error("Transition history payload has the wrong event kind");
+    }
     const datum = Data.from(entry.utxo.datum!, SDK.TxOrderDatum);
     const compact = decodeMidgardForcedTxCompact(
       Buffer.from(datum.event.tx.submitted_source.compact_cbor, "hex"),
@@ -120,7 +148,6 @@ const readTransitionTraceEventCoverage = ({
         current.header.startTime < datum.inclusion_time &&
         datum.inclusion_time <= current.header.endTime;
       omittedItem = {
-        ...common,
         kind: "deposit",
         depositId: structuredClone(datum.event.id),
       };
@@ -131,19 +158,11 @@ const readTransitionTraceEventCoverage = ({
       due =
         current.header.startTime < datum.inclusion_time &&
         datum.inclusion_time <= current.header.endTime;
-      const source = current.sourceEventsByFingerprint.get(
-        eventKeyFingerprint(eventKey),
-      );
-      const validity =
-        source?.phase === "Withdrawal"
-          ? source.entry.value.validity
-          : structuredClone(datum.event.info.validity);
       omittedItem = {
-        ...common,
         kind: "withdrawal",
         withdrawalId: structuredClone(datum.event.id),
       };
-      outsideItem = { ...omittedItem, validityOverride: validity };
+      outsideItem = omittedItem;
     } else {
       const { datum, start, end } = fact;
       due =
@@ -251,6 +270,13 @@ export const computeTransitionTraceL1EventEvidenceDigest = ({
     relevantOutRefs.add(
       `${event.utxo.txHash}#${event.utxo.outputIndex.toString()}`,
     );
+    if (
+      event.kind !== "forcedTransaction" &&
+      event.retainedDataUtxo !== undefined
+    )
+      relevantOutRefs.add(
+        `${event.retainedDataUtxo.txHash}#${event.retainedDataUtxo.outputIndex}`,
+      );
   }
   const history = l1.snapshot.history.filter((entry) =>
     relevantUnits.has(entry.unit),
@@ -358,13 +384,15 @@ export const replayTransitionTraceFromRetainedHistory = async ({
       ...(await deriveTransitionTraceReplayEvidence({
         current,
         predecessor: history.reconstructions.at(-2),
-        deposits: l1.events
-          .filter((entry) => entry.kind === "deposit")
-          .map((entry) => ({
-            event: entry.utxo,
-            eventAssetName: entry.assetName,
-            eventRefInputIndex: 0n,
-          })),
+        deposits: l1.events.flatMap((entry) =>
+          entry.kind === "deposit"
+            ? [
+                {
+                  history: entry.history,
+                },
+              ]
+            : [],
+        ),
         network: l1.network,
         depositPolicyId: l1.depositPolicyId,
       })),

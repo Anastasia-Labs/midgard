@@ -21,6 +21,16 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *
  *   tests/admission-writer.test.ts
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
+ *   tests/event-history-submission-emulator.test.ts
+ *   tests/event-history-submission-journal.test.ts
+ *   tests/event-history-authority.test.ts
+ *   tests/event-history-journal.test.ts
+ *   tests/l1-event-history-initialization-emulator.test.ts
+ *   tests/event-history-recovery.test.ts
+ *   tests/native-mpf-local-finalization.test.ts
+ *   tests/l1-event-history-signed-intent-emulator.test.ts
+ *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
+ *   tests/l1-event-history-signed-intent-continuation-emulator.test.ts
  *   tests/database.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
  *   tests/deposit-flow-emulator-confirmation-journal.test.ts

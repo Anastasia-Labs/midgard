@@ -31,6 +31,7 @@ import {
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { publishProofChunks } from "../src/publish-proof-chunks.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import { commitCountedRoot } from "../src/transition-trace/phas.js";
 import {
   buildEventToStepMembershipProof,
@@ -42,6 +43,7 @@ import {
   VALUE_CONSERVATION_ARTIFACT,
   type ValueConservationArtifact,
 } from "../src/value-not-preserved/artifact.js";
+import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "../src/value-not-preserved/contracts.js";
 import { flattenMidgardValueAssets } from "../src/value-not-preserved/evidence.js";
 import { createValueConservationFieldPrerequisite } from "../src/value-not-preserved/field-prerequisite.js";
 import {
@@ -54,7 +56,6 @@ import {
   submitConservationAction,
   submitConservationCancel,
 } from "../src/value-not-preserved/submit-union.js";
-import { submitValueNotPreservedInit } from "../src/value-not-preserved/submit-value-not-preserved-init.js";
 import { planConservationFold } from "../src/value-not-preserved/union-plan.js";
 import {
   ConservationClaim,
@@ -834,7 +835,8 @@ describe("universal value conservation", () => {
         references.set(action.position, publication.utxo);
       }
       const init = await record("initialize", async () =>
-        submitValueNotPreservedInit({
+        submitResolvedInit({
+          label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -1130,7 +1132,8 @@ describe("universal value conservation", () => {
           const restarted = await record(
             `restart:${action.position}`,
             async () =>
-              submitValueNotPreservedInit({
+              submitResolvedInit({
+                label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
                 lucid: harness.proverLucid,
                 blueprint: harness.realBlueprint,
                 network,

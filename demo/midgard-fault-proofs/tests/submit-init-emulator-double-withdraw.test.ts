@@ -20,9 +20,11 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { DoubleWithdrawContracts } from "../src/double-withdraw/contracts.js";
 import {
-  submitDoubleWithdrawCancel,
+  DOUBLE_WITHDRAW_CATEGORY_LABEL,
+  type DoubleWithdrawContracts,
+} from "../src/double-withdraw/contracts.js";
+import {
   submitDoubleWithdrawInit,
   submitDoubleWithdrawStep01,
   submitDoubleWithdrawStep02,
@@ -32,6 +34,7 @@ import {
   parseSubmitDoubleWithdrawInclusion,
   type SubmitDoubleWithdrawInclusion,
 } from "../src/double-withdraw/submit-double-withdraw-step-01.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { prepareDoubleWithdrawFromCommittedLeaves } from "../src/prepare-double-withdraw.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../src/runtime.js";
@@ -710,16 +713,18 @@ describe("double-withdraw emulator lifecycle", () => {
       await (await funding.sign.withWallet().complete()).submit(),
     );
     await expect(
-      submitDoubleWithdrawCancel({
+      submitLinearFaultCancel({
         lucid: outsiderLucid,
-        contracts: harness.doubleWithdraw,
+        family: DOUBLE_WITHDRAW_CATEGORY_LABEL,
+        steps: harness.doubleWithdraw.steps,
+        computationThread: harness.doubleWithdraw.computationThread,
         categoryId: harness.category.categoryId,
         signer: outsiderSigner,
         threadOutRef: step01.nextThreadOutRef,
         referenceScriptUtxo: refs[1],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
-    ).rejects.toThrow(/only the prover can cancel/u);
+    ).rejects.toThrow(/double-withdraw: signer does not own thread/u);
     await expect(
       submitDoubleWithdrawStep02({
         lucid: outsiderLucid,
@@ -753,9 +758,11 @@ describe("double-withdraw emulator lifecycle", () => {
         }),
       ),
     ).not.toBe("");
-    const cancelled = await submitDoubleWithdrawCancel({
+    const cancelled = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.doubleWithdraw,
+      family: DOUBLE_WITHDRAW_CATEGORY_LABEL,
+      steps: harness.doubleWithdraw.steps,
+      computationThread: harness.doubleWithdraw.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step01.nextThreadOutRef,
@@ -787,9 +794,11 @@ describe("double-withdraw emulator lifecycle", () => {
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const cancelledAtEntry = await submitDoubleWithdrawCancel({
+    const cancelledAtEntry = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.doubleWithdraw,
+      family: DOUBLE_WITHDRAW_CATEGORY_LABEL,
+      steps: harness.doubleWithdraw.steps,
+      computationThread: harness.doubleWithdraw.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: retry.nextThreadOutRef,

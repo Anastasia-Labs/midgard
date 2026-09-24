@@ -58,10 +58,13 @@ import {
   requireUniqueOutputIndex,
 } from "./tx-context-redeemer.js";
 import { outputDatumCborMatches } from "./tx-output-utils.js";
-import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
+import {
+  DepositUTxO,
+  fetchDepositUTxOsProgram,
+} from "./user-events/deposit.js";
 import { TxOrderUTxOV1, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import {
-  utxosToWithdrawalUTxOs,
+  fetchWithdrawalUTxOsProgram,
   WithdrawalUTxO,
 } from "./user-events/withdrawal.js";
 
@@ -506,38 +509,47 @@ export const unsignedAttachResolutionClaimTx = (
 ): Promise<TxSignBuilder> =>
   makeReturn(unsignedAttachResolutionClaimTxProgram(lucid, params)).unsafeRun();
 
+import { type EventHistoryDeployment } from "./user-events/history-query.js";
+
 export const fetchUserEventRefUTxO = (
   userEventType: EventType,
   userEventAddress: string,
   userEventPolicyId: string,
   lucid: LucidEvolution,
+  eventHistory: EventHistoryDeployment | null,
 ): Effect.Effect<
   DepositUTxO | WithdrawalUTxO | TxOrderUTxOV1,
   LucidError | DataCoercionError
 > =>
   Effect.gen(function* () {
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(userEventAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch User Event UTxOs",
-          cause: err,
-        }),
-    });
-
-    const authenticUTxOs = yield* userEventType === "Deposit"
-      ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId)
-      : "TxOrder" in userEventType
-        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId)
-        : "Withdrawal" in userEventType
-          ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId)
-          : Effect.fail(
-              new LucidError({
-                message: "Invalid Event Type",
-                cause:
-                  "Event Type must be either Deposit or object with TxOrder/Withdrawal",
-              }),
-            );
+    let authenticUTxOs: (DepositUTxO | WithdrawalUTxO | TxOrderUTxOV1)[];
+    if (typeof userEventType !== "string" && "TxOrder" in userEventType) {
+      const allUTxOs = yield* Effect.tryPromise({
+        try: () => lucid.utxosAt(userEventAddress),
+        catch: (cause) =>
+          new LucidError({
+            message: "Failed to fetch forced order UTxOs",
+            cause,
+          }),
+      });
+      authenticUTxOs = yield* utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId);
+    } else {
+      if (
+        eventHistory === null ||
+        eventHistory.address !== userEventAddress ||
+        eventHistory.policyId !== userEventPolicyId
+      )
+        return yield* Effect.fail(
+          new LucidError({
+            message:
+              "Deposit/withdrawal reference lookup requires the matching authenticated history deployment",
+            cause: userEventType,
+          }),
+        );
+      authenticUTxOs = yield* userEventType === "Deposit"
+        ? fetchDepositUTxOsProgram(lucid, eventHistory)
+        : fetchWithdrawalUTxOsProgram(lucid, eventHistory);
+    }
     const authenticUTxO = authenticUTxOs[0];
 
     if (authenticUTxO) {
@@ -623,6 +635,7 @@ export type RemoveOperatorBadSettlementParams = {
   eventType: EventType;
   eventAddress: string;
   eventPolicyId: string;
+  eventHistory: EventHistoryDeployment | null;
   activeOperatorParams: FetchActiveOperatorParams;
   retiredOperatorParams: FetchRetiredOperatorParams;
 };
@@ -713,6 +726,7 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       params.eventAddress,
       params.eventPolicyId,
       lucid,
+      params.eventHistory,
     );
 
     const buildsettlementTx = lucid

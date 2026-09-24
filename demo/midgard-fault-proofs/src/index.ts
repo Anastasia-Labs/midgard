@@ -106,7 +106,6 @@ export * from "./submit-input-no-idx-step-03.js";
 export * from "./submit-input-no-idx-step-04.js";
 export * from "./submit-invalid-signature-step-01.js";
 export * from "./submit-invalid-signature-step-02.js";
-export * from "./submit-min-fee-cancel.js";
 export * from "./submit-min-fee-forced-step-01.js";
 export * from "./submit-min-fee-init.js";
 export * from "./submit-min-fee-step-01.js";

@@ -1,0 +1,70 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2024,15 +2024,22 @@
+             consumedHashes.add(credential.hash);
+             break;
+           } else if (nativeHashesOptional[credential.hash]) {
+-            if (!nativeHashesOptional[credential.hash].verify(
+-              Number.isInteger(lowerBound) ? CML.BigInteger.from_str(
+-                lowerBound.toString()
+-              ).to_js_value() : void 0,
+-              Number.isInteger(upperBound) ? CML.BigInteger.from_str(
+-                upperBound.toString()
+-              ).to_js_value() : void 0,
+-              edKeyHashes
+-            )) {
++            const valid = withCMLScope((own) => {
++              const referenceKeyHashes = own(CML.Ed25519KeyHashList.new());
++              for (const keyHash of keyHashes) {
++                referenceKeyHashes.add(own(CML.Ed25519KeyHash.from_hex(keyHash)));
++              }
++              return nativeHashesOptional[credential.hash].verify(
++                Number.isInteger(lowerBound) ? CML.BigInteger.from_str(
++                  lowerBound.toString()
++                ).to_js_value() : void 0,
++                Number.isInteger(upperBound) ? CML.BigInteger.from_str(
++                  upperBound.toString()
++                ).to_js_value() : void 0,
++                referenceKeyHashes
++              );
++            });
++            if (!valid) {
+               throw new Error(
+                 `Invalid native script witness. Script hash: ${credential.hash}`
+               );
+diff --git a/dist/index.cjs b/dist/index.cjs
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -2058,15 +2058,22 @@
+             consumedHashes.add(credential.hash);
+             break;
+           } else if (nativeHashesOptional[credential.hash]) {
+-            if (!nativeHashesOptional[credential.hash].verify(
+-              Number.isInteger(lowerBound) ? CML.BigInteger.from_str(
+-                lowerBound.toString()
+-              ).to_js_value() : void 0,
+-              Number.isInteger(upperBound) ? CML.BigInteger.from_str(
+-                upperBound.toString()
+-              ).to_js_value() : void 0,
+-              edKeyHashes
+-            )) {
++            const valid = withCMLScope((own) => {
++              const referenceKeyHashes = own(CML.Ed25519KeyHashList.new());
++              for (const keyHash of keyHashes) {
++                referenceKeyHashes.add(own(CML.Ed25519KeyHash.from_hex(keyHash)));
++              }
++              return nativeHashesOptional[credential.hash].verify(
++                Number.isInteger(lowerBound) ? CML.BigInteger.from_str(
++                  lowerBound.toString()
++                ).to_js_value() : void 0,
++                Number.isInteger(upperBound) ? CML.BigInteger.from_str(
++                  upperBound.toString()
++                ).to_js_value() : void 0,
++                referenceKeyHashes
++              );
++            });
++            if (!valid) {
+               throw new Error(
+                 `Invalid native script witness. Script hash: ${credential.hash}`
+               );

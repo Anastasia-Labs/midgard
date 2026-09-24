@@ -1492,6 +1492,8 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 referenceScriptAuth: authPolicy,
                 availabilityChallengeParameters:
                   Services.availabilityParametersFromExplicitEnvironment(),
+                eventHistoryProtectionDurationMs:
+                  Services.eventHistoryProtectionDurationFromExplicitEnvironment(),
                 eventHistoryBounds:
                   Services.eventHistoryBoundsFromExplicitEnvironment(),
               },
@@ -1978,6 +1980,10 @@ program
     "Submit an L1 deposit to the Midgard deposit contract using the selected signer wallet",
   )
   .requiredOption(
+    "--submission-id <id>",
+    "Stable request ID; reuse this ID to resume an interrupted submission",
+  )
+  .requiredOption(
     "--l2-address <address>",
     "Destination L2 address that will receive the deposited value",
   )
@@ -1999,6 +2005,7 @@ program
     async (
       assetSpecs: string[],
       options: {
+        readonly submissionId: string;
         readonly l2Address: string;
         readonly l2Datum?: string;
         readonly lovelace: string;
@@ -2069,6 +2076,7 @@ program
             lucidService.api,
             contracts,
             { ...depositConfig, referenceScripts: depositReferenceScripts },
+            options.submissionId,
           );
         }).pipe(
           tapJson(),
@@ -2221,6 +2229,10 @@ program
     "Submit an authenticated L1 withdrawal order for a selected Midgard L2 UTxO",
   )
   .requiredOption(
+    "--submission-id <id>",
+    "Stable request ID; reuse this ID to resume an interrupted submission",
+  )
+  .requiredOption(
     "--l2-out-ref <txHash#outputIndex>",
     "Midgard L2 UTxO to withdraw, in txHash#outputIndex form",
   )
@@ -2264,6 +2276,7 @@ program
         const lucidService = yield* Services.Lucid;
         return yield* SubmitWithdrawalCommand.submitWithdrawalCommandProgram({
           config: {
+            submissionId: opts.submissionId,
             walletSeedPhrase: opts.walletSeedPhrase,
             walletSeedPhraseEnv: opts.walletSeedPhraseEnv,
             l2OutRef: opts.l2OutRef,
@@ -2285,9 +2298,7 @@ program
             }),
         });
       }).pipe(tapJson()),
-      Effect.provide(Services.NodeConfig.layer),
-      Effect.provide(Services.MidgardContracts.Default),
-      Effect.provide(Services.Lucid.Default),
+      provideDatabaseTxServices,
     );
 
     runCliEffect(mainEffect);

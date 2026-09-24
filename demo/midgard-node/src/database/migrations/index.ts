@@ -67,6 +67,16 @@ export const APPLICATION_TABLE_NAMES = [
   "da_payload_publications",
   "da_payload_announcements",
   "deposit_submission_attempts",
+  "event_history_submissions",
+  "event_history_submission_inputs",
+  "event_history_authority",
+  "event_history_replay_receipts",
+  "event_history_cursor",
+  "event_history_block_applications",
+  "event_history_live_outputs",
+  "event_history_incarnations",
+  "event_history_l2_ledger_receipts",
+  "event_history_recovery_plans",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
@@ -108,6 +118,13 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_da_payload_announcements_retry",
   "idx_deposit_submission_attempts_deposit_event_id",
   "idx_deposit_submission_attempts_status_submitted_at",
+  "uniq_event_history_canonical_block",
+  "uniq_event_history_canonical_height",
+  "uniq_event_history_incarnation_event",
+  "uniq_event_history_canonical_event",
+  "uniq_event_history_canonical_key",
+  "event_history_l2_ledger_receipts_unreversed",
+  "event_history_recovery_plans_prepared",
 ] as const;
 
 export const migrationByVersion = new Map(

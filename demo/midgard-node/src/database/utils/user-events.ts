@@ -27,32 +27,6 @@ export type Entry = {
 };
 
 /**
- * Creates the user-event table and its inclusion-time index.
- */
-export const createTable = (
-  tableName: string,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-        ${sql(Columns.ID)} BYTEA NOT NULL,
-        ${sql(Columns.INFO)} BYTEA NOT NULL,
-        ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
-        PRIMARY KEY (${sql(Columns.ID)})
-      );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.INCLUSION_TIME}`,
-        )} ON ${sql(tableName)} (${sql(Columns.INCLUSION_TIME)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
-
-/**
  * Inserts one user event and ignores duplicate event ids.
  */
 export const insertEntry = (

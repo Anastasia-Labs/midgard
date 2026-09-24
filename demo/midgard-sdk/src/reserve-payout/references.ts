@@ -67,11 +67,10 @@ const fetchReferenceScriptUtxosProgram = (
 export type ReservePayoutReferenceScripts = {
   readonly depositMinting?: UTxO;
   readonly depositSpending?: UTxO;
-  readonly depositWitnessCertificate?: UTxO;
+  readonly historyList?: UTxO;
+  readonly historyRetirement?: UTxO;
   readonly withdrawalMinting?: UTxO;
   readonly withdrawalSpending?: UTxO;
-  readonly withdrawalWitnessCertificate?: UTxO;
-  readonly membershipProofWithdrawal?: UTxO;
   readonly reserveSpending?: UTxO;
   readonly payoutSpending?: UTxO;
   readonly payoutMinting?: UTxO;
@@ -84,11 +83,10 @@ type MutableReservePayoutReferenceScripts = {
 const referenceScriptFields = [
   ["deposit minting", "depositMinting"],
   ["deposit spending", "depositSpending"],
-  ["deposit witness certificate", "depositWitnessCertificate"],
+  ["deposit history retirement", "historyRetirement"],
+  ["withdrawal history retirement", "historyRetirement"],
   ["withdrawal minting", "withdrawalMinting"],
   ["withdrawal spending", "withdrawalSpending"],
-  ["withdrawal witness certificate", "withdrawalWitnessCertificate"],
-  ["membership proof withdrawal", "membershipProofWithdrawal"],
   ["reserve spending", "reserveSpending"],
   ["payout spending", "payoutSpending"],
   ["payout minting", "payoutMinting"],
@@ -131,7 +129,10 @@ export const resolveReferenceScriptsProgram = (
 const hasExplicitReferenceScript = (
   explicit: ReservePayoutReferenceScripts | undefined,
   name: string,
-): boolean => explicit?.[referenceScriptFieldByName.get(name)!] !== undefined;
+): boolean =>
+  explicit?.[referenceScriptFieldByName.get(name)!] !== undefined ||
+  ((name === "deposit spending" || name === "withdrawal spending") &&
+    explicit?.historyList !== undefined);
 
 const resolvedReferenceScript = (
   resolved: readonly ReferenceScriptResolved[],
@@ -144,8 +145,7 @@ export const mergeReferenceScripts = (
 ): ReservePayoutReferenceScripts => {
   const merged: MutableReservePayoutReferenceScripts = { ...explicit };
   for (const [name, field] of referenceScriptFields) {
-    merged[field] =
-      explicit?.[field] ?? resolvedReferenceScript(resolved, name);
+    merged[field] ??= resolvedReferenceScript(resolved, name);
   }
   return merged;
 };

@@ -35,8 +35,7 @@ import {
 } from "../support/deployment-authority-fixture.js";
 
 // Unit coverage of the local consumer boundary, with existing Conway bytes.
-// These upstream admission doubles do not establish end-to-end L1 acquisition;
-// the W15 integration suite separately uses genuine external TLS capabilities.
+// These upstream admission doubles do not establish end-to-end L1 acquisition.
 const upstream = vi.hoisted(() => ({
   target: null as object | null,
   localObservation: null as object | null,

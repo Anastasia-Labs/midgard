@@ -1,3 +1,4 @@
+import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Credential,
@@ -27,26 +28,32 @@ export const parseWithdrawalTxOutRefLabel = (
   };
 };
 
-export const parseCardanoDatum = (
+export const parseCardanoDatumCbor = (
   value: string | undefined,
   fieldName = "datum",
-): SDK.CardanoDatum => {
-  if (value === undefined || value.trim().length === 0) {
-    return "NoDatum";
-  }
+): string => {
+  if (value === undefined || value.trim().length === 0)
+    return LucidData.to("NoDatum", SDK.CardanoDatum);
   const datumCbor = parseHexBytes(value, fieldName).toString("hex");
   try {
-    return {
-      InlineDatum: {
-        data: LucidData.from(datumCbor),
-      },
-    } as SDK.CardanoDatum;
+    return replacePlutusConstrFieldCbor(
+      LucidData.to({ InlineDatum: { data: 0n } }, SDK.CardanoDatum),
+      [0],
+      datumCbor,
+    );
   } catch (cause) {
     throw new Error(
       `${fieldName} must decode as Plutus data CBOR: ${String(cause)}`,
     );
   }
 };
+
+/** Typed view for callers that do not carry opaque inline data onward. */
+export const parseCardanoDatum = (
+  value: string | undefined,
+  fieldName = "datum",
+): SDK.CardanoDatum =>
+  LucidData.from(parseCardanoDatumCbor(value, fieldName), SDK.CardanoDatum);
 
 export const addressDataToBech32 = (
   network: Network,

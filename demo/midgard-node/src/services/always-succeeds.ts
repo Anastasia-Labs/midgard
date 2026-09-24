@@ -533,6 +533,15 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       ),
       invalidRange: repeatedFaultProofChain(invalidRange, 2),
       transitionTrace: {
+        history: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+          retentionAddresses: {
+            deposit: zeroInput.spendingScriptAddress,
+            withdrawal: zeroInput.spendingScriptAddress,
+          },
+        },
         firstStep: transitionTrace,
         route: transitionTrace,
         finals: transitionTraceFinals,
@@ -545,6 +554,8 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
           claimSource: stateQueueYield,
           claimEndpoints: stateQueueYield,
           depositProjection: stateQueueYield,
+          l1Event: stateQueueYield,
+          forcedTiming: stateQueueYield,
           depositSummaries: stateQueueYield,
           l2Assembly: stateQueueYield,
           l2Scan: stateQueueYield,
@@ -693,6 +704,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       fraudProof,
       chunkedVerify: reserveWithdawalValidator,
       pexcludes: reserveWithdawalValidator,
+      eventHistory: null,
       deposit,
       withdrawal,
       txOrder,

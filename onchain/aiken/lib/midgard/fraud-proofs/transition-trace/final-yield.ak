@@ -100,6 +100,12 @@ pub type Args {
   proof_ref_indices: List<Int>,
   output_ref_indices: List<Int>,
   deposit_event_ref_index: Int,
+  deposit_external_ref_index: Option<Int>,
+  /// Decode the authenticated opening in the deposit yield only. Requiring its
+  /// full payload decoder in every shared dispatcher duplicates script bytes.
+  deposit_opening: Option<Data>,
+  /// Only event-dependent terminal validators decode this witness.
+  completed_fraud_witness: Option<Data>,
 }
 
 pub type SpendRedeemer =

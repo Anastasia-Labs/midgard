@@ -47,6 +47,7 @@ import {
   resolveValidationTraceDisputeDeploymentContracts,
 } from "../src/index.js";
 import { resolveNonExistentInputNoIndexInit } from "../src/submit-init.js";
+import { TRANSITION_TRACE_YIELD_REFERENCES } from "../src/transition-trace/yield-references.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 
 const seedPhrase =
@@ -606,9 +607,15 @@ describe("fault-proof deployment contract resolution", () => {
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
       ...Object.values(TRANSITION_TRACE_FAULT_PROOF_TITLES),
       ...Object.values(TRANSITION_TRACE_YIELD_TITLES),
+      "user_events/history_data.retention.spend",
     ]);
     const contracts = await Effect.runPromise(
       buildTransitionTraceFaultProofContracts({
+        eventHistoryBounds: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+        },
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28,
@@ -631,7 +638,27 @@ describe("fault-proof deployment contract resolution", () => {
           fraudProofCatalogue,
         },
         fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+        ...Object.fromEntries(
+          Object.entries(TRANSITION_TRACE_YIELD_REFERENCES).map(
+            ([key, reference]) => [
+              reference.entry,
+              {
+                scriptHash:
+                  contracts.transitionTrace.yields[
+                    key as keyof typeof TRANSITION_TRACE_YIELD_REFERENCES
+                  ].withdrawalScriptHash,
+              },
+            ],
+          ),
+        ),
         fraudProofTransitionTrace: {
+          eventHistoryBounds: {
+            inlineLimitBytes: "512",
+            maxPayloadBytes: "5000",
+            maxPayloadNodes: "512",
+          },
+          eventHistoryRetentionAddresses:
+            contracts.transitionTrace.history.retentionAddresses,
           scriptHash: contracts.transitionTrace.firstStep.spendingScriptHash,
         },
       }),

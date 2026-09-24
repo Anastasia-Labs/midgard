@@ -211,6 +211,302 @@ export const resolveNonExistentInputNoIndexInit = async ({
   };
 };
 
+/** The contracts an init needs, already resolved from a deployment. */
+export type ResolvedInitContracts = {
+  readonly steps: readonly [
+    {
+      readonly spendingScriptAddress: string;
+      readonly spendingScriptHash: string;
+    },
+    ...unknown[],
+  ];
+  readonly computationThread: {
+    readonly policyId: string;
+    readonly mintingScript: Script;
+  };
+  readonly hubOraclePolicyId: string;
+  readonly stateQueuePolicyId: string;
+};
+
+export type ResolvedInitCatalogueCategory = {
+  readonly categoryId: string;
+  readonly scriptHash: string;
+  readonly membershipProofCbor: string;
+};
+
+export type SubmitResolvedInitParams = {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly network: Network;
+  readonly contracts: ResolvedInitContracts;
+  readonly category: ResolvedInitCatalogueCategory;
+  /** The deployed fraud-proof catalogue: its NFT policy, spend address, and MPF root. */
+  readonly catalogue: {
+    readonly policyId: string;
+    readonly spendingScriptAddress: string;
+    readonly root: string;
+  };
+  readonly signer: ResolvedProverSigner;
+  readonly fraudulentBlockOutRef: string;
+  readonly fraudulentHeaderHash?: string;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+};
+
+export type SubmitResolvedInitResult = {
+  readonly txHash: string;
+  readonly walletSource: string;
+  readonly proverAddress: string;
+  readonly fraudProver: string;
+  readonly fraudulentBlockOutRef: string;
+  readonly fraudulentHeaderHash: string;
+  readonly computationThreadPolicyId: string;
+  readonly computationThreadAssetName: string;
+  readonly computationThreadUnit: string;
+  readonly firstStepAddress: string;
+  readonly firstStepOutputIndex: number;
+  /** `txHash#index` of the freshly minted thread, ready for step-01. */
+  readonly nextThreadOutRef: string;
+  readonly fraudCategoryId: string;
+  readonly fraudCategory: string;
+  readonly fraudProofCatalogueRoot: string;
+  readonly awaitedConfirmation: boolean;
+};
+
+const STANDARD_INIT_REFERENCE_SCRIPT_ROLES = {
+  computationThreadMint: "V1 fraud-proof computation-thread minting",
+  phasMembershipWithdraw: "membership proof withdrawal",
+} as const;
+
+/**
+ * The one computation-thread Init transaction: catalogue, hub-oracle and
+ * fraudulent-block reference inputs, the PHAS membership withdrawal carrying
+ * the category proof, and the `Init` mint paying the thread token to the
+ * family's first step. Every family init resolves its contracts and calls
+ * this; `submitInit` is the deployment-info resolver in front of it.
+ * Callers own the category/first-step agreement check and its message.
+ */
+export const submitResolvedInit = async ({
+  lucid,
+  blueprint,
+  network,
+  label,
+  contracts,
+  category,
+  catalogue,
+  signer,
+  fraudulentBlockOutRef,
+  fraudulentHeaderHash,
+  witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+  referenceScriptRoles = STANDARD_INIT_REFERENCE_SCRIPT_ROLES,
+}: SubmitResolvedInitParams & {
+  /** Family label used in error messages. */
+  readonly label: string;
+  /** Journal roles of the two witness reference scripts. */
+  readonly referenceScriptRoles?: {
+    readonly computationThreadMint: string;
+    readonly phasMembershipWithdraw: string;
+  };
+}): Promise<SubmitResolvedInitResult> => {
+  const firstStep = contracts.steps[0];
+  const [catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo] = await Promise.all(
+    [
+      requireSingletonUtxo({
+        lucid,
+        address: catalogue.spendingScriptAddress,
+        unit: toUnit(catalogue.policyId, FRAUD_PROOF_CATALOGUE_ASSET_NAME),
+        label: `${label} init fraud-proof catalogue`,
+      }),
+      requireSingletonUtxo({
+        lucid,
+        address: credentialToAddress(
+          network,
+          scriptHashToCredential(contracts.hubOraclePolicyId),
+        ),
+        unit: toUnit(contracts.hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
+        label: `${label} init hub oracle`,
+      }),
+      fetchUtxoByOutRef({
+        lucid,
+        outRef: parseOutRef(
+          fraudulentBlockOutRef,
+          "--fraudulent-block-out-ref",
+        ),
+        label: `${label} fraudulent block UTxO`,
+      }),
+    ],
+  );
+  const resolvedHeaderHash = resolveFraudulentHeaderHash({
+    stateQueuePolicyId: contracts.stateQueuePolicyId,
+    fraudulentBlockUtxo,
+    configuredHeaderHash: fraudulentHeaderHash,
+  });
+  const computationThreadAssetName = `${category.categoryId}${resolvedHeaderHash}`;
+  const computationThreadUnit = toUnit(
+    contracts.computationThread.policyId,
+    computationThreadAssetName,
+  );
+  const phasMembershipScript: Script = {
+    type: "PlutusV3",
+    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
+  };
+  const phasRewardAddress = phasMembershipRewardAddress(
+    network,
+    phasMembershipScript,
+  );
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${label} init computation-thread mint`,
+  });
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${label} init PHAS membership`,
+  });
+  const referenceInputs = [
+    catalogueUtxo,
+    hubOracleUtxo,
+    fraudulentBlockUtxo,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...phasMembershipCarriage.referenceInputs,
+  ];
+  const firstStepDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash, data: null },
+    FraudProofComputationThreadStepDatum,
+  );
+  const firstStepOutputMatches = computationThreadOutputPredicate({
+    address: firstStep.spendingScriptAddress,
+    datum: firstStepDatum,
+    unit: computationThreadUnit,
+  });
+  let firstStepOutputIndex: bigint | undefined;
+  const computationThreadMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      contracts.computationThread.policyId,
+      `${label} init computation-thread mint`,
+    );
+    const outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      firstStepOutputMatches,
+      `${label} init first step`,
+    );
+    firstStepOutputIndex = outputIndex;
+    return Data.to(
+      {
+        Init: {
+          first_step_output_index: outputIndex,
+          fraud_category_id: category.categoryId,
+          fraud_category: category.scriptHash,
+          fraud_category_membership_proof: Data.from(
+            category.membershipProofCbor,
+            Proof,
+          ),
+          fraud_proof_catalogue_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            catalogueUtxo,
+            `${label} init fraud-proof catalogue`,
+          ),
+          inclusion_proof_script_redeemer_index: requireWithdrawalRedeemerIndex(
+            ctx,
+            phasRewardAddress,
+            `${label} init PHAS membership`,
+          ),
+          hub_oracle_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            hubOracleUtxo,
+            `${label} init hub oracle`,
+          ),
+          fraudulent_block_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            fraudulentBlockUtxo,
+            `${label} init fraudulent block`,
+          ),
+        },
+      },
+      FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  signer.selectWallet(lucid);
+  const chainedTx = lucid
+    .newTx()
+    .readFrom(referenceInputs)
+    .withdraw(
+      phasRewardAddress,
+      0n,
+      encodePhasMembershipRedeemer({
+        root: catalogue.root,
+        categoryId: category.categoryId,
+        categoryScriptHash: category.scriptHash,
+        membershipProofCbor: category.membershipProofCbor,
+      }),
+    )
+    .mintAssets({ [computationThreadUnit]: 1n }, computationThreadMintRedeemer)
+    .pay.ToContract(
+      firstStep.spendingScriptAddress,
+      { kind: "inline", value: firstStepDatum },
+      { [computationThreadUnit]: 1n },
+    )
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await phasMembershipCarriage
+    .attach(computationThreadMintCarriage.attach(chainedTx))
+    .complete({ localUPLCEval: true });
+  if (firstStepOutputIndex === undefined) {
+    throw new Error(`${label}: init output index was not resolved.`);
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: [
+      workflowReferenceScript({
+        role: referenceScriptRoles.computationThreadMint,
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      }),
+      workflowReferenceScript({
+        role: referenceScriptRoles.phasMembershipWithdraw,
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
+  const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `${label}: init provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    walletSource: signer.source,
+    proverAddress: signer.address,
+    fraudProver: signer.paymentKeyHash,
+    fraudulentBlockOutRef,
+    fraudulentHeaderHash: resolvedHeaderHash,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    computationThreadAssetName,
+    computationThreadUnit,
+    firstStepAddress: firstStep.spendingScriptAddress,
+    firstStepOutputIndex: Number(firstStepOutputIndex),
+    nextThreadOutRef: `${txHash}#${firstStepOutputIndex.toString()}`,
+    fraudCategoryId: category.categoryId,
+    fraudCategory: category.scriptHash,
+    fraudProofCatalogueRoot: catalogue.root,
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
 export const submitInit = async ({
   lucid,
   blueprint,
@@ -260,11 +556,6 @@ export const submitInit = async ({
     requireStateQueueMint: true,
   });
   const category = resolvedDeployment.category;
-  const stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-  const computationThreadPolicyId =
-    resolvedDeployment.contracts.computationThread.policyId;
-  const computationThreadMintingScript =
-    resolvedDeployment.contracts.computationThread.mintingScript;
   const selectedContracts = resolvedDeployment.contracts[fraudCategory];
   if (selectedContracts === undefined) {
     throw new Error(
@@ -272,8 +563,6 @@ export const submitInit = async ({
     );
   }
   const firstStep = selectedContracts.firstStep;
-  const firstStepAddress = firstStep.spendingScriptAddress;
-  const firstStepHash = firstStep.spendingScriptHash;
   const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
     parsedDeploymentInfo,
     "fraudProofCatalogueMint",
@@ -286,217 +575,55 @@ export const submitInit = async ({
     parsedDeploymentInfo,
     "hubOracleMint",
   );
-  if (firstStepHash !== category.scriptHash) {
+  if (firstStep.spendingScriptHash !== category.scriptHash) {
     throw new Error(
-      `${fraudCategoryLabel(fraudCategory)} first-step script hash mismatch: catalogue=${category.scriptHash}, derived=${firstStepHash}.`,
+      `${fraudCategoryLabel(fraudCategory)} first-step script hash mismatch: catalogue=${category.scriptHash}, derived=${firstStep.spendingScriptHash}.`,
     );
   }
-  const parsedFraudulentBlockOutRef = parseOutRef(
-    fraudulentBlockOutRef,
-    "--fraudulent-block-out-ref",
-  );
-  const [catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo] = await Promise.all(
-    [
-      requireSingletonUtxo({
-        lucid,
-        address: credentialToAddress(
-          network,
-          scriptHashToCredential(fraudProofCatalogueSpendHash),
-        ),
-        unit: toUnit(
-          fraudProofCataloguePolicyId,
-          FRAUD_PROOF_CATALOGUE_ASSET_NAME,
-        ),
-        label: "fraud-proof catalogue",
-      }),
-      requireSingletonUtxo({
-        lucid,
-        address: credentialToAddress(
-          network,
-          scriptHashToCredential(hubOraclePolicyId),
-        ),
-        unit: toUnit(hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
-        label: "hub oracle",
-      }),
-      fetchUtxoByOutRef({
-        lucid,
-        outRef: parsedFraudulentBlockOutRef,
-        label: "fraudulent block UTxO",
-      }),
-    ],
-  );
-  const resolvedHeaderHash = resolveFraudulentHeaderHash({
-    stateQueuePolicyId,
-    fraudulentBlockUtxo,
-    configuredHeaderHash: fraudulentHeaderHash,
-  });
-  const computationThreadAssetName = `${category.categoryId}${resolvedHeaderHash}`;
-  const computationThreadUnit = toUnit(
-    computationThreadPolicyId,
-    computationThreadAssetName,
-  );
-  const phasMembershipScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
-  };
-  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
-    script: computationThreadMintingScript,
-    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
-    label: `${fraudCategoryLabel(fraudCategory)} init computation-thread mint`,
-  });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
-    script: phasMembershipScript,
-    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
-    label: `${fraudCategoryLabel(fraudCategory)} init PHAS membership`,
-  });
-  const referenceInputs = [
-    catalogueUtxo,
-    hubOracleUtxo,
-    fraudulentBlockUtxo,
-    ...computationThreadMintCarriage.referenceInputs,
-    ...phasMembershipCarriage.referenceInputs,
-  ];
-  const phasRewardAddress = phasMembershipRewardAddress(
+  const result = await submitResolvedInit({
+    lucid,
+    blueprint,
     network,
-    phasMembershipScript,
-  );
-  const firstStepDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: null,
+    label: fraudCategoryLabel(fraudCategory),
+    contracts: {
+      steps: [firstStep],
+      computationThread: resolvedDeployment.contracts.computationThread,
+      hubOraclePolicyId,
+      stateQueuePolicyId: resolvedDeployment.stateQueuePolicyId!,
     },
-    FraudProofComputationThreadStepDatum,
-  );
-  const firstStepOutputMatches = computationThreadOutputPredicate({
-    address: firstStepAddress,
-    datum: firstStepDatum,
-    unit: computationThreadUnit,
-  });
-  let firstStepOutputIndex: bigint | undefined;
-  const computationThreadMintRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      computationThreadPolicyId,
-      `${fraudCategoryLabel(fraudCategory)} init computation-thread mint`,
-    );
-    const outputIndex = requireUniqueOutputIndex(
-      ctx.outputs,
-      firstStepOutputMatches,
-      `${fraudCategoryLabel(fraudCategory)} init first step`,
-    );
-    firstStepOutputIndex = outputIndex;
-    return Data.to(
-      {
-        Init: {
-          first_step_output_index: outputIndex,
-          fraud_category_id: category.categoryId,
-          fraud_category: firstStepHash,
-          fraud_category_membership_proof: Data.from(
-            category.membershipProofCbor,
-            Proof,
-          ),
-          fraud_proof_catalogue_ref_input_index: requireReferenceInputIndex(
-            ctx,
-            catalogueUtxo,
-            `${fraudCategoryLabel(fraudCategory)} init fraud-proof catalogue`,
-          ),
-          inclusion_proof_script_redeemer_index: requireWithdrawalRedeemerIndex(
-            ctx,
-            phasRewardAddress,
-            `${fraudCategoryLabel(fraudCategory)} init PHAS membership`,
-          ),
-          hub_oracle_ref_input_index: requireReferenceInputIndex(
-            ctx,
-            hubOracleUtxo,
-            `${fraudCategoryLabel(fraudCategory)} init hub oracle`,
-          ),
-          fraudulent_block_ref_input_index: requireReferenceInputIndex(
-            ctx,
-            fraudulentBlockUtxo,
-            `${fraudCategoryLabel(fraudCategory)} init fraudulent block`,
-          ),
-        },
-      },
-      FraudProofComputationThreadRedeemer,
-    );
-  }) satisfies BuildTxWithRedeemer;
-
-  signer.selectWallet(lucid);
-  const chainedTx = lucid
-    .newTx()
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodePhasMembershipRedeemer({
-        root: catalogue.root,
-        categoryId: category.categoryId,
-        categoryScriptHash: category.scriptHash,
-        membershipProofCbor: category.membershipProofCbor,
-      }),
-    )
-    .mintAssets({ [computationThreadUnit]: 1n }, computationThreadMintRedeemer)
-    .pay.ToContract(
-      firstStepAddress,
-      {
-        kind: "inline",
-        value: firstStepDatum,
-      },
-      { [computationThreadUnit]: 1n },
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const tx = phasMembershipCarriage.attach(
-    computationThreadMintCarriage.attach(chainedTx),
-  );
-
-  const unsigned = await tx.complete({ localUPLCEval: true });
-  if (firstStepOutputIndex === undefined) {
-    throw new Error("BuildTxWithRedeemer did not resolve init output index.");
-  }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
-    referenceScripts: [
-      workflowReferenceScript({
-        role: "V1 fraud-proof computation-thread minting",
-        utxo: witnessReferenceScripts?.computationThreadMint,
-        expectedScript: computationThreadMintingScript,
-      }),
-      workflowReferenceScript({
-        role: "membership proof withdrawal",
-        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-        expectedScript: phasMembershipScript,
-      }),
-    ],
-    boundary: preSubmitBoundary,
-  });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
-
-  return {
-    txHash,
-    walletSource: signer.source,
-    proverAddress: signer.address,
-    fraudProver: signer.paymentKeyHash,
+    category,
+    catalogue: {
+      policyId: fraudProofCataloguePolicyId,
+      spendingScriptAddress: credentialToAddress(
+        network,
+        scriptHashToCredential(fraudProofCatalogueSpendHash),
+      ),
+      root: catalogue.root,
+    },
+    signer,
     fraudulentBlockOutRef,
-    fraudulentHeaderHash: resolvedHeaderHash,
-    computationThreadPolicyId,
-    computationThreadAssetName,
-    computationThreadUnit,
-    firstStepAddress,
-    firstStepOutputIndex: Number(firstStepOutputIndex),
-    fraudCategoryId: category.categoryId,
+    fraudulentHeaderHash,
+    witnessReferenceScripts,
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
+  return {
+    txHash: result.txHash,
+    walletSource: result.walletSource,
+    proverAddress: result.proverAddress,
+    fraudProver: result.fraudProver,
+    fraudulentBlockOutRef: result.fraudulentBlockOutRef,
+    fraudulentHeaderHash: result.fraudulentHeaderHash,
+    computationThreadPolicyId: result.computationThreadPolicyId,
+    computationThreadAssetName: result.computationThreadAssetName,
+    computationThreadUnit: result.computationThreadUnit,
+    firstStepAddress: result.firstStepAddress,
+    firstStepOutputIndex: result.firstStepOutputIndex,
+    fraudCategoryId: result.fraudCategoryId,
     fraudCategoryName: fraudCategory,
-    fraudCategory: firstStepHash,
-    fraudProofCatalogueRoot: catalogue.root,
-    awaitedConfirmation: awaitConfirmation,
+    fraudCategory: result.fraudCategory,
+    fraudProofCatalogueRoot: result.fraudProofCatalogueRoot,
+    awaitedConfirmation: result.awaitedConfirmation,
   };
 };
 

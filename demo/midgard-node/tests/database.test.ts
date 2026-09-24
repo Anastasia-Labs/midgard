@@ -45,7 +45,17 @@ import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { it } from "@effect/vitest";
-import { CML, Data as LucidData, toHex } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data as LucidData,
+  datumToHash,
+  Emulator,
+  generateEmulatorAccount,
+  Lucid as makeLucid,
+  type LucidEvolution,
+  toHex,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import {
   Deferred,
   Duration,
@@ -82,15 +92,12 @@ import {
   BlocksDB,
   CekProgramMaterialDB,
   CommitBuildCalibrationDB,
-  // Utils
-  CommonUtils,
   ConfirmedLedgerDB,
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
   DepositsDB,
   DepositSubmissionAttemptsDB,
-  ForcedTransactionsDB,
   ForeignTipReconciliationsDB,
   // Tx
   ImmutableDB,
@@ -100,7 +107,6 @@ import {
   MempoolLedgerDB,
   MempoolTxDeltasDB,
   MpfEngineStateDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
@@ -126,6 +132,7 @@ import {
   requestTxQueueProcessorWakeup,
   withAdmissionLeaseRecovery,
 } from "../src/fibers/tx-queue-processor.js";
+import { resolveIncludedWithdrawalEntriesForWindow } from "../src/mpf/event-window.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
@@ -142,6 +149,11 @@ import {
   makeMempoolLedgerCacheService,
   MempoolLedgerCache,
 } from "../src/services/mempool-ledger-cache.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import {
+  reincludeFinalizedStateQueueCorrectionTransition,
+  restoreRetractedStateQueueCorrectionTransition,
+} from "../src/services/state-queue-correction-recovery.js";
 import {
   ValidationPool,
   type ValidationPoolService,
@@ -155,6 +167,7 @@ import {
   materializeConfirmedLedgerSnapshot,
 } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
+import { reconcileDepositSubmissionAttemptProgram } from "../src/transactions/submit-deposit.js";
 import { breakDownTx, ProcessedTx } from "../src/utils.js";
 import { revalidateAndPersistSpeculativeCandidateSources } from "../src/workers/commit-block-header.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
@@ -166,6 +179,8 @@ import { resolvePendingJournalLedgerState } from "../src/workers/commit-block-he
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.js";
 import { finalizeCommittedBlockLocally } from "../src/workers/utils/commit-submission.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
+import { externalTimeoutTransition } from "./helpers/state-queue-correction-transition.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,
@@ -175,44 +190,13 @@ import {
   deterministicFixtureOutputReferenceId,
   deterministicFixtureTxHash,
   provideDatabaseLayers,
+  resetApplicationTables,
 } from "./utils.js";
-
-const flushAll = Effect.gen(function* () {
-  yield* Effect.all(
-    [
-      MempoolLedgerDB.clear,
-      ConfirmedLedgerDB.clear,
-      BlocksDB.clear,
-      ImmutableDB.clear,
-      MempoolDB.clear,
-      AddressHistoryDB.clear,
-      ProcessedMempoolDB.clear,
-      DepositsDB.clear,
-      ForcedTransactionsDB.clear,
-      ForeignTipReconciliationsDB.clear,
-      DepositSubmissionAttemptsDB.clear,
-      PendingBlockFinalizationsDB.clear,
-      DaPayloadsDB.clear,
-      CommonUtils.clearTable(TxAdmissionsDB.tableName),
-      TxRejectionsDB.clear,
-      Effect.gen(function* () {
-        yield* CommonUtils.clearTable(
-          CekProgramMaterialDB.admissionOwnerTableName,
-        );
-        yield* CommonUtils.clearTable(CekProgramMaterialDB.membershipTableName);
-        yield* CommonUtils.clearTable(CekProgramMaterialDB.entryTableName);
-      }),
-      CommonUtils.clearTable(MutationJobsDB.tableName),
-      CommonUtils.clearTable(StateQueueMutationLeasesDB.tableName),
-    ],
-    { discard: true },
-  );
-});
 
 const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
-      yield* flushAll;
+      yield* resetApplicationTables;
       return yield* effect;
     }),
   );
@@ -628,7 +612,7 @@ beforeAll(async () => {
           appVersion: "test",
           actor: "database.test",
         });
-        yield* flushAll;
+        yield* resetApplicationTables;
       }),
     ),
   );
@@ -1985,6 +1969,14 @@ describe("TxAdmissionsDB", () => {
               { concurrency: "unbounded" },
             );
 
+          const { makePoolIsolationHistoryOwner } = yield* Effect.promise(
+            () => import("./helpers/pool-isolation-history-owner.js"),
+          );
+          const history = yield* makePoolIsolationHistoryOwner({
+            globals,
+            cache,
+          });
+
           const baselineP99 = percentile99(yield* measure(24, Effect.void));
           const releases = yield* Effect.forEach(
             Array.from({ length: nodeConfig.POSTGRES_BATCH_POOL_SIZE }),
@@ -2074,8 +2066,11 @@ describe("TxAdmissionsDB", () => {
               Stream.runHead,
             );
             expect(yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE)).toBe(0);
-          }).pipe(Effect.ensuring(releaseHolders));
-        }).pipe(Effect.provide(Globals.Default)),
+          }).pipe(
+            Effect.ensuring(releaseHolders),
+            Effect.ensuring(history.close),
+          );
+        }).pipe(Effect.scoped, Effect.provide(Globals.Default)),
       ),
   );
 
@@ -4672,6 +4667,227 @@ describe("PendingBlockFinalizationsDB", () => {
   } as const;
 
   it.effect(
+    "journals correction classification and makes apply/retraction idempotent",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          yield* WithdrawalsDB.clear;
+          const transition = externalTimeoutTransition({ terminal: true });
+          const authority = {
+            expectedDeploymentIdentityDigest:
+              transition.deploymentIdentityDigest,
+            requiredFinalityDepth: 2160n,
+          };
+          const header = Buffer.from(transition.removedHeaderHashes[0]!, "hex");
+          const initial = makeHistoryWithdrawalEntry();
+          const assignment = {
+            eventId: initial[WithdrawalsDB.Columns.ID],
+            expectedClassificationRevision: 0,
+            settlementEventInfo: Buffer.from("8101", "hex"),
+            validity: WithdrawalsDB.Validity.WithdrawalIsValid,
+            validityDetail: { z: 1, a: { z: 2, a: 3 } },
+          };
+          yield* WithdrawalsDB.insertEntries([initial]);
+          yield* WithdrawalsDB.setSettlementInfoForEventIds([assignment]);
+          yield* WithdrawalsDB.markAwaitingAsProjected([assignment]);
+          const classified = Option.getOrThrow(
+            yield* WithdrawalsDB.retrieveByEventId(assignment.eventId),
+          );
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+            ...pendingSubmissionFixture(header),
+            withdrawalEventIds: [assignment.eventId],
+            withdrawalEntries: [classified],
+          });
+          const journal = Option.getOrThrow(
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(header),
+          );
+          expect(
+            journal.withdrawalMembers[0]![
+              PendingBlockFinalizationsDB.WithdrawalMemberColumns
+                .VALIDITY_DETAIL
+            ],
+          ).toEqual(assignment.validityDetail);
+          yield* PendingBlockFinalizationsDB.markSubmitted(
+            header,
+            Buffer.alloc(32, 31),
+          );
+          yield* WithdrawalsDB.markProjectedByEventIds([assignment], header);
+          yield* WithdrawalsDB.markFinalizedByEventIds(
+            [assignment.eventId],
+            header,
+          );
+          expect(
+            (yield* reincludeFinalizedStateQueueCorrectionTransition(
+              transition,
+              authority,
+            ))[0]!.reopenedEvents,
+          ).toBe(1);
+          const replacement = {
+            ...assignment,
+            expectedClassificationRevision: 1,
+            settlementEventInfo: Buffer.from("8102", "hex"),
+            validity: WithdrawalsDB.Validity.SpentWithdrawalUtxo,
+            validityDetail: { changed: true },
+          };
+          yield* WithdrawalsDB.setSettlementInfoForEventIds([replacement]);
+          expect(
+            (yield* reincludeFinalizedStateQueueCorrectionTransition(
+              transition,
+              authority,
+            ))[0]!.reopenedEvents,
+          ).toBe(0);
+          let row = Option.getOrThrow(
+            yield* WithdrawalsDB.retrieveByEventId(assignment.eventId),
+          );
+          expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toEqual(
+            replacement.settlementEventInfo,
+          );
+          expect(
+            (yield* restoreRetractedStateQueueCorrectionTransition(
+              transition,
+              authority,
+            ))[0]!.restoredCanonicalBlock,
+          ).toBe(true);
+          expect(
+            (yield* restoreRetractedStateQueueCorrectionTransition(
+              transition,
+              authority,
+            ))[0]!.restoredCanonicalBlock,
+          ).toBe(false);
+          row = Option.getOrThrow(
+            yield* WithdrawalsDB.retrieveByEventId(assignment.eventId),
+          );
+          expect(row[WithdrawalsDB.Columns.CLASSIFICATION_REVISION]).toBe(2);
+          expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toEqual(
+            assignment.settlementEventInfo,
+          );
+          expect(row[WithdrawalsDB.Columns.VALIDITY_DETAIL]).toEqual(
+            assignment.validityDetail,
+          );
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE pending_block_finalization_withdrawals SET validity_detail = '{"tampered":true}'::jsonb WHERE header_hash = ${header}`;
+          expect(
+            (yield* Effect.either(
+              PendingBlockFinalizationsDB.retrieveByHeaderHash(header),
+            ))._tag,
+          ).toBe("Left");
+        }),
+      ),
+  );
+
+  it.effect(
+    "retains durable signed intent across cleanup, conflicting writes and duplicate acknowledgement",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const headerHash = databaseFixtureBytes("signed-intent-header", 28);
+          const input = pendingSubmissionFixture(headerHash);
+          const cbor = Buffer.from(makeCardanoSignedMapOutputTxBytes());
+          const tx = CML.Transaction.from_cbor_bytes(cbor);
+          const body = tx.body();
+          const hash = CML.hash_transaction(body);
+          const txHash = Buffer.from(hash.to_hex(), "hex");
+          hash.free();
+          body.free();
+          tx.free();
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+            ...input,
+            preparedTxHash: txHash,
+          });
+          const sql = yield* SqlClient.SqlClient;
+          expect(
+            (yield* Effect.either(
+              sql.withTransaction(
+                PendingBlockFinalizationsDB.recordSignedIntent(
+                  headerHash,
+                  txHash,
+                  cbor,
+                ),
+              ),
+            ))._tag,
+          ).toBe("Left");
+          yield* PendingBlockFinalizationsDB.recordSignedIntent(
+            headerHash,
+            txHash,
+            cbor,
+          );
+          yield* PendingBlockFinalizationsDB.recordSignedIntent(
+            headerHash,
+            txHash,
+            cbor,
+          );
+          expect(
+            (yield* Effect.either(
+              PendingBlockFinalizationsDB.recordSignedIntent(
+                headerHash,
+                Buffer.alloc(32, 3),
+                cbor,
+              ),
+            ))._tag,
+          ).toBe("Left");
+          yield* PendingBlockFinalizationsDB.discardUnsubmittedPendingSubmission(
+            headerHash,
+          );
+          expect(
+            yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
+              headerHash,
+            ),
+          ).toBe(false);
+          expect(
+            (yield* Effect.either(
+              PendingBlockFinalizationsDB.markAbandoned(headerHash),
+            ))._tag,
+          ).toBe("Left");
+          expect(
+            (yield* Effect.either(
+              PendingBlockFinalizationsDB.preparePendingSubmission(input),
+            ))._tag,
+          ).toBe("Left");
+          expect(
+            (yield* Effect.either(
+              PendingBlockFinalizationsDB.markSubmitted(
+                headerHash,
+                Buffer.alloc(32, 4),
+              ),
+            ))._tag,
+          ).toBe("Left");
+          // Canonical header observation need not prove the original transaction hash:
+          // a later list append may already have recreated its current node.
+          yield* PendingBlockFinalizationsDB.markObservedWaitingStability(
+            headerHash,
+            1n,
+          );
+          let record = Option.getOrThrow(
+            yield* PendingBlockFinalizationsDB.retrieveActive(),
+          );
+          expect(
+            record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH],
+          ).toBeNull();
+          expect(
+            record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH],
+          ).toEqual(txHash);
+          expect(
+            record[PendingBlockFinalizationsDB.Columns.SIGNED_TX_CBOR],
+          ).toEqual(cbor);
+          yield* PendingBlockFinalizationsDB.markSubmitted(headerHash, txHash);
+          expect(
+            Option.getOrThrow(
+              yield* PendingBlockFinalizationsDB.retrieveActive(),
+            )[PendingBlockFinalizationsDB.Columns.STATUS],
+          ).toBe(PendingBlockFinalizationsDB.Status.ObservedWaitingStability);
+          yield* PendingBlockFinalizationsDB.markFinalized(headerHash);
+          yield* PendingBlockFinalizationsDB.markSubmitted(headerHash, txHash);
+          record = Option.getOrThrow(
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash),
+          );
+          expect(record[PendingBlockFinalizationsDB.Columns.STATUS]).toBe(
+            PendingBlockFinalizationsDB.Status.Finalized,
+          );
+        }),
+      ),
+  );
+
+  it.effect(
     "can discard and replace no-submission pending journals for retry recovery",
     (_) =>
       isolatedDb(
@@ -5587,6 +5803,8 @@ describe("PendingBlockFinalizationsDB", () => {
               16,
             ),
             [WithdrawalsDB.Columns.VALIDITY]: null,
+            [WithdrawalsDB.Columns.CLASSIFICATION_REVISION]: 0,
+            [WithdrawalsDB.Columns.REOPENED_FROM_HEADER_HASH]: null,
             [WithdrawalsDB.Columns.VALIDITY_DETAIL]: {},
             [WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]: null,
             [WithdrawalsDB.Columns.STATUS]: WithdrawalsDB.Status.Awaiting,
@@ -5959,7 +6177,7 @@ describe("MempoolDB", () => {
           expect(afterClearAll.length).toEqual(0);
 
           // insert single
-          yield* flushAll;
+          yield* resetApplicationTables;
           yield* MempoolDB.insert(processedTx1);
           const afterInsertOne = yield* retrieveAllMempool;
           expect(
@@ -6203,8 +6421,10 @@ describe("WriteBehind", () => {
               },
             ]);
             // The delta statement runs first. Failing the second statement
-            // must roll the delta back and retain both queued rows.
-            yield* sql`DROP TABLE address_history`;
+            // must roll the delta back and retain both queued rows. Renaming
+            // the migration-built table away makes the statement fail; renaming
+            // it back restores exactly that table.
+            yield* sql`ALTER TABLE address_history RENAME TO address_history_withheld`;
             const failed = yield* Effect.either(writeBehind.flushNow);
             expect(failed._tag).toBe("Left");
             expect((yield* writeBehind.depths).totalDepth).toBe(2);
@@ -6212,7 +6432,7 @@ describe("WriteBehind", () => {
               (yield* MempoolTxDeltasDB.retrieveByTxIds([txId])).size,
             ).toBe(0);
 
-            yield* AddressHistoryDB.createTable;
+            yield* sql`ALTER TABLE address_history_withheld RENAME TO address_history`;
             yield* writeBehind.flushNow;
             expect((yield* writeBehind.depths).totalDepth).toBe(0);
             const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds([txId]);
@@ -6283,7 +6503,9 @@ describe("WriteBehind", () => {
             const writeBehind = yield* makeWriteBehind;
             const first = databaseTxHash("write-behind.retry-overflow-1");
             const second = databaseTxHash("write-behind.retry-overflow-2");
-            yield* sql`DROP TABLE mempool_tx_deltas`;
+            // Withhold the migration-built table so the inline write fails;
+            // renaming it back restores exactly that table.
+            yield* sql`ALTER TABLE mempool_tx_deltas RENAME TO mempool_tx_deltas_withheld`;
             const enqueueFiber = yield* Effect.fork(
               writeBehind.enqueueTxDeltas([
                 { txId: first, spent: [], produced: [] },
@@ -6299,7 +6521,7 @@ describe("WriteBehind", () => {
             expect(Option.isNone(yield* Fiber.poll(enqueueFiber))).toBe(true);
             expect((yield* writeBehind.depths).totalDepth).toBe(1);
 
-            yield* MempoolTxDeltasDB.createTable;
+            yield* sql`ALTER TABLE mempool_tx_deltas_withheld RENAME TO mempool_tx_deltas`;
             yield* TestClock.adjust(Duration.millis(10));
             yield* Fiber.join(enqueueFiber);
             const inline = yield* MempoolTxDeltasDB.retrieveByTxIds([
@@ -6709,7 +6931,7 @@ describe("AddressHistoryDB", () => {
           [TxUtils.Columns.TX_ID]: pTxId2,
           [TxUtils.Columns.TX]: pTx2,
         };
-        yield* flushAll;
+        yield* resetApplicationTables;
 
         // insert
         yield* ImmutableDB.insertTxs([txEntry1, txEntry2]);
@@ -6793,7 +7015,7 @@ describe("AddressHistoryDB", () => {
         ).toStrictEqual([address1, thisWalletAddress].sort());
 
         // two outputs for the same address should still produce one unique row
-        yield* flushAll;
+        yield* resetApplicationTables;
         const secondTxId = databaseTxHash("address-history.pipeline.tx-2");
         const secondProcessedTx: ProcessedTx = {
           txId: secondTxId,
@@ -7050,6 +7272,566 @@ describe("Reconciliation commands", () => {
         ).toThrow("plain JSON objects");
       }),
     ),
+  );
+});
+
+const makeHistoryWithdrawalEntry = (): WithdrawalsDB.Entry => {
+  return {
+    [WithdrawalsDB.Columns.ID]: databaseOutputReferenceId(
+      "history-pointer-withdrawal",
+    ),
+    [WithdrawalsDB.Columns.RAW_EVENT_INFO]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-raw",
+      96,
+    ),
+    [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]: null,
+    [WithdrawalsDB.Columns.INCLUSION_TIME]: new Date(
+      "2026-04-13T18:00:00.000Z",
+    ),
+    [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: databaseTxHash(
+      "speculative-memory-withdrawal-l1",
+    ),
+    [WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: 0,
+    [WithdrawalsDB.Columns.ASSET_NAME]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-asset",
+      32,
+    ),
+    [WithdrawalsDB.Columns.L2_OUTREF]: databaseOutputReferenceId(
+      "speculative-memory-withdrawal-l2",
+      1n,
+    ),
+    [WithdrawalsDB.Columns.L2_OWNER]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-owner",
+      28,
+    ),
+    [WithdrawalsDB.Columns.L2_VALUE]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-value",
+      48,
+    ),
+    [WithdrawalsDB.Columns.L1_ADDRESS]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-address",
+      32,
+    ),
+    [WithdrawalsDB.Columns.L1_DATUM]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-datum",
+      16,
+    ),
+    [WithdrawalsDB.Columns.REFUND_ADDRESS]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-refund-address",
+      32,
+    ),
+    [WithdrawalsDB.Columns.REFUND_DATUM]: databaseFixtureBytes(
+      "speculative-memory-withdrawal-refund-datum",
+      16,
+    ),
+    [WithdrawalsDB.Columns.VALIDITY]: null,
+    [WithdrawalsDB.Columns.CLASSIFICATION_REVISION]: 0,
+    [WithdrawalsDB.Columns.REOPENED_FROM_HEADER_HASH]: null,
+    [WithdrawalsDB.Columns.VALIDITY_DETAIL]: {},
+    [WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]: null,
+    [WithdrawalsDB.Columns.STATUS]: WithdrawalsDB.Status.Awaiting,
+  };
+};
+
+describe("authenticated history pointer persistence", () => {
+  it.effect(
+    "reconciles current authenticated history by intent and refuses stale cache authority",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const contracts = yield* Effect.promise(() =>
+            loadRealMidgardContractsForTest({
+              txHash: "01".repeat(32),
+              outputIndex: 0,
+            }),
+          );
+          const deployment = SDK.eventHistoryDeploymentFromContracts(
+            SDK.requireEventHistoryContracts(contracts).deposit,
+          );
+          const wallet = generateEmulatorAccount({ lovelace: 100_000_000n });
+          const baseLucid = yield* Effect.promise(() =>
+            makeLucid(new Emulator([wallet]), "Preprod"),
+          );
+          const eventId = { transactionId: "12".repeat(32), outputIndex: 0n };
+          const idCbor = Buffer.from(
+            LucidData.to(eventId, SDK.OutputReference),
+            "hex",
+          );
+          const key = datumToHash(idCbor.toString("hex"));
+          const node: SDK.EventHistoryNode = {
+            position: { Key: [key] },
+            next: null,
+            protected_until: 0n,
+            payload: {
+              Order: {
+                facts: {
+                  event_id: eventId,
+                  inclusion_time: 1000n,
+                  structural_lovelace: 2_000_000n,
+                  structural_refund_key: "aa".repeat(28),
+                  location: {
+                    Inline: {
+                      payload: {
+                        DepositPayload: {
+                          event: {
+                            id: eventId,
+                            info: {
+                              l2_address: yield* SDK.addressDataFromBech32(
+                                wallet.address,
+                              ),
+                              l2_network_id: 0n,
+                              l2_datum: null,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          };
+          const root: UTxO = {
+            txHash: "13".repeat(32),
+            outputIndex: 0,
+            address: deployment.address,
+            assets: { lovelace: 3_000_000n, [deployment.policyId]: 1n },
+            datum: LucidData.to(
+              {
+                position: "Root",
+                next: key,
+                protected_until: 0n,
+                payload: "RootContent",
+              },
+              SDK.EventHistoryNode,
+            ),
+          };
+          const order: UTxO = {
+            txHash: "14".repeat(32),
+            outputIndex: 0,
+            address: deployment.address,
+            assets: { lovelace: 7_000_000n, [deployment.policyId + key]: 1n },
+            datum: LucidData.to(node, SDK.EventHistoryNode),
+          };
+          // Reader/DB integration fixture; applied-policy acceptance and real
+          // pointer transactions are covered by the public-builder emulator suite.
+          let visible = [root, order];
+          let unavailable = false;
+          const api: LucidEvolution = {
+            ...baseLucid,
+            utxosAt: async (address) => {
+              if (unavailable) throw new Error("history provider unavailable");
+              return address === deployment.address ? visible : [];
+            },
+          };
+          const service = Lucid.make({
+            api,
+            referenceScriptsApi: baseLucid,
+            operatorMainAddress: wallet.address,
+            operatorMergeAddress: wallet.address,
+            referenceScriptsWalletAddress: wallet.address,
+            referenceScriptsAddress: wallet.address,
+            submitSlotSnapshot: () =>
+              Effect.die("not used by read-only reconciliation"),
+            switchToOperatorsMainWallet: Effect.void,
+            switchToOperatorsMergingWallet: Effect.void,
+            switchToReferenceScriptWallet: Effect.void,
+          });
+          const admissionHash = databaseTxHash(
+            "history-intent-original-admission",
+          );
+          const attempt = makeDepositSubmissionAttempt({
+            txHash: admissionHash,
+            eventId: idCbor,
+          });
+          yield* DepositSubmissionAttemptsDB.insertSubmitted({
+            ...attempt,
+            [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]:
+              wallet.address,
+            [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]: "5000000",
+            [DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS]: {
+              lovelace: "5000000",
+            },
+            [DepositSubmissionAttemptsDB.Columns.METADATA]: {
+              ...attempt[DepositSubmissionAttemptsDB.Columns.METADATA],
+              depositAddress: deployment.address,
+              depositAssetName: key,
+              depositAuthUnit: deployment.policyId + key,
+              inclusionTime: 1000,
+              structuralLovelace: "2000000",
+            },
+          });
+          const reconcile = reconcileDepositSubmissionAttemptProgram(
+            admissionHash.toString("hex"),
+          ).pipe(
+            Effect.provideService(Lucid, service),
+            Effect.provideService(
+              MidgardContracts,
+              MidgardContracts.make({
+                ...contracts,
+                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+              }),
+            ),
+          );
+          expect((yield* reconcile).status).toBe("reconciled_after_timeout");
+          const header = databaseFixtureBytes("history-intent-projected", 28);
+          yield* DepositsDB.markAwaitingAsProjected([idCbor]);
+          yield* DepositsDB.markProjectedByEventIds([idCbor], header);
+          const continued = {
+            ...order,
+            txHash: "15".repeat(32),
+            outputIndex: 2,
+          };
+          visible = [root, continued];
+          expect((yield* reconcile).status).toBe("reconciled_after_timeout");
+          const persisted = Option.getOrThrow(
+            yield* DepositsDB.retrieveByEventId(idCbor),
+          );
+          expect(
+            persisted[DepositsDB.Columns.DEPOSIT_L1_TX_HASH].toString("hex"),
+          ).toBe(continued.txHash);
+          expect(persisted[DepositsDB.Columns.STATUS]).toBe(
+            DepositsDB.Status.Projected,
+          );
+          expect(persisted[DepositsDB.Columns.PROJECTED_HEADER_HASH]).toEqual(
+            header,
+          );
+          visible = [
+            {
+              ...root,
+              datum: LucidData.to(
+                {
+                  position: "Root",
+                  next: null,
+                  protected_until: 0n,
+                  payload: "RootContent",
+                },
+                SDK.EventHistoryNode,
+              ),
+            },
+          ];
+          expect((yield* reconcile).status).toBe("ambiguous");
+          expect(
+            Option.isSome(yield* DepositsDB.retrieveByEventId(idCbor)),
+          ).toBe(true);
+          if (node.payload === "RootContent" || !("Order" in node.payload))
+            throw new Error("Expected Order fixture");
+          visible = [
+            root,
+            {
+              ...continued,
+              datum: LucidData.to(
+                {
+                  ...node,
+                  payload: {
+                    Order: {
+                      facts: {
+                        ...node.payload.Order.facts,
+                        inclusion_time: 2000n,
+                      },
+                    },
+                  },
+                },
+                SDK.EventHistoryNode,
+              ),
+            },
+          ];
+          expect((yield* reconcile).status).toBe("ambiguous");
+          expect(
+            Option.getOrThrow(yield* DepositsDB.retrieveByEventId(idCbor)),
+          ).toEqual(persisted);
+          unavailable = true;
+          const failure = yield* Effect.either(reconcile);
+          expect(failure._tag).toBe("Left");
+          if (failure._tag === "Left")
+            expect(failure.left).toBeInstanceOf(SDK.LucidError);
+        }),
+      ),
+  );
+
+  it.effect(
+    "resolves the original submission hash after the history output moves",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const deposit = makeDepositEntry();
+          const admissionHash = deposit[DepositsDB.Columns.DEPOSIT_L1_TX_HASH];
+          const attempt = makeDepositSubmissionAttempt({
+            txHash: admissionHash,
+            eventId: deposit[DepositsDB.Columns.ID],
+          });
+          yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
+          const stored =
+            yield* DepositSubmissionAttemptsDB.retrieveByTxHash(admissionHash);
+          expect(Option.isSome(stored)).toBe(true);
+          if (Option.isNone(stored)) throw new Error("Expected journal");
+          expect(
+            stored.value[DepositSubmissionAttemptsDB.Columns.METADATA],
+          ).toEqual(attempt[DepositSubmissionAttemptsDB.Columns.METADATA]);
+          expect(
+            stored.value[DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS],
+          ).toEqual(
+            attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS],
+          );
+          expect(
+            stored.value[DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS],
+          ).toEqual(
+            attempt[DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS],
+          );
+          yield* DepositsDB.insertEntries([deposit]);
+          const moved = {
+            ...deposit,
+            [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: databaseTxHash(
+              "status-pointer-continuation",
+            ),
+          };
+          yield* DepositsDB.insertEntries([moved]);
+          expect(
+            yield* resolveDepositStatusProgram({
+              cardanoTxHash: admissionHash,
+            }),
+          ).toEqual(moved);
+          expect(
+            yield* resolveDepositStatusProgram({
+              cardanoTxHash: admissionHash,
+              eventId: deposit[DepositsDB.Columns.ID],
+            }),
+          ).toEqual(moved);
+          expect(
+            yield* resolveDepositStatusProgram({
+              cardanoTxHash: moved[DepositsDB.Columns.DEPOSIT_L1_TX_HASH],
+            }),
+          ).toEqual(moved);
+        }),
+      ),
+  );
+
+  for (const status of Object.values(DepositsDB.Status)) {
+    it.effect(
+      `refreshes deposit location while preserving ${status} projection`,
+      () =>
+        isolatedDb(
+          Effect.gen(function* () {
+            const entry = makeDepositEntry();
+            const header =
+              status === DepositsDB.Status.Awaiting
+                ? null
+                : databaseFixtureBytes("history-pointer-header", 28);
+            yield* DepositsDB.insertEntries([
+              {
+                ...entry,
+                [DepositsDB.Columns.STATUS]: status,
+                [DepositsDB.Columns.PROJECTED_HEADER_HASH]: header,
+              },
+            ]);
+            const replacementHash = databaseTxHash(
+              "history-pointer-deposit-replacement",
+            );
+            yield* DepositsDB.insertEntries([
+              {
+                ...entry,
+                [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: replacementHash,
+              },
+            ]);
+            expect(yield* DepositsDB.retrieveAllEntries()).toEqual([
+              {
+                ...entry,
+                [DepositsDB.Columns.STATUS]: status,
+                [DepositsDB.Columns.PROJECTED_HEADER_HASH]: header,
+                [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: replacementHash,
+              },
+            ]);
+            expect(
+              yield* DepositsDB.retrieveByCardanoTxHash(
+                entry[DepositsDB.Columns.DEPOSIT_L1_TX_HASH],
+              ),
+            ).toEqual([]);
+            expect(
+              yield* DepositsDB.retrieveByCardanoTxHash(replacementHash),
+            ).toHaveLength(1);
+          }),
+        ),
+    );
+  }
+  for (const status of Object.values(WithdrawalsDB.Status)) {
+    it.effect(
+      `refreshes withdrawal location while preserving ${status} classification`,
+      () =>
+        isolatedDb(
+          Effect.gen(function* () {
+            yield* WithdrawalsDB.clear;
+            const entry = makeHistoryWithdrawalEntry();
+            const classified =
+              status === WithdrawalsDB.Status.Awaiting
+                ? entry
+                : {
+                    ...entry,
+                    [WithdrawalsDB.Columns.STATUS]: status,
+                    [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]:
+                      databaseFixtureBytes("history-pointer-settlement", 64),
+                    [WithdrawalsDB.Columns.VALIDITY]:
+                      WithdrawalsDB.Validity.WithdrawalIsValid,
+                    [WithdrawalsDB.Columns.VALIDITY_DETAIL]: { checked: true },
+                    [WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]:
+                      databaseFixtureBytes("history-pointer-header", 28),
+                  };
+            yield* WithdrawalsDB.insertEntries([classified]);
+            const replacementHash = databaseTxHash(
+              "history-pointer-withdrawal-replacement",
+            );
+            yield* WithdrawalsDB.insertEntries([
+              {
+                ...entry,
+                [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: replacementHash,
+                [WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: 3,
+              },
+            ]);
+            const rows = yield* WithdrawalsDB.retrieveAllEntries();
+            expect(rows).toHaveLength(1);
+            expect(rows[0]![WithdrawalsDB.Columns.VALIDITY_DETAIL]).toEqual(
+              classified[WithdrawalsDB.Columns.VALIDITY_DETAIL],
+            );
+            expect(rows[0]).toMatchObject({
+              ...classified,
+              [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: replacementHash,
+              [WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: 3,
+            });
+            expect(
+              yield* WithdrawalsDB.retrieveByCardanoTxHash(
+                entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH],
+              ),
+            ).toEqual([]);
+          }),
+        ),
+    );
+  }
+  it.effect(
+    "rolls back every deposit location when a batch changes immutable content",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const first = makeDepositEntry();
+          const second = makeDepositEntry();
+          yield* DepositsDB.insertEntries([first, second]);
+          for (const field of [
+            DepositsDB.Columns.INFO,
+            DepositsDB.Columns.LEDGER_OUTPUT,
+          ]) {
+            const outcome = yield* Effect.either(
+              DepositsDB.insertEntries([
+                {
+                  ...first,
+                  [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: databaseTxHash(
+                    "history-pointer-new",
+                  ),
+                },
+                { ...second, [field]: Buffer.from("changed") },
+              ]),
+            );
+            expect(outcome._tag).toBe("Left");
+            expect(yield* DepositsDB.retrieveAllEntries()).toEqual([
+              first,
+              second,
+            ]);
+          }
+          const outcome = yield* Effect.either(
+            DepositsDB.insertEntries([
+              {
+                ...first,
+                [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+                  first[DepositsDB.Columns.INCLUSION_TIME].getTime() + 1,
+                ),
+              },
+            ]),
+          );
+          expect(outcome._tag).toBe("Left");
+        }),
+      ),
+  );
+  it.effect(
+    "rejects withdrawal body or timing drift and rolls back the batch",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          yield* WithdrawalsDB.clear;
+          const first = makeHistoryWithdrawalEntry();
+          const second = {
+            ...first,
+            [WithdrawalsDB.Columns.ID]: databaseOutputReferenceId(
+              "history-pointer-second",
+            ),
+            [WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: 1,
+          };
+          yield* WithdrawalsDB.insertEntries([first, second]);
+          const before = yield* WithdrawalsDB.retrieveAllEntries();
+          for (const field of [
+            WithdrawalsDB.Columns.RAW_EVENT_INFO,
+            WithdrawalsDB.Columns.L2_VALUE,
+            WithdrawalsDB.Columns.REFUND_DATUM,
+          ]) {
+            const outcome = yield* Effect.either(
+              WithdrawalsDB.insertEntries([
+                {
+                  ...first,
+                  [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: databaseTxHash(
+                    "history-pointer-new",
+                  ),
+                },
+                { ...second, [field]: Buffer.from("changed") },
+              ]),
+            );
+            expect(outcome._tag).toBe("Left");
+            expect(yield* WithdrawalsDB.retrieveAllEntries()).toEqual(before);
+          }
+          const outcome = yield* Effect.either(
+            WithdrawalsDB.insertEntries([
+              {
+                ...first,
+                [WithdrawalsDB.Columns.INCLUSION_TIME]: new Date(
+                  first[WithdrawalsDB.Columns.INCLUSION_TIME].getTime() + 1,
+                ),
+              },
+            ]),
+          );
+          expect(outcome._tag).toBe("Left");
+        }),
+      ),
+  );
+  it.effect(
+    "rejects two competing locations for one event in a single observation",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          yield* WithdrawalsDB.clear;
+          const deposit = makeDepositEntry();
+          const withdrawal = makeHistoryWithdrawalEntry();
+          expect(
+            (yield* Effect.either(
+              DepositsDB.insertEntries([
+                deposit,
+                {
+                  ...deposit,
+                  [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]:
+                    databaseTxHash("competing"),
+                },
+              ]),
+            ))._tag,
+          ).toBe("Left");
+          expect(
+            (yield* Effect.either(
+              WithdrawalsDB.insertEntries([
+                withdrawal,
+                {
+                  ...withdrawal,
+                  [WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: 2,
+                },
+              ]),
+            ))._tag,
+          ).toBe("Left");
+          expect(yield* DepositsDB.retrieveAllEntries()).toEqual([]);
+          expect(yield* WithdrawalsDB.retrieveAllEntries()).toEqual([]);
+        }),
+      ),
   );
 });
 
@@ -7615,6 +8397,10 @@ const makeDepositSubmissionAttempt = ({
     },
     validTo: 1_800_000_000_000,
     inclusionTime: 1_800_000_060_000,
+    structuralLovelace: "0",
+    orderOutputIndex: 0,
+    l2DatumCbor: null,
+    transactionCbor: "84a3008001800200a0f5f6",
   },
   [DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS]: [
     `${databaseTxHash("deposit-submission.funding").toString("hex")}#0`,
@@ -8280,6 +9066,164 @@ describe("Phase 3 MPF durable state", () => {
           );
           expect(materialized.root).toBe(expectedFinalUtxosRoot);
           expect(materialized.entries).toHaveLength(finalEntries.length);
+        }),
+      ),
+  );
+});
+
+describe("withdrawal correction classification recovery", () => {
+  it.effect(
+    "reclassifies corrected overdue events, fences stale candidates, and restores exact classifications",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          yield* WithdrawalsDB.clear;
+          const entry = makeHistoryWithdrawalEntry();
+          const id = entry[WithdrawalsDB.Columns.ID];
+          const header = Buffer.alloc(28, 91);
+          const original = {
+            eventId: id,
+            expectedClassificationRevision: 0,
+            settlementEventInfo: Buffer.from("8101", "hex"),
+            validity: WithdrawalsDB.Validity.WithdrawalIsValid,
+            validityDetail: { checked: { z: 1, a: 2 } },
+          };
+          yield* WithdrawalsDB.insertEntries([entry]);
+          yield* WithdrawalsDB.setSettlementInfoForEventIds([original]);
+          yield* WithdrawalsDB.markAwaitingAsProjected([original]);
+          yield* WithdrawalsDB.markProjectedByEventIds([original], header);
+          yield* WithdrawalsDB.markFinalizedByEventIds([id], header);
+          yield* WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
+            [id],
+            header,
+          );
+          let row = Option.getOrThrow(
+            yield* WithdrawalsDB.retrieveByEventId(id),
+          );
+          expect(row[WithdrawalsDB.Columns.RAW_EVENT_INFO]).toEqual(
+            entry[WithdrawalsDB.Columns.RAW_EVENT_INFO],
+          );
+          expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toBeNull();
+          expect(row[WithdrawalsDB.Columns.VALIDITY]).toBeNull();
+          expect(row[WithdrawalsDB.Columns.CLASSIFICATION_REVISION]).toBe(1);
+          expect(row[WithdrawalsDB.Columns.REOPENED_FROM_HEADER_HASH]).toEqual(
+            header,
+          );
+          const selected = yield* resolveIncludedWithdrawalEntriesForWindow({
+            currentBlockStartTime: new Date("2026-04-14"),
+            effectiveEndTime: new Date("2026-04-15"),
+          });
+          expect(
+            selected.map((item) => item[WithdrawalsDB.Columns.ID]),
+          ).toEqual([id]);
+          expect(
+            (yield* Effect.either(
+              WithdrawalsDB.setSettlementInfoForEventIds([original]),
+            ))._tag,
+          ).toBe("Left");
+          expect(
+            (yield* Effect.either(
+              WithdrawalsDB.markAwaitingAsProjected([original]),
+            ))._tag,
+          ).toBe("Left");
+          const replacement = {
+            ...original,
+            expectedClassificationRevision: 1,
+            settlementEventInfo: Buffer.from("8102", "hex"),
+            validity: WithdrawalsDB.Validity.NonExistentWithdrawalUtxo,
+            validityDetail: { absent: true },
+          };
+          yield* WithdrawalsDB.setSettlementInfoForEventIds([replacement]);
+          yield* WithdrawalsDB.markAwaitingAsProjected([replacement]);
+          expect(
+            (yield* Effect.either(
+              WithdrawalsDB.markProjectedByEventIds([original], header),
+            ))._tag,
+          ).toBe("Left");
+          yield* WithdrawalsDB.restoreCorrectedClassification(
+            [original],
+            header,
+          );
+          yield* WithdrawalsDB.markFinalizedByEventIds([id], header);
+          row = Option.getOrThrow(yield* WithdrawalsDB.retrieveByEventId(id));
+          // Exact already-assigned reobservation remains idempotent after restoration.
+          yield* WithdrawalsDB.markProjectedByEventIds([original], header);
+          expect(
+            (yield* Effect.either(
+              WithdrawalsDB.markProjectedByEventIds([replacement], header),
+            ))._tag,
+          ).toBe("Left");
+          expect(row[WithdrawalsDB.Columns.CLASSIFICATION_REVISION]).toBe(2);
+          expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toEqual(
+            original.settlementEventInfo,
+          );
+          expect(row[WithdrawalsDB.Columns.VALIDITY_DETAIL]).toEqual(
+            original.validityDetail,
+          );
+          expect(row[WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]).toEqual(
+            header,
+          );
+          expect(
+            (yield* Effect.either(
+              WithdrawalsDB.setSettlementInfoForEventIds([replacement]),
+            ))._tag,
+          ).toBe("Left");
+        }),
+      ),
+  );
+
+  it.effect(
+    "refuses ordinary overdue events and refuses restoration over a replacement header",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          yield* WithdrawalsDB.clear;
+          const entry = makeHistoryWithdrawalEntry();
+          const id = entry[WithdrawalsDB.Columns.ID];
+          const header = Buffer.alloc(28, 92);
+          const nextHeader = Buffer.alloc(28, 93);
+          const assignment = {
+            eventId: id,
+            expectedClassificationRevision: 0,
+            settlementEventInfo: Buffer.from("8101", "hex"),
+            validity: WithdrawalsDB.Validity.WithdrawalIsValid,
+            validityDetail: {},
+          };
+          yield* WithdrawalsDB.insertEntries([entry]);
+          expect(
+            (yield* Effect.either(
+              resolveIncludedWithdrawalEntriesForWindow({
+                currentBlockStartTime: new Date("2026-04-14"),
+                effectiveEndTime: new Date("2026-04-15"),
+              }),
+            ))._tag,
+          ).toBe("Left");
+          yield* WithdrawalsDB.setSettlementInfoForEventIds([assignment]);
+          yield* WithdrawalsDB.markAwaitingAsProjected([assignment]);
+          yield* WithdrawalsDB.markProjectedByEventIds([assignment], header);
+          yield* WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
+            [id],
+            header,
+          );
+          const next = { ...assignment, expectedClassificationRevision: 1 };
+          yield* WithdrawalsDB.setSettlementInfoForEventIds([next]);
+          yield* WithdrawalsDB.markAwaitingAsProjected([next]);
+          yield* WithdrawalsDB.markProjectedByEventIds([next], nextHeader);
+          expect(
+            (yield* Effect.either(
+              WithdrawalsDB.restoreCorrectedClassification(
+                [assignment],
+                header,
+              ),
+            ))._tag,
+          ).toBe("Left");
+          const row = Option.getOrThrow(
+            yield* WithdrawalsDB.retrieveByEventId(id),
+          );
+          expect(row[WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]).toEqual(
+            nextHeader,
+          );
+          expect(row[WithdrawalsDB.Columns.CLASSIFICATION_REVISION]).toBe(1);
         }),
       ),
   );

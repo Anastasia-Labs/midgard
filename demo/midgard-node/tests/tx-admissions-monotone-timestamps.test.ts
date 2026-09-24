@@ -12,7 +12,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 describe("durable admission monotone timestamps", () => {
   it("survives a database clock observation behind the admitted row", async () => {
@@ -24,7 +24,7 @@ describe("durable admission monotone timestamps", () => {
             appVersion: "tx-admissions-monotone-timestamps-test",
             actor: "tx-admissions-monotone-timestamps-test",
           });
-          yield* sql`TRUNCATE TABLE tx_rejections, tx_admission_payloads, tx_admissions RESTART IDENTITY CASCADE`;
+          yield* resetApplicationTables;
 
           const txCanonicalCbor = Buffer.from("phase1-monotone-timestamp");
           const terminalNode = { kind: "error" as const };

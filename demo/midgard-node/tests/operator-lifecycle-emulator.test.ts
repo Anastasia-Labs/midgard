@@ -26,6 +26,7 @@ import {
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
 import * as LifecycleClock from "../src/transactions/register-active-operator/clock.js";
+import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { inspectSignedTxValidityInterval } from "../src/transactions/utils.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -67,6 +68,12 @@ const buildOperatorAwareInitializationTx = async (
 ) => {
   const referenceScripts = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(
+      referenceScriptsLucid,
+      contracts,
+    ),
+  );
+  await Effect.runPromise(
+    ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
     ),

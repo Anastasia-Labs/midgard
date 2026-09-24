@@ -51,6 +51,7 @@ import {
   positionalContractScriptCbor,
   positionalContractScriptHash,
 } from "../canonical-fraud-proof-catalogue.js";
+import { addWatcherHistoryFixtureMetadata } from "../support/deployment-authority-fixture.js";
 
 const NATIVE_SCRIPT_CBOR = "820501";
 const NATIVE_SCRIPT_HASH = validatorToScriptHash({
@@ -80,7 +81,13 @@ const referenceOutRefByContract = new Map<
 const canonicalIdentity = (): MutableRecord => {
   const contracts = Object.fromEntries(
     DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => {
-      const contractScriptCbor = positionalContractScriptCbor(contractName);
+      const scriptName =
+        contractName === "depositSpend"
+          ? "depositMint"
+          : contractName === "withdrawalSpend"
+            ? "withdrawalMint"
+            : contractName;
+      const contractScriptCbor = positionalContractScriptCbor(scriptName);
       return [
         contractName,
         {
@@ -98,11 +105,15 @@ const canonicalIdentity = (): MutableRecord => {
           scriptHash:
             contractName === "referenceScriptAuthMint"
               ? NATIVE_SCRIPT_HASH
-              : positionalContractScriptHash(contractName),
+              : positionalContractScriptHash(scriptName),
         },
       ];
     }),
   ) as MutableRecord;
+  addWatcherHistoryFixtureMetadata(contracts, {
+    txHash: "11".repeat(32),
+    outputIndex: 0,
+  });
   contracts.fraudProofCatalogueMint.fraudProofCatalogue =
     canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(

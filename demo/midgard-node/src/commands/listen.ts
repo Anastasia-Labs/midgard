@@ -33,14 +33,7 @@ import {
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
-import {
-  DaPayloadsDB,
-  InitDB,
-  MempoolLedgerDB,
-  MpfEngineStateDB,
-  MutationJobsDB,
-  PendingBlockFinalizationsDB,
-} from "../database/index.js";
+import { DaPayloadsDB, InitDB, MutationJobsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
@@ -49,18 +42,12 @@ import {
   blockCommitmentFiber,
   blockConfirmationFiber,
   daPublicationReconcilerFiber,
-  fetchAndInsertDepositUTxOs,
-  fetchAndInsertDepositUTxOsFiber,
   fetchAndInsertTxOrderUTxOs,
   fetchAndInsertTxOrderUTxOsFiber,
-  fetchAndInsertWithdrawalUTxOs,
-  fetchAndInsertWithdrawalUTxOsFiber,
   mergeFiber,
   monitorMempoolFiber,
   mpfPayloadAuditFiber,
   operatorWatchdogFiber,
-  projectDepositsToMempoolLedger,
-  projectDepositsToMempoolLedgerFiber,
   refreshAdmissionBacklogGauge,
   retentionSweeperFiber,
   speculativeCommitBuilderFiber,
@@ -69,7 +56,7 @@ import {
   userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
-import { MidgardMpf, utxoToLedgerInsertMaterial } from "../mpf/index.js";
+import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -83,12 +70,11 @@ import {
   mempoolLedgerCacheLayer,
   MidgardContracts,
   NodeConfig,
-  type NodeConfigDep,
-  ProductionNativeMpfOwnerService,
   validationPoolLayer,
   WriteBehind,
   writeBehindFiber,
 } from "../services/index.js";
+import { initializeArchitectureGOwner } from "../services/native-mpf-startup.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { buildListenRouter } from "./listen-router.js";
 import {
@@ -205,126 +191,6 @@ const retainedPayloadServerThread = (
     ),
   );
 
-const initializeArchitectureGOwner = (
-  globals: Globals,
-  nodeConfig: NodeConfigDep,
-): Effect.Effect<
-  ProductionNativeMpfOwnerService | undefined,
-  unknown,
-  Database
-> =>
-  Effect.gen(function* () {
-    if (nodeConfig.MPF_ENGINE !== "architecture_g") return undefined;
-
-    const bootstrap = yield* MidgardMpf.create(
-      "architecture-g-bootstrap",
-      nodeConfig.LEDGER_MPF_DB_PATH,
-      {
-        engine: "overlay",
-        spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
-      },
-    );
-    const initialized = yield* Effect.either(
-      Effect.gen(function* () {
-        if (yield* bootstrap.rootIsEmpty()) {
-          const genesisEntries = yield* Effect.forEach(
-            nodeConfig.GENESIS_UTXOS,
-            (utxo) =>
-              utxoToLedgerInsertMaterial(utxo).pipe(
-                Effect.map(({ ledgerOp, outputCbor }) => ({
-                  op: ledgerOp,
-                  ledgerEntry: {
-                    [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(
-                      utxo.txHash,
-                      "hex",
-                    ),
-                    [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
-                    [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
-                    [MempoolLedgerDB.Columns.ADDRESS]: utxo.address,
-                    [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
-                  } satisfies MempoolLedgerDB.EntryNoTimeStamp,
-                })),
-              ),
-          );
-          if (genesisEntries.length === 0) {
-            return yield* Effect.fail(
-              new Error(
-                "Architecture G cannot initialize an empty ledger owner without genesis UTxOs",
-              ),
-            );
-          }
-          yield* MempoolLedgerDB.insert(
-            genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
-          );
-          yield* bootstrap.applyBatch(genesisEntries.map(({ op }) => op));
-        }
-        const root = yield* bootstrap.rootHex();
-        yield* MpfEngineStateDB.stampLedgerMigration(root);
-      }),
-    );
-    yield* bootstrap.close().pipe(Effect.catchAll(() => Effect.void));
-    if (initialized._tag === "Left")
-      return yield* Effect.fail(initialized.left);
-
-    const owner = yield* Effect.tryPromise({
-      try: () =>
-        ProductionNativeMpfOwnerService.create({
-          levelPath: nodeConfig.LEDGER_MPF_DB_PATH,
-          binaryPath: nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH,
-          binarySha256: nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
-          maxFrameBytes: nodeConfig.MPF_NATIVE_OWNER_MAX_FRAME_BYTES,
-          maxChunkBytes: nodeConfig.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES,
-          requestTimeoutMs: nodeConfig.MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS,
-          restartLimit: nodeConfig.MPF_NATIVE_OWNER_RESTART_LIMIT,
-          sidecarPath: nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH,
-        }),
-      catch: (cause) => cause,
-    });
-    const startup = yield* Effect.either(
-      Effect.gen(function* () {
-        const active = yield* PendingBlockFinalizationsDB.retrieveActive();
-        if (Option.isSome(active)) {
-          const journal = active.value;
-          const replay = journal.nativeMpfReplay;
-          const submitted =
-            journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
-            null;
-          if (submitted && replay === undefined) {
-            return yield* Effect.fail(
-              new Error(
-                `Architecture G active submitted journal is missing replay data: header_hash=${journal[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")}`,
-              ),
-            );
-          }
-          if (submitted && replay !== undefined) {
-            yield* Effect.tryPromise({
-              try: () =>
-                owner.recover({
-                  schema: 1,
-                  ownerBinarySha256: replay.ownerBinarySha256.toString("hex"),
-                  baseRoot: replay.baseRoot.toString("hex"),
-                  candidateRoot: replay.candidateRoot.toString("hex"),
-                  eventLog: replay.eventLog,
-                  eventLogDigest: replay.eventLogDigest.toString("hex"),
-                  eventRoots: replay.eventRoots,
-                  eventCount: replay.eventCount,
-                }),
-              catch: (cause) => cause,
-            });
-          }
-        }
-        yield* Ref.set(globals.NATIVE_MPF_OWNER, owner);
-      }),
-    );
-    if (startup._tag === "Left") {
-      yield* Effect.promise(() => owner.close()).pipe(
-        Effect.catchAll(() => Effect.void),
-      );
-      return yield* Effect.fail(startup.left);
-    }
-    return owner;
-  });
-
 /**
  * Boots the long-running Midgard node runtime.
  *
@@ -379,105 +245,140 @@ export const runNode = (
           ),
         ),
     });
-    yield* runStartupProviderStepWithRetry(
-      "Startup state-queue boundary seed",
-      seedLatestLocalBlockBoundaryOnStartup,
-      startupProviderRetry,
-    ).pipe(
-      Effect.tapError(
-        logStartupFailure("Startup state-queue boundary seed failed"),
-      ),
-      Effect.mapError(
-        (e) =>
-          new DatabaseInitializationError({
-            message: "Startup state-queue boundary seed failed",
-            cause: e,
-          }),
-      ),
+
+    let startupPrepared = false;
+    yield* Effect.addFinalizer(() =>
+      Effect.gen(function* () {
+        const owned = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+        if (owned !== undefined) {
+          yield* Effect.promise(() => owned.close());
+          yield* Ref.set(globals.NATIVE_MPF_OWNER, undefined);
+        }
+      }),
     );
-    yield* hydratePendingBlockFinalizationOnStartup;
-    const unfinishedMutationJobs = yield* MutationJobsDB.retrieveUnfinished;
-    if (unfinishedMutationJobs.length > 0) {
-      return yield* Effect.fail(
-        new DatabaseInitializationError({
-          message:
-            "Startup found unfinished local mutation jobs; refusing to serve until recovery is performed",
-          cause: unfinishedMutationJobs.map((job) => ({
-            jobId: job[MutationJobsDB.Columns.JOB_ID],
-            kind: job[MutationJobsDB.Columns.KIND],
-            status: job[MutationJobsDB.Columns.STATUS],
-            updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
-            lastError: job[MutationJobsDB.Columns.LAST_ERROR],
-          })),
-        }),
-      );
-    }
-    yield* runStartupProviderStepWithRetry(
-      "Startup deposit catch-up",
-      fetchAndInsertDepositUTxOs,
-      startupProviderRetry,
-    ).pipe(
-      Effect.tapError(logStartupFailure("Startup deposit catch-up failed")),
-      Effect.mapError(
-        (e) =>
-          new DatabaseInitializationError({
-            message: "Startup deposit catch-up failed",
-            cause: e,
-          }),
-      ),
-    );
-    yield* projectDepositsToMempoolLedger.pipe(
-      Effect.tapError(
-        logStartupFailure("Startup deposit projection reconciliation failed"),
-      ),
-      Effect.mapError(
-        (e) =>
-          new DatabaseInitializationError({
-            message: "Startup deposit projection reconciliation failed",
-            cause: e,
-          }),
-      ),
-    );
-    yield* runStartupProviderStepWithRetry(
-      "Startup withdrawal catch-up",
-      fetchAndInsertWithdrawalUTxOs,
-      startupProviderRetry,
-    ).pipe(
-      Effect.tapError(logStartupFailure("Startup withdrawal catch-up failed")),
-      Effect.mapError(
-        (e) =>
-          new DatabaseInitializationError({
-            message: "Startup withdrawal catch-up failed",
-            cause: e,
-          }),
-      ),
-    );
-    yield* runStartupProviderStepWithRetry(
-      "Startup tx-order catch-up",
-      fetchAndInsertTxOrderUTxOs,
-      startupProviderRetry,
-    ).pipe(
-      Effect.tapError(logStartupFailure("Startup tx-order catch-up failed")),
-      Effect.mapError(
-        (e) =>
-          new DatabaseInitializationError({
-            message: "Startup tx-order catch-up failed",
-            cause: e,
-          }),
-      ),
-    );
-    yield* backfillMissingDaPayloadsFromFinalizedJournals({ limit: 100 }).pipe(
-      Effect.tap((summary) =>
-        summary.scanned === 0
-          ? Effect.void
-          : Effect.logInfo(
-              `Startup DA payload backfill scanned=${summary.scanned.toString()},backfilled=${summary.backfilled.length.toString()},skipped=${summary.skipped.length.toString()}`,
+    const historyOwner = yield* makeProductionEventHistoryOwner({
+      expectedGenesisLosslessSha256:
+        nodeConfig.L1_HISTORY_GENESIS_LOSSLESS_SHA256,
+      transport: {
+        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+        kupoUrl: nodeConfig.L1_KUPO_KEY,
+        timeoutMs: 30_000,
+        blockScanLimit: 100_000,
+        maximumResponseBytes: 16 * 1024 * 1024,
+        maximumTransactionBytes: 65_536,
+      },
+      heartbeatIntervalMs: 10_000,
+      retainedPointLimit: 2_160,
+      maximumReceiptBytes: 16 * 1024 * 1024,
+      leaseDurationMs: 60_000,
+      prepareCompletion: (_checkpoint, preparation) =>
+        Effect.gen(function* () {
+          yield* preparation.assertCurrent;
+          if (startupPrepared) return;
+          yield* runStartupProviderStepWithRetry(
+            "Startup state-queue boundary seed",
+            seedLatestLocalBlockBoundaryOnStartup,
+            startupProviderRetry,
+          ).pipe(
+            Effect.tapError(
+              logStartupFailure("Startup state-queue boundary seed failed"),
             ),
+            Effect.mapError(
+              (e) =>
+                new DatabaseInitializationError({
+                  message: "Startup state-queue boundary seed failed",
+                  cause: e,
+                }),
+            ),
+          );
+          yield* hydratePendingBlockFinalizationOnStartup;
+          const unfinishedMutationJobs =
+            yield* MutationJobsDB.retrieveUnfinished;
+          if (unfinishedMutationJobs.length > 0) {
+            return yield* Effect.fail(
+              new DatabaseInitializationError({
+                message:
+                  "Startup found unfinished local mutation jobs; refusing to serve until recovery is performed",
+                cause: unfinishedMutationJobs.map((job) => ({
+                  jobId: job[MutationJobsDB.Columns.JOB_ID],
+                  kind: job[MutationJobsDB.Columns.KIND],
+                  status: job[MutationJobsDB.Columns.STATUS],
+                  updatedAt:
+                    job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
+                  lastError: job[MutationJobsDB.Columns.LAST_ERROR],
+                })),
+              }),
+            );
+          }
+          yield* runStartupProviderStepWithRetry(
+            "Startup tx-order catch-up",
+            fetchAndInsertTxOrderUTxOs,
+            startupProviderRetry,
+          ).pipe(
+            Effect.tapError(
+              logStartupFailure("Startup tx-order catch-up failed"),
+            ),
+            Effect.mapError(
+              (e) =>
+                new DatabaseInitializationError({
+                  message: "Startup tx-order catch-up failed",
+                  cause: e,
+                }),
+            ),
+          );
+          yield* backfillMissingDaPayloadsFromFinalizedJournals({
+            limit: 100,
+          }).pipe(
+            Effect.tap((summary) =>
+              summary.scanned === 0
+                ? Effect.void
+                : Effect.logInfo(
+                    `Startup DA payload backfill scanned=${summary.scanned.toString()},backfilled=${summary.backfilled.length.toString()},skipped=${summary.skipped.length.toString()}`,
+                  ),
+            ),
+            Effect.catchAll((error) =>
+              Effect.logWarning(
+                `Startup DA payload backfill skipped after error: ${formatUnknownError(error)}`,
+              ),
+            ),
+          );
+          // Source advancement may supersede preparation after resource creation.
+          // Keep the existing owner for the next attempt instead of reopening Level.
+          if ((yield* Ref.get(globals.NATIVE_MPF_OWNER)) === undefined) {
+            yield* initializeArchitectureGOwner(
+              globals,
+              nodeConfig,
+              preparation,
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new DatabaseInitializationError({
+                    message: "Architecture G native owner startup failed",
+                    cause,
+                  }),
+              ),
+            );
+          }
+          yield* preparation.assertCurrent;
+          startupPrepared = true;
+        }),
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DatabaseInitializationError({
+            message: "Authenticated history owner startup failed",
+            cause,
+          }),
       ),
-      Effect.catchAll((error) =>
-        Effect.logWarning(
-          `Startup DA payload backfill skipped after error: ${formatUnknownError(error)}`,
-        ),
+    );
+    yield* Ref.set(globals.EVENT_HISTORY_OWNER, historyOwner);
+    yield* historyOwner.awaitReady.pipe(
+      Effect.mapError(
+        (cause) =>
+          new DatabaseInitializationError({
+            message: "Authenticated history owner did not become ready",
+            cause,
+          }),
       ),
     );
 
@@ -507,18 +408,6 @@ export const runNode = (
     }
 
     yield* refreshAdmissionBacklogGauge;
-    const nativeMpfOwner = yield* initializeArchitectureGOwner(
-      globals,
-      nodeConfig,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DatabaseInitializationError({
-            message: "Architecture G native owner startup failed",
-            cause,
-          }),
-      ),
-    );
 
     const httpApplicationLayer = HttpServer.serve(
       buildListenRouter(withMonitoring),
@@ -551,6 +440,7 @@ export const runNode = (
         admissionBacklogGaugeFiber(
           mkSchedule(nodeConfig.ADMISSION_BACKLOG_REFRESH_MS),
         ),
+        historyOwner.awaitStopped,
         writeBehindFiber,
         appThread,
         retainedPayloadServerThread(retrieveRetainedDaPayload),
@@ -577,16 +467,7 @@ export const runNode = (
         nodeConfig.SPECULATIVE_COMMIT_BUILD
           ? speculativeCommitSubmitterFiber
           : Effect.void,
-        fetchAndInsertDepositUTxOsFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
-        ),
-        fetchAndInsertWithdrawalUTxOsFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
-        ),
         fetchAndInsertTxOrderUTxOsFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
-        ),
-        projectDepositsToMempoolLedgerFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
         retentionSweeperFiber(
@@ -604,17 +485,6 @@ export const runNode = (
         concurrency: "unbounded",
       },
     );
-
-    const closeNativeMpfOwner =
-      nativeMpfOwner === undefined
-        ? Effect.void
-        : Effect.promise(() => nativeMpfOwner.close()).pipe(
-            Effect.catchAll((error) =>
-              Effect.logError(
-                `Architecture G native owner shutdown failed: ${formatUnknownError(error)}`,
-              ),
-            ),
-          );
 
     if (withMonitoring) {
       const prometheusExporter = new PrometheusExporter(
@@ -656,7 +526,6 @@ export const runNode = (
               Effect.promise(closeDaLibp2pPublicationTransport).pipe(
                 Effect.catchAll(() => Effect.void),
               ),
-              closeNativeMpfOwner,
             ],
             { discard: true },
           ),
@@ -673,7 +542,6 @@ export const runNode = (
               Effect.promise(closeDaLibp2pPublicationTransport).pipe(
                 Effect.catchAll(() => Effect.void),
               ),
-              closeNativeMpfOwner,
             ],
             { discard: true },
           ),
@@ -681,6 +549,7 @@ export const runNode = (
       );
     }
   }).pipe(
+    Effect.scoped,
     Effect.provide(validationPoolLayer),
     Effect.provide(mempoolLedgerCacheLayer),
   );

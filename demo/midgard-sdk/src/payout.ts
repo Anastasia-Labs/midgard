@@ -43,7 +43,7 @@ export const PayoutMintRedeemerSchema = Data.Enum([
     MintPayout: Data.Object({
       withdrawal_utxo_out_ref: OutputReferenceSchema,
       withdrawal_input_index: Data.Integer(),
-      withdrawal_spend_redeemer_index: Data.Integer(),
+      retirement_withdraw_redeemer_index: Data.Integer(),
       hub_ref_input_index: Data.Integer(),
     }),
   }),

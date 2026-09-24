@@ -25,13 +25,14 @@ import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import {
-  submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
   submitMintAuthorizationStep03EvaluateUnsatisfied,
   submitMintAuthorizationStep03WitnessAbsence,
 } from "../src/mint-authorization/index.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   addressWitnessItemCbors,
   buildMintAuthorizationSubject,
@@ -56,7 +57,7 @@ const driveInit = async (
   harness: MintAuthorizationHarness,
   setup: Awaited<ReturnType<typeof setupMintAuthorizationScenario>>["setup"],
 ): Promise<{
-  readonly initResult: Awaited<ReturnType<typeof submitMintAuthorizationInit>>;
+  readonly initResult: Awaited<ReturnType<typeof submitResolvedInit>>;
   readonly refs: readonly [
     step01Ref: Awaited<
       ReturnType<typeof publishMintAuthorizationReferenceScripts>
@@ -76,7 +77,8 @@ const driveInit = async (
       lucid: funderLucid,
       contracts: harness.family,
     });
-  const initResult = await submitMintAuthorizationInit({
+  const initResult = await submitResolvedInit({
+    label: MINT_AUTHORIZATION_CATEGORY_LABEL,
     lucid: proverLucid,
     blueprint: realBlueprint,
     network,
@@ -294,7 +296,8 @@ describe("mint-authorization emulator adversarial polarity", () => {
         lucid: harness.funderLucid,
         contracts: harness.family,
       });
-    const initResult = await submitMintAuthorizationInit({
+    const initResult = await submitResolvedInit({
+      label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

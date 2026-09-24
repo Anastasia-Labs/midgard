@@ -182,6 +182,17 @@ describe("applied fresh-install schema", () => {
     readonly fragments: readonly string[];
   }[] = [
     {
+      table: "event_history_replay_receipts",
+      constraint: "event_history_replay_receipts_frontier_check",
+      fragments: [
+        "blocks_replayed = 1",
+        "predecessor_hash IS NULL",
+        "blocks_replayed > 1",
+        "predecessor_hash IS NOT NULL",
+        "predecessor_hash = parent_hash",
+      ],
+    },
+    {
       table: "pending_block_finalizations",
       constraint: "pending_block_finalizations_format_version_check",
       fragments: ["format_version = 1"],

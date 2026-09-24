@@ -43,6 +43,7 @@ import {
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
 import * as WithdrawalsDB from "../database/withdrawals.js";
+import { withHistoryWrite } from "../services/event-history-producer.js";
 import { Database } from "../services/index.js";
 import { sha256 } from "../sha256.js";
 import {
@@ -141,6 +142,7 @@ export const resolveIncludedDepositEntriesForWindow = ({
       }),
     );
   }).pipe(
+    persistProjection ? withHistoryWrite : (effect) => effect,
     sqlErrorToDatabaseError(
       DepositsDB.tableName,
       "Failed to resolve deposits for the current block window",
@@ -174,7 +176,8 @@ export const resolveIncludedWithdrawalEntriesForWindow = ({
         const skippedAwaitingEntries = overdueEntries.filter(
           (entry) =>
             entry[WithdrawalsDB.Columns.STATUS] ===
-            WithdrawalsDB.Status.Awaiting,
+              WithdrawalsDB.Status.Awaiting &&
+            entry[WithdrawalsDB.Columns.REOPENED_FROM_HEADER_HASH] === null,
         );
         if (skippedAwaitingEntries.length > 0) {
           return yield* Effect.fail(
@@ -192,7 +195,8 @@ export const resolveIncludedWithdrawalEntriesForWindow = ({
         const replayableOverdueEntries = overdueEntries.filter(
           (entry) =>
             entry[WithdrawalsDB.Columns.STATUS] !==
-            WithdrawalsDB.Status.Awaiting,
+              WithdrawalsDB.Status.Awaiting ||
+            entry[WithdrawalsDB.Columns.REOPENED_FROM_HEADER_HASH] !== null,
         );
         if (replayableOverdueEntries.length > 0) {
           yield* Effect.logWarning(

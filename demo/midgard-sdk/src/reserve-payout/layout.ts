@@ -1,6 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
+import type { EventHistoryRetirementWitness } from "../user-events/history.js";
 import * as SDK from "./primitives.js";
 
 export type AbsorbDepositLayout = {
@@ -9,8 +10,9 @@ export type AbsorbDepositLayout = {
   readonly hubRefInputIndex: bigint;
   readonly settlementRefInputIndex: bigint;
   readonly burnRedeemerIndex: bigint;
-  readonly witnessUnregistrationRedeemerIndex: bigint;
-  readonly inclusionProofWithdrawalRedeemerIndex: bigint;
+  readonly witness: EventHistoryRetirementWitness;
+  readonly retirementWithdrawalRedeemerIndex: bigint;
+  readonly listWithdrawalRedeemerIndex: bigint;
 };
 
 export type InitializePayoutLayout = {
@@ -20,9 +22,9 @@ export type InitializePayoutLayout = {
   readonly settlementRefInputIndex: bigint;
   readonly withdrawalBurnRedeemerIndex: bigint;
   readonly payoutMintRedeemerIndex: bigint;
-  readonly withdrawalSpendRedeemerIndex: bigint;
-  readonly witnessUnregistrationRedeemerIndex: bigint;
-  readonly inclusionProofWithdrawalRedeemerIndex: bigint;
+  readonly witness: EventHistoryRetirementWitness;
+  readonly retirementWithdrawalRedeemerIndex: bigint;
+  readonly listWithdrawalRedeemerIndex: bigint;
 };
 
 export type AddReserveFundsLayout = {
@@ -49,8 +51,9 @@ export type RefundWithdrawalLayout = {
   readonly hubRefInputIndex: bigint;
   readonly settlementRefInputIndex: bigint;
   readonly burnRedeemerIndex: bigint;
-  readonly witnessUnregistrationRedeemerIndex: bigint;
-  readonly inclusionProofWithdrawalRedeemerIndex: bigint;
+  readonly witness: EventHistoryRetirementWitness;
+  readonly retirementWithdrawalRedeemerIndex: bigint;
+  readonly listWithdrawalRedeemerIndex: bigint;
 };
 
 export const settlementDatumFromInput = (

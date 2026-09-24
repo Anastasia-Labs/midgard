@@ -1,9 +1,13 @@
 import {
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
+import {
   admitAuthenticatedL1Observation,
   assertSecurityGradeEvidence,
   type AuthenticatedL1Observation,
   captureEventHistoryWitness,
-  countHistoryDataNodes,
+  countHistoryDataNodesCbor,
   type EventHistoryPayloadBounds,
   type EventHistoryWitness,
   fetchEventHistoryWitness,
@@ -88,10 +92,7 @@ const capture = (
   if (witness.kind === "Absent") return undefined;
   if (BigInt(witness.payloadCbor.length / 2) > history.maxPayloadBytes)
     throw new Error("History proof payload exceeds its applied byte bound");
-  countHistoryDataNodes(
-    Data.from(witness.payloadCbor),
-    history.maxPayloadNodes,
-  );
+  countHistoryDataNodesCbor(witness.payloadCbor, history.maxPayloadNodes);
   return captureEventHistoryWitness(witness, policyId, kind);
 };
 
@@ -198,3 +199,13 @@ export const fetchFabricatedHistoryWitness = async (args: {
       : {}),
   };
 };
+
+/** RetainedEventData is constructor 1; its two fields are the exact captured opening. */
+export const fabricatedHistoryOpeningCbor = (
+  captured: ReturnType<typeof captureEventHistoryWitness>,
+): string =>
+  replacePlutusConstrFieldCbor(
+    replacePlutusConstrFieldCbor("d87a9f0000ff", [0], captured.payloadCbor),
+    [1],
+    plutusConstrFieldCbor(captured.openingCbor, [1]),
+  );

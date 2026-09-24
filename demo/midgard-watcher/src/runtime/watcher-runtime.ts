@@ -61,6 +61,7 @@ import {
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
 import {
   createWatcherChainCoordinator,
+  recoverWatcherCoordinatorAfterRestart,
   type WatcherChainCoordinator,
 } from "./chain-coordinator.js";
 import { parseWatcherConfigJson } from "./config.js";
@@ -68,6 +69,7 @@ import {
   loadWatcherVerifiedDeploymentAuthority,
   type VerifiedWatcherDeploymentAuthority,
 } from "./deployment-authority.js";
+import { createWatcherHistoryRecovery } from "./history-recovery.js";
 import {
   startWatcherOperationsHttpServer,
   type WatcherOperationsHttpServer,
@@ -114,6 +116,9 @@ export type WatcherRuntime = Readonly<{
     liveness: boolean;
     readiness: boolean;
     caughtUp: boolean;
+    historyRecovery: ReturnType<
+      ReturnType<typeof createWatcherHistoryRecovery>["status"]
+    >;
     proofSupervisor: ReturnType<WatcherFaultProofSupervisor["status"]>;
     availability: ReturnType<WatcherAvailabilityRuntime["status"]>;
   }>;
@@ -387,6 +392,7 @@ export const createWatcherRuntime = async (input: {
     path: input.config.watcherConfig.storage.path,
   });
 
+  let activeCoordinator: WatcherChainCoordinator | undefined;
   let native: WatcherNativeChainSyncRuntime | undefined;
   let userEventRuntime: WatcherUserEventRuntime | undefined;
   let observation:
@@ -406,6 +412,8 @@ export const createWatcherRuntime = async (input: {
     | WatcherSqliteProverFundingReservationStoreRuntime
     | undefined;
   const closeAllocatedResources = async (): Promise<void> => {
+    historyRecovery?.close();
+    const coordinatorStopped = activeCoordinator?.stop();
     const failures: unknown[] = [];
     faultDecisionBridge?.invalidateForShutdown();
     availability?.invalidateForShutdown();
@@ -427,6 +435,11 @@ export const createWatcherRuntime = async (input: {
       } catch (error) {
         failures.push(error);
       }
+    }
+    try {
+      await coordinatorStopped;
+    } catch (error) {
+      failures.push(error);
     }
     if (faultProofSupervisor !== undefined) {
       try {
@@ -478,6 +491,9 @@ export const createWatcherRuntime = async (input: {
       );
     }
   };
+  let historyRecovery:
+    | ReturnType<typeof createWatcherHistoryRecovery>
+    | undefined;
   let resolveCoordinator!: (value: WatcherChainCoordinator) => void;
   let rejectCoordinator!: (reason: Error) => void;
   const coordinatorReady = new Promise<WatcherChainCoordinator>(
@@ -507,6 +523,76 @@ export const createWatcherRuntime = async (input: {
     const blockProgress = sqlite.openBlockProgress(
       trusted.rollbackAuthenticationKey,
     );
+    const restoreQueue = async () => {
+      const rawSource = createWatcherLocalKupmiosRawSource({
+        watcherConfig: input.config.watcherConfig,
+        deploymentIdentity,
+      });
+      const inclusionRawSource = createWatcherLocalKupmiosRawSource({
+        watcherConfig: input.config.watcherConfig,
+        deploymentIdentity,
+        observationDepth: "inclusion",
+      });
+      const stateQueueSource = createWatcherStateQueueObservationSource({
+        deploymentIdentity,
+        rawSource,
+        inclusionRawSource,
+      });
+      const stateQueueRuntime = await startup("state_queue_recovery", () =>
+        createWatcherStateQueueRuntime({
+          store: sqlite.stateQueueObservations,
+          source: stateQueueSource,
+        }),
+      );
+      return {
+        rawSource,
+        inclusionRawSource,
+        stateQueueSource,
+        stateQueueRuntime,
+      };
+    };
+    const earlyQueue =
+      durable.readFinality().phase === "quarantined"
+        ? await restoreQueue()
+        : null;
+    if (earlyQueue !== null) {
+      const { stateQueueRuntime } = earlyQueue;
+      const retained = durable.readFinality();
+      const candidates = watcherRestartIntersectionCandidates({
+        progressHead: blockProgress.readHead(),
+        progressCandidates: blockProgress.readCandidates(),
+        authorityFinalized: retained.finalized,
+        stateQueueCursor: stateQueueRuntime.replayIntersection,
+      });
+      const bootstrap = await startWatcherNativeChainSyncWithRetry({
+        binaryPath: input.config.nativeChainSyncBinaryPath,
+        watcherConfig: input.config.watcherConfig,
+        intersectionCandidates: candidates.map(({ blockHash, slot }) => ({
+          kind: "point" as const,
+          blockHash,
+          slot,
+        })),
+        startupTimeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+        onEvent: async () => undefined,
+      });
+      try {
+        const boundary = readWatcherNativeRecoveryBoundary({
+          nativeAuthority: bootstrap.authority,
+          admittedIntersections: candidates,
+        });
+        if (
+          await recoverWatcherCoordinatorAfterRestart({
+            durable,
+            restartIntersection: boundary.selectedIntersection,
+          })
+        )
+          throw new Error(
+            "Watcher restart remains quarantined: authenticated recovery evidence is incomplete",
+          );
+      } finally {
+        await bootstrap.close();
+      }
+    }
     const blueprintBytes = await readFile(
       input.config.faultProofInfrastructure.blueprintPath,
     );
@@ -565,26 +651,12 @@ export const createWatcherRuntime = async (input: {
       },
     );
 
-    const rawSource = createWatcherLocalKupmiosRawSource({
-      watcherConfig: input.config.watcherConfig,
-      deploymentIdentity,
-    });
-    const inclusionRawSource = createWatcherLocalKupmiosRawSource({
-      watcherConfig: input.config.watcherConfig,
-      deploymentIdentity,
-      observationDepth: "inclusion",
-    });
-    const stateQueueSource = createWatcherStateQueueObservationSource({
-      deploymentIdentity,
+    const {
       rawSource,
       inclusionRawSource,
-    });
-    const stateQueueRuntime = await startup("state_queue_recovery", () =>
-      createWatcherStateQueueRuntime({
-        store: sqlite.stateQueueObservations,
-        source: stateQueueSource,
-      }),
-    );
+      stateQueueSource,
+      stateQueueRuntime,
+    } = earlyQueue ?? (await restoreQueue());
     const kupoService = localL1Source.queryServices.find(
       ({ kind }) => kind === "kupo",
     );
@@ -770,6 +842,23 @@ export const createWatcherRuntime = async (input: {
     const activeUserEventRuntime = eventHistory;
     const activeBridge = faultDecisionBridge;
     const activeAvailability = availability;
+    const recovery = createWatcherHistoryRecovery({
+      history: activeUserEventRuntime,
+      queue: queueHooks,
+      bridge: activeBridge,
+      availability: activeAvailability,
+      quarantined: () => durable.readFinality().phase === "quarantined",
+      resume: async () => (await coordinatorReady).resume(),
+      retryDelayMs: input.config.watcherConfig.l1.requestTimeoutMs,
+      onPending: (pending) =>
+        operations.sink.setAlert({
+          code: "chain_rollback",
+          subjectDigest: deploymentIdentity.manifestId,
+          active: pending,
+          observedAtMs: BigInt(Date.now()).toString(),
+        }),
+    });
+    historyRecovery = recovery;
     const coordinator = createWatcherChainCoordinator({
       policy,
       durable,
@@ -781,7 +870,7 @@ export const createWatcherRuntime = async (input: {
       // with the queue nodes and correction lock the state queue follows.
       relevance: (block) => {
         const current = stateQueueRuntime.current();
-        return activeUserEventRuntime.classify(block, [
+        return recovery.classify(block, [
           ...current.finalizedQueue.map(({ outRef }) => outRef),
           ...current.finalizedHeaders.map(({ queueOutRef }) => queueOutRef),
           ...(current.finalizedCorrectionLock === null
@@ -789,40 +878,9 @@ export const createWatcherRuntime = async (input: {
             : [current.finalizedCorrectionLock.outRef]),
         ]);
       },
-      hooks: {
-        onIncluded: queueHooks.onIncluded,
-        onRollback: async (point) => {
-          activeBridge.invalidateForRollback();
-          activeAvailability.invalidateForRollback(point);
-          await activeUserEventRuntime.handleRollback(point);
-          await queueHooks.onRollback(point);
-        },
-        onFinalized: async (finalized) => {
-          if (finalized.relevance === "quiet") {
-            // No deposit, withdrawal or queue movement: coverage of the
-            // block is established from its header link alone, with one
-            // in-place row write and no request.
-            await activeUserEventRuntime.coverQuiet(finalized.nativeBlock);
-            await queueHooks.onFinalized(finalized);
-            return;
-          }
-          const head = activeUserEventRuntime.read().currentPoint;
-          if (
-            head === null ||
-            BigInt(finalized.nativeBlock.blockNo) > BigInt(head.blockNo)
-          ) {
-            activeBridge.beforeHistoryAdvance();
-          }
-          await activeUserEventRuntime.advanceThrough({
-            blockHash: finalized.nativeBlock.blockHash,
-            blockNo: finalized.nativeBlock.blockNo,
-            slot: finalized.nativeBlock.slot,
-            pointId: computeFraudProofRawL1PointId(finalized.nativeBlock),
-          });
-          await queueHooks.onFinalized(finalized);
-        },
-      },
+      hooks: recovery.hooks,
     });
+    activeCoordinator = coordinator;
     resolveCoordinator(coordinator);
     if (
       details.currentTip.kind === "point" &&
@@ -836,15 +894,26 @@ export const createWatcherRuntime = async (input: {
     let closePromise: Promise<void> | undefined;
     const activeFaultProofSupervisor = faultProofSupervisor;
     const runtimeDone = Promise.race([
+      recovery.done,
       native.done,
       activeUserEventRuntime.done,
       activeFaultProofSupervisor.done,
       operationsHttp.done,
     ]);
     const caughtUpPromise = Promise.race([
-      Promise.all([nativeCaughtUp, stateQueueRuntime.caughtUp]).then(() => {
-        caughtUp = true;
-      }),
+      Promise.all([nativeCaughtUp, stateQueueRuntime.caughtUp]).then(
+        async () => {
+          do {
+            await recovery.waitForRecovery();
+            await coordinator.waitForDelivery();
+          } while (
+            recovery.status().pending ||
+            coordinator.status().deliveryHeld ||
+            coordinator.status().rollbackPoint !== null
+          );
+          caughtUp = true;
+        },
+      ),
       runtimeDone.then(() => {
         throw new Error(
           "watcher production liveness ended before durable catch-up",
@@ -885,12 +954,16 @@ export const createWatcherRuntime = async (input: {
           readiness:
             liveness &&
             caughtUp &&
+            !recovery.status().pending &&
+            !coordinator.status().deliveryHeld &&
+            !coordinator.status().quarantined &&
             proofSupervisor.phase === "accepting" &&
             proofSupervisor.recovered &&
             proofSupervisor.deadlineHealth === "safe" &&
             availabilityStatus.phase !== "blocked" &&
             operationsStatus.readiness === "ready",
           caughtUp,
+          historyRecovery: recovery.status(),
           proofSupervisor,
           availability: availabilityStatus,
         });

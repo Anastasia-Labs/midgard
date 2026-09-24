@@ -16,6 +16,7 @@ import {
 import { Effect } from "effect";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
+import { fabricatedHistoryOpeningCbor } from "../src/fabricated-history-witness.js";
 import { submitFabricatedDepositStep02 } from "../src/submit-fabricated-deposit-step-02.js";
 import { submitFabricatedDepositStep03 } from "../src/submit-fabricated-deposit-step-03.js";
 import { submitFabricatedWithdrawalStep02 } from "../src/submit-fabricated-withdrawal-step-02.js";
@@ -504,17 +505,7 @@ const submitProductionClassification = async (
       selectWallet: (lucid) => lucid.selectWallet.fromSeed(h.wallet.seedPhrase),
     },
     threadOutRef: `${thread.txHash}#${thread.outputIndex}`,
-    openingCbor: captured
-      ? Data.to(
-          {
-            RetainedEventData: {
-              payload: captured.payload,
-              original_assets: captured.originalAssets,
-            },
-          },
-          SDK.FabricatedDepositAuthenticContentOpening,
-        )
-      : undefined,
+    openingCbor: captured ? fabricatedHistoryOpeningCbor(captured) : undefined,
     referenceScriptUtxo: p.refs[1]!,
     now: () => h.emulator.now(),
     preSubmitBoundary: ({ signed, txHash }) => {
@@ -612,15 +603,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
               )
             : undefined;
         const openingCbor = captured
-          ? Data.to(
-              {
-                RetainedEventData: {
-                  payload: captured.payload,
-                  original_assets: captured.originalAssets,
-                },
-              },
-              SDK.FabricatedDepositAuthenticContentOpening,
-            )
+          ? fabricatedHistoryOpeningCbor(captured)
           : null;
         const submit =
           kind === "Deposit"

@@ -21,6 +21,8 @@ import {
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
+
 const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
 // Same raw transport seam as transition-trace-installed-lifecycle.test.ts.
 // Every snapshot, origin, replay, detector and classifier admission remains real.
@@ -193,7 +195,12 @@ const setup = async (
     blueprintHash: RELEASE,
     network: "Preprod" as const,
     releaseFinality,
-    resolvedContracts: { hubOraclePolicyId },
+    resolvedContracts: {
+      hubOraclePolicyId,
+      contracts: {
+        transitionTrace: { history: TRANSITION_HISTORY_FIXTURE_PARAMETERS },
+      },
+    },
     definition: { headerHash: fixture.block.headerHash },
   };
   // Raw transport unit fixtures only: no deployment-manifest or chain-lifecycle

@@ -1,3 +1,7 @@
+import {
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 /** Reopen payload and original Value authenticated by the history-capture stage.
  * Pointer churn cannot change the retained facts. No operator archive supplies
  * authority: every opening must match the commitment in the authentic thread. */
@@ -11,12 +15,12 @@ import {
   type FabricatedWithdrawalStep04State,
   fabricatedWithdrawalStep04State,
   isFabricatedWithdrawalFault,
-  opensEventHistoryCommitment,
+  opensEventHistoryCommitmentCbor,
   OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  withdrawalContentCommitment,
+  withdrawalContentCommitmentCbor,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -57,6 +61,7 @@ import {
 /** The step-03 handoff: the opening the redeemer carries and the fault it yields. */
 export type FabricatedWithdrawalStep03Handoff = {
   readonly opening: FabricatedWithdrawalAuthenticContentOpening;
+  readonly openingCbor: string;
   readonly fault: FabricatedWithdrawalFault;
   readonly step04State: FabricatedWithdrawalStep04State;
 };
@@ -99,6 +104,9 @@ export const deriveFabricatedWithdrawalStep03Handoff = async ({
     openingCbor === undefined
       ? "NoAuthenticContent"
       : Data.from(openingCbor, FabricatedWithdrawalAuthenticContentOpening);
+  const retainedCbor =
+    openingCbor ??
+    Data.to("NoAuthenticContent", FabricatedWithdrawalAuthenticContentOpening);
   let fault: FabricatedWithdrawalFault;
   if (state.verdict === "WithdrawalIdentityAbsent") {
     if (opening !== "NoAuthenticContent")
@@ -110,12 +118,16 @@ export const deriveFabricatedWithdrawalStep03Handoff = async ({
         "Observed Order requires its retained payload and original Value",
       );
     const { commitment } = state.verdict.WithdrawalEventObserved;
-    const { payload, original_assets } = opening.RetainedEventData;
+    const { payload } = opening.RetainedEventData;
     if (
       commitment.kind !== "Withdrawal" ||
       Data.to(commitment.event_id, OutputReference) !==
         Data.to(state.committed_withdrawal_id, OutputReference) ||
-      !opensEventHistoryCommitment(commitment, payload, original_assets)
+      !opensEventHistoryCommitmentCbor(
+        commitment,
+        plutusConstrFieldCbor(retainedCbor, [0]),
+        plutusConstrFieldCbor(retainedCbor, [1]),
+      )
     )
       throw new Error(
         "Retained event opening does not match the authenticated history commitment",
@@ -132,7 +144,9 @@ export const deriveFabricatedWithdrawalStep03Handoff = async ({
       fault = { IneligibleWithdrawalEvent: { event_inclusion_time } };
     } else {
       const authenticHash = await Effect.runPromise(
-        withdrawalContentCommitment(payload.WithdrawalPayload.event.info),
+        withdrawalContentCommitmentCbor(
+          plutusConstrFieldCbor(retainedCbor, [0, 0, 1]),
+        ),
       );
       if (authenticHash === state.committed_withdrawal_content_hash)
         throw new Error(
@@ -151,7 +165,7 @@ export const deriveFabricatedWithdrawalStep03Handoff = async ({
   const step04State = fabricatedWithdrawalStep04State(state, fault);
   if (!isFabricatedWithdrawalFault(step04State))
     throw new Error("Retained event does not establish the classified fault");
-  return { opening, fault, step04State };
+  return { opening, openingCbor: retainedCbor, fault, step04State };
 };
 
 export type SubmitFabricatedWithdrawalStep03CliConfig = SubmitProviderConfig & {
@@ -280,17 +294,21 @@ export const submitFabricatedWithdrawalStep03 = async ({
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      {
-        Continue: [
-          {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            authentic_content: handoff.opening,
-          },
-        ],
-      },
-      FabricatedWithdrawalStep03SpendRedeemer,
+    return replacePlutusConstrFieldCbor(
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              authentic_content: handoff.opening,
+            },
+          ],
+        },
+        FabricatedWithdrawalStep03SpendRedeemer,
+      ),
+      [0, 2],
+      handoff.openingCbor,
     );
   }) satisfies BuildTxWithRedeemer;
 

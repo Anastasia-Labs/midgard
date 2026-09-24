@@ -17,8 +17,9 @@ import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { admitMintAuthorizationWorkflowArtifact } from "../src/mint-authorization/artifact.js";
-import { submitMintAuthorizationCancel } from "../src/mint-authorization/submit-mint-authorization-cancel.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import {
   createMintAuthorizationTransactionPort,
   mintAuthorizationWorkflowFieldRequirement,
@@ -688,9 +689,11 @@ describe("mintAuthorization installed cursor actuator", () => {
           );
           expect(thread).toBeDefined();
           const cancelled = await captureEmulatorSubmission(h.emulator, () =>
-            submitMintAuthorizationCancel({
+            submitLinearFaultCancel({
               lucid: h.proverLucid,
-              contracts: h.family,
+              family: MINT_AUTHORIZATION_CATEGORY_LABEL,
+              steps: h.family.steps,
+              computationThread: h.family.computationThread,
               categoryId: h.category.categoryId,
               signer: h.proverSigner,
               threadOutRef: `${thread!.txHash}#${thread!.outputIndex}`,

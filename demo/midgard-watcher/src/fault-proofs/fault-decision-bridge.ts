@@ -49,6 +49,9 @@ import {
 export const WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION =
   "midgard-watcher-production-fault-decision-bridge-v1" as const;
 
+/** An in-flight decision lost its authority before it could be delivered. */
+export class WatcherFaultDecisionRetired extends Error {}
+
 const ACTION_CONFIRMATION_DEPTH = 1;
 const MAXIMUM_CLASSIFICATION_CONCURRENCY = 64;
 
@@ -590,7 +593,7 @@ const createBridge = (input: {
             continue;
           }
           if (token !== classificationEpoch) {
-            throw new Error(
+            throw new WatcherFaultDecisionRetired(
               "state-queue authority changed before fault classification",
             );
           }
@@ -631,7 +634,7 @@ const createBridge = (input: {
             ...(predecessor === undefined ? {} : { predecessor }),
           });
           if (token !== classificationEpoch) {
-            throw new Error(
+            throw new WatcherFaultDecisionRetired(
               "state-queue authority changed during fault classification",
             );
           }
@@ -752,7 +755,9 @@ const createBridge = (input: {
     // Classification may finish out of order, but append and CorrectionLock
     // target selection remain in exact finalized queue order.
     if (token !== classificationEpoch) {
-      throw new Error("state-queue authority changed during decision append");
+      throw new WatcherFaultDecisionRetired(
+        "state-queue authority changed during decision append",
+      );
     }
     input.dependencies.assertObservation(candidate);
     if (retainedPendingDecision !== null || reusedTargetDecision !== null)
@@ -767,7 +772,7 @@ const createBridge = (input: {
       );
     }
     if (token !== classificationEpoch) {
-      throw new Error(
+      throw new WatcherFaultDecisionRetired(
         "state-queue authority changed during context validation",
       );
     }

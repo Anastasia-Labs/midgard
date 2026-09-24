@@ -29,12 +29,13 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "../src/native-script-decoding/contracts.js";
 import {
   buildNativeScriptDecodingScanPlan,
   type NativeScriptDecodingFinding,
   NativeScriptDecodingProvability,
   proveNativeScriptDecodingFault,
-  submitNativeScriptDecodingCancel,
   submitNativeScriptDecodingInit,
   submitNativeScriptDecodingStep01BindNormal,
   submitNativeScriptDecodingStep01RecordForced,
@@ -236,8 +237,11 @@ describe("native-script-decoding aborts, refusals and resume", () => {
           })
         ).nextThreadOutRef;
       }
-      const cancelled = await submitNativeScriptDecodingCancel({
+      const cancelled = await submitLinearFaultCancel({
         ...shared,
+        family: NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
+        steps: decoding.steps,
+        computationThread: decoding.computationThread,
         threadOutRef,
         referenceScriptUtxo: stepRefs[cancelAt],
       });

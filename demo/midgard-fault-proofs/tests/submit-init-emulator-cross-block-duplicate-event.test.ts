@@ -3,13 +3,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL } from "../src/cross-block-duplicate-event/contracts.js";
 import {
   resumeCrossBlockDuplicateEvent,
-  submitCrossBlockDuplicateEventCancel,
-  submitCrossBlockDuplicateEventInit,
   submitCrossBlockDuplicateEventStep01,
 } from "../src/cross-block-duplicate-event/index.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,
@@ -236,7 +237,8 @@ const setupLifecycle = async (variant: Variant) => {
 };
 
 const init = async (scenario: Awaited<ReturnType<typeof setupLifecycle>>) =>
-  await submitCrossBlockDuplicateEventInit({
+  await submitResolvedInit({
+    label: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
     lucid: scenario.proverLucid,
     blueprint: scenario.realBlueprint,
     network,
@@ -346,9 +348,12 @@ describe("cross-block duplicate cancellation/resume", () => {
   it("cancels at either step and can initialize a fresh thread", async () => {
     const scenario = await setupLifecycle("deposit");
     const first = await init(scenario);
-    const cancelled = await submitCrossBlockDuplicateEventCancel({
+    const cancelled = await submitLinearFaultCancel({
       lucid: scenario.proverLucid,
-      contracts: scenario.family,
+      family: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
+      steps: scenario.family.steps,
+      computationThread: scenario.family.computationThread,
+      categoryId: SDK.CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
       signer: scenario.proverSigner,
       threadOutRef: first.nextThreadOutRef,
       referenceScriptUtxo: scenario.references[0],
@@ -367,9 +372,12 @@ describe("cross-block duplicate cancellation/resume", () => {
       committedEvent: scenario.committedEvent,
       referenceScriptUtxo: scenario.references[0],
     });
-    const cancelledAfterHandoff = await submitCrossBlockDuplicateEventCancel({
+    const cancelledAfterHandoff = await submitLinearFaultCancel({
       lucid: scenario.proverLucid,
-      contracts: scenario.family,
+      family: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
+      steps: scenario.family.steps,
+      computationThread: scenario.family.computationThread,
+      categoryId: SDK.CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
       signer: scenario.proverSigner,
       threadOutRef: advanced.nextThreadOutRef,
       referenceScriptUtxo: scenario.references[1],

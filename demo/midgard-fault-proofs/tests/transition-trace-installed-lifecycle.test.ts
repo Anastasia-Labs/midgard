@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,7 +89,9 @@ import {
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { prepareFamilyHistory } from "./support/emulator/family-history.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import {
   publishFraudProofChainReferenceScripts,
@@ -100,12 +102,20 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
-import { makeIsolatedAlwaysSucceedsAuthenticatedValidator } from "./support/emulator/validators.js";
 import {
   transitionTraceAcceptedRetainedFixture,
   transitionTraceDepositRetainedFixture,
+  transitionTraceTimingRetainedFixture,
 } from "./support/transition-trace-retained.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
+
+// Explicit experimental payload bound; Cardano production limits are unchanged.
+const HISTORY_BOUNDS = {
+  inlineLimitBytes: 512n,
+  maxPayloadBytes: 14000n,
+  maxPayloadNodes: 512n,
+};
+const historyRecords: unknown[] = [];
 
 const DEPLOYMENT = "11".repeat(32);
 const finalityPolicy = {
@@ -122,17 +132,100 @@ const economicsPolicy = {
   proverCollateralFloorLovelace: "5000000",
 } as const;
 
+const installedCases = [
+  {
+    name: "deposit",
+    datumBytes: 0,
+    honest: false,
+    kind: "Deposit",
+    timing: null,
+  },
+  {
+    name: "honest-deposit",
+    datumBytes: 0,
+    honest: true,
+    kind: "Deposit",
+    timing: null,
+  },
+  {
+    name: "maximum-deposit-datum",
+    datumBytes: 12000,
+    honest: false,
+    kind: "Deposit",
+    timing: null,
+  },
+  {
+    name: "accepted",
+    datumBytes: 0,
+    honest: false,
+    kind: "Deposit",
+    timing: null,
+  },
+  {
+    name: "honest-accepted",
+    datumBytes: 0,
+    honest: true,
+    kind: "Deposit",
+    timing: null,
+  },
+  ...(["Deposit", "Withdrawal"] as const).flatMap((kind) => [
+    {
+      name: `omitted-${kind}`,
+      datumBytes: 0,
+      honest: false,
+      kind,
+      timing: "omitted" as const,
+    },
+    {
+      name: `honest-late-${kind}`,
+      datumBytes: 0,
+      honest: true,
+      kind,
+      timing: "omitted" as const,
+    },
+    {
+      name: `outside-${kind}`,
+      datumBytes: 0,
+      honest: false,
+      kind,
+      timing: "outside" as const,
+    },
+    {
+      name: `large-outside-${kind}`,
+      datumBytes: 12000,
+      honest: false,
+      kind,
+      timing: "outside" as const,
+    },
+  ]),
+] as const;
+
 const measurements: VanRossemFitMeasurement[] = [];
 const completedCases = new Set<string>();
 afterAll(async () => {
+  const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+  if (directory === undefined) return;
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "installed-transition-history.json"),
+    JSON.stringify(
+      {
+        blueprintSha256: createHash("sha256")
+          .update(await readFile(realBlueprintPath))
+          .digest("hex"),
+        completedCases: [...completedCases],
+        bounds: HISTORY_BOUNDS,
+        records: historyRecords,
+      },
+      (_key, value: unknown) =>
+        typeof value === "bigint" ? value.toString() : value,
+      2,
+    ) + "\n",
+  );
+});
+afterAll(async () => {
   expect([...completedCases].sort()).toEqual(
-    [
-      "deposit",
-      "honest-deposit",
-      "maximum-deposit-datum",
-      "accepted",
-      "honest-accepted",
-    ].sort(),
+    installedCases.map(({ name }) => name).sort(),
   );
   await writeVanRossemFitLedger(
     fileURLToPath(
@@ -153,15 +246,9 @@ afterAll(async () => {
 });
 
 describe("transition trace installed retained-history workflow", () => {
-  it.each([
-    { name: "deposit", datumBytes: 0, honest: false },
-    { name: "honest-deposit", datumBytes: 0, honest: true },
-    { name: "maximum-deposit-datum", datumBytes: 12000, honest: false },
-    { name: "accepted", datumBytes: 0, honest: false },
-    { name: "honest-accepted", datumBytes: 0, honest: true },
-  ])(
+  it.each(installedCases)(
     "runs $name against real registered chain and raw L1 observations",
-    async ({ name, datumBytes, honest }) => {
+    async ({ name, datumBytes, honest, kind, timing }) => {
       const recorder = recordCrossBlockRawEmulator();
       let clock: ReturnType<typeof vi.spyOn> | undefined;
       let directory: string | undefined;
@@ -172,6 +259,14 @@ describe("transition trace installed retained-history workflow", () => {
         .mockImplementation(async function (this: Emulator, transaction) {
           const result = await originalSubmit.call(this, transaction);
           const m = measureCompleteSignedTransaction(transaction);
+          historyRecords.push({
+            label: "installed-transaction",
+            scenario: name,
+            txHash: result,
+            transactionCbor: transaction,
+            measurement: m,
+            fee: CML.Transaction.from_cbor_hex(transaction).body().fee(),
+          });
           const outputs = CML.Transaction.from_cbor_hex(transaction)
             .body()
             .outputs();
@@ -198,6 +293,7 @@ describe("transition trace installed retained-history workflow", () => {
         const h = await makeFaultProofEmulatorHarness({
           contractOptions: {
             realTransitionTrace: true,
+            eventHistoryBounds: HISTORY_BOUNDS,
             alwaysFraudProofCatalogue: true,
           },
         });
@@ -226,10 +322,13 @@ describe("transition trace installed retained-history workflow", () => {
             ),
           };
         };
+        const history = await prepareFamilyHistory(
+          h,
+          historyRecords,
+          HISTORY_BOUNDS,
+        );
         const contracts = {
-          ...h.contracts,
-          deposit: makeIsolatedAlwaysSucceedsAuthenticatedValidator(),
-          withdrawal: emptyEventDomain(1),
+          ...history.contracts,
           txOrder: emptyEventDomain(2),
         };
         const chain = await publishFraudProofChainReferenceScripts({
@@ -251,12 +350,7 @@ describe("transition trace installed retained-history workflow", () => {
             h.funderLucid,
             h.emulator.now() + 120000,
           ) - 1;
-        const nonce = (await lucid.wallet().getUtxos()).find(
-          (item) =>
-            item.datum == null &&
-            item.scriptRef == null &&
-            Object.keys(item.assets).every((unit) => unit === "lovelace"),
-        )!;
+        const nonce = history.nonce(kind);
         const id = {
           transactionId: nonce.txHash,
           outputIndex: BigInt(nonce.outputIndex),
@@ -269,77 +363,121 @@ describe("transition trace installed retained-history workflow", () => {
           l2_network_id: 0n,
           l2_datum: datumBytes === 0 ? null : "ab".repeat(datumBytes),
         };
-        const assetName = "ab",
-          unit = toUnit(contracts.deposit.policyId, assetName);
-        const signed = await (
-          await lucid
-            .newTx()
-            .collectFrom([nonce])
-            .mintAssets({ [unit]: 1n }, Data.void())
-            .attach.MintingPolicy(contracts.deposit.mintingScript)
-            .pay.ToContract(
-              credentialToAddress(
-                "Custom",
-                scriptHashToCredential(contracts.deposit.policyId),
-              ),
-              {
-                kind: "inline",
-                value: Data.to(
-                  {
-                    event: { id, info },
-                    inclusion_time: BigInt(
-                      name.includes("accepted") ? now : now + 60001,
-                    ),
-                    witness: "11".repeat(28),
+        const event = { id, info };
+        const payload: SDK.EventHistoryPayload =
+          kind === "Deposit"
+            ? { DepositPayload: { event } }
+            : {
+                WithdrawalPayload: {
+                  event: {
+                    id,
+                    info: {
+                      body: {
+                        l2_outref: {
+                          transactionId: "aa".repeat(32),
+                          outputIndex: 0n,
+                        },
+                        l2_owner: "bb".repeat(28),
+                        l2_value: new Map([
+                          ["", new Map([["", 100_000_000n]])],
+                        ]),
+                        l1_address: info.l2_address,
+                        l1_datum:
+                          datumBytes === 0
+                            ? "NoDatum"
+                            : {
+                                InlineDatum: { data: "ab".repeat(datumBytes) },
+                              },
+                      },
+                      signature: ["aa".repeat(32), "bb".repeat(64)],
+                      validity: "WithdrawalIsValid",
+                    },
                   },
-                  SDK.DepositDatum,
-                ),
-              },
-              { lovelace: 90000000n, [unit]: 1n },
-            )
-            .complete()
-        ).sign
-          .withWallet()
-          .complete();
-        await lucid.awaitTx(await signed.submit());
-        const event = (
-          await lucid.utxosAtWithUnit(
-            credentialToAddress(
-              "Custom",
-              scriptHashToCredential(contracts.deposit.policyId),
-            ),
-            unit,
-          )
-        )[0]!;
+                  refund_address: info.l2_address,
+                  refund_datum: "NoDatum",
+                },
+              };
+        const originalAssets = { lovelace: 90_000_000n };
         const operator = getAddressDetails(
           await h.funderLucid.wallet().address(),
         ).paymentCredential!;
-        const fixture = name.includes("accepted")
-          ? await transitionTraceAcceptedRetainedFixture({
-              operatorVkey: operator.hash,
-              now,
-              honest,
-            })
-          : await transitionTraceDepositRetainedFixture({
-              operatorVkey: operator.hash,
-              now,
-              event,
-              depositPolicyId: contracts.deposit.policyId,
-              assetName,
-              honest,
-            });
+        const fixture =
+          timing !== null
+            ? await transitionTraceTimingRetainedFixture({
+                operatorVkey: operator.hash,
+                now,
+                payload,
+                originalAssets,
+                omitted: timing === "omitted",
+              })
+            : name.includes("accepted")
+              ? await transitionTraceAcceptedRetainedFixture({
+                  operatorVkey: operator.hash,
+                  now,
+                  honest,
+                })
+              : await transitionTraceDepositRetainedFixture({
+                  operatorVkey: operator.hash,
+                  now,
+                  event,
+                  originalAssets,
+                  honest,
+                });
+        let admitAfterPredecessor: (() => Promise<void>) | undefined;
         await submitSetupTx({
           lucid: h.funderLucid,
           contracts,
           nonceUtxo: h.nonceUtxo,
           catalogue: h.catalogue,
           header: fixture.predecessor.header,
+          beforeHeaderCommit: async (hub) => {
+            const admitEvent = async () => {
+              const admitted = await history.admit(
+                hub,
+                payload,
+                timing !== null
+                  ? {
+                      ...fixture.current.header,
+                      endTime:
+                        timing === "outside"
+                          ? fixture.current.header.startTime
+                          : honest
+                            ? fixture.current.header.endTime + 1000n
+                            : fixture.current.header.startTime + 1000n,
+                    }
+                  : name.includes("accepted")
+                    ? fixture.predecessor.header
+                    : {
+                        ...fixture.current.header,
+                        endTime: fixture.current.header.startTime + 1000n,
+                      },
+                { lovelace: kind === "Deposit" ? 95_000_000n : 100_000_000n },
+              );
+              if (kind === "Deposit")
+                expect(admitted.captured.originalAssets.get("")?.get("")).toBe(
+                  originalAssets.lovelace,
+                );
+              expect(admitted.witness.retainedDataUtxo !== undefined).toBe(
+                datumBytes > 0,
+              );
+            };
+            if (timing !== null && honest) admitAfterPredecessor = admitEvent;
+            else await admitEvent();
+          },
         });
+        await admitAfterPredecessor?.();
         await submitSecondHeaderTx({
           lucid: h.funderLucid,
           contracts,
           header: fixture.current.header,
         });
+        if (timing !== null) {
+          const eligibleAt = Number(fixture.current.header.endTime) + 2000;
+          if (h.emulator.now() < eligibleAt)
+            h.emulator.awaitSlot(
+              Math.ceil((eligibleAt - h.emulator.now()) / 1000),
+            );
+        }
         clock = vi
           .spyOn(Date, "now")
           .mockImplementation(() => h.emulator.now());
@@ -351,12 +489,20 @@ describe("transition trace installed retained-history workflow", () => {
             fraudProofReferenceScripts: { ...chain, ...yields },
           },
         );
+        historyRecords.push({
+          label: "installed-deployment",
+          scenario: name,
+          deploymentInfo,
+          appliedTransition: contracts.fraudProofContracts.transitionTrace,
+          prover: h.proverSigner.paymentKeyHash,
+        });
         const referenceScripts: Record<string, UTxO> = Object.fromEntries(
           Object.entries({ ...chain, ...yields }).map(([name, publication]) => [
             name,
             publication.utxo,
           ]),
         );
+        referenceScripts.stateQueueSpend = removal.published.stateQueueSpend;
         referenceScripts.computationThreadMint =
           h.witnessReferenceScripts.computationThreadMint!;
         referenceScripts.fraudProofMint =
@@ -414,6 +560,7 @@ describe("transition trace installed retained-history workflow", () => {
           network: "Custom",
           resolvedContracts: {
             hubOraclePolicyId: contracts.hubOracle.policyId,
+            contracts: contracts.fraudProofContracts,
           },
           referenceScriptsByContract: Object.fromEntries(
             Object.entries(referenceScripts).map(([name, utxo]) => [
@@ -500,6 +647,34 @@ describe("transition trace installed retained-history workflow", () => {
               ],
             }),
           });
+        // Model the separate mutation-lease service across application restarts.
+        const makeLease = (token: string) => ({
+          token,
+          source: "emulator",
+          renew: vi.fn(async () => undefined),
+          release: vi.fn(async () => undefined),
+          fail: vi.fn(async (_reason: string) => undefined),
+        });
+        const leases = new Map<string, ReturnType<typeof makeLease>>();
+        const stateQueueMutationLeaseCoordinator = {
+          acquire: async () => {
+            const lease = makeLease(`transition-lease-${leases.size}`);
+            leases.set(lease.token, lease);
+            return lease;
+          },
+          resume: async ({
+            token,
+            source,
+          }: {
+            token: string;
+            source: string;
+          }) => {
+            const lease = leases.get(token);
+            if (lease === undefined || lease.source !== source)
+              throw new Error("Missing durable fixture lease");
+            return lease;
+          },
+        };
         const config = {
           manifest: {},
           blueprintJson: JSON.stringify(h.realBlueprint),
@@ -515,15 +690,7 @@ describe("transition trace installed retained-history workflow", () => {
               rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
             }),
           historicalNativeScriptHistorySource,
-          stateQueueMutationLeaseCoordinator: {
-            acquire: async () => ({
-              token: "transition-lease",
-              source: "emulator",
-              renew: async () => {},
-              release: async () => {},
-              fail: async () => {},
-            }),
-          },
+          stateQueueMutationLeaseCoordinator,
         };
         const sources = [
           {
@@ -599,6 +766,7 @@ describe("transition trace installed retained-history workflow", () => {
           join(directory, "journal"),
         );
         let restarts = 0;
+        let pointerChurned = false;
         let result = await runOrResumeManifestBoundTransitionTraceWorkflow({
           workflow,
           sources,
@@ -614,6 +782,115 @@ describe("transition trace installed retained-history workflow", () => {
           // Recreate the installed constructor and reopen the durable journal at
           // every boundary; no in-memory proof or replay handle survives restart.
           restarts++;
+          if (!honest && !name.includes("accepted") && !pointerChurned) {
+            const observed = await workflow.l1.observe({
+              headerHash: fixture.current.headerHash,
+            });
+            if (
+              observed.stage.kind === "step" &&
+              observed.stage.step === (timing === null ? 7 : 8)
+            ) {
+              const [hash, index] = observed.stage.threadOutRef.split("#");
+              const thread = (
+                await lucid.utxosByOutRef([
+                  { txHash: hash!, outputIndex: Number(index) },
+                ])
+              )[0]!;
+              if (timing !== null) {
+                const routeCbor = recorder.signedCbors.get(hash!);
+                expect(routeCbor).toBeDefined();
+                const routeMeasurement = measureCompleteSignedTransaction(
+                  routeCbor!,
+                );
+                if (datumBytes > 0)
+                  expect(
+                    routeMeasurement.referenceInputCount,
+                  ).toBeGreaterThanOrEqual(4);
+                historyRecords.push({
+                  label: "installed-timing-route",
+                  scenario: name,
+                  routeTxHash: hash,
+                  measurement: routeMeasurement,
+                });
+              }
+              const state =
+                timing === null
+                  ? Data.from(
+                      thread.datum!,
+                      SDK.TransitionTraceProofCommitmentDatum,
+                    ).data
+                  : undefined;
+              if (
+                timing !== null ||
+                (state !== null &&
+                  state !== undefined &&
+                  state.deposit_source_cbor !== "")
+              ) {
+                const witness = await SDK.fetchEventHistoryWitness(
+                  { utxosAt: (address) => lucid.utxosAt(address) },
+                  {
+                    policyId:
+                      history.applied[kind === "Deposit" ? 0 : 1]!.policyId,
+                    address:
+                      history.applied[kind === "Deposit" ? 0 : 1]!.address,
+                    retentionAddress:
+                      history.applied[kind === "Deposit" ? 0 : 1]!.retention
+                        .address,
+                    inlineLimitBytes: HISTORY_BOUNDS.inlineLimitBytes,
+                  },
+                  id,
+                );
+                expect(witness.kind).toBe("Present");
+                const protectedUntil = Number(
+                  witness.anchor.node.protected_until,
+                );
+                if (h.emulator.now() < protectedUntil + 61000)
+                  h.emulator.awaitSlot(
+                    Math.ceil(
+                      (protectedUntil + 61000 - h.emulator.now()) / 1000,
+                    ),
+                  );
+                const hub = (
+                  await lucid.utxosAtWithUnit(
+                    contracts.hubOracle.spendingScriptAddress,
+                    toUnit(
+                      contracts.hubOracle.policyId,
+                      SDK.HUB_ORACLE_ASSET_NAME,
+                    ),
+                  )
+                )[0]!;
+                const churn = await insertHistoryFillerAfter(
+                  {
+                    applied: history.applied,
+                    scripts: history.scripts,
+                    lucid,
+                    hub,
+                    owner: h.proverSigner.paymentKeyHash,
+                    funding: async () =>
+                      (await lucid.wallet().getUtxos()).filter(
+                        (utxo) => utxo.datum == null && utxo.scriptRef == null,
+                      ),
+                    bounds: () => ({
+                      lower: h.emulator.now() - 60000,
+                      validTo: h.emulator.now() + 10000,
+                      protectedUntil:
+                        BigInt(h.emulator.now() + 9999) +
+                        history.recipes[0]!.protectionDurationMs,
+                    }),
+                  },
+                  kind,
+                  witness,
+                  "ff".repeat(32),
+                  [],
+                );
+                await history.submit("installed-pointer-churn", churn);
+                expect(
+                  await lucid.utxosByOutRef([witness.anchor.utxo]),
+                ).toHaveLength(0);
+                pointerChurned = true;
+              }
+            }
+          }
           h.emulator.awaitBlock();
           workflow = await createManifestBoundTransitionTraceWorkflow(config);
           result = await runOrResumeManifestBoundTransitionTraceWorkflow({
@@ -642,6 +919,50 @@ describe("transition trace installed retained-history workflow", () => {
               headerHash: fixture.current.headerHash,
             }),
           ).rejects.toThrow("live target");
+        }
+        const leaseState = [...leases.values()].map((lease) => ({
+          token: lease.token,
+          renewals: lease.renew.mock.calls.length,
+          releases: lease.release.mock.calls.length,
+          failures: lease.fail.mock.calls,
+        }));
+        const journalRows =
+          "workflowId" in result ? await journal.load(result.workflowId) : [];
+        const intents = journalRows.flatMap(({ event }) =>
+          event.kind === "submission_intent" ? [event] : [],
+        );
+        if (timing !== null && !honest) {
+          expect(
+            intents.some(
+              (event) =>
+                event.actionInput.stage === "step_08" &&
+                event.actionInput.requiresMutationLease === true,
+            ),
+          ).toBe(true);
+        }
+        historyRecords.push({
+          label: "installed-workflow-outcome",
+          scenario: name,
+          outcome: result.kind,
+          workflowId: "workflowId" in result ? result.workflowId : null,
+          restarts,
+          pointerChurned,
+          leaseState,
+          submissionIntents: intents,
+          confirmations: journalRows.flatMap(({ event }) =>
+            event.kind === "confirmed" ? [event] : [],
+          ),
+        });
+        if (!honest && !name.includes("accepted")) {
+          expect(pointerChurned).toBe(true);
+          expect(leases.size).toBeGreaterThan(0);
+          for (const lease of leases.values()) {
+            expect(
+              lease.release,
+              JSON.stringify(leaseState),
+            ).toHaveBeenCalled();
+            expect(lease.fail).not.toHaveBeenCalled();
+          }
         }
         completedCases.add(name);
         if (!honest)

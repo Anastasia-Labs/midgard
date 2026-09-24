@@ -1,8 +1,10 @@
 /** Cancellation, strict reference-script refusal, and out-ref-only resume. */
+import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { WITHDRAWAL_MISTAG_CATEGORY_LABEL } from "../src/withdrawal-mistag/contracts.js";
 import {
-  submitWithdrawalMistagCancel,
   submitWithdrawalMistagStep01,
   submitWithdrawalMistagStep02,
   submitWithdrawalMistagStep03,
@@ -84,9 +86,12 @@ describe("withdrawal-mistag cancel and resume", () => {
     };
 
     for (const targetStep of [0, 1, 2, 3, 4] as const) {
-      const cancelled = await submitWithdrawalMistagCancel({
+      const cancelled = await submitLinearFaultCancel({
         lucid: harness.proverLucid,
-        contracts: harness.withdrawalMistag,
+        family: WITHDRAWAL_MISTAG_CATEGORY_LABEL,
+        steps: harness.withdrawalMistag.steps,
+        computationThread: harness.withdrawalMistag.computationThread,
+        categoryId: WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID,
         signer: harness.proverSigner,
         threadOutRef: await advanceTo(targetStep),
         referenceScriptUtxo: refs[targetStep],

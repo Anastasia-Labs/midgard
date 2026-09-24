@@ -1,5 +1,10 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
+import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   absorbConfirmedDepositToReserveProgram,
   addReserveFundsToPayoutProgram,
@@ -90,15 +95,16 @@ describe.sequential("deposit flow emulator", () => {
 
     const fetchedDepositUtxos = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
-        eventAddress: fixture.contracts.deposit.spendingScriptAddress,
-        eventPolicyId: fixture.contracts.deposit.policyId,
+        ...SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(fixture.contracts).deposit,
+        ),
       }),
     );
     expect(fetchedDepositUtxos).toHaveLength(1);
 
     const inclusionSlot =
       fixture.operatorLucid.unixTimeToSlot(
-        Number(fetchedDepositUtxos[0]!.datum.inclusion_time),
+        Number(fetchedDepositUtxos[0]!.facts.inclusion_time),
       ) + 1;
     fixture.emulator.awaitSlot(inclusionSlot);
     vi.setSystemTime(new Date(fixture.emulator.now()));
@@ -257,6 +263,13 @@ describe.sequential("deposit flow emulator", () => {
     await configureEmulatorDaRuntimeManifest();
 
     const fixture = await makeFixture();
+    const acceptedTransactions: string[] = [];
+    const submit = fixture.emulator.submitTx.bind(fixture.emulator);
+    fixture.emulator.submitTx = async (cbor) => {
+      const txHash = await submit(cbor);
+      acceptedTransactions.push(cbor);
+      return txHash;
+    };
     await initializeProtocol(fixture);
     const lucidService = await makeLucidRuntimeService(fixture);
     const globals = await makeGlobalsService();
@@ -278,15 +291,16 @@ describe.sequential("deposit flow emulator", () => {
 
     const fetchedDepositUtxos = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
-        eventAddress: fixture.contracts.deposit.spendingScriptAddress,
-        eventPolicyId: fixture.contracts.deposit.policyId,
+        ...SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(fixture.contracts).deposit,
+        ),
       }),
     );
     expect(fetchedDepositUtxos).toHaveLength(1);
     const depositUtxo = fetchedDepositUtxos[0]!;
     fixture.emulator.awaitSlot(
       fixture.operatorLucid.unixTimeToSlot(
-        Number(depositUtxo.datum.inclusion_time),
+        Number(depositUtxo.facts.inclusion_time),
       ) + 1,
     );
     vi.setSystemTime(new Date(fixture.emulator.now()));
@@ -524,6 +538,8 @@ describe.sequential("deposit flow emulator", () => {
     const processedL2Transfers = phaseB.accepted.map(
       processedTxFromValidatedTx,
     );
+    // This harness uses explicit unowned model writes throughout; acceptance
+    // needs the same fixture gate as admission and leasing above.
     await Effect.runPromise(
       Effect.scoped(
         TxAdmissionsDB.markAccepted({
@@ -531,6 +547,7 @@ describe.sequential("deposit flow emulator", () => {
           leaseOwner: l2TransferLeaseOwner,
           processedTxs: processedL2Transfers,
         }).pipe(
+          Effect.provideService(UnownedHistoryFixture, true),
           Effect.provide(WriteBehindLive),
           Effect.provide(Database.layer),
           Effect.provide(NodeConfig.layer),
@@ -634,8 +651,9 @@ describe.sequential("deposit flow emulator", () => {
 
     const fetchedWithdrawalUtxos = await Effect.runPromise(
       SDK.fetchWithdrawalUTxOsProgram(fixture.depositorLucid, {
-        eventAddress: fixture.contracts.withdrawal.spendingScriptAddress,
-        eventPolicyId: fixture.contracts.withdrawal.policyId,
+        ...SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(fixture.contracts).withdrawal,
+        ),
       }),
     );
     expect(fetchedWithdrawalUtxos).toHaveLength(1);
@@ -646,7 +664,7 @@ describe.sequential("deposit flow emulator", () => {
 
     fixture.emulator.awaitSlot(
       fixture.operatorLucid.unixTimeToSlot(
-        Number(withdrawalUtxo.datum.inclusion_time),
+        Number(withdrawalUtxo.facts.inclusion_time),
       ) + 1,
     );
     vi.setSystemTime(new Date(fixture.emulator.now()));
@@ -789,6 +807,63 @@ describe.sequential("deposit flow emulator", () => {
         (utxo) => utxo.assets.lovelace === 10_000_000n,
       ),
     ).toBe(true);
+    const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+    if (evidenceDirectory !== undefined) {
+      const parameters = fixture.operatorLucid.config().protocolParameters!;
+      const blueprint = await readFile(
+        process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+      );
+      const transactions = acceptedTransactions.map((signedCbor) => {
+        const tx = CML.Transaction.from_cbor_hex(signedCbor);
+        const redeemers = tx.witness_set().redeemers()?.to_flat_format();
+        let memory = 0n;
+        let steps = 0n;
+        for (let index = 0; index < (redeemers?.len() ?? 0); index++) {
+          memory += redeemers!.get(index).ex_units().mem();
+          steps += redeemers!.get(index).ex_units().steps();
+        }
+        expect(signedCbor.length / 2).toBeLessThanOrEqual(parameters.maxTxSize);
+        expect(memory).toBeLessThanOrEqual(parameters.maxTxExMem);
+        expect(steps).toBeLessThanOrEqual(parameters.maxTxExSteps);
+        return {
+          txHash: CML.hash_transaction(tx.body()).to_hex(),
+          signedCbor,
+          signedBytes: signedCbor.length / 2,
+          feeLovelace: tx.body().fee(),
+          memory,
+          steps,
+        };
+      });
+      await mkdir(evidenceDirectory, { recursive: true });
+      await writeFile(
+        join(evidenceDirectory, "node-complete-history-journey.json"),
+        JSON.stringify(
+          {
+            scope:
+              "Complete applied node emulator journey, not live acceptance",
+            blueprintSha256: createHash("sha256")
+              .update(blueprint)
+              .digest("hex"),
+            protocolParameters: parameters,
+            history: SDK.requireEventHistoryContracts(fixture.contracts),
+            hubPolicyId: fixture.contracts.hubOracle.policyId,
+            stateQueuePolicyId: fixture.contracts.stateQueue.policyId,
+            settlementPolicyId: fixture.contracts.settlement.policyId,
+            payoutPolicyId: fixture.contracts.payout.policyId,
+            reserveHash: fixture.contracts.reserve.spendingScriptHash,
+            depositHeader: depositBlock.queuedHeaderHash,
+            withdrawalHeader: withdrawalBlock.queuedHeaderHash,
+            depositEventId: depositEventIdHex,
+            withdrawalEventId: withdrawalEventIdHex,
+            transactions,
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ) + "\n",
+      );
+    }
     // This end-to-end journey measured 198s alone but 395s-423s when it runs
     // last in the full file, so the previous 420s budget left ~6% headroom and
     // timed out on slower machines. The budget is a harness allowance, not an

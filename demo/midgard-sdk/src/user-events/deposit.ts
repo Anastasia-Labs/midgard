@@ -1,9 +1,9 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   Data,
   LucidEvolution,
-  PolicyId,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -19,20 +19,35 @@ import {
 } from "../common.js";
 import { POSIXTimeSchema } from "../common.js";
 import { HubOracleError } from "../hub-oracle.js";
-import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import { DepositEventSchema } from "../ledger-state.js";
 import { RawRootMembershipProofSchema } from "../transition-trace.js";
+import { EventHistoryPayload } from "./history.js";
+import { buildEventHistoryAdmission } from "./history-build.js";
 import {
-  buildCompletedUserEventMintTxProgram,
-  encodeUserEventWitnessMintOrBurnRedeemer,
-  fetchUserEventUTxOsProgram,
+  type DepositUTxO,
+  type EventHistoryFetchConfig,
+  fetchHistoryEventsProgram,
+  historyEventFromPresence,
+  historyEventReadError,
+} from "./history-events.js";
+import {
+  type EventHistoryDeployment,
+  type EventHistoryPresence,
+  readEventHistoryOrders,
+} from "./history-query.js";
+import {
+  historyUserBuildError,
+  prepareUserHistoryContextProgram,
+  quoteUserHistoryFunding,
+  type UserHistoryBuildOptions,
+  type UserHistoryContracts,
+  userHistoryValidity,
+} from "./history-user.js";
+import {
   outputReferenceToPlutusDataCbor,
-  prepareUserEventMintContext,
   UserEventBuildError,
-  userEventCborFieldsFromInlineDatum,
-  UserEventExtraFields,
-  UserEventFetchConfig,
 } from "./internals.js";
+export type { DepositUTxO } from "./history-events.js";
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,
@@ -57,47 +72,55 @@ export const DepositSpendRedeemer = asDataType<DepositSpendRedeemer>(
   DepositSpendRedeemerSchema,
 );
 
-export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
-
 const midgardNativeNetworkId = (
   network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
 ): bigint => (network === "Mainnet" ? 1n : 0n);
 
-/**
- * Silently drops invalid UTxOs.
- */
+const toDepositUTxO = (
+  history: EventHistoryPresence,
+  deployment: EventHistoryDeployment,
+): DepositUTxO => {
+  const event = historyEventFromPresence(history, deployment);
+  if (event.kind !== "Deposit")
+    throw new Error(
+      "Authenticated deposit history contains a different event kind",
+    );
+  return event;
+};
+
+/** Reads a complete authenticated list and actual retained data; rejects partial
+ * or malformed authenticated state instead of silently dropping events. */
 export const utxosToDepositUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: PolicyId,
-): Effect.Effect<DepositUTxO[]> =>
-  authenticateUTxOs<DepositDatum, UserEventExtraFields>(
-    utxos,
-    nftPolicy,
-    DepositDatum,
-    (datum, utxo) => ({
-      ...userEventCborFieldsFromInlineDatum(utxo),
-      inclusionTime: new Date(Number(datum.inclusion_time)),
-    }),
-  );
+  utxos: readonly UTxO[],
+  retainedUtxos: readonly UTxO[],
+  deployment: EventHistoryDeployment,
+): Effect.Effect<DepositUTxO[], LucidError> =>
+  Effect.try({
+    try: () =>
+      readEventHistoryOrders(utxos, retainedUtxos, deployment).map((history) =>
+        toDepositUTxO(history, deployment),
+      ),
+    catch: historyEventReadError,
+  });
 
 export const fetchDepositUTxOsProgram = (
-  lucid: LucidEvolution,
-  config: UserEventFetchConfig,
+  lucid: { utxosAt(address: string): Promise<UTxO[]> },
+  config: EventHistoryFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
-  fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
-    utxosToDepositUTxOs(utxos, config.eventPolicyId),
-  );
+  fetchHistoryEventsProgram(lucid, config, toDepositUTxO);
 
 export const fetchDepositUTxOs = (
-  lucid: LucidEvolution,
-  config: UserEventFetchConfig,
+  lucid: { utxosAt(address: string): Promise<UTxO[]> },
+  config: EventHistoryFetchConfig,
 ) => makeReturn(fetchDepositUTxOsProgram(lucid, config));
 
 export type SubmitDepositReferenceScripts = {
   readonly depositMinting: UTxO;
 };
 
-export type SubmitDepositConfig = {
+export type SubmitDepositConfig = UserHistoryBuildOptions & {
+  /** Additional ADA kept separate from the Value projected to L2. Omit to quote it automatically. */
+  readonly structuralLovelace?: bigint;
   readonly l2Address: string;
   readonly l2Datum: string | null;
   readonly lovelace: bigint;
@@ -113,116 +136,134 @@ export type DepositBuildMetadata = {
   readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
   readonly validTo: number;
   readonly inclusionTime: number;
+  readonly structuralLovelace: bigint;
+  readonly orderOutputIndex: number;
 };
+
+/** Prepare the stable nonce, complete payload and funding before any signature.
+ * For External plans, publish with buildEventHistoryPublication and confirm its
+ * exact output before unsigned admission, or pass this request to submitEventHistory. */
+export const prepareDepositSubmissionProgram = (
+  lucid: LucidEvolution,
+  contracts: UserHistoryContracts,
+  config: SubmitDepositConfig,
+) =>
+  Effect.gen(function* () {
+    const prepared = yield* prepareUserHistoryContextProgram(
+      lucid,
+      contracts,
+      "Deposit",
+      config,
+      config.referenceScripts?.depositMinting,
+    );
+    const l2AddressData = yield* addressDataFromBech32(config.l2Address);
+    const payloadCbor = yield* Effect.try({
+      try: () => {
+        const payload: EventHistoryPayload = {
+          DepositPayload: {
+            event: {
+              id: {
+                transactionId: prepared.nonce.txHash,
+                outputIndex: BigInt(prepared.nonce.outputIndex),
+              },
+              info: {
+                l2_address: l2AddressData,
+                l2_network_id: midgardNativeNetworkId(prepared.network),
+                l2_datum: config.l2Datum === null ? null : 0n,
+              },
+            },
+          },
+        };
+        const encoded = Data.to(payload, EventHistoryPayload);
+        return config.l2Datum === null
+          ? encoded
+          : replacePlutusConstrFieldCbor(encoded, [0, 1, 2, 0], config.l2Datum);
+      },
+      catch: historyUserBuildError,
+    });
+    const funding = yield* Effect.try({
+      try: () => {
+        if (
+          Object.keys(config.additionalAssets).some(
+            (unit) =>
+              unit === "lovelace" ||
+              unit.startsWith(prepared.context.applied.policyId),
+          )
+        )
+          throw new Error(
+            "Additional deposit assets cannot contain lovelace or history authentication tokens",
+          );
+        return quoteUserHistoryFunding({
+          context: prepared.context,
+          payloadCbor,
+          reclaimAuth: prepared.reclaimAuth,
+          structuralRefundKey: prepared.structuralRefundKey,
+          originalAssets: {
+            ...config.additionalAssets,
+            lovelace: config.lovelace,
+          },
+          structuralLovelace: config.structuralLovelace,
+        });
+      },
+      catch: historyUserBuildError,
+    });
+    return {
+      context: prepared.context,
+      plan: funding.plan,
+      request: {
+        payloadCbor,
+        reclaimAuth: prepared.reclaimAuth,
+        nonce: prepared.nonce,
+        assets: funding.assets,
+        structuralLovelace: funding.structuralLovelace,
+        structuralRefundKey: prepared.structuralRefundKey,
+      },
+    };
+  });
 
 export const buildUnsignedDepositTxWithMetadataProgram = (
   lucid: LucidEvolution,
-  contracts: MidgardValidators,
+  contracts: UserHistoryContracts,
   config: SubmitDepositConfig,
-): Effect.Effect<
-  {
-    readonly tx: TxSignBuilder;
-    readonly metadata: DepositBuildMetadata;
-  },
-  | HubOracleError
-  | LucidError
-  | Bech32DeserializationError
-  | HashingError
-  | UserEventBuildError
-> =>
+) =>
   Effect.gen(function* () {
-    const context = yield* prepareUserEventMintContext({
+    const prepared = yield* prepareDepositSubmissionProgram(
       lucid,
       contracts,
-      label: "deposit",
-      eventPolicyId: contracts.deposit.policyId,
-      hubOraclePolicyField: "deposit",
-      hubOracleAddressField: "deposit_addr",
-    });
-    const {
-      eventUnit: depositUnit,
-      hubOracleRefInput,
-      inclusionTime,
-      network,
-      nonceInput,
-      nonceAssetName,
-      validTo,
-      witnessScript,
-      witnessScriptHash,
-    } = context;
-    const depositEventId = outputReferenceToPlutusDataCbor(nonceInput);
-    if ((config.additionalAssets[depositUnit] ?? 0n) !== 0n) {
-      return yield* Effect.fail(
-        new UserEventBuildError({
-          message:
-            "Additional asset list must not include the deposit authentication NFT unit",
-          cause: depositUnit,
+      config,
+    );
+    const validity = userHistoryValidity(lucid, config);
+    const built = yield* Effect.tryPromise({
+      try: () =>
+        buildEventHistoryAdmission(prepared.context, {
+          ...prepared.request,
+          ...validity,
+          externalData: config.externalData,
         }),
-      );
-    }
-
-    const l2AddressData = yield* addressDataFromBech32(config.l2Address);
-    const l2DatumData =
-      config.l2Datum === null ? null : Data.from(config.l2Datum);
-
-    const depositDatum: DepositDatum = {
-      event: {
-        id: {
-          transactionId: nonceInput.txHash,
-          outputIndex: BigInt(nonceInput.outputIndex),
-        },
-        info: {
-          l2_address: l2AddressData,
-          l2_network_id: midgardNativeNetworkId(network),
-          l2_datum: l2DatumData,
-        },
-      },
-      inclusion_time: BigInt(inclusionTime),
-      witness: witnessScriptHash,
-    };
-    const depositDatumCBOR = Data.to(depositDatum, DepositDatum);
-    const outputAssets: Assets = {
-      ...config.additionalAssets,
-      lovelace: config.lovelace,
-      [depositUnit]: 1n,
-    };
-    const referenceInputs =
-      config.referenceScripts === undefined
-        ? [hubOracleRefInput]
-        : [hubOracleRefInput, config.referenceScripts.depositMinting];
-    const witnessRegistrationRedeemer =
-      encodeUserEventWitnessMintOrBurnRedeemer(contracts.deposit.policyId);
-
-    const tx = yield* buildCompletedUserEventMintTxProgram({
-      lucid,
-      network,
-      nonceInput,
-      eventUnit: depositUnit,
-      eventAddress: contracts.deposit.spendingScriptAddress,
-      eventDatumCbor: depositDatumCBOR,
-      outputAssets,
-      validTo,
-      mintingPolicy: contracts.deposit.mintingScript,
-      attachMintingPolicy: config.referenceScripts === undefined,
-      referenceInputs,
-      hubOracleRefInput,
-      witnessScript,
-      witnessRegistrationRedeemer,
-      label: "deposit",
+      catch: historyUserBuildError,
     });
-
-    return {
-      tx,
-      metadata: {
-        depositAddress: contracts.deposit.spendingScriptAddress,
-        depositEventId,
-        depositAssetName: nonceAssetName,
-        depositAuthUnit: depositUnit,
-        nonceInput,
-        validTo,
-        inclusionTime,
+    if (
+      built.node.payload === "RootContent" ||
+      !("Order" in built.node.payload)
+    )
+      return yield* Effect.fail(
+        historyUserBuildError("Missing admitted Order facts"),
+      );
+    const metadata: DepositBuildMetadata = {
+      depositAddress: prepared.context.applied.address,
+      depositEventId: outputReferenceToPlutusDataCbor(prepared.request.nonce),
+      depositAssetName: built.plan.key,
+      depositAuthUnit: prepared.context.applied.policyId + built.plan.key,
+      nonceInput: {
+        txHash: prepared.request.nonce.txHash,
+        outputIndex: prepared.request.nonce.outputIndex,
       },
+      validTo: validity.validTo,
+      inclusionTime: Number(built.node.payload.Order.facts.inclusion_time),
+      structuralLovelace: prepared.request.structuralLovelace,
+      orderOutputIndex: built.orderOutputIndex,
     };
+    return { tx: built.tx, metadata };
   });
 
 export const unsignedDepositTxProgram = (

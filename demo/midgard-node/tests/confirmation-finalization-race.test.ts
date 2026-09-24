@@ -106,3 +106,34 @@ describe("confirmation/local-finalization race guards", () => {
     ).toBe(false);
   });
 });
+
+it("fences confirmation captured before durable signed intent installation", () => {
+  const captured = {
+    ...identity("aa".repeat(28)),
+    submittedTxHash: null,
+    status: "pending_submission" as const,
+  };
+  expect(
+    confirmationPendingSnapshotChanged({
+      captured,
+      current: { ...captured, intendedTxHash: "bb".repeat(32) },
+    }),
+  ).toBe(true);
+});
+it("recovers a canonically observed journal without inventing an acknowledgement", () => {
+  expect(
+    resolveAuthoritativeLocalFinalizationPreflight({
+      localFinalizationPending: false,
+      availableLocalFinalizationBlock: "",
+      activeJournalHeaderHash: "aa".repeat(28),
+      activeJournalSubmittedTxHash: null,
+      activeJournalStatus: "observed_waiting_stability",
+      tailHeaderHash: "aa".repeat(28),
+      tailBlock,
+    }),
+  ).toEqual({
+    localFinalizationPending: true,
+    availableLocalFinalizationBlock: tailBlock,
+    recoveredRacedJournal: true,
+  });
+});

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -23,7 +24,6 @@ import {
   Emulator,
   getAddressDetails,
   toUnit,
-  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -47,6 +47,7 @@ import {
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { prepareFamilyHistory } from "./support/emulator/family-history.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
@@ -69,6 +70,30 @@ import {
   transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
+import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
+
+const historyRecords: unknown[] = [];
+afterAll(async () => {
+  const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+  if (directory === undefined) return;
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "transition-subvariant-history.json"),
+    JSON.stringify(
+      {
+        scope:
+          "Applied semantic subvariant lifecycle, actual withdrawal history admission/removal and forced timing; fixture catalogue governance",
+        blueprintSha256: createHash("sha256")
+          .update(await readFile(realBlueprintPath))
+          .digest("hex"),
+        records: historyRecords,
+      },
+      (_key, value: unknown) =>
+        typeof value === "bigint" ? value.toString() : value,
+      2,
+    ) + "\n",
+  );
+});
 
 const forcedWindowMeasurements: VanRossemFitMeasurement[] = [];
 const forcedWindowCases = new Set<boolean>();
@@ -132,26 +157,12 @@ const withdrawalInfo = (
   body: {
     l2_outref: transitionTraceOutRef("71"),
     l2_owner: "72".repeat(28),
-    l2_value: new Map(),
+    l2_value: new Map([["", new Map([["", 50_000_000n]])]]),
     l1_address: address("73"),
     l1_datum: "NoDatum",
   },
   signature: ["74".repeat(32), "75".repeat(64)],
   validity,
-});
-
-const withdrawalDatum = ({
-  id,
-  inclusionTime,
-}: {
-  readonly id: SDK.OutputReference;
-  readonly inclusionTime: bigint;
-}): SDK.WithdrawalOrderDatum => ({
-  event: { id, info: withdrawalInfo("WithdrawalIsValid") },
-  inclusion_time: inclusionTime,
-  witness: "76".repeat(28),
-  refund_address: address("77"),
-  refund_datum: "NoDatum",
 });
 
 const headerCounts = (header: SDK.Header) => ({
@@ -211,13 +222,28 @@ const makeHarness = async ({
 }: {
   readonly alwaysStateQueue?: boolean;
 } = {}) => {
-  const harness = await makeFaultProofEmulatorHarness({
+  const base = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realTransitionTrace: true,
       alwaysFraudProofCatalogue: true,
       alwaysStateQueue,
     },
   });
+  const submit = base.emulator.submitTx.bind(base.emulator);
+  const scenario = expect.getState().currentTestName;
+  base.emulator.submitTx = async (transactionCbor) => {
+    const txHash = await submit(transactionCbor);
+    historyRecords.push({
+      scenario,
+      txHash,
+      transactionCbor,
+      measurement: measureCompleteSignedTransaction(transactionCbor),
+      fee: CML.Transaction.from_cbor_hex(transactionCbor).body().fee(),
+    });
+    return txHash;
+  };
+  const history = await prepareFamilyHistory(base, historyRecords);
+  const harness = { ...base, contracts: history.contracts };
   const publications = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
@@ -229,7 +255,19 @@ const makeHarness = async ({
       entryNames: FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transitionTrace,
       familyLabel: "transition-trace",
     });
-  return { harness, publications, transitionTraceReferenceScripts };
+  const yields = await publishTransitionTraceYields(
+    harness.proverLucid,
+    harness.contracts,
+  );
+  return {
+    harness,
+    history,
+    publications,
+    transitionTraceReferenceScripts: {
+      ...transitionTraceReferenceScripts,
+      ...yields,
+    },
+  };
 };
 
 const setupChallenge = async ({
@@ -237,6 +275,7 @@ const setupChallenge = async ({
   publications,
   transitionTraceReferenceScripts,
   header,
+  beforeHeaderCommit,
 }: {
   readonly harness: Harness;
   readonly publications: Awaited<
@@ -246,6 +285,9 @@ const setupChallenge = async ({
     ReturnType<typeof publishFraudProofChainReferenceScripts>
   >;
   readonly header: SDK.Header;
+  readonly beforeHeaderCommit?: Parameters<
+    typeof submitSetupTx
+  >[0]["beforeHeaderCommit"];
 }) => {
   const setup = await submitSetupTx({
     lucid: harness.funderLucid,
@@ -253,6 +295,7 @@ const setupChallenge = async ({
     nonceUtxo: harness.nonceUtxo,
     catalogue: harness.catalogue,
     header,
+    beforeHeaderCommit,
   });
   const deploymentInfo = buildRemovalDeploymentInfo(
     harness.contracts,
@@ -262,6 +305,7 @@ const setupChallenge = async ({
       fraudProofReferenceScripts: transitionTraceReferenceScripts,
     },
   );
+  historyRecords.push({ header, headerHash: setup.headerHash, deploymentInfo });
   const init = await submitInit({
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
@@ -280,36 +324,58 @@ const setupChallenge = async ({
   return { setup, deploymentInfo, init };
 };
 
-const mintWithdrawalEvent = async ({
-  harness,
-  datum,
-}: {
-  readonly harness: Harness;
-  readonly datum: SDK.WithdrawalOrderDatum;
-}): Promise<{ readonly utxo: UTxO; readonly assetName: string }> => {
-  const assetName = await Effect.runPromise(
-    SDK.withdrawalEventNonce(datum.event.id),
-  );
-  const unit = toUnit(harness.contracts.withdrawal.policyId, assetName);
-  const unsigned = await harness.funderLucid
-    .newTx()
-    .mintAssets({ [unit]: 1n }, Data.void())
-    .pay.ToContract(
-      harness.contracts.withdrawal.spendingScriptAddress,
-      { kind: "inline", value: SDK.withdrawalEventDatumBytes(datum) },
-      { lovelace: 5_000_000n, [unit]: 1n },
-    )
-    .attach.MintingPolicy(harness.contracts.withdrawal.mintingScript)
-    .complete({ localUPLCEval: true });
-  const signed = await unsigned.sign.withWallet().complete();
-  await harness.funderLucid.awaitTx(await signed.submit());
+const withdrawalIdFor = (
+  history: Awaited<ReturnType<typeof prepareFamilyHistory>>,
+): SDK.OutputReference => {
+  const nonce = history.nonce("Withdrawal");
   return {
-    assetName,
-    utxo: await expectSingleUtxoWithUnit(
-      harness.funderLucid,
-      harness.contracts.withdrawal.spendingScriptAddress,
-      unit,
-    ),
+    transactionId: nonce.txHash,
+    outputIndex: BigInt(nonce.outputIndex),
+  };
+};
+
+const setupWithdrawalChallenge = async ({
+  harness,
+  history,
+  publications,
+  transitionTraceReferenceScripts,
+  header,
+  inclusionTime,
+}: Awaited<ReturnType<typeof makeHarness>> & {
+  header: SDK.Header;
+  inclusionTime: bigint;
+}) => {
+  const withdrawalId = withdrawalIdFor(history);
+  let admission: Awaited<ReturnType<typeof history.admit>> | undefined;
+  const lifecycle = await setupChallenge({
+    harness,
+    publications,
+    transitionTraceReferenceScripts,
+    header,
+    beforeHeaderCommit: async (hub) => {
+      admission = await history.admit(
+        hub,
+        {
+          WithdrawalPayload: {
+            event: {
+              id: withdrawalId,
+              info: withdrawalInfo("WithdrawalIsValid"),
+            },
+            refund_address: address("77"),
+            refund_datum: "NoDatum",
+          },
+        },
+        { ...header, endTime: inclusionTime },
+        { lovelace: 25_000_000n },
+      );
+    },
+  });
+  if (admission === undefined)
+    throw new Error("Withdrawal admission did not run");
+  return {
+    lifecycle,
+    withdrawalId,
+    event: { utxo: admission.witness.anchor.utxo },
   };
 };
 
@@ -387,34 +453,29 @@ const removeAndAssertPermanentProof = async ({
   expect(retained.assets[proofResult.fraudProofUnit]).toBe(1n);
 };
 
-const alignedHeaderStart = async (harness: Harness) =>
+const alignedHeaderStart = async (harness: Harness, leadTime = 120_000) =>
   alignUnixTimeToEmulatorSlotBoundary(
     harness.funderLucid,
-    harness.emulator.now() + 120_000,
+    harness.emulator.now() + leadTime,
   ) - 1;
 
 describe("transition-trace omitted/out-of-window/count subvariant lifecycle", () => {
   it("routes an omitted due withdrawal to final 6 and removes the block", async () => {
-    const { harness, publications, transitionTraceReferenceScripts } =
+    const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
     const header = makeHeader(
       await funderPaymentKeyHash(harness.funderLucid),
-      await alignedHeaderStart(harness),
+      await alignedHeaderStart(harness, 240_000),
     );
-    const lifecycle = await setupChallenge({
+    const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,
+      history,
       publications,
       transitionTraceReferenceScripts,
       header,
+      inclusionTime: header.endTime,
     });
-    const withdrawalId = transitionTraceOutRef("81");
-    const event = await mintWithdrawalEvent({
-      harness,
-      datum: withdrawalDatum({
-        id: withdrawalId,
-        inclusionTime: header.endTime,
-      }),
-    });
+
     const reconstruction = await reconstruct({ header });
     const proof = buildTransitionFaultProof({
       reconstruction,
@@ -423,22 +484,6 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         evidence: {
           kind: "withdrawal",
           withdrawalId,
-          eventRefInputIndex: ledgerOrderedIndex(
-            [
-              lifecycle.setup.hubOracle,
-              transitionTraceReferenceScripts[
-                "fraudProofTransitionTraceL1Event"
-              ]!.utxo,
-              ...[
-                harness.witnessReferenceScripts.computationThreadMint,
-                harness.witnessReferenceScripts.fraudProofMint,
-              ].filter((utxo): utxo is UTxO => utxo !== undefined),
-              event.utxo,
-            ],
-            event.utxo,
-            "omitted withdrawal reference input",
-          ),
-          eventAssetName: event.assetName,
         },
       }),
     });
@@ -673,11 +718,11 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   );
 
   it("routes an out-of-window withdrawal to final 6 and removes the block", async () => {
-    const { harness, publications, transitionTraceReferenceScripts } =
+    const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
     const operator = await funderPaymentKeyHash(harness.funderLucid);
-    const startTime = await alignedHeaderStart(harness);
-    const withdrawalId = transitionTraceOutRef("82");
+    const startTime = await alignedHeaderStart(harness, 240_000);
+    const withdrawalId = withdrawalIdFor(history);
     const eventKey: SDK.EventKey = {
       WithdrawalEventKey: { withdrawal_id: withdrawalId },
     };
@@ -694,13 +739,11 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       step_index: 0n,
       phase: "Withdrawal",
     };
-    const withdrawals = [
-      transitionTraceDaEntry({
-        key: withdrawalId,
-        keySchema: SDK.OutputReference as never,
-        value: committedInfo,
-        valueSchema: SDK.WithdrawalInfoSchema,
-      }),
+    const withdrawals: SDK.DaPayloadEntry[] = [
+      [
+        Data.to(withdrawalId, SDK.OutputReference),
+        SDK.committedWithdrawalValueBytes(committedInfo),
+      ],
     ];
     const transitionTrace = [
       transitionTraceDaEntry({
@@ -750,19 +793,15 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       totalEventCount: 1n,
       transitionStepCount: 1n,
     };
-    const lifecycle = await setupChallenge({
+    const { lifecycle, event } = await setupWithdrawalChallenge({
       harness,
+      history,
       publications,
       transitionTraceReferenceScripts,
       header,
+      inclusionTime: header.endTime + 1000n,
     });
-    const event = await mintWithdrawalEvent({
-      harness,
-      datum: withdrawalDatum({
-        id: withdrawalId,
-        inclusionTime: header.endTime + 1n,
-      }),
-    });
+
     const reconstruction = await reconstruct({
       header,
       withdrawals,
@@ -776,23 +815,6 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         evidence: {
           kind: "withdrawal",
           withdrawalId,
-          eventRefInputIndex: ledgerOrderedIndex(
-            [
-              lifecycle.setup.hubOracle,
-              transitionTraceReferenceScripts[
-                "fraudProofTransitionTraceL1Event"
-              ]!.utxo,
-              ...[
-                harness.witnessReferenceScripts.computationThreadMint,
-                harness.witnessReferenceScripts.fraudProofMint,
-              ].filter((utxo): utxo is UTxO => utxo !== undefined),
-              event.utxo,
-            ],
-            event.utxo,
-            "out-of-window withdrawal reference input",
-          ),
-          eventAssetName: event.assetName,
-          validityOverride: "IncorrectWithdrawalSignature",
         },
       }),
     });
@@ -868,26 +890,21 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   }, 180_000);
 
   it("rejects an honest late withdrawal accused as omitted at final 6", async () => {
-    const { harness, publications, transitionTraceReferenceScripts } =
+    const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
     const header = makeHeader(
       await funderPaymentKeyHash(harness.funderLucid),
-      await alignedHeaderStart(harness),
+      await alignedHeaderStart(harness, 240_000),
     );
-    const lifecycle = await setupChallenge({
+    const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,
+      history,
       publications,
       transitionTraceReferenceScripts,
       header,
+      inclusionTime: header.endTime + 1000n,
     });
-    const withdrawalId = transitionTraceOutRef("83");
-    const event = await mintWithdrawalEvent({
-      harness,
-      datum: withdrawalDatum({
-        id: withdrawalId,
-        inclusionTime: header.endTime + 1n,
-      }),
-    });
+
     const reconstruction = await reconstruct({ header });
     const proof = buildTransitionFaultProof({
       reconstruction,
@@ -896,22 +913,6 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         evidence: {
           kind: "withdrawal",
           withdrawalId,
-          eventRefInputIndex: ledgerOrderedIndex(
-            [
-              lifecycle.setup.hubOracle,
-              transitionTraceReferenceScripts[
-                "fraudProofTransitionTraceL1Event"
-              ]!.utxo,
-              ...[
-                harness.witnessReferenceScripts.computationThreadMint,
-                harness.witnessReferenceScripts.fraudProofMint,
-              ].filter((utxo): utxo is UTxO => utxo !== undefined),
-              event.utxo,
-            ],
-            event.utxo,
-            "honest late withdrawal reference input",
-          ),
-          eventAssetName: event.assetName,
         },
       }),
     });

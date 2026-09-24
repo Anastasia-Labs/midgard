@@ -204,7 +204,7 @@ test canonical_event_reserve_and_payout_v1_typescript_abi_vectors() {
       payout.MintPayout {
         withdrawal_utxo_out_ref: output_reference(),
         withdrawal_input_index: 1,
-        withdrawal_spend_redeemer_index: 2,
+        retirement_withdraw_redeemer_index: 2,
         hub_ref_input_index: 3,
       },
     ) == #"d8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333301ff010203ff",

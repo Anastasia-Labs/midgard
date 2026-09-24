@@ -5,15 +5,21 @@
  * construction to the SDK user-event builders.
  */
 import { normalizeHex as normalizeCoreHex } from "@al-ft/midgard-core/hex";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
   CML,
   coreToTxOutput,
   Data as LucidData,
+  datumToHash,
   getAddressDetails,
   Lucid as makeLucid,
   type LucidEvolution,
+  type Network,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -24,9 +30,9 @@ import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "../asset-specs.js";
-import { DepositsDB, DepositSubmissionAttemptsDB } from "../database/index.js";
+import { DepositSubmissionAttemptsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { reconcileVisibleDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
+import { persistDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
 import {
   Database,
   Lucid as LucidService,
@@ -34,12 +40,10 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import {
-  awaitSubmittedTransactionConfirmation,
-  signSubmitTransaction,
-  TxConfirmError,
-  TxSignError,
-  TxSubmitError,
-} from "./utils.js";
+  historyAdmissionMetadata,
+  historyIntentOptionsData,
+  submitDurableEventHistoryProgram,
+} from "./event-history-submission.js";
 
 export type SubmitDepositReferenceScripts = SDK.SubmitDepositReferenceScripts;
 export type SubmitDepositConfig = SDK.SubmitDepositConfig;
@@ -125,9 +129,17 @@ const serializeAssets = (
 const sameSerializedAssets = (
   left: DepositSubmissionAttemptsDB.SerializedAssets,
   right: DepositSubmissionAttemptsDB.SerializedAssets,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
+): boolean => {
+  const entries = Object.entries(left);
+  return (
+    entries.length === Object.keys(right).length &&
+    entries.every(([unit, amount]) => right[unit] === amount)
+  );
+};
 
-const inputOutRefsFromSignedTx = (tx: CML.Transaction): readonly string[] => {
+const inputOutRefsFromCompletedTx = (
+  tx: CML.Transaction,
+): readonly string[] => {
   const inputs = tx.body().inputs();
   const outRefs: string[] = [];
   for (let index = 0; index < inputs.len(); index += 1) {
@@ -139,23 +151,22 @@ const inputOutRefsFromSignedTx = (tx: CML.Transaction): readonly string[] => {
   return outRefs;
 };
 
-const decodeDepositDatumEventId = (datumCbor: string): string => {
-  const datum = LucidData.from(datumCbor, SDK.DepositDatum) as SDK.DepositDatum;
-  return LucidData.to(datum.event.id, SDK.OutputReference);
-};
-
-export const depositSubmissionAttemptFromSignedTx = ({
+export const depositSubmissionAttemptFromCompletedTx = ({
   txHash,
-  signedTxCbor,
+  transactionCbor,
   metadata,
   config,
 }: {
   readonly txHash: string;
-  readonly signedTxCbor: string;
+  readonly transactionCbor: string;
   readonly metadata: DepositBuildMetadata;
   readonly config: SubmitDepositConfig;
 }): DepositSubmissionAttemptsDB.InsertSubmittedInput => {
-  const tx = CML.Transaction.from_cbor_hex(signedTxCbor);
+  const tx = CML.Transaction.from_cbor_hex(transactionCbor);
+  if (CML.hash_transaction(tx.body()).to_hex() !== txHash)
+    throw new Error(
+      "Deposit transaction hash does not match its completed body",
+    );
   const outputs = tx.body().outputs();
   const matches: Array<{
     readonly outputIndex: number;
@@ -175,16 +186,47 @@ export const depositSubmissionAttemptFromSignedTx = ({
         `Deposit output ${txHash}#${outputIndex.toString()} is missing the inline deposit datum`,
       );
     }
-    const actualEventId = decodeDepositDatumEventId(output.datum);
+    const node = LucidData.from(output.datum, SDK.EventHistoryNode);
+    if (
+      node.position === "Root" ||
+      node.payload === "RootContent" ||
+      !("Order" in node.payload)
+    )
+      throw new Error(
+        "Expected an authenticated deposit Order in the completed transaction",
+      );
+    const facts = node.payload.Order.facts;
+    const actualEventId = LucidData.to(facts.event_id, SDK.OutputReference);
     if (actualEventId !== metadata.depositEventId) {
       continue;
     }
-    matches.push({ outputIndex, assets: output.assets });
+    const key = datumToHash(actualEventId);
+    if (
+      node.position.Key[0] !== key ||
+      metadata.depositAssetName !== key ||
+      !metadata.depositAuthUnit.endsWith(key) ||
+      metadata.depositAuthUnit.length !== 120 ||
+      facts.structural_lovelace !== metadata.structuralLovelace ||
+      facts.inclusion_time !== BigInt(metadata.inclusionTime) ||
+      outputIndex !== metadata.orderOutputIndex
+    )
+      throw new Error(
+        "Completed deposit Order does not match its full key, funding or inclusion metadata",
+      );
+    const assets = {
+      ...output.assets,
+      lovelace: (output.assets.lovelace ?? 0n) - facts.structural_lovelace,
+    };
+    if (assets.lovelace < 0n)
+      throw new Error(
+        "Completed deposit structural ADA exceeds its locked funds",
+      );
+    matches.push({ outputIndex, assets });
   }
 
   if (matches.length !== 1) {
     throw new Error(
-      `Expected exactly one deposit output for event ${metadata.depositEventId} in signed tx ${txHash}; found ${matches.length.toString()}`,
+      `Expected exactly one deposit output for event ${metadata.depositEventId} in completed tx ${txHash}; found ${matches.length.toString()}`,
     );
   }
 
@@ -225,9 +267,13 @@ export const depositSubmissionAttemptFromSignedTx = ({
       nonceInput: metadata.nonceInput,
       validTo: metadata.validTo,
       inclusionTime: metadata.inclusionTime,
+      structuralLovelace: metadata.structuralLovelace.toString(),
+      orderOutputIndex: metadata.orderOutputIndex,
+      l2DatumCbor: config.l2Datum,
+      transactionCbor,
     },
     [DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS]:
-      inputOutRefsFromSignedTx(tx),
+      inputOutRefsFromCompletedTx(tx),
   };
 };
 
@@ -245,15 +291,48 @@ export type DepositSubmissionReconciliationResult = {
   readonly nextSafeAction: string;
 };
 
-const findMatchingDepositEntry = (
-  rows: readonly DepositsDB.Entry[],
-  attempt: DepositSubmissionAttemptsDB.Row,
-): DepositsDB.Entry | undefined =>
-  rows.find((row) =>
-    row[DepositsDB.Columns.ID].equals(
-      attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID],
+/** Compare current L1 facts with the persisted submission intent, independent
+ * of the mutable history output location. A cache row alone cannot confirm it. */
+export const matchesDepositSubmissionIntent = (
+  deposit: SDK.DepositUTxO,
+  attempt: DepositSubmissionAttemptsDB.InsertSubmittedInput,
+  network: Network,
+): boolean => {
+  const metadata = attempt[DepositSubmissionAttemptsDB.Columns.METADATA];
+  if (metadata.l2DatumCbor === undefined)
+    throw new Error("Deposit submission intent is missing its L2 datum");
+  const expectedAddress = Effect.runSync(
+    SDK.addressDataFromBech32(
+      attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS],
     ),
   );
+  const infoCbor = deposit.infoCbor.toString("hex");
+  const info = LucidData.from(infoCbor, SDK.DepositInfo);
+  const datumCbor = (cbor: string | null) =>
+    cbor === null
+      ? null
+      : aikenSerialisedPlutusDataCborPreservingMapOrder(cbor);
+  return (
+    deposit.idCbor.equals(
+      attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID],
+    ) &&
+    deposit.utxo.address === metadata.depositAddress &&
+    deposit.assetName === metadata.depositAssetName &&
+    deposit.utxo.assets[metadata.depositAuthUnit] === 1n &&
+    deposit.facts.inclusion_time === BigInt(metadata.inclusionTime) &&
+    deposit.facts.structural_lovelace === BigInt(metadata.structuralLovelace) &&
+    info.l2_network_id === (network === "Mainnet" ? 1n : 0n) &&
+    LucidData.to(info.l2_address, SDK.AddressData) ===
+      LucidData.to(expectedAddress, SDK.AddressData) &&
+    datumCbor(
+      info.l2_datum === null ? null : plutusConstrFieldCbor(infoCbor, [2, 0]),
+    ) === datumCbor(metadata.l2DatumCbor) &&
+    sameSerializedAssets(
+      serializeAssets(deposit.originalAssets),
+      attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS],
+    )
+  );
+};
 
 export const reconcileDepositSubmissionAttemptProgram = (
   txHash: string,
@@ -279,67 +358,68 @@ export const reconcileDepositSubmissionAttemptProgram = (
     }
 
     const attempt = attemptOption.value;
-    const beforeRows = yield* DepositsDB.retrieveByCardanoTxHash(txHashBuffer);
-    const beforeMatch = findMatchingDepositEntry(beforeRows, attempt);
-    if (beforeMatch !== undefined) {
+    const { api: lucid } = yield* LucidService;
+    const contracts = yield* MidgardContracts;
+    const nodeConfig = yield* NodeConfig;
+    const deposits = yield* SDK.fetchDepositUTxOsProgram(
+      lucid,
+      SDK.eventHistoryDeploymentFromContracts(
+        SDK.requireEventHistoryContracts(contracts).deposit,
+      ),
+    );
+    const eventId =
+      attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID];
+    const observed = deposits.find((deposit) => deposit.idCbor.equals(eventId));
+    const matchesIntent =
+      observed === undefined
+        ? false
+        : yield* Effect.try({
+            try: () =>
+              matchesDepositSubmissionIntent(
+                observed,
+                attempt,
+                nodeConfig.NETWORK,
+              ),
+            catch: (cause) =>
+              new SDK.LucidError({
+                message:
+                  "Failed to compare authenticated deposit with its submission intent",
+                cause,
+              }),
+          });
+    if (matchesIntent) {
+      const { reconciledCount } = yield* persistDepositUTxOs(
+        deposits,
+        nodeConfig.NETWORK,
+      );
       yield* DepositSubmissionAttemptsDB.markReconciled(txHashBuffer);
       return {
         txHash,
-        depositEventId:
-          attempt[
-            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
-          ].toString("hex"),
+        depositEventId: eventId.toString("hex"),
         status: "reconciled_after_timeout",
         expectedDepositOutRef:
           attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
-        depositRowsFound: beforeRows.length,
-        reconciledCount: 0,
-        nextSafeAction:
-          "Deposit is already visible in deposits_utxos; continue the flow without resubmitting.",
-      } as const;
-    }
-
-    const { reconciledCount } = yield* reconcileVisibleDepositUTxOs();
-    const afterRows = yield* DepositsDB.retrieveByCardanoTxHash(txHashBuffer);
-    const afterMatch = findMatchingDepositEntry(afterRows, attempt);
-    if (afterMatch !== undefined) {
-      yield* DepositSubmissionAttemptsDB.markReconciled(txHashBuffer);
-      return {
-        txHash,
-        depositEventId:
-          attempt[
-            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
-          ].toString("hex"),
-        status: "reconciled_after_timeout",
-        expectedDepositOutRef:
-          attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
-        depositRowsFound: afterRows.length,
+        depositRowsFound: 1,
         reconciledCount,
         nextSafeAction:
-          "Deposit was recovered from visible chain state; continue the flow without resubmitting.",
+          "Deposit matches the submission intent in current authenticated L1 history; continue without resubmitting.",
       } as const;
     }
-
     const reason =
-      afterRows.length > 0
-        ? `Cardano tx ${txHash} has deposit rows, but none match expected event ${attempt[
-            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
-          ].toString("hex")}.`
-        : `Cardano tx ${txHash} is not visible in deposits_utxos after reconciliation.`;
+      observed === undefined
+        ? `Expected deposit event ${eventId.toString("hex")} is absent from current authenticated L1 history; absence after retirement does not establish submission failure.`
+        : `Authenticated deposit event ${eventId.toString("hex")} differs from the persisted submission intent.`;
     yield* DepositSubmissionAttemptsDB.markAmbiguous(txHashBuffer, reason);
     return {
       txHash,
-      depositEventId:
-        attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID].toString(
-          "hex",
-        ),
+      depositEventId: eventId.toString("hex"),
       status: "ambiguous",
       expectedDepositOutRef:
         attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
-      depositRowsFound: afterRows.length,
-      reconciledCount,
+      depositRowsFound: observed === undefined ? 0 : 1,
+      reconciledCount: 0,
       nextSafeAction:
-        "Do not resubmit yet; inspect provider confirmation and deposit contract UTxOs for this tx hash/event id.",
+        "Do not resubmit yet; reconcile the original transaction receipt and current event history.",
     } as const;
   });
 
@@ -384,7 +464,14 @@ export const buildUnsignedDepositTxFromFundingContextProgram = (
     }
 
     const externalLucid = yield* Effect.tryPromise({
-      try: () => makeLucid(lucid.config().provider, network),
+      try: () => {
+        const { provider, slotConfig } = lucid.config();
+        return makeLucid(
+          provider,
+          network,
+          slotConfig === undefined ? undefined : { slotConfig },
+        );
+      },
       catch: (cause) =>
         new SDK.LucidError({
           message: "Failed to initialize external-wallet deposit builder",
@@ -405,86 +492,113 @@ export const buildUnsignedDepositTxFromFundingContextProgram = (
     return { unsignedTxCbor: tx.toCBOR() };
   });
 
+/** Exact semantic datum bytes remain part of the durable pre-nonce intent. */
+export const depositSubmissionIntentHash = (
+  config: SubmitDepositConfig,
+): string =>
+  datumToHash(
+    LucidData.to([
+      config.l2Address === ""
+        ? ""
+        : getAddressDetails(config.l2Address).address.hex,
+      config.l2Datum === null
+        ? []
+        : [aikenSerialisedPlutusDataCborPreservingMapOrder(config.l2Datum)],
+      config.lovelace,
+      Object.entries(config.additionalAssets)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([unit, amount]) => [unit, amount]),
+      config.structuralLovelace === undefined
+        ? []
+        : [config.structuralLovelace],
+      historyIntentOptionsData(config),
+    ]),
+  );
+
 export const submitDepositWithMetadataProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SubmitDepositConfig,
-): Effect.Effect<
-  SubmittedDeposit,
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitDepositError
-  | TxSubmitError
-  | TxConfirmError
-  | TxSignError
-  | DatabaseError
-  | DepositConfirmationUnknownError,
-  Database | MidgardContracts | LucidService | NodeConfig
-> =>
+  submissionId: string,
+) =>
   Effect.gen(function* () {
-    const { tx, metadata } = yield* buildUnsignedDepositTxWithMetadataProgram(
-      lucid,
-      contracts,
-      config,
-    );
-    const submission = yield* signSubmitTransaction(lucid, tx);
-    const attempt = yield* Effect.try({
-      try: () =>
-        depositSubmissionAttemptFromSignedTx({
-          txHash: submission.txHash,
-          signedTxCbor: submission.signedTxCbor,
-          metadata,
-          config,
-        }),
+    const intentHash = yield* Effect.try({
+      try: () => depositSubmissionIntentHash(config),
       catch: (cause) =>
         new SubmitDepositError({
-          message:
-            "Failed to derive expected deposit output from the submitted transaction",
+          message: "Invalid durable deposit intent",
           cause,
         }),
     });
-    yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
-
-    const confirmationStatus = yield* awaitSubmittedTransactionConfirmation(
+    const metadataFrom = (
+      attempt: SDK.EventHistorySubmissionAttempt,
+      request: SDK.EventHistorySubmissionRequest,
+    ): DepositBuildMetadata => {
+      const admitted = historyAdmissionMetadata(lucid, attempt);
+      return {
+        depositAddress: admitted.output.address,
+        depositEventId: SDK.outputReferenceToPlutusDataCbor(request.nonce),
+        depositAssetName: admitted.key,
+        depositAuthUnit: contracts.deposit.policyId + admitted.key,
+        nonceInput: {
+          txHash: request.nonce.txHash,
+          outputIndex: request.nonce.outputIndex,
+        },
+        validTo: admitted.validTo,
+        inclusionTime: Number(admitted.facts.inclusion_time),
+        structuralLovelace: request.structuralLovelace,
+        orderOutputIndex: attempt.outputIndex,
+      };
+    };
+    const result = yield* submitDurableEventHistoryProgram({
       lucid,
-      submission,
-    ).pipe(
-      Effect.tap(() =>
-        DepositSubmissionAttemptsDB.markConfirmed(
-          Buffer.from(submission.txHash, "hex"),
-        ),
-      ),
-      Effect.as("confirmed" as const),
-      Effect.catchTag("TxConfirmError", (error) =>
-        Effect.gen(function* () {
-          yield* Effect.logWarning(
-            `Deposit tx ${submission.txHash} confirmation timed out; reconciling visible deposit state before allowing retry.`,
-          );
-          const reconciliation =
-            yield* reconcileDepositSubmissionAttemptProgram(submission.txHash);
-          if (reconciliation.status === "reconciled_after_timeout") {
-            return reconciliation.status;
-          }
-          return yield* Effect.fail(
-            new DepositConfirmationUnknownError({
-              message:
-                "Deposit transaction confirmation is unknown after timeout and reconciliation did not prove the expected deposit output.",
-              txHash: submission.txHash,
-              depositEventId: metadata.depositEventId,
-              expectedDepositOutRef:
-                attempt[
-                  DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF
-                ],
-              reconciliation,
-              cause: error,
-            }),
-          );
+      contracts,
+      kind: "Deposit",
+      submissionId,
+      intentHash,
+      nonceInput: config.nonceInput,
+      scriptReference: config.referenceScripts?.depositMinting,
+      prepare: (nonceInput) =>
+        SDK.prepareDepositSubmissionProgram(lucid, contracts, {
+          ...config,
+          nonceInput,
         }),
-      ),
+      beforeAdmission: (attempt, request) =>
+        Effect.gen(function* () {
+          const input = yield* Effect.try({
+            try: () =>
+              depositSubmissionAttemptFromCompletedTx({
+                txHash: attempt.txHash,
+                transactionCbor: attempt.transactionCbor,
+                metadata: metadataFrom(attempt, request),
+                config,
+              }),
+            catch: (cause) =>
+              new SubmitDepositError({
+                message: "Invalid completed deposit intent",
+                cause,
+              }),
+          });
+          yield* DepositSubmissionAttemptsDB.insertSubmitted(input);
+        }),
+    });
+    yield* DepositSubmissionAttemptsDB.markConfirmed(
+      Buffer.from(result.admission.txHash, "hex"),
     );
-    return { txHash: submission.txHash, metadata, confirmationStatus };
+    const metadata = yield* Effect.try({
+      try: () => metadataFrom(result.admission, result.request),
+      catch: (cause) =>
+        new SubmitDepositError({
+          message: "Invalid confirmed deposit receipt",
+          cause,
+        }),
+    });
+    return {
+      submissionId,
+      txHash: result.admission.txHash,
+      metadata,
+      confirmationStatus: "confirmed" as const,
+    };
   });
 
 type UnknownRecord = Record<string, unknown>;

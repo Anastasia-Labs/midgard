@@ -11,6 +11,7 @@ import {
   deterministicFixtureBytes,
   deterministicFixtureTxHash,
   provideDatabaseLayers,
+  resetApplicationTables,
 } from "./utils.js";
 
 type AdmissionInput = {
@@ -38,8 +39,7 @@ const insertAdmissions = (inputs: readonly AdmissionInput[]) =>
 const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE TABLE tx_rejections, tx_admission_payloads, tx_admissions RESTART IDENTITY CASCADE`;
+      yield* resetApplicationTables;
       return yield* effect;
     }),
   );

@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import * as FaultProofs from "@al-ft/midgard-fault-proofs";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
+import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -101,6 +102,10 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
           "utf8",
         ),
       );
+      const deposit = readPublishedDepositHistory(
+        staged.depositHistory,
+        staged.depositMetadata,
+      );
       predecessor = await depositEventsRetainedBlock({
         operatorVkey: staged.current.header.operatorVkey,
         startTime: staged.predecessor.header.endTime,
@@ -111,12 +116,8 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         priorLedger: staged.predecessor.payload.block_body.utxos,
         events: [
           {
-            event: staged.depositEvent,
-            depositPolicyId: staged.depositMetadata.depositAuthUnit.slice(
-              0,
-              56,
-            ),
-            assetName: staged.depositMetadata.depositAssetName,
+            event: deposit.event,
+            originalAssets: deposit.originalAssets,
             honest: true,
           },
         ],

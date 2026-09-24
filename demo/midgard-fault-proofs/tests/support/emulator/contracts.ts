@@ -140,6 +140,11 @@ export const buildMinimalFaultProofContracts = async (
     realNonExistentInput = false,
     realInvalidRange = false,
     realTransitionTrace = false,
+    eventHistoryBounds = {
+      inlineLimitBytes: 512n,
+      maxPayloadBytes: 5000n,
+      maxPayloadNodes: 512n,
+    },
     realZeroInput = false,
     realDaHashPreimage = false,
     realFabricatedDeposit = false,
@@ -193,6 +198,11 @@ export const buildMinimalFaultProofContracts = async (
     readonly realNonExistentInput?: boolean;
     readonly realInvalidRange?: boolean;
     readonly realTransitionTrace?: boolean;
+    readonly eventHistoryBounds?: {
+      inlineLimitBytes: bigint;
+      maxPayloadBytes: bigint;
+      maxPayloadNodes: bigint;
+    };
     readonly realZeroInput?: boolean;
     readonly realDaHashPreimage?: boolean;
     readonly realFabricatedDeposit?: boolean;
@@ -441,11 +451,7 @@ export const buildMinimalFaultProofContracts = async (
     }
     const familyContracts = await Effect.runPromise(
       build({
-        eventHistoryBounds: {
-          inlineLimitBytes: 512n,
-          maxPayloadBytes: 5000n,
-          maxPayloadNodes: 512n,
-        },
+        eventHistoryBounds,
         blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
         network,
         hubOraclePolicyId: hubOracle.policyId,

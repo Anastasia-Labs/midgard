@@ -39,7 +39,10 @@ import { outRefLabel } from "../tx-context.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "./availability-challenge-registration.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "./phas-membership-registration.js";
 import { ensureNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.js";
-import { ensureRuntimeRewardAccountsRegisteredProgram } from "./script-reward-registration.js";
+import {
+  ensureEventHistoryRewardAccountsRegisteredProgram,
+  ensureRuntimeRewardAccountsRegisteredProgram,
+} from "./script-reward-registration.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -198,6 +201,14 @@ const requireReferenceScriptPublication = (
 export const atomicProtocolInitReferenceScriptsFromPublications = (
   publications: readonly ReferenceScriptPublicationLike[],
 ): AtomicProtocolInitReferenceScripts => ({
+  depositHistory: requireReferenceScriptPublication(
+    publications,
+    "deposit minting",
+  ),
+  withdrawalHistory: requireReferenceScriptPublication(
+    publications,
+    "withdrawal minting",
+  ),
   daParamsGovernorMinting: requireReferenceScriptPublication(
     publications,
     "da-params-governor minting",
@@ -778,6 +789,8 @@ export type ProtocolDeploymentStatus = {
   readonly hubOracleWitness: UTxO | null;
   readonly correctionLockWitness: SDK.CorrectionLockUTxO | null;
   readonly stateQueueTopology: StateQueueTopology;
+  readonly depositHistoryInitialized: boolean;
+  readonly withdrawalHistoryInitialized: boolean;
   readonly daParamsInitialized: boolean;
   readonly schedulerInitialized: boolean;
   readonly registeredOperatorsInitialized: boolean;
@@ -791,6 +804,33 @@ export type ProtocolDeploymentStatus = {
   readonly missingComponents: readonly string[];
 };
 
+const fetchHistoryRootState = (
+  lucid: LucidEvolution,
+  contracts: SDK.EventHistoryContracts,
+) =>
+  Effect.tryPromise({
+    try: async () => {
+      const nodes = SDK.authenticateHistoryNodes(
+        await lucid.utxosAt(contracts.list.spendingScriptAddress),
+        {
+          policyId: contracts.list.policyId,
+          address: contracts.list.spendingScriptAddress,
+          retentionAddress: contracts.retention.spendingScriptAddress,
+          inlineLimitBytes: contracts.recipe.inlineLimitBytes,
+        },
+      );
+      return {
+        initialized: nodes.some(({ key }) => key === null),
+        empty: nodes.length === 0,
+      };
+    },
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to authenticate history deployment roots",
+        cause,
+      }),
+  });
+
 /**
  * Queries the current deployment state of the protocol contracts.
  */
@@ -799,6 +839,12 @@ export const fetchProtocolDeploymentStatus = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<ProtocolDeploymentStatus, SDK.LucidError> =>
   Effect.gen(function* () {
+    const history = SDK.requireEventHistoryContracts(contracts);
+    const depositHistory = yield* fetchHistoryRootState(lucid, history.deposit);
+    const withdrawalHistory = yield* fetchHistoryRootState(
+      lucid,
+      history.withdrawal,
+    );
     const hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
     const correctionLockWitness = yield* fetchCorrectionLockWitness(
       lucid,
@@ -848,6 +894,8 @@ export const fetchProtocolDeploymentStatus = (
       phasMembershipScript,
     );
     const missingComponents = [
+      ...(!depositHistory.initialized ? ["deposit-history"] : []),
+      ...(!withdrawalHistory.initialized ? ["withdrawal-history"] : []),
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
       ...(correctionLockWitness === null ? ["correction-lock"] : []),
       ...(!daParamsInitialized ? ["da-params"] : []),
@@ -859,6 +907,8 @@ export const fetchProtocolDeploymentStatus = (
       ...(!fraudProofCatalogueInitialized ? ["fraud-proof-catalogue"] : []),
     ] as const;
     const complete =
+      depositHistory.initialized &&
+      withdrawalHistory.initialized &&
       hubOracleWitness !== null &&
       correctionLockWitness !== null &&
       daParamsInitialized &&
@@ -870,6 +920,8 @@ export const fetchProtocolDeploymentStatus = (
       retiredOperatorsInitialized &&
       fraudProofCatalogueInitialized;
     const empty =
+      depositHistory.empty &&
+      withdrawalHistory.empty &&
       hubOracleWitness === null &&
       correctionLockWitness === null &&
       !daParamsInitialized &&
@@ -881,6 +933,8 @@ export const fetchProtocolDeploymentStatus = (
       !fraudProofCatalogueInitialized;
 
     return {
+      depositHistoryInitialized: depositHistory.initialized,
+      withdrawalHistoryInitialized: withdrawalHistory.initialized,
       hubOracleWitness,
       correctionLockWitness,
       stateQueueTopology,
@@ -1016,6 +1070,10 @@ export const program: Effect.Effect<
       lucid,
       lucidService.referenceScriptsAddress,
     );
+  yield* ensureEventHistoryRewardAccountsRegisteredProgram(
+    lucidService.referenceScriptsApi,
+    contracts,
+  );
   const initDeadline = resolveDefaultDeploymentDeadline(lucid);
   const txHash = yield* completeAndSubmit(
     lucid,

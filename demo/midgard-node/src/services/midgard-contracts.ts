@@ -15,7 +15,9 @@ import {
   makeDeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestEventHistoryBounds,
+  parseDeploymentManifestEventHistoryRecipe,
   parseDeploymentManifestEventHistoryRetentionAddress,
+  parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
@@ -34,6 +36,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
 
+import {
+  faultProofStepContractName,
+  type LegacyFaultProofFamily,
+  type RegisteredLinearFaultProofCategory,
+  TRANSITION_TRACE_FINAL_CONTRACT_NAMES,
+} from "../deployable-scripts.js";
 import { parseDeploymentManifestValue } from "../deployment-manifest.js";
 import {
   defaultDeploymentRunStatePath,
@@ -110,6 +118,20 @@ export const eventHistoryBoundsFromExplicitEnvironment =
       maxPayloadBytes: BigInt(bounds.maxPayloadBytes),
       maxPayloadNodes: BigInt(bounds.maxPayloadNodes),
     };
+  };
+
+export const eventHistoryProtectionDurationFromExplicitEnvironment =
+  (): bigint => {
+    const value = process.env.MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS;
+    if (
+      value === undefined ||
+      !/^[1-9][0-9]{0,15}$/u.test(value) ||
+      BigInt(value) > BigInt(Number.MAX_SAFE_INTEGER)
+    )
+      throw new Error(
+        "MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS must be an explicit positive safe integer",
+      );
+    return BigInt(value);
   };
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -556,177 +578,6 @@ const authenticatedValidatorFromManifest = (
   ...mintingValidatorFromManifest(manifest, sourcePath, mintName),
 });
 
-// This tuple is a compile-time registry used to derive the exact category union.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
-  "fabricatedDeposit",
-  "fabricatedWithdrawal",
-  "nativeScriptDecoding",
-  "missingSignature",
-  "missingNativeScriptTx",
-  "withdrawnReferenceInput",
-  "canonicalDecodability",
-  "committedFieldShape",
-  "minFee",
-  "withdrawalMistag",
-  "doubleWithdraw",
-  "crossBlockDuplicateEvent",
-  "l2TxMistag",
-  "withdrawnInput",
-  "valueNotPreserved",
-  "inputSetUniqueness",
-  "mintAuthorization",
-  "networkId",
-  "missingNativeScriptUtxo",
-  "nativeScriptInvalid",
-  "minAda",
-  "fieldPreimageLengthMismatch",
-  "fieldItemWidthIllegal",
-  "witnessScriptDecoding",
-  "scriptIntegrityHashMissing",
-  "transactionOutputNonCanonical",
-  "mintItemNonCanonical",
-  "resolvedOutputNonCanonical",
-  "mintDeclaredAssetLimit",
-  "spendInputSignerMissing",
-  "protectedOutputSignerMissing",
-  "observersForbiddenOnUntaggedNetwork",
-  "observerOrderInvalid",
-  "redeemerCanonicity",
-  "outputReferenceScriptDecoding",
-  "executionSourceScriptDecoding",
-  "receivePurposeLanguage",
-  "unusedScriptWitness",
-  "missingScriptSource",
-  "missingRedeemer",
-  "unusedRedeemer",
-  "executionNativeScriptInvalid",
-  "scriptIntegrityHashMismatch",
-  "distinctAssetAccumulationLimit",
-] as const satisfies readonly (keyof SDK.FaultProofContractChains)[];
-
-type RegisteredLinearFaultProofCategory =
-  (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number];
-
-const upperFirst = (value: string): string =>
-  `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
-
-const faultProofStepContractName = (
-  category: RegisteredLinearFaultProofCategory,
-  stepIndex: number,
-): string => {
-  if (category === "nativeScriptDecoding") {
-    const names = [
-      "fraudProofNativeScriptDecoding",
-      "fraudProofNativeScriptDecodingStep02",
-      "fraudProofNativeScriptDecodingStep03OpenSubject",
-      "fraudProofNativeScriptDecodingStep03BindDescriptor",
-      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
-      "fraudProofNativeScriptDecodingStep04",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined) {
-      throw new Error(
-        `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
-      );
-    }
-    return name;
-  }
-  if (category === "fieldPreimageLengthMismatch") {
-    const names = [
-      "fraudProofFieldPreimageLengthMismatch",
-      "fraudProofFieldPreimageLengthMismatchStep02Accepted",
-      "fraudProofFieldPreimageLengthMismatchStep02Forced",
-      "fraudProofFieldPreimageLengthMismatchStep03",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined)
-      throw new Error(
-        `field-preimage-length-mismatch exposes an unexpected step index ${stepIndex.toString()}`,
-      );
-    return name;
-  }
-  if (category === "scriptIntegrityHashMissing") {
-    const names = [
-      "fraudProofScriptIntegrityHashMissing",
-      "fraudProofScriptIntegrityHashMissingStep02",
-      "fraudProofScriptIntegrityHashMissingStep03",
-      "fraudProofScriptIntegrityHashMissingScriptGrammar",
-      "fraudProofScriptIntegrityHashMissingScriptScan",
-      "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
-      "fraudProofScriptIntegrityHashMissingStep04",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined)
-      throw new Error(
-        `script-integrity-hash-missing exposes an unexpected step index ${stepIndex.toString()}`,
-      );
-    return name;
-  }
-  if (category === "missingRedeemer") {
-    const names = [
-      "fraudProofMissingRedeemer",
-      "fraudProofMissingRedeemerStep02",
-      "fraudProofMissingRedeemerStep02a",
-      "fraudProofMissingRedeemerStep02b",
-      "fraudProofMissingRedeemerStep03",
-      "fraudProofMissingRedeemerStep04",
-      "fraudProofMissingRedeemerStep05",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined)
-      throw new Error(
-        `missing-redeemer exposes an unexpected step index ${stepIndex.toString()}`,
-      );
-    return name;
-  }
-  if (category === "unusedRedeemer") {
-    const names = [
-      "fraudProofUnusedRedeemer",
-      "fraudProofUnusedRedeemerStep02",
-      "fraudProofUnusedRedeemerStep02a",
-      "fraudProofUnusedRedeemerStep02b",
-      "fraudProofUnusedRedeemerStep02c",
-      "fraudProofUnusedRedeemerStep03",
-      "fraudProofUnusedRedeemerStep04",
-      "fraudProofUnusedRedeemerStep05",
-      "fraudProofUnusedRedeemerStep06",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined)
-      throw new Error(
-        `unused-redeemer exposes an unexpected step index ${stepIndex.toString()}`,
-      );
-    return name;
-  }
-  if (category === "executionNativeScriptInvalid") {
-    const names = [
-      "fraudProofExecutionNativeScriptInvalid",
-      "fraudProofExecutionNativeScriptInvalidStep02",
-      "fraudProofExecutionNativeScriptInvalidStep03",
-      "fraudProofExecutionNativeScriptInvalidStep04",
-      "fraudProofExecutionNativeScriptInvalidStep05",
-      "fraudProofExecutionNativeScriptInvalidStep06",
-      "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
-      "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
-      "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
-      "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
-      "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
-      "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
-      "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined)
-      throw new Error(
-        `execution-native-script-invalid exposes an unexpected step index ${stepIndex.toString()}`,
-      );
-    return name;
-  }
-  return `fraudProof${upperFirst(category)}${
-    stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
-  }`;
-};
-
 const linearFaultProofChainFromManifest = <
   Category extends RegisteredLinearFaultProofCategory,
 >(
@@ -930,23 +781,22 @@ const linearFaultProofChainFromManifest = <
   } as unknown as SDK.FaultProofContractChains[Category];
 };
 
-const legacyFaultProofChainFromManifest = <Chain extends SDK.FraudProofChain>(
+const legacyFaultProofChainFromManifest = <
+  Family extends LegacyFaultProofFamily,
+>(
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
-  baseChain: Chain,
-  firstStepContractName: string,
-): Chain => {
+  baseContracts: SDK.MidgardValidators,
+  family: Family,
+): SDK.FaultProofContractChains[Family] => {
+  const baseChain = baseContracts.fraudProofContracts[family];
   const steps = baseChain.steps.map((_validator, stepIndex) =>
     spendingValidatorFromManifest(
       network,
       manifest,
       sourcePath,
-      stepIndex === 0
-        ? firstStepContractName
-        : `${firstStepContractName}Step${(stepIndex + 1)
-            .toString()
-            .padStart(2, "0")}`,
+      faultProofStepContractName(family, stepIndex),
     ),
   );
   const firstStep = steps[0];
@@ -957,7 +807,72 @@ const legacyFaultProofChainFromManifest = <Chain extends SDK.FraudProofChain>(
     ...baseChain,
     firstStep,
     steps,
-  } as unknown as Chain;
+  } as unknown as SDK.FaultProofContractChains[Family];
+};
+
+const eventHistoryContractsFromManifest = (
+  network: Network,
+  manifest: DeploymentManifest,
+  sourcePath: string,
+): SDK.EventHistoryContractPair => {
+  const load = (name: "deposit" | "withdrawal"): SDK.EventHistoryContracts => {
+    const metadata = parseDeploymentManifestEventHistoryRecipe(
+      manifest.contracts[`${name}Mint`]?.eventHistoryRecipe,
+    );
+    const kind = name === "deposit" ? "Deposit" : "Withdrawal";
+    if (
+      metadata.kind !== kind ||
+      metadata.hubPolicyId !== manifest.contracts.hubOracleMint.scriptHash ||
+      metadata.initializationNonce.txHash !==
+        manifest.hubOracleOneShot.txHash ||
+      metadata.initializationNonce.outputIndex !==
+        manifest.hubOracleOneShot.outputIndex
+    )
+      throw new Error(
+        `Manifest ${name} history recipe differs from its deployment`,
+      );
+    const list = authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      `${name}Spend`,
+      `${name}Mint`,
+    );
+    if (list.spendingScriptHash !== list.policyId)
+      throw new Error(
+        `Manifest ${name} history spending and minting roles must use the same script`,
+      );
+    return {
+      recipe: {
+        kind,
+        hubPolicyId: metadata.hubPolicyId,
+        initializationNonce: {
+          transactionId: metadata.initializationNonce.txHash,
+          outputIndex: BigInt(metadata.initializationNonce.outputIndex),
+        },
+        protectionDurationMs: BigInt(metadata.protectionDurationMs),
+        inlineLimitBytes: BigInt(metadata.bounds.inlineLimitBytes),
+        maxPayloadBytes: BigInt(metadata.bounds.maxPayloadBytes),
+        maxPayloadNodes: BigInt(metadata.bounds.maxPayloadNodes),
+      },
+      list: {
+        ...list,
+        ...withdrawalValidatorFromManifest(manifest, sourcePath, `${name}Mint`),
+      },
+      retention: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        `${name}HistoryRetentionSpend`,
+      ),
+      retirement: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        `${name}HistoryRetirementWithdraw`,
+      ),
+    };
+  };
+  return { deposit: load("deposit"), withdrawal: load("withdrawal") };
 };
 
 export const midgardContractsFromDeploymentManifest = (
@@ -966,6 +881,11 @@ export const midgardContractsFromDeploymentManifest = (
   sourcePath: string,
   baseContracts: SDK.MidgardValidators,
 ): SDK.MidgardValidators => {
+  const eventHistory = eventHistoryContractsFromManifest(
+    network,
+    manifest,
+    sourcePath,
+  );
   const referenceScriptAuth = mintingValidatorFromManifest(
     manifest,
     sourcePath,
@@ -1031,19 +951,28 @@ export const midgardContractsFromDeploymentManifest = (
     sourcePath,
     "fraudProofTransitionTrace",
   );
-  const transitionTraceFinals = [
-    "fraudProofTransitionTraceControl",
-    "fraudProofTransitionTraceSource",
-    "fraudProofTransitionTraceWithdrawal",
-    "fraudProofTransitionTraceForced",
-    "fraudProofTransitionTraceAcceptedTransaction",
-    "fraudProofTransitionTraceDeposit",
-    "fraudProofTransitionTraceL1Event",
-    "fraudProofTransitionTraceDuplicate",
-  ].map((contractName) =>
-    spendingValidatorFromManifest(network, manifest, sourcePath, contractName),
+  const transitionTraceFinals = TRANSITION_TRACE_FINAL_CONTRACT_NAMES.map(
+    (contractName) =>
+      spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        contractName,
+      ),
   ) as unknown as SDK.FaultProofContractChains["transitionTrace"]["finals"];
+  const transitionHistory = manifest.contracts.fraudProofTransitionTrace;
+  const transitionBounds = parseDeploymentManifestEventHistoryBounds(
+    transitionHistory.eventHistoryBounds,
+  );
   const transitionTrace: SDK.FaultProofContractChains["transitionTrace"] = {
+    history: {
+      inlineLimitBytes: BigInt(transitionBounds.inlineLimitBytes),
+      maxPayloadBytes: BigInt(transitionBounds.maxPayloadBytes),
+      maxPayloadNodes: BigInt(transitionBounds.maxPayloadNodes),
+      retentionAddresses: parseDeploymentManifestEventHistoryRetentionAddresses(
+        transitionHistory.eventHistoryRetentionAddresses,
+      ),
+    },
     firstStep: transitionTraceRoute,
     route: transitionTraceRoute,
     finals: transitionTraceFinals,
@@ -1083,6 +1012,16 @@ export const midgardContractsFromDeploymentManifest = (
         manifest,
         sourcePath,
         "fraudProofTransitionTraceDepositProjectionWithdraw",
+      ),
+      l1Event: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceL1EventWithdraw",
+      ),
+      forcedTiming: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceForcedTimingWithdraw",
       ),
       depositSummaries: withdrawalValidatorFromManifest(
         manifest,
@@ -1188,66 +1127,66 @@ export const midgardContractsFromDeploymentManifest = (
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.doubleSpend,
-      "fraudProofDoubleSpend",
+      baseContracts,
+      "doubleSpend",
     ),
     nonExistentInput: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.nonExistentInput,
-      "fraudProofNonExistentInput",
+      baseContracts,
+      "nonExistentInput",
     ),
     nonExistentInputNoIndex: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.nonExistentInputNoIndex,
-      "fraudProofNonExistentInputNoIndex",
+      baseContracts,
+      "nonExistentInputNoIndex",
     ),
     invalidRange: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.invalidRange,
-      "fraudProofInvalidRange",
+      baseContracts,
+      "invalidRange",
     ),
     transitionTrace,
     zeroInput: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.zeroInput,
-      "fraudProofZeroInput",
+      baseContracts,
+      "zeroInput",
     ),
     validationTraceDispute,
     daHashPreimage: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.daHashPreimage,
-      "fraudProofDaHashPreimage",
+      baseContracts,
+      "daHashPreimage",
     ),
     noReferenceInput: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.noReferenceInput,
-      "fraudProofNoReferenceInput",
+      baseContracts,
+      "noReferenceInput",
     ),
     referenceInputNoIdx: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.referenceInputNoIdx,
-      "fraudProofReferenceInputNoIdx",
+      baseContracts,
+      "referenceInputNoIdx",
     ),
     invalidSignature: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts.fraudProofContracts.invalidSignature,
-      "fraudProofInvalidSignature",
+      baseContracts,
+      "invalidSignature",
     ),
     fabricatedDeposit: linearFaultProofChainFromManifest(
       network,
@@ -1719,20 +1658,9 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "pexcludesWithdraw",
     ),
-    deposit: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "depositSpend",
-      "depositMint",
-    ),
-    withdrawal: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "withdrawalSpend",
-      "withdrawalMint",
-    ),
+    eventHistory,
+    deposit: eventHistory.deposit.list,
+    withdrawal: eventHistory.withdrawal.list,
     txOrder,
     fieldPreimageCertificate,
     cekProgramMaterial,
@@ -1817,8 +1745,7 @@ export const REAL_SCHEDULER_SCRIPT_TITLES = SDK.SCHEDULER_SCRIPT_TITLES;
 /**
  * Blueprint titles for the real deposit scripts.
  */
-export const REAL_DEPOSIT_SCRIPT_TITLES =
-  SDK.USER_EVENT_CONTRACT_TITLES.deposit;
+export const REAL_DEPOSIT_SCRIPT_TITLES = SDK.EVENT_HISTORY_CONTRACT_TITLES;
 
 /**
  * Blueprint titles for the real tx-order scripts.
@@ -1829,8 +1756,7 @@ export const REAL_TX_ORDER_SCRIPT_TITLES =
 /**
  * Blueprint titles for the real withdrawal scripts.
  */
-export const REAL_WITHDRAWAL_SCRIPT_TITLES =
-  SDK.USER_EVENT_CONTRACT_TITLES.withdrawal;
+export const REAL_WITHDRAWAL_SCRIPT_TITLES = SDK.EVENT_HISTORY_CONTRACT_TITLES;
 
 /**
  * Blueprint titles for the real settlement scripts.
@@ -1867,6 +1793,7 @@ export type RealContractDeploymentParameters = {
   readonly referenceScriptAuth: SDK.MintingValidator;
   readonly availabilityChallengeParameters: SDK.DaAvailabilityParameters;
   readonly eventHistoryBounds: SDK.EventHistoryPayloadBounds;
+  readonly eventHistoryProtectionDurationMs: bigint;
   readonly daParamsGovernorInitOutRef?: HubOracleOneShotOutRef;
   readonly daParamsMaxCommitteeSize?: number;
   readonly daParamsMaxOwnerCount?: number;
@@ -2141,6 +2068,8 @@ export const buildRealTransitionTraceProofValidator = (
         blueprint,
         network,
         hubOraclePolicyId: contracts.hubOracle.policyId,
+        eventHistoryBounds:
+          contracts.fraudProofContracts.transitionTrace.history,
         referenceScriptAuthPolicyId: contracts.referenceScriptAuth.policyId,
         fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
       });
@@ -2526,27 +2455,6 @@ const buildRealSchedulerValidator = (
     });
   });
 
-/**
- * Builds the real deposit authenticated validator.
- */
-const buildRealDepositValidator = (
-  network: Network,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    return yield* Effect.try({
-      try: () =>
-        SDK.buildDepositValidators({
-          blueprint,
-          network,
-          hubOraclePolicyId: contracts.hubOracle.policyId,
-        }),
-      catch: (cause) =>
-        new Error("Failed to derive deposit validators", { cause }),
-    });
-  });
-
 export type TxOrderContracts = {
   readonly txOrder: SDK.AuthenticatedValidator;
   readonly fieldPreimageCertificate: SDK.SpendingValidator &
@@ -2566,24 +2474,6 @@ export const buildRealTxOrderContracts = (
         SDK.buildTxOrderValidators({ blueprint, network, hubOraclePolicyId }),
       catch: (cause) =>
         new Error("Failed to derive tx-order validators", { cause }),
-    });
-  });
-
-const buildRealWithdrawalValidator = (
-  network: Network,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    return yield* Effect.try({
-      try: () =>
-        SDK.buildWithdrawalValidators({
-          blueprint,
-          network,
-          hubOraclePolicyId: contracts.hubOracle.policyId,
-        }),
-      catch: (cause) =>
-        new Error("Failed to derive withdrawal validators", { cause }),
     });
   });
 
@@ -2735,13 +2625,26 @@ export const withRealStateQueueAndOperatorContracts = (
       activeOperators: realActiveOperators,
     };
 
-    const realDeposit = yield* buildRealDepositValidator(
-      network,
-      withRealOperatorSets,
-    );
+    const historyBlueprint = yield* loadRealBlueprint();
+    const eventHistory = yield* Effect.try({
+      try: () =>
+        SDK.buildEventHistoryDeployments({
+          blueprint: historyBlueprint,
+          network,
+          hubOraclePolicyId: withRealOperatorSets.hubOracle.policyId,
+          initializationNonce: hubOracleOneShotOutRef,
+          protectionDurationMs:
+            deploymentParameters.eventHistoryProtectionDurationMs,
+          bounds: deploymentParameters.eventHistoryBounds,
+        }),
+      catch: (cause) =>
+        new Error("Failed to derive authenticated event history", { cause }),
+    });
     const withRealHubOracleAndDeposit: SDK.MidgardValidators = {
       ...withRealOperatorSets,
-      deposit: realDeposit,
+      eventHistory,
+      deposit: eventHistory.deposit.list,
+      withdrawal: eventHistory.withdrawal.list,
     };
 
     const realTxOrderContracts = yield* buildRealTxOrderContracts(
@@ -2759,14 +2662,7 @@ export const withRealStateQueueAndOperatorContracts = (
       cekProgramMaterial: realTxOrderContracts.cekProgramMaterial,
     };
 
-    const realWithdrawal = yield* buildRealWithdrawalValidator(
-      network,
-      withRealHubOracleDepositAndTxOrder,
-    );
-    const withRealUserEvents: SDK.MidgardValidators = {
-      ...withRealHubOracleDepositAndTxOrder,
-      withdrawal: realWithdrawal,
-    };
+    const withRealUserEvents = withRealHubOracleDepositAndTxOrder;
 
     const realScheduler = yield* buildRealSchedulerValidator(
       network,
@@ -2962,6 +2858,8 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     {
       referenceScriptAuth,
       eventHistoryBounds: eventHistoryBoundsFromExplicitEnvironment(),
+      eventHistoryProtectionDurationMs:
+        eventHistoryProtectionDurationFromExplicitEnvironment(),
       availabilityChallengeParameters:
         availabilityParametersFromExplicitEnvironment(),
     },

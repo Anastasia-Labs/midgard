@@ -416,7 +416,18 @@ export const fabricatedDepositStepDatumSchema = (
 export const depositInfoCommitment = (
   info: DepositInfo,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(committedDepositValueBytes(info), 32);
+  depositInfoCommitmentCbor(Data.to(info, DepositInfo));
+
+/** Hash authenticated raw info without collapsing opaque datum map pairs. */
+export const depositInfoCommitmentCbor = (
+  infoCbor: string,
+): Effect.Effect<string, HashingError> => {
+  Data.from(infoCbor, DepositInfo);
+  return hashHexWithBlake2b(
+    aikenSerialisedPlutusDataCborPreservingMapOrder(infoCbor),
+    32,
+  );
+};
 
 /**
  * Blake2b-256 of a deposit event datum's canonical bytes — step-02's retained

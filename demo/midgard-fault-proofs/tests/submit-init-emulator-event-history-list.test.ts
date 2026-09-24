@@ -1258,7 +1258,9 @@ afterAll(() => {
   );
 });
 
-describe("applied authenticated event lists", () => {
+// The external-payload diagnostics settle 1024-node and 14000-byte payloads
+// through the emulator and take several seconds each.
+describe("applied authenticated event lists", { timeout: 60_000 }, () => {
   it.each(["Deposit", "Withdrawal"] as const)(
     "admits inline %s through permissionless filler promotion",
     async (kind) => journey(kind, false),

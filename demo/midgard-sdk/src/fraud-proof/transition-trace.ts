@@ -12,8 +12,6 @@ import {
   type HeaderHash,
   HeaderHashSchema,
   HeaderSchema,
-  type WithdrawalValidity,
-  WithdrawalValiditySchema,
 } from "../ledger-state.js";
 import {
   type OperatorVerdict,
@@ -309,8 +307,6 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
       trace_proof: TransitionTraceMembershipProofSchema,
       event_to_step: EventToStepMembershipProofSchema,
       source_membership: DepositSourceMembershipProofSchema,
-      event_ref_input_index: Data.Integer(),
-      event_asset_name: Data.Bytes(),
       projected_utxo: LedgerInsertWitnessSchema,
     }),
   }),
@@ -354,8 +350,6 @@ export type InvalidOneStepTransitionWitness =
         readonly trace_proof: IndexedTraceProof;
         readonly event_to_step: EventToStepMembershipProof;
         readonly source_membership: DepositSourceMembershipProof;
-        readonly event_ref_input_index: bigint;
-        readonly event_asset_name: string;
         readonly projected_utxo: LedgerInsertWitness;
       };
     }
@@ -378,15 +372,11 @@ export const InvalidOneStepTransitionWitness =
 export const OmittedDueL1EventWitnessSchema = Data.Enum([
   Data.Object({
     OmittedDueDeposit: Data.Object({
-      event_ref_input_index: Data.Integer(),
-      event_asset_name: Data.Bytes(),
       source_non_membership: DepositSourceNonMembershipProofSchema,
     }),
   }),
   Data.Object({
     OmittedDueWithdrawal: Data.Object({
-      event_ref_input_index: Data.Integer(),
-      event_asset_name: Data.Bytes(),
       source_non_membership: WithdrawalSourceNonMembershipProofSchema,
     }),
   }),
@@ -402,15 +392,11 @@ export const OmittedDueL1EventWitnessSchema = Data.Enum([
 export type OmittedDueL1EventWitness =
   | {
       readonly OmittedDueDeposit: {
-        readonly event_ref_input_index: bigint;
-        readonly event_asset_name: string;
         readonly source_non_membership: DepositSourceNonMembershipProof;
       };
     }
   | {
       readonly OmittedDueWithdrawal: {
-        readonly event_ref_input_index: bigint;
-        readonly event_asset_name: string;
         readonly source_non_membership: WithdrawalSourceNonMembershipProof;
       };
     }
@@ -429,16 +415,11 @@ export const OmittedDueL1EventWitness = asDataType<OmittedDueL1EventWitness>(
 export const OutOfWindowSourceEventWitnessSchema = Data.Enum([
   Data.Object({
     OutOfWindowDeposit: Data.Object({
-      event_ref_input_index: Data.Integer(),
-      event_asset_name: Data.Bytes(),
       source_membership: DepositSourceMembershipProofSchema,
     }),
   }),
   Data.Object({
     OutOfWindowWithdrawal: Data.Object({
-      event_ref_input_index: Data.Integer(),
-      event_asset_name: Data.Bytes(),
-      validity_override: WithdrawalValiditySchema,
       source_membership: WithdrawalSourceMembershipProofSchema,
     }),
   }),
@@ -454,16 +435,11 @@ export const OutOfWindowSourceEventWitnessSchema = Data.Enum([
 export type OutOfWindowSourceEventWitness =
   | {
       readonly OutOfWindowDeposit: {
-        readonly event_ref_input_index: bigint;
-        readonly event_asset_name: string;
         readonly source_membership: DepositSourceMembershipProof;
       };
     }
   | {
       readonly OutOfWindowWithdrawal: {
-        readonly event_ref_input_index: bigint;
-        readonly event_asset_name: string;
-        readonly validity_override: WithdrawalValidity;
         readonly source_membership: WithdrawalSourceMembershipProof;
       };
     }
@@ -692,6 +668,36 @@ export const TransitionTraceFinalSpendRedeemer =
     TransitionTraceFinalSpendRedeemerSchema,
   );
 
+/** Timing finals resolve current history references after route publication. */
+export const TransitionTraceL1EventFinalArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+  event_reference: Data.Object({
+    order_index: Data.Integer(),
+    external_data_index: Data.Nullable(Data.Integer()),
+  }),
+  completed_fraud_witness: Data.Any(),
+  yield_ref_input_index: Data.Integer(),
+});
+export type TransitionTraceL1EventFinalArgs = Data.Static<
+  typeof TransitionTraceL1EventFinalArgsSchema
+>;
+export const TransitionTraceL1EventFinalArgs =
+  asDataType<TransitionTraceL1EventFinalArgs>(
+    TransitionTraceL1EventFinalArgsSchema,
+  );
+export const TransitionTraceL1EventFinalSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(TransitionTraceL1EventFinalArgsSchema);
+export type TransitionTraceL1EventFinalSpendRedeemer =
+  | { readonly Cancel: FaultProofStepCancel }
+  | { readonly Continue: readonly [TransitionTraceL1EventFinalArgs] };
+export const TransitionTraceL1EventFinalSpendRedeemer =
+  asDataType<TransitionTraceL1EventFinalSpendRedeemer>(
+    TransitionTraceL1EventFinalSpendRedeemerSchema,
+  );
+
 export const TransitionTraceYieldFinalArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -701,6 +707,9 @@ export const TransitionTraceYieldFinalArgsSchema = Data.Object({
   proof_ref_indices: Data.Array(Data.Integer()),
   output_ref_indices: Data.Array(Data.Integer()),
   deposit_event_ref_index: Data.Integer(),
+  deposit_external_ref_index: Data.Nullable(Data.Integer()),
+  deposit_opening: Data.Nullable(Data.Any()),
+  completed_fraud_witness: Data.Nullable(Data.Any()),
 });
 export type TransitionTraceYieldFinalArgs = Data.Static<
   typeof TransitionTraceYieldFinalArgsSchema

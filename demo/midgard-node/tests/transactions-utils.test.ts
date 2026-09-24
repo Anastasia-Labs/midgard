@@ -1,9 +1,10 @@
 import { CML, Emulator, OgmiosJsonRpcError } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   awaitSubmittedTransactionConfirmation,
+  BeforeSignedTransactionSubmission,
   handleSignSubmitNoConfirmation,
   inspectSignedTxValidityInterval,
   isNoInlineSubmitDefer,
@@ -1338,3 +1339,60 @@ const fakeSignBuilder = (signed: unknown) =>
       }),
     },
   }) as never;
+
+describe("durable signed intent handoff", () => {
+  it("awaits durable intent before invoking the provider with exact bytes", async () => {
+    const entered = await Effect.runPromise(Deferred.make<void>());
+    const committed = await Effect.runPromise(Deferred.make<void>());
+    const cbor = signedTxCbor({});
+    const calls: string[] = [];
+    const submitProgram = vi.fn(() =>
+      Effect.sync(() => {
+        calls.push("provider");
+      }),
+    );
+    const fiber = Effect.runFork(
+      submitSignedTxWithRecovery(
+        {} as never,
+        { toCBOR: () => cbor, submitProgram } as never,
+        "intent-hash",
+      ).pipe(
+        Effect.provideService(BeforeSignedTransactionSubmission, {
+          persist: (intent) =>
+            Effect.gen(function* () {
+              expect(intent).toEqual({
+                txHash: "intent-hash",
+                signedTxCbor: cbor,
+              });
+              calls.push("persist-start");
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(committed);
+              calls.push("persist-committed");
+            }),
+        }),
+      ),
+    );
+    await Effect.runPromise(Deferred.await(entered));
+    expect(submitProgram).not.toHaveBeenCalled();
+    await Effect.runPromise(Deferred.succeed(committed, undefined));
+    await Effect.runPromise(Fiber.join(fiber));
+    expect(calls).toEqual(["persist-start", "persist-committed", "provider"]);
+  });
+  it("does not invoke the provider when durable intent persistence fails", async () => {
+    const submitProgram = vi.fn(() => Effect.void);
+    await expect(
+      Effect.runPromise(
+        submitSignedTxWithRecovery(
+          {} as never,
+          { toCBOR: () => signedTxCbor({}), submitProgram } as never,
+          "intent-hash",
+        ).pipe(
+          Effect.provideService(BeforeSignedTransactionSubmission, {
+            persist: () => Effect.fail(new Error("stale owner")),
+          }),
+        ),
+      ),
+    ).rejects.toThrow("stale owner");
+    expect(submitProgram).not.toHaveBeenCalled();
+  });
+});

@@ -45,7 +45,11 @@
  * both forms so the difference cannot regress unnoticed.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -537,7 +541,29 @@ export const withdrawalContentBytes = (info: WithdrawalInfo): string =>
 export const withdrawalContentCommitment = (
   info: WithdrawalInfo,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(withdrawalContentBytes(info), 32);
+  withdrawalContentCommitmentCbor(Data.to(info, WithdrawalInfo));
+
+/** The raw body/signature pair, excluding the operator-owned validity field. */
+export const withdrawalContentBytesCbor = (infoCbor: string): string => {
+  Data.from(infoCbor, WithdrawalInfo);
+  const content = replacePlutusConstrFieldCbor(
+    "d8799f0000ff",
+    [0],
+    plutusConstrFieldCbor(infoCbor, [0]),
+  );
+  return aikenSerialisedPlutusDataCborPreservingMapOrder(
+    replacePlutusConstrFieldCbor(
+      content,
+      [1],
+      plutusConstrFieldCbor(infoCbor, [1]),
+    ),
+  );
+};
+
+export const withdrawalContentCommitmentCbor = (
+  infoCbor: string,
+): Effect.Effect<string, HashingError> =>
+  hashHexWithBlake2b(withdrawalContentBytesCbor(infoCbor), 32);
 
 /**
  * Blake2b-256 of a withdrawal event datum's canonical bytes — step-02's retained

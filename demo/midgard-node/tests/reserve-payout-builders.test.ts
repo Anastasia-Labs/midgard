@@ -1,18 +1,24 @@
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
   CML,
+  Constr,
   coreToTxOutput,
   credentialToAddress,
   Data,
   Emulator,
   type EmulatorAccount,
   generateEmulatorAccount,
+  getAddressDetails,
   Lucid as makeLucid,
   type LucidEvolution,
   PROTOCOL_PARAMETERS_DEFAULT,
   type Script,
+  scriptFromNative,
   scriptHashToCredential,
   toUnit,
   type TxSignBuilder,
@@ -20,9 +26,8 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   __reservePayoutTest,
   buildAbsorbConfirmedDepositToReserveTxProgram,
@@ -37,7 +42,6 @@ import {
   getRedeemerPointersInContextOrder,
   type RedeemerPointer,
   resolveMintPolicyContextIndex,
-  resolveRedeemerTxInfoIndex,
 } from "./helpers/redeemer-inspection.js";
 
 const mkUtxo = (
@@ -67,13 +71,6 @@ const hashHexBlake2b256 = (hex: string): Promise<string> =>
 
 const canonicalDatumCbor = (cbor: string): string =>
   CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();
-
-const userEventCborFieldsFromDatumCbor = (datum: string) =>
-  SDK.userEventCborFieldsFromInlineDatum({
-    txHash: "00".repeat(32),
-    outputIndex: 0,
-    datum,
-  });
 
 const expectLeft = <E, A>(
   result:
@@ -114,7 +111,32 @@ const countedSingletonMembershipRoot = async (
   return { root, phasRoot };
 };
 
-const loadRealContracts = loadRealMidgardContractsForTest;
+const deploymentRecords = new Map<string, unknown>();
+const loadRealContracts: typeof loadRealMidgardContractsForTest = async (
+  ...args
+) => {
+  const contracts = await loadRealMidgardContractsForTest(...args);
+  const pair = SDK.requireEventHistoryContracts(contracts);
+  const historyIdentity = (history: SDK.EventHistoryContracts) => ({
+    recipe: history.recipe,
+    listPolicyId: history.list.policyId,
+    listAddress: history.list.spendingScriptAddress,
+    retirementHash: validatorToScriptHash(history.retirement.withdrawalScript),
+    retentionHash: history.retention.spendingScriptHash,
+  });
+  deploymentRecords.set(contracts.payout.policyId, {
+    provenance:
+      "Real applied list/retirement/retention/payout scripts; seeded fixture hub, confirmed-state and settlement UTxOs. This is not real frontier establishment or live acceptance.",
+    hubPolicyId: contracts.hubOracle.policyId,
+    confirmedPolicyId: contracts.stateQueue.policyId,
+    settlementPolicyId: contracts.settlement.policyId,
+    payoutPolicyId: contracts.payout.policyId,
+    reserveHash: contracts.reserve.spendingScriptHash,
+    deposit: historyIdentity(pair.deposit),
+    withdrawal: historyIdentity(pair.withdrawal),
+  });
+  return contracts;
+};
 
 const findUtxoWithUnit = (
   utxos: readonly UTxO[],
@@ -181,13 +203,74 @@ const findPureAdaUtxo = (utxos: readonly UTxO[], lovelace: bigint): UTxO => {
   return utxo;
 };
 
+const signedMeasurements: {
+  txHash: string;
+  testName: string | undefined;
+  transactionCbor: string;
+  bytes: number;
+  memory: string;
+  steps: string;
+  fee: string;
+}[] = [];
+afterAll(() => {
+  if (process.env.MIDGARD_BUILDERS_EVIDENCE_PATH !== undefined)
+    writeFileSync(
+      process.env.MIDGARD_BUILDERS_EVIDENCE_PATH,
+      JSON.stringify(
+        {
+          blueprint: {
+            path:
+              process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+              new URL("../../../onchain/aiken/plutus.json", import.meta.url)
+                .pathname,
+            sha256: createHash("sha256")
+              .update(
+                readFileSync(
+                  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+                    new URL(
+                      "../../../onchain/aiken/plutus.json",
+                      import.meta.url,
+                    ),
+                ),
+              )
+              .digest("hex"),
+          },
+          deployments: [...deploymentRecords.values()],
+          transactions: signedMeasurements,
+        },
+        (_key, value) => (typeof value === "bigint" ? value.toString() : value),
+        2,
+      ) + "\n",
+    );
+});
+
 const submitWithWallet = async (tx: TxSignBuilder): Promise<string> => {
   try {
     const signed = await tx.sign.withWallet().complete();
     expect(signed.toCBOR().length / 2).toBeLessThanOrEqual(
       PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
     );
-    return await signed.submit();
+    const transaction = CML.Transaction.from_cbor_hex(signed.toCBOR());
+    const redeemers = transaction.witness_set().redeemers()?.to_flat_format();
+    let memory = 0n;
+    let steps = 0n;
+    for (let index = 0; index < (redeemers?.len() ?? 0); index++) {
+      memory += redeemers!.get(index).ex_units().mem();
+      steps += redeemers!.get(index).ex_units().steps();
+    }
+    expect(memory).toBeLessThanOrEqual(PROTOCOL_PARAMETERS_DEFAULT.maxTxExMem);
+    expect(steps).toBeLessThanOrEqual(PROTOCOL_PARAMETERS_DEFAULT.maxTxExSteps);
+    const txHash = await signed.submit();
+    signedMeasurements.push({
+      txHash,
+      testName: expect.getState().currentTestName,
+      transactionCbor: signed.toCBOR(),
+      bytes: signed.toCBOR().length / 2,
+      memory: memory.toString(),
+      steps: steps.toString(),
+      fee: transaction.body().fee().toString(),
+    });
+    return txHash;
   } catch (cause) {
     const message =
       cause instanceof Error && cause.message.length > 0
@@ -293,34 +376,37 @@ const expectAuthenticateMintRedeemerLayout = ({
   readonly hubOracleRefInput: UTxO;
 }): void => {
   const transaction = tx.toTransaction();
-  const redeemer = decodeRedeemer<SDK.UserEventMintRedeemer>(
+  const withdrawPointers = getRedeemerPointersInContextOrder(
     transaction,
-    mintPointer([policyId], policyId),
-    SDK.UserEventMintRedeemer,
+  ).filter((pointer) => pointer.tag === CML.RedeemerTag.Reward);
+  expect(withdrawPointers).toHaveLength(1);
+  const redeemer = decodeRedeemer<SDK.EventHistoryObserve>(
+    transaction,
+    withdrawPointers[0]!,
+    SDK.EventHistoryObserve,
   );
-  if (!("AuthenticateEvent" in redeemer)) {
-    throw new Error("Expected AuthenticateEvent mint redeemer");
-  }
-
-  const hubRefInputIndex = requireTxInputIndex(
-    transaction.body().reference_inputs(),
-    hubOracleRefInput,
-    "hub oracle reference",
+  if (!("Apply" in redeemer) || !("InsertOrder" in redeemer.Apply.operation))
+    throw new Error("Expected history insertion");
+  expect(redeemer.Apply.hub_reference_index).toBe(
+    requireTxInputIndex(
+      transaction.body().reference_inputs(),
+      hubOracleRefInput,
+      "hub oracle reference",
+    ),
   );
-  expect(hubRefInputIndex).toBeGreaterThan(0n);
-  expect(redeemer.AuthenticateEvent.nonce_input_index).toBe(
+  expect(redeemer.Apply.hub_reference_index).toBeGreaterThan(0n);
+  expect(redeemer.Apply.operation.InsertOrder.nonce_input_index).toBe(
     requireTxInputIndex(transaction.body().inputs(), nonceInput, "nonce"),
   );
-  expect(redeemer.AuthenticateEvent.event_output_index).toBe(
+  expect(redeemer.Apply.operation.InsertOrder.order_output_index).toBe(
     requireEventOutputIndex(transaction, eventAddress, eventUnit),
   );
-  expect(redeemer.AuthenticateEvent.hub_ref_input_index).toBe(hubRefInputIndex);
-  expect(redeemer.AuthenticateEvent.witness_registration_redeemer_index).toBe(
-    resolveRedeemerTxInfoIndex({
-      pointers: getRedeemerPointersInContextOrder(transaction),
-      target: { tag: CML.RedeemerTag.Cert, index: 0n },
-    }),
-  );
+  expect(
+    Data.from(
+      findRedeemerDataCbor(transaction, mintPointer([policyId], policyId))!,
+    ),
+  ).toEqual(Data.from(Data.void()));
+  expect(transaction.body().certs()?.len() ?? 0).toBe(0);
 };
 
 const scriptRewardAddress = (script: Script): string => {
@@ -363,38 +449,6 @@ const makeSeededScriptAccount = ({
           ...(scriptRef === undefined ? {} : { scriptRef }),
         },
       }),
-});
-
-const makeDepositUTxO = ({
-  assetName,
-  utxo,
-  datum,
-}: {
-  readonly assetName: string;
-  readonly utxo: UTxO;
-  readonly datum: SDK.DepositDatum;
-}): SDK.DepositUTxO => ({
-  utxo,
-  datum,
-  assetName,
-  ...SDK.userEventCborFieldsFromInlineDatum(utxo),
-  inclusionTime: new Date(Number(datum.inclusion_time)),
-});
-
-const makeWithdrawalUTxO = ({
-  assetName,
-  utxo,
-  datum,
-}: {
-  readonly assetName: string;
-  readonly utxo: UTxO;
-  readonly datum: SDK.WithdrawalOrderDatum;
-}): SDK.WithdrawalUTxO => ({
-  utxo,
-  datum,
-  assetName,
-  ...SDK.userEventCborFieldsFromInlineDatum(utxo),
-  inclusionTime: new Date(Number(datum.inclusion_time)),
 });
 
 const makeReservePayoutBuilderFixture = async () => {
@@ -549,8 +603,28 @@ const makeUserEventBuilderFixture = async () => {
     "Custom",
     scriptHashToCredential(contracts.hubOracle.policyId),
   );
+  const history = SDK.requireEventHistoryContracts(contracts);
+  const emptyRoot = Data.to(
+    {
+      position: "Root",
+      next: null,
+      protected_until: 0n,
+      payload: "RootContent",
+    },
+    SDK.EventHistoryNode,
+  );
   const emulator = new Emulator(
     [
+      makeSeededScriptAccount({
+        address: contracts.deposit.spendingScriptAddress,
+        assets: { lovelace: 3_000_000n, [contracts.deposit.policyId]: 1n },
+        inlineDatum: emptyRoot,
+      }),
+      makeSeededScriptAccount({
+        address: contracts.withdrawal.spendingScriptAddress,
+        assets: { lovelace: 3_000_000n, [contracts.withdrawal.policyId]: 1n },
+        inlineDatum: emptyRoot,
+      }),
       operator,
       ...referenceHosts,
       beneficiary,
@@ -574,6 +648,8 @@ const makeUserEventBuilderFixture = async () => {
     ],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  registerZeroRewardScript(emulator, history.deposit.list.withdrawalScript);
+  registerZeroRewardScript(emulator, history.withdrawal.list.withdrawalScript);
   const lucid = await makeLucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(operator.seedPhrase);
 
@@ -604,8 +680,18 @@ const makeUserEventBuilderFixture = async () => {
 
 const makeReserveLifecycleBuilderFixture = async ({
   settlementWithdrawalValidity = "WithdrawalIsValid",
+  externalKind,
+  structuralLovelace = 2_000_000n,
+  confirmedEnd = 1n,
+  protectedUntil = 0n,
+  scriptOwner = false,
 }: {
   readonly settlementWithdrawalValidity?: SDK.WithdrawalValidity;
+  readonly externalKind?: "Deposit" | "Withdrawal";
+  readonly structuralLovelace?: bigint;
+  readonly confirmedEnd?: bigint;
+  readonly protectedUntil?: bigint;
+  readonly scriptOwner?: boolean;
 } = {}) => {
   const operator = generateEmulatorAccount({
     lovelace: 30_000_000_000n,
@@ -621,14 +707,21 @@ const makeReserveLifecycleBuilderFixture = async ({
     SDK.addressDataFromBech32(beneficiary.address),
   );
 
-  const depositAssetName = "dd".repeat(32);
-  const withdrawalAssetName = "ee".repeat(32);
+  const depositId = { transactionId: "11".repeat(32), outputIndex: 0n };
+  const withdrawalId = { transactionId: "22".repeat(32), outputIndex: 0n };
+  const depositAssetName = await Effect.runPromise(
+    SDK.eventHistoryKey(depositId),
+  );
+  const withdrawalAssetName = await Effect.runPromise(
+    SDK.eventHistoryKey(withdrawalId),
+  );
   const settlementAssetName = "cc";
-  const depositWitnessScript =
-    SDK.buildUserEventWitnessCertificateValidator(depositAssetName);
-  const withdrawalWitnessScript =
-    SDK.buildUserEventWitnessCertificateValidator(withdrawalAssetName);
-  const membershipProofScript = loadPhasMembershipWithdrawalScript();
+  const history = SDK.requireEventHistoryContracts(contracts);
+  const owner = getAddressDetails(operator.address).paymentCredential!.hash;
+  const authorizationScript = scriptFromNative({ type: "sig", keyHash: owner });
+  const depositRetirementScript = history.deposit.retirement.withdrawalScript;
+  const withdrawalRetirementScript =
+    history.withdrawal.retirement.withdrawalScript;
   const depositUnit = toUnit(contracts.deposit.policyId, depositAssetName);
   const withdrawalUnit = toUnit(
     contracts.withdrawal.policyId,
@@ -642,61 +735,112 @@ const makeReserveLifecycleBuilderFixture = async ({
     contracts.hubOracle.policyId,
     SDK.HUB_ORACLE_ASSET_NAME,
   );
-  const depositDatum: SDK.DepositDatum = {
-    event: {
-      id: {
-        transactionId: "11".repeat(32),
-        outputIndex: 0n,
-      },
-      info: {
-        l2_address: l1AddressData,
-        l2_network_id: 0n,
-        l2_datum: null,
-      },
-    },
-    inclusion_time: 0n,
-    witness: SDK.userEventWitnessScriptHash(depositAssetName),
+  const depositEvent: SDK.DepositEvent = {
+    id: depositId,
+    info: { l2_address: l1AddressData, l2_network_id: 0n, l2_datum: null },
   };
-  const withdrawalDatum: SDK.WithdrawalOrderDatum = {
-    event: {
-      id: {
-        transactionId: "22".repeat(32),
-        outputIndex: 0n,
+  const withdrawalEvent: SDK.WithdrawalEvent = {
+    id: withdrawalId,
+    info: {
+      body: {
+        l2_outref: { transactionId: "33".repeat(32), outputIndex: 0n },
+        l2_owner: "44".repeat(28),
+        l2_value: __reservePayoutTest.assetsToValue({ lovelace: 7_000_000n }),
+        l1_address: l1AddressData,
+        l1_datum: "NoDatum",
       },
-      info: {
-        body: {
-          l2_outref: {
-            transactionId: "33".repeat(32),
-            outputIndex: 0n,
+      signature: ["01", "02"],
+      validity: "WithdrawalIsValid",
+    },
+  };
+  const payload = (withdrawal: boolean): SDK.EventHistoryPayload =>
+    withdrawal
+      ? {
+          WithdrawalPayload: {
+            event: withdrawalEvent,
+            refund_address: l1AddressData,
+            refund_datum: "NoDatum",
           },
-          l2_owner: "44".repeat(28),
-          l2_value: __reservePayoutTest.assetsToValue({ lovelace: 7_000_000n }),
-          l1_address: l1AddressData,
-          l1_datum: "NoDatum",
+        }
+      : { DepositPayload: { event: depositEvent } };
+  const retainedData: SDK.EventHistoryData | undefined =
+    externalKind === undefined
+      ? undefined
+      : {
+          event_key:
+            externalKind === "Deposit" ? depositAssetName : withdrawalAssetName,
+          event_payload: Data.from(
+            Data.to(
+              payload(externalKind === "Withdrawal"),
+              SDK.EventHistoryPayload,
+            ),
+          ),
+          reclaim_auth: scriptOwner
+            ? { ScriptCredential: [validatorToScriptHash(authorizationScript)] }
+            : { PublicKeyCredential: [owner] },
+        };
+  const order = (
+    event: SDK.DepositEvent | SDK.WithdrawalEvent,
+    key: string,
+    withdrawal: boolean,
+  ): SDK.EventHistoryNode => ({
+    position: { Key: [key] },
+    next: null,
+    protected_until: protectedUntil,
+    payload: {
+      Order: {
+        facts: {
+          event_id: event.id,
+          inclusion_time: 1n,
+          structural_lovelace: withdrawal ? 0n : structuralLovelace,
+          structural_refund_key: owner,
+          location:
+            externalKind === (withdrawal ? "Withdrawal" : "Deposit")
+              ? {
+                  External: {
+                    storage_datum_hash: SDK.eventHistoryDataHash(retainedData!),
+                  },
+                }
+              : { Inline: { payload: payload(withdrawal) } },
         },
-        signature: ["01", "02"],
-        validity: "WithdrawalIsValid",
       },
     },
-    inclusion_time: 0n,
-    witness: SDK.userEventWitnessScriptHash(withdrawalAssetName),
-    refund_address: l1AddressData,
-    refund_datum: "NoDatum",
-  };
-  const depositDatumCbor = Data.to(depositDatum, SDK.DepositDatum);
-  const withdrawalDatumCbor = Data.to(
-    withdrawalDatum,
-    SDK.WithdrawalOrderDatum,
+  });
+  const depositDatumCbor = Data.to(
+    order(depositEvent, depositAssetName, false),
+    SDK.EventHistoryNode,
   );
-  const depositEventCbors = userEventCborFieldsFromDatumCbor(depositDatumCbor);
-  const withdrawalEventCbors =
-    userEventCborFieldsFromDatumCbor(withdrawalDatumCbor);
+  const withdrawalDatumCbor = Data.to(
+    order(withdrawalEvent, withdrawalAssetName, true),
+    SDK.EventHistoryNode,
+  );
+  const eventCbors = (
+    event: SDK.DepositEvent | SDK.WithdrawalEvent,
+    withdrawal: boolean,
+  ) => ({
+    idCbor: Buffer.from(
+      __reservePayoutTest.aikenSerialisedPlutusDataCbor(
+        Data.to(event.id, SDK.OutputReference),
+      ),
+      "hex",
+    ),
+    infoCbor: Buffer.from(
+      __reservePayoutTest.aikenSerialisedPlutusDataCbor(
+        withdrawal
+          ? Data.to(withdrawalEvent.info, SDK.WithdrawalInfo)
+          : Data.to(depositEvent.info, SDK.DepositInfo),
+      ),
+      "hex",
+    ),
+  });
+  const depositEventCbors = eventCbors(depositEvent, false);
+  const withdrawalEventCbors = eventCbors(withdrawalEvent, true);
   const settlementWithdrawalInfo: SDK.WithdrawalInfo = {
-    ...withdrawalDatum.event.info,
+    ...withdrawalEvent.info,
     validity: settlementWithdrawalValidity,
   };
   const withdrawalValueCbor =
-    settlementWithdrawalValidity === withdrawalDatum.event.info.validity
+    settlementWithdrawalValidity === withdrawalEvent.info.validity
       ? withdrawalEventCbors.infoCbor.toString("hex")
       : __reservePayoutTest.aikenSerialisedPlutusDataCbor(
           Data.to(settlementWithdrawalInfo, SDK.WithdrawalInfo),
@@ -725,8 +869,68 @@ const makeReserveLifecycleBuilderFixture = async ({
     "Custom",
     scriptHashToCredential(contracts.hubOracle.policyId),
   );
+  const root = (key: string) =>
+    Data.to(
+      {
+        position: "Root",
+        next: key,
+        protected_until: 0n,
+        payload: "RootContent",
+      },
+      SDK.EventHistoryNode,
+    );
+  const confirmedDatum = Data.to(
+    new Constr(0, [
+      new Constr(0, [
+        Data.from(
+          Data.to(
+            {
+              headerHash: "01".repeat(28),
+              prevHeaderHash: "02".repeat(28),
+              utxoRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+              startTime: 0n,
+              endTime: confirmedEnd,
+              protocolVersion: 1n,
+            },
+            SDK.ConfirmedState,
+          ),
+        ),
+      ]),
+      new Constr(1, []),
+    ]),
+  );
   const emulator = new Emulator(
     [
+      makeSeededScriptAccount({
+        address: contracts.deposit.spendingScriptAddress,
+        assets: { lovelace: 3_000_000n, [contracts.deposit.policyId]: 1n },
+        inlineDatum: root(depositAssetName),
+      }),
+      makeSeededScriptAccount({
+        address: contracts.withdrawal.spendingScriptAddress,
+        assets: { lovelace: 3_000_000n, [contracts.withdrawal.policyId]: 1n },
+        inlineDatum: root(withdrawalAssetName),
+      }),
+      makeSeededScriptAccount({
+        address: contracts.stateQueue.spendingScriptAddress,
+        assets: {
+          lovelace: 3_000_000n,
+          [contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME]: 1n,
+        },
+        inlineDatum: confirmedDatum,
+      }),
+      ...(retainedData === undefined
+        ? []
+        : [
+            makeSeededScriptAccount({
+              address: (externalKind === "Deposit"
+                ? history.deposit
+                : history.withdrawal
+              ).retention.spendingScriptAddress,
+              assets: { lovelace: 3_000_000n },
+              inlineDatum: SDK.encodeEventHistoryData(retainedData),
+            }),
+          ]),
       operator,
       beneficiary,
       makeSeededScriptAccount({
@@ -783,12 +987,12 @@ const makeReserveLifecycleBuilderFixture = async ({
       makeSeededScriptAccount({
         address: operator.address,
         assets: { lovelace: 3_000_000n },
-        scriptRef: depositWitnessScript,
+        scriptRef: depositRetirementScript,
       }),
       makeSeededScriptAccount({
         address: operator.address,
         assets: { lovelace: 3_000_000n },
-        scriptRef: withdrawalWitnessScript,
+        scriptRef: withdrawalRetirementScript,
       }),
       makeSeededScriptAccount({
         address: hubOracleAddress,
@@ -797,7 +1001,10 @@ const makeReserveLifecycleBuilderFixture = async ({
       }),
       makeSeededScriptAccount({
         address: contracts.deposit.spendingScriptAddress,
-        assets: { lovelace: 8_000_000n, [depositUnit]: 1n },
+        assets: {
+          lovelace: 8_000_000n + structuralLovelace,
+          [depositUnit]: 1n,
+        },
         inlineDatum: depositDatumCbor,
       }),
       makeSeededScriptAccount({
@@ -813,24 +1020,19 @@ const makeReserveLifecycleBuilderFixture = async ({
     ],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
-  registerZeroRewardScript(emulator, depositWitnessScript);
-  registerZeroRewardScript(emulator, withdrawalWitnessScript);
-  registerZeroRewardScript(emulator, membershipProofScript);
+  registerZeroRewardScript(emulator, depositRetirementScript);
+  registerZeroRewardScript(emulator, withdrawalRetirementScript);
+  registerZeroRewardScript(emulator, history.deposit.list.withdrawalScript);
+  registerZeroRewardScript(emulator, history.withdrawal.list.withdrawalScript);
 
+  registerZeroRewardScript(emulator, authorizationScript);
   const lucid = await makeLucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(operator.seedPhrase);
 
+  emulator.awaitBlock(5);
   const hubOracleRefInput = findUtxoWithUnit(
     await lucid.utxosAt(hubOracleAddress),
     hubUnit,
-  );
-  const depositInput = findUtxoWithUnit(
-    await lucid.utxosAt(contracts.deposit.spendingScriptAddress),
-    depositUnit,
-  );
-  const withdrawalInput = findUtxoWithUnit(
-    await lucid.utxosAt(contracts.withdrawal.spendingScriptAddress),
-    withdrawalUnit,
   );
   const settlementRefInput = findUtxoWithUnit(
     await lucid.utxosAt(contracts.settlement.spendingScriptAddress),
@@ -846,10 +1048,6 @@ const makeReserveLifecycleBuilderFixture = async ({
       referenceUtxos,
       contracts.deposit.spendingScript,
     ),
-    depositWitnessCertificate: findReferenceScriptUtxo(
-      referenceUtxos,
-      depositWitnessScript,
-    ),
     withdrawalMinting: findReferenceScriptUtxo(
       referenceUtxos,
       contracts.withdrawal.mintingScript,
@@ -857,10 +1055,6 @@ const makeReserveLifecycleBuilderFixture = async ({
     withdrawalSpending: findReferenceScriptUtxo(
       referenceUtxos,
       contracts.withdrawal.spendingScript,
-    ),
-    withdrawalWitnessCertificate: findReferenceScriptUtxo(
-      referenceUtxos,
-      withdrawalWitnessScript,
     ),
     reserveSpending: findReferenceScriptUtxo(
       referenceUtxos,
@@ -896,13 +1090,30 @@ const makeReserveLifecycleBuilderFixture = async ({
   };
 
   return {
+    operator,
+    history,
+    authorizationScript,
+    retainedInput:
+      externalKind === undefined
+        ? undefined
+        : (
+            await lucid.utxosAt(
+              (externalKind === "Deposit"
+                ? history.deposit
+                : history.withdrawal
+              ).retention.spendingScriptAddress,
+            )
+          )[0]!,
     beneficiary,
     contracts,
-    deposit: makeDepositUTxO({
-      assetName: depositAssetName,
-      utxo: depositInput,
-      datum: depositDatum,
-    }),
+    deposit: (
+      await Effect.runPromise(
+        SDK.fetchDepositUTxOsProgram(
+          lucid,
+          SDK.eventHistoryDeploymentFromContracts(history.deposit),
+        ),
+      )
+    )[0]!,
     depositUnit,
     feeInputs: [
       findPureAdaUtxo(referenceUtxos, 10_000_000n),
@@ -914,103 +1125,114 @@ const makeReserveLifecycleBuilderFixture = async ({
     lucid,
     depositMembershipProof,
     withdrawalMembershipProof,
-    membershipProofWithdrawal: {
-      script: membershipProofScript,
-    },
+    referenceScriptsAddress: operator.address,
+    nowMs: emulator.time,
+    emulator,
     payoutUnit: toUnit(contracts.payout.policyId, withdrawalAssetName),
     referenceScripts,
     reserveAddress: contracts.reserve.spendingScriptAddress,
     settlementRefInput,
-    withdrawal: makeWithdrawalUTxO({
-      assetName: withdrawalAssetName,
-      utxo: withdrawalInput,
-      datum: withdrawalDatum,
-    }),
+    withdrawal: (
+      await Effect.runPromise(
+        SDK.fetchWithdrawalUTxOsProgram(
+          lucid,
+          SDK.eventHistoryDeploymentFromContracts(history.withdrawal),
+        ),
+      )
+    )[0]!,
     withdrawalUnit,
   };
 };
 
-const expectAbsorbRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<{
-    readonly depositInputIndex: bigint;
-    readonly reserveOutputIndex: bigint;
-    readonly hubRefInputIndex: bigint;
-    readonly settlementRefInputIndex: bigint;
-    readonly burnRedeemerIndex: bigint;
-    readonly inclusionProofWithdrawalRedeemerIndex: bigint;
-  }>,
-): void => {
-  const redeemer = decodeRedeemer<SDK.DepositSpendRedeemer>(
-    built.tx.toTransaction(),
-    { tag: CML.RedeemerTag.Spend, index: built.layout.depositInputIndex },
-    SDK.DepositSpendRedeemer,
-  );
-  expect(redeemer.input_index).toBe(built.layout.depositInputIndex);
-  expect(redeemer.output_index).toBe(built.layout.reserveOutputIndex);
-  expect(redeemer.hub_ref_input_index).toBe(built.layout.hubRefInputIndex);
-  expect(redeemer.settlement_ref_input_index).toBe(
-    built.layout.settlementRefInputIndex,
-  );
-  expect(redeemer.mint_redeemer_index).toBe(built.layout.burnRedeemerIndex);
-  expect(redeemer.inclusion_proof_script_withdraw_redeemer_index).toBe(
-    built.layout.inclusionProofWithdrawalRedeemerIndex,
-  );
+type RetirementLayout = {
+  readonly witness: SDK.EventHistoryRetirementWitness;
+  readonly hubRefInputIndex: bigint;
+  readonly retirementWithdrawalRedeemerIndex: bigint;
+  readonly listWithdrawalRedeemerIndex: bigint;
 };
-
-const expectInitializeRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<{
-    readonly withdrawalInputIndex: bigint;
-    readonly payoutOutputIndex: bigint;
-    readonly hubRefInputIndex: bigint;
-    readonly settlementRefInputIndex: bigint;
-    readonly withdrawalBurnRedeemerIndex: bigint;
-    readonly payoutMintRedeemerIndex: bigint;
-    readonly withdrawalSpendRedeemerIndex: bigint;
-    readonly inclusionProofWithdrawalRedeemerIndex: bigint;
-  }>,
-  contracts: SDK.MidgardValidators,
-): void => {
+const expectRetirementLayout = (
+  built: SDK.BuiltReservePayoutTx<RetirementLayout>,
+) => {
   const tx = built.tx.toTransaction();
-  const withdrawalSpend = decodeRedeemer<SDK.WithdrawalSpendRedeemer>(
+  const pointers = getRedeemerPointersInContextOrder(tx);
+  const retirement = decodeRedeemer<SDK.EventHistoryRetirementArgs>(
     tx,
-    { tag: CML.RedeemerTag.Spend, index: built.layout.withdrawalInputIndex },
-    SDK.WithdrawalSpendRedeemer,
+    pointers[Number(built.layout.retirementWithdrawalRedeemerIndex)]!,
+    SDK.EventHistoryRetirementArgs,
   );
-  expect(withdrawalSpend.input_index).toBe(built.layout.withdrawalInputIndex);
-  expect(withdrawalSpend.output_index).toBe(built.layout.payoutOutputIndex);
-  expect(withdrawalSpend.hub_ref_input_index).toBe(
-    built.layout.hubRefInputIndex,
+  const observe = decodeRedeemer<SDK.EventHistoryObserve>(
+    tx,
+    pointers[Number(built.layout.listWithdrawalRedeemerIndex)]!,
+    SDK.EventHistoryObserve,
   );
-  expect(withdrawalSpend.settlement_ref_input_index).toBe(
-    built.layout.settlementRefInputIndex,
+  expect(retirement).toEqual({
+    hub_reference_index: built.layout.hubRefInputIndex,
+    witness: built.layout.witness,
+  });
+  expect(observe).toEqual({
+    Apply: {
+      hub_reference_index: built.layout.hubRefInputIndex,
+      operation: SDK.eventHistoryRetirementOperation(built.layout.witness),
+    },
+  });
+  const spendCbor = findRedeemerDataCbor(tx, {
+    tag: CML.RedeemerTag.Spend,
+    index: built.layout.witness.order_input_index,
+  });
+  expect(Data.from(spendCbor!)).toBe(built.layout.witness.order_input_index);
+  expect(tx.body().certs()?.len() ?? 0).toBe(0);
+  const claims = [
+    built.layout.witness.predecessor_output_index,
+    built.layout.witness.funds_output_index,
+    built.layout.witness.structural_refund_output_index,
+  ].filter((index) => index !== null);
+  expect(new Set(claims).size).toBe(claims.length);
+};
+const expectAbsorbRedeemerLayout = (
+  built: SDK.BuiltReservePayoutTx<
+    RetirementLayout & { depositInputIndex: bigint; reserveOutputIndex: bigint }
+  >,
+) => {
+  expectRetirementLayout(built);
+  expect(built.layout.witness.order_input_index).toBe(
+    built.layout.depositInputIndex,
   );
-  expect(withdrawalSpend.burn_redeemer_index).toBe(
-    built.layout.withdrawalBurnRedeemerIndex,
+  expect(built.layout.witness.funds_output_index).toBe(
+    built.layout.reserveOutputIndex,
   );
-  expect(withdrawalSpend.payout_mint_redeemer_index).toBe(
-    built.layout.payoutMintRedeemerIndex,
+  expect(built.layout.witness.purpose).toBe("AbsorbDeposit");
+};
+const expectInitializeRedeemerLayout = (
+  built: SDK.BuiltReservePayoutTx<
+    RetirementLayout & {
+      withdrawalInputIndex: bigint;
+      payoutOutputIndex: bigint;
+    }
+  >,
+  contracts: SDK.MidgardValidators,
+) => {
+  expectRetirementLayout(built);
+  expect(built.layout.witness.order_input_index).toBe(
+    built.layout.withdrawalInputIndex,
   );
-  expect(withdrawalSpend.inclusion_proof_script_withdraw_redeemer_index).toBe(
-    built.layout.inclusionProofWithdrawalRedeemerIndex,
+  expect(built.layout.witness.funds_output_index).toBe(
+    built.layout.payoutOutputIndex,
   );
-  expect(withdrawalSpend.purpose).toBe("InitializePayout");
-
+  expect(built.layout.witness.purpose).toBe("InitializeWithdrawalPayout");
   const payoutMint = decodeRedeemer<SDK.PayoutMintRedeemer>(
-    tx,
+    built.tx.toTransaction(),
     mintPointer(
       [contracts.withdrawal.policyId, contracts.payout.policyId],
       contracts.payout.policyId,
     ),
     SDK.PayoutMintRedeemer,
   );
-  if (!("MintPayout" in payoutMint)) {
-    throw new Error("Expected MintPayout redeemer");
-  }
+  if (!("MintPayout" in payoutMint)) throw new Error("Expected payout mint");
   expect(payoutMint.MintPayout.withdrawal_input_index).toBe(
     built.layout.withdrawalInputIndex,
   );
-  expect(payoutMint.MintPayout.withdrawal_spend_redeemer_index).toBe(
-    built.layout.withdrawalSpendRedeemerIndex,
+  expect(payoutMint.MintPayout.retirement_withdraw_redeemer_index).toBe(
+    built.layout.retirementWithdrawalRedeemerIndex,
   );
   expect(payoutMint.MintPayout.hub_ref_input_index).toBe(
     built.layout.hubRefInputIndex,
@@ -1112,38 +1334,23 @@ const expectConcludeRedeemerLayout = (
 };
 
 const expectRefundRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<{
-    readonly withdrawalInputIndex: bigint;
-    readonly refundOutputIndex: bigint;
-    readonly hubRefInputIndex: bigint;
-    readonly settlementRefInputIndex: bigint;
-    readonly burnRedeemerIndex: bigint;
-    readonly inclusionProofWithdrawalRedeemerIndex: bigint;
-  }>,
+  built: SDK.BuiltReservePayoutTx<
+    RetirementLayout & {
+      withdrawalInputIndex: bigint;
+      refundOutputIndex: bigint;
+    }
+  >,
   validityOverride: SDK.WithdrawalValidity,
-): void => {
-  const withdrawalSpend = decodeRedeemer<SDK.WithdrawalSpendRedeemer>(
-    built.tx.toTransaction(),
-    { tag: CML.RedeemerTag.Spend, index: built.layout.withdrawalInputIndex },
-    SDK.WithdrawalSpendRedeemer,
+) => {
+  expectRetirementLayout(built);
+  expect(built.layout.witness.order_input_index).toBe(
+    built.layout.withdrawalInputIndex,
   );
-  expect(withdrawalSpend.input_index).toBe(built.layout.withdrawalInputIndex);
-  expect(withdrawalSpend.output_index).toBe(built.layout.refundOutputIndex);
-  expect(withdrawalSpend.hub_ref_input_index).toBe(
-    built.layout.hubRefInputIndex,
+  expect(built.layout.witness.funds_output_index).toBe(
+    built.layout.refundOutputIndex,
   );
-  expect(withdrawalSpend.settlement_ref_input_index).toBe(
-    built.layout.settlementRefInputIndex,
-  );
-  expect(withdrawalSpend.burn_redeemer_index).toBe(
-    built.layout.burnRedeemerIndex,
-  );
-  expect(withdrawalSpend.payout_mint_redeemer_index).toBe(0n);
-  expect(withdrawalSpend.inclusion_proof_script_withdraw_redeemer_index).toBe(
-    built.layout.inclusionProofWithdrawalRedeemerIndex,
-  );
-  expect(withdrawalSpend.purpose).toEqual({
-    Refund: { validity_override: validityOverride },
+  expect(built.layout.witness.purpose).toEqual({
+    RefundInvalidWithdrawal: { validity: validityOverride },
   });
 };
 
@@ -1388,7 +1595,8 @@ describe("reserve/payout transaction builder primitives", () => {
       lucid,
       depositMembershipProof,
       withdrawalMembershipProof,
-      membershipProofWithdrawal,
+      referenceScriptsAddress,
+      nowMs,
       payoutUnit,
       referenceScripts,
       reserveAddress,
@@ -1402,7 +1610,8 @@ describe("reserve/payout transaction builder primitives", () => {
         feeInput: feeInputs[0],
         hubOracleRefInput,
         membershipProof: depositMembershipProof,
-        membershipProofWithdrawal,
+        referenceScriptsAddress,
+        nowMs,
         referenceScripts,
         settlementRefInput,
       }),
@@ -1432,7 +1641,8 @@ describe("reserve/payout transaction builder primitives", () => {
         hubOracleRefInput,
         feeInput: feeInputs[1],
         membershipProof: withdrawalMembershipProof,
-        membershipProofWithdrawal,
+        referenceScriptsAddress,
+        nowMs,
         referenceScripts,
         settlementRefInput,
         withdrawal,
@@ -1498,7 +1708,7 @@ describe("reserve/payout transaction builder primitives", () => {
     ).toBe(true);
   });
 
-  it("builds absorption and initialization with attached dynamic witness scripts", async () => {
+  it("builds absorption and initialization with resolved history observer references", async () => {
     const {
       contracts,
       deposit,
@@ -1507,7 +1717,8 @@ describe("reserve/payout transaction builder primitives", () => {
       lucid,
       depositMembershipProof,
       withdrawalMembershipProof,
-      membershipProofWithdrawal,
+      referenceScriptsAddress,
+      nowMs,
       referenceScripts,
       settlementRefInput,
       withdrawal,
@@ -1526,7 +1737,8 @@ describe("reserve/payout transaction builder primitives", () => {
         feeInput: feeInputs[0],
         hubOracleRefInput,
         membershipProof: depositMembershipProof,
-        membershipProofWithdrawal,
+        referenceScriptsAddress,
+        nowMs,
         referenceScripts: staticReferenceScripts,
         settlementRefInput,
       }),
@@ -1539,7 +1751,8 @@ describe("reserve/payout transaction builder primitives", () => {
         hubOracleRefInput,
         feeInput: feeInputs[1],
         membershipProof: withdrawalMembershipProof,
-        membershipProofWithdrawal,
+        referenceScriptsAddress,
+        nowMs,
         referenceScripts: staticReferenceScripts,
         settlementRefInput,
         withdrawal,
@@ -1557,7 +1770,8 @@ describe("reserve/payout transaction builder primitives", () => {
       hubOracleRefInput,
       lucid,
       withdrawalMembershipProof,
-      membershipProofWithdrawal,
+      referenceScriptsAddress,
+      nowMs,
       referenceScripts,
       settlementRefInput,
       withdrawal,
@@ -1571,14 +1785,15 @@ describe("reserve/payout transaction builder primitives", () => {
         hubOracleRefInput,
         feeInput: feeInputs[0],
         membershipProof: withdrawalMembershipProof,
-        membershipProofWithdrawal,
+        referenceScriptsAddress,
+        nowMs,
         referenceScripts,
         settlementRefInput,
         validityOverride: "UnpayableWithdrawalValue",
         withdrawal,
       }),
     );
-    expect(refund.layout.refundOutputIndex).toBe(0n);
+    expect(refund.layout.refundOutputIndex).toBe(1n);
     expectRefundRedeemerLayout(refund, "UnpayableWithdrawalValue");
     await lucid.awaitTx(await submitWithWallet(refund.tx));
 
@@ -1592,6 +1807,318 @@ describe("reserve/payout transaction builder primitives", () => {
         (utxo) => utxo.assets.lovelace === 3_000_000n,
       ),
     ).toBe(true);
+  });
+
+  it.each([
+    { kind: "Deposit", refund: false },
+    { kind: "Withdrawal", refund: false },
+    { kind: "Withdrawal", refund: true },
+  ] as const)(
+    "retires external $kind data (refund=$refund), then reclaims through its exact owner",
+    async ({ kind, refund }) => {
+      const f = await makeReserveLifecycleBuilderFixture({
+        externalKind: kind,
+        settlementWithdrawalValidity: refund
+          ? "UnpayableWithdrawalValue"
+          : "WithdrawalIsValid",
+        scriptOwner: kind === "Withdrawal",
+      });
+      const reclaimConfig: SDK.ReclaimEventHistoryDataConfig = {
+        kind,
+        retainedInput: f.retainedInput!,
+        hubOracleRefInput: f.hubOracleRefInput,
+        ...(kind === "Withdrawal"
+          ? {
+              scriptAuthorization: {
+                script: f.authorizationScript,
+                redeemer: Data.void(),
+              },
+            }
+          : {}),
+      };
+      const live = await Effect.runPromise(
+        Effect.either(
+          SDK.buildReclaimEventHistoryDataTxProgram(
+            f.lucid,
+            f.contracts,
+            reclaimConfig,
+          ),
+        ),
+      );
+      expect(String(expectLeft(live).cause)).toContain("still present");
+      const config = {
+        hubOracleRefInput: f.hubOracleRefInput,
+        settlementRefInput: f.settlementRefInput,
+        referenceScriptsAddress: f.referenceScriptsAddress,
+        nowMs: f.nowMs,
+      };
+      const retired =
+        kind === "Deposit"
+          ? await Effect.runPromise(
+              buildAbsorbConfirmedDepositToReserveTxProgram(
+                f.lucid,
+                f.contracts,
+                {
+                  ...config,
+                  deposit: f.deposit,
+                  membershipProof: f.depositMembershipProof,
+                },
+              ),
+            )
+          : refund
+            ? await Effect.runPromise(
+                buildRefundInvalidWithdrawalTxProgram(f.lucid, f.contracts, {
+                  ...config,
+                  withdrawal: f.withdrawal,
+                  membershipProof: f.withdrawalMembershipProof,
+                  validityOverride: "UnpayableWithdrawalValue",
+                }),
+              )
+            : await Effect.runPromise(
+                buildInitializePayoutTxProgram(f.lucid, f.contracts, {
+                  ...config,
+                  withdrawal: f.withdrawal,
+                  membershipProof: f.withdrawalMembershipProof,
+                }),
+              );
+      expect(retired.layout.witness.external_reference_index).not.toBeNull();
+      expectRetirementLayout(retired);
+      await f.lucid.awaitTx(await submitWithWallet(retired.tx));
+      expect(await f.lucid.utxosByOutRef([f.retainedInput!])).toHaveLength(1);
+      if (kind === "Withdrawal") {
+        const unauthorized = await Effect.runPromise(
+          Effect.either(
+            SDK.buildReclaimEventHistoryDataTxProgram(f.lucid, f.contracts, {
+              ...reclaimConfig,
+              scriptAuthorization: undefined,
+            }),
+          ),
+        );
+        expect(String(expectLeft(unauthorized).cause)).toContain(
+          "exact retained script credential",
+        );
+      }
+      const reclaimed = await Effect.runPromise(
+        SDK.buildReclaimEventHistoryDataTxProgram(
+          f.lucid,
+          f.contracts,
+          reclaimConfig,
+        ),
+      );
+      expect(reclaimed.layout.absenceReferenceIndex).toBe(
+        requireTxInputIndex(
+          reclaimed.tx.toTransaction().body().reference_inputs(),
+          (
+            await f.lucid.utxosAt(
+              (kind === "Deposit" ? f.history.deposit : f.history.withdrawal)
+                .list.spendingScriptAddress,
+            )
+          )[0]!,
+          "absence witness",
+        ),
+      );
+      await f.lucid.awaitTx(await submitWithWallet(reclaimed.tx));
+      expect(await f.lucid.utxosByOutRef([f.retainedInput!])).toHaveLength(0);
+    },
+  );
+
+  it("refreshes a moved Order and preserves its current predecessor when retiring", async () => {
+    const f = await makeReserveLifecycleBuilderFixture();
+    const candidates = await Promise.all(
+      f.feeInputs.map(async (nonce) => ({
+        nonce,
+        key: await Effect.runPromise(
+          SDK.eventHistoryKey({
+            transactionId: nonce.txHash,
+            outputIndex: BigInt(nonce.outputIndex),
+          }),
+        ),
+      })),
+    );
+    const following = candidates.find(
+      (candidate) => candidate.key > f.deposit.assetName,
+    );
+    if (following === undefined)
+      throw new Error("Fixture has no insertion nonce after the deposit");
+    const inserted = await Effect.runPromise(
+      SDK.buildUnsignedDepositTxWithMetadataProgram(f.lucid, f.contracts, {
+        nonceInput: following.nonce,
+        l2Address: f.beneficiary.address,
+        l2Datum: null,
+        lovelace: 4_000_000n,
+        additionalAssets: {},
+        referenceScripts: { depositMinting: f.referenceScripts.depositMinting },
+        validity: {
+          validFrom: f.emulator.time - 60_000,
+          validTo: f.emulator.time + 20_000,
+        },
+      }),
+    );
+    await f.lucid.awaitTx(await submitWithWallet(inserted.tx));
+    const moved = (
+      await Effect.runPromise(
+        SDK.fetchDepositUTxOsProgram(
+          f.lucid,
+          SDK.eventHistoryDeploymentFromContracts(f.history.deposit),
+        ),
+      )
+    ).find((event) => event.assetName === f.deposit.assetName)!;
+    expect(moved.utxo.txHash).not.toBe(f.deposit.utxo.txHash);
+    expect(moved.history.anchor.node.next).toBe(following.key);
+    f.emulator.awaitBlock(5);
+    const rootBefore = (
+      await f.lucid.utxosAt(f.history.deposit.list.spendingScriptAddress)
+    ).find((utxo) => utxo.assets[f.history.deposit.list.policyId] === 1n)!;
+    const retired = await Effect.runPromise(
+      buildAbsorbConfirmedDepositToReserveTxProgram(f.lucid, f.contracts, {
+        deposit: f.deposit,
+        hubOracleRefInput: f.hubOracleRefInput,
+        settlementRefInput: f.settlementRefInput,
+        referenceScriptsAddress: f.referenceScriptsAddress,
+        nowMs: f.emulator.time,
+        membershipProof: f.depositMembershipProof,
+      }),
+    );
+    expect(retired.layout.depositInputIndex).toBe(
+      requireTxInputIndex(
+        retired.tx.toTransaction().body().inputs(),
+        moved.utxo,
+        "refreshed Order",
+      ),
+    );
+    const continued = coreToTxOutput(
+      retired.tx
+        .toTransaction()
+        .body()
+        .outputs()
+        .get(Number(retired.layout.witness.predecessor_output_index)),
+    );
+    expect(continued.assets).toEqual(rootBefore.assets);
+    expect(Data.from(continued.datum!, SDK.EventHistoryNode)).toMatchObject({
+      position: "Root",
+      next: following.key,
+      payload: "RootContent",
+    });
+    await f.lucid.awaitTx(await submitWithWallet(retired.tx));
+    const remaining = await Effect.runPromise(
+      SDK.fetchDepositUTxOsProgram(
+        f.lucid,
+        SDK.eventHistoryDeploymentFromContracts(f.history.deposit),
+      ),
+    );
+    expect(remaining.map((event) => event.assetName)).toEqual([following.key]);
+  });
+
+  it.each(["absorb", "initialize", "refund"] as const)(
+    "refuses %s with settlement membership that does not authenticate the event",
+    async (purpose) => {
+      const f = await makeReserveLifecycleBuilderFixture({
+        settlementWithdrawalValidity:
+          purpose === "refund"
+            ? "UnpayableWithdrawalValue"
+            : "WithdrawalIsValid",
+      });
+      const config = {
+        hubOracleRefInput: f.hubOracleRefInput,
+        settlementRefInput: f.settlementRefInput,
+        referenceScriptsAddress: f.referenceScriptsAddress,
+        nowMs: f.nowMs,
+      };
+      const program: Effect.Effect<
+        unknown,
+        | SDK.ReservePayoutTxError
+        | SDK.HubOracleError
+        | SDK.LucidError
+        | SDK.Bech32DeserializationError
+        | SDK.StateQueueError
+      > =
+        purpose === "absorb"
+          ? buildAbsorbConfirmedDepositToReserveTxProgram(
+              f.lucid,
+              f.contracts,
+              {
+                ...config,
+                deposit: f.deposit,
+                membershipProof: { ...f.depositMembershipProof, count: 2n },
+              },
+            )
+          : purpose === "initialize"
+            ? buildInitializePayoutTxProgram(f.lucid, f.contracts, {
+                ...config,
+                withdrawal: f.withdrawal,
+                membershipProof: { ...f.withdrawalMembershipProof, count: 2n },
+              })
+            : buildRefundInvalidWithdrawalTxProgram(f.lucid, f.contracts, {
+                ...config,
+                withdrawal: f.withdrawal,
+                membershipProof: { ...f.withdrawalMembershipProof, count: 2n },
+                validityOverride: "UnpayableWithdrawalValue",
+              });
+      const failure = await Effect.runPromise(Effect.either(program));
+      expect(expectLeft(failure).message).toContain("local UPLC evaluation");
+    },
+  );
+
+  it("refuses deposit retirement before its eligibility interval is confirmed", async () => {
+    const f = await makeReserveLifecycleBuilderFixture({ confirmedEnd: 0n });
+    const result = await Effect.runPromise(
+      Effect.either(
+        buildAbsorbConfirmedDepositToReserveTxProgram(f.lucid, f.contracts, {
+          deposit: f.deposit,
+          hubOracleRefInput: f.hubOracleRefInput,
+          settlementRefInput: f.settlementRefInput,
+          referenceScriptsAddress: f.referenceScriptsAddress,
+          nowMs: f.nowMs,
+          membershipProof: f.depositMembershipProof,
+        }),
+      ),
+    );
+    expect(String(expectLeft(result).cause)).toContain("not confirmed");
+  });
+
+  it("rejects immutable Value drift and refuses to backdate below protection", async () => {
+    const f = await makeReserveLifecycleBuilderFixture();
+    const base = {
+      hubOracleRefInput: f.hubOracleRefInput,
+      settlementRefInput: f.settlementRefInput,
+      referenceScriptsAddress: f.referenceScriptsAddress,
+      nowMs: f.nowMs,
+      membershipProof: f.depositMembershipProof,
+    };
+    const drift = await Effect.runPromise(
+      Effect.either(
+        buildAbsorbConfirmedDepositToReserveTxProgram(f.lucid, f.contracts, {
+          ...base,
+          deposit: { ...f.deposit, originalAssets: { lovelace: 1n } },
+        }),
+      ),
+    );
+    expect(String(expectLeft(drift).cause)).toContain(
+      "immutable facts or original Value",
+    );
+    const protectedFixture = await makeReserveLifecycleBuilderFixture({
+      protectedUntil: BigInt(Date.now() + 1_000_000),
+    });
+    const protectedResult = await Effect.runPromise(
+      Effect.either(
+        buildAbsorbConfirmedDepositToReserveTxProgram(
+          protectedFixture.lucid,
+          protectedFixture.contracts,
+          {
+            ...base,
+            deposit: protectedFixture.deposit,
+            hubOracleRefInput: protectedFixture.hubOracleRefInput,
+            settlementRefInput: protectedFixture.settlementRefInput,
+            referenceScriptsAddress: protectedFixture.referenceScriptsAddress,
+            nowMs: protectedFixture.nowMs,
+            membershipProof: protectedFixture.depositMembershipProof,
+          },
+        ),
+      ),
+    );
+    expect(String(expectLeft(protectedResult).cause)).toContain(
+      "still protected",
+    );
   });
 
   it("rejects explicit fee inputs that overlap protected protocol inputs", async () => {
@@ -1751,46 +2278,29 @@ describe("reserve/payout transaction builder primitives", () => {
   });
 
   it("fails with missing reference-script diagnostics for refund builders", async () => {
-    const lucid = {
-      config: () => ({ network: "Preprod" }),
-      utxosAt: async () => [],
-    } as unknown as LucidEvolution;
-    const contracts = await loadRealContracts({
-      txHash: "00".repeat(32),
-      outputIndex: 0,
+    const fixture = await makeReserveLifecycleBuilderFixture({
+      settlementWithdrawalValidity: "UnpayableWithdrawalValue",
     });
-    const assetName = "aa".repeat(32);
-    const hubOracleUnit = toUnit(
-      contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
-    );
-    const hubOracleDatum = await Effect.runPromise(
-      SDK.makeHubOracleDatum(contracts),
-    );
-
     const result = await Effect.runPromise(
       Effect.either(
-        buildRefundInvalidWithdrawalTxProgram(lucid, contracts, {
-          hubOracleRefInput: {
-            ...mkUtxo("50", 0, {
-              lovelace: 5_000_000n,
-              [hubOracleUnit]: 1n,
-            }),
-            datum: Data.to(hubOracleDatum, SDK.HubOracleDatum),
+        buildRefundInvalidWithdrawalTxProgram(
+          fixture.lucid,
+          fixture.contracts,
+          {
+            withdrawal: fixture.withdrawal,
+            hubOracleRefInput: fixture.hubOracleRefInput,
+            settlementRefInput: fixture.settlementRefInput,
+            membershipProof: fixture.withdrawalMembershipProof,
+            validityOverride: "UnpayableWithdrawalValue",
+            nowMs: fixture.nowMs,
+            referenceScriptsAddress: fixture.beneficiary.address,
           },
-          membershipProofWithdrawal: { script: scriptRef },
-          referenceScriptsAddress: "addr_test1reference",
-          withdrawal: {
-            assetName,
-            utxo: mkUtxo("51", 0),
-          },
-        } as any),
+        ),
       ),
     );
-
     const left = expectLeft(result);
-    expect(String(left.cause)).toContain("withdrawal minting");
-    expect(String(left.cause)).toContain("addr_test1reference");
+    expect(String(left.cause)).toContain("withdrawal spending");
+    expect(String(left.cause)).toContain(fixture.beneficiary.address);
   });
 
   it("validates explicit hub oracle reference inputs before builder assembly", async () => {
@@ -1805,7 +2315,6 @@ describe("reserve/payout transaction builder primitives", () => {
       Effect.either(
         buildRefundInvalidWithdrawalTxProgram(lucid, contracts, {
           hubOracleRefInput: mkUtxo("60", 0),
-          membershipProofWithdrawal: { script: scriptRef },
           withdrawal: {
             assetName: "bb".repeat(32),
             utxo: mkUtxo("61", 0),

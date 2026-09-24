@@ -21,13 +21,14 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import {
-  submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
   submitMintAuthorizationStep03EvaluateUnsatisfied,
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   addressWitnessItemCbors,
   buildMintAuthorizationSubject,
@@ -86,7 +87,8 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
         contracts: family,
       });
 
-    const initResult = await submitMintAuthorizationInit({
+    const initResult = await submitResolvedInit({
+      label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: realBlueprint,
       network,

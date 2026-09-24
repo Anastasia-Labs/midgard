@@ -225,18 +225,6 @@ export type WatcherRollbackStateVerificationContext = Readonly<{
   transportAttestations?: unknown;
 }>;
 
-export type WatcherRollbackVerificationContext = Readonly<{
-  policy: unknown;
-  sourceStore: unknown;
-  previousFinalityState: unknown;
-  consistency: unknown;
-  finalityResult: unknown;
-  previousRollbackState: unknown;
-  rollbackBootstrapState: unknown;
-  trustedCheckpointAuthority?: unknown;
-  transportAttestations?: unknown;
-}>;
-
 export type WatcherRollbackResult = Readonly<{
   schemaVersion: typeof WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION;
   action:
@@ -1828,215 +1816,6 @@ const parseRemovedRecords = (
   return Object.freeze(parsed) as WatcherRollbackRemovedRecords;
 };
 
-const nullableNatural = (value: unknown): value is string | null =>
-  value === null ||
-  (typeof value === "string" && CANONICAL_NATURAL.test(value));
-
-const nullableDigest = (value: unknown): value is string | null =>
-  value === null || (typeof value === "string" && HEX_32.test(value));
-
-const decodeWatcherRollbackResultStructural = (
-  value: unknown,
-): WatcherRollbackResult | null => {
-  try {
-    const record = exactPlainRecord(value, [
-      "schemaVersion",
-      "action",
-      "protocolDecision",
-      "reasonCodes",
-      "alertCodes",
-      "sourceRevision",
-      "nextRevision",
-      "instructionDigest",
-      "sourceStoreDigest",
-      "nextStoreDigest",
-      "removedRecords",
-      "nextStore",
-      "rollbackState",
-      "rollbackBootstrapState",
-      "trustedCheckpointStateDigest",
-      "resultDigest",
-    ]);
-    if (
-      record === null ||
-      record.schemaVersion !== WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION ||
-      ![
-        "apply_rewind",
-        "duplicate_rewind",
-        "quarantine_incident",
-        "reject",
-      ].includes(record.action as string) ||
-      !["resume_pending", "hold", "quarantined"].includes(
-        record.protocolDecision as string,
-      ) ||
-      !nullableNatural(record.sourceRevision) ||
-      !nullableNatural(record.nextRevision) ||
-      !nullableDigest(record.instructionDigest) ||
-      !nullableDigest(record.sourceStoreDigest) ||
-      !nullableDigest(record.nextStoreDigest) ||
-      !nullableDigest(record.trustedCheckpointStateDigest) ||
-      typeof record.resultDigest !== "string" ||
-      !HEX_32.test(record.resultDigest)
-    ) {
-      return null;
-    }
-    const reasonCodes = exactStringArray(
-      record.reasonCodes,
-      WATCHER_ROLLBACK_REASON_CODES,
-    ) as readonly WatcherRollbackReasonCode[] | null;
-    const alertCodes = exactStringArray(
-      record.alertCodes,
-      WATCHER_ROLLBACK_ALERT_CODES,
-    ) as readonly WatcherRollbackAlertCode[] | null;
-    const removedRecords = parseRemovedRecords(record.removedRecords);
-    let nextStore: WatcherDurableStore | null = null;
-    if (record.nextStore !== null) {
-      try {
-        nextStore = parseWatcherDurableStore(record.nextStore);
-      } catch {
-        return null;
-      }
-    }
-    const rollbackState =
-      record.rollbackState === null
-        ? null
-        : decodeWatcherRollbackStateStructural(record.rollbackState);
-    const rollbackBootstrapState =
-      record.rollbackBootstrapState === null
-        ? null
-        : decodeWatcherRollbackStateStructural(record.rollbackBootstrapState);
-    if (
-      reasonCodes === null ||
-      alertCodes === null ||
-      removedRecords === null ||
-      (record.rollbackState !== null && rollbackState === null) ||
-      (record.rollbackBootstrapState !== null &&
-        rollbackBootstrapState === null)
-    ) {
-      return null;
-    }
-    if (
-      nextStore !== null &&
-      (record.nextStoreDigest !== storeDigest(nextStore) ||
-        record.nextRevision !== nextStore.revision)
-    ) {
-      return null;
-    }
-    if (
-      rollbackState !== null &&
-      rollbackState.storeDigest !== record.nextStoreDigest
-    ) {
-      return null;
-    }
-    if (
-      rollbackBootstrapState !== null &&
-      record.trustedCheckpointStateDigest !==
-        trustedCheckpointStateDigest(rollbackBootstrapState)
-    ) {
-      return null;
-    }
-    const action = record.action as WatcherRollbackResult["action"];
-    const protocolDecision =
-      record.protocolDecision as WatcherRollbackResult["protocolDecision"];
-    const hasRemovedRecords = removedRecordCount(removedRecords) > 0;
-    const validSemantics =
-      (action === "apply_rewind" &&
-        protocolDecision === "resume_pending" &&
-        sameStrings(reasonCodes, ["rewind_applied"]) &&
-        sameStrings(alertCodes, ["watcher_rollback_rewind_applied"]) &&
-        record.sourceRevision !== null &&
-        record.nextRevision !== null &&
-        BigInt(record.nextRevision) === BigInt(record.sourceRevision) + 1n &&
-        record.instructionDigest !== null &&
-        record.sourceStoreDigest !== null &&
-        record.nextStoreDigest !== null &&
-        hasRemovedRecords &&
-        nextStore !== null &&
-        rollbackState !== null &&
-        rollbackBootstrapState !== null &&
-        rollbackState.incident === null &&
-        rollbackState.lastInstructionDigest === record.instructionDigest) ||
-      (action === "duplicate_rewind" &&
-        protocolDecision === "hold" &&
-        sameStrings(reasonCodes, ["duplicate_instruction"]) &&
-        alertCodes.length === 0 &&
-        record.sourceRevision === record.nextRevision &&
-        record.sourceStoreDigest === record.nextStoreDigest &&
-        record.instructionDigest !== null &&
-        !hasRemovedRecords &&
-        nextStore !== null &&
-        rollbackState !== null &&
-        rollbackBootstrapState !== null &&
-        rollbackState.incident === null &&
-        rollbackState.lastInstructionDigest === record.instructionDigest) ||
-      (action === "quarantine_incident" &&
-        protocolDecision === "quarantined" &&
-        sameStrings(reasonCodes, ["post_finality_incident"]) &&
-        sameStrings(alertCodes, ["watcher_rollback_post_finality_incident"]) &&
-        record.sourceRevision !== null &&
-        record.nextRevision !== null &&
-        BigInt(record.nextRevision) === BigInt(record.sourceRevision) + 1n &&
-        record.sourceStoreDigest !== null &&
-        record.nextStoreDigest !== null &&
-        record.instructionDigest === null &&
-        !hasRemovedRecords &&
-        nextStore !== null &&
-        rollbackState !== null &&
-        rollbackBootstrapState !== null &&
-        rollbackState.incident !== null) ||
-      (action === "reject" &&
-        protocolDecision === "quarantined" &&
-        !hasRemovedRecords &&
-        ((sameStrings(reasonCodes, ["state_quarantined"]) &&
-          sameStrings(alertCodes, ["watcher_rollback_quarantined"]) &&
-          record.sourceRevision === record.nextRevision &&
-          record.sourceStoreDigest === record.nextStoreDigest &&
-          nextStore !== null &&
-          rollbackState !== null &&
-          rollbackBootstrapState !== null &&
-          rollbackState.incident !== null) ||
-          (nextStore === null &&
-            rollbackState === null &&
-            record.sourceRevision === null &&
-            record.nextRevision === null &&
-            record.instructionDigest === null &&
-            record.sourceStoreDigest === null &&
-            record.nextStoreDigest === null &&
-            rollbackBootstrapState === null)));
-    if (!validSemantics) {
-      return null;
-    }
-    const canonical = {
-      schemaVersion: WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION,
-      action,
-      protocolDecision,
-      reasonCodes,
-      alertCodes,
-      sourceRevision: record.sourceRevision as string | null,
-      nextRevision: record.nextRevision as string | null,
-      instructionDigest: record.instructionDigest as string | null,
-      sourceStoreDigest: record.sourceStoreDigest as string | null,
-      nextStoreDigest: record.nextStoreDigest as string | null,
-      removedRecords,
-      nextStore,
-      rollbackState,
-      rollbackBootstrapState,
-      trustedCheckpointStateDigest: record.trustedCheckpointStateDigest as
-        | string
-        | null,
-    };
-    if (sha256Canonical(canonical) !== record.resultDigest) {
-      return null;
-    }
-    return Object.freeze({
-      ...canonical,
-      resultDigest: record.resultDigest,
-    });
-  } catch {
-    return null;
-  }
-};
-
 const removedRecordCount = (removed: WatcherRollbackRemovedRecords): number =>
   Object.values(removed).reduce((total, values) => total + values.length, 0);
 
@@ -2886,6 +2665,33 @@ export const parseWatcherRollbackState = (
       context.trustedCheckpointAuthority,
     );
     const currentStore = parseWatcherDurableStore(context.currentStore);
+    const authority = context.trustedCheckpointAuthority;
+    const trustedRuntime =
+      typeof authority === "object" && authority !== null
+        ? rollbackDurableAuthorityRuntime.get(
+            authority as WatcherRollbackDurableAuthority,
+          )
+        : undefined;
+    // Only the complete already-authenticated snapshot may reuse its admitted
+    // transport evidence after restart. Caller-supplied state keeps the live
+    // transport validation path, even when it carries matching claimed digests.
+    const authenticatedSnapshotEvidence =
+      trustedRuntime !== undefined &&
+      trustedRuntime.policy.policyDigest === policy.policyDigest &&
+      watcherSameCanonicalJson(
+        trustedRuntime.snapshot.currentStore,
+        currentStore,
+      ) &&
+      watcherSameCanonicalJson(
+        trustedRuntime.snapshot.rollbackState,
+        candidate,
+      ) &&
+      watcherSameCanonicalJson(
+        trustedRuntime.snapshot.rollbackBootstrapState,
+        context.rollbackBootstrapState,
+      )
+        ? AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+        : null;
     return bootstrapState === null
       ? null
       : replayWatcherRollbackState(
@@ -2894,6 +2700,7 @@ export const parseWatcherRollbackState = (
           candidate,
           currentStore,
           context.transportAttestations,
+          authenticatedSnapshotEvidence,
         );
   } catch {
     return null;
@@ -2991,41 +2798,6 @@ export const evaluateWatcherRollback = (
     finalityResultInput,
     transportAttestationsInput,
   );
-};
-
-/**
- * Authoritative restart/result verifier. Structural self-hashes are
- * insufficient: the candidate is accepted only when replaying the exact
- * policy, source store, prior W12 state, W11 decision, W12 result, and prior
- * rollback lineage reproduces every byte of the candidate result.
- */
-export const parseWatcherRollbackResult = (
-  value: unknown,
-  context: WatcherRollbackVerificationContext,
-): WatcherRollbackResult | null => {
-  if (typeof value === "object" && value !== null && isProxy(value)) {
-    return null;
-  }
-  const parsed = decodeWatcherRollbackResultStructural(value);
-  if (parsed === null) {
-    return null;
-  }
-  try {
-    const expected = evaluateWatcherRollback(
-      context.policy,
-      context.sourceStore,
-      context.previousFinalityState,
-      context.consistency,
-      context.finalityResult,
-      context.previousRollbackState,
-      context.rollbackBootstrapState,
-      context.trustedCheckpointAuthority,
-      context.transportAttestations,
-    );
-    return watcherSameCanonicalJson(parsed, expected) ? parsed : null;
-  } catch {
-    return null;
-  }
 };
 
 type VerifiedPostFinalityPath = Readonly<{
@@ -3890,7 +3662,7 @@ const sameCanonicalStructure = (
 };
 
 /**
- * Shared W13 trust boundary for W14-W17. Candidate self-hashes are not
+ * Shared W13 trust boundary. Candidate self-hashes are not
  * authority: the exact recovery input is replayed and only a safe,
  * byte-equivalent canonical result shape is accepted.
  */

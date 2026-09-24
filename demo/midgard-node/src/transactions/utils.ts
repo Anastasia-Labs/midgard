@@ -9,7 +9,7 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { Data, Duration, Effect, Schedule } from "effect";
+import { Context, Data, Duration, Effect, Option, Schedule } from "effect";
 
 import * as BlocksDB from "../database/blocks.js";
 import { ImmutableDB } from "../database/index.js";
@@ -936,6 +936,12 @@ const submitTimingFailureError = (
  * Submits a signed transaction with recovery logic for provider races and
  * early-validity-window failures.
  */
+export const BeforeSignedTransactionSubmission = Context.GenericTag<{
+  readonly persist: (
+    intent: Readonly<{ txHash: string; signedTxCbor: string }>,
+  ) => Effect.Effect<void, unknown>;
+}>("midgard/BeforeSignedTransactionSubmission");
+
 export const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
   signed: Awaited<ReturnType<TxSignBuilder["complete"]>>,
@@ -1035,6 +1041,13 @@ export const submitSignedTxWithRecovery = (
           );
         }
       }
+      // The callback must finish its durable commit before any provider call.
+      // It runs for each attempt so a generation change also fences retries.
+      const intent = yield* Effect.serviceOption(
+        BeforeSignedTransactionSubmission,
+      );
+      if (Option.isSome(intent))
+        yield* intent.value.persist({ txHash, signedTxCbor: signed.toCBOR() });
       const submitResult = yield* Effect.either(signed.submitProgram());
       if (submitResult._tag === "Right") {
         return;

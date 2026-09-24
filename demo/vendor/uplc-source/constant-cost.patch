@@ -1,0 +1,56 @@
+--- a/src/machine/cost_model.rs
++++ b/src/machine/cost_model.rs
+@@ -1975,6 +1975,53 @@
+ 
+ impl BuiltinCosts {
+     pub fn to_ex_budget(&self, fun: DefaultFunction, args: &[Value]) -> Result<ExBudget, Error> {
++        // Constant cost models do not consume argument sizes. Keep all
++        // nonconstant models on the original path and retain builtin validation.
++        macro_rules! constant_budget {
++            ($field:ident, $variant:path) => {
++                if let ($variant(mem), $variant(cpu)) = (&self.$field.mem, &self.$field.cpu) {
++                    return Ok(ExBudget {
++                        mem: *mem,
++                        cpu: *cpu,
++                    });
++                }
++            };
++        }
++        if args.len() >= fun.arity() {
++            match fun {
++                DefaultFunction::FstPair => constant_budget!(fst_pair, OneArgument::ConstantCost),
++                DefaultFunction::SndPair => constant_budget!(snd_pair, OneArgument::ConstantCost),
++                DefaultFunction::ChooseList => {
++                    constant_budget!(choose_list, ThreeArguments::ConstantCost)
++                }
++                DefaultFunction::MkCons => constant_budget!(mk_cons, TwoArguments::ConstantCost),
++                DefaultFunction::HeadList => constant_budget!(head_list, OneArgument::ConstantCost),
++                DefaultFunction::TailList => constant_budget!(tail_list, OneArgument::ConstantCost),
++                DefaultFunction::NullList => constant_budget!(null_list, OneArgument::ConstantCost),
++                DefaultFunction::ChooseData => {
++                    let SixArguments::ConstantCost(mem) = self.choose_data.mem;
++                    let SixArguments::ConstantCost(cpu) = self.choose_data.cpu;
++                    return Ok(ExBudget { mem, cpu });
++                }
++                DefaultFunction::ConstrData => {
++                    constant_budget!(constr_data, TwoArguments::ConstantCost)
++                }
++                DefaultFunction::MapData => constant_budget!(map_data, OneArgument::ConstantCost),
++                DefaultFunction::ListData => constant_budget!(list_data, OneArgument::ConstantCost),
++                DefaultFunction::IData => constant_budget!(i_data, OneArgument::ConstantCost),
++                DefaultFunction::BData => constant_budget!(b_data, OneArgument::ConstantCost),
++                DefaultFunction::UnConstrData => {
++                    constant_budget!(un_constr_data, OneArgument::ConstantCost)
++                }
++                DefaultFunction::UnMapData => constant_budget!(un_map_data, OneArgument::ConstantCost),
++                DefaultFunction::UnListData => {
++                    constant_budget!(un_list_data, OneArgument::ConstantCost)
++                }
++                DefaultFunction::UnIData => constant_budget!(un_i_data, OneArgument::ConstantCost),
++                DefaultFunction::UnBData => constant_budget!(un_b_data, OneArgument::ConstantCost),
++                _ => {}
++            }
++        }
+         Ok(match fun {
+             DefaultFunction::AddInteger => ExBudget {
+                 mem: self

@@ -36,6 +36,7 @@ import {
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestEconomics,
   parseDeploymentManifestEventHistoryBounds,
+  parseDeploymentManifestEventHistoryRecipe,
   parseDeploymentMarker,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestIdentity,
@@ -200,6 +201,27 @@ const finalizedManifest = () => {
             name === "referenceScriptAuthMint"
               ? policyId
               : CATALOGUE_FIXTURE_SCRIPT_HASH,
+          ...(name === "depositMint" || name === "withdrawalMint"
+            ? {
+                eventHistoryRecipe: {
+                  kind:
+                    name === "depositMint"
+                      ? ("Deposit" as const)
+                      : ("Withdrawal" as const),
+                  hubPolicyId: CATALOGUE_FIXTURE_SCRIPT_HASH,
+                  initializationNonce: {
+                    txHash: "11".repeat(32),
+                    outputIndex: 0,
+                  },
+                  protectionDurationMs: "2000",
+                  bounds: {
+                    inlineLimitBytes: "512",
+                    maxPayloadBytes: "5000",
+                    maxPayloadNodes: "512",
+                  },
+                },
+              }
+            : {}),
           ...(name === "fraudProofFabricatedDeposit" ||
           name === "fraudProofFabricatedWithdrawal"
             ? {
@@ -211,6 +233,25 @@ const finalizedManifest = () => {
                   inlineLimitBytes: "512",
                   maxPayloadBytes: "5000",
                   maxPayloadNodes: "512",
+                },
+              }
+            : {}),
+          ...(name === "fraudProofTransitionTrace"
+            ? {
+                eventHistoryBounds: {
+                  inlineLimitBytes: "512",
+                  maxPayloadBytes: "5000",
+                  maxPayloadNodes: "512",
+                },
+                eventHistoryRetentionAddresses: {
+                  deposit: credentialToAddress("Preview", {
+                    type: "Script",
+                    hash: "ee".repeat(28),
+                  }),
+                  withdrawal: credentialToAddress("Preview", {
+                    type: "Script",
+                    hash: "ef".repeat(28),
+                  }),
                 },
               }
             : {}),
@@ -948,6 +989,40 @@ describe("event history applied bounds in deployment identity", () => {
         parseDeploymentManifestEventHistoryBounds(invalid),
       ).toThrow();
   });
+  it("transition history requires both addresses and binds each address and bound to identity", () => {
+    for (const key of ["deposit", "withdrawal"] as const) {
+      const manifest = finalizedManifest();
+      const entry = manifest.contracts.fraudProofTransitionTrace!;
+      const addresses = entry.eventHistoryRetentionAddresses as Record<
+        string,
+        string
+      >;
+      addresses[key] = credentialToAddress("Preview", {
+        type: "Script",
+        hash: "ab".repeat(28),
+      });
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /id mismatch/,
+      );
+      const { manifestId: _old, ...changed } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(changed);
+      expect(verifyFinalizedDeploymentManifest(manifest)).toBe(manifest);
+      delete addresses[key];
+      const { manifestId: _missing, ...missing } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(missing);
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /eventHistoryRetentionAddresses/,
+      );
+    }
+    const manifest = finalizedManifest();
+    manifest.contracts.fraudProofTransitionTrace!.eventHistoryBounds = {
+      ...bounds,
+      maxPayloadNodes: "513",
+    };
+    expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+      /id mismatch/,
+    );
+  });
   for (const name of [
     "fraudProofFabricatedDeposit",
     "fraudProofFabricatedWithdrawal",
@@ -995,4 +1070,64 @@ describe("event history applied bounds in deployment identity", () => {
         /eventHistoryBounds/,
       );
     });
+});
+
+describe("event history list deployment recipes", () => {
+  it("requires exact nonce, kind, policy and positive canonical protection parameters", () => {
+    const recipe =
+      finalizedManifest().contracts.depositMint!.eventHistoryRecipe!;
+    expect(parseDeploymentManifestEventHistoryRecipe(recipe)).toEqual(recipe);
+    for (const invalid of [
+      { ...recipe, kind: "Unknown" },
+      { ...recipe, hubPolicyId: "ab" },
+      { ...recipe, protectionDurationMs: "0" },
+      { ...recipe, protectionDurationMs: "02000" },
+      { ...recipe, protectionDurationMs: "9007199254740992" },
+      {
+        ...recipe,
+        initializationNonce: { txHash: "11".repeat(32), outputIndex: -1 },
+      },
+      { ...recipe, extra: true },
+    ])
+      expect(() =>
+        parseDeploymentManifestEventHistoryRecipe(invalid),
+      ).toThrow();
+  });
+
+  for (const name of ["depositMint", "withdrawalMint"] as const) {
+    it(`${name} requires a recipe and binds its parameters to manifest identity`, () => {
+      const manifest = finalizedManifest();
+      const entry = manifest.contracts[name]!;
+      entry.eventHistoryRecipe = {
+        ...entry.eventHistoryRecipe!,
+        protectionDurationMs: "2001",
+      };
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /id mismatch/u,
+      );
+      const { manifestId: _before, ...changed } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(changed);
+      expect(verifyFinalizedDeploymentManifest(manifest)).toBe(manifest);
+      delete entry.eventHistoryRecipe;
+      const { manifestId: _after, ...missing } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(missing);
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /eventHistoryRecipe/u,
+      );
+    });
+
+    it(`${name} cannot declare a nonce outside its deployment`, () => {
+      const manifest = finalizedManifest();
+      const entry = manifest.contracts[name]!;
+      entry.eventHistoryRecipe = {
+        ...entry.eventHistoryRecipe!,
+        initializationNonce: { txHash: "aa".repeat(32), outputIndex: 0 },
+      };
+      const { manifestId: _before, ...changed } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(changed);
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /history recipe/u,
+      );
+    });
+  }
 });

@@ -342,6 +342,18 @@ export class MidgardMpf {
     });
   }
 
+  /** Distinguishes a durably empty trie from a missing or recreated store. */
+  public persistedRootMarker(): Effect.Effect<Buffer | undefined, MpfError> {
+    return Effect.tryPromise({
+      try: async () => {
+        if (this.level === undefined) return undefined;
+        const marker = await this.level.get(ROOT_KEY, JSON_LEVEL_ENCODING_OPTS);
+        return marker === undefined ? undefined : parseStoredRootHex(marker);
+      },
+      catch: (cause) => MpfError.rootNotSet(this.trieName, cause),
+    });
+  }
+
   public root(): Effect.Effect<Buffer, MpfError> {
     return Effect.try({
       try: () => {

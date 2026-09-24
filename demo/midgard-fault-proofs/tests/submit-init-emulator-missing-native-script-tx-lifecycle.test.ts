@@ -6,8 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   prepareMissingNativeScriptTx,
-  submitMissingNativeScriptTxCancel,
-  submitMissingNativeScriptTxInit,
   submitMissingNativeScriptTxStep01,
   submitMissingNativeScriptTxStep02,
   submitMissingNativeScriptTxStep03,
@@ -16,6 +14,9 @@ import {
   submitMissingNativeScriptTxStep06,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL } from "../src/missing-native-script-tx/contracts.js";
+import { submitResolvedInit } from "../src/submit-init.js";
 import {
   makeMissingNativeScriptTxEmulatorHarness,
   publishMissingNativeScriptTxReferenceScripts,
@@ -55,7 +56,8 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       owner: harness.proverSigner.paymentKeyHash,
     });
     expect(prepared.expectedMissingScriptHash).toBe(fixture.expectedScriptHash);
-    const init = await submitMissingNativeScriptTxInit({
+    const init = await submitResolvedInit({
+      label: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -168,7 +170,8 @@ describe("missing-native-script-tx emulator lifecycle", () => {
     ).toStrictEqual({ fraud_prover: harness.proverSigner.paymentKeyHash });
 
     // Cancellation is a second explicit prover decision, here from step 02.
-    const cancelInit = await submitMissingNativeScriptTxInit({
+    const cancelInit = await submitResolvedInit({
+      label: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -197,9 +200,11 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       referenceScriptUtxo: refs[0],
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const cancellation = await submitMissingNativeScriptTxCancel({
+    const cancellation = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts: harness.family,
+      family: MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
+      steps: harness.family.steps,
+      computationThread: harness.family.computationThread,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: cancelStep01.nextThreadOutRef,

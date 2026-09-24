@@ -1,5 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  calculateMinLovelaceFromUTxO,
   type LucidEvolution,
   type Script,
   validatorToScriptHash,
@@ -24,6 +25,9 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
       contracts.chunkedVerify,
       contracts.pexcludes,
       contracts.reserve,
+      ...Object.values(SDK.requireEventHistoryContracts(contracts)).flatMap(
+        ({ list, retirement }) => [list, retirement],
+      ),
     ];
     const scripts = new Map<string, Script>();
     for (const { withdrawalScript: script } of validators) {
@@ -80,6 +84,132 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
       }
     }
     return before.map(({ scriptHash }) => results.get(scriptHash)!);
+  });
+
+/** Registration precedes root initialization. Explicit funding preserves both
+ * declared initialization nonces even when the operator also publishes scripts. */
+export const ensureEventHistoryRewardAccountsRegisteredProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+) =>
+  Effect.gen(function* () {
+    const history = Object.values(SDK.requireEventHistoryContracts(contracts));
+    const registrations = yield* Effect.forEach(
+      history.flatMap(({ list, retirement }) => [list, retirement]),
+      ({ withdrawalScript }) =>
+        queryScriptRewardRegistrationProgram(lucid, withdrawalScript),
+    );
+    const missing = registrations.filter(({ registered }) => !registered);
+    if (missing.length === 0) return registrations;
+    const tx = yield* Effect.tryPromise({
+      try: async () => {
+        const inputs = (await lucid.wallet().getUtxos()).filter(
+          (utxo) =>
+            utxo.scriptRef == null &&
+            utxo.datum == null &&
+            Object.keys(utxo.assets).every((unit) => unit === "lovelace") &&
+            !history.some(
+              ({ recipe }) =>
+                recipe.initializationNonce.transactionId === utxo.txHash &&
+                recipe.initializationNonce.outputIndex ===
+                  BigInt(utxo.outputIndex),
+            ),
+        );
+        if (inputs.length === 0)
+          throw new Error(
+            "No plain funding remains after reserving history initialization nonces",
+          );
+        // Lucid's automatic selection does not fund a batch's certificate
+        // deposits. Select enough explicit inputs, without collecting every
+        // publication change output in a fragmented wallet.
+        const parameters = lucid.config().protocolParameters;
+        if (parameters === undefined)
+          throw new Error("History registration requires protocol parameters");
+        const minimumChange = calculateMinLovelaceFromUTxO(
+          parameters.coinsPerUtxoByte,
+          {
+            txHash: "00".repeat(32),
+            outputIndex: 0,
+            address: await lucid.wallet().address(),
+            assets: { lovelace: 0xffffffffffffffffn },
+          },
+        );
+        const budget =
+          BigInt(missing.length) * parameters.keyDeposit +
+          BigInt(parameters.minFeeA) * BigInt(parameters.maxTxSize) +
+          BigInt(parameters.minFeeB) +
+          minimumChange;
+        const selected = [];
+        let total = 0n;
+        for (const input of inputs.sort((left, right) => {
+          const delta =
+            (right.assets.lovelace ?? 0n) - (left.assets.lovelace ?? 0n);
+          return delta === 0n
+            ? left.txHash.localeCompare(right.txHash) ||
+                left.outputIndex - right.outputIndex
+            : delta > 0n
+              ? 1
+              : -1;
+        })) {
+          selected.push(input);
+          total += input.assets.lovelace ?? 0n;
+          if (total >= budget) break;
+        }
+        if (total < budget)
+          throw new Error(
+            "Insufficient unreserved funding for history observer deposits and fees",
+          );
+        const completed = await missing
+          .reduce(
+            (builder, { rewardAddress }) =>
+              builder.register.Stake(rewardAddress),
+            lucid.newTx().collectFrom(selected),
+          )
+          .complete({
+            coinSelection: false,
+            presetWalletInputs: selected,
+            localUPLCEval: true,
+          });
+        const allowed = new Set(
+          inputs.map((input) => `${input.txHash}#${input.outputIndex}`),
+        );
+        const consumed = completed.toTransaction().body().inputs();
+        for (let index = 0; index < consumed.len(); index += 1) {
+          const input = consumed.get(index);
+          if (
+            !allowed.has(`${input.transaction_id().to_hex()}#${input.index()}`)
+          )
+            throw new Error(
+              "History registration selected a reserved initialization input",
+            );
+        }
+        return completed;
+      },
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to build event history observer registrations",
+          cause,
+        }),
+    });
+    yield* handleSignSubmit(lucid, tx);
+    return yield* Effect.tryPromise({
+      try: async () => {
+        for (const { rewardAddress } of missing)
+          if (!(await lucid.rewardAccountAt(rewardAddress)).registered)
+            throw new Error(
+              `Confirmed history registration is not visible: ${rewardAddress}`,
+            );
+        return registrations.map((registration) => ({
+          ...registration,
+          registered: true,
+        }));
+      },
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to confirm history observer registrations",
+          cause,
+        }),
+    });
   });
 
 export const queryScriptRewardRegistrationProgram = (

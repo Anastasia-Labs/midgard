@@ -196,19 +196,12 @@ validator main(
 // all — and because the read is arithmetic, selecting input 295 costs what
 // selecting input 0 costs.
 
-/// The block whose header authenticated the challenged transaction at step-01.
-/// Its `prev_utxos_root` and authenticated raw transactions root are the exact
-/// values step-01 forwards, so this step runs on real roots, not placeholders.
-fn challenged_block() -> fixture.NativeBlockFixtureV1 {
-  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
 fn prev_utxos_root() -> ByteArray {
-  challenged_block().header.prev_utxos_root
+  fixture.challenged_block_v1().header.prev_utxos_root
 }
 
 fn transactions_root() -> ByteArray {
-  challenged_block().transactions_phas_root
+  fixture.challenged_block_v1().transactions_phas_root
 }
 
 fn run_step_02(
@@ -222,7 +215,7 @@ fn run_step_02(
     blocks_prev_utxos_root: prev_utxos_root(),
     blocks_transactions_root: transactions_root(),
   }
-  let asset_name = fixture.ct_token_asset_name(challenged_block())
+  let asset_name = fixture.ct_token_asset_name(fixture.challenged_block_v1())
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -262,7 +255,7 @@ fn sample_input(tx_id: ByteArray, output_index: Int) -> MidgardTxInput {
 /// The spend inputs the fixture transaction actually commits — the only
 /// preimage the door will open for it.
 fn challenged_inputs() -> List<MidgardTxInput> {
-  challenged_block().tx.body.inputs
+  fixture.challenged_block_v1().tx.body.inputs
 }
 
 fn first_challenged_input() -> MidgardTxInput {
@@ -275,7 +268,7 @@ fn first_challenged_input() -> MidgardTxInput {
 /// challenged index is carried to step-03 together with both block roots.
 test no_input_step_02_forwards_the_challenged_spend_input() {
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     challenged_inputs(),
     0,
     first_challenged_input(),
@@ -292,7 +285,7 @@ test no_input_step_02_rejects_a_substituted_inputs_preimage() fail {
     0,
   )
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     [injected, ..challenged_inputs()],
     0,
     injected,
@@ -303,7 +296,7 @@ test no_input_step_02_rejects_a_substituted_inputs_preimage() fail {
 /// committed collection fails the read instead of returning the nearest item.
 test no_input_step_02_rejects_an_out_of_range_input_index() fail {
   run_step_02(
-    challenged_block(),
+    fixture.challenged_block_v1(),
     challenged_inputs(),
     64,
     first_challenged_input(),

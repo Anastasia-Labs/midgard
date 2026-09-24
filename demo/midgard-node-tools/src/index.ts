@@ -11,6 +11,7 @@
  * per-module dist for anything else to resolve.
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -371,6 +372,10 @@ program
                         lovelace: lovelace.toString(10),
                         assetSpecs: [],
                       });
+                    const submissionId = `stress-wallet-${randomUUID()}`;
+                    yield* Effect.logInfo(
+                      `Deposit submission ID: ${submissionId}`,
+                    );
                     const submitted =
                       yield* SubmitDeposit.submitDepositWithMetadataProgram(
                         lucidService.api,
@@ -379,6 +384,7 @@ program
                           ...depositConfig,
                           referenceScripts: depositReferenceScripts,
                         },
+                        submissionId,
                       );
                     return {
                       txHash: submitted.txHash,

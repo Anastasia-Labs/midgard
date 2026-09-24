@@ -98,6 +98,78 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     );
   });
 
+  it("loads genuine empty genesis and promotes insertion and final deletion across restart", async () => {
+    const root = await mkdtemp(join(tmpdir(), "midgard-native-empty-"));
+    temporaryPaths.push(root);
+    const levelPath = join(root, "ledger");
+    const sidecarPath = join(root, "ledger.sidecar");
+    const emptyRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
+    const seed = new Level<string, unknown>(levelPath, {
+      valueEncoding: "json",
+    });
+    await seed.open();
+    await seed.put("__root__", emptyRoot);
+    await seed.close();
+    const options = { levelPath, binaryPath, binarySha256, sidecarPath };
+    const key = Buffer.alloc(32, 91);
+    const value = Buffer.alloc(64, 92);
+    let service = await ProductionNativeMpfOwnerService.create(options);
+    try {
+      expect(await service.diagnostics()).toMatchObject({
+        durableRoot: emptyRoot,
+        residentNodes: 0,
+      });
+      const inserted = await service.fork(emptyRoot);
+      const result = await service.applyEvents(
+        inserted,
+        encodeNativeMpfEventLog(emptyRoot, [[{ type: "insert", key, value }]]),
+      );
+      expect(result.candidateRoot).toBe(leafRoot(key, value));
+      await service.promote(inserted);
+      await service.close();
+      service = await ProductionNativeMpfOwnerService.create(options);
+      expect(await service.diagnostics()).toMatchObject({
+        durableRoot: result.candidateRoot,
+        residentNodes: 1,
+      });
+      const deleted = await service.fork(result.candidateRoot);
+      const removed = await service.applyEvents(
+        deleted,
+        encodeNativeMpfEventLog(result.candidateRoot, [
+          [{ type: "delete", key }],
+        ]),
+      );
+      expect(removed.candidateRoot).toBe(emptyRoot);
+      await service.promote(deleted);
+      await service.close();
+      service = await ProductionNativeMpfOwnerService.create(options);
+      expect(await service.diagnostics()).toMatchObject({
+        durableRoot: emptyRoot,
+        residentNodes: 0,
+      });
+      // Loading the empty sidecar is the same authenticated empty closure.
+      await service.close();
+      service = await ProductionNativeMpfOwnerService.create(options);
+      expect((await service.diagnostics()).durableRoot).toBe(emptyRoot);
+    } finally {
+      await service.close();
+    }
+    const invalidPath = join(root, "missing-root");
+    const invalid = new Level<string, unknown>(invalidPath, {
+      valueEncoding: "json",
+    });
+    await invalid.open();
+    await invalid.put("__root__", leafRoot(key, value));
+    await invalid.close();
+    await expect(
+      ProductionNativeMpfOwnerService.create({
+        ...options,
+        levelPath: invalidPath,
+        sidecarPath: undefined,
+      }),
+    ).rejects.toThrow(/missing record/);
+  });
+
   it("matches legacy roots, promotes atomically, restarts, and replays recovery", async () => {
     const root = await mkdtemp(join(tmpdir(), "midgard-native-owner-"));
     temporaryPaths.push(root);

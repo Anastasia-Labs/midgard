@@ -1,3 +1,4 @@
+import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { decodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import {
@@ -6,12 +7,18 @@ import {
   parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
+import {
+  requireCandidateHistory,
+  withHistoryWrite,
+} from "../services/event-history-producer.js";
 import { sha256 } from "../sha256.js";
 import * as DaPayloadsDB from "./daPayloads.js";
 import * as DepositsDB from "./deposits.js";
+import * as HistoryAuthority from "./eventHistoryAuthority.js";
 import * as ForcedTransactionsDB from "./forcedTransactions.js";
 import {
   clearTable,
@@ -44,6 +51,10 @@ export enum Columns {
   DEPLOYMENT_MANIFEST_ID = "deployment_manifest_id",
   CONSENSUS_PROFILE_ID = "consensus_profile_id",
   SUBMITTED_TX_HASH = "submitted_tx_hash",
+  PREPARED_TX_HASH = "prepared_tx_hash",
+  INTENDED_TX_HASH = "intended_tx_hash",
+  SIGNED_TX_CBOR = "signed_tx_cbor",
+  CORRECTION_TRANSITION_DIGEST = "correction_transition_digest",
   STATE_QUEUE_LEASE_TOKEN = "state_queue_lease_token",
   BASE_SNAPSHOT_ID = "base_snapshot_id",
   BASE_TAIL_OUT_REF = "base_tail_out_ref",
@@ -102,6 +113,13 @@ export enum MemberColumns {
   SOURCE_TIMESTAMP = "source_time_stamp_tz",
 }
 
+export enum WithdrawalMemberColumns {
+  CLASSIFICATION_REVISION = "classification_revision",
+  VALIDITY = "validity",
+  VALIDITY_DETAIL = "validity_detail",
+  CLASSIFICATION_SHA256 = "classification_sha256",
+}
+
 export enum UtxoColumns {
   OUTREF = "outref",
   OUTPUT = "output",
@@ -134,6 +152,10 @@ export type Row = {
   [Columns.DEPLOYMENT_MANIFEST_ID]: string;
   [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.SUBMITTED_TX_HASH]: Buffer | null;
+  [Columns.PREPARED_TX_HASH]?: Buffer | null;
+  [Columns.INTENDED_TX_HASH]?: Buffer | null;
+  [Columns.SIGNED_TX_CBOR]?: Buffer | null;
+  [Columns.CORRECTION_TRANSITION_DIGEST]?: string | null;
   [Columns.STATE_QUEUE_LEASE_TOKEN]: string;
   [Columns.BASE_SNAPSHOT_ID]: string;
   [Columns.BASE_TAIL_OUT_REF]: string;
@@ -211,6 +233,8 @@ type RawRow = Omit<
 };
 
 export type MemberRecord = {
+  readonly history_binding_digest?: Buffer | null;
+  readonly history_incarnation_id?: Buffer | null;
   [MemberColumns.HEADER_HASH]: Buffer;
   [MemberColumns.MEMBER_ID]: Buffer;
   [MemberColumns.ORDINAL]: number;
@@ -221,6 +245,13 @@ export type MemberRecord = {
   [MemberColumns.SOURCE_TABLE]: string;
   [MemberColumns.SOURCE_ID]: Buffer;
   [MemberColumns.SOURCE_TIMESTAMP]: Date;
+};
+
+export type WithdrawalMemberRecord = MemberRecord & {
+  [WithdrawalMemberColumns.CLASSIFICATION_REVISION]: number;
+  [WithdrawalMemberColumns.VALIDITY]: WithdrawalsDB.Validity;
+  [WithdrawalMemberColumns.VALIDITY_DETAIL]: unknown;
+  [WithdrawalMemberColumns.CLASSIFICATION_SHA256]: Buffer;
 };
 
 export type UtxoInput = {
@@ -293,7 +324,7 @@ export type Record = Row & {
   readonly mempoolTxIds: readonly Buffer[];
   readonly depositMembers: readonly MemberRecord[];
   readonly forcedTransactionMembers: readonly MemberRecord[];
-  readonly withdrawalMembers: readonly MemberRecord[];
+  readonly withdrawalMembers: readonly WithdrawalMemberRecord[];
   readonly txMembers: readonly MemberRecord[];
   readonly transitionTraceMembers: readonly MemberRecord[];
   readonly eventToStepMembers: readonly MemberRecord[];
@@ -388,6 +419,7 @@ export type PendingBlockFinalization = {
 };
 
 export type PrepareInput = {
+  readonly preparedTxHash?: Buffer;
   readonly headerHash: Buffer;
   readonly headerCbor: Buffer;
   readonly metadata: PendingBlockFinalizationMetadata;
@@ -1155,15 +1187,40 @@ const forcedTransactionMemberEntry = (
     };
   });
 
+const withdrawalClassificationDigest = (
+  member: Omit<
+    WithdrawalMemberRecord,
+    WithdrawalMemberColumns.CLASSIFICATION_SHA256
+  >,
+): Buffer =>
+  sha256(
+    Buffer.from(
+      canonicalJson(
+        {
+          headerHash: member[MemberColumns.HEADER_HASH].toString("hex"),
+          eventId: member[MemberColumns.MEMBER_ID].toString("hex"),
+          settlementInfoSha256:
+            member[MemberColumns.PAYLOAD_SHA256].toString("hex"),
+          classificationRevision:
+            member[WithdrawalMemberColumns.CLASSIFICATION_REVISION],
+          validity: member[WithdrawalMemberColumns.VALIDITY],
+          validityDetail: member[WithdrawalMemberColumns.VALIDITY_DETAIL],
+        },
+        "withdrawal journal classification",
+      ),
+    ),
+  );
+
 const withdrawalMemberEntry = (
   headerHash: Buffer,
   entry: WithdrawalsDB.Entry,
   ordinal: number,
-): Effect.Effect<MemberRecord, DatabaseError> =>
+): Effect.Effect<WithdrawalMemberRecord, DatabaseError> =>
   Effect.gen(function* () {
     const payload = entry[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO];
     const memberId = Buffer.from(entry[WithdrawalsDB.Columns.ID]);
-    if (payload === null) {
+    const validity = entry[WithdrawalsDB.Columns.VALIDITY];
+    if (payload === null || validity === null) {
       return yield* Effect.fail(
         new DatabaseError({
           table: WithdrawalsDB.tableName,
@@ -1173,7 +1230,7 @@ const withdrawalMemberEntry = (
         }),
       );
     }
-    return {
+    const member = {
       [MemberColumns.HEADER_HASH]: headerHash,
       [MemberColumns.MEMBER_ID]: memberId,
       [MemberColumns.ORDINAL]: ordinal,
@@ -1183,6 +1240,16 @@ const withdrawalMemberEntry = (
       [MemberColumns.SOURCE_ID]: memberId,
       [MemberColumns.SOURCE_TIMESTAMP]:
         entry[WithdrawalsDB.Columns.INCLUSION_TIME],
+      [WithdrawalMemberColumns.CLASSIFICATION_REVISION]:
+        entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+      [WithdrawalMemberColumns.VALIDITY]: validity,
+      [WithdrawalMemberColumns.VALIDITY_DETAIL]:
+        entry[WithdrawalsDB.Columns.VALIDITY_DETAIL],
+    };
+    return {
+      ...member,
+      [WithdrawalMemberColumns.CLASSIFICATION_SHA256]:
+        withdrawalClassificationDigest(member),
     };
   });
 
@@ -1213,13 +1280,13 @@ const retainedRootMemberEntry = ({
   };
 };
 
-const retrieveMembers = (
+const retrieveMembers = <Member extends MemberRecord = MemberRecord>(
   sql: SqlClient.SqlClient,
   memberTableName: string,
   headerHash: Buffer,
-): Effect.Effect<readonly MemberRecord[], never, never> =>
+): Effect.Effect<readonly Member[], never, never> =>
   Effect.gen(function* () {
-    return yield* sql<MemberRecord>`SELECT * FROM ${sql(memberTableName)}
+    return yield* sql<Member>`SELECT * FROM ${sql(memberTableName)}
       WHERE ${sql(MemberColumns.HEADER_HASH)} = ${headerHash}
       ORDER BY ${sql(MemberColumns.ORDINAL)} ASC`;
   }).pipe(Effect.orDie);
@@ -1276,6 +1343,20 @@ const decodePendingBlockFinalizationRow = (
         );
       }
       const normalizedRow = normalizeRow(row);
+      validateSignedIntent(
+        normalizedRow[Columns.INTENDED_TX_HASH],
+        normalizedRow[Columns.SIGNED_TX_CBOR],
+      );
+      const preparedHash = normalizedRow[Columns.PREPARED_TX_HASH];
+      const intendedHash = normalizedRow[Columns.INTENDED_TX_HASH];
+      if (
+        (preparedHash != null && preparedHash.length !== 32) ||
+        (intendedHash != null &&
+          (preparedHash == null || !preparedHash.equals(intendedHash)))
+      )
+        throw new Error(
+          "Signed intent does not match prepared transaction body hash",
+        );
       const ledgerDelta = decodeLedgerDelta(normalizedRow);
       const nativeMpfReplay = decodeNativeMpfReplay(normalizedRow);
       const pending = parsePendingBlockFinalization({
@@ -1352,7 +1433,7 @@ const retrieveRecord = (
           forcedTransactionsTableName,
           normalizedRow[Columns.HEADER_HASH],
         ),
-        retrieveMembers(
+        retrieveMembers<WithdrawalMemberRecord>(
           sql,
           withdrawalsTableName,
           normalizedRow[Columns.HEADER_HASH],
@@ -1385,6 +1466,40 @@ const retrieveRecord = (
       forcedTransactionEventIds,
       normalizedRow[Columns.HEADER_HASH],
     );
+    yield* Effect.try({
+      try: () => {
+        for (const member of withdrawalEventIds) {
+          if (
+            !member[MemberColumns.HEADER_HASH].equals(
+              normalizedRow[Columns.HEADER_HASH],
+            ) ||
+            member[MemberColumns.SOURCE_TABLE] !== WithdrawalsDB.tableName ||
+            !member[MemberColumns.SOURCE_ID].equals(
+              member[MemberColumns.MEMBER_ID],
+            ) ||
+            !sha256(member[MemberColumns.PAYLOAD_CBOR]).equals(
+              member[MemberColumns.PAYLOAD_SHA256],
+            ) ||
+            !Object.values(WithdrawalsDB.Validity).includes(
+              member[WithdrawalMemberColumns.VALIDITY],
+            ) ||
+            !withdrawalClassificationDigest(member).equals(
+              member[WithdrawalMemberColumns.CLASSIFICATION_SHA256],
+            )
+          )
+            throw new Error(
+              "Withdrawal journal classification identity or digest mismatch",
+            );
+        }
+      },
+      catch: (cause) =>
+        new DatabaseError({
+          table: tableName,
+          message:
+            "Refusing to load an invalid withdrawal classification journal",
+          cause,
+        }),
+    });
     return {
       ...normalizedRow,
       ledgerDelta,
@@ -1460,12 +1575,13 @@ export const hasActive: Effect.Effect<boolean, DatabaseError, Database> =
 
 export const retrieveByHeaderHash = (
   headerHash: Buffer,
+  lock = false,
 ): Effect.Effect<Option.Option<Record>, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<RawRow>`SELECT * FROM ${sql(tableName)}
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-      LIMIT 1`;
+      LIMIT 1 ${lock ? sql`FOR UPDATE` : sql``}`;
     return rows.length === 0
       ? Option.none()
       : Option.some(yield* retrieveRecord(sql, rows[0]!));
@@ -1571,6 +1687,28 @@ export const retrieveFinalizedMissingDaPayloads = ({
       "Failed to retrieve finalized journals missing DA payloads",
     ),
   );
+
+/** A lost submit response requires reconciliation before another candidate build.
+ * The transactional prepare guard remains authoritative against later races. */
+export const assertNoUnreconciledSignedSubmission = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    header_hash: Buffer;
+  }>`SELECT header_hash FROM pending_block_finalizations
+    WHERE status = ${Status.PendingSubmission} AND intended_tx_hash IS NOT NULL LIMIT 1`;
+  if (rows.length !== 0)
+    return yield* Effect.fail(
+      new DatabaseError({
+        table: tableName,
+        message:
+          "Refusing to prepare a new pending block while another active pending-finalization record exists",
+        cause: `signed_header=${rows[0]!.header_hash.toString("hex")}; canonical reconciliation required`,
+      }),
+    );
+}).pipe(
+  withHistoryWrite,
+  sqlErrorToDatabaseError(tableName, "Failed signed submission preflight"),
+);
 
 export const preparePendingSubmission = (
   input: PrepareInput,
@@ -1767,8 +1905,23 @@ export const preparePendingSubmission = (
           blockEndTime: input.blockEndTime,
         }),
       );
-    yield* sql.withTransaction(
+    yield* withHistoryWrite(
       Effect.gen(function* () {
+        const candidateHistory = yield* requireCandidateHistory;
+        if (
+          (Option.isSome(candidateHistory) &&
+            input.preparedTxHash === undefined) ||
+          (input.preparedTxHash !== undefined &&
+            input.preparedTxHash.length !== 32)
+        )
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message:
+                "Production pending journal requires the exact prepared transaction body hash",
+              cause: input.headerHash.toString("hex"),
+            }),
+          );
         const activeRows = yield* sql<Row>`SELECT * FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
           LIMIT 1`;
@@ -1791,15 +1944,20 @@ export const preparePendingSubmission = (
         if (options?.beforeJournalInsert !== undefined) {
           yield* options.beforeJournalInsert;
         }
+        yield* WithdrawalsDB.assertClassificationSnapshots(
+          withdrawalMembers.map(withdrawalMemberToAssignment),
+        );
         if (active !== undefined) {
           yield* sql`DELETE FROM ${sql(tableName)}
             WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
-              AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}`;
+              AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
+              AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL`;
         }
         yield* sql`DELETE FROM ${sql(tableName)}
           WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
             AND ${sql(Columns.STATUS)} = ${Status.Abandoned}
-            AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL`;
+            AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
+      AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL`;
         yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert({
           [Columns.HEADER_HASH]: input.headerHash,
           [Columns.HEADER_CBOR]: input.headerCbor,
@@ -1809,6 +1967,7 @@ export const preparePendingSubmission = (
             deploymentMarker.schemaVersion,
           [Columns.DEPLOYMENT_MANIFEST_ID]: deploymentMarker.manifestId,
           [Columns.CONSENSUS_PROFILE_ID]: metadata.consensusProfileId,
+          [Columns.PREPARED_TX_HASH]: input.preparedTxHash ?? null,
           [Columns.SUBMITTED_TX_HASH]: null,
           [Columns.STATE_QUEUE_LEASE_TOKEN]: metadata.stateQueueLeaseToken,
           [Columns.BASE_SNAPSHOT_ID]: metadata.baseSnapshotId,
@@ -1878,9 +2037,47 @@ export const preparePendingSubmission = (
           [Columns.STATUS]: Status.PendingSubmission,
           [Columns.OBSERVED_CONFIRMED_AT_MS]: null,
         })}`;
+        const permit = candidateHistory;
+        const memberHistory = (eventTable: string, eventId: Buffer) =>
+          Effect.gen(function* () {
+            if (Option.isNone(permit))
+              return {
+                history_binding_digest: null,
+                history_incarnation_id: null,
+              };
+            const rows = yield* sql<{
+              history_binding_digest: Buffer;
+              history_incarnation_id: Buffer;
+            }>`
+            SELECT e.history_binding_digest, e.history_incarnation_id FROM ${sql(eventTable)} e
+            JOIN event_history_incarnations i ON i.binding_digest = e.history_binding_digest AND i.incarnation_id = e.history_incarnation_id
+            WHERE e.event_id = ${eventId} AND i.event_id = e.event_id AND i.origin_canonical = true
+              AND i.binding_digest = ${Buffer.from(permit.value.coverage.bindingDigest, "hex")}
+            FOR UPDATE OF e`;
+            if (rows.length !== 1)
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: eventTable,
+                  message:
+                    "Pending member has no exact canonical history incarnation",
+                  cause: eventId.toString("hex"),
+                }),
+              );
+            return rows[0]!;
+          });
+        const associatedDeposits = yield* Effect.forEach(
+          depositMembers,
+          (member) =>
+            memberHistory(
+              DepositsDB.tableName,
+              member[MemberColumns.MEMBER_ID],
+            ).pipe(
+              Effect.map((association) => ({ ...member, ...association })),
+            ),
+        );
         if (depositMembers.length > 0) {
           yield* sql`INSERT INTO ${sql(depositsTableName)} ${sql.insert(
-            depositMembers,
+            associatedDeposits,
           )}`;
         }
         if (forcedTransactionMembers.length > 0) {
@@ -1888,10 +2085,33 @@ export const preparePendingSubmission = (
             forcedTransactionsTableName,
           )} ${sql.insert(forcedTransactionMembers)}`;
         }
-        if (withdrawalMembers.length > 0) {
-          yield* sql`INSERT INTO ${sql(withdrawalsTableName)} ${sql.insert(
-            withdrawalMembers,
-          )}`;
+        for (const member of withdrawalMembers) {
+          const association = yield* memberHistory(
+            WithdrawalsDB.tableName,
+            member[MemberColumns.MEMBER_ID],
+          );
+          const values = {
+            ...member,
+            ...association,
+            [WithdrawalMemberColumns.VALIDITY_DETAIL]: sql`CAST(${JSON.stringify(member[WithdrawalMemberColumns.VALIDITY_DETAIL])} AS TEXT)::JSONB`,
+          };
+          const columns = [
+            MemberColumns.HEADER_HASH,
+            MemberColumns.MEMBER_ID,
+            MemberColumns.ORDINAL,
+            MemberColumns.PAYLOAD_CBOR,
+            MemberColumns.PAYLOAD_SHA256,
+            MemberColumns.SOURCE_TABLE,
+            MemberColumns.SOURCE_ID,
+            MemberColumns.SOURCE_TIMESTAMP,
+            WithdrawalMemberColumns.CLASSIFICATION_REVISION,
+            WithdrawalMemberColumns.VALIDITY,
+            WithdrawalMemberColumns.VALIDITY_DETAIL,
+            WithdrawalMemberColumns.CLASSIFICATION_SHA256,
+            "history_binding_digest",
+            "history_incarnation_id",
+          ] as const;
+          yield* sql`INSERT INTO ${sql(withdrawalsTableName)} (${sql.csv(columns.map((column) => sql`${sql(column)}`))}) VALUES (${sql.csv(columns.map((column) => sql`${values[column]}`))})`;
         }
         if (txMembers.length > 0) {
           yield* sql`INSERT INTO ${sql(txsTableName)} ${sql.insert(txMembers)}`;
@@ -1926,18 +2146,181 @@ export const preparePendingSubmission = (
     ),
   );
 
+/** Check retained admission identity before applying journal effects. Retirement
+ * preserves origin_canonical, so a spent list node remains a valid member.
+ * Public event IDs alone never authorize mutation of a replacement row. */
+export const assertCanonicalEventMembers = (record: {
+  readonly depositMembers: readonly Pick<
+    MemberRecord,
+    | MemberColumns.MEMBER_ID
+    | "history_binding_digest"
+    | "history_incarnation_id"
+  >[];
+  readonly withdrawalMembers: readonly Pick<
+    MemberRecord,
+    | MemberColumns.MEMBER_ID
+    | "history_binding_digest"
+    | "history_incarnation_id"
+  >[];
+}): Effect.Effect<void, DatabaseError, Database> =>
+  withHistoryWrite(
+    Effect.gen(function* () {
+      const owned = yield* HistoryAuthority.currentOwnedTransaction;
+      const sql = yield* SqlClient.SqlClient;
+      for (const [kind, eventTable, members] of [
+        ["deposit", DepositsDB.tableName, record.depositMembers],
+        ["withdrawal", WithdrawalsDB.tableName, record.withdrawalMembers],
+      ] as const) {
+        for (const member of members) {
+          const binding = member.history_binding_digest;
+          const incarnation = member.history_incarnation_id;
+          // Only the explicit, unowned fixture transaction may contain old model
+          // members. withHistoryWrite has already excluded any acquired owner.
+          if (Option.isNone(owned) && binding == null && incarnation == null)
+            continue;
+          if (binding?.length !== 32 || incarnation?.length !== 32)
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: tableName,
+                message:
+                  "Journal member is missing its exact history incarnation",
+                cause: member[MemberColumns.MEMBER_ID].toString("hex"),
+              }),
+            );
+          const rows = yield* sql`
+          SELECT e.event_id FROM ${sql(eventTable)} e
+          JOIN event_history_incarnations i
+            ON i.binding_digest = e.history_binding_digest
+            AND i.incarnation_id = e.history_incarnation_id
+          JOIN event_history_cursor c ON c.binding_digest = i.binding_digest
+          WHERE e.event_id = ${member[MemberColumns.MEMBER_ID]}
+            AND i.event_id = e.event_id AND i.kind = ${kind}
+            AND i.binding_digest = ${binding} AND i.incarnation_id = ${incarnation}
+            AND i.origin_canonical = true
+            AND c.manifest_id = ${Option.isSome(owned) ? Buffer.from(owned.value.token.deploymentIdentity, "hex") : sql`c.manifest_id`}
+          FOR UPDATE OF e`;
+          if (rows.length !== 1)
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: tableName,
+                message:
+                  "Journal member no longer identifies its canonical history row",
+                cause: member[MemberColumns.MEMBER_ID].toString("hex"),
+              }),
+            );
+        }
+      }
+    }),
+  ).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to check journal event incarnations",
+    ),
+  );
+
+const validateSignedIntent = (
+  hash: Buffer | null | undefined,
+  cbor: Buffer | null | undefined,
+): void => {
+  if (hash == null && cbor == null) return;
+  if (hash?.length !== 32 || cbor == null || cbor.length === 0)
+    throw new Error("Incomplete durable signed transaction intent");
+  const tx = CML.Transaction.from_cbor_bytes(cbor);
+  const body = tx.body();
+  const actual = CML.hash_transaction(body);
+  try {
+    if (!tx.is_valid() || actual.to_hex() !== hash.toString("hex"))
+      throw new Error("Durable signed transaction intent hash mismatch");
+  } finally {
+    actual.free();
+    body.free();
+    tx.free();
+  }
+};
+
+/** SQL commit must complete before handing these exact signed bytes to L1. */
+export const recordSignedIntent = (
+  headerHash: Buffer,
+  txHash: Buffer,
+  signedCbor: Buffer,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (
+      Option.isSome(
+        yield* Effect.serviceOption(SqlClient.TransactionConnection),
+      )
+    )
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: tableName,
+          message:
+            "Signed intent must commit before broadcast outside an inherited transaction",
+          cause: headerHash.toString("hex"),
+        }),
+      );
+    yield* Effect.try({
+      try: () => validateSignedIntent(txHash, signedCbor),
+      catch: (cause) =>
+        new DatabaseError({
+          table: tableName,
+          message: "Invalid signed transaction intent",
+          cause,
+        }),
+    });
+    yield* withHistoryWrite(
+      Effect.gen(function* () {
+        yield* requireCandidateHistory;
+        const sql = yield* SqlClient.SqlClient;
+        const record = yield* retrieveByHeaderHash(headerHash, true);
+        if (Option.isNone(record))
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message: "Signed intent has no prepared journal",
+              cause: headerHash.toString("hex"),
+            }),
+          );
+        yield* assertCanonicalEventMembers(record.value);
+        const rows = yield* sql`UPDATE ${sql(tableName)}
+        SET intended_tx_hash = ${txHash}, signed_tx_cbor = ${signedCbor}, updated_at = clock_timestamp()
+        WHERE header_hash = ${headerHash} AND status = ${Status.PendingSubmission}
+          AND submitted_tx_hash IS NULL AND prepared_tx_hash = ${txHash}
+          AND ((intended_tx_hash IS NULL AND signed_tx_cbor IS NULL)
+            OR (intended_tx_hash = ${txHash} AND signed_tx_cbor = ${signedCbor}))
+        RETURNING header_hash`;
+        if (rows.length !== 1)
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message: "Signed intent conflicts with the pending journal",
+              cause: headerHash.toString("hex"),
+            }),
+          );
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to persist signed intent before broadcast",
+    ),
+  );
+
 export const markSubmitted = (
   headerHash: Buffer,
   submittedTxHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const owned = yield* HistoryAuthority.currentOwnedTransaction;
     const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
       SET ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash},
-          ${sql(Columns.STATUS)} = ${Status.SubmittedLocalFinalizationPending},
+          ${sql(Columns.STATUS)} = CASE WHEN ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
+            THEN ${Status.SubmittedLocalFinalizationPending} ELSE ${sql(Columns.STATUS)} END,
           ${sql(Columns.UPDATED_AT)} = NOW()
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-        AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
+        AND ${sql(Columns.STATUS)} IN ${sql.in([...ACTIVE_STATUSES, Status.Finalized])}
+        AND (${sql(Columns.INTENDED_TX_HASH)} = ${submittedTxHash} OR (${sql(Columns.INTENDED_TX_HASH)} IS NULL AND ${Option.isNone(owned)}))
+        AND (${sql(Columns.SUBMITTED_TX_HASH)} IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash})
       RETURNING *`;
     if (rows.length !== 1) {
       return yield* Effect.fail(
@@ -1949,6 +2332,7 @@ export const markSubmitted = (
       );
     }
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markSubmitted ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -1964,8 +2348,10 @@ export const discardUnsubmittedPendingSubmission = (
     yield* sql`DELETE FROM ${sql(tableName)}
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
         AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
-        AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL`;
+        AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
+      AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL`;
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`discardUnsubmittedPendingSubmission ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -1998,6 +2384,7 @@ export const markLocalFinalizationComplete = (
       );
     }
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markLocalFinalizationComplete ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2030,6 +2417,8 @@ export const markObservedWaitingStability = (
           ${Status.SubmittedUnconfirmed},
           ${Status.ObservedWaitingStability}
         )
+        AND (${submittedTxHash ?? null}::bytea IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash ?? null})
+        AND (${submittedTxHash ?? null}::bytea IS NULL OR ${sql(Columns.INTENDED_TX_HASH)} IS NULL OR ${sql(Columns.INTENDED_TX_HASH)} = ${submittedTxHash ?? null})
       RETURNING *`;
     if (rows.length !== 1) {
       return yield* Effect.fail(
@@ -2041,6 +2430,7 @@ export const markObservedWaitingStability = (
       );
     }
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markObservedWaitingStability ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2074,6 +2464,7 @@ export const reviveAbandonedCanonical = (
       );
     }
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`reviveAbandonedCanonical ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2114,6 +2505,7 @@ export const markFinalized = (
       );
     }
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markFinalized ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2128,6 +2520,7 @@ const deleteSupersededAbandonedUnsubmittedJournals = (
   sql<{ readonly header_hash: Buffer }>`DELETE FROM ${sql(tableName)}
     WHERE ${sql(Columns.STATUS)} = ${Status.Abandoned}
       AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
+      AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL
       AND ${sql(Columns.HEADER_HASH)} <> ${finalized[Columns.HEADER_HASH]}
       AND ${sql(Columns.BASE_TAIL_HEADER_HASH)} = ${
         finalized[Columns.BASE_TAIL_HEADER_HASH]
@@ -2218,6 +2611,7 @@ export const deleteSupersededAbandonedUnsubmitted = (): Effect.Effect<
     );
     return deleted;
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`deleteSupersededAbandonedUnsubmitted ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2235,6 +2629,7 @@ export const markAbandoned = (
           ${sql(Columns.UPDATED_AT)} = NOW()
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
         AND ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
+        AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL
       RETURNING *`;
     if (rows.length !== 1) {
       return yield* Effect.fail(
@@ -2246,6 +2641,7 @@ export const markAbandoned = (
       );
     }
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markAbandoned ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2260,15 +2656,13 @@ export const markAbandoned = (
  */
 export const markCorrectedAfterStateQueueRemoval = (
   headerHash: Buffer,
+  transitionDigest: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const existing = yield* sql<Pick<Row, Columns.STATUS>>`SELECT ${sql(
-      Columns.STATUS,
-    )} FROM ${sql(tableName)} WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
-    if (existing[0]?.[Columns.STATUS] === Status.Abandoned) return;
     const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
       SET ${sql(Columns.STATUS)} = ${Status.Abandoned},
+          ${sql(Columns.CORRECTION_TRANSITION_DIGEST)} = ${transitionDigest},
           ${sql(Columns.UPDATED_AT)} = NOW()
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
         AND ${sql(Columns.STATUS)} IN (
@@ -2283,11 +2677,12 @@ export const markCorrectedAfterStateQueueRemoval = (
         new DatabaseError({
           table: tableName,
           message: "Failed to mark state-queue-corrected block abandoned",
-          cause: `header_hash=${headerHash.toString("hex")},status=${existing[0]?.[Columns.STATUS] ?? "missing"}`,
+          cause: `header_hash=${headerHash.toString("hex")}`,
         }),
       );
     }
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markCorrectedAfterStateQueueRemoval ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2306,9 +2701,11 @@ export const markUnsubmittedAbandoned = (
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
         AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
         AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
+      AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL
       RETURNING *`;
     return rows.length === 1;
   }).pipe(
+    withHistoryWrite,
     Effect.withLogSpan(`markUnsubmittedAbandoned ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -2380,3 +2777,14 @@ export const clear = Effect.all(
   ],
   { discard: true },
 );
+
+export const withdrawalMemberToAssignment = (
+  member: WithdrawalMemberRecord,
+): WithdrawalsDB.SettlementInfoAssignment => ({
+  eventId: member[MemberColumns.MEMBER_ID],
+  expectedClassificationRevision:
+    member[WithdrawalMemberColumns.CLASSIFICATION_REVISION],
+  settlementEventInfo: member[MemberColumns.PAYLOAD_CBOR],
+  validity: member[WithdrawalMemberColumns.VALIDITY],
+  validityDetail: member[WithdrawalMemberColumns.VALIDITY_DETAIL],
+});

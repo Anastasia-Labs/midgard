@@ -3,11 +3,12 @@ import { toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitL2TxMistagCancel,
   submitL2TxMistagInit,
   submitL2TxMistagStep01,
   submitL2TxMistagStep02,
 } from "../src/index.js";
+import { L2_TX_MISTAG_CATEGORY_LABEL } from "../src/l2-tx-mistag/contracts.js";
+import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -73,9 +74,11 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
       });
 
     const first = await init();
-    const cancel01 = await submitL2TxMistagCancel({
+    const cancel01 = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts,
+      family: L2_TX_MISTAG_CATEGORY_LABEL,
+      steps: contracts.steps,
+      computationThread: contracts.computationThread,
       categoryId: category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: first.nextThreadOutRef,
@@ -92,9 +95,11 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
 
     const second = await init();
     const advanced = await step01(second.nextThreadOutRef);
-    const cancel02 = await submitL2TxMistagCancel({
+    const cancel02 = await submitLinearFaultCancel({
       lucid: harness.proverLucid,
-      contracts,
+      family: L2_TX_MISTAG_CATEGORY_LABEL,
+      steps: contracts.steps,
+      computationThread: contracts.computationThread,
       categoryId: category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: advanced.nextThreadOutRef,

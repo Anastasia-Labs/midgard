@@ -55,6 +55,12 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import {
   CrossBlockDuplicateEventStep02DatumSchema,
+  FabricatedDepositStep02Datum,
+  FabricatedDepositStep03Datum,
+  FabricatedDepositStep04Datum,
+  FabricatedWithdrawalStep02Datum,
+  FabricatedWithdrawalStep03Datum,
+  FabricatedWithdrawalStep04Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 import {
@@ -1130,6 +1136,52 @@ function createApplication({
         network: watcherConfig.targetNetwork,
         secret: proverSecret,
       });
+      const [depositBinding, withdrawalBinding] = await Promise.all([
+        bindFraudProofWorkflowDeployment({
+          manifest: JSON.parse(manifestJson!),
+          blueprintJson: blueprintJson!,
+          deploymentInfo: JSON.parse(deploymentInfoJson!),
+          category: "fabricatedDeposit",
+          headerHash,
+          proverCredential: signer.paymentKeyHash,
+          stepDatumSchemas: [
+            FraudProofComputationThreadStepDatum,
+            FabricatedDepositStep02Datum,
+            FabricatedDepositStep03Datum,
+            FabricatedDepositStep04Datum,
+          ],
+        }),
+        bindFraudProofWorkflowDeployment({
+          manifest: JSON.parse(manifestJson!),
+          blueprintJson: blueprintJson!,
+          deploymentInfo: JSON.parse(deploymentInfoJson!),
+          category: "fabricatedWithdrawal",
+          headerHash,
+          proverCredential: signer.paymentKeyHash,
+          stepDatumSchemas: [
+            FraudProofComputationThreadStepDatum,
+            FabricatedWithdrawalStep02Datum,
+            FabricatedWithdrawalStep03Datum,
+            FabricatedWithdrawalStep04Datum,
+          ],
+        }),
+      ]);
+      const depositHistory =
+        depositBinding.resolvedContracts.contracts.fabricatedDeposit?.history;
+      const withdrawalHistory =
+        withdrawalBinding.resolvedContracts.contracts.fabricatedWithdrawal
+          ?.history;
+      if (
+        depositBinding.deploymentFingerprint !==
+          deploymentIdentity.manifestId ||
+        withdrawalBinding.deploymentFingerprint !==
+          deploymentIdentity.manifestId ||
+        depositHistory === undefined ||
+        withdrawalHistory === undefined
+      )
+        throw new Error(
+          "Event replay history differs from the applied deployment",
+        );
       const replayer = createCatalogueCompleteCanonicalReplay({
         lucid,
         network: watcherConfig.targetNetwork,
@@ -1138,6 +1190,7 @@ function createApplication({
             .protocolScriptHashes.hubOracleMint,
         minimumConfirmationDepth: 1,
         owner: signer.paymentKeyHash,
+        history: { deposit: depositHistory, withdrawal: withdrawalHistory },
       });
       if (
         replayer.launchScope.length !==

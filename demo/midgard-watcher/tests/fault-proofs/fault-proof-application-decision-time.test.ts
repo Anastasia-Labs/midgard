@@ -22,7 +22,12 @@ import {
   Header,
   type Header as HeaderType,
 } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type LucidEvolution,
+  type UTxO,
+  validatorToAddress,
+} from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
@@ -38,7 +43,10 @@ import type {
 } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import {
+  makeWatcherDeploymentAuthorityFixture,
+  WATCHER_HISTORY_FIXTURE_BOUNDS,
+} from "../support/deployment-authority-fixture.js";
 
 /**
  * The classifier module is the double here; everything watcher-side runs for
@@ -67,12 +75,39 @@ vi.mock("@al-ft/midgard-fault-proofs", async (load) => {
   const actual = await load<typeof import("@al-ft/midgard-fault-proofs")>();
   const bound = () => ({
     deploymentFingerprint: classifier.deploymentFingerprint,
+    resolvedContracts: {
+      contracts: Object.fromEntries(
+        [
+          ["fabricatedDeposit", "depositHistoryRetentionSpend"],
+          ["fabricatedWithdrawal", "withdrawalHistoryRetentionSpend"],
+        ].map(([category, retention]) => [
+          category,
+          {
+            history: {
+              inlineLimitBytes: BigInt(
+                WATCHER_HISTORY_FIXTURE_BOUNDS.inlineLimitBytes,
+              ),
+              maxPayloadBytes: BigInt(
+                WATCHER_HISTORY_FIXTURE_BOUNDS.maxPayloadBytes,
+              ),
+              maxPayloadNodes: BigInt(
+                WATCHER_HISTORY_FIXTURE_BOUNDS.maxPayloadNodes,
+              ),
+              retentionAddress: validatorToAddress("Preprod", {
+                type: "PlutusV3",
+                script: AUTHORITY.contracts[retention!]!.contract.cborHex,
+              }),
+            },
+          },
+        ]),
+      ),
+    },
   });
   return {
     ...actual,
     // The watcher's classifier loader binds the compiled blueprint; the
     // synthetic deployment fixture has none, so the bindings are tokens that
-    // carry the one field the loader checks.
+    // carry its deployment identity and the explicit history configuration.
     bindFraudProofWorkflowDeployment: async () => bound(),
     createCrossBlockSettlementAuthority: () => bound(),
     createTransitionTraceEventAuthority: () => bound(),
