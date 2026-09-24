@@ -5590,3 +5590,26 @@ remain open. Maximum withdrawal reserve-add/final payout and the deferred recove
 matrix are not claimed complete. No additional recovery variant was implemented.
 The app goal remains paused because the goal API rejected replacing the existing
 unfinished goal; the bounded authorized objective is durable in the plan.
+
+### CP5 provider blocker resolved (2026-09-24)
+
+Docker Desktop became available externally. Root diagnosed Cardano startup
+validation and actual stale/pruning Kupo configuration. Preserved old containers,
+provider databases and Kupo stopped DB/WAL backup; verified integrity/schema
+compatibility; started only pinned provider services without pruning or bootstrap.
+Actual image/config/genesis checks, healthy synchronized matching tips and built
+node provider preflight pass. Repaired189 stale/missing runtime outputs using
+verified CP1 outputs; all701 now match and recorded source files remain unchanged.
+Four wallet roles are distinct/funded; SQL admin capability is available. The
+legacy configured DB is still absent and its manifest lacks history recipes.
+No new protocol deployment, live campaign or transaction has started. Remaining
+fresh identity/state and DA/public retrieval gates are in the checkpoint plan.
+
+
+CP5 subsequent concrete blocker: configured two-member DA committee requires
+threshold2; legacy environment says1 and only member0 signing capability is
+identified. User instructed a local key search. Root privately checked original
+run/configs, protected stress wallets, archives and historical Codex references;
+agent checked staging/worktree sources. No match has been found in those scopes.
+No membership/quorum change or deployment transaction performed. Provider and
+runtime repair remain verified; this is a separate credential prerequisite.

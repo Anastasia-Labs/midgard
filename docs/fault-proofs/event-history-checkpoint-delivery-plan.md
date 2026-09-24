@@ -24,8 +24,8 @@ the app goal record was not replaced or falsely marked complete.
 | 1. Reproducibility | Complete: exact committed archive, fresh pinned frozen install, native/runtime builds | PASS: fresh build, dependency provenance, native hash reproduction, node typecheck and actual owner D/W journey | Not applicable |
 | 2. Proof acceptance | Complete for bounded checkpoint: arbitrary absent IDs, substitution, original Value CBOR evidence, direct honest Stage03 refusals; existing timing/raw/retired-ID coverage retained | PASS: fabricated16, opening/transition/installed62, retired-ID2; independent signed evidence checks | Pending deployment/public witness/live proof evidence; broader recovery remains open |
 | 3. Sorted-list readiness | Local gates implemented and exercised: authentication, accounting, retained-data references, reclaim authorization, no backdating, frontier retirement and bounded protection | PASS: full109, capture14, actual owner journey1; combined maximum3 and signed fit/value checks | ABI/deployment freeze remains pending actual provider timing, contention and final parameter identity |
-| 4. Deployment preparation | Prepared: legacy identity/state review, distinct matching state route, isolated engine/provider-only commands, genesis-pin provenance, DA/public reader/funding checklist | Static checks PASS; actual engine/provider/deployment checks blocked | No service/config/database/deployment mutation performed |
-| 5. One live campaign | Prepared and gated on1–4 | Prerequisite check BLOCKED: isolated Docker socket absent; privileged installation unavailable | NOT STARTED:0 campaigns,0 live transactions,0 new deployments |
+| 4. Deployment preparation | Provider repair complete on Docker Desktop; pinned provider-only project preserves existing databases; fresh deployment/state and DA preparation remain | PASS: running images/config/genesis, synchronized matching Kupo/Ogmios tip, built node provider preflight, four funded distinct wallet roles | Provider services running; no protocol deployment or transaction |
+| 5. One live campaign | Gated on remaining fresh deployment and DA prerequisites | Docker/provider blocker resolved; configured second DA signer unavailable, fresh manifest/state and public retrieval pending | NOT STARTED:0 campaigns,0 live transactions,0 new deployments |
 
 ## Implemented and verified flow
 
@@ -108,12 +108,14 @@ these records. No operator archive is treated as L1 authority.
 
 ## Concrete remaining prerequisites and limits
 
-1. Provision the prepared isolated local Docker engine with dedicated socket,
-   Docker/containerd state and provider-only project. `sudo -n true` requires a
-   password; rootless uidmap is absent. Desktop remains stopped to avoid legacy
-   producer autostart. The final read-only Docker probe still finds no socket.
-2. Verify actual local Kupmios images/configuration, independent genesis pin,
-   retained history coverage and current tip. Preserve existing Cardano/Kupo data.
+1. Resolved: Docker Desktop was started externally. Root verified no running
+   Midgard producer, preserved the legacy provider containers, disabled their
+   restart policies and replaced only provider services with the pinned
+   `midgard-cp5-provider` project. Existing Cardano/Kupo data is preserved.
+2. Resolved for provider readiness: actual images/configuration and independent
+   genesis pin pass; Kupo/Ogmios are healthy and agree on the current tip. Old
+   Kupo used pruning, so fresh activation must follow non-pruning bring-up;
+   deleted historical outputs are not recovered or treated as authoritative.
 3. Select fresh/attach/resume only from actual identity/state evidence. The old
    40-contract manifest lacks history recipes; the configured database is absent
    on the host route, which does not prove old Docker state absent. A distinct
@@ -126,10 +128,10 @@ these records. No operator archive is treated as L1 authority.
    budgets, timing/contention, final reconciliation and unmodified finalizer
    verdicts. Declared emulator visibility/inclusion budgets are not live guarantees.
 
-`cp4-live-isolated-route.md` contains the prepared operational commands;
-`cp5-live-prerequisite-disposition.json` records the current blocker and zero live
-attempts. No unsafe fallback, reset, deployment replacement or ambiguous retry
-was performed. A failed/ambiguous live submission must be reconciled before any
+`cp5-desktop-providers.compose.yaml` records the active provider-only route;
+`cp5-provider-repair-result.json` records passing live provider checks. The earlier
+isolated-engine route and blocker records remain historical evidence. No protocol
+state reset, deployment replacement or ambiguous submission retry was performed. A failed/ambiguous live submission must be reconciled before any
 retry; this plan does not authorize silently restarting the campaign.
 
 The full live finalizer still requires its broader proof-family and recovery
@@ -137,3 +139,60 @@ matrix. CP6 remains deferred at the user's boundary, and NIFP-04–09 are unchan
 Neither this local checkpoint nor consistent saved artifacts close full protocol
 acceptance. The final ABI/deployment freeze remains open until live readiness and
 release-identity gates are satisfied.
+
+
+## Provider repair and runtime realization (2026-09-24)
+
+Root applied the prepared pinned Cardano11.1.0/Ogmios7.0.0/Kupo2.11.0 provider
+configuration through Desktop after reviewing exact mounts and compatibility.
+Cardano/Ogmios stopped cleanly; old Kupo exceeded its60second shutdown timeout
+(exit137), so root preserved its stopped database and WAL and required a read-only
+SQLite quick_check before reopening. It passed. Both Kupo revisions have the same
+10 SQL migrations; no schema conversion/reset was needed. New Kupo runs without
+pruning and with installed query indexes. Original containers and all protocol
+state remain preserved; no bootstrap or producer was started.
+
+The original node CLI initially resolved stale compiled SDK artifacts despite
+matching source. Root coordinated restoration of189 differing/missing outputs
+from the verified CP1 build, backing up126 replaced files. All701 runtime outputs
+now match CP1, and all5093 recorded source files remain unchanged. The actual
+built CLI help and `l1-provider-preflight --json` pass. Read-only preflight uses
+explicit loopback endpoints, independently verified genesis pin and the existing
+`bounded-acceptance-v1` economics profile; the legacy private environment was not
+rewritten. Operator/merge/reference-publisher/user wallets are distinct and funded.
+SQL administrative capability is available for a separate fresh database; no
+new database, migration or on-chain deployment has been created.
+
+Exact commands/results, image/genesis identities, backups and initial failures
+are retained in `cp5-provider-repair-progress.md`, `cp5-provider-repair-result.json`,
+`cp5-runtime-realization-handoff.md` and their referenced artifacts. A passing
+provider preflight is not full checkpoint5 acceptance.
+
+
+### Remaining concrete quorum gate
+
+The configured DA committee contains two public keys, but `DA_THRESHOLD=1`.
+Root independently evaluated the current SDK governed floor: the required
+threshold is2. Only member0 signing capability has been established. Member1
+public key is `d03e7e18910e54e2114f8ef0f5165460d7d086b3c5a1bba6111024b79fd513f0`.
+The old single-member producer manifest cannot substitute for this configuration.
+
+At the user's instruction, root and the existing builder agent searched relevant
+local configuration/run directories, staging worktrees, evidence archives and
+historical session references. Candidate private values were compared in memory
+against the public key; no secret values were printed or committed. Original
+checkout82 candidate files, archive122 files, the protected4096-wallet fixture,
+and older matching Codex records yielded no matching signer. The worktree pass
+inspected3047 bounded candidate files and also found no match. This establishes
+only the searched scope, not that the key cannot exist elsewhere. Exact search
+scope/results are retained under `cp5-*-signer-search.json` and the DA readiness
+review. The additional bounded Claude archive search also found no matching
+credential; its earliest relevant archives postdate the original June24 run.
+No committee membership, quorum or private environment was changed.
+
+The campaign remains unstarted pending usable signing capability for the
+configured second member (local credential or functioning remote signer), or
+an explicit new committee identity for the already-required fresh deployment.
+A replacement committee is a governance identity change, not recovery of the
+missing key. Remaining DA writer/reader roles, dedicated transport identities,
+fresh manifests/state and the one coordinated campaign follow that disposition.

@@ -60,11 +60,12 @@ state-conservation, maximum-shape and existing production-budget assertions.
 No test is removed, weakened or converted into a silent early return. Full
 package/release acceptance is not inferred from these targeted results.
 
-Live deployment has not begun: Docker Desktop remains stopped; an independent
-local engine is absent and noninteractive privileged installation is unavailable.
-The preparation route preserves legacy deployment/provider state. Actual local
-Kupmios genesis/history, new matching deployment/state, DA/public retrieval,
-funding and live inclusion/churn remain prerequisites. The unmodified full live
+Live deployment has not begun. A subsequent provider repair on the now-running
+Docker Desktop passed pinned image/config/genesis, matching current Kupo/Ogmios
+tip and built node provider preflight checks. The provider-only project preserves
+legacy deployment/provider state and disables pruning. Four distinct wallet roles
+are funded. New matching deployment/state, committee/public retrieval and live
+inclusion/churn remain prerequisites; previously pruned history is not restored. The unmodified full live
 finalizer and deferred recovery matrix remain open; no unrelated proof gap is
 closed by this checkpoint.
 
