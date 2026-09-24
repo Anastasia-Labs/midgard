@@ -1,10 +1,10 @@
 import { availableParallelism } from "node:os";
 
+import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import {
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "@al-ft/midgard-core/cek-proof";
-import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,

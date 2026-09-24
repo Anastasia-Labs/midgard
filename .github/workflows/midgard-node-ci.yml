@@ -196,6 +196,9 @@ jobs:
         working-directory: demo/midgard-node
         run: |
           set -euo pipefail
+          # The stacks require an operator .env beside them (env_file); a
+          # fresh checkout has none, so stand .env.example in for it.
+          cp .env.example .env
           render() {
             docker compose --env-file .env.example "$@" config --quiet
             # Locally built services render as bare project-prefixed names;

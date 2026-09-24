@@ -8,7 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { l1SourceAuthorityDigest, type CommitteeConfig } from "../config.js";
+import { type CommitteeConfig, l1SourceAuthorityDigest } from "../config.js";
 import {
   correctionLockValidatorFromDeploymentInfo,
   daAttestationValidatorsFromDeployment,

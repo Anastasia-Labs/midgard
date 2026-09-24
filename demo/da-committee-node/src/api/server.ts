@@ -5,8 +5,8 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { jsonBigIntStringReplacer } from "../json.js";
 import type { CommitteeReadinessSnapshot } from "../committee-service.js";
+import { jsonBigIntStringReplacer } from "../json.js";
 
 export type CommitteeApiServer = {
   readonly listen: (port: number, host: string) => Promise<void>;

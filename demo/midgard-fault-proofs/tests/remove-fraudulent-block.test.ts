@@ -9,9 +9,9 @@ import { describe, expect, it } from "vitest";
 import {
   createLocalStateQueueMutationLeaseCoordinator,
   fraudRemovalUsesWalletCoinSelection,
+  fraudSlashEconomicsFromDeploymentManifest,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-  fraudSlashEconomicsFromDeploymentManifest,
   RegisteredOperatorActivationRequiredError,
   resolveFraudSlashEconomics,
   resolveRegisteredOperatorRemovalWitness,

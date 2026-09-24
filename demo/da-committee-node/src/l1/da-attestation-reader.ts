@@ -9,7 +9,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { LoadedCommitteeConfig, CommitteeConfig } from "../config.js";
+import type { CommitteeConfig, LoadedCommitteeConfig } from "../config.js";
 import type { DaAttestationCandidateRecord } from "../domain.js";
 import {
   blockfrostCurrentChainPointResolver,

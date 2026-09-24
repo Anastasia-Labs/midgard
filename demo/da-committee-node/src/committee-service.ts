@@ -9,7 +9,7 @@ import {
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { l1SourceAuthorityDigest, type CommitteeConfig } from "./config.js";
+import { type CommitteeConfig, l1SourceAuthorityDigest } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import type {
@@ -59,12 +59,12 @@ import {
   verifyDaSignatureWitness,
 } from "./signer.js";
 import {
+  type CommitteeStore,
   decisionEffectId,
   type DecisionOutboxRecord,
   hasPayloadBytes,
   type L1ObservedDecision,
   type L1SourceState,
-  type CommitteeStore,
 } from "./store.js";
 import { hexToBytes } from "./utils/hex.js";
 

@@ -11,10 +11,10 @@ import {
   MIDGARD_RETENTION_WINDOW,
   resolveL1ViewFatalMs,
   RETENTION_MS_PER_DAY,
-  type RetentionQueueReference,
   retentionDaysCoverWindow,
   retentionDeadlineAlert,
   retentionDeadlineForBlock,
+  type RetentionQueueReference,
 } from "../src/retention-window.js";
 
 const BLOCK_END = Date.UTC(2026, 0, 1, 0, 0, 0);

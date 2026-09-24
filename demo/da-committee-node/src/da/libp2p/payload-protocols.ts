@@ -26,9 +26,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DaPayloadRecord, PayloadRootSet } from "../../domain.js";
 import {
+  type CommitteeStore,
   hasPayloadBytes,
   libp2pSubmittedDaPayloadRecord,
-  type CommitteeStore,
 } from "../../store.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "../../utils/hex.js";
 

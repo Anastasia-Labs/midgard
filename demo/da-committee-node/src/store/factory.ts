@@ -1,5 +1,5 @@
 import type { LocalStateConfig } from "../config.js";
-import { JsonFileCommitteeStore, type CommitteeStore } from "../store.js";
+import { type CommitteeStore, JsonFileCommitteeStore } from "../store.js";
 import { PostgresCommitteeStore } from "./postgres.js";
 
 export const openCommitteeStore = async (

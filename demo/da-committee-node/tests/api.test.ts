@@ -3,8 +3,8 @@ import { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 
 import { createCommitteeApiServer } from "../src/api/server.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
 import type { CommitteeReadinessSnapshot } from "../src/committee-service.js";
+import { JsonFileCommitteeStore } from "../src/store.js";
 import { tempDir } from "./helpers.js";
 
 const readinessSnapshot = (

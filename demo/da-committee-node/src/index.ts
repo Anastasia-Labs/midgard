@@ -4,6 +4,10 @@ import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
 import { createCommitteeApiServer } from "./api/server.js";
 import { availabilityResponderFromConfig } from "./availability/factory.js";
+import {
+  type CommitteeRetentionReadinessSnapshot,
+  CommitteeService,
+} from "./committee-service.js";
 import { loadCommitteeConfig } from "./config.js";
 import {
   l1SubmitterWalletPreflightFromConfig,
@@ -34,10 +38,6 @@ import {
 import { openCommitteeStore } from "./store/factory.js";
 import { type RetentionL1View, runRetentionCycle } from "./store/retention.js";
 import { createCommitteeTickRunner } from "./tick-runner.js";
-import {
-  type CommitteeRetentionReadinessSnapshot,
-  CommitteeService,
-} from "./committee-service.js";
 
 const main = async (): Promise<void> => {
   if (process.argv[2] === "l1-wallet-preflight") {
@@ -309,7 +309,11 @@ const main = async (): Promise<void> => {
     }
   };
 
+  // Assigned after the tick runner is built: its fatal exit calls shutdown,
+  // which must close whichever of these exist by then.
+  // eslint-disable-next-line prefer-const
   let interval: ReturnType<typeof setInterval> | undefined;
+  // eslint-disable-next-line prefer-const
   let api: ReturnType<typeof createCommitteeApiServer> | undefined;
   const shutdown = async (): Promise<void> => {
     clearInterval(interval);

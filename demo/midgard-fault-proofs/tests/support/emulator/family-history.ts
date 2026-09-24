@@ -110,7 +110,8 @@ export const prepareFamilyHistory = async (h: Harness, records: unknown[]) => {
     ),
   );
   records.push({
-    label: "applied-family-deployment", recipes,
+    label: "applied-family-deployment",
+    recipes,
     historyPolicies: applied.map((a) => a.policyId),
     retentionAddresses: applied.map((a) => a.retention.address),
     hubPolicy: h.contracts.hubOracle.policyId,

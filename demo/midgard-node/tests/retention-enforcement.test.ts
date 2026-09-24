@@ -287,6 +287,7 @@ const h32 = (byte: string): string => byte.repeat(64);
 const terminalMerge = (
   headerHash: Buffer,
   sequence: number,
+  finalityDepth = BigInt(deploymentManifest.l1Finality.confirmationDepth),
 ): SDK.StateQueueAuthenticatedTransition => {
   const policyId = deploymentManifest.contracts.stateQueueMint.scriptHash;
   const transactionHash = h32(sequence.toString(16));
@@ -327,7 +328,7 @@ const terminalMerge = (
     blockNo: (90 + sequence).toString(),
     transactionIndex: "0",
     chainPointId: h32((sequence + 12).toString(16)),
-    finalityDepth: deploymentManifest.l1Finality.confirmationDepth.toString(),
+    finalityDepth: finalityDepth.toString(),
     mintPolicyIds: [policyId],
     referenceInputOutRefs: [`${h32("f")}#0`],
     correctionLockWitness: {
@@ -643,6 +644,39 @@ describe.skipIf(!dbEnabled)(
       );
       expect(outcome.deleted).toBe(0);
       expect(outcome.remaining).toEqual([outcome.merged.toString("hex")]);
+    });
+
+    it("refuses to record a terminal transition shallower than the manifest's finality depth", async () => {
+      const depth = BigInt(deploymentManifest.l1Finality.confirmationDepth);
+      expect(depth).toBeGreaterThan(0n);
+      const outcome = await run(
+        Effect.gen(function* () {
+          const young = new Date(NOW.getTime() - 1_000);
+          const shallow = yield* seedPayload("shallow", young, young);
+          const refused = yield* Effect.either(
+            DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
+              terminalMerge(shallow, 1, depth - 1n),
+              deploymentManifest,
+            ),
+          );
+          const final = yield* seedPayload("final", young, young);
+          const admitted = yield* Effect.either(
+            DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
+              terminalMerge(final, 2, depth),
+              deploymentManifest,
+            ),
+          );
+          const sql = yield* SqlClient.SqlClient;
+          const recorded = yield* sql<{ readonly header_hash: Buffer }>`
+            SELECT header_hash FROM da_payload_terminal_outcomes`;
+          return { refused, admitted, recorded, final };
+        }),
+      );
+      expect(outcome.refused._tag).toBe("Left");
+      expect(outcome.admitted._tag).toBe("Right");
+      expect(
+        outcome.recorded.map((row) => row.header_hash.toString("hex")),
+      ).toEqual([outcome.final.toString("hex")]);
     });
 
     it("prunes a removed header inside the horizon only under this deployment", async () => {

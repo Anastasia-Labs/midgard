@@ -26,10 +26,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import {
+  type CommitteeConfig,
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
   LIBP2P_DA_TRANSPORT_LIMITS,
-  type CommitteeConfig,
 } from "../src/config.js";
 import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type { DaPayloadSource } from "../src/da/source.js";

@@ -11,6 +11,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { createDaConflictEvidenceGossipHandler } from "../src/committee-service.js";
 import type { Libp2pDaTransportConfig } from "../src/config.js";
 import { StoreBackedDaAttestationProtocol } from "../src/da/libp2p/attestations.js";
 import { DaGossip, type DaPubsubMessage } from "../src/da/libp2p/DaGossip.js";
@@ -23,7 +24,6 @@ import {
   validateDaCommittee,
 } from "../src/signer.js";
 import { JsonFileCommitteeStore } from "../src/store.js";
-import { createDaConflictEvidenceGossipHandler } from "../src/committee-service.js";
 import { tempDir } from "./helpers.js";
 
 const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);

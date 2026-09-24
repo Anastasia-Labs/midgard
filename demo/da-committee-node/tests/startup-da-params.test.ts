@@ -1,11 +1,11 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
+import { CommitteeService } from "../src/committee-service.js";
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
 import { JsonFileCommitteeStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { CommitteeService } from "../src/committee-service.js";
 import { minimalConfig, tempDir } from "./helpers.js";
 
 describe("committee node startup DA params checks", () => {

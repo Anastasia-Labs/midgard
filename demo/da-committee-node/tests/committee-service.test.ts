@@ -4,6 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { CommitteeService } from "../src/committee-service.js";
 import type { CommitteeConfig } from "../src/config.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
@@ -34,7 +35,6 @@ import {
   JsonFileCommitteeStore,
 } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { CommitteeService } from "../src/committee-service.js";
 import {
   makeObservedNode,
   makePayloadFixture,

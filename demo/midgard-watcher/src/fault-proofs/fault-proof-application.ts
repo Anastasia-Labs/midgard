@@ -561,7 +561,7 @@ const readSecret = async ({
  * blueprint and deployment info, a Lucid instance over Kupo/Ogmios and the
  * resolver a family's roster is resolved through. It reads no secret, so the
  * startup-readiness path can prove the deployment's published scripts were
- * found without holding the prover wallet or the node admin key. The
+ * found without holding the prover wallet. The
  * invocation's deployment fingerprint is checked by the runtime-config reader
  * both callers admit their configuration through.
  */
@@ -661,8 +661,8 @@ const bindWatcherDeploymentAuthority = async ({
 
 /**
  * The watcher's one loader body for an acting invocation. On top of the
- * deployment binding it reads the prover wallet and the node admin key,
- * selects the (possibly funding-restricted) signer and hands over the optional
+ * deployment binding it reads the prover wallet, selects the (possibly
+ * funding-restricted) signer and hands over the optional
  * parts a family may require; the family's record then binds its own
  * manifest-bound config from these inside the shared runtime, so nothing here
  * is per family. Which optional parts a family needs is the record's

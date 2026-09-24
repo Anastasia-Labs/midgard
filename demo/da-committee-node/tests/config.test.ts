@@ -6,13 +6,13 @@ import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-mani
 import { describe, expect, it } from "vitest";
 
 import {
-  parseL1SourceConfig,
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
   l1SourceAuthorityDigest,
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
   LIBP2P_DA_TRANSPORT_LIMITS,
   loadCommitteeConfig,
+  parseL1SourceConfig,
   rejectRetiredWatcherEnvNames,
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
