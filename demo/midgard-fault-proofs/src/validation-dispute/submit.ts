@@ -8115,8 +8115,9 @@ export const submitValidationDisputeSemanticResolution = async ({
   }
   // CEK execution selection: `VerifyExecutionSelection` carries the
   // program-material route (`CekMaterialRouteV1`) beside the committed
-  // evidence, and `verify_cek_route_v1` authenticates the material it names
-  // against the immutable CEK program-material publications. A native-script
+  // evidence, and `material_entries_for_route` (validation-resolver-v1.ak)
+  // authenticates the material it names against the immutable CEK
+  // program-material publications. A native-script
   // selection carries no material; a Plutus/Midgard selection ladders
   // direct proof → single publication → minimum multi-output, each refused
   // pre-sign on a deterministic fit failure, exactly as the retired direct

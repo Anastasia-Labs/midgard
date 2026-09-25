@@ -109,7 +109,7 @@ import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtur
  * claimed delta is non-empty -- which is every adversarially interesting
  * pre-state, because the challenger is the party who must exhibit a
  * one-step-valid rejection successor to win
- * (`validation-resolver-v1.ak` -> `challenger_wins_with_valid_successor`) and
+ * (`validation-semantic-v1.ak` -> `continue_winning`) and
  * a real invalid transaction always claims a non-empty delta.
  *
  * It shipped because no test ever drove a challenger to an actual win: every
