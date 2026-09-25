@@ -995,9 +995,9 @@ export const publishDaPayloadInsertFromEnv = (
                 console.warn(
                   `Failed to persist DA publication result header=${headerHash},peer=${peer.peerId}: ${formatUnknownError(error)}`,
                 );
-                return false;
+                return undefined;
               });
-              if (!recorded) {
+              if (recorded === false) {
                 console.warn(
                   `Ignored unfenced DA publication result because an active reconciler claim owns the row header=${headerHash},peer=${peer.peerId}`,
                 );
@@ -1035,9 +1035,9 @@ export const publishDaPayloadInsertFromEnv = (
             console.warn(
               `Failed to persist DA announcement failure header=${headerHash}: ${formatUnknownError(recordError)}`,
             );
-            return false;
+            return undefined;
           });
-          if (!announcementRecorded) {
+          if (announcementRecorded === false) {
             console.warn(
               `Ignored unfenced DA announcement failure because an active reconciler claim owns the row header=${headerHash}`,
             );
