@@ -917,6 +917,7 @@ const reconstruct = (
   return nextQueue;
 };
 
+/** The node's tip block height; Ogmios v6 carries it only on this query. */
 const fetchTipBlockNo = async (
   ogmiosUrl: string,
   fetchImpl: StateQueueReplayFetch,
@@ -926,12 +927,11 @@ const fetchTipBlockNo = async (
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
-      method: "queryNetwork/tip",
-      params: {},
+      method: "queryNetwork/blockHeight",
       id: "midgard-committee-state-queue-replay-tip-v1",
     }),
-  })) as { result?: { height?: unknown; tip?: { height?: unknown } } };
-  const height = body.result?.tip?.height ?? body.result?.height;
+  })) as { result?: unknown };
+  const height = body.result;
   if (
     typeof height !== "number" ||
     !Number.isSafeInteger(height) ||

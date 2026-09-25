@@ -27,7 +27,7 @@ const after: readonly SDK.StateQueueTransitionNode[] = [
 
 const harness = ({
   rollback = false,
-  tipHeight = 119,
+  tipHeight = 119 as number | "origin",
   availability = false,
 } = {}) => {
   const challenge = "44414348" + "dd".repeat(28);
@@ -162,11 +162,10 @@ const harness = ({
       );
     }
     expect(init?.method).toBe("POST");
-    return new Response(
-      JSON.stringify({
-        result: { id: h32(0x99), slot: 130, height: tipHeight },
-      }),
-    );
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      method: "queryNetwork/blockHeight",
+    });
+    return new Response(JSON.stringify({ jsonrpc: "2.0", result: tipHeight }));
   });
   const webSocketFactory = () => {
     const listeners = new Map<string, ((event: never) => void)[]>();
@@ -276,6 +275,12 @@ describe("committee local Kupmios state-queue replay", () => {
     await expect(harness({ rollback: true })(before, after)).rejects.toThrow(
       /rolled back/u,
     );
+  });
+
+  it("refuses a node tip without a block height", async () => {
+    await expect(
+      harness({ tipHeight: "origin" })(before, after),
+    ).rejects.toThrow(/tip height is invalid/u);
   });
 
   it("exposes shallow history but the SDK retention replay refuses it", async () => {
