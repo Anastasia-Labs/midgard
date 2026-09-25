@@ -44,6 +44,10 @@ import {
   verifyDeploymentManifestAgainstConfig,
 } from "../src/commands/contract-deployment-info.js";
 import {
+  isRecordedValidationTraceSemantic,
+  VALIDATION_TRACE_SEMANTIC_KEYS,
+} from "../src/deployable-scripts.js";
+import {
   computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
@@ -59,6 +63,7 @@ import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
+import { nodeRuntimeReferenceScriptTargets } from "../src/transactions/reference-scripts.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -138,26 +143,40 @@ const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestIdentityContext = {
   },
 };
 
-/** Every applied script in a validator bundle, keyed by its object path. */
-const validatorHashesByPath = (root: unknown): Record<string, string> => {
+/**
+ * Every applied script in a validator bundle, keyed by its object path, and
+ * the paths of members that fail closed (accessors that throw on read).
+ */
+const validatorHashesByPath = (
+  root: unknown,
+): {
+  readonly hashes: Record<string, string>;
+  readonly failClosed: readonly string[];
+} => {
   const hashes: Record<string, string> = {};
+  const failClosed: string[] = [];
   const visit = (value: unknown, path: string): void => {
     if (typeof value !== "object" || value === null) return;
-    const record = value as Record<string, unknown>;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
     for (const field of [
       "spendingScriptHash",
       "withdrawalScriptHash",
       "policyId",
     ]) {
-      if (typeof record[field] === "string")
-        hashes[`${path}.${field}`] = record[field];
+      const hash: unknown = descriptors[field]?.value;
+      if (typeof hash === "string") hashes[`${path}.${field}`] = hash;
     }
-    for (const [key, child] of Object.entries(record)) {
-      if (!key.endsWith("Script")) visit(child, `${path}.${key}`);
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (key.endsWith("Script")) continue;
+      if (descriptor.get !== undefined) {
+        failClosed.push(`${path}.${key}`);
+        continue;
+      }
+      visit(descriptor.value, `${path}.${key}`);
     }
   };
   visit(root, "$");
-  return hashes;
+  return { hashes, failClosed };
 };
 
 const testFraudProofCatalogue = (contracts: MidgardValidators) =>
@@ -913,7 +932,6 @@ describe("contract deployment info", () => {
           "Preprod",
           manifest,
           "fixture-contract-deployment-info.json",
-          contracts,
         );
 
         for (const category of [
@@ -1013,27 +1031,126 @@ describe("contract deployment info", () => {
         "Preprod",
         manifest,
         "fixture-contract-deployment-info.json",
-        contracts,
       );
 
-      // A validator the manifest loader forgets leaves a hole at its path:
-      // runtime consumers such as the deployable-script plan then read
-      // `undefined` instead of the deployed script. Excluded: the fixture's
-      // substitute auth policy, and the untyped copies of top-level shared
-      // validators that the SDK builder spreads into the chain record (the
-      // top-level paths themselves are compared).
+      const restored = validatorHashesByPath(reconstructed);
+      const real = validatorHashesByPath(contracts);
+      expect(real.failClosed).toEqual([]);
+
+      // The validation-trace members the manifest records no bytes for fail
+      // closed on read rather than borrowing a locally built script.
+      const vtd = "$.fraudProofContracts.validationTraceDispute";
+      const unrecorded = [
+        ...VALIDATION_TRACE_SEMANTIC_KEYS.flatMap((key, index) =>
+          isRecordedValidationTraceSemantic(key)
+            ? []
+            : [`${vtd}.semanticResolvers.${index.toString()}`],
+        ),
+        `${vtd}.steps`,
+        `${vtd}.proofItem`,
+        `${vtd}.canonicalDecodeItemStages`,
+        `${vtd}.prepareResolvers`,
+        `${vtd}.resolvers`,
+      ];
+      expect([...restored.failClosed].sort()).toEqual([...unrecorded].sort());
+      expect(
+        () =>
+          reconstructed.fraudProofContracts.validationTraceDispute.proofItem,
+      ).toThrow(/does not record validation-trace proof item/u);
+
+      // The SDK builder spreads untyped copies of the top-level shared
+      // validators into the chain record. Each copy must equal its top-level
+      // path, which is compared below.
+      const sharedCopy =
+        /^\$\.fraudProofContracts\.(computationThread|fieldPreimageCertificate|fraudProof)(\..+)$/u;
+      for (const [path, hash] of Object.entries(real.hashes)) {
+        const [, shared, field] = sharedCopy.exec(path) ?? [];
+        if (shared !== undefined && field !== undefined)
+          expect({ path, hash: real.hashes[`$.${shared}${field}`] }).toEqual({
+            path,
+            hash,
+          });
+      }
+
+      // A validator the manifest loader forgets leaves a hole at its path, and
+      // one it takes from anywhere but the manifest carries another hash.
       const comparable = (hashes: Record<string, string>) =>
         Object.fromEntries(
           Object.entries(hashes).filter(
             ([path]) =>
-              path !== "$.referenceScriptAuth.policyId" &&
-              !/^\$\.fraudProofContracts\.(computationThread|fieldPreimageCertificate|fraudProof)\./u.test(
-                path,
+              !sharedCopy.test(path) &&
+              !unrecorded.some(
+                (member) => path === member || path.startsWith(`${member}.`),
               ),
           ),
         );
-      expect(comparable(validatorHashesByPath(reconstructed))).toEqual(
-        comparable(validatorHashesByPath(contracts)),
+      expect(comparable(restored.hashes)).toEqual({
+        ...comparable(real.hashes),
+        // The fixture publishes under a substitute native auth policy.
+        "$.referenceScriptAuth.policyId":
+          manifest.referenceScriptAuthPolicy.policyId,
+      });
+    },
+  );
+
+  unitIt(
+    "restores every node-runtime reference script from the manifest, never from the base bundle",
+    async () => {
+      const contracts = await loadRealMidgardContractsForTest({
+        txHash: ONE_SHOT_TX_HASH,
+        outputIndex: 0,
+      });
+      const manifest = buildDeploymentManifest(
+        await Effect.runPromise(
+          buildFinalizedContractDeploymentInfo(
+            contracts,
+            testReferenceScriptAuthPolicy(
+              contracts.referenceScriptAuth.policyId,
+              contracts.referenceScriptAuth.mintingScriptCBOR,
+            ),
+          ),
+        ),
+        { ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT },
+      );
+      // The loader once filled every validation-trace role outside the six
+      // control scripts from a caller-supplied base bundle. The node runtime
+      // supplies the always-succeeds stubs there, so 193 published roles
+      // resolved to scripts the deployment never published and the
+      // reference-script reconcile reported them all missing. Every target
+      // the node publishes or reconciles must hash to what the manifest
+      // records for its role.
+      const restored = midgardContractsFromDeploymentManifest(
+        "Preprod",
+        manifest,
+        "fixture-contract-deployment-info.json",
+      );
+
+      const targets = nodeRuntimeReferenceScriptTargets(restored);
+      expect(targets.map(({ name }) => name).sort()).toEqual(
+        Object.keys(manifest.referenceScripts).sort(),
+      );
+      const divergent = targets.flatMap(({ name, script }) => {
+        const recorded = manifest.referenceScripts[name]?.scriptHash;
+        const contract =
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+            name as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+          ];
+        const restoredHash = validatorToScriptHash(script);
+        return recorded !== undefined &&
+          restoredHash === recorded &&
+          manifest.contracts[contract]?.scriptHash === recorded
+          ? []
+          : [name];
+      });
+      expect(divergent).toEqual([]);
+
+      // The hub oracle witness is the one-shot mint policy's own bytes, never
+      // a spend script borrowed from elsewhere.
+      expect(validatorToScriptHash(restored.hubOracle.spendingScript)).toBe(
+        restored.hubOracle.spendingScriptHash,
+      );
+      expect(restored.hubOracle.spendingScriptHash).toBe(
+        manifest.contracts.hubOracleMint.scriptHash,
       );
     },
   );
@@ -1061,7 +1178,6 @@ describe("contract deployment info", () => {
           "Preprod",
           manifest,
           "fixture-contract-deployment-info.json",
-          contracts,
         );
 
         // `buildNetworkIdChain` keeps the forced door and the resumable output
@@ -1146,7 +1262,6 @@ describe("contract deployment info", () => {
         "Preprod",
         manifest,
         "fixture-contract-deployment-info.json",
-        contracts,
       );
 
       const expectOrderedDistinctWiring = (
@@ -1243,7 +1358,6 @@ describe("contract deployment info", () => {
             },
           },
           "fixture-contract-deployment-info.json",
-          contracts,
         ),
       ).toThrow(/contracts\.schedulerSpend\.scriptHash/);
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

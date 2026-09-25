@@ -141,7 +141,12 @@ export const buildScriptSourcesRedeemerItemStages = ({
     carrier: "scriptSources",
   });
 
-const REDEEMER_ITEM_EXECUTOR_REFERENCES = [
+/**
+ * Publication identity of each shared executor, in executor order: the
+ * ScriptSources carrier's full roster, whose first
+ * `REDEEMER_ITEM_EXECUTOR_KEYS.length` entries are also the CEK carrier's.
+ */
+export const REDEEMER_ITEM_EXECUTOR_REFERENCES = [
   {
     deploymentEntry: "validationTraceDisputeRedeemerItemFoldMapExecutor",
     role: "V1 validation-trace redeemer item fold map executor",

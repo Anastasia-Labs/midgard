@@ -271,18 +271,46 @@ export const faultProofStepContractName = (
   }`;
 };
 
+/**
+ * Manifest contract names of every step of a registered or legacy chain, in
+ * `steps` order. A chain listed in `FAULT_PROOF_STEP_CONTRACT_NAMES` has
+ * exactly its declared names; any other chain has its step-01 name followed by
+ * consecutive `…StepNN` names for as long as `isRecorded` admits them.
+ */
+export const recordedFaultProofStepContractNames = (
+  chain: RegisteredLinearFaultProofCategory | LegacyFaultProofFamily,
+  isRecorded: (contract: string) => boolean,
+): readonly string[] => {
+  const declared =
+    FAULT_PROOF_STEP_CONTRACT_NAMES[
+      chain as RegisteredLinearFaultProofCategory
+    ];
+  if (declared !== undefined) {
+    return declared;
+  }
+  const names = [faultProofStepContractName(chain, 0)];
+  for (
+    let name = faultProofStepContractName(chain, names.length);
+    isRecorded(name);
+    name = faultProofStepContractName(chain, names.length)
+  ) {
+    names.push(name);
+  }
+  return names;
+};
+
 // ---------------------------------------------------------------------------
 // Validation-trace dispute naming
 // ---------------------------------------------------------------------------
 
-type ValidationTraceSemanticKey =
+export type ValidationTraceSemanticKey =
   keyof typeof SDK.VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics;
 
-type ValidationTraceYieldKey =
+export type ValidationTraceYieldKey =
   keyof SDK.ValidationTraceDisputeFaultProofContracts["validationTraceDispute"]["yields"];
 
 /** Titled semantic resolvers; `semanticResolvers[i]` is the one for key `i`. */
-const VALIDATION_TRACE_SEMANTIC_KEYS = Object.keys(
+export const VALIDATION_TRACE_SEMANTIC_KEYS = Object.keys(
   SDK.VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
 ) as readonly ValidationTraceSemanticKey[];
 
@@ -293,7 +321,7 @@ const VALIDATION_TRACE_SEMANTIC_CONTRACT_NAME_OVERRIDES: Partial<
     "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
 };
 
-const validationTraceSemanticContractName = (
+export const validationTraceSemanticContractName = (
   key: ValidationTraceSemanticKey,
 ): string =>
   VALIDATION_TRACE_SEMANTIC_CONTRACT_NAME_OVERRIDES[key] ??
@@ -304,8 +332,39 @@ const validationTraceSemanticContractName = (
  * semantic resolvers; it is published as the script-sources redeemer
  * normalization semantic.
  */
-const VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX =
+export const VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX =
   VALIDATION_TRACE_SEMANTIC_KEYS.length;
+
+export const VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_CONTRACT =
+  "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic";
+
+/**
+ * Key prefixes of the titled semantic resolvers the deployment records and
+ * publishes, one list per catalogue section. The remaining titled resolvers
+ * are never recorded in the manifest.
+ */
+const VALIDATION_TRACE_SCRIPT_SOURCES_SEMANTIC_PREFIXES = [
+  "resolveInputs",
+  "scriptSources",
+] as const;
+const VALIDATION_TRACE_PHASE_A_SEMANTIC_PREFIXES = [
+  "phaseANativeScripts",
+  "phaseAScriptPreconditions",
+] as const;
+
+const semanticKeyHasPrefix = (
+  key: ValidationTraceSemanticKey,
+  prefixes: readonly string[],
+): boolean => prefixes.some((prefix) => key.startsWith(prefix));
+
+/** Whether the manifest records the titled semantic resolver for `key`. */
+export const isRecordedValidationTraceSemantic = (
+  key: ValidationTraceSemanticKey,
+): boolean =>
+  semanticKeyHasPrefix(
+    key,
+    VALIDATION_TRACE_SCRIPT_SOURCES_SEMANTIC_PREFIXES,
+  ) || semanticKeyHasPrefix(key, VALIDATION_TRACE_PHASE_A_SEMANTIC_PREFIXES);
 
 /** Titled script-sources and ledger-output yields, in title order. */
 const VALIDATION_TRACE_SCRIPT_SOURCES_YIELD_KEYS = (
@@ -329,8 +388,16 @@ const VALIDATION_TRACE_CEK_MATERIAL_YIELD_KEYS = [
   "valueAndMintAssetFold",
 ] as const satisfies readonly ValidationTraceYieldKey[];
 
-const validationTraceYieldContractName = (key: ValidationTraceYieldKey) =>
-  `validationTraceDispute${upperFirst(key)}Withdraw`;
+export const validationTraceYieldContractName = (
+  key: ValidationTraceYieldKey,
+): string => `validationTraceDispute${upperFirst(key)}Withdraw`;
+
+/** Every validation-trace yield the manifest records. */
+export const VALIDATION_TRACE_RECORDED_YIELD_KEYS: readonly ValidationTraceYieldKey[] =
+  [
+    ...VALIDATION_TRACE_SCRIPT_SOURCES_YIELD_KEYS,
+    ...VALIDATION_TRACE_CEK_MATERIAL_YIELD_KEYS,
+  ];
 
 /**
  * CEK core stages in manifest order. Names come from the SDK's reference
@@ -626,7 +693,7 @@ const semanticResolvers =
   (prefixes: readonly string[]): Section =>
   (contracts) =>
     VALIDATION_TRACE_SEMANTIC_KEYS.flatMap((key, index) =>
-      prefixes.some((prefix) => key.startsWith(prefix))
+      semanticKeyHasPrefix(key, prefixes)
         ? [
             spendStep(
               contracts,
@@ -874,10 +941,9 @@ const DEPLOYABLE_SCRIPT_CATALOGUE = {
       publishWhen: vtdControlPresent,
     }),
   ),
-  validationTraceScriptSourcesSemantics: semanticResolvers([
-    "resolveInputs",
-    "scriptSources",
-  ]),
+  validationTraceScriptSourcesSemantics: semanticResolvers(
+    VALIDATION_TRACE_SCRIPT_SOURCES_SEMANTIC_PREFIXES,
+  ),
   validationTraceRedeemerItem: (contracts) => [
     ...SDK.sharedRedeemerItemReferenceScripts(
       vtd(contracts).scriptSourcesStageOneRedeemerStages,
@@ -893,7 +959,7 @@ const DEPLOYABLE_SCRIPT_CATALOGUE = {
   validationTraceRedeemerNormalizationSemantic: (contracts) => [
     spendStep(
       contracts,
-      "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
+      VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_CONTRACT,
       vtd(contracts).semanticResolvers[
         VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX
       ],
@@ -902,10 +968,9 @@ const DEPLOYABLE_SCRIPT_CATALOGUE = {
   validationTraceScriptSourcesYields: validationTraceYields(
     VALIDATION_TRACE_SCRIPT_SOURCES_YIELD_KEYS,
   ),
-  validationTracePhaseASemantics: semanticResolvers([
-    "phaseANativeScripts",
-    "phaseAScriptPreconditions",
-  ]),
+  validationTracePhaseASemantics: semanticResolvers(
+    VALIDATION_TRACE_PHASE_A_SEMANTIC_PREFIXES,
+  ),
   // The manifest records the linear categories as [A, C, B]; publication
   // walks them in list order [A, B, C].
   registeredChainsA: registeredChainSteps(

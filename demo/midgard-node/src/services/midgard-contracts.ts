@@ -38,9 +38,17 @@ import { Effect, Layer } from "effect";
 
 import {
   faultProofStepContractName,
+  isRecordedValidationTraceSemantic,
   type LegacyFaultProofFamily,
+  recordedFaultProofStepContractNames,
   type RegisteredLinearFaultProofCategory,
   TRANSITION_TRACE_FINAL_CONTRACT_NAMES,
+  VALIDATION_TRACE_RECORDED_YIELD_KEYS,
+  VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_CONTRACT,
+  VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX,
+  VALIDATION_TRACE_SEMANTIC_KEYS,
+  validationTraceSemanticContractName,
+  validationTraceYieldContractName,
 } from "../deployable-scripts.js";
 import { parseDeploymentManifestValue } from "../deployment-manifest.js";
 import {
@@ -578,23 +586,37 @@ const authenticatedValidatorFromManifest = (
   ...mintingValidatorFromManifest(manifest, sourcePath, mintName),
 });
 
+/**
+ * Every step of a fault-proof chain, restored by the manifest's own step
+ * names. The step count comes from the manifest too, never from a locally
+ * built bundle whose shape may differ from the deployment's.
+ */
+const faultProofStepsFromManifest = (
+  network: Network,
+  manifest: DeploymentManifest,
+  sourcePath: string,
+  chain: RegisteredLinearFaultProofCategory | LegacyFaultProofFamily,
+): SDK.SpendingValidator[] =>
+  recordedFaultProofStepContractNames(
+    chain,
+    (contract) => manifest.contracts[contract] !== undefined,
+  ).map((contract) =>
+    spendingValidatorFromManifest(network, manifest, sourcePath, contract),
+  );
+
 const linearFaultProofChainFromManifest = <
   Category extends RegisteredLinearFaultProofCategory,
 >(
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
-  baseContracts: SDK.MidgardValidators,
   category: Category,
 ): SDK.FaultProofContractChains[Category] => {
-  const baseChain = baseContracts.fraudProofContracts[category];
-  const steps = baseChain.steps.map((_validator, stepIndex) =>
-    spendingValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      faultProofStepContractName(category, stepIndex),
-    ),
+  const steps = faultProofStepsFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    category,
   );
   const firstStep = steps[0];
   if (firstStep === undefined) {
@@ -805,24 +827,19 @@ const legacyFaultProofChainFromManifest = <
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
-  baseContracts: SDK.MidgardValidators,
   family: Family,
 ): SDK.FaultProofContractChains[Family] => {
-  const baseChain = baseContracts.fraudProofContracts[family];
-  const steps = baseChain.steps.map((_validator, stepIndex) =>
-    spendingValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      faultProofStepContractName(family, stepIndex),
-    ),
+  const steps = faultProofStepsFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    family,
   );
   const firstStep = steps[0];
   if (firstStep === undefined) {
     throw new Error(`Legacy fault-proof chain has no first step`);
   }
   return {
-    ...baseChain,
     firstStep,
     steps,
   } as unknown as SDK.FaultProofContractChains[Family];
@@ -893,11 +910,151 @@ const eventHistoryContractsFromManifest = (
   return { deposit: load("deposit"), withdrawal: load("withdrawal") };
 };
 
+/**
+ * A validation-trace member the deployment manifest does not record: the
+ * canonical-decode item stages, the prepare resolvers (`resolvers` is the same
+ * list), the proof-item validator, the semantic resolvers outside the
+ * published script-sources and phase-A sets, and therefore the full `steps`
+ * list. The manifest carries no bytes for any of them, and no locally built
+ * bundle may stand in for a deployed script, so reading one fails loudly.
+ */
+const unrecordedValidationTraceMember = (
+  sourcePath: string,
+  member: string,
+): PropertyDescriptor => ({
+  enumerable: true,
+  get: () => {
+    throw new Error(
+      `Deployment manifest at "${sourcePath}" does not record validation-trace ${member}; a manifest-sourced contract bundle cannot provide it`,
+    );
+  },
+});
+
+/**
+ * The validation-trace dispute chain, every recorded member restored by its
+ * manifest name.
+ *
+ * The CEK and ScriptSources redeemer-item carriers apply their normalizers and
+ * executors to the same deployment id and thread policy, so they are one set
+ * of scripts published once under the shared redeemer-item names; the CEK
+ * carrier uses the first `REDEEMER_ITEM_EXECUTOR_KEYS.length` executors.
+ */
+const validationTraceDisputeFromManifest = (
+  network: Network,
+  manifest: DeploymentManifest,
+  sourcePath: string,
+  cekProgramMaterial: SDK.SpendingValidator,
+): SDK.FaultProofContractChains["validationTraceDispute"] => {
+  const spend = (contract: string) =>
+    spendingValidatorFromManifest(network, manifest, sourcePath, contract);
+  const byReference = (
+    references: Readonly<Record<string, { readonly deployment: string }>>,
+  ) =>
+    Object.fromEntries(
+      Object.entries(references).map(([key, { deployment }]) => [
+        key,
+        spend(deployment),
+      ]),
+    );
+
+  const opener = spend("validationTraceDispute");
+  const traversalNormalizer = spend(
+    "validationTraceDisputeRedeemerItemTraversalNormalizer",
+  );
+  const outerNormalizer = spend(
+    "validationTraceDisputeRedeemerItemOuterNormalizer",
+  );
+  const sourceAuthenticator = spend(
+    "validationTraceDisputeRedeemerItemSourceAuthenticator",
+  );
+  const executors = SDK.REDEEMER_ITEM_EXECUTOR_REFERENCES.map(
+    ({ deploymentEntry }) => spend(deploymentEntry),
+  );
+  const redeemerNormalizationSemantic = spend(
+    VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_CONTRACT,
+  );
+
+  const semanticResolvers: SDK.SpendingValidator[] = [];
+  VALIDATION_TRACE_SEMANTIC_KEYS.forEach((key, index) => {
+    if (isRecordedValidationTraceSemantic(key)) {
+      semanticResolvers[index] = spend(
+        validationTraceSemanticContractName(key),
+      );
+    } else {
+      Object.defineProperty(
+        semanticResolvers,
+        index,
+        unrecordedValidationTraceMember(sourcePath, `semantic resolver ${key}`),
+      );
+    }
+  });
+  semanticResolvers[VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX] =
+    redeemerNormalizationSemantic;
+
+  const chain = {
+    firstStep: opener,
+    opener,
+    source: spend("validationTraceDisputeSource"),
+    game: spend("validationTraceDisputeGame"),
+    boundary: spend("validationTraceDisputeBoundary"),
+    timeout: spend("validationTraceDisputeTimeout"),
+    award: spend("validationTraceDisputeAward"),
+    cekProgramMaterial,
+    cekMaterialTraversal: spend("validationTraceDisputeCekMaterialTraversal"),
+    cekCoreStages: byReference(SDK.CEK_CORE_STAGE_REFERENCES),
+    cekContextStages: byReference(SDK.CEK_CONTEXT_STAGE_REFERENCES),
+    cekContextItemStages: {
+      ...byReference(SDK.CEK_CONTEXT_ITEM_REFERENCES),
+      traversalNormalizer,
+      outerNormalizer,
+      sourceAuthenticator,
+      executors: executors.slice(0, SDK.REDEEMER_ITEM_EXECUTOR_KEYS.length),
+    },
+    scriptSourcesStageOneRedeemerStages: {
+      envelope: redeemerNormalizationSemantic,
+      traversalNormalizer,
+      outerNormalizer,
+      sourceAuthenticator,
+      executors,
+      foldMapExecutor: executors[0],
+      finalizeFrameExecutor: executors[1],
+      settlement: spend("validationTraceDisputeRedeemerItemSettlement"),
+    },
+    semanticResolvers,
+    yields: Object.fromEntries(
+      VALIDATION_TRACE_RECORDED_YIELD_KEYS.map((key) => [
+        key,
+        withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          validationTraceYieldContractName(key),
+        ),
+      ]),
+    ),
+  };
+  Object.defineProperties(chain, {
+    steps: unrecordedValidationTraceMember(
+      sourcePath,
+      "steps (the full list includes unrecorded members)",
+    ),
+    proofItem: unrecordedValidationTraceMember(sourcePath, "proof item"),
+    canonicalDecodeItemStages: unrecordedValidationTraceMember(
+      sourcePath,
+      "canonical-decode item stages",
+    ),
+    prepareResolvers: unrecordedValidationTraceMember(
+      sourcePath,
+      "prepare resolvers",
+    ),
+    resolvers: unrecordedValidationTraceMember(sourcePath, "resolvers"),
+  });
+  return chain as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
+};
+
 export const midgardContractsFromDeploymentManifest = (
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
-  baseContracts: SDK.MidgardValidators,
 ): SDK.MidgardValidators => {
   const eventHistory = eventHistoryContractsFromManifest(
     network,
@@ -924,9 +1081,12 @@ export const midgardContractsFromDeploymentManifest = (
     sourcePath,
     "hubOracleMint",
   );
+  // The canonical Aiken tree ships only the one-shot hub-oracle mint policy;
+  // its witness lives at that policy's script credential, so the one script
+  // that can govern the address is the mint script itself.
   const hubOracle: SDK.AuthenticatedValidator = {
-    spendingScriptCBOR: baseContracts.hubOracle.spendingScriptCBOR,
-    spendingScript: baseContracts.hubOracle.spendingScript,
+    spendingScriptCBOR: hubOracleMint.mintingScriptCBOR,
+    spendingScript: hubOracleMint.mintingScript,
     spendingScriptHash: hubOracleMint.policyId,
     spendingScriptAddress: credentialToAddress(
       network,
@@ -1083,90 +1243,35 @@ export const midgardContractsFromDeploymentManifest = (
       ),
     },
   };
-  const validationTraceOpener = spendingValidatorFromManifest(
+  const validationTraceDispute = validationTraceDisputeFromManifest(
     network,
     manifest,
     sourcePath,
-    "validationTraceDispute",
+    cekProgramMaterial,
   );
-  const validationTraceSource = spendingValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    "validationTraceDisputeSource",
-  );
-  const validationTraceGame = spendingValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    "validationTraceDisputeGame",
-  );
-  const validationTraceBoundary = spendingValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    "validationTraceDisputeBoundary",
-  );
-  const validationTraceTimeout = spendingValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    "validationTraceDisputeTimeout",
-  );
-  const validationTraceAward = spendingValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    "validationTraceDisputeAward",
-  );
-  const baseValidationTrace =
-    baseContracts.fraudProofContracts.validationTraceDispute;
-  const validationTraceDispute = {
-    ...baseValidationTrace,
-    firstStep: validationTraceOpener,
-    opener: validationTraceOpener,
-    source: validationTraceSource,
-    game: validationTraceGame,
-    boundary: validationTraceBoundary,
-    timeout: validationTraceTimeout,
-    award: validationTraceAward,
-    steps: [
-      validationTraceOpener,
-      validationTraceSource,
-      validationTraceGame,
-      validationTraceBoundary,
-      validationTraceTimeout,
-      validationTraceAward,
-      ...baseValidationTrace.steps.slice(6),
-    ],
-  } as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
   const fraudProofContracts: SDK.FaultProofContractChains = {
     doubleSpend: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "doubleSpend",
     ),
     nonExistentInput: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "nonExistentInput",
     ),
     nonExistentInputNoIndex: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "nonExistentInputNoIndex",
     ),
     invalidRange: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "invalidRange",
     ),
     transitionTrace,
@@ -1174,7 +1279,6 @@ export const midgardContractsFromDeploymentManifest = (
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "zeroInput",
     ),
     validationTraceDispute,
@@ -1182,336 +1286,288 @@ export const midgardContractsFromDeploymentManifest = (
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "daHashPreimage",
     ),
     noReferenceInput: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "noReferenceInput",
     ),
     referenceInputNoIdx: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "referenceInputNoIdx",
     ),
     invalidSignature: legacyFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "invalidSignature",
     ),
     fabricatedDeposit: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "fabricatedDeposit",
     ),
     fabricatedWithdrawal: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "fabricatedWithdrawal",
     ),
     nativeScriptDecoding: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "nativeScriptDecoding",
     ),
     missingSignature: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "missingSignature",
     ),
     missingNativeScriptTx: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "missingNativeScriptTx",
     ),
     withdrawnReferenceInput: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "withdrawnReferenceInput",
     ),
     canonicalDecodability: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "canonicalDecodability",
     ),
     committedFieldShape: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "committedFieldShape",
     ),
     minFee: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "minFee",
     ),
     withdrawalMistag: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "withdrawalMistag",
     ),
     doubleWithdraw: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "doubleWithdraw",
     ),
     crossBlockDuplicateEvent: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "crossBlockDuplicateEvent",
     ),
     l2TxMistag: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "l2TxMistag",
     ),
     withdrawnInput: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "withdrawnInput",
     ),
     valueNotPreserved: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "valueNotPreserved",
     ),
     inputSetUniqueness: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "inputSetUniqueness",
     ),
     mintAuthorization: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "mintAuthorization",
     ),
     networkId: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "networkId",
     ),
     missingNativeScriptUtxo: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "missingNativeScriptUtxo",
     ),
     nativeScriptInvalid: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "nativeScriptInvalid",
     ),
     minAda: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "minAda",
     ),
     fieldPreimageLengthMismatch: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "fieldPreimageLengthMismatch",
     ),
     fieldItemWidthIllegal: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "fieldItemWidthIllegal",
     ),
     witnessScriptDecoding: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "witnessScriptDecoding",
     ),
     scriptIntegrityHashMissing: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "scriptIntegrityHashMissing",
     ),
     transactionOutputNonCanonical: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "transactionOutputNonCanonical",
     ),
     mintItemNonCanonical: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "mintItemNonCanonical",
     ),
     resolvedOutputNonCanonical: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "resolvedOutputNonCanonical",
     ),
     mintDeclaredAssetLimit: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "mintDeclaredAssetLimit",
     ),
     spendInputSignerMissing: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "spendInputSignerMissing",
     ),
     protectedOutputSignerMissing: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "protectedOutputSignerMissing",
     ),
     observersForbiddenOnUntaggedNetwork: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "observersForbiddenOnUntaggedNetwork",
     ),
     outputReferenceScriptDecoding: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "outputReferenceScriptDecoding",
     ),
     executionSourceScriptDecoding: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "executionSourceScriptDecoding",
     ),
     observerOrderInvalid: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "observerOrderInvalid",
     ),
     redeemerCanonicity: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "redeemerCanonicity",
     ),
     receivePurposeLanguage: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "receivePurposeLanguage",
     ),
     unusedScriptWitness: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "unusedScriptWitness",
     ),
     missingScriptSource: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "missingScriptSource",
     ),
     missingRedeemer: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "missingRedeemer",
     ),
     unusedRedeemer: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "unusedRedeemer",
     ),
     executionNativeScriptInvalid: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "executionNativeScriptInvalid",
     ),
     scriptIntegrityHashMismatch: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "scriptIntegrityHashMismatch",
     ),
     distinctAssetAccumulationLimit: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
-      baseContracts,
       "distinctAssetAccumulationLimit",
     ),
   };
@@ -2791,7 +2847,6 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
           nodeConfig.NETWORK,
           configuredManifest.manifest,
           configuredManifest.path,
-          baseContracts,
         ),
       catch: (cause) =>
         new Error(
