@@ -865,6 +865,8 @@ appointFirstTests =
     "spend / AppointFirstOperator"
     [ testCase "appoints an operator to an empty schedule" $
         psucceeds $ runAppoint defaultAppoint
+    , testCase "appoints an operator when the registered set is root-only" $
+        psucceeds $ runAppoint defaultAppoint {apRegisteredIsRoot = True}
     , -- Only reachable from an empty schedule; otherwise it would be a way to
       -- replace a sitting operator without any of the other branches' proofs.
       testCase "rejects an input datum that already names an operator" $
@@ -887,6 +889,7 @@ data Appoint = Appoint
   , apNewStart :: Integer
   , apNodeKey :: BS.ByteString
   , apNodeLink :: PD.Data
+  , apRegisteredIsRoot :: Bool
   , apRegisteredActivation :: Integer
   }
 
@@ -898,6 +901,7 @@ defaultAppoint =
     , apNewStart = 250
     , apNodeKey = operatorB
     , apNodeLink = linkNone
+    , apRegisteredIsRoot = False
     , apRegisteredActivation = 10_000
     }
 
@@ -912,7 +916,7 @@ runAppoint a =
     ,
       [ hubRefIn
       , activeElement False (apNodeKey a) (apNodeLink a)
-      , registeredElement False (apRegisteredActivation a) linkNone
+      , registeredElement (apRegisteredIsRoot a) (apRegisteredActivation a) linkNone
       ]
     , []
     )
