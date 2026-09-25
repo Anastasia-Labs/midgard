@@ -38,10 +38,10 @@ implementations, and the LaTeX technical specification in a single repository.
 - [Midgard SDK guide](./demo/midgard-sdk/README.md): packaging, conventions,
   and SDK module layout.
 - [Documentation site](./docs-site/README.md): the full guides and reference,
-  runnable locally with `pnpm --dir docs-site dev`. CI checks selected command,
-  fiber, transaction-status, and inventory facts against their source files.
-  These checks do not validate every prose claim or code example; review the
-  affected documentation when implementation behavior changes.
+  runnable locally with `pnpm --dir docs-site dev`. CI checks only that
+  repository-local links resolve; it does not validate prose claims or code
+  examples, so review the affected documentation when implementation behavior
+  changes.
 - [Documentation policy](./docs/DOCUMENTATION_POLICY.md): source-of-truth,
   evidence, security-claim, and plan-lifecycle rules.
 - [Canonical V1 consensus profile](./docs/consensus-profile-v1.md): exact
