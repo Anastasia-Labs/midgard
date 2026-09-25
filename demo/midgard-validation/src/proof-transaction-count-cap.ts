@@ -59,15 +59,6 @@ const EXECUTION_RESERVE_USABLE_DENOMINATOR = 5n;
 const ceilDiv = (numerator: bigint, denominator: bigint): bigint =>
   (numerator + denominator - 1n) / denominator;
 
-/**
- * The target snapshot's per-transaction execution ceilings, restated as
- * bigints. Not an independently configurable constant: re-derives whenever
- * `MIDGARD_CONSENSUS_LIMITS` changes, so the per-transaction usable
- * budget below moves automatically with any C70 snapshot change.
- */
-export const TARGET_SNAPSHOT_MEMORY_UNITS = targetSnapshotMemoryUnits;
-export const TARGET_SNAPSHOT_CPU_UNITS = targetSnapshotCpuUnits;
-
 /** The most execution units one §3.3-reserved proof transaction may use. */
 export const PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS =
   (targetSnapshotMemoryUnits * EXECUTION_RESERVE_USABLE_NUMERATOR) /

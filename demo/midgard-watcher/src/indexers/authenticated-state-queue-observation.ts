@@ -512,10 +512,6 @@ const parsePersistedObservation = (
     : null;
 };
 
-/** Pure structural parser only; it never grants production observation authority. */
-export const unsafeParsePersistedWatcherStateQueueObservationForTest =
-  parsePersistedObservation;
-
 /**
  * Narrow test-only opaque admission. It first runs the exact persisted parser,
  * then independently re-derives every contained Header hash and queue link.
@@ -2992,10 +2988,6 @@ const restoreTrustedPersistedObservationChain = ({
     }),
   });
 };
-
-/** Structural restore test seam; it grants no source admission authority. */
-export const unsafeRestoreTrustedWatcherStateQueueChainForTest =
-  restoreTrustedPersistedObservationChain;
 
 const restoreLongestPersistedObservationChain = async (
   input: Parameters<typeof restorePersistedObservationChain>[0],

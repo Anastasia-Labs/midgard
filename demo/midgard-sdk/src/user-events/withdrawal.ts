@@ -316,8 +316,6 @@ export const unsignedWithdrawalTxProgram = (
     Effect.map(({ tx }) => tx),
   );
 
-export const buildUnsignedWithdrawalTxProgram = unsignedWithdrawalTxProgram;
-
 /**
  * Builds completed tx for submitting withdrawal order using the provided
  * `LucidEvolution` instance and a withdrawal order config.

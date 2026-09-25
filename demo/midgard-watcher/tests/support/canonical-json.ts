@@ -21,10 +21,7 @@ export const canonicalJson = (value: unknown): string =>
 export const canonicalDigest = (value: unknown): string =>
   watcherSha256CanonicalJson(value);
 
-/** Alias kept for the suites that name the strict spelling. */
-export const canonicalJsonForTest = canonicalJson;
-
-/** SHA-256 over {@link canonicalJsonForTest}. */
+/** SHA-256 over {@link canonicalJson}. */
 export const sha256Canonical = canonicalDigest;
 
 /**

@@ -1288,8 +1288,6 @@ export const unsignedTxOrderTxProgram = (
     Effect.map(({ tx }) => tx),
   );
 
-export const buildUnsignedTxOrderTxProgram = unsignedTxOrderTxProgram;
-
 export const unsignedTxOrderTx = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,

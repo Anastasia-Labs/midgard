@@ -303,37 +303,3 @@ export const makeWatcherUserEventArchiveIndex = async (
     ancestorDigests,
   });
 };
-
-/** Bounded navigation to the sealed segment containing one global block entry.
- * Entry and evidence membership still require the caller's admitted root and
- * semantic owner; this content-addressed lookup grants no event authority.
- */
-export const findWatcherUserEventArchiveIndexForEntry = async (
-  archive: WatcherUserEventArchive,
-  suppliedRoot: WatcherUserEventArchiveIndexRead,
-  suppliedEntrySequence: string,
-): Promise<WatcherUserEventArchiveIndexRead> => {
-  const entrySequence = BigInt(natural(suppliedEntrySequence));
-  const root = Object.freeze({
-    digest: digest(suppliedRoot.digest),
-    index: parseWatcherUserEventArchiveIndex(suppliedRoot.index),
-  });
-  if (entrySequence > BigInt(root.index.lastEntrySequence))
-    return refuse("entry exceeds the sealed root");
-  let first = 0n;
-  let last = BigInt(root.index.indexSequence);
-  for (let iteration = 0; first <= last && iteration < 65; iteration += 1) {
-    const middle = (first + last) / 2n;
-    const found = await findWatcherUserEventArchiveIndex(
-      archive,
-      root,
-      middle.toString(),
-    );
-    if (entrySequence < BigInt(found.index.firstEntrySequence))
-      last = middle - 1n;
-    else if (entrySequence > BigInt(found.index.lastEntrySequence))
-      first = middle + 1n;
-    else return found;
-  }
-  return refuse("entry is not covered by the sealed archive");
-};

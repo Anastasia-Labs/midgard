@@ -4,8 +4,6 @@ import { isAbsolute, join, normalize } from "node:path";
 
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 
-export const WATCHER_FAULT_PROOF_QUEUE_JOURNAL =
-  "midgard-watcher-production-fault-proof-queue-journal-v1" as const;
 export const WATCHER_FAULT_PROOF_QUEUE_RECORD =
   "midgard-watcher-production-fault-proof-queue-record-v1" as const;
 

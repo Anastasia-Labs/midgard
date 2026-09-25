@@ -106,27 +106,6 @@ export const rateBetweenCounters = (
 export const isDrainComplete = ({ submitted, acceptedDelta, rejectedDelta }) =>
   acceptedDelta + rejectedDelta >= submitted;
 
-export const findSampleAtOrBefore = (samples, timestampMs) => {
-  let selected = null;
-  for (const sample of samples) {
-    if (sample.timestampMs <= timestampMs) {
-      selected = sample;
-    } else {
-      break;
-    }
-  }
-  return selected;
-};
-
-export const findSampleAtOrAfter = (samples, timestampMs) => {
-  for (const sample of samples) {
-    if (sample.timestampMs >= timestampMs) {
-      return sample;
-    }
-  }
-  return null;
-};
-
 export const maxRollingRate = (samples, counterKey, windowMs) => {
   if (samples.length < 2 || windowMs <= 0) {
     return 0;
@@ -695,9 +674,6 @@ export const summarizeHistogramDelta = (start, end) => {
     buckets,
   };
 };
-
-export const hasMissingRequiredMetrics = (counters) =>
-  Array.isArray(counters?.missingMetrics) && counters.missingMetrics.length > 0;
 
 export const classifyLikelyBottleneckWithEvidence = ({
   submitted,

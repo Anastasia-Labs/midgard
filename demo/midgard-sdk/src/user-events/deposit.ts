@@ -282,8 +282,6 @@ export const unsignedDepositTxProgram = (
     Effect.map(({ tx }) => tx),
   );
 
-export const buildUnsignedDepositTxProgram = unsignedDepositTxProgram;
-
 /**
  * Builds a completed tx for submitting deposits using the provided
  * `LucidEvolution` instance and a deposit config.

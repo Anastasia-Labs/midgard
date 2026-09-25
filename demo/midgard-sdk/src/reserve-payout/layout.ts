@@ -1,8 +1,4 @@
-import { outRefLabel } from "@al-ft/midgard-core/out-ref";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
-
 import type { EventHistoryRetirementWitness } from "../user-events/history.js";
-import * as SDK from "./primitives.js";
 
 export type AbsorbDepositLayout = {
   readonly depositInputIndex: bigint;
@@ -54,18 +50,4 @@ export type RefundWithdrawalLayout = {
   readonly witness: EventHistoryRetirementWitness;
   readonly retirementWithdrawalRedeemerIndex: bigint;
   readonly listWithdrawalRedeemerIndex: bigint;
-};
-
-export const settlementDatumFromInput = (
-  settlementRefInput: UTxO,
-): SDK.SettlementDatum => {
-  if (settlementRefInput.datum == null) {
-    throw new Error(
-      `Settlement reference input ${outRefLabel(settlementRefInput)} has no inline datum`,
-    );
-  }
-  return Data.from(
-    settlementRefInput.datum,
-    SDK.SettlementDatum,
-  ) as SDK.SettlementDatum;
 };

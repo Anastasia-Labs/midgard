@@ -249,13 +249,6 @@ export const makeWatcherUserEventCheckpoint = (
     value,
   );
 
-export const encodeWatcherUserEventCheckpoint = (
-  value: WatcherUserEventCheckpoint,
-): Uint8Array =>
-  encoder.encode(
-    watcherCanonicalJson(parseWatcherUserEventCheckpoint(value, value)),
-  );
-
 export const watcherUserEventCheckpointExpectationMatches = (
   current: WatcherUserEventCheckpoint | null,
   expectation: WatcherUserEventCheckpointExpectation,

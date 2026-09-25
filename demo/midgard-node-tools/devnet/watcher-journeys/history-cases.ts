@@ -18,23 +18,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-/** Catalogue ownership; readiness is established separately by the fixture tests. */
-export const JOURNEY_HISTORY_CATEGORIES = [
-  "doubleSpend",
-  "nonExistentInput",
-  "nonExistentInputNoIndex",
-  "transitionTrace",
-  "noReferenceInput",
-  "referenceInputNoIdx",
-  "fabricatedDeposit",
-  "fabricatedWithdrawal",
-  "withdrawnReferenceInput",
-  "withdrawalMistag",
-  "doubleWithdraw",
-  "crossBlockDuplicateEvent",
-  "withdrawnInput",
-] as const satisfies readonly SDK.FraudProofCatalogueCategoryName[];
-
 export const JOURNEY_HISTORY_TRANSACTION_CATEGORIES = [
   "doubleSpend",
   "nonExistentInput",
