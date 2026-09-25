@@ -16,6 +16,7 @@ import {
   kupmiosChainPointResolver,
   kupmiosCurrentChainPointResolver,
   l1AuthorityProviderSource,
+  LOCAL_NODE_SNAPSHOT_ATTEMPTS,
   LocalNodeChainAuthority,
   LocalNodeStateQueueProvider,
   lucidChainPointResolver,
@@ -668,6 +669,7 @@ describe("L1 provider adapters", () => {
       blockHash: "cd".repeat(32),
       providerSource: "query:node-a:0",
     };
+    const currentStalePoint = vi.fn(async () => stalePoint);
     const provider = new LocalNodeStateQueueProvider(
       authority,
       [
@@ -679,7 +681,7 @@ describe("L1 provider adapters", () => {
             confirmedStateOutRef: `${"00".repeat(32)}#0`,
             observedChainPoint: stalePoint,
           }),
-          currentChainPoint: async () => stalePoint,
+          currentChainPoint: currentStalePoint,
         },
       ],
       ["query:node-a:0"],
@@ -691,6 +693,61 @@ describe("L1 provider adapters", () => {
     await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
       /stale or on a mismatched chain point/u,
     );
+    expect(currentStalePoint).toHaveBeenCalledTimes(
+      LOCAL_NODE_SNAPSHOT_ATTEMPTS,
+    );
+  });
+
+  it("retakes a local query snapshot when a block lands during the read", async () => {
+    const dir = await tempDir();
+    const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+    let synchronized = false;
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async () => {
+          if (synchronized) return { tip: canonical };
+          synchronized = true;
+          return {
+            event: { direction: "roll_forward", point: canonical },
+            tip: canonical,
+          };
+        },
+      },
+      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+    );
+    const queryPoint = { ...canonical, providerSource: "query:node-a:0" };
+    const moved = { ...queryPoint, slot: 21, blockHash: "cd".repeat(32) };
+    // The first read sees the next block arrive before its closing check.
+    const points = [queryPoint, moved];
+    const currentChainPoint = vi.fn(async () => points.shift() ?? queryPoint);
+    const fetchStateQueueSnapshot = vi.fn(async () => ({
+      nodes: [],
+      confirmedHeaderHash: "00".repeat(28),
+      confirmedStateOutRef: `${"00".repeat(32)}#0`,
+      observedChainPoint: queryPoint,
+    }));
+    const provider = new LocalNodeStateQueueProvider(
+      authority,
+      [
+        {
+          fetchStateQueueNodes: async () => [],
+          fetchStateQueueSnapshot,
+          currentChainPoint,
+        },
+      ],
+      ["query:node-a:0"],
+      new FileChainSyncConsumerCursorStore(
+        `${dir}/consumer.json`,
+        "11".repeat(32),
+      ),
+    );
+
+    await expect(provider.fetchStateQueueSnapshot()).resolves.toMatchObject({
+      confirmedHeaderHash: "00".repeat(28),
+    });
+    expect(fetchStateQueueSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it("merges aligned local query depth and finality conservatively", async () => {

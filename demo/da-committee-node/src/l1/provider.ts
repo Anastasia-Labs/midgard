@@ -931,6 +931,12 @@ export class MultiStateQueueProvider implements StateQueueProvider {
   }
 }
 
+/** The chain advanced while a local-node snapshot was being read. */
+class ChainMovedDuringSnapshotError extends Error {}
+
+export const LOCAL_NODE_SNAPSHOT_ATTEMPTS = 8;
+export const LOCAL_NODE_SNAPSHOT_RETRY_MS = 250;
+
 export class LocalNodeStateQueueProvider
   implements StateQueueProvider, ChainSyncReplayProvider
 {
@@ -959,8 +965,45 @@ export class LocalNodeStateQueueProvider
     return (await this.fetchStateQueueSnapshot()).nodes;
   }
 
+  /**
+   * A snapshot is taken at one chain point: every query surface must sit at
+   * the authority's tip before and after its read. A block arriving inside
+   * that window is expected on a live chain, so the whole snapshot is retaken
+   * a bounded number of times; a surface that never settles on the authority's
+   * point is refused.
+   */
   async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshot> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.readStateQueueSnapshotAtOnePoint();
+      } catch (error) {
+        if (
+          !(error instanceof ChainMovedDuringSnapshotError) ||
+          attempt >= LOCAL_NODE_SNAPSHOT_ATTEMPTS
+        ) {
+          throw error;
+        }
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, LOCAL_NODE_SNAPSHOT_RETRY_MS),
+      );
+    }
+  }
+
+  private async readStateQueueSnapshotAtOnePoint(): Promise<ObservedStateQueueSnapshot> {
     const canonicalBefore = await this.authority.synchronizeToTip();
+    const assertAtAuthorityPoint = (
+      point: CanonicalChainPoint,
+      index: number,
+    ) => {
+      try {
+        this.authority.assertAligned(point, this.queryIdentities[index]!);
+      } catch (error) {
+        throw new ChainMovedDuringSnapshotError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    };
     const results = await Promise.all(
       this.queryProviders.map(async (provider, index) => {
         if (provider.fetchStateQueueSnapshot === undefined) {
@@ -969,21 +1012,21 @@ export class LocalNodeStateQueueProvider
           );
         }
         const before = await provider.currentChainPoint();
-        this.authority.assertAligned(before, this.queryIdentities[index]!);
+        assertAtAuthorityPoint(before, index);
         const snapshot = await provider.fetchStateQueueSnapshot();
         const after = await provider.currentChainPoint();
         if (!sameCanonicalPoint(before, after)) {
-          throw new Error(
+          throw new ChainMovedDuringSnapshotError(
             `local_node query surface ${this.queryIdentities[index]!} changed chain point while its snapshot was read`,
           );
         }
-        this.authority.assertAligned(after, this.queryIdentities[index]!);
+        assertAtAuthorityPoint(after, index);
         return { snapshot, queryPoint: after };
       }),
     );
     const canonicalAfter = await this.authority.currentPoint();
     if (!sameCanonicalPoint(canonicalBefore, canonicalAfter)) {
-      throw new Error(
+      throw new ChainMovedDuringSnapshotError(
         "local node chain authority changed while query snapshots were being collected",
       );
     }
