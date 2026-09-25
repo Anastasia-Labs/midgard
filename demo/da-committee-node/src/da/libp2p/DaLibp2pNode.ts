@@ -1,5 +1,10 @@
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
+import {
+  type DaStreamChunk,
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
 import type { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
@@ -19,11 +24,6 @@ import {
 } from "./DaGossip.js";
 import { DaPeerRegistry, type DaPeerRegistryEntry } from "./DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "./DaProtocols.js";
-import {
-  type DaStreamChunk,
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "./DaStreamCodec.js";
 import { createDaTopicAllowlist } from "./DaTopics.js";
 
 export type DaLibp2pStream = AsyncIterable<DaStreamChunk> & {

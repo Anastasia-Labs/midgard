@@ -1,4 +1,8 @@
 import {
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   DA_TRANSPORT_LIMITS,
   daDeploymentFingerprintFromHex,
   type DaEventToStepByEventResponse,
@@ -22,10 +26,6 @@ import {
 import type { DaLibp2pStreamHandler } from "./DaLibp2pNode.js";
 import type { DaPeerRegistry } from "./DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "./DaProtocols.js";
-import {
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "./DaStreamCodec.js";
 
 export type DaLibp2pProofProtocolLimits = {
   readonly maxPayloadBytes: number;

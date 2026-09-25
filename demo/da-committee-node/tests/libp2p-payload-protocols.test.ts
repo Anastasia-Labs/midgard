@@ -2,6 +2,10 @@ import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DaRequestTimeoutError } from "@al-ft/midgard-core/da-request-deadline";
 import {
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
   DaRequestResponseProtocol,
@@ -30,10 +34,6 @@ import type {
   DaLibp2pStreamHandler,
 } from "../src/da/libp2p/DaLibp2pNode.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
-import {
-  encodeDaStreamFrame,
-  readSingleDaStreamFrame,
-} from "../src/da/libp2p/DaStreamCodec.js";
 import {
   DaLibp2pPayloadProtocolError,
   DaLibp2pPayloadProtocolHandlers,

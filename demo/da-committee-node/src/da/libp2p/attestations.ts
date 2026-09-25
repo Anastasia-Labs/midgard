@@ -1,4 +1,8 @@
 import {
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   type DaAttestationGossip,
   DaGossipTopic,
   DaRequestResponseProtocol,
@@ -32,10 +36,6 @@ import type { CommitteeStore } from "../../store.js";
 import type { DaLibp2pNode, DaLibp2pStreamHandler } from "./DaLibp2pNode.js";
 import type { DaPeerRegistry, DaPeerRegistryEntry } from "./DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "./DaProtocols.js";
-import {
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "./DaStreamCodec.js";
 
 export type DaAttestationPeer = {
   readonly peerId: string;

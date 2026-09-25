@@ -4,7 +4,6 @@ export * from "./DaGossip.js";
 export * from "./DaLibp2pNode.js";
 export * from "./DaPeerRegistry.js";
 export * from "./DaProtocols.js";
-export * from "./DaStreamCodec.js";
 export * from "./DaTopics.js";
 export * from "./payload-source.js";
 export * from "./proof-protocols.js";

@@ -4,8 +4,13 @@ import { readFile } from "node:fs/promises";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
+  type DaStreamChunk,
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
   type DaCapabilitiesResponse,
   daDeploymentFingerprintFromHex,
@@ -252,9 +257,7 @@ export type DaProducerTransport = DaProducerProbeTransport & {
   ) => Promise<Uint8Array>;
 };
 
-export type DaProducerStream = AsyncIterable<
-  Uint8Array | { subarray: () => Uint8Array }
-> & {
+export type DaProducerStream = AsyncIterable<DaStreamChunk> & {
   send(data: Uint8Array): boolean;
   onDrain?(): Promise<void>;
   close?(): Promise<void> | void;
@@ -361,13 +364,22 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       protocol,
     );
     handlerMap.set(protocolId, async (stream) => {
-      const requestCbor = await readSingleFrame(
-        stream,
-        manifest.maxPayloadBytes,
+      const requestCbor = await withTimeout(
+        readSingleDaStreamFrame(stream, {
+          maxFrameBytes: manifest.maxPayloadBytes,
+        }),
         manifest.requestTimeoutMs,
-      );
+      ).catch((error: unknown) => {
+        stream.abort?.(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        throw error;
+      });
       const responseCbor = await handle(requestCbor);
-      await writeSingleFrame(stream, responseCbor, manifest.maxPayloadBytes);
+      await writeDaStreamFrame(stream, responseCbor, {
+        maxFrameBytes: manifest.maxPayloadBytes,
+        close: true,
+      });
     });
   };
 
@@ -671,7 +683,9 @@ export const publishDaPayloadInsert = async ({
     payloadBytes,
     chunkManifest: null,
   });
-  const sharedRequestFrame = encodeFrame(request, manifest.maxPayloadBytes);
+  const sharedRequestFrame = encodeDaStreamFrame(request, {
+    maxFrameBytes: manifest.maxPayloadBytes,
+  });
   const publishStartedAt = Date.now();
   const peerResults: DaProducerPeerResult[] = [];
   let acceptedPeers = 0;
@@ -1094,7 +1108,9 @@ export const reconcileDaPayloadPeerFromEnv = (
           headerHash,
           protocolId,
           request,
-          requestFrame: encodeFrame(request, manifest.maxPayloadBytes),
+          requestFrame: encodeDaStreamFrame(request, {
+            maxFrameBytes: manifest.maxPayloadBytes,
+          }),
           timeoutMs: manifest.requestTimeoutMs,
           maxChunkBytes: manifest.maxChunkBytes,
           payloadHash,
@@ -1517,8 +1533,13 @@ export const createDaLibp2pProducerTransport = async (
             { signal },
           ),
         run: async (stream) => {
-          await writeSingleFrame(stream, payload, manifest.maxPayloadBytes);
-          return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
+          await writeDaStreamFrame(stream, payload, {
+            maxFrameBytes: manifest.maxPayloadBytes,
+            close: true,
+          });
+          return readSingleDaStreamFrame(stream, {
+            maxFrameBytes: manifest.maxPayloadBytes,
+          });
         },
         abort: (stream, error) => stream.abort?.(error),
       }),
@@ -1534,7 +1555,9 @@ export const createDaLibp2pProducerTransport = async (
         run: async (stream) => {
           await writeSharedFrameChunks(stream, frame, maxChunkBytes);
           await stream.close();
-          return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
+          return readSingleDaStreamFrame(stream, {
+            maxFrameBytes: manifest.maxPayloadBytes,
+          });
         },
         abort: (stream, error) => stream.abort?.(error),
       }),
@@ -1610,8 +1633,13 @@ export const createDaLibp2pProducerProbeTransport = async (
             { signal },
           ),
         run: async (stream) => {
-          await writeSingleFrame(stream, payload, manifest.maxPayloadBytes);
-          return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
+          await writeDaStreamFrame(stream, payload, {
+            maxFrameBytes: manifest.maxPayloadBytes,
+            close: true,
+          });
+          return readSingleDaStreamFrame(stream, {
+            maxFrameBytes: manifest.maxPayloadBytes,
+          });
         },
         abort: (stream, error) => stream.abort?.(error),
       }),
@@ -2265,59 +2293,6 @@ const validateLibp2pPrivateKeySource = (source: string): void => {
   );
 };
 
-const encodeFrame = (payload: Uint8Array, maxBytes: number): Buffer => {
-  if (payload.length > maxBytes) {
-    throw new Error(
-      `libp2p DA frame exceeds max bytes: ${payload.length.toString()} > ${maxBytes.toString()}`,
-    );
-  }
-  const frame = Buffer.alloc(4 + payload.length);
-  frame.writeUInt32BE(payload.length, 0);
-  Buffer.from(payload).copy(frame, 4);
-  return frame;
-};
-
-const readSingleFrame = async (
-  stream: AsyncIterable<Uint8Array | { subarray: () => Uint8Array }>,
-  maxBytes: number,
-  timeoutMs: number,
-): Promise<Buffer> =>
-  withTimeout(
-    (async () => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) {
-        chunks.push(
-          Buffer.from(chunk instanceof Uint8Array ? chunk : chunk.subarray()),
-        );
-      }
-      const bytes = Buffer.concat(chunks);
-      if (bytes.length < 4) {
-        throw new Error("libp2p DA response frame is truncated");
-      }
-      const frameLength = bytes.readUInt32BE(0);
-      if (frameLength > maxBytes) {
-        throw new Error("libp2p DA response frame exceeds max bytes");
-      }
-      if (bytes.length !== 4 + frameLength) {
-        throw new Error("libp2p DA response frame length mismatch");
-      }
-      return bytes.subarray(4);
-    })(),
-    timeoutMs,
-  );
-
-const writeSingleFrame = async (
-  stream: DaProducerStream,
-  payload: Uint8Array,
-  maxBytes: number,
-): Promise<void> => {
-  const accepted = stream.send(encodeFrame(payload, maxBytes));
-  if (!accepted) {
-    await stream.onDrain?.();
-  }
-  await stream.close?.();
-};
-
 const writeSharedFrameChunks = async (
   stream: DaProducerStream,
   frame: Uint8Array,
@@ -2410,18 +2385,4 @@ const normalizeHexBytes = (
   return normalized;
 };
 
-export const encodeLengthPrefixedDaFrameForTest = encodeFrame;
 export const writeSharedDaFrameChunksForTest = writeSharedFrameChunks;
-export const decodeLengthPrefixedDaFrameForTest = (
-  frame: Buffer,
-  maxBytes = DA_TRANSPORT_LIMITS.maxPayloadBytes,
-): Buffer => {
-  if (frame.length < 4) {
-    throw new Error("frame is truncated");
-  }
-  const frameLength = frame.readUInt32BE(0);
-  if (frameLength > maxBytes || frame.length !== 4 + frameLength) {
-    throw new Error("frame length mismatch");
-  }
-  return frame.subarray(4);
-};

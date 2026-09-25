@@ -1,5 +1,9 @@
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   computeDaSha256Hash,
   daDeploymentFingerprintFromHex,
   DaRequestResponseProtocol,
@@ -24,10 +28,6 @@ import type { DaLibp2pStreamHandler } from "./DaLibp2pNode.js";
 import { DaLibp2pNode } from "./DaLibp2pNode.js";
 import type { DaPeerRegistry, DaPeerRegistryEntry } from "./DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "./DaProtocols.js";
-import {
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "./DaStreamCodec.js";
 import {
   DaLibp2pPayloadProtocolHandlers,
   type DaLibp2pPublicRetainedDaPayloadStore,

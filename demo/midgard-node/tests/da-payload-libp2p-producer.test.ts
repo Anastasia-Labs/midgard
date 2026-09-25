@@ -7,6 +7,10 @@ import { fileURLToPath } from "node:url";
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
   DaGossipTopic,
@@ -34,8 +38,6 @@ import {
   type DaProducerProbeTransport,
   type DaProducerStream,
   type DaProducerTransport,
-  decodeLengthPrefixedDaFrameForTest,
-  encodeLengthPrefixedDaFrameForTest,
   getDaPublicationTransportForTest,
   parseDaProducerPublicationManifest,
   publishDaPayloadInsert,
@@ -246,6 +248,49 @@ describe("DA payload libp2p producer publication", () => {
       payloadBytes: null,
       chunkManifest: null,
     });
+  });
+
+  it("rejects an oversized retained-payload request at its length prefix", async () => {
+    const manifest = parseManifestFixture();
+    if (manifest === null) {
+      throw new Error("expected libp2p publication manifest");
+    }
+    const handlers = createDaLibp2pRetainedPayloadRequestHandlers({
+      manifest,
+      retrieveByHeaderHash: async () => undefined,
+    });
+    const handler = handlers.get(
+      daRequestResponseProtocolId(
+        DEPLOYMENT,
+        DaRequestResponseProtocol.payloadByHeader,
+      ),
+    );
+    if (handler === undefined) {
+      throw new Error("missing payload-by-header handler");
+    }
+    const oversizedPrefix = Buffer.alloc(4);
+    oversizedPrefix.writeUInt32BE(manifest.maxPayloadBytes + 1, 0);
+    let bodyChunksPulled = 0;
+    let abortedWith: Error | undefined;
+    const stream: DaProducerStream = {
+      async *[Symbol.asyncIterator]() {
+        yield oversizedPrefix;
+        for (;;) {
+          bodyChunksPulled += 1;
+          yield Buffer.alloc(1024);
+        }
+      },
+      send: () => {
+        throw new Error("an oversized request must not get a response");
+      },
+      abort: (error) => {
+        abortedWith = error;
+      },
+    };
+
+    await expect(handler(stream)).rejects.toThrow(/exceeds/);
+    expect(bodyChunksPulled).toBe(0);
+    expect(abortedWith?.message).toMatch(/exceeds/);
   });
 
   it("surfaces per-peer failures without HTTP fallback and enforces threshold", async () => {
@@ -974,10 +1019,9 @@ const callRetainedPayloadHandler = async ({
   if (handler === undefined) {
     throw new Error(`missing handler for ${protocol}`);
   }
-  const requestFrame = encodeLengthPrefixedDaFrameForTest(
-    request,
-    DA_TRANSPORT_LIMITS.maxPayloadBytes,
-  );
+  const requestFrame = encodeDaStreamFrame(request, {
+    maxFrameBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+  });
   let responseFrame: Buffer | undefined;
   const stream: DaProducerStream = {
     async *[Symbol.asyncIterator]() {
@@ -994,5 +1038,5 @@ const callRetainedPayloadHandler = async ({
   if (responseFrame === undefined) {
     throw new Error("retained payload handler did not send a response");
   }
-  return decodeLengthPrefixedDaFrameForTest(responseFrame);
+  return readSingleDaStreamFrame([responseFrame]);
 };

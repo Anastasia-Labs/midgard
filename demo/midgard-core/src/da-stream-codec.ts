@@ -1,4 +1,4 @@
-import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "./da-transport.js";
 
 const LENGTH_PREFIX_BYTES = 4;
 

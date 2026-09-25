@@ -1,4 +1,8 @@
 import {
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   computeDaSha256Hash,
   DaRequestResponseProtocol,
   decodeDaEventToStepByEventResponseCbor,
@@ -15,10 +19,6 @@ import { describe, expect, it } from "vitest";
 import type { DaLibp2pStreamHandler } from "../src/da/libp2p/DaLibp2pNode.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "../src/da/libp2p/DaProtocols.js";
-import {
-  encodeDaStreamFrame,
-  readSingleDaStreamFrame,
-} from "../src/da/libp2p/DaStreamCodec.js";
 import {
   createDaLibp2pProofRequestHandlers,
   DaLibp2pProofProtocolHandlers,

@@ -4,6 +4,10 @@ import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-prof
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
   decodeDaPayloadSubmitRequestCbor,
@@ -19,10 +23,6 @@ import {
   DaLibp2pNode,
   DaPayloadSubmitAdmission,
 } from "da-committee-node/da/libp2p";
-import {
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "da-committee-node/da/libp2p/DaStreamCodec";
 import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
 import { JsonFileCommitteeStore } from "da-committee-node/store";
 import { describe, expect, it } from "vitest";

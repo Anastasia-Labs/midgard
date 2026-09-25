@@ -38,11 +38,6 @@
       "types": "./dist/da/libp2p/index.d.ts",
       "import": "./dist/da/libp2p/index.js"
     },
-    "./da/libp2p/DaStreamCodec": {
-      "midgard-source": "./src/da/libp2p/DaStreamCodec.ts",
-      "types": "./dist/da/libp2p/DaStreamCodec.d.ts",
-      "import": "./dist/da/libp2p/DaStreamCodec.js"
-    },
     "./l1/state-queue-scanner": {
       "midgard-source": "./src/l1/state-queue-scanner.ts",
       "types": "./dist/l1/state-queue-scanner.d.ts",
@@ -50,7 +45,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/store/postgres.ts src/store/public-retained-da.ts src/availability/index.ts src/da/libp2p/index.ts src/da/libp2p/DaStreamCodec.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/store/postgres.ts src/store/public-retained-da.ts src/availability/index.ts src/da/libp2p/index.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

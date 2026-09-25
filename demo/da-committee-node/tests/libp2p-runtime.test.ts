@@ -1,5 +1,11 @@
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
+  decodeDaStreamFrames,
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import {
   DA_PUBLIC_RETAINED_DA_PROTOCOLS,
   DA_TRANSPORT_LIMITS,
   DaGossipTopic,
@@ -33,12 +39,6 @@ import {
   peerIdFromMultiaddrString,
 } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "../src/da/libp2p/DaProtocols.js";
-import {
-  decodeDaStreamFrames,
-  encodeDaStreamFrame,
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "../src/da/libp2p/DaStreamCodec.js";
 import { createDaTopicAllowlist } from "../src/da/libp2p/DaTopics.js";
 import { createDaConnectionGater } from "../src/da/libp2p/index.js";
 import { DaLibp2pPayloadSource } from "../src/da/libp2p/payload-source.js";
