@@ -36,6 +36,7 @@ import {
   makeDeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core/retention-window";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   GENESIS_HEADER_HASH,
@@ -83,6 +84,7 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
+  type NodeConfigDep,
 } from "../services/index.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
@@ -600,6 +602,26 @@ const genesisUtxoIdentitySnapshot = (
     "genesisUtxos",
   );
 
+/**
+ * The DA transport profile the deployment commits to. Its retention window is
+ * the canonical deployment horizon, not the node's `RETENTION_DAYS`: that
+ * setting only switches local wall-clock pruning (0 disables it) and must
+ * itself cover this window.
+ */
+export const deploymentDaTransportProfile = (
+  nodeConfig: Pick<
+    NodeConfigDep,
+    "MIDGARD_DA_PAYLOAD_ENVELOPE" | "MIDGARD_DA_ZSTD_LEVEL"
+  >,
+): DeploymentManifestIdentityContext["da"]["transportProfile"] => ({
+  protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+  runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  envelopeEncoding: nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
+  zstdLevel: nodeConfig.MIDGARD_DA_ZSTD_LEVEL,
+  limits: DA_TRANSPORT_LIMITS,
+  retentionDays: MIDGARD_RETENTION_WINDOW.retentionDays,
+});
+
 export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
   DeploymentManifestIdentityContext,
   Error,
@@ -662,14 +684,7 @@ export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
       committeeSignersHash:
         computeDeploymentManifestDaCommitteeSignersHash(committeeVkeys),
       threshold,
-      transportProfile: {
-        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
-        envelopeEncoding: nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
-        zstdLevel: nodeConfig.MIDGARD_DA_ZSTD_LEVEL,
-        limits: DA_TRANSPORT_LIMITS,
-        retentionDays: nodeConfig.RETENTION_DAYS,
-      },
+      transportProfile: deploymentDaTransportProfile(nodeConfig),
     },
     artifacts: {
       blueprintHash,

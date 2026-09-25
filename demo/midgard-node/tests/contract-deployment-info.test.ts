@@ -8,6 +8,10 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  assertRetentionWindowCoversDeployment,
+  MIDGARD_RETENTION_WINDOW,
+} from "@al-ft/midgard-core/retention-window";
 import type {
   MidgardValidators,
   ReferenceScriptAuthPolicyDeploymentInfo,
@@ -33,6 +37,7 @@ import {
   cardanoProtocolParametersIdentityFromProvider,
   defaultContractDeploymentInfoOutputPath,
   DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  deploymentDaTransportProfile,
   type DeploymentManifestBuildContext,
   type DeploymentManifestIdentityContext,
   parseDeploymentManifest,
@@ -1173,4 +1178,19 @@ describe("contract deployment info", () => {
       ).toThrow(/contracts\.schedulerSpend\.scriptHash/);
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
+});
+
+describe("deployment DA transport profile", () => {
+  unitIt("commits the canonical retention window, not local pruning", () => {
+    const profile = deploymentDaTransportProfile({
+      MIDGARD_DA_PAYLOAD_ENVELOPE: "zstd",
+      MIDGARD_DA_ZSTD_LEVEL: 3,
+    });
+    expect(profile.retentionDays).toBe(MIDGARD_RETENTION_WINDOW.retentionDays);
+    expect(
+      assertRetentionWindowCoversDeployment({
+        da: { transportProfile: profile },
+      }),
+    ).toBe(MIDGARD_RETENTION_WINDOW.retentionDays);
+  });
 });
