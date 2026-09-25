@@ -9,8 +9,6 @@ const readyHeartbeats: ReadinessInput["workerHeartbeats"] = {
   blockCommitment: now - 1_000,
   blockConfirmation: now - 2_000,
   merge: now - 2_000,
-  depositFetch: now - 3_000,
-  withdrawalFetch: now - 3_000,
   txQueueProcessor: now - 1_000,
 };
 

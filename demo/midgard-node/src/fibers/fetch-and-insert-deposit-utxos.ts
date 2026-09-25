@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, type Network } from "@lucid-evolution/lucid";
-import { Effect, Ref, Schedule } from "effect";
+import { Effect, Ref } from "effect";
 
 import { DepositsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -15,7 +15,6 @@ import {
 import {
   logReconciledVisibleUserEvents,
   persistVisibleUserEventUTxOs,
-  repeatVisibleUserEventIngestionFiber,
   runCommitTimeUserEventIngestionBarrier,
   type UserEventFetchBounds,
   type UserEventReconcileResult,
@@ -103,7 +102,6 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   MidgardContracts | Lucid | Database | Globals | NodeConfig
 > = Effect.gen(function* () {
   const globals = yield* Globals;
-  yield* Ref.set(globals.HEARTBEAT_DEPOSIT_FETCH, Date.now());
 
   yield* Effect.logDebug("🏦 fetching DepositUTxOs...");
   const { reconciledCount, completedAt } =
@@ -135,21 +133,4 @@ export const fetchAndInsertDepositUTxOsForCommitBarrier = (
     }) =>
       `🏦 Commit-time deposit barrier reconciled ${reconciledCount} deposit UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${upperBound.toISOString()}.`,
     reconcile: reconcileVisibleDepositUTxOs,
-  });
-
-/**
- * Fiber wrapper that repeats deposit fetching on the provided schedule.
- */
-export const fetchAndInsertDepositUTxOsFiber = (
-  schedule: Schedule.Schedule<number>,
-): Effect.Effect<
-  void,
-  SDK.LucidError | DatabaseError,
-  MidgardContracts | Lucid | Database | Globals | NodeConfig
-> =>
-  repeatVisibleUserEventIngestionFiber({
-    schedule,
-    startLogMessage: "🏦 Fetch and insert DepositUTxOs to DepositsDB.",
-    spanName: "fetch-and-inser-deposi-utxos-fiber",
-    action: fetchAndInsertDepositUTxOs,
   });

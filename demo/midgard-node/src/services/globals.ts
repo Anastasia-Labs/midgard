@@ -329,8 +329,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const HEARTBEAT_BLOCK_COMMITMENT = yield* Ref.make<number>(now);
     const HEARTBEAT_BLOCK_CONFIRMATION = yield* Ref.make<number>(now);
     const HEARTBEAT_MERGE = yield* Ref.make<number>(now);
-    const HEARTBEAT_DEPOSIT_FETCH = yield* Ref.make<number>(now);
-    const HEARTBEAT_WITHDRAWAL_FETCH = yield* Ref.make<number>(now);
     const HEARTBEAT_TX_QUEUE_PROCESSOR = yield* Ref.make<number>(now);
 
     return {
@@ -365,8 +363,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       HEARTBEAT_BLOCK_COMMITMENT,
       HEARTBEAT_BLOCK_CONFIRMATION,
       HEARTBEAT_MERGE,
-      HEARTBEAT_DEPOSIT_FETCH,
-      HEARTBEAT_WITHDRAWAL_FETCH,
       HEARTBEAT_TX_QUEUE_PROCESSOR,
     };
   }),

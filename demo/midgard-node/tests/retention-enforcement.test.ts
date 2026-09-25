@@ -62,8 +62,6 @@ const readinessBase = {
     blockCommitment: NOW.getTime(),
     blockConfirmation: NOW.getTime(),
     merge: NOW.getTime(),
-    depositFetch: NOW.getTime(),
-    withdrawalFetch: NOW.getTime(),
     txQueueProcessor: NOW.getTime(),
   },
   localFinalizationPending: false,

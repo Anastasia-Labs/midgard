@@ -1,20 +1,13 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
-import { Effect, Ref, Schedule } from "effect";
+import { Effect } from "effect";
 
 import { WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { withdrawalDataToEntry } from "../l1-event-history-entries.js";
+import { Database, Lucid, MidgardContracts } from "../services/index.js";
 import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-} from "../services/index.js";
-import {
-  logReconciledVisibleUserEvents,
   persistVisibleUserEventUTxOs,
-  repeatVisibleUserEventIngestionFiber,
   runCommitTimeUserEventIngestionBarrier,
   type UserEventFetchBounds,
   type UserEventReconcileResult,
@@ -70,23 +63,6 @@ export const reconcileVisibleWithdrawalUTxOs = (
     });
   });
 
-export const fetchAndInsertWithdrawalUTxOs: Effect.Effect<
-  void,
-  SDK.LucidError | DatabaseError,
-  MidgardContracts | Lucid | Database | Globals
-> = Effect.gen(function* () {
-  const globals = yield* Globals;
-  yield* Ref.set(globals.HEARTBEAT_WITHDRAWAL_FETCH, Date.now());
-
-  yield* Effect.logDebug("fetching WithdrawalUTxOs...");
-  const { reconciledCount } = yield* reconcileVisibleWithdrawalUTxOs();
-  yield* logReconciledVisibleUserEvents({
-    reconciledCount,
-    message: (count) =>
-      `Reconciled ${count} visible withdrawal UTxO(s) into withdrawal_utxos.`,
-  });
-});
-
 export const fetchAndInsertWithdrawalUTxOsForCommitBarrier = (
   inclusionTimeUpperBound: Date,
 ): Effect.Effect<
@@ -106,18 +82,4 @@ export const fetchAndInsertWithdrawalUTxOsForCommitBarrier = (
     }) =>
       `Commit-time withdrawal barrier reconciled ${reconciledCount} withdrawal UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${upperBound.toISOString()}.`,
     reconcile: reconcileVisibleWithdrawalUTxOs,
-  });
-
-export const fetchAndInsertWithdrawalUTxOsFiber = (
-  schedule: Schedule.Schedule<number>,
-): Effect.Effect<
-  void,
-  SDK.LucidError | DatabaseError,
-  MidgardContracts | Lucid | Database | Globals
-> =>
-  repeatVisibleUserEventIngestionFiber({
-    schedule,
-    startLogMessage: "Fetch and insert WithdrawalUTxOs.",
-    spanName: "fetch-and-insert-withdrawal-utxos-fiber",
-    action: fetchAndInsertWithdrawalUTxOs,
   });

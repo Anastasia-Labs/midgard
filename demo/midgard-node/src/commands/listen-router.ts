@@ -1450,10 +1450,6 @@ const getReadinessHandler = Effect.gen(function* () {
     globals.HEARTBEAT_BLOCK_CONFIRMATION,
   );
   const mergeHeartbeat = yield* Ref.get(globals.HEARTBEAT_MERGE);
-  const depositFetchHeartbeat = yield* Ref.get(globals.HEARTBEAT_DEPOSIT_FETCH);
-  const withdrawalFetchHeartbeat = yield* Ref.get(
-    globals.HEARTBEAT_WITHDRAWAL_FETCH,
-  );
   const txQueueProcessorHeartbeat = yield* Ref.get(
     globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
   );
@@ -1608,8 +1604,6 @@ const getReadinessHandler = Effect.gen(function* () {
       blockCommitment: blockCommitmentHeartbeat,
       blockConfirmation: blockConfirmationHeartbeat,
       merge: mergeHeartbeat,
-      depositFetch: depositFetchHeartbeat,
-      withdrawalFetch: withdrawalFetchHeartbeat,
       txQueueProcessor: txQueueProcessorHeartbeat,
     },
     localFinalizationPending,
@@ -2400,12 +2394,6 @@ const getLogGlobalsHandler = Effect.gen(function* () {
     globals.HEARTBEAT_BLOCK_CONFIRMATION,
   );
   const HEARTBEAT_MERGE: number = yield* Ref.get(globals.HEARTBEAT_MERGE);
-  const HEARTBEAT_DEPOSIT_FETCH: number = yield* Ref.get(
-    globals.HEARTBEAT_DEPOSIT_FETCH,
-  );
-  const HEARTBEAT_WITHDRAWAL_FETCH: number = yield* Ref.get(
-    globals.HEARTBEAT_WITHDRAWAL_FETCH,
-  );
   const HEARTBEAT_TX_QUEUE_PROCESSOR: number = yield* Ref.get(
     globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
   );
@@ -2425,8 +2413,6 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   HEARTBEAT_BLOCK_COMMITMENT ⋅⋅ ${new Date(Number(HEARTBEAT_BLOCK_COMMITMENT)).toLocaleString()}
   HEARTBEAT_BLOCK_CONFIRMATION ⋅ ${new Date(Number(HEARTBEAT_BLOCK_CONFIRMATION)).toLocaleString()}
   HEARTBEAT_MERGE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(HEARTBEAT_MERGE)).toLocaleString()}
-  HEARTBEAT_DEPOSIT_FETCH ⋅⋅⋅⋅ ${new Date(Number(HEARTBEAT_DEPOSIT_FETCH)).toLocaleString()}
-  HEARTBEAT_WITHDRAWAL_FETCH ⋅ ${new Date(Number(HEARTBEAT_WITHDRAWAL_FETCH)).toLocaleString()}
   HEARTBEAT_TX_QUEUE_PROCESSOR ⋅ ${new Date(Number(HEARTBEAT_TX_QUEUE_PROCESSOR)).toLocaleString()}
 `);
   return yield* HttpServerResponse.json({
