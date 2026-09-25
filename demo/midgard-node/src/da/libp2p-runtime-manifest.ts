@@ -29,6 +29,13 @@ export type DaLibp2pRuntimeCommitteeMemberInput = {
   readonly daVkey: string;
   readonly libp2pPrivateKeySource: string;
   readonly roles: readonly string[];
+  /**
+   * This member's own libp2p endpoint, for committees whose members do not
+   * share the profile's single committee address. On the single-machine
+   * profiles only the port may differ; compose and public members may also
+   * name their own host.
+   */
+  readonly endpoint?: { readonly host?: string; readonly port: number };
 };
 
 export type DaLibp2pRuntimeManifestOptions = {
@@ -127,19 +134,31 @@ export const generateDaLibp2pRuntimeManifest = async (
     ports.producer,
     producerIdentity.peerId,
   );
-  const memberMultiaddrs = members.map((member) =>
-    isProducerMember(member, producerIdentity.peerId)
-      ? producerAddr
-      : multiaddrForHost(hosts.committee, ports.committee, member.peerId),
+  const endpointOf = (
+    member: DaLibp2pRuntimeCommitteeMemberInput,
+  ): { readonly host: string; readonly port: number } => ({
+    host: member.endpoint?.host ?? hosts.committee,
+    port: member.endpoint?.port ?? ports.committee,
+  });
+  const memberMultiaddrs = members.map((member) => {
+    if (isProducerMember(member, producerIdentity.peerId)) return producerAddr;
+    const endpoint = endpointOf(member);
+    return multiaddrForHost(endpoint.host, endpoint.port, member.peerId);
+  });
+  const localEndpoint =
+    localMember === undefined ? undefined : endpointOf(localMember);
+  const localListen = listenAddr(
+    listenHostForProfile(options.profile),
+    localEndpoint?.port ?? ports.producer,
   );
-  const localListen =
-    options.target === "producer"
-      ? listenAddr(listenHostForProfile(options.profile), ports.producer)
-      : listenAddr(listenHostForProfile(options.profile), ports.committee);
   const localAnnounce =
-    options.target === "producer"
+    localEndpoint === undefined
       ? producerAddr
-      : multiaddrForHost(hosts.committee, ports.committee, localMember!.peerId);
+      : multiaddrForHost(
+          localEndpoint.host,
+          localEndpoint.port,
+          localMember!.peerId,
+        );
   const bootstrapMultiaddrs =
     options.target === "producer"
       ? memberMultiaddrs.filter(
@@ -155,6 +174,20 @@ export const generateDaLibp2pRuntimeManifest = async (
     ports.publicRetainedDa,
     publicRetainedDaIdentity.peerId,
   );
+  validateEndpoints({
+    profile: options.profile,
+    members: members
+      .filter((member) => !isProducerMember(member, producerIdentity.peerId))
+      .map((member) => ({ member, endpoint: endpointOf(member) })),
+    reserved: [
+      { label: "producer", host: hosts.producer, port: ports.producer },
+      {
+        label: "public retained DA",
+        host: publicRetainedDaHost,
+        port: ports.publicRetainedDa,
+      },
+    ],
+  });
 
   return parseDaLibp2pRuntimeManifest({
     schemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
@@ -362,6 +395,61 @@ const memberForSignerIndex = (
     throw new Error("committee runtime manifest local signer index is unknown");
   }
   return selected;
+};
+
+const SINGLE_MACHINE_PROFILES: readonly DaLibp2pRuntimeProfile[] = [
+  "host",
+  "producer-container-committee-host",
+];
+
+// Every committee member other than the producer listens on its own endpoint,
+// so two members, or a member and the producer or public retained-DA
+// listener, must never resolve to the same host and port.
+const validateEndpoints = ({
+  profile,
+  members,
+  reserved,
+}: {
+  readonly profile: DaLibp2pRuntimeProfile;
+  readonly members: readonly {
+    readonly member: DaLibp2pRuntimeCommitteeMemberInput;
+    readonly endpoint: { readonly host: string; readonly port: number };
+  }[];
+  readonly reserved: readonly {
+    readonly label: string;
+    readonly host: string;
+    readonly port: number;
+  }[];
+}): void => {
+  const owners = new Map<string, string>();
+  const claim = (label: string, host: string, port: number): void => {
+    const key = `${host}:${port.toString()}`;
+    const owner = owners.get(key);
+    if (owner !== undefined) {
+      throw new Error(
+        `${label} and ${owner} must not share the libp2p endpoint ${key}`,
+      );
+    }
+    owners.set(key, label);
+  };
+  for (const { label, host, port } of reserved) claim(label, host, port);
+  for (const { member, endpoint } of members) {
+    const label = `committee member ${member.signerIndex.toString()}`;
+    if (member.endpoint !== undefined) {
+      validatePort(member.endpoint.port, `${label} port`);
+      if (member.endpoint.host !== undefined) {
+        if (SINGLE_MACHINE_PROFILES.includes(profile)) {
+          throw new Error(
+            `${label} host is fixed by the ${profile} profile; set only its port`,
+          );
+        }
+        if (profile === "public") {
+          rejectLocalRuntimeHost(member.endpoint.host, `${label} public host`);
+        }
+      }
+    }
+    claim(label, endpoint.host, endpoint.port);
+  }
 };
 
 const validatePort = (port: number, label: string): void => {

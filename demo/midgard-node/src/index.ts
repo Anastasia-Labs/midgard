@@ -173,7 +173,7 @@ const parseDaLibp2pRuntimeProfile = (
 const parseDaLibp2pCommitteeMember = (
   value: string,
 ): DaLibp2pRuntimeManifestOptions["committeeMembers"][number] => {
-  const [signerIndexRaw, daVkey, keySource, rolesRaw, ...extra] =
+  const [signerIndexRaw, daVkey, keySource, rolesRaw, endpointRaw, ...extra] =
     value.split(",");
   if (
     signerIndexRaw === undefined ||
@@ -183,7 +183,7 @@ const parseDaLibp2pCommitteeMember = (
     extra.length > 0
   ) {
     throw new Error(
-      "--committee-member must use signerIndex,daVkey,libp2pKeySource,role+role",
+      "--committee-member must use signerIndex,daVkey,libp2pKeySource,role+role[,[host:]port]",
     );
   }
   const roles = rolesRaw
@@ -201,7 +201,25 @@ const parseDaLibp2pCommitteeMember = (
     daVkey,
     libp2pPrivateKeySource: keySource,
     roles,
+    ...(endpointRaw === undefined
+      ? {}
+      : { endpoint: parseDaLibp2pCommitteeMemberEndpoint(endpointRaw) }),
   };
+};
+
+const parseDaLibp2pCommitteeMemberEndpoint = (
+  value: string,
+): { readonly host?: string; readonly port: number } => {
+  const separator = value.lastIndexOf(":");
+  const host = separator === -1 ? undefined : value.slice(0, separator);
+  if (host !== undefined && host.length === 0) {
+    throw new Error("--committee-member endpoint host must be non-empty");
+  }
+  const port = parsePositiveIntegerOption(
+    value.slice(separator + 1),
+    "--committee-member endpoint port",
+  );
+  return host === undefined ? { port } : { host, port };
 };
 
 const parseDaLibp2pCommitteeMembers = (
@@ -973,7 +991,7 @@ program
   .requiredOption("--threshold <n>", "DA committee threshold")
   .option(
     "--committee-member <spec>",
-    "Committee member as signerIndex,daVkey,libp2pKeySource,role+role; repeatable",
+    "Committee member as signerIndex,daVkey,libp2pKeySource,role+role[,[host:]port]; the endpoint overrides the shared committee address; repeatable",
     collectStringOption,
     [],
   )
