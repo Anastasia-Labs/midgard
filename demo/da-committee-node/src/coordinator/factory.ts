@@ -53,6 +53,7 @@ export const onChainCoordinatorFromConfig = async (
   const { lucid } = await deps.lucidFromProviderUrl(
     config.cardanoProviderUrls[0]!,
     config.network,
+    config.nativeLedger,
   );
   await deps.selectL1SubmitterWallet(lucid, config.l1SubmitterKeySource);
   if (config.l1SubmitterPreflight.enabled) {
@@ -154,6 +155,7 @@ export const l1SubmitterWalletPreflightFromConfig = async (
   const { lucid } = await deps.lucidFromProviderUrl(
     config.cardanoProviderUrls[0]!,
     config.network,
+    config.nativeLedger,
   );
   await deps.selectL1SubmitterWallet(lucid, config.l1SubmitterKeySource);
   return deps.preflightL1SubmitterWallet(

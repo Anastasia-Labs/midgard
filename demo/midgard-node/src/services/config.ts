@@ -34,6 +34,11 @@ import {
   validateRetentionDays,
 } from "../database/retention-policy.js";
 import { parseDeploymentEconomicsProfile } from "../environment.js";
+import {
+  NATIVE_LEDGER_SETTING_NAMES,
+  type NativeLedgerSettings,
+  parseNativeLedgerSettings,
+} from "./native-ledger.js";
 
 /**
  * Validates the *encoding* of one of the DA key sets (`DA_COMMITTEE_HEX`,
@@ -146,6 +151,8 @@ export type NodeConfigDep = {
   L1_RECENT_TX_404_MAX_DELAY_MS: number;
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
+  /** Local ledger for reward-account reads; Ogmios cannot answer them. */
+  L1_NATIVE_LEDGER: NativeLedgerSettings | undefined;
   /** Operator-approved lossless Shelley query result hash; required by listen. */
   L1_HISTORY_GENESIS_LOSSLESS_SHA256: string;
   L1_OPERATOR_SEED_PHRASE: string;
@@ -332,6 +339,20 @@ const makeConfig = Effect.gen(function* () {
   const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
+  const nativeLedgerValues = yield* Config.all(
+    Object.fromEntries(
+      NATIVE_LEDGER_SETTING_NAMES.map((name) => [
+        name,
+        Config.string(name).pipe(Config.withDefault("")),
+      ]),
+    ) as Record<
+      (typeof NATIVE_LEDGER_SETTING_NAMES)[number],
+      Config.Config<string>
+    >,
+  );
+  const nativeLedger = yield* Effect.try(() =>
+    parseNativeLedgerSettings(nativeLedgerValues),
+  );
   const historyGenesis = yield* Config.string(
     "L1_HISTORY_GENESIS_LOSSLESS_SHA256",
   ).pipe(Config.withDefault(""));
@@ -1406,6 +1427,7 @@ const makeConfig = Effect.gen(function* () {
     L1_RECENT_TX_404_MAX_DELAY_MS: l1RecentTx404MaxDelayMs,
     L1_OGMIOS_KEY: ogmiosKey,
     L1_KUPO_KEY: kupoKey,
+    L1_NATIVE_LEDGER: nativeLedger,
     L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesis,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,

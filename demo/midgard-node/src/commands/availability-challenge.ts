@@ -7,7 +7,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   calculateMinLovelaceFromUTxO,
   Data,
-  Kupmios,
   Lucid,
   type LucidEvolution,
   paymentCredentialOf,
@@ -16,6 +15,10 @@ import {
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
 
+import {
+  makeNodeKupmios,
+  nativeLedgerSettingsFromEnv,
+} from "../services/native-ledger.js";
 import { availabilityDeploymentFromManifest } from "./availability-challenge-deployment.js";
 import { availabilityCommandCanonicalSource } from "./availability-challenge-source.js";
 import { readDeploymentManifestFile } from "./contract-deployment-info.js";
@@ -94,7 +97,12 @@ export const runAvailabilityChallengeCommand = async (
     network: manifest.network,
     env,
   });
-  const provider = new Kupmios(connection.kupoUrl, connection.ogmiosUrl);
+  const provider = makeNodeKupmios({
+    kupoUrl: connection.kupoUrl,
+    ogmiosUrl: connection.ogmiosUrl,
+    network: connection.network,
+    nativeLedger: nativeLedgerSettingsFromEnv(env),
+  });
   const lucid = await Lucid(provider, connection.network, {
     evaluator: createScalusEvaluator(),
   });

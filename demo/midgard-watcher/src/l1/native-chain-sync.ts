@@ -5,6 +5,8 @@ import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, normalize, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
+import { NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "@al-ft/midgard-core/native-reward-account";
+
 import {
   parseWatcherConfig,
   parseWatcherStrictJsonValue,
@@ -13,7 +15,7 @@ import {
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 
 export const WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION =
-  "midgard-watcher-native-chain-sync-v1" as const;
+  NATIVE_CHAIN_SYNC_SCHEMA_VERSION;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;

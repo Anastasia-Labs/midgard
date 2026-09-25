@@ -81,11 +81,18 @@ describe("onChainCoordinatorFromConfig", () => {
         ...l1ReadyConfig().l1SubmitterPreflight,
         autoFundKeySource: "private-key:funder",
       },
+      nativeLedger: {
+        authorityNodeId: "local-cardano-node",
+        socketPath: "/run/cardano/node.socket",
+        nodeConfigPath: "/etc/cardano/config.json",
+        binaryPath: "/opt/midgard/midgard-chain-sync",
+      },
     };
     const lucid = {} as LucidEvolution;
     const seen: {
       providerUrl?: string;
       network?: string;
+      nativeLedger?: unknown;
       selectLucid?: unknown;
       keySource?: unknown;
       preflightLucid?: unknown;
@@ -99,10 +106,11 @@ describe("onChainCoordinatorFromConfig", () => {
       fakeChainReader,
       undefined,
       {
-        lucidFromProviderUrl: async (providerUrl, network) => {
+        lucidFromProviderUrl: async (providerUrl, network, nativeLedger) => {
           calls.push("lucid");
           seen.providerUrl = providerUrl;
           seen.network = network;
+          seen.nativeLedger = nativeLedger;
           return { lucid, providerSource: "test" };
         },
         selectL1SubmitterWallet: async (selectLucid, keySource) => {
@@ -155,11 +163,13 @@ describe("onChainCoordinatorFromConfig", () => {
     expect({
       providerUrl: seen.providerUrl,
       network: seen.network,
+      nativeLedger: seen.nativeLedger,
       keySource: seen.keySource,
       referenceDeployment: seen.referenceDeployment,
     }).toEqual({
       providerUrl: config.cardanoProviderUrls[0],
       network: config.network,
+      nativeLedger: config.nativeLedger,
       keySource: config.l1SubmitterKeySource,
       referenceDeployment: config.midgardNodeDeployment,
     });

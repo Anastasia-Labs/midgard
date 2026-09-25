@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { isAbsolute, normalize } from "node:path";
 
 import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import {
@@ -97,6 +97,18 @@ export const l1SourceAuthorityDigest = (
     )
     .digest("hex");
 
+/**
+ * Local node ledger used for reward-account reads. Ogmios omits registered
+ * reward accounts that have no stake-pool delegation, so registration checks
+ * query the node's ledger through the native chain-sync helper instead.
+ */
+export type NativeLedgerConfig = {
+  readonly authorityNodeId: string;
+  readonly socketPath: string;
+  readonly nodeConfigPath: string;
+  readonly binaryPath: string;
+};
+
 export type CommitteeConfig = {
   readonly network: string;
   readonly deploymentManifestPath: string;
@@ -112,6 +124,8 @@ export type CommitteeConfig = {
   readonly midgardNodeDeployment: MidgardNodeDeployment;
   readonly l1Source: L1SourceConfig;
   readonly cardanoProviderUrls: readonly string[];
+  /** Absent when no local node ledger is configured; reward-account reads then fail closed. */
+  readonly nativeLedger?: NativeLedgerConfig;
   readonly finalityDepth: number;
   readonly daTransport: Libp2pDaTransportConfig;
   readonly libp2pPrivateKeySource?: string;
@@ -370,6 +384,7 @@ export const loadCommitteeConfig = async (
     cardanoProviderUrls,
   });
   const l1Source = parseL1SourceConfig(env, cardanoProviderUrls);
+  const nativeLedger = parseNativeLedgerConfig(env);
   const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
     index: member.signerIndex,
     vkey: member.daVkey,
@@ -441,6 +456,7 @@ export const loadCommitteeConfig = async (
     midgardNodeDeployment,
     l1Source,
     cardanoProviderUrls,
+    ...(nativeLedger === undefined ? {} : { nativeLedger }),
     finalityDepth: configuredFinalityDepth,
     daTransport: libp2pDaTransport,
     libp2pPrivateKeySource,
@@ -642,7 +658,7 @@ export const parseL1SourceConfig = (
       undefined
   ) {
     throw new Error(
-      "CARDANO_LOCAL_NODE_* configuration is forbidden in external_providers mode",
+      "CARDANO_LOCAL_NODE_AUTHORITY_ID, CARDANO_LOCAL_NODE_CHAIN_SYNC_URL and CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH are forbidden in external_providers mode",
     );
   }
   if (cardanoProviderUrls.length < 2) {
@@ -1269,6 +1285,63 @@ const availabilityJournalPath = (env: Env): string | undefined => {
     );
   }
   return path;
+};
+
+const NATIVE_LEDGER_PATH_SETTINGS = [
+  ["socketPath", "CARDANO_LOCAL_NODE_SOCKET_PATH"],
+  ["nodeConfigPath", "CARDANO_LOCAL_NODE_CONFIG_PATH"],
+  ["binaryPath", "CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH"],
+] as const;
+export const DEFAULT_NATIVE_LEDGER_AUTHORITY_ID = "local-cardano-node";
+const NATIVE_LEDGER_AUTHORITY_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
+
+/**
+ * The local node ledger settings are all-or-none and allowed in both source
+ * modes: the reward-account gap is in Ogmios, not in the source mode. Paths
+ * must be lexically canonical here; symlinks are refused when the authority is
+ * resolved against the filesystem.
+ */
+export const parseNativeLedgerConfig = (
+  env: Env,
+): NativeLedgerConfig | undefined => {
+  const values = NATIVE_LEDGER_PATH_SETTINGS.map(
+    ([field, name]) => [field, name, optionalNonEmpty(env[name])] as const,
+  );
+  const missing = values.filter(([, , value]) => value === undefined);
+  if (missing.length === values.length) {
+    return undefined;
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Local node ledger settings are all-or-none; missing ${missing.map(([, name]) => name).join(", ")}`,
+    );
+  }
+  for (const [, name, value] of values) {
+    if (
+      !isAbsolute(value!) ||
+      normalize(value!) !== value ||
+      (value !== "/" && value!.endsWith("/"))
+    ) {
+      throw new Error(`${name} must be an absolute canonical path`);
+    }
+  }
+  const authorityNodeId =
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_AUTHORITY_ID) ??
+    DEFAULT_NATIVE_LEDGER_AUTHORITY_ID;
+  if (!NATIVE_LEDGER_AUTHORITY_ID.test(authorityNodeId)) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_AUTHORITY_ID must be a native ledger authority id (lowercase letters, digits, '.', '_' or '-', at most 64 characters, alphanumeric at both ends) when the local node ledger is configured",
+    );
+  }
+  const [socketPath, nodeConfigPath, binaryPath] = values.map(
+    ([, , value]) => value!,
+  );
+  return {
+    authorityNodeId,
+    socketPath: socketPath!,
+    nodeConfigPath: nodeConfigPath!,
+    binaryPath: binaryPath!,
+  };
 };
 
 // @midgard-no-http-da-transport:start

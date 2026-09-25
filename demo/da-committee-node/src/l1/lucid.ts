@@ -1,10 +1,11 @@
 import {
-  Blockfrost,
-  Kupmios,
-  Lucid,
-  type LucidEvolution,
-} from "@lucid-evolution/lucid";
+  nativeLedgerAuthoritySource,
+  NativeLedgerKupmios,
+} from "@al-ft/midgard-core/native-reward-account";
+import { Blockfrost, Lucid, type LucidEvolution } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
+
+import type { NativeLedgerConfig } from "../config.js";
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
 
@@ -12,9 +13,17 @@ const lucidOptions = {
   evaluator: createScalusEvaluator(),
 };
 
+export const NATIVE_LEDGER_QUERY_TIMEOUT_MS = 30_000;
+
+/**
+ * Kupmios reward-account state comes from the local node ledger, because
+ * Ogmios omits registered accounts without a stake-pool delegation. Without
+ * `nativeLedger` the Kupmios provider refuses reward-account reads.
+ */
 export const lucidFromProviderUrl = async (
   url: string,
   network: string,
+  nativeLedger: NativeLedgerConfig | undefined,
 ): Promise<{
   readonly lucid: LucidEvolution;
   readonly providerSource: string;
@@ -32,10 +41,24 @@ export const lucidFromProviderUrl = async (
   }
   if (url.startsWith("kupmios:")) {
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
+    const cardanoNetwork = normalizeNetwork(network);
     return {
       lucid: await Lucid(
-        new Kupmios(kupoUrl, ogmiosUrl, headers),
-        normalizeNetwork(network),
+        new NativeLedgerKupmios(
+          kupoUrl,
+          ogmiosUrl,
+          nativeLedgerAuthoritySource(
+            nativeLedger === undefined
+              ? undefined
+              : {
+                  ...nativeLedger,
+                  network: cardanoNetwork,
+                  timeoutMs: NATIVE_LEDGER_QUERY_TIMEOUT_MS,
+                },
+          ),
+          headers,
+        ),
+        cardanoNetwork,
         lucidOptions,
       ),
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,

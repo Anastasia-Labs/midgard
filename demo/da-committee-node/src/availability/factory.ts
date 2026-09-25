@@ -72,6 +72,7 @@ export const availabilityResponderFromConfig = async (
   const { lucid } = await deps.lucidFromProviderUrl(
     providerUrl,
     config.network,
+    config.nativeLedger,
   );
   await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);
   const actor = paymentCredentialOf(await lucid.wallet().address());

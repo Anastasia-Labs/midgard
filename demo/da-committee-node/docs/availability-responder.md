@@ -27,6 +27,22 @@ plain ADA collateral in the responder wallet. Publication, settlement and close
 fees come from the challenger's protected on-chain fee shares. The responder
 does not automatically fund itself from the operator wallet.
 
+Withdrawal registrations, for both the responder and the attestation submitter,
+are read from the local node ledger rather than from Ogmios, which omits
+registered reward accounts that have no stake-pool delegation. With a `kupmios:`
+provider, set all three of these absolute paths, or none:
+
+```sh
+CARDANO_LOCAL_NODE_SOCKET_PATH=/run/cardano/node.socket
+CARDANO_LOCAL_NODE_CONFIG_PATH=/etc/cardano/config.json
+CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH=/opt/midgard/midgard-chain-sync
+```
+
+Build the helper with `pnpm --dir demo/midgard-watcher run native:build`. The
+node configuration's Shelley genesis must match the configured network. The
+query uses `CARDANO_LOCAL_NODE_AUTHORITY_ID` when set, otherwise
+`local-cardano-node`. Without these settings, registration checks fail closed.
+
 `--once` executes one responder cycle. The normal service continues on each
 poll. The `availability_responder` event reports pending, included, confirmed,
 unavailable or failed work. Canonically included transactions allow the next

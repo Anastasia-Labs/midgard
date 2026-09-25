@@ -11,6 +11,7 @@ import { providerRouteSummary } from "../provider-diagnostics.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
 import { synchronizePublicationIndexer } from "../transactions/reference-publication-provider.js";
 import { ConfigError, NodeConfig } from "./config.js";
+import { makeNodeKupmios } from "./native-ledger.js";
 
 /**
  * Builds the Lucid service bundle used by the node, including reference-script
@@ -106,10 +107,12 @@ const makeLucid: Effect.Effect<
   );
   const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () => {
-      const kupmiosProvider = new LE.Kupmios(
-        nodeConfig.L1_KUPO_KEY,
-        nodeConfig.L1_OGMIOS_KEY,
-      );
+      const kupmiosProvider = makeNodeKupmios({
+        kupoUrl: nodeConfig.L1_KUPO_KEY,
+        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+        network: nodeConfig.NETWORK,
+        nativeLedger: nodeConfig.L1_NATIVE_LEDGER,
+      });
       return LE.Lucid(
         kupmiosProvider,
         nodeConfig.NETWORK,
