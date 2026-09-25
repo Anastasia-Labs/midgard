@@ -1838,25 +1838,49 @@ export const kupmiosCurrentChainPointResolver =
   async (): Promise<CanonicalChainPoint> =>
     alignedKupmiosTip(network, kupoUrl, ogmiosUrl, fetch);
 
+/**
+ * Kupo indexes each block shortly after the node adopts it, so one read of
+ * both tips can straddle a block arrival. Re-read briefly until they agree;
+ * surfaces that still disagree after the window are not following one chain.
+ */
+export const KUPMIOS_TIP_ALIGNMENT_ATTEMPTS = 8;
+export const KUPMIOS_TIP_ALIGNMENT_RETRY_MS = 250;
+
 const alignedKupmiosTip = async (
   network: string,
   kupoUrl: string,
   ogmiosUrl: string,
   fetchFn: typeof fetch,
 ): Promise<CanonicalChainPoint> => {
-  const [kupoPoint, ogmiosTip] = await Promise.all([
-    fetchKupoCheckpoint(kupoUrl, fetchFn),
-    requestOgmiosTip(ogmiosUrl),
-  ]);
-  assertNetworkMagic(network, ogmiosTip.networkMagic, "Ogmios");
-  if (
-    kupoPoint.slot !== ogmiosTip.slot ||
-    kupoPoint.blockHash !== ogmiosTip.blockHash
-  ) {
-    throw new Error(
-      `Kupmios query surfaces are not aligned: Kupo=${kupoPoint.slot.toString()}:${kupoPoint.blockHash}, Ogmios=${ogmiosTip.slot.toString()}:${ogmiosTip.blockHash}`,
+  for (let attempt = 1; ; attempt += 1) {
+    const [kupoPoint, ogmiosTip] = await Promise.all([
+      fetchKupoCheckpoint(kupoUrl, fetchFn),
+      requestOgmiosTip(ogmiosUrl),
+    ]);
+    assertNetworkMagic(network, ogmiosTip.networkMagic, "Ogmios");
+    if (
+      kupoPoint.slot === ogmiosTip.slot &&
+      kupoPoint.blockHash === ogmiosTip.blockHash
+    ) {
+      return alignedTipPoint(network, kupoUrl, ogmiosUrl, ogmiosTip);
+    }
+    if (attempt >= KUPMIOS_TIP_ALIGNMENT_ATTEMPTS) {
+      throw new Error(
+        `Kupmios query surfaces are not aligned after ${attempt.toString()} reads: Kupo=${kupoPoint.slot.toString()}:${kupoPoint.blockHash}, Ogmios=${ogmiosTip.slot.toString()}:${ogmiosTip.blockHash}`,
+      );
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, KUPMIOS_TIP_ALIGNMENT_RETRY_MS),
     );
   }
+};
+
+const alignedTipPoint = (
+  network: string,
+  kupoUrl: string,
+  ogmiosUrl: string,
+  ogmiosTip: Awaited<ReturnType<typeof requestOgmiosTip>>,
+): CanonicalChainPoint => {
   return {
     network,
     slot: ogmiosTip.slot,

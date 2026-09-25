@@ -12,7 +12,9 @@ import {
   fetchKupoCheckpoint,
   FileChainSyncConsumerCursorStore,
   FileChainSyncCursorStore,
+  KUPMIOS_TIP_ALIGNMENT_ATTEMPTS,
   kupmiosChainPointResolver,
+  kupmiosCurrentChainPointResolver,
   l1AuthorityProviderSource,
   LocalNodeChainAuthority,
   LocalNodeStateQueueProvider,
@@ -1017,6 +1019,80 @@ describe("L1 provider adapters", () => {
           new Response("kupo_most_recent_checkpoint 42\n")) as typeof fetch,
       ),
     ).rejects.toThrow(/checkpoint ETag/u);
+  });
+
+  describe("Kupmios current tip", () => {
+    const ogmiosTip = { slot: 101, id: "44".repeat(32), height: 5 };
+    class TipWebSocket {
+      onopen: ((event: unknown) => void) | null = null;
+      onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onclose: ((event: unknown) => void) | null = null;
+
+      constructor(_url: string) {
+        queueMicrotask(() => this.onopen?.({}));
+      }
+
+      send(raw: string): void {
+        const request = JSON.parse(raw) as {
+          readonly id: string;
+          readonly method: string;
+        };
+        const result =
+          request.method === "queryNetwork/tip"
+            ? ogmiosTip
+            : { networkMagic: 2 };
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: JSON.stringify({ jsonrpc: "2.0", id: request.id, result }),
+          }),
+        );
+      }
+
+      close(): void {}
+    }
+    /** Kupo answers the given checkpoints in turn, then repeats the last. */
+    const kupoCheckpoints = (...slots: readonly number[]) => {
+      let call = 0;
+      return vi.fn(async () => {
+        const slot = slots[Math.min(call++, slots.length - 1)]!;
+        const hash = slot === ogmiosTip.slot ? ogmiosTip.id : "33".repeat(32);
+        return new Response(`kupo_most_recent_checkpoint ${slot}\n`, {
+          headers: { etag: `"${hash}"` },
+        });
+      });
+    };
+    const readTip = async (fetchFn: ReturnType<typeof kupoCheckpoints>) => {
+      vi.stubGlobal("WebSocket", TipWebSocket);
+      vi.stubGlobal("fetch", fetchFn);
+      try {
+        return await kupmiosCurrentChainPointResolver(
+          "Preview",
+          "http://kupo.local",
+          "ws://ogmios.local",
+        )();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    };
+
+    it("re-reads while Kupo catches up to the Ogmios tip", async () => {
+      const fetchFn = kupoCheckpoints(100, 100, 101);
+      await expect(readTip(fetchFn)).resolves.toMatchObject({
+        slot: 101,
+        blockHash: "44".repeat(32),
+        blockHeight: 5,
+      });
+      expect(fetchFn).toHaveBeenCalledTimes(3);
+    });
+
+    it("refuses surfaces that stay on different chain points", async () => {
+      const fetchFn = kupoCheckpoints(100);
+      await expect(readTip(fetchFn)).rejects.toThrow(
+        /not aligned after \d+ reads: Kupo=100:3{64}, Ogmios=101:4{64}/u,
+      );
+      expect(fetchFn).toHaveBeenCalledTimes(KUPMIOS_TIP_ALIGNMENT_ATTEMPTS);
+    });
   });
 
   it("checks Custom network magic against the Kupmios Ogmios authority", async () => {
