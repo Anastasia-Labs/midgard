@@ -10,12 +10,24 @@ import { isUnknownArray, prototypeOf } from "./narrowing.js";
  * implementation with a `subject` label keeps the messages they had and makes
  * the encoding itself reviewable in one place.
  *
- * Canonical means: object keys sorted by {@link String.localeCompare}, numbers
+ * Canonical means: object keys sorted by {@link compareCanonicalJsonKeys}, numbers
  * restricted to safe integers, arrays required to be dense, objects required to
  * be plain records with string keys only. Anything else throws rather than
  * silently hashing to something a reader would not predict — `undefined`
  * members and symbol keys are exactly the values `JSON.stringify` would drop.
  */
+
+/**
+ * Orders object keys for every canonical encoding whose bytes are hashed.
+ *
+ * The collation locale is pinned to `"en"`: a bare `localeCompare` follows the
+ * host locale, so the same record could hash differently on two machines
+ * (`["sz", "st"]` sorts one way under `en` and the other under `et`). `"en"`
+ * is the order every existing digest was produced with, so pinning it keeps
+ * those digests byte-identical.
+ */
+export const compareCanonicalJsonKeys = (left: string, right: string): number =>
+  left.localeCompare(right, "en");
 
 /** A value admitted into a canonically-encoded record. */
 export type CanonicalJsonValue =
@@ -65,7 +77,7 @@ export const canonicalJsonValue = (
   }
   return Object.fromEntries(
     Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => compareCanonicalJsonKeys(left, right))
       .map(([key, child]): readonly [string, CanonicalJsonValue] => [
         key,
         canonicalJsonValue(child, subject),

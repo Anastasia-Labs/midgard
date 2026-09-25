@@ -1,3 +1,5 @@
+import { compareCanonicalJsonKeys } from "@al-ft/midgard-core/canonical-json";
+
 /**
  * Key-sorted JSON for comparing and digesting L1 observations.
  *
@@ -18,7 +20,7 @@ const canonicalValue = (value: unknown): unknown => {
   if (typeof value === "object" && value !== null) {
     return Object.fromEntries(
       Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => compareCanonicalJsonKeys(left, right))
         .map(([key, entry]) => [key, canonicalValue(entry)]),
     );
   }

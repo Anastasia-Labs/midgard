@@ -1,3 +1,4 @@
+import { compareCanonicalJsonKeys } from "@al-ft/midgard-core/canonical-json";
 import { CML, Data, toHex } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 
@@ -86,7 +87,7 @@ const stableJson = (value: Json): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   return `{${Object.entries(value)
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => compareCanonicalJsonKeys(left, right))
     .map(([key, member]) => `${JSON.stringify(key)}:${stableJson(member)}`)
     .join(",")}}`;
 };
