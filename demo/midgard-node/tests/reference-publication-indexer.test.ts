@@ -100,3 +100,43 @@ it("follows a replacement tip when the abandoned checkpoint was never indexed", 
     await synchronizePublicationIndexer("http://node", "http://indexer"),
   ).toBe(99);
 });
+
+it.each([
+  ["a timed-out read", new DOMException("aborted", "TimeoutError")],
+  ["a dropped connection", new TypeError("fetch failed")],
+])(
+  "retries %s within the barrier instead of abandoning publication",
+  async (_label, failure) => {
+    const fetch = vi
+      .fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce(response(tip))
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce(
+        response([{ slot_no: 100, header_hash: blockHash }]),
+      )
+      .mockResolvedValueOnce(response(tip));
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await synchronizePublicationIndexer("http://node", "http://indexer"),
+    ).toBe(100);
+    expect(fetch).toHaveBeenCalledTimes(5);
+  },
+);
+
+it("gives up on a persistently unreachable node at the barrier deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("aborted", "TimeoutError")),
+    );
+    const barrier = expect(
+      synchronizePublicationIndexer("http://node", "http://indexer"),
+    ).rejects.toThrow("aborted");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await barrier;
+  } finally {
+    vi.useRealTimers();
+  }
+});
