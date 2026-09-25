@@ -24,6 +24,7 @@ import type {
   ObservedStateQueueNode,
   ObservedStateQueueSnapshot,
 } from "../domain.js";
+import { canonicalJson } from "./canonical-json.js";
 import { createLocalKupmiosStateQueueReplayProvider } from "./state-queue-replay-provider.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
@@ -2017,26 +2018,6 @@ const mergeChainPoints = (points: readonly ChainPoint[]): ChainPoint => {
     depth: allDepthsKnown ? Math.min(...depths) : undefined,
     finalized,
   };
-};
-
-const canonicalJson = (value: unknown): string =>
-  JSON.stringify(canonicalValue(value));
-
-const canonicalValue = (value: unknown): unknown => {
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(canonicalValue);
-  }
-  if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalValue(entry)]),
-    );
-  }
-  return value;
 };
 
 type OgmiosChainSyncRequest = (
