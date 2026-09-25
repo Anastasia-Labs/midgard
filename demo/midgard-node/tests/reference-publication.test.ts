@@ -29,12 +29,28 @@ it("refuses completion when confirmed reference outputs disappear from the canon
   };
   await expect(
     Effect.runPromise(
-      ensureReferenceScriptTargetsProgram(lucid, "test", targets, authPolicy),
+      ensureReferenceScriptTargetsProgram(
+        lucid,
+        "test",
+        targets,
+        authPolicy,
+        lucid,
+        undefined,
+        1,
+        new Set(),
+        {
+          mode: "serial",
+          synchronize: async () => provider.slot,
+          wait: async () => {
+            provider.awaitBlock(1);
+          },
+        },
+      ),
     ),
   ).rejects.toThrow(/reference|publication/i);
 });
 
-it("submits children from exact accepted parent change before any reference is indexed", async () => {
+it("chains by default from exact accepted parent change before any reference is indexed", async () => {
   const account = generateEmulatorAccount({ lovelace: 1_000_000_000n });
   const provider = new Emulator([account]);
   const lucid = await Lucid(provider, "Custom");
@@ -43,9 +59,13 @@ it("submits children from exact accepted parent change before any reference is i
   const targets = Object.keys(SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)
     .slice(0, 28)
     .map((name) => ({ name, script: authPolicy.mintingScript }));
+  const awaitBlock = provider.awaitBlock.bind(provider);
+  provider.awaitBlock = (height = 1) => {
+    awaitBlock(height);
+    sinceBlock = 0;
+  };
   provider.awaitTx = async () => {
     provider.awaitBlock(1);
-    sinceBlock = 0;
     return true;
   };
   let submitted = 0;
@@ -59,24 +79,7 @@ it("submits children from exact accepted parent change before any reference is i
     return hash;
   };
   const result = await Effect.runPromise(
-    ensureReferenceScriptTargetsProgram(
-      lucid,
-      "test",
-      targets,
-      authPolicy,
-      lucid,
-      undefined,
-      1,
-      new Set(),
-      {
-        mode: "chained",
-        synchronize: async () => provider.slot,
-        wait: async () => {
-          provider.awaitBlock(1);
-          sinceBlock = 0;
-        },
-      },
-    ),
+    ensureReferenceScriptTargetsProgram(lucid, "test", targets, authPolicy),
   );
   expect(result.map(({ name }) => name)).toEqual(
     targets.map(({ name }) => name),

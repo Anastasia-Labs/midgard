@@ -1,18 +1,19 @@
 # Reference publication
 
 Reference deployment, bootstrap, repair and initialization share
-`ensureReferenceScriptTargetsProgram`. `REFERENCE_SCRIPT_PUBLICATION_MODE=serial`
-is the default. Set it to `chained` explicitly to enable two funding lanes with
-at most three unconfirmed transactions per lane. Both modes authenticate the
-entire requested roster through the canonical provider before returning.
+`ensureReferenceScriptTargetsProgram`. Publication uses two funding lanes with
+at most three unconfirmed transactions per lane. There is no runtime mode
+setting; serial publication remains available only as an explicit test and
+benchmark comparison. The publisher authenticates the entire requested roster
+through the canonical provider before returning.
 Initialization invokes this gate again; a finalized manifest is not permanent
 L1 confirmation evidence.
 
 The total unconfirmed signed-byte budget is 65,536 bytes. This is independent
 of the per-lane count bound. Transactions still start with four targets and
 split only when the existing SDK builder reports an oversized transaction.
-The byte budget is conservative and must be tested against the actual local
-submission stack before enabling chaining in an acceptance campaign.
+The byte budget is conservative; the local-stack measurements below verify
+chaining against the actual submission stack.
 
 The publisher allocates disjoint confirmed plain wallet inputs. If those inputs
 cannot fund both lanes independently, it confirms a funding split. Only exact
@@ -175,7 +176,7 @@ include attestation-timeout observations and historical capture. See
 This blocks a readiness claim and the
 conditional Preprod pilot. No gates or authority deadlines were relaxed.
 
-The full-roster initialization emulator fixture explicitly enables chaining.
+The full-roster initialization emulator fixture uses the default chained publisher.
 Serial publication of that roster crosses the unchanged authority safety
 reserve in emulator chain time and is correctly refused. Smaller serial
 equivalence and real-stack serial publication remain covered.
@@ -198,7 +199,7 @@ Two earlier emulator attempts were interrupted during repeated script hashing.
 The content-hash cache and fresh canonical role index removed that unnecessary
 work; these interrupted runs are not counted as passing evidence. The serial
 full-roster deadline failure was retained as a diagnostic and the integration
-fixture now explicitly tests chaining without changing deadlines.
+fixture now tests default chaining without changing deadlines.
 
 The initial checks used the shell's Node 24.13.1. After noticing the watcher
 engine constraint and `demo/.nvmrc`, the required gate sequence and workspace
@@ -253,3 +254,15 @@ blocker. Final focused output is `/tmp/issue-682-node22-focused.log`, with
 formatting and lint output in `/tmp/issue-682-node22-format.log` and
 `/tmp/issue-682-node22-lint.log`. Standards and Spec reviews have no remaining
 implementation findings.
+
+Default-publication follow-up under Node 22.22.2: the runtime mode setting was
+removed, and the initialization fixture now exercises chaining without an
+explicit override. All 13 publication tests and all 65 node emulator tests
+passed. Workspace typechecking, the node build, changed-file ESLint and
+Prettier checks passed; Standards and Spec reviews reported no findings.
+Evidence is in `/tmp/issue-682-default-publication-green.log`,
+`/tmp/issue-682-default-emulator.log` and `/tmp/issue-682-default-build.log`.
+The full `pnpm test` rerun stopped in the watcher prelude with 45 failed,
+1,446 passed and nine skipped tests, plus two unhandled errors; subsequent
+lanes did not run. See `/tmp/issue-682-default-full-suite.log`. The workspace
+suite remains red.

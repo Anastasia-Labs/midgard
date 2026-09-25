@@ -1,5 +1,5 @@
 import * as LE from "@lucid-evolution/lucid";
-import { Config, Effect, Schedule } from "effect";
+import { Effect, Schedule } from "effect";
 
 import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../local-ledger-slot.js";
 import {
@@ -203,23 +203,8 @@ const makeLucid: Effect.Effect<
       }),
     );
   }
-  const publicationSettings = yield* Config.all({
-    mode: Config.literal(
-      "serial",
-      "chained",
-    )("REFERENCE_SCRIPT_PUBLICATION_MODE").pipe(Config.withDefault("serial")),
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ConfigError({
-          message: "Invalid reference publication settings",
-          cause,
-          fieldsAndValues: [],
-        }),
-    ),
-  );
   configureReferencePublication(referenceScriptsApi, {
-    ...publicationSettings,
+    mode: "chained",
     synchronize: () =>
       synchronizePublicationIndexer(
         nodeConfig.L1_OGMIOS_KEY,

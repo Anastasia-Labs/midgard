@@ -44,7 +44,7 @@ export const referencePublicationOptions = (
   const provider = lucid.config().provider;
   if (provider instanceof Emulator)
     return {
-      mode: "serial",
+      mode: "chained",
       synchronize: async () => provider.slot,
       wait: async () => {
         provider.awaitBlock(1);
