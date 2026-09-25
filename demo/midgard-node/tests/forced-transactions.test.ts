@@ -257,7 +257,7 @@ describe("V1 forced transaction material", () => {
     ]);
 
     expect(decoded.entries).toEqual([publication!.entry]);
-    expect(decoded.malformedCount).toBe(2);
+    expect(decoded.ignoredCount).toBe(2);
   });
 
   it("keeps the submitted source and identity identical across operator verdicts", async () => {

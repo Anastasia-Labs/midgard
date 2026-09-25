@@ -829,9 +829,6 @@ describe.skipIf(!dbEnabled)(
         "RawUtxo",
       ]);
 
-      // An address the emulator has never funded, so `utxosAt` on it is empty.
-      const unusedAddress = generateEmulatorAccount({ lovelace: 0n }).address;
-
       const nodeConfig = await Effect.runPromise(
         Effect.gen(function* () {
           const base = yield* NodeConfig;
@@ -849,18 +846,11 @@ describe.skipIf(!dbEnabled)(
           Effect.provideService(MidgardContracts, {
             ...harness.contracts,
             // Every validator in the always-succeeds blueprint compiles to the
-            // *same* trivial script and therefore to one shared address, so in
-            // this fixture — and only in this fixture — the CEK program-material
-            // address is also the tx-order address. Left alone, the reconciler
-            // would read the order's own UTxO as program material and refuse the
-            // whole pass as malformed before reaching the carriage read. A real
-            // deployment has two distinct scripts and two distinct addresses;
-            // naming an unfunded one here restores that separation without
-            // touching anything the read authenticates.
-            cekProgramMaterial: {
-              ...harness.contracts.cekProgramMaterial,
-              spendingScriptAddress: unusedAddress,
-            },
+            // same trivial script, so here the order's own UTxO also sits under
+            // the CEK program-material credential. That is the public-network
+            // shape too: the material script is a plain always-fails validator
+            // whose credential anyone can pay to. The pass must skip the
+            // non-material output and still ingest the order.
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           } as never),
           Effect.provideService(

@@ -12,7 +12,6 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
-import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
 import type { MidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -20,9 +19,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  isDeferrablePublishedProgramMaterialError,
   publishedProgramMaterialEntries,
-  publishedProgramMaterialSnapshotError,
   reconstructTxOrderMaterial,
 } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 
@@ -413,7 +410,7 @@ describe("V1 CEK program-material publication ingestion", () => {
       datum,
     }) as UTxO;
 
-  it("accepts one exact typed hash and rejects wrong roots, kinds, and encodings", () => {
+  it("accepts one exact typed hash and skips wrong roots, kinds, and encodings", () => {
     const preimage = encodeMidgardCekBlobChunk(Buffer.from("material"));
     const root = hashMidgardCekProgramMaterialPreimage("blobChunk", preimage);
     const datum: SDK.CekProgramMaterialDatum = {
@@ -424,8 +421,7 @@ describe("V1 CEK program-material publication ingestion", () => {
     const datumCbor = Data.to(datum, SDK.CekProgramMaterialDatum);
 
     const exact = publishedProgramMaterialEntries([materialUtxo(datumCbor)]);
-    expect(exact.malformedCount).toBe(0);
-    expect(exact.sourceStatus).toBe("clean");
+    expect(exact.ignoredCount).toBe(0);
     expect(exact.entries).toEqual([{ kind: "blobChunk", root, preimage }]);
 
     const wrongRoot = Data.to(
@@ -452,55 +448,33 @@ describe("V1 CEK program-material publication ingestion", () => {
       materialUtxo(noncanonicalKind, 4),
     ]);
     expect(hostile.entries).toEqual([]);
-    expect(hostile.malformedCount).toBe(4);
-    expect(hostile.sourceStatus).toBe("malformed");
+    expect(hostile.ignoredCount).toBe(4);
   });
 
-  it("defers only a typed missing root from a clean publication snapshot", () => {
-    const missing = new MidgardCekProgramMaterialMissingRootError(
-      Buffer.alloc(32, 0x44),
-    );
-    const clean = {
-      entries: [],
-      malformedCount: 0,
-      sourceStatus: "clean" as const,
-    };
-    const malformed = {
-      entries: [],
-      malformedCount: 1,
-      sourceStatus: "malformed" as const,
-    };
-
-    expect(isDeferrablePublishedProgramMaterialError(clean, missing)).toBe(
-      true,
-    );
-    expect(isDeferrablePublishedProgramMaterialError(malformed, missing)).toBe(
-      false,
-    );
-    expect(
-      isDeferrablePublishedProgramMaterialError(
-        { ...clean, malformedCount: 1 },
-        missing,
-      ),
-    ).toBe(false);
-    expect(
-      isDeferrablePublishedProgramMaterialError(clean, new Error("mismatch")),
-    ).toBe(false);
-    expect(
-      publishedProgramMaterialSnapshotError(malformed, "addr_test1source"),
-    ).toMatchObject({
-      _tag: "LucidError",
-      cause: {
-        sourceAddress: "addr_test1source",
-        sourceStatus: "malformed",
-        malformedCount: 1,
+  it("does not let foreign outputs under the shared credential hide valid material", () => {
+    const preimage = encodeMidgardCekBlobChunk(Buffer.from("material"));
+    const root = hashMidgardCekProgramMaterialPreimage("blobChunk", preimage);
+    const datumCbor = Data.to(
+      {
+        kind: 3n,
+        root: Buffer.from(root).toString("hex"),
+        preimage: preimage.toString("hex"),
       },
-    });
-    expect(
-      publishedProgramMaterialSnapshotError(
-        { ...clean, malformedCount: 1 },
-        "addr_test1source",
-      ),
-    ).toBeInstanceOf(SDK.LucidError);
+      SDK.CekProgramMaterialDatum,
+    );
+    // What the always-fails credential holds on a public network: bare Ada,
+    // reference-script parking, and other protocols' datums.
+    const noDatum = { ...materialUtxo(datumCbor, 1), datum: undefined };
+    const foreignDatum = materialUtxo("d87980", 2);
+    const notCbor = materialUtxo("ff", 3);
+
+    const snapshot = publishedProgramMaterialEntries([
+      noDatum,
+      materialUtxo(datumCbor, 0),
+      foreignDatum,
+      notCbor,
+    ]);
+    expect(snapshot.entries).toEqual([{ kind: "blobChunk", root, preimage }]);
+    expect(snapshot.ignoredCount).toBe(3);
   });
 });

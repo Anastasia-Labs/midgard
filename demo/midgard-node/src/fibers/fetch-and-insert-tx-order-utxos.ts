@@ -107,35 +107,20 @@ const fetchTxOrderUTxOs = (
 
 type TxOrderPayload = SDK.TxOrderUTxOV1["datum"]["event"]["tx"];
 
+/**
+ * The valid program material visible under the material script's credential.
+ *
+ * That script is a plain always-fails validator, so its credential is shared
+ * with every other deployment of the same code and anyone can pay to it. An
+ * output there that is not a self-authenticating entry carries no information
+ * (a root is the typed hash of its preimage) and the on-chain resolver never
+ * reads an output a proof does not select, so such outputs are counted and
+ * skipped rather than allowed to stop ingestion.
+ */
 export type PublishedProgramMaterialSnapshot = {
   readonly entries: readonly MidgardCekProgramMaterialEntry[];
-  readonly malformedCount: number;
-  readonly sourceStatus: "clean" | "malformed";
+  readonly ignoredCount: number;
 };
-
-export const isDeferrablePublishedProgramMaterialError = (
-  snapshot: PublishedProgramMaterialSnapshot,
-  cause: unknown,
-): cause is MidgardCekProgramMaterialMissingRootError =>
-  snapshot.malformedCount === 0 &&
-  snapshot.sourceStatus === "clean" &&
-  cause instanceof MidgardCekProgramMaterialMissingRootError;
-
-export const publishedProgramMaterialSnapshotError = (
-  snapshot: PublishedProgramMaterialSnapshot,
-  sourceAddress: string,
-): SDK.LucidError | undefined =>
-  snapshot.malformedCount !== 0 || snapshot.sourceStatus === "malformed"
-    ? new SDK.LucidError({
-        message:
-          "V1 L1 CEK program-material publication contains malformed UTxOs",
-        cause: {
-          sourceAddress,
-          sourceStatus: snapshot.sourceStatus,
-          malformedCount: snapshot.malformedCount,
-        },
-      })
-    : undefined;
 
 /**
  * How many of §2.5's nine slots a forced order's payload commits material to.
@@ -417,24 +402,11 @@ const txOrderUTxOToEntry = (
       ).pipe(
         Effect.catchIf(
           (cause): cause is MidgardCekProgramMaterialMissingRootError =>
-            isDeferrablePublishedProgramMaterialError(
-              publishedProgramMaterial,
-              cause,
-            ),
+            cause instanceof MidgardCekProgramMaterialMissingRootError,
           () =>
             Effect.logWarning(
               `V1 tx-order ${payload.tx_id} is visible before its complete L1 CEK material bundle`,
             ),
-        ),
-        Effect.mapError((cause) =>
-          cause instanceof MidgardCekProgramMaterialMissingRootError
-            ? new DatabaseError({
-                table: CekProgramMaterialDB.entryTableName,
-                message:
-                  "Unexpected missing CEK material root outside a clean publication snapshot",
-                cause,
-              })
-            : cause,
         ),
       );
     }
@@ -524,7 +496,7 @@ export const publishedProgramMaterialEntries = (
   utxos: readonly UTxO[],
 ): PublishedProgramMaterialSnapshot => {
   const entries: MidgardCekProgramMaterialEntry[] = [];
-  let malformedCount = 0;
+  let ignoredCount = 0;
   for (const utxo of utxos) {
     try {
       if (utxo.datum == null) {
@@ -546,14 +518,10 @@ export const publishedProgramMaterialEntries = (
         ),
       );
     } catch {
-      malformedCount += 1;
+      ignoredCount += 1;
     }
   }
-  return {
-    entries: Object.freeze(entries),
-    malformedCount,
-    sourceStatus: malformedCount === 0 ? "clean" : "malformed",
-  };
+  return { entries: Object.freeze(entries), ignoredCount };
 };
 
 export const reconcileVisibleTxOrderUTxOs = (
@@ -585,24 +553,25 @@ export const reconcileVisibleTxOrderUTxOs = (
       ...(yield* fetchTxOrderUTxOs(lucid, consensusProfile, config)),
     ];
     const { cekProgramMaterial, txOrder } = yield* MidgardContracts;
-    const materialEntries = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(cekProgramMaterial.spendingScriptAddress),
+    // By payment credential, as the on-chain resolver matches: material
+    // published under any stake part is as valid there as at the enterprise
+    // address.
+    const material = yield* Effect.tryPromise({
+      try: () =>
+        lucid.utxosAt({
+          type: "Script",
+          hash: cekProgramMaterial.spendingScriptHash,
+        }),
       catch: (cause) =>
         new SDK.LucidError({
           message: "Failed to resolve V1 L1 CEK program material",
           cause,
         }),
     }).pipe(Effect.map(publishedProgramMaterialEntries));
-    const material = {
-      ...materialEntries,
-      sourceAddress: cekProgramMaterial.spendingScriptAddress,
-    };
-    const malformedMaterialError = publishedProgramMaterialSnapshotError(
-      material,
-      material.sourceAddress,
-    );
-    if (malformedMaterialError !== undefined) {
-      return yield* Effect.fail(malformedMaterialError);
+    if (material.ignoredCount > 0) {
+      yield* Effect.logDebug(
+        `Ignored ${material.ignoredCount.toString()} non-material output(s) under the CEK program-material credential`,
+      );
     }
     if (material.entries.length > 0) {
       yield* CekProgramMaterialDB.persistVerifiedBundles(

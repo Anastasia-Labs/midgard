@@ -86,8 +86,7 @@ describe("immutable CEK material publication", () => {
       }),
     );
     expect(publishedProgramMaterialEntries(outputs)).toMatchObject({
-      malformedCount: 0,
-      sourceStatus: "clean",
+      ignoredCount: 0,
       entries: [entry],
     });
   }, 60_000);
