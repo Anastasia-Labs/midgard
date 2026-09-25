@@ -159,31 +159,6 @@ export const verifyDaSignatureWitness = ({
   );
 };
 
-export const verifyEd25519Signature = ({
-  publicKeyHex,
-  message,
-  signatureHex,
-}: {
-  readonly publicKeyHex: string;
-  readonly message: Buffer;
-  readonly signatureHex: string;
-}): boolean => {
-  const publicKey = createPublicKey({
-    key: Buffer.concat([
-      ED25519_SPKI_PUBLIC_PREFIX,
-      hexToBytes(publicKeyHex, "public key", 32),
-    ]),
-    format: "der",
-    type: "spki",
-  });
-  return verify(
-    null,
-    message,
-    publicKey,
-    hexToBytes(signatureHex, "Ed25519 signature", 64),
-  );
-};
-
 const tryLoadCardanoDaSigner = async (
   source: string,
 ): Promise<DaSigner | undefined> => {
