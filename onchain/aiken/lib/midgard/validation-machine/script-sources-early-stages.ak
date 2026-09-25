@@ -32,8 +32,7 @@ use midgard/validation_machine/witness.{
   decode_frontier_peaks, empty_mint_fold_control,
   empty_observer_purpose_scan_control, empty_receive_purpose_scan_control,
   empty_resolution_schedule_hash, empty_script_discovery_control,
-  encode_inline_source_hash_control_v1, encode_mint_fold_control,
-  encode_observer_purpose_scan_control, exact_script_sources_control,
+  encode_inline_source_hash_control_v1, exact_script_sources_control,
   initial_resolution_accumulator, inline_source_hash_control_from_cbor,
   script_sources_control_from_witness,
   script_sources_stage_zero_control_from_witness,
@@ -200,47 +199,6 @@ fn script_sources_stage_zero_finish_successor_is_exact(
           witness.work_witness_cbor,
         ),
       )
-  script_sources_stage_zero_successor_work_is_exact(
-    pre,
-    witness,
-    next_work_witness_cbor,
-  )
-}
-
-fn script_sources_stage_zero_begin_successor_is_exact(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  control: ScriptSourcesControlV1,
-  source_total_count: Int,
-  pending_source_cbor: ByteArray,
-) -> Bool {
-  let encoded_observer_scan = encode_observer_purpose_scan_control(
-    control.observer_scan,
-  )
-  let old_suffix = cbor.serialise(control.source_total_count)
-    |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
-    |> bytearray.concat(encoded_observer_scan)
-    |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
-    |> bytearray.concat(encode_definite_bytes(control.resolution_schedule_hash))
-  let work_length = bytearray.length(witness.work_witness_cbor)
-  let suffix_offset = work_length - bytearray.length(old_suffix)
-  expect suffix_offset >= 2
-  expect
-    builtin.slice_bytearray(
-      suffix_offset,
-      bytearray.length(old_suffix),
-      witness.work_witness_cbor,
-    ) == old_suffix
-  let next_work_witness_cbor = encode_definite_array_header(31)
-    |> bytearray.concat(
-        builtin.slice_bytearray(2, suffix_offset - 2, witness.work_witness_cbor),
-      )
-    |> bytearray.concat(cbor.serialise(source_total_count))
-    |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
-    |> bytearray.concat(encoded_observer_scan)
-    |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
-    |> bytearray.concat(encode_definite_bytes(control.resolution_schedule_hash))
-    |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
   script_sources_stage_zero_successor_work_is_exact(
     pre,
     witness,

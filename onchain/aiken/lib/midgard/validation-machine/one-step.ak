@@ -118,18 +118,6 @@ pub fn verify_canonical_decode_semantics_v1(
   verify_canonical_decode(pre, evidence.transition, evidence.auxiliary, door)
 }
 
-pub fn verify_compact_binding_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.CompactBinding,
-    structural_transition_is_valid(pre, evidence.transition),
-    evidence.auxiliary == NoAuxiliaryWitness,
-    verify_compact_binding(pre, evidence.transition),
-  }
-}
-
 /// Semantic half used after a resolver preparation step has authenticated the
 /// common machine-state transition and the challenger successor commitment.
 pub fn verify_compact_binding_semantics_v1(
@@ -142,18 +130,6 @@ pub fn verify_compact_binding_semantics_v1(
   }
 }
 
-pub fn verify_static_ledger_rules_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.StaticLedgerRules,
-    structural_transition_is_valid(pre, evidence.transition),
-    evidence.auxiliary == NoAuxiliaryWitness,
-    verify_static_rules(pre, evidence.transition),
-  }
-}
-
 pub fn verify_static_ledger_rules_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
@@ -161,85 +137,6 @@ pub fn verify_static_ledger_rules_semantics_v1(
   and {
     evidence.auxiliary == NoAuxiliaryWitness,
     verify_static_rules(pre, evidence.transition),
-  }
-}
-
-pub fn verify_input_sets_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.InputSets,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_input_sets(pre, evidence.transition, evidence.auxiliary, door),
-  }
-}
-
-pub fn verify_input_sets_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  verify_input_sets(pre, evidence.transition, evidence.auxiliary, door)
-}
-
-pub fn verify_signatures_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.Signatures,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_signatures(pre, evidence.transition, evidence.auxiliary, door),
-  }
-}
-
-pub fn verify_phase_a_native_scripts_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.PhaseANativeScripts,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_phase_a_native_scripts_scan(
-      pre,
-      evidence.transition,
-      evidence.auxiliary,
-      door,
-    ),
-  }
-}
-
-pub fn verify_phase_a_native_scripts_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  verify_phase_a_native_scripts_scan(
-    pre,
-    evidence.transition,
-    evidence.auxiliary,
-    door,
-  )
-}
-
-pub fn verify_phase_a_script_preconditions_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.PhaseAScriptPreconditions,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_phase_a_script_preconditions(
-      pre,
-      evidence.transition,
-      evidence.auxiliary,
-      door,
-    ),
   }
 }
 
@@ -254,51 +151,6 @@ pub fn verify_phase_a_script_preconditions_semantics_v1(
     evidence.auxiliary,
     door,
   )
-}
-
-pub fn verify_resolve_inputs_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.ResolveInputs,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_resolve_inputs(pre, evidence.transition, evidence.auxiliary),
-  }
-}
-
-pub fn verify_script_sources_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.ScriptSources,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_script_sources(pre, evidence.transition, evidence.auxiliary, door),
-  }
-}
-
-pub fn verify_native_scripts_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.NativeScripts,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_native_scripts(pre, evidence.transition, evidence.auxiliary),
-  }
-}
-
-pub fn verify_script_integrity_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.ScriptIntegrity,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_script_integrity(pre, evidence.transition, evidence.auxiliary),
-  }
 }
 
 pub fn verify_script_integrity_authentication_semantics_v1(
@@ -365,16 +217,5 @@ pub fn verify_value_and_mint_one_step_v1(
     pre.phase == validation_trace_v1.ValueAndMint,
     structural_transition_is_valid(pre, evidence.transition),
     verify_value_and_mint(pre, evidence.transition, evidence.auxiliary),
-  }
-}
-
-pub fn verify_ledger_delta_one_step_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-) -> Bool {
-  and {
-    pre.phase == validation_trace_v1.LedgerDelta,
-    structural_transition_is_valid(pre, evidence.transition),
-    verify_ledger_delta(pre, evidence.transition, evidence.auxiliary),
   }
 }

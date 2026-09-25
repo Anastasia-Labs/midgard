@@ -112,34 +112,6 @@ pub fn verify_script_sources_stage_three_replay_semantics_v1(
   }
 }
 
-/// Stage-specific transition check used only after a prepare validator has
-/// authenticated the complete ScriptSources control. Keeping preparation and
-/// transition execution in separate computation-thread steps prevents the
-/// same common-control work from making the semantic step undeployable.
-pub fn verify_prepared_script_sources_stage_three_replay_transition_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  source_kind: Int,
-  key: ByteArray,
-  next_schedule_hash: ByteArray,
-  value: ByteArray,
-) -> Bool {
-  let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  and {
-    control.stage == 3,
-    control.replay_remaining_schedule_hash != empty_resolution_schedule_hash(),
-    script_sources_replay_item(
-      pre,
-      witness,
-      control,
-      source_kind,
-      key,
-      next_schedule_hash,
-      value,
-    ),
-  }
-}
-
 pub fn verify_script_sources_stage_five_finish_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -381,20 +353,6 @@ pub fn verify_script_sources_stage_two_semantics_v1(
   )
 }
 
-pub fn verify_script_sources_stage_three_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-) -> Bool {
-  verify_script_sources_semantic_stage(
-    pre,
-    witness,
-    auxiliary,
-    3,
-    script_sources_stage_three,
-  )
-}
-
 pub fn verify_script_sources_stage_four_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -408,20 +366,6 @@ pub fn verify_script_sources_stage_four_semantics_v1(
     door,
     4,
     script_sources_stage_four,
-  )
-}
-
-pub fn verify_script_sources_stage_five_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-) -> Bool {
-  verify_script_sources_semantic_stage(
-    pre,
-    witness,
-    auxiliary,
-    5,
-    script_sources_stage_five,
   )
 }
 

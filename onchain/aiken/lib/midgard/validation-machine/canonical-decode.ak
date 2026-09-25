@@ -396,20 +396,6 @@ pub fn verify_canonical_decode_item_from_source_v1(
   }
 }
 
-pub fn verify_canonical_decode_item_proof_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  source: CanonicalDecodeItemSourceV1,
-  door: field_door.MachineFieldDoorV1,
-  carriage: native_tx_field_access_v1.FieldCarriageV1,
-) -> CanonicalDecodeItemProofV1 {
-  verify_canonical_decode_item_observation_v1(
-    witness,
-    source,
-    observe_canonical_decode_item_v1(pre, witness, door, carriage),
-  )
-}
-
 /// Open the item through §8's door and record what the door established.
 ///
 /// This is the one place the door runs for the complete-item path, and it is
@@ -636,21 +622,6 @@ pub fn verify_canonical_decode_chunk_semantics_v1(
     door,
     field_index,
     item_index,
-    carriage,
-  )
-}
-
-pub fn verify_canonical_decode_item_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  door: field_door.MachineFieldDoorV1,
-  carriage: native_tx_field_access_v1.FieldCarriageV1,
-) -> Bool {
-  verify_canonical_decode_item(
-    pre,
-    witness,
-    canonical_decode_control_from_witness(witness.work_witness_cbor),
-    door,
     carriage,
   )
 }

@@ -525,12 +525,6 @@ pub type NativeChunkWindowV1 {
   offset: Int,
 }
 
-pub type AuthenticatedNativeScriptTokenHeadV1 {
-  verified: VerifiedTxSourceView,
-  window: NativeChunkWindowV1,
-  head: Option<native_script_scan_v1.NativeScriptTokenHeadV1>,
-}
-
 pub type AuthenticatedNativeScriptWindowV1 {
   verified: VerifiedTxSourceView,
   window: NativeChunkWindowV1,

@@ -145,22 +145,6 @@ pub fn challenger_uniquely_wins(
   }
 }
 
-/// A valid deterministic successor committed by the challenger is sufficient
-/// to resolve the one-step dispute. The authenticated operator hash is already
-/// distinct, so revealing the operator's potentially large witness again
-/// would only consume proof-envelope capacity without adding soundness.
-pub fn challenger_wins_with_valid_successor(
-  state: ValidationResolutionStateV1,
-  challenger_successor: validation_trace_v1.ValidationMachineStateV1,
-  challenger_transition_is_valid: Bool,
-) -> Bool {
-  and {
-    state_is_well_formed(state),
-    validation_trace_v1.hash_machine_state(challenger_successor) == state.challenger_successor_hash,
-    challenger_transition_is_valid,
-  }
-}
-
 pub fn prepare_semantic_resolution(
   state: ValidationResolutionStateV1,
   transition: vm_machine_types.ValidationOneStepWitnessV1,

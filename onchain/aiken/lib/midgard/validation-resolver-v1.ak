@@ -283,31 +283,6 @@ pub fn verify_cek_material_route_for_selected_envelope_v1(
   }
 }
 
-/// Complete CEK program material is admitted only at the authenticated CEK
-/// execution-selection boundary: a selection step's envelope must be backed by
-/// an accepted material route, and every other cek step must carry no
-/// material at all. The material route is resolver evidence, never part of
-/// the hashed one-step evidence, so the selection semantic resolver checks it
-/// against the transaction's reference inputs after `continue_winning` has
-/// bound transition and auxiliary to the prepared evidence hash.
-pub fn verify_cek_route_v1(
-  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
-  material_route: CekMaterialRouteV1,
-  reference_inputs: List<Input>,
-  cek_program_material_script_hash: ScriptHash,
-) -> Bool {
-  when cek_selection_envelope_cbor_v1(evidence) is {
-    Some(selected_envelope) ->
-      verify_cek_material_route_for_selected_envelope_v1(
-        selected_envelope,
-        material_route,
-        reference_inputs,
-        cek_program_material_script_hash,
-      )
-    None -> material_route == NoCekMaterial
-  }
-}
-
 pub type PrepareActionV1 {
   Prepare {
     input_index: Int,

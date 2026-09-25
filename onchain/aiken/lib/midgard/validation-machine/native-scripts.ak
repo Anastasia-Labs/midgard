@@ -308,50 +308,6 @@ pub fn verify_native_scripts_native_semantics_v1(
   )
 }
 
-pub fn verify_native_scripts_effectful_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  execution_index: Int,
-  language_tag: Int,
-  purpose_kind: Int,
-  purpose_index: Int,
-  script_hash: ByteArray,
-  subject: ByteArray,
-  purpose_siblings: List<ByteArray>,
-  source_index: Int,
-  origin_kind: Int,
-  source_key: ByteArray,
-  script_total_length: Int,
-  script_item_commitment: ByteArray,
-  source_siblings: List<ByteArray>,
-  redeemer_leaf: ByteArray,
-  execution_siblings: List<ByteArray>,
-) -> Bool {
-  verify_native_scripts(
-    pre,
-    witness,
-    NativeExecutionDescriptorWitness {
-      execution_index,
-      language_tag,
-      purpose_kind,
-      purpose_index,
-      script_hash,
-      subject,
-      purpose_siblings,
-      source_index,
-      origin_kind,
-      source_key,
-      script_total_length,
-      script_item_commitment,
-      source_siblings,
-      redeemer_leaf,
-      execution_siblings,
-      first_chunk_proof: None,
-      signer_peaks: [],
-    },
-  )
-}
-
 // ---------------------------------------------------------------------------
 // Per-family §12 descriptor entry points
 // ---------------------------------------------------------------------------

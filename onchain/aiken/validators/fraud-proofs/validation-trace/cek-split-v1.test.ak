@@ -19,7 +19,7 @@
 //// `lib/midgard/validation-machine-v1.test.ak` (`cek_kinds_partition_the_cek_step_space`);
 //// what these add is that the deployed validators reach those wrappers with
 //// the right arguments, commit to the right evidence hash, and route the
-//// material through `verify_cek_route_v1`.
+//// material through the `cek_execution_selection_yields` validators.
 
 use aiken/builtin
 use aiken/cbor
