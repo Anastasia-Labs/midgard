@@ -3,6 +3,7 @@ import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -27,9 +28,6 @@ import {
   makeWatcherCanonicalRuleBundle,
 } from "../../src/verification/rule-bundle.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
-
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 
 const genuineFixture = async () => {
   const baseAuthority = makeWatcherDeploymentAuthorityFixture();
@@ -81,8 +79,8 @@ const genuineFixture = async () => {
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
-    prevHeaderHash: h28("31"),
-    operatorVkey: h28("32"),
+    prevHeaderHash: h28(0x31),
+    operatorVkey: h28(0x32),
     protocolVersion: BigInt(bundle.protocolVersion),
   });
   const headerCborHex = Data.to(header, SDK.Header);
@@ -134,34 +132,34 @@ const genuineFixture = async () => {
       ),
     ).to_canonical_cbor_hex(),
     daAvailability: "Unattested" as const,
-    queueOutRef: `${h32("41")}#1`,
+    queueOutRef: `${h32(0x41)}#1`,
     nextHeaderHash: null,
-    observedTransactionHash: h32("42"),
-    observedBlockHash: h32("43"),
+    observedTransactionHash: h32(0x42),
+    observedBlockHash: h32(0x43),
     observedSlot: "4242",
     observedBlockNo: "9000",
-    observedChainPointId: h32("44"),
+    observedChainPointId: h32(0x44),
     finalityDepth: "30",
   };
   const canonicalObservation = {
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
     deploymentIdentityDigest: authority.result.manifestId,
-    protocolScriptAuthorityDigest: h32("45"),
-    stateQueuePolicyId: h28("46"),
-    hubOraclePolicyId: h28("47"),
+    protocolScriptAuthorityDigest: h32(0x45),
+    stateQueuePolicyId: h28(0x46),
+    hubOraclePolicyId: h28(0x47),
     nativePoint: {
-      blockHash: h32("43"),
-      parentBlockHash: h32("40"),
+      blockHash: h32(0x43),
+      parentBlockHash: h32(0x40),
       slot: "4242",
       blockNo: "9000",
-      chainPointId: h32("44"),
+      chainPointId: h32(0x44),
       finalityDepth: "30",
     },
     sourceId: "local-kupmios:test",
     previousObservationDigest: null,
     checkpoints: [],
     finalizedQueue: [
-      { headerHash: null, outRef: `${h32("41")}#0` },
+      { headerHash: null, outRef: `${h32(0x41)}#0` },
       { headerHash, outRef: headerObservation.queueOutRef },
     ],
     finalizedHeaders: [headerObservation],

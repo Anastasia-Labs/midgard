@@ -15,6 +15,7 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import {
   applyDoubleCborEncoding,
   applyParamsToScript,
@@ -290,8 +291,6 @@ type StateQueueTestContracts = {
   readonly settlement: AuthenticatedValidator;
 };
 
-const h32 = (byte: string): string => byte.repeat(32);
-
 const readBlueprint = (path: string): Blueprint =>
   JSON.parse(readFileSync(path, "utf8")) as Blueprint;
 
@@ -531,11 +530,11 @@ const makeNativeTx = (
 
 const buildTransactionsRoot = async (): Promise<string> => {
   const tx1 = makeNativeTx(
-    [outputReferenceCbor(h32("11"), 0n), outputReferenceCbor(h32("22"), 1n)],
+    [outputReferenceCbor(h32(0x11), 0n), outputReferenceCbor(h32(0x22), 1n)],
     1n,
   );
   const tx2 = makeNativeTx(
-    [outputReferenceCbor(h32("33"), 0n), outputReferenceCbor(h32("44"), 2n)],
+    [outputReferenceCbor(h32(0x33), 0n), outputReferenceCbor(h32(0x44), 2n)],
     2n,
   );
   const store = new Store(undefined);
@@ -553,9 +552,9 @@ const buildTransactionsRoot = async (): Promise<string> => {
 };
 
 const TWO_TRANSACTION_HEADER_COMMITMENTS = {
-  transitionTraceRoot: h32("55"),
-  eventToStepRoot: h32("66"),
-  validationTracesRoot: h32("77"),
+  transitionTraceRoot: h32(0x55),
+  eventToStepRoot: h32(0x66),
+  validationTracesRoot: h32(0x77),
   l2TransactionCount: 2n,
   totalEventCount: 2n,
   transitionStepCount: 2n,
@@ -580,15 +579,15 @@ describe("state-queue header validation boundary", () => {
       ) as LinkedListNodeView["data"],
     };
     const sourceRoots = {
-      withdrawalsRoot: h32("11"),
-      transactionsRoot: h32("22"),
-      depositsRoot: h32("33"),
+      withdrawalsRoot: h32(0x11),
+      transactionsRoot: h32(0x22),
+      depositsRoot: h32(0x33),
     };
     const commitments = {
       ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
-      transitionTraceRoot: h32("44"),
-      eventToStepRoot: h32("55"),
-      validationTracesRoot: h32("66"),
+      transitionTraceRoot: h32(0x44),
+      eventToStepRoot: h32(0x55),
+      validationTracesRoot: h32(0x66),
       withdrawalCount: 1n,
       l2TransactionCount: 1n,
       depositCount: 1n,
@@ -600,7 +599,7 @@ describe("state-queue header validation boundary", () => {
       updateLatestBlocksDatumAndGetTheNewHeaderProgram(
         lucid,
         latestBlocksDatum,
-        h32("77"),
+        h32(0x77),
         roots.transactionsRoot,
         roots.depositsRoot,
         roots.withdrawalsRoot,

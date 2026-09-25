@@ -20,6 +20,7 @@ import {
   type MidgardAddressWitness,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -32,8 +33,6 @@ import {
   transactionSourceTrieItem,
 } from "../src/index.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
@@ -61,7 +60,7 @@ const makeNativeTx = ({
     version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
-      spendInputsPreimageCbor: encodeCbor([inputCbor(h32("11"), fee)]),
+      spendInputsPreimageCbor: encodeCbor([inputCbor(h32(0x11), fee)]),
       referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
       outputsPreimageCbor: EMPTY_CBOR_LIST,
       fee,
@@ -111,7 +110,7 @@ const signedTx = ({
   readonly addrTxWits: readonly MidgardAddressWitness[];
 } => {
   const placeholder: MidgardAddressWitness = {
-    verification_key: h32("aa"),
+    verification_key: h32(0xaa),
     signature: "bb".repeat(64),
   };
   const nodeTxId = computeMidgardNativeTxId(
@@ -180,12 +179,12 @@ describe("prepare-invalid-signature", () => {
     const roots = await transactionRoots(transactions);
 
     const output = await prepareInvalidSignatureFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions,
       expectedTransactionsRoot: roots.committedTransactionsRoot,
     });
 
-    expect(output.headerHash).toBe(h28("aa"));
+    expect(output.headerHash).toBe(h28(0xaa));
     expect(output.txCount).toBe(2);
     expect(output.tx.nodeTxId).toBe(bad.payload.nodeTxId);
     expect(output.tx.badAddrTxWitIndex).toBe(2);
@@ -203,7 +202,7 @@ describe("prepare-invalid-signature", () => {
     const roots = await transactionRoots(transactions);
 
     const output = await prepareInvalidSignatureFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions,
       expectedTransactionsRoot: roots.committedTransactionsRoot,
     });
@@ -232,7 +231,7 @@ describe("prepare-invalid-signature", () => {
     const roots = await transactionRoots(transactions);
 
     const output = await prepareInvalidSignatureFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions,
       expectedTransactionsRoot: roots.committedTransactionsRoot,
     });
@@ -247,7 +246,7 @@ describe("prepare-invalid-signature", () => {
     const roots = await transactionRoots(transactions);
 
     const output = await prepareInvalidSignatureFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions,
       expectedTransactionsRoot: roots.committedTransactionsRoot,
       txId: second.payload.nodeTxId,
@@ -266,7 +265,7 @@ describe("prepare-invalid-signature", () => {
 
     await expect(
       prepareInvalidSignatureFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.committedTransactionsRoot,
       }),
@@ -283,7 +282,7 @@ describe("prepare-invalid-signature", () => {
 
     await expect(
       prepareInvalidSignatureFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.committedTransactionsRoot,
         txId: good.payload.nodeTxId,
@@ -298,10 +297,10 @@ describe("prepare-invalid-signature", () => {
 
     await expect(
       prepareInvalidSignatureFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.committedTransactionsRoot,
-        txId: h32("de"),
+        txId: h32(0xde),
       }),
     ).rejects.toThrow("was not found in the block");
   });
@@ -313,9 +312,9 @@ describe("prepare-invalid-signature", () => {
     await withTempDir(async (dir) => {
       await expect(
         prepareInvalidSignatureFromTransactions({
-          headerHash: h28("aa"),
+          headerHash: h28(0xaa),
           transactions,
-          expectedTransactionsRoot: h32("de"),
+          expectedTransactionsRoot: h32(0xde),
           outputDir: dir,
         }),
       ).rejects.toThrow("does not match --expected-transactions-root");
@@ -332,7 +331,7 @@ describe("prepare-invalid-signature", () => {
 
     await withTempDir(async (dir) => {
       const output = await prepareInvalidSignatureFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.committedTransactionsRoot,
         outputDir: dir,

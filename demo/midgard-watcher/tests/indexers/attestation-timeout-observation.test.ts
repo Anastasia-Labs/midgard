@@ -1,3 +1,4 @@
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
 import { deriveWatcherAttestationTimeoutObservation } from "../../src/indexers/attestation-timeout-observation.js";
@@ -6,26 +7,24 @@ import {
   makeWatcherStateQueueSnapshot,
 } from "../../src/indexers/state-queue-snapshot.js";
 
-const h28 = (byte: string): string => byte.repeat(56);
-const h32 = (byte: string): string => byte.repeat(64);
 const emptyRoot =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 
 const snapshot = (daAttestationPolicyId: string | null) => {
   const confirmedState = {
-    headerHash: h28("1"),
-    prevHeaderHash: h28("0"),
-    utxosRoot: h32("2"),
+    headerHash: h28(0x11),
+    prevHeaderHash: h28(0x00),
+    utxosRoot: h32(0x22),
     startTime: "0",
     endTime: "1000",
     protocolVersion: "1",
-    datumSha256: h32("3"),
+    datumSha256: h32(0x33),
   } as const;
   const header = makeWatcherStateQueueHeader({
     nextHeaderHash: null,
-    datumSha256: h32("4"),
+    datumSha256: h32(0x44),
     prevUtxosRoot: confirmedState.utxosRoot,
-    utxosRoot: h32("5"),
+    utxosRoot: h32(0x55),
     withdrawalsRoot: emptyRoot,
     forcedTransactionsRoot: emptyRoot,
     transactionsRoot: emptyRoot,
@@ -47,7 +46,7 @@ const snapshot = (daAttestationPolicyId: string | null) => {
     minFeeA: "44",
     minFeeB: "155381",
     prevHeaderHash: confirmedState.headerHash,
-    operatorVkey: h28("d"),
+    operatorVkey: h28(0xdd),
     protocolVersion: "1",
     daAttestationPolicyId,
   });
@@ -56,17 +55,17 @@ const snapshot = (daAttestationPolicyId: string | null) => {
     confirmedState,
     queue: [header!],
     scheduler: {
-      operatorVkey: h28("d"),
+      operatorVkey: h28(0xdd),
       shiftStartTime: "900",
-      datumSha256: h32("e"),
+      datumSha256: h32(0xee),
     },
     activeOperators: [
       {
-        operatorVkey: h28("d"),
+        operatorVkey: h28(0xdd),
         nextOperatorVkey: null,
         bondUnlockTime: null,
         inactivityStrikes: "0",
-        datumSha256: h32("f"),
+        datumSha256: h32(0xff),
       },
     ],
     retiredOperators: [],
@@ -105,7 +104,7 @@ describe("watcher attestation-timeout observation", () => {
   it("uses the applied attestation marker and never emits a timeout for it", () => {
     expect(
       deriveWatcherAttestationTimeoutObservation({
-        snapshot: snapshot(h28("a")),
+        snapshot: snapshot(h28(0xaa)),
         nowMs: 9_000_000n,
         alertLeadMs: 120_000n,
       }),
@@ -128,7 +127,7 @@ describe("watcher attestation-timeout observation", () => {
 });
 
 it("observes an expired unattested suffix behind an attested head", () => {
-  const base = snapshot(h28("a"));
+  const base = snapshot(h28(0xaa));
   const first = base.queue[0]!;
   const { headerHash: _hash, headerCborHex: _cbor, ...fields } = first;
   const tail = makeWatcherStateQueueHeader({

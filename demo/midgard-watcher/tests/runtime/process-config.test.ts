@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -31,8 +32,6 @@ import {
 import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
 
 const directories: string[] = [];
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 
 const watcherConfigValue = () => ({
   schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -47,7 +46,7 @@ const watcherConfigValue = () => ({
         socketPath: "/run/cardano/node.socket",
         nodeConfigPath: "/etc/cardano/node-config.json",
         genesisConfigPath: "/etc/cardano/shelley-genesis.json",
-        genesisIdentitySha256: h32("66"),
+        genesisIdentitySha256: h32(0x66),
       },
       queryServices: [
         {
@@ -111,14 +110,14 @@ const watcherConfig = (): WatcherConfig =>
 
 const policy = (): WatcherFinalityPolicy => {
   const value = makeWatcherFinalityPolicy(watcherConfig(), {
-    manifestId: h32("11"),
+    manifestId: h32(0x11),
     network: "Preprod",
-    trustRootId: h32("33"),
+    trustRootId: h32(0x33),
     fundingProfileBundleDigest: "ab".repeat(32),
-    blueprintHash: h32("22"),
-    ruleBundleCommitment: h32("44"),
-    programCommitments: { validation: h32("55") },
-    durableMarker: makeDeploymentMarker(h32("11")),
+    blueprintHash: h32(0x22),
+    ruleBundleCommitment: h32(0x44),
+    programCommitments: { validation: h32(0x55) },
+    durableMarker: makeDeploymentMarker(h32(0x11)),
   });
   if (value === null) throw new Error("test finality policy is invalid");
   return value;
@@ -155,12 +154,12 @@ const productionConfig = (): WatcherProcessConfig =>
         providers: [
           {
             sourceId: "history-a",
-            operatorIdentitySha256: h32("a1"),
+            operatorIdentitySha256: h32(0xa1),
             authorityEndpoint: "https://history-a.example.test",
           },
           {
             sourceId: "history-b",
-            operatorIdentitySha256: h32("b2"),
+            operatorIdentitySha256: h32(0xb2),
             authorityEndpoint: "https://history-b.example.test",
           },
         ],
@@ -212,7 +211,7 @@ describe("production process authority separation", () => {
     expect(() =>
       parseWatcherProcessConfig({
         ...base,
-        readinessHeaderHash: h28("77"),
+        readinessHeaderHash: h28(0x77),
       }),
     ).toThrow("unknown or missing fields");
     expect(() => {

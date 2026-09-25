@@ -2,6 +2,7 @@ import {
   encodeMidgardNativeScript,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -20,26 +21,24 @@ import {
   missingNativeScriptTxVersionedScriptHash,
 } from "../src/fraud-proof/missing-native-script-tx.js";
 
-const h32 = (byte: string): string => byte.repeat(64);
-const h28 = (byte: string): string => byte.repeat(56);
 const nativeScriptBytes = encodeMidgardNativeScript({
   type: "all",
-  scripts: [{ type: "sig", keyHash: Buffer.from(h28("1"), "hex") }],
+  scripts: [{ type: "sig", keyHash: Buffer.from(h28(0x11), "hex") }],
 });
 const versionedScriptItem = encodeMidgardVersionedScript({
   language: "NativeCardano",
   scriptBytes: nativeScriptBytes,
   nativeScript: {
     type: "all",
-    scripts: [{ type: "sig", keyHash: Buffer.from(h28("1"), "hex") }],
+    scripts: [{ type: "sig", keyHash: Buffer.from(h28(0x11), "hex") }],
   },
 });
 
 describe("missing-native-script-tx V1 twins", () => {
   it("round-trips every forwarded state in on-chain field order", () => {
     const step02 = missingNativeScriptTxStep02StateFromBadTx({
-      badTxId: h32("a"),
-      badTxWitnessSetHash: h32("b"),
+      badTxId: h32(0xaa),
+      badTxWitnessSetHash: h32(0xbb),
     });
     expect(
       Data.from(
@@ -49,7 +48,7 @@ describe("missing-native-script-tx V1 twins", () => {
     ).toStrictEqual(step02);
 
     const step03 = missingNativeScriptTxStep03State({
-      inputWithMissingScript: { tx_id: h32("c"), output_index: 2n },
+      inputWithMissingScript: { tx_id: h32(0xcc), output_index: 2n },
       badTxId: step02.bad_tx_id,
       badTxWitnessSetHash: step02.bad_tx_witness_set_hash,
     });
@@ -74,7 +73,7 @@ describe("missing-native-script-tx V1 twins", () => {
     ).toStrictEqual(step04);
 
     const step05 = missingNativeScriptTxStep05State({
-      expectedMissingScriptHash: h28("d"),
+      expectedMissingScriptHash: h28(0xdd),
       badTxId: step04.bad_tx_id,
       badTxWitnessSetHash: step04.bad_tx_witness_set_hash,
     });
@@ -118,7 +117,7 @@ describe("missing-native-script-tx V1 twins", () => {
         scriptTxWitsItems: [
           Buffer.concat([versionedScriptItem, Buffer.from([0])]),
         ],
-        expectedMissingScriptHash: h28("e"),
+        expectedMissingScriptHash: h28(0xee),
       }),
     ).toThrow();
   });

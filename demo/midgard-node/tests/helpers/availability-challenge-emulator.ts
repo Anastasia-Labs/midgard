@@ -125,7 +125,6 @@ const mintIndex = (layout: AvailabilityLayout, policy: string) =>
     spendingInputs(layout).length + [...layout.policies].sort().indexOf(policy),
   );
 const inline = (value: string) => ({ kind: "inline" as const, value });
-const h32 = (byte: string) => byte.repeat(32);
 const outRef = SDK.outputReferenceFromUTxO;
 
 export type AvailabilityFixture = Awaited<
@@ -225,8 +224,8 @@ export const createAvailabilityFixture = async (
   const stateQueueNode: SDK.StateQueueNode = {
     proven_fraud: null,
     header: {
-      prevUtxosRoot: h32("01"),
-      utxosRoot: h32("02"),
+      prevUtxosRoot: h32(0x01),
+      utxosRoot: h32(0x02),
       withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -1292,3 +1291,5 @@ export const advanceAvailabilityDeadline = (
 };
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { h32 } from "@al-ft/midgard-test-support/hex";

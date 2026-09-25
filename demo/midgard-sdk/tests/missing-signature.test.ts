@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -9,8 +10,6 @@ import { buildMissingSignatureChain } from "../src/fraud-proof/contracts/familie
 import { buildSharedFaultProofContracts } from "../src/fraud-proof/contracts/shared.js";
 import * as SDK from "../src/index.js";
 
-const h32 = (byte: string) => byte.repeat(32);
-const h28 = (byte: string) => byte.repeat(28);
 const proof: SDK.Proof = [];
 const bodyOpening = {
   BodyFieldOpening: {
@@ -22,9 +21,9 @@ const witnessOpening = {
   WitnessFieldOpening: {
     native_tx_compact_cbor: "80",
     witness_set: {
-      addr_tx_wits_hash: h32("11"),
-      script_tx_wits_hash: h32("22"),
-      redeemer_tx_wits_hash: h32("33"),
+      addr_tx_wits_hash: h32(0x11),
+      script_tx_wits_hash: h32(0x22),
+      redeemer_tx_wits_hash: h32(0x33),
     },
     carriage: { RawUtxo: { ref_input_index: 4n } },
   },
@@ -40,17 +39,17 @@ describe("missing-signature v1 SDK wire twins", () => {
       output_index: 1n,
       hub_ref_input_index: 2n,
       state_queue_node_ref_input_index: 3n,
-      native_tx_id: h32("44"),
+      native_tx_id: h32(0x44),
       l2_transaction_source_cbor: "80",
-      transactions_phas_root: h32("55"),
+      transactions_phas_root: h32(0x55),
       tx_membership_proof: proof,
       inclusion_proof_script_withdraw_redeemer_index: 0n,
     };
     expect(roundTrip(step01, SDK.MissingSignatureStep01Args)).toEqual(step01);
 
     const step02State = {
-      verified_tx_id: h32("44"),
-      verified_witness_set_hash: h32("66"),
+      verified_tx_id: h32(0x44),
+      verified_witness_set_hash: h32(0x66),
     };
     const step02Args = {
       input_index: 0n,
@@ -66,13 +65,13 @@ describe("missing-signature v1 SDK wire twins", () => {
     );
 
     const step03State = {
-      missing_required_signer_hash: h28("77"),
+      missing_required_signer_hash: h28(0x77),
       ...step02State,
     };
     const step03Args = {
       input_index: 0n,
       output_index: 1n,
-      missing_required_signer_vkey: h32("88"),
+      missing_required_signer_vkey: h32(0x88),
     };
     expect(roundTrip(step03State, SDK.MissingSignatureStep03State)).toEqual(
       step03State,
@@ -82,7 +81,7 @@ describe("missing-signature v1 SDK wire twins", () => {
     );
 
     const step04State = {
-      missing_required_signer_vkey: h32("88"),
+      missing_required_signer_vkey: h32(0x88),
       ...step02State,
       field_walk_checkpoint_hash: "",
     };
@@ -116,19 +115,19 @@ describe("missing-signature v1 SDK wire twins", () => {
 
   it("pins canonical field-7 checkpoints and rejects unreachable thread state", () => {
     const checkpoint = SDK.missingSignatureFieldWalkCheckpoint({
-      txId: h32("22"),
+      txId: h32(0x22),
       itemCount: 140,
       totalLength: 2 + 140 * 103,
       nextItemIndex: 32,
     });
     expect(checkpoint.checkpointCbor).toHaveLength(106);
     expect(checkpoint.checkpointCbor).toBe(
-      `865820${h32("22")}4107430038564300008c4300002043000ce2`,
+      `865820${h32(0x22)}4107430038564300008c4300002043000ce2`,
     );
     expect(checkpoint.checkpointHash).toMatch(/^[0-9a-f]{64}$/u);
     expect(
       SDK.resolveMissingSignatureFieldWalkCheckpoint({
-        txId: h32("22"),
+        txId: h32(0x22),
         itemCount: 140,
         totalLength: 2 + 140 * 103,
         committedHash: checkpoint.checkpointHash,
@@ -136,10 +135,10 @@ describe("missing-signature v1 SDK wire twins", () => {
     ).toStrictEqual(checkpoint);
     expect(() =>
       SDK.resolveMissingSignatureFieldWalkCheckpoint({
-        txId: h32("22"),
+        txId: h32(0x22),
         itemCount: 140,
         totalLength: 2 + 140 * 103,
-        committedHash: h32("ff"),
+        committedHash: h32(0xff),
       }),
     ).toThrow(/not reachable/u);
   });
@@ -150,7 +149,7 @@ describe("missing-signature v1 SDK wire twins", () => {
     expect(hash).toMatch(/^[0-9a-f]{56}$/u);
     expect(
       SDK.findMissingRequiredSignerIndex({
-        requiredSignerHashes: [h28("aa"), hash],
+        requiredSignerHashes: [h28(0xaa), hash],
         addrTxWits: [{ verification_key: vkey, signature: "bb".repeat(64) }],
       }),
     ).toBe(0);
@@ -176,8 +175,8 @@ describe("missing-signature deployment parameter sensitivity", () => {
     const params = {
       blueprint,
       network: "Preprod" as const,
-      hubOraclePolicyId: h28("55"),
-      fraudProofCataloguePolicyId: h28("66"),
+      hubOraclePolicyId: h28(0x55),
+      fraudProofCataloguePolicyId: h28(0x66),
     };
     const shared = await Effect.runPromise(
       buildSharedFaultProofContracts(params),
@@ -191,7 +190,7 @@ describe("missing-signature deployment parameter sensitivity", () => {
       buildMissingSignatureChain({
         ...params,
         ...shared,
-        fraudProof: { ...shared.fraudProof, policyId: h28("99") },
+        fraudProof: { ...shared.fraudProof, policyId: h28(0x99) },
       }),
     );
     expect(chain.steps).toHaveLength(4);

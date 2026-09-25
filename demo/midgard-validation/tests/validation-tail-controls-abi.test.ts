@@ -8,6 +8,7 @@ import {
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import { isUnknownArray } from "@al-ft/midgard-core/narrowing";
+import { fixtureBytes } from "@al-ft/midgard-test-support/hex";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
@@ -24,7 +25,6 @@ import {
 type Auxiliary = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
-const h32 = (byte: number): Buffer => Buffer.alloc(32, byte);
 const digest = (value: Uint8Array): string =>
   Buffer.from(blake2b(value, { dkLen: 32 })).toString("hex");
 
@@ -36,8 +36,8 @@ const mutationStep = {
   unit: Buffer.alloc(28, 0x31),
   quantityDelta: 5n,
   oldDelta: null,
-  preAssetRoot: h32(0x32),
-  postAssetRoot: h32(0x33),
+  preAssetRoot: fixtureBytes(0x32, 32),
+  postAssetRoot: fixtureBytes(0x33, 32),
   proofCbor: bytes("80"),
   postSeenAssetCount: 1,
   postNonzeroAssetCount: 1,
@@ -51,13 +51,13 @@ const descriptor = {
 const foldControl = {
   nextFrameIndex: 0,
   expectedNextCursor: 0,
-  includingRoot: h32(0x34),
-  excludingRoot: h32(0x35),
+  includingRoot: fixtureBytes(0x34, 32),
+  excludingRoot: fixtureBytes(0x35, 32),
 } as const;
 const mutation = {
   operation: { type: "delete", key: bytes("01") } as const,
-  preRoot: h32(0x36),
-  postRoot: h32(0x37),
+  preRoot: fixtureBytes(0x36, 32),
+  postRoot: fixtureBytes(0x37, 32),
   proofFoldTrace: {
     descriptor,
     frames: [],
@@ -69,7 +69,7 @@ const mutation = {
 const operationMembership = {
   frontier: emptyFrontier,
   leafIndex: 0,
-  leafHash: h32(0x38),
+  leafHash: fixtureBytes(0x38, 32),
   siblings: [],
 } as const;
 const chunkProof = {
@@ -100,7 +100,7 @@ const tailAuxiliaryVectors = [
       kind: "valueInputAsset",
       sourceKind: "spend",
       key: bytes("01"),
-      nextScheduleHash: h32(0x41),
+      nextScheduleHash: fixtureBytes(0x41, 32),
       descriptorCbor: bytes("80"),
       assetIndex: 0,
       policyId: Buffer.alloc(28, 0x42),
@@ -147,7 +147,7 @@ const tailAuxiliaryVectors = [
       kind: "ledgerDeltaReplay",
       sourceKind: "reference",
       key: bytes("02"),
-      nextScheduleHash: h32(0x45),
+      nextScheduleHash: fixtureBytes(0x45, 32),
       value: bytes("03"),
     }),
   ],
@@ -158,7 +158,7 @@ const tailAuxiliaryVectors = [
       kind: "ledgerDeltaOutput",
       outputIndex: 3,
       descriptorCbor: bytes("8100"),
-      siblings: [h32(0x46)],
+      siblings: [fixtureBytes(0x46, 32)],
     }),
   ],
   [
@@ -167,7 +167,7 @@ const tailAuxiliaryVectors = [
     auxiliary({
       kind: "ledgerDeltaProofFrame",
       frame: proofFrame,
-      siblings: [h32(0x47)],
+      siblings: [fixtureBytes(0x47, 32)],
     }),
   ],
   [
@@ -189,7 +189,7 @@ const tailAuxiliaryVectors = [
       kind: "valueOutputDescriptor",
       outputIndex: 4,
       descriptorCbor: bytes("8101"),
-      siblings: [h32(0x48)],
+      siblings: [fixtureBytes(0x48, 32)],
     }),
   ],
   [
@@ -239,38 +239,38 @@ const nativeControlCbor = encodeCbor([
   bytes("03"),
   bytes("04"),
   0n,
-  h32(0x51),
+  fixtureBytes(0x51, 32),
   0n,
   [],
   0n,
-  h32(0x52),
+  fixtureBytes(0x52, 32),
   0n,
-  [],
-  0n,
-  [],
-  0n,
-  [],
-  0n,
-  [],
   [],
   0n,
   [],
   0n,
   [],
   0n,
+  [],
+  [],
   0n,
-  h32(0x53),
+  [],
+  0n,
+  [],
+  0n,
+  0n,
+  fixtureBytes(0x53, 32),
 ]);
-const valueAccumulatorCbor = encodeCbor([7n, h32(0x54), 2n, 1n]);
+const valueAccumulatorCbor = encodeCbor([7n, fixtureBytes(0x54, 32), 2n, 1n]);
 const valueAndMintControlCbor = encodeCbor([
   nativeControlCbor,
   3n,
-  h32(0x55),
+  fixtureBytes(0x55, 32),
   4n,
   5n,
-  h32(0x56),
-  h32(0x57),
-  h32(0x58),
+  fixtureBytes(0x56, 32),
+  fixtureBytes(0x57, 32),
+  fixtureBytes(0x58, 32),
   6n,
   7n,
   8n,
@@ -292,15 +292,15 @@ const pendingMutationCbor = encodeCbor([
 ]);
 const ledgerDeltaControlCbor = encodeCbor([
   0n,
-  h32(0x61),
+  fixtureBytes(0x61, 32),
   0n,
   [],
   1n,
-  h32(0x62),
+  fixtureBytes(0x62, 32),
   0n,
-  h32(0x63),
-  h32(0x64),
-  h32(0x65),
+  fixtureBytes(0x63, 32),
+  fixtureBytes(0x64, 32),
+  fixtureBytes(0x65, 32),
   0n,
   0n,
   pendingMutationCbor,
@@ -309,7 +309,7 @@ const ledgerDeltaControlCbor = encodeCbor([
 
 const acceptanceFrontier = {
   count: 2,
-  peaks: [{ height: 1, hash: h32(0x71) }],
+  peaks: [{ height: 1, hash: fixtureBytes(0x71, 32) }],
 } as const;
 const acceptanceFrontierCbor = encodeCbor([
   BigInt(acceptanceFrontier.count),
@@ -317,14 +317,14 @@ const acceptanceFrontierCbor = encodeCbor([
 ]);
 const terminalAcceptanceCbor = encodeValidationTerminalWitnessCbor({
   verdict: "accepted",
-  postLedgerRoot: h32(0x72),
+  postLedgerRoot: fixtureBytes(0x72, 32),
   ledgerDeltaFrontier: acceptanceFrontier,
 });
 const rejectionCode = Buffer.from("E_VALUE_NOT_PRESERVED", "ascii");
 const terminalRejectionCbor = encodeValidationTerminalWitnessCbor({
   verdict: "rejected",
   rejectionCode: "E_VALUE_NOT_PRESERVED",
-  priorLedgerRoot: h32(0x73),
+  priorLedgerRoot: fixtureBytes(0x73, 32),
 });
 
 const decodeExactTerminalWitness = (
@@ -492,11 +492,11 @@ describe("canonical V1 validation tail controls", () => {
   it("freezes V17 accepted/rejected witnesses and rejects misclassification", () => {
     expect(decodeExactTerminalWitness(terminalAcceptanceCbor)).toEqual({
       outcome: "accepted",
-      ledgerRoot: h32(0x72),
+      ledgerRoot: fixtureBytes(0x72, 32),
     });
     expect(decodeExactTerminalWitness(terminalRejectionCbor)).toEqual({
       outcome: "rejected",
-      ledgerRoot: h32(0x73),
+      ledgerRoot: fixtureBytes(0x73, 32),
     });
     expect({
       terminalAcceptanceCbor: terminalAcceptanceCbor.toString("hex"),
@@ -520,22 +520,32 @@ describe("canonical V1 validation tail controls", () => {
 
     expect(() =>
       decodeExactTerminalWitness(
-        encodeCbor([1n, rejectionCode, h32(0x72), acceptanceFrontierCbor]),
+        encodeCbor([
+          1n,
+          rejectionCode,
+          fixtureBytes(0x72, 32),
+          acceptanceFrontierCbor,
+        ]),
       ),
     ).toThrow(/cannot carry a rejection/u);
     expect(() =>
       decodeExactTerminalWitness(
-        encodeCbor([2n, Buffer.alloc(0), h32(0x73), bytes("80")]),
+        encodeCbor([2n, Buffer.alloc(0), fixtureBytes(0x73, 32), bytes("80")]),
       ),
     ).toThrow(/misclassified/u);
     expect(() =>
       decodeExactTerminalWitness(
-        encodeCbor([2n, rejectionCode, h32(0x73), acceptanceFrontierCbor]),
+        encodeCbor([
+          2n,
+          rejectionCode,
+          fixtureBytes(0x73, 32),
+          acceptanceFrontierCbor,
+        ]),
       ),
     ).toThrow(/misclassified/u);
     expect(() =>
       decodeExactTerminalWitness(
-        encodeCbor([3n, Buffer.alloc(0), h32(0x73), bytes("80")]),
+        encodeCbor([3n, Buffer.alloc(0), fixtureBytes(0x73, 32), bytes("80")]),
       ),
     ).toThrow(/outcome/u);
   });

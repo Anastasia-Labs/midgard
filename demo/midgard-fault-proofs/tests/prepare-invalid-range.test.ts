@@ -13,6 +13,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -22,8 +23,6 @@ import {
   prepareInvalidRangeFromTransactions,
 } from "../src/index.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
@@ -47,7 +46,7 @@ const makeNativeTx = ({
     version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
-      spendInputsPreimageCbor: encodeCbor([inputCbor(h32("11"), fee)]),
+      spendInputsPreimageCbor: encodeCbor([inputCbor(h32(0x11), fee)]),
       referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
       outputsPreimageCbor: EMPTY_CBOR_LIST,
       fee,
@@ -99,12 +98,12 @@ describe("prepare-invalid-range", () => {
     );
 
     const output = await prepareInvalidRangeFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: [validTx, badTx],
       blockSlot: 150n,
     });
 
-    expect(output.headerHash).toBe(h28("aa"));
+    expect(output.headerHash).toBe(h28(0xaa));
     expect(output.txCount).toBe(2);
     expect(output.tx.nodeTxId).toBe(badTx.nodeTxId);
     expect(output.blockSlot).toBe(150n);
@@ -139,7 +138,7 @@ describe("prepare-invalid-range", () => {
 
     await expect(
       prepareInvalidRangeFromTransactions({
-        headerHash: h28("bb"),
+        headerHash: h28(0xbb),
         transactions: [validTx, expiredTx],
         blockSlot: 150n,
         txId: validTx.nodeTxId,
@@ -147,7 +146,7 @@ describe("prepare-invalid-range", () => {
     ).rejects.toThrow("is valid at --block-slot 150");
 
     const output = await prepareInvalidRangeFromTransactions({
-      headerHash: h28("bb"),
+      headerHash: h28(0xbb),
       transactions: [validTx, expiredTx],
       blockSlot: 150n,
       txId: expiredTx.nodeTxId,
@@ -166,8 +165,8 @@ describe("prepare-invalid-range", () => {
     );
     await expect(
       prepareInvalidRangeFromTransactions({
-        headerHash: h28("bc"),
-        expectedTransactionsRoot: h32("00"),
+        headerHash: h28(0xbc),
+        expectedTransactionsRoot: h32(0x00),
         transactions: [badTx],
         blockSlot: 150n,
       }),
@@ -177,7 +176,7 @@ describe("prepare-invalid-range", () => {
   it("rejects blocks without invalid-range transactions", async () => {
     await expect(
       prepareInvalidRangeFromTransactions({
-        headerHash: h28("cc"),
+        headerHash: h28(0xcc),
         transactions: [
           payloadFromTx(
             makeNativeTx({
@@ -212,7 +211,7 @@ describe("prepare-invalid-range", () => {
       await writeFile(transactionsPath, JSON.stringify([badTx]));
 
       const output = await prepareInvalidRangeFromFile({
-        headerHash: h28("dd"),
+        headerHash: h28(0xdd),
         transactionsPath,
         blockSlot: 100n,
         outputDir: dir,
@@ -265,7 +264,7 @@ describe("prepare-invalid-range", () => {
 
     const output = await prepareInvalidRangeFromNode({
       midgardNodeUrl: "http://node.local/",
-      headerHash: h28("ee"),
+      headerHash: h28(0xee),
       blockSlot: 100n,
       fetchImpl,
     });

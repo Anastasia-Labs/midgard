@@ -1,3 +1,4 @@
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -7,16 +8,15 @@ import {
 } from "@/fraud-proof/transition-trace.js";
 import { ROOT_DOMAINS } from "@/transition-trace.js";
 
-const h32 = (byte: string): string => byte.repeat(64);
-const txId = h32("1");
+const txId = h32(0x11);
 const eventKey = { L2TransactionEventKey: { tx_id: txId } } as const;
 
 const witness: InvalidOneStepTransitionWitness = {
   L2TransactionTransition: {
     trace_proof: {
       domain: ROOT_DOMAINS.transitionTrace,
-      root: h32("4"),
-      phas_root: h32("5"),
+      root: h32(0x44),
+      phas_root: h32(0x55),
       count: 1n,
       key: 0n,
       value: {
@@ -24,15 +24,15 @@ const witness: InvalidOneStepTransitionWitness = {
         step_index: 0n,
         event_key: eventKey,
         phase: "L2Transaction",
-        pre_utxos_root: h32("2"),
-        post_utxos_root: h32("3"),
+        pre_utxos_root: h32(0x22),
+        post_utxos_root: h32(0x33),
       },
       proof: [],
     },
     event_to_step: {
       domain: ROOT_DOMAINS.eventToStep,
-      root: h32("6"),
-      phas_root: h32("7"),
+      root: h32(0x66),
+      phas_root: h32(0x77),
       count: 1n,
       key: eventKey,
       value: { step_index: 0n, phase: "L2Transaction" },
@@ -40,8 +40,8 @@ const witness: InvalidOneStepTransitionWitness = {
     },
     source_membership: {
       domain: ROOT_DOMAINS.transactionsV1,
-      root: h32("8"),
-      phas_root: h32("9"),
+      root: h32(0x88),
+      phas_root: h32(0x99),
       count: 1n,
       key: txId,
       value: "80",

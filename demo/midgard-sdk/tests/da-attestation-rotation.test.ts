@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
   type Assets,
   credentialToAddress,
@@ -74,14 +75,12 @@ const aikenConstructorOrder = (typeName: string): readonly string[] => {
 const constructorTagPrefix = (index: number): string =>
   `d8${(0x79 + index).toString(16)}`;
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const availabilityCommitment = (headerHash: string) =>
   buildDaAvailabilityCommitment({
-    deploymentIdentity: h28("71"),
+    deploymentIdentity: h28(0x71),
     headerHash,
     payload: Uint8Array.of(1),
-    bondOwner: h28("72"),
+    bondOwner: h28(0x72),
     responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4096,
       trancheByteLength: 4 * 1024 * 1024,
@@ -153,7 +152,7 @@ const makeUtxo = (
     datum,
   }) as UTxO;
 
-const validator = (policyByte: string, address: string) =>
+const validator = (policyByte: number, address: string) =>
   ({
     policyId: h28(policyByte),
     spendingScriptAddress: address,
@@ -164,19 +163,19 @@ const validator = (policyByte: string, address: string) =>
     mintingScript: { type: "PlutusV3", script: "" },
   }) as unknown as MidgardValidators["daAttestation"];
 
-const GOVERNED_COMMITTEE_HASH = h32("33");
-const ROTATED_COMMITTEE_HASH = h32("44");
+const GOVERNED_COMMITTEE_HASH = h32(0x33);
+const ROTATED_COMMITTEE_HASH = h32(0x44);
 
 const makeFixture = () => {
   const contracts = {
-    daAttestation: validator("aa", "addr_da_attestation"),
+    daAttestation: validator(0xaa, "addr_da_attestation"),
   } as Pick<MidgardValidators, "daAttestation">;
-  const headerHash = h28("10");
+  const headerHash = h28(0x10);
   const daParamsDatum: DaParamsDatum = {
-    committee: h32("11") + h32("22"),
+    committee: h32(0x11) + h32(0x22),
     committee_signers_hash: GOVERNED_COMMITTEE_HASH,
     da_threshold: 2n,
-    owners: [h28("81"), h28("82")],
+    owners: [h28(0x81), h28(0x82)],
     update_threshold: 2n,
   };
   const daParamsUtxo = makeUtxo(2, { lovelace: 2_000_000n });
@@ -192,7 +191,7 @@ const makeFixture = () => {
     da_threshold: 2n,
     committee_signers_hash: ROTATED_COMMITTEE_HASH,
     rescue_beneficiary: {
-      paymentCredential: { PublicKeyCredential: [h28("66")] },
+      paymentCredential: { PublicKeyCredential: [h28(0x66)] },
       stakeCredential: null,
     },
     attested_signers: `80${"00".repeat(31)}`,
@@ -224,7 +223,7 @@ const makeFixture = () => {
     referenceScripts,
     refundAddress: credentialToAddress("Preprod", {
       type: "Key",
-      hash: h28("66"),
+      hash: h28(0x66),
     }),
   };
 };
@@ -517,7 +516,7 @@ describe("Q63c rescue builder", () => {
         attestation: fixture.attestation,
         refundAddress: credentialToAddress("Preprod", {
           type: "Key",
-          hash: h28("67"),
+          hash: h28(0x67),
         }),
         referenceScripts: fixture.referenceScripts,
       }),
@@ -539,12 +538,12 @@ describe("Q63c rescue builder", () => {
 });
 
 const fixtureDatum = () => ({
-  header_hash: h28("10"),
-  availability_commitment: availabilityCommitment(h28("10")),
+  header_hash: h28(0x10),
+  availability_commitment: availabilityCommitment(h28(0x10)),
   da_threshold: 2n,
   committee_signers_hash: ROTATED_COMMITTEE_HASH,
   rescue_beneficiary: {
-    paymentCredential: { PublicKeyCredential: [h28("66")] },
+    paymentCredential: { PublicKeyCredential: [h28(0x66)] },
     stakeCredential: null,
   },
   attested_signers: EMPTY_ATTESTED_SIGNER_BITMAP,

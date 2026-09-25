@@ -16,6 +16,7 @@ import {
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -28,8 +29,6 @@ import {
   prepareNonExistentInputFromTransactions,
 } from "../src/index.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
@@ -80,13 +79,13 @@ const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
 
 // Phantom input the bad tx spends (absent from an empty-genesis ledger and
 // never produced by any block tx).
-const PHANTOM_TX_ID = h32("de");
+const PHANTOM_TX_ID = h32(0xde);
 const badTxPayload = payloadFromTx(
   makeNativeTx({ spendInputs: [inputCbor(PHANTOM_TX_ID, 0n)], fee: 0n }),
 );
 // A second well-formed tx so the transactions trie is non-trivial.
 const otherTxPayload = payloadFromTx(
-  makeNativeTx({ spendInputs: [inputCbor(h32("c1"), 0n)], fee: 1n }),
+  makeNativeTx({ spendInputs: [inputCbor(h32(0xc1), 0n)], fee: 1n }),
 );
 
 const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
@@ -146,8 +145,8 @@ const buildPrevBlockPayload = async (
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
-    prevHeaderHash: h28("90"),
-    operatorVkey: h28("91"),
+    prevHeaderHash: h28(0x90),
+    operatorVkey: h28(0x91),
     protocolVersion: 1n,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
@@ -183,18 +182,18 @@ const buildPrevBlockPayload = async (
 
 // A ledger UTxO (present in the prev-block snapshot) that is NOT the phantom
 // input the bad tx spends.
-const LEDGER_UTXO_KEY = inputCbor(h32("aa"), 0n).toString("hex");
+const LEDGER_UTXO_KEY = inputCbor(h32(0xaa), 0n).toString("hex");
 const PHANTOM_LEDGER_KEY = inputCbor(PHANTOM_TX_ID, 0n).toString("hex");
 
 describe("prepare-non-existent-input", () => {
   it("prepares the four submit-step artifacts for a phantom-input tx over the empty ledger", async () => {
     const output = await prepareNonExistentInputFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: [badTxPayload, otherTxPayload],
       badTxId: badTxPayload.nodeTxId,
     });
 
-    expect(output.headerHash).toBe(h28("aa"));
+    expect(output.headerHash).toBe(h28(0xaa));
     expect(output.txCount).toBe(2);
     expect(output.badTxId).toBe(badTxPayload.nodeTxId);
     expect(output.badInputIndex).toBe(0);
@@ -215,7 +214,7 @@ describe("prepare-non-existent-input", () => {
 
   it("defaults to the sole transaction when --bad-tx-id is omitted", async () => {
     const output = await prepareNonExistentInputFromTransactions({
-      headerHash: h28("bb"),
+      headerHash: h28(0xbb),
       transactions: [badTxPayload],
     });
     expect(output.badTxId).toBe(badTxPayload.nodeTxId);
@@ -225,7 +224,7 @@ describe("prepare-non-existent-input", () => {
   it("requires --bad-tx-id when the block has multiple transactions", async () => {
     await expect(
       prepareNonExistentInputFromTransactions({
-        headerHash: h28("cc"),
+        headerHash: h28(0xcc),
         transactions: [badTxPayload, otherTxPayload],
       }),
     ).rejects.toThrow("specify --bad-tx-id");
@@ -234,7 +233,7 @@ describe("prepare-non-existent-input", () => {
   it("rejects a --bad-input-index out of bounds", async () => {
     await expect(
       prepareNonExistentInputFromTransactions({
-        headerHash: h28("dd"),
+        headerHash: h28(0xdd),
         transactions: [badTxPayload],
         badInputIndex: 5,
       }),
@@ -244,16 +243,16 @@ describe("prepare-non-existent-input", () => {
   it("rejects an expected transactions root that does not match the reconstruction", async () => {
     await expect(
       prepareNonExistentInputFromTransactions({
-        headerHash: h28("ee"),
+        headerHash: h28(0xee),
         transactions: [badTxPayload],
-        expectedTransactionsRoot: h32("00"),
+        expectedTransactionsRoot: h32(0x00),
       }),
     ).rejects.toThrow("does not match --expected-transactions-root");
   });
 
   it("accepts the counted transactions root committed by the block header", async () => {
     const prepared = await prepareNonExistentInputFromTransactions({
-      headerHash: h28("ef"),
+      headerHash: h28(0xef),
       transactions: [badTxPayload],
     });
     const committedRoot = await Effect.runPromise(
@@ -265,7 +264,7 @@ describe("prepare-non-existent-input", () => {
     );
 
     const verified = await prepareNonExistentInputFromTransactions({
-      headerHash: h28("ef"),
+      headerHash: h28(0xef),
       transactions: [badTxPayload],
       expectedTransactionsRoot: committedRoot,
     });
@@ -281,9 +280,9 @@ describe("prepare-non-existent-input", () => {
   it("refuses to build a ledger non-membership proof over a non-empty prev-utxos root", async () => {
     await expect(
       prepareNonExistentInputFromTransactions({
-        headerHash: h28("ff"),
+        headerHash: h28(0xff),
         transactions: [badTxPayload],
-        prevUtxosRoot: h32("ab"),
+        prevUtxosRoot: h32(0xab),
       }),
     ).rejects.toThrow("non-empty prev-utxos ledger");
   });
@@ -297,7 +296,7 @@ describe("prepare-non-existent-input", () => {
       );
 
       const output = await prepareNonExistentInputFromFile({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactionsPath,
         badTxId: badTxPayload.nodeTxId,
         outputDir: dir,
@@ -356,7 +355,7 @@ describe("prepare-non-existent-input", () => {
 
     const output = await prepareNonExistentInputFromNode({
       midgardNodeUrl: "http://node.local/",
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       fetchImpl,
     });
 
@@ -371,7 +370,7 @@ describe("prepare-non-existent-input", () => {
     expect(utxosRoot).not.toBe(EMPTY_MERKLE_TREE_ROOT);
 
     const output = await prepareNonExistentInputFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: [badTxPayload],
       prevUtxosRoot: utxosRoot,
       prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
@@ -389,9 +388,9 @@ describe("prepare-non-existent-input", () => {
     ]);
     await expect(
       prepareNonExistentInputFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions: [badTxPayload],
-        prevUtxosRoot: h32("bb"),
+        prevUtxosRoot: h32(0xbb),
         prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
       }),
     ).rejects.toThrow("does not match --prev-utxos-root");
@@ -404,7 +403,7 @@ describe("prepare-non-existent-input", () => {
     ]);
     await expect(
       prepareNonExistentInputFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions: [badTxPayload],
         prevUtxosRoot: utxosRoot,
         prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,

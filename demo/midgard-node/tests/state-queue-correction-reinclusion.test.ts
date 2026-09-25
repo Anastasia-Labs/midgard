@@ -3,6 +3,7 @@ import {
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerType,
 } from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -11,20 +12,18 @@ import { authorizeStateQueueCorrectionReinclusion } from "../src/services/state-
 import { externalTimeoutTransition } from "./helpers/state-queue-correction-transition.js";
 
 const removedHeader = Buffer.from("11".repeat(28), "hex");
-const h28 = (byte: string): string => byte.repeat(56);
-const h32 = (byte: string): string => byte.repeat(64);
-const outRef = (byte: string, index: number): string =>
+const outRef = (byte: number, index: number): string =>
   `${h32(byte)}#${index.toString()}`;
-const correctionLockOutRef = outRef("9", 9);
+const correctionLockOutRef = outRef(0x99, 9);
 
 const externalFraudTransition = () => {
-  const fraudulent = h28("2");
-  const anchor = h28("1");
-  const transactionHash = h32("e");
+  const fraudulent = h28(0x22);
+  const anchor = h28(0x11);
+  const transactionHash = h32(0xee);
   const redeemer: StateQueueRedeemerType = {
     RemoveFraudulentBlockHeader: {
       yield_to_ref_input_index: 0n,
-      fraudulent_operator: h28("f"),
+      fraudulent_operator: h28(0xff),
       fraudulent_blocks_header_hash: fraudulent,
       slashing_approach: {
         OperatorAlreadySlashed: {
@@ -36,7 +35,7 @@ const externalFraudTransition = () => {
       block_removal_approach: {
         RemoveLastFraudulentBlock: {
           anchor_element_input_outref: {
-            transactionId: h32("1"),
+            transactionId: h32(0x11),
             outputIndex: 0n,
           },
           anchor_element_output_index: 0n,
@@ -45,16 +44,16 @@ const externalFraudTransition = () => {
     },
   };
   return deriveStateQueueAuthenticatedTransition({
-    deploymentIdentityDigest: h32("a"),
-    stateQueuePolicyId: h28("b"),
+    deploymentIdentityDigest: h32(0xaa),
+    stateQueuePolicyId: h28(0xbb),
     transactionHash,
-    blockHash: h32("8"),
+    blockHash: h32(0x88),
     slot: "101",
     blockNo: "91",
     transactionIndex: "0",
-    chainPointId: h32("6"),
+    chainPointId: h32(0x66),
     finalityDepth: "2160",
-    mintPolicyIds: [h28("b")],
+    mintPolicyIds: [h28(0xbb)],
     referenceInputOutRefs: [],
     correctionLockWitness: {
       kind: "correction_transition",
@@ -74,39 +73,39 @@ const externalFraudTransition = () => {
         cborHex: Data.to(redeemer, StateQueueRedeemer),
       },
     ],
-    spentInputOutRefs: [outRef("1", 0), outRef("2", 0), correctionLockOutRef],
+    spentInputOutRefs: [outRef(0x11, 0), outRef(0x22, 0), correctionLockOutRef],
     previousQueue: [
-      { headerHash: null, outRef: outRef("0", 0) },
-      { headerHash: anchor, outRef: outRef("1", 0) },
-      { headerHash: fraudulent, outRef: outRef("2", 0) },
+      { headerHash: null, outRef: outRef(0x00, 0) },
+      { headerHash: anchor, outRef: outRef(0x11, 0) },
+      { headerHash: fraudulent, outRef: outRef(0x22, 0) },
     ],
     nextQueue: [
-      { headerHash: null, outRef: outRef("0", 0) },
+      { headerHash: null, outRef: outRef(0x00, 0) },
       { headerHash: anchor, outRef: `${transactionHash}#0` },
     ],
   })!;
 };
 
 const externalMergeTransition = () => {
-  const merged = h28("1");
-  const transactionHash = h32("f");
+  const merged = h28(0x11);
+  const transactionHash = h32(0xff);
   const redeemer: StateQueueRedeemerType = {
     MergeToConfirmedStateV1: {
       yield_to_ref_input_index: 0n,
       header_node_key: merged,
       confirmed_state_input_outref: {
-        transactionId: h32("0"),
+        transactionId: h32(0x00),
         outputIndex: 0n,
       },
       confirmed_state_output_index: 0n,
       m_settlement_redeemer_index: null,
-      merged_block_withdrawals_root: h32("1"),
-      merged_block_forced_transactions_root: h32("2"),
-      merged_block_transactions_root: h32("3"),
-      merged_block_deposits_root: h32("4"),
-      merged_block_transition_trace_root: h32("5"),
-      merged_block_event_to_step_root: h32("6"),
-      merged_block_validation_traces_root: h32("7"),
+      merged_block_withdrawals_root: h32(0x11),
+      merged_block_forced_transactions_root: h32(0x22),
+      merged_block_transactions_root: h32(0x33),
+      merged_block_deposits_root: h32(0x44),
+      merged_block_transition_trace_root: h32(0x55),
+      merged_block_event_to_step_root: h32(0x66),
+      merged_block_validation_traces_root: h32(0x77),
       merged_block_withdrawal_count: 0n,
       merged_block_forced_transaction_count: 0n,
       merged_block_l2_transaction_count: 0n,
@@ -117,16 +116,16 @@ const externalMergeTransition = () => {
     },
   };
   return deriveStateQueueAuthenticatedTransition({
-    deploymentIdentityDigest: h32("a"),
-    stateQueuePolicyId: h28("b"),
+    deploymentIdentityDigest: h32(0xaa),
+    stateQueuePolicyId: h28(0xbb),
     transactionHash,
-    blockHash: h32("9"),
+    blockHash: h32(0x99),
     slot: "102",
     blockNo: "92",
     transactionIndex: "0",
-    chainPointId: h32("7"),
+    chainPointId: h32(0x77),
     finalityDepth: "2160",
-    mintPolicyIds: [h28("b")],
+    mintPolicyIds: [h28(0xbb)],
     referenceInputOutRefs: [correctionLockOutRef],
     correctionLockWitness: {
       kind: "idle_reference",
@@ -140,10 +139,10 @@ const externalMergeTransition = () => {
         cborHex: Data.to(redeemer, StateQueueRedeemer),
       },
     ],
-    spentInputOutRefs: [outRef("0", 0), outRef("1", 0)],
+    spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0)],
     previousQueue: [
-      { headerHash: null, outRef: outRef("0", 0) },
-      { headerHash: merged, outRef: outRef("1", 0) },
+      { headerHash: null, outRef: outRef(0x00, 0) },
+      { headerHash: merged, outRef: outRef(0x11, 0) },
     ],
     nextQueue: [{ headerHash: null, outRef: `${transactionHash}#0` }],
   })!;
@@ -154,19 +153,19 @@ describe("state-queue correction event reinclusion", () => {
     const externalWinner = externalTimeoutTransition({ terminal: true });
     expect(
       authorizeStateQueueCorrectionReinclusion(externalWinner, {
-        expectedDeploymentIdentityDigest: h32("a"),
+        expectedDeploymentIdentityDigest: h32(0xaa),
         requiredFinalityDepth: 2_160n,
       }),
     ).toEqual(externalWinner);
     expect(() =>
       authorizeStateQueueCorrectionReinclusion(externalWinner, {
-        expectedDeploymentIdentityDigest: h32("9"),
+        expectedDeploymentIdentityDigest: h32(0x99),
         requiredFinalityDepth: 2_160n,
       }),
     ).toThrow(/does not match configured deployment/);
     expect(() =>
       authorizeStateQueueCorrectionReinclusion(externalWinner, {
-        expectedDeploymentIdentityDigest: h32("a"),
+        expectedDeploymentIdentityDigest: h32(0xaa),
         requiredFinalityDepth: 2_161n,
       }),
     ).toThrow(/below required release depth/);
@@ -176,22 +175,22 @@ describe("state-queue correction event reinclusion", () => {
     const pruneWinner = externalTimeoutTransition({ terminal: false });
     const terminalWinner = externalTimeoutTransition({ terminal: true });
     const authority = {
-      expectedDeploymentIdentityDigest: h32("a"),
+      expectedDeploymentIdentityDigest: h32(0xaa),
       requiredFinalityDepth: 2_160n,
     };
     expect(
       authorizeStateQueueCorrectionReinclusion(pruneWinner, authority)
         .removedHeaderHashes,
-    ).toEqual([h28("2")]);
+    ).toEqual([h28(0x22)]);
     expect(
       authorizeStateQueueCorrectionReinclusion(terminalWinner, authority)
         .removedHeaderHashes,
-    ).toEqual([h28("1")]);
+    ).toEqual([h28(0x11)]);
   });
 
   it("authorizes a finalized fraud removal but rejects a normal merge", () => {
     const authority = {
-      expectedDeploymentIdentityDigest: h32("a"),
+      expectedDeploymentIdentityDigest: h32(0xaa),
       requiredFinalityDepth: 2_160n,
     };
     const fraud = externalFraudTransition();
@@ -199,7 +198,7 @@ describe("state-queue correction event reinclusion", () => {
       authorizeStateQueueCorrectionReinclusion(fraud, authority),
     ).toMatchObject({
       transitionKind: "fraud_removal",
-      removedHeaderHashes: [h28("2")],
+      removedHeaderHashes: [h28(0x22)],
     });
     expect(() =>
       authorizeStateQueueCorrectionReinclusion(
@@ -211,19 +210,19 @@ describe("state-queue correction event reinclusion", () => {
 
   it("rejects a forged or duplicate authenticated removal envelope", () => {
     const authority = {
-      expectedDeploymentIdentityDigest: h32("a"),
+      expectedDeploymentIdentityDigest: h32(0xaa),
       requiredFinalityDepth: 2_160n,
     };
     const fraud = externalFraudTransition();
     expect(() =>
       authorizeStateQueueCorrectionReinclusion(
-        { ...fraud, removedHeaderHashes: [h28("2"), h28("2")] },
+        { ...fraud, removedHeaderHashes: [h28(0x22), h28(0x22)] },
         authority,
       ),
     ).toThrow(/canonical digest-bound authenticated transition/u);
     expect(() =>
       authorizeStateQueueCorrectionReinclusion(
-        { ...fraud, transitionDigest: h32("9") },
+        { ...fraud, transitionDigest: h32(0x99) },
         authority,
       ),
     ).toThrow(/canonical digest-bound authenticated transition/u);

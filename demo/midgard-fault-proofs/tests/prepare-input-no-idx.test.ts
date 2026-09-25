@@ -27,6 +27,7 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -56,8 +57,6 @@ import {
   type CanonicalBlockFixture,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_NULL_ROOT = computeHash32(encodeCbor(null));
 
@@ -123,7 +122,7 @@ const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
 const producerTx = (outputCount: number, fee: bigint): NodeTransactionPayload =>
   payloadFromTx(
     makeNativeTx({
-      spendInputCbors: [inputCbor(h32("99"), fee)],
+      spendInputCbors: [inputCbor(h32(0x99), fee)],
       outputCbors: Array.from({ length: outputCount }, (_, index) =>
         nativeOutputCbor(0x40 + index, 5_000_000n + BigInt(index)),
       ),
@@ -214,7 +213,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
   it("selects the input whose producing transaction is committed but has no such output", async () => {
     const block = await violatingBlock();
     const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: block.transactions,
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
@@ -240,7 +239,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
   it("emits both inclusion arguments and every forwarded step state the validators derive", async () => {
     const block = await violatingBlock();
     const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: block.transactions,
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
@@ -284,7 +283,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
   it("projects the producing transaction's canonical outputs into step-04 PlutusData", async () => {
     const block = await violatingBlock();
     const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: block.transactions,
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
@@ -360,7 +359,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
     const spender = spenderTx(producer.nodeTxId, 5n, 2n);
     const transactions = [producer, spender];
     const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions,
       expectedTransactionsRoot: await committedTransactionsRoot(transactions),
     });
@@ -391,7 +390,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
     // length and the §8.4 tier that length selects.
     const block = await violatingBlock(20);
     const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: block.transactions,
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
@@ -415,7 +414,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
     async (spendInputCount) => {
       const block = await violatingBlock(spendInputCount);
       const output = await prepareInputNoIdxFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions: block.transactions,
         expectedTransactionsRoot: block.expectedTransactionsRoot,
       });
@@ -449,7 +448,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
       SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT,
     );
     const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: block.transactions,
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
@@ -486,7 +485,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
   it("measures the complete proof item carried by each step (§3.2 tier 1)", async () => {
     const block = await violatingBlock();
     const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: block.transactions,
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
@@ -512,7 +511,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
-          headerHash: h28("aa"),
+          headerHash: h28(0xaa),
           transactions,
           expectedTransactionsRoot,
         }),
@@ -521,7 +520,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
   });
 
   it("refuses when the input's producing transaction is not committed in this block", async () => {
-    const spender = spenderTx(h32("77"), 0n, 2n);
+    const spender = spenderTx(h32(0x77), 0n, 2n);
     const transactions = [spender];
     const expectedTransactionsRoot =
       await committedTransactionsRoot(transactions);
@@ -529,7 +528,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
-          headerHash: h28("aa"),
+          headerHash: h28(0xaa),
           transactions,
           expectedTransactionsRoot,
         }),
@@ -542,10 +541,10 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
-          headerHash: h28("aa"),
+          headerHash: h28(0xaa),
           transactions: block.transactions,
           expectedTransactionsRoot: block.expectedTransactionsRoot,
-          badTxId: h32("ee"),
+          badTxId: h32(0xee),
         }),
       ),
     ).toBe("bad_tx_not_committed");
@@ -556,7 +555,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
-          headerHash: h28("aa"),
+          headerHash: h28(0xaa),
           transactions: block.transactions,
           expectedTransactionsRoot: block.expectedTransactionsRoot,
           badTxId: block.spender.nodeTxId,
@@ -571,9 +570,9 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
-          headerHash: h28("aa"),
+          headerHash: h28(0xaa),
           transactions: block.transactions,
-          expectedTransactionsRoot: h32("ff"),
+          expectedTransactionsRoot: h32(0xff),
         }),
       ),
     ).toBe("transactions_root_mismatch");
@@ -588,7 +587,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
-          headerHash: h28("aa"),
+          headerHash: h28(0xaa),
           transactions: block.transactions,
           expectedTransactionsRoot: trie.root,
         }),
@@ -602,7 +601,7 @@ describe("Q13 input-no-idx resumable artifacts", () => {
     const block = await violatingBlock();
     await withTempDir(async (dir) => {
       const output = await prepareInputNoIdxFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions: block.transactions,
         expectedTransactionsRoot: block.expectedTransactionsRoot,
         outputDir: dir,
@@ -679,7 +678,7 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
     transactionsRootMode: "payloadSource" | "nativeCompact",
   ): Promise<CanonicalBlockFixture> => {
     const producer = buildFixtureTransaction({
-      spendInputs: [inputCbor(h32("99"), 0n)],
+      spendInputs: [inputCbor(h32(0x99), 0n)],
       fee: 1n,
     });
     const spender = buildFixtureTransaction({

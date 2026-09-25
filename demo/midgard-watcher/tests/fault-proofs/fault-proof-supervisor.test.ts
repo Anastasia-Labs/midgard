@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs";
+import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -12,7 +13,6 @@ import {
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 
 const directories: string[] = [];
-const h28 = (byte: string): string => byte.repeat(28);
 const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
 const deadline = (headerHash: string, headerEndTimeMs: number) =>
   Object.freeze({
@@ -94,13 +94,13 @@ describe("production fault-proof supervisor", () => {
   it("recovers canonical journals in installed category and header order", async () => {
     const root = await directory();
     await Promise.all([
-      mkdir(join(root, "fault-proofs", "networkId", h28("bb")), {
+      mkdir(join(root, "fault-proofs", "networkId", h28(0xbb)), {
         recursive: true,
       }),
-      mkdir(join(root, "fault-proofs", "doubleSpend", h28("cc")), {
+      mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xcc)), {
         recursive: true,
       }),
-      mkdir(join(root, "fault-proofs", "doubleSpend", h28("aa")), {
+      mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xaa)), {
         recursive: true,
       }),
     ]);
@@ -118,9 +118,9 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
 
     expect(observed).toEqual([
-      `run:doubleSpend:${h28("aa")}`,
-      `run:doubleSpend:${h28("cc")}`,
-      `run:networkId:${h28("bb")}`,
+      `run:doubleSpend:${h28(0xaa)}`,
+      `run:doubleSpend:${h28(0xcc)}`,
+      `run:networkId:${h28(0xbb)}`,
     ]);
     expect(supervisor.status()).toMatchObject({
       phase: "closed",
@@ -144,7 +144,7 @@ describe("production fault-proof supervisor", () => {
     );
 
     const malformedRoot = await directory();
-    await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", h28("aa")), {
+    await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", h28(0xaa)), {
       recursive: true,
     });
     await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", "not-hex"));
@@ -164,7 +164,7 @@ describe("production fault-proof supervisor", () => {
     });
     await symlink(
       outside,
-      join(symlinkRoot, "fault-proofs", "doubleSpend", h28("bb")),
+      join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb)),
     );
     const linked = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: symlinkRoot,
@@ -172,7 +172,7 @@ describe("production fault-proof supervisor", () => {
       run: async () => undefined,
     });
     await expect(linked.recoverExisting(null)).rejects.toThrow(
-      `invalid doubleSpend target ${h28("bb")}`,
+      `invalid doubleSpend target ${h28(0xbb)}`,
     );
   });
 
@@ -192,7 +192,7 @@ describe("production fault-proof supervisor", () => {
     const firstJob = {
       mode: "run" as const,
       category: "doubleSpend" as const,
-      headerHash: h28("11"),
+      headerHash: h28(0x11),
       decisionDigest: "11".repeat(32),
       rollbackGeneration: "0",
     };
@@ -212,7 +212,7 @@ describe("production fault-proof supervisor", () => {
     const secondRun = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "networkId",
-      headerHash: h28("22"),
+      headerHash: h28(0x22),
       decisionDigest: "22".repeat(32),
       rollbackGeneration: "0",
     });
@@ -227,7 +227,7 @@ describe("production fault-proof supervisor", () => {
     await expect(duplicate).resolves.toBe("first");
     await expect(replacement).resolves.toBe("first");
     await expect(generationReplacement).resolves.toBe("first");
-    await expect(secondRun).resolves.toBe(h28("22"));
+    await expect(secondRun).resolves.toBe(h28(0x22));
     expect(starts.map(({ category }) => category)).toEqual([
       "doubleSpend",
       "doubleSpend",
@@ -248,7 +248,7 @@ describe("production fault-proof supervisor", () => {
     const running = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "doubleSpend",
-      headerHash: h28("55"),
+      headerHash: h28(0x55),
       decisionDigest: "55".repeat(32),
       rollbackGeneration: "0",
     });
@@ -259,7 +259,7 @@ describe("production fault-proof supervisor", () => {
       supervisor.unsafeRunOrResumeForTest({
         mode: "run",
         category: "networkId",
-        headerHash: h28("66"),
+        headerHash: h28(0x66),
         decisionDigest: "66".repeat(32),
         rollbackGeneration: "0",
       }),
@@ -287,7 +287,7 @@ describe("production fault-proof supervisor", () => {
     const first = supervisor.unsafeScheduleForTest({
       mode: "run",
       category: "doubleSpend",
-      headerHash: h28("71"),
+      headerHash: h28(0x71),
       decisionDigest: "71".repeat(32),
       rollbackGeneration: "0",
     });
@@ -298,7 +298,7 @@ describe("production fault-proof supervisor", () => {
       supervisor.unsafeScheduleForTest({
         mode: "run",
         category: "networkId",
-        headerHash: h28("72"),
+        headerHash: h28(0x72),
         decisionDigest: "72".repeat(32),
         rollbackGeneration: "0",
       }),
@@ -336,7 +336,7 @@ describe("production fault-proof supervisor", () => {
     const first = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "doubleSpend",
-      headerHash: h28("73"),
+      headerHash: h28(0x73),
       decisionDigest: "73".repeat(32),
       rollbackGeneration: "0",
     });
@@ -351,7 +351,7 @@ describe("production fault-proof supervisor", () => {
       supervisor.unsafeRunOrResumeForTest({
         mode: "resume",
         category: "doubleSpend",
-        headerHash: h28("73"),
+        headerHash: h28(0x73),
         decisionDigest: "73".repeat(32),
         rollbackGeneration: "1",
       }),
@@ -377,14 +377,14 @@ describe("production fault-proof supervisor", () => {
     const failed = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "doubleSpend",
-      headerHash: h28("33"),
+      headerHash: h28(0x33),
       decisionDigest: "33".repeat(32),
       rollbackGeneration: "0",
     });
     const queued = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "networkId",
-      headerHash: h28("44"),
+      headerHash: h28(0x44),
       decisionDigest: "44".repeat(32),
       rollbackGeneration: "0",
     });
@@ -403,13 +403,13 @@ describe("production fault-proof supervisor", () => {
     expect(calls).toBe(1);
     expect(supervisor.status()).toMatchObject({
       phase: "blocked",
-      blockedJob: { category: "doubleSpend", headerHash: h28("33") },
+      blockedJob: { category: "doubleSpend", headerHash: h28(0x33) },
     });
     await expect(
       supervisor.unsafeRunOrResumeForTest({
         mode: "resume",
         category: "doubleSpend",
-        headerHash: h28("33"),
+        headerHash: h28(0x33),
         decisionDigest: "33".repeat(32),
         rollbackGeneration: "0",
       }),
@@ -433,32 +433,32 @@ describe("production fault-proof supervisor", () => {
     const first = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "doubleSpend",
-      headerHash: h28("81"),
+      headerHash: h28(0x81),
       decisionDigest: "81".repeat(32),
       rollbackGeneration: "0",
-      deadline: deadline(h28("81"), 10_000),
+      deadline: deadline(h28(0x81), 10_000),
     });
     await Promise.resolve();
     const later = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "networkId",
-      headerHash: h28("82"),
+      headerHash: h28(0x82),
       decisionDigest: "82".repeat(32),
       rollbackGeneration: "0",
-      deadline: deadline(h28("82"), 30_000),
+      deadline: deadline(h28(0x82), 30_000),
     });
     const earlier = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "invalidRange",
-      headerHash: h28("83"),
+      headerHash: h28(0x83),
       decisionDigest: "83".repeat(32),
       rollbackGeneration: "0",
-      deadline: deadline(h28("83"), 20_000),
+      deadline: deadline(h28(0x83), 20_000),
     });
     await waitUntil(() => supervisor.status().queuedJobCount === 2);
     active.resolve();
     await Promise.all([first, later, earlier]);
-    expect(starts).toEqual([h28("81"), h28("83"), h28("82")]);
+    expect(starts).toEqual([h28(0x81), h28(0x83), h28(0x82)]);
     await supervisor.close();
   });
 
@@ -472,35 +472,35 @@ describe("production fault-proof supervisor", () => {
       deadlineAlertHeadroomMs: 1_000,
       unsafeNowMsForTest: () => nowMs,
       run: async (job) => {
-        if (job.headerHash === h28("84")) await active.promise;
+        if (job.headerHash === h28(0x84)) await active.promise;
       },
     });
     await supervisor.recoverExisting(null);
     const running = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "doubleSpend",
-      headerHash: h28("84"),
+      headerHash: h28(0x84),
       decisionDigest: "84".repeat(32),
       rollbackGeneration: "0",
-      deadline: deadline(h28("84"), 30_000),
+      deadline: deadline(h28(0x84), 30_000),
     });
     await waitUntil(
-      () => supervisor.status().activeJob?.headerHash === h28("84"),
+      () => supervisor.status().activeJob?.headerHash === h28(0x84),
     );
     const queued = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "invalidRange",
-      headerHash: h28("85"),
+      headerHash: h28(0x85),
       decisionDigest: "85".repeat(32),
       rollbackGeneration: "0",
-      deadline: deadline(h28("85"), 20_000),
+      deadline: deadline(h28(0x85), 20_000),
     });
     await waitUntil(() => supervisor.status().queuedJobCount === 1);
 
     nowMs = 302_419_500;
     expect(supervisor.status()).toMatchObject({
       deadlineHealth: "at_risk",
-      earliestDeadlineJob: { headerHash: h28("85") },
+      earliestDeadlineJob: { headerHash: h28(0x85) },
       remainingSafeStartMs: "500",
     });
 
@@ -531,10 +531,10 @@ describe("production fault-proof supervisor", () => {
     const run = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "doubleSpend",
-      headerHash: h28("91"),
+      headerHash: h28(0x91),
       decisionDigest: "91".repeat(32),
       rollbackGeneration: "0",
-      deadline: deadline(h28("91"), 0),
+      deadline: deadline(h28(0x91), 0),
     });
     // Queue visibility precedes asynchronous journal admission and the
     // safe-start check. Advance time only once the safe job's runner starts.
@@ -547,10 +547,10 @@ describe("production fault-proof supervisor", () => {
     const unsafe = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "networkId",
-      headerHash: h28("92"),
+      headerHash: h28(0x92),
       decisionDigest: "92".repeat(32),
       rollbackGeneration: "0",
-      deadline: deadline(h28("92"), 0),
+      deadline: deadline(h28(0x92), 0),
     });
     const unsafeRejected = expect(unsafe).rejects.toThrow("deadline is unsafe");
     await waitUntil(() => supervisor.status().queuedJobCount === 1);
@@ -562,7 +562,7 @@ describe("production fault-proof supervisor", () => {
       phase: "blocked",
       deadlineHealth: "unsafe",
     });
-    expect(starts).toEqual([h28("91")]);
+    expect(starts).toEqual([h28(0x91)]);
     await supervisor.close();
   });
 });

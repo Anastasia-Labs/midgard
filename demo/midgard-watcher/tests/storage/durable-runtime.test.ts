@@ -1,4 +1,5 @@
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,11 +28,10 @@ import {
 } from "../../src/storage/user-event-checkpoint.js";
 import { createSyntheticStateQueueObservationFixture } from "../support/state-queue-observation-fixture.js";
 
-const h32 = (byte: string) => byte.repeat(32);
 const key = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
 
 const policy = (): WatcherFinalityPolicy => {
-  const marker = makeDeploymentMarker(h32("11"));
+  const marker = makeDeploymentMarker(h32(0x11));
   const result = makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -43,12 +43,12 @@ const policy = (): WatcherFinalityPolicy => {
           providers: [
             {
               identity: "provider-a",
-              operatorIdentitySha256: h32("a1"),
+              operatorIdentitySha256: h32(0xa1),
               endpoint: "https://provider-a.example",
             },
             {
               identity: "provider-b",
-              operatorIdentitySha256: h32("b2"),
+              operatorIdentitySha256: h32(0xb2),
               endpoint: "https://provider-b.example",
             },
           ],
@@ -99,11 +99,11 @@ const policy = (): WatcherFinalityPolicy => {
     {
       manifestId: marker.manifestId,
       network: "Preprod",
-      trustRootId: h32("22"),
+      trustRootId: h32(0x22),
       fundingProfileBundleDigest: "ab".repeat(32),
-      blueprintHash: h32("33"),
-      ruleBundleCommitment: h32("44"),
-      programCommitments: { validation: h32("55") },
+      blueprintHash: h32(0x33),
+      ruleBundleCommitment: h32(0x44),
+      programCommitments: { validation: h32(0x55) },
       durableMarker: marker,
     },
   );
@@ -139,7 +139,7 @@ const client = (options: {
   let current = options.initial ?? null;
   let casCount = 0;
   const value: WatcherTrustedHeadAuthorityClient = Object.freeze({
-    readRecordAuthenticationKeyId: async () => h32("99"),
+    readRecordAuthenticationKeyId: async () => h32(0x99),
     readCurrent: async () =>
       options.poisonReadBack && current !== null
         ? { ...current, revision: (BigInt(current.revision) + 1n).toString() }
@@ -201,7 +201,7 @@ const checkpointFixture = async () => {
     network: finalityPolicy.network,
     blueprintHash: finalityPolicy.blueprintHash,
     finalityPolicyDigest: finalityPolicy.policyDigest,
-    userEventPolicyDigest: h32("77"),
+    userEventPolicyDigest: h32(0x77),
     checkpointSequence: "0",
     predecessorCheckpointDigest: null,
     rollbackGeneration: "0",

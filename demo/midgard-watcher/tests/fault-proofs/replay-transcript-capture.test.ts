@@ -26,6 +26,7 @@ import {
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "@al-ft/midgard-fault-proofs/test-support/transition-history-fixture";
 import { requireTransitionTraceL1Events } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import {
   CML,
   Data,
@@ -97,7 +98,6 @@ vi.mock(
   },
 );
 
-const h32 = (byte: string) => byte.repeat(32);
 const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 type Retained = Awaited<ReturnType<typeof buildRetainedPlutusIdentityFixture>>;
@@ -337,7 +337,7 @@ const setup = async (kind: "normal" | "forced") => {
     },
   };
   const client: WatcherTrustedHeadAuthorityClient = {
-    readRecordAuthenticationKeyId: async () => h32("99"),
+    readRecordAuthenticationKeyId: async () => h32(0x99),
     readCurrent: async () => currentHead,
     compareAndSwap: async ({ expectedTrustedHead, nextTrustedHead }) => {
       if (!watcherSameCanonicalJson(expectedTrustedHead, currentHead))

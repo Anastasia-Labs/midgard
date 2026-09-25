@@ -14,6 +14,7 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -24,8 +25,6 @@ import {
   prepareReferenceInputNoIdxFromTransactions,
 } from "../src/index.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
@@ -76,10 +75,10 @@ const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
   txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
-// A producing transaction with a single output (`h32("c4")`).
-const PRODUCING_OUTPUT = Buffer.from(h32("c4"), "hex");
+// A producing transaction with a single output (`h32(0xc4)`).
+const PRODUCING_OUTPUT = Buffer.from(h32(0xc4), "hex");
 const producingTx = makeNativeTx({
-  spendInputs: [inputCbor(h32("c1"), 0n)],
+  spendInputs: [inputCbor(h32(0xc1), 0n)],
   referenceInputs: [],
   outputs: [PRODUCING_OUTPUT],
   fee: 2n,
@@ -91,29 +90,29 @@ const PRODUCING_TX_ID = producingTxPayload.nodeTxId;
 // index (5 >= 1 output). Its spend inputs are unrelated.
 const BAD_REFERENCE_INPUT_OUTPUT_INDEX = 5n;
 const badTx = makeNativeTx({
-  spendInputs: [inputCbor(h32("d1"), 0n)],
+  spendInputs: [inputCbor(h32(0xd1), 0n)],
   referenceInputs: [
     inputCbor(PRODUCING_TX_ID, BAD_REFERENCE_INPUT_OUTPUT_INDEX),
   ],
-  outputs: [Buffer.from(h32("d4"), "hex")],
+  outputs: [Buffer.from(h32(0xd4), "hex")],
   fee: 0n,
 });
 const badTxPayload = payloadFromTx(badTx);
 
 // A tx referencing a producing-tx output that IS in range (index 0 of 1 output).
 const inRangeTx = makeNativeTx({
-  spendInputs: [inputCbor(h32("f1"), 0n)],
+  spendInputs: [inputCbor(h32(0xf1), 0n)],
   referenceInputs: [inputCbor(PRODUCING_TX_ID, 0n)],
-  outputs: [Buffer.from(h32("f4"), "hex")],
+  outputs: [Buffer.from(h32(0xf4), "hex")],
   fee: 1n,
 });
 const inRangeTxPayload = payloadFromTx(inRangeTx);
 
 // A tx referencing an input whose producing tx is absent from the block.
 const phantomTx = makeNativeTx({
-  spendInputs: [inputCbor(h32("e1"), 0n)],
-  referenceInputs: [inputCbor(h32("de"), 0n)],
-  outputs: [Buffer.from(h32("e4"), "hex")],
+  spendInputs: [inputCbor(h32(0xe1), 0n)],
+  referenceInputs: [inputCbor(h32(0xde), 0n)],
+  outputs: [Buffer.from(h32(0xe4), "hex")],
   fee: 3n,
 });
 const phantomTxPayload = payloadFromTx(phantomTx);
@@ -130,12 +129,12 @@ const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
 describe("prepare-reference-input-no-idx", () => {
   it("prepares the four submit-step artifacts for an out-of-range reference input", async () => {
     const output = await prepareReferenceInputNoIdxFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: [badTxPayload, producingTxPayload],
       badTxId: badTxPayload.nodeTxId,
     });
 
-    expect(output.headerHash).toBe(h28("aa"));
+    expect(output.headerHash).toBe(h28(0xaa));
     expect(output.txCount).toBe(2);
     expect(output.badTxId).toBe(badTxPayload.nodeTxId);
     expect(output.badReferenceInputIndex).toBe(0);
@@ -145,7 +144,7 @@ describe("prepare-reference-input-no-idx", () => {
     });
     expect(output.producingTxId).toBe(PRODUCING_TX_ID);
     expect(output.producingTxOutputCount).toBe(1);
-    expect(output.outputsPreimageCbor).toEqual([h32("c4")]);
+    expect(output.outputsPreimageCbor).toEqual([h32(0xc4)]);
     expect(output.transactionsRoot).toMatch(/^[0-9a-f]{64}$/);
     expect(output.committedTransactionsRoot).toMatch(/^[0-9a-f]{64}$/);
     expect(output.committedTransactionsRoot).not.toBe(output.transactionsRoot);
@@ -164,7 +163,7 @@ describe("prepare-reference-input-no-idx", () => {
 
   it("emits a reference-inputs preimage that opens the committed reference_inputs_hash", async () => {
     const output = await prepareReferenceInputNoIdxFromTransactions({
-      headerHash: h28("ab"),
+      headerHash: h28(0xab),
       transactions: [badTxPayload, producingTxPayload],
       badTxId: badTxPayload.nodeTxId,
     });
@@ -190,7 +189,7 @@ describe("prepare-reference-input-no-idx", () => {
 
   it("auto-detects the offending tx/reference input when no selection is given", async () => {
     const output = await prepareReferenceInputNoIdxFromTransactions({
-      headerHash: h28("bb"),
+      headerHash: h28(0xbb),
       transactions: [inRangeTxPayload, badTxPayload, producingTxPayload],
     });
     expect(output.badTxId).toBe(badTxPayload.nodeTxId);
@@ -203,7 +202,7 @@ describe("prepare-reference-input-no-idx", () => {
   it("rejects a reference input whose index is within the producing tx's output range", async () => {
     await expect(
       prepareReferenceInputNoIdxFromTransactions({
-        headerHash: h28("cc"),
+        headerHash: h28(0xcc),
         transactions: [inRangeTxPayload, producingTxPayload],
         badTxId: inRangeTxPayload.nodeTxId,
         badReferenceInputIndex: 0,
@@ -214,7 +213,7 @@ describe("prepare-reference-input-no-idx", () => {
   it("rejects a reference input whose producing tx is absent from the block", async () => {
     await expect(
       prepareReferenceInputNoIdxFromTransactions({
-        headerHash: h28("dd"),
+        headerHash: h28(0xdd),
         transactions: [phantomTxPayload, producingTxPayload],
         badTxId: phantomTxPayload.nodeTxId,
         badReferenceInputIndex: 0,
@@ -225,7 +224,7 @@ describe("prepare-reference-input-no-idx", () => {
   it("throws when the block contains no out-of-range reference input", async () => {
     await expect(
       prepareReferenceInputNoIdxFromTransactions({
-        headerHash: h28("ee"),
+        headerHash: h28(0xee),
         transactions: [inRangeTxPayload, producingTxPayload],
       }),
     ).rejects.toThrow("No out-of-range reference input");
@@ -234,17 +233,17 @@ describe("prepare-reference-input-no-idx", () => {
   it("rejects an expected transactions root that does not match the reconstruction", async () => {
     await expect(
       prepareReferenceInputNoIdxFromTransactions({
-        headerHash: h28("ff"),
+        headerHash: h28(0xff),
         transactions: [badTxPayload, producingTxPayload],
         badTxId: badTxPayload.nodeTxId,
-        expectedTransactionsRoot: h32("00"),
+        expectedTransactionsRoot: h32(0x00),
       }),
     ).rejects.toThrow("does not match --expected-transactions-root");
   });
 
   it("accepts the counted transactions root committed by the block header", async () => {
     const prepared = await prepareReferenceInputNoIdxFromTransactions({
-      headerHash: h28("ef"),
+      headerHash: h28(0xef),
       transactions: [badTxPayload, producingTxPayload],
       badTxId: badTxPayload.nodeTxId,
     });
@@ -257,7 +256,7 @@ describe("prepare-reference-input-no-idx", () => {
     );
 
     const verified = await prepareReferenceInputNoIdxFromTransactions({
-      headerHash: h28("ef"),
+      headerHash: h28(0xef),
       transactions: [badTxPayload, producingTxPayload],
       badTxId: badTxPayload.nodeTxId,
       expectedTransactionsRoot: committedRoot,
@@ -279,7 +278,7 @@ describe("prepare-reference-input-no-idx", () => {
       );
 
       const output = await prepareReferenceInputNoIdxFromFile({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactionsPath,
         badTxId: badTxPayload.nodeTxId,
         outputDir: dir,
@@ -307,7 +306,7 @@ describe("prepare-reference-input-no-idx", () => {
           "utf8",
         ),
       ) as readonly string[];
-      expect(outputsPreimage).toEqual([h32("c4")]);
+      expect(outputsPreimage).toEqual([h32(0xc4)]);
 
       const plan = JSON.parse(
         await readFile(join(dir, "reference-input-no-idx-plan.json"), "utf8"),
@@ -348,7 +347,7 @@ describe("prepare-reference-input-no-idx", () => {
 
     const output = await prepareReferenceInputNoIdxFromNode({
       midgardNodeUrl: "http://node.local/",
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       badTxId: badTxPayload.nodeTxId,
       fetchImpl,
     });

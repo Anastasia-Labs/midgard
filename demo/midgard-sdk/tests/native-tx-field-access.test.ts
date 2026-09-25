@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { MIDGARD_MAX_TIER3_CHUNK_COUNT } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -76,9 +77,6 @@ const aikenConstructorOrder = (typeName: string): readonly string[] =>
 /** Plutus constructor tag for index `i` (i < 7): 121 + i, CBOR tag `d879 + i`. */
 const constructorTagPrefix = (index: number): string =>
   `d8${(0x79 + index).toString(16)}`;
-
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 
 describe("§8.8 FieldCarriageV1 wire contract", () => {
   it("keeps the frozen constructor order the Aiken door declares", () => {
@@ -160,7 +158,7 @@ describe("§8.8 FieldViewV1 wire contract", () => {
       {
         Chunked: {
           chunks: ["80"],
-          chunk_digests: [h32("ab")],
+          chunk_digests: [h32(0xab)],
           count: 0n,
           stride: 0n,
         },
@@ -168,7 +166,7 @@ describe("§8.8 FieldViewV1 wire contract", () => {
       FieldView,
     );
     expect(whole).toBe("d8799f4180001828ff");
-    expect(chunked).toBe(`d87a9f9f4180ff9f5820${h32("ab")}ff0000ff`);
+    expect(chunked).toBe(`d87a9f9f4180ff9f5820${h32(0xab)}ff0000ff`);
     expect(whole.startsWith(constructorTagPrefix(0))).toBe(true);
     expect(chunked.startsWith(constructorTagPrefix(1))).toBe(true);
     expect(Data.from(whole, FieldView)).toEqual({
@@ -177,7 +175,7 @@ describe("§8.8 FieldViewV1 wire contract", () => {
     expect(Data.from(chunked, FieldView)).toEqual({
       Chunked: {
         chunks: ["80"],
-        chunk_digests: [h32("ab")],
+        chunk_digests: [h32(0xab)],
         count: 0n,
         stride: 0n,
       },
@@ -206,12 +204,12 @@ describe("§8.6 FieldPreimageCertificateV1 datum", () => {
 
   it("round-trips a manifest datum", () => {
     const certificate = {
-      owner: h28("11"),
-      tx_id: h32("22"),
+      owner: h28(0x11),
+      tx_id: h32(0x22),
       field_index: 5n,
-      field_hash: h32("66"),
+      field_hash: h32(0x66),
       total_length: 16_417n,
-      chunk_digests: [h32("33"), h32("44")],
+      chunk_digests: [h32(0x33), h32(0x44)],
     };
     const encoded = Data.to(certificate, FieldPreimageCertificate);
     expect(Data.from(encoded, FieldPreimageCertificate)).toEqual(certificate);

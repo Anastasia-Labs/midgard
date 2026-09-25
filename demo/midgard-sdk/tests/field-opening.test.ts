@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -110,15 +111,13 @@ const aikenVariantFieldOrder = (
 const constructorTagPrefix = (index: number): string =>
   `d8${(0x79 + index).toString(16)}`;
 
-const h32 = (byte: string): string => byte.repeat(32);
-
-const TX_ID = h32("11");
-const WITNESS_SET_HASH = h32("22");
+const TX_ID = h32(0x11);
+const WITNESS_SET_HASH = h32(0x22);
 const COMPACT_CBOR = "a1b2c3";
 const WITNESS_SET = {
-  addr_tx_wits_hash: h32("77"),
-  script_tx_wits_hash: h32("66"),
-  redeemer_tx_wits_hash: h32("88"),
+  addr_tx_wits_hash: h32(0x77),
+  script_tx_wits_hash: h32(0x66),
+  redeemer_tx_wits_hash: h32(0x88),
 };
 
 describe("NativeTxAnchorV1 wire contract", () => {

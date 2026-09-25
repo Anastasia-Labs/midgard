@@ -12,12 +12,11 @@
  * refusal. A mutation that quietly failed to apply would otherwise read as a
  * passing rejection, which is the vacuity class #579's review found five times.
  */
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import * as SDK from "../src/index.js";
-
-const h32 = (b: string) => b.repeat(32);
 
 /**
  * Per-family mutation negatives for the #604 re-derivation. Each asserts that
@@ -66,7 +65,7 @@ describe("#604 per-family mutation negatives", () => {
             {
               input_index: 0n,
               output_index: 0n,
-              inputs_preimage: [{ tx_id: h32("aa"), output_index: 7n }],
+              inputs_preimage: [{ tx_id: h32(0xaa), output_index: 7n }],
               bad_inputs_index: 0n,
             },
           ],
@@ -81,48 +80,48 @@ describe("#604 per-family mutation negatives", () => {
       [
         "input-no-idx-02",
         SDK.InputNoIdxStep02Datum,
-        { verified_tx_inputs_hash: h32("11") },
+        { verified_tx_inputs_hash: h32(0x11) },
       ],
       [
         "double-spend-03",
         SDK.DoubleSpendStep03Datum,
         {
-          verified_tx1_spend_inputs_hash: h32("11"),
-          verified_tx2_spend_inputs_hash: h32("22"),
+          verified_tx1_spend_inputs_hash: h32(0x11),
+          verified_tx2_spend_inputs_hash: h32(0x22),
         },
       ],
       [
         "zero-input-02",
         SDK.ZeroInputStep02Datum,
-        { bad_tx_spend_inputs_hash: h32("11") },
+        { bad_tx_spend_inputs_hash: h32(0x11) },
       ],
       [
         "no-input-02",
         SDK.NonExistentInputStep02Datum,
         {
-          bad_tx_inputs_hash: h32("11"),
-          blocks_prev_utxos_root: h32("22"),
-          blocks_transactions_root: h32("33"),
+          bad_tx_inputs_hash: h32(0x11),
+          blocks_prev_utxos_root: h32(0x22),
+          blocks_transactions_root: h32(0x33),
         },
       ],
       [
         "no-reference-input-02",
         SDK.NoReferenceInputStep02Datum,
         {
-          bad_tx_reference_inputs_hash: h32("11"),
-          blocks_prev_utxos_root: h32("22"),
-          blocks_transactions_root: h32("33"),
+          bad_tx_reference_inputs_hash: h32(0x11),
+          blocks_prev_utxos_root: h32(0x22),
+          blocks_transactions_root: h32(0x33),
         },
       ],
       [
         "invalid-signature-02",
         SDK.InvalidSignatureStep02Datum,
-        { bad_tx_id: h32("11"), bad_addr_tx_wits_hash: h32("22") },
+        { bad_tx_id: h32(0x11), bad_addr_tx_wits_hash: h32(0x22) },
       ],
       [
         "reference-input-no-idx-02",
         SDK.ReferenceInputNoIdxStep02Datum,
-        { verified_tx_reference_inputs_hash: h32("11") },
+        { verified_tx_reference_inputs_hash: h32(0x11) },
       ],
     ];
     for (const [label, schema, retiredState] of cases) {
@@ -153,9 +152,9 @@ describe("#604 per-family mutation negatives", () => {
     ];
     const fraudProver = "aa".repeat(28);
     const honestState = {
-      bad_tx_id: h32("11"),
-      blocks_prev_utxos_root: h32("22"),
-      blocks_transactions_root: h32("33"),
+      bad_tx_id: h32(0x11),
+      blocks_prev_utxos_root: h32(0x22),
+      blocks_transactions_root: h32(0x33),
     };
     for (const [label, schema] of cases) {
       const encoded = Data.to(
@@ -187,7 +186,7 @@ describe("#604 per-family mutation negatives", () => {
       SDK.nativeTxAnchorForField({
         sourceKind: 0n,
         fieldIndex: 7,
-        txId: h32("11"),
+        txId: h32(0x11),
       }),
     ).toThrow(SDK.MidgardFieldOpeningError);
   });

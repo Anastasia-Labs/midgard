@@ -1,3 +1,4 @@
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
@@ -17,7 +18,6 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-const h32 = (byte: string): string => byte.repeat(32);
 const context = async () => {
   const fixture = await buildCanonicalBlockFixture({
     transactions: [
@@ -43,9 +43,9 @@ const context = async () => {
   if (detection === undefined) throw new Error("fixture did not detect fault");
   const identity = {
     schemaVersion: AUTHENTICATED_REPLAY_CAPTURE,
-    deploymentFingerprint: h32("44"),
+    deploymentFingerprint: h32(0x44),
     headerHash: evidence.headerHash,
-    stateQueueObservationDigest: h32("55"),
+    stateQueueObservationDigest: h32(0x55),
     payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
     payloadSha256: evidence.payloadSha256,
     replayVersion: replayDecision.replayVersion,
@@ -144,13 +144,13 @@ describe("production authenticated replay capture boundary V1", () => {
       "missing or unknown fields",
     );
     for (const [field, value] of [
-      ["deploymentFingerprint", h32("aa")],
+      ["deploymentFingerprint", h32(0xaa)],
       ["headerHash", "bb".repeat(28)],
-      ["stateQueueObservationDigest", h32("cc")],
-      ["payloadEnvelopeSha256", h32("dd")],
-      ["payloadSha256", h32("ee")],
+      ["stateQueueObservationDigest", h32(0xcc)],
+      ["payloadEnvelopeSha256", h32(0xdd)],
+      ["payloadSha256", h32(0xee)],
       ["replayVersion", "partial-replay"],
-      ["replayDigest", h32("ff")],
+      ["replayDigest", h32(0xff)],
       ["detectionId", "caller-route"],
       ["position", "8"],
     ] as const) {

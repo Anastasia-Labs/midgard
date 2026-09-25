@@ -1,3 +1,4 @@
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
   type Assets,
   Data,
@@ -39,15 +40,13 @@ import {
   type StateQueueUTxO,
 } from "../src/index.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const signature = (byte: string): string => byte.repeat(64);
 const availabilityCommitment = (headerHash: string) =>
   buildDaAvailabilityCommitment({
-    deploymentIdentity: h28("71"),
+    deploymentIdentity: h28(0x71),
     headerHash,
     payload: Uint8Array.of(1),
-    bondOwner: h28("72"),
+    bondOwner: h28(0x72),
     responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4096,
       trancheByteLength: 4 * 1024 * 1024,
@@ -160,7 +159,7 @@ const makeUtxo = (
     datum,
   }) as UTxO;
 
-const validator = (policyByte: string, address: string) =>
+const validator = (policyByte: number, address: string) =>
   ({
     policyId: h28(policyByte),
     spendingScriptAddress: address,
@@ -173,10 +172,10 @@ const validator = (policyByte: string, address: string) =>
 
 const makeFixture = () => {
   const contracts = {
-    daAttestation: validator("aa", "addr_da_attestation"),
-    stateQueue: validator("bb", "addr_state_queue"),
+    daAttestation: validator(0xaa, "addr_da_attestation"),
+    stateQueue: validator(0xbb, "addr_state_queue"),
     availabilityChallenge: {
-      ...validator("cc", "addr_availability_challenge"),
+      ...validator(0xcc, "addr_availability_challenge"),
       yields: Object.fromEntries(
         ["bond", "open", "settle", "close", "timeout"].map((arm) => [
           arm,
@@ -198,24 +197,24 @@ const makeFixture = () => {
     MidgardValidators,
     "availabilityChallenge" | "daAttestation" | "stateQueue"
   >;
-  const headerHash = h28("10");
+  const headerHash = h28(0x10);
   const stateQueueNode: StateQueueNode = {
     proven_fraud: null,
     header: {
-      prevUtxosRoot: h32("01"),
-      utxosRoot: h32("02"),
-      withdrawalsRoot: h32("05"),
+      prevUtxosRoot: h32(0x01),
+      utxosRoot: h32(0x02),
+      withdrawalsRoot: h32(0x05),
       ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
-      transactionsRoot: h32("03"),
-      depositsRoot: h32("04"),
+      transactionsRoot: h32(0x03),
+      depositsRoot: h32(0x04),
       startTime: 1n,
       endTime: 2n,
       blockSlot: 0n,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
-      prevHeaderHash: h28("06"),
-      operatorVkey: h28("07"),
+      prevHeaderHash: h28(0x06),
+      operatorVkey: h28(0x07),
       protocolVersion: 0n,
     },
     da_attestation: NO_DA_ATTESTATION,
@@ -249,10 +248,10 @@ const makeFixture = () => {
   // Q63 (F04 §4) floors both governed thresholds at two, so the fixture is a
   // 2-of-2 committee over a 2-of-2 owner set. Both sets are sorted-unique.
   const daParamsDatum: DaParamsDatum = {
-    committee: h32("11") + h32("22"),
-    committee_signers_hash: h32("33"),
+    committee: h32(0x11) + h32(0x22),
+    committee_signers_hash: h32(0x33),
     da_threshold: 2n,
-    owners: [h28("44"), h28("55")],
+    owners: [h28(0x44), h28(0x55)],
     update_threshold: 2n,
   };
   const daParamsUtxo = makeUtxo(2, { lovelace: 2_000_000n });
@@ -266,7 +265,7 @@ const makeFixture = () => {
     da_threshold: 2n,
     committee_signers_hash: daParamsDatum.committee_signers_hash,
     rescue_beneficiary: {
-      paymentCredential: { PublicKeyCredential: [h28("66")] },
+      paymentCredential: { PublicKeyCredential: [h28(0x66)] },
       stakeCredential: null,
     },
     attested_signers: EMPTY_ATTESTED_SIGNER_BITMAP,
@@ -526,7 +525,7 @@ describe("DA attestation SDK builders", () => {
         daParamsUtxo: fixture.daParamsUtxo,
         daParamsDatum: {
           ...fixture.daParamsDatum,
-          committee_signers_hash: h32("44"),
+          committee_signers_hash: h32(0x44),
         },
         attestation: fixture.attestation,
         witnesses: [{ signerIndex: 0, signatureHex: signature("aa") }],
@@ -690,7 +689,7 @@ describe("DA attestation SDK builders", () => {
             // reason this must be refused.
             datum: {
               ...fixture.attestation.datum,
-              header_hash: h28("99"),
+              header_hash: h28(0x99),
               attested_signers: `c0${"00".repeat(31)}`,
               attestation_count: 2n,
             },

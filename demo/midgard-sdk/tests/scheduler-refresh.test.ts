@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { h28 } from "@al-ft/midgard-test-support/hex";
 import {
   applyDoubleCborEncoding,
   type BuildTxWithRedeemer,
@@ -58,8 +59,6 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   maxCollateralInputs: 3,
 } as const;
-
-const h28 = (byte: string): string => byte.repeat(28);
 
 /**
  * The scheduler validator is scaffolded with the shared always-succeeds script
@@ -587,14 +586,14 @@ describe("scheduler refresh redeemer-callback consistency", () => {
   const schedulerInput = utxo("10", 0);
   const activeTail = utxo("30", 0);
   const refreshedDatum = {
-    ActiveOperator: { operator: h28("99"), start_time: 42n },
+    ActiveOperator: { operator: h28(0x99), start_time: 42n },
   };
   const refreshedDatumCbor = encodeSchedulerDatumForChain(refreshedDatum);
   const config = (lucid: LucidEvolution) =>
     ({
       lucid,
       scheduler,
-      operatorKeyHash: h28("99"),
+      operatorKeyHash: h28(0x99),
       schedulerInput,
       refreshedDatum,
       validFrom: 1_000n,

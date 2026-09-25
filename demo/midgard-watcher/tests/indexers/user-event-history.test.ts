@@ -14,6 +14,7 @@ import {
   WithdrawalEvent,
   WithdrawalInfo,
 } from "@al-ft/midgard-sdk";
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { makeNativeTx } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
@@ -121,7 +122,6 @@ const expectSameArchiveBytes = (
 
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
-const h32 = (byte: string): string => byte.repeat(32);
 
 describe("native history retirement frontier", () => {
   it.each([
@@ -278,7 +278,7 @@ describe("bounded local user-event semantic publication (synthetic local blocks)
           Reflect.set(
             bootstrap.store.deploymentMarker,
             "manifestId",
-            h32("ff"),
+            h32(0xff),
           ),
         ).toBe(false);
         expect(Reflect.set(bootstrap.store.chainPoints, "0", {})).toBe(false);
@@ -963,7 +963,7 @@ describe("native withdrawal payout retirement", () => {
         // Give these deliberately non-ledger-valid native candidates distinct
         // body identities as well as distinct redeemer bytes.
         invalidBody.set_script_data_hash(
-          CML.ScriptDataHash.from_hex(h32(index === 0 ? "c8" : "c9")),
+          CML.ScriptDataHash.from_hex(h32(index === 0 ? 0xc8 : 0xc9)),
         );
         const bad = await fixture.makeBlock({
           parent: admission,
@@ -2977,7 +2977,7 @@ describe("header-scoped replay authorities", () => {
             ...replay.observation,
             chainPoint: {
               ...replay.observation.chainPoint,
-              blockHash: h32("fe"),
+              blockHash: h32(0xfe),
             },
           },
         }),
@@ -3060,7 +3060,7 @@ describe("header-scoped replay authorities", () => {
         replayWatcherAuthenticatedReplayTranscript({
           ...transcriptInput,
           persistedTranscriptCborHex: rewriteCutoff({
-            historyEntryDigest: h32("fd"),
+            historyEntryDigest: h32(0xfd),
           }),
         }),
       ).rejects.toThrow("event cutoff history membership");
@@ -3068,7 +3068,7 @@ describe("header-scoped replay authorities", () => {
         replayWatcherAuthenticatedReplayTranscript({
           ...transcriptInput,
           persistedTranscriptCborHex: rewriteCutoff({
-            queueOutRef: `${h32("fc")}#0`,
+            queueOutRef: `${h32(0xfc)}#0`,
           }),
         }),
       ).rejects.toThrow("event cutoff queueOutRef");
@@ -3350,7 +3350,7 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
         };
         const before = service.read().currentPoint;
         await expect(
-          service.eventAuthority({ ...request, eventId: `${h32("ab")}#0` }),
+          service.eventAuthority({ ...request, eventId: `${h32(0xab)}#0` }),
         ).rejects.toThrow(/event is not retained/u);
         expect(service.read()).toMatchObject({
           status: "ready",
@@ -3379,7 +3379,7 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
         // A touched successor (a plain payment at the deposit credential,
         // which the fold ignores) publishes a new checkpoint and retires it.
         const touchedInputs = CML.TransactionInputList.new();
-        touchedInputs.add(transactionInput(`${h32("c3")}#0`));
+        touchedInputs.add(transactionInput(`${h32(0xc3)}#0`));
         const touchedOutputs = CML.TransactionOutputList.new();
         touchedOutputs.add(
           CML.TransactionOutput.new(
@@ -3408,7 +3408,7 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
         );
         durable.objects.delete(protectedHead.checkpoint!.payloadDigest);
         await expect(
-          service.eventAuthority({ ...request, eventId: `${h32("ab")}#0` }),
+          service.eventAuthority({ ...request, eventId: `${h32(0xab)}#0` }),
         ).rejects.toThrow();
         expect(service.read().status).toBe("failed");
         await expect(service.done).rejects.toThrow();

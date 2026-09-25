@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -36,9 +37,7 @@ const rehash = <T extends { readonly transitionDigest: string }>(
   } as T;
 };
 
-const h28 = (byte: string): string => byte.repeat(56);
-const h32 = (byte: string): string => byte.repeat(64);
-const outRef = (byte: string, index: number): string =>
+const outRef = (byte: number, index: number): string =>
   `${h32(byte)}#${index.toString()}`;
 
 const timeoutRedeemer = (
@@ -52,23 +51,23 @@ const timeoutRedeemer = (
 ];
 
 const common = {
-  deploymentIdentityDigest: h32("a"),
-  stateQueuePolicyId: h28("b"),
-  transactionHash: h32("c"),
-  blockHash: h32("d"),
+  deploymentIdentityDigest: h32(0xaa),
+  stateQueuePolicyId: h28(0xbb),
+  transactionHash: h32(0xcc),
+  blockHash: h32(0xdd),
   slot: "100",
   blockNo: "90",
-  chainPointId: h32("e"),
+  chainPointId: h32(0xee),
   finalityDepth: "2160",
-  mintPolicyIds: [h28("b")],
+  mintPolicyIds: [h28(0xbb)],
 } as const;
 
 const timeoutLock = (target: string, terminal: boolean) => ({
   referenceInputOutRefs: [],
   correctionLockWitness: {
     kind: "correction_transition" as const,
-    consumedOutRef: outRef("f", 0),
-    continuedOutRef: outRef("c", 9),
+    consumedOutRef: outRef(0xff, 0),
+    continuedOutRef: outRef(0xcc, 9),
     targetHeaderHash: target,
     correctionIdentity: "AttestationTimeout" as const,
     previousDatum: "Idle" as const,
@@ -84,10 +83,10 @@ const timeoutLock = (target: string, terminal: boolean) => ({
 });
 
 const idleLockReference = {
-  referenceInputOutRefs: [outRef("f", 0)],
+  referenceInputOutRefs: [outRef(0xff, 0)],
   correctionLockWitness: {
     kind: "idle_reference" as const,
-    referenceOutRef: outRef("f", 0),
+    referenceOutRef: outRef(0xff, 0),
     datum: "Idle" as const,
   },
 };
@@ -100,8 +99,8 @@ const fraudLock = (target: string, terminal: boolean) => {
     referenceInputOutRefs: [],
     correctionLockWitness: {
       kind: "correction_transition" as const,
-      consumedOutRef: outRef("f", 0),
-      continuedOutRef: outRef("c", 9),
+      consumedOutRef: outRef(0xff, 0),
+      continuedOutRef: outRef(0xcc, 9),
       targetHeaderHash: target,
       correctionIdentity,
       previousDatum: "Idle" as const,
@@ -119,21 +118,21 @@ const fraudLock = (target: string, terminal: boolean) => {
 
 describe("state-queue correction transition V1", () => {
   it("derives a finalized descendant-prune record from the exact mint arm and topology", () => {
-    const target = h28("1");
-    const removed = h28("2");
+    const target = h28(0x11);
+    const removed = h28(0x22);
     const input = {
       ...common,
-      spentInputOutRefs: [outRef("1", 0), outRef("2", 0)],
+      spentInputOutRefs: [outRef(0x11, 0), outRef(0x22, 0)],
       previousQueue: [
-        { headerHash: null, outRef: outRef("0", 0) },
-        { headerHash: target, outRef: outRef("1", 0) },
-        { headerHash: removed, outRef: outRef("2", 0) },
-        { headerHash: h28("3"), outRef: outRef("3", 0) },
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
+        { headerHash: removed, outRef: outRef(0x22, 0) },
+        { headerHash: h28(0x33), outRef: outRef(0x33, 0) },
       ],
       nextQueue: [
-        { headerHash: null, outRef: outRef("0", 0) },
-        { headerHash: target, outRef: outRef("c", 1) },
-        { headerHash: h28("3"), outRef: outRef("3", 0) },
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0xcc, 1) },
+        { headerHash: h28(0x33), outRef: outRef(0x33, 0) },
       ],
       redeemers: timeoutRedeemer({
         RemoveUnattestedBlockAfterTimeout: {
@@ -143,7 +142,7 @@ describe("state-queue correction transition V1", () => {
             PruneUnattestedBlockDescendant: {
               predecessor_ref_input_index: 0n,
               timed_out_node_input_outref: {
-                transactionId: h32("1"),
+                transactionId: h32(0x11),
                 outputIndex: 0n,
               },
               timed_out_node_output_index: 1n,
@@ -157,12 +156,12 @@ describe("state-queue correction transition V1", () => {
       removalApproach: "PruneUnattestedBlockDescendant",
       timedOutHeaderHash: target,
       removedHeaderHashes: [removed],
-      consumedQueueOutRefs: [outRef("1", 0), outRef("2", 0)],
+      consumedQueueOutRefs: [outRef(0x11, 0), outRef(0x22, 0)],
       continuedQueueOutRefs: [
         {
           headerHash: target,
-          consumedOutRef: outRef("1", 0),
-          producedOutRef: outRef("c", 1),
+          consumedOutRef: outRef(0x11, 0),
+          producedOutRef: outRef(0xcc, 1),
         },
       ],
     });
@@ -170,15 +169,15 @@ describe("state-queue correction transition V1", () => {
   });
 
   it("derives terminal head removal and refuses fraud, merge, or mismatched topology", () => {
-    const target = h28("1");
+    const target = h28(0x11);
     const terminal = {
       ...common,
-      spentInputOutRefs: [outRef("0", 0), outRef("1", 0)],
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0)],
       previousQueue: [
-        { headerHash: null, outRef: outRef("0", 0) },
-        { headerHash: target, outRef: outRef("1", 0) },
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
       ],
-      nextQueue: [{ headerHash: null, outRef: outRef("c", 0) }],
+      nextQueue: [{ headerHash: null, outRef: outRef(0xcc, 0) }],
       redeemers: timeoutRedeemer({
         RemoveUnattestedBlockAfterTimeout: {
           yield_to_ref_input_index: 0n,
@@ -186,7 +185,7 @@ describe("state-queue correction transition V1", () => {
           removal_approach: {
             RemoveLastUnattestedBlock: {
               predecessor_input_outref: {
-                transactionId: h32("0"),
+                transactionId: h32(0x00),
                 outputIndex: 0n,
               },
               predecessor_output_index: 0n,
@@ -203,8 +202,8 @@ describe("state-queue correction transition V1", () => {
       deriveStateQueueCorrectionTransition({
         ...terminal,
         nextQueue: [
-          { headerHash: null, outRef: outRef("c", 0) },
-          { headerHash: target, outRef: outRef("c", 1) },
+          { headerHash: null, outRef: outRef(0xcc, 0) },
+          { headerHash: target, outRef: outRef(0xcc, 1) },
         ],
       }),
     ).toBeNull();
@@ -216,18 +215,18 @@ describe("state-queue correction transition V1", () => {
             yield_to_ref_input_index: 0n,
             header_node_key: target,
             confirmed_state_input_outref: {
-              transactionId: h32("0"),
+              transactionId: h32(0x00),
               outputIndex: 0n,
             },
             confirmed_state_output_index: 0n,
             m_settlement_redeemer_index: null,
-            merged_block_withdrawals_root: h32("0"),
-            merged_block_forced_transactions_root: h32("0"),
-            merged_block_transactions_root: h32("0"),
-            merged_block_deposits_root: h32("0"),
-            merged_block_transition_trace_root: h32("0"),
-            merged_block_event_to_step_root: h32("0"),
-            merged_block_validation_traces_root: h32("0"),
+            merged_block_withdrawals_root: h32(0x00),
+            merged_block_forced_transactions_root: h32(0x00),
+            merged_block_transactions_root: h32(0x00),
+            merged_block_deposits_root: h32(0x00),
+            merged_block_transition_trace_root: h32(0x00),
+            merged_block_event_to_step_root: h32(0x00),
+            merged_block_validation_traces_root: h32(0x00),
             merged_block_withdrawal_count: 0n,
             merged_block_forced_transaction_count: 0n,
             merged_block_l2_transaction_count: 0n,
@@ -242,15 +241,15 @@ describe("state-queue correction transition V1", () => {
   });
 
   it("rejects tampered or structurally extended durable records", () => {
-    const target = h28("1");
+    const target = h28(0x11);
     const transition = deriveStateQueueCorrectionTransition({
       ...common,
-      spentInputOutRefs: [outRef("0", 0), outRef("1", 0)],
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0)],
       previousQueue: [
-        { headerHash: null, outRef: outRef("0", 0) },
-        { headerHash: target, outRef: outRef("1", 0) },
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
       ],
-      nextQueue: [{ headerHash: null, outRef: outRef("c", 0) }],
+      nextQueue: [{ headerHash: null, outRef: outRef(0xcc, 0) }],
       redeemers: timeoutRedeemer({
         RemoveUnattestedBlockAfterTimeout: {
           yield_to_ref_input_index: 0n,
@@ -258,7 +257,7 @@ describe("state-queue correction transition V1", () => {
           removal_approach: {
             RemoveLastUnattestedBlock: {
               predecessor_input_outref: {
-                transactionId: h32("0"),
+                transactionId: h32(0x00),
                 outputIndex: 0n,
               },
               predecessor_output_index: 0n,
@@ -271,7 +270,7 @@ describe("state-queue correction transition V1", () => {
     expect(
       parseStateQueueCorrectionTransition({
         ...transition!,
-        removedHeaderHashes: [h28("9")],
+        removedHeaderHashes: [h28(0x99)],
       }),
     ).toBeNull();
     expect(
@@ -298,7 +297,7 @@ describe("state-queue correction transition V1", () => {
   });
 
   it("strictly parses shared removal provenance and rejects forged-but-rehashed semantics", () => {
-    const target = h28("1");
+    const target = h28(0x11);
     const redeemers = timeoutRedeemer({
       RemoveUnattestedBlockAfterTimeout: {
         yield_to_ref_input_index: 0n,
@@ -306,7 +305,7 @@ describe("state-queue correction transition V1", () => {
         removal_approach: {
           RemoveLastUnattestedBlock: {
             predecessor_input_outref: {
-              transactionId: h32("0"),
+              transactionId: h32(0x00),
               outputIndex: 0n,
             },
             predecessor_output_index: 0n,
@@ -318,12 +317,12 @@ describe("state-queue correction transition V1", () => {
       ...common,
       ...timeoutLock(target, true),
       transactionIndex: "2",
-      spentInputOutRefs: [outRef("0", 0), outRef("1", 0), outRef("f", 0)],
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0), outRef(0xff, 0)],
       previousQueue: [
-        { headerHash: null, outRef: outRef("0", 0) },
-        { headerHash: target, outRef: outRef("1", 0) },
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
       ],
-      nextQueue: [{ headerHash: null, outRef: outRef("c", 0) }],
+      nextQueue: [{ headerHash: null, outRef: outRef(0xcc, 0) }],
       redeemers,
     });
     expect(parseStateQueueAuthenticatedTransition(observation)).toEqual(
@@ -348,7 +347,7 @@ describe("state-queue correction transition V1", () => {
           ...observation!,
           correctionLockWitness: {
             ...observation!.correctionLockWitness,
-            targetHeaderHash: h28("9"),
+            targetHeaderHash: h28(0x99),
           },
         }),
       ),
@@ -387,24 +386,24 @@ describe("state-queue correction transition V1", () => {
       withStateQueueAuthenticatedTransitionFinalityDepth(advanced, "2160"),
     ).toBeNull();
 
-    const descendant = h28("2");
+    const descendant = h28(0x22);
     const threeNodes = [
-      { headerHash: null, outRef: outRef("0", 0) },
-      { headerHash: target, outRef: outRef("1", 0) },
-      { headerHash: descendant, outRef: outRef("2", 0) },
+      { headerHash: null, outRef: outRef(0x00, 0) },
+      { headerHash: target, outRef: outRef(0x11, 0) },
+      { headerHash: descendant, outRef: outRef(0x22, 0) },
     ] as const;
     const mergePrevious = [
       ...threeNodes,
-      { headerHash: h28("3"), outRef: outRef("3", 0) },
+      { headerHash: h28(0x33), outRef: outRef(0x33, 0) },
     ] as const;
     const mergeObservation = deriveStateQueueAuthenticatedTransition({
       ...common,
       ...idleLockReference,
       transactionIndex: "3",
-      spentInputOutRefs: [outRef("0", 0), outRef("1", 0)],
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0)],
       previousQueue: mergePrevious,
       nextQueue: [
-        { headerHash: null, outRef: outRef("c", 0) },
+        { headerHash: null, outRef: outRef(0xcc, 0) },
         mergePrevious[2],
         mergePrevious[3],
       ],
@@ -413,18 +412,18 @@ describe("state-queue correction transition V1", () => {
           yield_to_ref_input_index: 0n,
           header_node_key: target,
           confirmed_state_input_outref: {
-            transactionId: h32("0"),
+            transactionId: h32(0x00),
             outputIndex: 0n,
           },
           confirmed_state_output_index: 0n,
           m_settlement_redeemer_index: null,
-          merged_block_withdrawals_root: h32("0"),
-          merged_block_forced_transactions_root: h32("0"),
-          merged_block_transactions_root: h32("0"),
-          merged_block_deposits_root: h32("0"),
-          merged_block_transition_trace_root: h32("0"),
-          merged_block_event_to_step_root: h32("0"),
-          merged_block_validation_traces_root: h32("0"),
+          merged_block_withdrawals_root: h32(0x00),
+          merged_block_forced_transactions_root: h32(0x00),
+          merged_block_transactions_root: h32(0x00),
+          merged_block_deposits_root: h32(0x00),
+          merged_block_transition_trace_root: h32(0x00),
+          merged_block_event_to_step_root: h32(0x00),
+          merged_block_validation_traces_root: h32(0x00),
           merged_block_withdrawal_count: 0n,
           merged_block_forced_transaction_count: 0n,
           merged_block_l2_transaction_count: 0n,
@@ -483,16 +482,16 @@ describe("state-queue correction transition V1", () => {
       ...common,
       ...fraudLock(descendant, true),
       transactionIndex: "4",
-      spentInputOutRefs: [outRef("1", 0), outRef("2", 0), outRef("f", 0)],
+      spentInputOutRefs: [outRef(0x11, 0), outRef(0x22, 0), outRef(0xff, 0)],
       previousQueue: threeNodes,
       nextQueue: [
         threeNodes[0],
-        { headerHash: target, outRef: outRef("c", 0) },
+        { headerHash: target, outRef: outRef(0xcc, 0) },
       ],
       redeemers: timeoutRedeemer({
         RemoveFraudulentBlockHeader: {
           yield_to_ref_input_index: 0n,
-          fraudulent_operator: h28("f"),
+          fraudulent_operator: h28(0xff),
           fraudulent_blocks_header_hash: descendant,
           slashing_approach: {
             OperatorAlreadySlashed: {
@@ -504,7 +503,7 @@ describe("state-queue correction transition V1", () => {
           block_removal_approach: {
             RemoveLastFraudulentBlock: {
               anchor_element_input_outref: {
-                transactionId: h32("1"),
+                transactionId: h32(0x11),
                 outputIndex: 0n,
               },
               anchor_element_output_index: 0n,
@@ -534,21 +533,21 @@ describe("state-queue correction transition V1", () => {
 });
 
 describe("unattested suffix correction provenance", () => {
-  const target = h28("2");
+  const target = h28(0x22);
   const previousQueue = [
-    { headerHash: null, outRef: outRef("0", 0) },
-    { headerHash: h28("1"), outRef: outRef("1", 0) },
-    { headerHash: target, outRef: outRef("2", 0) },
+    { headerHash: null, outRef: outRef(0x00, 0) },
+    { headerHash: h28(0x11), outRef: outRef(0x11, 0) },
+    { headerHash: target, outRef: outRef(0x22, 0) },
   ];
   const terminal = () => ({
     ...common,
     ...timeoutLock(target, true),
     transactionIndex: "0",
-    spentInputOutRefs: [outRef("1", 0), outRef("2", 0), outRef("f", 0)],
+    spentInputOutRefs: [outRef(0x11, 0), outRef(0x22, 0), outRef(0xff, 0)],
     previousQueue,
     nextQueue: [
       previousQueue[0]!,
-      { headerHash: h28("1"), outRef: outRef("c", 0) },
+      { headerHash: h28(0x11), outRef: outRef(0xcc, 0) },
     ],
     redeemers: timeoutRedeemer({
       RemoveUnattestedBlockAfterTimeout: {
@@ -557,7 +556,7 @@ describe("unattested suffix correction provenance", () => {
         removal_approach: {
           RemoveLastUnattestedBlock: {
             predecessor_input_outref: {
-              transactionId: h32("1"),
+              transactionId: h32(0x11),
               outputIndex: 0n,
             },
             predecessor_output_index: 0n,
@@ -577,7 +576,7 @@ describe("unattested suffix correction provenance", () => {
       deriveStateQueueAuthenticatedTransition({
         ...terminal(),
         nextQueue: [
-          { ...previousQueue[0]!, outRef: outRef("c", 2) },
+          { ...previousQueue[0]!, outRef: outRef(0xcc, 2) },
           terminal().nextQueue[1]!,
         ],
       }),
@@ -585,7 +584,7 @@ describe("unattested suffix correction provenance", () => {
     expect(
       deriveStateQueueAuthenticatedTransition({
         ...terminal(),
-        ...timeoutLock(h28("9"), true),
+        ...timeoutLock(h28(0x99), true),
       }),
     ).toBeNull();
   });
@@ -593,16 +592,16 @@ describe("unattested suffix correction provenance", () => {
     const input = {
       ...terminal(),
       ...timeoutLock(target, false),
-      spentInputOutRefs: [outRef("2", 0), outRef("3", 0), outRef("f", 0)],
+      spentInputOutRefs: [outRef(0x22, 0), outRef(0x33, 0), outRef(0xff, 0)],
       previousQueue: [
         ...previousQueue,
-        { headerHash: h28("3"), outRef: outRef("3", 0) },
-        { headerHash: h28("4"), outRef: outRef("4", 0) },
+        { headerHash: h28(0x33), outRef: outRef(0x33, 0) },
+        { headerHash: h28(0x44), outRef: outRef(0x44, 0) },
       ],
       nextQueue: [
         ...previousQueue.slice(0, 2),
-        { headerHash: target, outRef: outRef("c", 0) },
-        { headerHash: h28("4"), outRef: outRef("4", 0) },
+        { headerHash: target, outRef: outRef(0xcc, 0) },
+        { headerHash: h28(0x44), outRef: outRef(0x44, 0) },
       ],
       redeemers: timeoutRedeemer({
         RemoveUnattestedBlockAfterTimeout: {
@@ -612,7 +611,7 @@ describe("unattested suffix correction provenance", () => {
             PruneUnattestedBlockDescendant: {
               predecessor_ref_input_index: 0n,
               timed_out_node_input_outref: {
-                transactionId: h32("2"),
+                transactionId: h32(0x22),
                 outputIndex: 0n,
               },
               timed_out_node_output_index: 0n,
@@ -622,14 +621,14 @@ describe("unattested suffix correction provenance", () => {
       }),
     };
     const result = deriveStateQueueAuthenticatedTransition(input);
-    expect(result?.removedHeaderHashes).toEqual([h28("3")]);
+    expect(result?.removedHeaderHashes).toEqual([h28(0x33)]);
     expect(parseStateQueueAuthenticatedTransition(result)).toEqual(result);
     expect(
       deriveStateQueueAuthenticatedTransition({
         ...input,
         nextQueue: [
           ...previousQueue.slice(0, 2),
-          { headerHash: target, outRef: outRef("c", 0) },
+          { headerHash: target, outRef: outRef(0xcc, 0) },
           input.previousQueue[3]!,
         ],
       }),
@@ -655,11 +654,11 @@ describe("unattested suffix correction provenance", () => {
           RemoveUnavailableBlockAfterTimeout: {
             yield_to_ref_input_index: 0n,
             unavailable_header_hash: target,
-            challenge_asset_name: h32("9"),
+            challenge_asset_name: h32(0x99),
             removal_approach: {
               RemoveTimedOutHead: {
                 confirmed_state_input_outref: {
-                  transactionId: h32("1"),
+                  transactionId: h32(0x11),
                   outputIndex: 0n,
                 },
                 confirmed_state_output_index: 0n,

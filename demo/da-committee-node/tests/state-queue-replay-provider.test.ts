@@ -1,28 +1,27 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { createLocalKupmiosStateQueueReplayProvider } from "../src/l1/state-queue-replay-provider.js";
 
-const h28 = (byte: string): string => byte.repeat(56);
-const h32 = (byte: string): string => byte.repeat(64);
-const outRef = (byte: string): string => `${h32(byte)}#0`;
-const deployment = h32("a");
-const policy = h28("b");
-const target = h28("1");
-const descendant = h28("2");
-const transactionHash = h32("c");
-const hubPolicy = h28("a");
-const fraudPolicy = h28("e");
+const outRef = (byte: number): string => `${h32(byte)}#0`;
+const deployment = h32(0xaa);
+const policy = h28(0xbb);
+const target = h28(0x11);
+const descendant = h28(0x22);
+const transactionHash = h32(0xcc);
+const hubPolicy = h28(0xaa);
+const fraudPolicy = h28(0xee);
 const correctionLockAddress = "addr_test_correction_lock";
 const fraudProofAddress = "addr_test_fraud_proof";
 const before: readonly SDK.StateQueueTransitionNode[] = [
-  { headerHash: null, outRef: outRef("0") },
-  { headerHash: target, outRef: outRef("1") },
-  { headerHash: descendant, outRef: outRef("2") },
+  { headerHash: null, outRef: outRef(0x00) },
+  { headerHash: target, outRef: outRef(0x11) },
+  { headerHash: descendant, outRef: outRef(0x22) },
 ];
 const after: readonly SDK.StateQueueTransitionNode[] = [
-  { headerHash: null, outRef: outRef("0") },
+  { headerHash: null, outRef: outRef(0x00) },
   { headerHash: target, outRef: `${transactionHash}#0` },
 ];
 
@@ -43,7 +42,7 @@ const harness = ({
         PruneUnattestedBlockDescendant: {
           predecessor_ref_input_index: 0n,
           timed_out_node_input_outref: {
-            transactionId: h32("1"),
+            transactionId: h32(0x11),
             outputIndex: 0n,
           },
           timed_out_node_output_index: 0n,
@@ -62,7 +61,7 @@ const harness = ({
               PruneTimedOutBlockDescendant: {
                 confirmed_state_ref_input_index: 0n,
                 timed_out_node_input_outref: {
-                  transactionId: h32("1"),
+                  transactionId: h32(0x11),
                   outputIndex: 0n,
                 },
                 timed_out_node_output_index: 0n,
@@ -119,7 +118,7 @@ const harness = ({
     }
     if (url.includes("/matches/")) {
       const match = /matches\/(\d+)@([0-9a-f]{64})/u.exec(url)!;
-      const isLockInput = match[2] === h32("f");
+      const isLockInput = match[2] === h32(0xff);
       return new Response(
         JSON.stringify([
           {
@@ -139,13 +138,17 @@ const harness = ({
                 }
               : undefined,
             spent_at:
-              match[2] === h32("1") || match[2] === h32("2") || isLockInput
+              match[2] === h32(0x11) || match[2] === h32(0x22) || isLockInput
                 ? {
                     slot_no: 100,
-                    header_hash: h32("7"),
+                    header_hash: h32(0x77),
                     transaction_id: transactionHash,
                     input_index:
-                      match[2] === h32("1") ? 0 : match[2] === h32("2") ? 1 : 2,
+                      match[2] === h32(0x11)
+                        ? 0
+                        : match[2] === h32(0x22)
+                          ? 1
+                          : 2,
                     redeemer: "d87980",
                   }
                 : null,
@@ -155,13 +158,13 @@ const harness = ({
     }
     if (url.includes("/checkpoints/")) {
       return new Response(
-        JSON.stringify({ slot_no: 99, header_hash: h32("6") }),
+        JSON.stringify({ slot_no: 99, header_hash: h32(0x66) }),
       );
     }
     expect(init?.method).toBe("POST");
     return new Response(
       JSON.stringify({
-        result: { id: h32("9"), slot: 130, height: tipHeight },
+        result: { id: h32(0x99), slot: 130, height: tipHeight },
       }),
     );
   });
@@ -180,7 +183,7 @@ const harness = ({
             emit("message", {
               data: JSON.stringify({
                 id: request.id,
-                result: { intersection: { slot: 99, id: h32("6") } },
+                result: { intersection: { slot: 99, id: h32(0x66) } },
               }),
             });
             return;
@@ -195,16 +198,16 @@ const harness = ({
                   : {
                       direction: "forward",
                       block: {
-                        id: h32("7"),
+                        id: h32(0x77),
                         slot: 100,
                         height: 90,
                         transactions: [
                           {
                             id: transactionHash,
                             inputs: [
-                              { transaction: { id: h32("1") }, index: 0 },
-                              { transaction: { id: h32("2") }, index: 0 },
-                              { transaction: { id: h32("f") }, index: 0 },
+                              { transaction: { id: h32(0x11) }, index: 0 },
+                              { transaction: { id: h32(0x22) }, index: 0 },
+                              { transaction: { id: h32(0xff) }, index: 0 },
                             ],
                             references: [],
                             mint: { [policy]: { "": -1 } },

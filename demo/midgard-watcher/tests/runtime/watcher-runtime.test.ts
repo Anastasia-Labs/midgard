@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
@@ -132,7 +133,6 @@ vi.mock("../../src/storage/durable-runtime.js", async (load) => {
 });
 
 const directories: string[] = [];
-const h32 = (byte: string) => byte.repeat(32);
 const key = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
 const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -170,7 +170,7 @@ const fixture = async () => {
             socketPath: "/run/cardano/node.socket",
             nodeConfigPath: "/etc/cardano/node-config.json",
             genesisConfigPath: "/etc/cardano/shelley-genesis.json",
-            genesisIdentitySha256: h32("66"),
+            genesisIdentitySha256: h32(0x66),
           },
           queryServices: [
             {
@@ -255,12 +255,12 @@ const fixture = async () => {
         providers: [
           {
             sourceId: "history-a",
-            operatorIdentitySha256: h32("a1"),
+            operatorIdentitySha256: h32(0xa1),
             authorityEndpoint: "https://history-a.example.test",
           },
           {
             sourceId: "history-b",
-            operatorIdentitySha256: h32("b2"),
+            operatorIdentitySha256: h32(0xb2),
             authorityEndpoint: "https://history-b.example.test",
           },
         ],
@@ -299,9 +299,9 @@ const fixture = async () => {
   boundary.trusted = {
     rollbackAuthenticationKey: key,
     rollbackAuthenticationKeyId: sha256(key),
-    recordAuthenticationKeyId: h32("99"),
+    recordAuthenticationKeyId: h32(0x99),
     client: {
-      readRecordAuthenticationKeyId: async () => h32("99"),
+      readRecordAuthenticationKeyId: async () => h32(0x99),
       readCurrent: async () => head,
       compareAndSwap: async ({ expectedTrustedHead, nextTrustedHead }) => {
         if (JSON.stringify(expectedTrustedHead) !== JSON.stringify(head))
@@ -330,7 +330,7 @@ const fixture = async () => {
       network: policy.network,
       blueprintHash: policy.blueprintHash,
       finalityPolicyDigest: policy.policyDigest,
-      userEventPolicyDigest: h32("88"),
+      userEventPolicyDigest: h32(0x88),
       checkpointSequence: "0",
       predecessorCheckpointDigest: null,
       rollbackGeneration: "0",

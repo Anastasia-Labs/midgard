@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -44,7 +45,6 @@ import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
-const h32 = (byte: string) => byte.repeat(32);
 const durableFixture = async (
   policy: WatcherFinalityPolicy,
   bootstrapStore?: WatcherDurableStore,
@@ -64,7 +64,7 @@ const durableFixture = async (
     },
   };
   const client: WatcherTrustedHeadAuthorityClient = {
-    readRecordAuthenticationKeyId: async () => h32("99"),
+    readRecordAuthenticationKeyId: async () => h32(0x99),
     readCurrent: async () => {
       if (failNextRead) {
         failNextRead = false;
@@ -202,7 +202,7 @@ const setup = async (
     const inputs = CML.TransactionInputList.new();
     inputs.add(
       CML.TransactionInput.new(
-        CML.TransactionHash.from_hex(h32("c3")),
+        CML.TransactionHash.from_hex(h32(0xc3)),
         BigInt(paymentIndex++),
       ),
     );
@@ -255,7 +255,7 @@ describe("owned user-event runtime over actual synthetic native transport", () =
       expect(() => assertWatcherUserEventRuntime({ ...runtime! })).toThrow();
       expect(() =>
         Reflect.apply(runtime!.eventAuthority, runtime, [
-          { kind: "deposit", eventId: h32("aa") },
+          { kind: "deposit", eventId: h32(0xaa) },
         ]),
       ).toThrow();
       expect(runtime.read()).toMatchObject({
@@ -495,7 +495,7 @@ describe("user-event runtime coverage and capture", () => {
       const { computeFraudProofRawL1PointId } = await import(
         "@al-ft/midgard-fault-proofs"
       );
-      const deep = { ...quietB.point, blockHash: h32("aa") };
+      const deep = { ...quietB.point, blockHash: h32(0xaa) };
       deep.pointId = computeFraudProofRawL1PointId(deep);
       before = (await fixture.readNativeQueries()).length;
       await runtime.advanceThrough(deep);
@@ -509,7 +509,7 @@ describe("user-event runtime coverage and capture", () => {
       // chain, so the runtime fails closed.
       const quietH = await fixture.makeBlock({ transactions: [] });
       await runtime.advanceThrough(quietH.point);
-      const fork = { ...quietH.point, blockHash: h32("aa") };
+      const fork = { ...quietH.point, blockHash: h32(0xaa) };
       fork.pointId = computeFraudProofRawL1PointId(fork);
       before = (await fixture.readNativeQueries()).length;
       await expect(runtime.advanceThrough(fork)).rejects.toThrow(
