@@ -138,6 +138,28 @@ const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestIdentityContext = {
   },
 };
 
+/** Every applied script in a validator bundle, keyed by its object path. */
+const validatorHashesByPath = (root: unknown): Record<string, string> => {
+  const hashes: Record<string, string> = {};
+  const visit = (value: unknown, path: string): void => {
+    if (typeof value !== "object" || value === null) return;
+    const record = value as Record<string, unknown>;
+    for (const field of [
+      "spendingScriptHash",
+      "withdrawalScriptHash",
+      "policyId",
+    ]) {
+      if (typeof record[field] === "string")
+        hashes[`${path}.${field}`] = record[field];
+    }
+    for (const [key, child] of Object.entries(record)) {
+      if (!key.endsWith("Script")) visit(child, `${path}.${key}`);
+    }
+  };
+  visit(root, "$");
+  return hashes;
+};
+
 const testFraudProofCatalogue = (contracts: MidgardValidators) =>
   buildFraudProofCatalogueDeploymentInfo(
     fraudProofsToIndexedValidators(contracts.fraudProofs),
@@ -966,6 +988,54 @@ describe("contract deployment info", () => {
           manifest.contracts.fraudProofTransitionTraceDuplicate.scriptHash,
         ]);
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  unitIt(
+    "restores every applied validator the real bundle carries",
+    async () => {
+      const contracts = await loadRealMidgardContractsForTest({
+        txHash: ONE_SHOT_TX_HASH,
+        outputIndex: 0,
+      });
+      const manifest = buildDeploymentManifest(
+        await Effect.runPromise(
+          buildFinalizedContractDeploymentInfo(
+            contracts,
+            testReferenceScriptAuthPolicy(
+              contracts.referenceScriptAuth.policyId,
+              contracts.referenceScriptAuth.mintingScriptCBOR,
+            ),
+          ),
+        ),
+        { ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT },
+      );
+      const reconstructed = midgardContractsFromDeploymentManifest(
+        "Preprod",
+        manifest,
+        "fixture-contract-deployment-info.json",
+        contracts,
+      );
+
+      // A validator the manifest loader forgets leaves a hole at its path:
+      // runtime consumers such as the deployable-script plan then read
+      // `undefined` instead of the deployed script. Excluded: the fixture's
+      // substitute auth policy, and the untyped copies of top-level shared
+      // validators that the SDK builder spreads into the chain record (the
+      // top-level paths themselves are compared).
+      const comparable = (hashes: Record<string, string>) =>
+        Object.fromEntries(
+          Object.entries(hashes).filter(
+            ([path]) =>
+              path !== "$.referenceScriptAuth.policyId" &&
+              !/^\$\.fraudProofContracts\.(computationThread|fieldPreimageCertificate|fraudProof)\./u.test(
+                path,
+              ),
+          ),
+        );
+      expect(comparable(validatorHashesByPath(reconstructed))).toEqual(
+        comparable(validatorHashesByPath(contracts)),
+      );
+    },
   );
 
   it.effect(

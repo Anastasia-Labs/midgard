@@ -758,6 +758,24 @@ const linearFaultProofChainFromManifest = <
       ),
     } as unknown as SDK.FaultProofContractChains[Category];
   }
+  if (category === "minAda") {
+    return {
+      firstStep,
+      steps,
+      yields: {
+        tx: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "fraudProofMinAdaStep02TxWithdraw",
+        ),
+        utxo: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "fraudProofMinAdaStep02UtxoWithdraw",
+        ),
+      },
+    } as unknown as SDK.FaultProofContractChains[Category];
+  }
   if (category === "fieldPreimageLengthMismatch") {
     return {
       firstStep,
