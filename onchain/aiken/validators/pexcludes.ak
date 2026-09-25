@@ -10,8 +10,7 @@ use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/mpf_prefix_fixture as prefix_fixture
 use midgard/mpf_proof_v1 as canonical_mpf
 
-/// Merkelized validator backing `midgard/common/utils.plutarch_pexcludes` and
-/// `plutarch_pexcludes_raw`.
+/// Merkelized validator backing `midgard/common/utils.plutarch_pexcludes_raw`.
 ///
 /// The exclusion redeemer is `[root, key, proof]` (no value, unlike the
 /// membership counterpart in `phas.ak`). It proves the `key` is absent from the

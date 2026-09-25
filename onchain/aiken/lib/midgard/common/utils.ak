@@ -1,20 +1,19 @@
 use aiken/builtin
 use aiken/cbor
-use aiken/collection/dict.{Dict}
+use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
-use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
+use aiken/interval.{Interval}
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
-  Spend, Withdraw,
+  InlineDatum, Input, Mint, Output, Redeemer, ScriptPurpose, Spend, Withdraw,
 }
 use env
-use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
+use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof}
 
 /// Validate datum value pairs without sorting or dropping entries, returning
 /// a Value or failing. Both policy IDs and asset names must be strictly
@@ -31,24 +30,6 @@ pub fn is_canonical_value(xs: Pairs<PolicyId, Pairs<AssetName, Int>>) -> Value {
         },
       )
     |> assets.from_ascending_pairs
-}
-
-/// Check whether the interval starts on or after the point.
-pub fn is_hereafter(self: Interval, point: Int) -> Bool {
-  when self.lower_bound.bound_type is {
-    Finite(lo) -> point <= lo
-    NegativeInfinity -> False
-    PositiveInfinity -> True
-  }
-}
-
-/// Check whether the interval ends on or before the point.
-pub fn is_herebefore(self: Interval, point: Int) -> Bool {
-  when self.upper_bound.bound_type is {
-    Finite(hi) -> hi <= point
-    PositiveInfinity -> False
-    NegativeInfinity -> True
-  }
 }
 
 pub fn get_inclusive_bounds_of_a_short_validity_range(
@@ -87,50 +68,9 @@ pub fn validate_mint(
   mints_policy == [Pair(expected_minting_name, expected_minting_amt)]
 }
 
-pub fn safe_list_last(elems: List<a>) -> a {
-  expect Some(last_elem) = list.last(elems)
-  last_elem
-}
-
-pub fn safe_list_head(elems: List<a>) -> a {
-  expect Some(last_elem) = list.head(elems)
-  last_elem
-}
-
-pub fn safe_list_init(elems: List<a>) {
-  expect Some(elems_except_last) = list.init(elems)
-  elems_except_last
-}
-
 /// Returns the quantity of all tokens with the policyId
 pub fn quantity_of_policy_id(value: Value, policyId: PolicyId) {
   dict.foldr(tokens(value, policyId), 0, fn(_k, v, result) { v + result })
-}
-
-pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
-  expect Some(input) = list.find(
-    txInputs,
-    fn(x) { x.output_reference == output_reference },
-  )
-
-  expect Script(hash) = input.output.address.payment_credential
-  hash
-}
-
-pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>) {
-  expect Some(input) = list.find(
-    txInputs,
-    fn(x) { x.output_reference == output_reference },
-  )
-
-  input.output.address
-}
-
-pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
-  when output.address.payment_credential is {
-    Script(hash) -> hash == scHash
-    _ -> False
-  }
 }
 
 /// A more readable function for validating a pub key hash has provided
@@ -150,18 +90,6 @@ pub fn get_single_asset_from_value(v: Value) -> (PolicyId, AssetName, Int) {
     |> dict.to_pairs
   expect [Pair(tn, qty)] = tn_qty_pairs |> dict.to_pairs
   (sym, tn, qty)
-}
-
-// Used to retrieve asset name from a value with a specific policy id
-pub fn get_asset_name_from_value_with_policy(
-  value: Value,
-  policy_id: PolicyId,
-) -> AssetName {
-  expect [Pair(asset_name, _)] = value
-    |> assets.tokens(policy_id)
-    |> dict.to_pairs
-
-  asset_name
 }
 
 // Used to retrieve a singleton asset from a value with a specific policy id
@@ -211,28 +139,6 @@ pub fn get_authentic_input_with_policy_at(
   found_input
 }
 
-/// Similar to [`get_authentic_input_with_policy_at`](#get_authentic_input_with_policy_at),
-/// but only returns the NFT's asset name. Useful for spending validators which
-/// already have access to the datum.
-pub fn get_authentic_input_asset_name_with_policy_at(
-  inputs: List<Input>,
-  nft_policy_id: PolicyId,
-  input_index: Int,
-) -> AssetName {
-  expect Some(Input { output: Output { value: input_value, .. }, .. }) = list.at(
-    inputs,
-    input_index,
-  )
-
-  expect (input_nft_policy_id, input_nft_asset_name, 1) = get_single_asset_from_value_apart_from_ada(
-    input_value,
-  )
-
-  expect input_nft_policy_id == nft_policy_id
-
-  input_nft_asset_name
-}
-
 pub fn get_authentic_input_and_asset_name_with_policy_at(
   inputs: List<Input>,
   nft_policy_id: PolicyId,
@@ -255,35 +161,7 @@ pub fn get_authentic_input_and_asset_name_with_policy_at(
 }
 
 /// Similar to [`get_authentic_input_with_policy_at`](#get_authentic_input_with_policy_at),
-/// but only returns the datum data. Useful for avoiding destructuring the
-/// input an extra time when only the datum is needed.
-pub fn get_authentic_input_datum_with_policy_at(
-  inputs: List<Input>,
-  nft_policy_id: PolicyId,
-  input_index: Int,
-) -> Data {
-  expect
-      Some(Input {
-        output: Output {
-          value: input_value,
-          datum: InlineDatum(input_datum_data),
-          ..
-        },
-        ..
-      })
-    = list.at(inputs, input_index)
-
-  expect (input_nft_policy_id, _, 1) = get_single_asset_from_value_apart_from_ada(
-    input_value,
-  )
-
-  expect input_nft_policy_id == nft_policy_id
-
-  input_datum_data
-}
-
-/// Similar to [`get_authentic_input_datum_with_policy_at`](#get_authentic_input_datum_with_policy_at),
-/// with additional provision of NFT's asset name.
+/// but returns only the datum data together with the NFT's asset name.
 pub fn get_authentic_input_datum_and_asset_name_with_policy_at(
   inputs: List<Input>,
   nft_policy_id: PolicyId,
@@ -484,28 +362,6 @@ pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
   serialise_and_hash_28(data) == data_hash
 }
 
-// Verify a 32-byte hash (Blake2b-256)
-pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
-  serialise_and_hash_32(data) == data_hash
-}
-
-/// Given a value, an NFT, and a `ValuePairs` (structured identical to `Value`,
-/// but safe for storage in datums), this helper ensures that the given `Value`
-/// is a correct representation of the given `ValuePairs`. Meaning it expects
-/// `Value` to only have the `ValuePairs`, the NFT, and some ADA. It also
-/// validates that 0 ADA is included in `ValuePairs` (this does NOT validate the
-/// absence of ADA policy ID and asset name in `ValuePairs`, TODO?).
-pub fn authentic_value_has_tokens(
-  value: Value,
-  nft_policy_id: PolicyId,
-  nft_asset_name: AssetName,
-  tokens: ValuePairs,
-) -> Bool {
-  let without_nft = value
-    |> assets.add(nft_policy_id, nft_asset_name, -1)
-  assets.match(without_nft, tokens, fn(_, tokens_ada) { tokens_ada == 0 })
-}
-
 /// Traverses two lists in parallel, accumulating a value using the provided
 /// `with` function. The lists are traversed from left to right, stopping after
 /// the smaller list's elements are exhausted. However, the `with` function
@@ -547,39 +403,6 @@ pub fn zip_foldl(
         }
       }
   }
-}
-
-/// Function for comparing a `Value` (presumably coming from script context),
-/// agains a `ValuePairs` (presumably coming from a datum). This helper only
-/// works for values that are identical, apart from the quantities.
-///
-/// As an example use-case, this allows checking the `Value` has still not
-/// reached the target `ValuePairs`.
-pub fn compare_authentic_value_with_target(
-  value: Value,
-  nft_policy_id: PolicyId,
-  nft_asset_name: AssetName,
-  target: ValuePairs,
-  quantity_predicate: fn(Int, Int) -> Bool,
-) -> Bool {
-  let value_without_nft: Pairs<PolicyId, Dict<AssetName, Int>> = value
-    |> assets.add(nft_policy_id, nft_asset_name, -1)
-    |> assets.to_dict
-    |> dict.to_pairs
-  let value_policy_pair, target_policy_pair, _ <- zip_foldr(
-    value_without_nft,
-    target,
-    True,
-  )
-  expect value_policy_pair.1st == target_policy_pair.1st
-  let value_token_pairs = value_policy_pair.2nd |> dict.to_pairs
-  let value_token_pair, target_token_pair, _ <- zip_foldr(
-    value_token_pairs,
-    target_policy_pair.2nd,
-    True,
-  )
-  expect value_token_pair.1st == target_token_pair.1st
-  quantity_predicate(value_token_pair.2nd, target_token_pair.2nd)
 }
 
 /// Fetch the redeemer data of a specific script purpose at an expected index.
@@ -713,45 +536,14 @@ pub fn plutarch_phas_raw(
   True
 }
 
-/// Merkelized validator abstraction for `pexcludes` function from Plutarch.
+/// Merkelized validator abstraction for the `pexcludes` function from
+/// Plutarch. It takes the merkle root and key as pre-computed bytes rather than
+/// typed values, so the trie key encoding can match an external producer (e.g.
+/// the node keys its ledger MPF by `CML.TransactionInput` CBOR, which does not
+/// equal `cbor.serialise` of an aiken `OutputReference`).
 ///
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
-pub fn plutarch_pexcludes(
-  merkle_root: MerkleRoot<key, value>,
-  key: Data<key>,
-  non_membership_proof: Proof,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-  withdraw_redeemer_index: Int,
-) -> Bool {
-  expect _withdraw_redeemer_index = withdraw_redeemer_index
-  let pexcludes_validator_redeemer = get_unique_withdraw_redeemer(
-    redeemers,
-    env.plutarch_pexcludes_validator_hash,
-  )
-  let key_bytes = cbor.serialise(key)
-  expect [redeemer_root_data,
-        redeemer_key_data,
-        redeemer_proof_data, ..] = builtin.un_list_data(
-    pexcludes_validator_redeemer,
-  )
-
-  let merkle_root_data: Data = merkle_root
-
-  let proof_data: Data = non_membership_proof
-
-  expect redeemer_root_data == merkle_root_data
-  expect redeemer_key_data == builtin.b_data(key_bytes)
-  expect redeemer_proof_data == proof_data
-
-  True
-}
-
-/// Raw variant of `plutarch_pexcludes` that takes the merkle root and key as
-/// pre-computed bytes rather than typed values. Use this when the trie key
-/// encoding must match an external producer (e.g. the node keys its ledger MPF
-/// by `CML.TransactionInput` CBOR, which does not equal `cbor.serialise` of an
-/// aiken `OutputReference`).
 pub fn plutarch_pexcludes_raw(
   merkle_root: ByteArray,
   key_bytes: ByteArray,
