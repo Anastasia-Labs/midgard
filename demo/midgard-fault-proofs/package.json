@@ -17,9 +17,6 @@
     "./testing/installed-workflow": {
       "midgard-source": "./tests/support/installed-workflow.ts"
     },
-    "./testing/installed-workflow-l1": {
-      "midgard-source": "./src/workflow/family-l1-observation.ts"
-    },
     "./test-support/transition-history-fixture": {
       "midgard-source": "./tests/helpers/transition-history-fixture.ts",
       "types": "./tests/helpers/transition-history-fixture.ts"
