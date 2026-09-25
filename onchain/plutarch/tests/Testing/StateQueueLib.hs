@@ -25,7 +25,10 @@ import PlutusLedgerApi.V3 (
   Datum (..),
   OutputDatum (..),
   POSIXTime (..),
+  Redeemer (..),
   ScriptHash (..),
+  ScriptContext (..),
+  ScriptInfo (SpendingScript),
   ToData,
   TxId (..),
   TxInInfo (..),
@@ -63,16 +66,29 @@ import Midgard.Validators.StateQueue (
   premoveLastFraudulentBlockV1,
   premoveUnattestedHeadAfterTimeoutV1,
   premoveUnavailableHeadV1,
+  stateQueueSpendValidator,
  )
-import Testing.Eval (passertEval, pfails)
-import Testing.ScriptContextBuilder (currencySymbolFromHex, mkAdaValue)
+import Testing.Eval (passertEval, pfails, psucceeds)
+import Testing.ScriptContextBuilder (buildScriptContext, currencySymbolFromHex, mkAdaValue, withMint)
 
 -- | Collects the tests defined in this module.
 tests :: TestTree
 tests =
   testGroup
     "State Queue Library Tests"
-    [ testGroup
+    [ testCase "spend gate accepts a node burn" $
+        psucceeds $
+          stateQueueSpendValidator
+            # sqPolicy
+            # sqPolicy
+            # sqPolicy
+            # pconstant
+              ( (buildScriptContext $ withMint (singleton sqPolicySymbol (TokenName "burn") (-1)) (toBuiltinData ()))
+                  { scriptContextRedeemer = Redeemer $ dataToBuiltinData (PD.Constr 0 [])
+                  , scriptContextScriptInfo = SpendingScript (outRefN 0) Nothing
+                  }
+              )
+    , testGroup
         "decodeHeaderView"
         [ -- The gate returns the header unchanged, so this asserts both that it
           -- accepts and that it is the identity on what it accepts.
