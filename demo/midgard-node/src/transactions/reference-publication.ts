@@ -251,6 +251,66 @@ export const publishReferenceScripts = async ({
     throw new Error(
       "No confirmed plain wallet funding for reference publication",
     );
+  const fundingCheckpoints = [[...funding]];
+  // A lane spends all its assigned roots. Compact fragmented funding first so
+  // neither the lane split nor a single-script publication inherits hundreds
+  // of inputs. Each plain transfer is confirmed before its output is reused.
+  // Finish at one common ancestor before splitting: a rollback of preparation
+  // must not leave one lane confirmed while the other loses its funding roots.
+  const consolidationRequired = funding.length > laneCount;
+  while (consolidationRequired && funding.length > 1) {
+    signal?.throwIfAborted();
+    const inputs = funding.slice(0, 100);
+    lucid.overrideUTxOs(inputs);
+    try {
+      const unsigned = await lucid
+        .newTx()
+        .collectFrom(inputs)
+        .validTo(
+          lucid.slotToUnixTime(lucid.currentSlot()) +
+            SDK.REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS,
+        )
+        .complete({
+          localUPLCEval: true,
+          coinSelection: false,
+          presetWalletInputs: inputs,
+        });
+      const outputs = unsigned.toTransaction().body().outputs();
+      if (outputs.len() !== 1)
+        throw new Error(
+          "Funding consolidation must produce one plain wallet output",
+        );
+      const output = coreToTxOutput(outputs.get(0));
+      const hash = await Effect.runPromise(
+        handleSignSubmit(lucid, unsigned, {
+          confirmationTimeoutMs: 30 * 60_000,
+          confirmationRetries: 0,
+          requiredOutputIndexes: [0],
+        }),
+        { signal },
+      );
+      await options.synchronize();
+      const [confirmed] = await lucid.utxosByOutRef([
+        { txHash: hash, outputIndex: 0 },
+      ]);
+      if (
+        confirmed === undefined ||
+        !isPlainAdaOnlyUtxo(confirmed) ||
+        confirmed.address !== walletAddress ||
+        confirmed.assets.lovelace !== output.assets.lovelace
+      )
+        throw new Error(
+          "Canonical funding consolidation output differs from the signed transaction",
+        );
+      funding.splice(0, inputs.length);
+      // Chain preparation too, so a fork can only restore a recorded prefix.
+      funding.unshift(confirmed);
+      fundingCheckpoints.push([...funding]);
+      madeProgress();
+    } finally {
+      lucid.clearUTxOOverride();
+    }
+  }
   const groups: UTxO[][] = Array.from({ length: laneCount }, () => []);
   const balances = Array<bigint>(laneCount).fill(0n);
   for (const utxo of SDK.orderReferenceScriptFundingUtxos(funding)) {
@@ -451,7 +511,7 @@ export const publishReferenceScripts = async ({
             if (exact.length === 0) {
               const records = lanes.flatMap((candidate) => candidate.records);
               if (
-                splitWasConfirmed &&
+                (splitWasConfirmed || fundingCheckpoints.length > 1) &&
                 records.every((record) => !record.confirmed)
               ) {
                 if (records.some((record) => slot < record.expiresAtSlot)) {
@@ -459,20 +519,30 @@ export const publishReferenceScripts = async ({
                   needsObservation = true;
                   continue publicationLoop;
                 }
-                const restored = await lucid.utxosByOutRef(funding);
+                const ancestors = [
+                  ...new Map(
+                    fundingCheckpoints
+                      .flat()
+                      .map((input) => [key(input), input]),
+                  ).values(),
+                ];
+                const restored = await lucid.utxosByOutRef(ancestors);
                 if (
-                  funding.every((input) =>
-                    restored.some(
-                      (utxo) =>
-                        key(utxo) === key(input) &&
-                        utxo.address === input.address &&
-                        utxo.assets.lovelace === input.assets.lovelace &&
-                        isPlainAdaOnlyUtxo(utxo),
+                  fundingCheckpoints.some((checkpoint) =>
+                    checkpoint.every((input) =>
+                      restored.some(
+                        (utxo) =>
+                          key(utxo) === key(input) &&
+                          utxo.address === input.address &&
+                          utxo.assets.lovelace === input.assets.lovelace &&
+                          isPlainAdaOnlyUtxo(utxo),
+                      ),
                     ),
                   )
                 ) {
-                  // The common split ancestor rolled back. Both lane suffixes are
-                  // expired and its exact original inputs are canonical again.
+                  // Funding preparation rolled back. Both lane suffixes are
+                  // expired and an exact pre-consolidation or pre-split funding
+                  // set is canonical again. Restart also drains preparation TTLs.
                   return await publishReferenceScripts({
                     lucid,
                     address,

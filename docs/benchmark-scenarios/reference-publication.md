@@ -15,7 +15,10 @@ split only when the existing SDK builder reports an oversized transaction.
 The byte budget is conservative; the local-stack measurements below verify
 chaining against the actual submission stack.
 
-The publisher allocates disjoint confirmed plain wallet inputs. If those inputs
+The publisher first consolidates fragmented plain wallet funding in confirmed
+transfers of at most 100 inputs, retaining each funding state for rollback
+reconciliation. Consolidations expire within five minutes. The publisher then
+allocates disjoint confirmed plain wallet inputs. If those inputs
 cannot fund both lanes independently, it confirms a funding split. Only exact
 plain outputs of signed, locally accepted parents can fund children. Reference
 outputs are never funding inputs. Construction and signing are serial, so wallet

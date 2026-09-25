@@ -88,9 +88,11 @@ it("chains by default from exact accepted parent change before any reference is 
   expect(peakBeforeBlock).toBe(6);
 });
 
-const publicationFixture = async (count = 28) => {
+const publicationFixture = async (count = 28, fundingOutputs = 1) => {
   const account = generateEmulatorAccount({ lovelace: 10_000_000_000n });
-  const provider = new Emulator([account]);
+  const provider = new Emulator(
+    Array.from({ length: fundingOutputs }, () => account),
+  );
   const lucid = await Lucid(provider, "Custom");
   lucid.selectWallet.fromSeed(account.seedPhrase);
   const authPolicy = await SDK.createReferenceScriptAuthPolicy(lucid);
@@ -444,3 +446,93 @@ it("rejects a canonical authenticated role with the wrong script before publishi
   };
   await expect(f.run()).rejects.toThrow(/Malformed authenticated reference/);
 });
+
+it.each([200, 1000])(
+  "publishes from a fragmented wallet of %i outputs with shared funding ancestry",
+  async (fundingOutputs) => {
+    const account = generateEmulatorAccount({ lovelace: 10_000_000n });
+    const provider = new Emulator(
+      Array.from({ length: fundingOutputs }, () => account),
+    );
+    const lucid = await Lucid(provider, "Custom");
+    lucid.selectWallet.fromSeed(account.seedPhrase);
+    const authPolicy = await SDK.createReferenceScriptAuthPolicy(lucid);
+    const targets = Object.keys(SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)
+      .slice(0, 8)
+      .map((name) => ({ name, script: authPolicy.mintingScript }));
+    provider.awaitTx = async () => {
+      provider.awaitBlock(1);
+      return true;
+    };
+    const publicationParents: string[] = [];
+    let previousFundingHash: string | undefined;
+    const submit = provider.submitTx.bind(provider);
+    provider.submitTx = async (cbor) => {
+      expect(cbor.length / 2).toBeLessThanOrEqual(16384);
+      const body = CML.Transaction.from_cbor_hex(cbor).body();
+      if (body.mint() !== undefined) {
+        expect(body.inputs().len()).toBe(1);
+        publicationParents.push(body.inputs().get(0).transaction_id().to_hex());
+      } else {
+        if (previousFundingHash !== undefined) {
+          const inputs = Array.from({ length: body.inputs().len() }, (_, i) =>
+            body.inputs().get(i).transaction_id().to_hex(),
+          );
+          expect(inputs).toContain(previousFundingHash);
+        }
+        previousFundingHash = CML.hash_transaction(body).to_hex();
+      }
+      return submit(cbor);
+    };
+    const result = await Effect.runPromise(
+      ensureReferenceScriptTargetsProgram(
+        lucid,
+        "fragmented",
+        targets,
+        authPolicy,
+      ),
+    );
+    expect(result.map(({ name }) => name)).toEqual(
+      targets.map(({ name }) => name),
+    );
+    expect(publicationParents).toHaveLength(2);
+    expect(new Set(publicationParents).size).toBe(1);
+  },
+);
+
+it.each([0, 1])(
+  "recovers funding when rollback removes consolidation after checkpoint %i",
+  async (checkpoint) => {
+    const f = await publicationFixture(28, 200);
+    let rollbackLedger = structuredClone(f.provider.ledger);
+    let fundingConfirmed = 0;
+    const awaitTx = f.provider.awaitTx.bind(f.provider);
+    f.provider.awaitTx = async (...args) => {
+      const confirmed = await awaitTx(...args);
+      if (++fundingConfirmed === checkpoint)
+        rollbackLedger = structuredClone(f.provider.ledger);
+      return confirmed;
+    };
+    const submit = f.provider.submitTx.bind(f.provider);
+    let publications = 0;
+    f.provider.submitTx = async (cbor) => {
+      const hash = await submit(cbor);
+      if (CML.Transaction.from_cbor_hex(cbor).body().mint() !== undefined)
+        publications++;
+      return hash;
+    };
+    let rolledBack = false;
+    f.options.synchronize = async () => {
+      if (!rolledBack && publications >= 6) {
+        rolledBack = true;
+        f.provider.ledger = structuredClone(rollbackLedger);
+        f.provider.mempool = {};
+        f.provider.transactionHistory = {};
+        f.provider.awaitBlock(20);
+      }
+      return f.provider.slot;
+    };
+    expect(await f.run()).toHaveLength(28);
+    expect(rolledBack).toBe(true);
+  },
+);
