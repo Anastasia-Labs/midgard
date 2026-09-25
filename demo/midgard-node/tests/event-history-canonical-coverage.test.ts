@@ -23,6 +23,9 @@ type Coverage = Effect.Effect.Success<
   ReturnType<typeof loadCanonicalHistoryCoverage>
 >;
 
+const ledgerScans = (requests: readonly { method: string }[]) =>
+  requests.filter(({ method }) => method === "queryLedgerState/utxo").length;
+
 // Accepted emulator initialization and complete observed intervals are real;
 // branch ancestry is the existing controlled transport model. Retained SQL is
 // consumed only inside the production source owner's recovery transaction.
@@ -80,107 +83,119 @@ it("loads complete current-branch rosters and refuses stale or altered retained 
             const tokens = new Map<string, Authority.Token>();
             const refusals: string[] = [];
             let checkCorruption = true;
-            const owner = yield* makeEventHistoryOwner({
-              binding: h.binding,
-              histories: SDK.requireEventHistoryContracts(h.fixture.contracts),
-              slotToUnixTime: h.fixture.operatorLucid.slotToUnixTime,
-              transport: source.options,
-              heartbeatIntervalMs: 100,
-              retainedPointLimit: 128,
-              maximumReceiptBytes: 16 * 1024 * 1024,
-              leaseDurationMs: 60_000,
-              ownerToken: randomUUID(),
-              expectedInitializationTransactionHash:
-                h.deployment.initialization.txHash,
-              cache,
-              reconcile: ({ after }) =>
-                Effect.gen(function* () {
-                  const token = yield* Authority.requireRecoveryTransaction;
-                  const coverage = yield* loadCanonicalHistoryCoverage(
-                    h.binding,
-                    after,
-                  );
-                  expect(coverage.ownerGeneration).toBe(token.generation);
-                  expect(coverage.checkpointRevision).toBe(after.revision);
-                  expect(coverage.snapshotDigest).toBe(
-                    after.capture.snapshotDigest,
-                  );
-                  expect(coverage.bindingDigest).toBe(h.binding.digest);
-                  expect(coverage.manifestId).toBe(h.binding.manifestId);
-                  observed.set(after.head.id, coverage);
-                  checkpoints.set(after.head.id, after);
-                  tokens.set(after.head.id, token);
-                  if (!checkCorruption || after.head.id === after.anchor.id)
-                    return;
-                  checkCorruption = false;
-
-                  const stale = yield* Effect.either(
-                    loadCanonicalHistoryCoverage(h.binding, {
-                      ...after,
-                      revision: (BigInt(after.revision) + 1n).toString(),
-                    }),
-                  );
-                  expect(stale._tag).toBe("Left");
-                  refusals.push("stale-checkpoint");
-                  const foreign = yield* Effect.either(
-                    loadCanonicalHistoryCoverage(
-                      { ...h.binding, manifestId: "ff".repeat(32) },
+            // Set once a tiny horizon may leave the journal rewound onto an
+            // advanced anchor, where no block is retained to cover.
+            let retentionAdvanced = false;
+            const makeOwner = (rollbackHorizon = 2160) =>
+              makeEventHistoryOwner({
+                binding: h.binding,
+                histories: SDK.requireEventHistoryContracts(
+                  h.fixture.contracts,
+                ),
+                slotToUnixTime: h.fixture.operatorLucid.slotToUnixTime,
+                transport: source.options,
+                heartbeatIntervalMs: 100,
+                retainedPointLimit: 128,
+                maximumReceiptBytes: 16 * 1024 * 1024,
+                leaseDurationMs: 60_000,
+                rollbackHorizon,
+                ownerToken: randomUUID(),
+                expectedInitializationTransactionHash:
+                  h.deployment.initialization.txHash,
+                cache,
+                reconcile: ({ after }) =>
+                  Effect.gen(function* () {
+                    const token = yield* Authority.requireSourceTransaction;
+                    if (retentionAdvanced && after.head.id === after.anchor.id)
+                      return;
+                    const coverage = yield* loadCanonicalHistoryCoverage(
+                      h.binding,
                       after,
-                    ),
-                  );
-                  expect(foreign._tag).toBe("Left");
-                  refusals.push("foreign-deployment");
+                    );
+                    expect(coverage.ownerGeneration).toBe(token.generation);
+                    expect(coverage.checkpointRevision).toBe(after.revision);
+                    expect(coverage.snapshotDigest).toBe(
+                      after.capture.snapshotDigest,
+                    );
+                    expect(coverage.bindingDigest).toBe(h.binding.digest);
+                    expect(coverage.manifestId).toBe(h.binding.manifestId);
+                    observed.set(after.head.id, coverage);
+                    checkpoints.set(after.head.id, after);
+                    tokens.set(after.head.id, token);
+                    if (!checkCorruption || after.head.id === after.anchor.id)
+                      return;
+                    checkCorruption = false;
 
-                  const [row] = yield* sql<{
-                    ledger_receipt: string;
-                    ledger_receipt_digest: Buffer;
-                  }>`SELECT ledger_receipt, ledger_receipt_digest
+                    const stale = yield* Effect.either(
+                      loadCanonicalHistoryCoverage(h.binding, {
+                        ...after,
+                        revision: (BigInt(after.revision) + 1n).toString(),
+                      }),
+                    );
+                    expect(stale._tag).toBe("Left");
+                    refusals.push("stale-checkpoint");
+                    const foreign = yield* Effect.either(
+                      loadCanonicalHistoryCoverage(
+                        { ...h.binding, manifestId: "ff".repeat(32) },
+                        after,
+                      ),
+                    );
+                    expect(foreign._tag).toBe("Left");
+                    refusals.push("foreign-deployment");
+
+                    const [row] = yield* sql<{
+                      ledger_receipt: string;
+                      ledger_receipt_digest: Buffer;
+                    }>`SELECT ledger_receipt, ledger_receipt_digest
                     FROM event_history_block_applications
                     WHERE binding_digest = ${Buffer.from(h.binding.digest, "hex")}
                       AND block_hash = ${Buffer.from(after.head.id, "hex")} AND canonical`;
-                  expect(row).toBeDefined();
-                  if (row === undefined)
-                    throw new Error("Missing current application");
-                  const restore = sql`UPDATE event_history_block_applications
+                    expect(row).toBeDefined();
+                    if (row === undefined)
+                      throw new Error("Missing current application");
+                    const restore = sql`UPDATE event_history_block_applications
                     SET ledger_receipt = ${row.ledger_receipt},
                       ledger_receipt_digest = ${row.ledger_receipt_digest}
                     WHERE binding_digest = ${Buffer.from(h.binding.digest, "hex")}
                       AND block_hash = ${Buffer.from(after.head.id, "hex")} AND canonical`;
-                  yield* Effect.gen(function* () {
-                    yield* sql`UPDATE event_history_block_applications
+                    yield* Effect.gen(function* () {
+                      yield* sql`UPDATE event_history_block_applications
                       SET ledger_receipt = ${row.ledger_receipt + " "}
                       WHERE binding_digest = ${Buffer.from(h.binding.digest, "hex")}
                         AND block_hash = ${Buffer.from(after.head.id, "hex")} AND canonical`;
-                    expect(
-                      (yield* Effect.either(
-                        loadCanonicalHistoryCoverage(h.binding, after),
-                      ))._tag,
-                    ).toBe("Left");
-                    refusals.push("changed-receipt");
-                    const missingRoster = lossless.parse(
-                      row.ledger_receipt,
-                    ) as {
-                      block: { transactions?: unknown };
-                    };
-                    delete missingRoster.block.transactions;
-                    const replacement = lossless.stringify(missingRoster);
-                    yield* sql`UPDATE event_history_block_applications
+                      expect(
+                        (yield* Effect.either(
+                          loadCanonicalHistoryCoverage(h.binding, after),
+                        ))._tag,
+                      ).toBe("Left");
+                      refusals.push("changed-receipt");
+                      const missingRoster = lossless.parse(
+                        row.ledger_receipt,
+                      ) as {
+                        block: { transactions?: unknown };
+                      };
+                      delete missingRoster.block.transactions;
+                      const replacement = lossless.stringify(missingRoster);
+                      yield* sql`UPDATE event_history_block_applications
                       SET ledger_receipt = ${replacement}, ledger_receipt_digest = ${digest(replacement)}
                       WHERE binding_digest = ${Buffer.from(h.binding.digest, "hex")}
                         AND block_hash = ${Buffer.from(after.head.id, "hex")} AND canonical`;
+                      expect(
+                        (yield* Effect.either(
+                          loadCanonicalHistoryCoverage(h.binding, after),
+                        ))._tag,
+                      ).toBe("Left");
+                      refusals.push("missing-roster-with-matching-digest");
+                    }).pipe(Effect.ensuring(restore.pipe(Effect.orDie)));
                     expect(
-                      (yield* Effect.either(
-                        loadCanonicalHistoryCoverage(h.binding, after),
-                      ))._tag,
-                    ).toBe("Left");
-                    refusals.push("missing-roster-with-matching-digest");
-                  }).pipe(Effect.ensuring(restore.pipe(Effect.orDie)));
-                  expect(
-                    yield* loadCanonicalHistoryCoverage(h.binding, after),
-                  ).toEqual(coverage);
-                }),
-            });
+                      yield* loadCanonicalHistoryCoverage(h.binding, after),
+                    ).toEqual(coverage);
+                  }),
+              });
+            const owner = yield* makeOwner();
             yield* owner.awaitReady.pipe(Effect.timeout("30 seconds"));
+            // First start: exactly one complete ledger scan.
+            expect(ledgerScans(source.requests)).toBe(1);
             const ancestor = source.points.at(-1)!.point;
             const initial = observed.get(ancestor.id)!;
             expect(initial).toBeDefined();
@@ -290,7 +305,92 @@ it("loads complete current-branch rosters and refuses stale or altered retained 
               WHERE binding_digest = ${Buffer.from(h.binding.digest, "hex")}
                 AND block_hash = ${Buffer.from(orphan.id, "hex")}`;
             expect(retained).toEqual([{ canonical: false }]);
+            expect(ledgerScans(source.requests)).toBe(1);
             yield* owner.close;
+
+            // Rollback while down: the source abandons the journal head while no
+            // owner runs. A restart intersects the retained anchor, rewinds the
+            // orphaned head, replays the new branch and becomes ready at its tip
+            // without a ledger scan.
+            source.rollbackTo(ancestor.id);
+            const replacement = source.appendFork(
+              yield* Effect.promise(interval),
+            );
+            const restarted = yield* makeOwner();
+            yield* restarted
+              .awaitReadyAt(replacement)
+              .pipe(Effect.timeout("15 seconds"));
+            const afterDown = observed.get(replacement.id)!;
+            assertSourceRosters(afterDown);
+            expect(afterDown.blocks.at(-1)!.point).toEqual(replacement);
+            expect(
+              afterDown.blocks.map((block) => block.point.id),
+            ).not.toContain(fork.id);
+            const abandoned = yield* sql<{
+              canonical: boolean;
+            }>`SELECT canonical FROM event_history_block_applications
+              WHERE binding_digest = ${Buffer.from(h.binding.digest, "hex")}
+                AND block_hash = ${Buffer.from(fork.id, "hex")}`;
+            expect(abandoned).toEqual([{ canonical: false }]);
+            expect(ledgerScans(source.requests)).toBe(1);
+            yield* restarted.close;
+
+            // Bounded retention: a two-block horizon moves the anchor off the
+            // seed point during forward progress, pruning the replay receipts
+            // and the applications behind it; coverage then starts at the
+            // retained anchor.
+            const retainedReceipts = sql<{
+              count: string;
+            }>`SELECT count(*)::text AS count FROM event_history_replay_receipts
+              WHERE binding_digest = ${Buffer.from(h.binding.digest, "hex")}`;
+            expect(Number((yield* retainedReceipts)[0]!.count)).toBeGreaterThan(
+              0,
+            );
+            retentionAdvanced = true;
+            const pruning = yield* makeOwner(2);
+            yield* pruning
+              .awaitReadyAt(replacement)
+              .pipe(Effect.timeout("15 seconds"));
+            let head = replacement;
+            for (let step = 0; step < 3; step += 1) {
+              head = source.appendFork(yield* Effect.promise(interval));
+              yield* pruning
+                .awaitReadyAt(head)
+                .pipe(Effect.timeout("15 seconds"));
+            }
+            const pruned = (yield* Journal.load(h.binding))!;
+            expect(pruned.head).toEqual(head);
+            expect(pruned.anchor.height).toBe(head.height - 2);
+            expect(Number((yield* retainedReceipts)[0]!.count)).toBe(0);
+            const retainedCoverage = observed.get(head.id)!;
+            expect(retainedCoverage.start.height).toBe(
+              pruned.anchor.height + 1,
+            );
+            expect(retainedCoverage.blocks[0]!.parent).toBe(pruned.anchor.id);
+            assertSourceRosters(retainedCoverage);
+            yield* pruning.close;
+
+            // Restart after pruning, with a rollback inside the horizon while
+            // down: the restart intersects the retained anchor, rewinds and
+            // replays onto the new branch without a ledger scan.
+            const parent = source.points.at(-2)!.point;
+            expect(parent.height).toBeGreaterThan(pruned.anchor.height);
+            source.rollbackTo(parent.id);
+            const reforked = source.appendFork(yield* Effect.promise(interval));
+            const afterPruning = yield* makeOwner(2);
+            yield* afterPruning
+              .awaitReadyAt(reforked)
+              .pipe(Effect.timeout("15 seconds"));
+            const reforkedCoverage = observed.get(reforked.id)!;
+            assertSourceRosters(reforkedCoverage);
+            expect(
+              reforkedCoverage.blocks.map((block) => block.point.id),
+            ).not.toContain(head.id);
+            expect((yield* Journal.load(h.binding))!.anchor).toEqual(
+              pruned.anchor,
+            );
+            expect(ledgerScans(source.requests)).toBe(1);
+            yield* afterPruning.close;
           }),
         ),
       ),

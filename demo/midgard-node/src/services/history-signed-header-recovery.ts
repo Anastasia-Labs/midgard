@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option, Queue, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
@@ -67,6 +68,73 @@ const ledgerIdentity = (rows: readonly MinimalEntry[]) =>
     ),
   );
 
+/** The single source of the headers signed-header recovery still has to
+ * classify: not abandoned, with a deposit member whose admission incarnation is
+ * no longer origin-canonical. Journal retention holds its anchor behind these.
+ */
+export const signedHeaderRecoveryCandidates = (bindingDigest: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<{
+      header_hash: Buffer;
+      signed_tx_cbor: Buffer | null;
+    }>`SELECT DISTINCT p.header_hash, p.signed_tx_cbor
+      FROM pending_block_finalizations p JOIN pending_block_finalization_deposits m ON m.header_hash = p.header_hash
+      JOIN event_history_incarnations i ON i.binding_digest = m.history_binding_digest AND i.incarnation_id = m.history_incarnation_id
+      WHERE i.binding_digest = ${Buffer.from(bindingDigest, "hex")} AND NOT i.origin_canonical
+        AND p.status <> 'abandoned'`;
+  });
+
+/** The earliest signed validity-start slot among recovery candidates, which
+ * the retained journal range must still cover: canonical coverage has to start
+ * at or before it (see evaluateSignedIntentCoverage). Once recovery proves a
+ * candidate covered_absent it is abandoned and leaves this set, releasing the
+ * hold. A candidate that is not yet signed, or whose signed body has no
+ * validity start, has no slot coverage could ever be evaluated from, so it
+ * does not bound retention; it is not ignored either: its orphaned member keeps
+ * the history disposition pending, so the owner stays not-ready until the
+ * header is resolved. A stored signed body that does not decode is corruption
+ * of this node's own journal and fails closed, naming the header. */
+export const signedHeaderRecoveryHoldSlot = (bindingDigest: string) =>
+  signedHeaderRecoveryCandidates(bindingDigest).pipe(
+    Effect.mapError((cause) =>
+      failure("Recovery candidates could not be read", cause),
+    ),
+    Effect.flatMap((headers) => {
+      let earliest: number | undefined;
+      for (const { header_hash, signed_tx_cbor } of headers) {
+        if (signed_tx_cbor === null) continue;
+        let start: bigint | undefined;
+        try {
+          const tx = CML.Transaction.from_cbor_hex(
+            signed_tx_cbor.toString("hex"),
+          );
+          const body = tx.body();
+          start = body.validity_interval_start();
+          body.free();
+          tx.free();
+        } catch (cause) {
+          return Effect.fail(
+            failure(
+              `Recovery candidate ${header_hash.toString("hex")} has an unreadable signed body`,
+              cause,
+            ),
+          );
+        }
+        if (start === undefined) continue;
+        const slot = Number(start);
+        if (!Number.isSafeInteger(slot))
+          return Effect.fail(
+            failure(
+              `Recovery candidate ${header_hash.toString("hex")} has a signed validity start that is not a safe slot`,
+            ),
+          );
+        earliest = earliest === undefined ? slot : Math.min(earliest, slot);
+      }
+      return Effect.succeed(earliest);
+    }),
+  );
+
 /** First published recovery slice: an orphan-funded deposit-only header whose
  * exact original confirmed base is freshly restored on L1. Includes observed
  * deposit-only headers before any local-finalization job/DA work. Other published
@@ -98,13 +166,9 @@ export const prepareSignedHeaderRecovery = (input: {
     const candidate = yield* owned(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const headers = yield* sql<{
-          header_hash: Buffer;
-        }>`SELECT DISTINCT p.header_hash
-      FROM pending_block_finalizations p JOIN pending_block_finalization_deposits m ON m.header_hash = p.header_hash
-      JOIN event_history_incarnations i ON i.binding_digest = m.history_binding_digest AND i.incarnation_id = m.history_incarnation_id
-      WHERE i.binding_digest = ${Buffer.from(input.binding.digest, "hex")} AND NOT i.origin_canonical
-        AND p.status <> 'abandoned'`;
+        const headers = yield* signedHeaderRecoveryCandidates(
+          input.binding.digest,
+        );
         if (headers.length !== 1) return undefined;
         const maybe = yield* Pending.retrieveByHeaderHash(
           headers[0]!.header_hash,

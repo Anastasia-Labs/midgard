@@ -4,7 +4,7 @@ import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Data, Effect, Runtime } from "effect";
 
-import type * as Authority from "../database/eventHistoryAuthority.js";
+import * as Authority from "../database/eventHistoryAuthority.js";
 import * as Journal from "../database/eventHistoryJournal.js";
 import * as ReplayReceipts from "../database/eventHistoryReplayReceipts.js";
 import type { DatabaseError } from "../database/utils/common.js";
@@ -15,13 +15,17 @@ import {
   type EventHistoryListReplay,
   joinEventHistoryListReplay,
 } from "../l1-event-history-list-replay.js";
-import { projectEventHistoryBlock } from "../l1-event-history-projection.js";
+import {
+  type BoundHistoryCapture,
+  projectEventHistoryBlock,
+} from "../l1-event-history-projection.js";
 import { verifyEventHistoryReferenceBody } from "../l1-event-history-reference.js";
 import {
   type BoundHistoryChainBlock,
   type EventHistorySourceBinding,
   followBoundEventHistoryChain,
   readBoundEventHistoryLedgerSnapshot,
+  readBoundEventHistoryNetworkTip,
 } from "../l1-event-history-source.js";
 import {
   type HistoryTransportOptions,
@@ -35,11 +39,35 @@ import {
   HistoryRecoverySuperseded,
   makeEventHistoryRecovery,
 } from "./event-history-recovery.js";
+import { signedHeaderRecoveryHoldSlot } from "./history-signed-header-recovery.js";
 import type { MempoolLedgerCacheService } from "./mempool-ledger-cache.js";
 
 export class HistoryOwnerUnavailable extends Data.TaggedError(
   "HistoryOwnerUnavailable",
 )<{ readonly cause: unknown }> {}
+
+/** A forward block whose dependent reconciliation is not a pure extension of
+ * the producers' prefix. Its Ready append rolls back and recovery takes it. */
+class HistoryAppendNeedsRecovery extends Data.TaggedError(
+  "HistoryAppendNeedsRecovery",
+)<{ readonly reason: string }> {}
+
+/** Readiness opens when the follower first converges to the source tip and
+ * stays open while it keeps up: forward blocks and tip advances are journaled
+ * at the head without closing it. Further than this many blocks behind the
+ * tip, new producers are refused and readiness names the lag until the
+ * follower catches up; producers already running keep their journaled prefix.
+ * Only a rollback, a rewinding intersection, source failure or close supersede
+ * them. */
+export const HISTORY_READY_MAXIMUM_LAG_BLOCKS = 5;
+
+export type HistoryOwnerFrontier = Readonly<{
+  ready: boolean;
+  headHeight: number | null;
+  tipHeight: number | null;
+  lagBlocks: number;
+  maximumLagBlocks: number;
+}>;
 
 export type HistoryOwnerChange = Readonly<{
   kind: "seed" | "forward" | "rollback" | "resume";
@@ -55,6 +83,18 @@ export type HistoryReconciliationPending = Readonly<{
   reason: string;
 }>;
 
+/** Pending signed-header recovery is keeping the journal anchor more than the
+ * rollback horizon behind where the horizon alone would put it. Retention
+ * never prunes coverage a pending recovery still needs, so the journal grows
+ * until recovery resolves the header. */
+export type HistoryRetentionHold = Readonly<{
+  holdSlot: number;
+  anchorHeight: number;
+  unheldAnchorHeight: number;
+  heldBlocks: number;
+  rollbackHorizon: number;
+}>;
+
 export type HistoryOwnerCoverage = Readonly<{
   bindingDigest: string;
   checkpointRevision: string;
@@ -65,6 +105,10 @@ export type HistoryOwnerCoverage = Readonly<{
 
 const samePoint = (a: LedgerSnapshotPoint, b: LedgerSnapshotPoint) =>
   a.id === b.id && a.slot === b.slot;
+/** The only complete address-scope ledger scan runs once, on an empty journal.
+ * Ogmios has no address index, so it walks the whole UTxO set; it gets a
+ * one-time deadline instead of the per-request ChainSync timeout. */
+export const FIRST_START_CAPTURE_TIMEOUT_MS = 15 * 60_000;
 class MissingBody extends Error {
   constructor(readonly txHash: string) {
     super(`Missing history creating body ${txHash}`);
@@ -75,6 +119,8 @@ class MissingBody extends Error {
  * source authentication, whole-block replay, projection and SQL fencing always
  * run through the production implementations. Persisted state is local recovery
  * material; every start freshly authenticates and intersects the source.
+ * Only a first start on an empty journal scans the ledger (once); readiness is
+ * otherwise the journal having reached the follower's current tip.
  *
  * reconcile is mandatory bounded SQL work inside the same recovery transaction
  * as the fresh journal image. It must repair dependent state or fail. In
@@ -91,6 +137,10 @@ export const makeEventHistoryOwner = <E, R>(input: {
   readonly retainedPointLimit: number;
   readonly maximumReceiptBytes: number;
   readonly leaseDurationMs: number;
+  /** k: the deepest rollback recovered automatically (the manifest's
+   * l1Finality.automaticRecoveryMaxDepth). Journal blocks deeper than this
+   * behind the source tip are pruned behind an advancing anchor. */
+  readonly rollbackHorizon: number;
   readonly ownerToken?: string;
   readonly expectedInitializationTransactionHash?: string;
   readonly cache: MempoolLedgerCacheService;
@@ -129,6 +179,15 @@ export const makeEventHistoryOwner = <E, R>(input: {
             "History lease must exceed its heartbeat interval plus source deadline",
         }),
       );
+    if (
+      !Number.isSafeInteger(input.rollbackHorizon) ||
+      input.rollbackHorizon <= 0
+    )
+      return yield* Effect.fail(
+        new HistoryOwnerUnavailable({
+          cause: "History rollback horizon must be a positive block count",
+        }),
+      );
     const runtime = yield* Effect.runtime<Database | R>();
     const run = Runtime.runPromise(runtime);
     const recovery = yield* makeEventHistoryRecovery({
@@ -149,6 +208,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
     let epoch = 0;
     let ready = false;
     let pendingReconciliation: HistoryReconciliationPending | undefined;
+    let retentionHold: HistoryRetentionHold | undefined;
     let published = false;
     let closing = false;
     let failed = false;
@@ -156,6 +216,12 @@ export const makeEventHistoryOwner = <E, R>(input: {
     let handle = Promise.resolve(recovery.startup);
     let queue: Promise<void> = Promise.resolve();
     let convergenceQueued = false;
+    // Set at the first readiness; lag transitions are reported only after it.
+    let everReady = false;
+    let lagging = false;
+    // First start only: the single complete capture at point C. The replay seeds
+    // the journal when it reaches exactly C, then this is released.
+    let seedCapture: BoundHistoryCapture | undefined;
     const readinessWaiters = new Set<() => void>();
     const notifyReadiness = () => {
       for (const notify of [...readinessWaiters]) notify();
@@ -212,27 +278,81 @@ export const makeEventHistoryOwner = <E, R>(input: {
       queue = next.catch(fail);
       return next;
     };
-    const capture = (parentSignal = signal) =>
+    const sourceWork = (work: () => Promise<void>) =>
+      enqueue(async () => {
+        await work();
+        scheduleConvergence();
+      });
+    const lagBlocks = () =>
+      checkpoint === null || tip === undefined || tip === "origin"
+        ? 0
+        : Math.max(0, tip.height - checkpoint.head.height);
+    // Visible, not silent: one warning when an open gate falls too far behind
+    // the tip, one notice when it catches up. Tracked only from the first
+    // readiness on, so a notice always follows its warning.
+    const noteLag = () => {
+      if (!everReady) return;
+      const lag = lagBlocks();
+      const next = lag > HISTORY_READY_MAXIMUM_LAG_BLOCKS;
+      if (next === lagging) return;
+      lagging = next;
+      void run(
+        (next
+          ? Effect.logWarning(
+              "History follower is lagging the source tip; new producers are refused until it catches up",
+            )
+          : Effect.logInfo("History follower caught up with the source tip")
+        ).pipe(
+          Effect.annotateLogs({
+            event: "history_follower_lag",
+            state: next ? "lagging" : "caught_up",
+            lagBlocks: lag,
+            maximumLagBlocks: HISTORY_READY_MAXIMUM_LAG_BLOCKS,
+          }),
+        ),
+      ).catch(() => undefined);
+    };
+    const scheduleConvergence = () => {
+      if (convergenceQueued) return;
+      convergenceQueued = true;
+      // Cleared on dequeue: a signal during this convergence queues another.
+      void enqueue(async () => {
+        convergenceQueued = false;
+        await converge();
+      }).catch(fail);
+    };
+    // The one complete scan: first start on an empty journal only. It supplies
+    // the activation locator and the complete five-address image at its point;
+    // the ChainSync replay establishes everything else.
+    const capture = () =>
       readBoundEventHistoryLedgerSnapshot({
         binding: input.binding,
         ogmiosUrl: input.transport.ogmiosUrl,
-        timeoutMs: input.transport.timeoutMs,
+        timeoutMs: FIRST_START_CAPTURE_TIMEOUT_MS,
         webSocketFactory: input.transport.webSocketFactory,
         signal: AbortSignal.any([
-          parentSignal,
-          AbortSignal.timeout(input.transport.timeoutMs),
+          signal,
+          AbortSignal.timeout(FIRST_START_CAPTURE_TIMEOUT_MS),
         ]),
       });
-    // Locating an old activation can outlive one lease. Renew only after a
-    // fresh, source-authenticated complete capture, never from Kupo navigation
-    // or a cached receipt. The follower's heartbeats replace this startup loop.
+    // The first-start scan and locating an old activation can outlive one
+    // lease. Renew only after a fresh, source-authenticated response on this
+    // bound source (genesis check plus network tip), never from Kupo navigation
+    // or a cached receipt. Sequential: one read at a time, never a ledger scan.
+    // The follower's heartbeats replace this startup loop.
     const startupHealth = (async () => {
       try {
         while (true) {
           await delay(input.heartbeatIntervalMs, undefined, {
             signal: startupSignal,
           });
-          await capture(startupSignal);
+          await readBoundEventHistoryNetworkTip({
+            binding: input.binding,
+            ogmiosUrl: input.transport.ogmiosUrl,
+            timeoutMs: input.transport.timeoutMs,
+            webSocketFactory: input.transport.webSocketFactory,
+            signal: startupSignal,
+          });
           startupSignal.throwIfAborted();
           await run(recovery.renew);
         }
@@ -240,8 +360,11 @@ export const makeEventHistoryOwner = <E, R>(input: {
         if (!startupSignal.aborted) fail(cause);
       }
     })();
+    // The chain was verified in full by the startup load; every later step
+    // extends or reverses it by one link verified under the cursor lock, so
+    // the working checkpoint re-verifies only the cursor and its head.
     const requireCheckpoint = Effect.gen(function* () {
-      const value = yield* Journal.load(input.binding);
+      const value = yield* Journal.loadCurrent(input.binding);
       if (value === null)
         return yield* Effect.fail(
           new HistoryOwnerUnavailable({
@@ -308,36 +431,18 @@ export const makeEventHistoryOwner = <E, R>(input: {
       }
     };
 
+    // Readiness opens once the follower has journaled through the current
+    // source tip; later blocks append at its head without closing it. No ledger
+    // scan: the journal is maintained block by block from this same follower.
+    // Only a closed gate (first start, rollback, escalated append) runs this
+    // full recovery: producer drain, preparation, cache reload and Ready.
     const converge = async () => {
-      if (ready || tip === undefined || tip === "origin") return;
-      const head = checkpoint?.head ?? replay?.point;
-      if (head === undefined || !samePoint(head, tip)) return;
-      const expected = epoch;
-      const fresh = await capture();
-      signal.throwIfAborted();
-      if (expected !== epoch || !samePoint(fresh.history.ledger.point, head))
+      if (ready || checkpoint === null || tip === undefined || tip === "origin")
         return;
+      const head = checkpoint.head;
+      if (!samePoint(head, tip) || head.height !== tip.height) return;
+      const expected = epoch;
       const active = await handle;
-      if (checkpoint === null) {
-        if (replay === undefined) throw new Error("History replay is missing");
-        const origin = joinEventHistoryListReplay({
-          state: replay,
-          capture: fresh,
-          binding: input.binding,
-        });
-        checkpoint = await run(
-          active.persist(
-            Journal.seed({ binding: input.binding, ...origin }).pipe(
-              Effect.zipRight(reconciled("seed", null)),
-            ),
-          ),
-        );
-        replay = undefined;
-      } else if (checkpoint.capture.snapshotDigest !== fresh.snapshotDigest) {
-        throw new Error(
-          "Fresh history capture disagrees with replayed journal",
-        );
-      }
       if (expected !== epoch) return;
       // On restart the journal may already be at the source intersection. Recheck
       // dependent state under recovery authority before any native preparation;
@@ -397,7 +502,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
       try {
         await run(
           active.complete(
-            { point: head, snapshotDigest: fresh.snapshotDigest },
+            { point: head, snapshotDigest: checkpoint.capture.snapshotDigest },
             reconciled("resume", checkpoint).pipe(
               Effect.tap(() =>
                 pendingReconciliation === undefined
@@ -417,14 +522,112 @@ export const makeEventHistoryOwner = <E, R>(input: {
       }
       signal.throwIfAborted();
       if (expected !== epoch) return;
+      // Blocks accepted during completion are queued behind it and append at
+      // the head of this open gate: the published head is a journaled prefix.
       ready = true;
+      everReady = true;
       resolveFirstReady();
       notifyReadiness();
+      noteLag();
+    };
+
+    const journal = <E2, R2>(
+      prepared: ReturnType<typeof Journal.prepareAppend>,
+      tipHeight: number,
+      reconcile: Effect.Effect<Journal.Checkpoint, E2, R2>,
+    ) =>
+      signedHeaderRecoveryHoldSlot(input.binding.digest).pipe(
+        Effect.flatMap((holdSlot) =>
+          Journal.append(input.binding, prepared, reconcile, {
+            tipHeight,
+            horizon: input.rollbackHorizon,
+            holdSlot,
+          }),
+        ),
+        Effect.flatMap((appended) =>
+          appended.applied
+            ? Effect.succeed<Retained>({
+                result: appended.result,
+                hold: appended.hold,
+              })
+            : requireCheckpoint.pipe(
+                Effect.map(
+                  (result): Retained => ({
+                    result,
+                    hold: undefined,
+                  }),
+                ),
+              ),
+        ),
+      );
+    // A forward block at the head of an open gate, journaled in the Ready
+    // generation: no producer drain, no preparation, no cache reload. The
+    // follower's own reconciliation must be a pure extension; anything else
+    // rolls this append back and closes the gate for recovery to take the
+    // block. Undefined means recovery takes it (the gate closed first).
+    const appendReady = async (
+      before: Journal.Checkpoint,
+      prepared: ReturnType<typeof Journal.prepareAppend>,
+      tipHeight: number,
+    ): Promise<Retained | undefined> => {
+      const expected = epoch;
+      const outcome = await run(
+        recovery
+          .append(
+            journal(
+              prepared,
+              tipHeight,
+              requireCheckpoint.pipe(
+                Effect.tap((after) =>
+                  input.reconcile({ kind: "forward", before, after }).pipe(
+                    Effect.flatMap((result) =>
+                      result === undefined || result === null
+                        ? Effect.void
+                        : Effect.fail(
+                            new HistoryAppendNeedsRecovery({
+                              reason: result.reason,
+                            }),
+                          ),
+                    ),
+                  ),
+                ),
+              ),
+            ).pipe(
+              Effect.tap((retained) =>
+                Authority.advanceReadyPoint({
+                  point: retained.result.head,
+                  snapshotDigest: retained.result.capture.snapshotDigest,
+                }),
+              ),
+            ),
+          )
+          .pipe(
+            Effect.map((retained) => ({ retained }) as const),
+            Effect.catchIf(
+              (cause) => cause instanceof HistoryAppendNeedsRecovery,
+              (needs) =>
+                Effect.succeed({
+                  needs: (needs as HistoryAppendNeedsRecovery).reason,
+                } as const),
+            ),
+          ),
+      ).catch((cause: unknown) => {
+        signal.throwIfAborted();
+        // A rollback or failure closed the gate while this was in flight.
+        if (expected !== epoch) return undefined;
+        throw cause;
+      });
+      if (outcome === undefined) return undefined;
+      if ("needs" in outcome) {
+        invalidate(`history append requires recovery: ${outcome.needs}`);
+        return undefined;
+      }
+      return outcome.retained;
     };
 
     const forward = async (block: BoundHistoryChainBlock) => {
-      const active = await handle;
       if (checkpoint === null) {
+        const active = await handle;
         const step = await withBodies(block, (getCreatingBody) => {
           const options = {
             block,
@@ -460,6 +663,28 @@ export const makeEventHistoryOwner = <E, R>(input: {
           ),
         );
         replay = step.state;
+        if (seedCapture === undefined)
+          throw new Error("History first-start capture is missing");
+        const at = seedCapture.history.ledger.point;
+        if (samePoint(replay.point, at)) {
+          const origin = joinEventHistoryListReplay({
+            state: replay,
+            capture: seedCapture,
+            binding: input.binding,
+          });
+          checkpoint = await run(
+            active.persist(
+              Journal.seed({ binding: input.binding, ...origin }).pipe(
+                Effect.zipRight(reconciled("seed", null)),
+              ),
+            ),
+          );
+          replay = undefined;
+          seedCapture = undefined;
+        } else if (replay.point.slot >= at.slot)
+          throw new Error(
+            "History first-start capture point left the chain before replay reached it; restart to capture again",
+          );
       } else {
         const before = checkpoint;
         const transactions = new Map(
@@ -486,22 +711,84 @@ export const makeEventHistoryOwner = <E, R>(input: {
           }),
         );
         const prepared = Journal.prepareAppend(before, block, projection);
-        checkpoint = await run(
-          active.persist(
-            Journal.append(
-              input.binding,
-              prepared,
-              reconciled("forward", before),
-            ).pipe(Effect.zipRight(requireCheckpoint)),
-          ),
+        // The appended block is itself on the source chain, so it bounds the
+        // tip from below even before this block's tip notification.
+        const tipHeight = Math.max(
+          block.point.height,
+          tip === undefined || tip === "origin" ? 0 : tip.height,
         );
+        let appended = ready
+          ? await appendReady(before, prepared, tipHeight)
+          : undefined;
+        if (appended === undefined) {
+          // Closed gate: preparation for the previous head is now stale. No
+          // convergence is in flight (the queue is serial) and nothing is
+          // published, so this fences only the local recovery attempt.
+          epoch += 1;
+          const active = await handle;
+          appended = await run(
+            active.persist(
+              journal(prepared, tipHeight, reconciled("forward", before)),
+            ),
+          );
+        }
+        checkpoint = appended.result;
+        await noteRetention(appended.hold);
+        noteLag();
+        // Frontier waiters observe every appended head of an open gate.
+        if (ready) notifyReadiness();
       }
-      await converge();
+    };
+    // Visible, not silent: warn once when a pending recovery starts holding
+    // the anchor more than k blocks back, and once when it lets go.
+    type Retained = Readonly<{
+      result: Journal.Checkpoint;
+      hold: Journal.RetentionHold | undefined;
+    }>;
+    const noteRetention = async (hold: Journal.RetentionHold | undefined) => {
+      const heldBlocks =
+        hold === undefined ? 0 : hold.unheldAnchorHeight - hold.anchorHeight;
+      const next =
+        hold !== undefined && heldBlocks > input.rollbackHorizon
+          ? Object.freeze({
+              ...hold,
+              heldBlocks,
+              rollbackHorizon: input.rollbackHorizon,
+            })
+          : undefined;
+      const previous = retentionHold;
+      retentionHold = next;
+      if ((previous === undefined) === (next === undefined)) return;
+      const annotations = next ?? previous!;
+      await run(
+        (next === undefined
+          ? Effect.logInfo(
+              "History retention hold released; the journal anchor advances again",
+            )
+          : Effect.logWarning(
+              "History retention held by pending signed-header recovery: the journal anchor is more than the rollback horizon behind",
+            )
+        ).pipe(
+          Effect.annotateLogs({
+            event: "history_retention_hold",
+            state: next === undefined ? "released" : "holding",
+            holdSlot: annotations.holdSlot,
+            anchorHeight: annotations.anchorHeight,
+            unheldAnchorHeight: annotations.unheldAnchorHeight,
+            heldBlocks: annotations.heldBlocks,
+            rollbackHorizon: input.rollbackHorizon,
+          }),
+        ),
+      );
     };
     const rewind = async (point: LedgerSnapshotPoint | "origin") => {
       if (checkpoint === null || point === "origin")
         throw new Error("History rollback requires a retained journal anchor");
       const active = await handle;
+      // Refuse before undoing anything: a target that is neither the anchor nor
+      // a retained canonical block cannot be reached by undoing heads.
+      if (!(await run(Journal.retains(input.binding, checkpoint, point))))
+        throw new Error("History rollback exceeds retained journal ancestry");
       while (!samePoint(checkpoint.head, point)) {
         signal.throwIfAborted();
         if (
@@ -516,7 +803,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
               input.binding,
               before,
               reconciled("rollback", before),
-            ).pipe(Effect.zipRight(requireCheckpoint)),
+            ).pipe(Effect.map((undone) => undone.result)),
           ),
         );
       }
@@ -527,17 +814,18 @@ export const makeEventHistoryOwner = <E, R>(input: {
       signal.throwIfAborted();
       let intersections: readonly LedgerSnapshotPoint[];
       if (checkpoint === null) {
+        seedCapture = await capture();
+        signal.throwIfAborted();
         activation = await locateEventHistoryActivation(transport, {
           binding: input.binding,
-          capture: await capture(),
+          capture: seedCapture,
           expectedTransactionHash: input.expectedInitializationTransactionHash,
         });
         intersections = [activation.predecessor];
-      } else {
-        intersections = samePoint(checkpoint.head, checkpoint.anchor)
-          ? [checkpoint.head]
-          : [checkpoint.head, checkpoint.anchor];
-      }
+      } else
+        intersections = await run(
+          Journal.intersections(input.binding, checkpoint),
+        );
       signal.throwIfAborted();
       await followBoundEventHistoryChain({
         binding: input.binding,
@@ -549,26 +837,34 @@ export const makeEventHistoryOwner = <E, R>(input: {
         signal,
         intersections,
         onIntersection: (point) => {
-          void enqueue(async () => {
+          // Resuming exactly at the head keeps the journal; anything else
+          // rewinds it and closes the gate like a rollback.
+          if (checkpoint !== null && !samePoint(checkpoint.head, point))
+            invalidate("history source intersection rewinds the journal");
+          void sourceWork(async () => {
             if (checkpoint !== null) await rewind(point);
           }).catch(fail);
         },
-        onForward: (block) => {
-          invalidate("history forward work pending");
-          return enqueue(() => forward(block));
-        },
+        // Appending at the head never closes the gate (see appendReady).
+        onForward: (block) => sourceWork(() => forward(block)),
         onRollback: (point) => {
           invalidate("history source rolled back");
-          void enqueue(() => rewind(point)).catch(fail);
+          // The frontier legitimately moves back only here; the response that
+          // carried this rollback reports the new tip next.
+          tip = undefined;
+          void sourceWork(() => rewind(point)).catch(fail);
         },
         onTip: (observed) => {
           startupMonitor.abort();
-          const changed =
-            tip === undefined || tip === "origin" || observed === "origin"
-              ? tip !== observed
-              : !samePoint(tip, observed) || tip.height !== observed.height;
-          tip = observed;
-          if (changed) invalidate("history source frontier changed");
+          // A heartbeat answered before a newer ChainSync response can report
+          // an older tip. Never regress the frontier except through a rollback.
+          const stale =
+            tip !== undefined &&
+            tip !== "origin" &&
+            (observed === "origin" || observed.height < tip.height);
+          // A tip advance never closes the gate; it only measures the lag.
+          if (!stale) tip = observed;
+          noteLag();
           // Renew independently of slow projection, only after this source's
           // successful heartbeat/ChainSync response. Never stack renewals.
           if (renewal === undefined) {
@@ -578,16 +874,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
                 renewal = undefined;
               });
           }
-          if (!convergenceQueued) {
-            convergenceQueued = true;
-            void enqueue(async () => {
-              try {
-                await converge();
-              } finally {
-                convergenceQueued = false;
-              }
-            }).catch(fail);
-          }
+          scheduleConvergence();
         },
         onUnavailable: fail,
       });
@@ -629,6 +916,18 @@ export const makeEventHistoryOwner = <E, R>(input: {
     return {
       close,
       reconciliationStatus: Effect.sync(() => pendingReconciliation),
+      /** Set while pending recovery holds retention more than k blocks back. */
+      retentionHold: Effect.sync(() => retentionHold),
+      /** The gate, and how far the journal head is behind the source tip. */
+      frontier: Effect.sync(
+        (): HistoryOwnerFrontier => ({
+          ready: ready && !closing && !failed,
+          headHeight: checkpoint?.head.height ?? null,
+          tipHeight: tip === undefined || tip === "origin" ? null : tip.height,
+          lagBlocks: lagBlocks(),
+          maximumLagBlocks: HISTORY_READY_MAXIMUM_LAG_BLOCKS,
+        }),
+      ),
       awaitReady: Effect.tryPromise({
         try: () => firstReady,
         catch: (cause) => new HistoryOwnerUnavailable({ cause }),
@@ -690,6 +989,13 @@ export const makeEventHistoryOwner = <E, R>(input: {
         Effect.suspend(() => {
           const expected = epoch;
           const current = assertCurrent(expected);
+          const lag = lagBlocks();
+          if (lag > HISTORY_READY_MAXIMUM_LAG_BLOCKS)
+            return Effect.fail(
+              new HistoryRecoverySuperseded({
+                message: `History follower is ${lag} blocks behind the source tip`,
+              }),
+            );
           return current.pipe(
             Effect.zipRight(
               recovery.runProducer((token, owned) => {

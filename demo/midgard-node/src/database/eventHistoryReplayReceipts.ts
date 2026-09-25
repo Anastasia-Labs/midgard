@@ -10,7 +10,10 @@ import {
   eventHistoryCanonicalJson,
   type EventHistorySourceBinding,
 } from "../l1-event-history-source.js";
-import { requireRecoveryTransaction } from "./eventHistoryAuthority.js";
+import {
+  requireRecoveryTransaction,
+  requireSourceTransaction,
+} from "./eventHistoryAuthority.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 const table = "event_history_replay_receipts";
@@ -228,6 +231,45 @@ export const put = (input: {
     VALUES (${key}, ${bytes(prepared.binding.manifestId)}, ${bytes(prepared.point.id)}, ${prepared.point.slot}, ${prepared.point.height}, ${bytes(prepared.parent)}, ${previous === undefined ? null : previous.block_hash}, ${bytes(prepared.activation.point.id)}, ${prepared.count}, ${prepared.receipt}, ${bytes(sha(prepared.receipt))}, ${bytes(prepared.rangeDigest)})`;
   }).pipe(sqlErrorToDatabaseError(table, "Failed to retain replay receipt"));
 
+/** The seed point an authenticated-list origin receipt binds, or undefined
+ * for a self-contained origin receipt that retains no replay range. */
+export const originReplayHead = (originReceipt: string): Point | undefined => {
+  let raw: unknown;
+  try {
+    raw = lossless.parse(originReceipt);
+  } catch {
+    return undefined;
+  }
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    !("domain" in raw) ||
+    raw.domain !== "midgard-node-authenticated-history-origin-v1"
+  )
+    return undefined;
+  const head = Schema.decodeUnknownSync(originSchema)(raw).replay.head;
+  return Object.freeze({ ...head });
+};
+
+/** Once the journal anchor has left the seed point no reader needs the replay
+ * range. Delete at most limit receipts, highest replay count first, so a batch
+ * never removes a receipt whose successor survives (both self-FKs RESTRICT).
+ * Call inside the owned source transaction that advanced the anchor. */
+export const prune = (bindingDigest: string, limit: number) =>
+  Effect.gen(function* () {
+    yield* requireSourceTransaction;
+    const sql = yield* SqlClient.SqlClient;
+    const key = bytes(bindingDigest);
+    const deleted = yield* sql<{
+      block_hash: Buffer;
+    }>`DELETE FROM event_history_replay_receipts r
+      USING (SELECT block_hash FROM event_history_replay_receipts WHERE binding_digest = ${key}
+        ORDER BY blocks_replayed DESC LIMIT ${limit}) doomed
+      WHERE r.binding_digest = ${key} AND r.block_hash = doomed.block_hash
+      RETURNING r.block_hash`;
+    return deleted.length;
+  }).pipe(sqlErrorToDatabaseError(table, "Failed to prune replay receipts"));
+
 /** Bounded endpoint check of the append-only frontier maintained by put. SQL
  * parent FKs retain all intermediate chunks. This relies on the same local
  * storage-integrity trust contract as the journal; a privileged imported DB is
@@ -259,8 +301,17 @@ export const requireOriginCoverage = (input: {
       const value = Schema.decodeUnknownSync(originSchema)(raw);
       if (
         value.bindingDigest !== input.binding.digest ||
-        value.manifestId !== input.binding.manifestId ||
-        !samePoint(value.replay.head, input.anchor) ||
+        value.manifestId !== input.binding.manifestId
+      )
+        throw new Error("Origin replay endpoint or binding disagrees");
+      // Retention moves the anchor forward past the seed point, after which
+      // these receipts are pruned; the origin receipt itself stays immutable.
+      if (!samePoint(value.replay.head, input.anchor)) {
+        if (input.anchor.height <= value.replay.head.height)
+          throw new Error("Origin replay endpoint or binding disagrees");
+        return undefined;
+      }
+      if (
         value.anchorSnapshotDigest !== input.anchorSnapshotDigest ||
         value.replay.blocks < 1 ||
         value.replay.blocks !==
@@ -271,6 +322,7 @@ export const requireOriginCoverage = (input: {
       bytes(value.replay.head.id);
       return value;
     });
+    if (origin === undefined) return;
     const sql = yield* SqlClient.SqlClient;
     const rows =
       yield* sql<Row>`SELECT * FROM event_history_replay_receipts WHERE binding_digest = ${bytes(input.binding.digest)} AND block_hash IN (${bytes(origin.activation.point.id)}, ${bytes(origin.replay.head.id)})`;

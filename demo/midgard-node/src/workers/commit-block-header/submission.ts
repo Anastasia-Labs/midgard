@@ -440,8 +440,10 @@ export const refreshCommitUserEventSourcesThroughBlockEnd = <
         );
       // The final header window may differ from the initial plan. Recheck the
       // same immutable owner coverage; polling cannot extend its authority.
-      // preparePendingSubmission rechecks the generation and exact cursor under
-      // the authority row lock after this provider work, before journal writes.
+      // preparePendingSubmission rechecks the generation and that this coverage
+      // is still a journaled prefix (the exact cursor, the anchor, or a
+      // canonical earlier block under a newer cursor revision) under the
+      // authority row lock after this provider work, before journal writes.
       yield* refreshers.txOrder(finalBlockEndTime);
       return;
     }

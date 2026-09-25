@@ -30,29 +30,56 @@ const unavailable = (cause: unknown) =>
     cause,
   });
 
+/** Under the Ready row lock: the producer's journaled prefix is still the
+ * journal's, exactly or as a canonical ancestor of the current head. Within
+ * one Ready generation the owner only appends (every rewind first moves the
+ * authority to a new recovering generation, which withReady refuses), so
+ * later blocks extend the prefix and never invalidate what was read from it.
+ * A prefix pruned behind the anchor can no longer be shown and is refused. */
 const checkCoverage = (permit: HistoryProducerPermit) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const coverage = permit.coverage;
+    const binding = Buffer.from(coverage.bindingDigest, "hex");
+    const point = Buffer.from(coverage.point.id, "hex");
+    const snapshot = Buffer.from(coverage.snapshotDigest, "hex");
     const rows = yield* sql<{
       revision: string;
       head_hash: Buffer;
       head_slot: string;
       snapshot_digest: Buffer;
+      anchor_hash: Buffer;
+      anchor_slot: string;
+      anchor_snapshot_digest: Buffer;
     }>`
-    SELECT revision::text, head_hash, head_slot::text, snapshot_digest
-    FROM event_history_cursor WHERE binding_digest = ${Buffer.from(permit.coverage.bindingDigest, "hex")} AND manifest_id = ${Buffer.from(permit.token.deploymentIdentity, "hex")}`;
+    SELECT revision::text, head_hash, head_slot::text, snapshot_digest,
+      anchor_hash, anchor_slot::text, anchor_snapshot_digest
+    FROM event_history_cursor WHERE binding_digest = ${binding} AND manifest_id = ${Buffer.from(permit.token.deploymentIdentity, "hex")}`;
     const row = rows[0];
+    const changed = Effect.fail(
+      unavailable("History producer coverage changed"),
+    );
+    if (rows.length !== 1 || row === undefined) return yield* changed;
     if (
-      rows.length !== 1 ||
-      row === undefined ||
-      row.revision !== permit.coverage.checkpointRevision ||
-      row.head_hash.toString("hex") !== permit.coverage.point.id ||
-      Number(row.head_slot) !== permit.coverage.point.slot ||
-      row.snapshot_digest.toString("hex") !== permit.coverage.snapshotDigest
+      row.revision === coverage.checkpointRevision &&
+      row.head_hash.equals(point) &&
+      Number(row.head_slot) === coverage.point.slot &&
+      row.snapshot_digest.equals(snapshot)
     )
-      return yield* Effect.fail(
-        unavailable("History producer coverage changed"),
-      );
+      return;
+    if (BigInt(row.revision) <= BigInt(coverage.checkpointRevision))
+      return yield* changed;
+    if (
+      row.anchor_hash.equals(point) &&
+      Number(row.anchor_slot) === coverage.point.slot &&
+      row.anchor_snapshot_digest.equals(snapshot)
+    )
+      return;
+    const ancestor = yield* sql`SELECT 1 FROM event_history_block_applications
+      WHERE binding_digest = ${binding} AND canonical AND block_hash = ${point}
+        AND block_slot = ${coverage.point.slot} AND after_snapshot_digest = ${snapshot}
+        AND application_revision <= ${coverage.checkpointRevision}::bigint`;
+    if (ancestor.length !== 1) return yield* changed;
   }).pipe(Effect.mapError(unavailable));
 
 /** Outermost SQL gate. Standalone database fixtures without an acquired owner
@@ -127,7 +154,7 @@ export const withHistoryIngestion = <A, E, R>(work: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const transaction = yield* Authority.currentOwnedTransaction;
       if (Option.isSome(transaction)) {
-        yield* Authority.requireRecoveryTransaction;
+        yield* Authority.requireSourceTransaction;
       } else {
         const fixture = yield* Effect.serviceOption(fixtureTransaction);
         if (Option.isNone(fixture))

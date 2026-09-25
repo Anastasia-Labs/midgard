@@ -6,7 +6,7 @@ import { historyIncarnationEntry } from "../l1-event-history-entries.js";
 import { historyIncarnationDigest } from "../l1-event-history-provenance.js";
 import type { HistoryOwnerChange } from "../services/event-history-owner.js";
 import * as Deposits from "./deposits.js";
-import { requireRecoveryTransaction } from "./eventHistoryAuthority.js";
+import { requireSourceTransaction } from "./eventHistoryAuthority.js";
 import { repairUnpublishedHistoryLedger } from "./eventHistoryLedgerRepair.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as Withdrawals from "./withdrawals.js";
@@ -20,7 +20,8 @@ type Association = {
 const fail = (message: string, cause?: unknown) =>
   Effect.fail(new DatabaseError({ table, message, cause }));
 
-/** Bounded SQL materialization inside the source owner's recovery transaction.
+/** Bounded SQL materialization inside the source owner's transaction: recovery,
+ * or a forward append at the head of its Ready generation.
  * A new live admission starts unclassified. Continuations and retirement retain
  * the exact existing row's L2 state. Unassociated rows and orphan-dependent L2
  * state require explicit repair; neither is silently adopted or discarded.
@@ -31,7 +32,7 @@ export const materializeCanonicalHistory = (
   network: Network,
 ) =>
   Effect.gen(function* () {
-    const token = yield* requireRecoveryTransaction;
+    const token = yield* requireSourceTransaction;
     const checkpoint = change.after;
     if (token.deploymentIdentity !== checkpoint.manifestId)
       return yield* fail("History materialization deployment changed");

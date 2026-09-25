@@ -21,6 +21,12 @@ import {
   type AcquiredLedgerSnapshot,
   readAcquiredLedgerSnapshot,
 } from "./l1-ledger-snapshot.js";
+import {
+  normalizeOgmiosWebSocketUrl,
+  openOgmiosSession,
+  type WebSocketFactory,
+  type WebSocketLike,
+} from "./l1-tx-order-carriage.js";
 import { ogmiosEndpointIdentitySha256 } from "./local-ledger-slot.js";
 import type { ContractDeploymentIdentityValue } from "./services/midgard-contracts.js";
 
@@ -342,6 +348,41 @@ export const readBoundEventHistoryLedgerSnapshot = async (
   );
   options.signal?.throwIfAborted();
   return snapshot;
+};
+
+/** Source liveness only: one exact-socket genesis authentication and one
+ * network tip read. Never Kupo and never a cached receipt. This is a constant
+ * cost query, never a ledger-state scan, and establishes no branch or capture.
+ */
+export const readBoundEventHistoryNetworkTip = async ({
+  binding,
+  ogmiosUrl,
+  timeoutMs,
+  signal,
+  webSocketFactory = (url) => new WebSocket(url) as unknown as WebSocketLike,
+}: {
+  readonly binding: EventHistorySourceBinding;
+  readonly ogmiosUrl: string;
+  readonly timeoutMs: number;
+  readonly signal: AbortSignal;
+  readonly webSocketFactory?: WebSocketFactory;
+}): Promise<unknown> => {
+  requireBoundEndpoint(ogmiosUrl, binding);
+  const session = await openOgmiosSession({
+    url: normalizeOgmiosWebSocketUrl(ogmiosUrl),
+    timeoutMs,
+    webSocketFactory,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
+    parseMessage: (text) => lossless.parse(text) as unknown,
+  });
+  try {
+    await authenticateEventHistorySession(session, binding);
+    const tip = await session.request("queryNetwork/tip", {});
+    signal.throwIfAborted();
+    return tip;
+  } finally {
+    session.close();
+  }
 };
 
 /** Additional recovery state at the exact canonical checkpoint selected by the

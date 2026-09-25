@@ -50,6 +50,13 @@ export const makeRollbackHistoryTransport = (recorded: Recording) => {
     [];
   const sockets = new Set<Socket>();
   const tip = () => points.at(-1)!.point;
+  // A network tip answer that lags ChainSync, as a heartbeat racing a newer
+  // block can observe; ChainSync itself always reports the real tip.
+  let pinnedNetworkTip: Point["point"] | undefined;
+  const networkTip = () => pinnedNetworkTip ?? tip();
+  // Runs once, synchronously, before the next address-scope ledger query is
+  // answered from the snapshot already acquired.
+  let beforeLedgerQuery: (() => void) | undefined;
   type Request = {
     id: number;
     method: string;
@@ -92,12 +99,12 @@ export const makeRollbackHistoryTransport = (recorded: Recording) => {
           break;
         case "queryNetwork/tip": {
           // Ogmios v6 carries the height only on queryNetwork/blockHeight.
-          const { slot, id } = tip();
+          const { slot, id } = networkTip();
           this.answer(request, { slot, id });
           break;
         }
         case "queryNetwork/blockHeight":
-          this.answer(request, tip().height);
+          this.answer(request, networkTip().height);
           break;
         case "queryLedgerState/tip":
           this.answer(request, this.acquired?.point ?? tip());
@@ -116,6 +123,9 @@ export const makeRollbackHistoryTransport = (recorded: Recording) => {
         case "queryLedgerState/utxo": {
           if (this.acquired === undefined)
             throw new Error("Snapshot was not acquired");
+          const hook = beforeLedgerQuery;
+          beforeLedgerQuery = undefined;
+          hook?.();
           const addresses = request.params.addresses as string[];
           this.answer(
             request,
@@ -269,14 +279,17 @@ export const makeRollbackHistoryTransport = (recorded: Recording) => {
         throw new Error("Rollback requires a retained strict ancestor");
       points = points.slice(0, index + 1);
       forked = true;
+      // The retained ancestor may itself be a fork block, so cut the current
+      // branch's recording rather than the sealed original.
+      const current = branchRecording ?? recorded;
       branchRecording = {
         genesis: recorded.genesis,
         publications: new Map(
-          [...recorded.publications].filter(
+          [...current.publications].filter(
             ([, publication]) => publication.observedSlot <= tip().slot,
           ),
         ),
-        batches: recorded.batches.filter(
+        batches: current.batches.filter(
           (batch) => batch.observedSlot <= tip().slot,
         ),
       };
@@ -310,6 +323,12 @@ export const makeRollbackHistoryTransport = (recorded: Recording) => {
       branches.push({ kind: "forward", point: tip() });
       for (const socket of sockets) socket.flush();
       return tip();
+    },
+    pinNetworkTip: (point: Point["point"] | undefined) => {
+      pinnedNetworkTip = point;
+    },
+    beforeLedgerQuery: (hook: () => void) => {
+      beforeLedgerQuery = hook;
     },
     close: () => {
       if (closed) return;

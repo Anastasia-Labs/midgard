@@ -1629,6 +1629,26 @@ const getReadinessHandler = Effect.gen(function* () {
     },
   });
   const reasons = [...baseReadiness.reasons];
+  // Informational: pending signed-header recovery holding history retention
+  // more than the rollback horizon back grows the journal until it resolves.
+  const historyOwner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
+  const eventHistoryRetentionHold =
+    historyOwner === undefined
+      ? null
+      : ((yield* historyOwner.retentionHold) ?? null);
+  // The history gate: closed while recovering, and named when an open gate's
+  // follower falls further behind the source tip than it may.
+  const eventHistoryFrontier =
+    historyOwner === undefined ? null : yield* historyOwner.frontier;
+  if (eventHistoryFrontier !== null) {
+    if (!eventHistoryFrontier.ready) reasons.push("history_owner_not_ready");
+    else if (
+      eventHistoryFrontier.lagBlocks > eventHistoryFrontier.maximumLagBlocks
+    )
+      reasons.push(
+        `history_follower_lagging:${eventHistoryFrontier.lagBlocks}:${eventHistoryFrontier.maximumLagBlocks}`,
+      );
+  }
   const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
   const nativeMpfDiagnostics =
     nodeConfig.MPF_ENGINE !== "architecture_g"
@@ -1734,6 +1754,8 @@ const getReadinessHandler = Effect.gen(function* () {
                 nativeMpfDiagnostics.right.ownerEpoch,
               ).toString("hex"),
             },
+    eventHistoryRetentionHold,
+    eventHistoryFrontier,
     mergeReadiness,
   };
 

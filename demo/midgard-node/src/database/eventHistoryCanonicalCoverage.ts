@@ -6,7 +6,7 @@ import JSONBig from "json-bigint";
 
 import type { EventHistorySourceBinding } from "../l1-event-history-source.js";
 import type { SignedIntentCoverageBlock } from "../services/signed-intent-canonical-coverage.js";
-import { requireRecoveryTransaction } from "./eventHistoryAuthority.js";
+import { requireSourceTransaction } from "./eventHistoryAuthority.js";
 import * as Journal from "./eventHistoryJournal.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
@@ -74,9 +74,14 @@ const checked = <A>(work: () => A) =>
       }),
   });
 
-/** Read retained complete rosters only within a freshly source-admitted recovery
- * generation. The caller must check its preparation's assertCurrent before and
- * after this transaction and bind any resulting disposition to this exact tuple.
+/** Read retained complete rosters only inside the source owner's transaction
+ * (a freshly source-admitted recovery generation, or its append at the head of
+ * a Ready generation), bound to that generation. Coverage starts at the retained anchor: while the anchor is the
+ * seed point it spans the origin's replay range from the activation block, and
+ * once retention has advanced the anchor it spans only the canonical journal
+ * applications after the anchor (the replay receipts are pruned by then).
+ * The caller must check its preparation's assertCurrent before and after this
+ * transaction and bind any resulting disposition to this exact tuple.
  * Retained bytes are recovery evidence, never independent L1 authority.
  * This does not authorize abandonment or claim the activation precedes every
  * transaction's possible inclusion; the journal transition must establish that
@@ -87,7 +92,7 @@ export const loadCanonicalHistoryCoverage = (
   expected: Journal.Checkpoint,
 ) =>
   Effect.gen(function* () {
-    const token = yield* requireRecoveryTransaction;
+    const token = yield* requireSourceTransaction;
     const current = yield* Journal.load(binding);
     const checkpoint = yield* checked(() => {
       if (
@@ -110,19 +115,32 @@ export const loadCanonicalHistoryCoverage = (
       );
       if (
         decoded.bindingDigest !== binding.digest ||
-        decoded.manifestId !== binding.manifestId ||
-        !samePoint(decoded.replay.head, checkpoint.anchor) ||
-        decoded.replay.blocks !==
-          checkpoint.anchor.height - decoded.activation.point.height + 1
+        decoded.manifestId !== binding.manifestId
       )
         throw new Error("Origin does not bind the complete activation range");
-      return decoded;
+      if (samePoint(decoded.replay.head, checkpoint.anchor)) {
+        if (
+          decoded.replay.blocks !==
+          checkpoint.anchor.height - decoded.activation.point.height + 1
+        )
+          throw new Error("Origin does not bind the complete activation range");
+        return { decoded, advanced: false };
+      }
+      if (checkpoint.anchor.height <= decoded.replay.head.height)
+        throw new Error("Retained anchor precedes the origin replay head");
+      // Retention keeps at least one block after the anchor; only a rollback
+      // to the anchor itself (deeper than the rollback horizon) empties it.
+      if (checkpoint.head.height === checkpoint.anchor.height)
+        throw new Error("No retained canonical block follows the anchor");
+      return { decoded, advanced: true };
     });
     const sql = yield* SqlClient.SqlClient;
     const bindingBytes = Buffer.from(binding.digest, "hex");
     // Follow the exact anchor's retained predecessors, not every archived fork
     // sharing an activation. Counts must decrease on each recursive step.
-    const replay = yield* sql<ReceiptRow>`WITH RECURSIVE selected AS (
+    const replay = origin.advanced
+      ? []
+      : yield* sql<ReceiptRow>`WITH RECURSIVE selected AS (
       SELECT * FROM event_history_replay_receipts
         WHERE binding_digest = ${bindingBytes}
           AND block_hash = ${Buffer.from(checkpoint.anchor.id, "hex")}
@@ -134,7 +152,7 @@ export const loadCanonicalHistoryCoverage = (
     ) SELECT block_hash, block_slot::text, block_height::text, parent_hash,
         receipt, receipt_digest FROM selected
       WHERE manifest_id = ${Buffer.from(binding.manifestId, "hex")}
-        AND activation_hash = ${Buffer.from(origin.activation.point.id, "hex")}
+        AND activation_hash = ${Buffer.from(origin.decoded.activation.point.id, "hex")}
       ORDER BY selected.block_height`;
     const applications =
       yield* sql<ReceiptRow>`SELECT block_hash, block_slot::text,
@@ -143,7 +161,8 @@ export const loadCanonicalHistoryCoverage = (
       WHERE binding_digest = ${bindingBytes} AND canonical ORDER BY event_history_block_applications.block_height`;
     const blocks = yield* checked(() => {
       if (
-        replay.length !== origin.replay.blocks ||
+        replay.length !==
+          (origin.advanced ? 0 : origin.decoded.replay.blocks) ||
         applications.length !==
           checkpoint.head.height - checkpoint.anchor.height
       )
@@ -174,14 +193,19 @@ export const loadCanonicalHistoryCoverage = (
       });
       const first = decoded[0];
       const last = decoded.at(-1);
+      const { activation } = origin.decoded;
       if (
         first === undefined ||
         last === undefined ||
-        !samePoint(first.point, origin.activation.point) ||
-        first.parent !== origin.activation.parent ||
-        first.transactions[origin.activation.transactionIndex]?.txHash !==
-          origin.activation.transactionHash ||
-        replay[0]!.receipt !== origin.activation.receipt ||
+        (origin.advanced
+          ? first.parent !== checkpoint.anchor.id ||
+            first.point.height !== checkpoint.anchor.height + 1 ||
+            first.point.slot <= checkpoint.anchor.slot
+          : !samePoint(first.point, activation.point) ||
+            first.parent !== activation.parent ||
+            first.transactions[activation.transactionIndex]?.txHash !==
+              activation.transactionHash ||
+            replay[0]!.receipt !== activation.receipt) ||
         !samePoint(last.point, checkpoint.head)
       )
         throw new Error("Canonical coverage endpoints or activation changed");
@@ -207,7 +231,7 @@ export const loadCanonicalHistoryCoverage = (
       snapshotDigest: checkpoint.capture.snapshotDigest,
       start: blocks[0]!.point,
       head: checkpoint.head,
-      activationTransactionHash: origin.activation.transactionHash,
+      activationTransactionHash: origin.decoded.activation.transactionHash,
       blocks,
     };
   }).pipe(

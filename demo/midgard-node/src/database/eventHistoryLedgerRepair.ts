@@ -3,7 +3,10 @@ import { Context, Effect, Option } from "effect";
 
 import type { HistoryOwnerChange } from "../services/event-history-owner.js";
 import { releaseAdmissionOwnership } from "./cekProgramMaterial.js";
-import { requireRecoveryTransaction } from "./eventHistoryAuthority.js";
+import {
+  requireRecoveryTransaction,
+  requireSourceTransaction,
+} from "./eventHistoryAuthority.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 /** Private production recovery capability. Supplied only after fresh signed
@@ -25,7 +28,7 @@ const refuse = (message: string) =>
  */
 export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
   Effect.gen(function* () {
-    const token = yield* requireRecoveryTransaction;
+    const token = yield* requireSourceTransaction;
     if (token.deploymentIdentity !== change.after.manifestId)
       return yield* refuse("History disposition deployment changed");
     const sql = yield* SqlClient.SqlClient;
@@ -81,7 +84,7 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
  */
 export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
   Effect.gen(function* () {
-    const token = yield* requireRecoveryTransaction;
+    const token = yield* requireSourceTransaction;
     if (token.deploymentIdentity !== change.after.manifestId)
       return yield* refuse("History ledger repair deployment changed");
     const sql = yield* SqlClient.SqlClient;
@@ -106,6 +109,9 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
           AND w.history_incarnation_id = i.incarnation_id))
       ORDER BY i.incarnation_id FOR UPDATE`;
     if (orphans.length === 0) return;
+    // Orphans exist only after a rewind; their repair is recovery work, never
+    // part of a Ready append.
+    yield* requireRecoveryTransaction;
 
     const pending = yield* sql`SELECT 1 FROM pending_block_finalizations
       WHERE status NOT IN ('finalized', 'abandoned') LIMIT 1`;

@@ -48,6 +48,7 @@ import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { WriteBehind, WriteBehindLive } from "../src/services/write-behind.js";
 import { breakDownTx, type ProcessedTx } from "../src/utils.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
   makeMidgardTxOutput,
@@ -463,6 +464,7 @@ const append = async (
         binding,
         await admit(before, n, kind, eventNumber),
         reconcile(before),
+        retainEverything,
       ),
     ),
   );

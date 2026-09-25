@@ -113,6 +113,7 @@ it("retains streamed recovery evidence while pending, opens only the current fro
                 retainedPointLimit: 128,
                 maximumReceiptBytes: 16 * 1024 * 1024,
                 leaseDurationMs: 60_000,
+                rollbackHorizon: 2160,
                 ownerToken: randomUUID(),
                 expectedInitializationTransactionHash:
                   h.deployment.initialization.txHash,

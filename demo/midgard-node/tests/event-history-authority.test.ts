@@ -213,6 +213,38 @@ describe("durable canonical history generation fence", () => {
     );
   });
 
+  it("advances the Ready point only forward, and only inside the owner's Ready append", async () => {
+    const token = await run(acquire());
+    await run(Authority.publishReady(token, capture));
+    const advance = (point: { slot: number; id: string }) =>
+      Authority.advanceReadyPoint({ ...capture, point });
+    const published = async () => {
+      const row = Option.getOrThrow(await run(Authority.retrieve));
+      return {
+        slot: Number(row.point_slot),
+        id: row.point_hash!.toString("hex"),
+      };
+    };
+    for (const point of [
+      { slot: 99, id: "dd".repeat(32) },
+      { slot: 100, id: "dd".repeat(32) },
+    ])
+      await expect(
+        run(Authority.withReadyAppend(token, advance(point))),
+      ).rejects.toThrow(/may only advance/);
+    expect(await published()).toEqual(capture.point);
+    // A repeated delivery of the head is idempotent.
+    await run(Authority.withReadyAppend(token, advance(capture.point)));
+    const next = { slot: 101, id: "dd".repeat(32) };
+    // A producer's Ready transaction is not the source owner's append.
+    await expect(
+      run(Authority.withReady(token, advance(next))),
+    ).rejects.toThrow(/owned source transaction/);
+    expect(await published()).toEqual(capture.point);
+    await run(Authority.withReadyAppend(token, advance(next)));
+    expect(await published()).toEqual(next);
+  });
+
   it("rolls back a mutation whose lease expires during its transaction", async () => {
     await run(
       Effect.gen(function* () {

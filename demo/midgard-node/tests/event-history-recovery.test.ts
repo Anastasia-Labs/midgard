@@ -192,6 +192,49 @@ describe("canonical history recovery composition", () => {
     );
   });
 
+  it("rolls back a Ready append whose generation begins recovery while its work runs", async () => {
+    await run(
+      Effect.gen(function* () {
+        const rewinding = yield* Deferred.make<void>();
+        const retired = yield* Deferred.make<void>();
+        let armed = false;
+        const { owner, sql } = yield* fixture(randomUUID(), (original) => ({
+          ...original,
+          retireCanonicalEpoch: Effect.suspend(() =>
+            armed
+              ? Deferred.succeed(retired, undefined)
+              : Effect.succeed(false),
+          ).pipe(Effect.zipRight(original.retireCanonicalEpoch)),
+        }));
+        yield* owner.startup.complete(capture, replace(1));
+        // Forked outside the append so it holds no SQL transaction of its own.
+        const recovery = yield* Effect.fork(
+          Deferred.await(rewinding).pipe(
+            Effect.zipRight(owner.beginRecovery("history source rollback")),
+          ),
+        );
+        armed = true;
+        const appended = yield* Effect.either(
+          owner.append(
+            write(2).pipe(
+              Effect.zipRight(Deferred.succeed(rewinding, undefined)),
+              Effect.zipRight(Deferred.await(retired)),
+            ),
+          ),
+        );
+        expect(appended._tag).toBe("Left");
+        yield* Fiber.join(recovery);
+        expect(
+          yield* sql`SELECT id FROM history_recovery_probe ORDER BY id`,
+        ).toEqual([{ id: 1 }]);
+        const durable = yield* Authority.retrieve;
+        expect(Option.isSome(durable) && durable.value.state).toBe(
+          "recovering",
+        );
+      }).pipe(Effect.scoped, Effect.provide(Globals.Default)),
+    );
+  });
+
   it("completes durable and local readiness when interrupted immediately after Ready commits", async () => {
     await run(
       Effect.gen(function* () {

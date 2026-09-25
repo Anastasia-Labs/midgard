@@ -25,14 +25,21 @@ import {
 } from "../l1-event-history-source.js";
 import type { HistoryTransition } from "../l1-event-history-transition.js";
 import type { LedgerSnapshotOutput } from "../l1-ledger-snapshot.js";
-import { requireRecoveryTransaction } from "./eventHistoryAuthority.js";
+import {
+  requireRecoveryTransaction,
+  requireSourceTransaction,
+} from "./eventHistoryAuthority.js";
 import {
   decodeJournalIncarnation,
   decodeJournalOutput,
   encodeJournalIncarnation,
   encodeJournalOutput,
 } from "./eventHistoryJournalCodec.js";
-import { requireOriginCoverage } from "./eventHistoryReplayReceipts.js";
+import {
+  originReplayHead,
+  prune as pruneReplayReceipts,
+  requireOriginCoverage,
+} from "./eventHistoryReplayReceipts.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 const table = "event_history_cursor";
@@ -286,7 +293,20 @@ const decodeUndo = (row: ApplicationRow, bindingDigest: string): Undo => {
   });
 };
 
-const loadLocked = (binding: EventHistorySourceBinding, row: CursorRow) =>
+/** "chain" walks and re-verifies every retained canonical application from
+ * the anchor (startup load, coverage). "head" verifies only the cursor's exact
+ * head application and, when it is the first retained block, its link to the
+ * anchor: under the cursor lock, the cursor's revision and digests bind the
+ * chain a previous full load already verified, and every writer extends or
+ * reverses it by exactly one verified link. Its cost does not grow with the
+ * retained range. */
+type Verification = "chain" | "head";
+
+const loadLocked = (
+  binding: EventHistorySourceBinding,
+  row: CursorRow,
+  verification: Verification,
+) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const bindingBytes = yield* checked(() => bytes(binding.digest));
@@ -306,7 +326,11 @@ const loadLocked = (binding: EventHistorySourceBinding, row: CursorRow) =>
       incarnation_digest: Buffer;
     }>`SELECT * FROM event_history_incarnations WHERE binding_digest = ${bindingBytes} ORDER BY incarnation_id`;
     const applications =
-      yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bindingBytes} AND canonical ORDER BY block_height`;
+      verification === "chain"
+        ? yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bindingBytes} AND canonical ORDER BY block_height`
+        : row.head_application_revision === null
+          ? []
+          : yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bindingBytes} AND block_hash = ${row.head_hash} AND application_revision = ${row.head_application_revision}::bigint AND canonical`;
     const decoded = yield* checked(() => {
       if (
         row.binding_digest.toString("hex") !== binding.digest ||
@@ -323,22 +347,25 @@ const loadLocked = (binding: EventHistorySourceBinding, row: CursorRow) =>
       let previous = anchor;
       let previousRevision: string | null = null;
       let previousDigest = row.anchor_snapshot_digest.toString("hex");
-      for (const application of applications) {
+      if (verification === "head" && applications.length === 1) {
+        const application = applications[0]!;
         decodeUndo(application, binding.digest);
         const next = point(
           application.block_hash,
           application.block_slot,
           application.block_height,
         );
+        const parentRevision = application.parent_application_revision;
         if (
-          application.parent_hash.toString("hex") !== previous.id ||
-          application.parent_application_revision !== previousRevision ||
-          application.before_snapshot_digest.toString("hex") !==
-            previousDigest ||
-          next.height !== previous.height + 1 ||
-          next.slot <= previous.slot ||
-          BigInt(application.application_revision) <=
-            BigInt(previousRevision ?? "0") ||
+          (parentRevision === null
+            ? application.parent_hash.toString("hex") !== anchor.id ||
+              application.before_snapshot_digest.toString("hex") !==
+                previousDigest ||
+              next.height !== anchor.height + 1 ||
+              next.slot <= anchor.slot
+            : next.height < anchor.height + 2 ||
+              BigInt(application.application_revision) <=
+                BigInt(parentRevision)) ||
           BigInt(application.application_revision) > BigInt(row.revision)
         )
           fail("Canonical application ancestry disagrees");
@@ -346,6 +373,30 @@ const loadLocked = (binding: EventHistorySourceBinding, row: CursorRow) =>
         previousRevision = application.application_revision;
         previousDigest = application.after_snapshot_digest.toString("hex");
       }
+      if (verification === "chain")
+        for (const application of applications) {
+          decodeUndo(application, binding.digest);
+          const next = point(
+            application.block_hash,
+            application.block_slot,
+            application.block_height,
+          );
+          if (
+            application.parent_hash.toString("hex") !== previous.id ||
+            application.parent_application_revision !== previousRevision ||
+            application.before_snapshot_digest.toString("hex") !==
+              previousDigest ||
+            next.height !== previous.height + 1 ||
+            next.slot <= previous.slot ||
+            BigInt(application.application_revision) <=
+              BigInt(previousRevision ?? "0") ||
+            BigInt(application.application_revision) > BigInt(row.revision)
+          )
+            fail("Canonical application ancestry disagrees");
+          previous = next;
+          previousRevision = application.application_revision;
+          previousDigest = application.after_snapshot_digest.toString("hex");
+        }
       if (
         !samePoint(previous, head) ||
         previousRevision !== row.head_application_revision ||
@@ -435,10 +486,7 @@ const loadLocked = (binding: EventHistorySourceBinding, row: CursorRow) =>
     });
   });
 
-/** Coherent local recovery material only. The source owner must re-admit the
- * origin receipt, branch and coverage before publishing readiness. All journal
- * writers lock this same cursor after the authority lock. */
-export const load = (binding: EventHistorySourceBinding) =>
+const read = (binding: EventHistorySourceBinding, verification: Verification) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const bindingBytes = yield* checked(() => bytes(binding.digest));
@@ -448,10 +496,92 @@ export const load = (binding: EventHistorySourceBinding) =>
           yield* sql<CursorRow>`SELECT * FROM event_history_cursor WHERE binding_digest = ${bindingBytes} FOR SHARE`;
         return rows[0] === undefined
           ? null
-          : yield* loadLocked(binding, rows[0]);
+          : yield* loadLocked(binding, rows[0], verification);
       }),
     );
   }).pipe(sqlErrorToDatabaseError(table, "Failed to load history journal"));
+
+/** Coherent local recovery material only, with the whole retained chain
+ * re-verified from the anchor. The source owner must re-admit the origin
+ * receipt, branch and coverage before publishing readiness. All journal
+ * writers lock this same cursor after the authority lock. */
+export const load = (binding: EventHistorySourceBinding) =>
+  read(binding, "chain");
+
+/** The current checkpoint for a caller that already holds a fully verified
+ * one and has since advanced it only through append/undoHead: verifies the
+ * cursor, its head application and the live image, not the retained chain. */
+export const loadCurrent = (binding: EventHistorySourceBinding) =>
+  read(binding, "head");
+
+/** Restart intersection candidates, newest first: the head, then retained
+ * canonical blocks exponentially further back (head-1, head-2, head-4, ...),
+ * then the anchor. A short fork while offline rewinds about as far as the
+ * fork is deep, never the whole retained range. */
+export const intersections = (
+  binding: EventHistorySourceBinding,
+  checkpoint: Checkpoint,
+) =>
+  Effect.gen(function* () {
+    const heights: number[] = [];
+    for (
+      let depth = 1;
+      checkpoint.head.height - depth > checkpoint.anchor.height;
+      depth *= 2
+    )
+      heights.push(checkpoint.head.height - depth);
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      heights.length === 0
+        ? []
+        : yield* sql<
+            Pick<ApplicationRow, "block_hash" | "block_slot" | "block_height">
+          >`SELECT block_hash, block_slot, block_height FROM event_history_block_applications
+          WHERE binding_digest = ${bytes(binding.digest)} AND canonical AND block_height IN ${sql.in(heights)}
+          ORDER BY block_height DESC`;
+    return yield* checked(() => {
+      const points = rows.map((row) =>
+        point(row.block_hash, row.block_slot, row.block_height),
+      );
+      if (
+        points.length !== heights.length ||
+        points.some((at, index) => at.height !== heights[index])
+      )
+        fail("Retained canonical intersections have a gap");
+      return Object.freeze(
+        samePoint(checkpoint.head, checkpoint.anchor)
+          ? [checkpoint.head]
+          : [checkpoint.head, ...points, checkpoint.anchor],
+      );
+    });
+  }).pipe(
+    sqlErrorToDatabaseError(table, "Failed to read retained intersections"),
+  );
+
+/** Whether a rollback target is this checkpoint's anchor or one of its
+ * retained canonical blocks: the only points undoHead can rewind to. */
+export const retains = (
+  binding: EventHistorySourceBinding,
+  checkpoint: Checkpoint,
+  target: Readonly<{ id: string; slot: number }>,
+) =>
+  Effect.gen(function* () {
+    if (
+      target.id === checkpoint.anchor.id &&
+      target.slot === checkpoint.anchor.slot
+    )
+      return true;
+    if (
+      target.slot <= checkpoint.anchor.slot ||
+      target.slot > checkpoint.head.slot
+    )
+      return false;
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      yield* sql`SELECT 1 FROM event_history_block_applications WHERE binding_digest = ${bytes(binding.digest)}
+        AND canonical AND block_hash = ${bytes(target.id)} AND block_slot = ${target.slot}`;
+    return rows.length === 1;
+  }).pipe(sqlErrorToDatabaseError(table, "Failed to read retained ancestry"));
 
 const putOutput = (bindingDigest: string, output: LedgerSnapshotOutput) =>
   Effect.gen(function* () {
@@ -468,9 +598,18 @@ const putIncarnation = (value: HistoryIncarnation) =>
     VALUES (${bytes(value.bindingDigest)}, ${bytes(value.id)}, ${value.kind}, ${Buffer.from(value.event.idCbor, "hex")}, ${bytes(value.event.key)}, ${value.placement !== null}, ${encodeJournalIncarnation(value)}, ${bytes(historyIncarnationDigest(value))})
     ON CONFLICT (binding_digest, incarnation_id) DO UPDATE SET origin_canonical = EXCLUDED.origin_canonical, incarnation_record = EXCLUDED.incarnation_record, incarnation_digest = EXCLUDED.incarnation_digest`;
   });
-const owned = (binding: EventHistorySourceBinding) =>
+// Seed and undo belong to recovery. An append only extends the journaled
+// prefix producers hold, so the owner may also run it at the head of its Ready
+// generation (withReadyAppend).
+const owned = (
+  binding: EventHistorySourceBinding,
+  transaction: "recovery" | "source",
+) =>
   Effect.gen(function* () {
-    const token = yield* requireRecoveryTransaction;
+    const token =
+      transaction === "recovery"
+        ? yield* requireRecoveryTransaction
+        : yield* requireSourceTransaction;
     yield* checked(() => {
       if (token.deploymentIdentity !== binding.manifestId)
         fail("Recovery owner belongs to another manifest");
@@ -491,7 +630,7 @@ export const seed = (input: {
   incarnations: readonly HistoryIncarnation[];
 }) =>
   Effect.gen(function* () {
-    yield* owned(input.binding);
+    yield* owned(input.binding, "recovery");
     const sql = yield* SqlClient.SqlClient;
     const prepared = yield* checked(() => {
       const originReceipt = input.originReceipt;
@@ -678,27 +817,163 @@ const requireExpected = (actual: Checkpoint, expected: Checkpoint) => {
   )
     fail("History cursor revision or head changed");
 };
-const lockCheckpoint = (binding: EventHistorySourceBinding) =>
+const lockCheckpoint = (
+  binding: EventHistorySourceBinding,
+  transaction: "recovery" | "source",
+) =>
   Effect.gen(function* () {
-    yield* owned(binding);
+    yield* owned(binding, transaction);
     const sql = yield* SqlClient.SqlClient;
     const rows =
       yield* sql<CursorRow>`SELECT * FROM event_history_cursor WHERE binding_digest = ${bytes(binding.digest)} FOR UPDATE`;
     if (rows[0] === undefined)
       return yield* checked(() => fail("History journal has no replay anchor"));
-    return yield* loadLocked(binding, rows[0]);
+    return yield* loadLocked(binding, rows[0], "head");
   });
 
-/** Recovery-only append. All changes and the callback share the already-owned
+/** Rows each retention step may delete per table. Forward progress adds one
+ * block per step, so any backlog (a first move off an old seed, a restart far
+ * behind the tip) drains at this rate without an unbounded transaction. */
+export const RETENTION_BATCH = 128;
+
+export type Retention = Readonly<{
+  /** Height of the follower's current source tip (at least the new block's). */
+  tipHeight: number;
+  /** k: the manifest's deepest automatic rollback. Blocks deeper than this
+   * behind the tip are never rolled back automatically. */
+  horizon: number;
+  /** Earliest signed validity-start slot that signed-header recovery may still
+   * need to evaluate; the first retained block must not be later than it. */
+  holdSlot: number | undefined;
+}>;
+
+/** Set when holdSlot, not the horizon or batch size, stopped the anchor: the
+ * anchor this step left, and the one the horizon alone would allow. */
+export type RetentionHold = Readonly<{
+  holdSlot: number;
+  anchorHeight: number;
+  unheldAnchorHeight: number;
+}>;
+
+/** Advance the anchor to the deepest journaled block that is past the rollback
+ * horizon (height <= tipHeight - horizon), strictly behind head (so the retained
+ * canonical range is never empty) and never so far that the first retained
+ * block starts after holdSlot, by at most RETENTION_BATCH blocks. The anchor
+ * moves with its snapshot digest in this transaction, and the applications at
+ * or behind it (plus orphan branches rooted there) are deleted. Once the anchor
+ * has left the seed point, replay receipts are deleted in bounded batches too.
+ * The origin receipt is never changed. */
+const retain = (
+  binding: EventHistorySourceBinding,
+  current: Readonly<{ anchor: Point; head: Point; originReceipt: string }>,
+  retention: Retention,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const key = bytes(binding.digest);
+    const limit = yield* checked(() => {
+      natural(retention.tipHeight);
+      natural(retention.horizon);
+      if (retention.holdSlot !== undefined) natural(retention.holdSlot);
+      return Math.min(
+        retention.tipHeight - retention.horizon,
+        current.head.height - 1,
+        current.anchor.height + RETENTION_BATCH,
+      );
+    });
+    let target = limit;
+    let holding = false;
+    if (retention.holdSlot !== undefined && target > current.anchor.height) {
+      // The deepest block whose successor still starts at or before holdSlot.
+      const [held] = yield* sql<{
+        height: string | null;
+      }>`SELECT max(block_height)::text AS height FROM event_history_block_applications
+        WHERE binding_digest = ${key} AND canonical AND block_slot <= ${retention.holdSlot}`;
+      const cap =
+        held?.height === null || held?.height === undefined
+          ? current.anchor.height
+          : natural(held.height) - 1;
+      if (cap < target) {
+        target = Math.max(cap, current.anchor.height);
+        holding = true;
+      }
+    }
+    let anchor = current.anchor;
+    if (target > current.anchor.height) {
+      const rows =
+        yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications
+        WHERE binding_digest = ${key} AND canonical AND block_height IN (${target}, ${target + 1})
+        ORDER BY block_height`;
+      const [next, child] = yield* checked(() => {
+        const next = rows[0];
+        if (next === undefined || natural(next.block_height) !== target)
+          fail("Retention target is not a canonical journal application");
+        const child = rows[1];
+        if (child === undefined)
+          fail("Retention target has no canonical successor");
+        return [next, child] as const;
+      });
+      // The first retained application now descends from the anchor itself.
+      yield* sql`UPDATE event_history_block_applications SET parent_application_revision = NULL
+          WHERE binding_digest = ${key} AND block_hash = ${child.block_hash}
+            AND application_revision = ${child.application_revision}::bigint`;
+      // One statement per batch: every deleted row's descendants are deleted
+      // with it, so no RESTRICT parent link is left dangling.
+      const deleted = yield* sql<{
+        canonical: boolean;
+      }>`WITH RECURSIVE doomed AS (
+          SELECT block_hash, application_revision FROM event_history_block_applications
+            WHERE binding_digest = ${key} AND block_height <= ${target}
+          UNION
+          SELECT c.block_hash, c.application_revision FROM event_history_block_applications c
+            JOIN doomed d ON c.parent_hash = d.block_hash AND c.parent_application_revision = d.application_revision
+            WHERE c.binding_digest = ${key}
+        )
+        DELETE FROM event_history_block_applications a USING doomed d
+        WHERE a.binding_digest = ${key} AND a.block_hash = d.block_hash
+          AND a.application_revision = d.application_revision
+        RETURNING a.canonical`;
+      yield* checked(() => {
+        if (
+          deleted.filter((row) => row.canonical).length !==
+          target - current.anchor.height
+        )
+          fail("Retention deleted a different canonical range");
+      });
+      anchor = point(next.block_hash, next.block_slot, next.block_height);
+      yield* sql`UPDATE event_history_cursor SET anchor_hash = ${next.block_hash},
+        anchor_slot = ${anchor.slot}, anchor_height = ${anchor.height},
+        anchor_snapshot_digest = ${next.after_snapshot_digest}
+        WHERE binding_digest = ${key}`;
+    }
+    const seed = yield* checked(() => originReplayHead(current.originReceipt));
+    if (seed === undefined || !samePoint(seed, anchor))
+      yield* pruneReplayReceipts(binding.digest, RETENTION_BATCH);
+    return holding
+      ? Object.freeze({
+          holdSlot: retention.holdSlot!,
+          anchorHeight: anchor.height,
+          unheldAnchorHeight: Math.min(
+            retention.tipHeight - retention.horizon,
+            current.head.height - 1,
+          ),
+        })
+      : undefined;
+  });
+
+/** Recovery or Ready-head append. All changes and the callback share the already-owned
  * outer transaction. Duplicate current-head delivery skips materialization;
- * a new application after rollback receives a fresh monotone revision. */
+ * a new application after rollback receives a fresh monotone revision.
+ * Bounded retention (see retain) runs in the same transaction, before the
+ * callback observes the new checkpoint. */
 export const append = <A, E, R>(
   binding: EventHistorySourceBinding,
   prepared: Prepared,
   materialize: Effect.Effect<A, E, R>,
+  retention: Retention,
 ) =>
   Effect.gen(function* () {
-    const actual = yield* lockCheckpoint(binding);
+    const actual = yield* lockCheckpoint(binding, "source");
     const sql = yield* SqlClient.SqlClient;
     const historical =
       yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bytes(binding.digest)} AND block_hash = ${bytes(prepared.block.point.id)} ORDER BY application_revision`;
@@ -771,8 +1046,17 @@ export const append = <A, E, R>(
     for (const change of staged.fresh.changes)
       yield* putIncarnation(change.after);
     yield* sql`UPDATE event_history_cursor SET head_hash = ${bytes(prepared.block.point.id)}, head_slot = ${prepared.block.point.slot}, head_height = ${prepared.block.point.height}, head_application_revision = ${staged.revision}::bigint, snapshot_digest = ${bytes(capture.snapshotDigest)}, revision = ${staged.revision}::bigint WHERE binding_digest = ${bytes(binding.digest)}`;
+    const hold = yield* retain(
+      binding,
+      {
+        anchor: actual.anchor,
+        head: prepared.block.point,
+        originReceipt: actual.originReceipt,
+      },
+      retention,
+    );
     const result = yield* materialize;
-    return { applied: true as const, revision: staged.revision, result };
+    return { applied: true as const, revision: staged.revision, result, hold };
   }).pipe(sqlErrorToDatabaseError(table, "Failed to append history journal"));
 
 /** Reverse exactly one current head while producers remain fenced. Retains
@@ -784,7 +1068,7 @@ export const undoHead = <A, E, R>(
   repair: Effect.Effect<A, E, R>,
 ) =>
   Effect.gen(function* () {
-    const actual = yield* lockCheckpoint(binding);
+    const actual = yield* lockCheckpoint(binding, "recovery");
     yield* checked(() => {
       requireExpected(actual, expected);
       if (actual.headApplicationRevision === null)
@@ -851,13 +1135,20 @@ export const undoHead = <A, E, R>(
       const parents =
         yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bytes(binding.digest)} AND block_hash = ${restored.application.parent_hash} AND application_revision = ${restored.application.parent_application_revision}::bigint AND canonical`;
       parent = yield* checked(() => {
-        if (parents[0] === undefined)
+        const row = parents[0];
+        if (row === undefined)
           return fail("Missing canonical parent application");
-        return point(
-          parents[0].block_hash,
-          parents[0].block_slot,
-          parents[0].block_height,
-        );
+        const at = point(row.block_hash, row.block_slot, row.block_height);
+        // The one link this step exposes: the new head must be the exact
+        // image the undone head was applied to.
+        if (
+          at.height !== actual.head.height - 1 ||
+          at.slot >= actual.head.slot ||
+          row.after_snapshot_digest.toString("hex") !==
+            restored.application.before_snapshot_digest.toString("hex")
+        )
+          fail("Canonical application ancestry disagrees");
+        return at;
       });
     }
     const capture = yield* decodeBoundEventHistoryLedgerSnapshot(

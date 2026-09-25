@@ -47,6 +47,7 @@ import {
   withHistoryWrite,
 } from "../src/services/event-history-producer.js";
 import { breakDownTx, type ProcessedTx } from "../src/utils.js";
+import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
   makeMidgardTxOutput,
@@ -397,6 +398,7 @@ const ownedFixture = async () => {
             "Preprod",
           );
         }),
+        retainEverything,
       ),
     ),
   );

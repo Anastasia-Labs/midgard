@@ -7,11 +7,20 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data, toUnit } from "@lucid-evolution/lucid";
-import { Deferred, Effect, Fiber, Option } from "effect";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { Deferred, Duration, Effect, Fiber, Option } from "effect";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import * as Deposits from "../src/database/deposits.js";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
+import { loadCanonicalHistoryCoverage } from "../src/database/eventHistoryCanonicalCoverage.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import {
   decodeJournalIncarnation,
@@ -47,8 +56,29 @@ import {
   HistoryPreparation,
   HistoryRecoverySuperseded,
 } from "../src/services/event-history-recovery.js";
+import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { provideDatabaseLayers } from "./utils.js";
+
+// Coverage's own advanced-anchor checks sit behind Journal.load, which already
+// refuses the same corruption. A test may substitute the loaded checkpoint to
+// exercise those checks in isolation; unset, load is the real one.
+const journalLoad = vi.hoisted(() => ({
+  override: undefined as undefined | ((binding: unknown) => unknown),
+}));
+vi.mock("../src/database/eventHistoryJournal.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../src/database/eventHistoryJournal.js")
+    >();
+  return {
+    ...actual,
+    load: (binding: EventHistorySourceBinding) =>
+      journalLoad.override === undefined
+        ? actual.load(binding)
+        : journalLoad.override(binding),
+  };
+});
 
 // Real PostgreSQL transactions and strict paired snapshot decoding. Block and
 // source admission are explicit model inputs, not applied-ledger/live evidence.
@@ -362,7 +392,7 @@ const admit = async (
 
 // Explicit model source admission, as in the other journal tests. The applied
 // fixture separately exercises real initialization and both retained payloads.
-const replayFixture = async (nativeQuantity = 0n) => {
+const replayFixture = async (nativeQuantity = 0n, length = 2) => {
   const block: BoundHistoryChainBlock = {
     point: { ...initial.history.ledger.point, height: 1 },
     parent: hash(0),
@@ -405,49 +435,58 @@ const replayFixture = async (nativeQuantity = 0n) => {
     replayDigest: sha(receipt),
     blocksReplayed: 1,
   };
-  const secondBlock: BoundHistoryChainBlock = {
-    point: { id: hash(2), slot: 101, height: 2 },
-    parent: block.point.id,
-    transactions: [],
-  };
-  const second = advanceEventHistoryListReplay({
-    previous: replay,
-    block: secondBlock,
+  const first = {
     binding,
-    histories: pair,
-    slotToUnixTime: (slot) => slot * 1000,
-    getCreatingBody: () => undefined,
-    maximumBodyBytes: 16384,
-  });
+    block,
+    receipt,
+    replay,
+    maximumReceiptBytes: 16 * 1024 * 1024,
+  };
+  // Empty blocks at heights 2..length, one slot apart, seeded at the last.
+  const steps = [first];
+  for (let height = 2; height <= length; height++) {
+    const previous = steps.at(-1)!;
+    const next: BoundHistoryChainBlock = {
+      point: { id: hash(height), slot: 99 + height, height },
+      parent: previous.block.point.id,
+      transactions: [],
+    };
+    const step = advanceEventHistoryListReplay({
+      previous: previous.replay,
+      block: next,
+      binding,
+      histories: pair,
+      slotToUnixTime: (slot) => slot * 1000,
+      getCreatingBody: () => undefined,
+      maximumBodyBytes: 16384,
+    });
+    steps.push({
+      binding,
+      block: next,
+      receipt: step.receipt,
+      replay: step.state,
+      maximumReceiptBytes: 16 * 1024 * 1024,
+    });
+  }
+  const last = steps.at(-1)!;
   const capture = await Effect.runPromise(
     decodeBoundEventHistoryLedgerSnapshot(
       {
         ...initial.history.ledger,
-        point: { id: secondBlock.point.id, slot: secondBlock.point.slot },
+        point: { id: last.block.point.id, slot: last.block.point.slot },
       },
       binding,
     ),
   );
   const joined = joinEventHistoryListReplay({
-    state: second.state,
+    state: last.replay,
     capture,
     binding,
   });
   return {
-    first: {
-      binding,
-      block,
-      receipt,
-      replay,
-      maximumReceiptBytes: 16 * 1024 * 1024,
-    },
-    second: {
-      binding,
-      block: secondBlock,
-      receipt: second.receipt,
-      replay: second.state,
-      maximumReceiptBytes: 16 * 1024 * 1024,
-    },
+    first,
+    second: steps[1]!,
+    steps,
     seed: { binding, ...joined },
   };
 };
@@ -755,19 +794,25 @@ describe("durable paired history journal", () => {
     const sibling = await prepare(checkpoint, 3);
     expect(
       await run(
-        Authority.withRecovery(token, Journal.append(binding, first, probe(1))),
+        Authority.withRecovery(
+          token,
+          Journal.append(binding, first, probe(1), retainEverything),
+        ),
       ),
     ).toMatchObject({ applied: true, revision: "1" });
     expect(
       await run(
-        Authority.withRecovery(token, Journal.append(binding, first, probe(1))),
+        Authority.withRecovery(
+          token,
+          Journal.append(binding, first, probe(1), retainEverything),
+        ),
       ),
     ).toEqual({ applied: false, revision: "1" });
     await expect(
       run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, sibling, probe(2)),
+          Journal.append(binding, sibling, probe(2), retainEverything),
         ),
       ),
     ).rejects.toThrow(/revision or head changed/);
@@ -793,14 +838,19 @@ describe("durable paired history journal", () => {
       run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, first, Effect.void),
+          Journal.append(binding, first, Effect.void, retainEverything),
         ),
       ),
     ).rejects.toThrow(/revision or head changed/);
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, await prepare(rolled, 2), probe(2)),
+        Journal.append(
+          binding,
+          await prepare(rolled, 2),
+          probe(2),
+          retainEverything,
+        ),
       ),
     );
     expect((await read()).headApplicationRevision).toBe("3");
@@ -819,7 +869,12 @@ describe("durable paired history journal", () => {
           Effect.either(
             Authority.withRecovery(
               token,
-              Journal.append(binding, prepared, probe(index + 1)),
+              Journal.append(
+                binding,
+                prepared,
+                probe(index + 1),
+                retainEverything,
+              ),
             ),
           ),
         ),
@@ -843,7 +898,12 @@ describe("durable paired history journal", () => {
       run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, next, probe(3).pipe(Effect.zipRight(expire))),
+          Journal.append(
+            binding,
+            next,
+            probe(3).pipe(Effect.zipRight(expire)),
+            retainEverything,
+          ),
         ),
       ),
     ).rejects.toThrow(/lease expired/);
@@ -859,13 +919,19 @@ describe("durable paired history journal", () => {
     );
     await expect(
       run(
-        Authority.withRecovery(token, Journal.append(binding, first, failure)),
+        Authority.withRecovery(
+          token,
+          Journal.append(binding, first, failure, retainEverything),
+        ),
       ),
     ).rejects.toThrow(/last mutation failed/);
     expect(await read()).toEqual(checkpoint);
     expect(await counts()).toEqual([{ applications: "0", l2: "0" }]);
     await run(
-      Authority.withRecovery(token, Journal.append(binding, first, probe(1))),
+      Authority.withRecovery(
+        token,
+        Journal.append(binding, first, probe(1), retainEverything),
+      ),
     );
     const head = await read();
     await expect(
@@ -894,7 +960,10 @@ describe("durable paired history journal", () => {
       expect(Object.isFrozen(first.undo.outputs)).toBe(true);
       expect(Object.isFrozen(first.undo.outputs[0])).toBe(true);
       await run(
-        Authority.withRecovery(token, Journal.append(binding, first, probe(1))),
+        Authority.withRecovery(
+          token,
+          Journal.append(binding, first, probe(1), retainEverything),
+        ),
       );
       const admitted = await read();
       const id = admitted.incarnations[0]!.id;
@@ -912,7 +981,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, replay, Effect.void),
+          Journal.append(binding, replay, Effect.void, retainEverything),
         ),
       );
       expect((await read()).incarnations).toEqual(admitted.incarnations);
@@ -927,7 +996,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, branch, Effect.void),
+          Journal.append(binding, branch, Effect.void, retainEverything),
         ),
       );
       const origins = (await read()).incarnations;
@@ -949,7 +1018,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, admission, probe(1)),
+          Journal.append(binding, admission, probe(1), retainEverything),
         ),
       );
       const admitted = await read();
@@ -982,6 +1051,7 @@ describe("durable paired history journal", () => {
               ),
             ),
             Effect.void,
+            retainEverything,
           ),
         ),
       );
@@ -1026,6 +1096,7 @@ describe("durable paired history journal", () => {
             binding,
             await prepare(continued, 4, [retirement], retiredOutputs),
             Effect.void,
+            retainEverything,
           ),
         ),
       );
@@ -1108,7 +1179,7 @@ describe("durable paired history journal", () => {
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, combined, Effect.void),
+        Journal.append(binding, combined, Effect.void, retainEverything),
       ),
     );
     const retired = await read();
@@ -1134,6 +1205,7 @@ describe("durable paired history journal", () => {
           binding,
           await prepare(restored, 2, [admission, retirement], outputs),
           Effect.void,
+          retainEverything,
         ),
       ),
     );
@@ -1145,7 +1217,12 @@ describe("durable paired history journal", () => {
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, await admit(checkpoint, 2), Effect.void),
+        Journal.append(
+          binding,
+          await admit(checkpoint, 2),
+          Effect.void,
+          retainEverything,
+        ),
       ),
     );
     await run(
@@ -1170,7 +1247,12 @@ describe("durable paired history journal", () => {
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, await prepare(checkpoint, 2), Effect.void),
+        Journal.append(
+          binding,
+          await prepare(checkpoint, 2),
+          Effect.void,
+          retainEverything,
+        ),
       ),
     );
     await run(
@@ -1204,6 +1286,7 @@ describe("durable paired history journal", () => {
               Deferred.succeed(entered, undefined).pipe(
                 Effect.zipRight(Deferred.await(finish)),
               ),
+              retainEverything,
             ),
           ),
         );
@@ -1248,7 +1331,12 @@ it.each(["deposit", "withdrawal"] as const)(
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, prepared, reconcile(checkpoint)),
+        Journal.append(
+          binding,
+          prepared,
+          reconcile(checkpoint),
+          retainEverything,
+        ),
       ),
     );
     const admitted = await read();
@@ -1414,7 +1502,12 @@ it.each(["deposit", "withdrawal"] as const)(
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, await admit(checkpoint, 2, kind), Effect.void),
+        Journal.append(
+          binding,
+          await admit(checkpoint, 2, kind),
+          Effect.void,
+          retainEverything,
+        ),
       ),
     );
     const admitted = await read();
@@ -1448,7 +1541,7 @@ it.each(["deposit", "withdrawal"] as const)(
           Effect.mapError((error) => new Error(formatDatabaseError(error))),
         ),
       ),
-    ).rejects.toThrow(/owned recovery transaction/);
+    ).rejects.toThrow(/owned source transaction/);
     const count = () =>
       run(
         Effect.gen(function* () {
@@ -1521,7 +1614,12 @@ it.each(["deposit", "withdrawal"] as const)(
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, await admit(checkpoint, 2, kind), Effect.void),
+        Journal.append(
+          binding,
+          await admit(checkpoint, 2, kind),
+          Effect.void,
+          retainEverything,
+        ),
       ),
     );
     const admitted = await read();
@@ -1595,3 +1693,497 @@ it.each(["deposit", "withdrawal"] as const)(
     expect((await counts())[0]!.l2).toBe("0");
   },
 );
+
+describe("bounded journal retention", () => {
+  const applicationRows = () =>
+    run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          block_hash: Buffer;
+          block_height: string;
+          canonical: boolean;
+          parent_application_revision: string | null;
+        }>`SELECT block_hash, block_height::text, canonical, parent_application_revision::text
+          FROM event_history_block_applications ORDER BY block_height, application_revision`;
+      }),
+    );
+  const receiptCount = async () =>
+    Number(
+      (
+        await run(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{
+              count: string;
+            }>`SELECT count(*)::text AS count FROM event_history_replay_receipts`;
+          }),
+        )
+      )[0]!.count,
+    );
+  const forward = async (
+    token: Authority.Token,
+    current: Journal.Checkpoint,
+    n: number,
+    retention: (height: number) => Journal.Retention,
+  ) => {
+    const prepared = await prepare(current, n);
+    await run(
+      Authority.withRecovery(
+        token,
+        Journal.append(
+          binding,
+          prepared,
+          Effect.void,
+          retention(prepared.block.point.height),
+        ),
+      ),
+    );
+    return read();
+  };
+  const behindTip =
+    (horizon: number) =>
+    (height: number): Journal.Retention => ({
+      tipHeight: height,
+      horizon,
+      holdSlot: undefined,
+    });
+
+  it("prunes nothing below the horizon, then advances the anchor and deletes the rows behind it atomically", async () => {
+    const { token, checkpoint: seeded } = await start();
+    let current = seeded;
+    for (let n = 2; n <= 6; n++) {
+      current = await forward(token, current, n, behindTip(5));
+      expect(current.anchor).toEqual(seeded.anchor);
+    }
+    expect(await applicationRows()).toHaveLength(5);
+    const beforeMove = current;
+    current = await forward(token, current, 7, behindTip(5));
+    // Height 7 puts height 2 exactly k = 5 blocks behind the tip.
+    expect(current.anchor).toEqual({ id: hash(2), slot: 101, height: 2 });
+    expect(current.head).toEqual({ id: hash(7), slot: 106, height: 7 });
+    expect(current.originReceipt).toBe(seeded.originReceipt);
+    const rows = await applicationRows();
+    expect(rows.map((row) => row.block_hash.toString("hex"))).toEqual(
+      [3, 4, 5, 6, 7].map(hash),
+    );
+    expect(rows.every((row) => row.canonical)).toBe(true);
+    // The first retained application now descends from the anchor itself.
+    expect(rows[0]!.parent_application_revision).toBeNull();
+    expect(current.revision).toBe(
+      (BigInt(beforeMove.revision) + 1n).toString(),
+    );
+    // A fresh owner generation reloads and verifies the pruned journal from
+    // its new anchor, then keeps extending it.
+    const restarted = await run(
+      Authority.acquire({
+        deploymentIdentity: binding.manifestId,
+        ownerToken: token.ownerToken,
+        leaseDurationMs: 60_000,
+      }),
+    );
+    expect(await read()).toEqual(current);
+    current = await forward(restarted, current, 8, behindTip(5));
+    expect(current.anchor.height).toBe(3);
+    expect(await applicationRows()).toHaveLength(5);
+    // A failed transaction moves neither the anchor nor any row.
+    const prepared = await prepare(current, 9);
+    await expect(
+      run(
+        Authority.withRecovery(
+          restarted,
+          Journal.append(
+            binding,
+            prepared,
+            Effect.fail(new Error("dependent write failed")),
+            behindTip(5)(9),
+          ),
+        ),
+      ),
+    ).rejects.toThrow(/dependent write failed/);
+    expect(await read()).toEqual(current);
+    expect(await applicationRows()).toHaveLength(5);
+  });
+
+  it("rolls back within the horizon down to the advanced anchor and refuses rollback past it", async () => {
+    const { token } = await start();
+    let current = await read();
+    for (let n = 2; n <= 7; n++)
+      current = await forward(token, current, n, behindTip(5));
+    const anchor = current.anchor;
+    expect(anchor.height).toBe(2);
+    expect(await applicationRows()).toHaveLength(5);
+    for (let height = 7; height > 2; height--) {
+      await run(
+        Authority.withRecovery(
+          token,
+          Journal.undoHead(binding, await read(), Effect.void),
+        ),
+      );
+      expect((await read()).head.height).toBe(height - 1);
+    }
+    const atAnchor = await read();
+    expect(atAnchor.head).toEqual(anchor);
+    expect(atAnchor.headApplicationRevision).toBeNull();
+    await expect(
+      run(
+        Authority.withRecovery(
+          token,
+          Journal.undoHead(binding, atAnchor, Effect.void),
+        ),
+      ),
+    ).rejects.toThrow(/retained replay anchor/);
+    expect(await read()).toEqual(atAnchor);
+    // The same branch reapplies from the anchor.
+    current = await forward(token, atAnchor, 3, behindTip(5));
+    expect(current.head).toEqual({ id: hash(3), slot: 102, height: 3 });
+    expect(current.anchor).toEqual(anchor);
+  });
+
+  it("advances at most RETENTION_BATCH blocks per step, and only strictly behind head", async () => {
+    const { token, checkpoint: seeded } = await start();
+    const last = Journal.RETENTION_BATCH + 12;
+    let current = seeded;
+    for (let n = 2; n <= last; n++)
+      current = await forward(token, current, n, () => retainEverything);
+    expect(current.anchor).toEqual(seeded.anchor);
+    const farTip = () => ({
+      tipHeight: 1_000_000,
+      horizon: 5,
+      holdSlot: undefined,
+    });
+    current = await forward(token, current, last + 1, farTip);
+    expect(current.anchor.height).toBe(1 + Journal.RETENTION_BATCH);
+    expect(await applicationRows()).toHaveLength(
+      current.head.height - current.anchor.height,
+    );
+    current = await forward(token, current, last + 2, farTip);
+    expect(current.anchor.height).toBe(current.head.height - 1);
+    expect((await applicationRows()).map((row) => row.block_height)).toEqual([
+      String(current.head.height),
+    ]);
+  });
+
+  it("appends at a cost that does not grow with the retained range", async () => {
+    const { token: seeding, checkpoint: seeded } = await start();
+    // Building two thousand blocks outlasts the default test lease.
+    const token = await run(
+      Authority.acquire({
+        deploymentIdentity: binding.manifestId,
+        ownerToken: seeding.ownerToken,
+        leaseDurationMs: 600_000,
+      }),
+    );
+    let current = seeded;
+    let n = 2;
+    // Each step verifies only the cursor, its head and the new link; the
+    // working checkpoint comes from the append's own materialization. Timed
+    // inside the transaction: excludes the per-call test layer setup.
+    const step = Effect.gen(function* () {
+      const prepared = yield* Effect.promise(() => prepare(current, n++));
+      const [elapsed, appended] = yield* Authority.withRecovery(
+        token,
+        Journal.append(
+          binding,
+          prepared,
+          Journal.loadCurrent(binding),
+          retainEverything,
+        ).pipe(Effect.timed),
+      );
+      if (!appended.applied || appended.result === null)
+        return yield* Effect.die("Append did not apply");
+      current = appended.result;
+      return Duration.toMillis(elapsed);
+    });
+    const extendTo = (height: number) =>
+      run(
+        Effect.whileLoop({
+          while: () => current.head.height < height,
+          body: () => step,
+          step: () => undefined,
+        }),
+      );
+    const median = () =>
+      run(
+        Effect.replicateEffect(step, 25).pipe(
+          Effect.map((samples) => samples.sort((a, b) => a - b)[12]!),
+        ),
+      );
+    await extendTo(21);
+    const short = await median();
+    await extendTo(2001);
+    const long = await median();
+    console.info(
+      `history append median: ${short.toFixed(1)} ms at ~20 retained, ${long.toFixed(1)} ms at ~2000 retained`,
+    );
+    expect(await applicationRows()).toHaveLength(current.head.height - 1);
+    // A whole-chain walk costs tens of milliseconds per thousand blocks, so
+    // a 100x longer range would dwarf this generous bound.
+    expect(long).toBeLessThan(short * 3 + 20);
+    // The startup load still walks and verifies the whole retained chain.
+    expect(await read()).toEqual(current);
+  }, 300_000);
+
+  it("prunes replay receipts only once the anchor leaves the seed point, and coverage starts at the anchor", async () => {
+    const fixture = await replayFixture();
+    const token = await run(acquire());
+    for (const step of [fixture.first, fixture.second])
+      await run(Authority.withRecovery(token, ReplayReceipts.put(step)));
+    await run(Authority.withRecovery(token, Journal.seed(fixture.seed)));
+    const seeded = await read();
+    expect(seeded.anchor).toEqual(fixture.second.block.point);
+    const coverage = async () =>
+      run(
+        Authority.withRecovery(
+          token,
+          loadCanonicalHistoryCoverage(binding, await read()),
+        ),
+      );
+    // Height 3 is exactly one block ahead: the seed point is not yet past a
+    // horizon of 1 behind head, so the origin range is retained and checked.
+    let current = await forward(token, seeded, 3, behindTip(1));
+    expect(current.anchor).toEqual(seeded.anchor);
+    expect(await receiptCount()).toBe(2);
+    expect((await coverage()).blocks.map((b) => b.point.height)).toEqual([
+      1, 2, 3,
+    ]);
+    current = await forward(token, current, 4, behindTip(1));
+    expect(current.anchor).toEqual({ id: hash(3), slot: 102, height: 3 });
+    expect(await receiptCount()).toBe(0);
+    expect(current.originReceipt).toBe(fixture.seed.originReceipt);
+    expect(current.originReceiptDigest).toBe(seeded.originReceiptDigest);
+    const pruned = await coverage();
+    expect(pruned.start).toEqual({ id: hash(4), slot: 103, height: 4 });
+    expect(pruned.blocks.map((b) => b.parent)).toEqual([hash(3)]);
+    expect(pruned.activationTransactionHash).toBe(
+      fixture.first.block.transactions[0]!.txHash,
+    );
+  });
+
+  it("prunes a replay range longer than one batch newest first, so no retained receipt loses its predecessor", async () => {
+    const length = 140;
+    const fixture = await replayFixture(0n, length);
+    const token = await run(acquire());
+    await run(
+      Authority.withRecovery(
+        token,
+        Effect.forEach(fixture.steps, ReplayReceipts.put, { discard: true }),
+      ),
+    );
+    await run(Authority.withRecovery(token, Journal.seed(fixture.seed)));
+    let current = await read();
+    expect(await receiptCount()).toBe(length);
+    // The first step keeps the seed point as anchor; the next moves it and
+    // prunes one batch, the one after that the rest. Oldest-first would delete
+    // receipts whose successors still reference them.
+    current = await forward(token, current, length + 1, behindTip(1));
+    expect(await receiptCount()).toBe(length);
+    current = await forward(token, current, length + 2, behindTip(1));
+    expect(current.anchor.height).toBe(length + 1);
+    expect(await receiptCount()).toBe(length - Journal.RETENTION_BATCH);
+    current = await forward(token, current, length + 3, behindTip(1));
+    expect(await receiptCount()).toBe(0);
+    expect(await read()).toEqual(current);
+  }, 60_000);
+
+  it("accepts producer coverage only as the exact cursor, the anchor or a canonical block journaled by its revision", async () => {
+    const { token, checkpoint: seeded } = await start();
+    const keep = () => retainEverything;
+    const undo = async (current: Journal.Checkpoint) => {
+      await run(
+        Authority.withRecovery(
+          token,
+          Journal.undoHead(binding, current, Effect.void),
+        ),
+      );
+      return read();
+    };
+    const c2 = await forward(token, seeded, 2, keep);
+    // Block 3 read, then rewound and journaled again under a later revision;
+    // and a rewound sibling at the same height.
+    const stale3 = await forward(token, c2, 3, keep);
+    const sibling = await forward(token, await undo(stale3), 30, keep);
+    const c3 = await forward(token, await undo(sibling), 3, keep);
+    const c4 = await forward(token, c3, 4, keep);
+    const c5 = await forward(token, c4, 5, keep);
+    expect(stale3.head).toEqual(c3.head);
+    expect(stale3.capture.snapshotDigest).toBe(c3.capture.snapshotDigest);
+    expect(c3.capture.snapshotDigest).not.toBe(c4.capture.snapshotDigest);
+    await run(
+      Authority.publishReady(token, {
+        point: c5.head,
+        snapshotDigest: c5.capture.snapshotDigest,
+      }),
+    );
+    const permit = (checkpoint: Journal.Checkpoint) => ({
+      token,
+      coverage: {
+        bindingDigest: binding.digest,
+        checkpointRevision: checkpoint.revision,
+        point: checkpoint.head,
+        snapshotDigest: checkpoint.capture.snapshotDigest,
+        includedThroughMs: checkpoint.head.slot,
+      },
+    });
+    const candidate = (value: ReturnType<typeof permit>) =>
+      run(
+        Authority.withReady(
+          token,
+          requireCandidateHistory.pipe(
+            Effect.provideService(HistoryProducer, value),
+            Effect.mapError((error) => new Error(formatDatabaseError(error))),
+          ),
+        ),
+      );
+    for (const current of [c5, c4, c3])
+      expect(Option.isSome(await candidate(permit(current)))).toBe(true);
+    // Same point and snapshot, read before the rewind that re-journaled it.
+    await expect(candidate(permit(stale3))).rejects.toThrow(/coverage changed/);
+    await expect(candidate(permit(sibling))).rejects.toThrow(
+      /coverage changed/,
+    );
+    await expect(
+      candidate({
+        ...permit(c3),
+        coverage: {
+          ...permit(c3).coverage,
+          snapshotDigest: c4.capture.snapshotDigest,
+        },
+      }),
+    ).rejects.toThrow(/coverage changed/);
+    // A Ready append whose retention makes block 5 the anchor and prunes its
+    // application: coverage at block 5 still holds, as the anchor.
+    const prepared = await prepare(c5, 6);
+    await run(
+      Authority.withReadyAppend(
+        token,
+        Journal.append(binding, prepared, Effect.void, behindTip(1)(6)),
+      ),
+    );
+    const c6 = await read();
+    expect(c6.anchor).toEqual(c5.head);
+    expect(
+      (await applicationRows()).map((row) => row.block_hash.toString("hex")),
+    ).toEqual([hash(6)]);
+    for (const current of [c6, c5])
+      expect(Option.isSome(await candidate(permit(current)))).toBe(true);
+    await expect(candidate(permit(c4))).rejects.toThrow(/coverage changed/);
+  });
+
+  // A legitimately advanced journal: anchor hash(3) at height 3, head height 4.
+  const advanced = async () => {
+    const fixture = await replayFixture();
+    const token = await run(acquire());
+    for (const step of fixture.steps)
+      await run(Authority.withRecovery(token, ReplayReceipts.put(step)));
+    await run(Authority.withRecovery(token, Journal.seed(fixture.seed)));
+    let current = await forward(token, await read(), 3, behindTip(1));
+    current = await forward(token, current, 4, behindTip(1));
+    expect(current.anchor).toEqual({ id: hash(3), slot: 102, height: 3 });
+    expect(current.head.height).toBe(4);
+    return { token, current };
+  };
+  // An origin receipt whose replay head is not behind the advanced anchor.
+  const aheadOfAnchor = (current: Journal.Checkpoint) => {
+    const origin = JSON.parse(current.originReceipt) as {
+      replay: { head: { id: string; slot: number; height: number } };
+    };
+    origin.replay.head = {
+      id: hash(88),
+      slot: current.anchor.slot,
+      height: current.anchor.height,
+    };
+    return eventHistoryCanonicalJson(origin);
+  };
+  const refusal = async (
+    program: Effect.Effect<unknown, unknown, SqlClient.SqlClient>,
+  ) => {
+    const result = await run(Effect.either(program));
+    expect(result._tag).toBe("Left");
+    return result._tag === "Left" ? formatDatabaseError(result.left) : "";
+  };
+
+  it("refuses an advanced anchor that is not beyond the origin replay head, at load and in coverage", async () => {
+    const { token, current } = await advanced();
+    const tampered = aheadOfAnchor(current);
+    // Coverage in isolation, handed the tampered checkpoint.
+    journalLoad.override = () =>
+      Effect.succeed({
+        ...current,
+        originReceipt: tampered,
+        originReceiptDigest: sha(tampered),
+      });
+    try {
+      expect(
+        await refusal(
+          Authority.withRecovery(
+            token,
+            loadCanonicalHistoryCoverage(binding, current),
+          ),
+        ),
+      ).toMatch(/Retained anchor precedes the origin replay head/);
+    } finally {
+      journalLoad.override = undefined;
+    }
+    // The stored receipt: the startup load refuses it.
+    await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE event_history_cursor SET origin_receipt = ${tampered},
+          origin_receipt_digest = ${Buffer.from(sha(tampered), "hex")}
+          WHERE binding_digest = ${Buffer.from(binding.digest, "hex")}`;
+      }),
+    );
+    expect(await refusal(Journal.load(binding))).toMatch(
+      /Origin replay endpoint or binding disagrees/,
+    );
+  });
+
+  it("refuses coverage whose first retained block does not descend from the advanced anchor", async () => {
+    const { token, current } = await advanced();
+    const key = Buffer.from(binding.digest, "hex");
+    const [row] = await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          ledger_receipt: string;
+        }>`SELECT ledger_receipt FROM event_history_block_applications
+          WHERE binding_digest = ${key} AND canonical AND block_height = 4`;
+      }),
+    );
+    const receipt = JSON.parse(row!.ledger_receipt) as {
+      block: { parent: string };
+    };
+    receipt.block.parent = hash(66);
+    const changed = eventHistoryCanonicalJson(receipt);
+    await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE event_history_block_applications SET parent_hash = ${Buffer.from(hash(66), "hex")},
+          ledger_receipt = ${changed}, ledger_receipt_digest = ${Buffer.from(sha(changed), "hex")}
+          WHERE binding_digest = ${key} AND canonical AND block_height = 4`;
+      }),
+    );
+    // Coverage in isolation, handed the checkpoint loaded before the change.
+    journalLoad.override = () => Effect.succeed(current);
+    try {
+      expect(
+        await refusal(
+          Authority.withRecovery(
+            token,
+            loadCanonicalHistoryCoverage(binding, current),
+          ),
+        ),
+      ).toMatch(/Canonical coverage endpoints or activation changed/);
+    } finally {
+      journalLoad.override = undefined;
+    }
+    // The startup chain walk and the head-only check both refuse it too.
+    expect(await refusal(Journal.load(binding))).toMatch(
+      /Canonical application ancestry disagrees/,
+    );
+    expect(await refusal(Journal.loadCurrent(binding))).toMatch(
+      /Canonical application ancestry disagrees/,
+    );
+  });
+});

@@ -1,7 +1,9 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
+import * as Authority from "../database/eventHistoryAuthority.js";
 import { pendingHistoryLedgerDisposition } from "../database/eventHistoryLedgerRepair.js";
 import { materializeCanonicalHistory } from "../database/eventHistoryMaterialization.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -98,6 +100,9 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
       binding,
       histories,
       cache,
+      rollbackHorizon: (
+        identity.manifest?.l1Finality ?? DEPLOYMENT_MANIFEST_L1_FINALITY
+      ).automaticRecoveryMaxDepth,
       drainBeforeRepair: writeBehind.flushNow,
       slotToUnixTime: lucid.api.slotToUnixTime,
       expectedInitializationTransactionHash:
@@ -107,9 +112,24 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
           const pending = yield* pendingHistoryLedgerDisposition(change);
           if (pending !== undefined) return pending;
           yield* materializeCanonicalHistory(change, config.NETWORK);
-          yield* reconcileDepositProjection(
+          const { reconciled } = yield* reconcileDepositProjection(
             new Date(lucid.api.slotToUnixTime(change.after.head.slot)),
           );
+          // Newly projected deposits stay hidden from the validation cache
+          // until a header is assigned. Restoring an already spendable row
+          // changes cache state, which only a recovery's reload may publish;
+          // inside a Ready append this closes the gate instead.
+          const owned = yield* Authority.currentOwnedTransaction;
+          if (
+            reconciled.spendableUpserts.length > 0 &&
+            Option.isSome(owned) &&
+            owned.value.state === "ready"
+          )
+            return {
+              status: "pending" as const,
+              reason:
+                "Deposit projection restored spendable ledger rows; the validation cache must reload",
+            };
           return undefined;
         }),
     });

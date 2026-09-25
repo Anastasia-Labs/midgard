@@ -233,6 +233,7 @@ export const makePoolIsolationHistoryOwner = (input: {
         transport: transport.options,
         heartbeatIntervalMs: 1000,
         leaseDurationMs: 60_000,
+        rollbackHorizon: 2160,
         retainedPointLimit: 16,
         maximumReceiptBytes: 16 * 1024 * 1024,
         reconcile: (change) => materializeCanonicalHistory(change, "Preprod"),

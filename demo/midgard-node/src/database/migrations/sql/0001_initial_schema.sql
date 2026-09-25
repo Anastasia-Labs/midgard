@@ -1652,7 +1652,9 @@ CREATE TABLE public.event_history_authority (
 -- Immutable source replay chunks can precede the first projection cursor.
 -- Parent links retain every intermediate receipt without rescanning the entire
 -- range inside the final seed transaction. Only the owned recovery writer adds
--- rows; no runtime API updates or deletes them.
+-- rows and nothing updates them. They are read only while the cursor anchor is
+-- the seed point; once journal retention moves the anchor past it, the owned
+-- recovery writer deletes them in bounded batches, successors first.
 CREATE TABLE public.event_history_replay_receipts (
     binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
     manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
@@ -1701,6 +1703,10 @@ CREATE TABLE public.event_history_cursor (
 
 -- A block can have several applications after rollback. Immutable ledger
 -- receipts are checked equal across them; undo belongs to the application.
+-- Bounded retention: when the cursor anchor advances past the rollback horizon
+-- the applications at or behind it (and any orphan branch rooted there) are
+-- deleted in the same transaction, and the first retained canonical application
+-- has a null parent_application_revision (its parent is the anchor itself).
 CREATE TABLE public.event_history_block_applications (
     binding_digest bytea NOT NULL REFERENCES public.event_history_cursor(binding_digest) ON DELETE RESTRICT,
     block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),

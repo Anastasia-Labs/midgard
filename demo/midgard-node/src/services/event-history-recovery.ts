@@ -218,7 +218,9 @@ export const makeEventHistoryRecovery = (input: {
     return {
       startup: handle(revision, token, initialCache),
       close,
-      /** Called immediately on rollback or lost source authority. SQL
+      /** Called immediately on rollback, lost source authority, or an append
+       * that cannot complete without dependent repair; never for a plain
+       * forward block or tip advance (see append). SQL
        * revocation commits before the returned handle can drain producers. */
       beginRecovery: (reason: string) =>
         Effect.uninterruptible(
@@ -237,6 +239,28 @@ export const makeEventHistoryRecovery = (input: {
             return handle(expected, next, cache);
           }),
         ),
+      /** Journal one forward block at the head of the current Ready
+       * generation. Producers are not drained and keep their registration:
+       * they hold a journaled prefix this only extends, and the authority row
+       * lock serializes the append with each of their SQL writes. No cache lock
+       * and no reload: the work must leave spendable cache state untouched, or
+       * fail (rolling back) so the owner can begin a recovery instead.
+       */
+      append: <A, E, R>(work: Effect.Effect<A, E, R>) =>
+        Effect.suspend(() => {
+          const token = ready;
+          const expected = revision;
+          if (closed || token === undefined) return Effect.fail(unavailable());
+          return Effect.uninterruptible(
+            Authority.withReadyAppend(
+              token,
+              requireRevision(expected).pipe(
+                Effect.zipRight(work),
+                Effect.tap(() => requireRevision(expected)),
+              ),
+            ),
+          );
+        }),
       /** The source owner must renew only while its monitor is healthy. A
        * failed renewal immediately retires local readiness; expiry still
        * fences SQL independently if this process stops executing altogether. */

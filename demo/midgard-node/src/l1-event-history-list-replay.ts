@@ -37,8 +37,11 @@ type Activation = Readonly<{
 }>;
 
 /** Complete authenticated node sets and historical origins, NOT a complete
- * address/retention ledger. Older unrelated dust and retained preimages are not
- * enumerated by this replay. Join a genuine acquired capture before seeding SQL.
+ * address/retention ledger. Retained preimages (published by separate, possibly
+ * pre-activation transactions) and unrelated dust are not enumerated by this
+ * replay. The owner joins it, at exactly that capture's point, with its single
+ * first-start complete capture before seeding SQL; later blocks are journaled
+ * incrementally without another capture.
  */
 export type EventHistoryListReplay = Readonly<{
   bindingDigest: string;

@@ -27,6 +27,7 @@ import type { LedgerSnapshotOutput } from "../src/l1-ledger-snapshot.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Database } from "../src/services/database.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
 
@@ -170,7 +171,7 @@ const append = async (
   await run(
     Authority.withRecovery(
       token,
-      Journal.append(binding, prepared, Effect.void),
+      Journal.append(binding, prepared, Effect.void, retainEverything),
     ),
   );
   return read();

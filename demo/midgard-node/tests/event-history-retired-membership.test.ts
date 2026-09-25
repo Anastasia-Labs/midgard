@@ -14,6 +14,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
+import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
 import { materializeCanonicalHistory } from "../src/database/eventHistoryMaterialization.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
@@ -28,7 +29,16 @@ import type { LedgerSnapshotOutput } from "../src/l1-ledger-snapshot.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Database } from "../src/services/database.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
+import {
+  signedHeaderRecoveryCandidates,
+  signedHeaderRecoveryHoldSlot,
+} from "../src/services/history-signed-header-recovery.js";
+import {
+  evaluateSignedIntentCoverage,
+  type SignedIntentCoverageBlock,
+} from "../src/services/signed-intent-canonical-coverage.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
 
@@ -355,6 +365,7 @@ beforeEach(async () => {
 const prepareSignedHeader = async (
   token: Authority.Token,
   checkpoint: Journal.Checkpoint,
+  validity?: Readonly<{ start: bigint; ttl: bigint }>,
 ) => {
   await run(
     Authority.publishReady(token, {
@@ -421,7 +432,7 @@ const prepareSignedHeader = async (
     await Effect.runPromise(SDK.hashBlockHeader(header)),
     "hex",
   );
-  const signedCbor = Buffer.from(makeCardanoSignedMapOutputTxBytes());
+  const signedCbor = Buffer.from(makeCardanoSignedMapOutputTxBytes(validity));
   const txHash = Buffer.from(
     CML.hash_transaction(
       CML.Transaction.from_cbor_bytes(signedCbor).body(),
@@ -509,7 +520,10 @@ const reconcile = (before: Journal.Checkpoint) =>
           ),
     ),
   );
-const fixture = async (kind: Kind) => {
+const fixture = async (
+  kind: Kind,
+  validity?: Readonly<{ start: bigint; ttl: bigint }>,
+) => {
   const started = await start();
   for (const [height, eventNumber] of [
     [2, 999],
@@ -523,6 +537,7 @@ const fixture = async (kind: Kind) => {
           binding,
           await admit(before, height, kind, eventNumber),
           reconcile(before),
+          retainEverything,
         ),
       ),
     );
@@ -537,7 +552,11 @@ const fixture = async (kind: Kind) => {
   if (first === undefined || other === undefined)
     throw new Error("Missing distinct modeled admissions");
   expect(first.event.idCbor).not.toBe(other.event.idCbor);
-  const retained = await prepareSignedHeader(started.token, checkpoint);
+  const retained = await prepareSignedHeader(
+    started.token,
+    checkpoint,
+    validity,
+  );
   const table = tables(kind);
   const payload = Buffer.from(
     plutusConstrFieldCbor(first.event.payloadCbor, [0, 1]),
@@ -653,6 +672,7 @@ describe.each(["deposit", "withdrawal"] as const)(
             binding,
             await admit(before, 4, kind, 999),
             reconcile(before),
+            retainEverything,
           ),
         ),
       );
@@ -735,3 +755,181 @@ describe.each(["deposit", "withdrawal"] as const)(
     });
   },
 );
+
+// Retention hold: the single-sourced recovery candidate query pins the journal
+// anchor so the retained canonical range still starts at or before the signed
+// validity start. The hold is bounded: once the header's TTL is more than the
+// finality depth behind the tip, that retained range classifies it
+// covered_absent, and the abandonment recovery then writes releases the hold.
+it("holds the retention anchor behind a stale unresolved signed header until recovery abandons it", async () => {
+  const validity = { start: 103n, ttl: 104n };
+  const f = await fixture("deposit", validity);
+  for (let n = 0; n < 2; n++)
+    await run(
+      Authority.withRecovery(
+        f.token,
+        Journal.undoHead(binding, await read(), Effect.void),
+      ),
+    );
+  expect(
+    (await run(signedHeaderRecoveryCandidates(binding.digest))).map((row) =>
+      row.header_hash.toString("hex"),
+    ),
+  ).toEqual([f.headerHash.toString("hex")]);
+  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(103);
+  // Horizon 1 against a far tip: without the hold every step would advance
+  // the anchor to one block behind head.
+  let hold: Journal.RetentionHold | undefined;
+  const forward = async (n: number) => {
+    const prepared = await prepare(await read(), n);
+    const appended = await run(
+      Authority.withRecovery(
+        f.token,
+        signedHeaderRecoveryHoldSlot(binding.digest).pipe(
+          Effect.flatMap((holdSlot) =>
+            Journal.append(binding, prepared, Effect.void, {
+              tipHeight: 10_000,
+              horizon: 1,
+              holdSlot,
+            }),
+          ),
+        ),
+      ),
+    );
+    hold = appended.applied ? appended.hold : undefined;
+    return read();
+  };
+  let current = await read();
+  for (let n = 20; n < 26; n++) current = await forward(n);
+  // Reported, not silent: without the hold the anchor would be at height 6.
+  expect(hold).toEqual({
+    holdSlot: 103,
+    anchorHeight: 3,
+    unheldAnchorHeight: 6,
+  });
+  // Heights 2..7 at slots 101..106. The first retained block (height 4, slot
+  // 103) is the last one not later than the signed validity start.
+  expect(current.head).toEqual({ id: hash(25), slot: 106, height: 7 });
+  expect(current.anchor).toEqual({ id: hash(21), slot: 102, height: 3 });
+  const applications = await run(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        ledger_receipt: string;
+        canonical: boolean;
+      }>`SELECT ledger_receipt, canonical FROM event_history_block_applications
+        WHERE binding_digest = ${Buffer.from(binding.digest, "hex")} ORDER BY block_height`;
+    }),
+  );
+  // The undone admission blocks were orphans rooted behind the anchor.
+  expect(applications.every((row) => row.canonical)).toBe(true);
+  const blocks = applications.map((row) => {
+    const { block } = JSON.parse(row.ledger_receipt) as {
+      block: SignedIntentCoverageBlock;
+    };
+    return {
+      point: block.point,
+      parent: block.parent,
+      transactions: block.transactions,
+    };
+  });
+  expect(blocks.map((block) => block.point.height)).toEqual([4, 5, 6, 7]);
+  const txHash = CML.hash_transaction(
+    CML.Transaction.from_cbor_bytes(f.signedCbor).body(),
+  ).to_hex();
+  const classify = (range: typeof blocks) =>
+    evaluateSignedIntentCoverage({
+      signedTxCbor: f.signedCbor.toString("hex"),
+      expectedTxHash: txHash,
+      bindingDigest: binding.digest,
+      manifestId: binding.manifestId,
+      start: range[0]!.point,
+      head: range.at(-1)!.point,
+      blocks: range,
+      requiredFinalityDepth: 2,
+    });
+  expect(classify(blocks).kind).toBe("covered_absent");
+  // One more block of pruning would have made it unclassifiable.
+  expect(() => classify(blocks.slice(1))).toThrow(
+    /omits the earliest-inclusion boundary/,
+  );
+  // Recovery's covered_absent disposition abandons the header; the next
+  // forward step then advances the anchor as far as the horizon allows.
+  await run(
+    Authority.withRecovery(
+      f.token,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE pending_block_finalizations SET status = 'abandoned'
+          WHERE header_hash = ${f.headerHash}`;
+      }),
+    ),
+  );
+  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(
+    undefined,
+  );
+  current = await forward(26);
+  expect(hold).toBeUndefined();
+  expect(current.anchor).toEqual({ id: hash(25), slot: 106, height: 7 });
+  expect(current.head.height).toBe(8);
+});
+
+// A candidate recovery cannot classify from coverage (no signed validity start)
+// bounds no retention, but it is not ignored: its orphaned member keeps the
+// history disposition pending, and the owner never publishes Ready while a
+// disposition is pending (history-source-owner-pending-recovery.test.ts).
+it("keeps an unclassifiable pinned candidate pending without holding retention", async () => {
+  const f = await fixture("deposit");
+  for (let n = 0; n < 2; n++)
+    await run(
+      Authority.withRecovery(
+        f.token,
+        Journal.undoHead(binding, await read(), Effect.void),
+      ),
+    );
+  const after = await read();
+  expect(
+    (await run(signedHeaderRecoveryCandidates(binding.digest))).map((row) =>
+      row.header_hash.toString("hex"),
+    ),
+  ).toEqual([f.headerHash.toString("hex")]);
+  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(
+    undefined,
+  );
+  expect(
+    await run(
+      Authority.withRecovery(
+        f.token,
+        pendingHistoryLedgerDisposition({
+          kind: "resume",
+          before: after,
+          after,
+        }),
+      ),
+    ),
+  ).toMatchObject({ status: "pending" });
+});
+
+it("fails closed, naming the header, on an unreadable stored signed body", async () => {
+  const f = await fixture("deposit", { start: 103n, ttl: 104n });
+  for (let n = 0; n < 2; n++)
+    await run(
+      Authority.withRecovery(
+        f.token,
+        Journal.undoHead(binding, await read(), Effect.void),
+      ),
+    );
+  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(103);
+  await run(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE pending_block_finalizations SET signed_tx_cbor = ${Buffer.from("84ff", "hex")}
+        WHERE header_hash = ${f.headerHash}`;
+    }),
+  );
+  await expect(
+    run(signedHeaderRecoveryHoldSlot(binding.digest)),
+  ).rejects.toThrow(
+    `Recovery candidate ${f.headerHash.toString("hex")} has an unreadable signed body`,
+  );
+});

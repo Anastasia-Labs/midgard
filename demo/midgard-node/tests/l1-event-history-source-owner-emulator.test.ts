@@ -8,7 +8,7 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import { SqlClient } from "@effect/sql";
-import { Deferred, Runtime, Schedule } from "effect";
+import { Deferred, Fiber, Runtime, Schedule } from "effect";
 import { expect, it, vi } from "vitest";
 
 import * as Journal from "../src/database/eventHistoryJournal.js";
@@ -46,6 +46,23 @@ import {
   openHistorySourceOwnerLifecycle,
 } from "./helpers/history-source-owner-emulator.js";
 import { provideDatabaseLayers } from "./utils.js";
+
+/** Complete address-scope ledger scans, and the most ever acquired at once. */
+const ledgerScans = (
+  requests: readonly { socket: number; method: string }[],
+) => {
+  const acquired = new Set<number>();
+  let count = 0;
+  let maxInFlight = 0;
+  for (const { socket, method } of requests) {
+    if (method === "acquireLedgerState") {
+      acquired.add(socket);
+      maxInFlight = Math.max(maxInFlight, acquired.size);
+    } else if (method === "releaseLedgerState") acquired.delete(socket);
+    else if (method === "queryLedgerState/utxo") count += 1;
+  }
+  return { count, maxInFlight };
+};
 
 /** Successful node classification and actual mature merge establish both
  * settlement frontiers. The observation transport labels remain synthetic. */
@@ -330,6 +347,15 @@ it("runs the default history owner through actual bootstrap, continuation, retir
               Effect.provideService(SqlClient.SqlClient, sql),
             ),
           );
+          // Holds one forward journal transaction open, so the test can observe
+          // the producer gate while that source work is still pending.
+          let forwardGate:
+            | {
+                readonly head: string;
+                readonly entered: Deferred.Deferred<void>;
+                readonly release: Deferred.Deferred<void>;
+              }
+            | undefined;
           const makeOwner = (
             refuseRepair = false,
             prepareCompletion?: () => Effect.Effect<void>,
@@ -344,12 +370,22 @@ it("runs the default history owner through actual bootstrap, continuation, retir
               retainedPointLimit: 128,
               maximumReceiptBytes: 16 * 1024 * 1024,
               leaseDurationMs: 60_000,
+              rollbackHorizon: 2160,
               ownerToken: randomUUID(),
               expectedInitializationTransactionHash:
                 h.deployment.initialization.txHash,
               cache,
               reconcile: (change) =>
                 Effect.gen(function* () {
+                  const gate = forwardGate;
+                  if (
+                    gate !== undefined &&
+                    change.kind === "forward" &&
+                    change.after.head.id === gate.head
+                  ) {
+                    yield* Deferred.succeed(gate.entered, undefined);
+                    yield* Deferred.await(gate.release);
+                  }
                   // A bounded SQL probe in the owner's mandatory transaction. This is
                   // deliberately not production L2/ingestion reconciliation coverage.
                   const loaded = yield* Journal.load(h.binding);
@@ -373,7 +409,39 @@ it("runs the default history owner through actual bootstrap, continuation, retir
                   });
                 }),
             });
-          const first = yield* Effect.scoped(
+          type Owner = Effect.Effect.Success<ReturnType<typeof makeOwner>>;
+          const awaitHead = (owner: Owner, index: number) =>
+            owner
+              .runProducer(() =>
+                Effect.gen(function* () {
+                  const loaded = yield* Journal.load(h.binding);
+                  if (loaded?.head.id !== transport.points[index]!.point.id)
+                    return yield* Effect.fail(
+                      new Error("Owner is still following accepted branch"),
+                    );
+                  return loaded;
+                }),
+              )
+              .pipe(
+                Effect.retry(Schedule.spaced("10 millis")),
+                Effect.raceFirst(
+                  owner.awaitStopped.pipe(
+                    Effect.zipRight(
+                      Effect.fail(
+                        new Error(
+                          "Owner stopped before reaching its source tip",
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Effect.timeout("20 seconds"),
+              );
+          const last = transport.points.length - 1;
+          const middle = initialIndex + Math.floor((last - initialIndex) / 2);
+          expect(middle).toBeGreaterThan(initialIndex);
+          expect(middle).toBeLessThan(last);
+          const seededStage = yield* Effect.scoped(
             Effect.gen(function* () {
               const owner = yield* makeOwner();
               yield* owner.awaitReady;
@@ -394,33 +462,56 @@ it("runs the default history owner through actual bootstrap, continuation, retir
                   transport.indexOf(h.deployment.initialization.txHash) +
                   1,
               );
-              transport.reveal(transport.points.length - 1);
-              const finished = yield* owner
-                .runProducer(() =>
-                  Effect.gen(function* () {
-                    const loaded = yield* Journal.load(h.binding);
-                    if (loaded?.head.id !== transport.points.at(-1)!.point.id)
-                      return yield* Effect.fail(
-                        new Error("Owner is still following accepted branch"),
-                      );
-                    return loaded;
-                  }),
-                )
-                .pipe(
-                  Effect.retry(Schedule.spaced("10 millis")),
-                  Effect.raceFirst(
-                    owner.awaitStopped.pipe(
-                      Effect.zipRight(
-                        Effect.fail(
-                          new Error(
-                            "Owner stopped before reaching its source tip",
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Effect.timeout("20 seconds"),
-                );
+              // First start: the single complete scan, never concurrent.
+              expect(ledgerScans(transport.requests)).toEqual({
+                count: 1,
+                maxInFlight: 1,
+              });
+              // Steady state: new blocks after readiness append at the head of
+              // the open gate with no further ledger scan. While a forward block
+              // is being journaled the gate stays open; a producer admitted then
+              // commits behind the append and completes.
+              forwardGate = {
+                head: transport.points[middle]!.point.id,
+                entered: yield* Deferred.make<void>(),
+                release: yield* Deferred.make<void>(),
+              };
+              transport.reveal(middle);
+              yield* Deferred.await(forwardGate.entered).pipe(
+                Effect.timeout("20 seconds"),
+              );
+              // Asserted after release, so a failure cannot strand the append.
+              const readyDuring = (yield* owner.frontier).ready;
+              const during = yield* Effect.fork(
+                Effect.either(owner.runProducer(() => Effect.void)),
+              );
+              yield* Deferred.succeed(forwardGate.release, undefined);
+              forwardGate = undefined;
+              expect(readyDuring).toBe(true);
+              expect(
+                (yield* Fiber.join(during).pipe(Effect.timeout("20 seconds")))
+                  ._tag,
+              ).toBe("Right");
+              const followed = yield* awaitHead(owner, middle);
+              expect(followed.head.id).toBe(transport.points[middle]!.point.id);
+              expect(ledgerScans(transport.requests).count).toBe(1);
+              yield* owner.close;
+              return { seeded, initialReceipts };
+            }),
+          );
+          // Restart from N with the chain at N+k: replay the k blocks and become
+          // ready at the tip without a scan.
+          transport.reveal(last);
+          const first = yield* Effect.scoped(
+            Effect.gen(function* () {
+              const { seeded, initialReceipts } = seededStage;
+              const owner = yield* makeOwner();
+              yield* owner.awaitReady;
+              const finished = (yield* owner.runProducer(() =>
+                Journal.load(h.binding),
+              ))!;
+              expect(finished.head.id).toBe(transport.points[last]!.point.id);
+              expect(ledgerScans(transport.requests).count).toBe(1);
               expect(finished.capture.history.deposits).toHaveLength(2);
               expect(finished.capture.history.withdrawals).toHaveLength(0);
               expect(finished.incarnations).toHaveLength(4);
@@ -610,6 +701,11 @@ it("runs the default history owner through actual bootstrap, continuation, retir
             );
             cancelledPreparations.push(outcome);
           }
+          // No restart with a non-empty journal ever scanned the ledger.
+          expect(ledgerScans(transport.requests)).toEqual({
+            count: 1,
+            maxInFlight: 1,
+          });
           const count = yield* sql<{
             count: number;
           }>`SELECT count(*)::integer AS count FROM event_history_replay_receipts`;

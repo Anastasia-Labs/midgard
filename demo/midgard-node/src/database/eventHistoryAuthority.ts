@@ -31,6 +31,12 @@ const recoveryTransaction = Context.GenericTag<Token>(
   "midgard/EventHistoryRecoveryTransaction",
 );
 
+/** Canonical source ingestion: recovery repair, or the owner's own append at
+ * the head of a Ready generation. Producer transactions never carry it. */
+const sourceTransaction = Context.GenericTag<Option.Option<Token>>(
+  "midgard/EventHistorySourceTransaction",
+);
+
 const ownedTransaction = Context.GenericTag<
   Readonly<{ token: Token; state: "ready" | "recovering" }>
 >("midgard/HistoryOwnedTransaction");
@@ -49,6 +55,21 @@ export const requireRecoveryTransaction = Effect.gen(function* () {
   if (Option.isNone(token) || Option.isNone(transaction))
     return yield* Effect.fail(
       failure("History journal requires an owned recovery transaction"),
+    );
+  return token.value;
+});
+/** Forward journal work and its dependent materialization: either recovery
+ * or the owner appending at the head of its Ready generation. Rewinds, repair
+ * and anything else that may invalidate a producer's prefix still require
+ * requireRecoveryTransaction. */
+export const requireSourceTransaction = Effect.gen(function* () {
+  const token = Option.flatten(yield* Effect.serviceOption(sourceTransaction));
+  const transaction = yield* Effect.serviceOption(
+    SqlClient.TransactionConnection,
+  );
+  if (Option.isNone(token) || Option.isNone(transaction))
+    return yield* Effect.fail(
+      failure("History journal requires an owned source transaction"),
     );
   return token.value;
 });
@@ -121,6 +142,7 @@ const withState = <A, E, R>(
   token: Token,
   state: "ready" | "recovering",
   mutation: Effect.Effect<A, E, R>,
+  source: boolean,
 ): Effect.Effect<A, E | DatabaseError, R | Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -145,9 +167,14 @@ const withState = <A, E, R>(
           ownedTransaction,
           { token, state },
         );
+        const sourced = Effect.provideService(
+          ownedMutation,
+          sourceTransaction,
+          source ? Option.some(token) : Option.none(),
+        );
         const result = yield* state === "recovering"
-          ? Effect.provideService(ownedMutation, recoveryTransaction, token)
-          : ownedMutation;
+          ? Effect.provideService(sourced, recoveryTransaction, token)
+          : sourced;
         // clock_timestamp(), not transaction-start NOW(), fences a long write.
         const final = yield* lockedRow;
         yield* requireToken(final, token);
@@ -166,7 +193,16 @@ export const withReady = <A, E, R>(
   token: Token,
   mutation: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | DatabaseError, R | Database> =>
-  withState(token, "ready", mutation);
+  withState(token, "ready", mutation, false);
+
+/** The source owner's append at the head of its own Ready generation. The same
+ * row lock serializes it with every producer write; producers keep running on
+ * the journaled prefix they hold, which an append only extends. */
+export const withReadyAppend = <A, E, R>(
+  token: Token,
+  mutation: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | DatabaseError, R | Database> =>
+  withState(token, "ready", mutation, true);
 
 /** Recovery-only SQL repair. This is not an override: owner, generation, live
  * lease and recovering state are checked under the same first row lock. */
@@ -174,7 +210,7 @@ export const withRecovery = <A, E, R>(
   token: Token,
   mutation: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | DatabaseError, R | Database> =>
-  withState(token, "recovering", mutation);
+  withState(token, "recovering", mutation, true);
 
 /** Claim an absent/expired owner. A foreign deployment is never overwritten.
  * Even the same owner must advance generation and revalidate after restart. */
@@ -346,4 +382,38 @@ export const publishReady = (
     );
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to publish history readiness"),
+  );
+
+/** Inside withReadyAppend only: the Ready generation's published point follows
+ * the journal head forward (a repeated delivery of the head is idempotent). It
+ * never moves back or sideways; that needs a new generation. */
+export const advanceReadyPoint = (capture: {
+  readonly point: LedgerSnapshotPoint;
+  readonly snapshotDigest: string;
+}): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* requireSourceTransaction;
+    const owned = yield* currentOwnedTransaction;
+    if (Option.isNone(owned) || owned.value.state !== "ready")
+      return yield* Effect.fail(
+        failure("History point advances only inside a Ready append"),
+      );
+    const hash = yield* digest(capture.point.id, "Point hash");
+    const snapshotDigest = yield* digest(
+      capture.snapshotDigest,
+      "Snapshot digest",
+    );
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      yield* sql`UPDATE event_history_authority SET point_slot = ${capture.point.slot},
+      point_hash = ${hash}, snapshot_digest = ${snapshotDigest}, updated_at = clock_timestamp()
+      WHERE singleton = true AND state = 'ready' AND (point_slot < ${capture.point.slot}
+        OR (point_slot = ${capture.point.slot} AND point_hash = ${hash}))
+      RETURNING singleton`;
+    if (rows.length !== 1)
+      return yield* Effect.fail(
+        failure("History Ready point may only advance"),
+      );
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to advance history readiness"),
   );
