@@ -8,6 +8,7 @@ import {
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
+import { referencePublicationFundingRequired } from "../src/transactions/reference-publication.js";
 import { ensureReferenceScriptTargetsProgram } from "../src/transactions/reference-scripts.js";
 
 it("refuses completion when confirmed reference outputs disappear from the canonical provider", async () => {
@@ -536,3 +537,70 @@ it.each([0, 1])(
     expect(rolledBack).toBe(true);
   },
 );
+
+it("funds the consolidation fees of a wallet holding exactly the lane requirements", async () => {
+  const reference = generateEmulatorAccount({ lovelace: 10_000_000_000n });
+  const funding = generateEmulatorAccount({ lovelace: 10_000_000_000n });
+  const provider = new Emulator([reference, funding]);
+  const lucid = await Lucid(provider, "Custom");
+  lucid.selectWallet.fromSeed(reference.seedPhrase);
+  const fundingLucid = await Lucid(provider, "Custom");
+  fundingLucid.selectWallet.fromSeed(funding.seedPhrase);
+  const authPolicy = await SDK.createReferenceScriptAuthPolicy(lucid);
+  const targets = Object.keys(SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)
+    .slice(0, 28)
+    .map((name) => ({ name, script: authPolicy.mintingScript }));
+  const address = await lucid.wallet().address();
+  // Exactly what the lane split needs, fragmented so that publication must
+  // first pay to consolidate it.
+  const lanes =
+    referencePublicationFundingRequired(lucid, address, targets, authPolicy) +
+    2n * SDK.SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE +
+    SDK.SCRIPT_REF_OUTPUT_LOVELACE;
+  const fragments = 101n;
+  let fragment = lucid.newTx();
+  for (let i = 0n; i < fragments; i += 1n)
+    fragment = fragment.pay.ToAddress(address, {
+      lovelace: lanes / fragments + (i === 0n ? lanes % fragments : 0n),
+    });
+  const fragmented = await fragment.complete({
+    localUPLCEval: true,
+    changeAddress: funding.address,
+  });
+  await (await fragmented.sign.withWallet().complete()).submit();
+  provider.awaitBlock(1);
+  const plain = (await lucid.utxosAt(address)).filter(
+    (utxo) => Object.keys(utxo.assets).length === 1,
+  );
+  expect(plain).toHaveLength(Number(fragments));
+  expect(plain.reduce((sum, utxo) => sum + utxo.assets.lovelace, 0n)).toBe(
+    lanes,
+  );
+  provider.awaitTx = async () => {
+    provider.awaitBlock(1);
+    return true;
+  };
+
+  const result = await Effect.runPromise(
+    ensureReferenceScriptTargetsProgram(
+      lucid,
+      "test",
+      targets,
+      authPolicy,
+      fundingLucid,
+      undefined,
+      1,
+      new Set(),
+      {
+        mode: "chained",
+        synchronize: async () => provider.slot,
+        wait: async () => {
+          provider.awaitBlock(1);
+        },
+      },
+    ),
+  );
+  expect(result.map(({ name }) => name)).toEqual(
+    targets.map(({ name }) => name),
+  );
+});

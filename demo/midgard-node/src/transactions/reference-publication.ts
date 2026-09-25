@@ -56,6 +56,34 @@ export const referencePublicationOptions = (
 };
 
 const MAX_OUTSTANDING_BYTES = 65_536;
+/** Plain wallet inputs that one funding consolidation transaction collects. */
+const CONSOLIDATION_INPUTS = 100;
+
+export const referencePublicationLaneCount = (
+  mode: ReferencePublicationOptions["mode"],
+): number => (mode === "chained" ? 2 : 1);
+
+/**
+ * Upper bound on the fees publication pays to compact fragmented funding
+ * before any lane is funded: one maximum-size transaction per consolidation
+ * step. Working capital covers this on top of the lane requirements, which
+ * already carry the lane split's fee in their buffer.
+ */
+export const referencePublicationPreparationFeeAllowance = (
+  lucid: LucidEvolution,
+  plainFundingCount: number,
+  laneCount: number,
+): bigint => {
+  if (plainFundingCount <= laneCount) return 0n;
+  const parameters = lucid.config().protocolParameters;
+  if (parameters === undefined)
+    throw new Error("Missing publication protocol parameters");
+  const steps = Math.ceil((plainFundingCount - 1) / (CONSOLIDATION_INPUTS - 1));
+  const maximumFee =
+    BigInt(parameters.minFeeA) * BigInt(parameters.maxTxSize) +
+    BigInt(parameters.minFeeB);
+  return BigInt(steps) * maximumFee;
+};
 const key = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex}`;
 
@@ -238,7 +266,7 @@ export const publishReferenceScripts = async ({
       targetNames: remaining.map((t) => t.name),
     });
 
-  const laneCount = options.mode === "chained" ? 2 : 1;
+  const laneCount = referencePublicationLaneCount(options.mode);
   const depth = options.mode === "chained" ? 3 : 1;
   const batches: SDK.ReferenceScriptTarget[][] = [];
   for (let i = 0; i < remaining.length; i += 4)
@@ -260,7 +288,7 @@ export const publishReferenceScripts = async ({
   const consolidationRequired = funding.length > laneCount;
   while (consolidationRequired && funding.length > 1) {
     signal?.throwIfAborted();
-    const inputs = funding.slice(0, 100);
+    const inputs = funding.slice(0, CONSOLIDATION_INPUTS);
     lucid.overrideUTxOs(inputs);
     try {
       const unsigned = await lucid
@@ -337,7 +365,7 @@ export const publishReferenceScripts = async ({
       balance - SDK.SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE;
     if (available < requirements[0]! + requirements[1]!)
       throw new Error(
-        "Insufficient plain wallet funding for two publication lanes",
+        `Insufficient plain wallet funding for two publication lanes: available=${available.toString()},required=${(requirements[0]! + requirements[1]!).toString()}`,
       );
     const surplus = available - requirements[0]! - requirements[1]!;
     const amounts = [

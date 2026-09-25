@@ -25,8 +25,10 @@ import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
   publishReferenceScripts,
   referencePublicationFundingRequired,
+  referencePublicationLaneCount,
   type ReferencePublicationOptions,
   referencePublicationOptions,
+  referencePublicationPreparationFeeAllowance,
 } from "./reference-publication.js";
 import {
   handleSignSubmit,
@@ -796,6 +798,7 @@ const ensureReferenceScriptWalletWorkingCapital = (
   scopeName: string,
   requiredPlainBalance: bigint,
   reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  preparationFeeAllowance: (plainFundingCount: number) => bigint = () => 0n,
 ): Effect.Effect<
   void,
   | SDK.StateQueueError
@@ -812,16 +815,20 @@ const ensureReferenceScriptWalletWorkingCapital = (
         failureMessage: `Failed to fetch wallet UTxOs while preparing ${scopeName} reference scripts`,
       },
     );
-    const currentPlainBalance = sumWalletLovelace(
-      filterPlainWalletUtxos(referenceScriptWalletUtxos),
-    );
-    const targetPlainBalance =
-      requiredPlainBalance > REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE
-        ? requiredPlainBalance
+    const plainUtxos = filterPlainWalletUtxos(referenceScriptWalletUtxos);
+    const currentPlainBalance = sumWalletLovelace(plainUtxos);
+    const workingCapital = (plainFundingCount: number): bigint => {
+      const required =
+        requiredPlainBalance + preparationFeeAllowance(plainFundingCount);
+      return required > REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE
+        ? required
         : REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE;
-    if (currentPlainBalance >= targetPlainBalance) {
+    };
+    if (currentPlainBalance >= workingCapital(plainUtxos.length)) {
       return;
     }
+    // The top-up adds one more plain output for publication to consolidate.
+    const targetPlainBalance = workingCapital(plainUtxos.length + 1);
 
     const referenceScriptAddress = yield* Effect.tryPromise({
       try: () => referenceScriptsLucid.wallet().address(),
@@ -1029,6 +1036,17 @@ export const ensureReferenceScriptTargetsProgram = (
           2n * SDK.SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE +
           SDK.SCRIPT_REF_OUTPUT_LOVELACE,
         reservedFundingOutRefKeys,
+        (plainFundingCount) =>
+          referencePublicationPreparationFeeAllowance(
+            referenceScriptsLucid,
+            plainFundingCount,
+            referencePublicationLaneCount(
+              (
+                publicationOptions ??
+                referencePublicationOptions(referenceScriptsLucid)
+              ).mode,
+            ),
+          ),
       );
     }
     yield* Effect.tryPromise({
