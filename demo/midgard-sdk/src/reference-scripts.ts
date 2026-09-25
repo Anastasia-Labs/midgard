@@ -903,6 +903,8 @@ export type BuiltReferenceScriptPublicationTx = {
 
 type TxCompleteOptions = NonNullable<Parameters<TxBuilder["complete"]>[0]>;
 
+export const REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS = 5 * 60_000;
+
 export const SCRIPT_REF_OUTPUT_LOVELACE = 4_000_000n;
 export const SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE = 10_000_000n;
 
@@ -1232,12 +1234,19 @@ export const incompleteReferenceScriptPublicationTxProgram = ({
           ? tx.mintAssets(roleMintAssets)
           : tx.mintAssets(roleMintAssets, Data.void());
       tx = tx.attach.MintingPolicy(authPolicy.mintingScript);
+      const publicationDeadline =
+        lucid.slotToUnixTime(lucid.currentSlot()) +
+        REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS;
+      tx = tx.validTo(publicationDeadline);
       if (authPolicy.expiresAtUnixTime !== undefined) {
         // Bound by the native authority's slot, including a non-aligned planned
         // lifetime. Subtracting one millisecond can remain in its expiry slot.
         tx = tx.validTo(
-          lucid.slotToUnixTime(
-            lucid.unixTimeToSlot(authPolicy.expiresAtUnixTime) - 1,
+          Math.min(
+            publicationDeadline,
+            lucid.slotToUnixTime(
+              lucid.unixTimeToSlot(authPolicy.expiresAtUnixTime) - 1,
+            ),
           ),
         );
       }

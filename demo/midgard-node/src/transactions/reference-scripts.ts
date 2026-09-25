@@ -23,6 +23,12 @@ import {
 import { runProviderStepWithRetry } from "../provider-retry.js";
 import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
+  publishReferenceScripts,
+  referencePublicationFundingRequired,
+  type ReferencePublicationOptions,
+  referencePublicationOptions,
+} from "./reference-publication.js";
+import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
@@ -62,12 +68,6 @@ const SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE =
 const REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE = 50_000_000n;
 export const REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE = 3_000_000n;
 export const REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT = 32;
-const REFERENCE_SCRIPT_PUBLICATION_BALANCE_INSUFFICIENT_PATTERN =
-  /UTxO Balance Insufficient/i;
-const REFERENCE_SCRIPT_PUBLICATION_TX_SIZE_EXCEEDED_PATTERN =
-  /Max transaction size of \d+ exceeded\. Found: \d+/i;
-const REFERENCE_SCRIPT_PUBLICATION_BALANCE_GAP_PATTERN =
-  /Inputs:\s*Value\s*\{\s*coin:\s*(\d+)[\s\S]*?Outputs:\s*Value\s*\{\s*coin:\s*(\d+)/i;
 const REFERENCE_SCRIPT_PUBLICATION_DEFAULT_MAX_TARGETS_PER_BATCH = 4;
 const WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES = 24;
 const WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY = "5 seconds";
@@ -188,8 +188,9 @@ export const fetchReferenceScriptUtxosProgram = (
         const resolved = [...referenceScriptUtxos]
           .filter(
             (utxo) =>
-              isSameScriptRef(utxo.scriptRef, target.script) &&
-              hasReferenceScriptAuthRole(utxo, target, authPolicy),
+              utxo.address === referenceScriptsAddress &&
+              hasReferenceScriptAuthRole(utxo, target, authPolicy) &&
+              isSameScriptRef(utxo.scriptRef, target.script),
           )
           .sort(compareOutRefs)[0];
         if (resolved === undefined) {
@@ -228,35 +229,6 @@ export const referenceScriptByName = (
     throw new Error(`Missing resolved reference script: ${name}`);
   }
   return found.utxo;
-};
-
-const isReferenceScriptPublicationTxTooLarge = (cause: unknown): boolean =>
-  REFERENCE_SCRIPT_PUBLICATION_TX_SIZE_EXCEEDED_PATTERN.test(
-    formatUnknownError(cause),
-  );
-
-const isReferenceScriptPublicationBalanceInsufficient = (
-  cause: unknown,
-): boolean =>
-  REFERENCE_SCRIPT_PUBLICATION_BALANCE_INSUFFICIENT_PATTERN.test(
-    formatUnknownError(cause),
-  );
-
-const resolveReferenceScriptPublicationAdditionalFunding = (
-  cause: unknown,
-): bigint | undefined => {
-  const match = REFERENCE_SCRIPT_PUBLICATION_BALANCE_GAP_PATTERN.exec(
-    formatUnknownError(cause),
-  );
-  if (match === null) {
-    return undefined;
-  }
-  const inputs = BigInt(match[1]);
-  const outputs = BigInt(match[2]);
-  if (outputs <= inputs) {
-    return undefined;
-  }
-  return outputs - inputs + SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE;
 };
 
 export const utxoOutRefKey = (
@@ -486,9 +458,6 @@ export const buildReferenceScriptSweepPlan = ({
 const resolveReferenceScriptPublicationFundingTarget = (
   missingTargetCount: number,
 ): bigint => SDK.referenceScriptPublicationFundingTarget(missingTargetCount);
-
-const orderWalletFundingUtxos = (utxos: readonly UTxO[]): readonly UTxO[] =>
-  SDK.orderReferenceScriptFundingUtxos(utxos);
 
 export const selectWalletFundingUtxos = (
   utxos: readonly UTxO[],
@@ -800,8 +769,8 @@ const resolveExistingReferenceScriptPublication = (
     const existingCandidates = referenceScriptUtxos
       .filter(
         (utxo) =>
-          isSameScriptRef(utxo.scriptRef, target.script) &&
-          hasReferenceScriptAuthRole(utxo, target, authPolicy),
+          hasReferenceScriptAuthRole(utxo, target, authPolicy) &&
+          isSameScriptRef(utxo.scriptRef, target.script),
       )
       .sort(compareOutRefs)
       .reverse();
@@ -809,8 +778,8 @@ const resolveExistingReferenceScriptPublication = (
       const existing = yield* resolveLiveWalletUtxo(lucid, existingCandidate);
       if (
         existing !== undefined &&
-        isSameScriptRef(existing.scriptRef, target.script) &&
-        hasReferenceScriptAuthRole(existing, target, authPolicy)
+        hasReferenceScriptAuthRole(existing, target, authPolicy) &&
+        isSameScriptRef(existing.scriptRef, target.script)
       ) {
         return {
           name: target.name,
@@ -944,181 +913,6 @@ const ensureReferenceScriptWalletWorkingCapital = (
     );
   });
 
-const publishMissingReferenceScriptTargets = (
-  lucid: LucidEvolution,
-  walletAddress: string,
-  referenceScriptsAddress: string,
-  walletUtxos: readonly UTxO[],
-  fundingCandidateUtxos: readonly UTxO[],
-  missingTargets: readonly ReferenceScriptTarget[],
-  authPolicy: ReferenceScriptAuthMintingPolicy,
-): Effect.Effect<
-  readonly ReferenceScriptResolved[],
-  | SDK.StateQueueError
-  | SDK.LucidError
-  | TxConfirmError
-  | TxSignError
-  | TxSubmitError
-> =>
-  Effect.gen(function* () {
-    yield* Effect.try({
-      try: () =>
-        SDK.assertReferenceScriptRawBodiesFitL1Envelope(missingTargets),
-      catch: (cause) =>
-        cause instanceof SDK.StateQueueError
-          ? cause
-          : new SDK.StateQueueError({
-              message:
-                "Failed to admit raw reference-script bodies for L1 publication",
-              cause,
-            }),
-    });
-    const orderedFundingCandidates = orderWalletFundingUtxos(
-      fundingCandidateUtxos,
-    );
-    let selectedFundingInputs = selectWalletFundingUtxos(
-      fundingCandidateUtxos,
-      resolveReferenceScriptPublicationFundingTarget(missingTargets.length),
-    );
-    if (selectedFundingInputs.length === 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to select non-reference wallet UTxOs for reference-script publication",
-          cause: missingTargets.map(({ name }) => name).join(","),
-        }),
-      );
-    }
-    let nextFundingCandidateIndex = selectedFundingInputs.length;
-    const [txHash, localReferenceOutputs, walletOutputs] = yield* Effect.gen(
-      function* () {
-        while (true) {
-          yield* Effect.sync(() =>
-            lucid.overrideUTxOs([...selectedFundingInputs]),
-          );
-          const buildAttempt = yield* Effect.either(
-            Effect.gen(function* () {
-              const { tx: unsigned, layout } =
-                yield* SDK.completeReferenceScriptPublicationTxProgram({
-                  lucid,
-                  selectedFundingInputs,
-                  walletAddress,
-                  referenceScriptsAddress,
-                  missingTargets,
-                  authPolicy,
-                });
-              const txHash = yield* handleSignSubmit(
-                lucid,
-                unsigned,
-                REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
-              );
-              return [
-                txHash,
-                layout.localReferenceOutputs,
-                layout.walletOutputs,
-              ] as const;
-            }),
-          ).pipe(
-            Effect.ensuring(
-              Effect.sync(() => lucid.overrideUTxOs([...walletUtxos])),
-            ),
-          );
-
-          if (buildAttempt._tag === "Right") {
-            return buildAttempt.right;
-          }
-          if (
-            !isReferenceScriptPublicationBalanceInsufficient(
-              buildAttempt.left,
-            ) ||
-            nextFundingCandidateIndex >= orderedFundingCandidates.length
-          ) {
-            return yield* Effect.fail(buildAttempt.left);
-          }
-
-          const nextFundingInput =
-            orderedFundingCandidates[nextFundingCandidateIndex];
-          nextFundingCandidateIndex += 1;
-          selectedFundingInputs = [...selectedFundingInputs, nextFundingInput];
-          yield* Effect.logWarning(
-            `Reference-script publication for ${missingTargets
-              .map(({ name }) => name)
-              .join(
-                ", ",
-              )} needed more wallet funding than the seed estimate; retrying with ${selectedFundingInputs.length.toString()} funding input(s).`,
-          );
-        }
-      },
-    );
-    const restoredWalletUtxos = [
-      ...walletUtxos.filter(
-        (utxo) =>
-          !selectedFundingInputs.some(
-            (selected) =>
-              selected.txHash === utxo.txHash &&
-              selected.outputIndex === utxo.outputIndex,
-          ),
-      ),
-      ...walletOutputs.map((output) => ({
-        txHash,
-        ...output,
-      })),
-    ];
-    yield* Effect.sync(() => lucid.overrideUTxOs(restoredWalletUtxos));
-    return yield* Effect.forEach(missingTargets, (target) =>
-      Effect.gen(function* () {
-        const localReferenceOutput = localReferenceOutputs.get(target.name);
-        if (localReferenceOutput === undefined) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "Reference-script publication transaction did not contain the expected script-ref output",
-              cause: `${target.name},txHash=${txHash}`,
-            }),
-          );
-        }
-        const localReferenceUtxo: UTxO = {
-          txHash,
-          ...localReferenceOutput,
-        };
-        const liveReference = yield* Effect.either(
-          resolveLiveWalletUtxo(lucid, localReferenceUtxo),
-        );
-        if (
-          liveReference._tag === "Right" &&
-          liveReference.right !== undefined &&
-          isSameScriptRef(liveReference.right.scriptRef, target.script) &&
-          hasReferenceScriptAuthRole(liveReference.right, target, authPolicy)
-        ) {
-          return {
-            name: target.name,
-            utxo: liveReference.right,
-          };
-        }
-        if (
-          liveReference._tag === "Right" &&
-          liveReference.right !== undefined &&
-          hasReferenceScriptAuthRole(liveReference.right, target, authPolicy)
-        ) {
-          return {
-            name: target.name,
-            utxo: {
-              ...liveReference.right,
-              scriptRef: target.script,
-            },
-          };
-        }
-        return {
-          name: target.name,
-          utxo: {
-            ...localReferenceUtxo,
-            scriptRef: target.script,
-          },
-        };
-      }),
-    );
-  });
-
 const toReferenceScriptTarget = ({
   role,
   script,
@@ -1170,6 +964,7 @@ export const ensureReferenceScriptTargetsProgram = (
   configuredReferenceScriptsAddress?: string,
   minAuthPolicyRemainingMs: number = REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
   reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  publicationOptions?: ReferencePublicationOptions,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -1183,250 +978,85 @@ export const ensureReferenceScriptTargetsProgram = (
       try: () => referenceScriptsLucid.wallet().address(),
       catch: (cause) =>
         new SDK.StateQueueError({
-          message: `Failed to resolve reference-script wallet address while resolving ${scopeName} reference scripts`,
+          message: "Failed to resolve reference publisher address",
           cause,
         }),
     });
     const referenceScriptsAddress =
       configuredReferenceScriptsAddress ?? walletAddress;
-    const fetchReferenceScriptWalletUtxos = (): Effect.Effect<
-      readonly UTxO[],
-      SDK.StateQueueError
-    > =>
-      refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {
-        scopeName: `${scopeName} reference scripts`,
-        failureMessage: `Failed to fetch wallet UTxOs while resolving ${scopeName} reference scripts`,
-      });
-    const fetchReferenceScriptPublicationUtxos = (): Effect.Effect<
-      readonly UTxO[],
-      SDK.StateQueueError
-    > =>
-      fetchReferenceScriptUtxosAt(
-        referenceScriptsLucid,
-        referenceScriptsAddress,
-        `${scopeName} reference-script publication UTxO fetch at ${referenceScriptsAddress}`,
-        `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress} while resolving ${scopeName}`,
-      );
-
-    const publishMissingTargetsInBatches = (
-      missingTargets: readonly ReferenceScriptTarget[],
-      ensureWorkingCapital: boolean,
-    ): Effect.Effect<
-      readonly ReferenceScriptResolved[],
-      | SDK.StateQueueError
-      | SDK.LucidError
-      | TxConfirmError
-      | TxSignError
-      | TxSubmitError
-    > =>
-      Effect.gen(function* () {
-        if (missingTargets.length === 0) {
-          return [];
-        }
-        yield* Effect.try({
-          try: () =>
-            assertReferenceScriptAuthMinimumRemaining({
-              policy: authPolicy,
-              nowMs: Date.now(),
-              minRemainingMs: minAuthPolicyRemainingMs,
-              scopeName,
-              targetNames: missingTargets.map(({ name }) => name),
-            }),
-          catch: (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Reference-script auth policy is too close to expiry for publication",
-              cause,
-            }),
-        });
-        let requiredPlainBalance =
-          resolveReferenceScriptPublicationFundingTarget(missingTargets.length);
-        while (true) {
-          if (ensureWorkingCapital) {
-            yield* ensureReferenceScriptWalletWorkingCapital(
-              fundingLucid,
-              referenceScriptsLucid,
-              scopeName,
-              requiredPlainBalance,
-              reservedFundingOutRefKeys,
-            );
-          }
-          const walletUtxos = (yield* fetchReferenceScriptWalletUtxos()).filter(
-            (utxo) => !reservedFundingOutRefKeys.has(utxoOutRefKey(utxo)),
-          );
-          if (walletUtxos.length === 0) {
-            return yield* Effect.fail(
-              new SDK.StateQueueError({
-                message: `No wallet UTxOs available while publishing ${scopeName} reference scripts`,
-                cause: "wallet-has-no-live-utxos",
-              }),
-            );
-          }
-          const plainFundingCandidateUtxos =
-            filterPlainWalletUtxos(walletUtxos);
-          if (plainFundingCandidateUtxos.length === 0) {
-            return yield* Effect.fail(
-              new SDK.StateQueueError({
-                message: `No plain wallet UTxOs available while publishing ${scopeName} reference scripts`,
-                cause: "wallet-has-no-plain-utxos",
-              }),
-            );
-          }
-          yield* Effect.try({
-            try: () =>
-              assertReferenceScriptAuthMinimumRemaining({
-                policy: authPolicy,
-                nowMs: Date.now(),
-                minRemainingMs: minAuthPolicyRemainingMs,
-                scopeName,
-                targetNames: missingTargets.map(({ name }) => name),
-              }),
-            catch: (cause) =>
-              new SDK.StateQueueError({
-                message:
-                  "Reference-script auth policy is too close to expiry for publication",
-                cause,
-              }),
-          });
-          const publishAttempt = yield* Effect.either(
-            publishMissingReferenceScriptTargets(
-              referenceScriptsLucid,
-              walletAddress,
-              referenceScriptsAddress,
-              walletUtxos,
-              plainFundingCandidateUtxos,
-              missingTargets,
-              authPolicy,
-            ),
-          );
-          if (publishAttempt._tag === "Right") {
-            return publishAttempt.right;
-          }
-          if (
-            isReferenceScriptPublicationBalanceInsufficient(publishAttempt.left)
-          ) {
-            if (!ensureWorkingCapital) {
-              return yield* Effect.fail(
-                new SDK.StateQueueError({
-                  message:
-                    "Planned reference-script publication batch was underfunded",
-                  cause: `scope=${scopeName},targets=[${missingTargets.map(({ name }) => name).join(",")}],planner_miss=${formatUnknownError(publishAttempt.left)}`,
-                }),
-              );
-            }
-            const additionalFunding =
-              resolveReferenceScriptPublicationAdditionalFunding(
-                publishAttempt.left,
-              );
-            if (additionalFunding !== undefined) {
-              requiredPlainBalance =
-                sumWalletLovelace(plainFundingCandidateUtxos) +
-                additionalFunding;
-              yield* Effect.logWarning(
-                `Reference-script publication for ${scopeName} needed more dedicated-wallet funding than the current working-capital floor; retrying after replenishing an additional ${additionalFunding.toString()} lovelace.`,
-              );
-              continue;
-            }
-          }
-          if (
-            missingTargets.length === 1 ||
-            !isReferenceScriptPublicationTxTooLarge(publishAttempt.left)
-          ) {
-            return yield* Effect.fail(publishAttempt.left);
-          }
-          const splitIndex = Math.ceil(missingTargets.length / 2);
-          const leftTargets = missingTargets.slice(0, splitIndex);
-          const rightTargets = missingTargets.slice(splitIndex);
-          yield* Effect.logWarning(
-            `Reference-script publication for ${scopeName} exceeded max tx size; retrying in smaller batches: left=[${leftTargets
-              .map(({ name }) => name)
-              .join(", ")}], right=[${rightTargets
-              .map(({ name }) => name)
-              .join(", ")}]`,
-          );
-          const leftPublications = yield* publishMissingTargetsInBatches(
-            leftTargets,
-            ensureWorkingCapital,
-          );
-          const rightPublications = yield* publishMissingTargetsInBatches(
-            rightTargets,
-            ensureWorkingCapital,
-          );
-          return [...leftPublications, ...rightPublications];
-        }
-      });
-
-    const walletUtxos = yield* fetchReferenceScriptPublicationUtxos();
-    const existingPublications = yield* Effect.forEach(targets, (target) =>
-      resolveExistingReferenceScriptPublication(
-        referenceScriptsLucid,
-        walletUtxos,
-        target,
-        authPolicy,
-      ),
+    const existing = yield* fetchReferenceScriptUtxosAt(
+      referenceScriptsLucid,
+      referenceScriptsAddress,
+      scopeName,
+      "Failed to discover published references",
     );
-    const existingByName = new Map(
-      existingPublications
-        .filter(
-          (publication): publication is ReferenceScriptResolved =>
-            publication !== undefined,
-        )
-        .map((publication) => [publication.name, publication]),
+    const missing = targets.filter(
+      (target) =>
+        !existing.some(
+          (utxo) =>
+            utxo.address === referenceScriptsAddress &&
+            hasReferenceScriptAuthRole(utxo, target, authPolicy) &&
+            isSameScriptRef(utxo.scriptRef, target.script),
+        ),
     );
-    const missingTargets = targets.filter(
-      (target) => !existingByName.has(target.name),
-    );
-    let createdByName = new Map<string, ReferenceScriptResolved>();
-    if (missingTargets.length > 0) {
-      const planningWalletUtxos = yield* fetchReferenceScriptWalletUtxos();
-      const deploymentPlan = buildReferenceScriptDeploymentPlan({
-        scopeName,
-        targets,
-        existingTargetNames: new Set(existingByName.keys()),
-        walletUtxos: planningWalletUtxos,
+    if (missing.length > 0) {
+      yield* Effect.try({
+        try: () =>
+          assertReferenceScriptAuthMinimumRemaining({
+            policy: authPolicy,
+            nowMs: Date.now(),
+            minRemainingMs: minAuthPolicyRemainingMs,
+            scopeName,
+            targetNames: missing.map((t) => t.name),
+          }),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Reference-script authority cannot publish missing references",
+            cause,
+          }),
       });
-      yield* Effect.logInfo(
-        `Reference-script deployment plan for ${scopeName}: existing=${deploymentPlan.existingTargetNames.length.toString()},missing=${deploymentPlan.missingTargetNames.length.toString()},batches=${deploymentPlan.batches.length.toString()},submit_count=${deploymentPlan.submitCount.toString()},current_plain_lovelace=${deploymentPlan.currentPlainBalance.toString()},required_plain_lovelace=${deploymentPlan.requiredPlainBalance.toString()},top_up_lovelace=${deploymentPlan.topUpLovelace.toString()},max_targets_per_batch=${deploymentPlan.maxTargetsPerBatch.toString()}`,
-      );
       yield* ensureReferenceScriptWalletWorkingCapital(
         fundingLucid,
         referenceScriptsLucid,
         scopeName,
-        deploymentPlan.requiredPlainBalance,
+        referencePublicationFundingRequired(
+          referenceScriptsLucid,
+          referenceScriptsAddress,
+          missing,
+          authPolicy,
+        ) +
+          2n * SDK.SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE +
+          SDK.SCRIPT_REF_OUTPUT_LOVELACE,
         reservedFundingOutRefKeys,
       );
-      const created: ReferenceScriptResolved[] = [];
-      for (const batch of deploymentPlan.batches) {
-        const batchTargetNames = new Set(batch.targetNames);
-        const batchTargets = missingTargets.filter((target) =>
-          batchTargetNames.has(target.name),
-        );
-        yield* Effect.logInfo(
-          `Publishing planned reference-script batch for ${scopeName}: batch_index=${batch.batchIndex.toString()},target_count=${batch.targetCount.toString()},targets=[${batch.targetNames.join(",")}]`,
-        );
-        created.push(
-          ...(yield* publishMissingTargetsInBatches(batchTargets, true)),
-        );
-      }
-      createdByName = new Map(
-        created.map((publication) => [publication.name, publication]),
-      );
     }
-    const resolvedPublications: ReferenceScriptResolved[] = [];
-    for (const target of targets) {
-      const publication =
-        existingByName.get(target.name) ?? createdByName.get(target.name);
-      if (publication === undefined) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message: "Missing resolved reference script publication",
-            cause: `${scopeName}:${target.name}`,
-          }),
-        );
-      }
-      resolvedPublications.push(publication);
-    }
-    return resolvedPublications;
+    yield* Effect.tryPromise({
+      try: (signal) =>
+        publishReferenceScripts({
+          lucid: referenceScriptsLucid,
+          address: referenceScriptsAddress,
+          targets,
+          authPolicy,
+          reserved: reservedFundingOutRefKeys,
+          minAuthPolicyRemainingMs,
+          signal,
+          options:
+            publicationOptions ??
+            referencePublicationOptions(referenceScriptsLucid),
+        }),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Reference-script publication failed: ${formatUnknownError(cause)}`,
+          cause,
+        }),
+    });
+    return yield* fetchReferenceScriptUtxosProgram(
+      referenceScriptsLucid,
+      referenceScriptsAddress,
+      targets,
+      authPolicy,
+    );
   });
 
 export const deployReferenceScriptCommandProgram = (
@@ -1720,8 +1350,9 @@ export const verifyNodeRuntimeReferenceScriptsProgram = (
       const utxo = [...referenceScriptUtxos]
         .filter(
           (candidate) =>
-            isSameScriptRef(candidate.scriptRef, target.script) &&
-            hasReferenceScriptAuthRole(candidate, target, authPolicy),
+            candidate.address === referenceScriptsAddress &&
+            hasReferenceScriptAuthRole(candidate, target, authPolicy) &&
+            isSameScriptRef(candidate.scriptRef, target.script),
         )
         .sort(compareOutRefs)[0];
       if (utxo === undefined) {

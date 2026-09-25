@@ -1,5 +1,5 @@
 import * as LE from "@lucid-evolution/lucid";
-import { Effect, Schedule } from "effect";
+import { Config, Effect, Schedule } from "effect";
 
 import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../local-ledger-slot.js";
 import {
@@ -8,6 +8,8 @@ import {
 } from "../local-ogmios-slot.js";
 import { customSlotConfigFromShelleyGenesis } from "../lucid-time.js";
 import { providerRouteSummary } from "../provider-diagnostics.js";
+import { configureReferencePublication } from "../transactions/reference-publication.js";
+import { synchronizePublicationIndexer } from "../transactions/reference-publication-provider.js";
 import { ConfigError, NodeConfig } from "./config.js";
 
 /**
@@ -201,6 +203,29 @@ const makeLucid: Effect.Effect<
       }),
     );
   }
+  const publicationSettings = yield* Config.all({
+    mode: Config.literal(
+      "serial",
+      "chained",
+    )("REFERENCE_SCRIPT_PUBLICATION_MODE").pipe(Config.withDefault("serial")),
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigError({
+          message: "Invalid reference publication settings",
+          cause,
+          fieldsAndValues: [],
+        }),
+    ),
+  );
+  configureReferencePublication(referenceScriptsApi, {
+    ...publicationSettings,
+    synchronize: () =>
+      synchronizePublicationIndexer(
+        nodeConfig.L1_OGMIOS_KEY,
+        nodeConfig.L1_KUPO_KEY,
+      ),
+  });
   yield* Effect.logInfo("Lucid built successfully.");
   return {
     api: lucid,

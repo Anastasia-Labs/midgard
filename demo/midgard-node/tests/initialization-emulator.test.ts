@@ -25,6 +25,7 @@ import {
   fetchProtocolDeploymentStatus,
   isSchedulerInitialized,
 } from "../src/transactions/initialization.js";
+import { configureReferencePublication } from "../src/transactions/reference-publication.js";
 import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
@@ -145,6 +146,15 @@ const initEmulatorLucid = async () => {
   );
   lucid.selectWallet.fromSeed(operator.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
+  // Exercise the shared initialization gate with the explicitly enabled publisher.
+  // The full roster must retain the real authority deadline and safety reserve.
+  configureReferencePublication(referenceScriptsLucid, {
+    mode: "chained",
+    synchronize: async () => emulator.slot,
+    wait: async () => {
+      emulator.awaitBlock(1);
+    },
+  });
   // Reserve the one-shot before deriving scripts; registration spends separate funding.
   const split = await (
     await lucid

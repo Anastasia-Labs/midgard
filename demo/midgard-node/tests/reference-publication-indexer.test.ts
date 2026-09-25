@@ -15,14 +15,14 @@ it("requires the exact canonical checkpoint hash as well as its slot", async () 
     .mockResolvedValueOnce(
       response([{ slot_no: 100, header_hash: "cd".repeat(32) }]),
     )
-    .mockResolvedValueOnce(
-      response([{ slot_no: 100, header_hash: blockHash }]),
-    );
+    .mockResolvedValueOnce(response(tip))
+    .mockResolvedValueOnce(response([{ slot_no: 100, header_hash: blockHash }]))
+    .mockResolvedValueOnce(response(tip));
   vi.stubGlobal("fetch", fetch);
   expect(
     await synchronizePublicationIndexer("http://node", "http://indexer"),
   ).toBe(100);
-  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(fetch).toHaveBeenCalledTimes(5);
 });
 
 it.each([
@@ -59,4 +59,44 @@ it.each([
   await expect(
     synchronizePublicationIndexer("http://node", "http://indexer"),
   ).rejects.toThrow("Cannot read publication indexer checkpoints");
+});
+
+it("withdraws checkpoint evidence if the node rolls back during catch-up", async () => {
+  const replacement = { result: { slot: 99, id: "ef".repeat(32) } };
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(response(tip))
+      .mockResolvedValueOnce(
+        response([{ slot_no: 100, header_hash: blockHash }]),
+      )
+      .mockResolvedValueOnce(response(replacement))
+      .mockResolvedValueOnce(
+        response([{ slot_no: 99, header_hash: "ef".repeat(32) }]),
+      )
+      .mockResolvedValueOnce(response(replacement)),
+  );
+  expect(
+    await synchronizePublicationIndexer("http://node", "http://indexer"),
+  ).toBe(99);
+});
+
+it("follows a replacement tip when the abandoned checkpoint was never indexed", async () => {
+  const replacement = { result: { slot: 99, id: "ef".repeat(32) } };
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(response(tip))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response(replacement))
+      .mockResolvedValueOnce(
+        response([{ slot_no: 99, header_hash: "ef".repeat(32) }]),
+      )
+      .mockResolvedValueOnce(response(replacement)),
+  );
+  expect(
+    await synchronizePublicationIndexer("http://node", "http://indexer"),
+  ).toBe(99);
 });

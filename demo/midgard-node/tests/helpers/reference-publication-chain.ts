@@ -1,6 +1,5 @@
 import { open } from "node:fs/promises";
 import { dirname } from "node:path";
-import { setTimeout as pause } from "node:timers/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -10,7 +9,7 @@ import {
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import { acquirePublicationJournalLock } from "./publication-journal-lock.js";
 
@@ -552,61 +551,7 @@ export class ReferencePublicationChain {
   }
 }
 
-const canonicalSlotSchema = Schema.Number.pipe(
-  Schema.filter((slot) => Number.isSafeInteger(slot) && slot >= 0),
-);
-const blockHashSchema = Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u));
-const canonicalTipSchema = Schema.Struct({
-  error: Schema.optional(Schema.Null),
-  result: Schema.Struct({ slot: canonicalSlotSchema, id: blockHashSchema }),
-});
-const indexerCheckpointsSchema = Schema.Array(
-  Schema.Struct({
-    slot_no: canonicalSlotSchema,
-    header_hash: blockHashSchema,
-  }),
-);
-
-/** The barrier prevents Kupo lag from being mistaken for an expired transaction. */
-export const synchronizePublicationIndexer = async (
-  ogmiosUrl: string,
-  kupoUrl: string,
-): Promise<number> => {
-  const response = await fetch(ogmiosUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "queryLedgerState/tip",
-      params: {},
-      id: "publication-tip",
-    }),
-  });
-  const body: unknown = await response.json();
-  if (!response.ok || !Schema.is(canonicalTipSchema)(body))
-    throw new Error("Cannot establish canonical publication tip");
-  const { slot, id: blockHash } = body.result;
-  const deadline = Date.now() + 60_000;
-  while (true) {
-    const checkpointResponse = await fetch(`${kupoUrl}/checkpoints`);
-    const checkpoints: unknown = await checkpointResponse.json();
-    if (
-      !checkpointResponse.ok ||
-      !Schema.is(indexerCheckpointsSchema)(checkpoints)
-    )
-      throw new Error("Cannot read publication indexer checkpoints");
-    if (
-      checkpoints.some(
-        (checkpoint) =>
-          checkpoint.slot_no === slot && checkpoint.header_hash === blockHash,
-      )
-    )
-      return slot;
-    if (Date.now() >= deadline)
-      throw new Error("Publication indexer has not reached canonical node tip");
-    await pause(500);
-  }
-};
+export { synchronizePublicationIndexer } from "../../src/transactions/reference-publication-provider.js";
 
 export const publishReferenceChain = async (
   params: Readonly<{
