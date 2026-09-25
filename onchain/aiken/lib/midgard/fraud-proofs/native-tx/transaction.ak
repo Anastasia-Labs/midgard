@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
@@ -683,70 +682,6 @@ pub fn encode_midgard_transaction_v1(tx: MidgardTransaction) -> ByteArray {
   encode_midgard_transaction_for_version(native_tx_version_v1, tx)
 }
 
-pub fn decode_midgard_transaction_body_data(
-  data: Data,
-) -> MidgardTransactionBody {
-  expect
-      [
-        inputs_preimage_cbor_data, reference_inputs_preimage_cbor_data,
-        outputs_preimage_cbor_data, fee_data, validity_interval_start_data,
-        validity_interval_end_data, required_observers_preimage_cbor_data,
-        required_signers_preimage_cbor_data, mint_preimage_cbor_data,
-        script_integrity_hash_data, auxiliary_data_hash_data, network_id_data,
-      ]
-    = builtin.un_list_data(data)
-
-  MidgardTransactionBody {
-    inputs: inputs_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_inputs_preimage_cbor,
-    reference_inputs: reference_inputs_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_inputs_preimage_cbor,
-    outputs: outputs_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_outputs_preimage_cbor,
-    fee: builtin.un_i_data(fee_data),
-    validity_interval_start: builtin.un_i_data(validity_interval_start_data),
-    validity_interval_end: builtin.un_i_data(validity_interval_end_data),
-    required_observers: required_observers_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_hash28_list_preimage_cbor,
-    required_signers: required_signers_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_hash28_list_preimage_cbor,
-    mint: mint_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_mint_preimage_cbor,
-    script_integrity_hash: builtin.un_b_data(script_integrity_hash_data),
-    auxiliary_data_hash: builtin.un_b_data(auxiliary_data_hash_data),
-    network_id: builtin.un_i_data(network_id_data),
-  }
-}
-
-pub fn decode_midgard_transaction_witness_set_data(
-  data: Data,
-) -> MidgardTransactionWitnessSet {
-  expect
-      [
-        addr_tx_wits_preimage_cbor_data, script_tx_wits_preimage_cbor_data,
-        redeemer_tx_wits_preimage_cbor_data,
-      ]
-    = builtin.un_list_data(data)
-
-  MidgardTransactionWitnessSet {
-    addr_tx_wits: addr_tx_wits_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_address_witnesses_preimage_cbor,
-    script_tx_wits: script_tx_wits_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_script_witnesses_preimage_cbor,
-    redeemer_tx_wits: redeemer_tx_wits_preimage_cbor_data
-      |> builtin.un_b_data
-      |> decode_midgard_tx_redeemer_witnesses_preimage_cbor,
-  }
-}
-
 fn decode_midgard_transaction_body_at(
   tx_cbor: ByteArray,
   offset: Int,
@@ -913,36 +848,6 @@ pub fn verify_midgard_transaction_v1(
   tx_cbor: ByteArray,
 ) -> VerifiedMidgardTransaction {
   verify_midgard_transaction_for_version(native_tx_version_v1, tx_id, tx_cbor)
-}
-
-pub fn partial_view_from_compact(
-  compact: VerifiedTxSourceView,
-) -> MidgardTransactionPartialView {
-  let TxCompactView { body, validity_code, .. } = compact.tx_compact
-  MidgardTransactionPartialView {
-    version: Some(compact.version),
-    validity: when validity_code is {
-      Some(code) -> Some(validity_from_code(code))
-      None -> None
-    },
-    body: Some(
-      MidgardTransactionBodyPartialView {
-        inputs: None,
-        reference_inputs: None,
-        outputs: None,
-        fee: Some(body.fee),
-        validity_interval_start: Some(body.validity_interval_start),
-        validity_interval_end: Some(body.validity_interval_end),
-        required_observers: None,
-        required_signers: None,
-        mint: None,
-        script_integrity_hash: Some(body.script_integrity_hash),
-        auxiliary_data_hash: Some(body.auxiliary_data_hash),
-        network_id: Some(body.network_id),
-      },
-    ),
-    witness_set: None,
-  }
 }
 
 fn decode_optional_inputs_preimage(

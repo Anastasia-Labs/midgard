@@ -839,29 +839,6 @@ fn decode_midgard_redeemer_purpose_tag_at(
   Pair(offset + 1, tag)
 }
 
-pub fn encode_midgard_redeemer_witness_data(
-  witness: MidgardRedeemerWitness,
-) -> Data {
-  let MidgardRedeemerWitness { purpose, index, redeemer_cbor, execution_units }
-    = witness
-  expect index >= 0
-  expect execution_units.memory >= 0
-  expect execution_units.steps >= 0
-  builtin.list_data(
-    [
-      builtin.i_data(purpose |> midgard_redeemer_purpose_to_tag),
-      builtin.i_data(index),
-      builtin.b_data(redeemer_cbor),
-      builtin.list_data(
-        [
-          builtin.i_data(execution_units.memory),
-          builtin.i_data(execution_units.steps),
-        ],
-      ),
-    ],
-  )
-}
-
 pub fn encode_midgard_redeemer_witness(
   witness: MidgardRedeemerWitness,
 ) -> ByteArray {
@@ -904,25 +881,4 @@ pub fn decode_midgard_redeemer_witness_at(
       execution_units: MidgardExecutionUnits { memory, steps },
     },
   )
-}
-
-pub fn decode_midgard_redeemer_witness_data(
-  data: Data,
-) -> MidgardRedeemerWitness {
-  expect [purpose_data,
-        index_data,
-        redeemer_cbor_data, execution_units_data] = builtin.un_list_data(data)
-  expect [memory_data, steps_data] = builtin.un_list_data(execution_units_data)
-  let witness = MidgardRedeemerWitness {
-    purpose: purpose_data
-      |> builtin.un_i_data
-      |> midgard_redeemer_purpose_from_tag,
-    index: builtin.un_i_data(index_data),
-    redeemer_cbor: builtin.un_b_data(redeemer_cbor_data),
-    execution_units: MidgardExecutionUnits {
-      memory: builtin.un_i_data(memory_data),
-      steps: builtin.un_i_data(steps_data),
-    },
-  }
-  witness
 }

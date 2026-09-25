@@ -11,14 +11,12 @@
 ////     Other than in fraud-proof scripts, all onchain scripts must use the
 ////     compact representation.
 ////
-//// These types must correspond to the CBOR types defined in Midgard's
-//// Codec Standard (/codec.cddl).
+//// The compact transaction format these types commit to is specified in
+//// `docs/spec/midgard-tx.md`.
 
 use aiken/builtin
 use aiken/collection/dict.{Dict}
-use aiken/crypto.{
-  ScriptHash, Signature, VerificationKey, VerificationKeyHash, blake2b_224,
-}
+use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential}
 use cardano/assets.{Lovelace}
@@ -27,7 +25,6 @@ use cardano/transaction.{
 }
 use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
-use midgard/common/utils
 use midgard/rejection_reason_v1.{OperatorVerdictV1}
 use midgard/validation_trace_v1
 
@@ -306,11 +303,6 @@ pub fn header_v1_is_valid(header: HeaderV1) -> Bool {
 
 // ## User events
 
-pub fn unsafe_event_to_id_data(event_datum_data: Data) -> Data {
-  expect [id_data, ..] = builtin.unconstr_fields(event_datum_data)
-  id_data
-}
-
 pub fn unsafe_event_to_key_value_pair(
   event_datum_data: Data,
 ) -> Pair<Data, Data> {
@@ -462,13 +454,6 @@ pub type MidgardTxId =
 
 pub type MidgardTxWitsHash =
   H32<MidgardTxWitnessSetCompact>
-
-/// Midgard transaction.
-pub type MidgardTx {
-  body: MidgardTxBody,
-  wits: MidgardTxWitnessSet,
-  validity: MidgardTxValidity,
-}
 
 pub type MidgardTxs =
   Dict<MidgardTxId, MidgardTxCompact>
@@ -655,22 +640,6 @@ pub type SignersHash =
   H32<Signers>
 
 /// Midgard transaction body.
-/// Full representation.
-pub type MidgardTxBody {
-  spend_inputs: MidgardInputs,
-  reference_inputs: MidgardInputs,
-  outputs: MidgardOutputs,
-  fee: Lovelace,
-  validity_interval: ValidityRange,
-  required_observers: Observers,
-  required_signer_hashes: Signers,
-  mint: MidgardValue,
-  script_integrity_hash: H32<Data>,
-  auxiliary_data_hash: H32<Data>,
-  network_id: MidgardNetworkId,
-}
-
-/// Midgard transaction body.
 /// Compact representation.
 pub type MidgardTxBodyCompact {
   spend_inputs: MidgardInputsHash,
@@ -715,14 +684,6 @@ pub type RedeemersHash =
   H32<Redeemers>
 
 /// Midgard transaction witnesses.
-/// Full representation.
-pub type MidgardTxWitnessSet {
-  addr_tx_wits: AddressWits,
-  script_tx_wits: MidgardScriptWits,
-  redeemer_tx_wits: Redeemers,
-}
-
-/// Midgard transaction witnesses.
 /// Compact representation.
 pub type MidgardTxWitnessSetCompact {
   addr_tx_wits: AddressWitsHash,
@@ -730,84 +691,9 @@ pub type MidgardTxWitnessSetCompact {
   redeemer_tx_wits: RedeemersHash,
 }
 
-pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
-  let
-      MidgardTxBody {
-        spend_inputs,
-        reference_inputs,
-        outputs,
-        fee,
-        validity_interval,
-        required_observers,
-        required_signer_hashes,
-        mint,
-        script_integrity_hash,
-        auxiliary_data_hash,
-        network_id,
-      }
-    = body
-  MidgardTxBodyCompact {
-    spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
-    reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
-    outputs: outputs |> utils.serialise_and_hash_32,
-    fee,
-    validity_interval,
-    required_observers: required_observers |> utils.serialise_and_hash_32,
-    required_signer_hashes: required_signer_hashes
-      |> utils.serialise_and_hash_32,
-    mint: mint |> utils.serialise_and_hash_32,
-    script_integrity_hash,
-    auxiliary_data_hash,
-    network_id,
-  }
-}
-
-pub fn midgard_tx_wits_to_compact(
-  wits: MidgardTxWitnessSet,
-) -> MidgardTxWitnessSetCompact {
-  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } = wits
-  MidgardTxWitnessSetCompact {
-    addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
-    script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,
-    redeemer_tx_wits: redeemer_tx_wits |> utils.serialise_and_hash_32,
-  }
-}
-
-pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
-  let MidgardTx { body, wits, validity } = tx
-  let body_compact = body |> midgard_tx_body_to_compact
-  MidgardTxCompact {
-    body: body_compact,
-    wits: wits |> midgard_tx_wits_to_compact |> utils.serialise_and_hash_32,
-    validity,
-  }
-}
-
-pub fn midgard_full_tx_to_id(tx: MidgardTx) -> MidgardTxId {
-  tx.body |> midgard_tx_body_to_compact |> utils.serialise_and_hash_32
-}
-
 /// Midgard script -- either timelock (native) or Plutus (V3).
 /// Full representation.
 pub type MidgardScript {
   Timelock { script: ByteArray }
   Plutus { script: ByteArray }
-}
-
-/// TODO: This assumes the script stored under `Plutus` constructor of
-///       `MidgardScript` is the single CBOR encoding of the Flat encoded
-///       program bytes. Also uses a hardcoded Plutus version 3.
-///
-///       `Timelock` scripts are simply passed to the hash function.
-pub fn hash_midgard_script(midgard_script: MidgardScript) -> ScriptHash {
-  when midgard_script is {
-    Timelock { script } ->
-      builtin.integer_to_bytearray(True, 1, 0)
-        |> bytearray.concat(script)
-        |> blake2b_224
-    Plutus { script } ->
-      builtin.integer_to_bytearray(True, 1, env.plutus_version)
-        |> bytearray.concat(script)
-        |> blake2b_224
-  }
 }

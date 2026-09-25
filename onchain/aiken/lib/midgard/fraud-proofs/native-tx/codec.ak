@@ -1,6 +1,5 @@
 use aiken/builtin
 use aiken/cbor
-use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTxValidity, TxIsInvalid, TxIsValid,
@@ -163,60 +162,6 @@ pub fn decode_canonical_uint_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int>
     ) * 256 + byte_at(bytes, offset + 8)
     expect value > 0xffffffff
     Pair(offset + 9, value)
-  }
-}
-
-pub fn decode_int_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
-  let tag = byte_at(bytes, offset)
-  if tag <= 27 {
-    decode_uint_at(bytes, offset)
-  } else if and {
-    tag >= 32,
-    tag <= 55,
-  } {
-    Pair(offset + 1, -1 - ( tag - 32 ))
-  } else if tag == 56 {
-    Pair(offset + 2, -1 - byte_at(bytes, offset + 1))
-  } else if tag == 57 {
-    Pair(
-      offset + 3,
-      -1 - ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ),
-    )
-  } else if tag == 58 {
-    Pair(
-      offset + 5,
-      -1 - (
-        (
-          ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-            bytes,
-            offset + 3,
-          )
-        ) * 256 + byte_at(bytes, offset + 4)
-      ),
-    )
-  } else {
-    expect tag == 59
-    Pair(
-      offset + 9,
-      -1 - (
-        (
-          (
-            (
-              (
-                (
-                  (
-                    byte_at(bytes, offset + 1) * 256 + byte_at(
-                      bytes,
-                      offset + 2,
-                    )
-                  ) * 256 + byte_at(bytes, offset + 3)
-                ) * 256 + byte_at(bytes, offset + 4)
-              ) * 256 + byte_at(bytes, offset + 5)
-            ) * 256 + byte_at(bytes, offset + 6)
-          ) * 256 + byte_at(bytes, offset + 7)
-        ) * 256 + byte_at(bytes, offset + 8)
-      ),
-    )
   }
 }
 
@@ -415,13 +360,4 @@ pub fn encode_definite_bytes(bytes: ByteArray) -> ByteArray {
 pub fn expect_deserialise(bytes: ByteArray) -> Data {
   expect Some(data) = cbor.deserialise(bytes)
   data
-}
-
-pub fn expect_preimage_hash(
-  preimage_cbor: ByteArray,
-  expected_hash: ByteArray,
-) -> ByteArray {
-  expect _expected_hash = expect_h32(expected_hash)
-  expect blake2b_256(preimage_cbor) == expected_hash
-  preimage_cbor
 }
