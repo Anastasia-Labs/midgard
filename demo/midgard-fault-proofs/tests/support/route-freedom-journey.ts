@@ -15,8 +15,8 @@
  * validator enforces it. Against the stale deployed blueprint these journeys
  * would all die at prepare-selected with the same `Spend[0] unexpected empty
  * list` signature as the recorded rows — an unfalsifiable red that proves
- * nothing — so suites built on this harness must gate themselves with
- * {@link blueprintSpeaksOptionBCompleteItemWire} and skip loudly instead.
+ * nothing — so suites built on this harness call
+ * {@link assertRealBlueprintSpeaksOptionBV1} and fail at collection instead.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
@@ -86,8 +86,8 @@ const ITEM_SEMANTIC_SPEND_TITLE =
  * parameter list from three entries to two. A blueprint still declaring three
  * is the deployed pre-Option-B build, against which every journey in this
  * harness reds out at prepare-selected exactly like the two recorded
- * expected-red rows — so suites skip on it rather than manufacture an
- * unfalsifiable failure.
+ * expected-red rows — so suites refuse it up front rather than manufacture an
+ * unfalsifiable failure deep inside a journey.
  */
 export const blueprintSpeaksOptionBCompleteItemWire = (
   blueprint: Blueprint,
@@ -103,18 +103,26 @@ export const blueprintSpeaksOptionBCompleteItemWire = (
   return (itemSemantic.parameters ?? []).length === 2;
 };
 
-/** The gate the route-freedom suites share, probed once at collection time. */
-export const realBlueprintSpeaksOptionBV1 = (): boolean =>
-  blueprintSpeaksOptionBCompleteItemWire(readBlueprint(realBlueprintPath));
-
-export const OPTION_B_SKIP_REASON =
-  "SKIPPED (#621): the blueprint at MIDGARD_REAL_BLUEPRINT_PATH (or " +
-  "onchain/aiken/plutus.json) predates Option B — " +
-  "canonical_decode_item_semantic_v1 still declares the retired carriage " +
-  "parameter, so every route-freedom journey would red out at " +
-  "prepare-selected with the recorded `Spend[0] unexpected empty list` " +
-  "signature instead of testing anything. Rebuild the blueprint with the " +
-  "pinned Aiken fork (#617 regeneration) to run these journeys.";
+/**
+ * The precondition every suite on this harness asserts at collection time.
+ * Fails closed (test-quality rule 14): Option B is the shipped complete-item
+ * wire, so a blueprint that still declares the retired carriage parameter is a
+ * broken precondition, not a reason to report a silent pass or a skip.
+ */
+export const assertRealBlueprintSpeaksOptionBV1 = (): void => {
+  if (
+    !blueprintSpeaksOptionBCompleteItemWire(readBlueprint(realBlueprintPath))
+  ) {
+    throw new Error(
+      "the blueprint at MIDGARD_REAL_BLUEPRINT_PATH (or " +
+        "onchain/aiken/plutus.json) predates Option B (#621): " +
+        "canonical_decode_item_semantic_v1 still declares the retired " +
+        "carriage parameter, so every route-freedom journey would red out at " +
+        "prepare-selected with `Spend[0] unexpected empty list` instead of " +
+        "testing anything. Rebuild the blueprint with the pinned Aiken fork.",
+    );
+  }
+};
 
 export type CapturedSemanticSubmission = Awaited<
   ReturnType<typeof captureEmulatorSubmission<SemanticResolutionResult>>

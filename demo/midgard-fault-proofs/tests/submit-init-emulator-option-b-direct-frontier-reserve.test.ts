@@ -44,10 +44,9 @@ import { PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
-  OPTION_B_SKIP_REASON,
+  assertRealBlueprintSpeaksOptionBV1,
   prepareRouteFreedomJourney,
   printRouteFreedomCampaignTable,
-  realBlueprintSpeaksOptionBV1,
   type RouteFreedomJourney,
 } from "./support/route-freedom-journey.js";
 import {
@@ -133,12 +132,7 @@ const expectWholeJourneyProofFit = (
   }
 };
 
-// Fail closed (test-quality rule 14): Option B is the shipped complete-item
-// wire, so a blueprint that still declares the retired carriage parameter is
-// a broken precondition, not a reason to report a silent pass.
-if (!realBlueprintSpeaksOptionBV1()) {
-  throw new Error(OPTION_B_SKIP_REASON);
-}
+assertRealBlueprintSpeaksOptionBV1();
 
 type FrontierRun = {
   readonly journey: RouteFreedomJourney;

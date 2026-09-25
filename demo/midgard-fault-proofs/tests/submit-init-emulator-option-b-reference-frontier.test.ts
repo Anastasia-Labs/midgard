@@ -46,10 +46,9 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
 import { describe, expect, it } from "vitest";
 
 import {
-  OPTION_B_SKIP_REASON,
+  assertRealBlueprintSpeaksOptionBV1,
   prepareRouteFreedomJourney,
   printRouteFreedomCampaignTable,
-  realBlueprintSpeaksOptionBV1,
   type RouteFreedomJourney,
 } from "./support/route-freedom-journey.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./support/submit-init-emulator-fixtures.js";
@@ -184,12 +183,7 @@ const expectWholeJourneyProofFit = (
   }
 };
 
-// Fail closed (test-quality rule 14): Option B is the shipped complete-item
-// wire, so a blueprint that still declares the retired carriage parameter is
-// a broken precondition, not a reason to report a silent pass.
-if (!realBlueprintSpeaksOptionBV1()) {
-  throw new Error(OPTION_B_SKIP_REASON);
-}
+assertRealBlueprintSpeaksOptionBV1();
 
 describe("post-Option-B reference-route frontier and sweep-shape baseline (#622)", () => {
   it("measures the full reference journey at the tier-1 ceiling item 14,336 — the reference route's own frontier", async () => {
