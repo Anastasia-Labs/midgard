@@ -56,6 +56,7 @@ import {
   userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
+import { isRetryableProviderError } from "../provider-retry.js";
 import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
   admissionAsDefaultSqlLayer,
@@ -87,29 +88,6 @@ import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
 
-const isRetryableStartupProviderError = (error: unknown): boolean => {
-  const message = formatUnknownError(error, {
-    includeCause: true,
-  }).toLowerCase();
-  return (
-    message.includes("failed to fetch ") ||
-    message.includes("failed to query ") ||
-    message.includes("fetch failed") ||
-    message.includes("status code 503") ||
-    message.includes("response code 503") ||
-    message.includes("status 503") ||
-    message.includes("service unavailable") ||
-    message.includes("temporarily unavailable") ||
-    message.includes("timeout") ||
-    message.includes("timed out") ||
-    message.includes("socket") ||
-    message.includes("econnrefused") ||
-    message.includes("econnreset") ||
-    message.includes("rate limit") ||
-    message.includes("too many requests")
-  );
-};
-
 const runStartupProviderStepWithRetry = <A, E, R>(
   label: string,
   step: Effect.Effect<A, E, R>,
@@ -132,7 +110,7 @@ const runStartupProviderStepWithRetry = <A, E, R>(
       }
 
       lastError = result.left;
-      if (!isRetryableStartupProviderError(lastError)) {
+      if (!isRetryableProviderError(lastError)) {
         return yield* Effect.fail(lastError);
       }
       if (attempt < maxAttempts) {
