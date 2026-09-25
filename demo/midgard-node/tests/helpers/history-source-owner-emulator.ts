@@ -597,8 +597,14 @@ const makeHistoryTransport = (
           this.authenticated = true;
           this.answer(request, genesis);
           break;
-        case "queryNetwork/tip":
-          this.answer(request, tip());
+        case "queryNetwork/tip": {
+          // Ogmios v6 carries the height only on queryNetwork/blockHeight.
+          const { slot, id } = tip();
+          this.answer(request, { slot, id });
+          break;
+        }
+        case "queryNetwork/blockHeight":
+          this.answer(request, tip().height);
           break;
         case "queryLedgerState/tip":
           this.answer(

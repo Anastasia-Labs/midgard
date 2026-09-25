@@ -44,6 +44,38 @@ const tip = (value: unknown): HistoryChainTip | "origin" =>
 const equal = (a: LedgerSnapshotPoint, b: LedgerSnapshotPoint) =>
   a.slot === b.slot && a.id === b.id;
 
+/** Ogmios v6 answers queryNetwork/tip with a point only; the height comes from
+ * queryNetwork/blockHeight. The height is bound to the tip only when two tip
+ * reads bracketing it agree; undefined means the chain moved in between. */
+const readNetworkTip = async (
+  request: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => Promise<unknown>,
+  signal: AbortSignal,
+): Promise<HistoryChainTip | "origin" | undefined> => {
+  const networkTip = async () => {
+    const value = await request("queryNetwork/tip", {});
+    signal.throwIfAborted();
+    return value === "origin" ? value : point(value);
+  };
+  const before = await networkTip();
+  const rawHeight = await request("queryNetwork/blockHeight", {});
+  signal.throwIfAborted();
+  const height = rawHeight === "origin" ? rawHeight : natural(rawHeight);
+  const after = await networkTip();
+  if (before === "origin" || after === "origin") {
+    if (before !== after) return undefined;
+    if (height !== "origin")
+      throw new Error("History network tip is origin but has a block height");
+    return "origin";
+  }
+  if (!equal(before, after)) return undefined;
+  if (height === "origin")
+    throw new Error("History network tip has a point but no block height");
+  return Object.freeze({ ...before, height });
+};
+
 /** Stop waiting without detaching a rejecting consumer promise. Its owner must
  * also cancel/fence that work when onUnavailable fires; this wait owns no SQL. */
 const waitForConsumer = (work: void | Promise<void>, signal: AbortSignal) =>
@@ -248,9 +280,10 @@ export const followEventHistoryChain = async ({
     heartbeat = (async () => {
       while (true) {
         await delay(heartbeatIntervalMs, undefined, { signal: lifetime });
-        const observedTip = tip(await opened.request("queryNetwork/tip", {}));
-        lifetime.throwIfAborted();
-        onTip(observedTip);
+        // A moving chain publishes no heartbeat tip: the socket has answered,
+        // and nextBlock carries the moved frontier.
+        const observedTip = await readNetworkTip(opened.request, lifetime);
+        if (observedTip !== undefined) onTip(observedTip);
       }
     })();
     // Exactly one nextBlock remains pending at a stable tip. A separate bounded

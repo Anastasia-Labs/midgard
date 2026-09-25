@@ -175,7 +175,8 @@ class SourceSocket implements WebSocketLike {
         intersection: this.ledger.point,
         tip: { ...this.ledger.point, height: 1 },
       },
-      "queryNetwork/tip": { ...this.ledger.point, height: 1 },
+      "queryNetwork/tip": this.ledger.point,
+      "queryNetwork/blockHeight": 1,
     };
     expect(Object.hasOwn(results, request.method)).toBe(true);
     this.answer(request, results[request.method]);

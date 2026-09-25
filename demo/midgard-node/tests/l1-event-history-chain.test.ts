@@ -16,6 +16,9 @@ class Socket implements WebSocketLike {
   health = true;
   intersection: unknown = anchor;
   intersectionTip: unknown = next;
+  // Ogmios v6 queryNetwork/tip carries no height; blockHeight carries it.
+  networkTip: () => unknown = () => ({ slot: next.slot, id: next.id });
+  blockHeight: unknown = next.height;
   addEventListener(type: string, listener: (event: never) => void) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
@@ -38,7 +41,9 @@ class Socket implements WebSocketLike {
         tip: this.intersectionTip,
       });
     else if (request.method === "queryNetwork/tip" && this.health)
-      this.answer(request, next);
+      this.answer(request, this.networkTip());
+    else if (request.method === "queryNetwork/blockHeight" && this.health)
+      this.answer(request, this.blockHeight);
   }
   block(result: unknown) {
     const request = this.pendingBlock!;
@@ -243,6 +248,93 @@ describe("continuous node history ChainSync", () => {
     expect(socket.closed).toBe(true);
     expect(run.onUnavailable).toHaveBeenCalledTimes(1);
   });
+
+  it("publishes a heartbeat tip bracketing its block height between two tip reads", async () => {
+    const socket = new Socket();
+    socket.intersectionTip = { ...anchor, height: 2 };
+    socket.blockHeight = 7;
+    const run = start(socket);
+    await vi.waitFor(() =>
+      expect(run.onTip).toHaveBeenCalledWith({
+        slot: next.slot,
+        id: next.id,
+        height: 7,
+      }),
+    );
+    expect(
+      socket.requests
+        .filter(({ method }) => method.startsWith("queryNetwork/"))
+        .slice(0, 3)
+        .map(({ method }) => method),
+    ).toEqual([
+      "queryNetwork/tip",
+      "queryNetwork/blockHeight",
+      "queryNetwork/tip",
+    ]);
+    expect(run.onUnavailable).not.toHaveBeenCalled();
+    await stop(run);
+  });
+
+  it("publishes an origin heartbeat tip only with an origin block height", async () => {
+    const socket = new Socket();
+    socket.networkTip = () => "origin";
+    socket.blockHeight = "origin";
+    const run = start(socket);
+    await vi.waitFor(() => expect(run.onTip).toHaveBeenCalledWith("origin"));
+    expect(run.onUnavailable).not.toHaveBeenCalled();
+    await stop(run);
+  });
+
+  it("publishes no heartbeat tip while the tip moves between reads and stays alive", async () => {
+    const socket = new Socket();
+    let reads = 0;
+    socket.networkTip = () =>
+      ++reads % 2 === 0
+        ? { slot: fork.slot, id: fork.id }
+        : { slot: next.slot, id: next.id };
+    const run = start(socket);
+    await vi.waitFor(() =>
+      expect(
+        socket.requests.filter(
+          ({ method }) => method === "queryNetwork/blockHeight",
+        ).length,
+      ).toBeGreaterThan(3),
+    );
+    // Only the intersection tip was published; the follower is still alive.
+    expect(run.onTip).toHaveBeenCalledTimes(1);
+    expect(run.onUnavailable).not.toHaveBeenCalled();
+    expect(socket.closed).toBe(false);
+    run.socket.block(forward());
+    await flush();
+    expect(run.onForward).toHaveBeenCalledTimes(1);
+    expect(run.onTip).toHaveBeenCalledTimes(2);
+    await stop(run);
+  });
+
+  it.each<[string, () => unknown, unknown]>([
+    [
+      "origin height at a point tip",
+      () => ({ slot: 20, id: next.id }),
+      "origin",
+    ],
+    ["block height at an origin tip", () => "origin", 3],
+    ["missing block height", () => ({ slot: 20, id: next.id }), undefined],
+    ["negative block height", () => ({ slot: 20, id: next.id }), -1],
+    ["string block height", () => ({ slot: 20, id: next.id }), "3"],
+    ["tip carrying no id", () => ({ slot: 20 }), 3],
+  ])(
+    "fails closed on an inconsistent heartbeat tip: %s",
+    async (_label, networkTip, blockHeight) => {
+      const socket = new Socket();
+      socket.networkTip = networkTip;
+      socket.blockHeight = blockHeight;
+      const run = start(socket);
+      expect(await run.completion).toBeInstanceOf(Error);
+      expect(run.onTip).toHaveBeenCalledTimes(1);
+      expect(run.onUnavailable).toHaveBeenCalledTimes(1);
+      expect(socket.closed).toBe(true);
+    },
+  );
 
   it("revokes a disconnected stable-tip session and ignores late blocks", async () => {
     const run = start();

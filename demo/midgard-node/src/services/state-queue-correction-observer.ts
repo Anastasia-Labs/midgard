@@ -622,43 +622,78 @@ const outRef = (label: string): { txHash: string; outputIndex: number } => {
   return { txHash, outputIndex: Number(index) };
 };
 
-const fetchTip = async (
+const TIP_READ_ATTEMPTS = 5;
+
+const queryOgmios = async (
   ogmiosUrl: string,
   fetchImpl: FetchLike,
-): Promise<Tip> => {
+  method: string,
+): Promise<unknown> => {
   const response = await fetchImpl(normalizeOgmiosHttpUrl(ogmiosUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
-      method: "queryNetwork/tip",
+      method,
       params: {},
       id: "midgard-state-queue-correction-tip-v1",
     }),
   });
-  const body = (await response.json()) as {
-    result?: {
-      id?: unknown;
-      slot?: unknown;
-      height?: unknown;
-      tip?: { id?: unknown; slot?: unknown; height?: unknown };
-    };
-  };
-  if (!response.ok) throw new Error("Ogmios tip query failed");
-  const point = body.result?.tip ?? body.result;
+  const body = (await response.json()) as { result?: unknown };
+  if (!response.ok) throw new Error(`Ogmios ${method} query failed`);
+  return body.result;
+};
+
+const fetchTipPoint = async (
+  ogmiosUrl: string,
+  fetchImpl: FetchLike,
+): Promise<Omit<Tip, "blockNo">> => {
+  const point = (await queryOgmios(
+    ogmiosUrl,
+    fetchImpl,
+    "queryNetwork/tip",
+  )) as { id?: unknown; slot?: unknown } | undefined;
   if (
     typeof point?.id !== "string" ||
     !HEX_32.test(point.id) ||
     typeof point.slot !== "number" ||
     !Number.isSafeInteger(point.slot) ||
-    point.slot < 0 ||
-    typeof point.height !== "number" ||
-    !Number.isSafeInteger(point.height) ||
-    point.height < 0
+    point.slot < 0
   ) {
     throw new Error("Ogmios tip query returned no canonical point");
   }
-  return { blockHash: point.id, slot: point.slot, blockNo: point.height };
+  return { blockHash: point.id, slot: point.slot };
+};
+
+/** Ogmios v6 answers queryNetwork/tip with a point only; the height comes from
+ * queryNetwork/blockHeight and is bound to the tip only when two tip reads
+ * bracketing it agree. A chain that keeps moving fails after a few tries. */
+const fetchTip = async (
+  ogmiosUrl: string,
+  fetchImpl: FetchLike,
+): Promise<Tip> => {
+  for (let attempt = 0; attempt < TIP_READ_ATTEMPTS; attempt += 1) {
+    const before = await fetchTipPoint(ogmiosUrl, fetchImpl);
+    const height = await queryOgmios(
+      ogmiosUrl,
+      fetchImpl,
+      "queryNetwork/blockHeight",
+    );
+    if (
+      typeof height !== "number" ||
+      !Number.isSafeInteger(height) ||
+      height < 0
+    ) {
+      throw new Error("Ogmios block height query returned no block height");
+    }
+    const after = await fetchTipPoint(ogmiosUrl, fetchImpl);
+    if (before.blockHash === after.blockHash && before.slot === after.slot) {
+      return { ...before, blockNo: height };
+    }
+  }
+  throw new Error(
+    `Ogmios tip moved during each of ${TIP_READ_ATTEMPTS.toString()} block height reads`,
+  );
 };
 
 /** Canonical local tip shared by operational transaction reconciliation. */

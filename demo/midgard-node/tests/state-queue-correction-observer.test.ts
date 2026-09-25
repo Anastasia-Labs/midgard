@@ -49,6 +49,48 @@ const canonicalJson = (value: unknown): string => {
 const sha256 = (value: unknown): string =>
   createHash("sha256").update(canonicalJson(value)).digest("hex");
 
+/** Ogmios v6: queryNetwork/tip carries no height; blockHeight carries it. */
+const ogmiosTipResponse = (
+  init: RequestInit | undefined,
+  point: { readonly id: string; readonly slot: number },
+  height: number,
+): Response => {
+  const { method } = JSON.parse(String(init?.body)) as { method: string };
+  if (method === "queryNetwork/tip")
+    return new Response(JSON.stringify({ result: point }));
+  expect(method).toBe("queryNetwork/blockHeight");
+  return new Response(JSON.stringify({ result: height }));
+};
+
+const tipOnlySource = (
+  answer: (method: string, call: number) => unknown,
+): {
+  readonly source: StateQueueCorrectionObserverSource;
+  readonly methods: string[];
+} => {
+  const methods: string[] = [];
+  const source = makeLocalKupmiosStateQueueCorrectionSource({
+    deploymentIdentityDigest: deployment,
+    stateQueuePolicyId: policy,
+    stateQueueAddress: "addr_test_state_queue",
+    hubOraclePolicyId: hubPolicy,
+    correctionLockAddress,
+    fraudProofPolicyId: fraudPolicy,
+    fraudProofAddress,
+    kupoUrl: "http://kupo.test",
+    ogmiosUrl: "ws://ogmios.test",
+    readQueue: async () => before,
+    fetchImpl: async (_url: string, init?: RequestInit) => {
+      const { method } = JSON.parse(String(init?.body)) as { method: string };
+      methods.push(method);
+      return new Response(
+        JSON.stringify({ result: answer(method, methods.length) }),
+      );
+    },
+  });
+  return { source, methods };
+};
+
 const before: readonly StateQueueTransitionNode[] = [
   { headerHash: null, outRef: outRef("0") },
   { headerHash: target, outRef: outRef("1") },
@@ -818,11 +860,7 @@ describe("node-owned state-queue correction observer", () => {
         );
       }
       expect(init?.method).toBe("POST");
-      return new Response(
-        JSON.stringify({
-          result: { id: h32("9"), slot: 130, height: 119 },
-        }),
-      );
+      return ogmiosTipResponse(init, { id: h32("9"), slot: 130 }, 119);
     });
     const webSocketFactory = () => {
       const listeners = new Map<string, ((event: never) => void)[]>();
@@ -1048,9 +1086,7 @@ describe("node-owned state-queue correction observer", () => {
           );
         }
         expect(init?.method).toBe("POST");
-        return new Response(
-          JSON.stringify({ result: { id: h32("f"), slot: 140, height: 130 } }),
-        );
+        return ogmiosTipResponse(init, { id: h32("f"), slot: 140 }, 130);
       });
       const webSocketFactory = () => {
         const listeners = new Map<string, ((event: never) => void)[]>();
@@ -1185,4 +1221,55 @@ describe("node-owned state-queue correction observer", () => {
       ).toHaveLength(1);
     },
   );
+
+  it("binds the Ogmios block height to a tip read on both sides of it", async () => {
+    // The first bracket straddles a tip change; the second agrees.
+    const tips = [h32("8"), h32("9"), h32("9"), h32("9")];
+    let tipReads = 0;
+    const { source, methods } = tipOnlySource((method) =>
+      method === "queryNetwork/tip" ? { id: tips[tipReads++], slot: 130 } : 119,
+    );
+    await expect(source.observeTransitions(before, before)).resolves.toEqual(
+      [],
+    );
+    expect(methods).toEqual([
+      "queryNetwork/tip",
+      "queryNetwork/blockHeight",
+      "queryNetwork/tip",
+      "queryNetwork/tip",
+      "queryNetwork/blockHeight",
+      "queryNetwork/tip",
+    ]);
+  });
+
+  it("refuses a tip that keeps moving across a bounded number of reads", async () => {
+    const { source, methods } = tipOnlySource((method, call) =>
+      method === "queryNetwork/tip"
+        ? { id: h32(call.toString(16).slice(-1)), slot: 100 + call }
+        : 119,
+    );
+    await expect(source.observeTransitions(before, before)).rejects.toThrow(
+      "Ogmios tip moved during each of 5 block height reads",
+    );
+    expect(methods).toHaveLength(15);
+  });
+
+  it.each([["origin"], [undefined], [-1], ["119"], [1.5]])(
+    "fails closed on an invalid Ogmios block height %j",
+    async (height) => {
+      const { source } = tipOnlySource((method) =>
+        method === "queryNetwork/tip" ? { id: h32("9"), slot: 130 } : height,
+      );
+      await expect(source.observeTransitions(before, before)).rejects.toThrow(
+        "Ogmios block height query returned no block height",
+      );
+    },
+  );
+
+  it("fails closed on an origin Ogmios tip", async () => {
+    const { source } = tipOnlySource(() => "origin");
+    await expect(source.observeTransitions(before, before)).rejects.toThrow(
+      "Ogmios tip query returned no canonical point",
+    );
+  });
 });

@@ -283,18 +283,17 @@ const fetchJson = async ({
   }
 };
 
-const parseTip = (value: unknown, field: string): LiveTip => {
+const ogmiosResult = (value: unknown, field: string): unknown => {
   const root = record(value, field);
-  const result = Object.hasOwn(root, "result")
-    ? record(root.result, `${field}.result`)
-    : root;
-  const tip = Object.hasOwn(result, "tip")
-    ? record(result.tip, `${field}.tip`)
-    : result;
+  return Object.hasOwn(root, "result") ? root.result : root;
+};
+
+/** Ogmios v6 answers queryNetwork/tip with a point only, never a height. */
+const parseTipPoint = (value: unknown, field: string): ChainPoint => {
+  const tip = record(ogmiosResult(value, field), `${field}.result`);
   return {
     slot: nonNegativeInteger(tip.slot, `${field}.slot`).toString(),
     blockHash: lowerHex(tip.id, HEX_32, `${field}.id`),
-    height: nonNegativeInteger(tip.height, `${field}.height`),
   };
 };
 
@@ -658,6 +657,10 @@ const outputsEqual = (
   right: readonly LiveTransactionOutput[],
 ): boolean => stableJson(left) === stableJson(right);
 
+const TIP_READ_ATTEMPTS = 5;
+
+/** The height comes from queryNetwork/blockHeight and is bound to the tip only
+ * when two tip reads bracketing it agree. A chain that keeps moving fails. */
 const queryTip = async ({
   ogmiosUrl,
   fetchImpl,
@@ -666,8 +669,8 @@ const queryTip = async ({
   readonly ogmiosUrl: string;
   readonly fetchImpl: FetchLike;
   readonly timeoutMs: number;
-}): Promise<LiveTip> =>
-  parseTip(
+}): Promise<LiveTip> => {
+  const query = async (method: string): Promise<unknown> =>
     await fetchJson({
       fetchImpl,
       url: normalizeOgmiosHttpUrl(ogmiosUrl),
@@ -677,13 +680,35 @@ const queryTip = async ({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           jsonrpc: "2.0",
-          method: "queryNetwork/tip",
+          method,
           id: "midgard-q57-authority-tip",
         }),
       },
-    }),
-    "live Ogmios tip",
+    });
+  for (let attempt = 0; attempt < TIP_READ_ATTEMPTS; attempt += 1) {
+    const before = parseTipPoint(
+      await query("queryNetwork/tip"),
+      "live Ogmios tip",
+    );
+    const height = nonNegativeInteger(
+      ogmiosResult(
+        await query("queryNetwork/blockHeight"),
+        "live Ogmios block height",
+      ),
+      "live Ogmios block height",
+    );
+    const after = parseTipPoint(
+      await query("queryNetwork/tip"),
+      "live Ogmios tip",
+    );
+    if (before.slot === after.slot && before.blockHash === after.blockHash) {
+      return { ...before, height };
+    }
+  }
+  throw new Error(
+    `live Ogmios tip moved during each of ${TIP_READ_ATTEMPTS.toString()} block height reads`,
   );
+};
 
 export const createLocalKupmiosStateCorrectionSource = (
   config: Omit<LocalKupmiosStateCorrectionAuthorityConfig, "source">,

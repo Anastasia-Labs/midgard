@@ -182,7 +182,11 @@ describe("streaming history transport model", () => {
     expect(
       await acquired.request("queryLedgerState/utxo", { addresses: [address] }),
     ).toEqual(oldOutputs);
-    expect(await acquired.request("queryNetwork/tip")).toEqual(tip);
+    expect(await acquired.request("queryNetwork/tip")).toEqual({
+      slot: tip.slot,
+      id: tip.id,
+    });
+    expect(await acquired.request("queryNetwork/blockHeight")).toBe(tip.height);
     expect(transport.points[0]!.transactions[0]!.cbor).toBe(
       publication.signedCbor,
     );
