@@ -1,4 +1,5 @@
 import type { MidgardValidationDispute } from "@al-ft/midgard-core";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { ValidationTraceDisputeFaultProofContracts } from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadStepDatum,
@@ -275,6 +276,16 @@ export const buildValidationTraceDisputeAddressClassifier = (
 };
 
 /**
+ * Lucid providers signal an absent unit from `getUtxoByUnit` by throwing
+ * "Unit not found." (Blockfrost, Kupmios); the emulator resolves
+ * `undefined` instead. The error can reach callers wrapped (an Effect
+ * FiberFailure, or a provider error carrying it as `cause`), so the check
+ * reads the whole cause chain.
+ */
+const isUnitNotFoundError = (error: unknown): boolean =>
+  /\bUnit not found\b/u.test(formatUnknownError(error, { includeCause: true }));
+
+/**
  * Derives the R2 dispute cursor from live chain state only: the unique
  * computation-thread token (looked up by its deterministic unit, wherever
  * the interactive chain has carried it), the permanent proof token, and the
@@ -313,7 +324,15 @@ export const deriveValidationTraceDisputeChainStage = async ({
   const threadUnit = toUnit(computationThreadPolicyId, assetName);
   const proofUnit = toUnit(fraudProofPolicyId, assetName);
   const classifier = buildValidationTraceDisputeAddressClassifier(chain);
-  const thread = await lucid.utxoByUnit(threadUnit).catch(() => undefined);
+  const thread: UTxO | undefined = await lucid
+    .utxoByUnit(threadUnit)
+    .catch((error: unknown) => {
+      // Only a provider's explicit "Unit not found." means no live thread;
+      // any other failure (network, HTTP status, non-NFT unit) fails closed
+      // rather than being misread as `not_started`.
+      if (isUnitNotFoundError(error)) return undefined;
+      throw error;
+    });
   if (thread !== undefined) {
     const entry = classifier.get(thread.address);
     if (entry === undefined) {
