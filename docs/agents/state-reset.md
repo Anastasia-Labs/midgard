@@ -14,6 +14,12 @@ This includes:
   confirmed-ledger state
 - Using any reset script that discards local node state
 
+For an authorized fresh deployment, discard the deprecated deployment's local
+state. Do not create database dumps, state archives, or copies of its deployment
+files unless the user explicitly requests a backup. Preserve active credentials,
+shared Cardano/Kupo provider data, unrelated databases, and evidence from the
+current run.
+
 If local DBs or durable node state are wiped, the on-chain contracts, reference
 scripts, scheduler, state queue, hub oracle, operator lists, and any other
 protocol UTxOs must be redeployed from a clean genesis/deployment flow before
