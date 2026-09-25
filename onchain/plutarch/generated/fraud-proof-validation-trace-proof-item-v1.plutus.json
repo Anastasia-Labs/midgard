@@ -1,0 +1,5 @@
+{
+    "cborHex": "46450101002601",
+    "description": "midgard.fraud_proofs.validation_trace.proof_item_v1",
+    "type": "PlutusScriptV3"
+}
