@@ -7,9 +7,11 @@
  * Nothing here registers a command. Keep it free of test-tooling concerns so
  * the operator binary never carries e2e, stress, or benchmark behavior.
  */
+import { constants as osConstants } from "node:os";
+
 import { NodeRuntime } from "@effect/platform-node";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
-import { Effect, pipe } from "effect";
+import { Cause, Effect, Exit, pipe } from "effect";
 
 import type { E2EEnvInheritance } from "../e2e/env.js";
 import * as Services from "../services/index.js";
@@ -155,10 +157,33 @@ export function tapJson<A>(project?: (value: A) => unknown) {
     );
 }
 
+/**
+ * Exit status for a finished CLI effect. An interrupted command did not
+ * complete, so it must not report success the way Effect's default teardown
+ * does: a signal maps to the shell convention `128 + signal number`.
+ */
+export const cliExitCode = (
+  exit: Exit.Exit<unknown, unknown>,
+  signal: NodeJS.Signals | undefined,
+): number => {
+  if (Exit.isSuccess(exit)) return 0;
+  if (Cause.isInterruptedOnly(exit.cause) && signal !== undefined)
+    return 128 + osConstants.signals[signal];
+  return 1;
+};
+
 export const runCliEffect = <A, E>(
   effect: Effect.Effect<A, E, never>,
 ): void => {
-  NodeRuntime.runMain(effect, { teardown: undefined });
+  let signal: NodeJS.Signals | undefined;
+  const record = (received: NodeJS.Signals) => {
+    signal ??= received;
+  };
+  process.once("SIGINT", record);
+  process.once("SIGTERM", record);
+  NodeRuntime.runMain(effect, {
+    teardown: (exit, onExit) => onExit(cliExitCode(exit, signal)),
+  });
 };
 
 export const provideTxServices = <A, E>(
