@@ -1,3 +1,9 @@
+import {
+  loadL1Recording,
+  ogmiosExchanges,
+  ogmiosResult,
+  recordedOgmiosWebSocket,
+} from "@al-ft/midgard-test-support/l1-recordings";
 import { describe, expect, it, vi } from "vitest";
 
 import { followEventHistoryChain } from "../src/l1-event-history-chain.js";
@@ -450,6 +456,94 @@ describe("continuous node history ChainSync", () => {
       expect(run.socket.closed).toBe(true);
     },
   );
+
+  // The doubles above restate what their author believes Ogmios sends. This
+  // one serves what a live Ogmios v7.0.0 on preprod answered, through the
+  // follower's own socket: a `queryNetwork/tip` with no height, a bare
+  // `queryNetwork/blockHeight` number, and chain-sync tips and a praos block
+  // that do carry heights.
+  it("follows a recorded preprod session and publishes its heartbeat tip from the heightless network tip", async () => {
+    const recording = loadL1Recording("preprod-ogmios-network");
+    const [intersect] = ogmiosExchanges(recording, "findIntersection");
+    const found = ogmiosResult(intersect!) as {
+      intersection: { slot: number; id: string };
+    };
+    // The capture offered [tip, "origin"]; the follower offers only its
+    // retained points. Ogmios answers both with the same first intersection,
+    // so only the request is narrowed; every answer stays as recorded.
+    recording.exchanges[recording.exchanges.indexOf(intersect!)] = {
+      ...intersect!,
+      request: {
+        ...intersect!.request,
+        params: { points: [found.intersection] },
+      },
+    };
+    const [firstTip] = ogmiosExchanges(recording, "queryNetwork/tip");
+    const [blockHeight] = ogmiosExchanges(
+      recording,
+      "queryNetwork/blockHeight",
+    );
+    const heartbeatTip = {
+      ...(ogmiosResult(firstTip!) as { slot: number; id: string }),
+      height: ogmiosResult(blockHeight!) as number,
+    };
+    expect(ogmiosResult(firstTip!)).not.toHaveProperty("height");
+
+    const replay = recordedOgmiosWebSocket(recording);
+    const controller = new AbortController();
+    const forwards: unknown[] = [];
+    const tips: unknown[] = [];
+    const onUnavailable = vi.fn();
+    const completion = followEventHistoryChain({
+      ogmiosUrl: "http://localhost:1337",
+      intersections: [found.intersection],
+      retainedPointLimit: 3,
+      requestTimeoutMs: 1_000,
+      heartbeatIntervalMs: 5,
+      signal: controller.signal,
+      onIntersection: () => undefined,
+      onForward: ({ point }) => void forwards.push(point),
+      onRollback: () => undefined,
+      onTip: (tip) => {
+        tips.push(tip);
+        // Stop after the first heartbeat: the recording holds one height.
+        if (
+          replay
+            .requests()
+            .some(({ method }) => method === "queryNetwork/blockHeight")
+        )
+          controller.abort();
+      },
+      onUnavailable,
+      webSocketFactory: (url) =>
+        new replay.WebSocket(url) as unknown as WebSocketLike,
+    }).catch((error: unknown) => error);
+
+    // Only the abort ended the session.
+    expect(await completion).toMatchObject({ name: "AbortError" });
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+    const [adopted] = ogmiosExchanges(recording, "nextBlock")
+      .map((exchange) => ogmiosResult(exchange) as { block?: unknown })
+      .flatMap(({ block }) => (block === undefined ? [] : [block]));
+    const { slot, id, height } = adopted as {
+      slot: number;
+      id: string;
+      height: number;
+    };
+    expect(forwards).toEqual([{ slot, id, height }]);
+    expect(height).toBe(heartbeatTip.height + 1);
+    expect(tips.at(-1)).toEqual(heartbeatTip);
+    expect(
+      replay
+        .requests()
+        .filter(({ method }) => method.startsWith("queryNetwork/"))
+        .map(({ method }) => method),
+    ).toEqual([
+      "queryNetwork/tip",
+      "queryNetwork/blockHeight",
+      "queryNetwork/tip",
+    ]);
+  });
 
   it("closes and drains if an owner callback fails", async () => {
     const run = start();

@@ -103,6 +103,13 @@ selector rules: [references/cli-traps.md](references/cli-traps.md).
 is safe with them, because it fails closed on a zero collected total — a
 stronger check than the selector shape. Prefer it, or
 `scripts/run-focused-check.mjs`, over hand-rolled `aiken check -m` lines.
+For the whole suite, `guard-focused-selector.mjs --all` runs `aiken check`
+under the same rules and prints the collected count.
+
+A CI workflow step never runs `aiken check` directly; it goes through one of
+the two guards. Blind spot: the lint reads `run:` text, so a script that CI
+calls and that spawns `aiken check` itself is not seen.
+[ci: repo-tools-ci/Lint the workflows]
 
 Evidence must report a nonzero collected total, not only the process exit code.
 [review]

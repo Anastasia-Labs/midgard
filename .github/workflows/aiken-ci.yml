@@ -225,10 +225,13 @@ jobs:
           git diff --name-only --exit-code -- '*.ak'
       # One compiler now type-checks AND executes. The split that used to live
       # here (released compiler compiles, patched compiler executes) is gone
-      # with stock's retirement.
+      # with stock's retirement. The guard's `--all` runs the whole suite as a
+      # bare `aiken check` would, prints the collected count, and fails on
+      # zero collected, on any failing test (named in the log) and on a
+      # missing report. A bare `aiken check` that collects nothing exits 0.
       - name: Compile and run the Aiken test suite with the pinned fork
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
-        run: aiken check
+        run: node scripts/guard-focused-selector.mjs --all
       # THE EXECUTION LEDGERS. Every `scripts/*-exec-ledger-v1.json` has a
       # `scripts/verify-*-exec-ledger-v1.mjs` that re-measures it, and every
       # verifier runs here; `scripts/ci/exec-ledgers-wired.test.mjs` derives

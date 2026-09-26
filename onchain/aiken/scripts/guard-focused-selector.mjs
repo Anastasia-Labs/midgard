@@ -13,6 +13,10 @@
 // Use it wherever a focused selector is the evidence. When the exact expected
 // test names are known, prefer scripts/run-focused-check.mjs, which pins the
 // exact count as well.
+//
+// `--all` runs the whole suite (`aiken check` with no `-m`) under the same
+// rules: it prints the collected count and fails on zero, on any failing
+// test, and on a missing report. CI's full-suite step runs through it.
 
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
@@ -25,8 +29,12 @@ const MAX_SELECTOR_LENGTH = 256;
 const VALID_SELECTOR = /^[a-z0-9_][a-z0-9_/]*$/u;
 const VALID_ENVIRONMENT = /^[a-z0-9_-]+$/u;
 
+export const ALL_MODULES = "--all";
+const ALL_MODULES_LABEL = "(all modules)";
+const MAX_LISTED_FAILURES = 20;
+
 export const usage =
-  "usage: node scripts/guard-focused-selector.mjs <module-selector> [<module-selector> ...]";
+  "usage: node scripts/guard-focused-selector.mjs <module-selector> [<module-selector> ...] | --all";
 
 export const parseSelectors = (args) => {
   if (
@@ -45,13 +53,48 @@ export const parseSelectors = (args) => {
   return args;
 };
 
+// `--all` alone selects the whole suite; otherwise every argument is a module
+// selector. `--all` mixed with selectors is refused rather than guessed at.
+export const parseInvocation = (args) =>
+  args.length === 1 && args[0] === ALL_MODULES
+    ? [ALL_MODULES]
+    : parseSelectors(args);
+
+const describeSelector = (selector) =>
+  selector === ALL_MODULES ? ALL_MODULES_LABEL : selector;
+
+// The failing entries of a report, so a red full-suite run names its tests.
+const failingTests = (report) =>
+  (Array.isArray(report?.modules) ? report.modules : []).flatMap((module) =>
+    (Array.isArray(module?.tests) ? module.tests : [])
+      .filter((test) => test?.status !== "pass")
+      .map((test) => ({ module: module?.name, ...test })),
+  );
+
+const listFailures = (report) => {
+  const failures = failingTests(report);
+  if (failures.length === 0) {
+    return "";
+  }
+  const listed = failures
+    .slice(0, MAX_LISTED_FAILURES)
+    .map((failure) => `\n  ${JSON.stringify(failure)}`)
+    .join("");
+  const more =
+    failures.length > MAX_LISTED_FAILURES
+      ? `\n  ... and ${String(failures.length - MAX_LISTED_FAILURES)} more`
+      : "";
+  return `${listed}${more}`;
+};
+
 // `result` is the shape spawnSync returns: { stdout, status, error }.
 export const evaluateSelectorReport = (selector, result) => {
+  const label = describeSelector(selector);
   if (result.error !== undefined && result.error !== null) {
     return {
       selector,
       ok: false,
-      diagnostic: `focused selector ${selector}: Aiken could not be executed: ${result.error.message}`,
+      diagnostic: `focused selector ${label}: Aiken could not be executed: ${result.error.message}`,
     };
   }
 
@@ -62,7 +105,7 @@ export const evaluateSelectorReport = (selector, result) => {
     return {
       selector,
       ok: false,
-      diagnostic: `focused selector ${selector}: Aiken did not return its structured test report (status ${String(result.status)})`,
+      diagnostic: `focused selector ${label}: Aiken did not return its structured test report (status ${String(result.status)}); with its output captured, Aiken prints no compile error, so rerun under a pseudo-terminal to read it: script -qec "aiken check" /dev/null`,
     };
   }
 
@@ -75,7 +118,7 @@ export const evaluateSelectorReport = (selector, result) => {
     return {
       selector,
       ok: false,
-      diagnostic: `focused selector ${selector}: Aiken report has no numeric summary`,
+      diagnostic: `focused selector ${label}: Aiken report has no numeric summary`,
     };
   }
 
@@ -87,7 +130,7 @@ export const evaluateSelectorReport = (selector, result) => {
       passed,
       failed,
       ok: false,
-      diagnostic: `focused selector ${selector} collected 0 tests; a selector that matches no module and no test cannot establish anything, so this gate fails closed`,
+      diagnostic: `focused selector ${label} collected 0 tests; a selector that matches no module and no test cannot establish anything, so this gate fails closed`,
     };
   }
   if (failed !== 0 || passed !== total) {
@@ -97,7 +140,7 @@ export const evaluateSelectorReport = (selector, result) => {
       passed,
       failed,
       ok: false,
-      diagnostic: `focused selector ${selector}: collected=${String(total)}, passed=${String(passed)}, failed=${String(failed)}`,
+      diagnostic: `focused selector ${label}: collected=${String(total)}, passed=${String(passed)}, failed=${String(failed)}${listFailures(report)}`,
     };
   }
   if (result.status !== null && result.status !== 0) {
@@ -107,7 +150,7 @@ export const evaluateSelectorReport = (selector, result) => {
       passed,
       failed,
       ok: false,
-      diagnostic: `focused selector ${selector}: Aiken exited with status ${String(result.status)}`,
+      diagnostic: `focused selector ${label}: Aiken exited with status ${String(result.status)}`,
     };
   }
 
@@ -118,7 +161,10 @@ export const runSelector = (
   selector,
   { binary, projectDirectory, environment },
 ) => {
-  const args = ["check", "-m", selector, "--plain-numbers"];
+  const args =
+    selector === ALL_MODULES
+      ? ["check", "--plain-numbers"]
+      : ["check", "-m", selector, "--plain-numbers"];
   if (environment !== undefined) {
     args.push("--env", environment);
   }
@@ -140,7 +186,7 @@ const isMain =
 if (isMain) {
   let exitCode = 1;
   try {
-    const selectors = parseSelectors(process.argv.slice(2));
+    const selectors = parseInvocation(process.argv.slice(2));
     const environment = process.env.MIDGARD_AIKEN_ENV;
     if (environment !== undefined && !VALID_ENVIRONMENT.test(environment)) {
       throw new Error("MIDGARD_AIKEN_ENV contains an invalid environment name");
@@ -160,7 +206,7 @@ if (isMain) {
       if (outcome.ok) {
         process.stdout.write(
           `${JSON.stringify({
-            selector: outcome.selector,
+            selector: describeSelector(outcome.selector),
             collected: outcome.total,
             passed: outcome.passed,
             failed: outcome.failed,

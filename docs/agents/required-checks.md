@@ -508,7 +508,7 @@ Golden channel committed-field-shape-v1 (@al-ft/midgard-sdk).
 
 Focused Aiken tests of every touched module (fail-closed selector guard).
 
-- Command: `node onchain/aiken/scripts/guard-focused-selector.mjs <selector per touched module>; full run: aiken check`
+- Command: `node onchain/aiken/scripts/guard-focused-selector.mjs <selector per touched module>; full run: --all`
 - Runs on:
   - `onchain/aiken/{lib,validators}/**/*.ak`
 - Needs: `aiken`
