@@ -1,0 +1,4 @@
+interface:
+  display_name: "Writing Reports and PRs"
+  short_description: "PR, commit and hand-back text that separates evidence from claims."
+  default_prompt: "Use $writing-reports-and-prs to write this PR description, commit body or hand-back report with evidence lines, a Not checked list, and dated measurements."
