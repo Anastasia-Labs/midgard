@@ -111,7 +111,7 @@
     "test:da-canonical-v1-e2e": "export NODE_ENV='emulator' && export MIDGARD_RUN_DA_PHASE5_JOINED_E2E='1' && vitest run tests/da-hardening.test.ts tests/da-payload-libp2p-producer.test.ts tests/da-multi-peer-integration.test.ts tests/da-multi-process-10k-integration.test.ts tests/da-publication-reconciler-e2e.test.ts --reporter=default",
     "test:da-phase5-10k-smoke": "export NODE_ENV='emulator' && vitest run tests/da-multi-process-10k-integration.test.ts --reporter=default",
     "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build && pnpm run build",
-    "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
+    "test": "export NODE_ENV='emulator' && vitest run --disable-console-intercept"
   },
   "keywords": [
     "cardano",
