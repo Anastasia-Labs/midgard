@@ -19,6 +19,7 @@ import {
   type BoundHistoryCapture,
   projectEventHistoryBlock,
 } from "../l1-event-history-projection.js";
+import type { HistoryProvenanceChange } from "../l1-event-history-provenance.js";
 import { verifyEventHistoryReferenceBody } from "../l1-event-history-reference.js";
 import {
   type BoundHistoryChainBlock,
@@ -69,11 +70,20 @@ export type HistoryOwnerFrontier = Readonly<{
   maximumLagBlocks: number;
 }>;
 
-export type HistoryOwnerChange = Readonly<{
-  kind: "seed" | "forward" | "rollback" | "resume";
-  before: Journal.Checkpoint | null;
-  after: Journal.Checkpoint;
-}>;
+/** A forward block carries the provenance changes it staged, so dependent
+ * materialization walks only those; every other change is reconciled whole. */
+export type HistoryOwnerChange =
+  | Readonly<{
+      kind: "seed" | "rollback" | "resume";
+      before: Journal.Checkpoint | null;
+      after: Journal.Checkpoint;
+    }>
+  | Readonly<{
+      kind: "forward";
+      before: Journal.Checkpoint;
+      after: Journal.Checkpoint;
+      changes: readonly HistoryProvenanceChange[];
+    }>;
 
 /** The source can continue collecting canonical evidence while producers stay
  * fenced. Pending reconciliation must perform no dependent ledger mutations.
@@ -374,7 +384,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
       return value;
     });
     const reconciled = (
-      kind: HistoryOwnerChange["kind"],
+      kind: "seed" | "rollback" | "resume",
       before: Journal.Checkpoint | null,
     ) =>
       requireCheckpoint.pipe(
@@ -388,6 +398,19 @@ export const makeEventHistoryOwner = <E, R>(input: {
           ),
         ),
       );
+    // A forward append hands its written checkpoint and staged changes to the
+    // callback in the same transaction; no reload.
+    const reconciledForward =
+      (before: Journal.Checkpoint) =>
+      ({ after, changes }: Journal.Appended) =>
+        input.reconcile({ kind: "forward", before, after, changes }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              pendingReconciliation = result ?? undefined;
+            }),
+          ),
+          Effect.as(after),
+        );
 
     // A per-block, lazy body cache: tracked outputs resolve first, and only
     // references actually needed by transition decoding trigger archive reads.
@@ -534,7 +557,9 @@ export const makeEventHistoryOwner = <E, R>(input: {
     const journal = <E2, R2>(
       prepared: ReturnType<typeof Journal.prepareAppend>,
       tipHeight: number,
-      reconcile: Effect.Effect<Journal.Checkpoint, E2, R2>,
+      reconcile: (
+        appended: Journal.Appended,
+      ) => Effect.Effect<Journal.Checkpoint, E2, R2>,
     ) =>
       signedHeaderRecoveryHoldSlot(input.binding.digest).pipe(
         Effect.flatMap((holdSlot) =>
@@ -574,22 +599,16 @@ export const makeEventHistoryOwner = <E, R>(input: {
       const outcome = await run(
         recovery
           .append(
-            journal(
-              prepared,
-              tipHeight,
-              requireCheckpoint.pipe(
-                Effect.tap((after) =>
-                  input.reconcile({ kind: "forward", before, after }).pipe(
-                    Effect.flatMap((result) =>
-                      result === undefined || result === null
-                        ? Effect.void
-                        : Effect.fail(
-                            new HistoryAppendNeedsRecovery({
-                              reason: result.reason,
-                            }),
-                          ),
-                    ),
-                  ),
+            journal(prepared, tipHeight, ({ after, changes }) =>
+              input.reconcile({ kind: "forward", before, after, changes }).pipe(
+                Effect.flatMap((result) =>
+                  result === undefined || result === null
+                    ? Effect.succeed(after)
+                    : Effect.fail(
+                        new HistoryAppendNeedsRecovery({
+                          reason: result.reason,
+                        }),
+                      ),
                 ),
               ),
             ).pipe(
@@ -728,7 +747,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
           const active = await handle;
           appended = await run(
             active.persist(
-              journal(prepared, tipHeight, reconciled("forward", before)),
+              journal(prepared, tipHeight, reconciledForward(before)),
             ),
           );
         }

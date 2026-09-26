@@ -439,15 +439,22 @@ beforeEach(async () => {
     }),
   );
 });
-const reconcile = (
-  before: Journal.Checkpoint,
-  kind: "forward" | "rollback" = "forward",
-) =>
+const reconcile =
+  (before: Journal.Checkpoint) =>
+  ({ after, changes }: Journal.Appended) =>
+    materializeCanonicalHistory(
+      { kind: "forward", before, after, changes },
+      "Preprod",
+    );
+const repair = (before: Journal.Checkpoint) =>
   Journal.load(binding).pipe(
     Effect.flatMap((after) =>
       after === null
         ? Effect.die("Missing checkpoint")
-        : materializeCanonicalHistory({ kind, before, after }, "Preprod"),
+        : materializeCanonicalHistory(
+            { kind: "rollback", before, after },
+            "Preprod",
+          ),
     ),
   );
 const append = async (
@@ -624,7 +631,7 @@ const reverse = async (f: Awaited<ReturnType<typeof readyFixture>>) => {
   await run(
     Authority.withRecovery(
       token,
-      Journal.undoHead(binding, before, reconcile(before, "rollback")),
+      Journal.undoHead(binding, before, repair(before)),
     ),
   );
   return { token, checkpoint: await read() };
@@ -759,11 +766,7 @@ describe("unpublished history-dependent ledger repair", () => {
     await run(
       Authority.withRecovery(
         token,
-        Journal.undoHead(
-          binding,
-          checkpoint,
-          reconcile(checkpoint, "rollback"),
-        ),
+        Journal.undoHead(binding, checkpoint, repair(checkpoint)),
       ),
     );
     const after = await snapshot();
@@ -874,11 +877,7 @@ describe("unpublished history-dependent ledger repair", () => {
         run(
           Authority.withRecovery(
             token,
-            Journal.undoHead(
-              binding,
-              checkpoint,
-              reconcile(checkpoint, "rollback"),
-            ),
+            Journal.undoHead(binding, checkpoint, repair(checkpoint)),
           ),
         ),
       ).rejects.toThrow(message);
@@ -904,7 +903,7 @@ describe("unpublished history-dependent ledger repair", () => {
       run(
         Authority.withRecovery(
           token,
-          Journal.undoHead(binding, stale, reconcile(checkpoint, "rollback")),
+          Journal.undoHead(binding, stale, repair(checkpoint)),
         ),
       ),
     ).rejects.toThrow(/History cursor revision or head changed/);
@@ -932,11 +931,7 @@ describe("unpublished history-dependent ledger repair", () => {
       run(
         Authority.withRecovery(
           token,
-          Journal.undoHead(
-            binding,
-            checkpoint,
-            reconcile(checkpoint, "rollback"),
-          ),
+          Journal.undoHead(binding, checkpoint, repair(checkpoint)),
         ),
       ),
     ).rejects.toThrow(/no longer matches current ledger or payload bytes/);

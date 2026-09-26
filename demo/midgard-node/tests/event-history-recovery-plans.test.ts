@@ -171,7 +171,7 @@ const append = async (
   await run(
     Authority.withRecovery(
       token,
-      Journal.append(binding, prepared, Effect.void, retainEverything),
+      Journal.append(binding, prepared, () => Effect.void, retainEverything),
     ),
   );
   return read();

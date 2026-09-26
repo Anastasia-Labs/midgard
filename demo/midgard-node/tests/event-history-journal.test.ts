@@ -796,7 +796,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, first, probe(1), retainEverything),
+          Journal.append(binding, first, () => probe(1), retainEverything),
         ),
       ),
     ).toMatchObject({ applied: true, revision: "1" });
@@ -804,7 +804,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, first, probe(1), retainEverything),
+          Journal.append(binding, first, () => probe(1), retainEverything),
         ),
       ),
     ).toEqual({ applied: false, revision: "1" });
@@ -812,7 +812,7 @@ describe("durable paired history journal", () => {
       run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, sibling, probe(2), retainEverything),
+          Journal.append(binding, sibling, () => probe(2), retainEverything),
         ),
       ),
     ).rejects.toThrow(/revision or head changed/);
@@ -838,7 +838,7 @@ describe("durable paired history journal", () => {
       run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, first, Effect.void, retainEverything),
+          Journal.append(binding, first, () => Effect.void, retainEverything),
         ),
       ),
     ).rejects.toThrow(/revision or head changed/);
@@ -848,7 +848,7 @@ describe("durable paired history journal", () => {
         Journal.append(
           binding,
           await prepare(rolled, 2),
-          probe(2),
+          () => probe(2),
           retainEverything,
         ),
       ),
@@ -872,7 +872,7 @@ describe("durable paired history journal", () => {
               Journal.append(
                 binding,
                 prepared,
-                probe(index + 1),
+                () => probe(index + 1),
                 retainEverything,
               ),
             ),
@@ -901,7 +901,7 @@ describe("durable paired history journal", () => {
           Journal.append(
             binding,
             next,
-            probe(3).pipe(Effect.zipRight(expire)),
+            () => probe(3).pipe(Effect.zipRight(expire)),
             retainEverything,
           ),
         ),
@@ -921,7 +921,7 @@ describe("durable paired history journal", () => {
       run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, first, failure, retainEverything),
+          Journal.append(binding, first, () => failure, retainEverything),
         ),
       ),
     ).rejects.toThrow(/last mutation failed/);
@@ -930,7 +930,7 @@ describe("durable paired history journal", () => {
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, first, probe(1), retainEverything),
+        Journal.append(binding, first, () => probe(1), retainEverything),
       ),
     );
     const head = await read();
@@ -962,7 +962,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, first, probe(1), retainEverything),
+          Journal.append(binding, first, () => probe(1), retainEverything),
         ),
       );
       const admitted = await read();
@@ -981,7 +981,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, replay, Effect.void, retainEverything),
+          Journal.append(binding, replay, () => Effect.void, retainEverything),
         ),
       );
       expect((await read()).incarnations).toEqual(admitted.incarnations);
@@ -996,7 +996,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, branch, Effect.void, retainEverything),
+          Journal.append(binding, branch, () => Effect.void, retainEverything),
         ),
       );
       const origins = (await read()).incarnations;
@@ -1018,7 +1018,7 @@ describe("durable paired history journal", () => {
       await run(
         Authority.withRecovery(
           token,
-          Journal.append(binding, admission, probe(1), retainEverything),
+          Journal.append(binding, admission, () => probe(1), retainEverything),
         ),
       );
       const admitted = await read();
@@ -1050,7 +1050,7 @@ describe("durable paired history journal", () => {
                 output === order ? moved : output,
               ),
             ),
-            Effect.void,
+            () => Effect.void,
             retainEverything,
           ),
         ),
@@ -1095,7 +1095,7 @@ describe("durable paired history journal", () => {
           Journal.append(
             binding,
             await prepare(continued, 4, [retirement], retiredOutputs),
-            Effect.void,
+            () => Effect.void,
             retainEverything,
           ),
         ),
@@ -1179,7 +1179,7 @@ describe("durable paired history journal", () => {
     await run(
       Authority.withRecovery(
         token,
-        Journal.append(binding, combined, Effect.void, retainEverything),
+        Journal.append(binding, combined, () => Effect.void, retainEverything),
       ),
     );
     const retired = await read();
@@ -1204,7 +1204,7 @@ describe("durable paired history journal", () => {
         Journal.append(
           binding,
           await prepare(restored, 2, [admission, retirement], outputs),
-          Effect.void,
+          () => Effect.void,
           retainEverything,
         ),
       ),
@@ -1220,7 +1220,7 @@ describe("durable paired history journal", () => {
         Journal.append(
           binding,
           await admit(checkpoint, 2),
-          Effect.void,
+          () => Effect.void,
           retainEverything,
         ),
       ),
@@ -1250,7 +1250,7 @@ describe("durable paired history journal", () => {
         Journal.append(
           binding,
           await prepare(checkpoint, 2),
-          Effect.void,
+          () => Effect.void,
           retainEverything,
         ),
       ),
@@ -1283,9 +1283,10 @@ describe("durable paired history journal", () => {
             Journal.append(
               binding,
               prepared,
-              Deferred.succeed(entered, undefined).pipe(
-                Effect.zipRight(Deferred.await(finish)),
-              ),
+              () =>
+                Deferred.succeed(entered, undefined).pipe(
+                  Effect.zipRight(Deferred.await(finish)),
+                ),
               retainEverything,
             ),
           ),
@@ -1317,13 +1318,20 @@ it.each(["deposit", "withdrawal"] as const)(
   async (kind) => {
     const { token, checkpoint } = await start();
     const prepared = await admit(checkpoint, 2, kind);
-    const reconcile = (before: Journal.Checkpoint) =>
+    const reconcile =
+      (before: Journal.Checkpoint) =>
+      ({ after, changes }: Journal.Appended) =>
+        materializeCanonicalHistory(
+          { kind: "forward", before, after, changes },
+          "Preprod",
+        );
+    const repair = (before: Journal.Checkpoint) =>
       Journal.load(binding).pipe(
         Effect.flatMap((after) =>
           after === null
             ? Effect.die("missing checkpoint")
             : materializeCanonicalHistory(
-                { kind: "forward", before, after },
+                { kind: "rollback", before, after },
                 "Preprod",
               ),
         ),
@@ -1391,7 +1399,7 @@ it.each(["deposit", "withdrawal"] as const)(
       run(
         Authority.withRecovery(
           token,
-          Journal.undoHead(binding, admitted, reconcile(admitted)),
+          Journal.undoHead(binding, admitted, repair(admitted)),
         ),
       ),
     ).rejects.toThrow(
@@ -1505,7 +1513,7 @@ it.each(["deposit", "withdrawal"] as const)(
         Journal.append(
           binding,
           await admit(checkpoint, 2, kind),
-          Effect.void,
+          () => Effect.void,
           retainEverything,
         ),
       ),
@@ -1617,7 +1625,7 @@ it.each(["deposit", "withdrawal"] as const)(
         Journal.append(
           binding,
           await admit(checkpoint, 2, kind),
-          Effect.void,
+          () => Effect.void,
           retainEverything,
         ),
       ),
@@ -1734,7 +1742,7 @@ describe("bounded journal retention", () => {
         Journal.append(
           binding,
           prepared,
-          Effect.void,
+          () => Effect.void,
           retention(prepared.block.point.height),
         ),
       ),
@@ -1795,7 +1803,7 @@ describe("bounded journal retention", () => {
           Journal.append(
             binding,
             prepared,
-            Effect.fail(new Error("dependent write failed")),
+            () => Effect.fail(new Error("dependent write failed")),
             behindTip(5)(9),
           ),
         ),
@@ -1886,7 +1894,7 @@ describe("bounded journal retention", () => {
         Journal.append(
           binding,
           prepared,
-          Journal.loadCurrent(binding),
+          () => Journal.loadCurrent(binding),
           retainEverything,
         ).pipe(Effect.timed),
       );
@@ -2057,7 +2065,7 @@ describe("bounded journal retention", () => {
     await run(
       Authority.withReadyAppend(
         token,
-        Journal.append(binding, prepared, Effect.void, behindTip(1)(6)),
+        Journal.append(binding, prepared, () => Effect.void, behindTip(1)(6)),
       ),
     );
     const c6 = await read();

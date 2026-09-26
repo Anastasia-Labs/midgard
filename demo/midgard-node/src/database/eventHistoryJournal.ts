@@ -7,7 +7,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import type { BoundHistoryCapture } from "../l1-event-history-projection.js";
 import {
@@ -26,6 +26,7 @@ import {
 import type { HistoryTransition } from "../l1-event-history-transition.js";
 import type { LedgerSnapshotOutput } from "../l1-ledger-snapshot.js";
 import {
+  currentOwnedTransaction,
   requireRecoveryTransaction,
   requireSourceTransaction,
 } from "./eventHistoryAuthority.js";
@@ -149,6 +150,15 @@ const freeze = <T>(value: T): T => {
     Object.freeze(value);
   }
   return value;
+};
+// Checkpoints this module loaded or built under the cursor lock, and the
+// preparations staged from them. A Ready append trusts no other image.
+const issued = new WeakSet<Checkpoint>();
+const preparations = new WeakSet<object>();
+const issue = (value: Checkpoint): Checkpoint => {
+  const frozen = Object.freeze(value);
+  issued.add(frozen);
+  return frozen;
 };
 const samePoint = (a: Point, b: Point) =>
   a.id === b.id && a.slot === b.slot && a.height === b.height;
@@ -302,6 +312,91 @@ const decodeUndo = (row: ApplicationRow, bindingDigest: string): Undo => {
  * retained range. */
 type Verification = "chain" | "head";
 
+/** The cursor's own fields, its canonical application chain ("chain") or
+ * exact head application ("head"), and its captured address scope. */
+const verifyCursor = (
+  binding: EventHistorySourceBinding,
+  row: CursorRow,
+  applications: readonly ApplicationRow[],
+  verification: Verification,
+) => {
+  if (
+    row.binding_digest.toString("hex") !== binding.digest ||
+    row.manifest_id.toString("hex") !== binding.manifestId
+  )
+    fail("Stored cursor belongs to another source or manifest");
+  if (
+    row.origin_receipt.length === 0 ||
+    digest(row.origin_receipt) !== row.origin_receipt_digest.toString("hex")
+  )
+    fail("Stored origin receipt digest disagrees");
+  const anchor = point(row.anchor_hash, row.anchor_slot, row.anchor_height);
+  const head = point(row.head_hash, row.head_slot, row.head_height);
+  let previous = anchor;
+  let previousRevision: string | null = null;
+  let previousDigest = row.anchor_snapshot_digest.toString("hex");
+  if (verification === "head" && applications.length === 1) {
+    const application = applications[0]!;
+    decodeUndo(application, binding.digest);
+    const next = point(
+      application.block_hash,
+      application.block_slot,
+      application.block_height,
+    );
+    const parentRevision = application.parent_application_revision;
+    if (
+      (parentRevision === null
+        ? application.parent_hash.toString("hex") !== anchor.id ||
+          application.before_snapshot_digest.toString("hex") !==
+            previousDigest ||
+          next.height !== anchor.height + 1 ||
+          next.slot <= anchor.slot
+        : next.height < anchor.height + 2 ||
+          BigInt(application.application_revision) <= BigInt(parentRevision)) ||
+      BigInt(application.application_revision) > BigInt(row.revision)
+    )
+      fail("Canonical application ancestry disagrees");
+    previous = next;
+    previousRevision = application.application_revision;
+    previousDigest = application.after_snapshot_digest.toString("hex");
+  }
+  if (verification === "chain")
+    for (const application of applications) {
+      decodeUndo(application, binding.digest);
+      const next = point(
+        application.block_hash,
+        application.block_slot,
+        application.block_height,
+      );
+      if (
+        application.parent_hash.toString("hex") !== previous.id ||
+        application.parent_application_revision !== previousRevision ||
+        application.before_snapshot_digest.toString("hex") !== previousDigest ||
+        next.height !== previous.height + 1 ||
+        next.slot <= previous.slot ||
+        BigInt(application.application_revision) <=
+          BigInt(previousRevision ?? "0") ||
+        BigInt(application.application_revision) > BigInt(row.revision)
+      )
+        fail("Canonical application ancestry disagrees");
+      previous = next;
+      previousRevision = application.application_revision;
+      previousDigest = application.after_snapshot_digest.toString("hex");
+    }
+  if (
+    !samePoint(previous, head) ||
+    previousRevision !== row.head_application_revision ||
+    previousDigest !== row.snapshot_digest.toString("hex")
+  )
+    fail("Cursor does not identify its exact canonical head application");
+  const addresses = Schema.decodeUnknownSync(
+    Schema.Array(Schema.NonEmptyString),
+  )(row.addresses);
+  if (new Set(addresses).size !== addresses.length)
+    fail("Repeated captured address");
+  return { anchor, head, addresses };
+};
+
 const loadLocked = (
   binding: EventHistorySourceBinding,
   row: CursorRow,
@@ -332,82 +427,12 @@ const loadLocked = (
           ? []
           : yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bindingBytes} AND block_hash = ${row.head_hash} AND application_revision = ${row.head_application_revision}::bigint AND canonical`;
     const decoded = yield* checked(() => {
-      if (
-        row.binding_digest.toString("hex") !== binding.digest ||
-        row.manifest_id.toString("hex") !== binding.manifestId
-      )
-        fail("Stored cursor belongs to another source or manifest");
-      if (
-        row.origin_receipt.length === 0 ||
-        digest(row.origin_receipt) !== row.origin_receipt_digest.toString("hex")
-      )
-        fail("Stored origin receipt digest disagrees");
-      const anchor = point(row.anchor_hash, row.anchor_slot, row.anchor_height);
-      const head = point(row.head_hash, row.head_slot, row.head_height);
-      let previous = anchor;
-      let previousRevision: string | null = null;
-      let previousDigest = row.anchor_snapshot_digest.toString("hex");
-      if (verification === "head" && applications.length === 1) {
-        const application = applications[0]!;
-        decodeUndo(application, binding.digest);
-        const next = point(
-          application.block_hash,
-          application.block_slot,
-          application.block_height,
-        );
-        const parentRevision = application.parent_application_revision;
-        if (
-          (parentRevision === null
-            ? application.parent_hash.toString("hex") !== anchor.id ||
-              application.before_snapshot_digest.toString("hex") !==
-                previousDigest ||
-              next.height !== anchor.height + 1 ||
-              next.slot <= anchor.slot
-            : next.height < anchor.height + 2 ||
-              BigInt(application.application_revision) <=
-                BigInt(parentRevision)) ||
-          BigInt(application.application_revision) > BigInt(row.revision)
-        )
-          fail("Canonical application ancestry disagrees");
-        previous = next;
-        previousRevision = application.application_revision;
-        previousDigest = application.after_snapshot_digest.toString("hex");
-      }
-      if (verification === "chain")
-        for (const application of applications) {
-          decodeUndo(application, binding.digest);
-          const next = point(
-            application.block_hash,
-            application.block_slot,
-            application.block_height,
-          );
-          if (
-            application.parent_hash.toString("hex") !== previous.id ||
-            application.parent_application_revision !== previousRevision ||
-            application.before_snapshot_digest.toString("hex") !==
-              previousDigest ||
-            next.height !== previous.height + 1 ||
-            next.slot <= previous.slot ||
-            BigInt(application.application_revision) <=
-              BigInt(previousRevision ?? "0") ||
-            BigInt(application.application_revision) > BigInt(row.revision)
-          )
-            fail("Canonical application ancestry disagrees");
-          previous = next;
-          previousRevision = application.application_revision;
-          previousDigest = application.after_snapshot_digest.toString("hex");
-        }
-      if (
-        !samePoint(previous, head) ||
-        previousRevision !== row.head_application_revision ||
-        previousDigest !== row.snapshot_digest.toString("hex")
-      )
-        fail("Cursor does not identify its exact canonical head application");
-      const addresses = Schema.decodeUnknownSync(
-        Schema.Array(Schema.NonEmptyString),
-      )(row.addresses);
-      if (new Set(addresses).size !== addresses.length)
-        fail("Repeated captured address");
+      const { anchor, head, addresses } = verifyCursor(
+        binding,
+        row,
+        applications,
+        verification,
+      );
       const ledgerOutputs = outputs.map((stored) => {
         const output = decodeJournalOutput(stored.output_record);
         if (
@@ -470,7 +495,7 @@ const loadLocked = (
       if (capture.snapshotDigest !== row.snapshot_digest.toString("hex"))
         fail("Stored snapshot digest disagrees");
       validateLiveCoverage(capture, decoded.incarnations, decoded.head);
-      return Object.freeze({
+      return issue({
         bindingDigest: binding.digest,
         manifestId: binding.manifestId,
         originReceipt: row.origin_receipt,
@@ -774,7 +799,7 @@ export const prepareAppend = (
     afterSnapshotDigest: projection.capture.snapshotDigest,
     transitions: projection.transitions,
   });
-  return Object.freeze({
+  const prepared: Prepared = Object.freeze({
     expected,
     block: freeze(structuredClone(block)),
     projection: Object.freeze({
@@ -800,6 +825,8 @@ export const prepareAppend = (
       })),
     }),
   });
+  preparations.add(prepared);
+  return prepared;
 };
 
 const requireExpected = (actual: Checkpoint, expected: Checkpoint) => {
@@ -817,7 +844,7 @@ const requireExpected = (actual: Checkpoint, expected: Checkpoint) => {
   )
     fail("History cursor revision or head changed");
 };
-const lockCheckpoint = (
+const lockCursor = (
   binding: EventHistorySourceBinding,
   transaction: "recovery" | "source",
 ) =>
@@ -828,8 +855,15 @@ const lockCheckpoint = (
       yield* sql<CursorRow>`SELECT * FROM event_history_cursor WHERE binding_digest = ${bytes(binding.digest)} FOR UPDATE`;
     if (rows[0] === undefined)
       return yield* checked(() => fail("History journal has no replay anchor"));
-    return yield* loadLocked(binding, rows[0], "head");
+    return rows[0];
   });
+const lockCheckpoint = (
+  binding: EventHistorySourceBinding,
+  transaction: "recovery" | "source",
+) =>
+  lockCursor(binding, transaction).pipe(
+    Effect.flatMap((row) => loadLocked(binding, row, "head")),
+  );
 
 /** Rows each retention step may delete per table. Forward progress adds one
  * block per step, so any backlog (a first move off an old seed, a restart far
@@ -865,7 +899,12 @@ export type RetentionHold = Readonly<{
  * The origin receipt is never changed. */
 const retain = (
   binding: EventHistorySourceBinding,
-  current: Readonly<{ anchor: Point; head: Point; originReceipt: string }>,
+  current: Readonly<{
+    anchor: Point;
+    anchorSnapshotDigest: string;
+    head: Point;
+    originReceipt: string;
+  }>,
   retention: Retention,
 ) =>
   Effect.gen(function* () {
@@ -899,6 +938,7 @@ const retain = (
       }
     }
     let anchor = current.anchor;
+    let anchorSnapshotDigest = current.anchorSnapshotDigest;
     if (target > current.anchor.height) {
       const rows =
         yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications
@@ -941,6 +981,7 @@ const retain = (
           fail("Retention deleted a different canonical range");
       });
       anchor = point(next.block_hash, next.block_slot, next.block_height);
+      anchorSnapshotDigest = next.after_snapshot_digest.toString("hex");
       yield* sql`UPDATE event_history_cursor SET anchor_hash = ${next.block_hash},
         anchor_slot = ${anchor.slot}, anchor_height = ${anchor.height},
         anchor_snapshot_digest = ${next.after_snapshot_digest}
@@ -949,7 +990,7 @@ const retain = (
     const seed = yield* checked(() => originReplayHead(current.originReceipt));
     if (seed === undefined || !samePoint(seed, anchor))
       yield* pruneReplayReceipts(binding.digest, RETENTION_BATCH);
-    return holding
+    const hold: RetentionHold | undefined = holding
       ? Object.freeze({
           holdSlot: retention.holdSlot!,
           anchorHeight: anchor.height,
@@ -959,21 +1000,22 @@ const retain = (
           ),
         })
       : undefined;
+    return { anchor, anchorSnapshotDigest, hold };
   });
 
-/** Recovery or Ready-head append. All changes and the callback share the already-owned
- * outer transaction. Duplicate current-head delivery skips materialization;
- * a new application after rollback receives a fresh monotone revision.
- * Bounded retention (see retain) runs in the same transaction, before the
- * callback observes the new checkpoint. */
-export const append = <A, E, R>(
+/** What an applied append hands its callback, in the same transaction: the
+ * checkpoint it wrote (after retention) and the block's staged provenance
+ * changes, so dependent materialization need walk only those. */
+export type Appended = Readonly<{
+  after: Checkpoint;
+  changes: readonly HistoryProvenanceChange[];
+}>;
+
+const historicalApplications = (
   binding: EventHistorySourceBinding,
   prepared: Prepared,
-  materialize: Effect.Effect<A, E, R>,
-  retention: Retention,
 ) =>
   Effect.gen(function* () {
-    const actual = yield* lockCheckpoint(binding, "source");
     const sql = yield* SqlClient.SqlClient;
     const historical =
       yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bytes(binding.digest)} AND block_hash = ${bytes(prepared.block.point.id)} ORDER BY application_revision`;
@@ -984,6 +1026,53 @@ export const append = <A, E, R>(
           fail("Same block has a conflicting immutable ledger receipt");
       }
     });
+    return historical;
+  });
+
+/** One journaled application: its row, the live-output and incarnation
+ * changes it records, and the cursor moved onto it with a new revision. */
+const writeApplication = (
+  binding: EventHistorySourceBinding,
+  parent: Readonly<{
+    head: Point;
+    headApplicationRevision: string | null;
+    snapshotDigest: string;
+  }>,
+  prepared: Prepared,
+  write: Readonly<{
+    revision: string;
+    snapshotDigest: string;
+    undo: Undo;
+    changes: readonly HistoryProvenanceChange[];
+  }>,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const undoRecord = JSON.stringify(write.undo);
+    yield* sql`INSERT INTO event_history_block_applications (binding_digest, block_hash, application_revision, parent_hash, parent_application_revision, block_slot, block_height, before_snapshot_digest, after_snapshot_digest, ledger_receipt, ledger_receipt_digest, undo_record, undo_digest, canonical)
+    VALUES (${bytes(binding.digest)}, ${bytes(prepared.block.point.id)}, ${write.revision}::bigint, ${bytes(parent.head.id)}, ${parent.headApplicationRevision}::bigint, ${prepared.block.point.slot}, ${prepared.block.point.height}, ${bytes(parent.snapshotDigest)}, ${bytes(write.snapshotDigest)}, ${prepared.receipt}, ${bytes(digest(prepared.receipt))}, ${undoRecord}, ${bytes(digest(undoRecord))}, true)`;
+    for (const change of write.undo.outputs) {
+      if (change.after !== null)
+        yield* putOutput(binding.digest, decodeJournalOutput(change.after));
+      else if (change.before !== null) {
+        const previous = decodeJournalOutput(change.before);
+        yield* sql`DELETE FROM event_history_live_outputs WHERE binding_digest = ${bytes(binding.digest)} AND tx_hash = ${bytes(previous.txHash)} AND output_index = ${previous.outputIndex}`;
+      }
+    }
+    for (const change of write.changes) yield* putIncarnation(change.after);
+    yield* sql`UPDATE event_history_cursor SET head_hash = ${bytes(prepared.block.point.id)}, head_slot = ${prepared.block.point.slot}, head_height = ${prepared.block.point.height}, head_application_revision = ${write.revision}::bigint, snapshot_digest = ${bytes(write.snapshotDigest)}, revision = ${write.revision}::bigint WHERE binding_digest = ${bytes(binding.digest)}`;
+  });
+
+/** Recovery: re-load the locked checkpoint, re-stage the block against it and
+ * re-load the written checkpoint for the callback. */
+const appendRecovering = (
+  binding: EventHistorySourceBinding,
+  prepared: Prepared,
+  retention: Retention,
+) =>
+  Effect.gen(function* () {
+    const actual = yield* lockCheckpoint(binding, "source");
+    const historical = yield* historicalApplications(binding, prepared);
     if (
       samePoint(actual.head, prepared.block.point) &&
       historical.some(
@@ -1019,7 +1108,6 @@ export const append = <A, E, R>(
         fail("Prepared block images changed");
       return {
         revision: (BigInt(actual.revision) + 1n).toString(),
-        undoRecord: JSON.stringify(fresh.undo),
         fresh,
       };
     });
@@ -1033,30 +1121,347 @@ export const append = <A, E, R>(
         after.set(change.after.id, change.after);
       validateLiveCoverage(capture, [...after.values()], prepared.block.point);
     });
-    yield* sql`INSERT INTO event_history_block_applications (binding_digest, block_hash, application_revision, parent_hash, parent_application_revision, block_slot, block_height, before_snapshot_digest, after_snapshot_digest, ledger_receipt, ledger_receipt_digest, undo_record, undo_digest, canonical)
-    VALUES (${bytes(binding.digest)}, ${bytes(prepared.block.point.id)}, ${staged.revision}::bigint, ${bytes(actual.head.id)}, ${actual.headApplicationRevision}::bigint, ${prepared.block.point.slot}, ${prepared.block.point.height}, ${bytes(actual.capture.snapshotDigest)}, ${bytes(capture.snapshotDigest)}, ${prepared.receipt}, ${bytes(digest(prepared.receipt))}, ${staged.undoRecord}, ${bytes(digest(staged.undoRecord))}, true)`;
-    for (const change of staged.fresh.undo.outputs) {
-      if (change.after !== null)
-        yield* putOutput(binding.digest, decodeJournalOutput(change.after));
-      else if (change.before !== null) {
-        const previous = decodeJournalOutput(change.before);
-        yield* sql`DELETE FROM event_history_live_outputs WHERE binding_digest = ${bytes(binding.digest)} AND tx_hash = ${bytes(previous.txHash)} AND output_index = ${previous.outputIndex}`;
-      }
-    }
-    for (const change of staged.fresh.changes)
-      yield* putIncarnation(change.after);
-    yield* sql`UPDATE event_history_cursor SET head_hash = ${bytes(prepared.block.point.id)}, head_slot = ${prepared.block.point.slot}, head_height = ${prepared.block.point.height}, head_application_revision = ${staged.revision}::bigint, snapshot_digest = ${bytes(capture.snapshotDigest)}, revision = ${staged.revision}::bigint WHERE binding_digest = ${bytes(binding.digest)}`;
-    const hold = yield* retain(
+    yield* writeApplication(
+      binding,
+      {
+        head: actual.head,
+        headApplicationRevision: actual.headApplicationRevision,
+        snapshotDigest: actual.capture.snapshotDigest,
+      },
+      prepared,
+      {
+        revision: staged.revision,
+        snapshotDigest: capture.snapshotDigest,
+        undo: staged.fresh.undo,
+        changes: staged.fresh.changes,
+      },
+    );
+    const { hold } = yield* retain(
       binding,
       {
         anchor: actual.anchor,
+        anchorSnapshotDigest: actual.anchorSnapshotDigest,
         head: prepared.block.point,
         originReceipt: actual.originReceipt,
       },
       retention,
     );
-    const result = yield* materialize;
-    return { applied: true as const, revision: staged.revision, result, hold };
+    const after = yield* lockCheckpoint(binding, "source");
+    return {
+      applied: true as const,
+      after,
+      changes: staged.fresh.changes,
+      hold,
+    };
+  });
+
+// Stored order: loadLocked reads outputs by (tx_hash, output_index) and
+// incarnations by incarnation_id. Lowercase fixed-width hex compares as bytes.
+const byOutRef = (a: LedgerSnapshotOutput, b: LedgerSnapshotOutput) =>
+  a.txHash < b.txHash
+    ? -1
+    : a.txHash > b.txHash
+      ? 1
+      : a.outputIndex - b.outputIndex;
+
+/** The expected incarnations with the block's staged changes applied, as a
+ * load would read them back: canonical records in identity order. */
+const appliedIncarnations = (
+  expected: readonly HistoryIncarnation[],
+  changes: readonly HistoryProvenanceChange[],
+) => {
+  const staged = changes
+    .map((change) => ({
+      before: change.before,
+      value: decodeJournalIncarnation(encodeJournalIncarnation(change.after)),
+    }))
+    .sort((a, b) =>
+      a.value.id < b.value.id ? -1 : a.value.id > b.value.id ? 1 : 0,
+    );
+  const result: HistoryIncarnation[] = [];
+  let next = 0;
+  const push = (value: HistoryIncarnation) => {
+    const last = result[result.length - 1];
+    if (last !== undefined && last.id >= value.id)
+      fail("Checkpoint incarnations are not in identity order");
+    result.push(value);
+  };
+  const take = (existing: HistoryIncarnation | undefined) => {
+    const change = staged[next++]!;
+    if (
+      change.before === null
+        ? existing !== undefined
+        : existing === undefined ||
+          historyIncarnationDigest(existing) !==
+            historyIncarnationDigest(change.before)
+    )
+      fail("Staged incarnation before-image disagrees with its checkpoint");
+    push(change.value);
+  };
+  for (const value of expected) {
+    while (next < staged.length && staged[next]!.value.id < value.id)
+      take(undefined);
+    if (next < staged.length && staged[next]!.value.id === value.id)
+      take(value);
+    else push(value);
+  }
+  while (next < staged.length) take(undefined);
+  return Object.freeze(result);
+};
+
+/** Ready head: the owner's checkpoint was fully verified when loaded and has
+ * since changed only through this journal. Every writer of the cursor, live
+ * outputs and incarnations is in this module, runs under the authority lock
+ * and this cursor lock, and moves the revision (append, undoHead) or the head
+ * and anchor with it (retain inside append); seed writes the cursor once. So a
+ * cursor equal to the expected one field by field, with its exact head
+ * application, proves the stored images are the expected ones. Only the
+ * staged rows are read back, and the written checkpoint is built from the
+ * expected one and the block's changes rather than reloaded: the cost of a
+ * Ready append does not grow with the journal's incarnations. */
+const appendHead = (
+  binding: EventHistorySourceBinding,
+  prepared: Prepared,
+  retention: Retention,
+) =>
+  Effect.gen(function* () {
+    const expected = prepared.expected;
+    yield* checked(() => {
+      if (!preparations.has(prepared) || !issued.has(expected))
+        fail(
+          "Ready append requires a preparation staged from a loaded checkpoint",
+        );
+    });
+    const row = yield* lockCursor(binding, "source");
+    const historical = yield* historicalApplications(binding, prepared);
+    const current = yield* checked(() =>
+      point(row.head_hash, row.head_slot, row.head_height),
+    );
+    if (
+      samePoint(current, prepared.block.point) &&
+      historical.some(
+        (application) =>
+          application.canonical &&
+          application.application_revision === row.head_application_revision,
+      )
+    )
+      return { applied: false as const, revision: row.revision };
+    const sql = yield* SqlClient.SqlClient;
+    const bindingKey = yield* checked(() => bytes(binding.digest));
+    const heads =
+      row.head_application_revision === null
+        ? []
+        : yield* sql<ApplicationRow>`SELECT * FROM event_history_block_applications WHERE binding_digest = ${bindingKey} AND block_hash = ${row.head_hash} AND application_revision = ${row.head_application_revision}::bigint AND canonical`;
+    yield* checked(() => {
+      const { anchor, head, addresses } = verifyCursor(
+        binding,
+        row,
+        heads,
+        "head",
+      );
+      if (
+        expected.bindingDigest !== binding.digest ||
+        expected.manifestId !== binding.manifestId ||
+        row.origin_receipt !== expected.originReceipt ||
+        row.origin_receipt_digest.toString("hex") !==
+          expected.originReceiptDigest ||
+        row.revision !== expected.revision ||
+        row.head_application_revision !== expected.headApplicationRevision ||
+        !samePoint(head, expected.head) ||
+        row.snapshot_digest.toString("hex") !==
+          expected.capture.snapshotDigest ||
+        !samePoint(anchor, expected.anchor) ||
+        row.anchor_snapshot_digest.toString("hex") !==
+          expected.anchorSnapshotDigest ||
+        serialise(addresses) !==
+          serialise(expected.capture.history.ledger.addresses)
+      )
+        fail("History cursor revision or head changed");
+    });
+    // The staged before-images, read back under the same lock: stored
+    // incarnations and live outputs the block changes must be exactly the
+    // images it was prepared from (absent when it creates them).
+    const ids = yield* checked(() =>
+      prepared.changes.map((change) => bytes(change.after.id)),
+    );
+    const incarnations =
+      ids.length === 0
+        ? []
+        : yield* sql<{
+            incarnation_id: Buffer;
+            incarnation_digest: Buffer;
+          }>`SELECT incarnation_id, incarnation_digest FROM event_history_incarnations
+          WHERE binding_digest = ${bindingKey} AND ${sql.in("incarnation_id", ids)} FOR UPDATE`;
+    const refs = yield* checked(() =>
+      prepared.undo.outputs.map((change) =>
+        decodeJournalOutput((change.before ?? change.after)!),
+      ),
+    );
+    const hashes = yield* checked(() =>
+      [...new Set(refs.map((ref) => ref.txHash))].map((hash) => bytes(hash)),
+    );
+    const outputs =
+      hashes.length === 0
+        ? []
+        : yield* sql<{
+            tx_hash: Buffer;
+            output_index: number;
+            output_digest: Buffer;
+          }>`SELECT tx_hash, output_index, output_digest FROM event_history_live_outputs
+          WHERE binding_digest = ${bindingKey} AND ${sql.in("tx_hash", hashes)} FOR UPDATE`;
+    yield* checked(() => {
+      const storedIncarnations = new Map(
+        incarnations.map((stored) => [
+          stored.incarnation_id.toString("hex"),
+          stored.incarnation_digest.toString("hex"),
+        ]),
+      );
+      const storedOutputs = new Map(
+        outputs.map((stored) => [
+          key({
+            txHash: stored.tx_hash.toString("hex"),
+            outputIndex: stored.output_index,
+          }),
+          stored.output_digest.toString("hex"),
+        ]),
+      );
+      if (
+        prepared.changes.some(
+          (change) =>
+            storedIncarnations.get(change.after.id) !==
+            (change.before === null
+              ? undefined
+              : historyIncarnationDigest(change.before)),
+        ) ||
+        prepared.undo.outputs.some(
+          (change, index) =>
+            storedOutputs.get(key(refs[index]!)) !==
+            (change.before === null ? undefined : digest(change.before)),
+        )
+      )
+        fail("Prepared block images changed");
+    });
+    const block = prepared.block.point;
+    const capture = yield* decodeBoundEventHistoryLedgerSnapshot(
+      Object.freeze({
+        point: Object.freeze({ id: block.id, slot: block.slot }),
+        addresses: Object.freeze([
+          ...expected.capture.history.ledger.addresses,
+        ]),
+        outputs: Object.freeze(
+          prepared.projection.capture.history.ledger.outputs
+            .map((output) => decodeJournalOutput(encodeJournalOutput(output)))
+            .sort(byOutRef),
+        ),
+      }),
+      binding,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DatabaseError({
+            table,
+            message: "Invalid appended capture",
+            cause,
+          }),
+      ),
+    );
+    yield* checked(() => {
+      if (capture.snapshotDigest !== prepared.projection.capture.snapshotDigest)
+        fail("Appended capture digest disagrees");
+    });
+    const revision = (BigInt(row.revision) + 1n).toString();
+    yield* writeApplication(
+      binding,
+      {
+        head: expected.head,
+        headApplicationRevision: expected.headApplicationRevision,
+        snapshotDigest: expected.capture.snapshotDigest,
+      },
+      prepared,
+      {
+        revision,
+        snapshotDigest: capture.snapshotDigest,
+        undo: prepared.undo,
+        changes: prepared.changes,
+      },
+    );
+    const kept = yield* retain(
+      binding,
+      {
+        anchor: expected.anchor,
+        anchorSnapshotDigest: expected.anchorSnapshotDigest,
+        head: block,
+        originReceipt: expected.originReceipt,
+      },
+      retention,
+    );
+    yield* requireOriginCoverage({
+      binding,
+      originReceipt: expected.originReceipt,
+      anchor: kept.anchor,
+      anchorSnapshotDigest: kept.anchorSnapshotDigest,
+    });
+    const after = yield* checked(() =>
+      issue({
+        bindingDigest: expected.bindingDigest,
+        manifestId: expected.manifestId,
+        originReceipt: expected.originReceipt,
+        originReceiptDigest: expected.originReceiptDigest,
+        anchor: kept.anchor,
+        anchorSnapshotDigest: kept.anchorSnapshotDigest,
+        head: Object.freeze({
+          id: block.id,
+          slot: block.slot,
+          height: block.height,
+        }),
+        headApplicationRevision: revision,
+        revision,
+        capture,
+        incarnations: appliedIncarnations(
+          expected.incarnations,
+          prepared.changes,
+        ),
+      }),
+    );
+    return {
+      applied: true as const,
+      after,
+      changes: prepared.changes,
+      hold: kept.hold,
+    };
+  });
+
+/** Recovery or Ready-head append. All changes and the callback share the
+ * already-owned outer transaction. Duplicate current-head delivery skips the
+ * callback; a new application after rollback receives a fresh monotone
+ * revision. Bounded retention (see retain) runs in the same transaction,
+ * before the callback observes the new checkpoint. Recovery re-verifies the
+ * whole live image and reloads the result; a Ready head append verifies the
+ * cursor and the staged rows only (see appendHead). */
+export const append = <A, E, R>(
+  binding: EventHistorySourceBinding,
+  prepared: Prepared,
+  materialize: (appended: Appended) => Effect.Effect<A, E, R>,
+  retention: Retention,
+) =>
+  Effect.gen(function* () {
+    const owner = yield* currentOwnedTransaction;
+    const appended =
+      Option.isSome(owner) && owner.value.state === "ready"
+        ? yield* appendHead(binding, prepared, retention)
+        : yield* appendRecovering(binding, prepared, retention);
+    if (!appended.applied)
+      return { applied: false as const, revision: appended.revision };
+    const result = yield* materialize({
+      after: appended.after,
+      changes: appended.changes,
+    });
+    return {
+      applied: true as const,
+      revision: appended.after.revision,
+      result,
+      hold: appended.hold,
+    };
   }).pipe(sqlErrorToDatabaseError(table, "Failed to append history journal"));
 
 /** Reverse exactly one current head while producers remain fenced. Retains

@@ -509,17 +509,13 @@ const rows = (table: string, order: string) =>
       }>`SELECT to_jsonb(t) AS row FROM ${sql(table)} t ORDER BY ${sql(order)}`;
     }),
   );
-const reconcile = (before: Journal.Checkpoint) =>
-  Journal.load(binding).pipe(
-    Effect.flatMap((after) =>
-      after === null
-        ? Effect.die("Missing checkpoint")
-        : materializeCanonicalHistory(
-            { kind: "forward", before, after },
-            "Preprod",
-          ),
-    ),
-  );
+const reconcile =
+  (before: Journal.Checkpoint) =>
+  ({ after, changes }: Journal.Appended) =>
+    materializeCanonicalHistory(
+      { kind: "forward", before, after, changes },
+      "Preprod",
+    );
 const fixture = async (
   kind: Kind,
   validity?: Readonly<{ start: bigint; ttl: bigint }>,
@@ -787,7 +783,7 @@ it("holds the retention anchor behind a stale unresolved signed header until rec
         f.token,
         signedHeaderRecoveryHoldSlot(binding.digest).pipe(
           Effect.flatMap((holdSlot) =>
-            Journal.append(binding, prepared, Effect.void, {
+            Journal.append(binding, prepared, () => Effect.void, {
               tipHeight: 10_000,
               horizon: 1,
               holdSlot,

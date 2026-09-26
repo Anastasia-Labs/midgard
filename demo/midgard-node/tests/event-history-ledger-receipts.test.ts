@@ -390,14 +390,11 @@ const ownedFixture = async () => {
       Journal.append(
         binding,
         prepared,
-        Effect.gen(function* () {
-          const after = yield* Journal.load(binding);
-          if (after === null) throw new Error("Missing admitted checkpoint");
-          yield* materializeCanonicalHistory(
-            { kind: "forward", before: checkpoint, after },
+        ({ after, changes }) =>
+          materializeCanonicalHistory(
+            { kind: "forward", before: checkpoint, after, changes },
             "Preprod",
-          );
-        }),
+          ),
         retainEverything,
       ),
     ),

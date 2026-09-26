@@ -123,6 +123,9 @@ export const APPLICATION_INDEX_NAMES = [
   "uniq_event_history_incarnation_event",
   "uniq_event_history_canonical_event",
   "uniq_event_history_canonical_key",
+  "idx_event_history_incarnations_orphans",
+  "idx_deposits_utxos_history_association",
+  "idx_withdrawal_utxos_history_association",
   "event_history_l2_ledger_receipts_unreversed",
   "event_history_recovery_plans_prepared",
 ] as const;

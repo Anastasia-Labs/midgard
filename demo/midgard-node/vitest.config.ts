@@ -25,6 +25,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/event-history-submission-journal.test.ts
  *   tests/event-history-authority.test.ts
  *   tests/event-history-journal.test.ts
+ *   tests/event-history-ready-append.test.ts
  *   tests/l1-event-history-initialization-emulator.test.ts
  *   tests/event-history-recovery.test.ts
  *   tests/native-mpf-local-finalization.test.ts

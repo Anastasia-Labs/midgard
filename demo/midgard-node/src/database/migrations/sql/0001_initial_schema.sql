@@ -1762,6 +1762,10 @@ CREATE UNIQUE INDEX uniq_event_history_canonical_event
     ON public.event_history_incarnations(binding_digest, kind, event_id) WHERE origin_canonical;
 CREATE UNIQUE INDEX uniq_event_history_canonical_key
     ON public.event_history_incarnations(binding_digest, kind, event_key) WHERE origin_canonical;
+-- Orphans are few; ledger repair and disposition look for them on every
+-- reconciliation without scanning the canonical incarnations.
+CREATE INDEX idx_event_history_incarnations_orphans
+    ON public.event_history_incarnations(binding_digest) WHERE NOT origin_canonical;
 
 -- Private association to the exact authenticated admission incarnation. Null is
 -- an unassociated local row, never production history eligibility; the source
@@ -1788,6 +1792,12 @@ ALTER TABLE public.withdrawal_utxos
       FOREIGN KEY (history_binding_digest, history_incarnation_id)
       REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
       MATCH FULL ON DELETE RESTRICT;
+-- Event rows by associated incarnation: orphan repair, disposition and a
+-- forward block's eligibility check find them by association, not public ID.
+CREATE INDEX idx_deposits_utxos_history_association
+    ON public.deposits_utxos(history_binding_digest, history_incarnation_id);
+CREATE INDEX idx_withdrawal_utxos_history_association
+    ON public.withdrawal_utxos(history_binding_digest, history_incarnation_id);
 ALTER TABLE public.pending_block_finalization_deposits
     ADD COLUMN history_binding_digest bytea,
     ADD COLUMN history_incarnation_id bytea,
