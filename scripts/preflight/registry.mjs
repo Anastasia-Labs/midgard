@@ -16,9 +16,7 @@
 //     triggers that missed it.
 //
 // Trigger lists are derived from the tool that owns them (see derive.mjs), so
-// they cannot drift from what the tool actually reads. The four sibling
-// scripts in PENDING_SIBLING_PATHS land on other branches; until they do, the
-// checks that run them are skipped with that reason.
+// they cannot drift from what the tool actually reads.
 
 import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
@@ -39,14 +37,6 @@ import {
   workspaceDependentClosure,
   workspacePackages,
 } from "./derive.mjs";
-
-// Scripts owned by sibling branches of the same delivery. The registry test
-// asserts every script a check runs exists, except these; integration empties
-// this list.
-export const PENDING_SIBLING_PATHS = [
-  "scripts/ci/lint-workflows.mjs",
-  "scripts/ci/workflow-triggers.test.mjs",
-];
 
 // A change to any of these can move the result of every check, so it selects
 // all of them at full scope. Recall beats precision: add to this list when a

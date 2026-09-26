@@ -1515,7 +1515,6 @@ export class LocalNodeStateQueueProvider
     // The consumer has replayed every event through this cursor: only what a
     // resumption intersects with is still needed, and the journal stays
     // bounded instead of holding the whole history since it was created.
-
   }
 }
 

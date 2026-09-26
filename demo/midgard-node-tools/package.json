@@ -33,7 +33,7 @@
     "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs",
     "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/e2e-da-gates.test.ts tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --reporter=basic --disable-console-intercept",
     "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build",
-    "test": "pnpm run test:phase4:pipelined-process-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
+    "test": "pnpm run test:phase4:pipelined-process-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run --disable-console-intercept"
   },
   "keywords": [
     "cardano",

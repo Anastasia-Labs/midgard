@@ -39,7 +39,7 @@ Add a new domain file only when repeated repository-specific guidance cannot be
 derived from code, tests, or an existing skill. Do not create placeholder files
 or cite proposed paths as though they exist. Blind spot: the check resolves
 relative links and backticked repository paths; a path written as plain prose
-is not checked. [script: scripts/agents/check-doc-links.mjs]
+is not checked. [ci: repo-tools-ci/Check agent documentation links]
 
 Keep the root `AGENTS.md` limited to context and rules that apply to every task
 in the repository.
@@ -51,7 +51,7 @@ Every rule in `AGENTS.md`, the nested `AGENTS.md` files, `docs/agents/*.md` and
 it. A rule is a list item or paragraph that uses a directive word (must, never,
 always, do not, don't, may not, required), or any list item in a section whose
 heading names rules. Routing pointers ("read X before Y") are not rules.
-[script: scripts/agents/check-enforcement-tags.mjs]
+[ci: repo-tools-ci/Check agent rule enforcement tags]
 
 | Tag                            | Meaning: this fails when the rule is broken                                             |
 | ------------------------------ | --------------------------------------------------------------------------------------- |

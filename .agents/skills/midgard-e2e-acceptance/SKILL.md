@@ -76,7 +76,7 @@ required by `docs/agents/state-reset.md`. [review]
   binary. Blind spot: the runbook validator checks that each documented tooling
   command is declared by the tooling binary, but it runs only by hand; no CI
   step runs it.
-  [script: .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs]
+  [ci: repo-tools-ci/Validate the e2e acceptance runbook]
 - `listen` and Docker startup attach; `init` bootstraps. [review]
 - Never wipe local durable state without a full fresh on-chain deployment. [review]
 - Never attach value-submitting flows to an old deployment after local state was
@@ -139,7 +139,7 @@ return to live acceptance.
 For a fresh run, use `e2e-run-step` for every required milestone. The current
 finalizer source is authoritative for required step IDs and transaction labels;
 the runbook validator compares the documentation to that source.
-[script: .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs]
+[ci: repo-tools-ci/Validate the e2e acceptance runbook]
 
 Acceptance is complete only when:
 

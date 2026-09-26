@@ -100,7 +100,13 @@ patched fork, but locally every script ran whatever `aiken` was on PATH, and on
   - Watcher CI fails at a step that no longer exists at local HEAD, which means
     local commits have not been pushed.
   - **Done when:** all three workflows pass on the branch where work lands.
-- [ ] **W1.2 Split the monolithic Node CI job.** (M)
+  - **Local run of the split Node CI at `71e605e46` (2026-09-26):** blueprint,
+    builds, 11 of 12 goldens, lint, lucid-midgard, SDK, validation, node-tools
+    and every typecheck pass. The consensus-profile doc golden and the core,
+    watcher, fault-proofs and node suites are red. Most of the failures read
+    the selected preprod-testing profile's timings where mainnet-shaped ones
+    are expected. That is the deployment-profile owner's call, not a CI fix.
+- [x] **W1.2 Split the monolithic Node CI job.** (M)
   - **From:** the job layout in `ci-backend.yml` and its summary gate.
   - **Today:** `midgard-node-ci.yml` is one serial job of about 42 steps, so the
     first red hides about 30 gates.
@@ -111,7 +117,10 @@ patched fork, but locally every script ran whatever `aiken` was on PATH, and on
     - a summary job gates them all, per W1.3;
     - a deliberately broken golden no longer stops the package tests from
       reporting.
-- [ ] **W1.3 Lint every workflow for a fail-closed summary gate.** (M)
+  - **Done:** 18 jobs behind the `Node CI gate` job. Shared setup is the local
+    composite action `.github/actions/demo-setup`. Watcher and node-tools lint
+    moved into the one workspace lint job.
+- [x] **W1.3 Lint every workflow for a fail-closed summary gate.** (M)
   - **From:** `workflow_lint/checks/required_gates.py` and `markers.py`. It was <!-- doc-links:external -->
     written after an incident where change detection failed, every job was
     skipped, and the summary gate reported success. That is Midgard's recurring
@@ -123,7 +132,11 @@ patched fork, but locally every script ran whatever `aiken` was on PATH, and on
     - fails by default;
     - lists in `needs:` every job its dependencies depend on.
   - Each exemption is a marker with a reason. The script runs in CI.
-- [ ] **W1.4 Table test for which jobs run on which trigger.** (S–M)
+  - **Done:** `scripts/ci/lint-workflows.mjs` (also refuses unpinned actions,
+    missing timeouts and permissions, and `continue-on-error`) and
+    `scripts/ci/check-needs-results.mjs`, the gate body. It runs in Repo Tools
+    CI.
+- [x] **W1.4 Table test for which jobs run on which trigger.** (S–M)
   - **From:** `tools/workflow-plan` (`workflows.test.ts`). Borrow the idea, not
     its 2.1k-line expression evaluator.
   - **Done when:**
@@ -131,20 +144,28 @@ patched fork, but locally every script ran whatever `aiken` was on PATH, and on
       to the working branch, a docs-only PR, an `onchain/**` PR and a
       `demo/**` PR;
     - a coverage check fails if any conditional job is missing from the table.
-- [ ] **W1.5 Wire in the three exec-ledger verifiers CI doesn't run.** (S)
+  - **Done:** `scripts/ci/workflow-triggers.test.mjs`. Its first row records
+    that a push to the working branch runs no workflow at all.
+- [x] **W1.5 Wire in the three exec-ledger verifiers CI doesn't run.** (S)
   - **Today:** native-script-decoding-engine, native-script-scan and
     transition-trace-descriptor are not in CI.
   - The `aiken-ci.yml` comment "All four ledgers in scripts/ are pinned here
     now" is stale. There are 10 ledgers and 9 verifiers.
   - **Done when:** every ledger has a verifier running in CI, and the comment is
     either deleted or derived from the files.
-- [ ] **W1.6 Run the repository's own tool tests in CI.** (S)
+  - **Done:** all 10 run, each even after another goes red, and
+    `scripts/ci/exec-ledgers-wired.test.mjs` derives the claim from the files.
+    Only native-script-scan and tx-order-mint pass at `71e605e46`.
+- [x] **W1.6 Run the repository's own tool tests in CI.** (S)
   - **Today:** `run-focused-check.test.mjs`, `guard-focused-selector.test.mjs`,
     `pinned-compiler.test.mjs` and
     `.agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs` never
     run in CI.
   - **Done when:** each runs in CI and a deliberate failure turns it red.
-- [ ] **W1.7 Pin third-party GitHub Actions to commit SHAs.** (S)
+  - **Done:** `repo-tools-ci.yml`, on every pull request, which also fails if
+    a test glob matches nothing.
+- [x] **W1.7 Pin third-party GitHub Actions to commit SHAs.** (S) The workflow
+      lint refuses an unpinned one.
 - [ ] **W1.8 Branch protection.** **Owner.**
   - **Today:** `main` has none (the API returns 404), and there is no required
     status check on the branch where work lands.
@@ -281,9 +302,9 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
     `chmod +x <path>`. Node below the engines floor fails; a version other
     than `demo/.nvmrc` warns. sdk/validation `dist` freshness is a timestamp
     check; only core has a source digest.
-- [ ] **W2.14 A tracked script to build the Aiken fork**, called by both
+- [x] **W2.14 A tracked script to build the Aiken fork**, called by both
       workflows and by local setup. Today the recipe exists only inside
-      `aiken-ci.yml`. (S)
+      `aiken-ci.yml`. (S) Done: `scripts/ci/build-aiken-fork.sh --prefix DIR`.
 - [x] **W2.15 A tracked SessionStart hook in `.claude/settings.json`.** (S)
   - It runs `doctor` in report-only mode, starts the durable test Postgres
     (`scripts/start-test-postgres.sh`), and states the blueprint stamp's

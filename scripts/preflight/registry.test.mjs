@@ -9,7 +9,6 @@ import {
   buildRegistry,
   FULL_RUN,
   IGNORED_PATHS,
-  PENDING_SIBLING_PATHS,
   selectChecks,
 } from "./registry.mjs";
 
@@ -48,8 +47,7 @@ test("check ids are unique and every check can plan a run", () => {
   }
 });
 
-test("every script a check runs exists, except the pending sibling scripts", () => {
-  const pending = new Set(PENDING_SIBLING_PATHS);
+test("every script a check runs exists", () => {
   const referenced = new Set();
   for (const check of registry.checks) {
     for (const path of check.requiresFiles ?? []) {
@@ -67,18 +65,9 @@ test("every script a check runs exists, except the pending sibling scripts", () 
     }
   }
   const missing = [...referenced].filter(
-    (path) => !pending.has(path) && !existsSync(resolve(root, path)),
+    (path) => !existsSync(resolve(root, path)),
   );
   assert.deepEqual(missing, []);
-  // Once a sibling lands, it must leave the pending list.
-  const landed = PENDING_SIBLING_PATHS.filter((path) =>
-    existsSync(resolve(root, path)),
-  );
-  assert.deepEqual(
-    landed,
-    [],
-    "remove landed scripts from PENDING_SIBLING_PATHS",
-  );
 });
 
 test("derived golden channels and ledgers read Aiken sources", () => {

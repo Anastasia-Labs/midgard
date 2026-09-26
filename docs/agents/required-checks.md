@@ -557,7 +557,6 @@ Execution ledger native-script-decoding-engine-exec-ledger-v1.json.
 - Fix: `node onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json with the explanation`
 - Runs on: onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs, onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test, fraud_proofs/native_script_decoding/step_01, fraud_proofs/native_script_decoding/step_02, fraud_proofs/native_script_decoding/step_03_open_subject, fraud_proofs/native_script_decoding/step_03_bind_descriptor, fraud_proofs/native_script_decoding/step_03_advance_or_close, fraud_proofs/native_script_decoding/step_04 import, transitively
 - Needs: `aiken`
-- Mode: warns only (no workflow runs this verifier, so a red reading does not block)
 
 ### `exec-ledger:native-script-scan`
 
@@ -567,7 +566,6 @@ Execution ledger native-script-scan-exec-ledger-v1.json.
 - Fix: `node onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json with the explanation`
 - Runs on: onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs, onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json, and every .ak module that midgard/native_script_scan_worst_case_v1.test, midgard/native_script_scan_worst_case_deep_v1.test, midgard/native_script_scan_worst_case_wide_v1.test import, transitively
 - Needs: `aiken`
-- Mode: warns only (no workflow runs this verifier, so a red reading does not block)
 
 ### `exec-ledger:q1x`
 
@@ -604,7 +602,6 @@ Execution ledger transition-trace-descriptor-exec-ledger-v1.json.
 - Fix: `MIDGARD_AIKEN_ENV=testnet node onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json with the explanation`
 - Runs on: onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs, onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json, and every .ak module that midgard/ledger_output_descriptor_v1_exunits_frontier.test, midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test, midgard/ledger_output_descriptor_v1.test, midgard/fraud_proofs/transition_trace/proof.test import, transitively
 - Needs: `aiken`
-- Mode: warns only (no workflow runs this verifier, so a red reading does not block)
 
 ### `exec-ledger:tx-order-mint`
 

@@ -4,7 +4,7 @@ Always-loaded context only. Keep this file narrow: project facts the code
 cannot tell you, repo-wide guardrails, and pitfalls observed across sessions.
 Put directory-specific rules in nested `AGENTS.md` files and shared task guidance
 in `docs/agents/*` or a skill. Blind spot: the line budget caps length, not
-relevance. [script: scripts/agents/check-enforcement-tags.mjs]
+relevance. [ci: repo-tools-ci/Check agent rule enforcement tags]
 
 Each rule ends with one tag naming what enforces it; the vocabulary is in
 [docs/agents/README.md](docs/agents/README.md).
