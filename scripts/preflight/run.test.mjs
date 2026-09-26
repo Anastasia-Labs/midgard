@@ -226,13 +226,25 @@ test("a warn-only failure is warned and does not fail the run", async () => {
   assert.equal(report.exitCode, EXIT.passed);
 });
 
-test("'No test files found' fails the check whatever the exit code says", async () => {
-  const report = await run([check("vitest")], {
-    outcomes: { vitest: { status: 0, output: "No test files found, exiting" } },
+test("Vitest's empty-run line fails the check whatever the exit code says", async () => {
+  for (const output of [
+    "No test files found, exiting with code 1\n",
+    "setup error\n\u001b[31mNo test files found, exiting with code 1\u001b[39m\n",
+  ]) {
+    const report = await run([check("vitest")], {
+      outcomes: { vitest: { status: 0, output } },
+    });
+    assert.equal(statusOf(report).vitest, "failed");
+    assert.match(report.results[0].reason, /nothing was tested/u);
+    assert.equal(report.exitCode, EXIT.failed);
+  }
+  // A runner that only names the phrase (this very test's title) passes.
+  const named = await run([check("tooling")], {
+    outcomes: {
+      tooling: { status: 0, output: "ok 1 - 'No test files found' fails\n" },
+    },
   });
-  assert.equal(statusOf(report).vitest, "failed");
-  assert.match(report.results[0].reason, /nothing was tested/u);
-  assert.equal(report.exitCode, EXIT.failed);
+  assert.equal(statusOf(named).tooling, "passed");
 });
 
 test("a command that cannot start is a failure", async () => {

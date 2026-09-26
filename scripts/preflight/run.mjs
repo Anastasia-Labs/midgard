@@ -243,7 +243,11 @@ export const spawnStep = (root, step, env, log) =>
 // matches no file; either way nothing was tested.
 export const EMPTY_RUN_MARKERS = [
   {
-    pattern: /No test files found/u,
+    // Vitest's own line, at the start of a line (colour codes allowed), so a
+    // test runner that merely names the phrase does not trip it.
+    // eslint-disable-next-line no-control-regex
+    pattern:
+      /(?:^|\n)(?:\u001b\[[0-9;]*m)*No test files found, exiting with code/u,
     reason:
       "Vitest reported 'No test files found': its global setup failed (for the node suites, usually Postgres on 5433 is unreachable) or a filter matched nothing; nothing was tested",
   },
