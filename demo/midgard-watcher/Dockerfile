@@ -6,6 +6,8 @@ COPY midgard-watcher/native-chain-sync/go.mod midgard-watcher/native-chain-sync/
 RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod \
   go mod download && go mod verify
 COPY midgard-watcher/native-chain-sync ./
+# The Go tests read this shared fixture from the watcher's test support.
+COPY midgard-watcher/tests/support/conway-block.hex ../tests/support/conway-block.hex
 RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod \
   --mount=type=cache,id=midgard-watcher-go-build,target=/root/.cache/go-build \
   test "$(go version | awk '{print $3}')" = "go1.25.7" \
@@ -27,6 +29,7 @@ COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
+COPY midgard-test-support/package.json ./midgard-test-support/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-watcher...
 
