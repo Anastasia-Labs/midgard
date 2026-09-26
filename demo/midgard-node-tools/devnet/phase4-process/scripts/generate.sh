@@ -26,7 +26,28 @@ case "$network_magic" in
   1|2|764824073) die "refusing known public-network magic $network_magic" ;;
 esac
 
-compose_project="midgard_phase4_process_${slug}"
+# A linked git worktree gets its own compose project and host ports, so two
+# checkouts' devnets can run at once; the main checkout keeps the historical
+# names and ports exactly. Explicit port variables still win. The database
+# lives in this run's own Postgres container, so its name needs no namespace.
+worktree_identity="$tools_root/../../scripts/lib/worktree-identity.mjs"
+[ -f "$worktree_identity" ] || die "missing $worktree_identity"
+worktree_main=$(node "$worktree_identity" isMainCheckout --root "$tools_root") \
+  || die "could not derive the checkout identity"
+if [ "$worktree_main" = true ]; then
+  compose_project="midgard_phase4_process_${slug}"
+else
+  worktree_hash=$(node "$worktree_identity" hash --root "$tools_root") \
+    || die "could not derive the checkout identity"
+  compose_project="midgard_phase4_process_${worktree_hash}_${slug}"
+fi
+port_offset=$(node "$worktree_identity" portOffset --root "$tools_root") \
+  || die "could not derive the checkout identity"
+ogmios_port=${MIDGARD_PHASE4_OGMIOS_PORT:-$((2337 + port_offset))}
+kupo_port=${MIDGARD_PHASE4_KUPO_PORT:-$((2442 + port_offset))}
+postgres_port=${MIDGARD_PHASE4_POSTGRES_PORT:-$((5544 + port_offset))}
+printf 'phase4-process: compose project %s, host ports ogmios=%s kupo=%s postgres=%s\n' \
+  "$compose_project" "$ogmios_port" "$kupo_port" "$postgres_port" >&2
 postgres_database="midgard_phase4_process_${slug}"
 postgres_user=${MIDGARD_PHASE4_POSTGRES_USER:-midgard_phase4_process}
 postgres_password=${MIDGARD_PHASE4_POSTGRES_PASSWORD:-}
@@ -90,9 +111,9 @@ MIDGARD_PHASE4_RUN_DIR=$MIDGARD_PHASE4_RUN_DIR
 MIDGARD_PHASE4_COMPOSE_PROJECT=$compose_project
 MIDGARD_PHASE4_NETWORK_MAGIC=$network_magic
 MIDGARD_PHASE4_PROTOCOL_MAJOR=$PHASE4_TARGET_PROTOCOL_MAJOR
-MIDGARD_PHASE4_OGMIOS_PORT=${MIDGARD_PHASE4_OGMIOS_PORT:-2337}
-MIDGARD_PHASE4_KUPO_PORT=${MIDGARD_PHASE4_KUPO_PORT:-2442}
-MIDGARD_PHASE4_POSTGRES_PORT=${MIDGARD_PHASE4_POSTGRES_PORT:-5544}
+MIDGARD_PHASE4_OGMIOS_PORT=$ogmios_port
+MIDGARD_PHASE4_KUPO_PORT=$kupo_port
+MIDGARD_PHASE4_POSTGRES_PORT=$postgres_port
 MIDGARD_PHASE4_POSTGRES_USER=$postgres_user
 MIDGARD_PHASE4_POSTGRES_PASSWORD=$postgres_password
 MIDGARD_PHASE4_POSTGRES_DATABASE=$postgres_database

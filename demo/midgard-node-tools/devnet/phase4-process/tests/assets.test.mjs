@@ -244,6 +244,89 @@ test("generator refuses an existing run directory before Docker", async () => {
 });
 
 /**
+ * Runs `generate.sh` in a throwaway checkout up to its first Docker call and
+ * returns the compose project and host ports it announced. `gitEntry` makes
+ * the checkout a main checkout (`.git` directory) or a linked worktree (`.git`
+ * file); the real identity module is copied in, so the derivation under test
+ * is the one the repository ships.
+ */
+const DOCKER_REACHED_STATUS = 97;
+const generatedNames = async (gitEntry, env = {}) => {
+  const checkout = mkdtempSync(join(temporaryRoot, "midgard-phase4-names-"));
+  try {
+    const scripts = join(
+      checkout,
+      "demo/midgard-node-tools/devnet/phase4-process/scripts",
+    );
+    const binaries = join(checkout, "bin");
+    for (const directory of [
+      scripts,
+      binaries,
+      join(checkout, "demo/midgard-node"),
+      join(checkout, "scripts/lib"),
+    ])
+      mkdirSync(directory, { recursive: true });
+    for (const name of ["common.sh", "generate.sh"]) {
+      copyFileSync(join(root, "scripts", name), join(scripts, name));
+    }
+    copyFileSync(
+      join(root, "../../../../scripts/lib/worktree-identity.mjs"),
+      join(checkout, "scripts/lib/worktree-identity.mjs"),
+    );
+    if (gitEntry === "directory") mkdirSync(join(checkout, ".git"));
+    else writeFileSync(join(checkout, ".git"), "gitdir: /elsewhere\n");
+    for (const name of ["jq", "sha256sum"]) {
+      writeFileSync(join(binaries, name), "#!/bin/sh\nexit 0\n", {
+        mode: 0o755,
+      });
+    }
+    writeFileSync(
+      join(binaries, "docker"),
+      `#!/bin/sh\nexit ${String(DOCKER_REACHED_STATUS)}\n`,
+      { mode: 0o755 },
+    );
+    const result = await run("sh", [join(scripts, "generate.sh")], {
+      env: {
+        ...process.env,
+        PATH: `${binaries}:${process.env.PATH}`,
+        MIDGARD_PHASE4_RUN_DIR: join(checkout, "runs/names"),
+        ...env,
+      },
+    });
+    assert.equal(result.status, DOCKER_REACHED_STATUS, result.stderr);
+    const announced = result.stderr.match(
+      /compose project (\S+), host ports ogmios=(\d+) kupo=(\d+) postgres=(\d+)/,
+    );
+    assert.ok(announced, result.stderr);
+    const [, project, ogmios, kupo, postgres] = announced;
+    return { project, ports: [ogmios, kupo, postgres].map(Number) };
+  } finally {
+    rmSync(checkout, { recursive: true, force: true });
+  }
+};
+
+test("the main checkout keeps the historical devnet names and ports", async () => {
+  const { project, ports } = await generatedNames("directory");
+  assert.equal(project, "midgard_phase4_process_names");
+  assert.deepEqual(ports, [2337, 2442, 5544]);
+});
+
+test("a linked worktree derives its own devnet project and ports", async () => {
+  const { project, ports } = await generatedNames("file");
+  assert.match(project, /^midgard_phase4_process_[0-9a-f]{8}_names$/);
+  const offset = ports[0] - 2337;
+  assert.ok(offset >= 10 && offset % 10 === 0, String(offset));
+  assert.deepEqual(
+    ports,
+    [2337, 2442, 5544].map((port) => port + offset),
+  );
+  const explicit = await generatedNames("file", {
+    MIDGARD_PHASE4_POSTGRES_PORT: "6000",
+  });
+  assert.equal(explicit.ports[2], 6000);
+});
+
+/**
  * Builds a throwaway checkout that `capture-snapshot.sh` can actually run
  * inside, with `docker` and `curl` replaced by stubs.
  *

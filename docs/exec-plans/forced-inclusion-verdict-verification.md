@@ -83,7 +83,7 @@ blueprint: **410 tests across 29 files passed**, exit 0. T1: 87; T2: 82;
 T3: 47; T4: 45; T5: 33; T6: 48; T7: 19 node, 33 watcher, 16 core.
 Command script: `/var/tmp/forced-boundaries-final-17.sh`; individual logs:
 `/var/tmp/forced-boundary-<group>-17.log`. The complete group/count manifest and
-logs are preserved under this worktree's Git directory in
+logs are preserved under this worktree's Git directory in <!-- doc-links:external -->
 `evidence/forced-submission-task2-final-16/focused-boundary-results-17.json`.
 These focused passes do not replace the complete fault-proof suite result.
 

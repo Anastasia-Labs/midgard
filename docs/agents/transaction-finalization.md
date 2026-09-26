@@ -1,11 +1,13 @@
 # Transaction Finalization
 
 For Cardano L1 transaction finalization with Lucid Evolution, always use local
-UPLC evaluation. These options belong to the L1 builder; Lucid Midgard L2
-completion has its own API and validation semantics.
-
-- Use `.complete({ localUPLCEval: true })`.
-- Never set `.complete({ localUPLCEval: false })`.
+UPLC evaluation: `.complete({ localUPLCEval: true })`, never
+`.complete({ localUPLCEval: false })`. These options belong to the L1 builder;
+Lucid Midgard L2 completion has its own API and validation semantics. Blind
+spot: the source scan in that test covers only `demo/midgard-fault-proofs`
+(Midgard Node CI runs it); a `localUPLCEval: false` in any other package passes
+every check.
+[script: demo/midgard-fault-proofs/tests/wave0-shared-substrate.test.ts]
 
 ## Validity Windows
 
@@ -14,6 +16,7 @@ at the current wall-clock time, `lucid.currentSlot()`, or an optimistic
 Ogmios-tip-derived slot. Cardano node submit validation can lag the wall-clock
 or tip estimate, so edge-triggered lower bounds can produce
 `OutsideValidityInterval` races even when local slot evidence appears ready.
+[review]
 
 - When transaction semantics allow a current-time lower bound, set `validFrom`
   at least 30 seconds before the current time; prefer 60 seconds for
@@ -21,6 +24,7 @@ or tip estimate, so edge-triggered lower bounds can produce
 - When a protocol rule imposes a later lower bound, use
   `max(protocolLowerBound, currentTime - backoff)`. Never backdate before a
   smart-contract-required lower bound such as a scheduler shift boundary.
+  [review]
 - Recompute `validTo` from the chosen `validFrom` so max-validity-range
   constraints remain satisfied.
 - If a submit error returns authoritative provider slot evidence such as

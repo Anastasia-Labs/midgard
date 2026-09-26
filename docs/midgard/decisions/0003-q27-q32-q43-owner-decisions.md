@@ -18,7 +18,7 @@ At the time of the decision, source showed a gap rather than an exemption
 
 - `onchain/aiken/lib/midgard/validation-machine-v1.ak` has value conservation
   and `E_MIN_FEE`, but no min-Ada rejection rule; the C49 manifest anchor
-  records this exact absence.
+  records this exact absence. <!-- doc-links:historical -->
 - `demo/midgard-validation/src/phase-a.ts` validates a parameterized minimum
   fee only. The existing SDK `CML.min_ada_required` use in
   `demo/midgard-sdk/src/fraud-proof/validation-proof-item.ts` funds a

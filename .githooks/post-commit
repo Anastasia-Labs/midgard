@@ -6,8 +6,14 @@ if [[ "${MIDGARD_GRAPHIFY_SKIP_POST_COMMIT:-0}" == "1" ]]; then
   exit 0
 fi
 
+# An external code-graph refresh, personal to whoever set it up. It runs only
+# when opted in: MIDGARD_GRAPHIFY_STATE_ROOT is set, or the default state
+# directory already exists. Everywhere else this hook does nothing.
 repo_root="$(git rev-parse --show-toplevel)"
-graphify_state_root="${MIDGARD_GRAPHIFY_STATE_ROOT:-/home/gumbo/.local/state/graphify/midgard-current}"
+graphify_state_root="${MIDGARD_GRAPHIFY_STATE_ROOT:-${HOME:-/nonexistent}/.local/state/graphify/midgard-current}"
+if [[ -z "${MIDGARD_GRAPHIFY_STATE_ROOT:-}" && ! -d "$graphify_state_root" ]]; then
+  exit 0
+fi
 out_dir="$graphify_state_root/graphify-out"
 lock_file="$graphify_state_root/.refresh.lock"
 log_file="$graphify_state_root/refresh.log"

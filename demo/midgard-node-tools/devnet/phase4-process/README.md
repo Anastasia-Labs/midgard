@@ -37,7 +37,11 @@ one pool and renders Compose configuration, but starts no service. Defaults are
 Ogmios `127.0.0.1:2337`, Kupo `127.0.0.1:2442`, and Postgres
 `127.0.0.1:5544`. Projects and databases begin with
 `midgard_phase4_process_`; signing keys, wallet env files, and run credentials
-are mode 0600.
+are mode 0600. In a linked git worktree the compose project also carries the
+checkout's hash and the default ports shift by the same checkout-specific
+offset (`scripts/lib/worktree-identity.mjs`), so two checkouts' devnets can run
+at once; the main checkout keeps the defaults above. Generation prints the
+project and ports it chose, and explicit `MIDGARD_PHASE4_*_PORT` values win.
 
 Because Phase 4 is a preprod-matched experiment, generation pins the Shelley
 genesis protocol major to 11, matching the target preprod ledger used by the
