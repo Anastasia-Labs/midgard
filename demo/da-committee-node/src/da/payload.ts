@@ -40,6 +40,7 @@ import {
   unwrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   collectMidgardAttachedProgramEnvelopes,
   collectMidgardReferencedProgramEnvelopes,
@@ -50,10 +51,13 @@ import {
 } from "@al-ft/midgard-core/script-proof";
 import {
   decodeMidgardValidationTraceDescriptor,
+  encodeMidgardValidationTraceDescriptor,
+  hashMidgardValidationContext,
   hashMidgardValidationEventKey,
   hashMidgardValidationMachineState,
   hashMidgardValidationWorkWitness,
   type MidgardValidationMachineState,
+  MidgardValidationPhase,
   type MidgardValidationTraceDescriptor,
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core/validation-trace";
@@ -144,7 +148,14 @@ export class DaPayloadValidationError extends Error {
     message: string,
     options?: ErrorOptions,
   ) {
-    super(message, options);
+    // The wrapped cause stays in the message: committee tick logs and the
+    // stored validation_error carry only `message`.
+    super(
+      options?.cause === undefined
+        ? message
+        : `${message}: ${formatUnknownError(options.cause)}`,
+      options,
+    );
     this.name = "DaPayloadValidationError";
     this.code = code;
   }
@@ -1358,18 +1369,10 @@ const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
         "validation trace does not correspond to a committed transaction source",
       );
     }
-    let descriptor;
-    try {
-      descriptor = decodeMidgardValidationTraceDescriptor(
-        hexToBytes(valueHex, `validation_traces[${index.toString()}].value`),
-      );
-    } catch (cause) {
-      throw new DaPayloadValidationError(
-        "malformed_trace",
-        `validation_traces[${index.toString()}].value is not a canonical bounded descriptor`,
-        { cause },
-      );
-    }
+    const descriptor = decodeCommittedValidationTraceDescriptor(
+      valueHex,
+      `validation_traces[${index.toString()}].value`,
+    );
     if (descriptor.verdict !== expectedVerdict) {
       throw new DaPayloadValidationError(
         "coverage_mismatch",
@@ -1396,6 +1399,38 @@ const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
     descriptors,
     retainedTransactionPreimages(payload),
   );
+};
+
+/**
+ * Decodes one committed `validation_traces` value. The committed leaf is the
+ * canonical Plutus Data form of `ValidationTraceDescriptorV1` (the bytes the
+ * on-chain root membership check serialises), not the core codec's plain CBOR
+ * array. The frozen V1 bounds (versions, step-count cap, terminal verdict,
+ * verdict/rejection binding) are enforced by round-tripping through the core
+ * codec.
+ */
+export const decodeCommittedValidationTraceDescriptor = (
+  valueHex: string,
+  fieldName: string,
+): MidgardValidationTraceDescriptor => {
+  const data = decodeCanonicalData<SDK.ValidationTraceDescriptor>(
+    valueHex,
+    SDK.ValidationTraceDescriptorSchema as never,
+    fieldName,
+  );
+  try {
+    return decodeMidgardValidationTraceDescriptor(
+      encodeMidgardValidationTraceDescriptor(
+        SDK.validationTraceDescriptorCoreFromData(data),
+      ),
+    );
+  } catch (cause) {
+    throw new DaPayloadValidationError(
+      "malformed_trace",
+      `${fieldName} is not a canonical bounded descriptor`,
+      { cause },
+    );
+  }
 };
 
 const retainedTransactionPreimages = (
@@ -1530,28 +1565,29 @@ const nativeControlRoots = (witnessCbor: Buffer) => {
   };
 };
 
-const isScriptIntegrityStageThreeControl = (witnessCbor: Buffer): boolean => {
-  const decoded = decodeSingleCbor(witnessCbor);
-  return (
-    Array.isArray(decoded) &&
-    decoded.length === 4 &&
-    BigInt(decoded[1] as bigint | number) === 3n
-  );
-};
+/**
+ * Classifies a retained witness coordinate for a descriptor with
+ * `step_count = n` (docs/fault-proofs/retained-validation-trace.md):
+ * non-negative values are NativeScripts execution aliases, `i - n - 1` is
+ * chronological state `i` in `[0, n]`, `-n - 2` is the initial endpoint and
+ * `-n - 3` the terminal endpoint. Anything else is outside the domain.
+ */
+type RetainedWitnessSlot =
+  | { readonly kind: "nativeAlias" }
+  | { readonly kind: "state"; readonly stateIndex: bigint }
+  | { readonly kind: "initial" }
+  | { readonly kind: "terminal" };
 
-const scriptSourcesControlStage = (witnessCbor: Buffer): bigint | null => {
-  const decoded = decodeSingleCbor(witnessCbor);
-  return Array.isArray(decoded) &&
-    (decoded.length === 30 || decoded.length === 31)
-    ? BigInt(decoded[9] as bigint | number)
-    : null;
-};
-
-const valueAndMintControlStage = (witnessCbor: Buffer): bigint | null => {
-  const decoded = decodeSingleCbor(witnessCbor);
-  return Array.isArray(decoded) && decoded.length === 12
-    ? BigInt(decoded[1] as bigint | number)
-    : null;
+const retainedWitnessSlot = (
+  executionIndex: bigint,
+  stepCount: bigint,
+): RetainedWitnessSlot | null => {
+  if (executionIndex >= 0n) return { kind: "nativeAlias" };
+  const stateIndex = executionIndex + stepCount + 1n;
+  if (stateIndex >= 0n) return { kind: "state", stateIndex };
+  if (executionIndex === -stepCount - 2n) return { kind: "initial" };
+  if (executionIndex === -stepCount - 3n) return { kind: "terminal" };
+  return null;
 };
 
 const requireRetainedMembership = (
@@ -1633,58 +1669,26 @@ const validateRetainedValidationWitnesses = (
       "NativeExecutionDescriptorWitness" in auxiliary
         ? auxiliary.NativeExecutionDescriptorWitness
         : null;
-    const scriptSourcesStage =
-      value.phase === 8n
-        ? scriptSourcesControlStage(Buffer.from(value.witness_cbor, "hex"))
-        : null;
-    const retainedRedeemerAuxiliary =
-      typeof auxiliary === "object" &&
-      ("RedeemerScanBeginWitness" in auxiliary ||
-        "RedeemerItemStepWitness" in auxiliary) &&
-      (scriptSourcesStage === 10n || scriptSourcesStage === 12n);
-    const retainedScriptSourcesAuxiliary =
-      value.phase === 8n &&
-      (auxiliary === "NoAuxiliaryWitness" ||
-        (typeof auxiliary === "object" &&
-          ("ScriptPurposeScanWitness" in auxiliary ||
-            "ScriptSourceScanWitness" in auxiliary)) ||
-        retainedRedeemerAuxiliary);
-    const retainedScriptIntegrityTerminal =
-      value.phase === 10n &&
-      auxiliary === "NoAuxiliaryWitness" &&
-      isScriptIntegrityStageThreeControl(
-        Buffer.from(value.witness_cbor, "hex"),
-      );
-    const valueAndMintStage =
-      value.phase === 12n
-        ? valueAndMintControlStage(Buffer.from(value.witness_cbor, "hex"))
-        : null;
-    const retainedValueAndMintAsset =
-      value.phase === 12n &&
-      typeof auxiliary === "object" &&
-      (("ValueInputAssetWitness" in auxiliary && valueAndMintStage === 2n) ||
-        ("ValueOutputAssetWitness" in auxiliary && valueAndMintStage === 3n) ||
-        ("ValueMintAssetWitness" in auxiliary && valueAndMintStage === 4n));
-    if (
-      native === null &&
-      !retainedScriptSourcesAuxiliary &&
-      !retainedScriptIntegrityTerminal &&
-      !retainedValueAndMintAsset
-    ) {
-      throw new DaPayloadValidationError(
-        "malformed_trace",
-        "retained validation witness auxiliary is not an allowed reconstruction witness",
-      );
-    }
-    if (native === null && key.execution_index >= 0n) {
+    const slot = retainedWitnessSlot(
+      key.execution_index,
+      BigInt(descriptor.descriptor.stepCount),
+    );
+    if (slot === null) {
       throw new DaPayloadValidationError(
         "coverage_mismatch",
-        "retained chronological validation witness is outside its reserved negative coordinate domain",
+        "retained validation witness coordinate is outside its descriptor's retained domain",
+      );
+    }
+    if (slot.kind === "nativeAlias" && native === null) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "retained non-negative validation coordinates are reserved for NativeScripts execution aliases",
       );
     }
     if (
       native !== null &&
-      (native.execution_index !== key.execution_index ||
+      ((slot.kind === "nativeAlias" &&
+        native.execution_index !== key.execution_index) ||
         (native.language_tag !== 0n &&
           native.language_tag !== 3n &&
           native.language_tag !== 128n) ||
@@ -1750,17 +1754,24 @@ const validateRetainedValidationWitnesses = (
     }
     const state = stateFromRetainedData(value.machine_state);
     const proof = SDK.validationTraceProofCoreFromData(value.trace_proof);
-    const expectedPhase =
-      native !== null
-        ? ({ data: 9n, core: "nativeScripts" } as const)
-        : retainedScriptIntegrityTerminal
-          ? ({ data: 10n, core: "scriptIntegrity" } as const)
-          : retainedValueAndMintAsset
-            ? ({ data: 12n, core: "valueAndMint" } as const)
-            : ({ data: 8n, core: "scriptSources" } as const);
+    const expectedStateIndex =
+      slot.kind === "state"
+        ? slot.stateIndex
+        : slot.kind === "initial"
+          ? 0n
+          : slot.kind === "terminal"
+            ? BigInt(descriptor.descriptor.stepCount)
+            : value.trace_proof.state_index;
+    const expectedEndpointHash =
+      slot.kind === "initial"
+        ? descriptor.descriptor.initialStateHash
+        : slot.kind === "terminal"
+          ? descriptor.descriptor.terminalStateHash
+          : proof.stateHash;
     if (
-      value.phase !== expectedPhase.data ||
-      state.phase !== expectedPhase.core ||
+      value.trace_proof.state_index !== expectedStateIndex ||
+      !proof.stateHash.equals(expectedEndpointHash) ||
+      (native !== null && state.phase !== "nativeScripts") ||
       value.program_counter !== value.machine_state.program_counter ||
       state.programCounter !==
         retainedSafeNumber(value.program_counter, "program counter") ||
@@ -1782,23 +1793,40 @@ const validateRetainedValidationWitnesses = (
         "retained validation witness state is bound to another event key",
       );
     }
-    const expectedWorkRoot = hashMidgardValidationWorkWitness({
-      phase: expectedPhase.core,
-      programCounter: state.programCounter,
-      witnessCbor: Buffer.from(value.witness_cbor, "hex"),
-    });
-    if (!state.workRoot.equals(expectedWorkRoot)) {
+    const witnessCbor = Buffer.from(value.witness_cbor, "hex");
+    if (slot.kind === "initial") {
+      // The initial endpoint opens the exact validation-context bytes under
+      // the reserved phase marker -1 instead of a work witness.
+      if (
+        value.phase !== -1n ||
+        !hashMidgardValidationContext(witnessCbor).equals(
+          state.validationContextHash,
+        )
+      ) {
+        throw new DaPayloadValidationError(
+          "coverage_mismatch",
+          "retained validation context differs from the initial operator state",
+        );
+      }
+    } else if (
+      value.phase !== BigInt(MidgardValidationPhase[state.phase]) ||
+      !state.workRoot.equals(
+        hashMidgardValidationWorkWitness({
+          phase: state.phase,
+          programCounter: state.programCounter,
+          witnessCbor,
+        }),
+      )
+    ) {
       throw new DaPayloadValidationError(
         "coverage_mismatch",
         "retained validation witness bytes do not match state.work_root",
       );
     }
-    // ScriptSources controls/frontier openings, ScriptIntegrity stage-3, and
-    // ValueAndMint asset mutations are authenticated above by the committed
-    // trace state and work root. Family reconstruction performs its
-    // phase-specific semantic checks. Native execution descriptors retain the
-    // additional eager checks below for backwards-compatible committee
-    // admission.
+    // Every retained record is authenticated above against the committed
+    // descriptor, its event key and its own phase's work root; family
+    // reconstruction performs the phase-specific semantic checks. Native
+    // execution descriptors keep the additional eager checks below.
     if (native === null) continue;
     const roots = nativeControlRoots(Buffer.from(value.witness_cbor, "hex"));
     const purposeKind = retainedSafeNumber(native.purpose_kind, "purpose kind");

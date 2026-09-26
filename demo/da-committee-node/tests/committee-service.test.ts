@@ -4091,6 +4091,104 @@ describe("CommitteeService", () => {
     ).resolves.toBeUndefined();
   });
 
+  const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
+    const dir = await tempDir();
+    const headerHash = hashBlockHeader(header);
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configWithDaHash = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const store = await openJsonCommitteeStore(dir);
+    // A verdict an earlier build cached for these bytes.
+    await store.saveDaPayload({
+      deploymentFingerprint: configWithDaHash.deploymentFingerprint,
+      headerHash,
+      payloadSchemaVersion: 1,
+      payloadCborHex: payloadBytes.toString("hex"),
+      payloadSha256: daPayloadSha256(payloadBytes),
+      sourcePeerId: "libp2p:payload-submit",
+      fetchedAt: new Date().toISOString(),
+      validationStatus: "malformed_da",
+      validationError: "stale verdict from an earlier build",
+    });
+    const service = new CommitteeService({
+      config: configWithDaHash,
+      store,
+      stateQueueProvider: withFinalSnapshot({
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      }),
+      payloadSource: failPayloadSource("payload source must not be used"),
+      signer,
+      signerValidation: validateDaSignerMembership({
+        daParams: configWithDaHash.daParams,
+        signer,
+        signerIndex: 0,
+      }),
+    });
+    await service.initialize();
+    return { service, store, headerHash };
+  };
+
+  it("re-verifies a cached rejection so a corrected build can attest the payload", async () => {
+    const { header, payloadCbor } = await makePayloadFixture();
+    const { service, store, headerHash } = await reverifyHarness(
+      payloadCbor,
+      header,
+    );
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 1,
+      skippedHeaders: 0,
+    });
+    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
+      validationStatus: "verified",
+      payloadSha256: daPayloadSha256(payloadCbor),
+    });
+  });
+
+  it("re-checks a cached rejection only once per process", async () => {
+    const { header } = await makePayloadFixture();
+    const invalidPayload = await wrapDaPayload(Buffer.from("deadbeef", "hex"), {
+      mode: "identity",
+    });
+    const { service, store, headerHash } = await reverifyHarness(
+      invalidPayload,
+      header,
+    );
+    await expect(service.tick()).resolves.toMatchObject({ skippedHeaders: 1 });
+    // The one re-check replaces the stale message with this build's cause.
+    const rechecked = await store.getDaPayload(headerHash);
+    expect(rechecked).toMatchObject({ validationStatus: "malformed_da" });
+    expect(rechecked?.validationError).not.toBe(
+      "stale verdict from an earlier build",
+    );
+    await store.saveDaPayload({
+      ...rechecked!,
+      validationError: "sentinel after the one re-check",
+    });
+    await expect(service.tick()).resolves.toMatchObject({ skippedHeaders: 1 });
+    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
+      validationStatus: "malformed_da",
+      validationError: "sentinel after the one re-check",
+    });
+  });
+
   it("detects conflicting payload bytes across DA endpoints and refuses to sign", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();

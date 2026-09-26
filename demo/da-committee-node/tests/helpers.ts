@@ -21,7 +21,6 @@ import {
 } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { encodeMidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { inject } from "vitest";
@@ -114,17 +113,21 @@ const transactionSource = (
   };
 };
 
+/** The committed descriptor leaf is its canonical Plutus Data encoding. */
 const acceptedTraceDescriptor = (seed: number): string =>
-  encodeMidgardValidationTraceDescriptor({
-    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-    machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-    traceRoot: Buffer.alloc(32, seed),
-    stepCount: 0,
-    initialStateHash: Buffer.alloc(32, seed + 1),
-    terminalStateHash: Buffer.alloc(32, seed + 1),
-    verdict: "accepted",
-    rejectionCodeHash: Buffer.alloc(32),
-  }).toString("hex");
+  LucidData.to(
+    SDK.validationTraceDescriptorDataFromCore({
+      schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+      machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
+      traceRoot: Buffer.alloc(32, seed),
+      stepCount: 0,
+      initialStateHash: Buffer.alloc(32, seed + 1),
+      terminalStateHash: Buffer.alloc(32, seed + 1),
+      verdict: "accepted",
+      rejectionCodeHash: Buffer.alloc(32),
+    }) as never,
+    SDK.ValidationTraceDescriptorSchema as never,
+  );
 
 export const makePayloadFixture = async (
   transactionCount = 3,

@@ -250,6 +250,15 @@ export class CommitteeService {
    * it is progress on one.
    */
   private l1ProgressAtMs: number | undefined;
+  /**
+   * Stored payloads (`headerHash:payloadSha256`) whose cached malformed or
+   * root-mismatch verdict this process has already re-checked. A cached
+   * rejection may come from an earlier verifier build; verification is a pure
+   * function of the hash-checked bytes and the header, so re-checking once per
+   * process lets a fixed verifier admit what an old one wrongly refused
+   * without re-verifying a genuinely bad payload on every tick.
+   */
+  private readonly reverifiedRejectedPayloads = new Set<string>();
   private lastTick:
     | {
         readonly status: "ok" | "degraded" | "failed";
@@ -1366,10 +1375,14 @@ export class CommitteeService {
       payloadRecord.validationStatus === "malformed_da" ||
       payloadRecord.validationStatus === "root_mismatch"
     ) {
-      throw new Error(
-        payloadRecord.validationError ??
-          `stored DA payload is ${payloadRecord.validationStatus}`,
-      );
+      const reverifyKey = `${payloadRecord.headerHash}:${payloadRecord.payloadSha256}`;
+      if (this.reverifiedRejectedPayloads.has(reverifyKey)) {
+        throw new Error(
+          payloadRecord.validationError ??
+            `stored DA payload is ${payloadRecord.validationStatus}`,
+        );
+      }
+      this.reverifiedRejectedPayloads.add(reverifyKey);
     }
     let payloadCbor: Buffer;
     try {

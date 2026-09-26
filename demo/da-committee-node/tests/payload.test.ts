@@ -373,25 +373,57 @@ describe("canonical V1 DA payload verification", () => {
     ).toThrow(/orphaned/u);
   });
 
-  it("rejects a retained no-aux witness outside admitted phases", async () => {
+  it.each([
+    // The fixture descriptors have step_count 0: state 0 is -1, the initial
+    // endpoint -2 and the terminal endpoint -3.
+    [-4n, /outside its descriptor's retained domain/u],
+    [0n, /reserved for NativeScripts execution aliases/u],
+    [-1n, /does not open the committed descriptor/u],
+    [-2n, /does not open the committed descriptor/u],
+    [-3n, /does not open the committed descriptor/u],
+  ] as const)(
+    "rejects a retained witness at coordinate %s that does not open its descriptor",
+    async (executionIndex, message) => {
+      const fixture = await makePayloadFixture();
+      const eventKey = LucidData.from(
+        fixture.payload.block_body.validation_traces[0]![0],
+        SDK.EventKeySchema as never,
+      ) as SDK.EventKey;
+      expect(() =>
+        decodeDaPayloadStrict(
+          SDK.encodeDaPayload({
+            ...fixture.payload,
+            block_body: {
+              ...fixture.payload.block_body,
+              validation_trace_witnesses: [
+                dummyRetainedWitnessEntry(eventKey, executionIndex),
+              ],
+            },
+          }),
+        ),
+      ).toThrow(message);
+    },
+  );
+
+  it("names the decoder's cause when a descriptor is not canonical Plutus Data", async () => {
     const fixture = await makePayloadFixture();
-    const eventKey = LucidData.from(
-      fixture.payload.block_body.validation_traces[0]![0],
-      SDK.EventKeySchema as never,
-    ) as SDK.EventKey;
     expect(() =>
       decodeDaPayloadStrict(
         SDK.encodeDaPayload({
           ...fixture.payload,
           block_body: {
             ...fixture.payload.block_body,
-            validation_trace_witnesses: [
-              dummyRetainedWitnessEntry(eventKey, -1n),
-            ],
+            // The core codec's plain CBOR array is not the committed leaf.
+            validation_traces: fixture.payload.block_body.validation_traces.map(
+              ([key, value], index) => [
+                key,
+                index === 0 ? "8801015820" : value,
+              ],
+            ),
           },
         }),
       ),
-    ).toThrow(/not an allowed reconstruction witness/u);
+    ).toThrow(/failed to decode validation_traces\[0\]\.value: .+/u);
   });
 
   it("decodes the canonical inner payload and derives every committed root", async () => {

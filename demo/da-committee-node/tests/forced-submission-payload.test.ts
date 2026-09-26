@@ -9,11 +9,7 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import {
-  decodeMidgardValidationTraceDescriptor,
-  encodeMidgardValidationTraceDescriptor,
-  hashMidgardValidationRejectionCode,
-} from "@al-ft/midgard-core/validation-trace";
+import { hashMidgardValidationRejectionCode } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -95,16 +91,19 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
       validation_traces: base.payload.block_body.validation_traces.map(
         ([, value]) => [
           eventCbor,
-          encodeMidgardValidationTraceDescriptor({
-            ...decodeMidgardValidationTraceDescriptor(
-              Buffer.from(value, "hex"),
-            ),
-            verdict: verdict === "ForcedTxValid" ? "accepted" : "rejected",
-            rejectionCodeHash:
-              verdict === "ForcedTxValid"
-                ? Buffer.alloc(32)
-                : hashMidgardValidationRejectionCode("E_EMPTY_INPUTS"),
-          }).toString("hex"),
+          Data.to(
+            SDK.validationTraceDescriptorDataFromCore({
+              ...SDK.validationTraceDescriptorCoreFromData(
+                Data.from(value, SDK.ValidationTraceDescriptor),
+              ),
+              verdict: verdict === "ForcedTxValid" ? "accepted" : "rejected",
+              rejectionCodeHash:
+                verdict === "ForcedTxValid"
+                  ? Buffer.alloc(32)
+                  : hashMidgardValidationRejectionCode("E_EMPTY_INPUTS"),
+            }),
+            SDK.ValidationTraceDescriptor,
+          ),
         ],
       ),
     },

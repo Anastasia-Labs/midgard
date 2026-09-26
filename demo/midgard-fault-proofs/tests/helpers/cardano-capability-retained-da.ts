@@ -19,7 +19,6 @@ import {
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { encodeMidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -73,16 +72,19 @@ const validationDescriptor = (
   index: number,
 ): SDK.DaPayloadEntry => [
   Data.to(eventKey as never, SDK.EventKeySchema as never),
-  encodeMidgardValidationTraceDescriptor({
-    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-    machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-    traceRoot: Buffer.from(hash32(0xa0 + index), "hex"),
-    stepCount: 1,
-    initialStateHash: Buffer.from(hash32(0xb0 + index), "hex"),
-    terminalStateHash: Buffer.from(hash32(0xc0 + index), "hex"),
-    verdict: "accepted",
-    rejectionCodeHash: Buffer.alloc(32),
-  }).toString("hex"),
+  Data.to(
+    SDK.validationTraceDescriptorDataFromCore({
+      schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+      machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
+      traceRoot: Buffer.from(hash32(0xa0 + index), "hex"),
+      stepCount: 1,
+      initialStateHash: Buffer.from(hash32(0xb0 + index), "hex"),
+      terminalStateHash: Buffer.from(hash32(0xc0 + index), "hex"),
+      verdict: "accepted",
+      rejectionCodeHash: Buffer.alloc(32),
+    }) as never,
+    SDK.ValidationTraceDescriptorSchema as never,
+  ),
 ];
 
 export type StrictRetainedDaPairFixture = {
