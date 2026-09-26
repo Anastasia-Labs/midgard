@@ -53,7 +53,7 @@ machine load, ports and file parallelism. Read it before you form a theory.
 Done when you can state the mechanism in one sentence and point at the line
 that makes the result depend on timing, order, load or environment. If you
 cannot, say "cause not found" and stop at the report; do not apply a fix you
-cannot explain. `[review]`
+cannot explain. [review]
 
 ## 3. Choose one outcome
 
@@ -111,7 +111,7 @@ Rules for the loop:
 - Any failure sends you back to step 2. A later clean batch does not cancel it.
 - If N × one run's cost is too large, narrow the command, or report the N you
   ran and the rate it rules out (the script prints it: N clean runs rule out
-  about a 3/N failure rate). Do not call that a fix.
+  about a 3/N failure rate). Do not call that a fix. [review]
 
 Done when the script exits 0 with N ≥ max(3k, 20) and no warning.
 

@@ -8,7 +8,7 @@ description: Launch, relaunch, redeploy, and wait on a local Midgard devnet (the
 A local devnet is **three stacks**, and the first job is naming which one you
 mean. Live Preprod acceptance is a different job: use
 [midgard-e2e-acceptance](../midgard-e2e-acceptance/SKILL.md) for it, and do
-not repeat its runbook here.
+not repeat its runbook here. [review]
 
 | Stack                  | Chain                                   | Entry point                                                             |
 | ---------------------- | --------------------------------------- | ----------------------------------------------------------------------- |
@@ -28,21 +28,22 @@ probe.
 
 1. **Find out whose it is.** Phase4 compose projects are
    `midgard_phase4_process_<run id>` and their ports come from the run's
-   `run.env` [script: `phase4-process/scripts/common.sh` `require_run_dir`].
-   Work only on a run directory you generated. `[review]`
+   `run.env` (`require_run_dir` in
+   `demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh`). Work
+   only on a run directory you generated. [review]
 2. **Pick your own ports and run id.** On this branch the generator defaults
    every run to Ogmios 2337, Kupo 2442 and Postgres 5544, and derives the
    project name from the run directory's basename alone
-   [script: `phase4-process/scripts/generate.sh`]. Two worktrees with default
-   settings collide. Set `MIDGARD_PHASE4_RUN_ID` and all three
-   `MIDGARD_PHASE4_*_PORT` variables explicitly. `[review]`
+   (`demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh`). Two
+   worktrees with default settings collide. Set `MIDGARD_PHASE4_RUN_ID` and
+   all three `MIDGARD_PHASE4_*_PORT` variables explicitly. [review]
 3. **The demo-node stack binds host port 5433 for Postgres**
    (`demo/midgard-node/docker-compose.yaml`), the same port as the test
-   Postgres from `scripts/start-test-postgres.sh`. Only one of them can run. `[review]`
+   Postgres from `scripts/start-test-postgres.sh`. Only one of them can run. [review]
 4. **Wiping local state means a full on-chain redeploy.** Never delete a
    Postgres volume, `db/`, or part of a run directory while keeping the chain
-   state it belongs to. Follow [state-reset](../../../docs/agents/state-reset.md).
-   `[review]`: nothing blocks `docker compose down -v`.
+   state it belongs to. Follow [state-reset](../../../docs/agents/state-reset.md);
+   nothing blocks `docker compose down -v`. [review]
 
 ## Stale or not: relaunch versus redeploy
 
@@ -78,7 +79,7 @@ not obviously one row, or when a node refuses to attach.
    provider, history owner and MPF owner. Kupo's `/health` is 200 only once it
    has caught up; it answers 202 while replaying.
 4. **Working**: ready, and the thing you care about is advancing. Blocks
-   committing, DA members attesting and merges landing do not appear in
+   committing, DA members attesting and merges landing are absent from
    `/readyz`. Watch the node's `/pipeline-status` and the DA committee's
    `/readyz` `counts` (`signatures`, `submittedOrConfirmedL1Attestations`).
 
@@ -103,12 +104,12 @@ It polls every `--url` until all are ready, and exits with:
 | 2    | Timed out: every URL answered, not all became ready. The last reasons are printed                                                                         |
 | 3    | Unreachable: a URL never answered, no `--url` was given, or the arguments were unusable. Never a pass                                                     |
 
-Enforced by [script: `scripts/devnet-wait.mjs`] and its tests
-[ci: Agent Skills CI/Test scripts shipped inside skills]. Blind spots, stated
+Enforced by `.agents/skills/running-the-devnet/scripts/devnet-wait.mjs` and its
+tests [ci: Agent Skills CI/Test scripts shipped inside skills]. Blind spots, stated
 so you do not over-read a result:
 
 - It sends no credentials. The watcher's `/v1/status` needs a bearer and
-  answers 401 without one, so it reads as never ready. The watcher's compose
+  answers 401 without one, so it reads as permanently unready. The watcher's compose
   healthchecks accept 401 too, so they prove bar 2 only; watcher readiness
   needs the operations bearer.
 - Log scanning starts at each file's size when the wait starts, and matches

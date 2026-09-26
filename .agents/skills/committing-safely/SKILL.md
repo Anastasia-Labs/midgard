@@ -23,8 +23,8 @@ node .agents/skills/committing-safely/scripts/commit-paths.mjs \
 
 It builds a temporary index from `HEAD`, adds exactly the named paths, checks
 their formatting, commits, and resets the real index for those paths only.
-Other sessions' staged and unstaged work is never read into the commit and
-never touched. It runs no git hooks at all, so the Nix stash shim cannot fire.
+Other sessions' staged and unstaged work stays out of the commit and
+untouched. It runs no git hooks at all, so the Nix stash shim cannot fire.
 
 Refusals (nothing is committed, exit 1): a directory or the repository root,
 a path outside the repository, `onchain/aiken/plutus.json`, a path with no
@@ -34,7 +34,7 @@ is neither `HEAD`'s nor the one being committed, unformatted content, an
 revert, a message carrying a tool attribution trailer, and `HEAD` moving
 while it ran. No paths or no message is a usage error (exit 2).
 
-Formatting is checked on exactly the content being committed and never
+Formatting is checked on exactly the content being committed, not
 rewritten: `demo/**/*.{ts,tsx,md}` against demo's prettier, `*.ak` against the
 pinned fork's formatter with the trailing-whitespace normalization the
 `aiken-ci.yml` "Run normalized Aiken auto-formatter check" step applies. A
@@ -52,65 +52,65 @@ deliberately left hunks uncommitted.
 
 ## Rules
 
-`[script: commit-paths]` below is
+`commit-paths` below is
 `.agents/skills/committing-safely/scripts/commit-paths.mjs`.
 
 1. **Stage and commit explicit paths only.** Never `git add -A`, `git add .`,
    `git add -u`, `git commit -a`, or a pathspec naming a directory: each
    sweeps up files another session staged or edited.
-   `[script: commit-paths]` accepts only explicit file paths. With plain git
-   nothing stops a sweep `[review]`; the hook refuses only the blueprint.
+   `commit-paths` accepts only explicit file paths. With plain git nothing
+   stops a sweep; the hook refuses only the blueprint. [review]
 2. **Never derive a destructive command's arguments from `git status`.**
    Status lines carry prefixes (`A `, ` M`, `??`, `R  old -> new`); on
    2026-09-09 status prefixes became `rm` arguments and deleted real files.
    List candidates with `git ls-files --others --exclude-standard` or `ls`,
-   read the list, then delete by explicit path. `[review]`
+   read the list, then delete by explicit path. [review]
 3. **`onchain/aiken/plutus.json` is never committed.** It is a build output
    of whichever compiler and deployment profile last ran, and it is not
-   gitignored, so a sweep picks it up. `[hook: pre-commit]` refuses it when
-   staged (`.githooks/pre-commit` lines 49–60); `[script: commit-paths]`
-   refuses it. Blind spots: `MIDGARD_SKIP_HOOKS=1` and `--no-verify` bypass
-   the hook, a clone without `bash .githooks/install` has no hook, and no CI
-   step checks for a tracked blueprint.
+   gitignored, so a sweep picks it up. The hook refuses it when staged
+   (`.githooks/pre-commit` lines 49–60); `commit-paths` refuses it. Blind
+   spots: `MIDGARD_SKIP_HOOKS=1` and `--no-verify` bypass the hook, a clone
+   without `bash .githooks/install` has no hook, and no CI step checks for a
+   tracked blueprint. [hook: pre-commit]
 4. **Keep the Nix `pre-commit.local` shim away from a shared tree.** In the
    main checkout the repository hook ends by running
    `.git/hooks/pre-commit.local`, a pre-commit framework shim that stashes
    every unstaged tracked file (`git checkout -- .`) while its hooks run and
    re-applies them afterwards, whatever is staged. An edit another session
    makes in that window can be lost. The shim does not run in linked
-   worktrees or under `MIDGARD_SKIP_HOOKS=1`; `[script: commit-paths]` runs no
-   hooks. For plain `git commit` in the main checkout: `[review]`. Details in
-   [references/pre-commit-hook.md](references/pre-commit-hook.md).
+   worktrees or under `MIDGARD_SKIP_HOOKS=1`; `commit-paths` runs no hooks.
+   Details in [references/pre-commit-hook.md](references/pre-commit-hook.md).
+   [review]
 5. **When hooks are skipped, format first.** `MIDGARD_SKIP_HOOKS=1` also skips
-   the hook's prettier, eslint and `aiken fmt`. `[script: commit-paths]`
-   refuses unformatted TS/MD/`.ak` content but does not run eslint. CI
-   catches the rest after the push:
-   `[ci: midgard-node-ci.yml/Lint and format-check the demo workspace]` and
-   `[ci: aiken-ci.yml/Run normalized Aiken auto-formatter check]`.
+   the hook's prettier, eslint and `aiken fmt`. `commit-paths` refuses
+   unformatted TS/MD/`.ak` content but does not run eslint. CI catches the
+   rest after the push: `midgard-node-ci` "Lint the demo workspace", and
+   `aiken-ci` "Run normalized Aiken auto-formatter check" for `.ak`.
+   [ci: midgard-node-ci/Format-check the demo workspace]
 6. **Commit through a temporary index when the tree holds other sessions'
    work, then resync the real index for exactly your paths** so they do not
-   show as reverse-staged. `[script: commit-paths]`; by hand, see
-   [references/manual-recipes.md](references/manual-recipes.md).
+   show as reverse-staged. `commit-paths` does this; by hand, see
+   [references/manual-recipes.md](references/manual-recipes.md). [review]
 7. **Commit only your hunks of a file others also edited:**
    `git diff HEAD -- <file> > mine.patch`, delete the hunks that are not
    yours, then `commit-paths --patch mine.patch -m ...`.
-   `[script: commit-paths]` applies the patch to `HEAD` in the temporary
-   index and leaves the rest of the file unstaged in the tree.
+   `commit-paths` applies the patch to `HEAD` in the temporary index and
+   leaves the rest of the file unstaged in the tree. [review]
 8. **No tool attribution** in commits or PRs: no tool
    `Co-Authored-By` trailers, no "Generated with" lines, no mention in titles
-   or descriptions. `[script: commit-paths]` refuses the common trailer and
-   "Generated with" forms in its own messages; PR text and plain
-   `git commit` are `[review]`.
+   or descriptions. `commit-paths` refuses the common trailer and "Generated
+   with" forms in its own messages. Blind spot: PR text and plain
+   `git commit`. [script: .agents/skills/committing-safely/scripts/commit-paths.mjs]
 9. **Write messages the way this repository does.** From the last 300
    non-merge commits (as of 2026-09-25): an imperative sentence subject, no
    trailing period, no `type:` prefix (24 of 300 use one), median 66
    characters; a body that says why the change exists and what was wrong
    before; issue links as a `(#NNN)` subject suffix or `Closes #NNN` /
-   `Refs #NNN` in the body. `[review]`
+   `Refs #NNN` in the body. [review]
 10. **Do not push unless told to, and never push to `main`.** As of
     2026-09-25 `main` has no branch protection on GitHub
     (`gh api repos/Anastasia-Labs/midgard/branches/main` reports
-    `"protected": false`), so nothing but you stops it. `[review]`
+    `"protected": false`), so nothing but you stops it. [review]
 
 ## When something already went wrong
 

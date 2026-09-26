@@ -57,7 +57,7 @@ heading names rules. Routing pointers ("read X before Y") are not rules.
 | ------------------------------ | --------------------------------------------------------------------------------------- |
 | `[eslint: <rule>]`             | An ESLint rule configured in a tracked `eslint.config.*`.                               |
 | `[hook: pre-commit]`           | A tracked hook in `.githooks/`; it runs only where the hooks are installed.             |
-| `[ci: <workflow>/<step name>]` | The step with that exact name in `.github/workflows/<workflow>.yml`.                    |
+| `[ci: <workflow>/<step name>]` | The step with that exact name in the workflow, named by its file or its `name:`.        |
 | `[script: <path>]`             | A tracked script or test file, by repository path.                                      |
 | `[aiken-test: <module>/]`      | Tests in the Aiken module (or directory) under `onchain/aiken/lib` or `validators`.     |
 | `[runtime: <symbol>]`          | Code that refuses the broken state when it runs; the symbol is defined in tracked code. |

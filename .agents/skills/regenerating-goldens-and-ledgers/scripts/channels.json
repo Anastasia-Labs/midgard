@@ -541,6 +541,25 @@
       }
     },
     {
+      "id": "required-checks-doc",
+      "kind": "doc",
+      "summary": "docs/agents/required-checks.md, rendered from the preflight check registry.",
+      "generators": ["scripts/preflight.mjs"],
+      "producers": [],
+      "inputs": ["scripts/preflight.mjs", "scripts/preflight/*.mjs"],
+      "outputs": ["docs/agents/required-checks.md"],
+      "sync": {
+        "run": "node scripts/preflight.mjs --write-docs"
+      },
+      "check": {
+        "run": "node scripts/preflight.mjs --check-docs"
+      },
+      "ci": {
+        "workflow": ".github/workflows/repo-tools-ci.yml",
+        "step": "Check the generated required-checks list"
+      }
+    },
+    {
       "id": "deployment-profiles",
       "kind": "config",
       "summary": "Aiken environments and the typed off-chain profile module, generated from config/deployments/*.yaml and env.ak.template.",
@@ -628,7 +647,7 @@
       },
       "ci": {
         "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the §8.10 carriage execution ledger"
+        "step": "Pin the \u00a78.10 carriage execution ledger"
       }
     },
     {

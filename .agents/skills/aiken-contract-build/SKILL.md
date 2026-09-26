@@ -165,11 +165,11 @@ spots: a hand-typed `aiken build` or `aiken check` checks nothing, and
 | A traced diagnostic build for a suite that reads the blueprint path directly (for example `demo/midgard-validation` emulator tests) | `aiken build --env testnet --trace-level verbose --trace-filter all`        |
 | A blueprint kept apart from the checkout's (traced, comparison, disposable)                                                         | `aiken build --env testnet --out <existing-dir>/<file>.json`                |
 
-CI builds the blueprint with `deployment:build preprod-testing`
-[ci: Midgard Node CI/Build testnet Aiken blueprint]. It also writes
+CI builds the blueprint with `deployment:build preprod-testing` (Node CI
+step "Build testnet Aiken blueprint"). It also writes
 `plutus.json.deployment.json`, and the node refuses a blueprint whose build
 record is missing or whose recorded hash differs from the file
-[runtime: verifyBlueprintDeploymentProfile]. So a plain or traced
+(`verifyBlueprintDeploymentProfile`). So a plain or traced
 `aiken build` output is invisible to the node's loader, and building over a
 `deployment:build` output invalidates its record. `deployment:build` with any
 profile other than `preprod-testing` rewrites the tracked

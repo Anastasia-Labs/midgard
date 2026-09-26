@@ -131,7 +131,7 @@ nothing about them. Instead:
 ## The proof run
 
 On 2026-09-25 the procedure was run on two `git archive` copies of
-`94b70237e`. The after copy moved `datum_transition_is_valid` from
+`94b70237e`. <!-- doc-links:historical --> The after copy moved `datum_transition_is_valid` from
 `lib/midgard/correction-lock.ak` into a new
 `lib/midgard/correction-lock-transition.ak` and updated its two consumers
 (`validators/correction-lock.ak` and `lib/midgard/correction-lock.test.ak`):

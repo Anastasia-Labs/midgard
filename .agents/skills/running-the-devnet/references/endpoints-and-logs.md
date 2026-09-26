@@ -80,4 +80,5 @@ midgard-node > /somewhere/node-crash.log`.
   care about; an old failure higher up is not the current one. `devnet-wait`
   scans only bytes written after it started for the same reason.
 - The fatal startup lines are listed in the SKILL.md section "Reading a
-  crash" and in `DEFAULT_FATAL_PATTERNS` in `scripts/devnet-wait.mjs`.
+  crash" and in `DEFAULT_FATAL_PATTERNS` in
+  `.agents/skills/running-the-devnet/scripts/devnet-wait.mjs`.

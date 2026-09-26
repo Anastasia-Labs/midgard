@@ -51,7 +51,11 @@ const scenarios = {
     event: "pull_request",
     branch: "main",
     files: ["docs/exec-plans/agent-contribution-hardening.md"],
-    runs: ["docs-site-ci:build", "repo-tools-ci:repo-tools"],
+    runs: [
+      "docs-site-ci:build",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
   },
   "onchain/** pull request": {
     event: "pull_request",
@@ -83,13 +87,18 @@ const scenarios = {
         "gate",
       ].map((job) => `midgard-node-ci:${job}`),
       "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
     ],
   },
   "demo/** pull request": {
     event: "pull_request",
     branch: "main",
     files: ["demo/midgard-node/src/index.ts"],
-    runs: ["midgard-node-ci:*", "repo-tools-ci:repo-tools"],
+    runs: [
+      "midgard-node-ci:*",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
   },
   "watcher pull request": {
     event: "pull_request",
@@ -99,6 +108,7 @@ const scenarios = {
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
       "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
     ],
   },
   ".github/workflows/** pull request": {
@@ -112,6 +122,7 @@ const scenarios = {
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
       "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
     ],
   },
   "push to main touching the specification": {
@@ -122,6 +133,7 @@ const scenarios = {
       "latex-ci:generate_pdf",
       "pages-deploy:deploy",
       "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
     ],
   },
 };

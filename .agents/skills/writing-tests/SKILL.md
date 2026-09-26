@@ -17,13 +17,13 @@ too easy.
 ## 1. The gate: two questions
 
 Answer both, one sentence each, before writing anything. Put the answers in
-the commit message or the report. `[review]`
+the commit message or the report. [review]
 
 1. **What realistic regression does this test catch that no existing test
    already catches?** Name the code path and the input that breaks it: "if
    `externalProviderBindingsMatchPolicy` accepts a strict subset of the
    configured providers, this fails". "Coverage", "good practice" and "the
-   function exists" are not answers. If you cannot answer, do not write it.
+   function exists" are not answers. If you cannot answer, do not write it. [review]
 2. **Why can't this be a case in the nearest existing test?** Search first
    (`rg -l '<function or redeemer name>' demo/*/tests onchain/aiken`). Add a
    row to an existing `it.each` table, a vector to an existing golden channel,
@@ -36,17 +36,17 @@ Done when both sentences are written and each names a concrete bug.
 ## 2. Bug fixes are regression-first
 
 A fix lands with a test that is **red before the fix and green after**.
-`[review]`
+[review]
 
 - Write the test against the unfixed code and run it. Record the failing
-  assertion text; it must name the bug, not a setup error.
+  assertion text; it must name the bug, not a setup error. [review]
 - Apply the fix; run the same command; record it green.
 - For a validator fix, the red run is the negative scenario succeeding (or the
   honest one refused) against the unfixed validator.
 - Show red by running the test before you edit the source, or by
   reintroducing the bug as your own edit and undoing it the same way. Never
   `git checkout` or `git stash` a file to do it: other work may share the tree
-  ([AGENTS.md](../../../AGENTS.md), "Preserve user work").
+  ([AGENTS.md](../../../AGENTS.md), "Preserve user work"). [review]
 
 Done when the report shows both runs with the same command and the red
 run's failure message.
@@ -83,8 +83,8 @@ Every contract needs a lucid-evolution emulator happy path and a rejection
 where the validator must refuse, re-run in both polarities whenever parameters
 change. The rule and its completion bar live in
 [docs/agents/contracts.md](../../../docs/agents/contracts.md#scenario-coverage);
-this section is how to make the negative real. `[review]` No check maps each
-validator to its two scenarios.
+this section is how to make the negative real. No check maps each validator
+to its two scenarios. [review]
 
 - **The negative must reach the validator.** Assert the script failure, not
   "it threw". The operator-exit suite shows the shape: builder-side refusals
@@ -92,12 +92,13 @@ validator to its two scenarios.
   `failed script execution (Spend|Mint)[n]`
   (`demo/midgard-node/tests/operator-exit-emulator.test.ts:871-916`). A loose
   matcher also passes on a validity-window error or a balancing failure.
+  [review]
 - **Use a differential pair.** An accepted control and the identical
   transaction with one field changed. The control passing shows every other
   check is satisfied, so the changed field is the only thing left to fail.
 - **Kill the guard.** Delete or weaken the check you are covering as a
   temporary edit, run the negative, and undo the edit. The negative must go
-  red; if nothing fails, it covers something else.
+  red; if nothing fails, it covers something else. [review]
 - **Adversary against honest.** A real fault succeeds (the fraud proof mints,
   the dispute resolves). An adversary replaying an honest commitment is
   refused at the exact check.
@@ -118,57 +119,57 @@ a timeout or skipping it.
   instead ([the rules](../aiken-contract-build/references/cli-traps.md)). Run
   `node onchain/aiken/scripts/run-focused-check.mjs <module> <test>...`, which
   fails unless exactly N tests from that one module pass
-  `[script: onchain/aiken/scripts/run-focused-check.mjs]`. Blind spot: a raw
+  [script: onchain/aiken/scripts/run-focused-check.mjs]. Blind spot: a raw
   `aiken check -m` is still unguarded, and CI does not run the runner's own
   `run-focused-check.test.mjs`.
 - **`test t() fail { and { a, b, c } }` in Aiken.** Green as soon as any
   conjunct is false, so it cannot tell the intended rejection from an
-  unrelated one. Pin one disposition per test, asserted directly. `[review]`
+  unrelated one. Pin one disposition per test, asserted directly. [review]
 - **vitest `-t "<name>"` matching nothing.** Exits 0 with every test reported
   skipped (vitest 3.0.7, checked 2026-09-25). Read `Tests N passed` in the
-  summary and check N. `[review]`
+  summary and check N. [review]
 - **`<command> | tail` or `| grep`.** The pipeline's status is the last
   command's, so a red suite reads green. Use `set -o pipefail`, or redirect to
-  a log and record `$?`. `[review]`
+  a log and record `$?`. [review]
 - **`.complete({ localUPLCEval: false })`.** Lucid hands evaluation to the
   provider, and the emulator's `evaluateTx` echoes the budgets already in the
   transaction without running any script, so the validator never executes.
   Use `localUPLCEval: true`, per
   [transaction-finalization.md](../../../docs/agents/transaction-finalization.md)
-  `[ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]`
-  through `demo/midgard-fault-proofs/tests/wave0-shared-substrate.test.ts:131`.
+  [script: demo/midgard-fault-proofs/tests/wave0-shared-substrate.test.ts],
+  which Midgard Node CI runs.
   Blind spot: that scan covers `midgard-fault-proofs` only;
   `demo/midgard-sdk/tests/scheduler-refresh.test.ts` uses `false` three times
   as of 2026-09-25.
 - **A test double answering a shape the real service never sends.** The code
   passes against the double and fails against the service. Take the double's
   response from the real service or its published schema, including the
-  fields it omits or nulls. `[review]`
+  fields it omits or nulls. [review]
 - **An expected value computed from the artifact under test.** A pin
   re-derived from a broken build verifies the broken build against itself.
   Take expected values from an independent source (the spec, the other
   language, a hand-checked derivation), or pair the pin with a behavioral
-  negative. `[review]`
+  negative. [review]
 - **A fixture built by the producer under test.** The fixture shares the
   producer's bug, so the contradiction never surfaces. Build it the way the
-  consumer, usually the validator, derives it. `[review]`
+  consumer, usually the validator, derives it. [review]
 - **Relative-only cross-language agreement** (`adjacent == accepted + 1`).
   Both sides drift together and both pass. Pin the absolute boundary in both
-  languages. `[review]`
+  languages. [review]
 - **Hand-written boundary constants.** The "maximum" is not the maximum, or a
   literal drifts from its formula. Derive the boundary from the formula the
-  code uses and add the adjacent over-limit case. `[review]`
+  code uses and add the adjacent over-limit case. [review]
 - **Degenerate inputs** (an empty delta, a one-element list). They hide the
   defect a realistic input shows. Use realistic inputs and keep one labelled
-  degenerate case. `[review]`
+  degenerate case. [review]
 - **Stale `dist/` or `plutus.json`.** The run exercises old code or old
   validators. Rebuild first (see
-  [references/test-levels.md](references/test-levels.md)). `[hook: pre-commit]`
+  [references/test-levels.md](references/test-levels.md)). [hook: pre-commit]
   refuses a staged `plutus.json`; nothing checks that the file matches the
   current `.ak` source.
 - **`it.only` / `describe.only`.** Every other test in the file is skipped.
   vitest refuses `.only` when `CI` is set (`allowOnly: !isCI`), so CI catches
-  it; a local run does not. `[review]`
+  it; a local run does not. [review]
 
 ## 6. Time and fees in emulator tests
 
@@ -179,7 +180,7 @@ a timeout or skipping it.
   `emulator.now()`, clamp lower bounds to the instance's `zeroTime` or
   `zeroSlot` (`demo/midgard-node/src/transactions/operators/exit.ts:186-213`),
   and advance the emulator to a window's first slot before building inside
-  it. `[review]`
+  it. [review]
 - **Keep lower bounds off the wall clock.** Production and e2e builders follow
   the backoff rules in
   [transaction-finalization.md](../../../docs/agents/transaction-finalization.md#validity-windows).
@@ -189,7 +190,7 @@ a timeout or skipping it.
   output (`demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts`), and assert
   the completed body's fee and output count
   (`demo/midgard-sdk/src/availability-challenge-transactions.ts:474-491`).
-  `[review]`
+  [review]
 
 ## 7. Verifiers get their own negative tests
 
@@ -198,11 +199,11 @@ healthy one, and no end-to-end run will reveal it. Give each one a self-test
 that feeds it the failing case and asserts a nonzero exit or a refusal:
 `onchain/aiken/scripts/guard-focused-selector.test.mjs` drives the guard
 against a stub that returns a well-formed report with zero tests collected
-`[ci: Aiken CI/Self-test the fail-closed focused-selector guard]`.
+[ci: Aiken CI/Self-test the fail-closed focused-selector guard].
 Scripts under `.agents/skills/*/scripts/` follow the same rule.
 
 ## 8. Report what ran
 
 For each test added or changed, one line: the regression it catches, the
 level, the exact command, the collected count, and for a fix the red run's
-failure message. "Suite green" without a count is not evidence. `[review]`
+failure message. "Suite green" without a count is not evidence. [review]

@@ -41,10 +41,10 @@ git grep -n -F -e '<package>/src/<old-path-without-.ts>' -e '<old-basename>'
   `require`).
 - **Build entries.** Packages list `tsup` entries in their `build` script
   (`d7368bc37` changed `src/validation-machine.ts` to
-  `src/validation-machine/index.ts`).
+  `src/validation-machine/index.ts`). <!-- doc-links:historical -->
 - **Tests and scripts that read source as text.**
   `demo/midgard-node/tests/da-payload-libp2p-producer.test.ts:824` reads
-  `../src/commands/listen-router.ts` and asserts what it does _not_ contain;
+  `demo/midgard-node/src/commands/listen-router.ts` and asserts what it does _not_ contain;
   `demo/da-committee-node/scripts/check-no-http-da-transport.mjs` lists six
   source files by path. When the named file is deleted they fail loudly;
   when it survives holding less code, they pass while checking less. Point

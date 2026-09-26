@@ -31,12 +31,12 @@ report carries these five things. They are rules; each is `[review]`.
    touched files ran. The reader can then decide whether that gap matters;
    silence decides for them. [AGENTS.md](../../../AGENTS.md) "Always-On
    Rules" asks you to report exactly what ran and says a smoke test does not
-   replace a required acceptance check.
+   replace a required acceptance check. [review]
 3. **"Could not look" apart from "looked and it passed".** A skipped test, a
    `skipIf` without its environment variable, a tool that was missing, a
    check that timed out: each is _could not look_, and goes under "Not
    checked", never inside a pass count. A run reporting
-   `203 passed | 108 skipped` passed 203 tests and did not look at 108.
+   `203 passed | 108 skipped` passed 203 tests and did not look at 108. [review]
 4. **Measurements carry their date** and, where it varies, the machine state
    (quiet, or concurrent with another suite). Timings, test counts, line
    counts and sizes all go stale.
@@ -94,7 +94,7 @@ subject, no period, no `type:` prefix, a body that says why the change exists
 and what was wrong before, issue links as `(#NNN)` or `Closes #NNN`. This
 skill adds one thing: a body that says something was verified carries an
 evidence line, or points to where the evidence lines live (the issue comment
-or PR). `[review]`
+or PR). [review]
 
 ## Hand-back reports
 
@@ -106,7 +106,7 @@ separates: what changed (files), what was checked (evidence lines), what was
 not checked, rulings or instructions received and how each was applied, facts
 you could not verify, and open questions. Never report work as done that you
 did not do, and never fold an unanswered question into a default choice
-without saying so. `[review]`
+without saying so. [review]
 
 ## No attribution
 

@@ -114,7 +114,7 @@ sh devnet/watcher-journeys/scripts/generate.sh
 ```
 
 It sets `MIDGARD_PHASE4_RUN_ID=watcher_journeys_<basename>`, runs the phase4
-generator, rewrites genesis paths in `config/config.json`, and writes
+generator, rewrites genesis paths in `<run dir>/config/config.json`, and writes
 `compose.host-paths.json`. It prints `servicesStarted=false`. The comment in the
 script says: never change genesis after starting these services.
 

@@ -7,7 +7,7 @@ Unless stated otherwise, behaviour here was probed on 2026-09-26 with
 `aiken v1.1.23+5adf783` (the pin) in a throwaway project, and the selector
 rules were read from the fork's source,
 `crates/aiken-project/src/lib.rs` `collect_test_items` (same code at fork
-revisions `133151f`, `2a78108` and `5adf783`).
+revisions `133151f`, `2a78108` and `5adf783`). <!-- doc-links:external -->
 
 ## How `aiken check -m` reads a selector
 

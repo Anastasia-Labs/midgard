@@ -12,7 +12,7 @@ changes behaviour, the reviewer has to read every moved line, and the split has
 bought nothing.
 
 So a split is proved, not eyeballed, and it lands **alone**: its own commit
-before any behaviour change, never mixed with one.
+before any behaviour change, never mixed with one. [review]
 
 ## 1. Gate: is the split worth it?
 
@@ -39,6 +39,7 @@ message.
   `onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak`, "Do not edit")
   is split by changing its generator. Use
   [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md).
+  [review]
 
 Done when: all five are yes, or you have stopped and said which one failed.
 
@@ -115,39 +116,37 @@ edits.
 
 ## Rules
 
-`[script: verify-pure-move]` is
-`.agents/skills/splitting-oversized-modules/scripts/verify-pure-move.mjs`;
-`[script: compare-blueprint-hashes]` is the sibling
-`compare-blueprint-hashes.mjs`. No CI step runs either; they run when you run
+No CI step runs the two verifier scripts tagged below; they run when you run
 them.
 
 1. **The split lands alone**, as its own commit before any behaviour change.
-   `[review]`
-2. **Pass the gate first.** `[review]`
+   [review]
+2. **Pass the gate first.** [review]
 3. **A TypeScript split is proved by the verifier**, with the before side
    read from git and never from a copy or an earlier output.
-   `[script: verify-pure-move]`
+   [script: .agents/skills/splitting-oversized-modules/scripts/verify-pure-move.mjs]
 4. **An Aiken split leaves every validator title and hash identical.**
    Moving code between files under `validators/` changes titles and is a
-   contract change, not a split. `[script: compare-blueprint-hashes]`
+   contract change, not a split.
+   [script: .agents/skills/splitting-oversized-modules/scripts/compare-blueprint-hashes.mjs]
 5. **Aiken builds use the pinned fork**, checked with
    `node onchain/aiken/scripts/pinned-compiler.mjs` from the checkout.
-   `[script: onchain/aiken/scripts/pinned-compiler.mjs]`
+   [script: onchain/aiken/scripts/pinned-compiler.mjs]
 6. **Build Aiken in fresh copies outside the checkout, niced, with the same
    `--env` and trace level on both sides.** The checkout's `plutus.json` is
-   shared. `[review]`
+   shared. [review]
 7. **Cross-package moves respect the package boundaries**: import siblings
    by package name, never through `../<package>/src`; nothing in the watcher
    imports the node, node tools or the DA committee node.
-   `[eslint: no-restricted-imports]`
+   [eslint: no-restricted-imports]
 8. **Everything that pins the old path moves in the same commit**: exports
    maps, `tsup` entries, text-reading tests and scripts, path guards, CI
-   filters, evidence. `[review]`
+   filters, evidence. [review]
 9. **Moved Aiken tests keep the same total** in `aiken check`; nothing
-   compares it for you. `[review]`
-10. **Generated files are split through their generator.** `[review]`
+   compares it for you. [review]
+10. **Generated files are split through their generator.** [review]
 11. **The commit message carries the proof**: counts, the verifier's first
-    line, new exports, non-move edits. `[review]`
+    line, new exports, non-move edits. [review]
 
 ## Blind spots
 

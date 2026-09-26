@@ -30,7 +30,7 @@ const enforcers = {
   "demo/eslint.config.mjs":
     'export default [{ rules: { "no-restricted-imports": ["error"] } }];\n',
   ".github/workflows/ci.yml":
-    "jobs:\n  test:\n    steps:\n      - name: Run the unit tests\n        run: true\n",
+    "name: Unit CI\njobs:\n  test:\n    steps:\n      - name: Run the unit tests\n        run: true\n",
   ".githooks/pre-commit": "#!/bin/sh\n",
   "scripts/guard.mjs": "export {};\n",
   "onchain/aiken/lib/midgard/sample.ak":
@@ -54,6 +54,7 @@ test("a rule tagged with an enforcer that exists passes, for every tag kind", ()
       [
         "- Never import a sibling's src. [eslint: no-restricted-imports]",
         "- Always run the unit tests. [ci: ci/Run the unit tests]",
+        "- Always run them in CI. [ci: Unit CI/Run the unit tests]",
         "- Never commit the build output. [hook: pre-commit]",
         "- Always run the guard. [script: scripts/guard.mjs]",
         "- Never break identity. [aiken-test: midgard/sample]",

@@ -7,9 +7,9 @@ description: Decide where a rule or a hard-won lesson lives, and write it so it 
 
 `AGENTS.md` and `CLAUDE.md` load in full at the start of every session. A
 line added there is paid for by every task in the repository, forever. So the
-question is never "is this true?" but "what is the lowest rung that can carry
+question is not "is this true?" but "what is the lowest rung that can carry
 it?" Text is the weakest carrier: it is read once, obeyed sometimes, and
-never goes red when the tree moves under it.
+not red when the tree moves under it.
 
 ## 1. Pick the rung
 
@@ -65,35 +65,33 @@ it is written down. Read it top to bottom and take the first match.
   table needs a new row. Each record states context, decision, consequences,
   status and links. A superseded decision keeps its rationale and links to its
   replacement.
-- **Nested `AGENTS.md` wins locally.** `[review]` Four exist as of 2026-09-25:
+- **Nested `AGENTS.md` wins locally.** Four exist as of 2026-09-25:
   `demo/`, `demo/midgard-node/`, `demo/midgard-node-tools/devnet/`,
-  `onchain/aiken/`. Move a directory-specific rule down, never up.
+  `onchain/aiken/`. Move a directory-specific rule down, never up. [review]
 - **One meaning, one place.** Never state a rule in two files; point at the
-  owner instead. `[review]` Grep for the subject before adding. Two copies
-  drift into the conflicting-instructions smell.
+  owner instead. Grep for the subject before adding. Two copies drift into the
+  conflicting-instructions smell. [review]
 
 ## 3. Write the rule
 
 - **Write an invariant, not an instruction.** "Every validator has a passing
   and a failing emulator scenario", not "remember to add scenarios". Name the
-  trigger so a reader scanning a diff knows when it applies. `[review]`
-- **Tag what enforces it, inline, and state the blind spot beside it.**
-  `[review]` Use the forms `[eslint: <rule>]`, `[hook: pre-commit]`,
+  trigger so a reader scanning a diff knows when it applies. [review]
+- **Tag what enforces it, inline, and state the blind spot beside it.** Use
+  the forms `[eslint: <rule>]`, `[hook: pre-commit]`,
   `[ci: <workflow>/<step name>]`, `[script: <path>]`,
-  `[aiken-test: <module>/]`, `[runtime: <symbol>]` or `[review]`. The
-  vocabulary is task W2.1 of the
-  [hardening plan](../../../docs/exec-plans/agent-contribution-hardening.md);
-  it moves to `docs/agents/README.md` when that lands. Never claim a check that
-  does not exist: a stale tag is worse than none, because a reviewer trusts it
-  and skips the look. Example blind spot:
+  `[aiken-test: <module>/]`, `[runtime: <symbol>]` or `[review]`, defined in
+  [docs/agents/README.md](../../../docs/agents/README.md). Never claim a check
+  that does not exist: a stale tag is worse than none, because a reviewer
+  trusts it and skips the look. Example blind spot:
   `onchain/aiken/scripts/run-focused-check.mjs` fails unless exactly the named
   tests are collected; a raw `aiken check -m` still exits 0 when it collects
-  none.
+  none. [ci: repo-tools-ci/Check agent rule enforcement tags]
 - **Every link says when to read it.** "Read `contracts.md` before editing
   contracts, builders or fixtures", not "see `contracts.md`". Without the
-  clause an agent has no reason to spend a tool call on it. `[review]`
+  clause an agent has no reason to spend a tool call on it. [review]
 - **Date every measurement.** A count without a date cannot be told from a
-  stale one. `[review]`
+  stale one. [review]
 
 ## 4. Skills
 
@@ -127,7 +125,7 @@ blind references. Read [references/smells.md](references/smells.md) when you
 need the definition of a smell or the verified Midgard instance of it.
 
 Read [references/size-budgets.md](references/size-budgets.md) when a file
-grows, when you add to an always-loaded file, or when deciding whether content
+grows, when you add to a file every session loads, or when deciding whether content
 should move into a reference. The budgets there are proposals, not checks;
 enforcing them is task W2.3 of the hardening plan.
 

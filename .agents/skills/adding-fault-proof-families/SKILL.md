@@ -126,7 +126,7 @@ git grep -l -e mintItemNonCanonical -e MintItemNonCanonical \
 
 [references/touch-points.md](references/touch-points.md) lists every surface
 by package with what enforces it. Read it before step 2, and again whenever a
-`GAP` line names a file you do not recognise.
+`GAP` line names an unfamiliar file.
 
 1. **Choose the shape.** Linear (fixed step chain, derived from
    `LINEAR_FAMILY_CATEGORIES` in `linear-family-spec.ts`), cursor
@@ -147,12 +147,12 @@ by package with what enforces it. Read it before step 2, and again whenever a
    the array position), add it to the SDK `FraudProofs` type, and mirror all of
    it in `demo/midgard-core/src/deployment-manifest-identity.ts`. Done when the
    script shows `OK` for `catalogue-order`, `catalogue-id`, `core-identity` and
-   `reference-scripts`.
+   `reference-scripts`. [review]
 4. **Build the SDK contract chain.** `contracts/families/<kebab>.ts` with the
    blueprint titles and `build<Name>Chain`, wired into `contracts/build.ts`,
    `index.ts` and `types.ts`. Done when `sdk-chain` is `OK`.
 5. **Wire the node and the DA fixture.** Deployable scripts, the
-   always-succeeds chain, manifest contract loading, and the node role-map
+   `always-succeeds` chain, manifest contract loading, and the node role-map
    mirror. Regenerate the DA fixture (see
    [references/verification.md](references/verification.md)). Done when the
    node typecheck and the manifest tests pass.
@@ -221,11 +221,11 @@ you checked it by reading.
       [ci: Aiken CI/Compile and run the Aiken test suite with the pinned fork]
 - [ ] No generated Aiken edited by hand. [review]
 - [ ] Watcher deployment identity lists the category.
-      [ci: Midgard Node CI/Build, typecheck, lint, format-check, and test Midgard watcher]
+      [ci: Midgard Node CI/Build, typecheck, format-check, and test Midgard watcher]
       (inferred: its `exactRecord` parse rejects the core-built catalogue
       fixture; not observed failing)
 - [ ] Devnet journey owner assigned and owner counts updated.
-      [ci: Midgard Node CI/Typecheck, lint, build, and test Midgard node tools]
+      [ci: Midgard Node CI/Typecheck, build, and test Midgard node tools]
       (the typecheck enforces the owner entry; the count test in
       `devnet/watcher-journeys/catalogue.test.ts` runs in no CI job)
 - [ ] Status docs updated in the same change. [review]

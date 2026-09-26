@@ -505,7 +505,13 @@ describe("formatting of the committed content", () => {
 
   const aikenRepo = () => {
     const repo = makeRepo({ "onchain/aiken/lib/a.ak": "fn a() {\n  1\n}\n" });
-    const pin = "  AIKEN_FORK_VERSION: aiken v0.0.0+pinned\n";
+    const pin = [
+      "  AIKEN_FORK_REPO: https://example.invalid/aiken",
+      "  AIKEN_FORK_TAG: v0.0.0",
+      `  AIKEN_FORK_REV: abcdef0${"0".repeat(33)}`,
+      "  AIKEN_FORK_VERSION: aiken v0.0.0+abcdef0",
+      "",
+    ].join("\n");
     repo.write(".github/workflows/aiken-ci.yml", `env:\n${pin}`);
     repo.write(".github/workflows/midgard-node-ci.yml", `env:\n${pin}`);
     mkdirSync(join(repo.dir, "onchain/aiken/scripts"), { recursive: true });
@@ -543,7 +549,7 @@ describe("formatting of the committed content", () => {
       {
         env: {
           MIDGARD_AIKEN_BIN: aiken,
-          FAKE_AIKEN_VERSION: "aiken v0.0.0+pinned",
+          FAKE_AIKEN_VERSION: "aiken v0.0.0+abcdef0",
           FAKE_AIKEN_MODE: "trailing",
         },
       },
@@ -558,7 +564,7 @@ describe("formatting of the committed content", () => {
       {
         env: {
           MIDGARD_AIKEN_BIN: aiken,
-          FAKE_AIKEN_VERSION: "aiken v0.0.0+pinned",
+          FAKE_AIKEN_VERSION: "aiken v0.0.0+abcdef0",
           FAKE_AIKEN_MODE: "change",
         },
       },
@@ -650,6 +656,8 @@ describe("git hooks", () => {
       '#!/usr/bin/env bash\ntouch "$(git rev-parse --git-common-dir)/local-ran"\n',
     );
     chmodSync(join(hooks, "pre-commit.local"), 0o755);
+    // The hook runs the shim only where the Nix shell's config link exists.
+    writeFileSync(join(repo.dir, ".pre-commit-config.yaml"), "");
     const marker = join(repo.dir, ".git/local-ran");
 
     // Control: a plain commit in the main checkout reaches pre-commit.local.
@@ -670,8 +678,8 @@ describe("git hooks", () => {
     });
     assert.ok(!existsSync(marker));
 
-    // A linked worktree: the hook looks for <worktree>/.git/hooks/pre-commit.local,
-    // and there .git is a file, so the shim never runs.
+    // A linked worktree has no .pre-commit-config.yaml (it is ignored, so the
+    // checkout does not carry it), so the shim does not run there.
     const linked = join(repo.dir, ".git/linked-worktree");
     repo.git(["worktree", "add", "-q", "-b", "side", linked]);
     writeFileSync(join(linked, "a.txt"), "from the worktree\n");

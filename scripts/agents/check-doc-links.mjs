@@ -188,7 +188,7 @@ export const pathCandidate = (token, index) => {
   const path = token
     .replace(/^\.\//u, "")
     .replace(/[#?].*$/u, "")
-    .replace(/:\d+(?::\d+)?(?:-\d+)?$/u, "")
+    .replace(/:\d+(?::\d+)?(?:[-–]\d+)?(?:,\d+(?:[-–]\d+)?)*$/u, "")
     .replace(/[.,;:]+$/u, "");
   if (!path.includes("/") || path.startsWith("/")) return undefined;
   const first = path.split("/")[0];

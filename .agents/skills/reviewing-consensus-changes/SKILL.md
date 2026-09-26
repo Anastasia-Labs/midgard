@@ -6,7 +6,7 @@ description: Two-pass adversarial review for changes to Midgard consensus-critic
 # Reviewing consensus changes
 
 Consensus defects in Midgard survive ordinary review because each part looks
-correct on its own. Ten fraud-proof resolvers shipped as always-succeeds
+correct on its own. Ten fraud-proof resolvers shipped as `always-succeeds`
 scripts while every Aiken guard in them was right: the SDK applied one
 parameter too few (#605, fixed in #609). One evidence sweep found 24 gates
 that could not fail (#519). And a finding can look real and be wrong: "`tx_id`
@@ -77,7 +77,7 @@ change) exactly these, and nothing else `[review]`:
 
 Never include the author's reasoning, the task's rationale, earlier findings,
 or why a fix is believed correct. Any of these anchors the reviewer on the
-author's model, and the author's model is what is under review.
+author's model, and the author's model is what is under review. [review]
 
 Ask for ranked findings, and for one line per lens that the reviewer found
 clean. Silence on a lens is not coverage.
@@ -87,10 +87,11 @@ Done when: every lens is answered, with findings or with a clean line.
 ### 4. Verify every finding before acting on it
 
 Check each finding against the code and upgrade it, downgrade it, or reject
-it with evidence `[review]`. Never adopt a finding on the reviewer's
+it with evidence. Never adopt a finding on the reviewer's
 authority: a wrong finding that gets fixed is a new defect in adversary-facing
 code. Apply the calibration rules in the lens file; a finding with no trace to
 a reachable outcome is dropped, and the drop is recorded with its reason.
+[review]
 
 Done when: every finding is CONFIRMED, PLAUSIBLE, or rejected with a reason.
 
@@ -105,7 +106,7 @@ nothing.
 
 Do the temporary revert in a scratch copy, never with `git checkout`,
 `git stash` or `git restore` on the working tree: other sessions share it,
-and those commands destroy uncommitted work.
+and those commands destroy uncommitted work. [review]
 
 - **Aiken.** Copy the tracked and new files, without `build/` or
   `plutus.json`, and run the copy's own focused-check script, which compiles
@@ -133,10 +134,9 @@ and those commands destroy uncommitted work.
 
 A negative test must fail at the check it names, not somewhere earlier. For
 emulator negatives, `expectOnchainRefusal` rejects a failure that did not come
-from script execution
-`[runtime: expectOnchainRefusal in demo/midgard-fault-proofs/tests/support/emulator/expect-onchain-refusal.ts]`;
-it cannot tell which validator check refused, so pin the trace message with a
-traced build when the check matters.
+from script execution. Blind spot: it cannot tell which validator check
+refused, so pin the trace message with a traced build when the check matters.
+[runtime: expectOnchainRefusal]
 
 Done when: every fix has a test, and the red-check output (red with the bug,
 green with the fix) is recorded.
@@ -161,12 +161,11 @@ Done when: every pass-1 finding has a verdict.
 ### 7. Re-run the gates yourself
 
 Run the gates listed in step 1 and read their output. A report, including a
-subagent's, is a claim, not evidence `[review]`. Aiken evidence must show a
-nonzero collected count; `run-focused-check.mjs` fails unless exactly the
-named tests ran `[script: onchain/aiken/scripts/run-focused-check.mjs]`, and
-an `aiken check -m` selector can collect zero tests and exit 0. Before
-trusting any local Aiken result, confirm the compiler is the pinned fork
-`[script: onchain/aiken/scripts/pinned-compiler.mjs]`.
+subagent's, is a claim, not evidence. Aiken evidence must show a nonzero
+collected count; `run-focused-check.mjs` fails unless exactly the named tests
+ran, and an `aiken check -m` selector can collect zero tests and exit 0. Before
+trusting any local Aiken result, confirm the compiler is the pinned fork with
+`pinned-compiler.mjs`. [script: onchain/aiken/scripts/run-focused-check.mjs]
 
 Done when: each gate's command and its observed result are in the report.
 
@@ -176,7 +175,7 @@ List every risk the change leaves open or widens: the defect, why it stays,
 and what would close it. A residual that is a fault-proof coverage gap
 belongs in [remaining-gaps.md](../../../docs/fault-proofs/remaining-gaps.md)
 under that document's own closure rule; propose the entry in the report.
-Never let a known residual widen without saying so.
+Never let a known residual widen without saying so. [review]
 
 Done when: the register is in the report, or the report says there is none.
 
@@ -193,7 +192,7 @@ Done when: the register is in the report, or the report says there is none.
 Read the invariants file for every subtree the diff touches. Each invariant
 names the finding that earned it and is marked VERIFIED or PARTIAL; a PARTIAL
 entry names what is unproven, which is where to look first. Do not relax an
-invariant without understanding what it closes.
+invariant without understanding what it closes. [review]
 
 ## Finding format
 
@@ -216,7 +215,7 @@ Severity:
 
 - **blocker**: an honest block can be removed or an honest party slashed; a
   fraudulent block cannot be proven; funds can be taken or frozen; a validator
-  accepts what it must refuse.
+  accepts what it should refuse.
 - **major**: liveness loss on a reachable path; a transaction that cannot fit
   its budget in a supported shape; a guard that is present but cannot fail.
 - **minor**: a real defect with no consensus consequence today.

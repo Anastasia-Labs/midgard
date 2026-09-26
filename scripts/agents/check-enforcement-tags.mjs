@@ -106,9 +106,22 @@ export const LINE_BUDGETS = {
   "docs/agents/triage-labels.md": 20,
   "docs/agents/verification.md": 80,
   "docs/agents/withdraw-zero-yielding.md": 170,
-  ".agents/skills/aiken-contract-build/SKILL.md": 140,
   ".agents/skills/midgard-e2e-acceptance/SKILL.md": 230,
   ".agents/skills/midgard-typescript-cleanup/SKILL.md": 80,
+  // Set on 2026-09-26, by the same rule, for the skills wave that was written
+  // before this check reached it (aiken-contract-build was extended by it).
+  ".agents/skills/adding-fault-proof-families/SKILL.md": 260,
+  ".agents/skills/aiken-contract-build/SKILL.md": 260,
+  ".agents/skills/committing-safely/SKILL.md": 140,
+  ".agents/skills/debugging-ci-failures/SKILL.md": 230,
+  ".agents/skills/editing-agent-instructions/SKILL.md": 160,
+  ".agents/skills/fixing-flaky-tests/SKILL.md": 150,
+  ".agents/skills/regenerating-goldens-and-ledgers/SKILL.md": 210,
+  ".agents/skills/reviewing-consensus-changes/SKILL.md": 260,
+  ".agents/skills/running-the-devnet/SKILL.md": 170,
+  ".agents/skills/splitting-oversized-modules/SKILL.md": 190,
+  ".agents/skills/writing-reports-and-prs/SKILL.md": 150,
+  ".agents/skills/writing-tests/SKILL.md": 230,
 };
 
 export class CouldNotLook extends Error {}
@@ -200,9 +213,22 @@ export const resolveTag = ({ kind, value }, { root, tracked }) => {
       if (slash <= 0) return "[ci] needs <workflow>/<step name>";
       const workflow = value.slice(0, slash);
       const step = value.slice(slash + 1).trim();
-      const file = [".yml", ".yaml"]
-        .map((extension) => `.github/workflows/${workflow}${extension}`)
-        .find((path) => tracked.has(path));
+      // The workflow is named by its file (`aiken-ci`) or by its top-level
+      // `name:` (`Aiken CI`), which is what the Actions UI and a failing
+      // check show.
+      const workflows = [...tracked].filter((path) =>
+        /^\.github\/workflows\/[^/]+\.ya?ml$/u.test(path),
+      );
+      const file =
+        workflows.find(
+          (path) => path.replace(/^.*\/|\.ya?ml$/gu, "") === workflow,
+        ) ??
+        workflows.find(
+          (path) =>
+            /^name:\s*(.+?)\s*$/mu
+              .exec(readTracked(root, path))?.[1]
+              .replace(/^(["'])(.*)\1$/u, "$2") === workflow,
+        );
       if (file === undefined) return `no tracked workflow ${workflow}.yml`;
       return workflowStepNames(readTracked(root, file)).has(step)
         ? undefined
