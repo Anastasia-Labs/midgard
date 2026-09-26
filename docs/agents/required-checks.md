@@ -254,6 +254,7 @@ Golden channel native-tx-field-access-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/tests/fixtures/native-tx-field-access-v1.generated.json`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`
@@ -272,6 +273,7 @@ Golden channel native-tx-field-items-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/tests/fixtures/native-tx-field-items-v1.vectors.mjs`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/native-tx-field-items-v1-golden.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`
@@ -289,6 +291,7 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/tests/fixtures/native-tx-vector-v1.vectors.mjs`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`
@@ -413,6 +416,7 @@ Golden channel transaction-root-v1 (midgard-node).
   - `demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json`
   - `demo/midgard-node/tests/fixtures/transaction-root-v1.generated.json`
   - `onchain/aiken/lib/midgard/transaction-root-v1-golden.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`

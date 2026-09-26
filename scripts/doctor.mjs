@@ -440,7 +440,7 @@ export const runDoctor = async ({
   return { rows, exitCode };
 };
 
-const LABEL = { ok: "ok", warn: "WARN", failed: "FAIL", unknown: "????" };
+const LABEL = { ok: "ok", warn: "WARN", failed: "FAIL", unknown: "SKIP" };
 
 export const formatReport = ({ rows, exitCode }, { compact }) => {
   const problems = rows.filter((r) => r.status !== "ok");
