@@ -24,6 +24,11 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+import {
+  assertPinnedAiken,
+  defaultAikenBinary,
+} from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
+
 export class RunnerCheckError extends Error {
   constructor(code, detail) {
     super(`${code}: ${detail}`);
@@ -222,7 +227,7 @@ export const deriveVitestOutcome = ({
 // Aiken
 // ---------------------------------------------------------------------------
 
-export const aikenBinary = () => process.env.MIDGARD_AIKEN_BIN ?? "aiken";
+export const aikenBinary = defaultAikenBinary;
 
 // `.github/workflows/aiken-ci.yml` runs ONE compiler: the patched fork
 // v1.1.23+5adf783 (Anastasia-Labs/aiken, tag midgard-5adf7837) is the authority
@@ -329,8 +334,19 @@ export const aikenPublishedCommand = ({
     .join(" ")}`;
 
 export const runAikenCheck = ({ projectRoot, selectors, binary }) => {
+  const compiler = binary ?? aikenBinary();
+  // A report is only a measurement under the pinned fork; stock v1.1.22 can
+  // pass a suite it compiles unsoundly.
+  try {
+    assertPinnedAiken(compiler);
+  } catch (error) {
+    throw new RunnerCheckError(
+      "ERR_AIKEN_NOT_PINNED",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
   const run = spawnSync(
-    binary ?? aikenBinary(),
+    compiler,
     [
       "check",
       "-e",
@@ -352,7 +368,7 @@ export const runAikenCheck = ({ projectRoot, selectors, binary }) => {
   } catch (error) {
     throw new RunnerCheckError(
       "ERR_AIKEN_NO_REPORT",
-      `${binary ?? aikenBinary()} produced no readable structured report (exit ${String(
+      `${compiler} produced no readable structured report (exit ${String(
         run.status,
       )}): ${error instanceof Error ? error.message : String(error)}\n${
         run.stderr ?? ""

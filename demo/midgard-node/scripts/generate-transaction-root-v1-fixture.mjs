@@ -23,6 +23,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  assertPinnedAiken,
+  defaultAikenBinary,
+} from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
@@ -494,9 +499,14 @@ const writeOrCheck = (target, expected) => {
 const formatAiken = (source) => {
   const directory = mkdtempSync(join(tmpdir(), "midgard-rf031-aiken-format-"));
   const target = join(directory, "transaction-root-v1-golden.test.ak");
-  const aikenBinary = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
+  const aikenBinary = defaultAikenBinary();
   if (aikenBinary.length === 0) {
     fail("MIDGARD_AIKEN_BIN must be a non-empty executable path");
+  }
+  try {
+    assertPinnedAiken(aikenBinary);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
   try {
     writeFileSync(target, source, "utf8");
@@ -632,7 +642,11 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
     outputIndex,
   };
   const keyCbor = Buffer.from(Data.to(orderId, SDK.OutputReference), "hex");
-  const submittedCbor = encodeMidgardForcedTxCanonical(decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(transaction.canonicalTransactionCborHex, "hex")));
+  const submittedCbor = encodeMidgardForcedTxCanonical(
+    decodeMidgardNativeTxFullFromCanonicalCbor(
+      Buffer.from(transaction.canonicalTransactionCborHex, "hex"),
+    ),
+  );
   const forced = await Effect.runPromise(
     production.encodeForcedInclusionValueV1({
       nativeTxCbor: submittedCbor,
@@ -666,7 +680,8 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
     txIdHex: decoded.tx_id,
     compactCborHex: decoded.submitted_source.compact_cbor,
     witnessSetCompactCborHex: decoded.submitted_source.witness_set_compact_cbor,
-    fieldPreimageLengthsCborHex: decoded.submitted_source.field_preimage_lengths_cbor,
+    fieldPreimageLengthsCborHex:
+      decoded.submitted_source.field_preimage_lengths_cbor,
     canonicalTransactionCborHex: submittedCbor.toString("hex"),
     verdict: verdictName,
   });

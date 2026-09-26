@@ -60,6 +60,36 @@ export const parseGoldenChannelArguments = (usage) => {
   return { checkOnly: commandArguments.length === 1 };
 };
 
+// Formatters that already reported the pinned identity in this process. The
+// check spawns a node child, so it runs once per binary rather than per file.
+const pinnedFormatters = new Set();
+
+/**
+ * Refuses to format under any compiler but the pinned fork. This file ships in
+ * the package, so it cannot import the checker statically; the repository root
+ * the caller passes is where `onchain/aiken/scripts/pinned-compiler.mjs` lives.
+ */
+const assertPinnedFormatter = (aikenBinary, repositoryRoot) => {
+  if (pinnedFormatters.has(aikenBinary)) {
+    return;
+  }
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(repositoryRoot, "onchain/aiken/scripts/pinned-compiler.mjs"),
+      aikenBinary,
+    ],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      result.stderr.trim() ||
+        `could not verify the Aiken compiler identity (${result.error?.message ?? `exit ${String(result.status)}`})`,
+    );
+  }
+  pinnedFormatters.add(aikenBinary);
+};
+
 /**
  * Runs the generated Aiken source through `aiken fmt` before it is compared or
  * written, so the checked-in module is formatted exactly as a contributor's
@@ -76,9 +106,10 @@ export const formatAikenSource = ({
   repositoryRoot,
   tmpPrefix,
 }) => {
+  const aikenBinary = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
+  assertPinnedFormatter(aikenBinary, repositoryRoot);
   const directory = mkdtempSync(join(tmpdir(), tmpPrefix));
   const target = join(directory, fileName);
-  const aikenBinary = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
   try {
     writeFileSync(target, source, "utf8");
     const result = spawnSync(aikenBinary, ["fmt", target], {
