@@ -6,35 +6,27 @@ repository root unless a row says otherwise.
 
 ## Required checks
 
-Run every row whose paths you changed, plus the narrow tests that prove the
-behavior you touched, and report each command with its result. A smoke test
-does not replace a required check. Blind spot: rows are selected by path, and
-nothing verifies that the rows were run; CI is the final gate. [review]
+Run `node scripts/preflight.mjs` before pushing. It selects the checks your
+change needs from the registry in `scripts/preflight/registry.mjs`, runs them,
+and exits nonzero when one fails or could not run; the pre-push hook runs its
+fast slice. The generated
+[required-checks.md](required-checks.md) lists every check, what selects it,
+and the capability it needs; `node scripts/doctor.mjs` names a missing
+capability's fix. Add the narrow tests that prove the behavior you touched, and
+report each command with its result. A smoke test does not replace a required
+check. Blind spot: selection is by path, so a check whose trigger is too narrow
+is silently skipped; CI is the final gate. [hook: pre-push]
 
-This table is maintained by hand until the preflight registry generates it.
+These checks are not in the preflight registry yet; run them by hand when you
+change their paths. [review]
 
-<!-- required-checks:begin -->
-
-| Change                                                                                 | Required checks                                                                                                                                                                                                                      |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Anything                                                                               | `git diff --check`                                                                                                                                                                                                                   |
-| Aiken sources, `onchain/aiken/**/*.ak`                                                 | `node onchain/aiken/scripts/pinned-compiler.mjs`; from `onchain/aiken`: `aiken check` (or `node scripts/run-focused-check.mjs <module> <test> ...` while iterating); the pre-commit hook formats staged `.ak` files                  |
-| A module pinned by an execution ledger                                                 | from `onchain/aiken`: the matching `node scripts/verify-<name>-exec-ledger-v1.mjs`                                                                                                                                                   |
-| Validator parameters, deployment profiles                                              | `pnpm --dir demo deployment:check preprod-testing`; `node --test demo/scripts/deployment-profiles.test.mjs`; the emulator scenarios in both polarities (`docs/agents/contracts.md`)                                                  |
-| TypeScript or Markdown in `demo/**`                                                    | `pnpm --dir demo run lint`; `pnpm --dir demo run format-check`; `pnpm --dir demo/<package> run typecheck`; `pnpm --dir demo/<package> test`                                                                                          |
-| `demo/midgard-node`, `demo/midgard-node-tools`                                         | `scripts/start-test-postgres.sh` first; then `pnpm --dir demo/midgard-node test` or `pnpm --dir demo/midgard-node-tools test`                                                                                                        |
-| L1 transaction builders, wallet or input selection, validity, submission               | `pnpm --dir demo run test:tx-prep:sdk`; `pnpm --dir demo run test:tx-prep:node`; `pnpm --dir demo run test:tx-prep:emulator`                                                                                                         |
-| Golden-vector generators and their fixtures                                            | the owning package's `fixtures:<name>:check` script, for example `pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check`                                                                                               |
-| Consensus profile or its documentation                                                 | `pnpm --dir demo/midgard-core run docs:consensus-profile-v1:check`                                                                                                                                                                   |
-| `demo/midgard-watcher`                                                                 | `pnpm --dir demo/midgard-watcher run build`; `pnpm --dir demo/midgard-watcher run typecheck`; `pnpm --dir demo/midgard-watcher run lint`; `pnpm --dir demo/midgard-watcher run format-check`; `pnpm --dir demo/midgard-watcher test` |
-| Phase 4 devnet generator                                                               | `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs`                                                                                                                                                    |
-| Agent instructions: `AGENTS.md` files, `CLAUDE.md`, `docs/agents`, `.agents/skills`    | `node scripts/agents/check-enforcement-tags.mjs`; `node scripts/agents/check-doc-links.mjs`; `node scripts/agents/check-agent-config.mjs`                                                                                            |
-| The e2e acceptance skill                                                               | `node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs`                                                                                                                                                            |
-| Repository scripts and hooks: `scripts/**`, `.githooks/**`, `onchain/aiken/scripts/**` | `node --test "scripts/**/*.test.mjs" "onchain/aiken/scripts/*.test.mjs"`                                                                                                                                                             |
-| `technical-spec/**`                                                                    | `make spec` (needs Nix)                                                                                                                                                                                                              |
-| `docs-site/**`                                                                         | `pnpm --dir docs-site run check:links`; `pnpm --dir docs-site run build`; `pnpm --dir docs-site run types:check`                                                                                                                     |
-
-<!-- required-checks:end -->
+| Change                                                                   | Checks                                                                                                                                                                              |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validator parameters, deployment profiles                                | `pnpm --dir demo deployment:check preprod-testing`; `node --test demo/scripts/deployment-profiles.test.mjs`; the emulator scenarios in both polarities (`docs/agents/contracts.md`) |
+| L1 transaction builders, wallet or input selection, validity, submission | `pnpm --dir demo run test:tx-prep:sdk`; `pnpm --dir demo run test:tx-prep:node`; `pnpm --dir demo run test:tx-prep:emulator`                                                        |
+| Phase 4 devnet generator                                                 | `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs`                                                                                                   |
+| `technical-spec/**`                                                      | `make spec` (needs Nix)                                                                                                                                                             |
+| `docs-site/**`                                                           | `pnpm --dir docs-site run check:links`; `pnpm --dir docs-site run build`; `pnpm --dir docs-site run types:check`                                                                    |
 
 `docs/exec-plans/GOAL_SPEC.md` §13 lists the full verification for Goal
 completion, which is wider than this table.

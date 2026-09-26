@@ -138,7 +138,8 @@ return to live acceptance.
 
 For a fresh run, use `e2e-run-step` for every required milestone. The current
 finalizer source is authoritative for required step IDs and transaction labels;
-the runbook validator compares the documentation to that source. [review]
+the runbook validator compares the documentation to that source.
+[script: .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs]
 
 Acceptance is complete only when:
 

@@ -167,6 +167,32 @@ Every stated rule names its enforcement.
   - `scripts/agents/**`
 - Mode: runs in the pre-push hook
 
+### `agent-config`
+
+CLAUDE.md files route to AGENTS.md; shared settings stay allowlisted.
+
+- Command: `node scripts/agents/check-agent-config.mjs`
+- Runs on:
+  - `docs/**`
+  - `**/AGENTS.md`
+  - `**/CLAUDE.md`
+  - `CONTEXT.md`
+  - `.agents/**`
+  - `scripts/agents/**`
+  - `.claude/settings.json`
+- Mode: runs in the pre-push hook
+
+### `e2e-runbook`
+
+The e2e acceptance runbook matches the CLIs it drives.
+
+- Command: `node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs`
+- Runs on:
+  - `.agents/skills/midgard-e2e-acceptance/**`
+  - `demo/midgard-node/src/index.ts`
+  - `demo/midgard-node-tools/src/**`
+- Mode: runs in the pre-push hook
+
 ### `aiken-fmt`
 
 Aiken formatting under the pinned fork (CI's normalized check).

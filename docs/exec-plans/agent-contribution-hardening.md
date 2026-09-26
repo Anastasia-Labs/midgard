@@ -386,6 +386,10 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
   - **Done:** `node scripts/preflight.mjs --write-docs` writes
     `docs/agents/required-checks.md`; `--check-docs` and a test fail when it
     is stale.
+  - **Note:** `verification.md` now points at preflight and the generated
+    list. Five rows have no registry entry yet (deployment profiles, tx-prep,
+    phase 4 devnet assets, `technical-spec`, `docs-site`) and stay in a short
+    hand-written table tagged `[review]` until they get one.
 
 ## Wave 4: Move knowledge from memory into the repository
 

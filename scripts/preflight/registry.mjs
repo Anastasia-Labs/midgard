@@ -408,6 +408,8 @@ const goldenChecks = (root, packages, ciText) =>
 
 // --- repository tooling, CI and agent docs -------------------------------
 
+const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
+
 const toolingChecks = () => [
   {
     id: "merge-conflicts",
@@ -484,7 +486,13 @@ const toolingChecks = () => [
       "Every stated rule names its enforcement",
       "scripts/agents/check-enforcement-tags.mjs",
     ],
-  ].map(([id, title, script]) => ({
+    [
+      "agent-config",
+      "CLAUDE.md files route to AGENTS.md; shared settings stay allowlisted",
+      "scripts/agents/check-agent-config.mjs",
+      [".claude/settings.json"],
+    ],
+  ].map(([id, title, script, extraTriggers = []]) => ({
     id,
     title,
     triggers: [
@@ -494,12 +502,27 @@ const toolingChecks = () => [
       "CONTEXT.md",
       ".agents/**",
       "scripts/agents/**",
+      ...extraTriggers,
     ],
     requiresFiles: [script],
     prePush: true,
     display: `node ${script}`,
     plan: () => [step(node(script))],
   })),
+  {
+    // The runbook names CLI commands, so a renamed command breaks it too.
+    id: "e2e-runbook",
+    title: "The e2e acceptance runbook matches the CLIs it drives",
+    triggers: [
+      `${E2E_SKILL}/**`,
+      "demo/midgard-node/src/index.ts",
+      "demo/midgard-node-tools/src/**",
+    ],
+    requiresFiles: [`${E2E_SKILL}/scripts/validate-runbook.mjs`],
+    prePush: true,
+    display: `node ${E2E_SKILL}/scripts/validate-runbook.mjs`,
+    plan: () => [step(node(`${E2E_SKILL}/scripts/validate-runbook.mjs`))],
+  },
 ];
 
 // The registry, in run order: cheap and independent first, then builds, then

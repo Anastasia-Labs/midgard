@@ -74,7 +74,9 @@ Use the declared repo toolchain: pnpm/Node in `demo`, Aiken in
 - Before finalizing changes, run the required checks for each kind of change
   you made, listed in [docs/agents/verification.md](docs/agents/verification.md),
   and the narrow checks that prove touched behavior. Report exactly what ran; a
-  smoke test does not replace a required acceptance check. [review]
+  smoke test does not replace a required acceptance check. Blind spot: the
+  pre-push hook runs only preflight's fast slice, only where hooks are
+  installed, and nothing checks what you report. [hook: pre-push]
 
 ## When Relevant
 
@@ -89,4 +91,6 @@ Use the declared repo toolchain: pnpm/Node in `demo`, Aiken in
   spot: with `core.fileMode=false`, git shows no change when a hook file loses
   its executable bit, and then skips that hook without a word; re-running the
   installer restores the bit. Entering the `offchain` Nix shell can repoint
-  `core.hooksPath`; re-run the installer after it. [review]
+  `core.hooksPath`; re-run the installer after it. Blind spot: the session-start
+  doctor reports a missing, foreign or non-executable hook but blocks nothing.
+  [script: scripts/doctor.mjs]
