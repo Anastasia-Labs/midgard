@@ -16,6 +16,7 @@ import {
 } from "./coordinator/factory.js";
 import { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import {
+  createDaLibp2pAttestationGossipHandlers,
   createDaLibp2pAttestationRequestHandlers,
   createDaLibp2pPayloadRequestHandlers,
   createDaLibp2pProofRequestHandlers,
@@ -121,9 +122,16 @@ const main = async (): Promise<void> => {
     registry: daPeerRegistry,
     privateKeySource: config.libp2pPrivateKeySource,
     requestHandlers,
+    gossipHandlers: createDaLibp2pAttestationGossipHandlers({
+      deploymentFingerprint: config.deploymentFingerprint,
+      registry: daPeerRegistry,
+      protocol: daAttestationProtocol,
+      committeeValidation,
+      store,
+    }),
     onGossipMessageError: (error) => {
       process.stderr.write(
-        `rejected DA conflict evidence gossip: ${
+        `rejected DA gossip message: ${
           error instanceof Error ? error.message : String(error)
         }\n`,
       );

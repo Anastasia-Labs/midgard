@@ -33,8 +33,9 @@ import {
 } from "../../peer/signatures.js";
 import type { DaCommitteeValidation } from "../../signer.js";
 import type { CommitteeStore } from "../../store.js";
+import type { DaGossipMessageHandler } from "./DaGossip.js";
 import type { DaLibp2pNode, DaLibp2pStreamHandler } from "./DaLibp2pNode.js";
-import type { DaPeerRegistry, DaPeerRegistryEntry } from "./DaPeerRegistry.js";
+import type { DaPeerRegistry } from "./DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "./DaProtocols.js";
 
 export type DaAttestationPeer = {
@@ -380,12 +381,15 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
     }
     const records: DaSignatureRecord[] = [];
     for (const attestation of response.attestations) {
-      const record = await this.recordFromAttestation({
-        peer: registryEntry,
+      const result = await daSignatureRecordFromAttestation({
+        deploymentFingerprint: this.options.deploymentFingerprint,
+        committeeValidation: this.options.committeeValidation,
+        store: this.options.store,
+        announcerPeerId: registryEntry.peerId,
         attestation,
       });
-      if (record !== undefined) {
-        records.push(record);
+      if (result.status === "converted") {
+        records.push(result.record);
       }
     }
     return records;
@@ -393,75 +397,6 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
 
   async publishConflictEvidence(gossipCbor: Buffer): Promise<void> {
     await this.options.node.publishGossip(DaGossipTopic.conflicts, gossipCbor);
-  }
-
-  private async recordFromAttestation({
-    peer,
-    attestation,
-  }: {
-    readonly peer: DaPeerRegistryEntry;
-    readonly attestation: DaAttestationGossip;
-  }): Promise<DaSignatureRecord | undefined> {
-    const headerHash = attestation.headerHash.toString("hex");
-    if (
-      attestation.deploymentFingerprint.toString("hex") !==
-        this.options.deploymentFingerprint ||
-      attestation.announcedByPeerId !== peer.peerId
-    ) {
-      return undefined;
-    }
-    const expectedDaVkey =
-      this.options.committeeValidation.committeeKeys[attestation.signerIndex];
-    if (
-      expectedDaVkey === undefined ||
-      expectedDaVkey !== attestation.daVkey.toString("hex")
-    ) {
-      return undefined;
-    }
-    const payload = await this.options.store.getDaPayload(headerHash);
-    const header = await this.options.store.getStateQueueHeader(headerHash);
-    if (!isVerifiedPayload(payload) || header === undefined) {
-      return undefined;
-    }
-    if (payload.payloadSha256 !== attestation.payloadHash.toString("hex")) {
-      return undefined;
-    }
-    const now = new Date().toISOString();
-    const record: DaSignatureRecord = {
-      deploymentFingerprint: this.options.deploymentFingerprint,
-      headerHash,
-      signerIndex: attestation.signerIndex,
-      signatureWitness: attestation.onChainWitness.toString("hex"),
-      payloadHash: payload.payloadSha256,
-      availabilityCommitmentCbor:
-        attestation.availabilityCommitmentCbor.toString("hex"),
-      availabilityCommitmentDigest:
-        attestation.availabilityCommitmentDigest.toString("hex"),
-      committeeSignersHash:
-        this.options.committeeValidation.committeeSignersHash,
-      signedAt: now,
-      broadcastStatus: "posted",
-      source: "peer",
-      sourcePeer: peer.peerId,
-      receivedAt: now,
-      verifiedAt: now,
-      l1ChainPoint: header.observedChainPoint,
-      validation: validationSummaryFromHeader(
-        header,
-        rootSummaryFromHeader(header, payload.rootSummary),
-      ),
-    };
-    // Pull responses must preserve every cryptographically valid commitment
-    // variant. The poller compares variants and emits equivocation evidence
-    // before deciding whether a record belongs to the locally authorised
-    // commitment group.
-    const validationError = validateDaSignatureRecord({
-      body: record,
-      headerHash,
-      deploymentFingerprint: this.options.deploymentFingerprint,
-      signerValidation: this.options.committeeValidation,
-    });
-    return validationError === undefined ? record : undefined;
   }
 
   private protocolId(protocol: DaRequestResponseProtocol): string {
@@ -493,10 +428,179 @@ export const createDaLibp2pAttestationRequestHandlers = ({
           await protocol.handleAttestationsByHeaderRequest(requestCbor);
         await writeDaStreamFrame(stream, responseCbor, {
           maxFrameBytes: limits.maxPayloadBytes,
+          close: true,
         });
       },
     ],
   ]);
+};
+
+/**
+ * Ingests committee signatures gossiped on the attestations topic. The
+ * gossip author is authenticated by StrictSign; it must be a manifest
+ * committee peer publishing its own signer index, because members only
+ * gossip their own signatures. Accepted records are stored as peer
+ * signatures for the local coordinator. A rejection throws, which the gossip
+ * pipeline reports through its message error hook. Gossip is best effort:
+ * `attestationsByHeader` pulls remain the recovery path for signatures that
+ * arrive before the local payload is verified or while a peer is offline.
+ */
+export const createDaLibp2pAttestationGossipHandlers = ({
+  deploymentFingerprint,
+  registry,
+  protocol,
+  committeeValidation,
+  store,
+}: {
+  readonly deploymentFingerprint: string;
+  readonly registry: DaPeerRegistry;
+  readonly protocol: Pick<
+    StoreBackedDaAttestationProtocol,
+    "acceptAttestation"
+  >;
+  readonly committeeValidation: DaCommitteeValidation;
+  readonly store: Pick<CommitteeStore, "getDaPayload" | "getStateQueueHeader">;
+}): ReadonlyMap<DaGossipTopic, DaGossipMessageHandler> =>
+  new Map([
+    [
+      DaGossipTopic.attestations,
+      async (context) => {
+        if (context.topicName !== DaGossipTopic.attestations) {
+          throw new Error("DA attestation gossip arrived on the wrong topic");
+        }
+        const sender = registry.requireKnownPeer(context.remotePeerId);
+        const attestation = decodeDaAttestationGossip(context.data);
+        if (!encodeDaAttestationGossip(attestation).equals(context.data)) {
+          throw new Error("DA attestation gossip must use canonical CBOR");
+        }
+        if (
+          sender.signerIndex === undefined ||
+          sender.signerIndex !== attestation.signerIndex
+        ) {
+          throw new Error(
+            `DA attestation gossip signer index ${attestation.signerIndex.toString()} does not belong to authenticated peer ${sender.peerId}`,
+          );
+        }
+        const converted = await daSignatureRecordFromAttestation({
+          deploymentFingerprint,
+          committeeValidation,
+          store,
+          announcerPeerId: sender.peerId,
+          attestation,
+        });
+        if (converted.status === "rejected") {
+          throw new Error(
+            `rejected DA attestation gossip from ${sender.peerId}: ${converted.reason}`,
+          );
+        }
+        const accepted = await protocol.acceptAttestation({
+          record: converted.record,
+          sourcePeerId: sender.peerId,
+        });
+        if (accepted.status !== "accepted") {
+          throw new Error(
+            `rejected DA attestation gossip from ${sender.peerId}: ${accepted.reason}`,
+          );
+        }
+      },
+    ],
+  ]);
+
+export type DaSignatureRecordFromAttestationResult =
+  | { readonly status: "converted"; readonly record: DaSignatureRecord }
+  | { readonly status: "rejected"; readonly reason: string };
+
+/**
+ * Converts an attestation announced by `announcerPeerId` (over pull or
+ * gossip) into a peer signature record bound to the locally verified payload
+ * and observed header. Only cryptographic validity is checked here: every
+ * valid commitment variant is preserved so callers can compare variants and
+ * emit equivocation evidence before deciding whether a record belongs to the
+ * locally authorised commitment group.
+ */
+export const daSignatureRecordFromAttestation = async ({
+  deploymentFingerprint,
+  committeeValidation,
+  store,
+  announcerPeerId,
+  attestation,
+}: {
+  readonly deploymentFingerprint: string;
+  readonly committeeValidation: DaCommitteeValidation;
+  readonly store: Pick<CommitteeStore, "getDaPayload" | "getStateQueueHeader">;
+  readonly announcerPeerId: string;
+  readonly attestation: DaAttestationGossip;
+}): Promise<DaSignatureRecordFromAttestationResult> => {
+  const headerHash = attestation.headerHash.toString("hex");
+  if (
+    attestation.deploymentFingerprint.toString("hex") !== deploymentFingerprint
+  ) {
+    return { status: "rejected", reason: "deployment fingerprint mismatch" };
+  }
+  if (attestation.announcedByPeerId !== announcerPeerId) {
+    return {
+      status: "rejected",
+      reason: "announcing peer does not match the authenticated peer",
+    };
+  }
+  const expectedDaVkey =
+    committeeValidation.committeeKeys[attestation.signerIndex];
+  if (
+    expectedDaVkey === undefined ||
+    expectedDaVkey !== attestation.daVkey.toString("hex")
+  ) {
+    return {
+      status: "rejected",
+      reason: "DA vkey does not match the committee key at the signer index",
+    };
+  }
+  const payload = await store.getDaPayload(headerHash);
+  const header = await store.getStateQueueHeader(headerHash);
+  if (!isVerifiedPayload(payload) || header === undefined) {
+    return {
+      status: "rejected",
+      reason: "verified payload or observed header is not available",
+    };
+  }
+  if (payload.payloadSha256 !== attestation.payloadHash.toString("hex")) {
+    return {
+      status: "rejected",
+      reason: "payload hash does not match the verified payload",
+    };
+  }
+  const now = new Date().toISOString();
+  const record: DaSignatureRecord = {
+    deploymentFingerprint,
+    headerHash,
+    signerIndex: attestation.signerIndex,
+    signatureWitness: attestation.onChainWitness.toString("hex"),
+    payloadHash: payload.payloadSha256,
+    availabilityCommitmentCbor:
+      attestation.availabilityCommitmentCbor.toString("hex"),
+    availabilityCommitmentDigest:
+      attestation.availabilityCommitmentDigest.toString("hex"),
+    committeeSignersHash: committeeValidation.committeeSignersHash,
+    signedAt: now,
+    broadcastStatus: "posted",
+    source: "peer",
+    sourcePeer: announcerPeerId,
+    receivedAt: now,
+    verifiedAt: now,
+    l1ChainPoint: header.observedChainPoint,
+    validation: validationSummaryFromHeader(
+      header,
+      rootSummaryFromHeader(header, payload.rootSummary),
+    ),
+  };
+  const validationError = validateDaSignatureRecord({
+    body: record,
+    headerHash,
+    deploymentFingerprint,
+    signerValidation: committeeValidation,
+  });
+  return validationError === undefined
+    ? { status: "converted", record }
+    : { status: "rejected", reason: validationError };
 };
 
 const isVerifiedPayload = (
