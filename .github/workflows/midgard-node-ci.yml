@@ -481,7 +481,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The candidate-input gate imports lucid-midgard's dist.
       - uses: ./.github/actions/demo-setup
+        with:
+          prebuild: lucid-midgard
       - name: Install native MPF Rust toolchain
         run: rustup toolchain install 1.91.0 --profile minimal --component rustfmt
       - name: Cache the native MPF cargo build

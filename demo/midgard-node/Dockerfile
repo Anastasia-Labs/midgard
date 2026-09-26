@@ -17,6 +17,8 @@ FROM base AS workspace
 WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
+# The vendored uplc build that package.json overrides resolve to.
+COPY vendor ./vendor
 # Every workspace manifest, so the frozen lockfile resolves each `workspace:*`
 # edge (production and dev) that midgard-node declares; only the production
 # chain's sources are copied and built below, and `deploy --prod` ships only
