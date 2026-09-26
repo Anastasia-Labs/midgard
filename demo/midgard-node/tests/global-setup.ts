@@ -6,14 +6,14 @@
  * needs three things before a worker can use it:
  *
  *   1. the database itself;
- *   2. `synchronous_commit = on` as a per-database setting — the local test
- *      server runs with the global default `off` for speed, CI runs `on`, and
+ *   2. `synchronous_commit = on` as a per-database setting — CI runs `on`, and
  *      `database.test.ts` / `tx-admissions-claim-load.test.ts` assert the
  *      session value is `on` to prove the write-behind's
  *      `SET LOCAL synchronous_commit = off` relaxation stays transaction-local.
+ *      `scripts/start-test-postgres.sh` starts the local server with `on`
+ *      server-wide, but a server started some other way may default to `off`.
  *      Per-database settings are NOT inherited through
- *      `CREATE DATABASE ... TEMPLATE`, so every shard needs its own `ALTER`.
- *      This mirrors `scripts/create-test-db.sh` at the repo root;
+ *      `CREATE DATABASE ... TEMPLATE`, so every shard needs its own `ALTER`;
  *   3. the schema — most database files migrate themselves in `beforeAll`, but
  *      not all of them do (`da-publication-reconciler-e2e.test.ts` relied on
  *      CI's separate `db:migrate` step against a single shared database), and a
