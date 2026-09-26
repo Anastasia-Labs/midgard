@@ -21,7 +21,8 @@
   "files": [
     "src",
     "vitest.js",
-    "vitest.d.ts"
+    "vitest.d.ts",
+    "blueprint-stamp-setup.js"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit"

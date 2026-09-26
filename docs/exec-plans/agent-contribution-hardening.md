@@ -58,29 +58,36 @@ patched fork, but locally every script ran whatever `aiken` was on PATH, and on
   - The ordered-collection generator still targeted the constants deleted from
     `da-hash-preimage/step-02.ak` in `3e3090aa1`. It also rebound only 2 of
     step-01's 4 leaf constants. (M)
-- [ ] **W0.5 Commit Wave 0**, staging explicit paths only. (S)
-- [ ] **W0.6 Stamp the blueprint with a hash of its sources and the compiler
+- [x] **W0.5 Commit Wave 0**, staging explicit paths only. (S) Landed in
+      `71e605e46`.
+- [x] **W0.6 Stamp the blueprint with a hash of its sources and the compiler
       that built it.** (M)
-  - **From:** the capability probes in `ci_preflight.py`.
-  - **Today:** the in-flight `demo/scripts/deployment-profiles.mjs` writes
-    `plutus.json.deployment.json` with `{profile, profileDigest, blueprintHash}`.
-    It records no source hash and no compiler, and it carries its own copy of
-    the pin regex.
-  - **Done when:**
-    - the record also carries a hash of `onchain/aiken/{lib,validators,env}/**`,
-      `aiken.toml`, `aiken.lock`, and the output of `aiken --version`;
-    - `deployment-profiles.mjs` imports `pinned-compiler.mjs`;
-    - every suite that reads the blueprint refuses a stamp that doesn't match,
-      naming the rebuild command;
-    - a test shows that a stale stamp is refused.
-  - **Blocked:** land this after `deployment-profiles.mjs` is committed by the
-    session that owns it.
-- [ ] **W0.7 Check the pin in every other script that spawns `aiken`.** (S)
-  - **Today:** about 12 exec-ledger verifiers and
-    `demo/scripts/lib/runner-reports.mjs` (`aikenBinary()`) use
-    `MIDGARD_AIKEN_BIN ?? "aiken"` without checking the pin.
-  - **Done when:** `rg "MIDGARD_AIKEN_BIN \?\? \"aiken\""` returns only
-    `pinned-compiler.mjs`, and each verifier fails when given a stock stub.
+  - `deployment-profiles.mjs build` asserts the pin through
+    `pinned-compiler.mjs` and adds `sourceHash` (every file under
+    `onchain/aiken/{lib,validators,env}` plus `aiken.toml` and `aiken.lock`)
+    and `compiler` to `plutus.json.deployment.json`.
+  - `demo/scripts/lib/blueprint-stamp.mjs` judges a blueprint fresh, stale,
+    missing or unknown, and names the rebuild command.
+  - The SDK, fault-proofs, validation, node and watcher Vitest configs load
+    `blueprintStampGlobalSetup` from `@al-ft/midgard-test-support/vitest`, which
+    refuses a stale or unstamped blueprint. An absent blueprint is left to the
+    suites that read it, and `MIDGARD_BLUEPRINT_STAMP=warn` downgrades a
+    refusal for a deliberate local run.
+  - **Blind spot:** code that reads the blueprint outside those five Vitest
+    runs (production node startup, one-off scripts) checks only the
+    profile and blueprint hash, not the sources or compiler.
+- [x] **W0.7 Check the pin in every other script that spawns `aiken`.** (S)
+  - The exec-ledger verifiers were already covered: they measure through
+    `run-focused-check.mjs`. The unpinned sites were
+    `runner-reports.mjs` (`runAikenCheck`), the golden-channel formatter, the
+    transaction-root fixture generator and the two bench reports. Each now
+    refuses a stock stub.
+  - `golden-channel.mjs` ships in the `midgard-core` package, so it checks by
+    running `pinned-compiler.mjs` as a child process rather than importing it,
+    and it still reads `MIDGARD_AIKEN_BIN` itself.
+  - **Still unpinned:** shell recipes that call `aiken` directly
+    (`scripts/generate-user-events-witness-script-prefix.sh`, the devnet
+    `protocol-bootstrap.sh`, the `Makefile` cross-language target).
 
 ## Wave 1: A CI signal that cannot report a false green
 

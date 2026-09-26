@@ -1,4 +1,5 @@
 import {
+  blueprintStampGlobalSetup,
   isolatedForksPool,
   midgardSourceSsr,
 } from "@al-ft/midgard-test-support/vitest";
@@ -38,6 +39,8 @@ const maxForks = parseMaxForks(process.env.MIDGARD_FAULT_PROOF_FORKS);
 
 export default defineConfig({
   test: {
+    // Refuses the run when onchain/aiken/plutus.json is stale.
+    globalSetup: [blueprintStampGlobalSetup],
     reporters: "verbose",
     include: ["./tests/**/*.test.{ts,tsx}"],
     sequence: { sequencer: EmulatorSequencer },

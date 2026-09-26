@@ -1,4 +1,5 @@
 import {
+  blueprintStampGlobalSetup,
   isolatedForksPool,
   midgardSourceSsr,
   rawSqlLoaderPlugin,
@@ -63,8 +64,9 @@ export default defineConfig({
     // runner sets `MIDGARD_NODE_TEST_FORKS=1` rather than forcing every
     // machine down to one file at a time.
     ...isolatedForksPool({ maxForks: testMaxForks() }),
-    // Creates and migrates one database per worker shard before any file runs.
-    globalSetup: ["./tests/global-setup.ts"],
+    // Creates and migrates one database per worker shard before any file runs,
+    // after refusing a stale onchain/aiken/plutus.json.
+    globalSetup: [blueprintStampGlobalSetup, "./tests/global-setup.ts"],
     reporters: [["default", { summary: false }]],
     // Vitest 3's filter resolution does not reliably match the eight-way
     // extension brace used here previously, so keep the overwhelmingly common

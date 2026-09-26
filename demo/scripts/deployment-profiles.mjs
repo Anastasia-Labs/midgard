@@ -6,6 +6,16 @@ import { spawnSync } from "node:child_process";
 import { parseDocument } from "yaml";
 import { format } from "prettier";
 
+import {
+  assertPinnedAiken,
+  defaultAikenBinary,
+} from "../../onchain/aiken/scripts/pinned-compiler.mjs";
+import {
+  blueprintHash,
+  blueprintSourceHash,
+  buildRecordPath,
+} from "./lib/blueprint-stamp.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const profileNames = [
   "mainnet",
@@ -258,33 +268,31 @@ if (
     );
   const profile = await generateProfiles(selected, command === "check");
   if (command === "build") {
-    const expectedCompiler = readFileSync(
-      resolve(root, ".github/workflows/aiken-ci.yml"),
-      "utf8",
-    ).match(/AIKEN_FORK_VERSION: (.+)/u)?.[1];
-    const compiler = spawnSync("aiken", ["--version"], { encoding: "utf8" });
-    if (compiler.error) throw compiler.error;
-    if (compiler.status !== 0 || compiler.stdout.trim() !== expectedCompiler)
-      throw new Error(
-        `Deployment builds require ${expectedCompiler}; found ${compiler.stdout.trim()}`,
-      );
+    const aikenBinary = defaultAikenBinary();
+    const compiler = assertPinnedAiken(aikenBinary);
     const blueprintPath = resolve(root, "onchain/aiken/plutus.json");
-    if (existsSync(`${blueprintPath}.deployment.json`))
-      unlinkSync(`${blueprintPath}.deployment.json`);
+    if (existsSync(buildRecordPath(blueprintPath)))
+      unlinkSync(buildRecordPath(blueprintPath));
+    // Hashed before the build: `aiken build` only reads these, and a record
+    // must describe the inputs the compiler actually saw.
+    const sourceHash = blueprintSourceHash(root);
     const result = spawnSync(
-      "aiken",
+      aikenBinary,
       ["build", "--env", selected.replaceAll("-", "_")],
       { cwd: resolve(root, "onchain/aiken"), stdio: "inherit" },
     );
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
-    const blueprintHash = createHash("sha256")
-      .update(readFileSync(blueprintPath))
-      .digest("hex");
     writeFileSync(
-      `${blueprintPath}.deployment.json`,
+      buildRecordPath(blueprintPath),
       JSON.stringify(
-        { profile, profileDigest: profileDigest(profile), blueprintHash },
+        {
+          profile,
+          profileDigest: profileDigest(profile),
+          blueprintHash: blueprintHash(blueprintPath),
+          sourceHash,
+          compiler,
+        },
         null,
         2,
       ) + "\n",
