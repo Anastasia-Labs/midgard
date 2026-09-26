@@ -40,6 +40,7 @@ import {
   HistoryRecoverySuperseded,
   makeEventHistoryRecovery,
 } from "./event-history-recovery.js";
+import { makePendingReconciliationBackoff } from "./history-pending-backoff.js";
 import { signedHeaderRecoveryHoldSlot } from "./history-signed-header-recovery.js";
 import type { MempoolLedgerCacheService } from "./mempool-ledger-cache.js";
 
@@ -65,6 +66,9 @@ export const HISTORY_READY_MAXIMUM_LAG_BLOCKS = 5;
  * reason: doubles from the initial value up to the cap. */
 export const PENDING_RECONCILIATION_BACKOFF_INITIAL_MS = 500;
 export const PENDING_RECONCILIATION_BACKOFF_MAX_MS = 30_000;
+/** A reconciliation pending with the same reason for this long is reported
+ * as a warning, and again at most once per this interval while it stays. */
+export const PENDING_RECONCILIATION_BLOCKED_WARN_INTERVAL_MS = 60_000;
 
 export type HistoryOwnerFrontier = Readonly<{
   ready: boolean;
@@ -230,17 +234,6 @@ export const makeEventHistoryOwner = <E, R>(input: {
     let handle = Promise.resolve(recovery.startup);
     let queue: Promise<void> = Promise.resolve();
     let convergenceQueued = false;
-    // A pending reconciliation whose preparation left it pending is retried
-    // on a doubling delay while its reason is unchanged, never on every tip.
-    // The delay is monotonic: a wall-clock step never stretches or skips it.
-    let pendingBackoff:
-      | {
-          reason: string;
-          delayMs: number;
-          notBefore: number;
-          timer: ReturnType<typeof setTimeout>;
-        }
-      | undefined;
     // Set at the first readiness; lag transitions are reported only after it.
     let everReady = false;
     let lagging = false;
@@ -337,30 +330,33 @@ export const makeEventHistoryOwner = <E, R>(input: {
         ),
       ).catch(() => undefined);
     };
-    const clearPendingBackoff = () => {
-      if (pendingBackoff !== undefined) clearTimeout(pendingBackoff.timer);
-      pendingBackoff = undefined;
-    };
-    const armPendingBackoff = (reason: string) => {
-      const delayMs =
-        pendingBackoff?.reason === reason
-          ? Math.min(
-              pendingBackoff.delayMs * 2,
-              PENDING_RECONCILIATION_BACKOFF_MAX_MS,
-            )
-          : PENDING_RECONCILIATION_BACKOFF_INITIAL_MS;
-      clearPendingBackoff();
-      const timer = setTimeout(() => {
+    // A pending reconciliation whose preparation left it pending is retried
+    // on a doubling delay while its reason is unchanged, never on every tip,
+    // and named in a periodic warning while it stays blocked. The delay is
+    // monotonic: a wall-clock step never stretches or skips it.
+    const pendingBackoff = makePendingReconciliationBackoff({
+      initialMs: PENDING_RECONCILIATION_BACKOFF_INITIAL_MS,
+      maxMs: PENDING_RECONCILIATION_BACKOFF_MAX_MS,
+      warnIntervalMs: PENDING_RECONCILIATION_BLOCKED_WARN_INTERVAL_MS,
+      onDue: () => {
         if (!closing) scheduleConvergence();
-      }, delayMs);
-      timer.unref?.();
-      pendingBackoff = {
-        reason,
-        delayMs,
-        notBefore: performance.now() + delayMs,
-        timer,
-      };
-    };
+      },
+      warn: ({ reason, blockedMs, retryInMs }) => {
+        void run(
+          Effect.logWarning(
+            `History reconciliation still blocked after ${Math.round(blockedMs / 1000).toString()} s; retrying in ${Math.round(retryInMs / 1000).toString()} s: ${reason}`,
+          ).pipe(
+            Effect.annotateLogs({
+              event: "history_reconciliation_blocked",
+              reason,
+              blockedMs: Math.round(blockedMs),
+              retryInMs,
+            }),
+          ),
+        ).catch(() => undefined);
+      },
+    });
+    const clearPendingBackoff = () => pendingBackoff.clear();
     const scheduleConvergence = () => {
       if (convergenceQueued) return;
       convergenceQueued = true;
@@ -544,11 +540,9 @@ export const makeEventHistoryOwner = <E, R>(input: {
       try {
         if (pendingReconciliation !== undefined) {
           if (input.preparePendingReconciliation === undefined) return;
-          if (
-            pendingBackoff?.reason === pendingReconciliation.reason &&
-            performance.now() < pendingBackoff.notBefore
-          )
-            return;
+          // Before the retry's deadline (another trigger, or a timer that
+          // fired early) the backoff re-arms for the remaining time.
+          if (!pendingBackoff.due(pendingReconciliation.reason)) return;
           await prepare(input.preparePendingReconciliation);
           if (expected !== epoch) return;
           checkpoint = await run(
@@ -556,7 +550,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
           );
           if (expected !== epoch) return;
           if (pendingReconciliation !== undefined) {
-            armPendingBackoff(pendingReconciliation.reason);
+            pendingBackoff.arm(pendingReconciliation.reason);
             return;
           }
           clearPendingBackoff();

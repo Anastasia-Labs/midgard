@@ -20,7 +20,10 @@ import {
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import {
+  findSignedIntentReplacementIntegrityError,
+  journalAbandonment,
   reviveEarliestCanonicalPayloadJournal,
+  SignedIntentReplacementIntegrityError,
   withCanonicalHeaderJournals,
 } from "../services/canonical-journal-recovery.js";
 import {
@@ -209,16 +212,20 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
   );
 };
 
-const observeConfirmedPendingBlock = (
+/**
+ * Records the L1 observation of the active journal's block: its members are
+ * assigned to it and it moves to observed (or straight to finalized when it
+ * has nothing left to finalize locally). Returns whether local finalization
+ * still has to run. SQL only; the caller publishes cache state.
+ */
+export const recordConfirmedPendingBlock = (
   record: PendingBlockFinalizationsDB.Record,
   recoveredSubmittedTxHash: Buffer | null,
-): Effect.Effect<boolean, DatabaseError, Database | Globals | NodeConfig> =>
+): Effect.Effect<boolean, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const globals = yield* Globals;
-    const config = yield* NodeConfig;
     const journalHeaderHash =
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
-    const requiresLocalFinalizationRecovery = yield* withHistoryWrite(
+    return yield* withHistoryWrite(
       Effect.gen(function* () {
         yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(record);
         yield* DepositsDB.markProjectedByEventIds(
@@ -265,23 +272,40 @@ const observeConfirmedPendingBlock = (
         return requiresLocalFinalizationRecovery;
       }),
     );
-    if (record.depositEventIds.length > 0) {
-      const projectedEntries = yield* MempoolLedgerDB.retrieveBySourceEventIds(
-        record.depositEventIds,
-      );
-      yield* publishMempoolLedgerDelta(
-        globals,
-        {
-          full: false,
-          upserts: projectedEntries.map((entry) => [
-            entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-            entry[MempoolLedgerDB.Columns.OUTPUT],
-          ]),
-          deletes: [],
-        },
-        config.VALIDATION_LEDGER_DELTA_LOG_MAX,
-      );
-    }
+  });
+
+/** Publishes the header-assigned deposit rows to the validation cache. */
+const publishProjectedDeposits = (
+  depositEventIds: readonly Buffer[],
+): Effect.Effect<void, DatabaseError, Database | Globals | NodeConfig> =>
+  Effect.gen(function* () {
+    if (depositEventIds.length === 0) return;
+    const globals = yield* Globals;
+    const config = yield* NodeConfig;
+    const projectedEntries =
+      yield* MempoolLedgerDB.retrieveBySourceEventIds(depositEventIds);
+    yield* publishMempoolLedgerDelta(
+      globals,
+      {
+        full: false,
+        upserts: projectedEntries.map((entry) => [
+          entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+          entry[MempoolLedgerDB.Columns.OUTPUT],
+        ]),
+        deletes: [],
+      },
+      config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+    );
+  });
+
+const observeConfirmedPendingBlock = (
+  record: PendingBlockFinalizationsDB.Record,
+  recoveredSubmittedTxHash: Buffer | null,
+): Effect.Effect<boolean, DatabaseError, Database | Globals | NodeConfig> =>
+  Effect.gen(function* () {
+    const requiresLocalFinalizationRecovery =
+      yield* recordConfirmedPendingBlock(record, recoveredSubmittedTxHash);
+    yield* publishProjectedDeposits(record.depositEventIds);
     return requiresLocalFinalizationRecovery;
   });
 
@@ -442,7 +466,10 @@ export const buildBlockConfirmationAction = (
   } = {},
 ): Effect.Effect<
   void,
-  WorkerError | DatabaseError | ConfirmationInvariantError,
+  | WorkerError
+  | DatabaseError
+  | ConfirmationInvariantError
+  | SignedIntentReplacementIntegrityError,
   Globals | Database | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -683,6 +710,15 @@ export const buildBlockConfirmationAction = (
               revivedCanonicalPayloadJournal.value.endTimeMs,
               journalBoundaryMs,
             );
+            // A replaced journal's revival assigned its deposits to it again.
+            const revivedJournal = revivedCanonicalPayloadJournal.value.journal;
+            if (
+              Option.isSome(revivedJournal) &&
+              journalAbandonment(revivedJournal.value) === "replacement"
+            )
+              yield* publishProjectedDeposits(
+                revivedJournal.value.depositEventIds,
+              );
             yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
             yield* Ref.set(
               globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
@@ -738,8 +774,11 @@ export const buildBlockConfirmationAction = (
           pending.value[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] !=
             null
         ) {
-          yield* Effect.logWarning(
-            "Refusing stale recovery for an unresolved signed commit intent.",
+          // A signed commit is replaced only by the history owner, from its
+          // authenticated view at an exact point (whichever block holds the
+          // tail node's slot wins); queue absence here authorizes nothing.
+          yield* Effect.logInfo(
+            "Signed commit intent is unresolved; the history owner's signed-intent reconciliation decides whether it is confirmed, replaced or revived.",
           );
           return;
         }
@@ -821,7 +860,11 @@ export const blockConfirmationAction =
 
 export const blockConfirmationFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Globals | Database | NodeConfig> =>
+): Effect.Effect<
+  void,
+  SignedIntentReplacementIntegrityError,
+  Globals | Database | NodeConfig
+> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Effect.logInfo("🟫 Block confirmation fiber started.");
@@ -831,7 +874,17 @@ export const blockConfirmationFiber = (
       blockConfirmationAction,
     ).pipe(
       Effect.withSpan("block-confirmation-fiber"),
-      Effect.catchAllCause(Effect.logWarning),
+      // A transient failure is retried on the next tick; a replaced block
+      // that won its slot after the node moved past its base is not
+      // transient, so it stops the node.
+      Effect.catchAllCause((cause) => {
+        const integrity = findSignedIntentReplacementIntegrityError(cause);
+        return integrity === undefined
+          ? Effect.logWarning(cause)
+          : Effect.logError(integrity.message).pipe(
+              Effect.zipRight(Effect.fail(integrity)),
+            );
+      }),
     );
     yield* Effect.repeat(action, schedule);
   });

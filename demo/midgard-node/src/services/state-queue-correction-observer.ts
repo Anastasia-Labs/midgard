@@ -423,6 +423,7 @@ export const reconcileStateQueueCorrectionObserver = async ({
   restoreAfterRollback,
   persistTerminal,
   revokeTerminal,
+  assertRollbackPermitted,
 }: {
   readonly deploymentIdentityDigest: string;
   readonly stateQueuePolicyId: string;
@@ -439,6 +440,12 @@ export const reconcileStateQueueCorrectionObserver = async ({
     transition: StateQueueAuthenticatedTransition,
   ) => Promise<void>;
   readonly revokeTerminal?: (
+    transition: StateQueueAuthenticatedTransition,
+  ) => Promise<void>;
+  /** Refuses a timeout or fraud removal's rollback before any of its local
+   * effects is revoked: a refusal leaves the terminal outcome, and every other
+   * record of the removal, exactly as it was. */
+  readonly assertRollbackPermitted?: (
     transition: StateQueueAuthenticatedTransition,
   ) => Promise<void>;
 }): Promise<StateQueueCorrectionObserverResult> => {
@@ -551,13 +558,12 @@ export const reconcileStateQueueCorrectionObserver = async ({
         );
       }
       bindRollbackAnchor(transition);
-      await revokeTerminalTransition(transition);
-      if (
+      const removal =
         transition.transitionKind === "timeout_correction" ||
-        transition.transitionKind === "fraud_removal"
-      ) {
-        await restoreAfterRollback(transition);
-      }
+        transition.transitionKind === "fraud_removal";
+      if (removal) await assertRollbackPermitted?.(transition);
+      await revokeTerminalTransition(transition);
+      if (removal) await restoreAfterRollback(transition);
       retracted.add(transition.transactionHash);
       retractedNow.push(transition.transactionHash);
       if (

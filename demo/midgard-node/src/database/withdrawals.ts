@@ -652,13 +652,18 @@ export const reopenAfterStateQueueCorrectionByEventIds = (
     ),
   );
 
-/** Only a validated, locked correction journal may supply these snapshots. */
+/** Only a validated, locked correction journal may supply these snapshots.
+ * Each withdrawal must be unassigned and reopened from one of `reopenedFrom`
+ * (by default `headerHash` itself): a replaced block that won its state-queue
+ * slot takes back withdrawals a later replacement of it re-included and then
+ * reopened again. */
 export const restoreCorrectedClassification = (
   assignments: readonly Omit<
     SettlementInfoAssignment,
     "expectedClassificationRevision"
   >[],
   headerHash: Buffer,
+  reopenedFrom: readonly Buffer[] = [headerHash],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -672,7 +677,11 @@ export const restoreCorrectedClassification = (
             if (
               !current ||
               current[Columns.PROJECTED_HEADER_HASH] !== null ||
-              !current[Columns.REOPENED_FROM_HEADER_HASH]?.equals(headerHash)
+              !reopenedFrom.some(
+                (header) =>
+                  current[Columns.REOPENED_FROM_HEADER_HASH]?.equals(header) ===
+                  true,
+              )
             ) {
               return yield* Effect.fail(
                 new DatabaseError({

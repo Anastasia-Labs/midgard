@@ -323,8 +323,9 @@ export const prepareRetainedNativeHistoryRecoveryPlan = (
   });
 
 /** The single prepared native recovery of this binding, if any, decoded by
- * domain. A signed-header plan is reported only by kind: its owner resumes it.
- * An undecodable retained identity fails closed. */
+ * domain. A signed-header plan is reported by kind and header: the service
+ * that prepared it for that header resumes it. An undecodable retained
+ * identity fails closed. */
 export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -345,8 +346,16 @@ export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
           cause: undefined,
         }),
     });
-    if (decoded?.domain === SIGNED_HEADER_RECOVERY_DOMAIN)
-      return { kind: "signed_header" as const };
+    if (decoded?.domain === SIGNED_HEADER_RECOVERY_DOMAIN) {
+      if (!isHeaderHash(decoded.headerHash))
+        return yield* fail(
+          "Malformed retained signed-header recovery identity",
+        );
+      return {
+        kind: "signed_header" as const,
+        headerHash: decoded.headerHash,
+      };
+    }
     if (decoded?.domain !== CORRECTION_REWIND_RECOVERY_DOMAIN)
       return yield* fail("Retained native recovery has an unknown domain");
     const { domain: _domain, ...fields } = decoded;
@@ -473,7 +482,11 @@ type AppliedRecoveryRow = { recovery_id: Buffer; intent: string };
  * block's post-state. Whichever of the two is later fixes the native committed
  * point. Recovery refuses to run while a journal is active, so a journal
  * created before a recovery was already finalized (or abandoned by it) when
- * the plan applied. An applied plan that cannot be decoded fails closed.
+ * the plan applied. The exception is a journal abandoned and later revived
+ * (it carries a correction digest): a replaced block whose signed commit won
+ * its slot is revived after the replacement's plan and advances the native
+ * root when it finalizes, so its own last update orders it instead. An
+ * applied plan that cannot be decoded fails closed.
  */
 export const retrieveAppliedRecoveryAfterJournal = (
   journalHeaderHash: Buffer | undefined,
@@ -488,7 +501,10 @@ export const retrieveAppliedRecoveryAfterJournal = (
       : sql<AppliedRecoveryRow>`SELECT recovery_id, intent
           FROM event_history_recovery_plans
           WHERE state = 'applied'
-            AND updated_at > (SELECT created_at FROM pending_block_finalizations
+            AND updated_at > (SELECT CASE
+                WHEN correction_transition_digest IS NULL THEN created_at
+                ELSE updated_at END
+              FROM pending_block_finalizations
               WHERE header_hash = ${journalHeaderHash})
           ORDER BY updated_at DESC, recovery_id DESC LIMIT 1`;
     if (rows.length === 0) return Option.none<AppliedNativeRecovery>();

@@ -39,6 +39,7 @@ import {
   AddressHistoryDB,
   BlocksDB,
   DaPayloadPublicationsDB,
+  DaPayloadTerminalOutcomesDB,
   ForeignTipReconciliationsDB,
   ImmutableDB,
   MempoolDB,
@@ -1385,8 +1386,12 @@ const getReadinessHandler = Effect.gen(function* () {
   const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
   const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
   const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
-  const daPublicationConflicts =
-    yield* DaPayloadPublicationsDB.conflictCount(15);
+  const daPublicationConflicts = yield* DaPayloadPublicationsDB.conflictCount(
+    15,
+    DaPayloadTerminalOutcomesDB.deploymentIdentityDigestOf(
+      yield* ContractDeploymentIdentity,
+    ),
+  );
   const awaitingForeignTipReconciliations =
     yield* ForeignTipReconciliationsDB.countAwaiting;
   const mempoolTxCount = yield* MempoolDB.retrieveTxCount;

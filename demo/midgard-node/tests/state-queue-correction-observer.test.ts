@@ -389,6 +389,7 @@ const run = async ({
   restore,
   persistTerminal,
   revokeTerminal,
+  assertRollbackPermitted,
 }: {
   source: StateQueueCorrectionObserverSource;
   store: StateQueueCorrectionObserverStore;
@@ -400,6 +401,9 @@ const run = async ({
   revokeTerminal?: Parameters<
     typeof reconcileStateQueueCorrectionObserver
   >[0]["revokeTerminal"];
+  assertRollbackPermitted?: Parameters<
+    typeof reconcileStateQueueCorrectionObserver
+  >[0]["assertRollbackPermitted"];
 }) =>
   await reconcileStateQueueCorrectionObserver({
     deploymentIdentityDigest: deployment,
@@ -411,6 +415,7 @@ const run = async ({
     restoreAfterRollback: restore,
     persistTerminal,
     revokeTerminal,
+    assertRollbackPermitted,
   });
 
 describe("node-owned state-queue correction observer", () => {
@@ -549,6 +554,60 @@ describe("node-owned state-queue correction observer", () => {
       restore.mock.invocationCallOrder[0]!,
     );
     expect(restore).toHaveBeenCalledTimes(1);
+    expect(rollback.postFinalityRollbackTransactionHashes).toEqual([
+      transactionHash,
+    ]);
+  });
+
+  it("refuses a removal's rollback before revoking its terminal outcome, persists nothing, and revokes it only once the rollback is permitted", async () => {
+    const h = harness();
+    const store = memoryStore();
+    const reinclude = vi.fn(async () => undefined);
+    const restore = vi.fn(async () => undefined);
+    const persistTerminal = vi.fn(async () => undefined);
+    const revokeTerminal = vi.fn(async () => undefined);
+    const refusal = new Error("rewound removal rolled back");
+    let permitted = false;
+    const assertRollbackPermitted = vi.fn(async () => {
+      if (!permitted) throw refusal;
+    });
+    const scan = () =>
+      run({
+        source: h.source,
+        store,
+        reinclude,
+        restore,
+        persistTerminal,
+        revokeTerminal,
+        assertRollbackPermitted,
+      });
+    await scan();
+    h.setQueue(after);
+    h.setDepth(30n);
+    await scan();
+    expect(persistTerminal).toHaveBeenCalledTimes(1);
+    expect(assertRollbackPermitted).not.toHaveBeenCalled();
+    const admitted = store.current();
+
+    h.setQueue(before);
+    h.setDepth(null);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(scan()).rejects.toBe(refusal);
+      expect(revokeTerminal).not.toHaveBeenCalled();
+      expect(restore).not.toHaveBeenCalled();
+      expect(store.current()).toEqual(admitted);
+    }
+    expect(assertRollbackPermitted).toHaveBeenCalledWith(
+      expect.objectContaining({ transactionHash }),
+    );
+
+    permitted = true;
+    const rollback = await scan();
+    expect(revokeTerminal).toHaveBeenCalledTimes(1);
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(
+      assertRollbackPermitted.mock.invocationCallOrder.at(-1)!,
+    ).toBeLessThan(revokeTerminal.mock.invocationCallOrder[0]!);
     expect(rollback.postFinalityRollbackTransactionHashes).toEqual([
       transactionHash,
     ]);

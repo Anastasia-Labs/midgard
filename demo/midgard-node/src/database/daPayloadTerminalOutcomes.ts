@@ -15,6 +15,46 @@ import {
 
 export const tableName = "da_payload_terminal_outcomes";
 
+/**
+ * The SQL condition under which the DA payload aliased `payload` is still owed
+ * to committee peers and announcements. It is not once its header has an
+ * authenticated `removed` outcome under this deployment, or while its journal
+ * is abandoned under a named cause (a state-queue removal's transition digest,
+ * or the replacement digest of a signed commit that missed its window and was
+ * replaced). A replaced journal whose commit later wins its slot after all is
+ * revived, which makes its payload owed again. A journal abandoned without a
+ * digest may be revived, so its payload stays owed. `deploymentIdentityDigest`
+ * is the verified manifest ID; a node running
+ * a derived contract bundle has no authenticated outcomes to consult, so only
+ * the journal arm applies.
+ */
+/** The verified manifest ID of the running deployment, if it has one. */
+export const deploymentIdentityDigestOf = (identity: {
+  readonly manifestId?: string;
+}): Buffer | undefined =>
+  identity.manifestId === undefined
+    ? undefined
+    : Buffer.from(identity.manifestId, "hex");
+
+export const owedPayload = (
+  sql: SqlClient.SqlClient,
+  deploymentIdentityDigest: Buffer | undefined,
+) => {
+  const removed =
+    deploymentIdentityDigest === undefined
+      ? sql`FALSE`
+      : sql`EXISTS (
+          SELECT 1 FROM da_payload_terminal_outcomes outcome
+          WHERE outcome.header_hash = payload.header_hash
+            AND outcome.terminal_outcome = 'removed'
+            AND outcome.deployment_identity_digest = ${deploymentIdentityDigest})`;
+  return sql`NOT ${removed} AND NOT EXISTS (
+    SELECT 1 FROM pending_block_finalizations journal
+    WHERE journal.header_hash = payload.header_hash
+      AND journal.status = 'abandoned'
+      AND journal.correction_transition_digest IS NOT NULL)`;
+};
+
 const HEX_28 = /^[0-9a-f]{56}$/u;
 
 export type DaPayloadRetentionReleaseAuthority = Readonly<{

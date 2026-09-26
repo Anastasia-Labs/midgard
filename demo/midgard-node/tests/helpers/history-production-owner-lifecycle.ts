@@ -62,6 +62,17 @@ type ProductionOwnerFixtureOptions = {
   ) => Omit<ReturnType<typeof makeStreamingHistoryTransport>, "options"> & {
     readonly options: Omit<HistoryTransportOptions, "signal">;
   };
+  /** The deployment's automatic rollback horizon k as the production owner
+   * reads it (manifest l1Finality.automaticRecoveryMaxDepth), overridden in
+   * this fixture's in-memory identity only; retention scenarios need a k
+   * smaller than the 2160 the manifest pins. The manifest id is unchanged. */
+  readonly rollbackHorizon?: number;
+  /** Runs first in every startup completion preparation, before the fixture's
+   * listen-startup steps: observes the state a completion starts from. */
+  readonly beforeCompletion?: (
+    generation: number,
+    globals: Globals,
+  ) => Effect.Effect<void, unknown, SqlClient.SqlClient>;
   readonly afterNativePreparation?: NonNullable<
     Parameters<
       typeof makeProductionEventHistoryOwner<
@@ -135,7 +146,22 @@ export const openHistoryProductionOwnerLifecycle = async (
     options.eventHistoryProtectionDurationMs,
   );
   const { fixture, lucidService, binding } = recorded;
-  const identity = fixture.runtimeOverrides!.deploymentIdentity;
+  const deployedIdentity = fixture.runtimeOverrides!.deploymentIdentity;
+  const identity =
+    options.rollbackHorizon === undefined ||
+    deployedIdentity.manifest === undefined
+      ? deployedIdentity
+      : {
+          ...deployedIdentity,
+          manifest: {
+            ...deployedIdentity.manifest,
+            l1Finality: {
+              ...deployedIdentity.manifest.l1Finality,
+              // The manifest type pins 2160; only this in-memory copy differs.
+              automaticRecoveryMaxDepth: options.rollbackHorizon as 2160,
+            },
+          },
+        };
   const binarySha256 = createHash("sha256")
     .update(readFileSync(nativeOwnerBinaryPath))
     .digest("hex");
@@ -151,6 +177,60 @@ export const openHistoryProductionOwnerLifecycle = async (
     recorded,
   );
   const stoppedGenerations: unknown[] = [];
+  const addresses = [
+    ...new Set([
+      binding.hubAddress,
+      ...Object.values(binding.deployments).flatMap(
+        ({ address, retentionAddress }) => [address, retentionAddress],
+      ),
+    ]),
+  ];
+  // Every source point also records the state queue, as the source owner's
+  // own batches do (see openHistorySourceOwnerLifecycle).
+  const recordedAddresses = [
+    ...addresses,
+    fixture.contracts.stateQueue.spendingScriptAddress,
+  ];
+  const readOutputs = async (at: readonly string[] = addresses) =>
+    (
+      await Promise.all(
+        at.map((address) => fixture.operatorLucid.utxosAt(address)),
+      )
+    )
+      .flat()
+      .map(historyOutputObservation);
+  /** Seal the emulator's current tip as the next authenticated source point
+   * and offer it to whichever owner is (or next) connected, without waiting
+   * for any readiness. */
+  const sealTip = async (
+    onEmptyInterval: (empty: RecordedHistoryBatch) => void = () => {},
+  ) => {
+    await recorded.observer.flush();
+    if (
+      recorded.observer.pendingCount() !== 0 ||
+      Object.keys(fixture.emulator.mempool).length !== 0
+    )
+      throw new Error(
+        "Cannot seal a history frontier with pending emulator submissions",
+      );
+    const last = recorded.batches.at(-1)!;
+    if (fixture.emulator.slot > last.observedSlot) {
+      if (fixture.emulator.blockHeight <= last.observedHeight)
+        fixture.emulator.awaitBlock(1);
+      expect(fixture.emulator.slot).toBeGreaterThan(last.observedSlot);
+      expect(fixture.emulator.blockHeight).toBeGreaterThan(last.observedHeight);
+      const empty = {
+        observations: [],
+        observedSlot: fixture.emulator.slot,
+        observedHeight: fixture.emulator.blockHeight,
+        outputs: await readOutputs(recordedAddresses),
+      };
+      recorded.batches.push(empty);
+      onEmptyInterval(empty);
+    }
+    vi.setSystemTime(fixture.emulator.now());
+    return transport.appendAccepted();
+  };
   const startRuntime = async (
     globals: Globals,
     generation: number,
@@ -219,6 +299,8 @@ export const openHistoryProductionOwnerLifecycle = async (
         prepareCompletion: (checkpoint, preparation) =>
           Effect.gen(function* () {
             yield* preparation.assertCurrent;
+            if (options.beforeCompletion !== undefined)
+              yield* options.beforeCompletion(generation, globals);
             if (nativeOwner === undefined) {
               yield* seedLatestLocalBlockBoundaryOnStartup;
               if (generation > 0) {
@@ -245,22 +327,6 @@ export const openHistoryProductionOwnerLifecycle = async (
       }).pipe(Effect.provideService(Scope.Scope, scope)),
     );
     await runtime.runPromise(Ref.set(globals.EVENT_HISTORY_OWNER, owner));
-    const addresses = [
-      ...new Set([
-        binding.hubAddress,
-        ...Object.values(binding.deployments).flatMap(
-          ({ address, retentionAddress }) => [address, retentionAddress],
-        ),
-      ]),
-    ];
-    const readOutputs = async () =>
-      (
-        await Promise.all(
-          addresses.map((address) => fixture.operatorLucid.utxosAt(address)),
-        )
-      )
-        .flat()
-        .map(historyOutputObservation);
     const emptyIntervals: RecordedHistoryBatch[] = [];
     const checkpoints: unknown[] = [];
     type CommitAttempt = Parameters<
@@ -288,33 +354,7 @@ export const openHistoryProductionOwnerLifecycle = async (
      * point and hand it to the owner, without waiting for readiness. */
     const appendTip = async () => {
       requireRunning();
-      await recorded.observer.flush();
-      if (
-        recorded.observer.pendingCount() !== 0 ||
-        Object.keys(fixture.emulator.mempool).length !== 0
-      )
-        throw new Error(
-          "Cannot seal a history frontier with pending emulator submissions",
-        );
-      const last = recorded.batches.at(-1)!;
-      if (fixture.emulator.slot > last.observedSlot) {
-        if (fixture.emulator.blockHeight <= last.observedHeight)
-          fixture.emulator.awaitBlock(1);
-        expect(fixture.emulator.slot).toBeGreaterThan(last.observedSlot);
-        expect(fixture.emulator.blockHeight).toBeGreaterThan(
-          last.observedHeight,
-        );
-        const empty = {
-          observations: [],
-          observedSlot: fixture.emulator.slot,
-          observedHeight: fixture.emulator.blockHeight,
-          outputs: await readOutputs(),
-        };
-        recorded.batches.push(empty);
-        emptyIntervals.push(empty);
-      }
-      vi.setSystemTime(fixture.emulator.now());
-      return transport.appendAccepted();
+      return sealTip((empty) => emptyIntervals.push(empty));
     };
     const synchronize = async (): Promise<void> => {
       const tip = await appendTip();
@@ -541,6 +581,9 @@ export const openHistoryProductionOwnerLifecycle = async (
   let restarting = false;
   return {
     ...initial.handle,
+    /** Seal the next source point while no runtime generation is running
+     * (from a restart's `afterStop`): the next owner finds it on connect. */
+    sealSourcePointWhileStopped: () => sealTip(),
     restartRuntime: async ({
       synchronize = true,
       afterStop,
@@ -556,9 +599,13 @@ export const openHistoryProductionOwnerLifecycle = async (
       try {
         const holder = (await readHistoryAuthority())?.owner_token;
         await initial.stopRuntime();
-        await awaitHistoryAuthorityReleased(holder);
         stoppedGenerations.push(previous);
+        // `afterStop` runs before the release check: a caller whose stopped
+        // owner cannot retire its lease (a revoked generation) lapses it
+        // here, and the check below still refuses any lease that remains
+        // live before the next generation starts.
         await afterStop?.();
+        await awaitHistoryAuthorityReleased(holder);
         const next = await startRuntime(
           await makeGlobalsService(),
           1,

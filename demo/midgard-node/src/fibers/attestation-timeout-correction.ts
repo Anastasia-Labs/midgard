@@ -10,7 +10,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { getAddressDetails } from "@lucid-evolution/lucid";
-import { Effect, Runtime, Schedule } from "effect";
+import { Cause, Effect, Runtime, Schedule } from "effect";
 
 import {
   DaPayloadTerminalOutcomesDB,
@@ -42,6 +42,7 @@ import {
   restoreRetractedStateQueueCorrectionTransition,
   type StateQueueCorrectionObserverResult,
   type StateQueueCorrectionObserverSource,
+  StateQueueCorrectionRewindIntegrityError,
 } from "../services/index.js";
 
 export const ATTESTATION_TIMEOUT_ALERT_LEAD_MS =
@@ -148,6 +149,18 @@ export const reconcileStateQueueCorrections = ({
               ),
             );
           },
+          // Refused before the terminal outcome is revoked, so the DA
+          // 'removed' authority of a rewound block survives the refusal.
+          assertRollbackPermitted: rewindThroughHistoryOwner
+            ? async (transition) => {
+                await run(
+                  refuseRewoundStateQueueCorrectionRollback(
+                    transition,
+                    authority,
+                  ),
+                );
+              }
+            : undefined,
           restoreAfterRollback: async (transition) => {
             if (rewindThroughHistoryOwner) {
               // The native rewind has no inverse: a rolled-back removal whose
@@ -413,12 +426,59 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
     }
   });
 
+/** The rewind integrity failure a cause carries, however deeply it was
+ * wrapped on its way out of the observer's promise callbacks. */
+export const findStateQueueCorrectionRewindIntegrityError = (
+  cause: Cause.Cause<unknown>,
+): StateQueueCorrectionRewindIntegrityError | undefined => {
+  const seen = new Set<unknown>();
+  const search = (
+    value: unknown,
+  ): StateQueueCorrectionRewindIntegrityError | undefined => {
+    if (value === null || typeof value !== "object" || seen.has(value))
+      return undefined;
+    seen.add(value);
+    if (value instanceof StateQueueCorrectionRewindIntegrityError) return value;
+    if (Cause.isCause(value)) return searchCause(value);
+    if (Runtime.isFiberFailure(value))
+      return searchCause(value[Runtime.FiberFailureCauseId]);
+    return value instanceof Error ? search(value.cause) : undefined;
+  };
+  const searchCause = (
+    inner: Cause.Cause<unknown>,
+  ): StateQueueCorrectionRewindIntegrityError | undefined => {
+    for (const value of [...Cause.failures(inner), ...Cause.defects(inner)]) {
+      const found = search(value);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  return searchCause(cause);
+};
+
+/** One scheduled correction step. A transient failure is logged and retried
+ * on the next tick; a rewind integrity failure is not transient (the node
+ * cannot re-apply a rewound block), so it fails the fiber and stops the node. */
+export const attestationTimeoutCorrectionStep = <R>(
+  action: Effect.Effect<void, unknown, R>,
+): Effect.Effect<void, StateQueueCorrectionRewindIntegrityError, R> =>
+  action.pipe(
+    Effect.catchAllCause((cause) => {
+      const integrity = findStateQueueCorrectionRewindIntegrityError(cause);
+      return integrity === undefined
+        ? Effect.logWarning(cause)
+        : Effect.logError(integrity.message).pipe(
+            Effect.zipRight(Effect.fail(integrity)),
+          );
+    }),
+  );
+
 /** Operator-owned correction scheduler. Watcher processes remain observe-only. */
 export const attestationTimeoutCorrectionFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
-  never,
+  StateQueueCorrectionRewindIntegrityError,
   | Lucid
   | MidgardContracts
   | ContractDeploymentIdentity
@@ -429,9 +489,10 @@ export const attestationTimeoutCorrectionFiber = (
   Effect.gen(function* () {
     yield* Effect.logInfo("Attestation-timeout correction fiber started.");
     yield* Effect.repeat(
-      attestationTimeoutCorrectionAction().pipe(
-        Effect.withSpan("attestation-timeout-correction-fiber"),
-        Effect.catchAllCause(Effect.logWarning),
+      attestationTimeoutCorrectionStep(
+        attestationTimeoutCorrectionAction().pipe(
+          Effect.withSpan("attestation-timeout-correction-fiber"),
+        ),
       ),
       schedule,
     );

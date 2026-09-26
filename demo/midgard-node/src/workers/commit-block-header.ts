@@ -981,6 +981,26 @@ const resolveCommitBaseLedgerEntries = ({
         );
 
         if (Option.isSome(journal)) {
+          // The tail is this node's block whose journal was abandoned by a
+          // signed-intent replacement or a correction: local state does not
+          // hold it (its members were reopened). Never build on it; a
+          // replaced block that won its slot is revived first.
+          if (
+            journal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
+              PendingBlockFinalizationsDB.Status.Abandoned &&
+            journal.value[
+              PendingBlockFinalizationsDB.Columns.CORRECTION_TRANSITION_DIGEST
+            ] != null
+          ) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: PendingBlockFinalizationsDB.tableName,
+                message:
+                  "Refusing to build on a state-queue tail whose local journal is abandoned; it must be revived or corrected first",
+                cause: `header_hash=${headerHash}`,
+              }),
+            );
+          }
           if (
             !requireEntries &&
             currentLedgerRootHex === header.utxosRoot &&

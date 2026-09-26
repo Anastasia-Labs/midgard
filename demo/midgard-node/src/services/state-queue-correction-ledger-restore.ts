@@ -15,6 +15,7 @@ import {
   MempoolTxDeltasDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
+  TxAdmissionsDB,
   TxRejectionsDB,
 } from "../database/index.js";
 import {
@@ -42,6 +43,13 @@ import type { Database } from "./database.js";
  *    directly or through another refused transaction's output, is rejected
  *    now, and its ledger effects are reversed from exact before-images.
  *
+ * A rejection undoes the whole acceptance: the admission becomes terminally
+ * rejected, its address history goes, and every acceptance receipt it belongs
+ * to is marked reversed. A receipt is the inverse of one accepted batch and
+ * cannot be split, so a rejection widens to every member of a batch it
+ * touches (`E_REWIND_BATCH_MEMBER`); a batch with a member that already left
+ * the pending sets cannot be reversed at all, and the repair refuses.
+ *
  * A before-image this node cannot prove is never guessed: the repair fails and
  * the whole reinclusion transaction rolls back.
  */
@@ -49,6 +57,30 @@ import type { Database } from "./database.js";
 export const REWIND_REJECT_CODE_REOPENED_DEPOSIT_INPUT =
   "E_REWIND_REOPENED_DEPOSIT_INPUT";
 export const REWIND_REJECT_CODE_DEPENDENT_INPUT = "E_REWIND_DEPENDENT_INPUT";
+/** A transaction accepted in one batch with a rejected transaction: the
+ * batch's acceptance receipt is reversed as a whole. */
+export const REWIND_REJECT_CODE_BATCH_MEMBER = "E_REWIND_BATCH_MEMBER";
+
+type RejectionReason = "direct" | "dependent" | "batch";
+const REJECTIONS: Readonly<
+  Record<RejectionReason, Readonly<{ code: string; detail: string }>>
+> = {
+  direct: {
+    code: REWIND_REJECT_CODE_REOPENED_DEPOSIT_INPUT,
+    detail:
+      "Transaction spends the output of a deposit reopened by a state-queue correction",
+  },
+  dependent: {
+    code: REWIND_REJECT_CODE_DEPENDENT_INPUT,
+    detail:
+      "Transaction spends an output of a transaction rejected after a state-queue correction",
+  },
+  batch: {
+    code: REWIND_REJECT_CODE_BATCH_MEMBER,
+    detail:
+      "Transaction was accepted in one batch with a transaction rejected after a state-queue correction",
+  },
+};
 
 const table = MempoolLedgerDB.tableName;
 const failure = (message: string, cause?: unknown) =>
@@ -355,21 +387,57 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       });
     }
     const tainted = new Set(reopenedDepositOutRefs.keys());
-    const rejected = new Map<string, { tx: PendingTx; direct: boolean }>();
-    for (let changed = true; changed; ) {
-      changed = false;
-      for (const tx of pending) {
-        const id = hex(tx.entry[Tx.Columns.TX_ID]);
+    const pendingById = new Map(
+      pending.map((tx) => [hex(tx.entry[Tx.Columns.TX_ID]), tx] as const),
+    );
+    const rejected = new Map<
+      string,
+      { tx: PendingTx; reason: RejectionReason }
+    >();
+    const reject = (tx: PendingTx, reason: RejectionReason) => {
+      rejected.set(hex(tx.entry[Tx.Columns.TX_ID]), { tx, reason });
+      for (const row of tx.produced)
+        tainted.add(hex(row[MempoolLedgerDB.Columns.OUTREF]));
+    };
+    for (let widened = true; widened; ) {
+      widened = false;
+      // Spending closure over reopened deposit outputs.
+      for (let changed = true; changed; ) {
+        changed = false;
+        for (const tx of pending) {
+          if (rejected.has(hex(tx.entry[Tx.Columns.TX_ID]))) continue;
+          const spent = tx.spent.map(hex);
+          if (!spent.some((outRef) => tainted.has(outRef))) continue;
+          reject(
+            tx,
+            spent.some((outRef) => reopenedDepositOutRefs.has(outRef))
+              ? "direct"
+              : "dependent",
+          );
+          changed = true;
+        }
+      }
+      if (rejected.size === 0) break;
+      // Batch closure: every co-member of an unreversed acceptance receipt.
+      const coMembers = yield* sql<{ sequence: string; tx_id: Buffer }>`
+        SELECT r.sequence::text AS sequence, ids.tx_id
+        FROM event_history_l2_ledger_receipts r, unnest(r.tx_ids) AS ids(tx_id)
+        WHERE r.reversed_at_revision IS NULL
+          AND r.tx_ids && ${pg.array(byteaArray([...rejected.values()].map(({ tx }) => tx.entry[Tx.Columns.TX_ID])))}::bytea[]
+        ORDER BY r.sequence, ids.tx_id`;
+      for (const { sequence, tx_id } of coMembers) {
+        const id = hex(tx_id);
         if (rejected.has(id)) continue;
-        const spent = tx.spent.map(hex);
-        if (!spent.some((outRef) => tainted.has(outRef))) continue;
-        rejected.set(id, {
-          tx,
-          direct: spent.some((outRef) => reopenedDepositOutRefs.has(outRef)),
-        });
-        for (const row of tx.produced)
-          tainted.add(hex(row[MempoolLedgerDB.Columns.OUTREF]));
-        changed = true;
+        const tx = pendingById.get(id);
+        if (tx === undefined)
+          return yield* Effect.fail(
+            failure(
+              "A rejected transaction was accepted in one batch with a transaction that is no longer pending, so the batch's acceptance cannot be reversed",
+              { receipt: sequence, txId: id },
+            ),
+          );
+        reject(tx, "batch");
+        widened = true;
       }
     }
     if (rejected.size === 0)
@@ -462,17 +530,41 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       yield* ProcessedMempoolDB.clearTxs(processedIds);
       yield* MempoolTxDeltasDB.clearTxs(processedIds);
     }
+    const rejections = [...rejected.entries()].map(([id, { reason }]) => ({
+      txId: Buffer.from(id, "hex"),
+      ...REJECTIONS[reason],
+    }));
     yield* TxRejectionsDB.insertMany(
-      [...rejected.entries()].map(([id, { direct }]) => ({
-        [TxRejectionsDB.Columns.TX_ID]: Buffer.from(id, "hex"),
-        [TxRejectionsDB.Columns.REJECT_CODE]: direct
-          ? REWIND_REJECT_CODE_REOPENED_DEPOSIT_INPUT
-          : REWIND_REJECT_CODE_DEPENDENT_INPUT,
-        [TxRejectionsDB.Columns.REJECT_DETAIL]: direct
-          ? "Transaction spends the output of a deposit reopened by a state-queue correction"
-          : "Transaction spends an output of a transaction rejected after a state-queue correction",
+      rejections.map(({ txId, code, detail }) => ({
+        [TxRejectionsDB.Columns.TX_ID]: txId,
+        [TxRejectionsDB.Columns.REJECT_CODE]: code,
+        [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
       })),
     );
+    // Undo the acceptance itself: the terminal admission, its address
+    // history, and the batch receipts, which no longer describe a pending
+    // ledger overlay (the before-images above were read from them first).
+    yield* TxAdmissionsDB.markAcceptedRejectedAfterCorrection(rejections);
+    yield* sql`DELETE FROM address_history
+      WHERE tx_id = ANY(${pg.array(byteaArray(rejectedIds))}::bytea[])`;
+    yield* sql`UPDATE event_history_l2_ledger_receipts r
+      SET reversed_at_revision = c.revision
+      FROM event_history_cursor c
+      WHERE c.binding_digest = r.binding_digest
+        AND r.reversed_at_revision IS NULL
+        AND r.tx_ids <@ ${pg.array(byteaArray(rejectedIds))}::bytea[]`;
+    const unreversed = yield* sql<{ sequence: string }>`
+      SELECT sequence::text AS sequence FROM event_history_l2_ledger_receipts
+      WHERE reversed_at_revision IS NULL
+        AND tx_ids && ${pg.array(byteaArray(rejectedIds))}::bytea[]
+      LIMIT 1`;
+    if (unreversed.length !== 0)
+      return yield* Effect.fail(
+        failure(
+          "A rejected transaction's acceptance receipt could not be reversed",
+          unreversed[0]?.sequence,
+        ),
+      );
     yield* CekProgramMaterialDB.releaseAdmissionOwnership(rejectedIds);
     return {
       restoredWithdrawalOutputs: withdrawalRows.length,

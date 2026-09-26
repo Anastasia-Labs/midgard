@@ -360,9 +360,14 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       } satisfies WorkerOutput;
     }
 
+    // A signed commit is replaced (or a replaced one revived) in one place:
+    // the history owner's signed-intent reconciliation, which decides from
+    // its authenticated exact-point view of the tail node's slot once the
+    // signed validity window has closed. This unauthenticated snapshot only
+    // defers to it.
     if (pendingBlock.intendedTxHash != null) {
-      yield* Effect.logWarning(
-        "Signed commit intent remains unresolved; queue absence does not authorize replacement.",
+      yield* Effect.logInfo(
+        `🔍 Pending block header ${pendingBlock.expectedHeaderHash} holds a signed commit intent and is not on the queue; deferring to the history owner's signed-intent reconciliation.`,
       );
       return { type: "NoTxForConfirmationOutput" } satisfies WorkerOutput;
     }

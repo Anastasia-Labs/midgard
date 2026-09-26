@@ -165,6 +165,9 @@ export const openHistorySourceOwnerLifecycle = async (
           h.list.spendingScriptAddress,
           h.retention.spendingScriptAddress,
         ]),
+        // A real node serves any address at an acquired point; recording the
+        // queue lets an exact-point recovery capture of it be served.
+        preparedContracts.stateQueue.spendingScriptAddress,
       ];
       observation = captureConfirmedHistoryObservations(
         operatorLucid,

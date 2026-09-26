@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
@@ -16,7 +17,10 @@ import {
   nextL1ProviderHealthEvidence,
 } from "../src/services/globals.js";
 import { Lucid } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../src/services/midgard-contracts.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -89,6 +93,14 @@ const readyz = (frontier: HistoryOwnerFrontier | undefined) =>
         } as unknown as ValidationPool["Type"]),
         Effect.provideService(Lucid, {} as Lucid),
         Effect.provideService(MidgardContracts, {} as MidgardContracts),
+        // /readyz scopes DA removal outcomes by the verified deployment.
+        Effect.provideService(
+          ContractDeploymentIdentity,
+          ContractDeploymentIdentity.make({
+            kind: "derived",
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+          }),
+        ),
         Effect.provide(Globals.Default),
       ) as Effect.Effect<
         {

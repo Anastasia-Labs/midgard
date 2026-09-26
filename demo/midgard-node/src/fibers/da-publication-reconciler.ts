@@ -14,9 +14,11 @@ import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
+  DaPayloadTerminalOutcomesDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { Database } from "../services/database.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 
 const daPublishReconcilerAttemptsCounter = Metric.counter(
   "da_publish_reconciler_attempts_total",
@@ -38,9 +40,13 @@ export type DaPublicationReconcileSummary = {
 export const reconcileDaPublicationsOnce = ({
   limit = 100,
   leaseOwner = `${hostname()}:${process.pid.toString()}`,
+  deploymentIdentityDigest,
 }: {
   readonly limit?: number;
   readonly leaseOwner?: string;
+  /** Verified manifest ID scoping authenticated removal outcomes; absent for
+   * a derived contract bundle (see `DaPayloadTerminalOutcomesDB.owedPayload`). */
+  readonly deploymentIdentityDigest?: Buffer;
 } = {}): Effect.Effect<
   DaPublicationReconcileSummary,
   DatabaseError,
@@ -85,6 +91,7 @@ export const reconcileDaPublicationsOnce = ({
       leaseOwner,
       leaseToken: peerLeaseToken,
       leaseMs: Math.max(30_000, manifest.requestTimeoutMs * 2),
+      deploymentIdentityDigest,
     });
     let attempted = 0;
     let conflicts = 0;
@@ -152,6 +159,7 @@ export const reconcileDaPublicationsOnce = ({
       leaseOwner,
       leaseToken: announcementLeaseToken,
       leaseMs: Math.max(30_000, manifest.requestTimeoutMs * 2),
+      deploymentIdentityDigest,
     });
     yield* Effect.forEach(
       announcementClaims,
@@ -231,8 +239,14 @@ export const reconcileDaPublicationsOnce = ({
     );
     const [peerBacklog, announcementBacklog] = yield* Effect.all(
       [
-        DaPayloadPublicationsDB.backlogCount(retentionDays),
-        DaPayloadAnnouncementsDB.backlogCount(retentionDays),
+        DaPayloadPublicationsDB.backlogCount(
+          retentionDays,
+          deploymentIdentityDigest,
+        ),
+        DaPayloadAnnouncementsDB.backlogCount(
+          retentionDays,
+          deploymentIdentityDigest,
+        ),
       ],
       { concurrency: 2 },
     );
@@ -249,11 +263,15 @@ export const reconcileDaPublicationsOnce = ({
 
 export const daPublicationReconcilerFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Database> =>
+): Effect.Effect<void, never, Database | ContractDeploymentIdentity> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟢 DA publication reconciler fiber started.");
+    const deploymentIdentityDigest =
+      DaPayloadTerminalOutcomesDB.deploymentIdentityDigestOf(
+        yield* ContractDeploymentIdentity,
+      );
     yield* Effect.repeat(
-      reconcileDaPublicationsOnce().pipe(
+      reconcileDaPublicationsOnce({ deploymentIdentityDigest }).pipe(
         Effect.catchAllCause((cause) =>
           Effect.logWarning(
             `DA publication reconciler iteration failed; continuing: ${String(cause)}`,

@@ -18,6 +18,7 @@ import {
 } from "../mpf/index.js";
 import {
   fetchCanonicalCommittedHeaders,
+  journalAbandonment,
   localJournalHasPayloadMembers,
   reviveEarliestCanonicalPayloadJournal,
 } from "../services/canonical-journal-recovery.js";
@@ -412,10 +413,14 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
           PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
         ].getTime();
       seededBoundaryMs = Math.max(journalBoundaryMs, latestEndTimeMs);
+      // Only an unattributed abandonment is revived bare here. A replaced
+      // journal needs its members taken back, which the earliest-journal
+      // revival above does; a correction-abandoned one is never revived.
       if (
         finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
           PendingBlockFinalizationsDB.Status.Abandoned &&
         localJournalHasPayloadMembers(finalizedJournal.value) &&
+        journalAbandonment(finalizedJournal.value) === "unattributed" &&
         Option.isNone(revivedPayloadJournal)
       ) {
         yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(

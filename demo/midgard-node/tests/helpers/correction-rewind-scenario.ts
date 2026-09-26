@@ -16,6 +16,10 @@ import {
   toQueuedTx,
 } from "../../src/commands/submit-l2-transfer.js";
 import type { BuiltTransferTx } from "../../src/commands/transfer-build-core.js";
+import {
+  ledgerReceiptIsIncomplete,
+  orphanHasPublishedDependency,
+} from "../../src/database/eventHistoryLedgerRepair.js";
 import { TxAdmissionsDB } from "../../src/database/index.js";
 import * as MutationJobs from "../../src/database/mutationJobs.js";
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
@@ -26,6 +30,7 @@ import { Globals } from "../../src/services/globals.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../../src/services/history-commit-window.js";
 import type { StateQueueCorrectionObserverSource } from "../../src/services/state-queue-correction-observer.js";
 import { validationPoolLayer } from "../../src/services/validation-pool.js";
+import { WriteBehind } from "../../src/services/write-behind.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -66,7 +71,7 @@ type Removal = Awaited<
 
 /** Submit one deposit as the running node's users do; returns its L2
  * inclusion time. */
-const submitDeposit = async (h: Handle, lovelace: bigint) => {
+export const submitDeposit = async (h: Handle, lovelace: bigint) => {
   const { fixture, lucidService } = h;
   const wallet = fixture.depositorLucid;
   const address = await wallet.wallet().address();
@@ -238,7 +243,7 @@ const commitLocallyFinalizedBlock = async (
  * mempool without ever landing, as a commit does when a conflicting removal of
  * its parent wins. The journal keeps the submission and its signed intent.
  */
-const submitUnlandedBlock = async (
+export const submitUnlandedBlock = async (
   h: Pick<Lifecycle, "deployment" | "observer"> & Handle,
   inclusionTime: number,
 ) => {
@@ -348,25 +353,29 @@ export const buildDepositorTransfer = async (
   });
 };
 
-/** Admit a signed L2 transaction through the node's durable admission queue
- * and drain it once, as `/submit` does; returns its admission status. */
-export const admitTransfer = async (
+/** Queue signed L2 transactions in the node's durable admission queue, as
+ * `/submit` does, then drain the queue once: transactions queued together are
+ * accepted in one batch, under one inverse receipt. Returns each admission
+ * status, in order. */
+export const admitTransfersTogether = async (
   h: ContentHandle,
-  built: BuiltTransferTx,
+  builts: readonly BuiltTransferTx[],
 ) => {
-  const queued = toQueuedTx(built);
-  await h.command(
-    TxAdmissionsDB.admit({
-      txId: queued.txId,
-      txCanonicalCbor: queued.txCbor,
-      programMaterialSidecarCbor: Buffer.from(
-        queued.programMaterialSidecarCbor!,
-      ),
-      submitSource: "native",
-      currentBacklog: 0n,
-      maxBacklog: h.production.nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-    }),
-  );
+  for (const built of builts) {
+    const queued = toQueuedTx(built);
+    await h.command(
+      TxAdmissionsDB.admit({
+        txId: queued.txId,
+        txCanonicalCbor: queued.txCbor,
+        programMaterialSidecarCbor: Buffer.from(
+          queued.programMaterialSidecarCbor!,
+        ),
+        submitSource: "native",
+        currentBacklog: 0n,
+        maxBacklog: h.production.nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+      }),
+    );
+  }
   await h.command(
     txQueueProcessorDrainOnce().pipe(Effect.provide(validationPoolLayer)),
   );
@@ -374,12 +383,113 @@ export const admitTransfer = async (
   const rows = await read(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ status: string }>`
-        SELECT status FROM tx_admissions WHERE tx_id = ${built.txId}`;
+      return yield* sql<{ tx_id: Buffer; status: string }>`
+        SELECT tx_id, status FROM tx_admissions
+        WHERE tx_id IN ${sql.in(builts.map(({ txId }) => txId))}`;
     }),
   );
-  return rows[0]?.status;
+  return builts.map(
+    ({ txId }) => rows.find((row) => row.tx_id.equals(txId))?.status,
+  );
 };
+
+/** Admit a signed L2 transaction through the node's durable admission queue
+ * and drain it once, as `/submit` does; returns its admission status. */
+export const admitTransfer = async (h: ContentHandle, built: BuiltTransferTx) =>
+  (await admitTransfersTogether(h, [built]))[0];
+
+/** Persist the write-behind address history now. */
+export const flushWriteBehind = (h: Pick<Lifecycle, "command">) =>
+  h.command(Effect.flatMap(WriteBehind, (writeBehind) => writeBehind.flushNow));
+
+/**
+ * Every durable trace of accepting `txIds`: their admissions, rejections,
+ * address history and acceptance receipts, plus both ledger-repair wedges an
+ * acceptance left behind would raise. `publishedDependencies` lists each of
+ * `depositEventIds` whose incarnation an unreversed receipt consumed while
+ * part of its batch left the mempool; `incompleteReceipts` lists every
+ * unreversed receipt holding one of `txIds` that the repair would select (it
+ * holds a mempool transaction) but cannot invert as one unpublished batch.
+ */
+export const readAcceptanceTraces = (input: {
+  readonly txIds: readonly Buffer[];
+  readonly depositEventIds: readonly Buffer[];
+}) =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const ids = [...input.txIds];
+      const hex = (value: Buffer) => value.toString("hex");
+      const admissions = yield* sql<{
+        tx_id: Buffer;
+        status: string;
+        reject_code: string | null;
+      }>`SELECT tx_id, status, reject_code FROM tx_admissions
+        WHERE tx_id IN ${sql.in(ids)}`;
+      const rejections = yield* sql<{ tx_id: Buffer; reject_code: string }>`
+        SELECT tx_id, reject_code FROM tx_rejections
+        WHERE tx_id IN ${sql.in(ids)}`;
+      const addressHistory = yield* sql<{ tx_id: Buffer }>`
+        SELECT DISTINCT tx_id FROM address_history
+        WHERE tx_id IN ${sql.in(ids)}`;
+      const receipts = yield* sql<{
+        sequence: string;
+        tx_ids: readonly Buffer[];
+        reversed: boolean;
+        selected: boolean;
+      }>`SELECT r.sequence::text, r.tx_ids,
+          r.reversed_at_revision IS NOT NULL AS reversed,
+          EXISTS (SELECT 1 FROM mempool m WHERE m.tx_id = ANY(r.tx_ids)) AS selected
+        FROM event_history_l2_ledger_receipts r
+        WHERE EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS t(tx_id)
+          WHERE t.tx_id IN ${sql.in(ids)})
+        ORDER BY r.sequence`;
+      const incompleteReceipts: string[] = [];
+      for (const receipt of receipts)
+        if (
+          !receipt.reversed &&
+          receipt.selected &&
+          (yield* ledgerReceiptIsIncomplete(receipt.sequence))
+        )
+          incompleteReceipts.push(receipt.sequence);
+      const publishedDependencies: string[] = [];
+      for (const eventId of input.depositEventIds) {
+        const incarnations = yield* sql<{
+          history_binding_digest: Buffer;
+          history_incarnation_id: Buffer;
+        }>`SELECT history_binding_digest, history_incarnation_id
+          FROM deposits_utxos WHERE event_id = ${eventId}`;
+        expect(incarnations).toHaveLength(1);
+        const { history_binding_digest, history_incarnation_id } =
+          incarnations[0]!;
+        if (
+          yield* orphanHasPublishedDependency(
+            history_binding_digest,
+            history_incarnation_id,
+          )
+        )
+          publishedDependencies.push(hex(eventId));
+      }
+      return {
+        admissions: Object.fromEntries(
+          admissions.map((row) => [
+            hex(row.tx_id),
+            { status: row.status, code: row.reject_code },
+          ]),
+        ),
+        rejections: Object.fromEntries(
+          rejections.map((row) => [hex(row.tx_id), row.reject_code]),
+        ),
+        addressHistory: addressHistory.map((row) => hex(row.tx_id)).sort(),
+        receipts: receipts.map((row) => ({
+          txIds: row.tx_ids.map(hex).sort(),
+          reversed: row.reversed,
+        })),
+        incompleteReceipts,
+        publishedDependencies,
+      };
+    }),
+  );
 
 /**
  * Mempool rows are stamped by the database's real clock, while the emulator

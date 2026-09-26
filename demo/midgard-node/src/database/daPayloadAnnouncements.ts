@@ -2,6 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
+import { owedPayload } from "./daPayloadTerminalOutcomes.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_announcements";
@@ -66,12 +67,16 @@ export const claimDue = ({
   leaseOwner,
   leaseToken,
   leaseMs,
+  deploymentIdentityDigest,
 }: {
   readonly retentionDays: number;
   readonly limit: number;
   readonly leaseOwner: string;
   readonly leaseToken: string;
   readonly leaseMs: number;
+  /** Verified manifest ID scoping authenticated removal outcomes; absent for
+   * a derived contract bundle (see `owedPayload`). */
+  readonly deploymentIdentityDigest?: Buffer;
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -88,16 +93,7 @@ export const claimDue = ({
             OR announcement.lease_expires_at <= NOW()
           )
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-          AND NOT EXISTS (
-            SELECT 1 FROM da_payload_terminal_outcomes outcome
-            WHERE outcome.header_hash = payload.header_hash
-              AND outcome.terminal_outcome = 'removed'
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM pending_block_finalizations journal
-            WHERE journal.header_hash = payload.header_hash
-              AND journal.status = 'abandoned'
-          )
+          AND ${owedPayload(sql, deploymentIdentityDigest)}
         ORDER BY announcement.next_retry_at ASC, announcement.header_hash ASC
         FOR UPDATE OF announcement SKIP LOCKED
         LIMIT ${limit}
@@ -238,6 +234,8 @@ export const releaseClaim = ({
 
 export const backlogCount = (
   retentionDays: number,
+  /** See `owedPayload`. */
+  deploymentIdentityDigest?: Buffer,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -247,16 +245,7 @@ export const backlogCount = (
       INNER JOIN da_payloads payload ON payload.header_hash = announcement.header_hash
       WHERE announcement.status IN ('pending', 'failed')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-        AND NOT EXISTS (
-          SELECT 1 FROM da_payload_terminal_outcomes outcome
-          WHERE outcome.header_hash = payload.header_hash
-            AND outcome.terminal_outcome = 'removed'
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM pending_block_finalizations journal
-          WHERE journal.header_hash = payload.header_hash
-            AND journal.status = 'abandoned'
-        )
+        AND ${owedPayload(sql, deploymentIdentityDigest)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

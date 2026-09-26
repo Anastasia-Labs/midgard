@@ -13,6 +13,11 @@ import type { HistoryTransportOptions } from "../l1-event-history-transport.js";
 import { NodeConfig } from "./config.js";
 import { makeEventHistoryOwner } from "./event-history-owner.js";
 import { HistoryPreparation } from "./event-history-recovery.js";
+import {
+  expiredIntentReleaseDisposition,
+  makeSignedIntentDeferral,
+  prepareExpiredIntentRelease,
+} from "./history-expired-intent-release.js";
 import { prepareSignedHeaderRecovery } from "./history-signed-header-recovery.js";
 import { Lucid } from "./lucid.js";
 import { MempoolLedgerCache } from "./mempool-ledger-cache.js";
@@ -65,6 +70,9 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         }),
     });
     const prepareCompletion = input.prepareCompletion;
+    // A signed intent whose base a correction removed defers to the
+    // correction path; this runtime remembers it until a rollback.
+    const signedIntentDeferral = makeSignedIntentDeferral();
     // Architecture G is the only engine whose ledger root is a promoted native
     // owner: a correction that removes a committed block rewinds it through
     // this owner's recovery. Other engines keep the correction fiber's plain
@@ -87,13 +95,15 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
       | Effect.Effect.Error<ReturnType<typeof prepareSignedHeaderRecovery>>
       | Effect.Effect.Error<
           ReturnType<typeof prepareStateQueueCorrectionRewind>
-        >,
+        >
+      | Effect.Effect.Error<ReturnType<typeof prepareExpiredIntentRelease>>,
       | R
       | SqlClient.SqlClient
       | Effect.Effect.Context<ReturnType<typeof prepareSignedHeaderRecovery>>
       | Effect.Effect.Context<
           ReturnType<typeof prepareStateQueueCorrectionRewind>
         >
+      | Effect.Effect.Context<ReturnType<typeof prepareExpiredIntentRelease>>
     >({
       ...input,
       prepareCompletion:
@@ -139,6 +149,24 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                   slotToUnixTime: lucid.api.slotToUnixTime,
                 }),
               ),
+              // A signed commit past its TTL is reconciled to whichever block
+              // holds its base's state-queue slot: confirmed, replaced (members
+              // reopened, Architecture G native root restored) or, when an
+              // earlier replaced block of this node won, revived.
+              Effect.zipRight(
+                rewindAuthority === undefined
+                  ? Effect.void
+                  : prepareExpiredIntentRelease({
+                      binding,
+                      checkpoint,
+                      preparation,
+                      config,
+                      rewindAuthority,
+                      transport: input.transport,
+                      contracts,
+                      deferral: signedIntentDeferral,
+                    }),
+              ),
             ),
       binding,
       histories,
@@ -158,6 +186,12 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
             const rewind =
               yield* stateQueueCorrectionRewindDisposition(rewindAuthority);
             if (rewind !== undefined) return rewind;
+            const release = yield* expiredIntentReleaseDisposition({
+              binding,
+              change,
+              deferral: signedIntentDeferral,
+            });
+            if (release !== undefined) return release;
           }
           yield* materializeCanonicalHistory(change, config.NETWORK);
           const { reconciled } = yield* reconcileDepositProjection(

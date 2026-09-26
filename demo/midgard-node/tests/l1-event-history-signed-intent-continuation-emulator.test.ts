@@ -31,8 +31,12 @@ import { openHistoryProductionOwnerLifecycle } from "./helpers/history-productio
 
 /** The provider accepts the real, locally evaluated commitment before its
  * response is lost. Network ancestry remains the harness's synthetic transport;
- * an authorized operator appends a real empty child before node confirmation.
- * The child uses the explicit builder, not the pending automatic worker. */
+ * an authorized operator appends a real empty child, which recreates the
+ * parent's node outref. The child can only follow the parent's end time, which
+ * is the parent commit's signed validity upper bound, so the history owner's
+ * signed-intent reconciliation has already recorded the parent's observation
+ * from its own node (whichever lands wins). The child uses the explicit
+ * builder, not the pending automatic worker. */
 it("retains the original signed intent through an accepted queue pointer continuation before local confirmation", async () => {
   const h = await openHistoryProductionOwnerLifecycle();
   const { fixture, lucidService, globals, production } = h;
@@ -278,6 +282,17 @@ it("retains the original signed intent through an accepted queue pointer continu
         fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     await h.synchronize();
+    // This source point reaches the parent commit's TTL. Its node is on the
+    // queue at the transaction that signed it, so the history owner records
+    // that observation; the signed intent is kept.
+    const recordedAtTtl = await readIntent(accepted.txHash);
+    assertIntent(recordedAtTtl, accepted.txHash, accepted.signedCbor);
+    expect(
+      recordedAtTtl[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex"),
+    ).toBe(accepted.txHash);
+    expect(recordedAtTtl[Pending.Columns.STATUS]).toBe(
+      Pending.Status.ObservedWaitingStability,
+    );
     // No user or L2 transaction is submitted after the parent. The empty child
     // preserves its actual UTxO root; it does not repeat the parent's deposit.
     const beforeChildReceiptCount = h.receipts.length;
@@ -380,10 +395,7 @@ it("retains the original signed intent through an accepted queue pointer continu
     expect(childNode.datum.next).toBe("Empty");
     const priorToConfirmation = await readIntent(accepted.txHash);
     assertIntent(priorToConfirmation, accepted.txHash, accepted.signedCbor);
-    expect(priorToConfirmation[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    expect(priorToConfirmation[Pending.Columns.STATUS]).toBe(
-      Pending.Status.PendingSubmission,
-    );
+    expect(priorToConfirmation).toEqual(recordedAtTtl);
     expect((await nativeBefore!.diagnostics()).durableRoot).toBe(
       nativeBeforeContinuation.durableRoot,
     );
@@ -410,12 +422,16 @@ it("retains the original signed intent through an accepted queue pointer continu
     );
     const observed = await readIntent(accepted.txHash);
     assertIntent(observed, accepted.txHash, accepted.signedCbor);
-    // Observation of a recreated outref must not acknowledge the child as
-    // though it were the transaction that signed the parent's commitment.
-    expect(observed[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    expect(observed[Pending.Columns.STATUS]).toBe(
-      Pending.Status.ObservedWaitingStability,
-    );
+    // Confirmation through the recreated outref must not acknowledge the
+    // child as though it were the transaction that signed the parent.
+    // Confirmation may touch the row's timestamp; nothing else changes.
+    expect({ ...observed, updated_at: undefined }).toEqual({
+      ...recordedAtTtl,
+      updated_at: undefined,
+    });
+    expect(
+      observed[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex"),
+    ).not.toBe(child.submittedTxHash);
     diagnostic.afterConfirmation = observed;
     diagnostic.stage = "local-finalization";
     const recovery = await runLocalFinalizationRecoveryWorker(
@@ -448,7 +464,9 @@ it("retains the original signed intent through an accepted queue pointer continu
 
     const finalRow = await readIntent(accepted.txHash);
     assertIntent(finalRow, accepted.txHash, accepted.signedCbor);
-    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
+    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
+      accepted.txHash,
+    );
     expect(finalRow[Pending.Columns.STATUS]).toBe(Pending.Status.Finalized);
     expect(
       h.receipts.filter(

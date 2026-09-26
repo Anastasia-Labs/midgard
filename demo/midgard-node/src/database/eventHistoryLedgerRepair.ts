@@ -21,6 +21,44 @@ const table = "event_history_l2_ledger_receipts";
 const refuse = (message: string) =>
   Effect.fail(new DatabaseError({ table, message, cause: undefined }));
 
+/** An unreversed acceptance receipt consumed deposit incarnation
+ * `incarnationId` and some transaction of its batch is no longer in the
+ * mempool: the dependency already left the unpublished overlay, so the orphan
+ * cannot be repaired from retained receipts. */
+export const orphanHasPublishedDependency = (
+  binding: Buffer,
+  incarnationId: Buffer,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql`SELECT 1 FROM event_history_l2_ledger_receipts r
+        WHERE r.binding_digest = ${binding} AND r.reversed_at_revision IS NULL
+          AND EXISTS (SELECT 1 FROM jsonb_populate_recordset(NULL::deposits_utxos, r.deposits_before) d
+            WHERE d.history_binding_digest = ${binding} AND d.history_incarnation_id = ${incarnationId})
+          AND EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS ids(tx_id)
+            WHERE NOT EXISTS (SELECT 1 FROM mempool m WHERE m.tx_id = ids.tx_id)) LIMIT 1`;
+    return rows.length !== 0;
+  });
+
+/** Receipt `sequence` cannot be inverted as one unpublished batch: it lacks
+ * its after-image or payloads, or one of its transactions is no longer an
+ * accepted, unassigned mempool entry. */
+export const ledgerReceiptIsIncomplete = (sequence: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql`SELECT 1 FROM event_history_l2_ledger_receipts r
+        WHERE sequence = ${sequence} AND (ledger_after IS NULL OR
+          EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS ids(tx_id)
+            LEFT JOIN mempool m ON m.tx_id = ids.tx_id
+            LEFT JOIN tx_admissions a ON a.tx_id = ids.tx_id
+            WHERE m.tx_id IS NULL OR a.status IS DISTINCT FROM 'accepted'
+              OR EXISTS (SELECT 1 FROM blocks b WHERE b.tx_id = ids.tx_id)
+              OR EXISTS (SELECT 1 FROM immutable i WHERE i.tx_id = ids.tx_id)
+              OR EXISTS (SELECT 1 FROM pending_block_finalization_txs p WHERE p.member_id = ids.tx_id))
+          OR jsonb_array_length(payloads_before) <> cardinality(tx_ids))`;
+    return rows.length !== 0;
+  });
+
 /** Detect dispositions that require additional canonical source evidence before
  * touching dependent SQL. This is used only by the production source owner;
  * the strict inverse/materialization APIs still refuse such state. Keeping the
@@ -158,14 +196,7 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
         return yield* refuse(
           "Orphan admission has retained header membership requiring authenticated published correction",
         );
-      const publishedDependency =
-        yield* sql`SELECT 1 FROM event_history_l2_ledger_receipts r
-        WHERE r.binding_digest = ${binding} AND r.reversed_at_revision IS NULL
-          AND EXISTS (SELECT 1 FROM jsonb_populate_recordset(NULL::deposits_utxos, r.deposits_before) d
-            WHERE d.history_binding_digest = ${binding} AND d.history_incarnation_id = ${orphan.incarnation_id})
-          AND EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS ids(tx_id)
-            WHERE NOT EXISTS (SELECT 1 FROM mempool m WHERE m.tx_id = ids.tx_id)) LIMIT 1`;
-      if (publishedDependency.length !== 0)
+      if (yield* orphanHasPublishedDependency(binding, orphan.incarnation_id))
         return yield* refuse(
           "Orphan dependency already left the unpublished ledger overlay",
         );
@@ -187,17 +218,7 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
       );
 
     for (const receipt of receipts) {
-      const unsafe = yield* sql`SELECT 1 FROM event_history_l2_ledger_receipts r
-        WHERE sequence = ${receipt.sequence} AND (ledger_after IS NULL OR
-          EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS ids(tx_id)
-            LEFT JOIN mempool m ON m.tx_id = ids.tx_id
-            LEFT JOIN tx_admissions a ON a.tx_id = ids.tx_id
-            WHERE m.tx_id IS NULL OR a.status IS DISTINCT FROM 'accepted'
-              OR EXISTS (SELECT 1 FROM blocks b WHERE b.tx_id = ids.tx_id)
-              OR EXISTS (SELECT 1 FROM immutable i WHERE i.tx_id = ids.tx_id)
-              OR EXISTS (SELECT 1 FROM pending_block_finalization_txs p WHERE p.member_id = ids.tx_id))
-          OR jsonb_array_length(payloads_before) <> cardinality(tx_ids))`;
-      if (unsafe.length !== 0)
+      if (yield* ledgerReceiptIsIncomplete(receipt.sequence))
         return yield* refuse(
           "Ledger batch is incomplete, assigned or only partially unpublished",
         );

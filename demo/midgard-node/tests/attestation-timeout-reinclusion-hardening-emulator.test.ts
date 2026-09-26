@@ -24,10 +24,12 @@ import {
   commitNextBlock,
   CONTENT_AMOUNTS,
   depositorL2Utxos,
+  flushWriteBehind,
   type Lifecycle,
   openCorrectionRewindScenario,
   outputOf,
   read,
+  readAcceptanceTraces,
   readDeposits,
   readJournal,
   readObserver,
@@ -69,6 +71,18 @@ const nativeRoot = async (handle: Pick<Scenario["h"], "evidence">) => {
   if (native === undefined) throw new Error("Native owner is not open");
   return native.durableRoot;
 };
+
+/** The DA terminal outcomes recorded for `headerHash`. */
+const readDaTerminalOutcomes = (headerHash: string) =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<Record<string, unknown>>`
+        SELECT * FROM da_payload_terminal_outcomes
+        WHERE header_hash = ${Buffer.from(headerHash, "hex")}
+        ORDER BY transaction_hash`;
+    }),
+  );
 
 const inspectObligation = (scenario: Scenario) =>
   read(inspectStateQueueCorrectionRewindObligation(scenario.authority));
@@ -200,6 +214,87 @@ const writeObserverState = (state: Readonly<{ stateDigest: string }>) =>
     }),
   );
 
+type ObserverRecord = Readonly<Record<string, unknown>> & {
+  readonly cursorQueue: readonly unknown[];
+  readonly admitted: readonly DigestedRecord[];
+};
+const observerRecord = (raw: unknown) =>
+  (typeof raw === "string" ? JSON.parse(raw) : raw) as ObserverRecord;
+const redigestState = (state: Readonly<Record<string, unknown>>) => {
+  const { stateDigest: _prior, ...body } = state;
+  return { ...body, stateDigest: canonicalDigest(body) };
+};
+
+/** The persisted observer state with one more node on its cursor queue,
+ * re-digested exactly as the observer does. */
+const withCursorQueueNode = (
+  raw: unknown,
+  node: Readonly<{ headerHash: string; outRef: string }>,
+) => {
+  const state = observerRecord(raw);
+  return redigestState({ ...state, cursorQueue: [...state.cursorQueue, node] });
+};
+
+/** The persisted observer state whose admitted removal claims it did not
+ * consume `outRef`, every digest recomputed. */
+const withoutConsumedOutRef = (raw: unknown, outRef: string) => {
+  const state = observerRecord(raw);
+  const strip = (transition: DigestedRecord) => {
+    const nested = transition.correctionTransition as DigestedRecord | null;
+    const consumed = (transition.consumedQueueOutRefs as string[]).filter(
+      (entry) => entry !== outRef,
+    );
+    return redigest({
+      ...transition,
+      consumedQueueOutRefs: consumed,
+      correctionTransition:
+        nested === null
+          ? null
+          : redigest({ ...nested, consumedQueueOutRefs: consumed }),
+    });
+  };
+  return redigestState({ ...state, admitted: state.admitted.map(strip) });
+};
+
+class RolledBack<A> {
+  constructor(readonly value: A) {}
+}
+
+/** Inspects the obligation while `headerHash`'s journal records `submitted`,
+ * a submission other than its retained intent. The schema refuses to record
+ * one, so the refusal is lifted in one transaction that is always rolled back:
+ * the proof's own check is exercised and nothing outlives the inspection. */
+const inspectWithForeignSubmission = (
+  scenario: Scenario,
+  headerHash: string,
+  submitted: Buffer,
+) =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const outcome = yield* sql
+        .withTransaction(
+          Effect.gen(function* () {
+            yield* sql.unsafe(`ALTER TABLE pending_block_finalizations
+              DROP CONSTRAINT pending_signed_ack_matches_intent`);
+            const updated = yield* sql`UPDATE pending_block_finalizations
+              SET ${sql.update({ [C.SUBMITTED_TX_HASH]: submitted })}
+              WHERE header_hash = ${Buffer.from(headerHash, "hex")}
+              RETURNING header_hash`;
+            expect(updated).toHaveLength(1);
+            const obligation =
+              yield* inspectStateQueueCorrectionRewindObligation(
+                scenario.authority,
+              );
+            return yield* Effect.fail(new RolledBack(obligation));
+          }),
+        )
+        .pipe(Effect.flip);
+      if (!(outcome instanceof RolledBack)) return yield* Effect.fail(outcome);
+      return outcome.value;
+    }),
+  );
+
 /** Nothing moved: no plan, the same journals, native root and deposits. */
 const expectNoRewind = async (
   scenario: Scenario,
@@ -211,6 +306,12 @@ const expectNoRewind = async (
 
 const captureState = async (scenario: Scenario) => ({
   native: await nativeRoot(scenario.h),
+  ...(await captureStoredState(scenario)),
+});
+
+/** The durable state a stopped runtime leaves: everything but the native
+ * owner's root, which only a running generation can report. */
+const captureStoredState = async (scenario: Scenario) => ({
   sql: (await readSqlLedgerRoot()).root_hex,
   deposits: await readDeposits(),
   journals: await Promise.all(
@@ -368,6 +469,151 @@ it("abandons a removed block's unlanded descendant in the same repair and commit
   }
 }, 900_000);
 
+it("refuses each unproven step of an unlanded descendant's proof on its own reason, and proves it again once that step's input is restored", async () => {
+  const scenario = await openCorrectionRewindScenario({
+    blocks: 2,
+    unlandedTail: true,
+  });
+  let h: Pick<Lifecycle, "close"> = scenario.h;
+  try {
+    const [removedHeader, childHeader] = scenario.headers as [string, string];
+    const parent = await readJournal(removedHeader);
+    const child = await readJournal(childHeader);
+    const removal = await scenario.removeTail(removedHeader);
+    await scenario.awaitRemovalFinality();
+    expect(
+      (await scenario.tick(scenario.h.globals)).admittedTransactionHashes,
+    ).toEqual([removal.accepted.transaction.txHash]);
+    const ready = {
+      kind: "ready",
+      members: [
+        { headerHash: removedHeader, kind: "removed" },
+        { headerHash: childHeader, kind: "unlanded" },
+      ],
+    };
+    // The proof steps are exercised while no owner runs: a running owner
+    // retries a blocked recovery on its own timer and would act on any window
+    // in which the obligation proves.
+    let exercised = false;
+    const restarted = await scenario.h.restartRuntime({
+      afterStop: async () => {
+        expect(await inspectObligation(scenario)).toEqual(ready);
+        const untouched = await captureStoredState(scenario);
+        const notYet = `descendant ${childHeader} of removed block ${removedHeader} is not removed by an admitted correction yet`;
+        const blockedReason = async () => {
+          const obligation = await inspectObligation(scenario);
+          expect(obligation.kind).toBe("blocked");
+          return "reason" in obligation ? obligation.reason : "";
+        };
+        const childBaseTail = child[C.BASE_TAIL_OUT_REF];
+
+        // A journal that records an L1 observation is not a lost submission.
+        const status = await updateJournal(childHeader, {
+          [C.STATUS]: Pending.Status.ObservedWaitingStability,
+        });
+        expect(await blockedReason()).toBe(
+          `${notYet} (journal status ${Pending.Status.ObservedWaitingStability})`,
+        );
+        await updateJournal(childHeader, status);
+        expect(await inspectObligation(scenario)).toEqual(ready);
+
+        // A header the authenticated state queue holds landed.
+        const observerRow = await readObserverRow();
+        await writeObserverState(
+          withCursorQueueNode(observerRow.state_record, {
+            headerHash: childHeader,
+            outRef: `${"cd".repeat(32)}#7`,
+          }),
+        );
+        expect(await blockedReason()).toBe(
+          `${notYet}; it is on the authenticated state queue`,
+        );
+        await restoreObserverRow(observerRow);
+        expect(await inspectObligation(scenario)).toEqual(ready);
+
+        // A retained signed commit that hashes to its own intent but spends
+        // another input: the removed parent's own commit, which spends the
+        // parent's base, not the queue node the correction consumed. (Only one
+        // journal may record a submission hash, so this intent is unacknowledged.)
+        expect(parent[C.SIGNED_TX_CBOR]).not.toBeNull();
+        expect(parent[C.INTENDED_TX_HASH]).not.toBeNull();
+        expect(parent[C.BASE_TAIL_OUT_REF]).not.toBe(childBaseTail);
+        const intent = await updateJournal(childHeader, {
+          [C.SUBMITTED_TX_HASH]: null,
+          [C.PREPARED_TX_HASH]: parent[C.INTENDED_TX_HASH],
+          [C.INTENDED_TX_HASH]: parent[C.INTENDED_TX_HASH],
+          [C.SIGNED_TX_CBOR]: parent[C.SIGNED_TX_CBOR],
+        });
+        expect(await blockedReason()).toBe(
+          `${notYet}; its retained signed commit does not spend ${childBaseTail}`,
+        );
+        await updateJournal(childHeader, intent);
+        expect(await inspectObligation(scenario)).toEqual(ready);
+
+        // A submission other than the retained intent. The schema refuses to
+        // record one; the proof refuses it independently.
+        const foreignSubmission = Buffer.alloc(32, 0xee);
+        expect(
+          await failureText(
+            updateJournal(childHeader, {
+              [C.SUBMITTED_TX_HASH]: foreignSubmission,
+            }),
+          ),
+        ).toContain("pending_signed_ack_matches_intent");
+        const foreign = await inspectWithForeignSubmission(
+          scenario,
+          childHeader,
+          foreignSubmission,
+        );
+        expect(foreign.kind).toBe("blocked");
+        expect("reason" in foreign ? foreign.reason : "").toBe(
+          `${notYet}; it was submitted as ${foreignSubmission.toString("hex")}, not its retained signed intent`,
+        );
+        expect(await inspectObligation(scenario)).toEqual(ready);
+
+        // A removal that did not consume the child's input cannot be recorded as
+        // admitted: the authenticated transition's consumed set is its topology,
+        // so the observer state no longer parses.
+        const parentNode = (
+          (await readObserver()).admitted[0] as unknown as {
+            previousQueue: readonly {
+              headerHash: string | null;
+              outRef: string;
+            }[];
+          }
+        ).previousQueue.find(({ headerHash }) => headerHash === removedHeader);
+        expect(parentNode?.outRef).toBe(childBaseTail);
+        await writeObserverState(
+          withoutConsumedOutRef(observerRow.state_record, childBaseTail),
+        );
+        expect(await blockedReason()).toBe(
+          "the observer state is non-canonical",
+        );
+        await restoreObserverRow(observerRow);
+        expect(await inspectObligation(scenario)).toEqual(ready);
+        expect(await readRecoveryPlans()).toEqual([]);
+        expect(await captureStoredState(scenario)).toEqual(untouched);
+        exercised = true;
+      },
+    });
+    h = restarted;
+    expect(exercised).toBe(true);
+    // Proven once every input is restored: the restarted owner rewinds both.
+    expect(await nativeRoot(restarted)).toBe(parent[C.BASE_UTXOS_ROOT]);
+    for (const header of [removedHeader, childHeader])
+      expect((await readJournal(header))[C.STATUS]).toBe(
+        Pending.Status.Abandoned,
+      );
+    expect(
+      (await readRecoveryPlans())[0]?.intent.members?.map(
+        ({ headerHash }) => headerHash,
+      ),
+    ).toEqual([removedHeader, childHeader]);
+  } finally {
+    await closeLifecycle(h);
+  }
+}, 900_000);
+
 it("rewinds a removed block whose journal stopped at pending_submission with its signed intent, and refuses one that never signed", async () => {
   const scenario = await openCorrectionRewindScenario({ blocks: 1 });
   const { h } = scenario;
@@ -509,6 +755,9 @@ it("refuses a rollback of a removal after its rewind with an explicit integrity 
       `${INTEGRITY_FAILURE}: block ${removedHeader} was rewound out of the native ledger by an admitted correction, but the authenticated state-queue view no longer removes it`,
     );
     const rewound = await captureState(scenario);
+    // The removal's authenticated DA outcome: its payload is owed no longer.
+    const daOutcomes = await readDaTerminalOutcomes(removedHeader);
+    expect(daOutcomes.map((row) => row.terminal_outcome)).toEqual(["removed"]);
     scenario.simulateRemovalRollback();
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const failure = await failureText(scenario.tick(h.globals));
@@ -517,6 +766,8 @@ it("refuses a rollback of a removal after its rewind with an explicit integrity 
       );
       expect(await readObserverRow()).toEqual(observerBefore);
       expect(await captureState(scenario)).toEqual(rewound);
+      // Refused before the outcome is revoked: it survives the refusal.
+      expect(await readDaTerminalOutcomes(removedHeader)).toEqual(daOutcomes);
     }
   } finally {
     await closeLifecycle(h);
@@ -634,6 +885,26 @@ it("returns a removed block's L2 transfer, withdrawal, forced transaction and de
       2_000_000n,
     );
     expect(await admitTransfer(h, onDependent)).toBe("accepted");
+    // Each acceptance left its durable traces: the accepted admission, its
+    // persisted address history, and its batch's acceptance receipt.
+    await flushWriteBehind(h);
+    const acceptanceTraces = () =>
+      readAcceptanceTraces({
+        txIds: [onDeposit.txId, onDependent.txId],
+        depositEventIds: removed.depositEventIds,
+      });
+    const accepted = await acceptanceTraces();
+    expect(accepted.admissions).toEqual({
+      [hex(onDeposit.txId)]: { status: "accepted", code: null },
+      [hex(onDependent.txId)]: { status: "accepted", code: null },
+    });
+    expect(accepted.addressHistory).toEqual(
+      [hex(onDeposit.txId), hex(onDependent.txId)].sort(),
+    );
+    expect(accepted.receipts).toEqual([
+      { txIds: [hex(onDeposit.txId)], reversed: false },
+      { txIds: [hex(onDependent.txId)], reversed: false },
+    ]);
     const dependentOutRefs = (await depositorL2Utxos(h))
       .filter(
         (utxo) =>
@@ -704,6 +975,31 @@ it("returns a removed block's L2 transfer, withdrawal, forced transaction and de
     }
     for (const outRef of dependentOutRefs)
       expect(after.ledger.has(hex(outRef))).toBe(false);
+    // The rejection undoes each acceptance whole, in the same transaction:
+    // the admissions are terminally rejected at the same rule, the address
+    // history is gone, and both receipts are reversed, so neither ledger
+    // repair wedge (a published dependency on the reopened deposit, or an
+    // unreversed receipt it cannot invert) is left behind.
+    expect(await acceptanceTraces()).toEqual({
+      admissions: {
+        [hex(onDeposit.txId)]: {
+          status: "rejected",
+          code: REWIND_REJECT_CODE_REOPENED_DEPOSIT_INPUT,
+        },
+        [hex(onDependent.txId)]: {
+          status: "rejected",
+          code: REWIND_REJECT_CODE_DEPENDENT_INPUT,
+        },
+      },
+      rejections: after.rejections,
+      addressHistory: [],
+      receipts: accepted.receipts.map((receipt) => ({
+        ...receipt,
+        reversed: true,
+      })),
+      incompleteReceipts: [],
+      publishedDependencies: [],
+    });
     // The withdrawn output is back; the reopened deposit's output is in the
     // ledger again but not spendable until a block carries the deposit.
     expect(after.ledger.has(hex(content.withdrawn.outrefCbor))).toBe(true);
@@ -828,6 +1124,84 @@ it("aborts the repair when the removed chain stops proving after the native root
     expect(
       (await readJournal(next.submittedHeaderHash)).depositEventIds.map(hex),
     ).toEqual(removed.depositEventIds.map(hex));
+  } finally {
+    await closeLifecycle(h);
+  }
+}, 900_000);
+
+it("refuses to resume a retained plan whose unlanded member stopped proving, and resumes it once the member proves again", async () => {
+  const scenario = await openCorrectionRewindScenario({
+    blocks: 2,
+    unlandedTail: true,
+  });
+  let h: Pick<Lifecycle, "close"> = scenario.h;
+  try {
+    const [removedHeader, childHeader] = scenario.headers as [string, string];
+    const parent = await readJournal(removedHeader);
+    const child = await readJournal(childHeader);
+    const removal = await scenario.removeTail(removedHeader);
+    await scenario.awaitRemovalFinality();
+    expect(
+      (await scenario.tick(scenario.h.globals)).admittedTransactionHashes,
+    ).toEqual([removal.accepted.transaction.txHash]);
+    const sqlRoot = (await readSqlLedgerRoot()).root_hex;
+    const deposits = await readDeposits();
+    // Between the plan and the repair transaction, the unlanded member's
+    // journal records an L1 observation. The repair re-proves the retained
+    // members under its own lock and refuses; nothing it would write commits.
+    const owner = await openNativeOwner(scenario.h);
+    const restore = owner.restoreCanonicalRoot.bind(owner);
+    let observed: Record<string, unknown> | undefined;
+    owner.restoreCanonicalRoot = async (plan) => {
+      await restore(plan);
+      observed ??= await updateJournal(childHeader, {
+        [C.STATUS]: Pending.Status.ObservedWaitingStability,
+      });
+    };
+    expect(await failureText(scenario.nextSourceBlock())).toContain(
+      `Retained correction rewind member ${childHeader} is no longer provably unlanded: descendant ${childHeader} of removed block ${removedHeader} is not removed by an admitted correction yet (journal status ${Pending.Status.ObservedWaitingStability})`,
+    );
+    expect(observed).toBeDefined();
+    expect(await nativeRoot(scenario.h)).toBe(parent[C.BASE_UTXOS_ROOT]);
+    expect((await readSqlLedgerRoot()).root_hex).toBe(sqlRoot);
+    expect(await readDeposits()).toEqual(deposits);
+    for (const header of [removedHeader, childHeader])
+      expect((await readJournal(header))[C.STATUS]).not.toBe(
+        Pending.Status.Abandoned,
+      );
+    const retained = await readRecoveryPlans();
+    expect(retained.map(({ state }) => state)).toEqual(["prepared"]);
+    expect(retained[0]!.intent.members).toEqual([
+      expect.objectContaining({ headerHash: removedHeader, kind: "removed" }),
+      expect.objectContaining({ headerHash: childHeader, kind: "unlanded" }),
+    ]);
+    // Once the member proves again, the restarted process resumes the
+    // retained plan and abandons both journals.
+    const restarted = await scenario.h.restartRuntime({
+      afterStop: async () => {
+        await updateJournal(childHeader, observed!);
+      },
+    });
+    h = restarted;
+    expect(await nativeRoot(restarted)).toBe(parent[C.BASE_UTXOS_ROOT]);
+    expect((await readSqlLedgerRoot()).root_hex).toBe(
+      parent[C.BASE_UTXOS_ROOT],
+    );
+    for (const header of [removedHeader, childHeader])
+      expect((await readJournal(header))[C.STATUS]).toBe(
+        Pending.Status.Abandoned,
+      );
+    expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
+      "applied",
+    ]);
+    const next = await commitNextBlock(restarted);
+    expect(
+      (await readJournal(next.submittedHeaderHash)).depositEventIds
+        .map(hex)
+        .sort(),
+    ).toEqual(
+      [...parent.depositEventIds, ...child.depositEventIds].map(hex).sort(),
+    );
   } finally {
     await closeLifecycle(h);
   }
