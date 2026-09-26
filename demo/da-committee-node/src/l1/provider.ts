@@ -1293,22 +1293,16 @@ export class LocalNodeStateQueueProvider
       results.map(({ snapshot }) => snapshot),
       "local_node query surfaces",
     );
-    const cursor = await this.authority.currentCursor();
     const nodes = merged.map((node) => ({
       ...node,
       chainPoint: {
-        ...node.chainPoint,
-        network: canonicalAfter.network,
+        ...declaredChainPoint(node.chainPoint),
         providerSource: [
           canonicalAfter.providerSource,
           ...this.queryIdentities,
         ].join(","),
         observedAt: new Date().toISOString(),
-        canonicalSlot: canonicalAfter.slot,
-        canonicalBlockHash: canonicalAfter.blockHash,
-        chainSyncSequence: cursor.sequence,
-        rollbackGeneration: cursor.rollbackGeneration,
-      },
+      } satisfies ChainPoint,
     }));
     return {
       nodes,
@@ -1327,7 +1321,7 @@ export class LocalNodeStateQueueProvider
           ...this.queryIdentities,
         ].join(","),
         observedAt: new Date().toISOString(),
-      },
+      } satisfies ChainPoint,
     };
   }
 
@@ -1437,8 +1431,8 @@ export const stateQueueUtxosToObservedNodes = async (
       observedAt: new Date().toISOString(),
       ...(chainPointResolver === undefined
         ? {}
-        : await chainPointResolver(stateQueueUtxo.utxo)),
-    };
+        : declaredChainPoint(await chainPointResolver(stateQueueUtxo.utxo))),
+    } satisfies ChainPoint;
     observed.push({
       outRef: outRefLabel(stateQueueUtxo.utxo),
       assetName: stateQueueUtxo.assetName,
@@ -1476,8 +1470,8 @@ export const stateQueueUtxosToObservedSnapshot = async (
     observedAt: new Date().toISOString(),
     ...(chainPointResolver === undefined
       ? {}
-      : await chainPointResolver(confirmed.utxo)),
-  };
+      : declaredChainPoint(await chainPointResolver(confirmed.utxo))),
+  } satisfies ChainPoint;
   return {
     nodes,
     confirmedHeaderHash: data.headerHash,
@@ -2325,8 +2319,29 @@ const mergeAgreedObservedNodes = (
     ),
   }));
 
+/**
+ * Copies exactly the fields `ChainPoint` declares, leaving out undefined ones.
+ * A point typed as a wider type, such as a `CanonicalChainPoint`, still
+ * satisfies `ChainPoint`, so spreading it would carry fields the stored
+ * records' exact-keys parser rejects.
+ */
+const declaredChainPoint = (point: ChainPoint): ChainPoint => {
+  const declared: ChainPoint = {
+    slot: point.slot,
+    blockHash: point.blockHash,
+    blockHeight: point.blockHeight,
+    observedAt: point.observedAt,
+    depth: point.depth,
+    finalized: point.finalized,
+    providerSource: point.providerSource,
+  };
+  return Object.fromEntries(
+    Object.entries(declared).filter(([, value]) => value !== undefined),
+  );
+};
+
 const mergeChainPoints = (points: readonly ChainPoint[]): ChainPoint => {
-  const primary = points[0] ?? {};
+  const primary = declaredChainPoint(points[0] ?? {});
   const sources = points
     .map((point) => point.providerSource)
     .filter((source): source is string => source !== undefined);
@@ -2347,7 +2362,7 @@ const mergeChainPoints = (points: readonly ChainPoint[]): ChainPoint => {
     observedAt: new Date().toISOString(),
     depth: allDepthsKnown ? Math.min(...depths) : undefined,
     finalized,
-  };
+  } satisfies ChainPoint;
 };
 
 type OgmiosChainSyncRequest = (

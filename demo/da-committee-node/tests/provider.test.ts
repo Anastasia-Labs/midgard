@@ -2,10 +2,15 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { appendFile, open, readFile, writeFile } from "node:fs/promises";
 
+import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  type DaSignatureRecordV1,
+  parseDaSignatureRecord,
+} from "../src/domain.js";
 import {
   assertOgmiosNetworkMagic,
   type CanonicalChainPoint,
@@ -1470,6 +1475,126 @@ describe("L1 provider adapters", () => {
         },
       },
     ]);
+  });
+
+  it("hands a signature record a local-node chain point the strict parser accepts", async () => {
+    const dir = await tempDir();
+    const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async () => ({
+          event: { direction: "roll_forward", point: canonical },
+          tip: canonical,
+        }),
+      },
+      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+    );
+    const { header, headerHash } = await makePayloadFixture();
+    const node = makeObservedNode({ header, headerHash, depth: 10 });
+    const queryPoint = { ...canonical, providerSource: "query:node-a:0" };
+    const provider = new LocalNodeStateQueueProvider(
+      authority,
+      [
+        {
+          fetchStateQueueNodes: async () => [node],
+          fetchStateQueueSnapshot: async () => ({
+            nodes: [node],
+            confirmedHeaderHash: "00".repeat(28),
+            confirmedStateOutRef: `${"00".repeat(32)}#0`,
+            observedChainPoint: queryPoint,
+          }),
+          currentChainPoint: async () => queryPoint,
+        },
+      ],
+      ["query:node-a:0"],
+      new FileChainSyncConsumerCursorStore(
+        `${dir}/consumer.json`,
+        "11".repeat(32),
+      ),
+    );
+
+    const snapshot = await provider.fetchStateQueueSnapshot();
+    // The scanner hands `node.chainPoint` to the header record unchanged as
+    // `observedChainPoint`, and signing copies that into `l1ChainPoint`.
+    const l1ChainPoint = snapshot.nodes[0]!.chainPoint;
+    const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitment(
+      SDK.buildDaAvailabilityCommitment({
+        deploymentIdentity: "99".repeat(28),
+        headerHash,
+        payload: Buffer.from("public retained DA"),
+        bondOwner: "76".repeat(28),
+        responseGeometry: SDK.availabilityResponseGeometry({
+          chunkByteLength: 14_020,
+          trancheByteLength: 4 * 1_024 * 1_024,
+          maxTrancheCount: 16,
+        }),
+      }),
+    );
+    const signature: DaSignatureRecordV1 = {
+      deploymentFingerprint: "dep",
+      headerHash,
+      signerIndex: 0,
+      signatureWitness: "00" + "11".repeat(64),
+      availabilityCommitmentCbor,
+      availabilityCommitmentDigest: computeDaSha256Hash(
+        Buffer.from(availabilityCommitmentCbor, "hex"),
+      ).toString("hex"),
+      payloadHash: "03".repeat(32),
+      committeeSignersHash: "02".repeat(32),
+      signedAt: "2026-01-01T00:00:00.000Z",
+      broadcastStatus: "local",
+      source: "local",
+      l1ChainPoint,
+      validation: {
+        payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
+        rootsMatch: true,
+        stateQueueOutRef: node.outRef,
+        headerHash,
+        rootSummary: {
+          utxosRoot: "00".repeat(32),
+          transactionsRoot: "00".repeat(32),
+          depositsRoot: "00".repeat(32),
+          withdrawalsRoot: "00".repeat(32),
+          forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+        countSummary: {
+          withdrawalCount: 0n,
+          forcedTransactionCount: 0n,
+          l2TransactionCount: 0n,
+          depositCount: 0n,
+          totalEventCount: 0n,
+          transitionStepCount: 0n,
+          validationTraceCount: 0n,
+        },
+        l1Header: {
+          startTime: "1",
+          endTime: "2",
+          operatorVkey: "04".repeat(28),
+          prevHeaderHash: "05".repeat(28),
+          protocolVersion: "1",
+        },
+      },
+    };
+
+    expect(parseDaSignatureRecord(signature).l1ChainPoint).toEqual({
+      slot: node.chainPoint.slot,
+      blockHash: node.chainPoint.blockHash,
+      depth: node.chainPoint.depth,
+      providerSource: "chain-sync:node-a,query:node-a:0",
+      observedAt: l1ChainPoint.observedAt,
+    });
+    // The snapshot's own observed point is a chain point too.
+    expect(() =>
+      parseDaSignatureRecord({
+        ...signature,
+        l1ChainPoint: snapshot.observedChainPoint,
+      }),
+    ).not.toThrow();
   });
 
   it("rejects one external provider and incompatible provider chain points", async () => {
