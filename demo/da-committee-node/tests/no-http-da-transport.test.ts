@@ -1,11 +1,10 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, inject, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,7 +26,7 @@ describe("no HTTP DA transport guardrail", () => {
   });
 
   it("fails on an injected forbidden token in a new libp2p DA module", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "midgard-da-guardrail-"));
+    const dir = await mkdtemp(join(inject("tempRoot"), "guardrail-"));
     const targetDir = join(dir, "src/da/libp2p");
     await mkdir(targetDir, { recursive: true });
     const badFile = join(targetDir, "BadTransport.ts");

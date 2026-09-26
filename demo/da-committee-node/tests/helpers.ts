@@ -1,5 +1,4 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -24,6 +23,7 @@ import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { encodeMidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
+import { inject } from "vitest";
 
 import {
   type CommitteeConfig,
@@ -40,8 +40,9 @@ import type {
 } from "../src/l1/deployment.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 
+/** A fixture directory under the run's temporary root (see global-setup). */
 export const tempDir = (): Promise<string> =>
-  mkdtemp(join(tmpdir(), "da-committee-node-test-"));
+  mkdtemp(join(inject("tempRoot"), "case-"));
 
 export const fixtureHeaderBase = (): Omit<
   Header,
