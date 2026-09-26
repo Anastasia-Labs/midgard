@@ -28,7 +28,7 @@ node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs
 
 If it fails, repair the runbook or use current source help before operating a
 live deployment. Never improvise past a stale command, missing evidence gate,
-or deployment-identity mismatch.
+or deployment-identity mismatch. [review]
 
 ## Choose one run mode
 
@@ -37,6 +37,7 @@ Record the mode and reason before changing state:
 1. **Attach**: a complete matching deployment exists. Do not run `init` or
    reset durable state. Verify manifest, one-shot, reference scripts, provider,
    operator, DB route, `/healthz`, and `/readyz`, then start `listen` or Docker.
+   [review]
 2. **Resume**: a fresh deployment was interrupted before `init`, or a submitted
    post-init milestone has been reconciled. Preserve the same manifest,
    run-state, policy, one-shot, and submitted transaction identities.
@@ -52,7 +53,7 @@ Record the mode and reason before changing state:
 
 Provider, wallet, DA, projection, scheduler, lease, and evidence failures are
 not automatic redeploy triggers. Use a fresh deployment only when requested or
-required by `docs/agents/state-reset.md`.
+required by `docs/agents/state-reset.md`. [review]
 
 ## Route to the relevant reference
 
@@ -67,47 +68,54 @@ required by `docs/agents/state-reset.md`.
 
 ## Hard rules
 
-- Work from `demo/midgard-node` for operational commands.
+- Work from `demo/midgard-node` for operational commands. [review]
 - `e2e-run-step`, `e2e-start-service`, `e2e-finalize-summary`,
   `e2e-stress-l2-throughput`, and the `stress-*` commands are
   `midgard-node-tools` commands (`node "$TOOLS_CLI" ...`, built with
   `pnpm --dir demo/midgard-node-tools build`); they are not in the operator
-  binary.
-- `listen` and Docker startup attach; `init` bootstraps.
-- Never wipe local durable state without a full fresh on-chain deployment.
+  binary. Blind spot: the runbook validator checks that each documented tooling
+  command is declared by the tooling binary, but it runs only by hand; no CI
+  step runs it.
+  [script: .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs]
+- `listen` and Docker startup attach; `init` bootstraps. [review]
+- Never wipe local durable state without a full fresh on-chain deployment. [review]
 - Never attach value-submitting flows to an old deployment after local state was
-  wiped.
+  wiped. [review]
 - Do not delete `demo/midgard-node/cardano/db` or `cardano/kupo`; they are the
-  local Preprod provider state, not the Midgard deployment reset target.
+  local Preprod provider state, not the Midgard deployment reset target. [review]
 - Use a fresh funded operator UTxO for `HUB_ORACLE_ONE_SHOT_*`. Patch it before
-  reference-script publication and keep the same identity through `init`.
+  reference-script publication and keep the same identity through `init`. [review]
 - Build `onchain/aiken/plutus.json` with `aiken build --env testnet` before a
-  fresh demo/Preprod image build.
+  fresh demo/Preprod image build. [review]
 - Publish node-runtime reference scripts before `init` and preserve the
-  deployment run-state used to create their auth policy.
+  deployment run-state used to create their auth policy. [review]
 - Keep `RUN_GENESIS_ON_STARTUP=false`; run explicit `init` through
-  `e2e-run-step`.
+  `e2e-run-step`. [review]
 - Use local Docker Kupmios only. Require `L1_PROVIDER=Kupmios`, local Kupo and
-  Ogmios endpoints, and no `L1_PROVIDER_FAILOVER`.
+  Ogmios endpoints, and no `L1_PROVIDER_FAILOVER`. Blind spot: only the
+  state-correction local authority (and, for the provider alone, the phase 4
+  process acceptance) refuses another provider, failover or a non-loopback
+  endpoint; the other steps accept whatever the environment says.
+  [runtime: createLocalKupmiosStateCorrectionAuthority]
 - Pass `--wallet-seed-phrase-env USER_SEED_PHRASE` on user-wallet commands.
-  Do not use a default `USER_WALLET` source.
+  Do not use a default `USER_WALLET` source. [review]
 - Run DB-backed host commands with
   `POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433`, or run them inside the node
-  container.
-- `/tx-status` accepts `tx_hash`; the L2 submission response field is `txId`.
+  container. [review]
+- `/tx-status` accepts `tx_hash`; the L2 submission response field is `txId`. [review]
 - Use the DA committee node and libp2p manifests for acceptance. Do not replace
-  it with `attest-state-queue-once`.
+  it with `attest-state-queue-once`. [review]
 - Keep the DA signer and L1 submitter roles explicit. Require a configured,
   funded `DA_L1_SUBMITTER_KEY_SOURCE`; never hardcode a local secret path in the
-  runbook.
+  runbook. [review]
 - Start enough DA committee listeners to meet threshold before the producer
   bind/listen preflight. Generate matching producer and watcher manifests from
-  the finalized contract deployment manifest.
+  the finalized contract deployment manifest. [review]
 - Do not use manual SQL rewrites, manual `/merge`,
   `reconcile merge-complete --repair`, local-only finalization, or disabled
-  local UPLC evaluation to make acceptance pass.
+  local UPLC evaluation to make acceptance pass. [review]
 - Preserve raw logs. Report compact failure summaries with artifact paths rather
-  than pasting secrets or large bodies.
+  than pasting secrets or large bodies. [review]
 
 ## Lower-layer feedback gate
 
@@ -130,7 +138,7 @@ return to live acceptance.
 
 For a fresh run, use `e2e-run-step` for every required milestone. The current
 finalizer source is authoritative for required step IDs and transaction labels;
-the runbook validator compares the documentation to that source.
+the runbook validator compares the documentation to that source. [review]
 
 Acceptance is complete only when:
 
@@ -177,7 +185,7 @@ Acceptance is complete only when:
 
 A recovered run may reach functional success while `cleanRunVerdict` remains
 failed or interrupted. Report that honestly as recovery evidence; do not call
-it a clean acceptance run.
+it a clean acceptance run. [review]
 
 ## Before handoff
 
