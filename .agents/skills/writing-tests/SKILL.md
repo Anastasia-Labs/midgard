@@ -109,6 +109,10 @@ collected count and the assertion, not the exit code. Before you trust a green
 result, check it against each trap below: what goes wrong, then what to do
 instead.
 
+A test that fails only sometimes is a different problem: read
+[fixing-flaky-tests](../fixing-flaky-tests/SKILL.md) before retrying, raising
+a timeout or skipping it.
+
 - **Bare `aiken check -m <module>`, or a dotted module name.** Collects zero
   tests and exits 0. Run
   `node onchain/aiken/scripts/run-focused-check.mjs <module> <test>...`, which
