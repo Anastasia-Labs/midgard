@@ -12,6 +12,16 @@ import {
   type StateQueueRedeemer as StateQueueRedeemerType,
   type StateQueueTransitionNode,
 } from "@al-ft/midgard-sdk";
+import {
+  kupoExchange,
+  kupoMatch,
+  type L1Recording,
+  loadL1Recording,
+  ogmiosExchanges,
+  recordedFetch,
+  recordedOgmiosWebSocket,
+  recordedTransaction,
+} from "@al-ft/midgard-test-support/l1-recordings";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -729,12 +739,12 @@ describe("node-owned state-queue correction observer", () => {
   });
 
   /**
-   * The spent inputs, ascending as the ledger's `Set TxIn` orders them. Kupo
-   * v2.11.0 attributes them in mirrored order — the input at ledger position `i`
-   * of `n` is reported at `n - 1 - i` with the spend redeemer found there, which
-   * is `null` for every input of this transaction because the Ogmios block below
-   * carries no spend redeemer at all. A live preprod Kupo served exactly that
-   * `null` for a Plutus spend, and the observer failed every pass on it.
+   * The spent inputs, ascending as the ledger's `Set TxIn` orders them. The
+   * Kupo double here attributes them as a *fixed* Kupo would — the ledger's own
+   * pointer, and a redeemer — which is the one attribution no recording can
+   * show: every live Kupo v2.11.0 mirrors it (CardanoSolutions/kupo#210). The
+   * mirrored attribution is not doubled at all; the recorded preprod removal
+   * below serves the real one.
    */
   const timeoutSpentInputs = [h32("1"), h32("2"), h32("f")] as const;
   type KupoAttribution = (ledgerIndex: number) => {
@@ -957,11 +967,163 @@ describe("node-owned state-queue correction observer", () => {
       redeemer: "d87980",
     })));
 
-  it("classifies the same timeout from Kupo v2.11.0's mirrored, null-redeemer spends", () =>
-    classifiesTimeoutFromKupoHistory((ledgerIndex) => ({
-      input_index: timeoutSpentInputs.length - 1 - ledgerIndex,
-      redeemer: null,
-    })));
+  describe("a recorded preprod timeout removal", () => {
+    /**
+     * `a2a47d2e` removed block `2150a18c…` from a two-entry queue after its
+     * attestation timeout, recorded off preprod Kupo v2.11.0 and Ogmios v7.0.0.
+     * Every Kupo and Ogmios answer the observer reads is the live one, including
+     * Kupo's mirrored `spent_at` on all four inputs: `null` for the root's Plutus
+     * spend, another script's redeemer for the node and the CorrectionLock, a
+     * script's redeemer for the key input. The deployment's identifiers are the
+     * preprod deployment's; its identity digest is not on chain and the
+     * fraud-proof pair plays no part in a timeout, so those stay placeholders.
+     */
+    const recordedPolicy =
+      "0aa62a61a5c1e74f340514cc872df261e5e79ff2e0299618d5042aed";
+    const recordedStateQueueAddress =
+      "addr_test1wr405mwutmgnt0mntdl5jumg4rdkx6qglmjvarranq85hgcts4ka2";
+    const recordedHubPolicy =
+      "f705e1cf306f21d935ad9a155e219cc07ed0d3313b87d0f593efbf1c";
+    const removedHeaderHash =
+      "2150a18c7e67f90418c0b0f8d2625ff9267fd2d40ed860cce75c86a5";
+    const priorQueueTransaction =
+      "2f279544d5984c45510d5411e7dfa47ff613fb95c022a0726ecfed8d2c4f13a8";
+    const lockInput = {
+      txHash:
+        "cbeddfdf94390715ce39f0c79798faed1cfcf5bf31aa6a4b309edde3e7962927",
+      outputIndex: 8,
+    };
+    const recordedBefore: readonly StateQueueTransitionNode[] = [
+      { headerHash: null, outRef: `${priorQueueTransaction}#1` },
+      { headerHash: removedHeaderHash, outRef: `${priorQueueTransaction}#0` },
+    ];
+
+    const observe = (recording: L1Recording) => {
+      const recordedAfter: readonly StateQueueTransitionNode[] = [
+        { headerHash: null, outRef: `${recording.transaction!.id}#0` },
+      ];
+      const ogmios = recordedOgmiosWebSocket(recording);
+      return makeLocalKupmiosStateQueueCorrectionSource({
+        deploymentIdentityDigest: deployment,
+        stateQueuePolicyId: recordedPolicy,
+        stateQueueAddress: recordedStateQueueAddress,
+        hubOraclePolicyId: recordedHubPolicy,
+        correctionLockAddress: kupoMatch(recording, lockInput)
+          .address as string,
+        fraudProofPolicyId: fraudPolicy,
+        fraudProofAddress,
+        kupoUrl: "http://kupo.recorded",
+        ogmiosUrl: "ws://ogmios.recorded",
+        readQueue: async () => recordedAfter,
+        fetchImpl: recordedFetch(recording),
+        webSocketFactory: (url) => new ogmios.WebSocket(url),
+      }).observeTransitions(recordedBefore, recordedAfter);
+    };
+
+    /** The state-queue mint redeemer the removal ran, off its own transaction. */
+    const recordedMintRedeemer = (recording: L1Recording) =>
+      (
+        recordedTransaction(recording).redeemers as {
+          redeemer: string;
+          validator: { purpose: string; index: number };
+        }[]
+      ).find(({ validator }) => validator.purpose === "mint")!;
+
+    it("classifies it as a timeout correction from Kupo v2.11.0's mirrored spends", async () => {
+      const recording = loadL1Recording("preprod-state-queue-removal-a2a47d2e");
+      const mintRedeemer = recordedMintRedeemer(recording).redeemer;
+      expect(Data.from(mintRedeemer, StateQueueRedeemer)).toMatchObject({
+        RemoveUnattestedBlockAfterTimeout: {
+          timed_out_header_hash: removedHeaderHash,
+        },
+      });
+      await expect(observe(recording)).resolves.toMatchObject([
+        {
+          checkpointKind: "timeout_correction",
+          // The redeemer the classification rests on is the transaction's own,
+          // read through Ogmios — never Kupo's `spent_at.redeemer`, which for
+          // this removal names no input's real redeemer.
+          stateQueueMintRedeemer: {
+            purpose: "mint",
+            index: "0",
+            cborHex: mintRedeemer,
+          },
+          terminalTransition: {
+            transactionHash: recording.transaction!.id,
+            blockHash: recording.transaction!.block.id,
+            slot: recording.transaction!.block.slot.toString(),
+            blockNo: "5220548",
+            // The recorded Ogmios tip is block 5220935.
+            finalityDepth: "388",
+          },
+        },
+      ]);
+    });
+
+    it("ignores what Kupo reports as the input index and redeemer", async () => {
+      const honest = await observe(
+        loadL1Recording("preprod-state-queue-removal-a2a47d2e"),
+      );
+      const recording = loadL1Recording("preprod-state-queue-removal-a2a47d2e");
+      const inputs = recordedTransaction(recording).inputs as {
+        transaction: { id: string };
+        index: number;
+      }[];
+      // Kupo's answers rewritten to what a fixed Kupo would say for each input
+      // — the ledger's pointer — and a redeemer none of them ran.
+      inputs.forEach((input, ledgerIndex) => {
+        const [match] = kupoExchange(
+          recording,
+          `/matches/${input.index.toString()}@${input.transaction.id}?resolve_hashes`,
+        ).response.body as { spent_at: Record<string, unknown> }[];
+        match!.spent_at = {
+          ...match!.spent_at,
+          input_index: ledgerIndex,
+          redeemer: "d87b80",
+        };
+      });
+      await expect(observe(recording)).resolves.toStrictEqual(honest);
+    });
+
+    it("refuses the removal once its Ogmios mint redeemer names another block", async () => {
+      const recording = loadL1Recording("preprod-state-queue-removal-a2a47d2e");
+      // Rewritten in the block chain-sync will serve, not in a parsed copy.
+      const forward = ogmiosExchanges(recording, "nextBlock")
+        .map(
+          ({ response }) =>
+            (
+              response.body as {
+                result: {
+                  direction: string;
+                  block?: { transactions: Record<string, unknown>[] };
+                };
+              }
+            ).result,
+        )
+        .find(({ direction }) => direction === "forward")!;
+      const mint = (
+        forward.block!.transactions.find(
+          ({ id }) => id === recording.transaction!.id,
+        )!.redeemers as { redeemer: string; validator: { purpose: string } }[]
+      ).find(({ validator }) => validator.purpose === "mint")!;
+      const decoded = Data.from(mint.redeemer, StateQueueRedeemer) as Extract<
+        StateQueueRedeemerType,
+        { RemoveUnattestedBlockAfterTimeout: unknown }
+      >;
+      mint.redeemer = Data.to(
+        {
+          RemoveUnattestedBlockAfterTimeout: {
+            ...decoded.RemoveUnattestedBlockAfterTimeout,
+            timed_out_header_hash: h28("3"),
+          },
+        } satisfies StateQueueRedeemerType,
+        StateQueueRedeemer,
+      );
+      await expect(observe(recording)).rejects.toThrow(
+        "State-queue transaction failed exact authenticated checkpoint derivation",
+      );
+    });
+  });
 
   it.each([0, 1, 2])(
     "replays three transitions observed offline with timeout at ordered position %i",

@@ -4,6 +4,16 @@ import { appendFile, open, readFile, writeFile } from "node:fs/promises";
 
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
+import {
+  kupoExchange,
+  type L1Recording,
+  loadL1Recording,
+  ogmiosExchanges,
+  ogmiosResult,
+  recordedFetch,
+  recordedOgmiosWebSocket,
+  recordedText,
+} from "@al-ft/midgard-test-support/l1-recordings";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -1483,124 +1493,93 @@ describe("L1 provider adapters", () => {
     ]);
   });
 
-  it("hands a signature record a local-node chain point the strict parser accepts", async () => {
+  it("hands a signature record a chain point from a recorded preprod chain-sync session that the strict parser accepts", async () => {
     const dir = await tempDir();
-    const canonical = externalPoint("chain-sync:node-a", 20, "ab");
-    const authority = new LocalNodeChainAuthority(
-      "node-a",
-      "Preview",
-      {
-        next: async () => ({
-          event: { direction: "roll_forward", point: canonical },
-          tip: canonical,
-        }),
-      },
-      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
-    );
-    const { header, headerHash } = await makePayloadFixture();
-    const node = makeObservedNode({ header, headerHash, depth: 10 });
-    const queryPoint = { ...canonical, providerSource: "query:node-a:0" };
-    const provider = new LocalNodeStateQueueProvider(
-      authority,
-      [
-        {
-          fetchStateQueueNodes: async () => [node],
-          fetchStateQueueSnapshot: async () => ({
-            nodes: [node],
-            confirmedHeaderHash: "00".repeat(28),
-            confirmedStateOutRef: `${"00".repeat(32)}#0`,
-            observedChainPoint: queryPoint,
-          }),
-          currentChainPoint: async () => queryPoint,
-        },
-      ],
-      ["query:node-a:0"],
-      new FileChainSyncConsumerCursorStore(
-        `${dir}/consumer.json`,
-        "11".repeat(32),
-      ),
-    );
+    // The authority's point is what `parseOgmiosPoint` made of a live Ogmios
+    // v7.0.0 bootstrap — a `queryNetwork/tip` with no height, then the
+    // `findIntersection` answer whose tip carries one — not a hand-built point.
+    const replay = recordedOgmiosWebSocket(loadL1Recording(FOLLOW_TIP));
+    vi.stubGlobal("WebSocket", replay.WebSocket);
+    try {
+      const authority = recordedPreprodAuthority(`${dir}/cursor.json`);
+      const { header, headerHash } = await makePayloadFixture();
+      const node = makeObservedNode({ header, headerHash });
+      const queryPoint = async (): Promise<CanonicalChainPoint> => ({
+        ...(await authority.currentPoint()),
+        providerSource: "query:node-a:0",
+      });
+      const provider = new LocalNodeStateQueueProvider(
+        authority,
+        [
+          {
+            fetchStateQueueNodes: () => {
+              throw new Error("the snapshot is read, not the node list");
+            },
+            // A query surface at the authority's point hands back points of
+            // the authority's own, wider type: fields no record declares.
+            fetchStateQueueSnapshot: async () => ({
+              nodes: [
+                {
+                  ...node,
+                  chainPoint: {
+                    ...(await authority.currentPoint()),
+                    depth: 10,
+                  },
+                },
+              ],
+              confirmedHeaderHash: "00".repeat(28),
+              confirmedStateOutRef: `${"00".repeat(32)}#0`,
+              observedChainPoint: await queryPoint(),
+            }),
+            currentChainPoint: queryPoint,
+          },
+        ],
+        ["query:node-a:0"],
+        new FileChainSyncConsumerCursorStore(
+          `${dir}/consumer.json`,
+          "11".repeat(32),
+        ),
+      );
 
-    const snapshot = await provider.fetchStateQueueSnapshot();
-    // The scanner hands `node.chainPoint` to the header record unchanged as
-    // `observedChainPoint`, and signing copies that into `l1ChainPoint`.
-    const l1ChainPoint = snapshot.nodes[0]!.chainPoint;
-    const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitment(
-      SDK.buildDaAvailabilityCommitment({
-        deploymentIdentity: "99".repeat(28),
+      const snapshot = await provider.fetchStateQueueSnapshot();
+      // The scanner hands `node.chainPoint` to the header record unchanged as
+      // `observedChainPoint`, and signing copies that into `l1ChainPoint`.
+      const l1ChainPoint = snapshot.nodes[0]!.chainPoint;
+      const signature = daSignatureRecordAt({
+        l1ChainPoint,
         headerHash,
-        payload: Buffer.from("public retained DA"),
-        bondOwner: "76".repeat(28),
-        responseGeometry: SDK.availabilityResponseGeometry({
-          chunkByteLength: 14_020,
-          trancheByteLength: 4 * 1_024 * 1_024,
-          maxTrancheCount: 16,
-        }),
-      }),
-    );
-    const signature: DaSignatureRecordV1 = {
-      deploymentFingerprint: "dep",
-      headerHash,
-      signerIndex: 0,
-      signatureWitness: "00" + "11".repeat(64),
-      availabilityCommitmentCbor,
-      availabilityCommitmentDigest: computeDaSha256Hash(
-        Buffer.from(availabilityCommitmentCbor, "hex"),
-      ).toString("hex"),
-      payloadHash: "03".repeat(32),
-      committeeSignersHash: "02".repeat(32),
-      signedAt: "2026-01-01T00:00:00.000Z",
-      broadcastStatus: "local",
-      source: "local",
-      l1ChainPoint,
-      validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
-        rootsMatch: true,
         stateQueueOutRef: node.outRef,
-        headerHash,
-        rootSummary: {
-          utxosRoot: "00".repeat(32),
-          transactionsRoot: "00".repeat(32),
-          depositsRoot: "00".repeat(32),
-          withdrawalsRoot: "00".repeat(32),
-          forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        },
-        countSummary: {
-          withdrawalCount: 0n,
-          forcedTransactionCount: 0n,
-          l2TransactionCount: 0n,
-          depositCount: 0n,
-          totalEventCount: 0n,
-          transitionStepCount: 0n,
-          validationTraceCount: 0n,
-        },
-        l1Header: {
-          startTime: "1",
-          endTime: "2",
-          operatorVkey: "04".repeat(28),
-          prevHeaderHash: "05".repeat(28),
-          protocolVersion: "1",
-        },
-      },
-    };
-
-    expect(parseDaSignatureRecord(signature).l1ChainPoint).toEqual({
-      slot: node.chainPoint.slot,
-      blockHash: node.chainPoint.blockHash,
-      depth: node.chainPoint.depth,
-      providerSource: "chain-sync:node-a,query:node-a:0",
-      observedAt: l1ChainPoint.observedAt,
-    });
-    // The snapshot's own observed point is a chain point too.
-    expect(() =>
-      parseDaSignatureRecord({
-        ...signature,
-        l1ChainPoint: snapshot.observedChainPoint,
-      }),
-    ).not.toThrow();
+      });
+      const [bootstrapTip] = recordedTips(loadL1Recording(FOLLOW_TIP));
+      expect(parseDaSignatureRecord(signature).l1ChainPoint).toEqual({
+        slot: bootstrapTip!.slot,
+        blockHash: bootstrapTip!.id,
+        depth: 10,
+        providerSource: "chain-sync:node-a,query:node-a:0",
+        observedAt: l1ChainPoint.observedAt,
+      });
+      // The snapshot's own observed point is a chain point too.
+      expect(() =>
+        parseDaSignatureRecord({
+          ...signature,
+          l1ChainPoint: snapshot.observedChainPoint,
+        }),
+      ).not.toThrow();
+      // Handed over as the authority holds it, the point is refused.
+      const canonical = await authority.currentPoint();
+      expect(() =>
+        parseDaSignatureRecord({ ...signature, l1ChainPoint: canonical }),
+      ).toThrow("chain point contains unknown field network");
+      // As is the height Ogmios put on the tip, had it been copied through.
+      expect(() =>
+        parseDaSignatureRecord({
+          ...signature,
+          l1ChainPoint: { ...l1ChainPoint, height: 5_220_971 },
+        }),
+      ).toThrow("chain point contains unknown field height");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rejects one external provider and incompatible provider chain points", async () => {
@@ -1849,7 +1828,10 @@ describe("L1 provider adapters", () => {
   });
 
   describe("Kupmios current tip", () => {
-    const ogmiosTip = { slot: 101, id: "44".repeat(32), height: 5 };
+    // No height: a live Ogmios v7.0.0 answers `queryNetwork/tip` with the slot
+    // and id alone (see "recorded preprod Ogmios and Kupo"). The re-reads Kupo
+    // needs to catch up cannot be recorded, so the answers here stay doubles.
+    const ogmiosTip = { slot: 101, id: "44".repeat(32) };
     class TipWebSocket {
       onopen: ((event: unknown) => void) | null = null;
       onmessage: ((event: { readonly data: unknown }) => void) | null = null;
@@ -1905,11 +1887,9 @@ describe("L1 provider adapters", () => {
 
     it("re-reads while Kupo catches up to the Ogmios tip", async () => {
       const fetchFn = kupoCheckpoints(100, 100, 101);
-      await expect(readTip(fetchFn)).resolves.toMatchObject({
-        slot: 101,
-        blockHash: "44".repeat(32),
-        blockHeight: 5,
-      });
+      const point = await readTip(fetchFn);
+      expect(point).toMatchObject({ slot: 101, blockHash: "44".repeat(32) });
+      expect(point).not.toHaveProperty("blockHeight");
       expect(fetchFn).toHaveBeenCalledTimes(3);
     });
 
@@ -3637,3 +3617,293 @@ describe("long-outage chain-sync catch-up", () => {
     });
   });
 });
+
+/**
+ * The chain-sync reader against what a live preprod Ogmios v7.0.0 and Kupo
+ * v2.11.0 answered, recorded by
+ * `@al-ft/midgard-test-support/scripts/capture-l1-recordings.mjs`:
+ *
+ * - `preprod-ogmios-follow-tip` is a session in the order a member's syncs
+ *   issue it: bootstrap at the tip, the tip re-read until the node adopts a
+ *   block, and only then the handshake `nextBlock` and the one that delivers
+ *   the block.
+ * - `preprod-ogmios-network` holds the rest of what the reader leans on: a
+ *   `nextBlock` sent while the tip is unchanged, which Ogmios holds until the
+ *   next block, and Kupo's text/plain health with its ETag.
+ *
+ * Every refusal mutates one field of a recording rather than inventing an
+ * answer.
+ */
+describe("recorded preprod Ogmios and Kupo", () => {
+  it("records the Ogmios v7.0.0 shapes the chain-sync reader is written against", () => {
+    const network = loadL1Recording(NETWORK);
+    // No `queryNetwork/tip` carries a height, over WebSocket or HTTP.
+    const tips = [
+      ...recordedTips(network),
+      ...recordedTips(loadL1Recording(FOLLOW_TIP)),
+      ...network.exchanges
+        .filter(
+          (exchange) =>
+            exchange.surface === "ogmios-http" &&
+            exchange.request.method === "queryNetwork/tip",
+        )
+        .map(
+          (exchange) =>
+            (JSON.parse(recordedText(exchange.response)) as { result: object })
+              .result,
+        ),
+    ];
+    expect(tips.length).toBeGreaterThan(0);
+    for (const tip of tips) {
+      expect(Object.keys(tip).sort()).toEqual(["id", "slot"]);
+    }
+    // The height rides chain-sync's own tips, and blockHeight answers alone.
+    const [found] = ogmiosExchanges(network, "findIntersection").map(
+      ogmiosResult,
+    ) as { intersection: object; tip: { height: number } }[];
+    const [height] = ogmiosExchanges(network, "queryNetwork/blockHeight").map(
+      ogmiosResult,
+    );
+    expect(found!.tip.height).toBe(height);
+    const [echo, forward] = ogmiosExchanges(network, "nextBlock");
+    // The first nextBlock echoes the intersection back as a rollback.
+    expect(ogmiosResult(echo!)).toMatchObject({
+      direction: "backward",
+      point: found!.intersection,
+      tip: found!.tip,
+    });
+    expect(ogmiosResult(forward!)).toMatchObject({
+      direction: "forward",
+      tip: { height: found!.tip.height + 1 },
+    });
+    // Sent while the tip had not moved, the next one was held until the node
+    // adopted a block: longer than a session's 15 s request timeout, which is
+    // why a sync at the tip asks for the tip before it sends a nextBlock.
+    expect(forward!.elapsedMs).toBeGreaterThan(15_000);
+  });
+
+  it("follows the recorded tip: bootstrap, re-reads at the tip, the handshake echo, the adopted block", async () => {
+    const dir = await tempDir();
+    const recording = loadL1Recording(FOLLOW_TIP);
+    const tips = recordedTips(recording);
+    const bootstrapTip = tips[0]!;
+    const adoptedTip = tips.at(-1)!;
+    expect(adoptedTip).not.toEqual(bootstrapTip);
+    const replay = recordedOgmiosWebSocket(recording);
+    vi.stubGlobal("WebSocket", replay.WebSocket);
+    try {
+      const authority = recordedPreprodAuthority(`${dir}/cursor.json`);
+      // One sync per recorded tip read: the bootstrap, then each sync at the
+      // tip, the last of which sees the tip move.
+      const points: CanonicalChainPoint[] = [];
+      for (let sync = 0; sync < tips.length; sync += 1) {
+        points.push(await authority.synchronizeToTip());
+      }
+      expect(points.map(({ slot, blockHash }) => [slot, blockHash])).toEqual([
+        ...tips.slice(0, -1).map(() => [bootstrapTip.slot, bootstrapTip.id]),
+        [adoptedTip.slot, adoptedTip.id],
+      ]);
+      // Chain-sync's tips carried a height; the points it made carry none.
+      for (const point of points) {
+        expect(point).not.toHaveProperty("blockHeight");
+      }
+      // Every recorded answer was asked for, in the order it was recorded,
+      // on one connection.
+      expect(replay.requests().map(({ method }) => method)).toEqual(
+        recording.exchanges.map(({ request }) => request.method),
+      );
+      expect(replay.sockets()).toBe(1);
+      // The handshake echo was no rollback.
+      expect(
+        (await authority.replay(-1)).map(({ direction, point }) => [
+          direction,
+          point.slot,
+        ]),
+      ).toEqual([
+        ["roll_forward", bootstrapTip.slot],
+        ["roll_forward", adoptedTip.slot],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("journals a backward answer that is not the intersection as a rollback", async () => {
+    const dir = await tempDir();
+    const recording = loadL1Recording(FOLLOW_TIP);
+    const tips = recordedTips(recording);
+    const bootstrapTip = tips[0]!;
+    const echo = (
+      ogmiosExchanges(recording, "nextBlock")[0]!.response.body as {
+        result: { direction: string; point: { slot: number; id: string } };
+      }
+    ).result;
+    expect(echo.direction).toBe("backward");
+    echo.point = { slot: bootstrapTip.slot - 1, id: "ab".repeat(32) };
+    vi.stubGlobal("WebSocket", recordedOgmiosWebSocket(recording).WebSocket);
+    try {
+      const authority = recordedPreprodAuthority(`${dir}/cursor.json`);
+      for (let sync = 0; sync < tips.length; sync += 1) {
+        await authority.synchronizeToTip();
+      }
+      expect(
+        (await authority.replay(-1)).map(({ direction, point }) => [
+          direction,
+          point.slot,
+          point.blockHash,
+        ]),
+      ).toEqual([
+        ["roll_forward", bootstrapTip.slot, bootstrapTip.id],
+        ["roll_backward", bootstrapTip.slot - 1, "ab".repeat(32)],
+        ["roll_forward", tips.at(-1)!.slot, tips.at(-1)!.id],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("refuses a recorded session once its genesis names another network", async () => {
+    const dir = await tempDir();
+    const recording = loadL1Recording(FOLLOW_TIP);
+    (
+      ogmiosExchanges(recording, "queryNetwork/genesisConfiguration")[0]!
+        .response.body as { result: { networkMagic: number } }
+    ).result.networkMagic = 2;
+    vi.stubGlobal("WebSocket", recordedOgmiosWebSocket(recording).WebSocket);
+    try {
+      const failure = await recordedPreprodAuthority(`${dir}/cursor.json`)
+        .synchronizeToTip()
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(L1SourceIntegrityError);
+      expect((failure as Error).message).toBe(
+        "Ogmios network magic 2 does not match configured Preprod magic 1",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("binds Kupo's recorded checkpoint to the block Ogmios adopted", async () => {
+    const network = loadL1Recording(NETWORK);
+    const adopted = (
+      ogmiosResult(ogmiosExchanges(network, "nextBlock")[1]!) as {
+        block: { slot: number; id: string };
+      }
+    ).block;
+    await expect(
+      fetchKupoCheckpoint("http://kupo.recorded/", recordedFetch(network)),
+    ).resolves.toEqual({ slot: adopted.slot, blockHash: adopted.id });
+    expect(recordedTips(network).at(-1)).toEqual({
+      slot: adopted.slot,
+      id: adopted.id,
+    });
+  });
+
+  it("refuses Kupo's recorded health once it loses its ETag", async () => {
+    const network = loadL1Recording(NETWORK);
+    const headers = kupoExchange(network, "/health").response.headers as Record<
+      string,
+      string
+    >;
+    delete headers.etag;
+    await expect(
+      fetchKupoCheckpoint("http://kupo.recorded/", recordedFetch(network)),
+    ).rejects.toThrow(/checkpoint ETag/u);
+  });
+});
+
+const NETWORK = "preprod-ogmios-network";
+const FOLLOW_TIP = "preprod-ogmios-follow-tip";
+
+/** The `queryNetwork/tip` answers a recording's session holds, in order. */
+const recordedTips = (
+  recording: L1Recording,
+): { readonly slot: number; readonly id: string }[] =>
+  ogmiosExchanges(recording, "queryNetwork/tip").map(
+    (exchange) => ogmiosResult(exchange) as { slot: number; id: string },
+  );
+
+/** A preprod authority following the stubbed global WebSocket. */
+const recordedPreprodAuthority = (cursorPath: string) =>
+  new LocalNodeChainAuthority(
+    "node-a",
+    "Preprod",
+    new OgmiosChainSyncEventSource("ws://ogmios.recorded", "Preprod", "node-a"),
+    new FileChainSyncCursorStore(cursorPath, "11".repeat(32)),
+  );
+
+/** A signature record carrying `l1ChainPoint`, otherwise fixed. */
+const daSignatureRecordAt = ({
+  l1ChainPoint,
+  headerHash,
+  stateQueueOutRef,
+}: {
+  readonly l1ChainPoint: unknown;
+  readonly headerHash: string;
+  readonly stateQueueOutRef: string;
+}): DaSignatureRecordV1 => {
+  const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitment(
+    SDK.buildDaAvailabilityCommitment({
+      deploymentIdentity: "99".repeat(28),
+      headerHash,
+      payload: Buffer.from("public retained DA"),
+      bondOwner: "76".repeat(28),
+      responseGeometry: SDK.availabilityResponseGeometry({
+        chunkByteLength: 14_020,
+        trancheByteLength: 4 * 1_024 * 1_024,
+        maxTrancheCount: 16,
+      }),
+    }),
+  );
+  return {
+    deploymentFingerprint: "dep",
+    headerHash,
+    signerIndex: 0,
+    signatureWitness: "00" + "11".repeat(64),
+    availabilityCommitmentCbor,
+    availabilityCommitmentDigest: computeDaSha256Hash(
+      Buffer.from(availabilityCommitmentCbor, "hex"),
+    ).toString("hex"),
+    payloadHash: "03".repeat(32),
+    committeeSignersHash: "02".repeat(32),
+    signedAt: "2026-01-01T00:00:00.000Z",
+    broadcastStatus: "local",
+    source: "local",
+    l1ChainPoint: l1ChainPoint as DaSignatureRecordV1["l1ChainPoint"],
+    validation: {
+      payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
+      rootsMatch: true,
+      stateQueueOutRef,
+      headerHash,
+      rootSummary: {
+        utxosRoot: "00".repeat(32),
+        transactionsRoot: "00".repeat(32),
+        depositsRoot: "00".repeat(32),
+        withdrawalsRoot: "00".repeat(32),
+        forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      },
+      countSummary: {
+        withdrawalCount: 0n,
+        forcedTransactionCount: 0n,
+        l2TransactionCount: 0n,
+        depositCount: 0n,
+        totalEventCount: 0n,
+        transitionStepCount: 0n,
+        validationTraceCount: 0n,
+      },
+      l1Header: {
+        startTime: "1",
+        endTime: "2",
+        operatorVkey: "04".repeat(28),
+        prevHeaderHash: "05".repeat(28),
+        protocolVersion: "1",
+      },
+    },
+  };
+};

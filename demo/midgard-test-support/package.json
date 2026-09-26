@@ -13,17 +13,23 @@
       "midgard-source": "./src/hex.ts",
       "types": "./src/hex.ts"
     },
+    "./l1-recordings": {
+      "midgard-source": "./src/l1-recordings.ts",
+      "types": "./src/l1-recordings.ts"
+    },
     "./temp-files": {
       "midgard-source": "./src/temp-files.ts",
       "types": "./src/temp-files.ts"
     }
   },
   "files": [
+    "fixtures",
     "src",
     "vitest.js",
     "vitest.d.ts"
   ],
   "scripts": {
+    "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
