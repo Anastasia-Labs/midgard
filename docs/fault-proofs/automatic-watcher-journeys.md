@@ -1,5 +1,7 @@
 # Automatic watcher journeys
 
+<!-- doc-links:run-relative -->
+
 Status: All 52 family results accepted through preserved and recovered runs.
 
 The acceptance target is a fresh, isolated Cardano devnet with real Cardano

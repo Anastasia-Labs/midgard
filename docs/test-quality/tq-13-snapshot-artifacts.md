@@ -9,9 +9,10 @@ Last reviewed: 2026-09-07
 
 ## Current behavior
 
-`demo/midgard-validation/tests/resolver-proof-fit-sweep.test.ts` compares
-`artifact.unfit` with `resolver-proof-fit-sweep-v1.unfit-pin.json`. Equality
-notices new gaps, closed gaps, identity changes, and reason-text changes. It is
+`demo/midgard-validation/tests/resolver-proof-fit-sweep.test.ts` compared
+`artifact.unfit` with `resolver-proof-fit-sweep-v1.unfit-pin.json` until
+f69a0ddb2 deleted it without a replacement; the pin now has no consumer. <!-- doc-links:historical -->
+Equality noticed new gaps, closed gaps, identity changes, and reason-text changes. It was
 therefore a regression gate as well as a maintenance cost. The surrounding
 row checks prevent unmeasured rows from claiming an accepted measurement, but
 do not independently prevent the unfit set from growing.

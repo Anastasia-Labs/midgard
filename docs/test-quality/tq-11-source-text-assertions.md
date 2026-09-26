@@ -34,8 +34,9 @@ formatting changes.
 - Source scans for forbidden imports or APIs: a syntax-aware dependency rule
   may be more accurate, but it must cover the same files and run in the
   appropriate CI lane before the old guard is removed.
-- The historical `lucid-midgard/tests/api-export-snapshot.test.ts` is absent
-  from the current tree. Its original built-declaration and export-set checks
+- <!-- doc-links:historical --> The historical
+  `lucid-midgard/tests/api-export-snapshot.test.ts` is absent from the current
+  tree. Its original built-declaration and export-set checks
   represented a public API contract. A replacement must preserve detection of
   removed or unintentionally added exports; source-layout criticism alone
   does not establish equivalent coverage.

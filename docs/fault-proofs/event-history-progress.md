@@ -1,5 +1,7 @@
 # Authenticated event history implementation log
 
+<!-- doc-links:run-relative -->
+
 Status: In progress; ABI not frozen; no acceptance or gap closure claimed.
 
 ## Baseline and preservation

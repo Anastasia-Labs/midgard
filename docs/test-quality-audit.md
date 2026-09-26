@@ -76,8 +76,8 @@ category identities, deployment identity, and exact measured execution values
 may be deliberate contracts. A pin changing after an intentional implementation
 change does not establish that it was useless.
 
-`demo/lucid-midgard/tests/api-export-snapshot.test.ts` can detect an unintended
-public export change. A current build is necessary where the test reads `dist`.
+`demo/lucid-midgard/tests/api-export-snapshot.test.ts` detected an unintended
+public export change until f69a0ddb2 deleted it; nothing replaces it. <!-- doc-links:historical -->
 In `demo/midgard-node/tests/reference-scripts.test.ts`, `toContain` checks
 notice removal of named targets, but do not reject unexpected additional ones.
 An exact independently defined roster may be appropriate when both matter.
@@ -92,9 +92,11 @@ See [TQ-12](test-quality/tq-12-derive-not-photograph.md).
 
 ### 2.1 The unfit snapshot
 
-`demo/midgard-validation/tests/resolver-proof-fit-sweep.test.ts` checks the exact
-unfit set against `resolver-proof-fit-sweep-v1.unfit-pin.json`. This detects both
-new and closed gaps, as well as identity and prose changes. The row-consistency
+`demo/midgard-validation/tests/resolver-proof-fit-sweep.test.ts` checked the exact
+unfit set against `resolver-proof-fit-sweep-v1.unfit-pin.json`, detecting both
+new and closed gaps, as well as identity and prose changes. f69a0ddb2 deleted
+the test without a replacement, so the pin has no consumer and nothing guards
+the unfit set today. <!-- doc-links:historical --> The row-consistency
 checks beside it do not independently prevent growth of the unfit set. Preserve
 that regression guard while separating stable identities from explanatory prose
 if warranted. See [TQ-13](test-quality/tq-13-snapshot-artifacts.md).
