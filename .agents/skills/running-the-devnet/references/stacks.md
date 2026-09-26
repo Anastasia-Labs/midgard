@@ -136,7 +136,15 @@ it is not a private chain. The bring-up order is in
 "With Docker"; the Preprod acceptance runbook on top of it is
 [midgard-e2e-acceptance](../../midgard-e2e-acceptance/SKILL.md).
 
-From `demo/midgard-node`, with `F="-f docker-compose.yaml -f docker-compose.kupmios.yaml"`:
+From `demo/midgard-node`, with `F="-f docker-compose.yaml -f docker-compose.kupmios.yaml"`.
+In a linked git worktree, replace `docker compose` with
+`demo/midgard-node/scripts/operator-compose.sh`: the main checkout's stack is project
+`midgard-node` with fixed container names (`prometheus`, `loki`, `promtail`,
+`grafana`) and fixed host ports, and bare compose in a worktree would take
+them over. The wrapper gives the worktree project `midgard-node-<path hash>`,
+container names prefixed with it, and a block of 100 host ports from
+20000 + 100 × slot; `--print-env` lists them. A
+port or `COMPOSE_PROJECT_NAME` already set in the environment or `.env` wins.
 
 | Step                    | Command                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------- |
