@@ -189,6 +189,8 @@ const setup = () => {
       wallet = values;
     },
     transactionStatus: async () => ({ status: "not_found" }),
+    unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1000),
+    slotToUnixTime: (slot: number) => slot * 1000,
   } as unknown as LucidEvolution;
   const observed = vi.fn<TimeoutCorrectionRecovery["observeSignedTransaction"]>(
     async (signed) => ({

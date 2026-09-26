@@ -504,7 +504,11 @@ export const resolveSchedulerRefreshValidityWindow = (
     Math.max(submitLedgerBackdatedStart, minimumShiftStart),
   );
   if (validFrom < minimumShiftStart) {
-    validFrom = alignUnixTimeToSlotBoundary(lucid, minimumShiftStart + 999);
+    // scheduler.ak requires the inclusive lower bound, which the ledger
+    // presents as the start of its slot, to be at or after the shift end.
+    validFrom = Number(
+      SDK.slotAlignedLowerBoundAtOrAfter(lucid, BigInt(minimumShiftStart)),
+    );
   }
   return {
     validFrom: BigInt(validFrom),

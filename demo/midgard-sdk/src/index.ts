@@ -41,5 +41,6 @@ export * from "./state-queue-transactions.js";
 export * from "./transition-trace.js";
 export * from "./tx-context-redeemer.js";
 export * from "./user-events/index.js";
+export * from "./validity-range.js";
 export * from "./withdrawal-signature.js";
 export * from "./withdrawal-validation.js";

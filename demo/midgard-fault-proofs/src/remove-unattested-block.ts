@@ -13,6 +13,8 @@ import {
   incompletePruneUnattestedBlockDescendantTxProgram,
   incompleteRemoveLastUnattestedBlockTxProgram,
   NO_DA_ATTESTATION,
+  slotAlignedLowerBoundAtOrAfter,
+  type SlotClock,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   type StateQueueUTxO,
 } from "@al-ft/midgard-sdk";
@@ -727,6 +729,33 @@ export type SubmitUnattestedTimeoutCorrectionResult = {
   readonly removedHeaderHashes: readonly string[];
 };
 
+/**
+ * The validity range of a timeout-correction transaction built at `nowMs`.
+ *
+ * The validator requires `inclusive lower bound >= header.end_time +
+ * da_attestation_timeout`. Block end times usually end in 999 ms, and the
+ * ledger presents the lower bound as the start of its slot, so the deadline
+ * itself is rounded up to the next slot boundary before it is used as the
+ * earliest admissible lower bound. The lower bound is otherwise backdated to
+ * tolerate submit latency and provider clock skew.
+ */
+export const resolveTimeoutCorrectionValidityRange = (
+  slotClock: SlotClock,
+  deadlineMs: bigint,
+  nowMs: bigint,
+): { readonly validFrom: bigint; readonly validTo: bigint } => {
+  const earliestAdmitted = slotAlignedLowerBoundAtOrAfter(
+    slotClock,
+    deadlineMs,
+  );
+  const backdated = nowMs - STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;
+  const validFrom = backdated > earliestAdmitted ? backdated : earliestAdmitted;
+  return {
+    validFrom,
+    validTo: validFrom + STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
+  };
+};
+
 export const submitUnattestedTimeoutCorrection = async ({
   lucid,
   deploymentInfo: rawDeploymentInfo,
@@ -1043,10 +1072,11 @@ export const submitUnattestedTimeoutCorrection = async ({
       }
 
       const deadline = BigInt(journal.targetDeadlineMs);
-      const backdated =
-        BigInt(nowMs()) - STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;
-      const validFrom = backdated > deadline ? backdated : deadline;
-      const validTo = validFrom + STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS;
+      const { validFrom, validTo } = resolveTimeoutCorrectionValidityRange(
+        lucid,
+        deadline,
+        BigInt(nowMs()),
+      );
       const targetNode = await Effect.runPromise(
         getStateQueueNodeFromStateQueueDatum(plan.target.datum),
       );

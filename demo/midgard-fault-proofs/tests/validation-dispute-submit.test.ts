@@ -35,7 +35,13 @@ import {
   redeemerItemControlData,
   redeemerItemProofWitnessData,
 } from "@al-ft/midgard-validation";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import {
+  Constr,
+  Data,
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { parseExactAikenDataCbor } from "../src/aiken-blueprint-data.js";
@@ -48,6 +54,7 @@ import { scriptSourcesDescriptorClaim } from "../src/validation-dispute/script-s
 import {
   deriveScriptSourcesItemSubmissionPlan,
   encodeValidationSemanticResolutionRedeemer,
+  ledgerPresentedValidationDisputeValidityRange,
   openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
   requireValidationCanonicalDecodePrepareReferenceScriptOutRef,
@@ -417,6 +424,52 @@ describe("validation-dispute transaction validity", () => {
       validFrom: 1_020_000,
       validTo: 1_140_000,
     });
+  });
+
+  it("records the inclusive upper bound the ledger presents when built from a mid-slot clock", async () => {
+    // Open, VerifySource and Reveal record `validTo - 1` in their output
+    // datum and the validators require it to equal the presented upper
+    // bound. Production builds the range from Date.now(), generally mid-slot.
+    const account = generateEmulatorAccount({ lovelace: 20_000_000n });
+    const emulator = new Emulator([account]);
+    const lucid = await Lucid(emulator, "Preprod");
+    lucid.selectWallet.fromSeed(account.seedPhrase);
+    const boundary = lucid.slotToUnixTime(emulator.slot + 120);
+    const presentedInclusiveUpper = async (range: {
+      readonly validFrom: number;
+      readonly validTo: number;
+    }): Promise<number> => {
+      const tx = await lucid
+        .newTx()
+        .pay.ToAddress(account.address, { lovelace: 2_000_000n })
+        .validFrom(range.validFrom)
+        .validTo(range.validTo)
+        .complete();
+      return lucid.slotToUnixTime(Number(tx.toTransaction().body().ttl()!)) - 1;
+    };
+
+    const midSlot = validationDisputeValidityRange(boundary + 437);
+    // Used as-is, the recorded bound is 437 ms later than the presented one.
+    expect(await presentedInclusiveUpper(midSlot)).toBe(
+      midSlot.validTo - 437 - 1,
+    );
+    const range = ledgerPresentedValidationDisputeValidityRange(lucid, midSlot);
+    expect(range).toEqual({
+      validFrom: midSlot.validFrom,
+      validTo: boundary + 60_000,
+    });
+    expect(await presentedInclusiveUpper(range)).toBe(range.validTo - 1);
+
+    const aligned = validationDisputeValidityRange(boundary);
+    expect(
+      ledgerPresentedValidationDisputeValidityRange(lucid, aligned),
+    ).toEqual(aligned);
+    expect(() =>
+      ledgerPresentedValidationDisputeValidityRange(lucid, {
+        validFrom: boundary + 100,
+        validTo: boundary + 437,
+      }),
+    ).toThrow();
   });
 
   it("places timeout lower bound strictly after the response deadline", () => {

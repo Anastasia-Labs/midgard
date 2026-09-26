@@ -75,6 +75,8 @@ import {
   resolveMidgardFieldCarriageAgainstReferenceInputs,
   sharedRedeemerItemReferenceScripts,
   type SharedRedeemerItemStages,
+  slotAlignedUpperBoundAtOrBefore,
+  type SlotClock,
   ValidationAuxiliaryWitness,
   type ValidationAuxiliaryWitness as ValidationAuxiliaryWitnessData,
   ValidationAwardSpendRedeemer,
@@ -358,6 +360,27 @@ export const refreshExpiredValidationDisputeValidityRange = ({
 const inclusiveValidityUpperBound = (
   range: ValidationDisputeValidityRange,
 ): number => range.validTo - 1;
+
+/**
+ * Open, VerifySource and Reveal record the inclusive upper bound in their
+ * output datum, and the validators require it to equal the bound the ledger
+ * presents. Lucid floors `validTo` to its slot, so a wall-clock `validTo`
+ * would record a bound up to one slot later than the one the validator sees.
+ * Moving `validTo` onto that slot boundary first makes
+ * `inclusiveValidityUpperBound` exact.
+ */
+export const ledgerPresentedValidationDisputeValidityRange = (
+  slotClock: SlotClock,
+  range: ValidationDisputeValidityRange,
+): ValidationDisputeValidityRange => {
+  const checked = requireValidityRange(range);
+  return requireValidityRange({
+    validFrom: checked.validFrom,
+    validTo: Number(
+      slotAlignedUpperBoundAtOrBefore(slotClock, BigInt(checked.validTo)),
+    ),
+  });
+};
 
 export const openValidationDisputeAfterSourceVerification = ({
   operatorDescriptor,
@@ -2429,7 +2452,10 @@ export const buildValidationDisputeOpen = async ({
   challengerDescriptor,
   validityRange = validationDisputeValidityRange(Date.now()),
 }: BuildValidationDisputeOpenParams): Promise<BuildValidationDisputeOpenResult> => {
-  const range = requireValidityRange(validityRange);
+  const range = ledgerPresentedValidationDisputeValidityRange(
+    lucid,
+    validityRange,
+  );
   const resolved = await resolveValidationTraceDisputeDeploymentContracts({
     blueprint,
     deploymentInfo,
@@ -2692,7 +2718,10 @@ export const submitValidationDisputeVerifySource = async ({
   /** Optional Q51 pre-submit boundary (workflow ruling R5). */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeVerifySourceResult> => {
-  const range = requireValidityRange(validityRange);
+  const range = ledgerPresentedValidationDisputeValidityRange(
+    lucid,
+    validityRange,
+  );
   const { validationTraceDisputeCategory, contracts } =
     await resolveValidationTraceDisputeDeploymentContracts({
       blueprint,
@@ -3006,7 +3035,10 @@ export const submitValidationDisputeReveal = async ({
   /** Optional Q51 pre-submit boundary (workflow ruling R5). */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeRevealResult> => {
-  const range = requireValidityRange(validityRange);
+  const range = ledgerPresentedValidationDisputeValidityRange(
+    lucid,
+    validityRange,
+  );
   const { validationTraceDisputeCategory, contracts } =
     await resolveValidationTraceDisputeDeploymentContracts({
       blueprint,

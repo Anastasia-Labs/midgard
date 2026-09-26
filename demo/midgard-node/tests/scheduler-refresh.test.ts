@@ -270,6 +270,34 @@ describe("scheduler refresh witness selection", () => {
     expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
   });
 
+  it("puts a refresh lower bound at or after a mid-slot shift boundary on slots longer than one second", () => {
+    // 20 s slots starting at 500 ms: boundaries at 80_500, 100_500, ...
+    const twentySecondSlots = {
+      slotToUnixTime: (slot: number) => 500 + slot * 20_000,
+      unixTimeToSlot: (unixTime: number) =>
+        Math.floor((unixTime - 500) / 20_000),
+    };
+    const shiftBoundary = 95_500;
+    const window = resolveSchedulerRefreshValidityWindow(
+      twentySecondSlots as never,
+      schedulerStartForShiftBoundary(shiftBoundary),
+      {
+        currentSlot: 5,
+        currentSlotStartMs: 100_500,
+        observedAtMs: 101_000,
+      },
+    );
+    // Lucid floors validFrom to its slot; the presented lower bound must not
+    // precede the shift end (scheduler.ak: inclusive_lower_bound >= end).
+    const presentedLowerBound = twentySecondSlots.slotToUnixTime(
+      twentySecondSlots.unixTimeToSlot(Number(window.validFrom)),
+    );
+    expect(window.validFrom).toBe(100_500n);
+    expect(BigInt(presentedLowerBound)).toBe(window.validFrom);
+    expect(presentedLowerBound).toBeGreaterThanOrEqual(shiftBoundary);
+    expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
+  });
+
   it("uses the refresh validity lower bound as the next end-of-shift start time", () => {
     const previousStart = 1_000_000n;
     const previousShiftEnd = previousStart + SDK.SHIFT_DURATION_MS;
