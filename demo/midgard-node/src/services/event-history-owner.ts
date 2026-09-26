@@ -33,7 +33,10 @@ import {
   locateEventHistoryActivation,
   readEventHistoryCreatingBody,
 } from "../l1-event-history-transport.js";
-import type { LedgerSnapshotPoint } from "../l1-ledger-snapshot.js";
+import {
+  LEDGER_SCAN_TIMEOUT_MS,
+  type LedgerSnapshotPoint,
+} from "../l1-ledger-snapshot.js";
 import type { Database } from "./database.js";
 import {
   type HistoryRecoveryPreparation,
@@ -123,10 +126,6 @@ export type HistoryOwnerCoverage = Readonly<{
 
 const samePoint = (a: LedgerSnapshotPoint, b: LedgerSnapshotPoint) =>
   a.id === b.id && a.slot === b.slot;
-/** The only complete address-scope ledger scan runs once, on an empty journal.
- * Ogmios has no address index, so it walks the whole UTxO set; it gets a
- * one-time deadline instead of the per-request ChainSync timeout. */
-export const FIRST_START_CAPTURE_TIMEOUT_MS = 15 * 60_000;
 class MissingBody extends Error {
   constructor(readonly txHash: string) {
     super(`Missing history creating body ${txHash}`);
@@ -373,11 +372,11 @@ export const makeEventHistoryOwner = <E, R>(input: {
       readBoundEventHistoryLedgerSnapshot({
         binding: input.binding,
         ogmiosUrl: input.transport.ogmiosUrl,
-        timeoutMs: FIRST_START_CAPTURE_TIMEOUT_MS,
+        timeoutMs: LEDGER_SCAN_TIMEOUT_MS,
         webSocketFactory: input.transport.webSocketFactory,
         signal: AbortSignal.any([
           signal,
-          AbortSignal.timeout(FIRST_START_CAPTURE_TIMEOUT_MS),
+          AbortSignal.timeout(LEDGER_SCAN_TIMEOUT_MS),
         ]),
       });
     // The first-start scan and locating an old activation can outlive one
