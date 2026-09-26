@@ -19,6 +19,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -860,55 +861,6 @@ const parseFixedHexParam = (
   }
 };
 
-const encodeStateQueueMutationLease = (
-  lease: StateQueueMutationLeasesDB.Entry | undefined,
-  now: Date = new Date(),
-) =>
-  lease === undefined
-    ? null
-    : (() => {
-        const expiresAt = lease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT];
-        const remainingMs = expiresAt.getTime() - now.getTime();
-        return {
-          token: lease[StateQueueMutationLeasesDB.Columns.TOKEN],
-          holder: lease[StateQueueMutationLeasesDB.Columns.HOLDER],
-          status: lease[StateQueueMutationLeasesDB.Columns.STATUS],
-          acquiredAt:
-            lease[StateQueueMutationLeasesDB.Columns.ACQUIRED_AT].toISOString(),
-          expiresAt: expiresAt.toISOString(),
-          releasedAt:
-            lease[
-              StateQueueMutationLeasesDB.Columns.RELEASED_AT
-            ]?.toISOString() ?? null,
-          lastError:
-            lease[StateQueueMutationLeasesDB.Columns.LAST_ERROR] ?? null,
-          remainingMs,
-          expired: remainingMs < 0,
-          blockedUntil: expiresAt.toISOString(),
-        };
-      })();
-
-const encodeStateQueueMutationLeaseInspection = (
-  inspection: StateQueueMutationLeasesDB.LeaseInspection,
-) => ({
-  status: inspection.activeLease === undefined ? "idle" : "busy",
-  dbNow: inspection.dbNow.toISOString(),
-  activeLease: encodeStateQueueMutationLease(
-    inspection.activeLease,
-    inspection.dbNow,
-  ),
-  pendingFinalizations: inspection.pendingFinalizations.map((entry) => ({
-    headerHash: entry.headerHash,
-    submittedTxHash: entry.submittedTxHash,
-    status: entry.status,
-    createdAt: entry.createdAt.toISOString(),
-    updatedAt: entry.updatedAt.toISOString(),
-  })),
-  recentLeases: inspection.recentLeases.map((lease) =>
-    encodeStateQueueMutationLease(lease, inspection.dbNow),
-  ),
-});
-
 /**
  * Wraps a route handler with admin-key authorization when the path belongs to
  * the admin-only route set.
@@ -1587,7 +1539,7 @@ const getReadinessHandler = Effect.gen(function* () {
     recentLimit: 3,
   });
   const encodedLeaseInspection =
-    encodeStateQueueMutationLeaseInspection(leaseInspection);
+    StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection);
   const activeLease = leaseInspection.activeLease;
   const activeLeaseRemainingMs =
     activeLease === undefined
@@ -1903,7 +1855,7 @@ const getPipelineStatusHandler = Effect.gen(function* () {
       localFinalizationPending,
     },
     stateQueueMutationLease:
-      encodeStateQueueMutationLeaseInspection(leaseInspection),
+      StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection),
     localMutationJobs: {
       unfinished: unfinishedMutationJobs.toString(),
     },
@@ -2058,9 +2010,28 @@ const getCommitEndpoint = Effect.gen(function* () {
  * `GET /merge`: triggers manual merge of the oldest queued block into
  * confirmed state.
  */
-const getMergeHandler = Effect.gen(function* () {
+export const getMergeHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`GET /${MERGE_ENDPOINT} - Manual merge order received`);
-  const result = yield* mergeAction(true);
+  const attempt = yield* mergeAction(true).pipe(
+    Effect.map((result) => ({ _tag: "Ran" as const, result })),
+    Effect.catchTag("MergeProducerPermitUnavailable", (unavailable) =>
+      Effect.succeed({ _tag: "PermitUnavailable" as const, unavailable }),
+    ),
+  );
+  if (attempt._tag === "PermitUnavailable") {
+    // Nothing ran: the history owner is absent or not Ready. Retry later.
+    const cause = formatUnknownError(attempt.unavailable.cause, {
+      includeCause: true,
+    });
+    yield* Effect.logWarning(
+      `GET /${MERGE_ENDPOINT} - ${attempt.unavailable.message}: ${cause}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: attempt.unavailable.message, cause },
+      { status: 503 },
+    );
+  }
+  const { result } = attempt;
   yield* Effect.logInfo(
     `GET /${MERGE_ENDPOINT} - Merge result: ${JSON.stringify(result)}`,
   );

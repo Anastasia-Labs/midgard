@@ -308,9 +308,16 @@ type MergeOptions = {
     SubmitSlotSnapshot,
     unknown
   >;
-  readonly revalidateMutationLease?: () => Effect.Effect<
+  /**
+   * Checked immediately before the merge transaction is signed and submitted:
+   * the caller re-proves every authority the local finalization will need (the
+   * state-queue lease and the history producer permit), so a revocation after
+   * the merge started refuses the submission instead of stranding a confirmed
+   * L1 merge whose local finalization cannot write.
+   */
+  readonly assertSubmitAuthority?: () => Effect.Effect<
     void,
-    unknown,
+    DatabaseError,
     Database
   >;
 };
@@ -1202,47 +1209,13 @@ export const buildAndSubmitMergeTx = (
         submitDueWorkEvidence,
         options?.submitSlotSnapshot,
       );
-      const rawSubmitOutcome = yield* handleSignSubmit(
-        lucid,
-        txBuilder,
-        submitRecoveryOptions,
-      ).pipe(
-        Effect.as({ status: "submitted" } as const),
-        Effect.catchTag("NoInlineSubmitDefer", (defer) =>
-          Effect.succeed({ status: "deferred", defer } as const),
-        ),
-        Effect.catchTag("TxSubmitError", onSubmitFailure),
-        Effect.catchTag("TxConfirmError", onConfirmFailure),
-        Effect.withSpan("handleSignSubmit-merge-tx"),
-      );
-      const submitOutcome = rawSubmitOutcome ?? {
-        status: "submitted",
-      };
-      if (submitOutcome.status === "deferred") {
-        const dueWork = yield* registerMergeNoInlineSubmitDueWork(
-          submitOutcome.defer,
-          nodeConfig,
-          options?.submitSlotSnapshot,
-        );
-        yield* Effect.logInfo(
-          `🔸 Skipping merge after no-inline submit defer (kind=${dueWork.kind},key=${dueWork.key},callerLabel=${dueWork.callerLabel},deferKind=${submitOutcome.defer.kind},current_slot=${dueWork.observedSlot.toString()},due_slot=${dueWork.dueSlot.toString()},wait_ms=${dueWork.waitMs.toString()},slot_source=${dueWork.slotSource},dependency_key=${dueWork.dependencyKey},invalidation_key=${dueWork.invalidationKey},leaseToken=${options?.leaseToken ?? "none"},headerHash=${recomputedHeaderHash}).`,
-        );
-        return {
-          status: "skipped_oldest_block_local_ledger_not_ready",
-          headerHash: recomputedHeaderHash,
-          reason: `no_inline_submit_defer,kind=${submitOutcome.defer.kind},current_slot=${submitOutcome.defer.currentSlot.toString()},target_slot=${submitOutcome.defer.targetSlot.toString()},due_slot=${submitOutcome.defer.dueSlot.toString()},wait_ms=${submitOutcome.defer.waitMs.toString()},slot_source=${submitOutcome.defer.slotSource}`,
-          readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
-          nowUnixTime: Date.now(),
-        } satisfies MergeTxResult;
+      if (options?.assertSubmitAuthority !== undefined) {
+        yield* options.assertSubmitAuthority();
       }
-      yield* Effect.logInfo(
-        "🔸 Merge transaction submitted, updating the db...",
-      );
-
       const finalizeLocalMergeProgram = Effect.gen(function* () {
-        const jobId = `confirmed_merge_finalization:${headerHash.toString(
-          "hex",
-        )}`;
+        const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
+          headerHash.toString("hex"),
+        );
         const projectedDepositEntries =
           yield* DepositsDB.retrieveByProjectedHeaderHash(headerHash);
         const projectedForcedTransactionEntries =
@@ -1350,12 +1323,14 @@ export const buildAndSubmitMergeTx = (
       }).pipe(
         Effect.tapError((error) =>
           MutationJobsDB.markFailed(
-            `confirmed_merge_finalization:${headerHash.toString("hex")}`,
+            MutationJobsDB.confirmedMergeFinalizationJobId(
+              headerHash.toString("hex"),
+            ),
             formatUnknownError(error),
           ).pipe(Effect.catchAll(() => Effect.void)),
         ),
       );
-      yield* finalizeLocalMergeProgram.pipe(
+      const finalizeLocalMergeLogged = finalizeLocalMergeProgram.pipe(
         Effect.tapError((error) =>
           Effect.gen(function* () {
             yield* Metric.increment(mergeLocalFinalizationFailureCounter);
@@ -1371,6 +1346,54 @@ export const buildAndSubmitMergeTx = (
           }),
         ),
       );
+      // Only signing, submission and the L1 confirmation wait stay
+      // interruptible. Once the merge is confirmed, its local finalization
+      // starts at once and runs to completion (or records a failed job) even
+      // if the caller is interrupted meanwhile, e.g. by the L1 control plane's
+      // hold timeout; an interrupted finalization would leave its job running
+      // with no retry path.
+      const submitOutcome = yield* Effect.uninterruptibleMask((restore) =>
+        restore(
+          handleSignSubmit(lucid, txBuilder, submitRecoveryOptions).pipe(
+            Effect.as({ status: "submitted" } as const),
+            Effect.catchTag("NoInlineSubmitDefer", (defer) =>
+              Effect.succeed({ status: "deferred", defer } as const),
+            ),
+            Effect.catchTag("TxSubmitError", onSubmitFailure),
+            Effect.catchTag("TxConfirmError", onConfirmFailure),
+            Effect.withSpan("handleSignSubmit-merge-tx"),
+          ),
+        ).pipe(
+          Effect.map(
+            (rawSubmitOutcome) =>
+              rawSubmitOutcome ?? ({ status: "submitted" } as const),
+          ),
+          Effect.tap((outcome) =>
+            outcome.status === "submitted"
+              ? Effect.logInfo(
+                  "🔸 Merge transaction submitted, updating the db...",
+                ).pipe(Effect.zipRight(finalizeLocalMergeLogged))
+              : Effect.void,
+          ),
+        ),
+      );
+      if (submitOutcome.status === "deferred") {
+        const dueWork = yield* registerMergeNoInlineSubmitDueWork(
+          submitOutcome.defer,
+          nodeConfig,
+          options?.submitSlotSnapshot,
+        );
+        yield* Effect.logInfo(
+          `🔸 Skipping merge after no-inline submit defer (kind=${dueWork.kind},key=${dueWork.key},callerLabel=${dueWork.callerLabel},deferKind=${submitOutcome.defer.kind},current_slot=${dueWork.observedSlot.toString()},due_slot=${dueWork.dueSlot.toString()},wait_ms=${dueWork.waitMs.toString()},slot_source=${dueWork.slotSource},dependency_key=${dueWork.dependencyKey},invalidation_key=${dueWork.invalidationKey},leaseToken=${options?.leaseToken ?? "none"},headerHash=${recomputedHeaderHash}).`,
+        );
+        return {
+          status: "skipped_oldest_block_local_ledger_not_ready",
+          headerHash: recomputedHeaderHash,
+          reason: `no_inline_submit_defer,kind=${submitOutcome.defer.kind},current_slot=${submitOutcome.defer.currentSlot.toString()},target_slot=${submitOutcome.defer.targetSlot.toString()},due_slot=${submitOutcome.defer.dueSlot.toString()},wait_ms=${submitOutcome.defer.waitMs.toString()},slot_source=${submitOutcome.defer.slotSource}`,
+          readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
+          nowUnixTime: Date.now(),
+        } satisfies MergeTxResult;
+      }
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
 
       yield* Metric.increment(mergeBlockCounter).pipe(

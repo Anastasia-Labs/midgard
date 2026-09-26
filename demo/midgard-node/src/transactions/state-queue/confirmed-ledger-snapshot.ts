@@ -134,6 +134,36 @@ const applyDeltaToEntries = (
       }),
   });
 
+/**
+ * Apply one journal's recorded ledger delta to the entries of its base ledger
+ * and check the result against the journal's own expected UTxO root.
+ */
+const applyJournalDelta = (
+  record: PendingBlockFinalizationsDB.Record,
+  baseEntries: readonly Ledger.Entry[],
+  delta: DecodedConfirmedLedgerDelta,
+): Effect.Effect<
+  { readonly entries: readonly Ledger.Entry[]; readonly root: string },
+  DatabaseError
+> =>
+  Effect.gen(function* () {
+    const entries = yield* applyDeltaToEntries(baseEntries, delta);
+    const root = yield* computeRecoveredRoot(entries);
+    const expectedRoot =
+      record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT];
+    if (root !== expectedRoot) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Recovered pending-finalization ledger delta does not match its expected root",
+          cause: `header_hash=${record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")},recovered_root=${root},expected_root=${expectedRoot}`,
+        }),
+      );
+    }
+    return { entries, root };
+  });
+
 const materializeFromBase = <R>({
   record,
   confirmedEntries,
@@ -229,20 +259,11 @@ const materializeFromBase = <R>({
       baseDeltaChain = baseSnapshot.deltaChain;
     }
 
-    const entries = yield* applyDeltaToEntries(baseEntries, delta);
-    const root = yield* computeRecoveredRoot(entries);
-    const expectedRoot =
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT];
-    if (root !== expectedRoot) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Recovered pending-finalization ledger delta does not match its expected root",
-          cause: `header_hash=${headerHashHex},recovered_root=${root},expected_root=${expectedRoot}`,
-        }),
-      );
-    }
+    const { entries, root } = yield* applyJournalDelta(
+      record,
+      baseEntries,
+      delta,
+    );
     return {
       entries,
       baseRoot: recoveredBaseRoot,
@@ -276,6 +297,46 @@ export const materializeConfirmedLedgerDeltaChain = <R>({
       retrieveParent,
       seen: new Set(),
     });
+  });
+
+/**
+ * Fold an ordered run of journals (oldest first) onto an authenticated base
+ * ledger. Each journal's recorded base root must be the running root (the
+ * base ledger's for the first) and each recovered root must equal the
+ * journal's expected root. Pure: the caller loads every journal beforehand.
+ */
+export const materializeLedgerDeltaSuffix = ({
+  baseEntries,
+  baseRoot,
+  records,
+}: {
+  readonly baseEntries: readonly Ledger.Entry[];
+  readonly baseRoot: string;
+  readonly records: readonly PendingBlockFinalizationsDB.Record[];
+}): Effect.Effect<
+  { readonly entries: readonly Ledger.Entry[]; readonly root: string },
+  DatabaseError
+> =>
+  Effect.gen(function* () {
+    let entries = baseEntries;
+    let root = baseRoot;
+    for (const record of records) {
+      const recordedBase =
+        record[PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT];
+      if (recordedBase !== root) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Pending-finalization journal base root does not match the preceding ledger point",
+            cause: `header_hash=${record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")},base_root=${recordedBase},preceding_root=${root}`,
+          }),
+        );
+      }
+      const delta = yield* decodeConfirmedLedgerDelta(record);
+      ({ entries, root } = yield* applyJournalDelta(record, entries, delta));
+    }
+    return { entries, root };
   });
 
 export const materializeConfirmedLedgerSnapshot = (

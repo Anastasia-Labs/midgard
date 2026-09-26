@@ -372,6 +372,14 @@ For deposit confirmation timeouts, use:
 node dist/index.js reconcile-deposit-submission --tx-hash <cardano-tx-hash> --json
 ```
 
+`merge-complete` is `satisfied` only when the header has left the state queue
+and its confirmed-merge local finalization job completed. Its `--repair` merges
+only the oldest queued block, and only under the running node's history
+producer permit. When the permit cannot be taken (a standalone CLI process
+holds no history owner; a node's owner may not be Ready) nothing runs: it
+reports `blocked` with `merge_producer_permit` evidence and points at the
+node's admin `GET /merge`, which answers `503` in the same situation.
+
 If a reconciler reports `ambiguous`, do not blindly repeat the original
 state-changing step. Inspect the emitted evidence and next action first.
 

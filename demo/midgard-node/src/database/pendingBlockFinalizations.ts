@@ -6,7 +6,7 @@ import {
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
   parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { SqlClient } from "@effect/sql";
+import { SqlClient, type Statement } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
@@ -1591,6 +1591,72 @@ export const retrieveByHeaderHash = (
       tableName,
       "Failed to retrieve pending-finalization record by header hash",
     ),
+  );
+
+/**
+ * The newest finalized journal matching `filter`, newest by block window (the
+ * state queue orders blocks by time, so this is chain order), or none.
+ */
+const retrieveNewestFinalizedWhere = (
+  label: string,
+  filter: (sql: SqlClient.SqlClient) => Statement.Fragment,
+): Effect.Effect<Option.Option<Record>, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<RawRow>`SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.STATUS)} = ${Status.Finalized} AND ${filter(sql)}
+      ORDER BY ${sql(Columns.BLOCK_END_TIME)} DESC, ${sql(Columns.CREATED_AT)} DESC
+      LIMIT 1`;
+    return rows.length === 0
+      ? Option.none()
+      : Option.some(yield* retrieveRecord(sql, rows[0]!));
+  }).pipe(
+    Effect.withLogSpan(`${label} ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      `Failed to retrieve finalized pending-finalization record (${label})`,
+    ),
+  );
+
+/**
+ * This node's newest finalized block: under Architecture G the native owner's
+ * durable root is exactly its expected UTxO root, since only this node's own
+ * commits advance that root and a correction rewind abandons what it undoes.
+ */
+export const retrieveNewestFinalized = (): Effect.Effect<
+  Option.Option<Record>,
+  DatabaseError,
+  Database
+> =>
+  retrieveNewestFinalizedWhere("retrieveNewestFinalized", (sql) => sql`TRUE`);
+
+/** The finalized journal for `headerHash`; abandoned or active ones are not. */
+export const retrieveFinalizedByHeaderHash = (
+  headerHash: Buffer,
+): Effect.Effect<Option.Option<Record>, DatabaseError, Database> =>
+  retrieveNewestFinalizedWhere(
+    "retrieveFinalizedByHeaderHash",
+    (sql) => sql`${sql(Columns.HEADER_HASH)} = ${headerHash}`,
+  );
+
+/**
+ * The newest finalized journal whose block ended by `endedBy` and whose
+ * expected UTxO root is `expectedUtxosRoot`: the local ledger point a block
+ * built on a foreign tail started from, when that tail left the ledger at a
+ * root this node had itself reached.
+ */
+export const retrieveNewestFinalizedWithExpectedRoot = ({
+  expectedUtxosRoot,
+  endedBy,
+}: {
+  readonly expectedUtxosRoot: string;
+  readonly endedBy: Date;
+}): Effect.Effect<Option.Option<Record>, DatabaseError, Database> =>
+  retrieveNewestFinalizedWhere(
+    "retrieveNewestFinalizedWithExpectedRoot",
+    (sql) =>
+      sql`${sql(Columns.EXPECTED_UTXOS_ROOT)} = ${expectedUtxosRoot}
+        AND ${sql(Columns.BLOCK_END_TIME)} <= ${endedBy}`,
   );
 
 export const retrieveActiveByStateQueueLeaseToken = (

@@ -1,9 +1,15 @@
 import "./utils.js";
 
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Effect, Either, Option, Ref } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  HistoryProducer,
+  type HistoryProducerPermit,
+  UnownedHistoryFixture,
+} from "../src/services/event-history-producer.js";
 import { Globals, NodeConfig } from "../src/services/index.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
@@ -72,7 +78,11 @@ vi.mock("../src/database/index.js", async () => {
   };
 });
 
-import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
+import {
+  mergeAction,
+  type MergeActionResult,
+  MergeProducerPermitUnavailable,
+} from "../src/fibers/merge.js";
 import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 
 const fakeContracts = {
@@ -178,7 +188,53 @@ const noCandidate = {
   reason: "confirmed_state_link_empty",
 };
 
-const runMergeAction = (force: boolean) => {
+const stubPermit: HistoryProducerPermit = {
+  token: {
+    deploymentIdentity: "33".repeat(32),
+    ownerToken: "stub-owner",
+    generation: "1",
+  },
+  coverage: {
+    bindingDigest: "44".repeat(32),
+    checkpointRevision: "1",
+    point: { id: "55".repeat(32), slot: 1 },
+    snapshotDigest: "66".repeat(32),
+    includedThroughMs: 0,
+  },
+};
+
+const runProducerMock = vi.fn();
+
+/** Stands in for the node's history owner: registers the producer and hands
+ * the work its permit, exactly the contract `runHistoryProducer` relies on. */
+const stubHistoryOwner = {
+  runProducer: <A, E, R>(
+    work: (
+      token: HistoryProducerPermit["token"],
+      assertCurrent: Effect.Effect<void>,
+      coverage: HistoryProducerPermit["coverage"],
+    ) => Effect.Effect<A, E, R>,
+  ) =>
+    Effect.suspend(() => {
+      runProducerMock();
+      return work(stubPermit.token, Effect.void, stubPermit.coverage);
+    }),
+};
+
+type MergeRunOptions = {
+  readonly historyOwner?: "stub" | "none" | { readonly runProducer: unknown };
+  readonly unownedFixture?: boolean;
+  readonly expectedHeaderHash?: string;
+};
+
+const mergeActionProgram = (
+  force: boolean,
+  {
+    historyOwner = "stub",
+    unownedFixture = false,
+    expectedHeaderHash,
+  }: MergeRunOptions = {},
+) => {
   const lucidService = LucidService.make({
     api: {
       unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
@@ -202,15 +258,39 @@ const runMergeAction = (force: boolean) => {
     switchToReferenceScriptWallet: Effect.void,
   });
 
-  return Effect.runPromise(
-    mergeAction(force).pipe(
-      Effect.provideService(LucidService, lucidService),
-      Effect.provideService(MidgardContracts, fakeContracts as never),
-      Effect.provide(Globals.Default),
-      Effect.provide(NodeConfig.layer),
-    ) as Effect.Effect<MergeActionResult, unknown, never>,
-  );
+  return Effect.gen(function* () {
+    const globals = yield* Globals;
+    if (historyOwner !== "none")
+      yield* Ref.set(
+        globals.EVENT_HISTORY_OWNER,
+        (historyOwner === "stub" ? stubHistoryOwner : historyOwner) as never,
+      );
+    const program = mergeAction(force, { expectedHeaderHash });
+    return yield* unownedFixture
+      ? program.pipe(Effect.provideService(UnownedHistoryFixture, true))
+      : program;
+  }).pipe(
+    Effect.provideService(LucidService, lucidService),
+    Effect.provideService(MidgardContracts, fakeContracts as never),
+    Effect.provide(Globals.Default),
+    Effect.provide(NodeConfig.layer),
+  ) as Effect.Effect<MergeActionResult, unknown, never>;
 };
+
+const runMergeAction = (force: boolean, options: MergeRunOptions = {}) =>
+  Effect.runPromise(mergeActionProgram(force, options));
+
+/** A builder that reports the history permit it ran under and merges. */
+const recordPermitAndMerge = (seen: (HistoryProducerPermit | null)[]) =>
+  Effect.gen(function* () {
+    const permit = yield* Effect.serviceOption(HistoryProducer);
+    seen.push(Option.getOrNull(permit));
+    return {
+      status: "merged" as const,
+      headerHash: "aa".repeat(28),
+      txHash: "bb".repeat(32),
+    };
+  });
 
 describe("merge maturity semantic preflight", () => {
   beforeEach(() => {
@@ -222,6 +302,7 @@ describe("merge maturity semantic preflight", () => {
     tryWithLeaseMock.mockReset();
     revalidateMock.mockReset();
     switchToOperatorsMergingWalletMock.mockReset();
+    runProducerMock.mockReset();
 
     fetchStateQueueSnapshotProgramMock.mockImplementation(
       (
@@ -375,5 +456,256 @@ describe("merge maturity semantic preflight", () => {
         leaseToken: "test-lease-token",
       }),
     );
+  });
+});
+
+describe("merge history producer permit", () => {
+  beforeEach(() => {
+    slotAwareDueWorkRegistry.clearAll();
+    for (const mock of [
+      fetchStateQueueSnapshotProgramMock,
+      buildAndSubmitMergeTxMock,
+      captureMergeLocalLedgerGateMock,
+      fetchCanonicalMergeCandidateReadinessMock,
+      tryWithLeaseMock,
+      revalidateMock,
+      switchToOperatorsMergingWalletMock,
+      runProducerMock,
+    ])
+      mock.mockReset();
+    fetchStateQueueSnapshotProgramMock.mockImplementation(
+      (
+        _lucid: unknown,
+        _stateQueueAuthValidator: unknown,
+        reason: StateQueueSnapshotReason,
+      ) => Effect.succeed(makeSnapshot(9, reason)),
+    );
+    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
+      Effect.succeed(makeCandidate("ready")),
+    );
+    captureMergeLocalLedgerGateMock.mockImplementation(() =>
+      Effect.succeed({ status: "ready" as const }),
+    );
+    tryWithLeaseMock.mockImplementation(
+      (
+        _holder: string,
+        run: (token: string) => Effect.Effect<unknown, unknown, unknown>,
+      ) =>
+        Effect.gen(function* () {
+          const value = yield* run("test-lease-token");
+          return { _tag: "Ran" as const, value };
+        }),
+    );
+    revalidateMock.mockImplementation(() => Effect.void);
+  });
+
+  it("runs manual and scheduled merges under the history owner's producer permit", async () => {
+    const seen: (HistoryProducerPermit | null)[] = [];
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      recordPermitAndMerge(seen),
+    );
+
+    const manual = await runMergeAction(true);
+    const scheduled = await runMergeAction(false);
+
+    expect(manual).toMatchObject({ status: "merged", trigger: "manual" });
+    expect(scheduled).toMatchObject({ status: "merged" });
+    expect(runProducerMock).toHaveBeenCalledTimes(2);
+    expect(seen).toEqual([stubPermit, stubPermit]);
+  });
+
+  it("never lets the model fixture bypass an acquired history owner", async () => {
+    const seen: (HistoryProducerPermit | null)[] = [];
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      recordPermitAndMerge(seen),
+    );
+
+    await runMergeAction(true, { unownedFixture: true });
+
+    expect(runProducerMock).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([stubPermit]);
+  });
+
+  it("refuses a merge before any L1 work when no history owner exists", async () => {
+    const outcome = await Effect.runPromise(
+      Effect.either(mergeActionProgram(true, { historyOwner: "none" })),
+    );
+
+    expect(Either.isLeft(outcome)).toBe(true);
+    const left = Either.isLeft(outcome) ? outcome.left : undefined;
+    expect(left).toBeInstanceOf(MergeProducerPermitUnavailable);
+    expect(
+      formatUnknownError((left as MergeProducerPermitUnavailable).cause, {
+        includeCause: true,
+      }),
+    ).toContain("History owner is not initialized");
+    expect(fetchCanonicalMergeCandidateReadinessMock).not.toHaveBeenCalled();
+    expect(tryWithLeaseMock).not.toHaveBeenCalled();
+    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
+  });
+
+  it("reports a registration the owner refuses before the work as permit-unavailable", async () => {
+    const refusal = new Error("history owner is recovering");
+    const outcome = await Effect.runPromise(
+      Effect.either(
+        mergeActionProgram(true, {
+          historyOwner: {
+            runProducer: () => Effect.fail(refusal),
+          },
+        }),
+      ),
+    );
+
+    const left = Either.isLeft(outcome) ? outcome.left : undefined;
+    expect(left).toBeInstanceOf(MergeProducerPermitUnavailable);
+    expect(
+      formatUnknownError((left as MergeProducerPermitUnavailable).cause, {
+        includeCause: true,
+      }),
+    ).toContain("history owner is recovering");
+    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the merge's own failure when the owner's trailing currency check also fails", async () => {
+    const superseded = new Error("History producer was superseded");
+    const trailingGuardOwner = {
+      runProducer: <A, E, R>(
+        work: (
+          token: HistoryProducerPermit["token"],
+          assertCurrent: Effect.Effect<void>,
+          coverage: HistoryProducerPermit["coverage"],
+        ) => Effect.Effect<A, E, R>,
+      ) =>
+        work(stubPermit.token, Effect.void, stubPermit.coverage).pipe(
+          Effect.zipRight(Effect.fail(superseded)),
+        ),
+    };
+    const submitError = new Error("submit refused by the ledger");
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      Effect.fail(submitError),
+    );
+
+    const failed = await Effect.runPromise(
+      Effect.either(
+        mergeActionProgram(true, { historyOwner: trailingGuardOwner }),
+      ),
+    );
+    expect(Either.isLeft(failed) && failed.left).toBe(submitError);
+
+    // A merge that succeeded still reports the trailing check's failure.
+    const seen: (HistoryProducerPermit | null)[] = [];
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      recordPermitAndMerge(seen),
+    );
+    const succeeded = await Effect.runPromise(
+      Effect.either(
+        mergeActionProgram(true, { historyOwner: trailingGuardOwner }),
+      ),
+    );
+    expect(
+      formatUnknownError(Either.isLeft(succeeded) && succeeded.left, {
+        includeCause: true,
+      }),
+    ).toContain("History producer was superseded");
+    expect(seen).toEqual([stubPermit]);
+  });
+
+  it("hands the builder a pre-submit check of the lease and the producer permit", async () => {
+    let assertSubmitAuthority:
+      | (() => Effect.Effect<void, unknown, never>)
+      | undefined;
+    buildAndSubmitMergeTxMock.mockImplementation(
+      (
+        _lucid: unknown,
+        _fetchConfig: unknown,
+        _contracts: unknown,
+        options: {
+          readonly assertSubmitAuthority?: () => Effect.Effect<
+            void,
+            unknown,
+            never
+          >;
+        },
+      ) => {
+        assertSubmitAuthority = options.assertSubmitAuthority;
+        return recordPermitAndMerge([]);
+      },
+    );
+    await runMergeAction(true);
+    expect(assertSubmitAuthority).toBeDefined();
+    const check = assertSubmitAuthority!;
+
+    // A lost lease refuses before the permit is consulted.
+    revalidateMock.mockImplementation(() =>
+      Effect.fail(new Error("state-queue lease lost")),
+    );
+    const leaseLost = await Effect.runPromise(Effect.either(check()));
+    expect(
+      formatUnknownError(Either.isLeft(leaseLost) && leaseLost.left, {
+        includeCause: true,
+      }),
+    ).toContain("state-queue lease lost");
+    expect(revalidateMock).toHaveBeenLastCalledWith("test-lease-token");
+
+    // With the lease held, the check still needs a producer permit.
+    revalidateMock.mockImplementation(() => Effect.void);
+    const noPermit = await Effect.runPromise(Effect.either(check()));
+    expect(
+      formatUnknownError(Either.isLeft(noPermit) && noPermit.left, {
+        includeCause: true,
+      }),
+    ).toContain("Missing producer permit");
+  });
+
+  it("keeps a builder failure's own type across the permit registration", async () => {
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      Effect.fail(new Error("submit refused by the ledger")),
+    );
+
+    const outcome = await Effect.runPromise(
+      Effect.either(mergeActionProgram(true)),
+    );
+
+    expect(Either.isLeft(outcome) && outcome.left).toEqual(
+      new Error("submit refused by the ledger"),
+    );
+  });
+
+  it("merges a targeted header only while it is the oldest queued block", async () => {
+    const seen: (HistoryProducerPermit | null)[] = [];
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      recordPermitAndMerge(seen),
+    );
+    const oldest = makeCandidate("ready").readiness.headerHash;
+
+    const other = await runMergeAction(true, {
+      expectedHeaderHash: "bb".repeat(28),
+    });
+    expect(other).toMatchObject({
+      status: "skipped_merge_candidate_changed",
+      headerHash: oldest,
+      reason: `expected_header=${"bb".repeat(28)},oldest_candidate=${oldest}`,
+    });
+    expect(tryWithLeaseMock).not.toHaveBeenCalled();
+    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
+
+    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
+      Effect.succeed(noCandidate),
+    );
+    expect(
+      await runMergeAction(true, { expectedHeaderHash: oldest }),
+    ).toMatchObject({
+      status: "skipped_merge_candidate_changed",
+      reason: `expected_header=${oldest},oldest_candidate=${noCandidate.reason}`,
+    });
+    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
+
+    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
+      Effect.succeed(makeCandidate("ready")),
+    );
+    expect(
+      await runMergeAction(true, { expectedHeaderHash: oldest }),
+    ).toMatchObject({ status: "merged" });
+    expect(seen).toEqual([stubPermit]);
   });
 });

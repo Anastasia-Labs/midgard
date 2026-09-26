@@ -84,6 +84,43 @@ export type LeaseInspection = {
   readonly pendingFinalizations: readonly PendingFinalizationLeaseInspection[];
 };
 
+const encodeLeaseJson = (lease: Entry | undefined, now: Date = new Date()) =>
+  lease === undefined
+    ? null
+    : (() => {
+        const expiresAt = lease[Columns.EXPIRES_AT];
+        const remainingMs = expiresAt.getTime() - now.getTime();
+        return {
+          token: lease[Columns.TOKEN],
+          holder: lease[Columns.HOLDER],
+          status: lease[Columns.STATUS],
+          acquiredAt: lease[Columns.ACQUIRED_AT].toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          releasedAt: lease[Columns.RELEASED_AT]?.toISOString() ?? null,
+          lastError: lease[Columns.LAST_ERROR] ?? null,
+          remainingMs,
+          expired: remainingMs < 0,
+          blockedUntil: expiresAt.toISOString(),
+        };
+      })();
+
+/** JSON-safe rendering of a lease inspection, for operator surfaces. */
+export const encodeInspectionJson = (inspection: LeaseInspection) => ({
+  status: inspection.activeLease === undefined ? "idle" : "busy",
+  dbNow: inspection.dbNow.toISOString(),
+  activeLease: encodeLeaseJson(inspection.activeLease, inspection.dbNow),
+  pendingFinalizations: inspection.pendingFinalizations.map((entry) => ({
+    headerHash: entry.headerHash,
+    submittedTxHash: entry.submittedTxHash,
+    status: entry.status,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  })),
+  recentLeases: inspection.recentLeases.map((lease) =>
+    encodeLeaseJson(lease, inspection.dbNow),
+  ),
+});
+
 const normalizeTtlMs = (ttlMs: number | undefined): number =>
   Math.max(1, Math.floor(ttlMs ?? DEFAULT_TTL_MS));
 

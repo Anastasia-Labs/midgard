@@ -862,7 +862,10 @@ reconcile
   .command("merge-complete")
   .description("Reconcile merge completion for a committed block header")
   .requiredOption("--header-hash <hex>", "28-byte block header hash")
-  .option("--repair", "Trigger the existing idempotent merge action if queued")
+  .option(
+    "--repair",
+    "Merge the header if it is the oldest queued block; refused without the running node's history producer permit (use its admin GET /merge)",
+  )
   .option("--json", "Print machine-readable JSON output", true)
   .action(
     async (options: {
@@ -2569,7 +2572,7 @@ program
 program
   .command("mpf-audit")
   .description(
-    "Recompute the confirmed-ledger MPF root and halt commits on divergence",
+    "Recompute the ledger MPF root at the confirmed and committed-tip points and halt commits when the persisted root does not match",
   )
   .option(
     "--acknowledge-clean",
@@ -2586,7 +2589,15 @@ program
         result.diverged
           ? Effect.fail(
               new Error(
-                `MPF audit divergence: persisted=${result.persistedRoot},recomputed=${result.recomputedRoot}`,
+                `MPF audit divergence: persisted=${result.persistedRoot},confirmed=${result.confirmedRoot},tip=${result.tipRoot ?? "unavailable"}${
+                  result.tipIntegrityFailure === undefined
+                    ? ""
+                    : `,tip_integrity_failure=${result.tipIntegrityFailure}`
+                }${
+                  result.tipUnverifiable === undefined
+                    ? ""
+                    : `,tip_journal_root=${result.tipJournalRoot ?? "unavailable"},tip_unverifiable=${result.tipUnverifiable}`
+                }`,
               ),
             )
           : Effect.succeed(result),

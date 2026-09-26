@@ -70,6 +70,28 @@ export const recordLedgerAudit = ({
     sqlErrorToDatabaseError(tableName, "Failed to record ledger MPF audit"),
   );
 
+/**
+ * Record an audit that could neither confirm nor refute the persisted root: it
+ * only advances the audit cadence, leaving the recorded root, its aggregate and
+ * both divergence flags untouched.
+ */
+export const recordLedgerAuditAttempt: Effect.Effect<
+  void,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`UPDATE ${sql(tableName)} SET
+    last_audit_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+    WHERE store_name = 'ledger'`;
+}).pipe(
+  sqlErrorToDatabaseError(
+    tableName,
+    "Failed to record ledger MPF audit attempt",
+  ),
+);
+
 export const acquireLedgerStoreLease = ({
   owner,
   ttlMs,

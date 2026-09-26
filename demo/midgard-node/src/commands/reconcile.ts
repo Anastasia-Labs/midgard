@@ -27,7 +27,7 @@ import {
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { reconcileVisibleDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
-import { mergeAction } from "../fibers/merge.js";
+import { mergeAction, type MergeActionResult } from "../fibers/merge.js";
 import { projectDepositsToMempoolLedger } from "../fibers/project-deposits-to-mempool-ledger.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
@@ -1270,6 +1270,123 @@ export const reconcileLocalFinalizationProgram = ({
     });
   });
 
+const confirmedMergeFinalizationJobEvidence = (
+  jobId: string,
+  job: MutationJobsDB.Entry | undefined,
+): ReconciliationEvidence =>
+  evidence(
+    "confirmed_merge_finalization_job",
+    job === undefined
+      ? { present: false, jobId }
+      : {
+          present: true,
+          jobId,
+          status: job[MutationJobsDB.Columns.STATUS],
+          attempts: job[MutationJobsDB.Columns.ATTEMPTS],
+          lastError: job[MutationJobsDB.Columns.LAST_ERROR],
+          updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
+        },
+  );
+
+export type MergeCompletionObservation = {
+  readonly canonicalHeaders: readonly string[];
+  readonly canonical: boolean;
+  readonly txCount: number;
+  readonly job: MutationJobsDB.Entry | undefined;
+  readonly journal: Option.Option<PendingBlockFinalizationsDB.Record>;
+};
+
+const observeMergeCompletion = (headerHash: Buffer, jobId: string) =>
+  Effect.gen(function* () {
+    const canonicalHeaders = yield* fetchCanonicalStateQueueHeaderHashes;
+    const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+    return {
+      canonicalHeaders,
+      canonical: canonicalHeaders.includes(headerHash.toString("hex")),
+      txCount: txHashes.length,
+      job: yield* MutationJobsDB.retrieveByJobId(jobId),
+      journal:
+        yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash),
+    } satisfies MergeCompletionObservation;
+  });
+
+/**
+ * A merge is complete only when the header has left the state queue AND its
+ * confirmed-merge local finalization job completed. That job clears the
+ * block's rows in the same transaction that folds its ledger delta, so rows
+ * that remain after the header left the queue mean the local finalization did
+ * not happen; an absent row set alone proves nothing, because a block without
+ * L2 transactions never had rows.
+ */
+export const mergeCompletionVerdict = (
+  observed: MergeCompletionObservation,
+): {
+  readonly status: ReconciliationStatus;
+  readonly nextAction: string | null;
+} => {
+  if (observed.canonical)
+    return {
+      status: "pending",
+      nextAction:
+        "HeaderV1 is still queued; run with --repair only after DA/finality gates are satisfied.",
+    };
+  const jobStatus = observed.job?.[MutationJobsDB.Columns.STATUS];
+  if (jobStatus === MutationJobsDB.Status.Completed)
+    return observed.txCount === 0
+      ? { status: "satisfied", nextAction: null }
+      : {
+          status: "ambiguous",
+          nextAction:
+            "The confirmed-merge finalization job completed but block rows for this header exist again; inspect local_block_rows before claiming merge complete.",
+        };
+  if (observed.job !== undefined)
+    return {
+      status: "blocked",
+      nextAction: `The header left the state queue but its confirmed-merge local finalization is ${String(jobStatus)}; there is no automatic retry, so the node refuses to start and the final merge stays blocked until an operator recovers it.`,
+    };
+  return {
+    status: "ambiguous",
+    nextAction:
+      "The header is not queued and this database holds no confirmed-merge finalization job for it: it was merged before this database existed, local finalization failed before the job started, or it was removed by state-queue correction; inspect pending_block_finalization.",
+  };
+};
+
+const mergeCompletionEvidence = (
+  jobId: string,
+  observed: MergeCompletionObservation,
+): readonly ReconciliationEvidence[] => [
+  evidence("canonical_state_queue", {
+    containsHeader: observed.canonical,
+    headers: observed.canonicalHeaders,
+  }),
+  evidence("local_block_rows", { txCount: observed.txCount }),
+  confirmedMergeFinalizationJobEvidence(jobId, observed.job),
+  optionRecordEvidence(observed.journal),
+];
+
+/** The merge outcome as plain JSON: the reconciliation artifact rejects the
+ * raw state-queue snapshot and absent optional fields. */
+const mergeResultEvidence = (
+  mergeResult: MergeActionResult,
+): ReconciliationEvidence =>
+  evidence(
+    "merge_result",
+    mergeResult.status === "merged"
+      ? {
+          status: mergeResult.status,
+          trigger: mergeResult.trigger,
+          headerHash: mergeResult.headerHash,
+          txHash: mergeResult.txHash,
+          postMergeQueueNodeCount:
+            mergeResult.postMergeSnapshot.topology.parsedNodeCount,
+        }
+      : Object.fromEntries(
+          Object.entries(mergeResult).filter(
+            ([, value]) => value !== undefined,
+          ),
+        ),
+  );
+
 export const reconcileMergeCompleteProgram = ({
   headerHash,
   repair,
@@ -1283,54 +1400,97 @@ export const reconcileMergeCompleteProgram = ({
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");
-    let canonicalHeaders = yield* fetchCanonicalStateQueueHeaderHashes;
-    let txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+    const target = { headerHash: headerHashHex };
+    const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(headerHashHex);
+    const observed = yield* observeMergeCompletion(headerHash, jobId);
     const repairActions: string[] = [];
-    if (repair && canonicalHeaders.includes(headerHashHex)) {
-      const mergeResult = yield* mergeAction(true);
+    if (repair && observed.canonical) {
+      // The state queue merges strictly oldest-first, so only the oldest queued
+      // block can be the target of a merge.
+      const oldest = observed.canonicalHeaders[0];
+      if (oldest !== headerHashHex) {
+        return result({
+          milestone: "merge-complete",
+          target,
+          status: "blocked",
+          evidence: mergeCompletionEvidence(jobId, observed),
+          repairActions,
+          nextAction: `Only the oldest queued block can be merged; reconcile merge-complete for ${String(oldest)} first.`,
+        });
+      }
+      const attempt = yield* mergeAction(true, {
+        expectedHeaderHash: headerHashHex,
+      }).pipe(
+        Effect.map((mergeResult) => ({ _tag: "Ran" as const, mergeResult })),
+        Effect.catchTag("MergeProducerPermitUnavailable", (unavailable) =>
+          Effect.succeed({ _tag: "PermitUnavailable" as const, unavailable }),
+        ),
+      );
+      if (attempt._tag === "PermitUnavailable") {
+        // Nothing ran: no L1 work and no local write happened.
+        return result({
+          milestone: "merge-complete",
+          target,
+          status: "blocked",
+          evidence: [
+            evidence("merge_producer_permit", {
+              available: false,
+              reason: `${attempt.unavailable.message}: ${formatUnknownError(
+                attempt.unavailable.cause,
+                {
+                  includeCause: true,
+                },
+              )}`,
+            }),
+            ...mergeCompletionEvidence(jobId, observed),
+          ],
+          repairActions,
+          nextAction:
+            "A merge finalizes history rows and needs the running node's history producer permit. A standalone process cannot hold it; on the running node it is unavailable until the history owner is Ready. Trigger the merge through the node's admin GET /merge endpoint, which merges the oldest queued block, once its history owner is Ready.",
+        });
+      }
+      const { mergeResult } = attempt;
       repairActions.push("merge_action");
-      canonicalHeaders = yield* fetchCanonicalStateQueueHeaderHashes;
-      txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+      const after = yield* observeMergeCompletion(headerHash, jobId);
+      const verdict = mergeCompletionVerdict(after);
       return result({
         milestone: "merge-complete",
-        target: { headerHash: headerHashHex },
-        status: canonicalHeaders.includes(headerHashHex)
-          ? "pending"
-          : "repaired",
+        target,
+        status:
+          verdict.status === "satisfied"
+            ? "repaired"
+            : after.canonical
+              ? "pending"
+              : "failed",
         evidence: [
-          evidence("merge_result", mergeResult as Record<string, unknown>),
-          evidence("canonical_state_queue", {
-            containsHeader: canonicalHeaders.includes(headerHashHex),
-            headers: canonicalHeaders,
-          }),
-          evidence("local_block_rows", { txCount: txHashes.length }),
+          mergeResultEvidence(mergeResult),
+          ...mergeCompletionEvidence(jobId, after),
         ],
         repairActions,
-        nextAction: canonicalHeaders.includes(headerHashHex)
-          ? "Merge did not remove the header yet; inspect merge result and state-queue lease."
-          : null,
+        nextAction:
+          verdict.status === "satisfied"
+            ? null
+            : after.canonical
+              ? "Merge did not remove the header yet; inspect merge_result and the state-queue lease."
+              : verdict.nextAction,
       });
     }
 
-    const canonical = canonicalHeaders.includes(headerHashHex);
+    const verdict = mergeCompletionVerdict(observed);
     return result({
       milestone: "merge-complete",
-      target: { headerHash: headerHashHex },
-      status: !canonical && txHashes.length > 0 ? "satisfied" : "pending",
+      target,
+      status: verdict.status,
       evidence: [
-        evidence("canonical_state_queue", {
-          containsHeader: canonical,
-          headers: canonicalHeaders,
-        }),
-        evidence("local_block_rows", { txCount: txHashes.length }),
+        ...mergeCompletionEvidence(jobId, observed),
         evidence(
           "state_queue_lease",
-          yield* StateQueueMutationLeasesDB.inspect(),
+          StateQueueMutationLeasesDB.encodeInspectionJson(
+            yield* StateQueueMutationLeasesDB.inspect(),
+          ),
         ),
       ],
       repairActions,
-      nextAction: canonical
-        ? "HeaderV1 is still queued; run with --repair only after DA/finality gates are satisfied."
-        : "Local block rows are missing for this header; inspect local finalization before claiming merge complete.",
+      nextAction: verdict.nextAction,
     });
   });

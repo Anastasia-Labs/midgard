@@ -118,6 +118,23 @@ export const markFailed = (
     ),
   );
 
+/** The job that finalizes one L1-confirmed merge into the local database. */
+export const confirmedMergeFinalizationJobId = (
+  headerHashHex: string,
+): string => `${Kind.ConfirmedMergeFinalization}:${headerHashHex}`;
+
+export const retrieveByJobId = (
+  jobId: string,
+): Effect.Effect<Entry | undefined, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.JOB_ID)} = ${jobId}`;
+    return rows[0];
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to retrieve local mutation job"),
+  );
+
 export const retrieveUnfinished: Effect.Effect<
   readonly Entry[],
   DatabaseError,

@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
-import { Effect, Option, Ref, Schedule } from "effect";
+import { Data, Effect, Either, Option, Ref, Schedule } from "effect";
 
 import {
   MempoolDB,
@@ -9,7 +9,11 @@ import {
   TxAdmissionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { runHistoryProducer } from "../services/event-history-producer.js";
+import {
+  runHistoryProducer,
+  UnownedHistoryFixture,
+  withHistoryWrite,
+} from "../services/event-history-producer.js";
 import {
   Database,
   Globals,
@@ -249,7 +253,8 @@ const changedCandidateResult = ({
  * explicit recovery/administrative flows.
  */
 const mergeActionWithL1ControlPlaneHeld = (
-  force: boolean = false,
+  force: boolean,
+  expectedHeaderHash: string | undefined,
 ): Effect.Effect<
   MergeActionResult,
   | SDK.CmlDeserializationError
@@ -322,6 +327,30 @@ const mergeActionWithL1ControlPlaneHeld = (
       fetchConfig,
       contracts,
     );
+    if (
+      expectedHeaderHash !== undefined &&
+      (preLeaseCandidate.status !== "candidate" ||
+        preLeaseCandidate.readiness.headerHash !== expectedHeaderHash)
+    ) {
+      // A targeted merge may only fold the block it names. The leased
+      // candidate-identity recheck below then binds the merged block to this
+      // pre-lease candidate.
+      const reason = `expected_header=${expectedHeaderHash},oldest_candidate=${
+        preLeaseCandidate.status === "candidate"
+          ? preLeaseCandidate.readiness.headerHash
+          : preLeaseCandidate.reason
+      }`;
+      yield* Effect.logInfo(
+        `🔸 Skipping targeted merge because the oldest block is not the target (${reason}).`,
+      );
+      return {
+        status: "skipped_merge_candidate_changed",
+        reason,
+        ...(preLeaseCandidate.status === "candidate"
+          ? { headerHash: preLeaseCandidate.readiness.headerHash }
+          : {}),
+      } satisfies MergeActionResult;
+    }
     if (
       preLeaseCandidate.status === "candidate" &&
       preLeaseCandidate.readiness.status !== "ready"
@@ -487,10 +516,15 @@ const mergeActionWithL1ControlPlaneHeld = (
             {
               bypassQueueLengthGuard: preflight.bypassQueueLengthGuard,
               leaseToken,
-              revalidateMutationLease: () =>
-                StateQueueMutationLeasesDB.revalidate(
-                  leaseToken,
-                ) as Effect.Effect<void, unknown, never>,
+              // The permit was proven at registration, before an unbounded
+              // wait for the L1 control plane; history recovery may have
+              // revoked it since. Re-prove it under the lease right before
+              // the transaction leaves, since the local finalization after
+              // the L1 confirmation cannot write without it.
+              assertSubmitAuthority: () =>
+                StateQueueMutationLeasesDB.revalidate(leaseToken).pipe(
+                  Effect.zipRight(withHistoryWrite(Effect.void)),
+                ),
               referenceScriptsAddress: lucid.referenceScriptsAddress,
               submitSlotSnapshot: lucid.submitSlotSnapshot,
             },
@@ -559,25 +593,119 @@ const mergeActionWithL1ControlPlaneHeld = (
   });
 
 /**
- * Runs one merge attempt under the process-wide L1 provider permit. Keeping
- * the permit at this exported boundary serializes scheduled, manual, and
- * reconciliation-triggered merges without requiring callers to remember a
- * second wrapper.
+ * The merge could not take the history producer permit, so none of its work
+ * ran: no L1 read, no transaction, no local write. A standalone process (no
+ * history owner) and a node whose history owner is not Ready both land here.
  */
-export const mergeAction = (force: boolean = false) =>
+export class MergeProducerPermitUnavailable extends Data.TaggedError(
+  "MergeProducerPermitUnavailable",
+)<{
+  readonly message: string;
+  readonly cause: unknown;
+}> {}
+
+/**
+ * Runs `work` under the history producer permit. A merge finalizes locally by
+ * writing history rows (confirmed ledger, block rows, deposit/withdrawal/forced
+ * statuses) and every such write requires a registered producer.
+ *
+ * With a history owner in `Globals` the work always registers with it, even
+ * when the caller already holds a permit, since producer registration nests.
+ * Without an owner, only the explicit model-fixture capability runs the work
+ * unregistered (its writes still pass `withHistoryWrite`'s fixture gate).
+ *
+ * A registration that refuses before the work starts fails with
+ * `MergeProducerPermitUnavailable`. Once the work ran, its own failure wins,
+ * with its type, even over a supersession found by the owner's trailing
+ * currency check; a successful work whose trailing check fails reports that
+ * check's failure.
+ */
+const withMergeHistoryProducer = <A, E, R>(
+  work: Effect.Effect<A, E, R>,
+): Effect.Effect<
+  A,
+  E | DatabaseError | MergeProducerPermitUnavailable,
+  R | Globals | Database
+> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
-    if (force) {
-      return yield* withL1ControlPlane(
-        globals,
-        { scope: "state_queue_merge", maxHoldMs: 180_000 },
-        mergeActionWithL1ControlPlaneHeld(true),
+    const owner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
+    if (owner === undefined) {
+      const fixture = yield* Effect.serviceOption(UnownedHistoryFixture);
+      if (Option.isSome(fixture)) return yield* work;
+    }
+    const ran = yield* Ref.make<Option.Option<Either.Either<A, E>>>(
+      Option.none(),
+    );
+    const registration = yield* runHistoryProducer(
+      Effect.either(work).pipe(
+        Effect.tap((outcome) => Ref.set(ran, Option.some(outcome))),
+      ),
+    ).pipe(Effect.either);
+    const outcome = yield* Ref.get(ran);
+    if (Option.isNone(outcome)) {
+      return yield* Effect.fail(
+        new MergeProducerPermitUnavailable({
+          message:
+            "The merge needs the history producer permit, which this process could not take",
+          cause: Either.isLeft(registration)
+            ? registration.left
+            : "registration returned without running the merge",
+        }),
       );
     }
+    if (Either.isLeft(outcome.value))
+      return yield* Effect.fail(outcome.value.left);
+    if (Either.isLeft(registration))
+      return yield* Effect.fail(registration.left);
+    return outcome.value.right;
+  });
+
+export type MergeActionOptions = {
+  /**
+   * Merge only if the oldest queued block is this header; otherwise skip with
+   * `skipped_merge_candidate_changed` without building a transaction.
+   */
+  readonly expectedHeaderHash?: string;
+};
+
+/**
+ * The single entry point for every merge trigger: the scheduled fiber, the
+ * admin `GET /merge` route and `reconcile merge-complete --repair`.
+ *
+ * It holds the history producer permit for the whole attempt, so no caller can
+ * reach the local finalization writes without it, and it runs under the
+ * process-wide L1 control plane, so scheduled and manual merges in one process
+ * are serialized. The state-queue mutation lease taken inside additionally
+ * serializes merges against every other process sharing the database.
+ */
+export const mergeAction = (
+  force: boolean = false,
+  { expectedHeaderHash }: MergeActionOptions = {},
+) =>
+  withMergeHistoryProducer(
+    Effect.gen(function* () {
+      const globals = yield* Globals;
+      yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
+      if (force) {
+        return yield* withL1ControlPlane(
+          globals,
+          { scope: "state_queue_merge", maxHoldMs: 180_000 },
+          mergeActionWithL1ControlPlaneHeld(true, expectedHeaderHash),
+        );
+      }
+      return yield* scheduledMergeAttempt(globals, expectedHeaderHash);
+    }),
+  );
+
+const scheduledMergeAttempt = (
+  globals: Globals,
+  expectedHeaderHash: string | undefined,
+) =>
+  Effect.gen(function* () {
     const attempt = yield* withScheduledMergeControlPlaneWait({
       globals,
-      effect: mergeActionWithL1ControlPlaneHeld(false),
+      effect: mergeActionWithL1ControlPlaneHeld(false, expectedHeaderHash),
     });
     if (Option.isSome(attempt)) {
       return attempt.value;
@@ -605,7 +733,6 @@ export const mergeFiber = (
   Effect.gen(function* () {
     yield* Effect.logInfo("🟠 Merge fiber started.");
     const action = mergeAction().pipe(
-      runHistoryProducer,
       Effect.withSpan("merge-confirmed-state-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );
