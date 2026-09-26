@@ -2,7 +2,7 @@ import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { CommitteeService } from "../src/committee-service.js";
 import type { CommitteeConfig } from "../src/config.js";
@@ -46,10 +46,10 @@ import {
   validateDaSignerMembership,
 } from "../src/signer.js";
 import {
-  DECISION_EFFECT_PENDING_LEASE_MS,
   JsonFileCommitteeStore,
   UNKNOWN_STATE_QUEUE_STATUS,
 } from "../src/store.js";
+import { PostgresCommitteeStore } from "../src/store/postgres.js";
 import {
   createCommitteeTickRunner,
   L1_VIEW_UNAVAILABLE_EXIT_CODE,
@@ -63,6 +63,10 @@ import {
   tempDir,
 } from "./helpers.js";
 import { withFinalSnapshot } from "./helpers/final-snapshot.js";
+import {
+  postgresTestDatabases,
+  terminateInstanceLockSessions,
+} from "./helpers/postgres-database.js";
 import {
   type ChainHeader,
   createStateQueueChain,
@@ -81,6 +85,12 @@ const openJsonCommitteeStore = async (
 afterEach(async () => {
   await Promise.all([...openStores].map(async (store) => store.close()));
   openStores.clear();
+});
+
+const postgresDatabases = postgresTestDatabases("committee_service");
+
+afterAll(async () => {
+  await postgresDatabases.dropAll();
 });
 
 type CommitmentConfig = Pick<
@@ -333,7 +343,7 @@ describe("CommitteeService", () => {
     });
   });
 
-  it("durably begins signature effects before publish and replays one deterministic effect after an acknowledgement crash", async () => {
+  it("durably begins signature effects before publish and replays one deterministic effect immediately after an acknowledgement crash", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "61";
@@ -455,8 +465,6 @@ describe("CommitteeService", () => {
           return "posted";
         },
       },
-      now: () =>
-        new Date(Date.now() + DECISION_EFFECT_PENDING_LEASE_MS + 1_000),
     });
     await restarted.initialize();
     await expect(restarted.tick()).resolves.toMatchObject({
@@ -477,7 +485,131 @@ describe("CommitteeService", () => {
     ]);
   });
 
-  it("allows only one committee node worker to own a pending external effect", async () => {
+  it("republishes at once, on a Postgres store, the signature a crashed process left pending mid-publish", async () => {
+    const dir = await tempDir();
+    const database = await postgresDatabases.create();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "64";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const stateQueueProvider = withFinalSnapshot({
+      fetchStateQueueNodes: async () => [
+        makeObservedNode({ header, headerHash, depth: 10 }),
+      ],
+    });
+    const publishedWitnesses: string[] = [];
+    let lockLost!: () => void;
+    const lost = new Promise<void>((resolve) => {
+      lockLost = resolve;
+    });
+    const crashedStore = await PostgresCommitteeStore.open(database.url, {
+      onInstanceLockLost: () => lockLost(),
+    });
+    let crashedStoreOpen = true;
+    let restartedStore: PostgresCommitteeStore | undefined;
+    try {
+      let enteredPublish!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enteredPublish = resolve;
+      });
+      const crashed = new CommitteeService({
+        config: configured,
+        store: crashedStore,
+        stateQueueProvider,
+        payloadSource: payloadSourceFromBytes(payloadCbor),
+        signer,
+        signerValidation,
+        coordinator: {
+          // The process dies inside the publish: it never returns.
+          publishSignature: async (signature) => {
+            publishedWitnesses.push(signature.signatureWitness);
+            enteredPublish();
+            return new Promise<never>(() => undefined);
+          },
+        },
+      });
+      await crashed.initialize();
+      void crashed.tick().catch(() => undefined);
+      await entered;
+      await expect(
+        crashedStore.listDecisionOutbox(headerHash),
+      ).resolves.toMatchObject([
+        { effectKind: "signature_publish", status: "pending", attemptCount: 1 },
+      ]);
+      const terminated = await terminateInstanceLockSessions(database);
+      if (terminated > 0) {
+        await lost;
+      }
+      crashedStoreOpen = false;
+      await crashedStore.close();
+
+      restartedStore = await PostgresCommitteeStore.open(database.url);
+      const restarted = new CommitteeService({
+        config: configured,
+        store: restartedStore,
+        stateQueueProvider,
+        payloadSource: failPayloadSource(
+          "durable local signature must suppress payload refetch",
+        ),
+        signer,
+        signerValidation,
+        coordinator: {
+          publishSignature: async (signature) => {
+            publishedWitnesses.push(signature.signatureWitness);
+            return "posted";
+          },
+        },
+      });
+      await restarted.initialize();
+      await expect(restarted.tick()).resolves.toMatchObject({
+        signedHeaders: 0,
+        skippedHeaders: 1,
+        errors: [],
+      });
+      expect(publishedWitnesses).toHaveLength(2);
+      expect(new Set(publishedWitnesses)).toHaveLength(1);
+      await expect(
+        restartedStore.listDecisionOutbox(headerHash),
+      ).resolves.toMatchObject([
+        {
+          effectKind: "signature_publish",
+          status: "published",
+          attemptCount: 2,
+        },
+      ]);
+      await expect(restarted.readinessSnapshot()).resolves.toMatchObject({
+        scanner: { status: "ok", errors: [] },
+      });
+      expect(terminated).toBe(1);
+    } finally {
+      if (crashedStoreOpen) {
+        await crashedStore.close();
+      }
+      await restartedStore?.close();
+    }
+  });
+
+  it("defers, without failing the tick, an external effect whose attempt another worker still runs", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "62";
@@ -541,16 +673,160 @@ describe("CommitteeService", () => {
     await second.initialize();
     const firstTick = first.tick();
     await entered;
-    await expect(second.tick()).rejects.toThrow(
-      /pending attempt lease has not expired/u,
-    );
+    await expect(second.tick()).resolves.toMatchObject({
+      signedHeaders: 0,
+      skippedHeaders: 1,
+      errors: [],
+    });
     expect(publishCalls).toBe(1);
+    await expect(store.listDecisionOutbox(headerHash)).resolves.toMatchObject([
+      { effectKind: "signature_publish", status: "pending", attemptCount: 1 },
+    ]);
     releasePublish();
     await expect(firstTick).resolves.toMatchObject({
       signedHeaders: 1,
       errors: [],
     });
     expect(publishCalls).toBe(1);
+  });
+
+  it("processes every other header of a tick in which one effect is deferred, and stays ready", async () => {
+    const dir = await tempDir();
+    const fixtures = [await makePayloadFixture(3), await makePayloadFixture(2)];
+    const seed = "00".repeat(31) + "63";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const store = await openJsonCommitteeStore(dir);
+    const nodes = fixtures.map(({ header, headerHash }, index) =>
+      makeObservedNode({
+        header,
+        headerHash,
+        depth: 10,
+        outRef: `${(0xab + index).toString(16).repeat(32)}#0`,
+      }),
+    );
+    const payloadSource: DaPayloadSource = {
+      fetchPayloadCandidates: async (headerHash) => {
+        const fixture = fixtures.find(
+          (candidate) => candidate.headerHash === headerHash,
+        );
+        if (fixture === undefined) {
+          throw new Error(`no payload fixture for ${headerHash}`);
+        }
+        return {
+          ok: true,
+          candidates: [
+            {
+              sourcePeerId: "fixture-peer",
+              payloadCbor: fixture.payloadCbor,
+              payloadSchemaVersion: 1,
+            },
+          ],
+          attempts: [],
+        };
+      },
+    };
+    const published: string[] = [];
+    let blockedHeader: string | undefined;
+    let enteredPublish!: () => void;
+    let releasePublish!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enteredPublish = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      releasePublish = resolve;
+    });
+    const events: Record<string, unknown>[] = [];
+    const service = () =>
+      new CommitteeService({
+        config: configured,
+        store,
+        stateQueueProvider: withFinalSnapshot({
+          fetchStateQueueNodes: async () => nodes,
+        }),
+        payloadSource,
+        signer,
+        signerValidation,
+        coordinator: {
+          publishSignature: async (signature) => {
+            published.push(signature.headerHash);
+            if (blockedHeader === undefined) {
+              blockedHeader = signature.headerHash;
+              enteredPublish();
+              await released;
+            }
+            return "posted" as const;
+          },
+        },
+        writeEvent: (line) => {
+          events.push(JSON.parse(line) as Record<string, unknown>);
+        },
+      });
+    const first = service();
+    const second = service();
+    await first.initialize();
+    await second.initialize();
+    const firstTick = first.tick();
+    await entered;
+    const otherHeader = fixtures
+      .map(({ headerHash }) => headerHash)
+      .find((headerHash) => headerHash !== blockedHeader)!;
+
+    await expect(second.tick()).resolves.toMatchObject({
+      scannedHeaders: 2,
+      signedHeaders: 1,
+      errors: [],
+    });
+    expect(published).toEqual([blockedHeader, otherHeader]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: "decision_effect_deferred",
+        effectKind: "signature_publish",
+        headerHash: blockedHeader,
+      }),
+    );
+    const readiness = await second.readinessSnapshot();
+    expect(readiness.scanner).toMatchObject({ status: "ok", errors: [] });
+    expect(readiness.reasons).not.toContainEqual(
+      expect.stringMatching(/tick (failed|completed with errors)/u),
+    );
+    await expect(store.listDecisionOutbox(otherHeader)).resolves.toMatchObject([
+      { effectKind: "signature_publish", status: "published" },
+    ]);
+    await expect(
+      store.listDecisionOutbox(blockedHeader!),
+    ).resolves.toMatchObject([
+      { effectKind: "signature_publish", status: "pending", attemptCount: 1 },
+    ]);
+
+    releasePublish();
+    await expect(firstTick).resolves.toMatchObject({ errors: [] });
+    expect(published).toEqual([blockedHeader, otherHeader]);
+    await expect(
+      store.listDecisionOutbox(blockedHeader!),
+    ).resolves.toMatchObject([
+      { effectKind: "signature_publish", status: "published", attemptCount: 1 },
+    ]);
   });
 
   it("quarantines an attested replacement of a signed header that authenticated replay from the durable anchor does not explain", async () => {

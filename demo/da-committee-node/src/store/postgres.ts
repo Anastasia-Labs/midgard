@@ -5,7 +5,7 @@ import {
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
   parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { Pool, type PoolClient } from "pg";
+import { Client, Pool, type PoolClient } from "pg";
 
 import type {
   DaAttestationCandidateRecord,
@@ -28,9 +28,9 @@ import {
 import {
   type CommitteeDeploymentRecord,
   type CommitteeStore,
-  DECISION_EFFECT_PENDING_LEASE_MS,
   type DecisionOutboxRecord,
   type DecisionOutboxStatus,
+  InFlightDecisionAttempts,
   jsonReplacer,
   jsonReviver,
   type L1SourceState,
@@ -75,32 +75,65 @@ const COMMITTEE_TABLES = [
   "peer_nonces",
 ] as const;
 
+export type PostgresCommitteeStoreOptions = {
+  /**
+   * Called once if the session holding the store's instance lock ends while
+   * the store is open. The store then refuses every decision effect, and the
+   * process must stop: another committee node process may now take the lock.
+   */
+  readonly onInstanceLockLost?: (error: Error) => void;
+};
+
 export class PostgresCommitteeStore implements CommitteeStore {
   private readonly pool: Pool;
+  private readonly instanceLock: PostgresStoreInstanceLock;
+  private readonly inFlightDecisions = new InFlightDecisionAttempts();
 
-  private constructor(pool: Pool) {
+  private constructor(pool: Pool, instanceLock: PostgresStoreInstanceLock) {
     this.pool = pool;
+    this.instanceLock = instanceLock;
   }
 
-  static async open(databaseUrl: string): Promise<PostgresCommitteeStore> {
+  /**
+   * Opens the store and takes its instance lock for the life of the store,
+   * refusing to open while another live process holds it.
+   */
+  static async open(
+    databaseUrl: string,
+    options: PostgresCommitteeStoreOptions = {},
+  ): Promise<PostgresCommitteeStore> {
     const parsed = new URL(databaseUrl);
     if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
       throw new Error(
         "DA_COMMITTEE_DATABASE_URL must be a postgres:// or postgresql:// URL",
       );
     }
+    const instanceLock = await PostgresStoreInstanceLock.acquire(
+      databaseUrl,
+      options.onInstanceLockLost,
+    );
     const store = new PostgresCommitteeStore(
       new Pool({
         connectionString: databaseUrl,
         max: 10,
       }),
+      instanceLock,
     );
-    await store.initSchema();
+    try {
+      await store.initSchema();
+    } catch (error) {
+      await store.close().catch(() => undefined);
+      throw error;
+    }
     return store;
   }
 
   async close(): Promise<void> {
-    await this.pool.end();
+    try {
+      await this.pool.end();
+    } finally {
+      await this.instanceLock.release();
+    }
   }
 
   async initDeployment(args: {
@@ -255,6 +288,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
         ? undefined
         : parseDaSignatureRecord(args.signature);
     assertPostgresDecisionSignature(effect, signature);
+    this.instanceLock.assertHeld();
+    let claimed = false;
     await this.withClient(async (client) => {
       await client.query("BEGIN");
       try {
@@ -271,21 +306,13 @@ export class PostgresCommitteeStore implements CommitteeStore {
           assertDecisionOutboxRowIdentity,
         );
         assertPostgresDecisionRetry(current, effect);
-        if (current?.status === "pending") {
-          const lease = await client.query<{ lease_expired: boolean }>(
-            `SELECT updated_at +
-                    ($2::bigint * INTERVAL '1 millisecond') <= NOW()
-                    AS lease_expired
-             FROM committee_decision_outbox
-             WHERE effect_id = $1`,
-            [effect.effectId, DECISION_EFFECT_PENDING_LEASE_MS],
-          );
-          if (lease.rows[0]?.lease_expired !== true) {
-            throw new Error(
-              "decision outbox pending attempt lease has not expired",
-            );
-          }
-        }
+        // A pending attempt this instance did not begin was begun by an
+        // earlier holder of the instance lock, which is gone once the lock is
+        // ours. The attempt is claimed before COMMIT, so a concurrent begin
+        // that waited on the row lock sees it.
+        await this.instanceLock.assertHeldAtServer(client);
+        this.inFlightDecisions.claim(effect);
+        claimed = true;
         await client.query(
           `INSERT INTO committee_decision_outbox
              (effect_id, header_hash, record, updated_at)
@@ -299,6 +326,9 @@ export class PostgresCommitteeStore implements CommitteeStore {
         }
         await client.query("COMMIT");
       } catch (error) {
+        if (claimed) {
+          this.inFlightDecisions.release(effect.effectId, effect.attemptCount);
+        }
         await client.query("ROLLBACK");
         throw error;
       }
@@ -306,6 +336,22 @@ export class PostgresCommitteeStore implements CommitteeStore {
   }
 
   async completeDecisionEffect(args: {
+    readonly effectId: string;
+    readonly expectedAttemptCount: number;
+    readonly status: Exclude<DecisionOutboxStatus, "pending">;
+    readonly updatedAt: string;
+    readonly lastError?: string;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    try {
+      this.instanceLock.assertHeld();
+      await this.completeDecisionEffectRow(args);
+    } finally {
+      this.inFlightDecisions.release(args.effectId, args.expectedAttemptCount);
+    }
+  }
+
+  private async completeDecisionEffectRow(args: {
     readonly effectId: string;
     readonly expectedAttemptCount: number;
     readonly status: Exclude<DecisionOutboxStatus, "pending">;
@@ -1066,6 +1112,141 @@ export class PostgresCommitteeStore implements CommitteeStore {
       return await action(client);
     } finally {
       client.release();
+    }
+  }
+}
+
+/**
+ * The Postgres store's single-instance guarantee: a session-level advisory
+ * lock, taken on a dedicated connection when the store opens and held until it
+ * closes. Postgres releases it when that session ends, so a process that dies
+ * frees it and the next process takes it, while a second process started
+ * beside a live one cannot open the store at all.
+ *
+ * The key is derived from the schema the store's tables resolve to, so two
+ * stores in different schemas of one database do not exclude each other.
+ */
+class PostgresStoreInstanceLock {
+  private readonly client: Client;
+  private readonly key: string;
+  private readonly backendPid: number;
+  private lost: Error | undefined;
+  private releasing = false;
+
+  private constructor(args: {
+    readonly client: Client;
+    readonly key: string;
+    readonly backendPid: number;
+  }) {
+    this.client = args.client;
+    this.key = args.key;
+    this.backendPid = args.backendPid;
+  }
+
+  static async acquire(
+    databaseUrl: string,
+    onLost: ((error: Error) => void) | undefined,
+  ): Promise<PostgresStoreInstanceLock> {
+    const client = new Client({
+      connectionString: databaseUrl,
+      keepAlive: true,
+    });
+    // An unexpected end of the session is handled on "end" below.
+    client.on("error", () => undefined);
+    await client.connect();
+    let row:
+      | {
+          readonly key: string;
+          readonly acquired: boolean;
+          readonly pid: number;
+        }
+      | undefined;
+    try {
+      const result = await client.query<{
+        readonly key: string;
+        readonly acquired: boolean;
+        readonly pid: number;
+      }>(
+        `WITH lock_key AS (
+           SELECT ('x' || left(md5(
+                    'midgard-da-committee-store:' ||
+                    coalesce(current_schema(), '')
+                  ), 15))::bit(60)::bigint AS key
+         )
+         SELECT key::text AS key,
+                pg_try_advisory_lock(key) AS acquired,
+                pg_backend_pid() AS pid
+         FROM lock_key`,
+      );
+      row = result.rows[0];
+    } catch (error) {
+      await client.end().catch(() => undefined);
+      throw error;
+    }
+    if (row?.acquired !== true) {
+      await client.end().catch(() => undefined);
+      throw new Error(
+        "committee node Postgres store is already exclusively leased by another live committee node process; stop that process before starting another on the same store",
+      );
+    }
+    const lock = new PostgresStoreInstanceLock({
+      client,
+      key: row.key,
+      backendPid: row.pid,
+    });
+    client.once("end", () => {
+      if (lock.releasing) {
+        return;
+      }
+      lock.lost = new Error(
+        "committee node Postgres store lost its instance lock: the session holding it ended; this process must stop",
+      );
+      onLost?.(lock.lost);
+    });
+    return lock;
+  }
+
+  assertHeld(): void {
+    if (this.lost !== undefined) {
+      throw this.lost;
+    }
+  }
+
+  /**
+   * Confirms, from inside `client`'s transaction, that the server still holds
+   * the lock for this instance's session. The session can end at the server
+   * before this process sees it end.
+   */
+  async assertHeldAtServer(client: PoolClient): Promise<void> {
+    this.assertHeld();
+    const result = await client.query<{ readonly held: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_locks
+         WHERE locktype = 'advisory'
+           AND granted
+           AND pid = $1
+           AND database = (
+             SELECT oid FROM pg_database WHERE datname = current_database()
+           )
+           AND objsubid = 1
+           AND ((classid::bigint << 32) | objid::bigint) = $2::bigint
+       ) AS held`,
+      [this.backendPid, this.key],
+    );
+    if (result.rows[0]?.held !== true) {
+      throw new Error(
+        "committee node Postgres store lost its instance lock: the server no longer holds it for this process",
+      );
+    }
+  }
+
+  async release(): Promise<void> {
+    if (this.releasing) {
+      return;
+    }
+    this.releasing = true;
+    if (this.lost === undefined) {
+      await this.client.end();
     }
   }
 }

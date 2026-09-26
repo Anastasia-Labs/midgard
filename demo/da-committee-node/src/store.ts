@@ -77,7 +77,59 @@ export type DecisionOutboxStatus =
   | "failed"
   | "reconciled";
 
-export const DECISION_EFFECT_PENDING_LEASE_MS = 5 * 60 * 1_000;
+/**
+ * Refuses an attempt at a decision effect while this store instance already
+ * has an attempt at the same effect in flight: a live attempt is never run
+ * twice. The caller defers the effect to a later tick.
+ *
+ * Only an attempt this instance began and has not yet completed conflicts.
+ * A store instance holds its store's instance lock for its whole life (the
+ * JSON store's exclusive lock file, the Postgres store's session advisory
+ * lock), so a pending attempt it did not begin was begun by an earlier holder
+ * of that lock, which is gone, and is retried at once.
+ */
+export class DecisionEffectInFlightError extends Error {
+  readonly effectId: string;
+
+  constructor(effectId: string) {
+    super(
+      `decision outbox pending attempt is still in flight in this committee node process: ${effectId}`,
+    );
+    this.name = "DecisionEffectInFlightError";
+    this.effectId = effectId;
+  }
+}
+
+/**
+ * The attempts at decision effects that one store instance has begun and not
+ * yet completed, by effect id: the in-process half of decision-effect mutual
+ * exclusion. The store's instance lock is the cross-process half.
+ */
+export class InFlightDecisionAttempts {
+  private readonly attempts = new Map<string, number>();
+
+  /**
+   * Records `effect` as in flight, or throws `DecisionEffectInFlightError`
+   * when an attempt at the same effect already is. Called inside the store's
+   * atomic section, after every other check of the begin has passed.
+   */
+  claim(effect: Pick<DecisionOutboxRecord, "effectId" | "attemptCount">): void {
+    if (this.attempts.has(effect.effectId)) {
+      throw new DecisionEffectInFlightError(effect.effectId);
+    }
+    this.attempts.set(effect.effectId, effect.attemptCount);
+  }
+
+  /**
+   * Ends attempt `attemptCount` at `effectId`, whether or not it completed
+   * durably: its side effects are over once its caller has stopped.
+   */
+  release(effectId: string, attemptCount: number): void {
+    if (this.attempts.get(effectId) === attemptCount) {
+      this.attempts.delete(effectId);
+    }
+  }
+}
 
 export type DecisionOutboxRecord = {
   readonly schemaVersion: 1;
@@ -176,6 +228,13 @@ export interface CommitteeStore {
   listDecisionOutbox(
     headerHash?: string,
   ): Promise<readonly DecisionOutboxRecord[]>;
+  /**
+   * Durably begins an attempt at a decision effect and holds it in flight
+   * until `completeDecisionEffect` for that attempt returns or throws. Throws
+   * `DecisionEffectInFlightError` while this instance has an attempt at the
+   * same effect in flight; a pending attempt left by an earlier instance is
+   * retried at once.
+   */
   beginDecisionEffect(args: {
     readonly effect: DecisionOutboxRecord;
     readonly sourceState: L1SourceState;
@@ -248,6 +307,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
   private readonly lockHandle: FileHandle;
   private readonly lockOwner: string;
   private writeQueue: Promise<void> = Promise.resolve();
+  private readonly inFlightDecisions = new InFlightDecisionAttempts();
   private closePromise: Promise<void> | undefined;
   private closing = false;
   private closed = false;
@@ -399,37 +459,62 @@ export class JsonFileCommitteeStore implements CommitteeStore {
         ? undefined
         : parseDaSignatureRecord(args.signature);
     assertDecisionSignature(effect, signature);
-    await this.mutate((data) => {
-      const sourceState = mergeL1SourceState(
-        data.chainCursor,
-        proposedSourceState,
-      );
-      assertDecisionSourceState(effect, sourceState);
-      assertDecisionRetry(data.decisionOutbox[effect.effectId], effect);
-      return {
-        ...data,
-        chainCursor: sourceState,
-        decisionOutbox: {
-          ...data.decisionOutbox,
-          [effect.effectId]: effect,
-        },
-        ...(signature === undefined
-          ? {}
-          : {
-              daSignatures: {
-                ...data.daSignatures,
-                [signatureKey(
-                  signature.headerHash,
-                  signature.availabilityCommitmentDigest,
-                  signature.signerIndex,
-                )]: signature,
-              },
-            }),
-      };
-    });
+    let claimed = false;
+    try {
+      await this.mutate((data) => {
+        const sourceState = mergeL1SourceState(
+          data.chainCursor,
+          proposedSourceState,
+        );
+        assertDecisionSourceState(effect, sourceState);
+        assertDecisionRetry(data.decisionOutbox[effect.effectId], effect);
+        this.inFlightDecisions.claim(effect);
+        claimed = true;
+        return {
+          ...data,
+          chainCursor: sourceState,
+          decisionOutbox: {
+            ...data.decisionOutbox,
+            [effect.effectId]: effect,
+          },
+          ...(signature === undefined
+            ? {}
+            : {
+                daSignatures: {
+                  ...data.daSignatures,
+                  [signatureKey(
+                    signature.headerHash,
+                    signature.availabilityCommitmentDigest,
+                    signature.signerIndex,
+                  )]: signature,
+                },
+              }),
+        };
+      });
+    } catch (error) {
+      if (claimed) {
+        this.inFlightDecisions.release(effect.effectId, effect.attemptCount);
+      }
+      throw error;
+    }
   }
 
   async completeDecisionEffect(args: {
+    readonly effectId: string;
+    readonly expectedAttemptCount: number;
+    readonly status: Exclude<DecisionOutboxStatus, "pending">;
+    readonly updatedAt: string;
+    readonly lastError?: string;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    try {
+      await this.completeDecisionEffectRecord(args);
+    } finally {
+      this.inFlightDecisions.release(args.effectId, args.expectedAttemptCount);
+    }
+  }
+
+  private async completeDecisionEffectRecord(args: {
     readonly effectId: string;
     readonly expectedAttemptCount: number;
     readonly status: Exclude<DecisionOutboxStatus, "pending">;
@@ -1335,20 +1420,6 @@ const assertDecisionRetry = (
     next.attemptCount !== existing.attemptCount + 1
   ) {
     throw new Error("decision outbox retry does not match durable identity");
-  }
-  assertDecisionPendingLeaseExpired(existing, next);
-};
-
-export const assertDecisionPendingLeaseExpired = (
-  existing: DecisionOutboxRecord,
-  next: DecisionOutboxRecord,
-): void => {
-  if (
-    existing.status === "pending" &&
-    Date.parse(next.updatedAt) - Date.parse(existing.updatedAt) <
-      DECISION_EFFECT_PENDING_LEASE_MS
-  ) {
-    throw new Error("decision outbox pending attempt lease has not expired");
   }
 };
 

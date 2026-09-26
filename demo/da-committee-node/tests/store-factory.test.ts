@@ -16,7 +16,6 @@ import type {
   DaStoredConflictEvidenceRecord,
 } from "../src/domain.js";
 import {
-  DECISION_EFFECT_PENDING_LEASE_MS,
   decisionEffectId,
   JsonFileCommitteeStore,
   jsonReplacer,
@@ -466,19 +465,6 @@ describe("openCommitteeStore", () => {
       }),
     ).resolves.toEqual(signature);
     await expect(
-      restarted.beginDecisionEffect({
-        effect: {
-          ...effect,
-          attemptCount: 2,
-          updatedAt: new Date(
-            Date.parse(effect.updatedAt) + DECISION_EFFECT_PENDING_LEASE_MS - 1,
-          ).toISOString(),
-        },
-        sourceState: (await restarted.getL1SourceState())!,
-        signature,
-      }),
-    ).rejects.toThrow(/pending attempt lease has not expired/u);
-    await expect(
       restarted.completeDecisionEffect({
         effectId,
         expectedAttemptCount: 2,
@@ -503,20 +489,41 @@ describe("openCommitteeStore", () => {
         },
       }),
     ).rejects.toThrow(/signature does not match effect identity/u);
+    // The attempt left pending by the closed store belongs to no live process,
+    // so the restarted store reclaims it at once, with no lease to wait out.
+    const retry = {
+      ...effect,
+      attemptCount: 2,
+      updatedAt: "2026-07-28T00:00:00.001Z",
+    };
+    await restarted.beginDecisionEffect({
+      effect: retry,
+      sourceState: (await restarted.getL1SourceState())!,
+      signature,
+    });
+    await expect(
+      restarted.completeDecisionEffect({
+        effectId,
+        expectedAttemptCount: 1,
+        status: "published",
+        updatedAt: "2026-07-28T00:00:01.000Z",
+        signature: { ...signature, broadcastStatus: "posted" },
+      }),
+    ).rejects.toThrow(/does not match the pending attempt/u);
     await restarted.completeDecisionEffect({
       effectId,
-      expectedAttemptCount: 1,
+      expectedAttemptCount: 2,
       status: "published",
       updatedAt: "2026-07-28T00:00:01.000Z",
       signature: { ...signature, broadcastStatus: "posted" },
     });
     await expect(restarted.getDecisionOutbox(effectId)).resolves.toMatchObject({
       status: "published",
-      attemptCount: 1,
+      attemptCount: 2,
     });
     await expect(
       restarted.beginDecisionEffect({
-        effect: { ...effect, attemptCount: 3 },
+        effect: { ...effect, attemptCount: 4 },
         sourceState: (await restarted.getL1SourceState())!,
         signature,
       }),

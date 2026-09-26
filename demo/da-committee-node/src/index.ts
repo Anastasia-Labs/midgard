@@ -41,6 +41,9 @@ import { openCommitteeStore } from "./store/factory.js";
 import { type RetentionL1View, runRetentionCycle } from "./store/retention.js";
 import { createCommitteeTickRunner } from "./tick-runner.js";
 
+/** Upper bound on the shutdown before exiting for a lost store instance lock. */
+const STORE_LOCK_LOST_SHUTDOWN_GRACE_MS = 10_000;
+
 const main = async (): Promise<void> => {
   loadRuntimeConfig();
   if (process.argv[2] === "l1-wallet-preflight") {
@@ -56,7 +59,22 @@ const main = async (): Promise<void> => {
   await runDaZstdStartupSelfTest();
   const config = await loadCommitteeConfig();
   const startedAtMs = Date.now();
-  const store = await openCommitteeStore(config.localState);
+  // Bound once shutdown exists; until then a lost lock exits at once.
+  // eslint-disable-next-line prefer-const
+  let exitForLostStoreInstanceLock: (() => void) | undefined;
+  const store = await openCommitteeStore(config.localState, {
+    // Another process may take the lock now, so this one stops running
+    // decision effects and exits for its supervisor to restart it.
+    onInstanceLockLost: (error) => {
+      process.stderr.write(
+        `${JSON.stringify({ event: "committee_store_instance_lock_lost", error: error.message })}\n`,
+      );
+      if (exitForLostStoreInstanceLock === undefined) {
+        process.exit(1);
+      }
+      exitForLostStoreInstanceLock();
+    },
+  });
   const signer =
     config.signerKeySource === undefined
       ? undefined
@@ -331,6 +349,20 @@ const main = async (): Promise<void> => {
     await daLibp2pNode.stop();
     availabilityRuntime?.close();
     await store.close?.();
+  };
+  exitForLostStoreInstanceLock = () => {
+    let grace: ReturnType<typeof setTimeout> | undefined;
+    void Promise.race([
+      shutdown(),
+      new Promise<void>((resolve) => {
+        grace = setTimeout(resolve, STORE_LOCK_LOST_SHUTDOWN_GRACE_MS);
+      }),
+    ])
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(grace);
+        process.exit(1);
+      });
   };
   const tickRunner = createCommitteeTickRunner({
     tick: () => service.tick(),

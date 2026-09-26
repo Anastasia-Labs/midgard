@@ -64,6 +64,7 @@ import {
 import {
   type CommitteeStore,
   decisionEffectId,
+  DecisionEffectInFlightError,
   type DecisionOutboxRecord,
   hasPayloadBytes,
   type L1ObservedDecision,
@@ -910,7 +911,10 @@ export class CommitteeService {
             record,
             existingSignature,
           );
-          if (published.broadcastStatus === "post_failed") {
+          if (
+            published !== "deferred" &&
+            published.broadcastStatus === "post_failed"
+          ) {
             errors.push(
               published.error ??
                 this.coordinatorPostFailedMessage(existingSignature),
@@ -943,6 +947,10 @@ export class CommitteeService {
           this.deps.coordinator === undefined
             ? undefined
             : await this.publishSignatureWithOutbox(record, localSignature);
+        if (published === "deferred") {
+          skippedHeaders += 1;
+          continue;
+        }
         const signature =
           published === undefined
             ? localSignature
@@ -1532,8 +1540,20 @@ export class CommitteeService {
     if (existing?.status === "reconciled") {
       return true;
     }
-    const effect = await this.beginDecisionEffect(record, "l1_reconcile");
-    const result = await reconciler.reconcileHeader(record);
+    const effect = await this.beginDecisionEffectUnlessInFlight(
+      record,
+      "l1_reconcile",
+    );
+    if (effect === undefined) {
+      return false;
+    }
+    let result: Awaited<ReturnType<typeof reconciler.reconcileHeader>>;
+    try {
+      result = await reconciler.reconcileHeader(record);
+    } catch (error) {
+      await this.completeFailedAfterThrow(effect, error);
+      throw error;
+    }
     await this.deps.store.completeDecisionEffect({
       effectId: effect.effectId,
       expectedAttemptCount: effect.attemptCount,
@@ -1594,7 +1614,7 @@ export class CommitteeService {
   private async publishSignatureWithOutbox(
     record: StateQueueHeaderRecord,
     validatedSignature: DaSignatureRecord,
-  ): Promise<CoordinatorPublishResult> {
+  ): Promise<CoordinatorPublishResult | "deferred"> {
     // The witness signs the availability commitment only; the L1 output and
     // point are where the header was observed. A signature validated on an
     // output that final authenticated replay has since moved the header from
@@ -1610,11 +1630,14 @@ export class CommitteeService {
               stateQueueOutRef: record.stateQueueOutRef,
             },
           };
-    const effect = await this.beginDecisionEffect(
+    const effect = await this.beginDecisionEffectUnlessInFlight(
       record,
       "signature_publish",
       signature,
     );
+    if (effect === undefined) {
+      return "deferred";
+    }
     const published = await this.publishSignature(signature);
     await this.deps.store.completeDecisionEffect({
       effectId: effect.effectId,
@@ -1644,6 +1667,57 @@ export class CommitteeService {
         ...(signerIndex === undefined ? {} : { signerIndex }),
       }),
     );
+  }
+
+  /**
+   * Begins a decision effect, or defers it for this tick when an attempt for
+   * the same effect is still running in this process. Deferral is not a tick
+   * error: the running attempt completes the effect, and the next tick
+   * observes its outcome.
+   */
+  private async beginDecisionEffectUnlessInFlight(
+    record: StateQueueHeaderRecord,
+    effectKind: DecisionOutboxRecord["effectKind"],
+    signature?: DaSignatureRecord,
+  ): Promise<DecisionOutboxRecord | undefined> {
+    try {
+      return await this.beginDecisionEffect(record, effectKind, signature);
+    } catch (error) {
+      if (!(error instanceof DecisionEffectInFlightError)) {
+        throw error;
+      }
+      this.writeEvent({
+        event: "decision_effect_deferred",
+        effectKind,
+        headerHash: record.headerHash,
+        effectId: error.effectId,
+        reason: error.message,
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * Records a failed outcome for an attempt whose external effect threw, so
+   * the attempt does not stay in flight for the life of the process. The
+   * original error is what the caller reports; a failure to record is
+   * secondary and must not mask it.
+   */
+  private async completeFailedAfterThrow(
+    effect: DecisionOutboxRecord,
+    error: unknown,
+  ): Promise<void> {
+    try {
+      await this.deps.store.completeDecisionEffect({
+        effectId: effect.effectId,
+        expectedAttemptCount: effect.attemptCount,
+        status: "failed",
+        updatedAt: this.nowIso(),
+        lastError: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      // The store releases the in-flight claim even when completion fails.
+    }
   }
 
   private async beginDecisionEffect(
