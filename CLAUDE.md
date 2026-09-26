@@ -5,8 +5,10 @@ authoritative contributor instruction file for this repo (principles, repo
 shape, tradeoff order, verification expectations). Read it before making
 changes.
 
-For Goal-program work, read `docs/exec-plans/GOAL_SPEC.md` for acceptance
-criteria. Current release readiness is tracked in `docs/public_testnet_readiness.md`.
+For Goal-program work, start from the one-page routing digest
+`docs/exec-plans/GOAL_SPEC_DIGEST.md`; the acceptance criteria themselves are in
+the full specification, `docs/exec-plans/GOAL_SPEC.md`. Current release
+readiness is tracked in `docs/public_testnet_readiness.md`.
 
 ## Agent skills
 

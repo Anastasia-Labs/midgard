@@ -58,8 +58,9 @@ liveness, performance, and convenience are prioritized in that order.
 This specification was authored at repository revision
 `d5f36df25a9a1696e4df857e01aa81d2f0b6ef96`.
 
-The external Graphify graph used for navigation indexes
-`320ed869262dba7f4aac5627f1bd9efa0b5618a6` and is stale relative to that
+The external Graphify graph used for navigation is owner-local and optional:
+it is not part of the repository, and a clone without it loses nothing. It
+indexes `320ed869262dba7f4aac5627f1bd9efa0b5618a6` and is stale relative to that
 baseline. Graph results are navigation hints only. Every consequential
 relationship, absence, protocol rule, and completion claim must be verified
 against source at the revision being changed.
@@ -255,7 +256,8 @@ The final tree must contain:
   documents that agree with executable evidence (the public-readiness document
   is `docs/public_testnet_readiness.md`);
 - `docs/exec-plans/canonical-v1-goal-completion-report.md` as the concise
-  human-readable final evidence index;
+  human-readable final evidence index, written at Goal completion (§15); it
+  does not exist before then; <!-- doc-links:future -->
 - coherent checkpoint commits plus one final integration commit, without
   rewriting pre-existing history;
 - exactly one long-lived Goal pull request targeting the `tx-validation`
@@ -592,7 +594,8 @@ create implementation blockers by themselves.
 
 Deliver the entire Goal through one long-lived pull request:
 
-- The pull request base branch is exactly `tx-validation`.
+- The pull request base branch is exactly `tx-validation` (confirmed by the
+  owner 2026-09-25).
 - Use one Goal-owned head branch and one pull request for the lifetime of this
   Goal. Do not open separate, stacked, replacement, proof-family, watcher, or
   release pull requests for Goal-owned work.
