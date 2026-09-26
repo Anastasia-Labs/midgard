@@ -8,8 +8,12 @@ repository root.
 - Import workspace packages by name (`@al-ft/midgard-core/hex`,
   `da-committee-node/config`), never through `../<package>/src` or `dist`;
   add a workspace dependency and an `exports` entry for a missing subpath.
+  Blind spot: `no-restricted-imports` sees only static `import`/`export`
+  declarations, so a dynamic `import()`, a `require()` or a path handed to a
+  subprocess passes the lint. [eslint: no-restricted-imports]
 - Follow declared exports and package build prerequisites when running compiled
-  entrypoints or subprocesses; source-based checks do not verify built artifacts.
+  entrypoints or subprocesses; source-based checks do not verify built
+  artifacts. [review]
 
 ## When Relevant
 

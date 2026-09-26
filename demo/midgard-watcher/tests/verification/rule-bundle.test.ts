@@ -1,7 +1,3 @@
-import {
-  SELECTED_DEPLOYMENT_PROFILE,
-  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
-} from "@al-ft/midgard-core/deployment-profile";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
 import {
@@ -26,6 +22,10 @@ import {
   DEPLOYMENT_MANIFEST_STEP_NAMES,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

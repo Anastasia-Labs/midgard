@@ -1555,7 +1555,6 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
   });
 };
 
-
 export const DA_ATTESTATION_TIMEOUT_MS = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.timing.da_attestation_timeout_ms,
 );

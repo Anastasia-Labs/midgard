@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * Config-time pieces shared by every package's `vitest.config.ts`.
@@ -83,3 +84,12 @@ export const rawSqlLoaderPlugin = () => ({
     return `export default ${JSON.stringify(readFileSync(id, "utf8"))};`;
   },
 });
+
+/**
+ * The global-setup module that refuses a run against a stale blueprint; see
+ * `blueprint-stamp-setup.js`. Every package whose suites read
+ * `onchain/aiken/plutus.json` lists it in `globalSetup`.
+ */
+export const blueprintStampGlobalSetup = fileURLToPath(
+  new URL("./blueprint-stamp-setup.js", import.meta.url),
+);

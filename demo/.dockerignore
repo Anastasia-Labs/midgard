@@ -3,6 +3,8 @@
 **/coverage
 **/target
 **/*.tgz
+# Except the vendored packages that pnpm overrides point at.
+!vendor/*.tgz
 **/*.log
 **/config.yaml
 **/.env

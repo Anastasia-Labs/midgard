@@ -1,6 +1,7 @@
 import { availableParallelism } from "node:os";
 
 import {
+  blueprintStampGlobalSetup,
   midgardSourceSsr,
   rawSqlLoaderPlugin,
 } from "@al-ft/midgard-test-support/vitest";
@@ -35,6 +36,8 @@ const maxForks = parseMaxForks(process.env.MIDGARD_WATCHER_FORKS);
 export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
+    // Refuses the run when onchain/aiken/plutus.json is stale.
+    globalSetup: [blueprintStampGlobalSetup],
     environment: "node",
     include: ["./tests/**/*.test.ts"],
     restoreMocks: true,

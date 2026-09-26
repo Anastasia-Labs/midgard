@@ -129,7 +129,7 @@ if [[ ${#ak_files[@]} -gt 0 ]]; then
   fi
   pin_check="$repo_root/onchain/aiken/scripts/pinned-compiler.mjs"
   if [[ -n "$aiken_bin" && -x "$aiken_bin" && ! -f "$pin_check" ]]; then
-    # Installed hooks are symlinks into one checkout, so they also run in
+    # A hook installed the old way (symlinks into one checkout) also runs in
     # worktrees of commits that predate the check. Could not look is not the
     # same as looked and found stock, but neither may format.
     echo "[midgard hooks] BLOCKED: .ak files are staged and this checkout has no onchain/aiken/scripts/pinned-compiler.mjs to verify the compiler with" >&2
@@ -163,11 +163,21 @@ if [[ ${#to_stage[@]} -gt 0 ]]; then
 fi
 
 # Preserve whatever pre-commit hook was installed before this one — the Nix
-# git-hooks framework installs a shim here for the Haskell tree (cabal-fmt,
-# fourmolu), and those file types do not overlap with ours.
-previous="$repo_root/.git/hooks/pre-commit.local"
+# git-hooks framework installs a shim for the Haskell tree (cabal-fmt,
+# fourmolu), and those file types do not overlap with ours. `install` keeps it
+# as pre-commit.local in the COMMON hooks directory (a worktree's `.git` is a
+# file, so `$repo_root/.git/hooks` does not exist there). The shim reads the
+# ignored `.pre-commit-config.yaml` symlink the Nix shell creates in the main
+# checkout only; without it the shim fails every commit, so a checkout that
+# lacks the config skips the shim and says so.
+common_hooks="$(git rev-parse --path-format=absolute --git-common-dir)/hooks"
+previous="$common_hooks/pre-commit.local"
 if [[ -x "$previous" ]]; then
-  "$previous" "$@" || status=1
+  if [[ -e "$repo_root/.pre-commit-config.yaml" ]]; then
+    "$previous" "$@" || status=1
+  else
+    echo "[midgard hooks] no .pre-commit-config.yaml in this checkout — pre-commit.local (offchain Haskell formatting) skipped" >&2
+  fi
 fi
 
 exit "$status"

@@ -31,3 +31,5 @@ export declare const rawSqlLoaderPlugin: () => {
   readonly name: string;
   readonly load: (id: string) => string | null;
 };
+
+export declare const blueprintStampGlobalSetup: string;

@@ -5,6 +5,10 @@
  * and `tests/global-setup.ts` both need the shard vocabulary before any test
  * worker exists, and `tests/utils.ts` needs the env defaults inside one.
  */
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { testDatabasePrefix, worktreeIdentity } from "./worktree-identity.js";
 
 /**
  * How many test files may run at once. Overridable with
@@ -41,10 +45,21 @@ export const testMaxForks = (): number =>
  *
  * `MIDGARD_TEST_DATABASE_PREFIX` lets another package that reuses this shard
  * scheme (midgard-node-tools) keep its own shard family, so two suites on the
- * same server never share a database even when they run concurrently.
+ * same server never share a database even when they run concurrently. An
+ * explicit value always wins. Without one, the main checkout keeps the
+ * historical `midgard_test` and a linked git worktree gets
+ * `midgard_test_<hash>` (`worktree-identity.ts`), so two checkouts running the
+ * suite against the shared server never share a shard either.
  */
+export const defaultTestDatabasePrefix = (family: string): string =>
+  testDatabasePrefix(
+    family,
+    worktreeIdentity(dirname(fileURLToPath(import.meta.url))),
+  );
+
 export const TEST_DATABASE_PREFIX =
-  process.env.MIDGARD_TEST_DATABASE_PREFIX ?? "midgard_test";
+  process.env.MIDGARD_TEST_DATABASE_PREFIX ??
+  defaultTestDatabasePrefix("midgard_test");
 
 export const testDatabaseNameForShard = (shard: string | number): string =>
   `${TEST_DATABASE_PREFIX}_w${shard}`;

@@ -1,0 +1,96 @@
+name: Midgard demo workspace setup
+description: >-
+  pnpm and Node from the demo workspace pins and a frozen install; optionally
+  the pinned Aiken fork and the testnet blueprint an earlier job of the same
+  run built, and an ordered list of workspace packages to build first. Run
+  actions/checkout before this action.
+
+inputs:
+  aiken:
+    description: >-
+      "true" puts the pinned Aiken fork from the run's `aiken-fork` artifact on
+      PATH (and in MIDGARD_AIKEN_BIN), after asserting its identity.
+    default: "false"
+  blueprint:
+    description: >-
+      "true" restores onchain/aiken/plutus.json and its build record
+      plutus.json.deployment.json from the run's `testnet-blueprint` artifact.
+      Implies "aiken", since blueprint freshness checks may ask the compiler.
+    default: "false"
+  install-filter:
+    description: Optional `pnpm install --filter` selector (default installs every package).
+    default: ""
+  prebuild:
+    description: >-
+      Space-separated demo package directories to `pnpm run build`, in order,
+      before the job's own steps (their dist is what dependants import).
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      with:
+        package_json_file: demo/package.json
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: demo/.nvmrc
+        cache: pnpm
+        cache-dependency-path: demo/pnpm-lock.yaml
+    - name: Install dependencies
+      shell: bash
+      env:
+        INSTALL_FILTER: ${{ inputs.install-filter }}
+      run: |
+        set -euo pipefail
+        if [ -n "$INSTALL_FILTER" ]; then
+          pnpm --dir demo install --frozen-lockfile --filter "$INSTALL_FILTER"
+        else
+          pnpm --dir demo install --frozen-lockfile
+        fi
+    - name: Download the pinned Aiken fork
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: aiken-fork
+        path: ${{ runner.temp }}/aiken-fork/bin
+    # Assert, don't just print: an artifact from anything but the pinned fork
+    # must fail here rather than silently change which compiler produced what
+    # the job checks. Putting it on PATH makes it the compiler for every later
+    # step and for the scripts that spawn a bare `aiken`; there is no second
+    # compiler on PATH to fall through to, which the second check confirms.
+    - name: Assert the pinned compiler identity and put it on PATH
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        fork="$RUNNER_TEMP/aiken-fork/bin/aiken"
+        chmod +x "$fork"
+        node onchain/aiken/scripts/pinned-compiler.mjs "$fork"
+        echo "$RUNNER_TEMP/aiken-fork/bin" >> "$GITHUB_PATH"
+        echo "MIDGARD_AIKEN_BIN=$fork" >> "$GITHUB_ENV"
+    - name: Assert no stock compiler is reachable
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'aiken on PATH: %s (%s)\n' "$(command -v aiken)" "$(aiken --version)"
+        node onchain/aiken/scripts/pinned-compiler.mjs aiken
+    - name: Download the testnet blueprint and its build record
+      if: inputs.blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: testnet-blueprint
+        path: onchain/aiken
+    - name: Build prerequisite workspace packages
+      if: inputs.prebuild != ''
+      shell: bash
+      env:
+        PREBUILD: ${{ inputs.prebuild }}
+      run: |
+        set -euo pipefail
+        for package in $PREBUILD; do
+          echo "::group::build $package"
+          pnpm --dir "demo/$package" run build
+          echo "::endgroup::"
+        done

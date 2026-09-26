@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/doctor.mjs\" --report-only",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

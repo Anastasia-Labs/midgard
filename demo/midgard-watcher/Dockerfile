@@ -6,6 +6,8 @@ COPY midgard-watcher/native-chain-sync/go.mod midgard-watcher/native-chain-sync/
 RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod \
   go mod download && go mod verify
 COPY midgard-watcher/native-chain-sync ./
+# The Go tests read this shared fixture from the watcher's test support.
+COPY midgard-watcher/tests/support/conway-block.hex ../tests/support/conway-block.hex
 RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod \
   --mount=type=cache,id=midgard-watcher-go-build,target=/root/.cache/go-build \
   test "$(go version | awk '{print $3}')" = "go1.25.7" \
@@ -19,12 +21,21 @@ RUN corepack enable
 WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
+# The vendored uplc build that package.json overrides resolve to.
+COPY vendor ./vendor
 COPY lucid-midgard/package.json ./lucid-midgard/package.json
 COPY midgard-core/package.json ./midgard-core/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
+COPY midgard-test-support/package.json ./midgard-test-support/package.json
+# Every other workspace manifest too: `pnpm deploy` resolves each
+# `workspace:*` edge the watcher declares (midgard-node among them), even
+# though only the production chain's sources are copied and built below.
+COPY midgard-node/package.json ./midgard-node/package.json
+COPY midgard-node-tools/package.json ./midgard-node-tools/package.json
+COPY da-committee-node/package.json ./da-committee-node/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-watcher...
 
@@ -35,8 +46,21 @@ COPY midgard-validation ./midgard-validation
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-watcher ./midgard-watcher
-RUN pnpm --filter midgard-watcher... build
-RUN pnpm --filter midgard-watcher deploy --prod /prod/midgard-watcher
+# The production chain only, dependencies first. `midgard-watcher...` would
+# also select its dev-only workspace edges (midgard-node and the packages
+# behind it), whose sources this image does not copy.
+RUN pnpm --filter @al-ft/lucid-midgard build
+RUN pnpm --filter @al-ft/midgard-core build
+RUN pnpm --filter @al-ft/midgard-sdk build
+RUN pnpm --filter @al-ft/midgard-validation build
+RUN pnpm --filter @al-ft/midgard-fault-proofs build
+RUN pnpm --filter midgard-watcher build
+# Same store as the install step: `deploy --prod` re-resolves the git-hosted
+# merkle-patricia-forestry dependency, and only a store that already holds the
+# prepared package avoids re-running its `prepare` build (which needs dev
+# tooling a production install never fetches).
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+  pnpm --filter midgard-watcher deploy --prod /prod/midgard-watcher
 
 FROM node:22.22.2-bookworm-slim AS final
 WORKDIR /app

@@ -6,8 +6,8 @@ in [CONTEXT.md](../../CONTEXT.md) and decisions in
 live in [docs/fault-proofs/decisions](../fault-proofs/decisions/README.md).
 
 Use the glossary's names when describing domain concepts. Record new decisions
-in the existing decision directory for that concern; a separate `docs/adr/`
-tree is unnecessary. Each ADR states context, decision, consequences, status,
+in the existing decision directory for that concern; a separate ADR
+directory is unnecessary. Each ADR states context, decision, consequences, status,
 and links to the implementation or normative specification. Keep exact format
 rules in [component specifications](../spec/README.md).
 

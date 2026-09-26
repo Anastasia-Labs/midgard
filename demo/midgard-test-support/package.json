@@ -26,7 +26,8 @@
     "fixtures",
     "src",
     "vitest.js",
-    "vitest.d.ts"
+    "vitest.d.ts",
+    "blueprint-stamp-setup.js"
   ],
   "scripts": {
     "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",

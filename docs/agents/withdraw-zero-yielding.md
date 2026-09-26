@@ -55,7 +55,7 @@ this handshake:
 The reference input does two jobs: its NFT authenticates the deployed yield
 target, and its `reference_script` field supplies the code hash that the
 withdrawal must invoke. Merely supplying some script witness with the same
-hash is harmless; the hash identifies the same program.
+hash is harmless; the hash identifies the same program. [review]
 
 The rewarding validator then validates the arm-specific predicate against the
 same `Transaction`. It may identify the thread transition through a unique
@@ -64,7 +64,7 @@ rule is part of the protocol, not an off-chain convention.
 
 ## Binding Invariants
 
-Every yielding design must account for all of these invariants.
+Every yielding design must account for all of these invariants. [review]
 
 ### Target
 
@@ -99,8 +99,8 @@ Every yielding design must account for all of these invariants.
   enforces a single yielded input. One rewarding invocation cannot silently
   discharge multiple unrelated spends.
 - Phase-specific input and output datum shapes remain validated by one side of
-  the handshake. Stable payment credentials do not make phase markers
-  optional.
+  the handshake. Phase markers stay mandatory even when payment credentials
+  are stable.
 
 ## Deployment and Liveness
 
@@ -127,7 +127,7 @@ not themselves perform the NFT reference-input handshake above. The chunked
 proof helpers accept an already authenticated verifier hash and bind its exact
 withdrawal redeemer claim. Review their callers for target selection and
 withdrawal construction; invoking a helper alone does not establish all of the
-handshake's requirements.
+handshake's requirements. [review]
 
 - `onchain/aiken/lib/midgard/common/utils.ak`:
   `get_unique_withdraw_redeemer` and the `plutarch_phas*` /

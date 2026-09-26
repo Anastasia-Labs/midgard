@@ -17,6 +17,8 @@ FROM base AS workspace
 WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
+# The vendored uplc build that package.json overrides resolve to.
+COPY vendor ./vendor
 # Every workspace manifest, so the frozen lockfile resolves each `workspace:*`
 # edge (production and dev) that midgard-node declares; only the production
 # chain's sources are copied and built below, and `deploy --prod` ships only
@@ -29,6 +31,7 @@ COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
 COPY da-committee-node/package.json ./da-committee-node/package.json
 COPY midgard-node-tools/package.json ./midgard-node-tools/package.json
+COPY midgard-test-support/package.json ./midgard-test-support/package.json
 COPY midgard-node/package.json ./midgard-node/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-node...
@@ -40,9 +43,11 @@ COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-node ./midgard-node
-# midgard-node's own prebuild covers lucid-midgard, midgard-sdk and (through
-# the sdk) midgard-core; validation and fault-proofs are runtime dependencies
-# that nothing else builds.
+# midgard-node's build compiles only itself, and its runtime imports each of
+# these packages' dist, so every one is built here, dependencies first.
+RUN pnpm --filter @al-ft/lucid-midgard build
+RUN pnpm --filter @al-ft/midgard-core build
+RUN pnpm --filter @al-ft/midgard-sdk build
 RUN pnpm --filter @al-ft/midgard-validation build
 RUN pnpm --filter @al-ft/midgard-fault-proofs build
 RUN pnpm --filter midgard-node build

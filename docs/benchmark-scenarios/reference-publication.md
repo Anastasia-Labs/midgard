@@ -77,7 +77,8 @@ start time and network magic are the intended differences. Do not reset an
 existing deployment or substitute faster consensus parameters.
 
 The opt-in test takes a generated run directory containing `run.env`, genesis,
-and a funded private `secrets/publication-probe.json` with a `seedPhrase` field.
+and a funded private `publication-probe.json`, in the run directory's `secrets`
+directory, with a `seedPhrase` field.
 Run serial and chained sequentially against that same dedicated wallet:
 
 ```bash
