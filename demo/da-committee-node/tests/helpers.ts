@@ -39,6 +39,7 @@ import type {
   MidgardNodeDeployment,
 } from "../src/l1/deployment.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
+import type {} from "./global-setup.js";
 
 /** A fixture directory under the run's temporary root (see global-setup). */
 export const tempDir = (): Promise<string> =>
