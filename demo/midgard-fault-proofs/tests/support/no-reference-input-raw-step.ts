@@ -17,7 +17,7 @@ import {
 } from "../../src/no-reference-input/submit.js";
 import type { PreparedNoReferenceInputWrongfulRejection } from "../../src/no-reference-input/wrongful-rejection.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
-import { selectFeeInput } from "../../src/submit-step-01.js";
+import { selectFeeInput } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 
 /** Deliberately bypasses local evidence admission; validator refusals must

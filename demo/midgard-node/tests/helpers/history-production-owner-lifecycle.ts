@@ -87,7 +87,6 @@ export const openHistoryProductionOwnerLifecycle = async (
     MPF_ENGINE: "architecture_g" as const,
     MPF_NATIVE_OWNER_BINARY_PATH: nativeOwnerBinaryPath,
     MPF_NATIVE_OWNER_BINARY_SHA256: binarySha256,
-    GENESIS_UTXOS: [],
   };
   const operatorAddress = await fixture.operatorLucid.wallet().address();
   await recorded.observer.flush();

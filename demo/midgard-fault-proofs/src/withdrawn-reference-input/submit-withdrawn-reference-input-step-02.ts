@@ -2,7 +2,7 @@
  * `withdrawn-reference-input` step-02 submitter (Q19 offchain plan §4.2).
  *
  * Structural mirror of the `non-existent-input` chain's step 02
- * (`ne-submit-step-02.ts`): opens a field of the transaction carried by step 01
+ * (`non-existent-input/submit-step-02.ts`): opens a field of the transaction carried by step 01
  * and forwards the single challenged input to step 03. Only the field differs —
  * §2.5 field **1**, the bad transaction's native reference inputs, rather than
  * field 0's spend inputs.
@@ -54,7 +54,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../submit-step-01.js";
+import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,

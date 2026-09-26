@@ -46,7 +46,7 @@ import {
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import type { SubmitStep01TxInclusion } from "../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";

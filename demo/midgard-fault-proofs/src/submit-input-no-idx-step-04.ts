@@ -70,7 +70,7 @@ import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
-} from "./submit-step-01.js";
+} from "./step-support.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

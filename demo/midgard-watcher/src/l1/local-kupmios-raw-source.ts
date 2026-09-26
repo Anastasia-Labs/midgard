@@ -1,18 +1,14 @@
 import { isProxy } from "node:util/types";
 
 import {
-  computeFraudProofReleaseFinalityPolicyDigest,
   createLocalKupmiosHttpOgmiosRawSource,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type LocalKupmiosFraudProofRawSource,
-  validateVerifiedFraudProofReleaseFinalityPolicy,
-  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs";
 
 import { parseWatcherConfig } from "../runtime/config.js";
 import {
-  assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentReleaseFinalityPolicy,
 } from "../runtime/deployment-identity.js";
 
 export const watcherLocalKupmiosRawSourceId = (
@@ -24,23 +20,6 @@ export const watcherLocalKupmiosRawSourceId = (
     deploymentIdentity.manifestId,
     authorityNodeId,
   ].join("/");
-
-const releaseFinalityFromDeployment = (
-  identity: VerifiedWatcherDeploymentIdentity,
-): VerifiedFraudProofReleaseFinalityPolicy => {
-  const policy = Object.freeze({
-    confirmationDepth: 30 as const,
-    automaticRecoveryMaxDepth: 2160 as const,
-    deepRollbackPolicy: "automated_rewind_replay_incident-v1" as const,
-  });
-  return validateVerifiedFraudProofReleaseFinalityPolicy({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: identity.manifestId,
-    blueprintHash: identity.blueprintHash,
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-    policy,
-  });
-};
 
 /**
  * Constructs the deployment/config-bound raw Kupo/Ogmios authority before a
@@ -61,14 +40,17 @@ export const createWatcherLocalKupmiosRawSource = (
   }>,
 ): LocalKupmiosFraudProofRawSource => {
   const watcherConfig = parseWatcherConfig(input.watcherConfig);
-  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  const releaseFinality = watcherDeploymentReleaseFinalityPolicy(
+    input.deploymentIdentity,
+  );
   if (
     watcherConfig.mode !== "acceptance" ||
     (watcherConfig.targetNetwork !== "Preprod" &&
       watcherConfig.targetNetwork !== "Custom") ||
     input.deploymentIdentity.network !== watcherConfig.targetNetwork ||
     watcherConfig.l1.source.sourceMode !== "local_node" ||
-    watcherConfig.l1.finality.depth !== 30 ||
+    watcherConfig.l1.finality.depth !==
+      releaseFinality.policy.confirmationDepth ||
     watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth !== 2160
   ) {
     throw new Error(
@@ -145,7 +127,7 @@ export const createWatcherLocalKupmiosRawSource = (
     ),
     kupoHttpUrl: kupo.endpoint,
     ogmiosUrl: ogmios.endpoint,
-    releaseFinality: releaseFinalityFromDeployment(input.deploymentIdentity),
+    releaseFinality,
     observationDepth: input.observationDepth ?? "release_finality",
     timeoutMs: captureBounds?.timeoutMs ?? watcherConfig.l1.requestTimeoutMs,
     ...(captureBounds?.signal === undefined

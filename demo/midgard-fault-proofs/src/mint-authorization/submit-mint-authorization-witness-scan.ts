@@ -24,7 +24,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import { selectFeeInput } from "../submit-step-01.js";
+import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";

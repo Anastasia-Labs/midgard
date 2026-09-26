@@ -12,6 +12,7 @@ import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentReleaseFinalityPolicy,
 } from "../runtime/deployment-identity.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
@@ -243,7 +244,9 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
     );
   }
   if (
-    watcherConfig.l1.finality.depth !== 30 ||
+    watcherConfig.l1.finality.depth !==
+      watcherDeploymentReleaseFinalityPolicy(input.deploymentIdentity).policy
+        .confirmationDepth ||
     watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth !== 2160
   ) {
     throw new Error(

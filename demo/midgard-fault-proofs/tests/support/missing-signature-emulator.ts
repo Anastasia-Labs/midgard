@@ -43,7 +43,7 @@ import {
   requireMissingSignatureThreadUtxo,
 } from "../../src/missing-signature/index.js";
 import { excludeUtxo } from "../../src/spend-input-witness.js";
-import { selectFeeInput } from "../../src/submit-step-01.js";
+import { selectFeeInput } from "../../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
 import {

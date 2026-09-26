@@ -28,7 +28,7 @@ import {
   submitMintItemNonCanonicalCancel,
 } from "../../src/mint-item-non-canonical/index.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import type { FraudProofWorkflowJournalStore } from "../../src/workflow/journal.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";

@@ -27,6 +27,7 @@ import {
   fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
   prepareFabricatedWithdrawalFromCommittedLeaves,
 } from "../src/prepare-fabricated-withdrawal.js";
+import { selectFeeInput } from "../src/step-support.js";
 import {
   deriveFabricatedWithdrawalStep01Handoff,
   parseSubmitFabricatedWithdrawalInclusion,
@@ -41,7 +42,6 @@ import {
   assertFabricatedWithdrawalStep04Finalizable,
   submitFabricatedWithdrawalStep04,
 } from "../src/submit-fabricated-withdrawal-step-04.js";
-import { selectFeeInput } from "../src/submit-step-01.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,

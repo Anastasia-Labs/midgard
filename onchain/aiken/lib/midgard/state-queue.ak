@@ -4,6 +4,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input, Output, OutputReference, Transaction, ValidityRange}
+use env
 use midgard/availability_challenge as availability
 use midgard/common/utils
 use midgard/fraud_proof
@@ -33,7 +34,7 @@ pub const no_da_attestation: availability.StateQueueStatusV1 =
 /// F04's canonical V1 deadline for applying a DA attestation to a committed
 /// block. The block's `end_time` is commit-bound by Q60, so this duration has
 /// one authenticated on-chain origin rather than a submitter-selected clock.
-pub const da_attestation_timeout_v1: Int = 3_600_000
+pub const da_attestation_timeout_v1: Int = env.da_attestation_timeout_v1
 
 pub type StateQueueNode {
   header: HeaderV1,

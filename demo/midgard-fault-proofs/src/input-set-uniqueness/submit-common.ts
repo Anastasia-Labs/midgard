@@ -19,7 +19,7 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { requireComputationThreadToken } from "../submit-step-01.js";
+import { requireComputationThreadToken } from "../step-support.js";
 import {
   INPUT_SET_UNIQUENESS_CATEGORY_LABEL,
   type InputSetUniquenessContracts,

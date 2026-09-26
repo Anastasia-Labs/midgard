@@ -3,7 +3,6 @@ import { isProxy } from "node:util/types";
 
 import {
   admitFraudProofRawL1Point,
-  computeFraudProofReleaseFinalityPolicyDigest,
   type FraudProofRawL1Point,
   LOCAL_KUPMIOS_HTTP_OGMIOS_SOURCE,
   LocalKupmiosCheckpointChangedError,
@@ -18,6 +17,7 @@ import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentReleaseFinalityPolicy,
 } from "../runtime/deployment-identity.js";
 import { createWatcherLocalKupmiosRawSource } from "./local-kupmios-raw-source.js";
 import {
@@ -323,6 +323,8 @@ export const openWatcherLocalHistoricalCapture = async (
       if (topology.sourceMode !== "local_node")
         throw new Error("capture requires local-node topology");
       const details = localKupmiosHttpOgmiosRawSourceDetails(source);
+      const releaseFinality =
+        watcherDeploymentReleaseFinalityPolicy(deploymentIdentity);
       const kupo = topology.queryServices.find(({ kind }) => kind === "kupo")!;
       const ogmios = topology.queryServices.find(
         ({ kind }) => kind === "ogmios",
@@ -336,14 +338,10 @@ export const openWatcherLocalHistoricalCapture = async (
         details.blueprintHash !== deploymentIdentity.blueprintHash ||
         details.kupoHttpUrl !== httpEndpoint(kupo.endpoint) ||
         details.ogmiosUrl !== httpEndpoint(ogmios.endpoint) ||
-        details.confirmationDepth !== 30 ||
+        details.confirmationDepth !==
+          releaseFinality.policy.confirmationDepth ||
         details.automaticRecoveryMaxDepth !== 2160 ||
-        details.finalityPolicyDigest !==
-          computeFraudProofReleaseFinalityPolicyDigest({
-            confirmationDepth: 30,
-            automaticRecoveryMaxDepth: 2160,
-            deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-          })
+        details.finalityPolicyDigest !== releaseFinality.policyDigest
       )
         throw new Error("capture raw source differs from deployment/topology");
       const predecessor = await readAdmittedLocalKupmiosPredecessorPoint({

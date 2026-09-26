@@ -10,7 +10,7 @@
  * `no-reference-input` step-03 submitter (Goal task `Q18`, §9.1 output 8).
  *
  * Structural mirror of the `non-existent-input` chain's step 03
- * (`ne-submit-step-03.ts`): proves the challenged input is absent from the
+ * (`non-existent-input/submit-step-03.ts`): proves the challenged input is absent from the
  * block's prev-utxos ledger via the shared `pexcludes.exclusion.withdraw`
  * validator, then forwards its producing transaction id to step 04. Only the
  * threaded field differs — `missing_reference_input` rather than
@@ -48,10 +48,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  ledgerKeyBytesHex,
-  PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
-} from "./ne-submit-step-03.js";
-import {
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
@@ -75,9 +71,13 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import {
+  ledgerKeyBytesHex,
+  PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
+} from "./step-support.js";
+import {
   requireComputationThreadToken,
   selectFeeInput,
-} from "./submit-step-01.js";
+} from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

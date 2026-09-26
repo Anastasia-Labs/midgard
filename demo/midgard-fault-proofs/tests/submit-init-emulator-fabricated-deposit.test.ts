@@ -27,6 +27,7 @@ import {
   fabricatedDepositBlockEvidenceFromVerifiedPayload,
   prepareFabricatedDepositFromCommittedLeaves,
 } from "../src/prepare-fabricated-deposit.js";
+import { selectFeeInput } from "../src/step-support.js";
 import {
   deriveFabricatedDepositStep01Handoff,
   parseSubmitFabricatedDepositInclusion,
@@ -41,7 +42,6 @@ import {
   assertFabricatedDepositStep04Finalizable,
   submitFabricatedDepositStep04,
 } from "../src/submit-fabricated-deposit-step-04.js";
-import { selectFeeInput } from "../src/submit-step-01.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,

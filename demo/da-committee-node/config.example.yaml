@@ -1,0 +1,12 @@
+# Copy to config.yaml (git-ignored), chmod 600, and supply the committee keys.
+# Each process selects one signer using DA_SIGNER_INDEX. Set it in the process
+# environment to override the file's default; do not mix indexed and single sources.
+{}
+# DA_SIGNER_INDEX: "0"
+# DA_SIGNER_KEY_SOURCE_0: "cardano-seed:member 0 mnemonic"
+# DA_SIGNER_KEY_SOURCE_1: "cardano-seed:member 1 mnemonic"
+# L1_SUBMITTER_KEY_SOURCE: "seed:L1 fee-paying wallet mnemonic"
+# DA_AVAILABILITY_SUBMITTER_KEY_SOURCE: "seed:availability responder mnemonic"
+# DA_LIBP2P_PRIVATE_KEY_SOURCE: "seed:32-byte-hex-transport-seed"
+# Existing deployment/provider/database settings can also be specified here.
+# Remove {} when uncommenting settings. Do not paste real seeds into this example.

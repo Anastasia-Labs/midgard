@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
@@ -1554,7 +1555,10 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
   });
 };
 
-export const DA_ATTESTATION_TIMEOUT_MS = 3_600_000n;
+
+export const DA_ATTESTATION_TIMEOUT_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing.da_attestation_timeout_ms,
+);
 
 export type StateQueueTimeoutRemovalReferenceScriptUTxOs = Pick<
   StateQueueRemoveReferenceScriptUTxOs,

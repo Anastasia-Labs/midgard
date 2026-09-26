@@ -17,7 +17,7 @@ import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
 } from "../field-opening.js";
-import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
+import { ledgerKeyBytesHex } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
   type CompleteCanonicalReplayContext,

@@ -314,6 +314,10 @@ export const submitResolvedInit = async ({
   };
 }): Promise<SubmitResolvedInitResult> => {
   const firstStep = contracts.steps[0];
+  const fraudulentBlockOutRefParsed = parseOutRef(
+    fraudulentBlockOutRef,
+    "--fraudulent-block-out-ref",
+  );
   const [catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo] = await Promise.all(
     [
       requireSingletonUtxo({
@@ -333,10 +337,7 @@ export const submitResolvedInit = async ({
       }),
       fetchUtxoByOutRef({
         lucid,
-        outRef: parseOutRef(
-          fraudulentBlockOutRef,
-          "--fraudulent-block-out-ref",
-        ),
+        outRef: fraudulentBlockOutRefParsed,
         label: `${label} fraudulent block UTxO`,
       }),
     ],

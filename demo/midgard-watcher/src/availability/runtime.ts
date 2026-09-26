@@ -553,7 +553,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           actor,
           journal,
           stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
-          minimumConfirmationDepth: 30,
+          minimumConfirmationDepth: intake.confirmationDepth,
           transactionLimits: SDK.daAvailabilityOperationLimits(
             lucid,
             deployment.parameters,

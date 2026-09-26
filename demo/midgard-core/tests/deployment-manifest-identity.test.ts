@@ -42,6 +42,10 @@ import {
   verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
 } from "../src/deployment-manifest-identity.js";
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "../src/deployment-profile.js";
 
 let generatedCatalogueFixture: DeploymentManifestFraudProofCatalogueIdentity;
 
@@ -91,6 +95,8 @@ const identityInput = () => ({
   schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
+  deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
   network: "Preprod",
   cardanoProtocolParameters: {},
   genesis: {},
@@ -110,9 +116,11 @@ const identityInput = () => ({
   availabilityChallenge: {
     responseClasses: {
       smallPayloadMaxBytes: 65_536,
-      smallResponseWindowMs: 3_600_000,
+      smallResponseWindowMs:
+        SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
       fullPayloadMaxBytes: 67_108_864,
-      fullResponseWindowMs: 172_800_000,
+      fullResponseWindowMs:
+        SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
     },
     responseGeometry: {
       chunkByteLength: 14_020,
@@ -344,7 +352,7 @@ describe("finalized deployment manifest", () => {
       (manifest: ReturnType<typeof finalizedManifest>) => {
         manifest.network = "unsupported";
       },
-      /network is unsupported/,
+      /compiled profile/,
     ],
     [
       "blueprint identity",
@@ -400,7 +408,9 @@ describe("finalized deployment manifest", () => {
       const { manifestId: _manifestId, ...identity } = manifest;
       manifest.manifestId = computeDeploymentManifestId(identity);
       // Identity-only verification deliberately does not claim finalization.
-      expect(verifyDeploymentManifestIdentity(manifest)).toBe(manifest);
+      if (_name !== "network") {
+        expect(verifyDeploymentManifestIdentity(manifest)).toBe(manifest);
+      }
       expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(error);
     },
   );
@@ -852,6 +862,23 @@ describe("DeploymentManifestV1 shared identity", () => {
     expect(verifyDeploymentManifestIdentity(manifest)).toEqual(manifest);
   });
 
+  it("rejects a rehashed manifest that overrides the profile confirmation policy", () => {
+    const { manifestId: _manifestId, ...identity } = finalizedManifest();
+    const changed = {
+      ...identity,
+      l1Finality: {
+        ...identity.l1Finality,
+        confirmationDepth: identity.l1Finality.confirmationDepth + 1,
+      },
+    };
+    expect(() =>
+      verifyFinalizedDeploymentManifest({
+        ...changed,
+        manifestId: computeDeploymentManifestId(changed),
+      }),
+    ).toThrow(/l1Finality/u);
+  });
+
   it("accepts only exact release-bound economics profiles", () => {
     const bounded =
       DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"];
@@ -951,7 +978,7 @@ describe("DeploymentManifestV1 shared identity", () => {
         ...manifest,
         network: "Preview",
       }),
-    ).toThrow(/id mismatch/u);
+    ).toThrow(/compiled profile/u);
 
     const { da: _da, ...missingDa } = manifest;
     expect(() => verifyDeploymentManifestIdentity(missingDa)).toThrow(

@@ -53,7 +53,7 @@ import {
   readNodeTransactionPayloadsFile,
 } from "./prepare-double-spend.js";
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
-import { nativeTxFromCoreCompact } from "./submit-step-01.js";
+import { nativeTxFromCoreCompact } from "./step-support.js";
 
 /**
  * One reference input of the bad transaction, as committed by its native

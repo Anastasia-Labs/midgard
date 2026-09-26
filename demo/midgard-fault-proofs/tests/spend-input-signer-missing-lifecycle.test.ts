@@ -90,7 +90,7 @@ import {
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
-} from "../src/submit-step-01.js";
+} from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";

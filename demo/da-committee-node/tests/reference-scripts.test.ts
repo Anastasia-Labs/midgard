@@ -45,7 +45,7 @@ const REFERENCE_SCRIPT_ROLE_CONTRACTS: Readonly<
 
 describe("DA attestation reference script resolver", () => {
   it("binds every role to its own deployed script, independently of provider order", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     const utxos = referenceScriptUtxos(deployment);
     // Reversed on purpose: the resolver must key by outRef, not by the order
     // the chain provider happens to return UTxOs in.
@@ -85,7 +85,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("refuses a deployment whose reference UTxO is absent from the chain", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     const utxos = referenceScriptUtxos(deployment);
     const missing = deployment.stateQueue.mint.refScriptOutRef!;
     await expect(
@@ -108,7 +108,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("derives an SDK validator set whose script hashes and addresses match its own scripts", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     const validators = daAttestationValidatorsFromDeployment(deployment);
 
     expect(Object.keys(validators).sort()).toEqual([
@@ -153,7 +153,7 @@ describe("DA attestation reference script resolver", () => {
         policyId: mintingPolicyToId(validator.mintingScript),
         spendingScriptHash: validatorToScriptHash(validator.spendingScript),
         spendingScriptAddress: validatorToAddress(
-          "Preview",
+          "Preprod",
           validator.spendingScript,
         ),
         mintingScriptCBOR: validator.mintingScript.script,
@@ -185,7 +185,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("wires the DA-facing roles to the deployment entries that carry their names", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     const validators = daAttestationValidatorsFromDeployment(deployment);
     // Inverted lookup: name each returned script hash by asking the
     // deployment which contract owns it, so a cross-wired role reports the
@@ -234,7 +234,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("refuses a bond reference without its exact deployment role NFT", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     await expect(
       fetchDaAttestationReferenceScripts(
         lucidWithReferenceScripts(
@@ -250,7 +250,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("refuses a bond role NFT that is present in the wrong quantity", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     const roleUnit = referenceScriptAuthUnit(
       deployment.referenceScriptAuthPolicyId,
       "availability-challenge bond withdrawal",
@@ -273,11 +273,11 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("refuses initialization when the bond reward account is unregistered", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     // The address in the refusal is recomputed here from the bond script, so
     // the test pins which account was consulted, not merely that one was.
     const rewardAddress = validatorToRewardAddress(
-      "Preview",
+      "Preprod",
       deployment.availabilityChallengeYields.bond.script,
     );
     await expect(
@@ -291,7 +291,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("fails closed when a resolved UTxO has the wrong scriptRef", async () => {
-    const deployment = await loadDaDeploymentFixture("Preview");
+    const deployment = await loadDaDeploymentFixture("Preprod");
     const outRef = deployment.stateQueue.spend.refScriptOutRef!;
     await expect(
       fetchDaAttestationReferenceScripts(
@@ -368,7 +368,7 @@ const lucidWithReferenceScripts = (
   registered = true,
 ): Pick<LucidEvolution, "utxosByOutRef" | "rewardAccountAt" | "config"> => ({
   config: () =>
-    ({ network: "Preview" }) as ReturnType<LucidEvolution["config"]>,
+    ({ network: "Preprod" }) as ReturnType<LucidEvolution["config"]>,
   rewardAccountAt: async () => ({ registered, rewards: 0n, poolId: null }),
   utxosByOutRef: async (outRefs) =>
     outRefs.flatMap((outRef) =>

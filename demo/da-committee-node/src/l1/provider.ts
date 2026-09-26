@@ -5,6 +5,7 @@ import {
   open,
   readFile,
   rename,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -76,7 +77,21 @@ export interface ChainSyncCursorStore {
   append(event: ChainSyncEvent, cursor: ChainSyncCursor): Promise<void>;
   replay(afterSequence: number): Promise<readonly ChainSyncEvent[]>;
   intersectionPoints?(limit: number): Promise<readonly CanonicalChainPoint[]>;
+  prune?(consumedSequence: number): Promise<void>;
 }
+
+/**
+ * Distinct recent points a chain-sync resumption offers the node to intersect
+ * with: the node rolls back at most k = 2160 blocks. The journal keeps the
+ * entries that hold them, and older entries are pruned once consumed.
+ */
+export const CHAIN_SYNC_INTERSECTION_POINTS = 2160;
+
+/**
+ * Prunable entries a chain-sync journal accumulates before it is rewritten,
+ * so the rewrite is amortized over many appends instead of every tick.
+ */
+export const CHAIN_SYNC_JOURNAL_PRUNE_SLACK = 1080;
 
 export interface ChainSyncReplayProvider {
   currentChainSyncCursor(): Promise<ChainSyncCursor>;
@@ -120,7 +135,9 @@ type CommittedChainSyncJournal = {
 export class FileChainSyncCursorStore implements ChainSyncCursorStore {
   private readonly journalPath: string;
   private cachedState: PersistedChainSyncState | undefined;
-  private cachedJournalLength = 0;
+  // The journal holds the contiguous sequences [first, next).
+  private cachedJournalFirstSequence = 0;
+  private cachedJournalNextSequence = 0;
   private initialized = false;
 
   constructor(
@@ -150,7 +167,7 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
         `chain-sync cursor sequence is not contiguous: persisted=${previous.cursor.sequence.toString()}, next=${cursor.sequence.toString()}`,
       );
     }
-    if (this.cachedJournalLength !== cursor.sequence) {
+    if (this.cachedJournalNextSequence !== cursor.sequence) {
       throw new L1SourceIntegrityError(
         "chain-sync event journal does not match its durable cursor; refusing unsafe recovery",
       );
@@ -182,11 +199,12 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
     } catch (error) {
       this.initialized = false;
       this.cachedState = undefined;
-      this.cachedJournalLength = 0;
+      this.cachedJournalFirstSequence = 0;
+      this.cachedJournalNextSequence = 0;
       throw error;
     }
     this.cachedState = next;
-    this.cachedJournalLength += 1;
+    this.cachedJournalNextSequence += 1;
   }
 
   async replay(afterSequence: number): Promise<readonly ChainSyncEvent[]> {
@@ -225,6 +243,68 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
     return points;
   }
 
+  /**
+   * Drops the entries that no reader needs any more: those older than both
+   * the newest `CHAIN_SYNC_INTERSECTION_POINTS` distinct points (what a
+   * resumption intersects with) and every event after `consumedSequence`
+   * (what the durable consumer has yet to replay). The journal is rewritten
+   * atomically, and only once `CHAIN_SYNC_JOURNAL_PRUNE_SLACK` such entries
+   * have accumulated, so it stays bounded without a rewrite per append.
+   */
+  async prune(consumedSequence: number): Promise<void> {
+    if (!Number.isSafeInteger(consumedSequence) || consumedSequence < -1) {
+      throw new Error("chain-sync consumed sequence must be an integer >= -1");
+    }
+    const state = await this.initialize();
+    if (
+      this.cachedJournalNextSequence - this.cachedJournalFirstSequence <
+      CHAIN_SYNC_INTERSECTION_POINTS + CHAIN_SYNC_JOURNAL_PRUNE_SLACK
+    ) {
+      return;
+    }
+    const committed = await this.readCommittedJournal();
+    const journal = committed.entries;
+    await this.assertJournalMatchesCursor(state.cursor, journal);
+    const seen = new Set<string>();
+    let oldestIntersectionIndex: number | undefined;
+    for (let index = journal.length - 1; index >= 0; index -= 1) {
+      const point = journal[index]!.cursor.point;
+      seen.add(`${point.slot.toString()}:${point.blockHash}`);
+      if (seen.size === CHAIN_SYNC_INTERSECTION_POINTS) {
+        oldestIntersectionIndex = index;
+        break;
+      }
+    }
+    if (oldestIntersectionIndex === undefined) {
+      return;
+    }
+    const firstSequence = journal[0]!.sequence;
+    const retainFrom = Math.min(
+      journal[oldestIntersectionIndex]!.sequence,
+      consumedSequence + 1,
+    );
+    if (retainFrom - firstSequence < CHAIN_SYNC_JOURNAL_PRUNE_SLACK) {
+      return;
+    }
+    const retained = journal.slice(retainFrom - firstSequence);
+    // The rewrite is durable before it replaces the journal, so a crash leaves
+    // either journal, and each is contiguous up to the durable cursor.
+    const temporaryPath = `${this.journalPath}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(
+        temporaryPath,
+        retained.map((entry) => `${JSON.stringify(entry)}\n`).join(""),
+        { encoding: "utf8", mode: 0o600 },
+      );
+      await syncFileData(temporaryPath);
+      await rename(temporaryPath, this.journalPath);
+    } catch (error) {
+      await rm(temporaryPath, { force: true });
+      throw error;
+    }
+    this.cachedJournalFirstSequence = retainFrom;
+  }
+
   private async initialize(): Promise<PersistedChainSyncState> {
     if (this.initialized) {
       return this.cachedState!;
@@ -232,11 +312,13 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
     let state = await this.readState();
     const committedJournal = await this.readCommittedJournal();
     const journal = committedJournal.entries;
+    const firstSequence = journal[0]?.sequence ?? 0;
+    const entryAt = (sequence: number) => journal[sequence - firstSequence];
     if (
       state.cursor !== undefined &&
-      (journal[state.cursor.sequence] === undefined ||
+      (entryAt(state.cursor.sequence) === undefined ||
         !samePersistedCursor(
-          journal[state.cursor.sequence]!.cursor,
+          entryAt(state.cursor.sequence)!.cursor,
           state.cursor,
         ))
     ) {
@@ -249,9 +331,9 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
       journalCursor !== undefined &&
       (state.cursor === undefined ||
         journalCursor.sequence > state.cursor.sequence);
-    if (rollsForward) {
-      const expectedNext = (state.cursor?.sequence ?? -1) + 1;
-      if (journal[expectedNext]?.sequence !== expectedNext) {
+    if (rollsForward && state.cursor !== undefined) {
+      const expectedNext = state.cursor.sequence + 1;
+      if (entryAt(expectedNext)?.sequence !== expectedNext) {
         throw new L1SourceIntegrityError(
           "persisted chain-sync journal tail is not contiguous with its cursor",
         );
@@ -277,7 +359,8 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
     }
     await this.assertJournalMatchesCursor(state.cursor, journal);
     this.cachedState = state;
-    this.cachedJournalLength = journal.length;
+    this.cachedJournalFirstSequence = firstSequence;
+    this.cachedJournalNextSequence = firstSequence + journal.length;
     this.initialized = true;
     return state;
   }
@@ -329,6 +412,9 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
     // multi-byte UTF-8 sequence. Only a final unterminated segment can be an
     // interrupted append; an unparseable complete line is still refused.
     const committedBytes = raw.lastIndexOf(0x0a) + 1;
+    // Pruning drops a prefix, so the sequences run contiguously from the
+    // first entry kept.
+    let firstSequence: number | undefined;
     const entries = raw
       .subarray(0, committedBytes)
       .toString("utf8")
@@ -343,9 +429,10 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
           record.sequence,
           `persisted chain-sync event ${index.toString()} sequence`,
         );
-        if (sequence !== index) {
+        firstSequence ??= sequence;
+        if (sequence !== firstSequence + index) {
           throw new L1SourceIntegrityError(
-            "persisted chain-sync event sequences must be contiguous from zero",
+            "persisted chain-sync event sequences must be contiguous",
           );
         }
         const event = parsePersistedChainSyncEvent(record.event);
@@ -481,7 +568,9 @@ export class LocalNodeChainAuthority {
       const intersectionCandidates =
         this.cursor === undefined
           ? undefined
-          : await this.store.intersectionPoints?.(2160);
+          : await this.store.intersectionPoints?.(
+              CHAIN_SYNC_INTERSECTION_POINTS,
+            );
       for (let count = 0; count < maxEvents; count += 1) {
         const batch = await this.source.next(
           this.cursor,
@@ -557,6 +646,19 @@ export class LocalNodeChainAuthority {
   async replay(afterSequence: number): Promise<readonly ChainSyncEvent[]> {
     await this.loadCursor();
     return this.store.replay(afterSequence);
+  }
+
+  /**
+   * Prunes journal entries the durable consumer has replayed through
+   * `consumedSequence` and no resumption would intersect with. Serialized with
+   * synchronization, so it never races an append.
+   */
+  async pruneConsumed(consumedSequence: number): Promise<void> {
+    const run = this.operation.then(async () => {
+      await this.store.prune?.(consumedSequence);
+    });
+    this.operation = run.catch(() => undefined);
+    await run;
   }
 
   assertAligned(point: CanonicalChainPoint, sourceLabel: string): void {
@@ -1410,6 +1512,10 @@ export class LocalNodeStateQueueProvider
       );
     }
     await this.consumerCursorStore.save(cursor);
+    // The consumer has replayed every event through this cursor: only what a
+    // resumption intersects with is still needed, and the journal stays
+    // bounded instead of holding the whole history since it was created.
+
   }
 }
 
@@ -2550,6 +2656,10 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
   let delivered: CanonicalChainPoint | undefined;
   let pendingRollback: ChainSyncEventBatch | undefined;
   let suppressHandshakeRollback = false;
+  // The node tip the session last reported. Once the session has delivered it,
+  // the caller is at the tip, and Ogmios answers a nextBlock there only when
+  // the node adopts another block.
+  let reportedTip: CanonicalChainPoint | undefined;
 
   const disconnect = (): void => {
     session?.close();
@@ -2559,9 +2669,11 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
     delivered = undefined;
     pendingRollback = undefined;
     suppressHandshakeRollback = false;
+    reportedTip = undefined;
   };
 
   const deliver = (batch: ChainSyncEventBatch): ChainSyncEventBatch => {
+    reportedTip = batch.tip;
     if (batch.event !== undefined) {
       delivered = batch.event.point;
     }
@@ -2621,7 +2733,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
                   ...(intersectionCandidates ?? []).filter(
                     (point) => !sameCanonicalPoint(point, cursor),
                   ),
-                ].slice(0, 2160);
+                ].slice(0, CHAIN_SYNC_INTERSECTION_POINTS);
           const found = getRecord(
             await session.request("findIntersection", {
               points:
@@ -2693,7 +2805,26 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
             return deliver(result);
           }
           if (cursor !== undefined && sameCanonicalPoint(cursor, tip)) {
-            return { tip };
+            return deliver({ tip });
+          }
+        } else if (
+          reportedTip !== undefined &&
+          sameCanonicalPoint(cursor, reportedTip)
+        ) {
+          // At the tip a nextBlock waits for the node's next block, up to the
+          // request timeout, and the timeout then drops the session. Asking
+          // for the tip first answers at once: while it is still the caller's
+          // point there is nothing to deliver. Anything the node did since,
+          // rollbacks included, stays queued on the session in order for the
+          // nextBlock below or a later call.
+          const tip = parseOgmiosPoint(
+            await session.request("queryNetwork/tip", {}),
+            network,
+            source,
+            "Ogmios tip",
+          );
+          if (sameCanonicalPoint(cursor, tip)) {
+            return deliver({ tip });
           }
         }
 
@@ -2759,7 +2890,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
             ) {
               suppressHandshakeRollback = false;
               if (cursor !== undefined && sameCanonicalPoint(cursor, tip)) {
-                return { tip };
+                return deliver({ tip });
               }
               continue;
             }

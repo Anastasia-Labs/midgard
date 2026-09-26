@@ -1,4 +1,5 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeFraudProofRawL1PointId,
   type FraudProofRawL1Transaction,
@@ -49,7 +50,13 @@ import {
 export const WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-production-state-queue-observation-v1" as const;
 
-const RELEASE_FINALITY_DEPTH = 30;
+/**
+ * The compiled deployment profile's release depth. Signed deployment
+ * verification admits only manifests carrying this depth, and each source is
+ * checked against it at construction.
+ */
+const RELEASE_FINALITY_DEPTH =
+  DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 
 /**
  * A finalized block with no queue transition becomes a durable progress
@@ -1581,7 +1588,8 @@ export const createWatcherStateQueueObservationSource = ({
   if (
     sourceDetails === null ||
     sourceDetails.deploymentIdentityDigest !== deploymentIdentity.manifestId ||
-    sourceDetails.blueprintHash !== deploymentIdentity.blueprintHash
+    sourceDetails.blueprintHash !== deploymentIdentity.blueprintHash ||
+    sourceDetails.confirmationDepth !== RELEASE_FINALITY_DEPTH
   ) {
     throw new Error(
       "raw state-queue source is not bound to the verified deployment",

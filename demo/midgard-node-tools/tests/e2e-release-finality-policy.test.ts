@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,8 +14,25 @@ import {
  * production constant would make the accept case unable to notice a change to
  * the very thing it is pinning.
  */
+/**
+ * Confirmation depth per deployment profile, also written out. The compiled
+ * profile selects the row: testing profiles run at 3, public profiles at 30.
+ */
+const RELEASE_DEPTH_BY_PROFILE: Readonly<Record<string, number>> = {
+  mainnet: 30,
+  "preprod-public": 30,
+  "preprod-testing": 3,
+  "local-devnet-testing": 3,
+};
+const RELEASE_DEPTH =
+  RELEASE_DEPTH_BY_PROFILE[SELECTED_DEPLOYMENT_PROFILE.name]!;
+const OTHER_PROFILE_DEPTH = RELEASE_DEPTH === 3 ? 30 : 3;
+const DEPTH_REFUSAL = new RegExp(
+  `l1Finality\\.confirmationDepth must equal the deployment profile value ${RELEASE_DEPTH.toString()}$`,
+);
+
 const RELEASE_POLICY = {
-  confirmationDepth: 30,
+  confirmationDepth: RELEASE_DEPTH,
   automaticRecoveryMaxDepth: 2160,
   deepRollbackPolicy: "automated_rewind_replay_incident-v1",
 } as const;
@@ -39,7 +57,7 @@ describe("release-bound L1 finality policy V1", () => {
     const input = policy();
     const fromInput = parseReleaseL1FinalityPolicy(input);
     input.confirmationDepth = 9;
-    expect(fromInput.confirmationDepth).toBe(30);
+    expect(fromInput.confirmationDepth).toBe(RELEASE_DEPTH);
   });
 
   /**
@@ -54,18 +72,23 @@ describe("release-bound L1 finality policy V1", () => {
   }[] = [
     {
       name: "confirmation depth one below the release depth",
-      candidate: { ...policy(), confirmationDepth: 29 },
-      message: /l1Finality\.confirmationDepth must be exactly 30$/,
+      candidate: { ...policy(), confirmationDepth: RELEASE_DEPTH - 1 },
+      message: DEPTH_REFUSAL,
     },
     {
       name: "confirmation depth one above the release depth",
-      candidate: { ...policy(), confirmationDepth: 31 },
-      message: /l1Finality\.confirmationDepth must be exactly 30$/,
+      candidate: { ...policy(), confirmationDepth: RELEASE_DEPTH + 1 },
+      message: DEPTH_REFUSAL,
+    },
+    {
+      name: "the other profile family's confirmation depth",
+      candidate: { ...policy(), confirmationDepth: OTHER_PROFILE_DEPTH },
+      message: DEPTH_REFUSAL,
     },
     {
       name: "confirmation depth as a numeric string",
-      candidate: { ...policy(), confirmationDepth: "30" },
-      message: /l1Finality\.confirmationDepth must be exactly 30$/,
+      candidate: { ...policy(), confirmationDepth: RELEASE_DEPTH.toString() },
+      message: DEPTH_REFUSAL,
     },
     {
       name: "recovery depth one below the release depth",
@@ -79,7 +102,7 @@ describe("release-bound L1 finality policy V1", () => {
     },
     {
       name: "recovery depth collapsed onto the confirmation depth",
-      candidate: { ...policy(), automaticRecoveryMaxDepth: 30 },
+      candidate: { ...policy(), automaticRecoveryMaxDepth: RELEASE_DEPTH },
       message: /l1Finality\.automaticRecoveryMaxDepth must be exactly 2160$/,
     },
     {
@@ -103,7 +126,7 @@ describe("release-bound L1 finality policy V1", () => {
     {
       name: "an aliased field name",
       candidate: {
-        confirmationDepth: 30,
+        confirmationDepth: RELEASE_DEPTH,
         automaticRecoveryMaxDepth: 2160,
         deep_rollback_policy: RELEASE_POLICY.deepRollbackPolicy,
       },
@@ -112,7 +135,7 @@ describe("release-bound L1 finality policy V1", () => {
     {
       name: "a missing field",
       candidate: {
-        confirmationDepth: 30,
+        confirmationDepth: RELEASE_DEPTH,
         automaticRecoveryMaxDepth: 2160,
       },
       message: /must contain the exact release-finality fields$/,
@@ -124,7 +147,7 @@ describe("release-bound L1 finality policy V1", () => {
     },
     {
       name: "an array",
-      candidate: [30, 2160, RELEASE_POLICY.deepRollbackPolicy],
+      candidate: [RELEASE_DEPTH, 2160, RELEASE_POLICY.deepRollbackPolicy],
       message: /l1Finality must be a plain object$/,
     },
     {
@@ -145,7 +168,7 @@ describe("release-bound L1 finality policy V1", () => {
         "release identity l1Finality",
       ),
     ).toThrow(
-      "release identity l1Finality.confirmationDepth must be exactly 30",
+      `release identity l1Finality.confirmationDepth must equal the deployment profile value ${RELEASE_DEPTH.toString()}`,
     );
   });
 });

@@ -4,6 +4,10 @@
 **/target
 **/*.tgz
 **/*.log
+**/config.yaml
+**/.env
+**/.env.*
+**/*.seed
 
 midgard-node/.env
 midgard-node/.env.*

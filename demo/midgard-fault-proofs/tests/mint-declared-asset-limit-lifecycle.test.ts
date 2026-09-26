@@ -82,7 +82,7 @@ import {
   submitMintDeclaredAssetLimitStep04,
   submitMintDeclaredAssetLimitStep04Raw,
 } from "../src/mint-declared-asset-limit/submit-step-04.js";
-import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";

@@ -34,35 +34,29 @@ import {
 
 import {
   faultProofFieldOpening,
-  parseNativeTxCompactCbor,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening.js";
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+} from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  readJsonFile,
   type ResolvedProverSigner,
   resolveNonExistentInputDeploymentContracts,
-  resolveProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
+} from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
-} from "./submit-step-01.js";
-import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts.js";
+} from "../step-support.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
+import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
+} from "../workflow/transaction-boundary.js";
 
 /** One spend input of the bad transaction, as committed by its inputs hash. */
 export type NeInputPreimageEntry = {
@@ -74,25 +68,6 @@ const toMidgardTxInput = (entry: NeInputPreimageEntry): MidgardTxInput => ({
   tx_id: entry.txId,
   output_index: BigInt(entry.index),
 });
-
-export type NeSubmitStep02CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly inputsPreimagePath: string;
-  /**
-   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
-   * compact structure. New in #604: the door re-derives the anchored id from
-   * these bytes and authenticates field 0 against them.
-   */
-  readonly nativeTxCompactPath: string;
-  readonly badInputIndex: string;
-  readonly awaitConfirmation?: boolean;
-};
 
 export type NeSubmitStep02Result = {
   readonly txHash: string;
@@ -417,36 +392,4 @@ export const neSubmitStep02 = async ({
     outputIndex: Number(resolvedLayout.outputIndex),
     awaitedConfirmation: awaitConfirmation,
   };
-};
-
-export const neSubmitStep02FromFiles = async (
-  config: NeSubmitStep02CliConfig,
-): Promise<NeSubmitStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-non-existent-input-step-02",
-  });
-  const [blueprint, deploymentInfo, inputsJson, nativeTxCompactJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.inputsPreimagePath),
-      readJsonFile(config.nativeTxCompactPath),
-      makeLucidForSubmit(config),
-    ]);
-  const signer = resolveProverSigner(config);
-  return await neSubmitStep02({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    inputsPreimage: inputsJson as readonly NeInputPreimageEntry[],
-    nativeTxCompactCbor: parseNativeTxCompactCbor(
-      nativeTxCompactJson,
-      "--native-tx-compact",
-    ),
-    badInputIndex: BigInt(config.badInputIndex),
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };

@@ -50,13 +50,13 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import {
+  requireComputationThreadToken,
+  selectFeeInput,
+} from "./step-support.js";
+import {
   FABRICATED_DEPOSIT_CATEGORY_LABEL,
   type FabricatedDepositContracts,
 } from "./submit-fabricated-deposit-step-01.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

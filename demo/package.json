@@ -2,7 +2,10 @@
   "name": "midgard-demo",
   "private": true,
   "scripts": {
-    "build": "pnpm -r --if-present --workspace-concurrency=4 run build",
+    "deployment:generate": "node scripts/deployment-profiles.mjs generate",
+    "deployment:check": "node scripts/deployment-profiles.mjs check",
+    "deployment:build": "node scripts/deployment-profiles.mjs build",
+    "build": "node scripts/deployment-profiles.mjs check && pnpm -r --if-present --workspace-concurrency=4 run build",
     "bench:aiken:native-tx-decoders": "node ../onchain/aiken/scripts/native-tx-decoder-benchmark-report.mjs",
     "lint": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js . --max-warnings=0",
     "lint:fix": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js . --fix",

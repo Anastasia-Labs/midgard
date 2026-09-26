@@ -10,6 +10,7 @@ import { Effect, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
 import { MempoolLedgerDB } from "../src/database/index.js";
+import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import type { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.js";
 import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
 import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
@@ -17,6 +18,7 @@ import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
   advanceHistoryAdmissionClock,
+  alignCommitSchedulerBeforeTestWorker,
   assetsToValue,
   attestQueuedStateQueueHeader,
   CML,
@@ -82,10 +84,22 @@ it("restarts the production native initializer after withdrawal empties an unmer
     await h.synchronize();
     return hash;
   };
+  const alignBeforeAdmission = async () => {
+    // Establish the scheduler against the authenticated short commit window
+    // before admission fixes the event's inclusion time.
+    await alignCommitSchedulerBeforeTestWorker({
+      fixture,
+      lucidService,
+      targetEndTimeMs:
+        fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+    });
+    await h.synchronize();
+  };
   try {
     await advanceEmulatorPastLatestBlockEndTime(fixture);
     await ensureSeparateCollateralUtxo(wallet);
     await advanceHistoryAdmissionClock(fixture, "deposit");
+    await alignBeforeAdmission();
     const deposit = await Effect.runPromise(
       SDK.buildUnsignedDepositTxWithMetadataProgram(wallet, fixture.contracts, {
         l2Address: address,
@@ -144,6 +158,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
     );
     await ensureSeparateCollateralUtxo(wallet);
     await advanceHistoryAdmissionClock(fixture, "withdrawal");
+    await alignBeforeAdmission();
     const withdrawal = await Effect.runPromise(
       SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
         wallet,

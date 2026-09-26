@@ -28,7 +28,7 @@ import {
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   applyZeroInputScripts,

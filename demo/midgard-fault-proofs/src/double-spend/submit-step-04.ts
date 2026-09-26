@@ -35,64 +35,38 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
   faultProofFieldOpening,
-  parseNativeTxCompactCbor,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening.js";
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+} from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  readJsonFile,
   resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
-  resolveProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
+} from "../runtime.js";
 import {
   excludeUtxo,
   spendInputsWitnessFromCbors,
-} from "./spend-input-witness.js";
+} from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
-} from "./submit-step-01.js";
-import { parseSpendInputCbors } from "./submit-step-03.js";
-import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+} from "../step-support.js";
+import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
-} from "./witness-reference-scripts.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
-
-export type SubmitStep04CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly tx2InputsPath: string;
-  /**
-   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — **tx2's** compact structure. New
-   * in #604: the door authenticates its field 0 against `verified_tx2_id`.
-   */
-  readonly nativeTxCompactPath: string;
-  readonly doubleSpentInputIndex: string;
-  readonly awaitConfirmation?: boolean;
-};
+} from "../workflow/transaction-boundary.js";
 
 export type SubmitStep04Result = {
   readonly txHash: string;
@@ -613,44 +587,4 @@ export const submitStep04 = async ({
     ),
     awaitedConfirmation: awaitConfirmation,
   };
-};
-
-export const submitStep04FromFiles = async (
-  config: SubmitStep04CliConfig,
-): Promise<SubmitStep04Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-step-04",
-  });
-  const [blueprint, deploymentInfo, tx2InputsJson, nativeTxCompactJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.tx2InputsPath),
-      readJsonFile(config.nativeTxCompactPath),
-      makeLucidForSubmit(config),
-    ]);
-  const tx2SpendInputCbors = parseSpendInputCbors(
-    tx2InputsJson,
-    "--tx2-inputs",
-  );
-  const signer = resolveProverSigner(config);
-  return await submitStep04({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    tx2SpendInputCbors,
-    nativeTxCompactCbor: parseNativeTxCompactCbor(
-      nativeTxCompactJson,
-      "--native-tx-compact",
-    ),
-    doubleSpentInputIndex: parseDoubleSpentInputIndex({
-      value: config.doubleSpentInputIndex,
-      inputCount: tx2SpendInputCbors.length,
-      inputLabel: "tx2",
-    }),
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };

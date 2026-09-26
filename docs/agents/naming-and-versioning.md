@@ -2,7 +2,7 @@
 
 Name each file for its purpose: a reader should be able to infer what it does
 or contains from its path, without opening it. Use specific domain terms,
-such as `transaction-finalization.ts` or `replay-authority-fixtures.ts`.
+such as `transaction-finalization.ts` or `deployment-authority-fixture.ts`.
 Group directories by concern and follow the language's naming conventions.
 
 Keep names focused on purpose; put ticket references in comments and versions

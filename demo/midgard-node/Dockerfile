@@ -58,5 +58,6 @@ WORKDIR /app
 COPY --from=build /prod/midgard-node ./
 COPY --from=native-mpf-owner /native /app/native
 COPY --from=onchain /plutus.json /onchain/aiken/plutus.json
+COPY --from=onchain /plutus.json.deployment.json /onchain/aiken/plutus.json.deployment.json
 ENV NODE_ENV=production
 CMD ["node", "./dist/index.js", "listen"]

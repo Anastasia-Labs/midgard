@@ -29,7 +29,7 @@ import {
   requireProof,
   requireTransactionsRootMatch,
 } from "../prepare-double-spend.js";
-import { nativeTxFromCoreCompact } from "../submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../step-support.js";
 import {
   type PreparedFieldPreimageLengthWorkflow,
   prepareFieldPreimageLengthWorkflow,

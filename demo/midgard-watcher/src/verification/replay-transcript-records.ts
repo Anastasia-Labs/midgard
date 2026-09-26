@@ -1257,30 +1257,28 @@ export const readWatcherReplayTranscriptRecords = async (
     );
     equal(matching, [event.committedClaim], "event DA claim");
     equal(event.network, ruleBundle.network, "event network");
-    if (event.origin.source === "local_publication") {
-      equal(
-        event.origin.deploymentManifestId,
-        t.deploymentFingerprint,
-        "event deployment",
-      );
-      equal(
-        event.origin.blueprintHash,
-        ruleBundle.blueprintHash,
-        "event release",
-      );
-      const cutoff = event.origin.throughHeader;
-      if (cutoff !== null) {
-        for (const key of [
-          "headerHash",
-          "headerCborHex",
-          "queueOutRef",
-          "observedTransactionHash",
-          "observedBlockHash",
-          "observedSlot",
-          "observedBlockNo",
-        ] as const) {
-          equal(cutoff[key], headerRecord[key], `event cutoff ${key}`);
-        }
+    equal(
+      event.origin.deploymentManifestId,
+      t.deploymentFingerprint,
+      "event deployment",
+    );
+    equal(
+      event.origin.blueprintHash,
+      ruleBundle.blueprintHash,
+      "event release",
+    );
+    const cutoff = event.origin.throughHeader;
+    if (cutoff !== null) {
+      for (const key of [
+        "headerHash",
+        "headerCborHex",
+        "queueOutRef",
+        "observedTransactionHash",
+        "observedBlockHash",
+        "observedSlot",
+        "observedBlockNo",
+      ] as const) {
+        equal(cutoff[key], headerRecord[key], `event cutoff ${key}`);
       }
     }
   }
@@ -1470,12 +1468,8 @@ export const watcherReplayTranscriptSemanticProjection = (
       canonicalNativeTxCborHex: event.canonicalNativeTxCborHex,
       programMaterialSidecarCborHex: event.programMaterialSidecarCborHex,
       transitionEffect: event.transitionEffect,
-      deploymentManifestId:
-        event.origin.source === "local_publication"
-          ? event.origin.deploymentManifestId
-          : t.deploymentFingerprint,
+      deploymentManifestId: event.origin.deploymentManifestId,
       throughHeader:
-        event.origin.source === "local_publication" &&
         event.origin.throughHeader !== null
           ? {
               headerHash: event.origin.throughHeader.headerHash,

@@ -38,6 +38,8 @@ export const createWatcherAvailabilityObservation = (input: {
       "Availability raw source differs from the signed deployment",
     );
   }
+  // The source's release depth comes from the verified deployment finality.
+  const confirmationDepth = details.confirmationDepth;
   const capture = <T>(
     observation: WatcherAuthenticatedStateQueueObservation,
     read: () => Promise<T>,
@@ -46,7 +48,8 @@ export const createWatcherAvailabilityObservation = (input: {
       assertWatcherStateQueueObservation(observation);
       if (
         observation.deploymentIdentityDigest !== input.identity.manifestId ||
-        BigInt(observation.nativePoint.finalityDepth) < 30n
+        BigInt(observation.nativePoint.finalityDepth) <
+          BigInt(confirmationDepth)
       ) {
         throw new Error(
           "Availability intake requires the exact finalized deployment observation",
@@ -92,6 +95,7 @@ export const createWatcherAvailabilityObservation = (input: {
     });
   };
   return {
+    confirmationDepth,
     async snapshot(
       observation: WatcherAuthenticatedStateQueueObservation,
       headerHash: string,
@@ -158,7 +162,7 @@ export const createWatcherAvailabilityObservation = (input: {
             source: input.source,
             txHash: intent.txHash,
             expectedInclusionPoint: inclusion,
-            minimumConfirmationDepth: 30,
+            minimumConfirmationDepth: confirmationDepth,
           });
           if (
             CML.TransactionBody.from_cbor_hex(

@@ -15,7 +15,7 @@ import { planFaultProofFieldOpening } from "../field-opening.js";
 import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { missingNativeScriptTxSubmitError } from "./submit-common.js";
 
 /** Complete, consumer-agnostic evidence needed by the six submitters. */

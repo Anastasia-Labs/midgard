@@ -73,11 +73,11 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { parseSubmitInvalidSignatureWitnessSetCompact } from "./submit-invalid-signature-step-01.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
-} from "./submit-step-01.js";
+} from "./step-support.js";
+import { parseSubmitInvalidSignatureWitnessSetCompact } from "./submit-invalid-signature-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

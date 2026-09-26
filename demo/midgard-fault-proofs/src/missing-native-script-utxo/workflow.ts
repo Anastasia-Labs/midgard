@@ -25,7 +25,7 @@ import {
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { parseSubmitStep01TxInclusion } from "../submit-step-01.js";
+import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {

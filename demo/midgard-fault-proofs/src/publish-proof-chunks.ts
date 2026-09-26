@@ -48,7 +48,7 @@ import {
   minimumLovelaceForInlineDatumOutput,
   resolveProtocolParameters,
 } from "./spend-input-witness.js";
-import { selectFeeInput } from "./submit-step-01.js";
+import { selectFeeInput } from "./step-support.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,

@@ -18,7 +18,10 @@ import {
   encodeCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import {
@@ -51,7 +54,7 @@ import {
   makeWatcherAuthorityContracts,
   makeWatcherDeploymentAuthorityFixture,
   WATCHER_EMULATOR_HISTORY_RECIPE,
-} from "../support/deployment-authority-fixture.js";
+} from "./deployment-authority-fixture.js";
 // Explicitly synthetic local test chain. The initialization and reference frames
 // came from a passing ordinary emulator scenario. Header keys/signatures are dummy
 // fixture data: this proves native framing/W12/application authority wiring only,
@@ -94,11 +97,11 @@ const makeConfig = (
       requestTimeoutMs: 10_000,
       maxConcurrency: 4,
       finality: Object.freeze({
-        depth: 30,
+        depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
         rollback: Object.freeze({
           beforeFinality: "rewind",
           afterFinality: "quarantine",
-          maxDepth: 30,
+          maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
         }),
       }),
     }),

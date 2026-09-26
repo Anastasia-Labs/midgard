@@ -1,0 +1,10 @@
+# Copy to config.yaml (git-ignored), chmod 600, and supply existing wallet seeds.
+# Retain --config /absolute/path/watcher-process.json for protocol configuration.
+# Set wallet keySource to {"kind":"environment","variable":"WATCHER_PROVER_KEY"}
+# and similarly WATCHER_AVAILABILITY_KEY in that JSON file.
+{}
+# WATCHER_PROVER_KEY: "raw prover wallet mnemonic"
+# WATCHER_AVAILABILITY_KEY: "raw availability challenger wallet mnemonic"
+# No seed: prefix for watcher wallet mnemonics. Service auth and transport keys
+# are separate settings; supply the names referenced by your process JSON.
+# Remove {} when uncommenting settings. Do not paste real seeds into this example.

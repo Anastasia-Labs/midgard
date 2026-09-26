@@ -1218,6 +1218,41 @@ const optionalSignerConfig = (
     throw new Error("DA_MODE has been removed and must be omitted");
   }
   const index = optionalNonEmpty(env.DA_SIGNER_INDEX);
+  const indexedSources = Object.keys(env).filter((name) =>
+    name.startsWith("DA_SIGNER_KEY_SOURCE_"),
+  );
+  if (indexedSources.length > 0) {
+    if (env.DA_SIGNER_KEY_SOURCE !== undefined) {
+      throw new Error(
+        "Use either DA_SIGNER_KEY_SOURCE or indexed DA_SIGNER_KEY_SOURCE_<index> settings, not both",
+      );
+    }
+    for (const name of indexedSources) {
+      const suffix = name.slice("DA_SIGNER_KEY_SOURCE_".length);
+      if (
+        !/^(0|[1-9][0-9]{0,2})$/u.test(suffix) ||
+        Number(suffix) > 255 ||
+        optionalNonEmpty(env[name]) === undefined
+      ) {
+        throw new Error(
+          "Indexed DA signer sources require canonical indices from 0 to 255 and nonempty values",
+        );
+      }
+    }
+    if (index === undefined) {
+      throw new Error(
+        "DA_SIGNER_INDEX is required to select an indexed signer",
+      );
+    }
+    const selectedIndex = signerIndex(index);
+    const selectedSource = optionalNonEmpty(
+      env[`DA_SIGNER_KEY_SOURCE_${selectedIndex}`],
+    );
+    if (selectedSource === undefined) {
+      throw new Error("No indexed DA signer source matches DA_SIGNER_INDEX");
+    }
+    return { signerIndex: selectedIndex, signerKeySource: selectedSource };
+  }
   const keySource = optionalNonEmpty(env.DA_SIGNER_KEY_SOURCE);
   if (index === undefined && keySource === undefined) {
     return {};

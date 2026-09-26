@@ -23,7 +23,6 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   type DeploymentManifest,
   type DeploymentManifestAvailabilityChallenge,
@@ -36,6 +35,10 @@ import {
   makeDeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core/retention-window";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -75,7 +78,7 @@ import {
 import {
   contractDeploymentInfoPathOverride,
   daAvailabilityChallengeEnvironmentInput,
-  deploymentEconomicsProfileFromEnvironment,
+  deploymentEconomicsFromEnvironment,
 } from "../environment.js";
 import { writeJsonFileAtomic } from "../files/atomic-write.js";
 import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
@@ -359,11 +362,6 @@ export type DeploymentManifestIdentityContext = Pick<
   | "economics"
   | "availabilityChallenge"
 >;
-
-const configuredDeploymentEconomics = (): DeploymentManifestEconomics =>
-  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
-    deploymentEconomicsProfileFromEnvironment()
-  ];
 
 const configuredAvailabilityChallenge =
   (): DeploymentManifestAvailabilityChallenge =>
@@ -672,7 +670,7 @@ export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
   const blueprintHash = yield* loadRealBlueprintSha256();
   const genesisSnapshot = genesisUtxoIdentitySnapshot(nodeConfig.GENESIS_UTXOS);
   return {
-    economics: configuredDeploymentEconomics(),
+    economics: deploymentEconomicsFromEnvironment(),
     availabilityChallenge: configuredAvailabilityChallenge(),
     cardanoProtocolParameters,
     genesis: {
@@ -714,6 +712,7 @@ const withManifestId = (
  * Builds the sole canonical V1 manifest and re-parses it before return so
  * missing contracts, tuple drift, and dispute-schedule drift fail closed.
  */
+
 export const buildDeploymentManifest = (
   deploymentInfo: ContractDeploymentInfo,
   context: DeploymentManifestBuildContext,
@@ -746,6 +745,8 @@ export const buildDeploymentManifest = (
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: context.network,
+    deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
+    deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     cardanoProtocolParameters: context.cardanoProtocolParameters,
     genesis: context.genesis,
     createdAt: context.existingManifest?.createdAt ?? nowIso,
@@ -888,7 +889,7 @@ export const verifyConfiguredDeploymentManifestProgram: Effect.Effect<
     referenceScriptDeployAddress: nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
     hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
     hubOracleOneShotOutputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
-    economicsProfile: nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE,
+    economicsProfile: nodeConfig.DEPLOYMENT_ECONOMICS_PROFILE,
     path,
   });
 });
@@ -1208,7 +1209,7 @@ const buildLiveDeploymentManifestProgram = (
         hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
         hubOracleOneShotOutputIndex:
           nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
-        economicsProfile: nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE,
+        economicsProfile: nodeConfig.DEPLOYMENT_ECONOMICS_PROFILE,
         path: outputPath,
       },
     );

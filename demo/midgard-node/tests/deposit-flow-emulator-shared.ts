@@ -179,6 +179,7 @@ import {
   commitExplicitBlockHeaderProgram,
   runCommitBlockHeaderWorkerProgram,
 } from "../src/workers/commit-block-header.js";
+import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "../src/workers/confirm-block-commitments.js";
 import {
@@ -2433,10 +2434,82 @@ export const attestQueuedStateQueueHeader = async ({
   const attestedHeaders = await runNodeCommandProgram(
     attestStateQueueOnceProgram({ headerHash }),
     { fixture, lucidService, globals },
-  );
+  ).catch((cause: unknown) => {
+    throw new Error(
+      `Attestation failed for ${headerHash}: ${inspect(cause, { depth: 12 })}`,
+      { cause },
+    );
+  });
   expect(attestedHeaders.map((result) => result.headerHash)).toEqual([
     headerHash,
   ]);
+  const queue = await Effect.runPromise(
+    SDK.fetchSortedStateQueueUTxOsProgram(
+      fixture.operatorLucid,
+      stateQueueFetchConfig(fixture.contracts),
+    ),
+  );
+  const attested = queue.find(
+    (entry) =>
+      entry.datum.key !== "Empty" && entry.datum.key.Key.key === headerHash,
+  );
+  expect(attested).toBeDefined();
+  if (attested === undefined)
+    throw new Error(`Missing attested header ${headerHash}`);
+  const node = await Effect.runPromise(
+    SDK.getStateQueueNodeFromStateQueueDatum(attested.datum),
+  );
+  expect(
+    typeof node.da_attestation === "object" &&
+      "Attested" in node.da_attestation,
+  ).toBe(true);
+};
+
+export const retainAndAttestSubmittedHeader = async ({
+  fixture,
+  lucidService,
+  globals,
+  headerHash,
+  submittedTxHash,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly globals: Globals;
+  readonly headerHash: string;
+  readonly submittedTxHash: string;
+}) => {
+  await fixture.operatorLucid.awaitTx(submittedTxHash);
+  await runNodeDatabaseEffect(
+    Effect.gen(function* () {
+      const pending = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+        Buffer.from(headerHash, "hex"),
+      );
+      if (Option.isNone(pending))
+        return yield* Effect.fail(
+          new Error(`Missing submitted journal ${headerHash}`),
+        );
+      expect(
+        pending.value[
+          PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
+        ]?.toString("hex"),
+      ).toBe(submittedTxHash);
+      const snapshot = yield* materializeConfirmedLedgerSnapshot(pending.value);
+      const payload = yield* buildDaPayloadInsert({
+        record: pending.value,
+        utxos: snapshot.entries.map((entry) => ({
+          outref: entry.outref,
+          output: entry.output,
+        })),
+      });
+      yield* DaPayloadsDB.upsertAvailable(payload);
+    }),
+  );
+  await attestQueuedStateQueueHeader({
+    fixture,
+    lucidService,
+    globals,
+    headerHash,
+  });
 };
 
 /**

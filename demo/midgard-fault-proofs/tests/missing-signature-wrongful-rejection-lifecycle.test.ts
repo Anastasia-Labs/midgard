@@ -51,7 +51,7 @@ import {
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { requireComputationThreadToken } from "../src/submit-step-01.js";
+import { requireComputationThreadToken } from "../src/step-support.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   computeFraudProofWorkflowId,

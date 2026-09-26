@@ -64,7 +64,7 @@ describe("LucidDaAttestationChainReader", () => {
       committeeHex,
       threshold: 2,
       observedChainPoint: {
-        network: "Preview",
+        network: "Preprod",
         slot: 99,
         blockHash: "ab".repeat(32),
       },
@@ -177,7 +177,7 @@ describe("LucidDaAttestationChainReader", () => {
     const canonical = chainPoint("chain-sync:node-a", 100, "ab");
     const authority = new LocalNodeChainAuthority(
       "node-a",
-      "Preview",
+      "Preprod",
       {
         next: async () => ({
           event: { direction: "roll_forward", point: canonical },
@@ -354,7 +354,7 @@ const chainPoint = (
   slot: number,
   blockByte: string,
 ): CanonicalChainPoint => ({
-  network: "Preview",
+  network: "Preprod",
   slot,
   blockHash: blockByte.repeat(32),
   providerSource,

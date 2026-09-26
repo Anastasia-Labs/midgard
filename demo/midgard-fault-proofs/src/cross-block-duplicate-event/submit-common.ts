@@ -11,7 +11,7 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { requireComputationThreadToken } from "../submit-step-01.js";
+import { requireComputationThreadToken } from "../step-support.js";
 import {
   CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
   type CrossBlockDuplicateEventContracts,

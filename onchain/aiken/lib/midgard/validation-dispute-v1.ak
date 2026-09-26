@@ -1,10 +1,11 @@
+use env
 use midgard/validation_trace_v1
 
 pub const dispute_version: Int = 1
 
-pub const response_window_milliseconds: Int = 300_000
+pub const response_window_milliseconds: Int = env.response_window_milliseconds
 
-pub const max_bisection_rounds: Int = 32
+pub const max_bisection_rounds: Int = env.max_bisection_rounds
 
 pub const max_dispute_duration_milliseconds: Int =
   ( 2 * max_bisection_rounds + 2 ) * response_window_milliseconds

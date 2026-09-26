@@ -39,7 +39,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {

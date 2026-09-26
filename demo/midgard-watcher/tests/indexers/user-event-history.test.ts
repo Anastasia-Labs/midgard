@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   DepositEvent,
   DepositInfo,
@@ -1792,11 +1795,11 @@ describe("local deposit transcript semantic renewal", () => {
       expect(renewed.coordinate).toEqual(original.coordinate);
       const originalRecords = await readWatcherReplayTranscriptRecords(
         persistedTranscriptCborHex,
-        30,
+        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       );
       const renewedRecords = await readWatcherReplayTranscriptRecords(
         watcherAuthenticatedReplayTranscriptCborHex(renewed),
-        30,
+        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       );
       expect(renewedRecords.blockReplay.priorStateRoot).toBe(
         originalRecords.blockReplay.priorStateRoot,
@@ -3004,7 +3007,7 @@ describe("header-scoped replay authorities", () => {
         watcherAuthenticatedReplayTranscriptCborHex(original);
       const originalRecords = await readWatcherReplayTranscriptRecords(
         persistedTranscriptCborHex,
-        30,
+        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       );
       const originalEvent = originalRecords.events[0]!;
       if (

@@ -17,7 +17,7 @@ import {
 import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts.js";
 import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {

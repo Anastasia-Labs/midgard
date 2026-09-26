@@ -7,6 +7,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -527,7 +528,8 @@ const classify = async (
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       }),
   });
   expect(decision).toMatchObject({
@@ -567,7 +569,10 @@ describe("validation transcript capture with an owned user-event runtime", () =>
         const persisted = watcherAuthenticatedReplayTranscriptCborHex(
           capture.transcript,
         );
-        const records = await readWatcherReplayTranscriptRecords(persisted, 30);
+        const records = await readWatcherReplayTranscriptRecords(
+          persisted,
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+        );
         if (kind === "forced") {
           expect(records.events[0]!.origin).toMatchObject({
             source: "local_publication",

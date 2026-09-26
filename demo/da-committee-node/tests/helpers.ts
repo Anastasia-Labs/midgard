@@ -20,6 +20,7 @@ import {
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { encodeMidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -429,7 +430,7 @@ export const minimalConfig = ({
   readonly signerSeed: string;
   readonly signerPublicKey: string;
 }): CommitteeConfig => ({
-  network: "Preview",
+  network: "Preprod",
   deploymentManifestPath: manifestPath,
   contractDeploymentInfoPath: deploymentInfoPath,
   deploymentFingerprint: "f".repeat(64),
@@ -441,9 +442,11 @@ export const minimalConfig = ({
   availabilityChallenge: {
     responseClasses: {
       smallPayloadMaxBytes: 65_536,
-      smallResponseWindowMs: 3_600_000,
+      smallResponseWindowMs:
+        SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
       fullPayloadMaxBytes: 67_108_864,
-      fullResponseWindowMs: 172_800_000,
+      fullResponseWindowMs:
+        SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
     },
     responseGeometry: {
       chunkByteLength: 14_020,

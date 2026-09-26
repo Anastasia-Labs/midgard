@@ -159,14 +159,10 @@ export default tseslint.config(
     },
   },
   {
-    files: [
-      "midgard-node/src/index.ts",
-      "midgard-node-tools/src/index.ts",
-      "midgard-watcher/src/indexers/settlement-indexer.ts",
-    ],
+    files: ["midgard-node/src/index.ts", "midgard-node-tools/src/index.ts"],
     rules: {
-      // Commander and the legacy settlement decoder necessarily expose
-      // explicit `any` in their callback/decoder adapter signatures.
+      // Commander necessarily exposes explicit `any` in its callback
+      // adapter signatures.
       "@typescript-eslint/no-explicit-any": "off",
     },
   },

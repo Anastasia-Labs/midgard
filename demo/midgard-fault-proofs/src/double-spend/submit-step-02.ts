@@ -32,7 +32,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -40,56 +39,38 @@ import {
   type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
-} from "./proof-chunk-carriage.js";
+} from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
   phasMembershipRewardAddress,
-  readJsonFile,
   requireSingletonUtxo,
   resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
-  resolveProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
+} from "../runtime.js";
 import {
-  parseSubmitStep01TxInclusion,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
-} from "./submit-step-01.js";
-import { computationThreadOutputPredicate } from "./tx-layout.js";
+} from "../step-support.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "./witness-reference-scripts.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
-
-export type SubmitStep02CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly stateQueueBlockOutRef: string;
-  readonly txInclusionPath: string;
-  readonly awaitConfirmation?: boolean;
-};
+} from "../workflow/transaction-boundary.js";
 
 export type SubmitStep02Result = {
   readonly txHash: string;
@@ -497,32 +478,4 @@ export const submitStep02 = async ({
     publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
-};
-
-export const submitStep02FromFiles = async (
-  config: SubmitStep02CliConfig,
-): Promise<SubmitStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-step-02",
-  });
-  const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
-    [
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.txInclusionPath),
-      makeLucidForSubmit(config),
-    ],
-  );
-  const signer = resolveProverSigner(config);
-  return await submitStep02({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };

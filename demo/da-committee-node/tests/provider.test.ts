@@ -685,7 +685,9 @@ describe("L1 provider adapters", () => {
         blockHash: "bb".repeat(32),
       });
       expect(socketCount).toBe(1);
-      expect(nextBlockCount).toBe(1);
+      // Both syncs found the caller at the node tip: neither waited on a
+      // nextBlock, which Ogmios answers there only once another block lands.
+      expect(nextBlockCount).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -2928,3 +2930,406 @@ const localNodeSource = {
 
 const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
+
+const blockAt = (slot: number, fork = 0): FakeOgmiosBlock => ({
+  slot,
+  id: `${fork.toString(16).padStart(2, "0")}${slot.toString(16).padStart(62, "0")}`,
+});
+
+const nodePoint = ({ slot, id }: FakeOgmiosBlock): CanonicalChainPoint => ({
+  network: "Preview",
+  slot,
+  blockHash: id,
+  providerSource: "chain-sync:node-a",
+  observedAt: "2026-07-28T00:00:00.000Z",
+});
+
+/**
+ * An Ogmios chain-sync double that behaves like a live node: a nextBlock at
+ * the tip is held until the node adopts another block, and a rollback is
+ * delivered to each follower as a backward response before the new blocks.
+ */
+const liveOgmiosNode = (initial: readonly FakeOgmiosBlock[]) => {
+  const chain = [...initial];
+  const followers = new Set<LiveOgmiosWebSocket>();
+  let nextBlocks = 0;
+  let heldAtTip = 0;
+  const intersections: unknown[][] = [];
+  const tip = () => chain.at(-1)!;
+  class LiveOgmiosWebSocket {
+    onopen: ((event: unknown) => void) | null = null;
+    onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+    onerror: ((event: unknown) => void) | null = null;
+    onclose: ((event: unknown) => void) | null = null;
+    readPointer = -1;
+    handshakeEcho: FakeOgmiosBlock | undefined;
+    rollbackTo: number | undefined;
+    held: string | undefined;
+
+    constructor(_url: string) {
+      followers.add(this);
+      queueMicrotask(() => this.onopen?.({}));
+    }
+
+    respond(id: string, result: unknown): void {
+      queueMicrotask(() =>
+        this.onmessage?.({
+          data: JSON.stringify({ jsonrpc: "2.0", id, result }),
+        }),
+      );
+    }
+
+    /** Answers a nextBlock, or holds it at the tip as a live node does. */
+    answerNextBlock(id: string): void {
+      if (this.handshakeEcho !== undefined) {
+        const point = this.handshakeEcho;
+        this.handshakeEcho = undefined;
+        this.respond(id, { direction: "backward", point, tip: tip() });
+        return;
+      }
+      if (this.rollbackTo !== undefined) {
+        this.readPointer = this.rollbackTo;
+        this.rollbackTo = undefined;
+        this.respond(id, {
+          direction: "backward",
+          point: chain[this.readPointer],
+          tip: tip(),
+        });
+        return;
+      }
+      const block = chain[this.readPointer + 1];
+      if (block === undefined) {
+        heldAtTip += 1;
+        this.held = id;
+        return;
+      }
+      this.readPointer += 1;
+      this.respond(id, { direction: "forward", block, tip: tip() });
+    }
+
+    send(raw: string): void {
+      const request = JSON.parse(raw) as {
+        readonly id: string;
+        readonly method: string;
+        readonly params: Record<string, unknown>;
+      };
+      if (request.method === "queryNetwork/genesisConfiguration") {
+        this.respond(request.id, { networkMagic: 2 });
+      } else if (request.method === "queryNetwork/tip") {
+        this.respond(request.id, tip());
+      } else if (request.method === "findIntersection") {
+        const points = request.params.points as readonly (
+          | FakeOgmiosBlock
+          | "origin"
+        )[];
+        intersections.push([...points]);
+        const index = points
+          .filter((point) => point !== "origin")
+          .map((point) =>
+            chain.findIndex(
+              ({ slot, id }) => slot === point.slot && id === point.id,
+            ),
+          )
+          .find((found) => found >= 0);
+        if (index === undefined) {
+          throw new Error("live Ogmios double only intersects on its chain");
+        }
+        this.readPointer = index;
+        this.rollbackTo = undefined;
+        this.handshakeEcho = chain[index]!;
+        this.respond(request.id, { intersection: chain[index], tip: tip() });
+      } else if (request.method === "nextBlock") {
+        nextBlocks += 1;
+        this.answerNextBlock(request.id);
+      } else {
+        throw new Error(`live Ogmios double has no ${request.method}`);
+      }
+    }
+
+    close(): void {
+      followers.delete(this);
+    }
+  }
+  const releaseHeld = () => {
+    for (const follower of followers) {
+      const held = follower.held;
+      if (held !== undefined) {
+        follower.held = undefined;
+        follower.answerNextBlock(held);
+      }
+    }
+  };
+  return {
+    WebSocket: LiveOgmiosWebSocket,
+    nextBlocks: () => nextBlocks,
+    heldAtTip: () => heldAtTip,
+    intersections: () => intersections,
+    sockets: () => followers.size,
+    extend: (block: FakeOgmiosBlock) => {
+      chain.push(block);
+      releaseHeld();
+    },
+    rollBackTo: (slot: number) => {
+      const index = chain.findIndex((block) => block.slot === slot);
+      chain.length = index + 1;
+      for (const follower of followers) {
+        if (follower.readPointer > index) {
+          follower.rollbackTo = Math.min(follower.rollbackTo ?? index, index);
+        }
+      }
+    },
+  };
+};
+
+/**
+ * Writes a chain-sync journal of roll-forward events over `blocks`, with its
+ * cursor metadata, as a member that followed them would have left it.
+ */
+const writeFollowedJournal = async (
+  cursorPath: string,
+  blocks: readonly FakeOgmiosBlock[],
+): Promise<void> => {
+  await writeFile(
+    `${cursorPath}.events.jsonl`,
+    blocks
+      .map((block, sequence) => `${journalLine(sequence, nodePoint(block))}\n`)
+      .join(""),
+  );
+  await writeFile(
+    cursorPath,
+    `${JSON.stringify({
+      schemaVersion: 2,
+      authorityFingerprint: "11".repeat(32),
+      cursor: {
+        sequence: blocks.length - 1,
+        point: nodePoint(blocks.at(-1)!),
+        rollbackGeneration: 0,
+      },
+    })}\n`,
+  );
+};
+
+const journalSequences = async (cursorPath: string): Promise<number[]> =>
+  (await readFile(`${cursorPath}.events.jsonl`, "utf8"))
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => (JSON.parse(line) as { sequence: number }).sequence);
+
+/** Resolves to "blocked" when `work` has not settled within `ms`. */
+const settlesWithin = async <T>(
+  work: Promise<T>,
+  ms: number,
+): Promise<T | "blocked"> => {
+  work.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<"blocked">((resolve) => {
+        timer = setTimeout(() => resolve("blocked"), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const followingAuthority = (cursorPath: string) =>
+  new LocalNodeChainAuthority(
+    "node-a",
+    "Preview",
+    new OgmiosChainSyncEventSource("ws://ogmios.local", "Preview", "node-a"),
+    new FileChainSyncCursorStore(cursorPath, "11".repeat(32)),
+  );
+
+const consumerOf = (
+  authority: LocalNodeChainAuthority,
+  cursorPath: string,
+): LocalNodeStateQueueProvider =>
+  new LocalNodeStateQueueProvider(
+    authority,
+    [
+      {
+        fetchStateQueueNodes: () => {
+          throw new Error("no query surface in a chain-sync test");
+        },
+        currentChainPoint: () => authority.currentPoint(),
+      },
+    ],
+    ["query:node-a:0"],
+    new FileChainSyncConsumerCursorStore(
+      `${cursorPath}.watcher-consumer-v1`,
+      "11".repeat(32),
+    ),
+  );
+
+describe("restarted local-node chain sync", () => {
+  it("answers a sync at the node tip at once instead of holding a nextBlock until the next block", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const blocks = [1, 2, 3, 4, 5].map((slot) => blockAt(slot));
+    await writeFollowedJournal(cursorPath, blocks.slice(0, 3));
+    const node = liveOgmiosNode(blocks);
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const authority = followingAuthority(cursorPath);
+      await expect(authority.synchronizeToTip()).resolves.toMatchObject({
+        slot: 5,
+      });
+      // The next sync (the next tick) finds nothing new: it must not wait for
+      // the node's next block, which a live node holds the nextBlock for.
+      await expect(
+        settlesWithin(authority.synchronizeToTip(), 1_000),
+      ).resolves.toMatchObject({ slot: 5, blockHash: blocks[4]!.id });
+      expect(node.heldAtTip()).toBe(0);
+
+      // A block landing later is delivered, not skipped.
+      node.extend(blockAt(6));
+      await expect(
+        settlesWithin(authority.synchronizeToTip(), 1_000),
+      ).resolves.toMatchObject({ slot: 6 });
+
+      // A rollback landing while the member stood at the tip is delivered in
+      // order before the blocks that replace it.
+      node.rollBackTo(4);
+      node.extend(blockAt(5, 1));
+      node.extend(blockAt(6, 1));
+      await expect(
+        settlesWithin(authority.synchronizeToTip(), 1_000),
+      ).resolves.toMatchObject({ slot: 6, blockHash: blockAt(6, 1).id });
+      expect(
+        (await authority.replay(2)).map(({ direction, point }) => [
+          direction,
+          point.slot,
+          point.blockHash.slice(0, 2),
+        ]),
+      ).toEqual([
+        ["roll_forward", 4, "00"],
+        ["roll_forward", 5, "00"],
+        ["roll_forward", 6, "00"],
+        ["roll_backward", 4, "00"],
+        ["roll_forward", 5, "01"],
+        ["roll_forward", 6, "01"],
+      ]);
+      await expect(authority.currentCursor()).resolves.toMatchObject({
+        sequence: 8,
+        rollbackGeneration: 1,
+      });
+      expect(node.heldAtTip()).toBe(0);
+      expect(node.intersections()).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("resumes a restarted member from its durable cursor, walks only the blocks it missed, and keeps the journal bounded", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const history = 5_000;
+    const missed = 12;
+    const blocks = Array.from({ length: history + missed }, (_, index) =>
+      blockAt(index + 1),
+    );
+    await writeFollowedJournal(cursorPath, blocks.slice(0, history));
+    const node = liveOgmiosNode(blocks);
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const authority = followingAuthority(cursorPath);
+      const consumer = consumerOf(authority, cursorPath);
+      await expect(
+        settlesWithin(authority.synchronizeToTip(), 2_000),
+      ).resolves.toMatchObject({ slot: history + missed });
+      // One intersection at the durable cursor, then one nextBlock for the
+      // handshake echo and one per missed block: never a walk of history.
+      expect(node.intersections()).toHaveLength(1);
+      expect(node.intersections()[0]![0]).toEqual(blocks[history - 1]);
+      expect(node.nextBlocks()).toBe(missed + 1);
+      // The next tick's sync finds the member at the tip and returns at once.
+      await expect(
+        settlesWithin(authority.synchronizeToTip(), 1_000),
+      ).resolves.toMatchObject({ slot: history + missed });
+      expect(node.nextBlocks()).toBe(missed + 1);
+      expect(node.heldAtTip()).toBe(0);
+
+      // Once the consumer has replayed through the cursor, the journal keeps
+      // only the points a resumption intersects with.
+      const cursor = await authority.currentCursor();
+      await consumer.acknowledgeChainSyncCursor(cursor);
+      const kept = await journalSequences(cursorPath);
+      expect(kept).toHaveLength(2_160);
+      expect(kept[0]).toBe(cursor.sequence - 2_159);
+      expect(kept.at(-1)).toBe(cursor.sequence);
+      await expect(authority.replay(cursor.sequence)).resolves.toEqual([]);
+
+      // A second restart loads the pruned journal and again walks only what
+      // it missed.
+      node.extend(blockAt(history + missed + 1));
+      node.extend(blockAt(history + missed + 2));
+      const restarted = followingAuthority(cursorPath);
+      await expect(
+        settlesWithin(restarted.synchronizeToTip(), 1_000),
+      ).resolves.toMatchObject({ slot: history + missed + 2 });
+      const candidates = node.intersections().at(-1)!;
+      expect(candidates[0]).toEqual(blocks.at(-1));
+      expect(candidates).toHaveLength(2_160 + 1);
+      await expect(restarted.currentCursor()).resolves.toMatchObject({
+        sequence: cursor.sequence + 2,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("never prunes an event the durable consumer has not replayed", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const blocks = Array.from({ length: 5_000 }, (_, index) =>
+      blockAt(index + 1),
+    );
+    await writeFollowedJournal(cursorPath, blocks);
+    const store = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+
+    // Too few prunable entries to be worth a rewrite yet.
+    await store.prune(999);
+    expect(await journalSequences(cursorPath)).toHaveLength(5_000);
+
+    // The consumer lags far behind the intersection window: everything after
+    // it survives, so its rollback replay stays contiguous.
+    await store.prune(2_000);
+    const kept = await journalSequences(cursorPath);
+    expect(kept[0]).toBe(2_001);
+    expect(kept).toHaveLength(2_999);
+    const replayed = await store.replay(2_000);
+    expect(replayed).toHaveLength(2_999);
+    expect(replayed[0]!.point.slot).toBe(2_002);
+
+    // Reloaded from disk, the pruned journal is accepted and still appends.
+    const reloaded = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    await expect(reloaded.load()).resolves.toMatchObject({ sequence: 4_999 });
+    const next = nodePoint(blockAt(5_001));
+    await reloaded.append(
+      { direction: "roll_forward", point: next },
+      { sequence: 5_000, point: next, rollbackGeneration: 0 },
+    );
+    expect((await journalSequences(cursorPath)).at(-1)).toBe(5_000);
+  });
+
+  it("refuses a pruned journal with a gap", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const blocks = Array.from({ length: 10 }, (_, index) => blockAt(index + 1));
+    await writeFollowedJournal(cursorPath, blocks);
+    const lines = (await readFile(`${cursorPath}.events.jsonl`, "utf8"))
+      .split("\n")
+      .filter((line) => line.length > 0);
+    await writeFile(
+      `${cursorPath}.events.jsonl`,
+      [...lines.slice(4, 6), ...lines.slice(7)]
+        .map((line) => `${line}\n`)
+        .join(""),
+    );
+    await expect(
+      new FileChainSyncCursorStore(cursorPath, "11".repeat(32)).load(),
+    ).rejects.toThrow(L1SourceIntegrityError);
+  });
+});

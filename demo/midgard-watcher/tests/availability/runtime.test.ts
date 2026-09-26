@@ -61,8 +61,13 @@ vi.mock("../../src/availability/deployment.js", () => ({
     parameters: {},
   }),
 }));
+// The intake carries the verified source's release depth; a sentinel distinct
+// from every profile depth proves the runtime forwards it and substitutes none.
 vi.mock("../../src/availability/observation.js", () => ({
-  createWatcherAvailabilityObservation: () => ({ snapshot: io.snapshot }),
+  createWatcherAvailabilityObservation: () => ({
+    snapshot: io.snapshot,
+    confirmationDepth: 17,
+  }),
 }));
 vi.mock("../../src/availability/published-payload.js", () => ({
   createWatcherL1AvailabilityPayloadSource: () => ({}),
@@ -327,7 +332,7 @@ it("projects pending availability onto current inclusion without changing finali
   );
   expect(runtime.status()).toEqual(before);
   expect(io.reconcile).toHaveBeenCalledTimes(1);
-  expect(io.reconcile.mock.calls[0]![0].minimumConfirmationDepth).toBe(30);
+  expect(io.reconcile.mock.calls[0]![0].minimumConfirmationDepth).toBe(17);
   expect(await runtime.pendingAvailabilityHeaders(finalized)).toEqual(
     new Set(["known", "published", "removed"]),
   );

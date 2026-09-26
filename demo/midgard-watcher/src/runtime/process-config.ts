@@ -1,6 +1,8 @@
 import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+
 import {
   parseWatcherFinalityPolicy,
   type WatcherFinalityPolicy,
@@ -304,13 +306,22 @@ export const parseWatcherProcessConfig = (
     watcherConfig.mode !== "acceptance" ||
     (watcherConfig.targetNetwork !== "Preprod" &&
       watcherConfig.targetNetwork !== "Custom") ||
-    watcherConfig.l1.source.sourceMode !== "local_node" ||
-    watcherConfig.l1.finality.depth !== 30 ||
-    watcherConfig.l1.finality.rollback.maxDepth !== 30 ||
-    watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth !== 2160
+    watcherConfig.l1.source.sourceMode !== "local_node"
   ) {
     throw new Error(
       "watcher production process requires acceptance Preprod or Custom local_node authority",
+    );
+  }
+  // Parsed before the signed deployment is loaded, so this binds to the
+  // compiled profile; startup later re-checks it against the verified release.
+  const releaseDepth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+  if (
+    watcherConfig.l1.finality.depth !== releaseDepth ||
+    watcherConfig.l1.finality.rollback.maxDepth !== releaseDepth ||
+    watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth !== 2160
+  ) {
+    throw new Error(
+      `watcher production process requires finality depth and pre-finality rollback depth ${releaseDepth.toString()} from the deployment profile, with post-finality recovery depth 2160`,
     );
   }
   const httpBearerSecretSource = secretSource(
@@ -436,13 +447,20 @@ export const parseWatcherTrustedHeadAuthorityProcessConfig = (
     policy.sourceMode !== "local_node" ||
     policy.authorityNodeId === null ||
     policy.authorityGenesisIdentitySha256 === null ||
-    policy.authorityChainSyncSocketPath === null ||
-    policy.confirmationDepth !== "30" ||
-    policy.maximumPreFinalityRollbackDepth !== "30" ||
-    policy.maximumPostFinalityRecoveryDepth !== "2160"
+    policy.authorityChainSyncSocketPath === null
   ) {
     throw new Error(
       "trusted-head authority policy requires Preprod or Custom local_node authority",
+    );
+  }
+  const releaseDepth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+  if (
+    policy.confirmationDepth !== releaseDepth.toString() ||
+    policy.maximumPreFinalityRollbackDepth !== releaseDepth.toString() ||
+    policy.maximumPostFinalityRecoveryDepth !== "2160"
+  ) {
+    throw new Error(
+      `trusted-head authority policy requires confirmation and pre-finality rollback depth ${releaseDepth.toString()} from the deployment profile, with post-finality recovery depth 2160`,
     );
   }
   const recordAuthenticationKeySource = secretSource(

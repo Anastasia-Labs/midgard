@@ -43,13 +43,13 @@ import {
   type ResolvedProverSigner,
   resolveInvalidSignatureDeploymentContracts,
 } from "../runtime.js";
-import { submitInit } from "../submit-init.js";
-import { submitInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
-import { submitInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
+import { submitInit } from "../submit-init.js";
+import { submitInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
+import { submitInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";

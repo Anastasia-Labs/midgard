@@ -100,6 +100,43 @@ closed. Process configuration binds deployment identity, durable storage,
 trusted-head authority, transports, proof funding, and operational endpoints.
 Keep secrets in the supported environment/file references.
 
+### Local credential file
+
+The CLI loads `./config.yaml` relative to its working directory before parsing
+the process configuration. This optional file is a flat mapping of existing
+environment variable names to nonempty strings. Quote every value, including
+numbers and booleans; nested objects and YAML numeric/boolean values are not
+accepted. Values already present in the process environment take precedence.
+In the node CLI, the same YAML bootstrap runs before dotenv loading.
+
+| Control                                          | Behavior                                                                                                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| No override                                      | Load `./config.yaml` when present; an absent default file is allowed.                                                                          |
+| `MIDGARD_CONFIG_FILE=/absolute/path/config.yaml` | Load that file; a missing explicit file is fatal.                                                                                              |
+| `MIDGARD_CONFIG_MODE=disabled`                   | Disable YAML loading, including an explicit file.                                                                                              |
+| `MIDGARD_DOTENV_MODE=disabled`                   | Disable implicit default YAML loading for isolated harnesses; an explicit `MIDGARD_CONFIG_FILE` still applies unless YAML loading is disabled. |
+
+Set these controls in the launching process environment. Loading happens only
+at CLI bootstrap, not when importing the watcher library. YAML errors redact
+file contents. Keep the credential file gitignored and readable only by its
+owner (`chmod 600 config.yaml`); do not commit real credentials.
+
+YAML supplies secret environment references; it does **not** replace the
+required process JSON or its deployment, authority, storage, and funding
+configuration. Continue to launch with
+`node dist/cli.js start --config /absolute/path/watcher-process.json`.
+To use YAML credentials, set `watcherConfig.proverWallet.keySource` to
+`{ "kind": "environment", "variable": "WATCHER_PROVER_KEY" }` and
+`availability.keySource` to
+`{ "kind": "environment", "variable": "WATCHER_AVAILABILITY_KEY" }` in that
+JSON, keeping the corresponding nested runtime configuration consistent.
+
+Both variables contain a **raw mnemonic without a `seed:` prefix**, or an
+`ed25519_sk...` Bech32 private key. The prover and availability actor require
+independent payment keys. These are not DA committee `cardano-seed:` key-source
+strings. A credential file neither generates a key nor recovers a missing
+signer; required credentials and funding must already exist.
+
 [watcher-process.example.json](watcher-process.example.json) is a complete
 `start` configuration: configuration and bundles under `/etc/midgard`, state
 under `/var/lib/midgard-watcher`, secrets as files under `/run/secrets`. Copy it
@@ -137,7 +174,9 @@ The nested wire parser accepts both `local_node` and `external_providers`.
 External-provider mode requires independent provider identities. The installed
 CLI process parser is narrower: it requires `mode: "acceptance"`,
 `targetNetwork` of `"Preprod"` or `"Custom"`, and `local_node` authority, with
-confirmation depth 30, prefinality rollback depth 30, and postfinality recovery
+confirmation depth and prefinality rollback depth equal to the compiled
+deployment profile's `l1_finality.confirmation_depth` (3 for the testing
+profiles, 30 for `mainnet` and `preprod-public`), and postfinality recovery
 bound 2160. `Custom` admits an explicitly bound isolated devnet, the network the
 automatic watcher journeys run against; it is not a relaxation of finality or
 rollback policy. The authority process enforces the same policy.

@@ -84,13 +84,13 @@ import {
   phasMembershipRewardAddress,
   requireSingletonUtxo,
 } from "../../src/runtime.js";
-import { submitResolvedInit } from "../../src/submit-init.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   selectFeeInput,
   type SubmitStep01TxInclusion,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
+import { submitResolvedInit } from "../../src/submit-init.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
   VALUE_NOT_PRESERVED_CATEGORY_LABEL,

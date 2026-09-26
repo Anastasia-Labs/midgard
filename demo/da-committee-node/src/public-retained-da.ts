@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 
 import { PublicRetainedDaListener } from "./da/libp2p/PublicRetainedDaListener.js";
 import { loadPublicRetainedDaRuntimeConfig } from "./public-retained-da-config.js";
@@ -14,6 +15,7 @@ const main = async (): Promise<void> => {
   if (process.argv.length > 2) {
     throw new Error("midgard-public-retained-da does not accept arguments");
   }
+  loadRuntimeConfig();
   const config = await loadPublicRetainedDaRuntimeConfig();
   const identity = await loadDaLibp2pIdentity(
     config.publicRetainedDa.privateKeySource,

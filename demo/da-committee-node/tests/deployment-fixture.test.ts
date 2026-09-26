@@ -55,11 +55,10 @@ describe("DA deployment fixture", () => {
         unknown
       >;
 
-      expect({
-        refScriptUTxO: manifest.refScriptUTxO,
-        contract: manifest.contract,
-        scriptHash: manifest.scriptHash,
-      }).toEqual(source);
+      // Only the catalogue is derived here; every source-backed field,
+      // including role-specific history metadata, must survive exactly.
+      const { fraudProofCatalogue: _derivedCatalogue, ...preserved } = manifest;
+      expect(preserved).toEqual(source);
     }
   });
 

@@ -41,8 +41,7 @@ import {
   computeTrieRoot,
   type TrieEntry,
 } from "./ne-proofs.js";
-import { type NeInputPreimageEntry } from "./ne-submit-step-02.js";
-import { ledgerKeyBytesHex } from "./ne-submit-step-03.js";
+import { type NeInputPreimageEntry } from "./non-existent-input/submit-step-02.js";
 import {
   deriveL2TransactionSourceCbor,
   type FetchLike,
@@ -51,7 +50,8 @@ import {
   readNodeTransactionPayloadsFile,
 } from "./prepare-double-spend.js";
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
-import { nativeTxFromCoreCompact } from "./submit-step-01.js";
+import { ledgerKeyBytesHex } from "./step-support.js";
+import { nativeTxFromCoreCompact } from "./step-support.js";
 import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
 import { reconstructDaPayload } from "./transition-trace/reconstruct.js";
 

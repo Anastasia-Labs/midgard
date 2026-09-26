@@ -26,6 +26,8 @@ vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
     deploymentIdentityDigest: "11".repeat(32),
     blueprintHash: "22".repeat(32),
     observationDepth: sourcePolicy.observationDepth,
+    // Mocked source release depth; the observations below sit at this depth.
+    confirmationDepth: 30,
   }),
   pinAdmittedLocalKupmiosBoundaryAtPoint: io.pin,
   readAdmittedLocalKupmiosAddressUtxosAtPoint: io.address,

@@ -19,6 +19,10 @@ import {
   parseDeploymentManifestEventHistoryRetentionAddress,
   parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  verifyDeploymentProfileBinding,
+} from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -183,11 +187,33 @@ const resolveDefaultRealBlueprintPath = (): string => {
 const resolveConfiguredRealBlueprintPath = (): string =>
   realBlueprintPathOverride() ?? resolveDefaultRealBlueprintPath();
 
+const verifyBlueprintDeploymentProfile = (
+  blueprintPath: string,
+  raw: Buffer,
+): void => {
+  const binding = JSON.parse(
+    readFileSync(`${blueprintPath}.deployment.json`, "utf8"),
+  );
+  verifyDeploymentProfileBinding(
+    binding.profile,
+    binding.profileDigest,
+    SELECTED_DEPLOYMENT_PROFILE.network,
+  );
+  if (
+    binding.blueprintHash !== createHash("sha256").update(raw).digest("hex")
+  ) {
+    throw new Error(
+      "Blueprint does not match its deployment profile build record",
+    );
+  }
+};
+
 export const loadRealBlueprintSha256 = (): Effect.Effect<string, Error> =>
   Effect.try({
     try: () => {
       const blueprintPath = resolveConfiguredRealBlueprintPath();
       const raw = readFileSync(blueprintPath);
+      verifyBlueprintDeploymentProfile(blueprintPath, raw);
       parseBlueprint(raw.toString("utf8"), blueprintPath);
       return createHash("sha256").update(raw).digest("hex");
     },
@@ -210,10 +236,9 @@ const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
         return cachedRealBlueprint.blueprint;
       }
 
-      const blueprint = parseBlueprint(
-        readFileSync(blueprintPath, "utf8"),
-        blueprintPath,
-      );
+      const raw = readFileSync(blueprintPath);
+      verifyBlueprintDeploymentProfile(blueprintPath, raw);
+      const blueprint = parseBlueprint(raw.toString("utf8"), blueprintPath);
 
       cachedRealBlueprint = {
         path: blueprintPath,
@@ -372,7 +397,7 @@ export const assertDeploymentManifestMatchesConfig = (
     | "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS"
     | "HUB_ORACLE_ONE_SHOT_TX_HASH"
     | "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX"
-    | "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE"
+    | "DEPLOYMENT_ECONOMICS_PROFILE"
     | "OPERATOR_REQUIRED_BOND_LOVELACE"
     | "OPERATOR_SLASHING_PENALTY_LOVELACE"
   >,
@@ -424,12 +449,9 @@ export const assertDeploymentManifestMatchesConfig = (
       `hubOracleOneShot.outputIndex manifest=${manifestOneShotOutputIndex.toString()} config=${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
     );
   }
-  if (
-    manifest.economics.profile !==
-    nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE
-  ) {
+  if (manifest.economics.profile !== nodeConfig.DEPLOYMENT_ECONOMICS_PROFILE) {
     mismatches.push(
-      `economics.profile manifest=${manifest.economics.profile} config=${nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE}`,
+      `economics.profile manifest=${manifest.economics.profile} config=${nodeConfig.DEPLOYMENT_ECONOMICS_PROFILE}`,
     );
   }
   if (

@@ -1,6 +1,7 @@
 import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { Effect, Ref } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -204,7 +205,8 @@ describe("merge builder maturity preflight", () => {
     expect(result).toMatchObject({
       status: "skipped_oldest_block_not_mature",
       headerHash,
-      readyAfterUnixTime: 605_320_000,
+      readyAfterUnixTime:
+        520_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
       nowUnixTime: 510_000,
     });
     expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
@@ -217,7 +219,9 @@ describe("merge builder maturity preflight", () => {
       daAttestation: SDK.NO_DA_ATTESTATION,
       endTime: 500_000n,
     });
-    vi.setSystemTime(605_330_000);
+    vi.setSystemTime(
+      530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
+    );
 
     const result = await runBuilder();
 
@@ -232,7 +236,9 @@ describe("merge builder maturity preflight", () => {
   });
 
   it("lets a semantically ready candidate proceed to the local submit-ledger gate", async () => {
-    vi.setSystemTime(605_330_000);
+    vi.setSystemTime(
+      530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
+    );
 
     const result = await runBuilder();
 
@@ -240,7 +246,8 @@ describe("merge builder maturity preflight", () => {
       status: "skipped_oldest_block_local_ledger_not_ready",
       headerHash,
       reason: expect.stringContaining("local_ledger_slot=0"),
-      readyAfterUnixTime: 605_320_000,
+      readyAfterUnixTime:
+        520_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
     });
     expect(fetchFirstBlockTxsMock).toHaveBeenCalledTimes(1);
     expect(breakDownTxMock).not.toHaveBeenCalled();

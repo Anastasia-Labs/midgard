@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
+
 import {
   runWatcherCommand,
   WATCHER_COMMAND_FAILURE_EXIT_CODE,
@@ -85,6 +87,7 @@ export const main = async (arguments_: readonly string[]): Promise<number> => {
     return 64;
   }
   try {
+    loadRuntimeConfig();
     return await runWatcherCommand(parsed.command, parsed.configPath, {
       writeOutput: (text) => process.stdout.write(text),
       writeError: (text) => process.stderr.write(text),

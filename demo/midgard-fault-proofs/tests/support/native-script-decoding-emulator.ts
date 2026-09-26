@@ -104,11 +104,11 @@ import {
   resolveProverSigner,
 } from "../../src/runtime.js";
 import { excludeUtxo } from "../../src/spend-input-witness.js";
-import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
 import {
   nativeTxFromCoreCompact,
   selectFeeInput,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,

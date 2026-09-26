@@ -36,7 +36,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { selectFeeInput } from "../submit-step-01.js";
+import { selectFeeInput } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

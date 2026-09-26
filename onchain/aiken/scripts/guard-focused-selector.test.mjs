@@ -10,6 +10,7 @@ import {
   evaluateSelectorReport,
   parseSelectors,
 } from "./guard-focused-selector.mjs";
+import { pinnedAikenVersion } from "./pinned-compiler.mjs";
 
 const guardPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -20,13 +21,19 @@ const guardPath = resolve(
 // CLI path — spawn, parse, classify, exit — is exercised without paying for a
 // real compile. The stub reproduces the exact behaviour that made zero
 // collection invisible: a well-formed report and exit status 0.
-const runGuardAgainstStub = (stubReport, selectors) => {
+const runGuardAgainstStub = (
+  stubReport,
+  selectors,
+  stubVersion = pinnedAikenVersion(),
+) => {
   const directory = mkdtempSync(join(tmpdir(), "midgard-guard-selftest-"));
   try {
     const stubPath = join(directory, "aiken-stub.mjs");
     writeFileSync(
       stubPath,
-      `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(
+      `#!/usr/bin/env node\nif (process.argv[2] === "--version") {\n  process.stdout.write(${JSON.stringify(
+        `${stubVersion}\n`,
+      )});\n  process.exit(0);\n}\nprocess.stdout.write(${JSON.stringify(
         JSON.stringify(stubReport),
       )});\nprocess.exit(0);\n`,
     );
@@ -127,4 +134,15 @@ test("exits zero end to end on a selector that collects passing tests", () => {
   );
   assert.equal(result.status, 0);
   assert.match(result.stdout, /"collected":3/u);
+});
+
+test("refuses a compiler other than the pinned fork even when its report is green", () => {
+  const result = runGuardAgainstStub(
+    { summary: { total: 3, passed: 3, failed: 0 } },
+    ["state_queue"],
+    "aiken v1.1.22+39d6b04",
+  );
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /reports 'aiken v1\.1\.22\+39d6b04'/u);
 });

@@ -9,6 +9,10 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import {
@@ -34,6 +38,7 @@ import {
   assertDeploymentManifestMatchesConfig,
   buildRealTxOrderContracts,
   eventHistoryBoundsFromExplicitEnvironment,
+  loadRealBlueprintSha256,
   readRuntimeDeploymentManifestFile,
   withRealStateQueueAndOperatorContracts,
 } from "../src/services/midgard-contracts.js";
@@ -53,6 +58,42 @@ import {
 } from "./helpers/script-inventory.js";
 
 describe("midgard contracts registry", () => {
+  unitIt.each(["missing", "digest", "bytes"])(
+    "rejects a %s blueprint profile binding",
+    async (mutation) => {
+      const dir = await mkdtemp(join(tmpdir(), "midgard-profile-blueprint-"));
+      const blueprintPath = join(dir, "plutus.json");
+      const raw = await readFile(
+        new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+      );
+      try {
+        await writeFile(blueprintPath, raw);
+        if (mutation !== "missing") {
+          await writeFile(
+            `${blueprintPath}.deployment.json`,
+            JSON.stringify({
+              profile: SELECTED_DEPLOYMENT_PROFILE,
+              profileDigest:
+                mutation === "digest"
+                  ? "00".repeat(32)
+                  : SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+              blueprintHash:
+                mutation === "bytes"
+                  ? "00".repeat(32)
+                  : createHash("sha256").update(raw).digest("hex"),
+            }),
+          );
+        }
+        vi.stubEnv("MIDGARD_REAL_BLUEPRINT_PATH", blueprintPath);
+        await expect(
+          Effect.runPromise(loadRealBlueprintSha256()),
+        ).rejects.toThrow(/Failed to hash canonical real blueprint/u);
+      } finally {
+        vi.unstubAllEnvs();
+        await rm(dir, { recursive: true });
+      }
+    },
+  );
   const oneShotOutRef = {
     txHash: "00".repeat(32),
     outputIndex: 0,
@@ -123,7 +164,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "aa57086c9b9b2708e73ea4f605f271e1199bc78c9e685a4372e57cab50c41bff",
+        "59d0485d83fa5429e0b4a90d72552a7495f8697dfbdc6b85449ec6f42be04505",
       );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -137,7 +178,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "7ea695e5bf105e14c6e1bbce64f93f31afdc337ab1c9ab8ccac401b7d62ffd64",
+        "bc51ecb205d220be9ba838be17e30b571179d63b9ef5a01199254b83def1bf56",
       );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
@@ -316,6 +357,16 @@ describe("midgard contracts registry", () => {
       else entry.parameters[0]!.schema = { $ref: "#/definitions/Int" };
       try {
         await writeFile(blueprintPath, JSON.stringify(raw));
+        await writeFile(
+          `${blueprintPath}.deployment.json`,
+          JSON.stringify({
+            profile: SELECTED_DEPLOYMENT_PROFILE,
+            profileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+            blueprintHash: createHash("sha256")
+              .update(JSON.stringify(raw))
+              .digest("hex"),
+          }),
+        );
         vi.stubEnv("MIDGARD_REAL_BLUEPRINT_PATH", blueprintPath);
         const contracts = withRealEventHistoryForTest(
           await Effect.runPromise(
@@ -441,7 +492,7 @@ describe("midgard contracts registry", () => {
         expect(() =>
           assertDeploymentManifestMatchesConfig(manifest, tamperedPath, {
             ...commonConfig,
-            MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: "public-preprod-launch-v1",
+            DEPLOYMENT_ECONOMICS_PROFILE: "public-preprod-launch-v1",
             OPERATOR_REQUIRED_BOND_LOVELACE: 100_000_000_000n,
             OPERATOR_SLASHING_PENALTY_LOVELACE: 25_000_000_000n,
           }),
@@ -449,33 +500,25 @@ describe("midgard contracts registry", () => {
           /economics\.profile manifest=bounded-acceptance-v1 config=public-preprod-launch-v1; economics\.requiredBondLovelace manifest=900000000 config=100000000000; economics\.slashingPenaltyLovelace manifest=500000000 config=25000000000/u,
         );
 
-        const publicManifest = buildDeploymentManifest(deploymentInfo, {
-          network: "Preprod",
-          ...manifestIdentityContext,
-          economics:
-            DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
-              "public-preprod-launch-v1"
-            ],
-          referenceScriptDeployAddress: "addr_test1reference",
-          hubOracleOneShotTxHash: "ab".repeat(32),
-          hubOracleOneShotOutputIndex: 0,
-          hubOracleOneShotStatus: "consumed_by_init",
-          now: new Date("2026-07-24T00:00:00.000Z"),
-          steps: {
-            initProtocol: { status: "complete" },
-            availabilityRegistration: { status: "complete" },
-          },
-        });
         expect(() =>
-          assertDeploymentManifestMatchesConfig(publicManifest, tamperedPath, {
-            ...commonConfig,
-            MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: "bounded-acceptance-v1",
-            OPERATOR_REQUIRED_BOND_LOVELACE: 900_000_000n,
-            OPERATOR_SLASHING_PENALTY_LOVELACE: 500_000_000n,
+          buildDeploymentManifest(deploymentInfo, {
+            network: "Preprod",
+            ...manifestIdentityContext,
+            economics:
+              DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
+                "public-preprod-launch-v1"
+              ],
+            referenceScriptDeployAddress: "addr_test1reference",
+            hubOracleOneShotTxHash: "ab".repeat(32),
+            hubOracleOneShotOutputIndex: 0,
+            hubOracleOneShotStatus: "consumed_by_init",
+            now: new Date("2026-07-24T00:00:00.000Z"),
+            steps: {
+              initProtocol: { status: "complete" },
+              availabilityRegistration: { status: "complete" },
+            },
           }),
-        ).toThrow(
-          /economics\.profile manifest=public-preprod-launch-v1 config=bounded-acceptance-v1; economics\.requiredBondLovelace manifest=100000000000 config=900000000; economics\.slashingPenaltyLovelace manifest=25000000000 config=500000000/u,
-        );
+        ).toThrow(/economics must match deployment profile/u);
         await writeFile(
           tamperedPath,
           JSON.stringify({
@@ -485,7 +528,7 @@ describe("midgard contracts registry", () => {
         );
         expect(() =>
           readRuntimeDeploymentManifestFile(tamperedPath, false),
-        ).toThrow(/Deployment manifest id mismatch/);
+        ).toThrow(/compiled profile/);
       } finally {
         await rm(dir, { recursive: true });
       }

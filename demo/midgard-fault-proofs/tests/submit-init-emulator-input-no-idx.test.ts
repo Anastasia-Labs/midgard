@@ -65,7 +65,7 @@ import {
   submitInputNoIdxStep04,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import type { SubmitStep01TxInclusion } from "../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import {
   nativeTxFromCoreCompact,
   submitInit,

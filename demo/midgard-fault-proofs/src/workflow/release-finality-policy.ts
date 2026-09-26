@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+
 export const FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY =
   "midgard-fraud-proof-release-finality-authority-v1" as const;
 export const FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION =
   "midgard-fraud-proof-release-finality-policy-v1" as const;
 
 export type ReleaseL1FinalityPolicy = {
-  readonly confirmationDepth: 30;
+  readonly confirmationDepth: number;
   readonly automaticRecoveryMaxDepth: 2160;
   readonly deepRollbackPolicy: "automated_rewind_replay_incident-v1";
 };
@@ -61,7 +63,8 @@ export const validateVerifiedFraudProofReleaseFinalityPolicy = (
     throw new Error("release finality identity digests must be 32-byte hex");
   }
   if (
-    value.policy.confirmationDepth !== 30 ||
+    value.policy.confirmationDepth !==
+      DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth ||
     value.policy.automaticRecoveryMaxDepth !== 2160 ||
     value.policy.deepRollbackPolicy !== "automated_rewind_replay_incident-v1"
   ) {

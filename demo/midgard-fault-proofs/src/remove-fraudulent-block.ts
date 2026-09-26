@@ -93,7 +93,7 @@ import {
   type SubmitProviderConfig,
   type SupportedFaultProofCategoryName,
 } from "./runtime.js";
-import { selectFeeInput } from "./submit-step-01.js";
+import { selectFeeInput } from "./step-support.js";
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "./workflow/release-economics-policy.js";
 import {
   CapturedLocallyEvaluatedTransaction,

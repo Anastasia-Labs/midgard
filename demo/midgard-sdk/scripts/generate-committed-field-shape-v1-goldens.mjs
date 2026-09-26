@@ -473,7 +473,7 @@ const renderAiken = (golden) =>
     "////",
     "//// **The wire set** round-trips the one Data-encoded surface the family adds:",
     "//// each test decodes the TypeScript producer's bytes into the Aiken type and",
-    "//// then re-serialises what came back. `CommittedFieldClaim` is §12.7's type",
+    "//// then re-serialises what came back. `CommittedFieldClaimV1` is §12.7's type",
     "//// reused unchanged and is pinned by §12.7's own channel.",
     "",
     "use aiken/cbor",

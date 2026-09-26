@@ -2,6 +2,13 @@
 
 Server application with GET and POST endpoints for interacting with Midgard.
 
+Local credentials belong in a private `config.yaml`; start with
+[config.example.yaml](config.example.yaml). The CLI reads it from the working
+directory, or from `MIDGARD_CONFIG_FILE`. Explicit environment settings win over
+YAML, and YAML wins over `.env`. Node tools use the same loader. See
+[component configuration](../../docs/agents/component-configuration.md) for
+wallet roles, isolation controls, container setup and the remaining missing keys.
+
 ## What This Package Does
 
 `midgard-node` is the off-chain node runtime that ties the protocol together.

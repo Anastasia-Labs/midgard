@@ -22,8 +22,8 @@ describe("submit deposit parsing", () => {
     expect(getProtocolParameters("Preprod").event_wait_duration).toEqual(
       60_000,
     );
-    expect(getProtocolParameters("Mainnet").event_wait_duration).toEqual(
-      60_000,
+    expect(() => getProtocolParameters("Mainnet")).toThrow(
+      /compiled deployment profile/u,
     );
     expect(resolveEventInclusionTime(1_000, "Preprod")).toEqual(60_999);
   });

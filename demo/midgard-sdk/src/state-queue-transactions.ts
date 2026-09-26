@@ -1,5 +1,6 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
@@ -42,6 +43,7 @@ import {
   hashBlockHeader,
   type Header,
   NO_DA_ATTESTATION,
+  type StateQueueNode,
 } from "./ledger-state.js";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
@@ -65,6 +67,7 @@ import {
   type StateQueueRedeemer as StateQueueRedeemerType,
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
+  utxoToStateQueueUTxO,
 } from "./state-queue.js";
 import { completeOptionsWithLocalEval } from "./tx-completion.js";
 import {
@@ -83,7 +86,34 @@ const ACTIVE_OPERATOR_MATURITY_DURATION_MS = BigInt(
 );
 const MIN_SETTLEMENT_OUTPUT_LOVELACE = 5_000_000n;
 // Aiken's sole fieldless constructor is represented by Plutus `Constr 0 []`.
-export const COMMIT_MAX_VALIDITY_RANGE_MS = 8 * 60 * 1_000;
+
+export const COMMIT_MAX_VALIDITY_RANGE_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.max_validity_range_ms;
+
+export const assertCommitHeadDaDeadline = (
+  head: StateQueueNode,
+  inclusiveValidityUpperBoundMs: number,
+  nowMs = Date.now(),
+): Effect.Effect<void, StateQueueError> => {
+  const deadlineMs =
+    head.header.endTime +
+    BigInt(SELECTED_DEPLOYMENT_PROFILE.timing.da_attestation_timeout_ms);
+  if (
+    head.da_attestation === NO_DA_ATTESTATION &&
+    BigInt(inclusiveValidityUpperBoundMs) >= deadlineMs
+  ) {
+    return Effect.fail(
+      new StateQueueError({
+        message:
+          BigInt(nowMs) >= deadlineMs
+            ? "Commit paused until expired unattested suffix is corrected"
+            : "Commit waiting for DA attestation: validity upper bound reaches the head deadline",
+        cause: `inclusive_upper_bound_ms=${inclusiveValidityUpperBoundMs},da_deadline_ms=${deadlineMs}`,
+      }),
+    );
+  }
+  return Effect.void;
+};
 
 export const isCommitValidityInterval = ({
   validFrom,
@@ -662,6 +692,35 @@ export const buildCommitBlockHeaderTxProgram = ({
           cause: `header_end_time_ms=${newHeader.endTime.toString()},valid_to_ms=${validTo.toString()},inclusive_upper_bound_ms=${inclusiveValidityUpperBound.toString()}`,
         }),
       );
+    }
+    if (!queueIsEmpty) {
+      const head =
+        witness.headStateQueueNodeRefInput === undefined
+          ? latestBlock
+          : yield* utxoToStateQueueUTxO(
+              witness.headStateQueueNodeRefInput,
+              contracts.stateQueue.policyId,
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new StateQueueError({
+                    message: "Failed to decode canonical append-fence head",
+                    cause,
+                  }),
+              ),
+            );
+      const headNode = yield* getStateQueueNodeFromStateQueueDatum(
+        head.datum,
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new StateQueueError({
+              message: "Failed to inspect append-fence head DA deadline",
+              cause,
+            }),
+        ),
+      );
+      yield* assertCommitHeadDaDeadline(headNode, inclusiveValidityUpperBound);
     }
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const headerNodeUnit = toUnit(

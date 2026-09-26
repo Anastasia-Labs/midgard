@@ -10,7 +10,7 @@ import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { requireRetainedReplayPhase } from "../transition-trace/replay-terminal.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";

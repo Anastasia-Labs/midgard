@@ -18,6 +18,8 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
+
 const MAX_SELECTOR_COUNT = 64;
 const MAX_SELECTOR_LENGTH = 256;
 const VALID_SELECTOR = /^[a-z0-9_][a-z0-9_/]*$/u;
@@ -143,8 +145,10 @@ if (isMain) {
     if (environment !== undefined && !VALID_ENVIRONMENT.test(environment)) {
       throw new Error("MIDGARD_AIKEN_ENV contains an invalid environment name");
     }
+    const binary = defaultAikenBinary();
+    assertPinnedAiken(binary);
     const context = {
-      binary: process.env.MIDGARD_AIKEN_BIN ?? "aiken",
+      binary,
       projectDirectory: resolve(dirname(fileURLToPath(import.meta.url)), ".."),
       environment,
     };

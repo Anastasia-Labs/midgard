@@ -69,6 +69,7 @@ import {
   loadWatcherVerifiedDeploymentAuthority,
   type VerifiedWatcherDeploymentAuthority,
 } from "./deployment-authority.js";
+import { watcherDeploymentReleaseFinalityPolicy } from "./deployment-identity.js";
 import { createWatcherHistoryRecovery } from "./history-recovery.js";
 import {
   startWatcherOperationsHttpServer,
@@ -358,12 +359,16 @@ export const createWatcherRuntime = async (input: {
     input.config.watcherConfig,
     deploymentIdentity,
   );
+  const releaseDepth = String(
+    watcherDeploymentReleaseFinalityPolicy(deploymentIdentity).policy
+      .confirmationDepth,
+  );
   if (
     policy === null ||
     (policy.network !== "Preprod" && policy.network !== "Custom") ||
     policy.sourceMode !== "local_node" ||
-    policy.confirmationDepth !== "30" ||
-    policy.maximumPreFinalityRollbackDepth !== "30" ||
+    policy.confirmationDepth !== releaseDepth ||
+    policy.maximumPreFinalityRollbackDepth !== releaseDepth ||
     policy.maximumPostFinalityRecoveryDepth !== "2160"
   ) {
     throw new Error(

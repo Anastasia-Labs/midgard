@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { readAdmittedLocalKupmiosBoundary } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +10,9 @@ import { admitWatcherLocalBackfillObservation } from "../../src/l1/l1-adapter.js
 import { openWatcherLocalHistoricalCapture } from "../../src/l1/local-historical-capture.js";
 import { createWatcherLocalKupmiosRawSource } from "../../src/l1/local-kupmios-raw-source.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
+
+/** The compiled deployment profile's release depth (3 testing, 30 public). */
+const RELEASE_DEPTH = BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth);
 
 describe("local watcher fixture finality chronology", () => {
   it("keeps the youngest release-final boundary above activation with forty one-slot descendants", async () => {
@@ -31,14 +35,16 @@ describe("local watcher fixture finality chronology", () => {
       // depth, so a dense one-slot chain never reaches back past activation.
       expect(
         BigInt(tip.blockNo) - BigInt(boundary.kupoCheckpoint.blockNo) + 1n,
-      ).toBe(30n);
+      ).toBe(RELEASE_DEPTH);
       expect(BigInt(boundary.kupoCheckpoint.slot)).toBeGreaterThan(
         BigInt(fixture.activationBlock.point.slot),
       );
-      expect(BigInt(tip.slot) - BigInt(boundary.kupoCheckpoint.slot)).toBe(29n);
+      expect(BigInt(tip.slot) - BigInt(boundary.kupoCheckpoint.slot)).toBe(
+        RELEASE_DEPTH - 1n,
+      );
       expect(
         BigInt(tip.blockNo) - BigInt(boundary.kupoCheckpoint.blockNo) + 1n,
-      ).toBe(30n);
+      ).toBe(RELEASE_DEPTH);
     } finally {
       await fixture.close();
     }
@@ -63,12 +69,12 @@ describe("local watcher fixture finality chronology", () => {
       );
       expect(
         BigInt(initialTip.slot) - BigInt(boundary.kupoCheckpoint.slot),
-      ).toBe(580n);
+      ).toBe((RELEASE_DEPTH - 1n) * 20n);
       expect(
         BigInt(initialTip.blockNo) -
           BigInt(boundary.kupoCheckpoint.blockNo) +
           1n,
-      ).toBe(30n);
+      ).toBe(RELEASE_DEPTH);
 
       const capture = async (
         previous: WatcherLocalBackfillFinalityReceipt | null,

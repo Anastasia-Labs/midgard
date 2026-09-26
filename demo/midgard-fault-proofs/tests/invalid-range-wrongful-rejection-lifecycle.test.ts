@@ -20,8 +20,8 @@ import {
   submitInvalidRangeStep02V1,
 } from "../src/invalid-range/submit.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { forcedTxFromCoreCompact } from "../src/step-support.js";
 import { submitInit } from "../src/submit-init.js";
-import { forcedTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   admitNativeInclusionTwoStepArtifact,

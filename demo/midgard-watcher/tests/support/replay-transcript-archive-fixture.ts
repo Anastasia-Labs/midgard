@@ -12,7 +12,7 @@ import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
 } from "../../src/verification/rule-bundle.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);

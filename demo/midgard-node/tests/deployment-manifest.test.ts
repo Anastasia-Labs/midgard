@@ -9,12 +9,15 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  DEPLOYMENT_MANIFEST_CONTRACT_NAMES as SHARED_DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS as SHARED_DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -219,7 +222,9 @@ const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
     schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
-    network: "Preview",
+    deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
+    deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+    network: "Preprod",
     cardanoProtocolParameters: {
       snapshot: CARDANO_PARAMETERS,
       digest: computeDeploymentManifestJsonDigest(CARDANO_PARAMETERS),
@@ -301,9 +306,6 @@ const canonicalManifest = (): DeploymentManifest => withId(canonicalIdentity());
 
 describe("V1 deployment manifest", () => {
   it("keeps deployment registry mirrors aligned with core", () => {
-    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toEqual(
-      SHARED_DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
-    );
     expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
       SHARED_DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
     );

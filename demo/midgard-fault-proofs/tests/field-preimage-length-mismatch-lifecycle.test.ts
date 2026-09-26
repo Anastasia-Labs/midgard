@@ -56,7 +56,7 @@ import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../src/submit-step-01.js";
+} from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";

@@ -457,10 +457,12 @@ describe("retentionDeadlineReportV1", () => {
       },
     ]);
     const report = await retentionDeadlineReport(store, retentionOptions());
-    expect(report.requiredRetentionMs).toBe(907_200_000);
+    expect(report.requiredRetentionMs).toBe(
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
+    );
     expect(report.deployedRetentionMs).toBe(1_296_000_000);
-    expect(report.marginMs).toBe(388_800_000);
-    expect(report.alertThresholdMs).toBe(388_800_000);
+    expect(report.marginMs).toBe(MIDGARD_RETENTION_WINDOW.marginMs);
+    expect(report.alertThresholdMs).toBe(MIDGARD_RETENTION_WINDOW.marginMs);
     expect(report.entries[0]).toMatchObject({ headroomMs: 0, alerting: true });
     expect(report.alerting).toBe(1);
   });
@@ -490,7 +492,7 @@ describe("retentionDeadlineReportV1", () => {
       challengeableUntilMs: NOW + REQUIRED_RETENTION_MS,
       remainingMs: REQUIRED_RETENTION_MS,
       headroomMs: REQUIRED_RETENTION_MS - MIDGARD_RETENTION_WINDOW.marginMs,
-      alerting: false,
+      alerting: REQUIRED_RETENTION_MS <= MIDGARD_RETENTION_WINDOW.marginMs,
     });
   });
 

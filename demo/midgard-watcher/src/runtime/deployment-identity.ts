@@ -822,6 +822,10 @@ const releaseFinalityAuthorityByDeploymentIdentity = new WeakMap<
   object,
   FraudProofReleaseFinalityAuthority
 >();
+const releaseFinalityByDeploymentIdentity = new WeakMap<
+  object,
+  VerifiedFraudProofReleaseFinalityPolicy
+>();
 const releaseEconomicsAuthorityByDeploymentIdentity = new WeakMap<
   object,
   FraudProofReleaseEconomicsAuthority
@@ -1234,6 +1238,21 @@ export const watcherDeploymentReleaseFinalityAuthority = (
 };
 
 /**
+ * Returns the release-finality policy the signed deployment verifier admitted,
+ * for synchronous consumers that bind L1 sources and runtime configuration to
+ * the deployment's confirmation depth.
+ */
+export const watcherDeploymentReleaseFinalityPolicy = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): VerifiedFraudProofReleaseFinalityPolicy => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
+  return (
+    releaseFinalityByDeploymentIdentity.get(identity) ??
+    fail("invalid_field", "$.verifiedDeploymentIdentity.releaseFinality")
+  );
+};
+
+/**
  * Returns the exact release-economics authority minted by signed deployment
  * verification. Structural copies cannot select a different collateral floor
  * or other F04 amount after launch.
@@ -1557,6 +1576,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
     verified,
     releaseFinalityAuthority,
   );
+  releaseFinalityByDeploymentIdentity.set(verified, releaseFinality);
   releaseEconomicsAuthorityByDeploymentIdentity.set(
     verified,
     releaseEconomicsAuthority,

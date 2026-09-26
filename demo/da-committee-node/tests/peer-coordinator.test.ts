@@ -59,7 +59,7 @@ describe("PeerSignatureCoordinator", () => {
     await store.saveL1SourceState({
       schemaVersion: 1,
       sourceMode: "local_node",
-      network: "Preview",
+      network: "Preprod",
       authoritySha256: "91".repeat(32),
       status: "quarantined",
       observations: [],
@@ -607,7 +607,7 @@ describe("PeerSignatureCoordinator", () => {
     await receiverStore.saveL1SourceState({
       schemaVersion: 1,
       sourceMode: "local_node",
-      network: "Preview",
+      network: "Preprod",
       authoritySha256: "92".repeat(32),
       status: "quarantined",
       observations: [],

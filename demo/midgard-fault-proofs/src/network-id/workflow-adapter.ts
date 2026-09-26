@@ -60,7 +60,7 @@ import {
   NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { nativeTxFromCoreCompact } from "../submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../step-support.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";

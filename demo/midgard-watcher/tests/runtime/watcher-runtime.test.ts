@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -188,11 +189,11 @@ const fixture = async () => {
         requestTimeoutMs: 10_000,
         maxConcurrency: 4,
         finality: {
-          depth: 30,
+          depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
           rollback: {
             beforeFinality: "rewind",
             afterFinality: "quarantine",
-            maxDepth: 30,
+            maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
           },
         },
       },

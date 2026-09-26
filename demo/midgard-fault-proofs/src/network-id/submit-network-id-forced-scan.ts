@@ -42,7 +42,7 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { requireComputationThreadToken } from "../submit-step-01.js";
+import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {

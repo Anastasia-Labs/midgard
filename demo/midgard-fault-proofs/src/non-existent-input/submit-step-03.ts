@@ -10,7 +10,6 @@
  * was skipped.
  */
 
-import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import {
   type MidgardTxInput,
   NonExistentInputStep03Datum,
@@ -32,7 +31,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -40,66 +38,35 @@ import {
   type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
-} from "./proof-chunk-carriage.js";
+} from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPexcludesProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
   phasMembershipRewardAddress,
-  readJsonFile,
   type ResolvedProverSigner,
   resolveNonExistentInputDeploymentContracts,
-  resolveProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
+} from "../runtime.js";
 import {
+  ledgerKeyBytesHex,
+  PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
   requireComputationThreadToken,
   selectFeeInput,
-} from "./submit-step-01.js";
-import { computationThreadOutputPredicate } from "./tx-layout.js";
+} from "../step-support.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "./witness-reference-scripts.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
-
-export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
-  "pexcludes.exclusion.withdraw";
-
-/**
- * Encodes a `MidgardTxInput` as the node's ledger MPF key: the §5.3 field-0/1
- * item form `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes with a
- * deliberately non-minimal uint16 output index. These are the bytes on-chain
- * `ledger_outref_key` derives via `encode_midgard_tx_input`, not CML's
- * minimal-index `TransactionInput` CBOR, and NOT
- * `cbor.serialise(OutputReference)`.
- */
-export const ledgerKeyBytesHex = (input: MidgardTxInput): string =>
-  encodeMidgardSpendInputItem({
-    txId: Buffer.from(input.tx_id, "hex"),
-    outputIndex: Number(input.output_index),
-  }).toString("hex");
-
-export type NeSubmitStep03CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly ledgerNonMembershipProofPath: string;
-  readonly awaitConfirmation?: boolean;
-};
+} from "../workflow/transaction-boundary.js";
 
 export type NeSubmitStep03Result = {
   readonly txHash: string;
@@ -437,29 +404,4 @@ export const neSubmitStep03 = async ({
     publishedChunkOutRefs: chunks.map((chunk) => outRefLabel(chunk.utxo)),
     awaitedConfirmation: awaitConfirmation,
   };
-};
-
-export const neSubmitStep03FromFiles = async (
-  config: NeSubmitStep03CliConfig,
-): Promise<NeSubmitStep03Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-non-existent-input-step-03",
-  });
-  const [blueprint, deploymentInfo, proofJson, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    readJsonFile(config.ledgerNonMembershipProofPath),
-    makeLucidForSubmit(config),
-  ]);
-  const signer = resolveProverSigner(config);
-  return await neSubmitStep03({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    ledgerNonMembershipProofCbor: proofJson as string,
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };

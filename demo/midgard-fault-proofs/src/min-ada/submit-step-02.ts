@@ -53,7 +53,10 @@ import {
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
+import {
+  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
+  selectFeeInput,
+} from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -381,7 +384,6 @@ export const submitMinAdaTxStep02 = async ({
   }) satisfies BuildTxWithRedeemer;
   const network = lucid.config().network;
   if (network === undefined) throw new Error(`${label}: Lucid network missing`);
-  const { selectFeeInput } = await import("../submit-step-01.js");
   const transactionReferences = [
     stepReference,
     ...carriageUtxos,
@@ -655,7 +657,6 @@ export const submitMinAdaUtxoStep02 = async ({
   // This path has a withdrawal, so construct it directly instead of using the
   // continuation helper's withdrawal-free transaction body.
   signer.selectWallet(lucid);
-  const { selectFeeInput } = await import("../submit-step-01.js");
   const { walletInputsExcludingChunks } = await import(
     "../proof-chunk-carriage.js"
   );

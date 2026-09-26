@@ -20,7 +20,7 @@ import {
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { requireInitialStepDatum, selectFeeInput } from "../submit-step-01.js";
+import { requireInitialStepDatum, selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,

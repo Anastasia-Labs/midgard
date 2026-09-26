@@ -76,7 +76,7 @@ import {
   nativeTxFromCoreCompact,
   requireInitialStepDatum,
   type SubmitStep01TxInclusion,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";

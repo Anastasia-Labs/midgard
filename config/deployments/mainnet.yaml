@@ -1,0 +1,28 @@
+name: mainnet
+network: Mainnet
+l1_finality:
+  confirmation_depth: 30
+timing:
+  block_maturity_ms: 604800000
+  dispute_response_window_ms: 300000
+  operator_shift_ms: 3600000
+  registration_ms: 30
+  event_wait_ms: 60000
+  user_events_negligence_timeout_ms: 300000
+  max_inactivity_between_block_commitments_ms: 60000
+  new_shift_inactivity_grace_period_ms: 300000
+  max_validity_range_ms: 480000
+  da_attestation_timeout_ms: 3600000
+  da_small_response_window_ms: 3600000
+  da_full_response_window_ms: 172800000
+limits:
+  max_bisection_rounds: 32
+  max_inactivity_strikes: 5
+  coins_per_utxo_byte: 4310
+economics:
+  profile: public-preprod-launch-v1
+  requiredBondLovelace: 100000000000
+  slashingPenaltyLovelace: 25000000000
+  inactivitySlashingPenaltyLovelace: 10000000000
+  fraudProverRewardLovelace: 75000000000
+  proverCollateralFloorLovelace: 5000000

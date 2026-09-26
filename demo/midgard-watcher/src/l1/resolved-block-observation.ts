@@ -213,9 +213,10 @@ export const resolveWatcherBlockObservationTransactions = async (
 export const createWatcherResolvedBlockObservationSource = ({
   deploymentIdentity,
   rawSource,
-  minimumConfirmationDepth = 30,
+  minimumConfirmationDepth: requestedConfirmationDepth,
 }: {
-  readonly minimumConfirmationDepth?: 1 | 30;
+  /** Inclusion depth 1, or the source's release depth (the default). */
+  readonly minimumConfirmationDepth?: number;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly rawSource: LocalKupmiosFraudProofRawSource;
 }): WatcherResolvedBlockObservationSource => {
@@ -227,6 +228,16 @@ export const createWatcherResolvedBlockObservationSource = ({
     sourceDetails.blueprintHash !== deploymentIdentity.blueprintHash
   ) {
     throw new Error("raw block source is not bound to the verified deployment");
+  }
+  const minimumConfirmationDepth =
+    requestedConfirmationDepth ?? sourceDetails.confirmationDepth;
+  if (
+    minimumConfirmationDepth !== 1 &&
+    minimumConfirmationDepth !== sourceDetails.confirmationDepth
+  ) {
+    throw new Error(
+      "resolved block depth must be inclusion or the release confirmation depth",
+    );
   }
   const source: WatcherResolvedBlockObservationSource = Object.freeze({
     async observe({ nativeBlock, localObservation }) {

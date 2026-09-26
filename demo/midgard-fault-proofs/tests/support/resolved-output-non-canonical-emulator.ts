@@ -100,7 +100,7 @@ import {
   submitResolvedOutputNonCanonicalStep04,
   submitResolvedOutputNonCanonicalStep05,
 } from "../../src/resolved-output-non-canonical/index.js";
-import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";

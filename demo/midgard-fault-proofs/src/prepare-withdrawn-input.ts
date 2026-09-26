@@ -29,7 +29,7 @@ import {
   requireTransactionsRootMatch,
   transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
-import { type SubmitStep01TxInclusion } from "./submit-step-01.js";
+import { type SubmitStep01TxInclusion } from "./step-support.js";
 import {
   type PreparedWithdrawnInputEvidence,
   WITHDRAWN_INPUT_EVIDENCE_SCHEMA_VERSION,

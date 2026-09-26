@@ -7,9 +7,10 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
-  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
   type DeploymentManifestEconomicsProfile,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { requireSelectedDeploymentProfile } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
@@ -33,7 +34,6 @@ import {
   assertRetentionDaysMatchesDeployment,
   validateRetentionDays,
 } from "../database/retention-policy.js";
-import { parseDeploymentEconomicsProfile } from "../environment.js";
 import {
   NATIVE_LEDGER_SETTING_NAMES,
   type NativeLedgerSettings,
@@ -163,7 +163,7 @@ export type NodeConfigDep = {
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: number;
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: number;
   NETWORK: Network;
-  MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: DeploymentManifestEconomicsProfile;
+  DEPLOYMENT_ECONOMICS_PROFILE: DeploymentManifestEconomicsProfile;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
@@ -368,11 +368,16 @@ const makeConfig = Effect.gen(function* () {
     "Preview",
     "Custom",
   )("NETWORK");
-  const deploymentEconomicsProfile = yield* Config.string(
-    "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE",
-  ).pipe(Config.mapAttempt(parseDeploymentEconomicsProfile));
-  const deploymentEconomics =
-    DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[deploymentEconomicsProfile];
+  const deploymentProfile = yield* Config.string(
+    "MIDGARD_DEPLOYMENT_PROFILE",
+  ).pipe(Config.mapAttempt(requireSelectedDeploymentProfile));
+  if (network !== deploymentProfile.network) {
+    return yield* Effect.fail(
+      new Error("NETWORK must match the compiled deployment profile"),
+    );
+  }
+  const deploymentEconomics = deploymentProfile.economics;
+  const deploymentEconomicsProfile = deploymentEconomics.profile;
   const l1ProviderPreflightTimeoutMs = yield* Config.integer(
     "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS",
   ).pipe(
@@ -810,11 +815,11 @@ const makeConfig = Effect.gen(function* () {
   const stateQueueCorrectionFinalityDepth = yield* Config.integer(
     "STATE_QUEUE_CORRECTION_FINALITY_DEPTH",
   ).pipe(
-    Config.withDefault(30),
+    Config.withDefault(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth),
     Config.mapAttempt((value) => {
-      if (value !== 30) {
+      if (value !== DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth) {
         throw new Error(
-          "STATE_QUEUE_CORRECTION_FINALITY_DEPTH must equal the F04 public/testnet release depth of 30 blocks",
+          `STATE_QUEUE_CORRECTION_FINALITY_DEPTH must equal the deployment profile value ${DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth.toString()}`,
         );
       }
       return value;
@@ -830,10 +835,11 @@ const makeConfig = Effect.gen(function* () {
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
-  ).pipe(Config.withDefault(900_000));
-  // A node that has not read L1 for the DA attestation timeout can neither
-  // commit, merge, nor decide retention, so that is the default deadline; the
-  // default sweep interval (15 min) puts four sweeps inside it.
+  ).pipe(
+    Config.withDefault(
+      Math.min(900_000, Math.floor(Number(SDK.DA_ATTESTATION_TIMEOUT_MS) / 4)),
+    ),
+  );
   const l1ViewFatalMs = yield* Config.option(
     Config.string("L1_VIEW_FATAL_MS"),
   ).pipe(
@@ -1332,92 +1338,6 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const seedA = yield* requiredSeedPhrase(
-    "TESTNET_GENESIS_WALLET_SEED_PHRASE_A",
-  );
-  const seedB = yield* requiredSeedPhrase(
-    "TESTNET_GENESIS_WALLET_SEED_PHRASE_B",
-  );
-  const seedC = yield* requiredSeedPhrase(
-    "TESTNET_GENESIS_WALLET_SEED_PHRASE_C",
-  );
-  const addressA = walletFromSeed(seedA, { network }).address;
-  const addressB = walletFromSeed(seedB, { network }).address;
-  const addressC = walletFromSeed(seedC, { network }).address;
-
-  const genesisUtxosByWallet = {
-    A: [
-      {
-        txHash:
-          "bb217abaca60fc0ca68c1555eca6a96d2478547818ae76ce6836133f3cc546e0",
-        outputIndex: 1,
-        address: addressA,
-        assets: {
-          lovelace: 4_027_026_465n,
-          // "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
-          //   BigInt("10000"),
-        },
-      },
-      {
-        txHash:
-          "c7c0973c6bbf1a04a9f306da7814b4fa564db649bf48b0bd93c273bd03143547",
-        outputIndex: 0,
-        address: addressA,
-        assets: {
-          lovelace: 3_289_566n,
-          // "5c677ba4dd295d9286e0e22786fea9ed735a6ae9c07e7a45ae4d95c84372696d696e616c50756e6b73204c6f6f74":
-          //   BigInt("1"),
-        },
-      },
-    ],
-    B: [
-      {
-        txHash:
-          "d1a25b8e9c3b985d9d2f0a5f2e6ca7efa1c43b10f2c0b61f29e4a2cd8142b09e",
-        outputIndex: 0,
-        address: addressB,
-        assets: {
-          lovelace: 200n,
-        },
-      },
-      {
-        txHash:
-          "ea0f3c47bf18b02e9deb4e3a1239d8b263d765c4f7a3d12a9f62e8775e8c6141",
-        outputIndex: 1,
-        address: addressB,
-        assets: {
-          lovelace: 1_500n,
-        },
-      },
-      {
-        txHash:
-          "f40b9f6a507af50aad4ccf6c15157b6d05c7affe23ec55cf4109cc2549c97a37",
-        outputIndex: 2,
-        address: addressB,
-        assets: {
-          lovelace: 125_243n,
-        },
-      },
-    ],
-    C: [
-      {
-        txHash:
-          "8e32d18c07cba2b65577bc829a9875e2fc3cdb554d5b0abbb3d4e3a71a3e3e3d",
-        outputIndex: 0,
-        address: addressC,
-        assets: {
-          lovelace: 300n,
-          // "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
-          //   BigInt("15"),
-        },
-      },
-    ],
-  } as const;
-  const genesisUtxos: UTxO[] = [
-    ...genesisUtxosByWallet.A,
-    ...genesisUtxosByWallet.B,
-    ...genesisUtxosByWallet.C,
-  ];
 
   return {
     L1_PROVIDER: provider,
@@ -1437,7 +1357,7 @@ const makeConfig = Effect.gen(function* () {
     REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: referenceScriptAuthTimelockMs,
     REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: referenceScriptAuthMinRemainingMs,
     NETWORK: network,
-    MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: deploymentEconomicsProfile,
+    DEPLOYMENT_ECONOMICS_PROFILE: deploymentEconomicsProfile,
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
@@ -1563,9 +1483,10 @@ const makeConfig = Effect.gen(function* () {
     MPF_NATIVE_OWNER_RESTART_LIMIT: mpfNativeOwnerRestartLimit,
     LEDGER_MPF_DB_PATH: ledgerMpfDbPath,
     TRANSACTIONS_MPF_DB_PATH: transactionsMpfDbPath,
-    GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
-    GENESIS_UTXOS_BY_WALLET:
-      network === "Mainnet" ? { A: [], B: [], C: [] } : genesisUtxosByWallet,
+    // Atomic initialization commits an empty ledger on every network.
+    // Isolated harnesses may inject an explicitly authenticated genesis fixture.
+    GENESIS_UTXOS: [],
+    GENESIS_UTXOS_BY_WALLET: { A: [], B: [], C: [] },
   };
 }).pipe(Effect.orDie);
 

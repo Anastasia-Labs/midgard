@@ -21,7 +21,7 @@ import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import type { UnusedScriptWitnessArtifact } from "./actuator.js";

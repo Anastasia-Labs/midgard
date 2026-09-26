@@ -10,7 +10,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
-import { forcedTxFromCoreCompact } from "./submit-step-01.js";
+import { forcedTxFromCoreCompact } from "./step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "./transition-trace/witnesses.js";
 
 export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {

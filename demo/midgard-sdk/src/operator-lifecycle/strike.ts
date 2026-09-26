@@ -83,12 +83,6 @@ import {
 // Timing parameters
 // ---------------------------------------------------------------------------
 
-/**
- * The compiled-in timing constants the inactivity rules read. They mirror
- * `onchain/aiken/env/testnet.ak`; a deployment that compiled different values
- * (`env/default.ak` has a 30 ms shift) must pass its own set rather than rely
- * on the defaults.
- */
 export type InactivityTimingParameters = {
   readonly shiftDurationMs: bigint;
   readonly newShiftInactivityGracePeriodMs: bigint;

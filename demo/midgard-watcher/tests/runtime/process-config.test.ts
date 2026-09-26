@@ -1,7 +1,10 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  makeDeploymentMarker,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -30,8 +33,12 @@ import {
   startWatcherTrustedHeadAuthorityProcess,
 } from "../../src/runtime/trusted-head-runtime.js";
 import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 
 const directories: string[] = [];
+
+/** The compiled deployment profile's release depth (3 testing, 30 public). */
+const RELEASE_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 
 const watcherConfigValue = () => ({
   schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -64,11 +71,11 @@ const watcherConfigValue = () => ({
     requestTimeoutMs: 10_000,
     maxConcurrency: 4,
     finality: {
-      depth: 30,
+      depth: RELEASE_DEPTH,
       rollback: {
         beforeFinality: "rewind",
         afterFinality: "quarantine",
-        maxDepth: 30,
+        maxDepth: RELEASE_DEPTH,
       },
     },
   },
@@ -104,6 +111,57 @@ const watcherConfigValue = () => ({
     proofSubmitMs: 120_000,
   },
 });
+
+type JsonObject = Record<string, unknown>;
+
+const jsonObject = (value: unknown, path: string): JsonObject => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${path} is not a JSON object`);
+  }
+  return value as JsonObject;
+};
+
+/**
+ * Reads a shipped template and rebinds its release depths to the compiled
+ * profile. The templates ship the public depth 30 (mainnet, preprod-public);
+ * a testing-profile build (depth 3) must refuse that value, so the depth
+ * fields (and the authority policy digest that commits to them) are pinned
+ * here and every other field is parsed as shipped.
+ */
+const shippedTemplate = async (name: string): Promise<unknown> => {
+  const value = jsonObject(
+    structuredClone(
+      parseWatcherStrictJsonValue(
+        await readFile(new URL(`../../${name}`, import.meta.url), "utf8"),
+      ),
+    ),
+    name,
+  );
+  if (name === "watcher-process.example.json") {
+    const l1 = jsonObject(
+      jsonObject(value.watcherConfig, "watcherConfig").l1,
+      "l1",
+    );
+    const finality = jsonObject(l1.finality, "l1.finality");
+    const rollback = jsonObject(finality.rollback, "l1.finality.rollback");
+    expect([finality.depth, rollback.maxDepth]).toEqual([30, 30]);
+    finality.depth = RELEASE_DEPTH;
+    rollback.maxDepth = RELEASE_DEPTH;
+  } else if (name === "authority.example.json") {
+    const templatePolicy = jsonObject(value.policy, "policy");
+    expect([
+      templatePolicy.confirmationDepth,
+      templatePolicy.maximumPreFinalityRollbackDepth,
+    ]).toEqual(["30", "30"]);
+    const { policyDigest, ...committed } = templatePolicy;
+    expect(policyDigest).toBe(watcherSha256CanonicalJson(committed));
+    templatePolicy.confirmationDepth = RELEASE_DEPTH.toString();
+    templatePolicy.maximumPreFinalityRollbackDepth = RELEASE_DEPTH.toString();
+    const { policyDigest: _stale, ...rebound } = templatePolicy;
+    templatePolicy.policyDigest = watcherSha256CanonicalJson(rebound);
+  }
+  return value;
+};
 
 const watcherConfig = (): WatcherConfig =>
   parseWatcherConfig(watcherConfigValue());
@@ -290,12 +348,7 @@ describe("production process authority separation", () => {
     // Parsed from its bytes rather than loaded by path: the loader refuses a
     // checkout under /tmp, and the template's location is not what is tested.
     const config = parseWatcherProcessConfig(
-      parseWatcherStrictJsonValue(
-        await readFile(
-          new URL("../../watcher-process.example.json", import.meta.url),
-          "utf8",
-        ),
-      ),
+      await shippedTemplate("watcher-process.example.json"),
     );
     expect(config.schemaVersion).toBe(WATCHER_PROCESS_CONFIG_SCHEMA_VERSION);
     expect(Object.keys(config.faultProofInfrastructure).sort()).toEqual([
@@ -307,10 +360,7 @@ describe("production process authority separation", () => {
   });
 
   it("parses the shipped authority.example.json template as the sidecar of the start template", async () => {
-    const template = async (name: string): Promise<unknown> =>
-      parseWatcherStrictJsonValue(
-        await readFile(new URL(`../../${name}`, import.meta.url), "utf8"),
-      );
+    const template = shippedTemplate;
     const authority = parseWatcherTrustedHeadAuthorityProcessConfig(
       await template("authority.example.json"),
     );
@@ -382,6 +432,45 @@ describe("production process authority separation", () => {
         }),
       ).toThrow("positive lovelace");
     }
+  });
+
+  it("binds finality and pre-finality rollback depth to the compiled profile depth", () => {
+    // Acceptance is tied to the compiled selection: only the selected profile's
+    // depth parses, and the other profile family's depth is always refused.
+    const base = productionConfig();
+    expect(base.watcherConfig.l1.finality.depth).toBe(RELEASE_DEPTH);
+    expect(base.watcherConfig.l1.finality.rollback.maxDepth).toBe(
+      RELEASE_DEPTH,
+    );
+    const otherDepth = RELEASE_DEPTH === 3 ? 30 : 3;
+    const withDepths = (depth: number, maxDepth: number) => {
+      const value = watcherConfigValue();
+      return {
+        ...base,
+        watcherConfig: {
+          ...value,
+          l1: {
+            ...value.l1,
+            finality: {
+              ...value.l1.finality,
+              depth,
+              rollback: { ...value.l1.finality.rollback, maxDepth },
+            },
+          },
+        },
+      };
+    };
+    expect(
+      parseWatcherProcessConfig(withDepths(RELEASE_DEPTH, RELEASE_DEPTH))
+        .watcherConfig.l1.finality.depth,
+    ).toBe(RELEASE_DEPTH);
+    const refusal = `requires finality depth and pre-finality rollback depth ${RELEASE_DEPTH} from the deployment profile`;
+    expect(() =>
+      parseWatcherProcessConfig(withDepths(otherDepth, otherDepth)),
+    ).toThrow(refusal);
+    expect(() =>
+      parseWatcherProcessConfig(withDepths(RELEASE_DEPTH, RELEASE_DEPTH - 1)),
+    ).toThrow(refusal);
   });
 
   it("refuses startup without the signed release rule-bundle artifact", async () => {

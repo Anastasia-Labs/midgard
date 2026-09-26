@@ -189,7 +189,7 @@ pub fn confirmed_state_next_header_protocol_version_v1(
 }
 
 /// Seven-day maturity for the canonical V1 deployment.
-pub const block_maturity_duration_v1: Int = 7 * 24 * 60 * 60 * 1000
+pub const block_maturity_duration_v1: Int = env.block_maturity_duration_v1
 
 pub const transition_step_schema_version_v1: Int = 1
 

@@ -10,10 +10,6 @@ import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import { neSubmitStep01 } from "../ne-submit-step-01.js";
-import { neSubmitStep02 } from "../ne-submit-step-02.js";
-import { neSubmitStep03 } from "../ne-submit-step-03.js";
-import { neSubmitStep04 } from "../ne-submit-step-04.js";
 import {
   admitNonExistentInputForcedArtifact,
   NON_EXISTENT_INPUT_FORCED_ARTIFACT,
@@ -23,6 +19,10 @@ import {
   nonExistentInputForcedFieldPlan,
   submitNonExistentInputForcedStep,
 } from "../non-existent-input/submit.js";
+import { neSubmitStep01 } from "../non-existent-input/submit-step-01.js";
+import { neSubmitStep02 } from "../non-existent-input/submit-step-02.js";
+import { neSubmitStep03 } from "../non-existent-input/submit-step-03.js";
+import { neSubmitStep04 } from "../non-existent-input/submit-step-04.js";
 import {
   detectNonExistentInputWrongfulRejections,
   NON_EXISTENT_INPUT_WRONGFUL_REJECTION_VIOLATION_ID,

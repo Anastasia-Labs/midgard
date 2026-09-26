@@ -10,7 +10,7 @@ import { midgardTxOutputFromCanonicalCbor } from "../prepare-input-no-idx.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 
 export const NATIVE_INDEX_ARTIFACT_HELPER =
   "midgard-production-native-index-artifact-helper-v1" as const;

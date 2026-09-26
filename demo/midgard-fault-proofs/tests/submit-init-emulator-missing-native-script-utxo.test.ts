@@ -19,7 +19,7 @@ import {
   submitMissingNativeScriptUtxoStep07,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import {
   buildMissingNativeScriptUtxoEmulatorFixture,
   makeMissingNativeScriptUtxoEmulatorHarness,

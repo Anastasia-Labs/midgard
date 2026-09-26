@@ -68,6 +68,22 @@ jobs:
         working-directory: ./onchain/aiken
     steps:
       - uses: actions/checkout@v3
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: demo/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: demo/.nvmrc
+          cache: pnpm
+          cache-dependency-path: demo/pnpm-lock.yaml
+      - name: Install profile generator dependencies
+        working-directory: .
+        run: pnpm --dir demo install --frozen-lockfile --filter midgard-demo
+      - name: Check deployment profiles
+        working-directory: .
+        run: |
+          pnpm --dir demo deployment:check preprod-testing
+          node --test demo/scripts/deployment-profiles.test.mjs
       # No `setup-aiken` step: stock v1.1.22 is retired from every role by the
       # owner's 2026-08-13 ruling A, so this workflow installs exactly one
       # compiler. The fork both compiles and executes. Two reasons it has to be

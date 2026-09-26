@@ -130,7 +130,7 @@ const workflowAdapterRegistrationRows = [
       "workflow/double-spend-adapter.ts",
       "prepare-double-spend.ts",
       "submit-init.ts",
-      "submit-step-01.ts..submit-step-04.ts",
+      "double-spend/submit-step-01.ts..double-spend/submit-step-04.ts",
       "remove-fraudulent-block.ts",
       "workflow/local-kupmios-http-ogmios-source.ts",
       "workflow/raw-l1-family-derivation.ts",
@@ -149,7 +149,7 @@ const workflowAdapterRegistrationRows = [
       "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#WORKFLOW_RUNNER_FACTORIES.nonExistentInput",
       "workflow/linear-family-definitions.ts#LINEAR_FAMILY_DEFINITIONS.nonExistentInput",
-      "ne-submit-step-01.ts..ne-submit-step-04.ts",
+      "non-existent-input/submit-step-01.ts..non-existent-input/submit-step-04.ts",
       "remove-fraudulent-block.ts",
     ],
     requiredClosure:
@@ -338,7 +338,6 @@ const workflowAdapterRegistrationRows = [
   },
   manual("missingNativeScriptTx", [
     "missing-native-script-tx/prepare.ts",
-    "missing-native-script-tx/submit-missing-native-script-tx-init.ts",
     "missing-native-script-tx/submit-missing-native-script-tx-step-01.ts..step-06.ts",
   ]),
   {
@@ -522,7 +521,6 @@ const workflowAdapterRegistrationRows = [
     reason: "detector_or_scanner_only",
     existingSurface: [
       "mint-authorization/prover.ts",
-      "mint-authorization/submit-mint-authorization-init.ts",
       "mint-authorization/submit-mint-authorization-step-01.ts..step-05.ts",
     ],
     requiredClosure:
@@ -549,12 +547,10 @@ const workflowAdapterRegistrationRows = [
   },
   manual("missingNativeScriptUtxo", [
     "missing-native-script-utxo/prepare.ts",
-    "missing-native-script-utxo/submit-missing-native-script-utxo-init.ts",
     "missing-native-script-utxo/submit-missing-native-script-utxo-step-01.ts..step-05.ts",
   ]),
   manual("nativeScriptInvalid", [
     "native-script-invalid/prepare.ts",
-    "native-script-invalid/submit-native-script-invalid-init.ts",
     "native-script-invalid/submit-native-script-invalid-step-01.ts..step-03.ts",
   ]),
   manual("minAda", [

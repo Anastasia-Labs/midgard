@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import type { LucidEvolution, TxBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -9,19 +10,23 @@ import {
 } from "../src/ledger-constants.js";
 import {
   castConfirmedStateToData,
+  castStateQueueNodeToData,
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   type Header,
   makeGenesisConfirmedState,
+  type StateQueueNode,
 } from "../src/ledger-state.js";
 import {
   encodeLinkedListNodeView,
   type LinkedListNodeView,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "../src/linked-list.js";
 import {
   STATE_QUEUE_ROOT_ASSET_NAME,
   type StateQueueUTxO,
 } from "../src/state-queue.js";
 import {
+  assertCommitHeadDaDeadline,
   buildCommitBlockHeaderTxProgram,
   buildMergeToConfirmedStateTxProgram,
   COMMIT_MAX_VALIDITY_RANGE_MS,
@@ -180,6 +185,120 @@ const makeValidityRecordingLucid = () => {
 };
 
 describe("production commit validity binding", () => {
+  const headEndTime = 1_000_000;
+  const deadline =
+    headEndTime + SELECTED_DEPLOYMENT_PROFILE.timing.da_attestation_timeout_ms;
+  const head = (): StateQueueNode => ({
+    header: {
+      ...makeCommitParams({} as LucidEvolution, 0, headEndTime + 1).newHeader,
+    },
+    proven_fraud: null,
+    da_attestation: "Unattested",
+  });
+
+  it("permits an unattested head strictly before its DA deadline", async () => {
+    await expect(
+      Effect.runPromise(
+        assertCommitHeadDaDeadline(head(), deadline - 1, headEndTime),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([0, 1])(
+    "rejects an unattested head at or after the deadline (%i ms)",
+    async (offset) => {
+      await expect(
+        Effect.runPromise(
+          assertCommitHeadDaDeadline(head(), deadline + offset, headEndTime),
+        ),
+      ).rejects.toThrow("waiting for DA attestation");
+    },
+  );
+
+  it("distinguishes an already expired head from waiting for attestation", async () => {
+    await expect(
+      Effect.runPromise(
+        assertCommitHeadDaDeadline(head(), deadline + 1, deadline),
+      ),
+    ).rejects.toThrow("expired unattested suffix");
+  });
+
+  it("permits an attested head beyond the unattested deadline", async () => {
+    await expect(
+      Effect.runPromise(
+        assertCommitHeadDaDeadline(
+          {
+            ...head(),
+            da_attestation: {
+              Attested: { da_bond_asset_name: "11".repeat(32) },
+            },
+          },
+          deadline + 1,
+          deadline,
+        ),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([false, true])(
+    "checks the canonical head before opening the transaction builder (separate head: %s)",
+    async (separateHead) => {
+      const recordingLucid = makeValidityRecordingLucid();
+      const params = makeCommitParams(
+        recordingLucid.lucid,
+        deadline - 60_000,
+        deadline + 1,
+      );
+      const pendingDatum: LinkedListNodeView = {
+        key: { Key: { key: "ab".repeat(28) } },
+        next: "Empty",
+        data: castStateQueueNodeToData(head()) as LinkedListNodeView["data"],
+      };
+      const pending = {
+        ...params.latestBlock,
+        datum: pendingDatum,
+        utxo: {
+          ...params.latestBlock.utxo,
+          datum: encodeLinkedListNodeView(pendingDatum),
+          assets: {
+            lovelace: 5_000_000n,
+            [`${DUMMY_POLICY_ID}${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${"ab".repeat(28)}`]:
+              1n,
+          },
+        },
+      };
+      await expect(
+        Effect.runPromise(
+          buildCommitBlockHeaderTxProgram({
+            ...params,
+            latestBlock: separateHead
+              ? {
+                  ...pending,
+                  datum: {
+                    ...pendingDatum,
+                    data: castStateQueueNodeToData({
+                      ...head(),
+                      da_attestation: {
+                        Attested: { da_bond_asset_name: "11".repeat(32) },
+                      },
+                    }) as LinkedListNodeView["data"],
+                  },
+                }
+              : pending,
+            witness: {
+              ...params.witness,
+              confirmedStateRefInput: params.latestBlock.utxo,
+              headStateQueueNodeRefInput: separateHead
+                ? pending.utxo
+                : undefined,
+            },
+          }),
+        ),
+      ).rejects.toThrow("expired unattested suffix");
+      expect(recordingLucid.newTx).not.toHaveBeenCalled();
+    },
+  );
+
   it("passes the exact bounded interval to the Lucid transaction builder", async () => {
     const validFrom = 1_000_000;
     const validTo = validFrom + COMMIT_MAX_VALIDITY_RANGE_MS;

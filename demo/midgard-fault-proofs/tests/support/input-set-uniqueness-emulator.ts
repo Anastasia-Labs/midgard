@@ -75,7 +75,7 @@ import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   selectFeeInput,
   type SubmitStep01TxInclusion,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

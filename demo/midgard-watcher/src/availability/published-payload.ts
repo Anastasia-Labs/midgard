@@ -246,7 +246,7 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
   )
     throw new Error("L1 payload history differs from verified deployment");
   const minimumConfirmationDepth =
-    details.observationDepth === "inclusion" ? 1 : 30;
+    details.observationDepth === "inclusion" ? 1 : details.confirmationDepth;
   const sourceId = `watcher-l1-availability/${input.identity.manifestId}`;
   const sourcePeerId = "cardano-l1";
   const cache = new Map<

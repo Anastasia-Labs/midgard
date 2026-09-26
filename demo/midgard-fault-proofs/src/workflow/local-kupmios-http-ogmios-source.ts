@@ -232,7 +232,7 @@ export type LocalKupmiosHttpOgmiosRawSourceDetails = Readonly<{
   blueprintHash: string;
   finalityPolicyDigest: string;
   observationDepth: FraudProofL1ObservationDepth;
-  confirmationDepth: 30;
+  confirmationDepth: number;
   automaticRecoveryMaxDepth: 2160;
 }>;
 

@@ -9,8 +9,8 @@ import { planFaultProofFieldOpening } from "../field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { nativeTxFromCoreCompact } from "../step-support.js";
 import { submitInit } from "../submit-init.js";
-import { nativeTxFromCoreCompact } from "../submit-step-01.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   captureCursorRemoval,

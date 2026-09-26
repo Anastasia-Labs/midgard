@@ -51,14 +51,14 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../../src/runtime.js";
-import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

@@ -36,7 +36,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import {
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";

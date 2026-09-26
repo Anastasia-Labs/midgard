@@ -27,8 +27,8 @@ import {
   submitWithdrawnInputStep02,
   type WithdrawnInputCatalogueCategory,
 } from "../../src/index.js";
-import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
-import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
+import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,

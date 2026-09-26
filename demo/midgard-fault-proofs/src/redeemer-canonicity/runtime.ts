@@ -22,11 +22,11 @@ import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { submitInit } from "../submit-init.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
+import { submitInit } from "../submit-init.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";

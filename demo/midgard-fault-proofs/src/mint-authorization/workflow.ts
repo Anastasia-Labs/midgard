@@ -29,8 +29,8 @@ import {
 } from "../field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
+import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { submitInit } from "../submit-init.js";
-import { parseSubmitStep01TxInclusion } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";

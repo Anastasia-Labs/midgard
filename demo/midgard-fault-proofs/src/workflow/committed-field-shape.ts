@@ -31,7 +31,7 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { parseSubmitStep01TxInclusion } from "../submit-step-01.js";
+import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";

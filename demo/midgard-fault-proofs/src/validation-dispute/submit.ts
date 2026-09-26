@@ -158,7 +158,7 @@ import {
   requireComputationThreadToken,
   requireInitialStepDatum,
   selectFeeInput,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,

@@ -1,4 +1,5 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeFraudProofRawL1PointId,
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -43,6 +44,10 @@ import {
   h32,
   makeDeploymentAuthority,
 } from "../support/deployment-authority-fixture.js";
+
+/** The compiled deployment profile's release depth (3 testing, 30 public). */
+const RELEASE_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+const RELEASE_DEPTH_TEXT = RELEASE_DEPTH.toString();
 
 const point = Object.freeze({
   blockHash: h32("a1"),
@@ -194,7 +199,7 @@ const fixture = (omitLock = false) => {
         blockHash: point.blockHash,
         blockNo: point.blockNo,
         chainPointId: h32("b1"),
-        depth: "30",
+        depth: RELEASE_DEPTH_TEXT,
         parentBlockHash: nativeBlock.prevHash,
         pointDigest: h32("b2"),
         slot: point.slot,
@@ -222,7 +227,7 @@ const fixture = (omitLock = false) => {
     redeemersCbor: witnessSet.redeemers()!.to_canonical_cbor_hex(),
     isValid: true,
     inclusionPoint: point,
-    confirmationDepth: 30,
+    confirmationDepth: RELEASE_DEPTH,
     resolvedInputs: Object.freeze([]),
     resolvedReferenceInputs: Object.freeze([]),
   }) satisfies FraudProofRawL1Transaction;
@@ -417,7 +422,7 @@ const appendFixture = ({
         blockHash,
         blockNo: appendPoint.blockNo,
         chainPointId: h32("b3"),
-        depth: "30",
+        depth: RELEASE_DEPTH_TEXT,
         parentBlockHash: nativeBlock.prevHash,
         pointDigest: h32("b4"),
         slot: appendPoint.slot,
@@ -446,7 +451,7 @@ const appendFixture = ({
     redeemersCbor: witnessSet.redeemers()!.to_canonical_cbor_hex(),
     isValid: true,
     inclusionPoint: appendPoint,
-    confirmationDepth: 30,
+    confirmationDepth: RELEASE_DEPTH,
     resolvedInputs: Object.freeze([
       {
         outRef: `${initial.raw.txHash}#0`,
@@ -676,7 +681,7 @@ describe("production state-queue observation source", () => {
         observedSlot: current.nativeBlock.slot,
         observedBlockNo: current.nativeBlock.blockNo,
         observedChainPointId: current.raw.inclusionPoint.pointId,
-        finalityDepth: "30",
+        finalityDepth: RELEASE_DEPTH_TEXT,
       },
     });
     expect(() => assertWatcherStateQueueObservation(result)).toThrow(
@@ -953,7 +958,7 @@ describe("production state-queue observation source", () => {
       observedSlot: later.slot,
       observedBlockNo: later.blockNo,
       observedChainPointId: later.chainPointId,
-      finalityDepth: "30",
+      finalityDepth: RELEASE_DEPTH_TEXT,
     });
     const substituted = unsafeAnchoredHeaderObservationForTest({
       prior: { ...minted, headerCborHex: `${minted.headerCborHex}00` },
@@ -1015,7 +1020,7 @@ describe("production state-queue observation source", () => {
         observedSlot: append.nativeBlock.slot,
         observedBlockNo: append.nativeBlock.blockNo,
         observedChainPointId: append.raw.inclusionPoint.pointId,
-        finalityDepth: "30",
+        finalityDepth: RELEASE_DEPTH_TEXT,
       },
     ]);
     expect(result.finalizedCorrectionLock).toEqual(
@@ -1048,7 +1053,7 @@ describe("production state-queue observation source", () => {
           ...attached.raw.inclusionPoint,
           blockNo: "130",
         },
-        confirmationDepth: 30,
+        confirmationDepth: RELEASE_DEPTH,
       }),
       readHistory: async (unit: string) => {
         expect(unit).toBe(expectedUnit);
@@ -1084,7 +1089,7 @@ describe("production state-queue observation source", () => {
       observedSlot: attached.raw.inclusionPoint.slot,
       observedBlockNo: attached.raw.inclusionPoint.blockNo,
       observedChainPointId: attached.raw.inclusionPoint.pointId,
-      finalityDepth: "30",
+      finalityDepth: RELEASE_DEPTH_TEXT,
     });
     expect(() => assertWatcherStateQueueHeaderObservation(retained)).toThrow(
       "was not admitted",
@@ -1277,7 +1282,7 @@ describe("production state-queue observation source", () => {
       blockNo: intersection.blockNo,
       slot: intersection.slot,
       chainPointId: pointId,
-      finalityDepth: "30",
+      finalityDepth: RELEASE_DEPTH_TEXT,
       ogmiosTipBlockNo: "130",
     });
     expect(restored.previous).toEqual(initialResult);
@@ -1743,7 +1748,7 @@ describe("production state-queue observation source", () => {
           blockHash: later.blockHash,
           blockNo: later.blockNo,
           chainPointId: laterPointId,
-          depth: "30",
+          depth: RELEASE_DEPTH_TEXT,
           parentBlockHash: initial.nativeBlock.blockHash,
           pointDigest: h32("b4"),
           slot: later.slot,
@@ -1857,7 +1862,7 @@ describe("production state-queue observation source", () => {
       unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations,
         intersection: later,
-        ogmiosTipBlockNo: (laterBlockNo + 30).toString(),
+        ogmiosTipBlockNo: (laterBlockNo + RELEASE_DEPTH).toString(),
         authority: initial.authority,
         sourceId: "test-source",
         maximumObservations: 2160,
@@ -1930,7 +1935,7 @@ describe("production state-queue observation source", () => {
     ).toThrow("verifiedDeploymentIdentity");
 
     const policy = Object.freeze({
-      confirmationDepth: 30 as const,
+      confirmationDepth: RELEASE_DEPTH,
       automaticRecoveryMaxDepth: 2160 as const,
       deepRollbackPolicy: "automated_rewind_replay_incident-v1" as const,
     });

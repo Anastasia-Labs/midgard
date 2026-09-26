@@ -19,7 +19,7 @@ import type { ResolvedProverSigner } from "../../src/runtime.js";
 import {
   nativeTxFromCoreCompact,
   selectFeeInput,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,

@@ -15,6 +15,7 @@ import {
   MIDGARD_NATIVE_SCRIPT_MAX_DEPTH,
   MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT,
 } from "./codec/native-script.js";
+import { SELECTED_DEPLOYMENT_PROFILE } from "./deployment-profile.js";
 
 /**
  * Exact protocol tuple for the canonical V1 validator deployment.
@@ -230,10 +231,14 @@ const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 // block producer's to declare, so it is neither a block-header field nor an
 // element of the hashed validation context. Changing it is a redeploy event,
 // exactly as for `maxDistinctAssetCount` below.
-const TARGET_COINS_PER_UTXO_BYTE = 4_310;
-const VALIDATION_DISPUTE_RESPONSE_WINDOW_MS = 300_000;
-const MAX_VALIDATION_BISECTION_ROUNDS = 32;
-const PROOF_BLOCK_MATURITY_MS = 7 * 24 * 60 * 60 * 1000;
+const TARGET_COINS_PER_UTXO_BYTE =
+  SELECTED_DEPLOYMENT_PROFILE.limits.coins_per_utxo_byte;
+const VALIDATION_DISPUTE_RESPONSE_WINDOW_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.dispute_response_window_ms;
+const MAX_VALIDATION_BISECTION_ROUNDS =
+  SELECTED_DEPLOYMENT_PROFILE.limits.max_bisection_rounds;
+const PROOF_BLOCK_MATURITY_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms;
 // Opening, two moves per round, and settlement must fit in the first half of
 // maturity even if every party uses its complete response window.
 const MIN_VALIDATION_DISPUTE_MATURITY_MS =

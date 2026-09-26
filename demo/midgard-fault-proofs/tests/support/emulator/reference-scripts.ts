@@ -21,14 +21,14 @@ import {
 import { Effect } from "effect";
 
 import type { CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
-import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../../../src/ne-submit-step-03.js";
 import { chunkedVerifyWithdrawalScript } from "../../../src/proof-chunk-carriage.js";
 import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../../../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   getCompiledScript,
 } from "../../../src/runtime.js";
-import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../../../src/submit-step-01.js";
+import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../../../src/step-support.js";
+import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../../../src/step-support.js";
 import { type FaultProofWitnessReferenceScripts } from "../../../src/witness-reference-scripts.js";
 import { network } from "./blueprints.js";
 import {

@@ -8,6 +8,7 @@ import {
 } from "@al-ft/midgard-core";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -158,7 +159,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   };
   const deploymentFingerprint = "d1".repeat(32);
   const policy = {
-    confirmationDepth: 30,
+    confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
     automaticRecoveryMaxDepth: 2160,
     deepRollbackPolicy: "automated_rewind_replay_incident-v1",
   } as const;

@@ -1,19 +1,36 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { Network } from "@lucid-evolution/lucid";
 
 import { PosixTimeDuration } from "./common.js";
 
-export const SHIFT_DURATION_MS = 60n * 60n * 1000n;
-export const REGISTRATION_DURATION_MS = 30n;
+export const SHIFT_DURATION_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing.operator_shift_ms,
+);
+export const REGISTRATION_DURATION_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing.registration_ms,
+);
 export const MATURITY_DURATION_MS = BigInt(
   MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
 );
-export const USER_EVENTS_NEGLIGENCE_TIMEOUT_MS = 5n * 60n * 1000n;
-export const MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS = 10n * 6n * 1000n;
-export const NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS = 5n * 60n * 1000n;
-export const MAX_VALIDITY_RANGE_LENGTH_MS = 8n * 60n * 1000n;
-export const MAX_INACTIVITY_STRIKES = 5n;
-export const EVENT_WAIT_DURATION_MS = 60_000;
+export const USER_EVENTS_NEGLIGENCE_TIMEOUT_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing.user_events_negligence_timeout_ms,
+);
+export const MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing
+    .max_inactivity_between_block_commitments_ms,
+);
+export const NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing.new_shift_inactivity_grace_period_ms,
+);
+export const MAX_VALIDITY_RANGE_LENGTH_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing.max_validity_range_ms,
+);
+export const MAX_INACTIVITY_STRIKES = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.limits.max_inactivity_strikes,
+);
+export const EVENT_WAIT_DURATION_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.event_wait_ms;
 
 //TODO: change event_wait_duration to POSIXTime or maturity_duration to number for better consistency
 export type ProtocolParameters = {
@@ -25,30 +42,19 @@ export type ProtocolParameters = {
   inactivity_slashing_penalty: bigint;
 };
 
-/**
- * Development/emulator construction defaults only. A Cardano network label
- * cannot identify release economics: public Preprod and bounded acceptance
- * both run on `Preprod`. Production operator, settlement, and fraud-removal
- * builders must consume the parsed deployment-manifest economics block.
- */
 export const getProtocolParameters = (network: Network): ProtocolParameters => {
-  if (network === "Mainnet") {
-    return {
-      event_wait_duration: 60_000,
-      maturity_duration: MATURITY_DURATION_MS,
-      slashing_penalty: 25_000_000_000n,
-      fraud_prover_reward: 75_000_000_000n,
-      required_bond: 100_000_000_000n,
-      inactivity_slashing_penalty: 10_000_000_000n,
-    };
-  } else {
-    return {
-      event_wait_duration: EVENT_WAIT_DURATION_MS,
-      maturity_duration: MATURITY_DURATION_MS,
-      slashing_penalty: 500_000_000n,
-      fraud_prover_reward: 400_000_000n,
-      required_bond: 900_000_000n,
-      inactivity_slashing_penalty: 100_000_000n,
-    };
+  if (network !== SELECTED_DEPLOYMENT_PROFILE.network) {
+    throw new Error("Network must match the compiled deployment profile");
   }
+  const economics = SELECTED_DEPLOYMENT_PROFILE.economics;
+  return {
+    event_wait_duration: EVENT_WAIT_DURATION_MS,
+    maturity_duration: MATURITY_DURATION_MS,
+    slashing_penalty: BigInt(economics.slashingPenaltyLovelace),
+    fraud_prover_reward: BigInt(economics.fraudProverRewardLovelace),
+    required_bond: BigInt(economics.requiredBondLovelace),
+    inactivity_slashing_penalty: BigInt(
+      economics.inactivitySlashingPenaltyLovelace,
+    ),
+  };
 };

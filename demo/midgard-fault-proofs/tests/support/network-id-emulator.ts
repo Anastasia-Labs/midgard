@@ -24,7 +24,7 @@ import type {
   PreparedNetworkIdPostUtxoProof,
   PreparedNetworkIdProof,
 } from "../../src/network-id/prepare.js";
-import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import { type CompleteSignedTransactionMeasurement } from "./emulator/measurement.js";
 import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
 import {

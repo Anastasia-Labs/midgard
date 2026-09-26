@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   Lucid,
   type UTxO,
@@ -30,9 +33,11 @@ type PersistedDeployment = Omit<
  * L1 depth the journey watcher requires before a block is finalized. Finality
  * anchors evidence: the finalized audit anchor of a completed workflow, its
  * incident records and its evidence stamp. It no longer gates the actions the
- * journey drives.
+ * journey drives. It is the compiled deployment profile's release depth (3
+ * for local-devnet-testing), which the watcher process config must match.
  */
-export const JOURNEY_FINALITY_DEPTH = 30;
+export const JOURNEY_FINALITY_DEPTH =
+  DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 
 /**
  * L1 depth at which the journey watcher acts on an observation. Once a step's

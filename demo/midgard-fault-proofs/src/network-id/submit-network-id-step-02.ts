@@ -28,7 +28,6 @@ import {
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../ne-submit-step-03.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedNonMembershipClaimRedeemer,
@@ -46,10 +45,11 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { excludeUtxo } from "../spend-input-witness.js";
+import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../step-support.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   selectFeeInput,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

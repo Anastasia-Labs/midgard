@@ -1,9 +1,15 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { inspect } from "node:util";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { describe, expect, it } from "vitest";
+import {
+  computeDeploymentManifestId,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+import * as deploymentProfile from "@al-ft/midgard-core/deployment-profile";
+import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
@@ -20,6 +26,200 @@ import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { loadPublicRetainedDaRuntimeConfig } from "../src/public-retained-da-config.js";
 import { tempDir } from "./helpers.js";
 import { readDaDeploymentFixture } from "./helpers/deployment-fixture.js";
+
+describe("loadCommitteeConfig indexed signer sources", () => {
+  const fakeSources = {
+    DA_SIGNER_KEY_SOURCE_0: `hex:${"10".repeat(32)}`,
+    DA_SIGNER_KEY_SOURCE_1: `hex:${"20".repeat(32)}`,
+  };
+  const fixture = async () => {
+    const dir = await tempDir();
+    const manifest = libp2pManifest("01".repeat(32));
+    manifest.da_committee = {
+      threshold: 1,
+      members: [
+        {
+          signer_index: 0,
+          da_vkey: "01".repeat(32),
+          peer_id: LIBP2P_PEER_ID_A,
+          multiaddrs: [`/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_A}`],
+          roles: ["committee", "retrieval"],
+        },
+        {
+          signer_index: 1,
+          da_vkey: "02".repeat(32),
+          peer_id: LIBP2P_PEER_ID_B,
+          multiaddrs: [`/dns4/da-b.example/tcp/4001/p2p/${LIBP2P_PEER_ID_B}`],
+          roles: ["committee", "retrieval"],
+        },
+      ],
+    };
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      manifest,
+    );
+    return { dir, env: libp2pConfigEnv(dir, manifestPath, deploymentInfoPath) };
+  };
+
+  it.each([0, 1] as const)(
+    "selects only signer %i from one indexed source map",
+    async (index) => {
+      const { env } = await fixture();
+      const config = await loadCommitteeConfig({
+        ...env,
+        ...fakeSources,
+        DA_SIGNER_INDEX: String(index),
+      });
+      expect(config.signerIndex).toBe(index);
+      expect(config.signerKeySource).toBe(
+        fakeSources[`DA_SIGNER_KEY_SOURCE_${index}`],
+      );
+      expect(config.signerKeySource).not.toBe(
+        fakeSources[`DA_SIGNER_KEY_SOURCE_${index === 0 ? 1 : 0}`],
+      );
+      expect(config.daCommitteeMembers.map((member) => member.index)).toEqual([
+        0, 1,
+      ]);
+    },
+  );
+
+  it("preserves explicit single-source selection", async () => {
+    const { env } = await fixture();
+    await expect(
+      loadCommitteeConfig({
+        ...env,
+        DA_SIGNER_INDEX: "1",
+        DA_SIGNER_KEY_SOURCE: fakeSources.DA_SIGNER_KEY_SOURCE_1,
+      }),
+    ).resolves.toMatchObject({
+      signerIndex: 1,
+      signerKeySource: fakeSources.DA_SIGNER_KEY_SOURCE_1,
+    });
+  });
+
+  it("uses the process-selected index over the shared YAML default", async () => {
+    const { dir, env: base } = await fixture();
+    await writeFile(
+      join(dir, "config.yaml"),
+      [
+        'DA_SIGNER_INDEX: "0"',
+        `DA_SIGNER_KEY_SOURCE_0: "${fakeSources.DA_SIGNER_KEY_SOURCE_0}"`,
+        `DA_SIGNER_KEY_SOURCE_1: "${fakeSources.DA_SIGNER_KEY_SOURCE_1}"`,
+      ].join("\n"),
+    );
+    const env: NodeJS.ProcessEnv = { ...base, DA_SIGNER_INDEX: "1" };
+    loadRuntimeConfig({ env, cwd: dir });
+    expect(env.DA_SIGNER_INDEX).toBe("1");
+    expect(env.DA_SIGNER_KEY_SOURCE_0).toBe(fakeSources.DA_SIGNER_KEY_SOURCE_0);
+    expect(env.DA_SIGNER_KEY_SOURCE_1).toBe(fakeSources.DA_SIGNER_KEY_SOURCE_1);
+    await expect(loadCommitteeConfig(env)).resolves.toMatchObject({
+      signerIndex: 1,
+      signerKeySource: fakeSources.DA_SIGNER_KEY_SOURCE_1,
+    });
+  });
+
+  const malformedSources: readonly {
+    readonly label: string;
+    readonly overrides: Record<string, string | undefined>;
+    readonly message: RegExp;
+  }[] = [
+    {
+      label: "mixed single and indexed source",
+      overrides: { DA_SIGNER_KEY_SOURCE: "fake-secret-not-for-errors" },
+      message: /not both/u,
+    },
+    {
+      label: "missing selected index",
+      overrides: { DA_SIGNER_INDEX: undefined },
+      message: /required to select an indexed signer/u,
+    },
+    {
+      label: "absent selected source",
+      overrides: { DA_SIGNER_INDEX: "2" },
+      message: /No indexed DA signer source matches/u,
+    },
+    {
+      label: "empty suffix",
+      overrides: { DA_SIGNER_KEY_SOURCE_: "fake-secret-not-for-errors" },
+      message: /canonical indices/u,
+    },
+    {
+      label: "nonnumeric suffix",
+      overrides: { DA_SIGNER_KEY_SOURCE_fake: "fake-secret-not-for-errors" },
+      message: /canonical indices/u,
+    },
+    {
+      label: "noncanonical padded suffix",
+      overrides: { DA_SIGNER_KEY_SOURCE_01: "fake-secret-not-for-errors" },
+      message: /canonical indices/u,
+    },
+    {
+      label: "negative suffix",
+      overrides: { "DA_SIGNER_KEY_SOURCE_-1": "fake-secret-not-for-errors" },
+      message: /canonical indices/u,
+    },
+    {
+      label: "fractional suffix",
+      overrides: { "DA_SIGNER_KEY_SOURCE_1.0": "fake-secret-not-for-errors" },
+      message: /canonical indices/u,
+    },
+    {
+      label: "out-of-range suffix",
+      overrides: { DA_SIGNER_KEY_SOURCE_256: "fake-secret-not-for-errors" },
+      message: /canonical indices/u,
+    },
+    {
+      label: "empty selected source",
+      overrides: { DA_SIGNER_KEY_SOURCE_0: "" },
+      message: /nonempty values/u,
+    },
+    {
+      label: "blank unselected source",
+      overrides: { DA_SIGNER_KEY_SOURCE_1: "  " },
+      message: /nonempty values/u,
+    },
+    {
+      label: "undefined unselected source",
+      overrides: { DA_SIGNER_KEY_SOURCE_1: undefined },
+      message: /nonempty values/u,
+    },
+    {
+      label: "out-of-range selected index",
+      overrides: { DA_SIGNER_INDEX: "256" },
+      message: /must fit in one byte/u,
+    },
+    {
+      label: "invalid selected index",
+      overrides: { DA_SIGNER_INDEX: "fake-secret-not-for-errors" },
+      message: /must be a non-negative integer/u,
+    },
+  ];
+  it.each(malformedSources)(
+    "rejects $label without disclosing any key source",
+    async ({ overrides, message }) => {
+      const { env } = await fixture();
+      let failure: unknown;
+      try {
+        await loadCommitteeConfig({
+          ...env,
+          ...fakeSources,
+          DA_SIGNER_INDEX: "0",
+          ...overrides,
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).toMatchObject({
+        message: expect.stringMatching(message),
+      });
+      const diagnostic = inspect(failure, { depth: 10 });
+      expect(diagnostic).not.toContain("fake-secret-not-for-errors");
+      expect(diagnostic).not.toContain(fakeSources.DA_SIGNER_KEY_SOURCE_0);
+      expect(diagnostic).not.toContain(fakeSources.DA_SIGNER_KEY_SOURCE_1);
+    },
+  );
+});
 
 describe("loadCommitteeConfig", () => {
   it("parses only the exact V1 manifest and consensus-profile pairing", async () => {
@@ -89,7 +289,7 @@ describe("loadCommitteeConfig", () => {
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
     });
-    expect(config.network).toBe("Preview");
+    expect(config.network).toBe("Preprod");
     expect(config.daTransport.kind).toBe("libp2p");
     expect(config.daParams.committeeHex).toBe(member);
     expect(config.daParams.threshold).toBe(1);
@@ -105,7 +305,7 @@ describe("loadCommitteeConfig", () => {
     const base = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
 
     await expect(loadCommitteeConfig(base)).resolves.toMatchObject({
-      finalityDepth: 30,
+      finalityDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
     });
     await expect(
       loadCommitteeConfig({ ...base, CARDANO_FINALITY_DEPTH: "29" }),
@@ -127,7 +327,7 @@ describe("loadCommitteeConfig", () => {
       libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
     );
 
-    expect(config.network).toBe("Preview");
+    expect(config.network).toBe("Preprod");
     expect(config.deploymentFingerprint).toBe(DEPLOYMENT_MANIFEST_ID);
     expect(config.libp2pPrivateKeySource).toBe(LIBP2P_PRIVATE_KEY_SOURCE);
     expect(config.l1SubmitterSignerIndexes).toEqual([]);
@@ -343,70 +543,87 @@ describe("loadCommitteeConfig", () => {
 
   it("binds runtime-manifest network to deployment identity and operator config", async () => {
     await expectLibp2pManifestRejects((manifest) => {
-      manifest.network = "Preprod";
+      manifest.network = "Preview";
     }, /must exactly match contract deployment manifest network/u);
 
     await expectLibp2pManifestRejects(
       () => undefined,
-      /MIDGARD_NETWORK must exactly match runtime manifest network Preview/u,
-      { MIDGARD_NETWORK: "Preprod" },
+      /MIDGARD_NETWORK must exactly match runtime manifest network Preprod/u,
+      { MIDGARD_NETWORK: "Preview" },
     );
   });
 
   it("requires and binds an explicit network magic for Custom local-node authority", async () => {
-    const dir = await tempDir();
-    const deployment = await readDaDeploymentFixture();
-    const customDeployment = withRecomputedDeploymentManifestId({
-      ...deployment,
-      network: "Custom",
-    });
-    const manifest = libp2pManifest(
-      "01".repeat(32),
-      ["committee", "retrieval"],
-      String(customDeployment.manifestId),
-    );
-    manifest.network = "Custom";
-    const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = join(dir, "deployment.json");
-    await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeFile(deploymentInfoPath, JSON.stringify(customDeployment));
-    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const localProfile =
+      deploymentProfile.DEPLOYMENT_PROFILES["local-devnet-testing"];
+    const localDigest =
+      deploymentProfile.DEPLOYMENT_PROFILE_DIGESTS["local-devnet-testing"];
+    const binding = vi
+      .spyOn(deploymentProfile, "verifyDeploymentProfileBinding")
+      .mockImplementation((profile, digest, network) => {
+        expect(profile).toEqual(localProfile);
+        expect(digest).toBe(localDigest);
+        expect(network).toBe("Custom");
+      });
+    try {
+      const dir = await tempDir();
+      const deployment = await readDaDeploymentFixture();
+      const customDeployment = withRecomputedDeploymentManifestId({
+        ...deployment,
+        network: "Custom",
+        deploymentProfile: localProfile,
+        deploymentProfileDigest: localDigest,
+      });
+      const manifest = libp2pManifest(
+        "01".repeat(32),
+        ["committee", "retrieval"],
+        String(customDeployment.manifestId),
+      );
+      manifest.network = "Custom";
+      const manifestPath = join(dir, "manifest.json");
+      const deploymentInfoPath = join(dir, "deployment.json");
+      await writeFile(manifestPath, JSON.stringify(manifest));
+      await writeFile(deploymentInfoPath, JSON.stringify(customDeployment));
+      const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
 
-    await expect(loadCommitteeConfig(baseEnv)).rejects.toThrow(
-      /CARDANO_NETWORK_MAGIC is required for Custom/,
-    );
-    for (const invalid of ["-1", "01", "1.5", "4294967296"]) {
-      await expect(
-        loadCommitteeConfig({ ...baseEnv, CARDANO_NETWORK_MAGIC: invalid }),
-      ).rejects.toThrow(/CARDANO_NETWORK_MAGIC/);
+      await expect(loadCommitteeConfig(baseEnv)).rejects.toThrow(
+        /CARDANO_NETWORK_MAGIC is required for Custom/,
+      );
+      for (const invalid of ["-1", "01", "1.5", "4294967296"]) {
+        await expect(
+          loadCommitteeConfig({ ...baseEnv, CARDANO_NETWORK_MAGIC: invalid }),
+        ).rejects.toThrow(/CARDANO_NETWORK_MAGIC/);
+      }
+
+      const config = await loadCommitteeConfig({
+        ...baseEnv,
+        CARDANO_NETWORK_MAGIC: "424242",
+      });
+      expect(config.cardanoL1Source).toMatchObject({
+        sourceMode: "local_node",
+        authorityNodeId: "test-cardano-node",
+        networkMagic: 424242,
+      });
+      expect(config.cardanoL1Source.authorityDigest).toMatch(/^[0-9a-f]{64}$/u);
+
+      const otherAuthority = await loadCommitteeConfig({
+        ...baseEnv,
+        CARDANO_NETWORK_MAGIC: "424242",
+        CARDANO_LOCAL_NODE_AUTHORITY_ID: "other-cardano-node",
+      });
+      expect(otherAuthority.cardanoL1Source.authorityDigest).not.toBe(
+        config.cardanoL1Source.authorityDigest,
+      );
+      const otherMagic = await loadCommitteeConfig({
+        ...baseEnv,
+        CARDANO_NETWORK_MAGIC: "424243",
+      });
+      expect(otherMagic.cardanoL1Source.authorityDigest).not.toBe(
+        config.cardanoL1Source.authorityDigest,
+      );
+    } finally {
+      binding.mockRestore();
     }
-
-    const config = await loadCommitteeConfig({
-      ...baseEnv,
-      CARDANO_NETWORK_MAGIC: "424242",
-    });
-    expect(config.cardanoL1Source).toMatchObject({
-      sourceMode: "local_node",
-      authorityNodeId: "test-cardano-node",
-      networkMagic: 424242,
-    });
-    expect(config.cardanoL1Source.authorityDigest).toMatch(/^[0-9a-f]{64}$/u);
-
-    const otherAuthority = await loadCommitteeConfig({
-      ...baseEnv,
-      CARDANO_NETWORK_MAGIC: "424242",
-      CARDANO_LOCAL_NODE_AUTHORITY_ID: "other-cardano-node",
-    });
-    expect(otherAuthority.cardanoL1Source.authorityDigest).not.toBe(
-      config.cardanoL1Source.authorityDigest,
-    );
-    const otherMagic = await loadCommitteeConfig({
-      ...baseEnv,
-      CARDANO_NETWORK_MAGIC: "424243",
-    });
-    expect(otherMagic.cardanoL1Source.authorityDigest).not.toBe(
-      config.cardanoL1Source.authorityDigest,
-    );
   });
 
   it("rejects explicit network magic for named networks", async () => {
@@ -445,7 +662,7 @@ describe("loadCommitteeConfig", () => {
     expect(external.cardanoL1Source).toMatchObject({
       sourceMode: "external_providers",
       providerAuthorityIds: ["11".repeat(32), "22".repeat(32)],
-      networkMagic: 2,
+      networkMagic: 1,
     });
 
     await expect(
@@ -592,11 +809,11 @@ describe("loadCommitteeConfig", () => {
     if (local.sourceMode !== "local_node") {
       throw new Error("expected local-node source fixture");
     }
-    const baseline = l1SourceAuthorityDigest("Preview", local);
+    const baseline = l1SourceAuthorityDigest("Preprod", local);
     expect(baseline).toMatch(/^[0-9a-f]{64}$/u);
-    expect(l1SourceAuthorityDigest("Preprod", local)).not.toBe(baseline);
+    expect(l1SourceAuthorityDigest("Preview", local)).not.toBe(baseline);
     expect(
-      l1SourceAuthorityDigest("Preview", {
+      l1SourceAuthorityDigest("Preprod", {
         ...local,
         authorityNodeId: "preview-node-b",
       }),
@@ -835,7 +1052,7 @@ describe("loadCommitteeConfig", () => {
         string,
         unknown
       >,
-      "Preview",
+      "Preprod",
     );
     if (expectedDeployment === undefined) {
       throw new Error("real Midgard deployment fixture did not parse");
@@ -1203,7 +1420,7 @@ const libp2pManifest = (
   deploymentManifestId = DEPLOYMENT_MANIFEST_ID,
 ): Record<string, unknown> => ({
   schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
-  network: "Preview",
+  network: "Preprod",
   deployment: {
     fingerprint: deploymentManifestId.toUpperCase(),
     contract_deployment_manifest_id: deploymentManifestId,
@@ -1346,7 +1563,9 @@ const libp2pConfigEnv = (
     "chain-sync-cursor.json",
   ),
   CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-  CARDANO_FINALITY_DEPTH: "30",
+  CARDANO_FINALITY_DEPTH: String(
+    DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+  ),
   DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,
   DA_COMMITTEE_DB_PATH: join(dir, "db"),
 });

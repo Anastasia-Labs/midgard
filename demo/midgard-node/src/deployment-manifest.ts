@@ -35,6 +35,7 @@ import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
 } from "@al-ft/midgard-sdk";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -1807,11 +1808,12 @@ const validateValidationDispute = (
   }
   if (
     candidate.maturityMs !== MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs ||
-    (candidate.maturityMs as number) <
-      MIDGARD_CONSENSUS_PROFILE.limits.minValidationDisputeMaturityMs
+    (SELECTED_DEPLOYMENT_PROFILE.name !== "preprod-testing" &&
+      (candidate.maturityMs as number) <
+        MIDGARD_CONSENSUS_PROFILE.limits.minValidationDisputeMaturityMs)
   ) {
     throw new Error(
-      "Deployment manifest validationDispute.maturityMs must equal the canonical V1 maturity and cover the dispute schedule",
+      "Deployment manifest validationDispute.maturityMs must equal the canonical V1 maturity and satisfy the selected profile's dispute schedule requirements",
     );
   }
 };
@@ -1986,6 +1988,8 @@ export const parseDeploymentManifestValue = (
       "validationDispute",
       "l1Finality",
       "economics",
+      "deploymentProfile",
+      "deploymentProfileDigest",
       "availabilityChallenge",
     ],
     [],

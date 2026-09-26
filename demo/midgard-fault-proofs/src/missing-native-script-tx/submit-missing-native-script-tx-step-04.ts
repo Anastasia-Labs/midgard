@@ -31,7 +31,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../submit-step-01.js";
+import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,

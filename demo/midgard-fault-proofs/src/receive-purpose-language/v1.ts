@@ -7,7 +7,7 @@ import type {
 import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { ReceivePurposeLanguageContracts } from "./contracts.js";
 import type { ReceivePurposeLanguageEvidence } from "./family.js";

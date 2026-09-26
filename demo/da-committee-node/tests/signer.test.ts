@@ -83,7 +83,7 @@ describe("DA signer", () => {
   it("loads the Midgard demo Cardano payment key from a seed phrase", async () => {
     const seedPhrase =
       "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-    const wallet = walletFromSeed(seedPhrase, { network: "Preview" });
+    const wallet = walletFromSeed(seedPhrase, { network: "Preprod" });
     const cardanoPrivateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
     const signer = await loadDaSigner(`cardano-seed:${seedPhrase}`);
     const headerHash = "cd".repeat(28);

@@ -18,8 +18,8 @@ import {
 } from "../src/index.js";
 import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { MIN_FEE_CATEGORY_LABEL } from "../src/min-fee-contracts.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
-import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,

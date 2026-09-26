@@ -21,7 +21,7 @@ missing inputs or redeemers and ambiguous outputs fail explicitly. The context
 supplies the resolved transaction layout; callers do not probe a completed draft
 or reconstruct Lucid's private configuration.
 
-[`submit-step-04.ts`](../../../demo/midgard-fault-proofs/src/submit-step-04.ts)
+[`double-spend/submit-step-04.ts`](../../../demo/midgard-fault-proofs/src/double-spend/submit-step-04.ts)
 uses this callback for the double-spend spend and mint redeemers, then completes
 once with `localUPLCEval: true`. It also excludes reference inputs from wallet
 balancing when field carriage is present.

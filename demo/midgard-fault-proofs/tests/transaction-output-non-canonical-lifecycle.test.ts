@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import {
   applyTransactionOutputNonCanonicalScripts,

@@ -17,7 +17,7 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { requireComputationThreadToken } from "../submit-step-01.js";
+import { requireComputationThreadToken } from "../step-support.js";
 import {
   NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
   type NativeScriptDecodingContracts,

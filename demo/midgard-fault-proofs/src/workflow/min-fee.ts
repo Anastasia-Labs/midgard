@@ -35,6 +35,10 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  nativeTxFromCoreCompact,
+  parseSubmitStep01TxInclusion,
+} from "../step-support.js";
 import { submitMinFeeStep01Forced } from "../submit-min-fee-forced-step-01.js";
 import { submitMinFeeInit } from "../submit-min-fee-init.js";
 import { submitMinFeeStep01 } from "../submit-min-fee-step-01.js";
@@ -42,10 +46,6 @@ import {
   type MinFeeFieldItemCbors,
   submitMinFeeStep02,
 } from "../submit-min-fee-step-02.js";
-import {
-  nativeTxFromCoreCompact,
-  parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";

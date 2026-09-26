@@ -10,7 +10,7 @@
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * Structural mirror of the `non-existent-input` chain's step 01
- * (`ne-submit-step-01.ts`): the same applied-parameter order, the same native
+ * (`non-existent-input/submit-step-01.ts`): the same applied-parameter order, the same native
  * transaction-root inclusion path, the same singleton hub-oracle and
  * state-queue reference inputs. Only the field lifted out of the bad
  * transaction differs — the native `reference_inputs_hash` rather than
@@ -79,7 +79,7 @@ import {
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
-} from "./submit-step-01.js";
+} from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

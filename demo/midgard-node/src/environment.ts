@@ -1,7 +1,7 @@
 import {
-  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
-  type DeploymentManifestEconomicsProfile,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+  requireSelectedDeploymentProfile,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 
 /**
  * The node's typed environment edge for the readers that are not Effect
@@ -68,16 +68,13 @@ export const daAvailabilityBondOwnerCredential = (): string => {
   return value;
 };
 
-/**
- * The fixed response classes both DA-availability call sites pin. They are not
- * configurable: they are the deployment's published windows, repeated in the
- * two call sites before this module existed.
- */
 const DA_AVAILABILITY_RESPONSE_CLASSES = {
   smallPayloadMaxBytes: 65_536,
-  smallResponseWindowMs: 3_600_000,
+  smallResponseWindowMs:
+    SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
   fullPayloadMaxBytes: 67_108_864,
-  fullResponseWindowMs: 172_800_000,
+  fullResponseWindowMs:
+    SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
 } as const;
 
 /**
@@ -123,35 +120,10 @@ export const daAvailabilityChallengeEnvironmentInput = (
   };
 };
 
-/**
- * The profile check `config.ts` runs inside its `Config` descriptor and
- * `commands/contract-deployment-info.ts` runs on a bare read. Same two accepted
- * spellings, same message, one definition.
- */
-export const parseDeploymentEconomicsProfile = (
-  value: string | undefined,
-): DeploymentManifestEconomicsProfile => {
-  if (
-    value !== "public-preprod-launch-v1" &&
-    value !== "bounded-acceptance-v1"
-  ) {
-    throw new Error(
-      "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE must explicitly equal public-preprod-launch-v1 or bounded-acceptance-v1",
-    );
-  }
-  return value;
-};
-
-export const deploymentEconomicsProfileFromEnvironment =
-  (): DeploymentManifestEconomicsProfile =>
-    parseDeploymentEconomicsProfile(
-      process.env.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE?.trim(),
-    );
-
 export const deploymentEconomicsFromEnvironment = () =>
-  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
-    deploymentEconomicsProfileFromEnvironment()
-  ];
+  requireSelectedDeploymentProfile(
+    process.env.MIDGARD_DEPLOYMENT_PROFILE?.trim(),
+  ).economics;
 
 /**
  * Override for the deployment manifest written by `contract-deployment-info`.

@@ -108,12 +108,20 @@ describe("pending queue attestation expiry", () => {
     const { queue, tailHash } = await fixture();
     expect(
       await Effect.runPromise(
-        observeAttestationTimeoutQueue(queue, 3_550_000n, 120_000n),
+        observeAttestationTimeoutQueue(
+          queue,
+          SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n - 50_000n,
+          120_000n,
+        ),
       ),
     ).toMatchObject({ status: "near-timeout", headerHash: tailHash });
     expect(
       await Effect.runPromise(
-        observeAttestationTimeoutQueue(queue, 3_602_000n, 120_000n),
+        observeAttestationTimeoutQueue(
+          queue,
+          SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n,
+          120_000n,
+        ),
       ),
     ).toMatchObject({ status: "timed-out", headerHash: tailHash });
     expect(
@@ -127,7 +135,9 @@ describe("pending queue attestation expiry", () => {
     ).toEqual({ status: "queue-attested" });
   });
   it("refuses a commit preflight extending an expired suffix and permits an applied tail", async () => {
-    const now = vi.spyOn(Date, "now").mockReturnValue(3_602_000);
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Number(SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n));
     try {
       const expired = await fixture();
       await expect(

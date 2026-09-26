@@ -39,13 +39,13 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { submitInit } from "../submit-init.js";
-import { submitInvalidRangeStep01 } from "../submit-invalid-range-step-01.js";
 import {
   forcedTxFromCoreCompact,
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
+import { submitInit } from "../submit-init.js";
+import { submitInvalidRangeStep01 } from "../submit-invalid-range-step-01.js";
 import type { ZeroInputContracts } from "../zero-input/contracts.js";
 import {
   prepareZeroInputEvidence,

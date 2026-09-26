@@ -40,13 +40,13 @@ import {
   computeTrieRoot,
   type TrieEntry,
 } from "../../src/ne-proofs.js";
-import { ledgerKeyBytesHex } from "../../src/ne-submit-step-03.js";
 import type { NoReferenceInputPreimageEntry } from "../../src/prepare-no-reference-input.js";
+import { ledgerKeyBytesHex } from "../../src/step-support.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
 import { decodingSubjectTransaction } from "./native-script-decoding-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";

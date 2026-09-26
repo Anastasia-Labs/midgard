@@ -4,7 +4,7 @@ import * as Authority from "../database/eventHistoryAuthority.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import {
   applyHistoryRecoveryPlan,
-  type HistoryRecoveryPlan,
+  type DependentRecoveryPlan,
 } from "../database/eventHistoryRecoveryPlans.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
@@ -20,7 +20,7 @@ import type { NativeMpfOwnerService } from "./mpf-native-owner/protocol.js";
 export const executeHistoryDependentRecovery = <E, R>(input: {
   readonly checkpoint: Checkpoint;
   readonly preparation: HistoryRecoveryPreparation;
-  readonly plan: HistoryRecoveryPlan;
+  readonly plan: DependentRecoveryPlan;
   readonly owner: NativeMpfOwnerService;
   /** Must recheck exact journal/preimages as part of this bounded SQL work. */
   readonly repair: Effect.Effect<void, E, R>;

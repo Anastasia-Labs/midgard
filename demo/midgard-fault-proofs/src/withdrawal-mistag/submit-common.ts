@@ -3,7 +3,7 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { fetchUtxoByOutRef, outRefLabel, parseOutRef } from "../runtime.js";
-import { requireComputationThreadToken } from "../submit-step-01.js";
+import { requireComputationThreadToken } from "../step-support.js";
 import {
   WITHDRAWAL_MISTAG_CATEGORY_LABEL,
   type WithdrawalMistagContracts,

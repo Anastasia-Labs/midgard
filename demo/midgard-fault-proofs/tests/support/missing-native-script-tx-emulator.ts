@@ -58,8 +58,8 @@ import {
 } from "../../src/missing-native-script-tx/submit-common.js";
 import { submitMissingNativeScriptTxBinding } from "../../src/missing-native-script-tx/submit-native-binding.js";
 import { resolveProverSigner } from "../../src/runtime.js";
-import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
-import { selectFeeInput } from "../../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
+import { selectFeeInput } from "../../src/step-support.js";
 import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,

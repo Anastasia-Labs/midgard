@@ -34,8 +34,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
-import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "./ne-submit-step-03.js";
 import {
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -43,50 +41,35 @@ import {
   type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
-} from "./proof-chunk-carriage.js";
+} from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPexcludesProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
   phasMembershipRewardAddress,
-  readJsonFile,
   type ResolvedProverSigner,
   resolveNonExistentInputDeploymentContracts,
-  resolveProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
+} from "../runtime.js";
+import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../step-support.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
-} from "./submit-step-01.js";
-import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+} from "../step-support.js";
+import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "./witness-reference-scripts.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
-
-export type NeSubmitStep04CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly txsNonMembershipProofPath: string;
-  readonly awaitConfirmation?: boolean;
-};
+} from "../workflow/transaction-boundary.js";
 
 export type NeSubmitStep04Result = {
   readonly txHash: string;
@@ -520,29 +503,4 @@ export const neSubmitStep04 = async ({
     publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
-};
-
-export const neSubmitStep04FromFiles = async (
-  config: NeSubmitStep04CliConfig,
-): Promise<NeSubmitStep04Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-non-existent-input-step-04",
-  });
-  const [blueprint, deploymentInfo, proofJson, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    readJsonFile(config.txsNonMembershipProofPath),
-    makeLucidForSubmit(config),
-  ]);
-  const signer = resolveProverSigner(config);
-  return await neSubmitStep04({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    txsNonMembershipProofCbor: proofJson as string,
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };

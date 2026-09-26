@@ -55,7 +55,7 @@ import {
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,

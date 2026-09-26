@@ -44,13 +44,13 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import {
+  requireComputationThreadToken,
+  selectFeeInput,
+} from "./step-support.js";
+import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
   type FabricatedWithdrawalContracts,
 } from "./submit-fabricated-withdrawal-step-01.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,

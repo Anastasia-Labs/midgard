@@ -61,7 +61,7 @@ import {
   minimumLovelaceForInlineDatumOutput,
   resolveProtocolParameters,
 } from "../../src/spend-input-witness.js";
-import { selectFeeInput } from "../../src/submit-step-01.js";
+import { selectFeeInput } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";

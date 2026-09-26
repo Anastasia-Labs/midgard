@@ -40,7 +40,7 @@ import type { MissingNativeScriptUtxoContracts } from "../../src/missing-native-
 import type { PreparedMissingNativeScriptUtxo } from "../../src/missing-native-script-utxo/prepare.js";
 import type { NativeScriptInvalidContracts } from "../../src/native-script-invalid/contracts.js";
 import type { PreparedNativeScriptInvalid } from "../../src/native-script-invalid/prepare.js";
-import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,

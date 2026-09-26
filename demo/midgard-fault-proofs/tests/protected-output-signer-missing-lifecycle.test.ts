@@ -74,7 +74,7 @@ import {
 } from "../src/protected-output-signer-missing/index.js";
 import { submitProtectedOutputSignerOpeningTransition } from "../src/protected-output-signer-missing/submit-opening-transition.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { makeProtectedOutputSignerIsolatedEvaluator } from "./protected-output-signer-missing-isolated-evaluator.js";

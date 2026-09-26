@@ -51,7 +51,7 @@ import { Effect } from "effect";
 
 import type { PublishedProofChunk } from "../proof-chunk-carriage.js";
 import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
-import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";

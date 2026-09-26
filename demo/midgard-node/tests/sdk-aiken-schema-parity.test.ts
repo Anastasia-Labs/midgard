@@ -44,74 +44,8 @@ type NormalizedSchema =
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
 /**
- * KNOWN RED against the blueprint currently in the tree, and the set grew in
- * #587 and again in #594.
- *
- * #584 retired `transaction_commitment` from the committed source leaves without
- * regenerating `plutus.json`, so four rows compare a two- or three-field SDK
- * schema against a stale three- or four-field blueprint definition and fail on
- * the field count: `ForcedInclusionTxV1Schema`, `L2TransactionSourceSchema`,
- * `ValidationSourceMembershipSchema` and `ValidationClaimWitnessSchema`.
- *
- * #587 then retired the counted publication receipt chain, which took
- * `terminal_receipt_reference` out of `TxOrderPayloadV1`. That is the same kind of
- * staleness and it moves three more rows red — `TxOrderPayloadSchema` on its own
- * field count, and `TxOrderEventSchema` and `TxOrderDatumSchema` because both
- * embed the payload — for a total of **seven** rows against this blueprint. The
- * two mappings for the retired receipt datums, and the one for the retired receipt
- * mint redeemer, were removed rather than left to fail: a red row measures a stale
- * blueprint, while a mapping to a type that no longer exists on the SDK side would
- * assert a retired surface.
- *
- * #594 then re-expressed `verify_order_material` on the §8.8 field-access door and
- * gave the tx-order minting policy its own redeemer — `user_events.MintRedeemer`
- * wrapped beside the §8 carriage vector. That adds an **eighth** red row,
- * `TxOrderMintRedeemerSchema`, and it is red for a different reason from the
- * other seven: they compare a moved SDK schema against a stale blueprint
- * definition and fail on field count, while this one has **no blueprint definition
- * at all** (`missing Aiken blueprint definition
- * midgard/user_events/tx_order_v1/MintRedeemer`) because the type is new in this
- * round. The mapping is kept rather than deferred: the SDK type exists, the Aiken
- * type exists, and the only thing missing is the regeneration that publishes it —
- * which is exactly what a red row here is for.
- *
- * #596 then added the §12.7 canonical-decodability fault family, whose claim
- * redeemer (`CommittedFieldClaimV1`) and step-02 thread state are likewise new
- * types the frozen blueprint never declared. That adds a **ninth** and **tenth**
- * red row, both of the missing-definition kind rather than the field-count kind.
- *
- * #597 moved the TypeScript twins of #592's machine wire change — four
- * `ValidationAuxiliaryWitnessV1` constructors and `ValidationProofItemDatumV1` —
- * and **adds no row and moves no figure**. That is a measured conclusion, not an
- * oversight: both mappings were added, run, and removed again, because neither
- * type can be compared here even against a regenerated blueprint. The reasoning
- * is at the foot of `ABI_MAPPINGS`. The consequence worth carrying into #579 is
- * that regenerating the blueprint will **not** surface that wire change here, so
- * this file's clean bill after regeneration says nothing about it; the
- * cross-language producer vector
- * `typescript_generated_field_chunk_auxiliary_is_exact` in
- * `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak` is what
- * covers it.
- *
- * #601 then added the §12.8 committed-field-shape sibling fault family, whose
- * step-02 thread state is likewise a new type the frozen blueprint never
- * declared. That adds an **eleventh** red row, again of the missing-definition
- * kind. It adds only one: the family's claim redeemer is §12.7's
- * `CommittedFieldClaimV1` reused unchanged, so row 15 already covers it.
- *
- * Measured on 2026-08-13 after #601: `11 failed | 22 passed (33)`; the same
- * command measured `10 failed | 22 passed (32)` on 2026-08-12 after #596 and
- * unchanged after #597, `8 failed | 22 passed (30)` after #594 and
- * `7 failed | 22 passed (29)` on 2026-08-10 after #587. Regenerating the
- * blueprint is [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; all
- * eleven are rows 7-17 of the seventeen-test handoff set enumerated in
- * `demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts` (#584's
- * four as rows 7-10, #587's three as 11-13, #594's one as 14, #596's two as
- * 15-16, #601's one as 17), which also owns the six emulator scenarios red for
- * the same cause.
- * Point `MIDGARD_REAL_BLUEPRINT_PATH` at a regenerated blueprint to check the fix
- * — #596 did, against a scratch stock build of its own working tree, and #601 did
- * the same; this file gives `33 passed (33)` there.
+ * Compares against the tracked blueprint. Point `MIDGARD_REAL_BLUEPRINT_PATH`
+ * at another build to check that one instead.
  */
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??

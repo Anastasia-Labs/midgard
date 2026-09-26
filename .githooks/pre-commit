@@ -18,6 +18,13 @@
 # fixed: formatting it would have to stage the unstaged half too, and silently
 # committing work you did not stage is worse than a formatting miss.
 #
+# Two refusals block the commit outright rather than fixing anything:
+#   - a staged onchain/aiken/plutus.json. The blueprint is a build output of
+#     whichever compiler and profile last ran, and it is never committed.
+#   - an `aiken` that is not the pinned fork (AIKEN_FORK_VERSION in the
+#     workflows) when .ak files are staged: stock v1.1.22 is unsound, and
+#     nothing may format under it either.
+#
 # Escape hatch: MIDGARD_SKIP_HOOKS=1 git commit ...
 # Blueprint safety: formatting .ak sources does not change compiled output —
 # the blueprint rebuilds byte-identically across the repo-wide normalization.
@@ -38,6 +45,19 @@ mapfile -d '' -t staged < <(git diff --cached --name-only --diff-filter=ACMR -z)
 if [[ ${#staged[@]} -eq 0 ]]; then
   exit 0
 fi
+
+for path in "${staged[@]}"; do
+  if [[ "$path" == "onchain/aiken/plutus.json" ]]; then
+    cat >&2 <<'MSG'
+[midgard hooks] BLOCKED: onchain/aiken/plutus.json is staged.
+The blueprint is a build output of whichever compiler and deployment profile
+last ran; it is never committed. To proceed:
+  1. git restore --staged onchain/aiken/plutus.json
+  2. Re-run the commit. Stage explicit paths; never stage from a git status list.
+MSG
+    exit 1
+  fi
+done
 
 # Paths that also carry unstaged modifications; we must not touch these.
 mapfile -d '' -t unstaged < <(git diff --name-only --diff-filter=ACMR -z)
@@ -107,7 +127,17 @@ if [[ ${#ak_files[@]} -gt 0 ]]; then
   if [[ -z "$aiken_bin" ]] && command -v aiken >/dev/null 2>&1; then
     aiken_bin="$(command -v aiken)"
   fi
-  if [[ -n "$aiken_bin" && -x "$aiken_bin" ]]; then
+  pin_check="$repo_root/onchain/aiken/scripts/pinned-compiler.mjs"
+  if [[ -n "$aiken_bin" && -x "$aiken_bin" && ! -f "$pin_check" ]]; then
+    # Installed hooks are symlinks into one checkout, so they also run in
+    # worktrees of commits that predate the check. Could not look is not the
+    # same as looked and found stock, but neither may format.
+    echo "[midgard hooks] BLOCKED: .ak files are staged and this checkout has no onchain/aiken/scripts/pinned-compiler.mjs to verify the compiler with" >&2
+    status=1
+  elif [[ -n "$aiken_bin" && -x "$aiken_bin" ]] && ! node "$pin_check" "$aiken_bin"; then
+    echo "[midgard hooks] BLOCKED: .ak files are staged and the compiler above is not the pinned fork" >&2
+    status=1
+  elif [[ -n "$aiken_bin" && -x "$aiken_bin" ]]; then
     "$aiken_bin" fmt "${ak_files[@]}" >/dev/null 2>&1 || {
       echo "[midgard hooks] aiken fmt failed; commit the .ak change only once it parses" >&2
       status=1

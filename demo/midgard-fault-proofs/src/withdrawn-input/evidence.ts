@@ -5,7 +5,7 @@ import {
   type WithdrawalSourceMembershipProof,
 } from "@al-ft/midgard-sdk";
 
-import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../step-support.js";
 
 export const WITHDRAWN_INPUT_EVIDENCE_SCHEMA_VERSION =
   "midgard-withdrawn-input-evidence-v1" as const;

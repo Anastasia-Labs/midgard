@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   applyFamilyApplicationRecord,
   type CompleteCanonicalReplayContext,
@@ -169,7 +170,7 @@ classifier.deploymentFingerprint = DEPLOYMENT;
 const SOURCE_ID = "watcher-test-local-node";
 const OBSERVED_SLOT = 900n;
 const OBSERVED_BLOCK_HASH = "19".repeat(32);
-const CONFIRMATION_DEPTH = 30;
+const CONFIRMATION_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 const OBSERVATION_DIGEST = "11".repeat(32);
 const MANIFEST_PATH = "/etc/midgard/deployment-manifest-v1.json";
 const BLUEPRINT_PATH = "/etc/midgard/plutus.json";
@@ -383,11 +384,11 @@ const rawConfig = () => ({
     requestTimeoutMs: 10_000,
     maxConcurrency: 8,
     finality: {
-      depth: 30,
+      depth: CONFIRMATION_DEPTH,
       rollback: {
         beforeFinality: "rewind",
         afterFinality: "quarantine",
-        maxDepth: 30,
+        maxDepth: CONFIRMATION_DEPTH,
       },
     },
   },

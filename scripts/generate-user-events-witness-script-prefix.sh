@@ -89,13 +89,17 @@ echo "🏗️  Building default Aiken blueprint..."
 aiken build --out "$default_blueprint" >/dev/null
 generate_prefix "default" "$default_blueprint" "$default_applied_blueprint"
 default_prefix="$prefix"
-update_prefix "env/default.ak" "$default_prefix"
 
 echo "🏗️  Building testnet Aiken blueprint..."
 aiken build --env testnet --out "$testnet_blueprint" >/dev/null
 generate_prefix "testnet" "$testnet_blueprint" "$testnet_applied_blueprint"
 testnet_prefix="$prefix"
-update_prefix "env/testnet.ak" "$testnet_prefix"
+if [ "$default_prefix" != "$testnet_prefix" ]; then
+  echo "User-events witness prefix unexpectedly depends on the deployment profile" >&2
+  exit 1
+fi
+update_prefix "../../config/deployments/env.ak.template" "$default_prefix"
+node ../../demo/scripts/deployment-profiles.mjs generate "${1:-preprod-testing}"
 
 echo "🎨 Formatting Aiken sources..."
 aiken fmt >/dev/null

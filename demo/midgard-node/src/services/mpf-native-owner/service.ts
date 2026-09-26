@@ -1605,11 +1605,18 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     // Never use a sidecar as authority for a different canonical root. Read the
     // retained content-addressed closure, then let the pinned native loader
     // verify every hash, path and child before changing the durable marker.
+    // A target whose closure is not fully retained is refused here, before any
+    // marker change: restoring onto a partial trie would commit on a wrong base.
     const fullIndex = await buildOrReadFullIndex({
       db: this.db,
       marker: plan.targetRoot,
       options: { ...this.options, sidecarPath: undefined },
       binarySha256: this.binarySha256,
+    }).catch((cause: unknown) => {
+      throw new Error(
+        `Native MPF canonical recovery target root ${plan.targetRoot} is not retained in full; refusing to restore`,
+        { cause },
+      );
     });
     let replacement: NativeChildRpc | undefined;
     let committed = false;

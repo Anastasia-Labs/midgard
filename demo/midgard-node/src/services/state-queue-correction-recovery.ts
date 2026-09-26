@@ -85,14 +85,21 @@ export const authorizeStateQueueCorrectionReinclusion = (
   return transition;
 };
 
+/** One removed block and the admitted correction that removed it. */
+export type StateQueueCorrectedBlock = Readonly<{
+  headerHash: string;
+  transitionDigest: string;
+}>;
+
 /**
  * Reopens every locally journaled payload only after its exact L1 header has
- * been confirmed removed. All database mutations are one transaction, so a
- * crash cannot expose half-reincluded events or transactions.
+ * been confirmed removed, in the given order. All database mutations are one
+ * transaction, so a crash cannot expose half-reincluded events or
+ * transactions. Callers must already hold correction authority for every
+ * block (see authorizeStateQueueCorrectionReinclusion).
  */
-const reincludeStateQueueCorrectedBlockPayloadHashes = (
-  removedHeaderHashes: readonly string[],
-  transitionDigest: string,
+export const reincludeStateQueueCorrectedBlocks = (
+  removedBlocks: readonly StateQueueCorrectedBlock[],
 ): Effect.Effect<
   readonly CorrectedBlockReinclusionResult[],
   DatabaseError,
@@ -102,8 +109,8 @@ const reincludeStateQueueCorrectedBlockPayloadHashes = (
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
       Effect.forEach(
-        removedHeaderHashes,
-        (headerHashHex) =>
+        removedBlocks,
+        ({ headerHash: headerHashHex, transitionDigest }) =>
           Effect.gen(function* () {
             const headerHash = Buffer.from(headerHashHex, "hex");
             const journal =
@@ -240,9 +247,11 @@ export const reincludeFinalizedStateQueueCorrectionTransition = (
     transitionInput,
     authority,
   );
-  return reincludeStateQueueCorrectedBlockPayloadHashes(
-    transition.removedHeaderHashes,
-    transition.transitionDigest,
+  return reincludeStateQueueCorrectedBlocks(
+    transition.removedHeaderHashes.map((headerHash) => ({
+      headerHash,
+      transitionDigest: transition.transitionDigest,
+    })),
   );
 };
 

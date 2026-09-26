@@ -33,6 +33,12 @@ import {
   DEPLOYMENT_MANIFEST_STEP_NAMES,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_PROFILE_DIGESTS,
+  DEPLOYMENT_PROFILES,
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   validatorToAddress,
@@ -350,6 +356,14 @@ const buildWatcherDeploymentAuthorityFixture = (
     schemaVersion: "midgard-deployment-manifest-v1",
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
+    deploymentProfile:
+      options.network === "Custom"
+        ? DEPLOYMENT_PROFILES["local-devnet-testing"]
+        : SELECTED_DEPLOYMENT_PROFILE,
+    deploymentProfileDigest:
+      options.network === "Custom"
+        ? DEPLOYMENT_PROFILE_DIGESTS["local-devnet-testing"]
+        : SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     network: options.network ?? "Preprod",
     cardanoProtocolParameters: {
       snapshot: parameters,
@@ -412,9 +426,11 @@ const buildWatcherDeploymentAuthorityFixture = (
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
-        smallResponseWindowMs: 3_600_000,
+        smallResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
         fullPayloadMaxBytes: 67_108_864,
-        fullResponseWindowMs: 172_800_000,
+        fullResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
       },
       responseGeometry: {
         chunkByteLength: 14_020,

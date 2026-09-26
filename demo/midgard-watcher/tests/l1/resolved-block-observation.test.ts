@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeFraudProofRawL1PointId,
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -94,11 +95,12 @@ const metadata = Object.freeze({
   slot: "159835207",
 });
 const deployment = makeDeploymentAuthority().result;
+const RELEASE_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 const rawSource = (
   options: { readonly kupoUrl?: string; readonly manifestId?: string } = {},
 ) => {
   const policy = {
-    confirmationDepth: 30 as const,
+    confirmationDepth: RELEASE_DEPTH,
     automaticRecoveryMaxDepth: 2160 as const,
     deepRollbackPolicy: "automated_rewind_replay_incident-v1" as const,
   };
@@ -156,7 +158,7 @@ const fixture = async () => {
   };
   const tipCoordinates = {
     blockHash: "77".repeat(32),
-    blockNo: (BigInt(point.blockNo) + 29n).toString(),
+    blockNo: (BigInt(point.blockNo) + BigInt(RELEASE_DEPTH - 1)).toString(),
     slot: (BigInt(point.slot) + 600n).toString(),
   };
   vi.mocked(readAdmittedLocalKupmiosBoundary).mockResolvedValue({
@@ -165,14 +167,14 @@ const fixture = async () => {
       ...tipCoordinates,
       pointId: computeFraudProofRawL1PointId(tipCoordinates),
     },
-    confirmationDepth: 30,
+    confirmationDepth: RELEASE_DEPTH,
   });
   const transactions = nativeBlock.transactionCbors.map((cbor) =>
     CML.Transaction.from_cbor_hex(cbor),
   );
   const localObservation = {
     block: {
-      chainPoint: { ...point, depth: "30" },
+      chainPoint: { ...point, depth: RELEASE_DEPTH.toString() },
       transactions: transactions.map((transaction, index) => ({
         txHash: nativeBlock.transactionIds[index]!,
         body: { bytesHex: transaction.body().to_cbor_hex() },
@@ -192,7 +194,7 @@ const fixture = async () => {
         transaction.witness_set().redeemers()?.to_canonical_cbor_hex() ?? null,
       isValid: true,
       inclusionPoint: { ...point },
-      confirmationDepth: 30,
+      confirmationDepth: RELEASE_DEPTH,
       // This owner consumes already-admitted resolved records. Reuse a fixture
       // output to check copying; upstream roster/provenance is not mocked proof.
       resolvedInputs: [
@@ -282,6 +284,32 @@ describe("shared resolved block observation owner", () => {
     );
   });
 
+  it("admits only inclusion or the source's release depth", async () => {
+    const current = await fixture();
+    for (const minimumConfirmationDepth of [
+      RELEASE_DEPTH - 1,
+      RELEASE_DEPTH + 1,
+      RELEASE_DEPTH === 3 ? 30 : 3,
+    ]) {
+      expect(() =>
+        createWatcherResolvedBlockObservationSource({
+          ...current.sourceInput,
+          minimumConfirmationDepth,
+        }),
+      ).toThrow(
+        "resolved block depth must be inclusion or the release confirmation depth",
+      );
+    }
+    const explicit = createWatcherResolvedBlockObservationSource({
+      ...current.sourceInput,
+      minimumConfirmationDepth: RELEASE_DEPTH,
+    });
+    expect(
+      readWatcherResolvedBlockObservation(await explicit.observe(current.input))
+        .minimumConfirmationDepth,
+    ).toBe(RELEASE_DEPTH.toString());
+  });
+
   it("captures the complete immutable sequence before resolving a selected subset", async () => {
     const current = await fixture();
     const observation = await current.source.observe(current.input);
@@ -308,7 +336,7 @@ describe("shared resolved block observation owner", () => {
       source: current.sourceInput.rawSource,
       txHash: selected[0],
       expectedInclusionPoint: current.rawBlock.point,
-      minimumConfirmationDepth: 30,
+      minimumConfirmationDepth: RELEASE_DEPTH,
     });
     expect(Object.isFrozen(transactions)).toBe(true);
     expect(Object.isFrozen(transactions[0]!.inclusionPoint)).toBe(true);
@@ -413,7 +441,12 @@ describe("shared resolved block observation owner", () => {
           ...current.input.localObservation.block,
           chainPoint: {
             ...current.input.localObservation.block.chainPoint,
-            [field]: field === "blockHash" ? "00".repeat(32) : "29",
+            [field]:
+              field === "blockHash"
+                ? "00".repeat(32)
+                : field === "depth"
+                  ? (RELEASE_DEPTH - 1).toString()
+                  : "29",
           },
         },
       };
@@ -466,7 +499,7 @@ describe("shared resolved block observation owner", () => {
       candidate.inclusionPoint.blockHash = "00".repeat(32);
     if (field === "slot" || field === "blockNo")
       candidate.inclusionPoint[field] = "29";
-    if (field === "depth") candidate.confirmationDepth = 29;
+    if (field === "depth") candidate.confirmationDepth = RELEASE_DEPTH - 1;
     if (field === "body") candidate.bodyCbor = "a0";
     if (field === "witness") candidate.witnessSetCbor = "a10080";
     vi.mocked(readAdmittedLocalKupmiosRawTransaction).mockResolvedValue(

@@ -29,7 +29,7 @@ import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import {
   buildCountedRoot,
   type KeyValuePhasEntry,

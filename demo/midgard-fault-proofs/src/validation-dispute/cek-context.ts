@@ -36,7 +36,7 @@ import {
   fetchUtxoByOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { selectFeeInput } from "../submit-step-01.js";
+import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 
 export type CekContextStageKey = keyof SDK.CekContextStages;

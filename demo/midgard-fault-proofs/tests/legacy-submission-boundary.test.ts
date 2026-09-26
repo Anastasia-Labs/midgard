@@ -6,17 +6,9 @@ import {
   rejectRetiredUnauthenticatedSubmissionRoute,
   RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX,
 } from "../src/legacy-submission-boundary.js";
-import { neSubmitStep01FromFiles } from "../src/ne-submit-step-01.js";
-import { neSubmitStep02FromFiles } from "../src/ne-submit-step-02.js";
-import { neSubmitStep03FromFiles } from "../src/ne-submit-step-03.js";
-import { neSubmitStep04FromFiles } from "../src/ne-submit-step-04.js";
 import { submitInitFromFiles } from "../src/submit-init.js";
 import { submitInvalidRangeStep01FromFiles } from "../src/submit-invalid-range-step-01.js";
 import { submitInvalidRangeStep02FromFiles } from "../src/submit-invalid-range-step-02.js";
-import { submitStep01FromFiles } from "../src/submit-step-01.js";
-import { submitStep02FromFiles } from "../src/submit-step-02.js";
-import { submitStep03FromFiles } from "../src/submit-step-03.js";
-import { submitStep04FromFiles } from "../src/submit-step-04.js";
 import { submitZeroInputStep01FromFiles } from "../src/submit-zero-input-step-01.js";
 import { submitZeroInputStep02FromFiles } from "../src/submit-zero-input-step-02.js";
 
@@ -97,26 +89,18 @@ describe("RF-043 legacy submission boundary", () => {
     const exports = await import("../src/index.js");
     for (const name of [
       "neSubmitStep01",
-      "neSubmitStep01FromFiles",
       "neSubmitStep02",
-      "neSubmitStep02FromFiles",
       "neSubmitStep03",
-      "neSubmitStep03FromFiles",
       "neSubmitStep04",
-      "neSubmitStep04FromFiles",
       "submitInit",
       "submitInitFromFiles",
       "submitInvalidRangeStep01FromFiles",
       "submitStep01",
-      "submitStep01FromFiles",
       "submitInvalidRangeStep02",
       "submitInvalidRangeStep02FromFiles",
       "submitStep02",
-      "submitStep02FromFiles",
       "submitStep03",
-      "submitStep03FromFiles",
       "submitStep04",
-      "submitStep04FromFiles",
       "submitInvalidRangeStep01",
       "submitZeroInputStep01",
       "submitZeroInputStep01FromFiles",
@@ -148,10 +132,6 @@ describe("RF-043 legacy submission boundary", () => {
   it("rejects every file entrypoint before it can read config or construct Lucid", async () => {
     const fileEntrypoints: readonly [string, () => Promise<unknown>][] = [
       ["submit-init", () => submitInitFromFiles({} as never)],
-      ["submit-step-01", () => submitStep01FromFiles({} as never)],
-      ["submit-step-02", () => submitStep02FromFiles({} as never)],
-      ["submit-step-03", () => submitStep03FromFiles({} as never)],
-      ["submit-step-04", () => submitStep04FromFiles({} as never)],
       [
         "submit-invalid-range-step-01",
         () => submitInvalidRangeStep01FromFiles({} as never),
@@ -167,22 +147,6 @@ describe("RF-043 legacy submission boundary", () => {
       [
         "submit-zero-input-step-02",
         () => submitZeroInputStep02FromFiles({} as never),
-      ],
-      [
-        "submit-non-existent-input-step-01",
-        () => neSubmitStep01FromFiles({} as never),
-      ],
-      [
-        "submit-non-existent-input-step-02",
-        () => neSubmitStep02FromFiles({} as never),
-      ],
-      [
-        "submit-non-existent-input-step-03",
-        () => neSubmitStep03FromFiles({} as never),
-      ],
-      [
-        "submit-non-existent-input-step-04",
-        () => neSubmitStep04FromFiles({} as never),
       ],
     ];
 

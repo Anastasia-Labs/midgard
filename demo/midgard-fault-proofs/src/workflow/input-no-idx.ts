@@ -25,6 +25,10 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  nativeTxFromCoreCompact,
+  parseSubmitStep01TxInclusion,
+} from "../step-support.js";
 import { submitInit } from "../submit-init.js";
 import { submitInputNoIdxStep01 } from "../submit-input-no-idx-step-01.js";
 import {
@@ -38,10 +42,6 @@ import {
   type SubmitInputNoIdxOutputsPreimage,
   submitInputNoIdxStep04,
 } from "../submit-input-no-idx-step-04.js";
-import {
-  nativeTxFromCoreCompact,
-  parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";

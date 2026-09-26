@@ -5,6 +5,8 @@ import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
+
 const usage =
   "usage: node scripts/run-focused-check.mjs <module> <test-name> [<test-name> ...]";
 const [, , moduleName, ...testNames] = process.argv;
@@ -90,7 +92,13 @@ const aikenModule = toAikenModule(sourceModule);
 // below rejects whatever an over-broad prefix drags in.
 const moduleSelector = aikenModule.split(".")[0];
 
-const aikenBinary = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
+const aikenBinary = defaultAikenBinary();
+try {
+  assertPinnedAiken(aikenBinary);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 const environment = process.env.MIDGARD_AIKEN_ENV;
 if (environment !== undefined && !/^[a-z0-9_-]+$/u.test(environment)) {
   console.error("MIDGARD_AIKEN_ENV contains an invalid environment name");

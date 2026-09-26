@@ -26,6 +26,11 @@ import {
   makeDeploymentMarker,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_PROFILES,
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -45,6 +50,7 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
+  watcherDeploymentReleaseFinalityPolicy,
 } from "../../src/runtime/deployment-identity.js";
 import {
   canonicalFraudProofCatalogueFixture,
@@ -163,6 +169,8 @@ const canonicalIdentity = (): MutableRecord => {
     schemaVersion: "midgard-deployment-manifest-v1",
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
+    deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
+    deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     network: "Preprod",
     cardanoProtocolParameters: {
       snapshot: parameters,
@@ -242,9 +250,11 @@ const canonicalIdentity = (): MutableRecord => {
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
-        smallResponseWindowMs: 3_600_000,
+        smallResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
         fullPayloadMaxBytes: 67_108_864,
-        fullResponseWindowMs: 172_800_000,
+        fullResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
       },
       responseGeometry: {
         chunkByteLength: 14_020,
@@ -675,6 +685,73 @@ describe("watcher deployment identity", () => {
     ).toThrow("invalid_field");
   });
 
+  it("binds release confirmation depth to the compiled deployment profile end to end", async () => {
+    // The profile family fixes the depth: testing profiles run at 3, public
+    // profiles at 30. Verification admits only the compiled selection, so the
+    // accepted depth is the selected profile's (3 in a testing build) and the
+    // other family's depth is refused whichever profile is compiled in.
+    expect(
+      [
+        "preprod-testing",
+        "local-devnet-testing",
+        "mainnet",
+        "preprod-public",
+      ].map(
+        (name) =>
+          DEPLOYMENT_PROFILES[name as keyof typeof DEPLOYMENT_PROFILES]
+            .l1_finality.confirmation_depth,
+      ),
+    ).toEqual([3, 3, 30, 30]);
+    const selectedDepth =
+      SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
+    expect(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth).toBe(
+      selectedDepth,
+    );
+
+    const fixture = makeFixture();
+    expect(fixture.signedIdentity.manifest.l1Finality.confirmationDepth).toBe(
+      selectedDepth,
+    );
+    const identity = verifyWatcherDeploymentIdentity({
+      signedIdentity: fixture.signedIdentity,
+      policy: fixture.policy,
+      trustRoots: [fixture.trustRoot],
+      durableMarker: fixture.durableMarker,
+    });
+    const releaseFinality = watcherDeploymentReleaseFinalityPolicy(identity);
+    expect(releaseFinality.policy.confirmationDepth).toBe(selectedDepth);
+    expect(releaseFinality.policy.automaticRecoveryMaxDepth).toBe(2160);
+    await expect(
+      watcherDeploymentReleaseFinalityAuthority(identity).verifyForWorkflow({
+        deploymentFingerprint: identity.manifestId,
+      }),
+    ).resolves.toEqual(releaseFinality);
+    expect(() =>
+      watcherDeploymentReleaseFinalityPolicy({ ...identity }),
+    ).toThrow("invalid_field");
+
+    const otherDepth = selectedDepth === 3 ? 30 : 3;
+    const mismatched = structuredClone(fixture.signedIdentity);
+    mismatched.manifest.l1Finality = {
+      ...mismatched.manifest.l1Finality,
+      confirmationDepth: otherDepth,
+    };
+    const { manifestId: _manifestId, ...unsigned } = mismatched.manifest;
+    mismatched.manifest.manifestId = computeDeploymentManifestId(unsigned);
+    fixture.resign(mismatched);
+    rejection(
+      () =>
+        verifyWatcherDeploymentIdentity({
+          signedIdentity: mismatched,
+          policy: fixture.policy,
+          trustRoots: [fixture.trustRoot],
+          durableMarker: makeDeploymentMarker(mismatched.manifest.manifestId),
+        }),
+      "canonical_manifest_invalid",
+      "$.manifest",
+    );
+  });
+
   it("mints exact release economics only from the signed deployment identity", async () => {
     const fixture = makeFixture();
     const identity = verifyWatcherDeploymentIdentity({
@@ -1060,10 +1137,16 @@ describe("watcher deployment identity", () => {
           trustRoots: [fixture.trustRoot],
           durableMarker: fixture.durableMarker,
         }),
-      "mismatched_identity",
-      expectedPath,
+      _label === "network"
+        ? "canonical_manifest_invalid"
+        : "mismatched_identity",
+      _label === "network" ? "$.manifest" : expectedPath,
     );
-    expect(error.code).toBe("mismatched_identity");
+    expect(error.code).toBe(
+      _label === "network"
+        ? "canonical_manifest_invalid"
+        : "mismatched_identity",
+    );
   });
 
   it("keeps signature and trust-root bytes out of diagnostics", () => {

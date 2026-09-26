@@ -41,8 +41,8 @@ import {
   submitNoReferenceInputStep01,
   submitReferenceInputNoIdxStep01,
 } from "../src/index.js";
-import type { SubmitStep01TxInclusion } from "../src/submit-step-01.js";
-import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../src/step-support.js";
+import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,

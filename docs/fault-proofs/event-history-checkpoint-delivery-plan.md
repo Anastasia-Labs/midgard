@@ -24,8 +24,8 @@ the app goal record was not replaced or falsely marked complete.
 | 1. Reproducibility | Complete: exact committed archive, fresh pinned frozen install, native/runtime builds | PASS: fresh build, dependency provenance, native hash reproduction, node typecheck and actual owner D/W journey | Not applicable |
 | 2. Proof acceptance | Complete for bounded checkpoint: arbitrary absent IDs, substitution, original Value CBOR evidence, direct honest Stage03 refusals; existing timing/raw/retired-ID coverage retained | PASS: fabricated16, opening/transition/installed62, retired-ID2; independent signed evidence checks | Pending deployment/public witness/live proof evidence; broader recovery remains open |
 | 3. Sorted-list readiness | Local gates implemented and exercised: authentication, accounting, retained-data references, reclaim authorization, no backdating, frontier retirement and bounded protection | PASS: full109, capture14, actual owner journey1; combined maximum3 and signed fit/value checks | ABI/deployment freeze remains pending actual provider timing, contention and final parameter identity |
-| 4. Deployment preparation | Provider repair complete on Docker Desktop; pinned provider-only project preserves existing databases; fresh deployment/state and DA preparation remain | PASS: running images/config/genesis, synchronized matching Kupo/Ogmios tip, built node provider preflight, four funded distinct wallet roles | Provider services running; no protocol deployment or transaction |
-| 5. One live campaign | Gated on remaining fresh deployment and DA prerequisites | Docker/provider blocker resolved; configured second DA signer unavailable, fresh manifest/state and public retrieval pending | NOT STARTED:0 campaigns,0 live transactions,0 new deployments |
+| 4. Deployment preparation | Fresh reset authorized; backup restore verified, exact Midgard SQL/native state reset and migrated; both DA seeds saved, sorted threshold2, isolated DA stores provisioned and response wallet funded | PASS: pinned Aiken build, provider/SQL identities, current SDK/node checks; mixed dependency graph repaired and six unchanged regression cases pass; full emulator gate PASS64 node +619 fault-proof submission | Fresh nonce and response funding confirmed; reference publication active under one identity; empty-genesis startup regression and DA bond top-up verified; init waits on references |
+| 5. One live campaign | Run `cp5-live-20260924T172449Z` active; production owner/DA/public reader configuration prepared | Nine runtime consumers share dependency identities; previously failing selection and full payout emulator groups now pass; full emulator gate PASS; final manifests pending | One campaign/deployment attempt in progress; reference transactions confirming. Canonical block maturity is seven days, so final live merge/settlement/payout cannot complete today. No live deposit/withdrawal or complete acceptance verdict yet. Independent watcher/full-finalizer prerequisites remain open |
 
 ## Implemented and verified flow
 
@@ -220,3 +220,129 @@ Root and a second agent independently reviewed the command, exact public output,
 normal process exit and subsequent patch. Public-only provenance, record line
 numbers and hashes are in `cp5-missing-da-key-origin.json`; raw archival records
 are not copied into the repository because they contain other credentials.
+
+
+### Component credential files (2026-09-24)
+
+**Implementation:** Added a shared YAML loader and wired node/node-tools,
+committee, public retained reader and watcher executable entrypoints. Local
+`config.yaml` files now hold the existing node wallets and member 0 signer/L1
+submitter credentials; incomplete files identify missing member 1, watcher and
+public reader credentials. Private files are mode 0600, git-ignored and excluded
+from Docker build contexts. Original environment/seed files remain intact for
+existing shell tooling. No wallet, committee, threshold or deployed service was
+changed. See [component configuration](../agents/component-configuration.md).
+
+**Integrated verification:** Root independently reran the focused loader tests
+(24 passed) and node environment tests (9 passed). Full core, node, committee
+and watcher typechecks passed. Full builds passed for core, committee, watcher,
+node and node tools. The first node build failed with TS2742 declaration errors:
+its Effect dependency pointed into the transition worktree. A frozen, offline,
+ignore-scripts pnpm install for the node restored checkout-local dependency
+resolution; the unmodified full build then passed, including worker declarations.
+No checks or assertions were weakened. Compiled service CLI checks confirm
+malformed YAML fails before service startup and does not expose test secrets.
+The copied credential values exactly match the previous sources and all five
+private files pass permission/ignore checks. ESLint and documentation links pass.
+Commands, logs and final file hashes are retained in
+`artifacts/event-history/parallel/component-yaml-verification/`.
+
+**Live verification:** Not run; CP5 remains incomplete. Missing member 1 signing
+capability, watcher/availability credentials, transport configuration and the
+fresh deployment remain prerequisites. Existing Compose deployments still use
+their configured secret/env sources; YAML runtime mounts and matching watcher
+JSON references must be configured before using these files in containers.
+This credential organization does not close protocol acceptance gates.
+
+
+### Replacement DA member 1 wallet saved (2026-09-24)
+
+User explicitly authorized creating the replacement wallet. Its mnemonic is
+persisted in the git-ignored mode0600 file
+`demo/da-committee-node/run/member-1/config.yaml` under `DA_SIGNER_KEY_SOURCE`
+with the supported `cardano-seed:` prefix. `DA_SIGNER_INDEX` remains1.
+The file was written atomically and fsynced; reloading reproduces the address
+and public key and passes an Ed25519 sign/verify check. No seed is recorded here.
+
+- Network: Preprod.
+- Public key: `865925c87aa511735bff3b5ee76072210f7f9e4f8b830d8f454a109f59315384`.
+- Funding address: `addr_test1qz7pw7fketaqfkk0ecvnwty0mepfu3n4d577a8fqpjjkfa6ywfdtv2rrjwfjj6vv6zcr33dpelmsnws3jxhukwysqdps8nt3pe`.
+- Public-only receipt: `artifacts/event-history/parallel/da-member-1-replacement-wallet.json`.
+
+The configured/deployed committee has not been changed. This is a replacement
+for the unavailable historical member, not recovery of that member's key. The
+new public identity must be applied consistently during the already-required
+fresh deployment, preserving governed quorum. Funding is not yet verified.
+Watcher/availability credentials and remaining service/deployment prerequisites
+remain open; no live campaign or transaction was run.
+
+
+### DA signer credentials consolidated (2026-09-24)
+
+At the user's direction, both DA signer seeds now reside in the existing
+`demo/da-committee-node/config.yaml`, under `DA_SIGNER_KEY_SOURCE_0` and
+`DA_SIGNER_KEY_SOURCE_1`. Each committee process chooses a source using
+`DA_SIGNER_INDEX`; an explicit process setting overrides the YAML default0.
+The committee config parser rejects mixed single/indexed sources, missing
+selected keys and malformed indexed settings. Existing single-source process
+configuration remains supported for callers that provide one signer directly.
+
+The main file was atomically replaced and fsynced, its two signer credentials
+and L1 submitter credential were verified against their original values, and
+an independent process verified the moved seed before deleting the redundant
+member1 file and empty directory. Mode0600 and Git exclusion remain in place.
+The replacement wallet's funding address and public key are unchanged; its
+public receipt now names the consolidated file and indexed setting. No running
+service, deployment identity or committee threshold changed.
+
+
+Verification for indexed signer selection includes18 new positive/negative
+cases and all30 existing DA configuration tests, plus6 deployment-fixture tests.
+The test run exposed an obsolete public DA fixture: four current retention/
+retirement contracts and role-specific history metadata were absent. The
+existing opt-in generator refreshed it from the current parameterized blueprint;
+no Aiken build or generator changes were needed. The fixture helper now validates
+and preserves exact role-specific metadata with the existing core parsers and
+derives the initialization nonce from the generated recipe. Unknown/missing
+field checks and production deployment verification remain intact. The source
+preservation assertion now checks all source fields, including the new metadata.
+Build, typecheck and focused verification evidence is retained under
+`artifacts/event-history/parallel/da-indexed-config-verification/`. This does not
+represent a deployment or live acceptance pass.
+
+## Fresh live campaign — 2026-09-24, cp5-live-20260924T172449Z
+
+User authorized a complete matching Midgard DB reset and on-chain redeployment. Preserve provider stores, all unrelated databases/worktrees, keys and old evidence. CP6 recovery variants remain deferred. Root owns all service, SQL, deployment and transaction actions.
+
+- Implementation/configuration: sorted two-member committee now uses replacement865925… index0 and existing94427… index1, threshold2; wallet addresses unchanged. Both seeds remain in the main DA YAML. Distinct transport and availability-response credentials persisted privately. Docker PG moved to55433 and system ID7661255891566018595 verified; both existing mounts preserved. Two new isolated DA writer databases and read-only reader role provisioned.
+- Integrated verification: pinned testnet Aiken build PASS, blueprint7b7a0aba… unchanged. Current Lucid175/SDK642 PASS; current node/tool checks running. Previous production-owner and emulator checkpoint evidence retained; this run does not relabel those as fresh live results.
+- Live verification: original33-table Midgard dump restored successfully into an isolated temporary database, which was then removed. Original Midgard DB not yet reset. Provider preflight PASS. Fresh nonce40d92d4d7bf1f2e66c05d8007caf426cfef80ed2e67eaf198bc0e4eb8bba6bb9 submitted, awaiting confirmation. Exact state under artifacts/event-history/cp5-live-20260924T172449Z and node logs with same run ID.
+- Remaining gates: confirm nonce, matching reset+migration+references+init, runtime manifests, both DA signers/public reader/producer readiness, real deposit and withdrawal through automatic merge and payout with retained evidence. Independent watcher signed release bundles, funding profiles, historical-script providers and native helper restoration remain open; full54-family/22-drill finalizer is not a claimed outcome of this bounded campaign.
+
+Fresh campaign update17:44Z: confirmed nonce, reset exactly `midgard`, migrated current schema with no missing tables/indexes, archived old native/deployment paths. Initial empty root-owned db directory blocked rename; corrected ownership of that exact empty directory and finished archive/reset. All44 other current Docker DBs preserved (42 old plus2 newly provisioned DA databases). Current node125/tools51 and docs581 PASS. Fresh reference publication started with527 targets/132 planned batches; complete init and user journeys remain pending.
+
+17:50Z: DA availability responder funded100ADA (95+5 plain outputs), tx6ae46d39ed4c30fa73d71353d0afc8dff90db80ebccd8740b1f7117a24a71d4c confirmed/exact outputs visible. Signed CBOR persisted privately before submit;367bytes/171705lovelace fee/zero script execution. Preparation helper initially requested Kupo health without JSON Accept header and failed before signing; corrected content negotiation without changing health assertions. Native architecture_g binary pinned to CP1 SHA6f2fe78b…; fresh manifest paths configured. Sequential emulator gate running separately from network-bound reference publication.
+
+17:55Z lower-layer gate: current emulator run observed9 failures (3 external-data retirement serialization,3 operator activation datum casts,2 selection,1 merge/payout). Root stopped only this test process group (exit143), preserving raw log. Read-only agents found node using original Lucid/Effect while SDK resolves candidate-worktree modules; fixtures and SDK outputs match the prior passing snapshot. No fixture assertions changed. Dependency graph repair and unchanged narrow/broad reruns pending. Reference publication continues with already-loaded process; init/user transactions held until verification.
+
+18:00Z: coherent offline workspace relink PASS (all11 importers, lock unchanged); independent pure runtime probe confirms shared Constr/Data/CML/Effect across9 runtime consumers. Six previously failing retirement/operator cases PASS unchanged. Full emulator rerun progressing: reserve26/operator16/selection3 PASS so far; no whole-suite pass claimed yet. Public-reader host profile will bind127.0.0.1 but announce dns4/localhost for unchanged Preprod client address grammar; this is local retrieval evidence, not internet ingress. Source and build identities remain recorded separately from dependency repair.
+
+18:08Z: full unchanged node emulator lane64/64 PASS across8files after graph repair (681.64s), including all previously failing cases. Same workspace gate now running fault-proof submit-init emulator selections; no complete broader gate verdict yet. Current deployment reference publisher remains active under original fresh nonce/policy.
+
+18:17Z stable verification milestone: current `pnpm run test:tx-prep:emulator` PASS(exit0),64 node tests/8files plus619 fault-proof submit-init tests/117files. This broader named gate now exceeds the earlier node-only emulator run. No assertions or production source were changed; repaired duplicate dependency instances only. Raw prior interrupted failure retained. Initialization held only for fresh reference completion/reconciliation.
+
+### Fresh campaign: authenticated genesis startup correction
+
+Bounded preflight found runtime Preprod config injecting six synthetic genesis UTxOs even though atomic initialization commits an empty ledger root. Native startup correctly refuses this mismatch. Root removed synthetic runtime balances/seed requirements and the production-owner fixture override that masked the defect. The strict on-chain root comparison remains unchanged. Explicit synthetic fixtures remain harness-owned. Configuration regressions pass13/13 across empty Preprod/Preview/Mainnet genesis and existing DA/MPF configuration. Native-owner integration, rebuilt node and final manifest genesis digest verification remain gates before initialization. Reference publication continues under the same nonce/policy and unchanged contract parameters.
+
+### Fresh campaign: genesis verification and DA bond budget
+
+Node typecheck/build pass after the empty-genesis correction. The integrated rerun passes103 tests (including all64 required node tx-preparation emulator cases) and fails one native startup/restart fixture with scheduler-window/end-time disagreement. Preserve the failed log and repair the bounded fixture only if its clocks are wrong; no assertion weakening. A read-only review confirms the existing reference publisher never finalizes a manifest and does not use genesis balances. First finalization must use canonical empty genesis digest `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`. Node YAML now pins the exact current campaign run-state path.
+
+The DA L1 submitter funds each12000ADA availability bond. Normal merge does not release an Available bond and the current responder has no unchallenged automatic close path. Four sequential D/A/B/W headers require48000ADA locked plus fees/collateral; idle polling does not create additional headers. Root prepared a40000ADA top-up from existing campaign operator22000, merge9000 and replacement signer9000 wallets, targeting about50181ADA in the submitter while preserving other role budgets and the reserved init nonce. Each top-up retains a signed intent before one submission and exact-output reconciliation. Funding is pending confirmation; this is not a new bond-release implementation or a claim that locked capital is reclaimed.
+
+Fresh campaign gate results: all103 integrated tests passed except the preserved native fixture clock failure; its additive scheduler alignment correction then passes the unchanged native startup/restart assertions, and the complete production owner D/W journey passes again (2/2 total). Tools typecheck/build and docs links590 pass. Root rechecks signed receipts, native/journal/cache equality and source/build identity separately. All3 DA top-ups are confirmed and exact outputs re-read; total fees518987lovelace, total funding40000000000lovelace. Submitter now has50181107260lovelace and the init nonce remains unspent. Reference publication continues; no live user event or acceptance verdict yet.
+
+### Live maturity gate — preserve the canonical seven-day window
+
+The shared consensus profile sets block maturity to604800000ms (seven days). SDK protocol parameters and deployment manifests derive that same value. This prevents today's freshly committed headers from reaching automatic merge and payout today. The wait is a protocol gate, not a provider fault; shortening it would invalidate the selected proof-window acceptance. Root will finish independent live admissions, canonical descendant commitments and threshold2 DA, record each actual header's earliest merge time, and retain automatic merge/settlement/payout as incomplete until observed. Existing automatic final-tail handling can drain one mature header below queue threshold once pending work is empty; no manual merge or force configuration is needed.

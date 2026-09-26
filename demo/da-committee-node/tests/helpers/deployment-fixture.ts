@@ -21,7 +21,16 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_STEP_NAMES,
+  type DeploymentManifestContractEntry,
+  parseDeploymentManifestEventHistoryBounds,
+  parseDeploymentManifestEventHistoryRecipe,
+  parseDeploymentManifestEventHistoryRetentionAddress,
+  parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -150,7 +159,7 @@ export const buildDaDeploymentFixture = async (
   );
   const contracts = Object.fromEntries(
     DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => {
-      const source = requireFixtureContract(
+      const { source, metadata } = requireFixtureContract(
         fixtureContracts[contractName],
         contractName,
       );
@@ -180,6 +189,7 @@ export const buildDaDeploymentFixture = async (
           refScriptUTxO,
           contract: sourceContract,
           scriptHash: sourceScriptHash,
+          ...metadata,
         },
       ];
     }),
@@ -355,11 +365,16 @@ export const buildDaDeploymentFixture = async (
       maximumSizeBytes: "204800",
     },
   } as const;
+  const historyInitializationNonce = parseDeploymentManifestEventHistoryRecipe(
+    contracts.depositMint!.eventHistoryRecipe,
+  ).initializationNonce;
   const identityInput = {
     schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
-    network: "Preview",
+    deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
+    deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+    network: "Preprod",
     cardanoProtocolParameters: {
       snapshot: cardanoProtocolParameterSnapshot,
       digest: computeDeploymentManifestJsonDigest(
@@ -375,9 +390,9 @@ export const buildDaDeploymentFixture = async (
     updatedAt: "2026-07-24T00:00:00.000Z",
     referenceScriptDeployAddress: "addr_test1reference",
     hubOracleOneShot: {
-      txHash: "09".repeat(32),
-      outputIndex: 0,
-      outRef: `${"09".repeat(32)}#0`,
+      txHash: historyInitializationNonce.txHash,
+      outputIndex: historyInitializationNonce.outputIndex,
+      outRef: `${historyInitializationNonce.txHash}#${historyInitializationNonce.outputIndex.toString()}`,
       status: "consumed_by_init",
     },
     referenceScriptAuthPolicy: {
@@ -443,9 +458,11 @@ export const buildDaDeploymentFixture = async (
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
-        smallResponseWindowMs: 3_600_000,
+        smallResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
         fullPayloadMaxBytes: 67_108_864,
-        fullResponseWindowMs: 172_800_000,
+        fullResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
       },
       responseGeometry: {
         chunkByteLength: 14_020,
@@ -493,21 +510,67 @@ const requireFixtureContracts = (
   return value as Record<string, Record<string, unknown>>;
 };
 
+type FixtureHistoryMetadata = Pick<
+  DeploymentManifestContractEntry,
+  | "eventHistoryRecipe"
+  | "eventHistoryBounds"
+  | "eventHistoryRetentionAddress"
+  | "eventHistoryRetentionAddresses"
+>;
+
 const requireFixtureContract = (
   value: unknown,
   contractName: string,
-): Record<string, unknown> => {
+): {
+  readonly source: Record<string, unknown>;
+  readonly metadata: FixtureHistoryMetadata;
+} => {
   if (!isRecord(value)) {
     throw new Error(
       `DA deployment fixture contracts.${contractName} must be an object`,
     );
   }
+  const field = `DA deployment fixture contracts.${contractName}`;
+  let metadata: FixtureHistoryMetadata = {};
+  if (contractName === "depositMint" || contractName === "withdrawalMint") {
+    metadata = {
+      eventHistoryRecipe: parseDeploymentManifestEventHistoryRecipe(
+        value.eventHistoryRecipe,
+        `${field}.eventHistoryRecipe`,
+      ),
+    };
+  } else if (
+    contractName === "fraudProofFabricatedDeposit" ||
+    contractName === "fraudProofFabricatedWithdrawal"
+  ) {
+    metadata = {
+      eventHistoryBounds: parseDeploymentManifestEventHistoryBounds(
+        value.eventHistoryBounds,
+        `${field}.eventHistoryBounds`,
+      ),
+      eventHistoryRetentionAddress:
+        parseDeploymentManifestEventHistoryRetentionAddress(
+          value.eventHistoryRetentionAddress,
+        ),
+    };
+  } else if (contractName === "fraudProofTransitionTrace") {
+    metadata = {
+      eventHistoryBounds: parseDeploymentManifestEventHistoryBounds(
+        value.eventHistoryBounds,
+        `${field}.eventHistoryBounds`,
+      ),
+      eventHistoryRetentionAddresses:
+        parseDeploymentManifestEventHistoryRetentionAddresses(
+          value.eventHistoryRetentionAddresses,
+        ),
+    };
+  }
   requireExactKeys(
     value,
-    ["refScriptUTxO", "contract", "scriptHash"],
-    `DA deployment fixture contracts.${contractName}`,
+    ["refScriptUTxO", "contract", "scriptHash", ...Object.keys(metadata)],
+    field,
   );
-  return value;
+  return { source: value, metadata };
 };
 
 const requireFixtureScript = (

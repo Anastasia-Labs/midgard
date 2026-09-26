@@ -25,8 +25,8 @@ const EXPECTED_ROLES = [
 ] as const;
 
 const fixture = async () => {
-  const deployment = await loadDaDeploymentFixture("Preview");
-  const lucid = await Lucid(new Emulator([]), "Preview");
+  const deployment = await loadDaDeploymentFixture("Preprod");
+  const lucid = await Lucid(new Emulator([]), "Preprod");
   const roles: readonly [string, MidgardDeploymentContract][] = [
     ["availability-challenge minting", deployment.availabilityChallenge.mint],
     ["availability-challenge spending", deployment.availabilityChallenge.spend],

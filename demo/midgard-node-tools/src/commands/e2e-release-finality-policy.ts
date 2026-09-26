@@ -1,8 +1,10 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+
 export const RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY =
   "automated_rewind_replay_incident-v1" as const;
 
 export type ReleaseL1FinalityPolicy = Readonly<{
-  confirmationDepth: 30;
+  confirmationDepth: number;
   automaticRecoveryMaxDepth: 2160;
   deepRollbackPolicy: typeof RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY;
 }>;
@@ -41,8 +43,13 @@ export const parseReleaseL1FinalityPolicy = (
   field = "deployment manifest l1Finality",
 ): ReleaseL1FinalityPolicy => {
   const candidate = exactRecord(value, field);
-  if (candidate.confirmationDepth !== 30) {
-    throw new Error(`${field}.confirmationDepth must be exactly 30`);
+  if (
+    candidate.confirmationDepth !==
+    DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth
+  ) {
+    throw new Error(
+      `${field}.confirmationDepth must equal the deployment profile value ${DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth.toString()}`,
+    );
   }
   if (candidate.automaticRecoveryMaxDepth !== 2160) {
     throw new Error(`${field}.automaticRecoveryMaxDepth must be exactly 2160`);
@@ -54,7 +61,7 @@ export const parseReleaseL1FinalityPolicy = (
     throw new Error(`${field}.deepRollbackPolicy is not canonical V1`);
   }
   return Object.freeze({
-    confirmationDepth: 30,
+    confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
     automaticRecoveryMaxDepth: 2160,
     deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
   });

@@ -1193,3 +1193,26 @@ describe("retained-DA runtime owner", () => {
     }
   });
 });
+vi.mock("@al-ft/midgard-core/deployment-profile", async (load) => {
+  const actual =
+    await load<typeof import("@al-ft/midgard-core/deployment-profile")>();
+  return {
+    ...actual,
+    verifyDeploymentProfileBinding(
+      profile: unknown,
+      digest: unknown,
+      network: unknown,
+    ) {
+      if (network === "Custom") {
+        expect(profile).toEqual(
+          actual.DEPLOYMENT_PROFILES["local-devnet-testing"],
+        );
+        expect(digest).toBe(
+          actual.DEPLOYMENT_PROFILE_DIGESTS["local-devnet-testing"],
+        );
+      } else {
+        actual.verifyDeploymentProfileBinding(profile, digest, network);
+      }
+    },
+  };
+});

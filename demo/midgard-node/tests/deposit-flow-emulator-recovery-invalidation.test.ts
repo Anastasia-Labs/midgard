@@ -1,3 +1,5 @@
+import { inspect } from "node:util";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -34,8 +36,10 @@ import {
   PendingBlockFinalizationsDB,
   readKeyHash,
   Ref,
+  refreshWalletUtxosFromProvider,
   resetActiveRuntimePaths,
   resolveCurrentOperatorSchedulerWindow,
+  retainAndAttestSubmittedHeader,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runLocalFinalizationRecoveryWorker,
@@ -179,6 +183,13 @@ describe.sequential("deposit flow emulator", () => {
         fixture,
         lucidService,
         latestBlock: blockNBase,
+      });
+      await retainAndAttestSubmittedHeader({
+        fixture,
+        lucidService,
+        globals,
+        headerHash: blockN.submittedHeaderHash,
+        submittedTxHash: blockN.submittedTxHash,
       });
       await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
       vi.setSystemTime(new Date(fixture.emulator.now()));
@@ -475,6 +486,7 @@ describe.sequential("deposit flow emulator", () => {
         projectToLedger: false,
       });
       t2Phase = "rebuilt block submission";
+      await refreshWalletUtxosFromProvider(fixture.operatorLucid);
       const rebuilt = await runCommitWorkerUntilSubmitted({
         fixture,
         lucidService,
@@ -536,9 +548,12 @@ describe.sequential("deposit flow emulator", () => {
         ).toBe(foreignTipHeader.utxosRoot);
       }
     } catch (cause) {
-      throw new Error(`T2 emulator regression failed during ${t2Phase}`, {
-        cause,
-      });
+      throw new Error(
+        `T2 emulator regression failed during ${t2Phase}: ${inspect(cause, { depth: 12 })}`,
+        {
+          cause,
+        },
+      );
     } finally {
       if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
       else process.env.MPF_ENGINE = previousMpfEngine;
@@ -580,6 +595,13 @@ describe.sequential("deposit flow emulator", () => {
         fixture,
         lucidService,
         latestBlock: blockNBase,
+      });
+      await retainAndAttestSubmittedHeader({
+        fixture,
+        lucidService,
+        globals,
+        headerHash: blockN.submittedHeaderHash,
+        submittedTxHash: blockN.submittedTxHash,
       });
       await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
       vi.setSystemTime(new Date(fixture.emulator.now()));

@@ -185,8 +185,7 @@ jobs:
       - name: Install dependencies
         run: pnpm --dir demo install --frozen-lockfile
       - name: Build testnet Aiken blueprint
-        working-directory: onchain/aiken
-        run: aiken build --env testnet
+        run: pnpm --dir demo deployment:build preprod-testing
       # The launch surface. Every compose stack an operator can be told to run
       # must render from `.env.example` alone, and the node image must build
       # from a fresh checkout plus the blueprint the step above produced; none

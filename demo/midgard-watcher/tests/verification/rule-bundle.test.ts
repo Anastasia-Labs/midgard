@@ -1,3 +1,7 @@
+import {
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
 import {
@@ -165,6 +169,8 @@ const canonicalManifestIdentity = (): MutableRecord => {
   );
   return {
     schemaVersion: "midgard-deployment-manifest-v1",
+    deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
+    deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: "Preprod",
@@ -248,9 +254,11 @@ const canonicalManifestIdentity = (): MutableRecord => {
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
-        smallResponseWindowMs: 3_600_000,
+        smallResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
         fullPayloadMaxBytes: 67_108_864,
-        fullResponseWindowMs: 172_800_000,
+        fullResponseWindowMs:
+          SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
       },
       responseGeometry: {
         chunkByteLength: 14_020,
@@ -463,7 +471,11 @@ const authorityRejected = (
 };
 
 describe("watcher canonical V1 rule bundle", () => {
-  it.each(["Preprod", "Custom"] as const)(
+  it("rejects a network different from the compiled deployment profile", () => {
+    expect(() => fixture("Custom")).toThrow();
+  });
+
+  it.each(["Preprod"] as const)(
     "loads the exact W02-bound profile on %s",
     (network) => {
       const { authority, bundle, verifiedIdentity } = fixture(network);

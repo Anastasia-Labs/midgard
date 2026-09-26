@@ -13,6 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { pinnedAikenVersion } from "./pinned-compiler.mjs";
+
 const scriptsDirectory = dirname(fileURLToPath(import.meta.url));
 const script = join(scriptsDirectory, "run-focused-check.mjs");
 const projectDirectory = resolve(scriptsDirectory, "..");
@@ -51,6 +53,10 @@ const withStub = (callback) => {
     `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
+if (args[0] === "--version") {
+  process.stdout.write((process.env.MIDGARD_STUB_VERSION ?? ${JSON.stringify(pinnedAikenVersion())}) + "\\n");
+  process.exit(0);
+}
 const name = process.env.MIDGARD_STUB_MODULE ?? "";
 const selectors = args.filter((_, index) => args[index - 1] === "-m");
 appendFileSync(${JSON.stringify(log)}, selectors.join(" ") + "\\n");
@@ -70,13 +76,16 @@ process.stdout.write(
 `,
   );
   chmodSync(stub, 0o755);
-  const run = (moduleName, testNames, stubModule) =>
+  const run = (moduleName, testNames, stubModule, stubVersion) =>
     spawnSync(process.execPath, [script, moduleName, ...testNames], {
       encoding: "utf8",
       env: {
         ...process.env,
         MIDGARD_AIKEN_BIN: stub,
         MIDGARD_STUB_MODULE: stubModule ?? toAikenModule(moduleName),
+        ...(stubVersion === undefined
+          ? {}
+          : { MIDGARD_STUB_VERSION: stubVersion }),
       },
     });
   try {
@@ -169,5 +178,20 @@ test("results from another module fail closed", () => {
     const result = run(first, ["probe_test"], "some/other_module");
     assert.equal(result.status, 1);
     assert.match(result.stderr, /expected results from module/u);
+  });
+});
+
+test("a compiler other than the pinned fork is refused before any check runs", () => {
+  const [first] = sourceModules;
+  withStub((run, invocations) => {
+    const result = run(
+      first,
+      ["probe_test"],
+      undefined,
+      "aiken v1.1.22+39d6b04",
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /reports 'aiken v1\.1\.22\+39d6b04'/u);
+    assert.throws(() => invocations(), /ENOENT/u);
   });
 });

@@ -35,7 +35,7 @@ import {
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";

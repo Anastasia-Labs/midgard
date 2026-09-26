@@ -521,23 +521,26 @@ const AIKEN_FAMILIES = [
     },
   },
   // The field-8 maximum is also the adversarial proof-fit case for the
-  // `da-hash-preimage` framing rule, and both of its steps carried their own
-  // copy of the pair. Copies documented as "pinned in
+  // `da-hash-preimage` framing rule, whose step 01 carries its own copy of the
+  // signed leaf. Copies documented as "pinned in
   // `native-tx.max-redeemers.test.ak`" are exactly the drift this channel
   // exists to close: a stale copy stays green because the id it pins is the id
   // of the compact it pins beside it, while the shape is one the codec can no
-  // longer emit. Binding them from the same vector is what makes the comment
-  // true.
-  ...[
-    "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak",
-    "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-02.ak",
-  ].map((aiken) => ({
-    aiken,
+  // longer emit. Binding every part of the leaf from the same vector is what
+  // makes the comment true.
+  {
+    aiken: "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak",
     constants: {
       maximum_cardano_compact_cbor: bytes(spendRedeemer.compactCborHex),
       maximum_cardano_transaction_id: bytes(spendRedeemer.transactionIdHex),
+      maximum_cardano_witness_set_compact_cbor: bytes(
+        spendRedeemer.witnessSetCompactCborHex,
+      ),
+      maximum_cardano_field_preimage_lengths_cbor: bytes(
+        spendRedeemer.fieldPreimageLengthsCborHex,
+      ),
     },
-  })),
+  },
 ];
 
 for (const family of AIKEN_FAMILIES) {

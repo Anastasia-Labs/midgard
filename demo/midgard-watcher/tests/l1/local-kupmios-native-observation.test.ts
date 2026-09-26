@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeFraudProofRawL1PointId,
   LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
@@ -57,11 +58,11 @@ const captureWatcherConfig = {
     requestTimeoutMs: 10_000,
     maxConcurrency: 4,
     finality: {
-      depth: 30,
+      depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       rollback: {
         beforeFinality: "rewind",
         afterFinality: "quarantine",
-        maxDepth: 30,
+        maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       },
     },
   },

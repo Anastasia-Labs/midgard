@@ -54,7 +54,7 @@ import {
   requireRecord,
   stringifyJson,
 } from "./json-file.js";
-import { nativeTxFromCoreCompact } from "./submit-step-01.js";
+import { nativeTxFromCoreCompact } from "./step-support.js";
 
 export type FetchLike = (
   input: string | URL,

@@ -19,6 +19,10 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
+import { submitStep01 } from "../double-spend/submit-step-01.js";
+import { submitStep02 } from "../double-spend/submit-step-02.js";
+import { submitStep03 } from "../double-spend/submit-step-03.js";
+import { submitStep04 } from "../double-spend/submit-step-04.js";
 import { prepareDoubleSpendFromCanonicalEvidence } from "../evidence/prepare-from-evidence.js";
 import {
   certifyFaultProofFieldCarriage,
@@ -38,14 +42,8 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { submitInit } from "../submit-init.js";
-import {
-  parseSubmitStep01TxInclusion,
-  submitStep01,
-} from "../submit-step-01.js";
-import { submitStep02 } from "../submit-step-02.js";
-import { submitStep03 } from "../submit-step-03.js";
-import { submitStep04 } from "../submit-step-04.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";

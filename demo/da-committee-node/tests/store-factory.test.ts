@@ -204,7 +204,7 @@ describe("openCommitteeStore", () => {
     await store.saveL1SourceState({
       schemaVersion: 1,
       sourceMode: "external_providers",
-      network: "Preview",
+      network: "Preprod",
       authoritySha256: "91".repeat(32),
       status: "quarantined",
       observations: [],
@@ -239,7 +239,7 @@ describe("openCommitteeStore", () => {
       restarted.saveL1SourceState({
         schemaVersion: 1,
         sourceMode: "local_node",
-        network: "Preview",
+        network: "Preprod",
         authoritySha256: "91".repeat(32),
         status: "quarantined",
         observations: [],
@@ -252,7 +252,7 @@ describe("openCommitteeStore", () => {
       restarted.saveL1SourceState({
         schemaVersion: 1,
         sourceMode: "local_node",
-        network: "Preview",
+        network: "Preprod",
         authoritySha256: "91".repeat(32),
         status: "healthy",
         observations: [
@@ -271,7 +271,7 @@ describe("openCommitteeStore", () => {
       store.saveL1SourceState({
         schemaVersion: 1,
         sourceMode: "local_node",
-        network: "Preview",
+        network: "Preprod",
         authoritySha256: "not-a-digest",
         status: "healthy",
         observations: [],
@@ -282,7 +282,7 @@ describe("openCommitteeStore", () => {
     const validState = {
       schemaVersion: 1 as const,
       sourceMode: "local_node" as const,
-      network: "Preview",
+      network: "Preprod",
       authoritySha256: "91".repeat(32),
       status: "healthy" as const,
       observations: [],
@@ -417,7 +417,7 @@ describe("openCommitteeStore", () => {
       effectId,
       deploymentFingerprint: signature.deploymentFingerprint,
       sourceMode: "local_node" as const,
-      network: "Preview",
+      network: "Preprod",
       effectKind: "signature_publish" as const,
       headerHash: signature.headerHash,
       stateQueueOutRef,
@@ -435,7 +435,7 @@ describe("openCommitteeStore", () => {
       sourceState: {
         schemaVersion: 1,
         sourceMode: "local_node",
-        network: "Preview",
+        network: "Preprod",
         authoritySha256: "91".repeat(32),
         status: "healthy",
         observations: [
@@ -562,7 +562,7 @@ describe("openCommitteeStore", () => {
           }),
           deploymentFingerprint: signature.deploymentFingerprint,
           sourceMode: "local_node" as const,
-          network: "Preview",
+          network: "Preprod",
           effectKind: "signature_publish" as const,
           headerHash: signature.headerHash,
           stateQueueOutRef,
@@ -578,7 +578,7 @@ describe("openCommitteeStore", () => {
         sourceState: {
           schemaVersion: 1 as const,
           sourceMode: "local_node" as const,
-          network: "Preview",
+          network: "Preprod",
           authoritySha256: "91".repeat(32),
           status: "healthy" as const,
           observations: [
@@ -614,7 +614,7 @@ describe("openCommitteeStore", () => {
     await store.quarantineL1Decisions({
       schemaVersion: 1,
       sourceMode: "local_node",
-      network: "Preview",
+      network: "Preprod",
       authoritySha256: "91".repeat(32),
       status: "quarantined",
       observations: [],

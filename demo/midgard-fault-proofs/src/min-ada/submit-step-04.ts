@@ -25,7 +25,6 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../ne-submit-step-03.js";
 import {
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -41,7 +40,8 @@ import {
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { selectFeeInput } from "../submit-step-01.js";
+import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../step-support.js";
+import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

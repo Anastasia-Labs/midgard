@@ -5,6 +5,7 @@ use aiken/option
 use aiken/primitive/bytearray
 use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
+use env
 use midgard/common/utils
 use midgard/ledger_state.{HeaderHash}
 use midgard/validation_merkle_v1
@@ -15,9 +16,9 @@ pub const small_payload_max_bytes_v1: Int = 64 * 1024
 
 pub const full_payload_max_bytes_v1: Int = 64 * 1024 * 1024
 
-pub const small_response_window_ms_v1: Int = 60 * 60 * 1000
+pub const small_response_window_ms_v1: Int = env.small_response_window_ms_v1
 
-pub const full_response_window_ms_v1: Int = 48 * 60 * 60 * 1000
+pub const full_response_window_ms_v1: Int = env.full_response_window_ms_v1
 
 /// Hard safety ceilings only. Activated geometry remains signed release data.
 pub const max_response_chunk_safety_bytes_v1: Int = 15_148

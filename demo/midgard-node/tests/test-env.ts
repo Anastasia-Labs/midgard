@@ -74,7 +74,7 @@ const TEST_ENV_DEFAULTS: Record<string, string> = {
   L1_REFERENCE_SCRIPT_ADDRESS:
     "addr_test1qpdjresrrk294hy9ndtqly955ldlhy688507shkfxpwtgf39vzk9uwp87k96zkd5yal83h9x0qheeu0lrqp9lldvsqjs5s4ggd",
   NETWORK: "Preprod",
-  MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: "bounded-acceptance-v1",
+  MIDGARD_DEPLOYMENT_PROFILE: "preprod-testing",
   POSTGRES_HOST: "127.0.0.1",
   POSTGRES_PORT: "5433",
   POSTGRES_USER: "postgres",

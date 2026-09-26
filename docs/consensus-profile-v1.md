@@ -441,7 +441,7 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `fb1e4d38851c8c211e715d90af13ebbca39df051e50b631c9294a8c5d54b38c0`
+Profile digest: `6a872433afcfa01800204da702cabfc969bfc70da80fb22168779e3c0291fa01`
 
 ```json
 {
@@ -471,6 +471,7 @@ Profile digest: `fb1e4d38851c8c211e715d90af13ebbca39df051e50b631c9294a8c5d54b38c
     "invalid_forced_transactions"
   ],
   "forcedTransactionJournalVersion": 1,
+  "forcedTransactionSourceEncoding": "midgard-forced-submission-v1",
   "headerSchemaVersion": 1,
   "ledgerOutputSchemaVersion": 1,
   "limits": {

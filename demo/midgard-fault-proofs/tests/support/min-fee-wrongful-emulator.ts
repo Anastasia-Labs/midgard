@@ -32,13 +32,13 @@ import {
   prepareMinFeeForcedArtifact,
 } from "../../src/min-fee-forced-artifact.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+import { forcedTxFromCoreCompact } from "../../src/step-support.js";
 import { submitMinFeeStep01Forced } from "../../src/submit-min-fee-forced-step-01.js";
 import { submitMinFeeInit } from "../../src/submit-min-fee-init.js";
 import {
   type MinFeeFieldItemCbors,
   submitMinFeeStep02,
 } from "../../src/submit-min-fee-step-02.js";
-import { forcedTxFromCoreCompact } from "../../src/submit-step-01.js";
 import {
   buildCountedRoot,
   commitCountedRoot,

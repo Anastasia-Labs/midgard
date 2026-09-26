@@ -7,7 +7,7 @@ import type {
 
 import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
 import { excludeUtxo } from "./spend-input-witness.js";
-import { selectFeeInput } from "./submit-step-01.js";
+import { selectFeeInput } from "./step-support.js";
 import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,

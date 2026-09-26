@@ -15,8 +15,8 @@ import {
   submitRemoveFraudulentBlock,
   workflowTransactionInputOutRefs,
 } from "../src/index.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
-import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
 import {
   buildProvedDoubleSpendFixture,
   expectRemovedFraudProofState,

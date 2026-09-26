@@ -206,6 +206,9 @@ importers:
       cborg:
         specifier: ^4.5.8
         version: 4.5.8
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
     devDependencies:
       '@aiken-lang/merkle-patricia-forestry':
         specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain

@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   applyFamilyApplicationRecord,
   FAMILY_APPLICATION_REGISTRY,
@@ -119,11 +120,11 @@ const rawConfig = () => ({
     requestTimeoutMs: 10_000,
     maxConcurrency: 8,
     finality: {
-      depth: 30,
+      depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       rollback: {
         beforeFinality: "rewind",
         afterFinality: "quarantine",
-        maxDepth: 30,
+        maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       },
     },
   },

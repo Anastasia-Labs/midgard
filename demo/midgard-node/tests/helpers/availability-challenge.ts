@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import type { DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 
@@ -5,9 +6,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 export const TEST_AVAILABILITY_CHALLENGE = Object.freeze({
   responseClasses: Object.freeze({
     smallPayloadMaxBytes: 65_536,
-    smallResponseWindowMs: 3_600_000,
+    smallResponseWindowMs:
+      SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
     fullPayloadMaxBytes: 67_108_864,
-    fullResponseWindowMs: 172_800_000,
+    fullResponseWindowMs:
+      SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
   }),
   responseGeometry: Object.freeze({
     chunkByteLength: 14_020,

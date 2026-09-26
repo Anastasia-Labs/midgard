@@ -35,7 +35,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -43,63 +42,44 @@ import {
   type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
-} from "./proof-chunk-carriage.js";
+} from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
   phasMembershipRewardAddress,
-  readJsonFile,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
   resolveNonExistentInputDeploymentContracts,
-  resolveProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
+} from "../runtime.js";
 import {
-  parseSubmitStep01TxInclusion,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
-} from "./submit-step-01.js";
-import { computationThreadOutputPredicate } from "./tx-layout.js";
+} from "../step-support.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "./witness-reference-scripts.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
+} from "../workflow/transaction-boundary.js";
 
 // The non-existent-input proof commits the bad transaction by the node's native
 // transaction root (the same inclusion path as double-spend), so the
 // tx-inclusion material is identical to `submit-step-01`'s.
 export type NeStep01TxInclusion = SubmitStep01TxInclusion;
-export const parseNeStep01TxInclusion = parseSubmitStep01TxInclusion;
-
-export type NeSubmitStep01CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly stateQueueBlockOutRef: string;
-  readonly txInclusionPath: string;
-  readonly awaitConfirmation?: boolean;
-};
 
 export type NeSubmitStep01Result = {
   readonly txHash: string;
@@ -487,32 +467,4 @@ export const neSubmitStep01 = async ({
     publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
-};
-
-export const neSubmitStep01FromFiles = async (
-  config: NeSubmitStep01CliConfig,
-): Promise<NeSubmitStep01Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-non-existent-input-step-01",
-  });
-  const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
-    [
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.txInclusionPath),
-      makeLucidForSubmit(config),
-    ],
-  );
-  const signer = resolveProverSigner(config);
-  return await neSubmitStep01({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseNeStep01TxInclusion(txInclusionJson),
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };

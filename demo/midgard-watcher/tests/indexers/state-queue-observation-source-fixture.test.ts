@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
@@ -151,7 +152,9 @@ describe("real state-queue observation source with synthetic local transports", 
       ).rejects.toThrow();
       const second = await fixture.observeFresh();
       expect(second.header).toEqual(first.header);
-      expect(second.header.finalityDepth).toBe("30");
+      expect(second.header.finalityDepth).toBe(
+        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth.toString(),
+      );
       expect(second.observation.observationDigest).toBe(
         first.observation.observationDigest,
       );

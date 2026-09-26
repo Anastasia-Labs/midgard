@@ -21,6 +21,12 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "./da-transport.js";
+import {
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  type DeploymentProfile,
+  SELECTED_DEPLOYMENT_PROFILE,
+  verifyDeploymentProfileBinding,
+} from "./deployment-profile.js";
 import { asLucidSchema } from "./lucid-data.js";
 import {
   buildMidgardMpfProofFoldTrace,
@@ -2545,14 +2551,20 @@ export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "operatorActivation",
 ] as const);
 
-export const DEPLOYMENT_MANIFEST_L1_FINALITY = Object.freeze({
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const);
+/** The confirmation depth is per deployment profile, so it is typed as a number. */
+export type DeploymentManifestL1Finality = Readonly<{
+  confirmationDepth: number;
+  automaticRecoveryMaxDepth: 2160;
+  deepRollbackPolicy: "automated_rewind_replay_incident-v1";
+}>;
 
-export type DeploymentManifestL1Finality =
-  typeof DEPLOYMENT_MANIFEST_L1_FINALITY;
+export const DEPLOYMENT_MANIFEST_L1_FINALITY: DeploymentManifestL1Finality =
+  Object.freeze({
+    confirmationDepth:
+      SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth,
+    automaticRecoveryMaxDepth: 2160,
+    deepRollbackPolicy: "automated_rewind_replay_incident-v1",
+  });
 
 export type DeploymentManifestCanonicalRational = Readonly<{
   numerator: string;
@@ -2584,24 +2596,7 @@ export type DeploymentManifestCardanoProtocolParameters = Readonly<{
   }>;
 }>;
 
-export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = Object.freeze({
-  "public-preprod-launch-v1": Object.freeze({
-    profile: "public-preprod-launch-v1" as const,
-    requiredBondLovelace: 100_000_000_000,
-    slashingPenaltyLovelace: 25_000_000_000,
-    inactivitySlashingPenaltyLovelace: 10_000_000_000,
-    fraudProverRewardLovelace: 75_000_000_000,
-    proverCollateralFloorLovelace: 5_000_000,
-  }),
-  "bounded-acceptance-v1": Object.freeze({
-    profile: "bounded-acceptance-v1" as const,
-    requiredBondLovelace: 900_000_000,
-    slashingPenaltyLovelace: 500_000_000,
-    inactivitySlashingPenaltyLovelace: 100_000_000,
-    fraudProverRewardLovelace: 400_000_000,
-    proverCollateralFloorLovelace: 5_000_000,
-  }),
-} as const);
+export { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "./deployment-profile.js";
 
 export type DeploymentManifestEconomicsProfile =
   keyof typeof DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE;
@@ -2612,9 +2607,9 @@ export type DeploymentManifestEconomics =
 export type DeploymentManifestAvailabilityChallenge = Readonly<{
   responseClasses: Readonly<{
     smallPayloadMaxBytes: 65_536;
-    smallResponseWindowMs: 3_600_000;
+    smallResponseWindowMs: number;
     fullPayloadMaxBytes: 67_108_864;
-    fullResponseWindowMs: 172_800_000;
+    fullResponseWindowMs: number;
   }>;
   responseGeometry: Readonly<{
     chunkByteLength: number;
@@ -2890,6 +2885,8 @@ export type DeploymentManifest = {
   };
   readonly l1Finality: DeploymentManifestL1Finality;
   readonly economics: DeploymentManifestEconomics;
+  readonly deploymentProfile: DeploymentProfile;
+  readonly deploymentProfileDigest: string;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
 };
 
@@ -2914,6 +2911,8 @@ export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "validationDispute",
   "l1Finality",
   "economics",
+  "deploymentProfile",
+  "deploymentProfileDigest",
   "availabilityChallenge",
 ] as const);
 
@@ -3078,9 +3077,11 @@ export const parseDeploymentManifestAvailabilityChallenge = (
   );
   const expectedClasses = {
     smallPayloadMaxBytes: 65_536,
-    smallResponseWindowMs: 3_600_000,
+    smallResponseWindowMs:
+      SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
     fullPayloadMaxBytes: 67_108_864,
-    fullResponseWindowMs: 172_800_000,
+    fullResponseWindowMs:
+      SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
   } as const;
   if (
     Object.keys(responseClasses).length !== Object.keys(expectedClasses).length
@@ -3411,7 +3412,19 @@ export const verifyDeploymentManifestIdentity = (
       "Deployment manifest consensusProfileDigest must exactly match canonical V1",
     );
   }
-  parseDeploymentManifestEconomics(candidate.economics);
+  verifyDeploymentProfileBinding(
+    candidate.deploymentProfile,
+    candidate.deploymentProfileDigest,
+    candidate.network,
+  );
+  const economics = parseDeploymentManifestEconomics(candidate.economics);
+  if (
+    stableJson(economics) !== stableJson(SELECTED_DEPLOYMENT_PROFILE.economics)
+  ) {
+    throw new Error(
+      "Deployment manifest economics must match deployment profile",
+    );
+  }
   parseDeploymentManifestAvailabilityChallenge(candidate.availabilityChallenge);
   if (
     typeof candidate.manifestId !== "string" ||

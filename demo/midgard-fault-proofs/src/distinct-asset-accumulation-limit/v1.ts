@@ -7,7 +7,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
-} from "../submit-step-01.js";
+} from "../step-support.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   workflowActuationAuthorizingDecisionDigest,

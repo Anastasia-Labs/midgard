@@ -43,12 +43,12 @@ import {
   requireFaultProofStepReferenceScript,
   resolveInvalidSignatureDeploymentContracts,
 } from "../../src/runtime.js";
-import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
+import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
 import {
   nativeTxFromCoreCompact,
   requireComputationThreadToken,
   selectFeeInput,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
 import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";

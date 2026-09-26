@@ -75,7 +75,7 @@ import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.j
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import {
   buildCountedRoot,
   keyValuePhasRootWithCount,

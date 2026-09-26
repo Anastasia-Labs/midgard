@@ -6,6 +6,7 @@ import {
   MIDGARD_MAX_DA_PAYLOAD_BYTES,
   verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, fromHex, toHex } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -25,8 +26,10 @@ export const DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES = 64 * 1024;
 export const DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES =
   MIDGARD_MAX_DA_PAYLOAD_BYTES;
 
-export const DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS = 60 * 60 * 1_000;
-export const DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS = 48 * 60 * 60 * 1_000;
+export const DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms;
+export const DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms;
 
 export const DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE =
   10_000_000_000n;

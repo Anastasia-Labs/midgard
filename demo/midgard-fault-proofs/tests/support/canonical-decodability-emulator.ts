@@ -68,7 +68,7 @@ import {
   requireInitialStepDatum,
   selectFeeInput,
   type SubmitStep01TxInclusion,
-} from "../../src/submit-step-01.js";
+} from "../../src/step-support.js";
 import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 
 import { createCommitteeApiServer } from "./api/server.js";
 import { availabilityResponderFromConfig } from "./availability/factory.js";
@@ -40,6 +41,7 @@ import { type RetentionL1View, runRetentionCycle } from "./store/retention.js";
 import { createCommitteeTickRunner } from "./tick-runner.js";
 
 const main = async (): Promise<void> => {
+  loadRuntimeConfig();
   if (process.argv[2] === "l1-wallet-preflight") {
     await runL1WalletPreflightCommand(process.argv.slice(3));
     return;

@@ -2863,7 +2863,7 @@ describe("CommitteeService", () => {
       signerIndex: 0,
     });
     const initialPoint = {
-      network: "Preview",
+      network: "Preprod",
       slot: 10,
       blockHash: "11".repeat(32),
       providerSource: "chain-sync:node-a",
@@ -2918,7 +2918,7 @@ describe("CommitteeService", () => {
 
     await firstStore.close();
     const rollbackPoint = {
-      network: "Preview",
+      network: "Preprod",
       slot: 9,
       blockHash: "22".repeat(32),
       providerSource: "chain-sync:node-a",

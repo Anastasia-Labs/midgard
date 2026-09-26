@@ -13,7 +13,7 @@ import {
   submitNativeScriptInvalidStep05,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { VAN_ROSSEM_TRANSACTION_LIMITS } from "./support/emulator/protocol-parameters.js";
 import {

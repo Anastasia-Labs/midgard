@@ -87,7 +87,6 @@ import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-
 import { detectMissingSignatureWrongfulRejections } from "../missing-signature/wrongful-rejection.js";
 import { detectNativeScriptDecodingReplay } from "../native-script-decoding/replay.js";
 import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/forced.js";
-import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
 import { detectNoReferenceInputWrongfulRejections } from "../no-reference-input/wrongful-rejection.js";
@@ -111,6 +110,7 @@ import { detectScriptIntegrityHashMismatchCanonicalViolations } from "../script-
 import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script-integrity-hash-missing/replay.js";
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
+import { ledgerKeyBytesHex } from "../step-support.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
 import {
   requireTransitionTraceL1Events,

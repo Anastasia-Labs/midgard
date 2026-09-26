@@ -1,4 +1,7 @@
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import type {
   WebSocketFactory,
@@ -16,6 +19,8 @@ import {
   stateCorrectionValueDigest,
 } from "../src/commands/e2e-state-correction-local-authority.js";
 
+/** The compiled deployment profile's release depth (3 testing, 30 public). */
+const RELEASE_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 const hash = (index: number): string => index.toString(16).padStart(64, "0");
 const policy = "ab".repeat(28);
 const unit = `${policy}01`;
@@ -139,7 +144,7 @@ const makeAuthority = (source: LocalKupmiosStateCorrectionSource) =>
     stateQueuePolicyId: policy,
     reserveAddress: "addr_test1qreserve",
     finalityPolicy: {
-      confirmationDepth: 30,
+      confirmationDepth: RELEASE_DEPTH,
       automaticRecoveryMaxDepth: 2160,
       deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
     },
@@ -467,7 +472,7 @@ describe("Q57 local Kupmios authority", () => {
         stateQueuePolicyId: policy,
         reserveAddress: "addr_test1qreserve",
         finalityPolicy: {
-          confirmationDepth: 30,
+          confirmationDepth: RELEASE_DEPTH,
           automaticRecoveryMaxDepth: 2160,
           deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
         },
@@ -487,7 +492,7 @@ describe("Q57 local Kupmios authority", () => {
         stateQueuePolicyId: policy,
         reserveAddress: "addr_test1qreserve",
         finalityPolicy: {
-          confirmationDepth: 30,
+          confirmationDepth: RELEASE_DEPTH,
           automaticRecoveryMaxDepth: 2160,
           deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
         },
@@ -503,24 +508,28 @@ describe("Q57 local Kupmios authority", () => {
       ...transactionInput,
       observedAtTip: {
         ...transactionInput.observedAtTip,
-        confirmationDepth: 29,
+        confirmationDepth: RELEASE_DEPTH - 1,
       },
     };
     await expect(
       makeAuthority(makeSource()).authenticateTransaction(shallowEvidence),
-    ).rejects.toThrow(/below release depth 30/u);
+    ).rejects.toThrow(
+      new RegExp(`below release depth ${RELEASE_DEPTH.toString()}$`, "u"),
+    );
 
     const shallowLive = makeSource({
       observeTransaction: vi.fn(async () => ({
         kupoIncludedAt: transactionInput.includedAt,
         ogmiosIncludedAt: transactionInput.includedAt,
-        liveTip: { ...acceptedTip, height: 29 },
-        confirmationDepth: 29,
+        liveTip: { ...acceptedTip, height: RELEASE_DEPTH - 1 },
+        confirmationDepth: RELEASE_DEPTH - 1,
       })),
     });
     await expect(
       makeAuthority(shallowLive).authenticateTransaction(transactionInput),
-    ).rejects.toThrow(/below release depth 30/u);
+    ).rejects.toThrow(
+      new RegExp(`below release depth ${RELEASE_DEPTH.toString()}$`, "u"),
+    );
   });
 });
 
@@ -623,7 +632,7 @@ const economicSource = ({
       stateQueuePolicyId: policy,
       reserveAddress: "addr_test1qreserve",
       finalityPolicy: {
-        confirmationDepth: 30,
+        confirmationDepth: RELEASE_DEPTH,
         automaticRecoveryMaxDepth: 2160,
         deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
       },

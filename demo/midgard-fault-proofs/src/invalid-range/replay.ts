@@ -2,7 +2,7 @@ import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { forcedTxFromCoreCompact } from "../submit-step-01.js";
+import { forcedTxFromCoreCompact } from "../step-support.js";
 import {
   invalidRangeEvidenceCloses,
   prepareInvalidRangeEvidence,

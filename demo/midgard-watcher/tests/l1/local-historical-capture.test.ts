@@ -5,6 +5,7 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeFraudProofRawL1PointId,
   readAdmittedLocalKupmiosRawBlockAtPoint,
@@ -84,11 +85,11 @@ const config = (NODE_CONFIG_PATH: string, GENESIS_CONFIG_PATH: string) =>
       requestTimeoutMs: 10_000,
       maxConcurrency: 4,
       finality: Object.freeze({
-        depth: 30,
+        depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
         rollback: Object.freeze({
           beforeFinality: "rewind",
           afterFinality: "quarantine",
-          maxDepth: 30,
+          maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
         }),
       }),
     }),
@@ -1263,12 +1264,15 @@ describe("receipt-only local backfill admission", () => {
     const observation = admitWatcherLocalBackfillObservation(capture.receipt);
     const args = { ...f.args, observation, previous: null };
     for (const finality of [
-      { ...f.args.watcherConfig.l1.finality, depth: 31 },
+      {
+        ...f.args.watcherConfig.l1.finality,
+        depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth + 1,
+      },
       {
         ...f.args.watcherConfig.l1.finality,
         rollback: {
           ...f.args.watcherConfig.l1.finality.rollback,
-          maxDepth: 29,
+          maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth - 1,
         },
       },
     ]) {
@@ -1334,7 +1338,10 @@ describe("receipt-only local backfill admission", () => {
   });
 
   it("leaves below-threshold visibility to the live workflow", async () => {
-    const f = await fixture({ tipOffsets: [1, 2] });
+    const f = await fixture({
+      // The admitted second read lands one block short of the release depth.
+      tipOffsets: [1, DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth - 2],
+    });
     const capture = await f.open();
     const observation = admitWatcherLocalBackfillObservation(capture.receipt);
     expect(() =>

@@ -52,7 +52,7 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { selectFeeInput } from "./submit-step-01.js";
+import { selectFeeInput } from "./step-support.js";
 import {
   createLocalKupmiosHttpOgmiosRawSource,
   readAdmittedLocalKupmiosSignedTransactionRecovery,
