@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Either, Option } from "effect";
 
+import { retrieveAppliedRecoveryAfterJournal } from "../database/eventHistoryRecoveryPlans.js";
 import {
   ConfirmedLedgerDB,
   MpfEngineStateDB,
@@ -42,14 +43,19 @@ export type MpfAuditResult = {
   /** Why the committed tip could not be recomputed; always a divergence. */
   readonly tipIntegrityFailure?: string;
   /**
-   * Why the committed tip is not locally reconstructible (its chain starts from
-   * a foreign block's ledger this node never held). With the persisted root
-   * equal to `tipJournalRoot` the audit is `tip_unverifiable`: neither clean nor
-   * a divergence.
+   * Why the committed tip is not locally reconstructible (it is, or is built
+   * on, a foreign block's ledger this node never held, or a merged journal's
+   * post-state the confirmed ledger has moved past). With the persisted root
+   * equal to `tipCommittedRoot` the audit is `tip_unverifiable`: neither clean
+   * nor a divergence.
    */
   readonly tipUnverifiable?: string;
-  /** The expected UTxO root of this node's newest finalized journal. */
-  readonly tipJournalRoot?: string;
+  /**
+   * The root of the native committed point: the expected UTxO root of this
+   * node's newest finalized journal, or the target root of a native recovery
+   * (correction rewind or signed-header recovery) applied after it.
+   */
+  readonly tipCommittedRoot?: string;
   readonly unmergedJournalCount: number;
   readonly matchedPoint?: MpfAuditLedgerPoint;
   readonly entryCount: number;
@@ -77,7 +83,7 @@ export type CommittedTipRecomputation =
   | {
       readonly _tag: "Unverifiable";
       readonly reason: string;
-      readonly journalRoot: string;
+      readonly committedRoot: string;
     }
   | { readonly _tag: "IntegrityFailure"; readonly reason: string };
 
@@ -112,20 +118,70 @@ const resolveBaseJournal = (record: PendingBlockFinalizationsDB.Record) =>
     );
   });
 
+/** The native committed point: its root and, when one exists, the finalized
+ * journal of this node whose post-state it is. */
+type CommittedPoint = {
+  readonly root: string;
+  readonly anchor: Option.Option<PendingBlockFinalizationsDB.Record>;
+  readonly source: string;
+};
+
+/**
+ * Where the native committed root is. Only this node's own commits advance it
+ * (to the committed block's expected root), and an applied native recovery
+ * resets it to the recovery's target root. The later of this node's newest
+ * finalized journal and the newest applied recovery therefore fixes it. A
+ * recovery target is anchored at the newest finalized journal that reached
+ * that root, if any; a foreign root has no anchor.
+ */
+const resolveCommittedPoint = Effect.gen(function* () {
+  const newest = yield* PendingBlockFinalizationsDB.retrieveNewestFinalized();
+  const recovery = yield* retrieveAppliedRecoveryAfterJournal(
+    Option.isSome(newest)
+      ? newest.value[PendingBlockFinalizationsDB.Columns.HEADER_HASH]
+      : undefined,
+  );
+  if (Option.isSome(recovery)) {
+    const { kind, recoveryId, targetRoot } = recovery.value;
+    return Option.some<CommittedPoint>({
+      root: targetRoot,
+      anchor:
+        yield* PendingBlockFinalizationsDB.retrieveNewestFinalizedWithExpectedRoot(
+          { expectedUtxosRoot: targetRoot },
+        ),
+      source: `applied ${kind} recovery_id=${recoveryId}`,
+    });
+  }
+  return Option.map(
+    newest,
+    (tip): CommittedPoint => ({
+      root: tip[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT],
+      anchor: Option.some(tip),
+      source: `newest finalized journal header_hash=${headerHex(tip)}`,
+    }),
+  );
+});
+
 /**
  * Recompute the committed tip ledger independently of any MPF store: the
  * confirmed ledger plus the recorded ledger deltas of this node's finalized
  * blocks that have not been merged yet, each step checked against the
  * journal's own expected root.
  *
- * The tip is this node's newest finalized block. Its unmerged suffix is walked
- * back to the confirmed ledger through each block's base journal, bridging a
- * foreign tail by UTxO root (see `resolveBaseJournal`). A base no local journal
- * reached is unverifiable, not divergent: the node cannot reconstruct a ledger
- * it never held. A loaded suffix that does not fold to the tip (a delta that
- * does not apply, a root that disagrees with its journal, a cycle) is an
- * integrity failure the caller must treat as a divergence. Storage errors
- * propagate unchanged, so a transient read failure never records one.
+ * The committed point is found by `resolveCommittedPoint`. Its unmerged suffix
+ * is walked back to the confirmed ledger through each block's base journal,
+ * bridging a foreign tail by UTxO root (see `resolveBaseJournal`). The walk
+ * stops at the confirmed boundary, the newest finalized journal whose post-state
+ * is the confirmed ledger: a journal that ended at or before it is merged and
+ * cannot bridge to the confirmed ledger, so no audit reads past it.
+ *
+ * A committed point no local journal reached, a base no local journal reached
+ * and a merged base are unverifiable, not divergent: the node cannot
+ * reconstruct a ledger it never held (or no longer holds). A loaded suffix that
+ * does not fold to the tip (a delta that does not apply, a root that disagrees
+ * with its journal, a cycle) is an integrity failure the caller must treat as a
+ * divergence. Storage errors propagate unchanged, so a transient read failure
+ * never records one.
  */
 export const recomputeCommittedTip = ({
   confirmedEntries,
@@ -141,18 +197,30 @@ export const recomputeCommittedTip = ({
       entries: confirmedEntries,
       unmergedJournalCount: 0,
     };
-    const newest = yield* PendingBlockFinalizationsDB.retrieveNewestFinalized();
-    if (Option.isNone(newest)) return confirmedPoint;
-    const tip = newest.value;
-    const journalRoot =
-      tip[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT];
-    if (journalRoot === confirmedRoot) return confirmedPoint;
+    const point = yield* resolveCommittedPoint;
+    if (Option.isNone(point)) return confirmedPoint;
+    const committedRoot = point.value.root;
+    if (committedRoot === confirmedRoot) return confirmedPoint;
+    const unverifiable = (reason: string): CommittedTipRecomputation => ({
+      _tag: "Unverifiable",
+      committedRoot,
+      reason: `${point.value.source}: ${reason}`,
+    });
+    if (Option.isNone(point.value.anchor)) {
+      return unverifiable(
+        `committed root ${committedRoot} is neither the confirmed ledger root ${confirmedRoot} nor the post-state of a finalized block of this node`,
+      );
+    }
+    const boundary =
+      yield* PendingBlockFinalizationsDB.retrieveNewestFinalizedWithExpectedRoot(
+        { expectedUtxosRoot: confirmedRoot },
+      );
 
     // Load the unmerged suffix, newest first. Every read happens here, so the
     // fold below is pure and any failure it reports is an integrity failure.
     const suffix: PendingBlockFinalizationsDB.Record[] = [];
     const seen = new Set<string>();
-    let current = tip;
+    let current = point.value.anchor.value;
     for (;;) {
       const headerHashHex = headerHex(current);
       if (seen.has(headerHashHex)) {
@@ -161,21 +229,34 @@ export const recomputeCommittedTip = ({
         );
       }
       seen.add(headerHashHex);
+      if (
+        Option.isSome(boundary) &&
+        current[PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME].getTime() <=
+          boundary.value[
+            PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
+          ].getTime()
+      ) {
+        return unverifiable(
+          `header_hash=${headerHashHex} ended at or before the confirmed boundary header_hash=${headerHex(
+            boundary.value,
+          )}, so it is merged and its post-state ${
+            current[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]
+          } cannot be rebuilt from the confirmed ledger root ${confirmedRoot}`,
+        );
+      }
       suffix.push(current);
       const baseRoot =
         current[PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT];
       if (baseRoot === confirmedRoot) break;
       const base = yield* resolveBaseJournal(current);
       if (Option.isNone(base)) {
-        return {
-          _tag: "Unverifiable",
-          journalRoot,
-          reason: `header_hash=${headerHashHex} was built on tail ${current[
+        return unverifiable(
+          `header_hash=${headerHashHex} was built on tail ${current[
             PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH
           ].toString(
             "hex",
           )} at base root ${baseRoot}, which is neither the confirmed ledger root ${confirmedRoot} nor the post-state of a finalized block of this node`,
-        };
+        );
       }
       current = base.value;
     }
@@ -238,7 +319,7 @@ const readLevelDbLedgerRoot = (path: string) =>
  * merge can move either side between the two reads.
  *
  * When the committed tip is unverifiable (see `recomputeCommittedTip`), a
- * persisted root at this node's newest finalized block is reported as
+ * persisted root at the native committed point is reported as
  * `tip_unverifiable` (never clean, never acknowledged) and any other root not
  * matching an honest point still diverges.
  *
@@ -322,7 +403,7 @@ export const runMpfAudit = ({
                     ...(tip._tag === "Unverifiable"
                       ? {
                           tipUnverifiable: tip.reason,
-                          tipJournalRoot: tip.journalRoot,
+                          tipCommittedRoot: tip.committedRoot,
                         }
                       : {}),
                   };
@@ -330,10 +411,10 @@ export const runMpfAudit = ({
                   if (
                     matchedPoint === undefined &&
                     tip._tag === "Unverifiable" &&
-                    persistedRoot === tip.journalRoot
+                    persistedRoot === tip.committedRoot
                   ) {
-                    // The persisted root is where this node's own newest block
-                    // left it, but that block's ledger cannot be rebuilt here.
+                    // The persisted root is at the native committed point, but
+                    // that point's ledger cannot be rebuilt here.
                     // Record the attempt for the audit cadence only: neither the
                     // sticky divergence flag nor a clean root.
                     yield* MpfEngineStateDB.recordLedgerAuditAttempt;
@@ -402,7 +483,7 @@ export const runMpfAudit = ({
                           tip._tag === "IntegrityFailure"
                             ? ` tip_integrity_failure=${JSON.stringify(tip.reason)}`
                             : tip._tag === "Unverifiable"
-                              ? ` tip_unverifiable=${JSON.stringify(tip.reason)} tip_journal_root=${tip.journalRoot}`
+                              ? ` tip_unverifiable=${JSON.stringify(tip.reason)} tip_committed_root=${tip.committedRoot}`
                               : ""
                         }`,
                       )

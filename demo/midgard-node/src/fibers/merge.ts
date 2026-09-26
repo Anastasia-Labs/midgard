@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
-import { Data, Effect, Either, Option, Ref, Schedule } from "effect";
+import { Data, Effect, Either, Exit, Option, Ref, Schedule } from "effect";
 
 import {
   MempoolDB,
@@ -17,6 +17,7 @@ import {
 import {
   Database,
   Globals,
+  L1ControlPlaneTimeoutError,
   Lucid,
   MidgardContracts,
   NodeConfig,
@@ -38,6 +39,7 @@ import {
   buildAndSubmitMergeTx,
   type CanonicalMergeCandidateReadiness,
   captureMergeLocalLedgerGate,
+  type ConfirmedMergeFinalization,
   fetchCanonicalMergeCandidateReadiness,
   mergeSemanticSkipResult,
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
@@ -252,9 +254,21 @@ const changedCandidateResult = ({
  * Runs one merge attempt, optionally bypassing the queue-length guard for
  * explicit recovery/administrative flows.
  */
+type MergeTrigger = Extract<
+  MergeActionResult,
+  { readonly status: "merged" }
+>["trigger"];
+
+/** A merge confirmed on L1 during this attempt, with its local finalization's
+ * exit, recorded even if the attempt was interrupted afterwards. */
+type ConfirmedMerge = ConfirmedMergeFinalization & {
+  readonly trigger: MergeTrigger;
+};
+
 const mergeActionWithL1ControlPlaneHeld = (
   force: boolean,
   expectedHeaderHash: string | undefined,
+  confirmed: Ref.Ref<Option.Option<ConfirmedMerge>>,
 ): Effect.Effect<
   MergeActionResult,
   | SDK.CmlDeserializationError
@@ -507,6 +521,11 @@ const mergeActionWithL1ControlPlaneHeld = (
               } satisfies MergeActionResult;
             }
           }
+          const trigger: MergeTrigger = force
+            ? "manual"
+            : preflight.status === "tail_eligible_final_merge"
+              ? "final_tail_auto_merge"
+              : "threshold";
           yield* lucid.switchToOperatorsMergingWallet;
           yield* StateQueueMutationLeasesDB.revalidate(leaseToken);
           const mergeTxResult = yield* buildAndSubmitMergeTx(
@@ -525,6 +544,8 @@ const mergeActionWithL1ControlPlaneHeld = (
                 StateQueueMutationLeasesDB.revalidate(leaseToken).pipe(
                   Effect.zipRight(withHistoryWrite(Effect.void)),
                 ),
+              onConfirmedFinalization: (outcome) =>
+                Ref.set(confirmed, Option.some({ ...outcome, trigger })),
               referenceScriptsAddress: lucid.referenceScriptsAddress,
               submitSlotSnapshot: lucid.submitSlotSnapshot,
             },
@@ -564,11 +585,7 @@ const mergeActionWithL1ControlPlaneHeld = (
             postMergeSnapshot: snapshot,
             headerHash: mergeTxResult.headerHash,
             txHash: mergeTxResult.txHash,
-            trigger: force
-              ? "manual"
-              : preflight.status === "tail_eligible_final_merge"
-                ? "final_tail_auto_merge"
-                : "threshold",
+            trigger,
           } satisfies MergeActionResult;
         }),
       {
@@ -687,25 +704,84 @@ export const mergeAction = (
     Effect.gen(function* () {
       const globals = yield* Globals;
       yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
-      if (force) {
-        return yield* withL1ControlPlane(
-          globals,
-          { scope: "state_queue_merge", maxHoldMs: 180_000 },
-          mergeActionWithL1ControlPlaneHeld(true, expectedHeaderHash),
-        );
-      }
-      return yield* scheduledMergeAttempt(globals, expectedHeaderHash);
+      const confirmed = yield* Ref.make(Option.none<ConfirmedMerge>());
+      const attempt = force
+        ? withL1ControlPlane(
+            globals,
+            { scope: "state_queue_merge", maxHoldMs: 180_000 },
+            mergeActionWithL1ControlPlaneHeld(
+              true,
+              expectedHeaderHash,
+              confirmed,
+            ),
+          )
+        : scheduledMergeAttempt(globals, expectedHeaderHash, confirmed);
+      return yield* attempt.pipe(
+        Effect.catchIf(
+          (error): error is L1ControlPlaneTimeoutError =>
+            error instanceof L1ControlPlaneTimeoutError,
+          (timeout) => reportConfirmedMergeOverHoldTimeout(confirmed, timeout),
+        ),
+      );
     }),
   );
+
+/**
+ * The L1 control plane's hold timeout interrupts a merge attempt that runs
+ * too long, but a merge already confirmed on L1 finishes its local
+ * finalization regardless (it is uninterruptible), so the timeout must not
+ * relabel it. A finalization that completed reports the merge, with a fresh
+ * read of the state queue; one that failed reports its own failure. Only an
+ * attempt interrupted before its merge was confirmed reports the timeout.
+ */
+const reportConfirmedMergeOverHoldTimeout = (
+  confirmed: Ref.Ref<Option.Option<ConfirmedMerge>>,
+  timeout: L1ControlPlaneTimeoutError,
+) =>
+  Effect.gen(function* () {
+    const settled = yield* Ref.get(confirmed);
+    if (Option.isNone(settled)) return yield* Effect.fail(timeout);
+    const { exit, headerHash, txHash, trigger } = settled.value;
+    if (Exit.isFailure(exit)) {
+      yield* Effect.logError(
+        `🔸 Merge confirmed on L1 but its local finalization failed while the L1 control-plane hold timed out; reporting the finalization failure (header=${headerHash},tx=${txHash},timeout=${timeout.message}).`,
+      );
+      return yield* Effect.failCause(exit.cause);
+    }
+    yield* Effect.logWarning(
+      `🔸 Merge completed its local finalization past the L1 control-plane hold timeout; reporting the merge (header=${headerHash},tx=${txHash},timeout=${timeout.message}).`,
+    );
+    const lucid = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    const globals = yield* Globals;
+    const snapshot = yield* fetchStateQueueSnapshotProgram(
+      lucid.api,
+      contracts.stateQueue,
+      "post_merge",
+    );
+    yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
+    return {
+      status: "merged",
+      postMergeSnapshot: snapshot,
+      headerHash,
+      txHash,
+      trigger,
+    } satisfies MergeActionResult;
+  });
 
 const scheduledMergeAttempt = (
   globals: Globals,
   expectedHeaderHash: string | undefined,
+  confirmed: Ref.Ref<Option.Option<ConfirmedMerge>>,
 ) =>
   Effect.gen(function* () {
     const attempt = yield* withScheduledMergeControlPlaneWait({
       globals,
-      effect: mergeActionWithL1ControlPlaneHeld(false, expectedHeaderHash),
+      effect: mergeActionWithL1ControlPlaneHeld(
+        false,
+        expectedHeaderHash,
+        confirmed,
+      ),
     });
     if (Option.isSome(attempt)) {
       return attempt.value;

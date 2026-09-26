@@ -2,15 +2,20 @@ import "./utils.js";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Either, Option, Ref } from "effect";
+import { Duration, Effect, Either, Exit, Option, Ref } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DatabaseError } from "../src/database/utils/common.js";
 import {
   HistoryProducer,
   type HistoryProducerPermit,
   UnownedHistoryFixture,
 } from "../src/services/event-history-producer.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import {
+  Globals,
+  L1ControlPlaneTimeoutError,
+  NodeConfig,
+} from "../src/services/index.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
 import type {
@@ -655,6 +660,107 @@ describe("merge history producer permit", () => {
         includeCause: true,
       }),
     ).toContain("Missing producer permit");
+  });
+
+  describe("past the L1 control-plane hold timeout", () => {
+    const confirmedHeader = "aa".repeat(28);
+    const confirmedTx = "bb".repeat(32);
+    type ConfirmedFinalizationHook = (outcome: {
+      readonly headerHash: string;
+      readonly txHash: string;
+      readonly exit: Exit.Exit<void, unknown>;
+    }) => Effect.Effect<void>;
+    /** A builder whose uninterruptible post-confirmation finalization takes
+     * 190 s, past the 180 s hold, and ends with `exit`. */
+    const slowConfirmedFinalization =
+      (exit: Exit.Exit<void, unknown>) =>
+      (
+        _lucid: unknown,
+        _fetchConfig: unknown,
+        _contracts: unknown,
+        options: {
+          readonly onConfirmedFinalization?: ConfirmedFinalizationHook;
+        },
+      ) =>
+        Effect.uninterruptible(
+          Effect.sleep(Duration.seconds(190)).pipe(
+            Effect.zipRight(
+              options.onConfirmedFinalization!({
+                headerHash: confirmedHeader,
+                txHash: confirmedTx,
+                exit,
+              }),
+            ),
+            Effect.zipRight(exit),
+          ),
+        ).pipe(
+          Effect.as({
+            status: "merged" as const,
+            headerHash: confirmedHeader,
+            txHash: confirmedTx,
+          }),
+        );
+    const runPastHold = async (force: boolean) => {
+      vi.useFakeTimers();
+      try {
+        const outcome = Effect.runPromise(
+          Effect.either(mergeActionProgram(force)),
+        );
+        await vi.advanceTimersByTimeAsync(200_000);
+        return await outcome;
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+
+    it.each([
+      [true, "manual"],
+      [false, "threshold"],
+    ] as const)(
+      "reports a merge whose finalization completed as merged (force=%s)",
+      async (force, trigger) => {
+        buildAndSubmitMergeTxMock.mockImplementation(
+          slowConfirmedFinalization(Exit.void),
+        );
+        const outcome = await runPastHold(force);
+        expect(Either.isRight(outcome) && outcome.right).toMatchObject({
+          status: "merged",
+          headerHash: confirmedHeader,
+          txHash: confirmedTx,
+          trigger,
+          postMergeSnapshot: { reason: "post_merge" },
+        });
+      },
+    );
+
+    it("reports a failed finalization's own error, not the timeout", async () => {
+      buildAndSubmitMergeTxMock.mockImplementation(
+        slowConfirmedFinalization(
+          Exit.fail(
+            new DatabaseError({
+              table: "confirmed_merge_finalization",
+              message: "confirmed ledger write refused",
+              cause: undefined,
+            }),
+          ),
+        ),
+      );
+      const outcome = await runPastHold(true);
+      expect(Either.isLeft(outcome) && outcome.left).toBeInstanceOf(
+        DatabaseError,
+      );
+      expect(
+        formatUnknownError(Either.isLeft(outcome) && outcome.left),
+      ).toContain("confirmed ledger write refused");
+    });
+
+    it("still reports the timeout when no merge was confirmed", async () => {
+      buildAndSubmitMergeTxMock.mockImplementation(() => Effect.never);
+      const outcome = await runPastHold(true);
+      expect(Either.isLeft(outcome) && outcome.left).toBeInstanceOf(
+        L1ControlPlaneTimeoutError,
+      );
+    });
   });
 
   it("keeps a builder failure's own type across the permit registration", async () => {

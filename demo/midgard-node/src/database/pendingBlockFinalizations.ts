@@ -1619,9 +1619,11 @@ const retrieveNewestFinalizedWhere = (
   );
 
 /**
- * This node's newest finalized block: under Architecture G the native owner's
- * durable root is exactly its expected UTxO root, since only this node's own
- * commits advance that root and a correction rewind abandons what it undoes.
+ * This node's newest finalized block, by block window. It is not necessarily
+ * the native committed point: a correction rewind or signed-header recovery
+ * applied after it resets the native root to that recovery's target root,
+ * which can be a foreign block's post-state rather than any journal's expected
+ * root (see `recomputeCommittedTip`).
  */
 export const retrieveNewestFinalized = (): Effect.Effect<
   Option.Option<Record>,
@@ -1640,23 +1642,25 @@ export const retrieveFinalizedByHeaderHash = (
   );
 
 /**
- * The newest finalized journal whose block ended by `endedBy` and whose
- * expected UTxO root is `expectedUtxosRoot`: the local ledger point a block
- * built on a foreign tail started from, when that tail left the ledger at a
- * root this node had itself reached.
+ * The newest finalized journal whose expected UTxO root is `expectedUtxosRoot`
+ * (and whose block ended by `endedBy`, when given): the local ledger point a
+ * block built on a foreign tail started from, when that tail left the ledger
+ * at a root this node had itself reached.
  */
 export const retrieveNewestFinalizedWithExpectedRoot = ({
   expectedUtxosRoot,
   endedBy,
 }: {
   readonly expectedUtxosRoot: string;
-  readonly endedBy: Date;
+  readonly endedBy?: Date;
 }): Effect.Effect<Option.Option<Record>, DatabaseError, Database> =>
   retrieveNewestFinalizedWhere(
     "retrieveNewestFinalizedWithExpectedRoot",
     (sql) =>
-      sql`${sql(Columns.EXPECTED_UTXOS_ROOT)} = ${expectedUtxosRoot}
-        AND ${sql(Columns.BLOCK_END_TIME)} <= ${endedBy}`,
+      endedBy === undefined
+        ? sql`${sql(Columns.EXPECTED_UTXOS_ROOT)} = ${expectedUtxosRoot}`
+        : sql`${sql(Columns.EXPECTED_UTXOS_ROOT)} = ${expectedUtxosRoot}
+            AND ${sql(Columns.BLOCK_END_TIME)} <= ${endedBy}`,
   );
 
 export const retrieveActiveByStateQueueLeaseToken = (

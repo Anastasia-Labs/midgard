@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import type { NativeMpfCanonicalRootRecovery } from "../services/mpf-native-owner/protocol.js";
@@ -439,4 +439,71 @@ export const applyHistoryRecoveryPlan = <A, E, R>(
       WHERE recovery_id = ${Buffer.from(plan.recoveryId, "hex")} AND state = 'prepared'`;
   }).pipe(
     sqlErrorToDatabaseError(table, "Failed to apply history recovery plan"),
+  );
+
+/** A native recovery that has reset the native committed root to its target:
+ * a correction rewind or a signed-header recovery in state `applied`. */
+export type AppliedNativeRecovery = Readonly<{
+  recoveryId: string;
+  kind: "correction_rewind" | "signed_header";
+  targetRoot: string;
+}>;
+
+type AppliedRecoveryRow = { recovery_id: Buffer; intent: string };
+
+/**
+ * The newest applied native recovery whose application is later than the
+ * creation of `journalHeaderHash`'s journal (the newest overall when no
+ * journal is given).
+ *
+ * Only this node's own commits advance the native root, and applying a
+ * recovery resets it to the recovery's target root, which can be a foreign
+ * block's post-state. Whichever of the two is later fixes the native committed
+ * point. Recovery refuses to run while a journal is active, so a journal
+ * created before a recovery was already finalized (or abandoned by it) when
+ * the plan applied. An applied plan that cannot be decoded fails closed.
+ */
+export const retrieveAppliedRecoveryAfterJournal = (
+  journalHeaderHash: Buffer | undefined,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* journalHeaderHash === undefined
+      ? sql<AppliedRecoveryRow>`SELECT recovery_id, intent
+          FROM event_history_recovery_plans
+          WHERE state = 'applied'
+          ORDER BY updated_at DESC, recovery_id DESC LIMIT 1`
+      : sql<AppliedRecoveryRow>`SELECT recovery_id, intent
+          FROM event_history_recovery_plans
+          WHERE state = 'applied'
+            AND updated_at > (SELECT created_at FROM pending_block_finalizations
+              WHERE header_hash = ${journalHeaderHash})
+          ORDER BY updated_at DESC, recovery_id DESC LIMIT 1`;
+    if (rows.length === 0) return Option.none<AppliedNativeRecovery>();
+    const recoveryId = rows[0]!.recovery_id.toString("hex");
+    const undecodable = new DatabaseError({
+      table,
+      message: "Applied native recovery has no decodable target root",
+      cause: `recovery_id=${recoveryId}`,
+    });
+    const decoded = yield* Effect.try({
+      try: () => JSON.parse(rows[0]!.intent) as Record<string, unknown> | null,
+      catch: () => undecodable,
+    });
+    const kind =
+      decoded?.domain === CORRECTION_REWIND_RECOVERY_DOMAIN
+        ? ("correction_rewind" as const)
+        : decoded?.domain === SIGNED_HEADER_RECOVERY_DOMAIN
+          ? ("signed_header" as const)
+          : undefined;
+    const targetRoot = decoded?.targetRoot;
+    if (
+      kind === undefined ||
+      typeof targetRoot !== "string" ||
+      !isHash(targetRoot)
+    )
+      return yield* Effect.fail(undecodable);
+    return Option.some<AppliedNativeRecovery>({ recoveryId, kind, targetRoot });
+  }).pipe(
+    sqlErrorToDatabaseError(table, "Failed to read applied native recovery"),
   );

@@ -15,6 +15,7 @@ import {
   type ReconciliationResult,
 } from "../src/commands/reconcile.js";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
+import { CORRECTION_REWIND_RECOVERY_DOMAIN } from "../src/database/eventHistoryRecoveryPlans.js";
 import {
   ConfirmedLedgerDB,
   MpfEngineStateDB,
@@ -58,6 +59,40 @@ import {
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 
 type LedgerEntries = Parameters<typeof hydrateLedgerMpfFromLedgerEntries>[1];
+
+// Every confirmed merge's local-finalization outcome as the merge builder
+// reports it to its caller, in order, recorded without changing the caller's
+// own handling.
+const confirmedFinalizations = vi.hoisted(
+  () => [] as { readonly headerHash: string; readonly succeeded: boolean }[],
+);
+vi.mock(
+  "../src/transactions/state-queue/merge-to-confirmed-state.js",
+  async (importOriginal) => {
+    const { Effect: E, Exit: X } = await import("effect");
+    const actual =
+      await importOriginal<
+        typeof import("../src/transactions/state-queue/merge-to-confirmed-state.js")
+      >();
+    const buildAndSubmitMergeTx: typeof actual.buildAndSubmitMergeTx = (
+      lucid,
+      fetchConfig,
+      contracts,
+      options,
+    ) =>
+      actual.buildAndSubmitMergeTx(lucid, fetchConfig, contracts, {
+        ...options,
+        onConfirmedFinalization: (outcome) => {
+          confirmedFinalizations.push({
+            headerHash: outcome.headerHash,
+            succeeded: X.isSuccess(outcome.exit),
+          });
+          return options?.onConfirmedFinalization?.(outcome) ?? E.void;
+        },
+      });
+    return { ...actual, buildAndSubmitMergeTx };
+  },
+);
 
 /**
  * Actual public deposits, commits, confirmations and local finalizations under
@@ -325,6 +360,47 @@ it("audits the native MPF root at the committed tip, and merges manually only un
         ledger_delta_produced = ${fields.ledger_delta_produced}::text::jsonb
         WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
     );
+  // An applied correction rewind plan, as the recovery coordinator leaves it
+  // after the native restore; only its state, time and target root matter to
+  // the audit.
+  const rewindIntent = (headerHash: string, targetRoot: string) =>
+    JSON.stringify({
+      bindingDigest: "11".repeat(32),
+      domain: CORRECTION_REWIND_RECOVERY_DOMAIN,
+      expectedRoot: "22".repeat(32),
+      headerHash,
+      journalDigest: "33".repeat(32),
+      manifestId: "44".repeat(32),
+      members: [{ headerHash, transitionDigest: "55".repeat(32) }],
+      targetRoot,
+    });
+  const insertAppliedRewind = (
+    recoveryId: string,
+    headerHash: string,
+    targetRoot: string,
+  ) =>
+    sqlRun(
+      (sql) => sql`INSERT INTO event_history_recovery_plans
+        (recovery_id, binding_digest, manifest_id, header_hash, intent,
+         evidence_digest, checkpoint_revision, head_hash, snapshot_digest,
+         owner_generation, state)
+        VALUES (${Buffer.from(recoveryId, "hex")}, ${Buffer.alloc(32, 0x11)},
+          ${Buffer.alloc(32, 0x44)}, ${Buffer.from(headerHash, "hex")},
+          ${rewindIntent(headerHash, targetRoot)}, ${Buffer.alloc(32, 0x66)}, 0,
+          ${Buffer.alloc(32, 0x77)}, ${Buffer.alloc(32, 0x88)}, 0, 'applied')`,
+    );
+  const setRewindTarget = (recoveryId: string, targetRoot: string) =>
+    sqlRun(
+      (sql) => sql`UPDATE event_history_recovery_plans
+        SET intent = jsonb_set(intent::jsonb, '{targetRoot}',
+          to_jsonb(${targetRoot}::text))::text
+        WHERE recovery_id = ${Buffer.from(recoveryId, "hex")}`,
+    );
+  const deleteRewind = (recoveryId: string) =>
+    sqlRun(
+      (sql) => sql`DELETE FROM event_history_recovery_plans
+        WHERE recovery_id = ${Buffer.from(recoveryId, "hex")}`,
+    );
   const authorityRow = async () =>
     (
       await sqlRun(
@@ -348,6 +424,10 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   };
 
   try {
+    // The shared worker shard keeps earlier suites' (and earlier runs')
+    // recovery plan rows, which the production lifecycle reset does not own;
+    // an applied one would move the native committed point under this test.
+    await sqlRun((sql) => sql`DELETE FROM event_history_recovery_plans`);
     await advanceEmulatorPastLatestBlockEndTime(fixture);
 
     // --- Bug A: one finalized, unmerged block. -----------------------------
@@ -494,7 +574,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     const orphaned = await auditWithNativeRoot(twoBlockTip);
     expect(orphaned).toMatchObject({
       skippedReason: "tip_unverifiable",
-      tipJournalRoot: twoBlockTip,
+      tipCommittedRoot: twoBlockTip,
       diverged: false,
     });
     expect(orphaned.tipUnverifiable).toContain(tipRoot);
@@ -569,7 +649,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     const unverifiable = await auditWithNativeRoot(twoBlockTip);
     expect(unverifiable).toMatchObject({
       skippedReason: "tip_unverifiable",
-      tipJournalRoot: twoBlockTip,
+      tipCommittedRoot: twoBlockTip,
       diverged: false,
     });
     expect(unverifiable.tipUnverifiable).toContain(unheldRoot);
@@ -586,6 +666,80 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
       diverged: true,
     });
+    await writeJournalFields(second.headerHash, rebased);
+    await acknowledgeCleanAudit();
+
+    // A correction rewind removes B (built on the foreign F) and resets the
+    // native root to B's replay base, F's root. P is still this node's newest
+    // finalized journal, but the rewind applied after it fixes the committed
+    // point: a native root at F's root is unverifiable, not divergent, and P's
+    // post-state is now stale.
+    await writeJournalFields(second.headerHash, {
+      ...rebased,
+      status: PendingBlockFinalizationsDB.Status.Abandoned,
+      base_utxos_root: unheldRoot,
+      mpf_replay_base_root: Buffer.from(unheldRoot, "hex"),
+    });
+    const rewindId = "5a".repeat(32);
+    await insertAppliedRewind(rewindId, second.headerHash, unheldRoot);
+    const foreignRewound = await auditWithNativeRoot(unheldRoot);
+    expect(foreignRewound).toMatchObject({
+      skippedReason: "tip_unverifiable",
+      tipCommittedRoot: unheldRoot,
+      diverged: false,
+    });
+    expect(foreignRewound.tipUnverifiable).toContain(
+      `applied correction_rewind recovery_id=${rewindId}`,
+    );
+    expect(await auditHealthy()).toBe(true);
+    // A rewind to the confirmed ledger is verified there, with nothing
+    // unmerged on top.
+    await setRewindTarget(rewindId, clean.confirmedRoot);
+    expect(await auditWithNativeRoot(clean.confirmedRoot)).toMatchObject({
+      matchedPoint: "tip",
+      recomputedRoot: clean.confirmedRoot,
+      unmergedJournalCount: 0,
+      diverged: false,
+    });
+    // A rewind to P's post-state is reconstructed through P.
+    await setRewindTarget(rewindId, tipRoot);
+    expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
+      matchedPoint: "tip",
+      recomputedRoot: tipRoot,
+      unmergedJournalCount: 1,
+      diverged: false,
+    });
+    // A rewind applied before P's journal was created does not govern: P,
+    // committed after it, does.
+    await setRewindTarget(rewindId, unheldRoot);
+    await sqlRun(
+      (sql) => sql`UPDATE event_history_recovery_plans SET updated_at =
+        (SELECT created_at - interval '1 second' FROM pending_block_finalizations
+          WHERE header_hash = ${Buffer.from(first.headerHash, "hex")})
+        WHERE recovery_id = ${Buffer.from(rewindId, "hex")}`,
+    );
+    expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
+      matchedPoint: "tip",
+      unmergedJournalCount: 1,
+      diverged: false,
+    });
+    expect(await auditHealthy()).toBe(true);
+    // After the foreign rewind, P's post-state and the removed block's
+    // post-state both diverge.
+    await sqlRun(
+      (sql) => sql`UPDATE event_history_recovery_plans SET updated_at = NOW()
+        WHERE recovery_id = ${Buffer.from(rewindId, "hex")}`,
+    );
+    expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
+      recomputedRoot: clean.confirmedRoot,
+      tipCommittedRoot: unheldRoot,
+      diverged: true,
+    });
+    expect(await auditWithNativeRoot(twoBlockTip)).toMatchObject({
+      diverged: true,
+    });
+    expect(await auditHealthy()).toBe(false);
+    await deleteRewind(rewindId);
     // The rebased journal stays in place through both merges below.
     await writeJournalFields(second.headerHash, rebased);
     await acknowledgeCleanAudit();
@@ -714,6 +868,11 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       status: "merged",
       trigger: "manual",
     });
+    // The refused attempt never confirmed a merge; this one reported its
+    // finalization's success to the merge fiber.
+    expect(confirmedFinalizations).toEqual([
+      { headerHash: first.headerHash, succeeded: true },
+    ]);
     expect(await mergeJob(first.headerHash)).toMatchObject({
       [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
     });
@@ -784,8 +943,15 @@ it("audits the native MPF root at the committed tip, and merges manually only un
           );
           await new Promise((resolve) => setTimeout(resolve, 200));
           expect(interruptSettled).toBe(false);
+          // The outcome is reported once the finalization ends, not before,
+          // and still reaches the (interrupted) caller.
+          expect(confirmedFinalizations).toHaveLength(1);
           releaseFinalization();
           expect(Exit.isInterrupted(await interruption)).toBe(true);
+          expect(confirmedFinalizations).toEqual([
+            { headerHash: first.headerHash, succeeded: true },
+            { headerHash: second.headerHash, succeeded: true },
+          ]);
           interrupted = true;
           break;
         }
@@ -829,6 +995,27 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       diverged: false,
     });
     expect(await auditHealthy()).toBe(true);
+
+    // The tip walk stops at the confirmed boundary (B, whose post-state is the
+    // confirmed ledger): a committed point at P's post-state is anchored at a
+    // merged journal, which is unverifiable without reading any further back.
+    const mergedRewindId = "6b".repeat(32);
+    await insertAppliedRewind(mergedRewindId, second.headerHash, tipRoot);
+    const mergedAnchor = await auditWithNativeRoot(tipRoot);
+    expect(mergedAnchor).toMatchObject({
+      skippedReason: "tip_unverifiable",
+      tipCommittedRoot: tipRoot,
+      diverged: false,
+    });
+    expect(mergedAnchor.tipUnverifiable).toContain(
+      `header_hash=${first.headerHash} ended at or before the confirmed boundary header_hash=${second.headerHash}`,
+    );
+    expect(await auditWithNativeRoot(twoBlockTip)).toMatchObject({
+      tipCommittedRoot: tipRoot,
+      diverged: true,
+    });
+    await deleteRewind(mergedRewindId);
+    await acknowledgeCleanAudit();
   } finally {
     try {
       await h.close();

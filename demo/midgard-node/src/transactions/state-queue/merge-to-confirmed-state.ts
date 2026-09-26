@@ -26,7 +26,7 @@ import {
   scriptHashToCredential,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { Duration, Effect, Metric, Option, Ref } from "effect";
+import { Duration, Effect, type Exit, Metric, Option, Ref } from "effect";
 
 import { jsonReplacer } from "../../commands/command-utils.js";
 import {
@@ -320,6 +320,23 @@ type MergeOptions = {
     DatabaseError,
     Database
   >;
+  /**
+   * Called with the exit of the local finalization once the merge transaction
+   * is confirmed on L1, inside the same uninterruptible region, so it runs
+   * even when the caller is interrupted meanwhile. A caller that bounds the
+   * attempt with a hold timeout uses it to report a merge that settled while
+   * the timeout interrupted it, instead of the timeout.
+   */
+  readonly onConfirmedFinalization?: (
+    outcome: ConfirmedMergeFinalization,
+  ) => Effect.Effect<void>;
+};
+
+/** A merge confirmed on L1 and the exit of its local finalization. */
+export type ConfirmedMergeFinalization = {
+  readonly headerHash: string;
+  readonly txHash: string;
+  readonly exit: Exit.Exit<void, DatabaseError>;
 };
 
 export type CanonicalMergeCandidateReadiness =
@@ -1351,7 +1368,8 @@ export const buildAndSubmitMergeTx = (
       // starts at once and runs to completion (or records a failed job) even
       // if the caller is interrupted meanwhile, e.g. by the L1 control plane's
       // hold timeout; an interrupted finalization would leave its job running
-      // with no retry path.
+      // with no retry path. Its exit goes to `onConfirmedFinalization`, so an
+      // interrupting caller can still report what actually happened.
       const submitOutcome = yield* Effect.uninterruptibleMask((restore) =>
         restore(
           handleSignSubmit(lucid, txBuilder, submitRecoveryOptions).pipe(
@@ -1372,7 +1390,18 @@ export const buildAndSubmitMergeTx = (
             outcome.status === "submitted"
               ? Effect.logInfo(
                   "🔸 Merge transaction submitted, updating the db...",
-                ).pipe(Effect.zipRight(finalizeLocalMergeLogged))
+                ).pipe(
+                  Effect.zipRight(finalizeLocalMergeLogged),
+                  Effect.onExit((exit) =>
+                    options?.onConfirmedFinalization === undefined
+                      ? Effect.void
+                      : options.onConfirmedFinalization({
+                          headerHash: headerHash.toString("hex"),
+                          txHash,
+                          exit,
+                        }),
+                  ),
+                )
               : Effect.void,
           ),
         ),

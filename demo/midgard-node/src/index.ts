@@ -2596,7 +2596,7 @@ program
                 }${
                   result.tipUnverifiable === undefined
                     ? ""
-                    : `,tip_journal_root=${result.tipJournalRoot ?? "unavailable"},tip_unverifiable=${result.tipUnverifiable}`
+                    : `,tip_committed_root=${result.tipCommittedRoot ?? "unavailable"},tip_unverifiable=${result.tipUnverifiable}`
                 }`,
               ),
             )
