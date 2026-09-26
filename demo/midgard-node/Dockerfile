@@ -43,9 +43,11 @@ COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-node ./midgard-node
-# midgard-node's own prebuild covers lucid-midgard, midgard-sdk and (through
-# the sdk) midgard-core; validation and fault-proofs are runtime dependencies
-# that nothing else builds.
+# midgard-node's build compiles only itself, and its runtime imports each of
+# these packages' dist, so every one is built here, dependencies first.
+RUN pnpm --filter @al-ft/lucid-midgard build
+RUN pnpm --filter @al-ft/midgard-core build
+RUN pnpm --filter @al-ft/midgard-sdk build
 RUN pnpm --filter @al-ft/midgard-validation build
 RUN pnpm --filter @al-ft/midgard-fault-proofs build
 RUN pnpm --filter midgard-node build

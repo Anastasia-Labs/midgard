@@ -30,6 +30,12 @@ COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
 COPY midgard-test-support/package.json ./midgard-test-support/package.json
+# Every other workspace manifest too: `pnpm deploy` resolves each
+# `workspace:*` edge the watcher declares (midgard-node among them), even
+# though only the production chain's sources are copied and built below.
+COPY midgard-node/package.json ./midgard-node/package.json
+COPY midgard-node-tools/package.json ./midgard-node-tools/package.json
+COPY da-committee-node/package.json ./da-committee-node/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-watcher...
 
