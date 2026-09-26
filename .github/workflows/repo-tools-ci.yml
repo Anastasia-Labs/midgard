@@ -1,0 +1,59 @@
+name: Repo Tools CI
+
+# The repository's own tooling: the plain-node test suites under scripts/,
+# onchain/aiken/scripts/ and demo/scripts/lib/, the e2e acceptance runbook
+# validator, and the workflow linter. None of them were run by any workflow
+# before, so a red test there stayed red unseen. They are cheap, so this runs
+# on every pull request and every push to main rather than behind a path filter
+# that would need to track every file those tools read.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  repo-tools:
+    name: Repository tool tests and workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Only the demo workspace root: it carries `yaml`, which the workflow
+      # linter and its tests load.
+      - uses: ./.github/actions/demo-setup
+        with:
+          install-filter: midgard-demo
+      # `node --test` given a glob that matches nothing runs zero tests and
+      # exits 0, so a moved or renamed directory would turn this job into a
+      # silent pass. Every glob has to match at least one file.
+      - name: Every test glob matches a file
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          status=0
+          for glob in "scripts/**/*.test.mjs" "onchain/aiken/scripts/*.test.mjs" "demo/scripts/lib/*.test.mjs"; do
+            # shellcheck disable=SC2206
+            matches=($glob)
+            printf '%-40s %d file(s)\n' "$glob" "${#matches[@]}"
+            if [ "${#matches[@]}" -eq 0 ]; then status=1; fi
+          done
+          exit "$status"
+      - name: Run the repository tool tests
+        if: ${{ !cancelled() }}
+        run: node --test "scripts/**/*.test.mjs" "onchain/aiken/scripts/*.test.mjs" "demo/scripts/lib/*.test.mjs"
+      - name: Validate the e2e acceptance runbook
+        if: ${{ !cancelled() }}
+        run: node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs
+      - name: Lint the workflows
+        if: ${{ !cancelled() }}
+        run: node scripts/ci/lint-workflows.mjs
