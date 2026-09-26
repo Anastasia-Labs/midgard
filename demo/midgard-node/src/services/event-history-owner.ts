@@ -61,6 +61,10 @@ class HistoryAppendNeedsRecovery extends Data.TaggedError(
  * Only a rollback, a rewinding intersection, source failure or close supersede
  * them. */
 export const HISTORY_READY_MAXIMUM_LAG_BLOCKS = 5;
+/** Retry delay of a pending reconciliation that stayed pending with the same
+ * reason: doubles from the initial value up to the cap. */
+export const PENDING_RECONCILIATION_BACKOFF_INITIAL_MS = 500;
+export const PENDING_RECONCILIATION_BACKOFF_MAX_MS = 30_000;
 
 export type HistoryOwnerFrontier = Readonly<{
   ready: boolean;
@@ -226,6 +230,17 @@ export const makeEventHistoryOwner = <E, R>(input: {
     let handle = Promise.resolve(recovery.startup);
     let queue: Promise<void> = Promise.resolve();
     let convergenceQueued = false;
+    // A pending reconciliation whose preparation left it pending is retried
+    // on a doubling delay while its reason is unchanged, never on every tip.
+    // The delay is monotonic: a wall-clock step never stretches or skips it.
+    let pendingBackoff:
+      | {
+          reason: string;
+          delayMs: number;
+          notBefore: number;
+          timer: ReturnType<typeof setTimeout>;
+        }
+      | undefined;
     // Set at the first readiness; lag transitions are reported only after it.
     let everReady = false;
     let lagging = false;
@@ -321,6 +336,30 @@ export const makeEventHistoryOwner = <E, R>(input: {
           }),
         ),
       ).catch(() => undefined);
+    };
+    const clearPendingBackoff = () => {
+      if (pendingBackoff !== undefined) clearTimeout(pendingBackoff.timer);
+      pendingBackoff = undefined;
+    };
+    const armPendingBackoff = (reason: string) => {
+      const delayMs =
+        pendingBackoff?.reason === reason
+          ? Math.min(
+              pendingBackoff.delayMs * 2,
+              PENDING_RECONCILIATION_BACKOFF_MAX_MS,
+            )
+          : PENDING_RECONCILIATION_BACKOFF_INITIAL_MS;
+      clearPendingBackoff();
+      const timer = setTimeout(() => {
+        if (!closing) scheduleConvergence();
+      }, delayMs);
+      timer.unref?.();
+      pendingBackoff = {
+        reason,
+        delayMs,
+        notBefore: performance.now() + delayMs,
+        timer,
+      };
     };
     const scheduleConvergence = () => {
       if (convergenceQueued) return;
@@ -505,12 +544,22 @@ export const makeEventHistoryOwner = <E, R>(input: {
       try {
         if (pendingReconciliation !== undefined) {
           if (input.preparePendingReconciliation === undefined) return;
+          if (
+            pendingBackoff?.reason === pendingReconciliation.reason &&
+            performance.now() < pendingBackoff.notBefore
+          )
+            return;
           await prepare(input.preparePendingReconciliation);
           if (expected !== epoch) return;
           checkpoint = await run(
             active.persist(reconciled("resume", checkpoint)),
           );
-          if (expected !== epoch || pendingReconciliation !== undefined) return;
+          if (expected !== epoch) return;
+          if (pendingReconciliation !== undefined) {
+            armPendingBackoff(pendingReconciliation.reason);
+            return;
+          }
+          clearPendingBackoff();
         }
         if (input.prepareCompletion !== undefined)
           await prepare(input.prepareCompletion);
@@ -900,6 +949,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
     };
     const follower = start().catch(fail);
     const close = Effect.promise(async () => {
+      clearPendingBackoff();
       if (!closing) {
         closing = true;
         ready = false;

@@ -5,7 +5,10 @@ import * as Authority from "../database/eventHistoryAuthority.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { Database } from "./database.js";
 import type { HistoryOwnerCoverage } from "./event-history-owner.js";
-import { HistoryPreparation } from "./event-history-recovery.js";
+import {
+  HistoryPreparation,
+  HistoryRecoverySuperseded,
+} from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
 
 export type HistoryProducerPermit = Readonly<{
@@ -23,12 +26,23 @@ const fixtureTransaction = Context.GenericTag<true>(
   "midgard/UnownedHistoryFixtureTransaction",
 );
 
+const PRODUCER_REQUIRED = "Current authenticated history producer is required";
 const unavailable = (cause: unknown) =>
   new DatabaseError({
     table: Authority.tableName,
-    message: "Current authenticated history producer is required",
+    message: PRODUCER_REQUIRED,
     cause,
   });
+
+/** A producer refused only because the history source gate is closed for a
+ * recovery the owner is running (or a source signal superseded it). That is
+ * the planned state while a rewind, rollback or first start converges, not a
+ * failure of the refused work. */
+export const isHistoryProducerGateClosed = (error: unknown): boolean =>
+  error instanceof DatabaseError &&
+  error.table === Authority.tableName &&
+  error.message === PRODUCER_REQUIRED &&
+  error.cause instanceof HistoryRecoverySuperseded;
 
 /** Under the Ready row lock: the producer's journaled prefix is still the
  * journal's, exactly or as a canonical ancestor of the current head. Within

@@ -37,6 +37,7 @@ import {
   MidgardContracts,
   NodeConfig,
   reconcileStateQueueCorrectionObserver,
+  refuseRewoundStateQueueCorrectionRollback,
   reincludeFinalizedStateQueueCorrectionTransition,
   restoreRetractedStateQueueCorrectionTransition,
   type StateQueueCorrectionObserverResult,
@@ -148,6 +149,18 @@ export const reconcileStateQueueCorrections = ({
             );
           },
           restoreAfterRollback: async (transition) => {
+            if (rewindThroughHistoryOwner) {
+              // The native rewind has no inverse: a rolled-back removal whose
+              // rewind ran is an explicit integrity failure, and one whose
+              // rewind never ran left nothing to restore.
+              await run(
+                refuseRewoundStateQueueCorrectionRollback(
+                  transition,
+                  authority,
+                ),
+              );
+              return;
+            }
             await run(
               Effect.suspend(() =>
                 restoreRetractedStateQueueCorrectionTransition(

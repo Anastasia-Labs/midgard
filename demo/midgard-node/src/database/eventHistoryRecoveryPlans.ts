@@ -46,11 +46,17 @@ type RecoveryPlanDomain =
   | typeof SIGNED_HEADER_RECOVERY_DOMAIN
   | typeof CORRECTION_REWIND_RECOVERY_DOMAIN;
 
-/** One block removed from the state queue by an admitted correction, in the
- * order its payloads are reincluded (earliest first). */
+/** One block the rewind resolves, in the order its payloads are reincluded
+ * (earliest first). A `removed` member's header was removed from the state
+ * queue by the admitted correction `transitionDigest`. An `unlanded` member is
+ * a locally journaled descendant whose commit never reached L1 and never can:
+ * the correction `transitionDigest` consumed the exact queue node its commit
+ * spends. Every `removed` member precedes every `unlanded` one. */
+export type CorrectionRewindMemberKind = "removed" | "unlanded";
 export type CorrectionRewindMember = Readonly<{
   headerHash: string;
   transitionDigest: string;
+  kind: CorrectionRewindMemberKind;
 }>;
 /** Immutable identity of a native rewind to the replay base of the earliest
  * removed block, with every removed block's payload reinclusion. The member
@@ -94,6 +100,7 @@ const freezeRewindIntent = (
         Object.freeze({
           headerHash: member.headerHash,
           transitionDigest: member.transitionDigest,
+          kind: member.kind,
         }),
       ),
     ),
@@ -108,11 +115,16 @@ const validRewindIntent = (intent: CorrectionRewindIntent) =>
   Array.isArray(intent.members) &&
   intent.members.length > 0 &&
   intent.members[0]!.headerHash === intent.headerHash &&
+  intent.members[0]!.kind === "removed" &&
   new Set(intent.members.map(({ headerHash }) => headerHash)).size ===
     intent.members.length &&
   intent.members.every(
-    (member) =>
-      isHeaderHash(member.headerHash) && isHash(member.transitionDigest),
+    (member, index) =>
+      isHeaderHash(member.headerHash) &&
+      isHash(member.transitionDigest) &&
+      (member.kind === "removed" || member.kind === "unlanded") &&
+      (member.kind === "unlanded" ||
+        intent.members[index - 1]?.kind !== "unlanded"),
   ) &&
   isHash(intent.expectedRoot) &&
   isHash(intent.targetRoot) &&
@@ -506,4 +518,40 @@ export const retrieveAppliedRecoveryAfterJournal = (
     return Option.some<AppliedNativeRecovery>({ recoveryId, kind, targetRoot });
   }).pipe(
     sqlErrorToDatabaseError(table, "Failed to read applied native recovery"),
+  );
+
+/** Headers removed by every correction rewind this deployment ever prepared or
+ * applied. Once a rewind moved the native root off a removed block, that
+ * removal must stand: the node has no forward path that re-applies a removed
+ * block, so an authenticated view that no longer removes one of these headers
+ * is an integrity failure, never a state to reconcile silently. */
+export const correctionRewindRemovedHeaders = (manifestId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ intent: string }>`
+      SELECT intent FROM event_history_recovery_plans
+      WHERE manifest_id = ${Buffer.from(manifestId, "hex")}
+      ORDER BY created_at, recovery_id`;
+    const headers = new Map<string, string>();
+    for (const { intent } of rows) {
+      let decoded: Record<string, unknown>;
+      try {
+        decoded = JSON.parse(intent) as Record<string, unknown>;
+      } catch {
+        return yield* fail("Malformed retained native recovery identity");
+      }
+      if (decoded?.domain !== CORRECTION_REWIND_RECOVERY_DOMAIN) continue;
+      const { domain: _domain, ...fields } = decoded;
+      const parsed = freezeRewindIntent(
+        fields as unknown as CorrectionRewindIntent,
+      );
+      if (!validRewindIntent(parsed))
+        return yield* fail("Malformed retained correction rewind identity");
+      for (const member of parsed.members)
+        if (member.kind === "removed")
+          headers.set(member.headerHash, member.transitionDigest);
+    }
+    return headers;
+  }).pipe(
+    sqlErrorToDatabaseError(table, "Failed to read correction rewind plans"),
   );

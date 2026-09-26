@@ -228,6 +228,13 @@ export const recordAttempt = ({
     ),
   );
 
+/**
+ * A header an authenticated correction removed, or whose journal was
+ * abandoned, is no longer part of the chain the committee must serve, so its
+ * payload is neither republished nor counted as owed. The filter is evaluated
+ * per claim: an authenticated rollback that revokes the removal (or revives the
+ * journal) makes the payload due again without any row rewrite.
+ */
 export const claimDue = ({
   retentionDays,
   limit,
@@ -253,6 +260,16 @@ export const claimDue = ({
           AND publication.next_retry_at <= NOW()
           AND (publication.lease_expires_at IS NULL OR publication.lease_expires_at <= NOW())
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+          AND NOT EXISTS (
+            SELECT 1 FROM da_payload_terminal_outcomes outcome
+            WHERE outcome.header_hash = payload.header_hash
+              AND outcome.terminal_outcome = 'removed'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM pending_block_finalizations journal
+            WHERE journal.header_hash = payload.header_hash
+              AND journal.status = 'abandoned'
+          )
         ORDER BY publication.next_retry_at ASC,
           publication.header_hash ASC,
           publication.peer_id ASC
@@ -288,6 +305,16 @@ export const backlogCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status IN ('pending', 'rejected', 'transport_error')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        AND NOT EXISTS (
+          SELECT 1 FROM da_payload_terminal_outcomes outcome
+          WHERE outcome.header_hash = payload.header_hash
+            AND outcome.terminal_outcome = 'removed'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM pending_block_finalizations journal
+          WHERE journal.header_hash = payload.header_hash
+            AND journal.status = 'abandoned'
+        )
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(
@@ -340,6 +367,16 @@ export const conflictCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status = 'conflict'
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        AND NOT EXISTS (
+          SELECT 1 FROM da_payload_terminal_outcomes outcome
+          WHERE outcome.header_hash = payload.header_hash
+            AND outcome.terminal_outcome = 'removed'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM pending_block_finalizations journal
+          WHERE journal.header_hash = payload.header_hash
+            AND journal.status = 'abandoned'
+        )
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

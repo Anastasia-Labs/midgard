@@ -59,6 +59,7 @@ export const seedRecentPayloads = (
     ),
   );
 
+/** Removed or abandoned headers are not re-announced; see the publication claim. */
 export const claimDue = ({
   retentionDays,
   limit,
@@ -87,6 +88,16 @@ export const claimDue = ({
             OR announcement.lease_expires_at <= NOW()
           )
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+          AND NOT EXISTS (
+            SELECT 1 FROM da_payload_terminal_outcomes outcome
+            WHERE outcome.header_hash = payload.header_hash
+              AND outcome.terminal_outcome = 'removed'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM pending_block_finalizations journal
+            WHERE journal.header_hash = payload.header_hash
+              AND journal.status = 'abandoned'
+          )
         ORDER BY announcement.next_retry_at ASC, announcement.header_hash ASC
         FOR UPDATE OF announcement SKIP LOCKED
         LIMIT ${limit}
@@ -236,6 +247,16 @@ export const backlogCount = (
       INNER JOIN da_payloads payload ON payload.header_hash = announcement.header_hash
       WHERE announcement.status IN ('pending', 'failed')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        AND NOT EXISTS (
+          SELECT 1 FROM da_payload_terminal_outcomes outcome
+          WHERE outcome.header_hash = payload.header_hash
+            AND outcome.terminal_outcome = 'removed'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM pending_block_finalizations journal
+          WHERE journal.header_hash = payload.header_hash
+            AND journal.status = 'abandoned'
+        )
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

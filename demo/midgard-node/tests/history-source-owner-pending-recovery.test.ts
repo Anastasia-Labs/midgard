@@ -304,6 +304,15 @@ it("retains streamed recovery evidence while pending, opens only the current fro
             const laterTwo = source.appendFork(yield* Effect.promise(interval));
             const checkpointTwo = yield* waitCheckpoint(laterTwo.id);
             const beforeRestartAttempt = yield* waitPendingAttempt(laterTwo.id);
+            // A reconciliation that stays pending for the same reason is
+            // retried on a growing delay, never on every heartbeat: over two
+            // seconds of 100 ms heartbeats it is attempted at most a few
+            // times.
+            const attemptsBeforeQuiet = pendingAttempts.length;
+            yield* Effect.sleep("2 seconds");
+            expect(
+              pendingAttempts.length - attemptsBeforeQuiet,
+            ).toBeLessThanOrEqual(3);
             expect(BigInt(checkpointOne.revision)).toBeGreaterThan(
               BigInt(rolledBack.revision),
             );

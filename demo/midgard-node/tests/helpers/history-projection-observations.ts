@@ -221,6 +221,12 @@ export const captureConfirmedHistoryObservations = (
   return {
     flush,
     pendingCount: () => pending.size,
+    /** Stop waiting for a submission the test dropped from the emulator
+     * before any block included it; it will never confirm. */
+    forgetDropped: (hash: string) => {
+      if (!pending.delete(hash))
+        throw new Error(`Submission ${hash} is not pending observation`);
+    },
     restore: () => {
       emulator.submitTx = submit;
       emulator.awaitTx = awaitTx;

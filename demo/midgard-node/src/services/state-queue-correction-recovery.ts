@@ -5,11 +5,14 @@ import {
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import { correctionRewindRemovedHeaders } from "../database/eventHistoryRecoveryPlans.js";
 import {
   BlocksDB,
   DepositsDB,
   ForcedTransactionsDB,
+  ImmutableDB,
   MempoolDB,
+  MempoolLedgerDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   WithdrawalsDB,
@@ -20,6 +23,11 @@ import {
 } from "../database/utils/common.js";
 import { Database } from "./database.js";
 import { withHistoryWrite } from "./event-history-producer.js";
+import {
+  restoreSpeculativeLedgerAfterCorrection,
+  type WithdrawalLedgerRestore,
+} from "./state-queue-correction-ledger-restore.js";
+import { StateQueueCorrectionRewindIntegrityError } from "./state-queue-correction-observer.js";
 
 export type CorrectedBlockReinclusionResult = {
   readonly headerHash: string;
@@ -27,6 +35,12 @@ export type CorrectedBlockReinclusionResult = {
   readonly restoredMempoolTransactions: number;
   readonly restoredProcessedTransactions: number;
   readonly reopenedEvents: number;
+  /** Status the journal held when this reinclusion abandoned it. */
+  readonly abandonedFromStatus?: PendingBlockFinalizationsDB.Status;
+  /** Pending transactions rejected because they depended on reopened state;
+   * reported on the last block of the batch only. */
+  readonly rejectedDependentTransactions?: readonly Buffer[];
+  readonly restoredWithdrawalOutputs?: number;
 };
 
 export type CorrectedBlockRollbackRestoreResult = Readonly<{
@@ -85,11 +99,70 @@ export const authorizeStateQueueCorrectionReinclusion = (
   return transition;
 };
 
-/** One removed block and the admitted correction that removed it. */
+/** One block reopened by an admitted correction: a block the correction
+ * removed, or a descendant proven never to reach L1 because its commit spends
+ * the removed block's consumed queue node. */
 export type StateQueueCorrectedBlock = Readonly<{
   headerHash: string;
   transitionDigest: string;
+  kind: "removed" | "unlanded";
 }>;
+
+const Status = PendingBlockFinalizationsDB.Status;
+const J = PendingBlockFinalizationsDB.Columns;
+/** A removed block's journal always recorded a submission; one still reading
+ * pending_submission stopped between handing the signed commit to L1 and
+ * recording it, so it must retain the signed intent. */
+const REMOVED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
+  Status.SubmittedLocalFinalizationPending,
+  Status.SubmittedUnconfirmed,
+  Status.ObservedWaitingStability,
+  Status.Finalized,
+];
+/** An unlanded descendant was never observed on L1. */
+const UNLANDED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
+  Status.PendingSubmission,
+  Status.SubmittedLocalFinalizationPending,
+  Status.SubmittedUnconfirmed,
+];
+/** Statuses reached only after local finalization wrote ImmutableDB and
+ * BlocksDB and applied the block's withdrawal ledger effects. */
+const LOCALLY_FINALIZED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
+  [
+    Status.SubmittedUnconfirmed,
+    Status.ObservedWaitingStability,
+    Status.Finalized,
+  ];
+
+/** Terminal abandonment of a reopened journal that never reached a submitted
+ * status (removed pending_submission with a signed intent) or never landed
+ * (unlanded descendant). Exactly one row, from exactly the admitted states. */
+const abandonReopenedJournal = (
+  headerHash: Buffer,
+  transitionDigest: string,
+  allowed: readonly PendingBlockFinalizationsDB.Status[],
+  requireSignedIntent: boolean,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ header_hash: Buffer }>`
+      UPDATE pending_block_finalizations
+      SET status = ${Status.Abandoned},
+        correction_transition_digest = ${transitionDigest},
+        updated_at = NOW()
+      WHERE header_hash = ${headerHash}
+        AND status IN ${sql.in(allowed)}
+        ${requireSignedIntent ? sql`AND intended_tx_hash IS NOT NULL AND signed_tx_cbor IS NOT NULL` : sql``}
+      RETURNING header_hash`;
+    if (rows.length !== 1)
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message: "Failed to abandon a reopened block journal",
+          cause: `header_hash=${headerHash.toString("hex")}`,
+        }),
+      );
+  });
 
 /**
  * Reopens every locally journaled payload only after its exact L1 header has
@@ -107,10 +180,12 @@ export const reincludeStateQueueCorrectedBlocks = (
 > =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const withdrawalRestores: WithdrawalLedgerRestore[] = [];
+    const reopenedDepositEventIds: Buffer[] = [];
     return yield* sql.withTransaction(
       Effect.forEach(
         removedBlocks,
-        ({ headerHash: headerHashHex, transitionDigest }) =>
+        ({ headerHash: headerHashHex, transitionDigest, kind }) =>
           Effect.gen(function* () {
             const headerHash = Buffer.from(headerHashHex, "hex");
             const journal =
@@ -193,6 +268,65 @@ export const reincludeStateQueueCorrectedBlocks = (
                   ] === ProcessedMempoolDB.tableName,
               )
               .map(PendingBlockFinalizationsDB.txMemberToEntry);
+            const status = record[J.STATUS];
+            const allowed =
+              kind === "removed" ? REMOVED_STATUSES : UNLANDED_STATUSES;
+            const removedAwaitingAck =
+              kind === "removed" &&
+              status === Status.PendingSubmission &&
+              record[J.INTENDED_TX_HASH] != null &&
+              record[J.SIGNED_TX_CBOR] != null;
+            if (!allowed.includes(status) && !removedAwaitingAck)
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: PendingBlockFinalizationsDB.tableName,
+                  message: `Cannot reopen a ${kind} block from journal status ${status}`,
+                  cause: headerHashHex,
+                }),
+              );
+            // Local finalization deleted each valid withdrawal's output from
+            // the speculative ledger. Capture them before the withdrawals are
+            // reopened, which clears their classification.
+            if (LOCALLY_FINALIZED_STATUSES.includes(status)) {
+              const validIds = new Set(
+                record.withdrawalMembers
+                  .filter(
+                    (member) =>
+                      member[
+                        PendingBlockFinalizationsDB.WithdrawalMemberColumns
+                          .VALIDITY
+                      ] === WithdrawalsDB.Validity.WithdrawalIsValid,
+                  )
+                  .map((member) =>
+                    member[
+                      PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID
+                    ].toString("hex"),
+                  ),
+              );
+              const withdrawals = yield* WithdrawalsDB.retrieveByEventIds(
+                record.withdrawalEventIds.filter((id) =>
+                  validIds.has(id.toString("hex")),
+                ),
+              );
+              if (withdrawals.length !== validIds.size)
+                return yield* Effect.fail(
+                  new DatabaseError({
+                    table: WithdrawalsDB.tableName,
+                    message:
+                      "A reopened block's valid withdrawal row is missing",
+                    cause: headerHashHex,
+                  }),
+                );
+              for (const withdrawal of withdrawals)
+                withdrawalRestores.push({
+                  outRef: yield* WithdrawalsDB.toLedgerOutRef(withdrawal),
+                  l2OutRefData: Buffer.from(
+                    withdrawal[WithdrawalsDB.Columns.L2_OUTREF],
+                  ),
+                  baseTailHeaderHash: record[J.BASE_TAIL_HEADER_HASH],
+                });
+            }
+            reopenedDepositEventIds.push(...record.depositEventIds);
 
             yield* DepositsDB.reopenAfterStateQueueCorrectionByEventIds(
               record.depositEventIds,
@@ -209,10 +343,32 @@ export const reincludeStateQueueCorrectedBlocks = (
             yield* MempoolDB.restoreJournalEntries(mempoolEntries);
             yield* ProcessedMempoolDB.insertTxs([...processedEntries]);
             yield* BlocksDB.clearBlock(headerHash);
-            yield* PendingBlockFinalizationsDB.markCorrectedAfterStateQueueRemoval(
-              headerHash,
-              transitionDigest,
+            // The block's transactions are pending again. A transaction left
+            // in ImmutableDB would be filtered from its next block as already
+            // committed; only one still referenced by a live block stays.
+            const txIds = record.txMembers.map((member) =>
+              Buffer.from(
+                member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
+              ),
             );
+            if (txIds.length > 0)
+              yield* sql`DELETE FROM ${sql(ImmutableDB.tableName)} i
+                WHERE i.tx_id IN ${sql.in(txIds)}
+                  AND NOT EXISTS (
+                    SELECT 1 FROM ${sql(BlocksDB.tableName)} b
+                    WHERE b.tx_id = i.tx_id)`;
+            if (kind === "removed" && !removedAwaitingAck)
+              yield* PendingBlockFinalizationsDB.markCorrectedAfterStateQueueRemoval(
+                headerHash,
+                transitionDigest,
+              );
+            else
+              yield* abandonReopenedJournal(
+                headerHash,
+                transitionDigest,
+                removedAwaitingAck ? [Status.PendingSubmission] : allowed,
+                removedAwaitingAck,
+              );
             return {
               headerHash: headerHashHex,
               journalFound: true,
@@ -222,9 +378,28 @@ export const reincludeStateQueueCorrectedBlocks = (
                 record.depositEventIds.length +
                 record.forcedTransactionEventIds.length +
                 record.withdrawalEventIds.length,
+              abandonedFromStatus: status,
             } satisfies CorrectedBlockReinclusionResult;
           }),
         { concurrency: 1 },
+      ).pipe(
+        Effect.flatMap((results) =>
+          Effect.gen(function* () {
+            const ledger = yield* restoreSpeculativeLedgerAfterCorrection({
+              withdrawals: withdrawalRestores,
+              reopenedDepositEventIds,
+            });
+            if (results.length === 0) return results;
+            return [
+              ...results.slice(0, -1),
+              {
+                ...results.at(-1)!,
+                rejectedDependentTransactions: ledger.rejectedTransactions,
+                restoredWithdrawalOutputs: ledger.restoredWithdrawalOutputs,
+              },
+            ];
+          }),
+        ),
       ),
     );
   }).pipe(
@@ -251,9 +426,59 @@ export const reincludeFinalizedStateQueueCorrectionTransition = (
     transition.removedHeaderHashes.map((headerHash) => ({
       headerHash,
       transitionDigest: transition.transitionDigest,
+      kind: "removed" as const,
     })),
   );
 };
+
+/**
+ * Architecture G's answer to a post-finality rollback of a correction. The
+ * native rewind has no inverse: once a rewind moved the native root off a
+ * removed block (its plan names the block, or it abandoned the journal under
+ * this correction), the rollback is an integrity failure and is refused with
+ * an explicit error. A removal whose rewind never ran left no local effect, so
+ * its rollback needs nothing.
+ */
+export const refuseRewoundStateQueueCorrectionRollback = (
+  transitionInput: unknown,
+  authority: StateQueueCorrectionReinclusionAuthority,
+): Effect.Effect<
+  void,
+  DatabaseError | StateQueueCorrectionRewindIntegrityError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const transition = authorizeStateQueueCorrectionReinclusion(
+      transitionInput,
+      authority,
+    );
+    const rewound = yield* correctionRewindRemovedHeaders(
+      authority.expectedDeploymentIdentityDigest,
+    );
+    for (const headerHash of transition.removedHeaderHashes) {
+      if (rewound.has(headerHash))
+        return yield* Effect.fail(
+          new StateQueueCorrectionRewindIntegrityError(
+            headerHash,
+            `correction ${transition.transitionDigest} that removed it rolled back after its rewind plan was recorded`,
+          ),
+        );
+      const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+        Buffer.from(headerHash, "hex"),
+      );
+      if (
+        Option.isSome(journal) &&
+        journal.value[J.STATUS] === Status.Abandoned &&
+        journal.value[J.CORRECTION_TRANSITION_DIGEST] != null
+      )
+        return yield* Effect.fail(
+          new StateQueueCorrectionRewindIntegrityError(
+            headerHash,
+            `correction ${transition.transitionDigest} that removed it rolled back after its journal was abandoned under correction ${journal.value[J.CORRECTION_TRANSITION_DIGEST]}`,
+          ),
+        );
+    }
+  });
 
 /**
  * Inverse of correction reinclusion for a post-finality L1 rollback which puts
@@ -398,6 +623,40 @@ export const restoreRetractedStateQueueCorrectionTransition = (
               yield* MempoolDB.clearTxs(mempoolTxIds);
             if (processedTxIds.length > 0)
               yield* ProcessedMempoolDB.clearTxs(processedTxIds);
+            // Inverse of reinclusion: the block's transactions are committed
+            // again and its valid withdrawals consume their outputs again.
+            yield* ImmutableDB.insertTxsValidatedNative(
+              record.txMembers.map(PendingBlockFinalizationsDB.txMemberToEntry),
+            );
+            const validWithdrawalIds = record.withdrawalMembers
+              .filter(
+                (member) =>
+                  member[
+                    PendingBlockFinalizationsDB.WithdrawalMemberColumns.VALIDITY
+                  ] === WithdrawalsDB.Validity.WithdrawalIsValid,
+              )
+              .map((member) =>
+                Buffer.from(
+                  member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
+                ),
+              );
+            const validWithdrawals =
+              yield* WithdrawalsDB.retrieveByEventIds(validWithdrawalIds);
+            if (validWithdrawals.length !== validWithdrawalIds.length)
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: WithdrawalsDB.tableName,
+                  message: "A restored block's valid withdrawal row is missing",
+                  cause: headerHashHex,
+                }),
+              );
+            const withdrawnOutRefs = yield* Effect.forEach(
+              validWithdrawals,
+              WithdrawalsDB.toLedgerOutRef,
+            );
+            yield* DepositsDB.markConsumedByEventIds(
+              yield* MempoolLedgerDB.clearUTxOs(withdrawnOutRefs),
+            );
             yield* BlocksDB.insert(headerHash, allTxIds);
             yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
               headerHash,

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
+import type { StateQueueAuthenticatedTransition } from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option, Queue, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
@@ -8,6 +10,7 @@ import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import {
   type CorrectionRewindIntent,
   type CorrectionRewindMember,
+  type CorrectionRewindMemberKind,
   prepareCorrectionRewindRecoveryPlan,
   retainedPreparedRecoveryPlan,
 } from "../database/eventHistoryRecoveryPlans.js";
@@ -21,7 +24,10 @@ import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
 import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
-import { parseStateQueueCorrectionObserverState } from "./state-queue-correction-observer.js";
+import {
+  parseStateQueueCorrectionObserverState,
+  type StateQueueCorrectionObserverState,
+} from "./state-queue-correction-observer.js";
 import {
   authorizeStateQueueCorrectionReinclusion,
   reincludeStateQueueCorrectedBlocks,
@@ -52,6 +58,28 @@ const REMOVABLE_STATUSES: readonly Pending.Status[] = [
   Pending.Status.ObservedWaitingStability,
   Pending.Status.Finalized,
 ];
+/** Journal statuses of a block this node never observed on L1. Observed and
+ * finalized journals landed; they are never treated as unlanded. */
+const UNLANDED_STATUSES: readonly Pending.Status[] = [
+  Pending.Status.PendingSubmission,
+  Pending.Status.SubmittedLocalFinalizationPending,
+  Pending.Status.SubmittedUnconfirmed,
+];
+/** A removed header's journal may still read pending_submission when the
+ * process stopped between handing the signed commit to L1 and recording it.
+ * The removal proves the commit landed, so the journal is removable only if it
+ * retained the signed intent; a journal that never signed cannot be the
+ * removed header and stays blocked. */
+const removedStatusBlocked = (record: Pending.Record): string | undefined => {
+  const status = record[C.STATUS];
+  if (REMOVABLE_STATUSES.includes(status)) return undefined;
+  const header = record[C.HEADER_HASH].toString("hex");
+  if (status !== Pending.Status.PendingSubmission)
+    return `removed block ${header} has journal status ${status}, not a submitted status`;
+  if (record[C.INTENDED_TX_HASH] != null && record[C.SIGNED_TX_CBOR] != null)
+    return undefined;
+  return `removed block ${header} has journal status pending_submission without a signed intent, so this journal cannot be the removed header`;
+};
 
 export type StateQueueCorrectionRewindAuthority = Readonly<{
   manifestId: string;
@@ -107,6 +135,7 @@ export const stateQueueCorrectionRewindDisposition = (
 type ChainMember = Readonly<{
   record: Pending.Record;
   transitionDigest: string;
+  kind: CorrectionRewindMemberKind;
 }>;
 type Obligation =
   | Readonly<{ kind: "none" }>
@@ -117,14 +146,32 @@ type Obligation =
       parentAggregate: Pending.UtxoPayloadSizeAggregate | undefined;
     }>;
 
-/** Every admitted, freshly re-authorized removal: header -> transition digest. */
-const admittedRemovals = (authority: StateQueueCorrectionRewindAuthority) =>
+type AdmittedRemovals = Readonly<{
+  kind: "admitted";
+  /** header -> digest of the admitted correction that removed it */
+  removals: ReadonlyMap<string, string>;
+  /** header -> the admitted correction that removed it */
+  transitions: ReadonlyMap<string, StateQueueAuthenticatedTransition>;
+  state: StateQueueCorrectionObserverState;
+}>;
+
+/** Every admitted removal, re-validated from the persisted observer state:
+ * each envelope is re-parsed and re-authorized against the configured
+ * deployment and release depth. This is the observer's durable authenticated
+ * view, not a fresh L1 read. With `lock`, the observer row is held FOR SHARE,
+ * so no observer save can retract a removal before the caller's transaction
+ * ends. */
+const admittedRemovals = (
+  authority: StateQueueCorrectionRewindAuthority,
+  lock = false,
+) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ state_record: unknown }>`
       SELECT state_record FROM state_queue_terminal_observer_states
       WHERE deployment_identity_digest = ${Buffer.from(authority.manifestId, "hex")}
-        AND state_queue_policy_id = ${Buffer.from(authority.stateQueuePolicyId, "hex")}`;
+        AND state_queue_policy_id = ${Buffer.from(authority.stateQueuePolicyId, "hex")}
+      ${lock ? sql`FOR SHARE` : sql``}`;
     if (rows.length !== 1)
       return { kind: "blocked" as const, reason: "no observer state" };
     const raw = rows[0]!.state_record;
@@ -145,6 +192,7 @@ const admittedRemovals = (authority: StateQueueCorrectionRewindAuthority) =>
         reason: "the observer state is non-canonical",
       };
     const removals = new Map<string, string>();
+    const transitions = new Map<string, StateQueueAuthenticatedTransition>();
     for (const transition of state.admitted) {
       if (
         transition.transitionKind !== "timeout_correction" &&
@@ -170,9 +218,15 @@ const admittedRemovals = (authority: StateQueueCorrectionRewindAuthority) =>
             reason: `block ${header} is removed by two admitted corrections`,
           };
         removals.set(header, transition.transitionDigest);
+        transitions.set(header, transition);
       }
     }
-    return { kind: "admitted" as const, removals };
+    return {
+      kind: "admitted" as const,
+      removals,
+      transitions,
+      state,
+    } satisfies AdmittedRemovals;
   });
 
 const journal = (headerHash: string) =>
@@ -192,16 +246,18 @@ const nonAbandonedChildren = (headerHash: string) =>
 /** The removed chain's immutable identity: every root and hash that fixes
  * which native state each block moved from and to. Status is excluded; it is
  * checked separately and legitimately advances before the rewind. */
-const chainIdentity = (chain: readonly Pending.Record[]) =>
+const chainIdentity = (chain: readonly ChainMember[]) =>
   sha(
     eventHistoryCanonicalJson(
-      chain.map((record) => ({
+      chain.map(({ record, kind }) => ({
+        kind,
         headerHash: record[C.HEADER_HASH].toString("hex"),
         manifestId: record[C.DEPLOYMENT_MANIFEST_ID],
         baseTailHeaderHash: record[C.BASE_TAIL_HEADER_HASH].toString("hex"),
         baseUtxosRoot: record[C.BASE_UTXOS_ROOT],
         expectedUtxosRoot: record[C.EXPECTED_UTXOS_ROOT],
         submittedTxHash: record[C.SUBMITTED_TX_HASH]?.toString("hex") ?? null,
+        intendedTxHash: record[C.INTENDED_TX_HASH]?.toString("hex") ?? null,
         replayBaseRoot:
           record.nativeMpfReplay?.baseRoot.toString("hex") ?? null,
         replayCandidateRoot:
@@ -221,12 +277,15 @@ const validateChain = (
 ): Effect.Effect<Obligation, DatabaseError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     for (let index = 0; index < chain.length; index += 1) {
-      const { record } = chain[index]!;
+      const { record, kind } = chain[index]!;
       const header = record[C.HEADER_HASH].toString("hex");
-      if (!REMOVABLE_STATUSES.includes(record[C.STATUS]))
+      if (kind === "removed") {
+        const blocked = removedStatusBlocked(record);
+        if (blocked !== undefined) return { kind: "blocked", reason: blocked };
+      } else if (!UNLANDED_STATUSES.includes(record[C.STATUS]))
         return {
           kind: "blocked",
-          reason: `removed block ${header} has journal status ${record[C.STATUS]}, not a submitted status`,
+          reason: `unlanded descendant ${header} has journal status ${record[C.STATUS]}, which records an L1 observation`,
         };
       if (record[C.DEPLOYMENT_MANIFEST_ID] !== manifestId)
         return {
@@ -275,11 +334,153 @@ const validateChain = (
     return { kind: "ready", chain, parentAggregate };
   });
 
+const OUT_REF = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u;
+
+/** True only when the signed transaction's body hashes to `txHash` and spends
+ * `outRef`. Undecodable bytes are not evidence. */
+const signedTxSpends = (
+  cbor: Buffer,
+  txHash: Buffer,
+  outRef: string,
+): boolean => {
+  const parsed = OUT_REF.exec(outRef);
+  if (parsed === null) return false;
+  let tx: CML.Transaction | undefined;
+  try {
+    tx = CML.Transaction.from_cbor_bytes(cbor);
+    const body = tx.body();
+    const hash = CML.hash_transaction(body);
+    const inputs = body.inputs();
+    try {
+      if (hash.to_hex() !== txHash.toString("hex")) return false;
+      for (let index = 0; index < inputs.len(); index += 1) {
+        const input = inputs.get(index);
+        const id = input.transaction_id();
+        try {
+          if (
+            id.to_hex() === parsed[1] &&
+            input.index().toString() === parsed[2]
+          )
+            return true;
+        } finally {
+          id.free();
+          input.free();
+        }
+      }
+      return false;
+    } finally {
+      inputs.free();
+      hash.free();
+      body.free();
+    }
+  } catch {
+    return false;
+  } finally {
+    tx?.free();
+  }
+};
+
+/** A header the authenticated state-queue view still knows: in the current
+ * cursor queue, or in any pending or admitted transition's queues. Such a
+ * block landed (or may yet be admitted as landed) and is never unlanded. */
+const onAuthenticatedQueue = (
+  state: StateQueueCorrectionObserverState,
+  header: string,
+) =>
+  state.cursorQueue.some((node) => node.headerHash === header) ||
+  [...state.pending, ...state.admitted].some(
+    (transition) =>
+      transition.removedHeaderHashes.includes(header) ||
+      transition.previousQueue.some((node) => node.headerHash === header) ||
+      transition.nextQueue.some((node) => node.headerHash === header),
+  );
+
+/**
+ * Proves that `childHeader`, the only non-abandoned journal extending the
+ * removed block `parent`, never reached L1 and never can: its commit spends
+ * exactly the queue node of `parent` that the admitted correction consumed.
+ * That correction is at the release depth, so the input is gone for as long
+ * as the removal itself stands. Anything short of that proof is blocked with
+ * its reason; a journal whose header the authenticated view knows is never
+ * abandoned.
+ */
+const proveUnlanded = (
+  parent: ChainMember,
+  childHeader: string,
+  admitted: AdmittedRemovals,
+): Effect.Effect<
+  | Readonly<{ kind: "blocked"; reason: string }>
+  | Readonly<{ kind: "unlanded"; member: ChainMember }>,
+  DatabaseError,
+  SqlClient.SqlClient
+> =>
+  Effect.gen(function* () {
+    const parentHeader = parent.record[C.HEADER_HASH].toString("hex");
+    const blocked = (reason: string) => ({ kind: "blocked" as const, reason });
+    const notYet = `descendant ${childHeader} of removed block ${parentHeader} is not removed by an admitted correction yet`;
+    if (parent.kind !== "removed")
+      return blocked(
+        `descendant ${childHeader} extends unlanded block ${parentHeader}; only a direct descendant of a removed block can be proven unlanded`,
+      );
+    const found = yield* journal(childHeader);
+    if (Option.isNone(found))
+      return blocked(`descendant ${childHeader} lost its journal`);
+    const record = found.value;
+    const status = record[C.STATUS];
+    if (!UNLANDED_STATUSES.includes(status))
+      return blocked(`${notYet} (journal status ${status})`);
+    if (onAuthenticatedQueue(admitted.state, childHeader))
+      return blocked(`${notYet}; it is on the authenticated state queue`);
+    const removal = admitted.transitions.get(parentHeader);
+    const baseTail = record[C.BASE_TAIL_OUT_REF];
+    const parentNode = removal?.previousQueue.find(
+      (node) => node.headerHash === parentHeader,
+    );
+    if (
+      removal === undefined ||
+      removal.transitionDigest !== parent.transitionDigest ||
+      parentNode === undefined ||
+      parentNode.outRef !== baseTail ||
+      !removal.consumedQueueOutRefs.includes(baseTail)
+    )
+      return blocked(
+        `${notYet}; its commit spends ${baseTail}, which the admitted correction of ${parentHeader} did not consume`,
+      );
+    const intended = record[C.INTENDED_TX_HASH] ?? null;
+    const signed = record[C.SIGNED_TX_CBOR] ?? null;
+    const submitted = record[C.SUBMITTED_TX_HASH];
+    if (intended !== null && signed !== null) {
+      if (submitted !== null && !submitted.equals(intended))
+        return blocked(
+          `${notYet}; it was submitted as ${submitted.toString("hex")}, not its retained signed intent`,
+        );
+      if (!signedTxSpends(signed, intended, baseTail))
+        return blocked(
+          `${notYet}; its retained signed commit does not spend ${baseTail}`,
+        );
+    } else if (
+      submitted !== null ||
+      status !== Pending.Status.PendingSubmission
+    )
+      return blocked(
+        `${notYet}; it was handed to L1 without retained signed bytes, so it cannot be proven never to land`,
+      );
+    return {
+      kind: "unlanded" as const,
+      member: {
+        record,
+        transitionDigest: removal.transitionDigest,
+        kind: "unlanded" as const,
+      },
+    };
+  });
+
 /** The removed chain owed a rewind: an admitted removal whose journal is not
  * abandoned, anchored at the unique owed block whose parent is not owed, with
- * every non-abandoned descendant also removed. A suffix whose later removals
- * are not admitted yet stays blocked; each admission re-evaluates, so any
- * order of suffix finality reaches the same end state. */
+ * every non-abandoned descendant also removed, or proven never to land (see
+ * proveUnlanded). A suffix whose later removals are not admitted yet stays
+ * blocked; each admission re-evaluates, so any order of suffix finality
+ * reaches the same end state. */
 const loadObligation = (authority: StateQueueCorrectionRewindAuthority) =>
   Effect.gen(function* () {
     const unresolved = yield* unresolvedRemovedHeaders(authority);
@@ -295,7 +496,11 @@ const loadObligation = (authority: StateQueueCorrectionRewindAuthority) =>
           kind: "blocked",
           reason: `removed block ${header} lost its admitted correction or journal`,
         } satisfies Obligation;
-      owed.set(header, { record: record.value, transitionDigest: digest });
+      owed.set(header, {
+        record: record.value,
+        transitionDigest: digest,
+        kind: "removed",
+      });
     }
     const anchors = [...owed.values()].filter(
       ({ record }) =>
@@ -318,10 +523,20 @@ const loadObligation = (authority: StateQueueCorrectionRewindAuthority) =>
           reason: `removed block ${chain.at(-1)!.record[C.HEADER_HASH].toString("hex")} has competing descendants ${children.join(",")}`,
         } satisfies Obligation;
       const child = owed.get(children[0]!);
-      if (child === undefined)
+      if (child === undefined) {
+        const unlanded = yield* proveUnlanded(
+          chain.at(-1)!,
+          children[0]!,
+          admitted,
+        );
+        if (unlanded.kind === "blocked") return unlanded satisfies Obligation;
+        chain.push(unlanded.member);
+        continue;
+      }
+      if (chain.at(-1)!.kind === "unlanded")
         return {
           kind: "blocked",
-          reason: `descendant ${children[0]!} of removed block ${chain.at(-1)!.record[C.HEADER_HASH].toString("hex")} is not removed by an admitted correction yet`,
+          reason: `removed block ${children[0]!} extends unlanded block ${chain.at(-1)!.record[C.HEADER_HASH].toString("hex")}`,
         } satisfies Obligation;
       if (chain.includes(child))
         return {
@@ -330,7 +545,7 @@ const loadObligation = (authority: StateQueueCorrectionRewindAuthority) =>
         } satisfies Obligation;
       chain.push(child);
     }
-    if (chain.length !== owed.size)
+    if (chain.filter(({ kind }) => kind === "removed").length !== owed.size)
       return {
         kind: "blocked",
         reason: `removed blocks ${[...owed.keys()].join(",")} do not form one chain`,
@@ -343,9 +558,10 @@ const loadObligation = (authority: StateQueueCorrectionRewindAuthority) =>
 const loadRetainedChain = (
   authority: StateQueueCorrectionRewindAuthority,
   intent: CorrectionRewindIntent,
+  lock = false,
 ) =>
   Effect.gen(function* () {
-    const admitted = yield* admittedRemovals(authority);
+    const admitted = yield* admittedRemovals(authority, lock);
     if (admitted.kind === "blocked")
       return yield* Effect.fail(
         failure(
@@ -354,20 +570,38 @@ const loadRetainedChain = (
       );
     const chain: ChainMember[] = [];
     for (const member of intent.members) {
+      const lost = failure(
+        `Retained correction rewind member ${member.headerHash} lost its admitted correction or journal`,
+      );
+      if (member.kind === "unlanded") {
+        const proof = yield* proveUnlanded(
+          chain.at(-1)!,
+          member.headerHash,
+          admitted,
+        );
+        if (
+          proof.kind !== "unlanded" ||
+          proof.member.transitionDigest !== member.transitionDigest
+        )
+          return yield* Effect.fail(
+            failure(
+              `Retained correction rewind member ${member.headerHash} is no longer provably unlanded: ${proof.kind === "blocked" ? proof.reason : "its proving correction changed"}`,
+            ),
+          );
+        chain.push(proof.member);
+        continue;
+      }
       const record = yield* journal(member.headerHash);
       if (
         admitted.removals.get(member.headerHash) !== member.transitionDigest ||
         Option.isNone(record) ||
         record.value[C.STATUS] === Pending.Status.Abandoned
       )
-        return yield* Effect.fail(
-          failure(
-            `Retained correction rewind member ${member.headerHash} lost its admitted correction or journal`,
-          ),
-        );
+        return yield* Effect.fail(lost);
       chain.push({
         record: record.value,
         transitionDigest: member.transitionDigest,
+        kind: "removed",
       });
     }
     const validated = yield* validateChain(chain, authority.manifestId);
@@ -378,8 +612,7 @@ const loadRetainedChain = (
         ),
       );
     if (
-      chainIdentity(chain.map(({ record }) => record)) !==
-        intent.journalDigest ||
+      chainIdentity(chain) !== intent.journalDigest ||
       chain[0]!.record[C.BASE_UTXOS_ROOT] !== intent.targetRoot
     )
       return yield* Effect.fail(
@@ -389,6 +622,41 @@ const loadRetainedChain = (
       );
     return validated;
   });
+
+/** Last blocked reason per history binding. A blocked obligation is
+ * re-evaluated on every convergence; it is logged at WARN when its reason
+ * first appears or changes, and at debug while it persists. */
+const blockedReasons = new Map<string, string>();
+const logBlocked = (bindingDigest: string, reason: string | undefined) =>
+  Effect.suspend(() => {
+    if (reason === undefined) {
+      blockedReasons.delete(bindingDigest);
+      return Effect.void;
+    }
+    const message = `State-queue correction rewind is blocked: ${reason}`;
+    if (blockedReasons.get(bindingDigest) === reason)
+      return Effect.logDebug(message);
+    blockedReasons.set(bindingDigest, reason);
+    return Effect.logWarning(message);
+  });
+
+/** Read-only view of the rewind obligation, for diagnostics and tests. */
+export const inspectStateQueueCorrectionRewindObligation = (
+  authority: StateQueueCorrectionRewindAuthority,
+) =>
+  loadObligation(authority).pipe(
+    Effect.map((obligation) =>
+      obligation.kind === "ready"
+        ? {
+            kind: "ready" as const,
+            members: obligation.chain.map(({ record, kind }) => ({
+              headerHash: record[C.HEADER_HASH].toString("hex"),
+              kind,
+            })),
+          }
+        : obligation,
+    ),
+  );
 
 /**
  * Recovery preparation: resumes a retained rewind plan, or proves a fresh
@@ -425,10 +693,10 @@ export const prepareStateQueueCorrectionRewind = (input: {
           return { ready, retained: retained.intent };
         }
         const obligation = yield* loadObligation(authority);
-        if (obligation.kind === "blocked")
-          yield* Effect.logWarning(
-            `State-queue correction rewind is blocked: ${obligation.reason}`,
-          );
+        yield* logBlocked(
+          input.bindingDigest,
+          obligation.kind === "blocked" ? obligation.reason : undefined,
+        );
         return obligation.kind === "ready"
           ? { ready: obligation, retained: undefined }
           : undefined;
@@ -438,9 +706,10 @@ export const prepareStateQueueCorrectionRewind = (input: {
     const { ready } = derived;
     const records = ready.chain.map(({ record }) => record);
     const members: readonly CorrectionRewindMember[] = ready.chain.map(
-      ({ record, transitionDigest }) => ({
+      ({ record, transitionDigest, kind }) => ({
         headerHash: record[C.HEADER_HASH].toString("hex"),
         transitionDigest,
+        kind,
       }),
     );
     const targetRoot = records[0]![C.BASE_UTXOS_ROOT];
@@ -448,7 +717,7 @@ export const prepareStateQueueCorrectionRewind = (input: {
       targetRoot,
       ...records.map((record) => record[C.EXPECTED_UTXOS_ROOT]),
     ];
-    const journalDigest = chainIdentity(records);
+    const journalDigest = chainIdentity(ready.chain);
     const globals = yield* Globals;
     if (config.SPECULATIVE_COMMIT_BUILD)
       yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
@@ -522,25 +791,16 @@ export const prepareStateQueueCorrectionRewind = (input: {
         snapshot: checkpoint.capture.snapshotDigest,
       }),
     );
-    const recheck = Effect.gen(function* () {
-      const current: Pending.Record[] = [];
-      for (const { headerHash } of members) {
-        const record = yield* journal(headerHash);
-        if (
-          Option.isNone(record) ||
-          record.value[C.STATUS] === Pending.Status.Abandoned
-        )
-          return yield* Effect.fail(
-            failure(`Rewind journal ${headerHash} changed before recovery`),
-          );
-        current.push(record.value);
-      }
-      if (chainIdentity(current) !== journalDigest)
-        return yield* Effect.fail(
-          failure("Rewind journal identity changed before recovery"),
-        );
-      return current;
-    });
+    // Re-proves the whole chain inside the caller's transaction with the
+    // observer row held FOR SHARE: every removal is still admitted, every
+    // unlanded descendant is still provably unlanded, and the journal identity
+    // is unchanged. No observer save can retract a removal until the
+    // transaction that acts on this proof commits.
+    const recheck = loadRetainedChain(
+      authority,
+      derived.retained ?? intent,
+      true,
+    ).pipe(Effect.map(({ chain }) => chain));
     const plan = yield* owned(
       recheck.pipe(
         Effect.zipRight(
@@ -568,7 +828,13 @@ export const prepareStateQueueCorrectionRewind = (input: {
       repair: Effect.gen(function* () {
         const current = yield* recheck;
         const sql = yield* SqlClient.SqlClient;
-        const results = yield* reincludeStateQueueCorrectedBlocks(members);
+        const results = yield* reincludeStateQueueCorrectedBlocks(
+          current.map(({ record, transitionDigest, kind }) => ({
+            headerHash: record[C.HEADER_HASH].toString("hex"),
+            transitionDigest,
+            kind,
+          })),
+        );
         if (
           results.length !== members.length ||
           results.some(({ journalFound }) => !journalFound)
@@ -576,9 +842,9 @@ export const prepareStateQueueCorrectionRewind = (input: {
           return yield* Effect.fail(
             failure("Rewind reinclusion did not resolve every removed block"),
           );
-        // Removed blocks can never be continued; retire only their own
-        // leases, atomically with their abandonment.
-        for (const record of current)
+        // Removed and unlanded blocks can never be continued; retire only
+        // their own leases, atomically with their abandonment.
+        for (const { record } of current)
           yield* StateQueueLeases.release(record[C.STATE_QUEUE_LEASE_TOKEN]);
         // The SQL marker follows the native root, which the plan's CAS already
         // proved. It was stamped by the latest journaled block, which may be
@@ -626,7 +892,8 @@ export const prepareStateQueueCorrectionRewind = (input: {
         yield* Queue.takeAll(globals.SPECULATIVE_BUILD_WAKE_QUEUE);
       }),
     });
+    blockedReasons.delete(input.bindingDigest);
     yield* Effect.logInfo(
-      `State-queue correction rewind restored native root ${targetRoot} and reincluded block(s) ${members.map(({ headerHash }) => headerHash).join(",")}.`,
+      `State-queue correction rewind restored native root ${targetRoot} and reincluded block(s) ${members.map(({ headerHash, kind }) => `${headerHash}(${kind})`).join(",")}.`,
     );
   });

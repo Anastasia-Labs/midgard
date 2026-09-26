@@ -12,11 +12,23 @@ import {
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql/SqlClient";
-import { Duration, Effect, Exit, Metric, Ref, Schedule } from "effect";
+import {
+  Cause,
+  Chunk,
+  Duration,
+  Effect,
+  Exit,
+  Metric,
+  Ref,
+  Schedule,
+} from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { runHistoryProducer } from "../services/event-history-producer.js";
+import {
+  isHistoryProducerGateClosed,
+  runHistoryProducer,
+} from "../services/event-history-producer.js";
 import {
   BatchSql,
   Globals,
@@ -259,15 +271,52 @@ export const classifyPlutusEvaluationFailure = (
   return message;
 };
 
+/** True when every failure in `cause` is a producer refused by a closed
+ * history gate, with no defect: the concurrent drains of one iteration fail
+ * (and interrupt each other) together while the owner recovers. */
+export const isHistoryGateClosedCause = (cause: Cause.Cause<unknown>) => {
+  const failures = Chunk.toReadonlyArray(Cause.failures(cause));
+  return (
+    failures.length > 0 &&
+    Chunk.isEmpty(Cause.defects(cause)) &&
+    failures.every(isHistoryProducerGateClosed)
+  );
+};
+
+const HISTORY_GATE_CLOSED_MESSAGE =
+  "Transaction queue paused while the history owner recovers; admission resumes when its gate reopens.";
+
 /**
  * Repeats a scheduled background action while logging and swallowing per-iteration
- * failures so the loop survives transient outages.
+ * failures so the loop survives transient outages. A history gate closed for
+ * a planned recovery is expected: it is logged once per closure at info,
+ * without a stack, and then at debug until an iteration succeeds. Every other
+ * failure keeps its full cause at WARN.
  */
 export const repeatScheduledWithCauseLogging = <R>(
   action: Effect.Effect<void, unknown, R>,
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<void, never, R> =>
-  Effect.repeat(action.pipe(Effect.catchAllCause(Effect.logWarning)), schedule);
+  Effect.gen(function* () {
+    const gateClosedReported = yield* Ref.make(false);
+    yield* Effect.repeat(
+      action.pipe(
+        Effect.zipRight(Ref.set(gateClosedReported, false)),
+        Effect.catchAllCause((cause) =>
+          isHistoryGateClosedCause(cause)
+            ? Ref.getAndSet(gateClosedReported, true).pipe(
+                Effect.flatMap((reported) =>
+                  reported
+                    ? Effect.logDebug(HISTORY_GATE_CLOSED_MESSAGE)
+                    : Effect.logInfo(HISTORY_GATE_CLOSED_MESSAGE),
+                ),
+              )
+            : Effect.logWarning(cause),
+        ),
+      ),
+      schedule,
+    );
+  });
 
 export const withAdmissionLeaseRecovery = <A, E, R, E2, R2>(
   effect: Effect.Effect<A, E, R>,

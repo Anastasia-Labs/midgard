@@ -72,6 +72,62 @@ type ProductionOwnerFixtureOptions = {
   >;
 };
 
+type HistoryAuthorityRow = {
+  readonly owner_token: string;
+  readonly generation: string;
+  readonly state: string;
+  readonly reason: string;
+  readonly live: boolean;
+  readonly remaining_ms: string;
+};
+
+const readHistoryAuthority = () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const rows = yield* sql<HistoryAuthorityRow>`SELECT owner_token,
+        generation::text AS generation, state, reason,
+        lease_until > clock_timestamp() AS live,
+        round(extract(epoch FROM lease_until - clock_timestamp()) * 1000)::text
+          AS remaining_ms
+        FROM event_history_authority WHERE singleton = true`;
+      return rows[0];
+    }).pipe(Effect.provide(Database.layer)),
+  );
+
+/**
+ * A restart starts the next generation only after the stopped one gave up
+ * the history authority. Its close releases the lease before it returns, so
+ * the lease is never waited out: the stopped owner gets a short grace, and a
+ * lease held by any other token means another process shares this worker's
+ * database shard. Either way the next owner could only fail with "History
+ * authority still has a live owner", so the restart refuses here with the
+ * exact holder instead.
+ */
+const awaitHistoryAuthorityReleased = async (
+  stoppedHolder: string | undefined,
+) => {
+  // Date is faked by the emulator fixture; measure real elapsed time.
+  const deadline = performance.now() + 2_000;
+  for (;;) {
+    const row = await readHistoryAuthority();
+    if (row === undefined || !row.live) return;
+    if (row.owner_token !== stoppedHolder)
+      throw new Error(
+        `History authority lease is held by ${row.owner_token} (generation ${row.generation}, ${row.state}), not the stopped owner ${stoppedHolder ?? "none"}: another process is using test database ${testDatabaseName()}`,
+      );
+    if (performance.now() >= deadline)
+      throw new Error(
+        `Stopped history owner ${row.owner_token} did not release its authority lease (generation ${row.generation}, ${row.state}: ${row.reason}, ${row.remaining_ms} ms left)`,
+      );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+};
+
+/** Real time a refused recovery must keep the gate closed after the owner
+ * journals a new source point: long enough for its convergence attempt. */
+const GATE_CLOSED_SETTLE_MS = 1_500;
+
 export const openHistoryProductionOwnerLifecycle = async (
   options: ProductionOwnerFixtureOptions = {},
 ) => {
@@ -228,7 +284,9 @@ export const openHistoryProductionOwnerLifecycle = async (
       if (stopped)
         throw new Error("This production fixture runtime generation is closed");
     };
-    const synchronize = async (): Promise<void> => {
+    /** Seal the emulator's current tip as the next authenticated source
+     * point and hand it to the owner, without waiting for readiness. */
+    const appendTip = async () => {
       requireRunning();
       await recorded.observer.flush();
       if (
@@ -256,7 +314,10 @@ export const openHistoryProductionOwnerLifecycle = async (
         emptyIntervals.push(empty);
       }
       vi.setSystemTime(fixture.emulator.now());
-      const tip = transport.appendAccepted();
+      return transport.appendAccepted();
+    };
+    const synchronize = async (): Promise<void> => {
+      const tip = await appendTip();
       const coverage = await runtime.runPromise(owner.awaitReadyAt(tip));
       const checkpoint = await runtime.runPromise(Journal.load(binding));
       if (checkpoint === null) throw new Error("Ready owner has no checkpoint");
@@ -301,6 +362,39 @@ export const openHistoryProductionOwnerLifecycle = async (
         providerSnapshotDigest: provider.snapshotDigest,
         ledger,
       });
+    };
+    /**
+     * Append the next source point while pending recovery keeps the gate
+     * closed. The owner must journal the point (its head reaches the tip),
+     * and then stay not ready with a pending reconciliation for a settle
+     * period that covers its convergence attempt; `synchronize` would wait for
+     * a readiness that a refused recovery never grants.
+     */
+    const appendTipWhileGateClosed = async () => {
+      const tip = await appendTip();
+      // Date is faked by the emulator fixture; measure real elapsed time.
+      const deadline = performance.now() + 30_000;
+      let settledAt: number | undefined;
+      for (;;) {
+        const frontier = await runtime.runPromise(owner.frontier);
+        const pending = await runtime.runPromise(owner.reconciliationStatus);
+        if (frontier.headHeight === tip.height) {
+          if (frontier.ready)
+            throw new Error(
+              `History owner became ready at ${tip.height} while recovery was expected to stay refused`,
+            );
+          if (pending === undefined)
+            throw new Error(
+              "History owner has no pending reconciliation while its gate is closed",
+            );
+          settledAt ??= performance.now() + GATE_CLOSED_SETTLE_MS;
+          if (performance.now() >= settledAt) return pending;
+        } else if (performance.now() >= deadline)
+          throw new Error(
+            `History owner head ${frontier.headHeight} did not reach source tip ${tip.height}`,
+          );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
     };
     type Services = ManagedRuntime.ManagedRuntime.Context<typeof runtime>;
     const runWithoutSynchronizing = async <A, E>(
@@ -435,6 +529,7 @@ export const openHistoryProductionOwnerLifecycle = async (
       production: { owner, cache, nodeConfig, synchronize, onCommitAttempt },
       commitAttempts,
       synchronize,
+      appendTipWhileGateClosed,
       command,
       runWithoutSynchronizing,
       evidence,
@@ -459,7 +554,9 @@ export const openHistoryProductionOwnerLifecycle = async (
       restarting = true;
       const previous = structuredClone(await initial.handle.evidence());
       try {
+        const holder = (await readHistoryAuthority())?.owner_token;
         await initial.stopRuntime();
+        await awaitHistoryAuthorityReleased(holder);
         stoppedGenerations.push(previous);
         await afterStop?.();
         const next = await startRuntime(

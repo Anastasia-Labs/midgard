@@ -17,6 +17,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import * as DaPayloadTerminalOutcomesDB from "../database/daPayloadTerminalOutcomes.js";
+import { correctionRewindRemovedHeaders } from "../database/eventHistoryRecoveryPlans.js";
 import {
   fetchKupoAncestorPoint,
   fetchKupoSpend,
@@ -340,6 +341,10 @@ export const createDatabaseStateQueueCorrectionObserverStore = ({
             new Error("Observer database state conflicts with stored policy"),
           );
         }
+        // A rewind moved the native ledger off every header it removed and
+        // has no forward re-application; a view that stops removing one is
+        // refused in the same transaction, so it is never persisted.
+        yield* assertRewoundRemovalsStand(state);
       }),
     );
     await Effect.runPromise(
@@ -347,6 +352,50 @@ export const createDatabaseStateQueueCorrectionObserverStore = ({
     );
   },
 });
+
+/** Explicit integrity failure: an authenticated state-queue view retracted a
+ * removal whose native rewind already ran. The node cannot re-apply the
+ * removed block; the release depth that admitted the removal is its only
+ * rollback bound. */
+export class StateQueueCorrectionRewindIntegrityError extends Error {
+  readonly headerHash: string;
+  constructor(headerHash: string, detail: string) {
+    super(
+      `State-queue correction integrity failure: block ${headerHash} was rewound out of the native ledger by an admitted correction, but ${detail}. The removal rolled back below its release depth; this node cannot re-apply a rewound block and refuses to continue.`,
+    );
+    this.name = "StateQueueCorrectionRewindIntegrityError";
+    this.headerHash = headerHash;
+  }
+}
+
+/** Every header a correction rewind removed is still removed by an admitted
+ * timeout or fraud correction of `state`. */
+export const assertRewoundRemovalsStand = (
+  state: StateQueueCorrectionObserverState,
+) =>
+  Effect.gen(function* () {
+    const rewound = yield* correctionRewindRemovedHeaders(
+      state.deploymentIdentityDigest,
+    );
+    if (rewound.size === 0) return;
+    const removed = new Set(
+      state.admitted
+        .filter(
+          (transition) =>
+            transition.transitionKind === "timeout_correction" ||
+            transition.transitionKind === "fraud_removal",
+        )
+        .flatMap((transition) => transition.removedHeaderHashes),
+    );
+    for (const header of rewound.keys())
+      if (!removed.has(header))
+        return yield* Effect.fail(
+          new StateQueueCorrectionRewindIntegrityError(
+            header,
+            "the authenticated state-queue view no longer removes it",
+          ),
+        );
+  });
 
 const sameQueue = (
   left: readonly StateQueueTransitionNode[],
