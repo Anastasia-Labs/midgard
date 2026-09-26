@@ -74,7 +74,7 @@ describe("Wave 0 shared off-chain substrate", () => {
     ).toThrow(/malformed_diagnostic_marker/);
   });
 
-  it("detects computed publication switches, multiline limits and indirect evaluation options", () => {
+  it("detects computed publication switches and multiline limits", () => {
     const cases = [
       `publish({ ${"over" + "sized"}: script.length > limit });`,
       `publish({ ${"over" + "sized"} });`,
@@ -82,7 +82,6 @@ describe("Wave 0 shared off-chain substrate", () => {
       `const p = { ${"maxTx" + "Size"}:\n262_144 };`,
       `const p = { ${"maxTx" + "Size"}: 16384, ${"maxTx" + "Size"}: 262144 };`,
       `parameters.${"maxTx" + "ExMem"} = 100_000_000n;`,
-      `complete({ ${"localUPLC" + "Eval"}: enabled });`,
     ];
     for (const source of cases) {
       expect(
@@ -99,8 +98,8 @@ describe("Wave 0 shared off-chain substrate", () => {
     const examples = [
       "// publish({ oversized: true });",
       'const example = "publish({ oversized: true });";',
-      "type Options = { oversized: boolean; localUPLCEval: boolean };",
-      "complete({ oversized: false, localUPLCEval: (true as const), maxTxSize: 16_384 });",
+      "type Options = { oversized: boolean; maxTxSize: number };",
+      "complete({ oversized: (false as const), maxTxSize: 16_384 });",
     ];
     for (const source of examples) {
       expect(scanFaultProofLimitEscapes({ path: "safe.ts", source })).toEqual(

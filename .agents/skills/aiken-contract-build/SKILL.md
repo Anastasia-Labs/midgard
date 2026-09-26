@@ -112,7 +112,7 @@ Evidence must report a nonzero collected total, not only the process exit code.
 - Treat `onchain/aiken/plutus.json` as the generated blueprint output unless a task explicitly chooses another `--out` path.
 - When a node or emulator test must use the freshly built real contracts, set `MIDGARD_REAL_BLUEPRINT_PATH` to the absolute `onchain/aiken/plutus.json` path. [review]
 - If tracing is needed for a script failure, rebuild with `--trace-level verbose --trace-filter all` before rerunning the failing emulator test.
-- Preserve production correctness: do not switch transaction completion to `.complete({ localUPLCEval: false })` to bypass failures. Blind spot: that scan covers only `demo/midgard-fault-proofs`. [script: demo/midgard-fault-proofs/tests/wave0-shared-substrate.test.ts]
+- Preserve production correctness: do not switch transaction completion to `.complete({ localUPLCEval: false })` to bypass failures. Blind spot: pre-existing uses are baselined with reasons (`docs/agents/lint-rules.md`). [eslint: midgard/local-uplc-eval]
 
 ## Disposable Final-Tree Builds
 

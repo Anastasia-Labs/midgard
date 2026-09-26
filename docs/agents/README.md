@@ -10,6 +10,8 @@ single agent turn.
 - `docs/agents/state-reset.md`: durable-state deletion and on-chain redeploy
   requirements.
 - `docs/agents/transaction-finalization.md`: transaction completion rules.
+- `docs/agents/lint-rules.md`: the Midgard ESLint rules, the rulings behind
+  them, their blind spots, and the shrink-only baseline.
 - `docs/agents/contracts.md`: trusted deployment parameters and the positive and
   negative emulator scenarios a contract change carries.
 - `docs/agents/naming-and-versioning.md`: identifier, file, and version naming
