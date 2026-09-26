@@ -31,7 +31,22 @@ jobs:
       - name: Check skills and the .claude/skills link
         run: node scripts/ci/check-agent-skills.mjs
 
+      # verify-pure-move parses TypeScript with the workspace's compiler and
+      # skips those tests when it cannot resolve one. Installing only that
+      # package (at the lockfile's version) keeps this job seconds long, and
+      # VERIFY_PURE_MOVE_REQUIRE_TYPESCRIPT turns a missing compiler into a
+      # failure instead of a quiet skip.
+      - name: Provide the workspace TypeScript compiler
+        run: |
+          version=$(sed -n 's/^  typescript@\([0-9.]*\):.*/\1/p' demo/pnpm-lock.yaml | head -1)
+          test -n "$version"
+          npm install --prefix "$RUNNER_TEMP/typescript" --no-save --no-package-lock "typescript@$version"
+          mkdir -p demo/node_modules
+          ln -s "$RUNNER_TEMP/typescript/node_modules/typescript" demo/node_modules/typescript
+
       - name: Test scripts shipped inside skills
+        env:
+          VERIFY_PURE_MOVE_REQUIRE_TYPESCRIPT: "1"
         run: |
           mapfile -t tests < <(find .agents/skills -path '*/scripts/*.test.mjs' | sort)
           if [[ ${#tests[@]} -eq 0 ]]; then
