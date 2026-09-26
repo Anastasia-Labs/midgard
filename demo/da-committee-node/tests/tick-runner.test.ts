@@ -266,3 +266,58 @@ describe("committee tick runner L1-view exit rule", () => {
     ).rejects.toBeInstanceOf(L1ViewUnavailableError);
   });
 });
+
+describe("slow committee tick log", () => {
+  const slowTickRunner = (tickMs: () => number) => {
+    let now = START;
+    const lines: string[] = [];
+    const runner = createCommitteeTickRunner({
+      tick: async () => {
+        now += tickMs();
+        return emptyTick();
+      },
+      runAvailabilityResponse: async () => {
+        now += 5;
+      },
+      runRetention: async () => {
+        now += 7;
+      },
+      latestL1View: () => ({
+        observedAtMs: now,
+        confirmedHeadHash: "aa".repeat(28),
+        liveQueueHeaderHashes: new Set(),
+      }),
+      latestL1ProgressAtMs: () => undefined,
+      setRetentionReadiness: () => undefined,
+      l1ViewFatalMs: FATAL_MS,
+      startedAtMs: START,
+      nowMs: () => now,
+      write: (_stream, line) => lines.push(line),
+      shutdown: async () => undefined,
+      exit: () => undefined,
+      slowTickMs: 15_000,
+    });
+    return { runner, lines };
+  };
+
+  it("logs nothing for a tick within the poll interval", async () => {
+    const { runner, lines } = slowTickRunner(() => 14_000);
+    await runner.runTick();
+    expect(lines).toEqual([]);
+  });
+
+  it("logs one line with its duration and phases for a tick longer than the poll interval", async () => {
+    const { runner, lines } = slowTickRunner(() => 20_000);
+    await runner.runTick();
+    expect(lines.map((line) => JSON.parse(line) as unknown)).toEqual([
+      {
+        event: "committee_tick_slow",
+        durationMs: 20_012,
+        slowTickMs: 15_000,
+        tickMs: 20_000,
+        availabilityResponseMs: 5,
+        retentionMs: 7,
+      },
+    ]);
+  });
+});

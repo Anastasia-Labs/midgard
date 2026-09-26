@@ -479,6 +479,16 @@ export class CommitteeService {
     if (scanner.status === "degraded") {
       reasons.push("last committee node tick completed with errors");
     }
+    // Until chain-sync reaches the tip nothing is decided, whatever the last
+    // tick reported.
+    const chainSyncCatchUp = (
+      this.deps.stateQueueProvider as Partial<ChainSyncReplayProvider>
+    ).chainSyncCatchUpProgress?.();
+    if (chainSyncCatchUp !== undefined) {
+      reasons.push(
+        `l1_chain_sync_catching_up: events=${chainSyncCatchUp.events.toString()}, cursorSlot=${chainSyncCatchUp.cursorSlot.toString()}, tipSlot=${chainSyncCatchUp.tipSlot.toString()}`,
+      );
+    }
     if (
       scanner.status !== "not_started" &&
       l1SourceState?.status !== "quarantined" &&

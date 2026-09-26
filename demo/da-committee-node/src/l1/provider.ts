@@ -93,6 +93,33 @@ export const CHAIN_SYNC_INTERSECTION_POINTS = 2160;
  */
 export const CHAIN_SYNC_JOURNAL_PRUNE_SLACK = 1080;
 
+/**
+ * Events one chain-sync chunk appends at most. A synchronization runs chunk
+ * after chunk until it reaches the tip, so this bounds the work between two
+ * progress checks, not how far behind a member may be.
+ */
+export const CHAIN_SYNC_CHUNK_EVENTS = 4096;
+
+/**
+ * A chain-sync chunk filled up without moving the durable cursor forward on
+ * the chain: the source keeps rolling back and forth instead of delivering the
+ * chain. Nothing durable is wrong, so this is retryable, not a quarantine.
+ */
+export class ChainSyncNoProgressError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ChainSyncNoProgressError";
+  }
+}
+
+/** Where a chain-sync that has not reached the tip yet stands. */
+export type ChainSyncCatchUpProgress = Readonly<{
+  /** Events this synchronization has appended so far. */
+  events: number;
+  cursorSlot: number;
+  tipSlot: number;
+}>;
+
 export interface ChainSyncReplayProvider {
   currentChainSyncCursor(): Promise<ChainSyncCursor>;
   replayChainSyncEvents(
@@ -100,6 +127,8 @@ export interface ChainSyncReplayProvider {
   ): Promise<readonly ChainSyncEvent[]>;
   loadConsumedChainSyncCursor(): Promise<ChainSyncCursor | undefined>;
   acknowledgeChainSyncCursor(cursor: ChainSyncCursor): Promise<void>;
+  /** Set while a synchronization is still catching up to the tip. */
+  chainSyncCatchUpProgress?(): ChainSyncCatchUpProgress | undefined;
 }
 
 type PersistedChainSyncState = {
@@ -553,15 +582,28 @@ export class LocalNodeChainAuthority {
   private cursor: ChainSyncCursor | undefined;
   private loaded = false;
   private operation = Promise.resolve();
+  private catchUp: ChainSyncCatchUpProgress | undefined;
 
   constructor(
     readonly authorityNodeId: string,
     readonly network: string,
     private readonly source: ChainSyncEventSource,
     private readonly store: ChainSyncCursorStore,
+    private readonly onCatchUpProgress?: (
+      progress: ChainSyncCatchUpProgress & { readonly caughtUp: boolean },
+    ) => void,
   ) {}
 
-  async synchronizeToTip(maxEvents = 4096): Promise<CanonicalChainPoint> {
+  /**
+   * Synchronizes the durable cursor to the node's tip, `maxEvents` at a time.
+   * However far behind the member is, it keeps going for as long as each chunk
+   * moves the cursor forward on the chain; a chunk that does not fails with
+   * the retryable `ChainSyncNoProgressError`. It resolves only at the tip, so
+   * nothing is decided on a view that is not synchronized.
+   */
+  async synchronizeToTip(
+    maxEvents = CHAIN_SYNC_CHUNK_EVENTS,
+  ): Promise<CanonicalChainPoint> {
     let result: CanonicalChainPoint | undefined;
     const run = this.operation.then(async () => {
       await this.loadCursor();
@@ -571,58 +613,107 @@ export class LocalNodeChainAuthority {
           : await this.store.intersectionPoints?.(
               CHAIN_SYNC_INTERSECTION_POINTS,
             );
-      for (let count = 0; count < maxEvents; count += 1) {
-        const batch = await this.source.next(
-          this.cursor,
-          intersectionCandidates,
-        );
-        this.assertSourcePoint(batch.tip, "chain-sync tip");
-        if (batch.event === undefined) {
-          if (
-            this.cursor === undefined ||
-            !sameCanonicalPoint(this.cursor.point, batch.tip)
-          ) {
-            throw new Error(
-              "chain-sync source reported no event before the canonical tip was reached",
+      let events = 0;
+      try {
+        for (;;) {
+          const startSlot = this.cursor?.point.slot;
+          const chunk = await this.synchronizeChunk(
+            maxEvents,
+            intersectionCandidates,
+          );
+          if (chunk.reachedTip) {
+            result = this.cursor!.point;
+            if (this.catchUp !== undefined) {
+              this.onCatchUpProgress?.({
+                events: events + chunk.events,
+                cursorSlot: result.slot,
+                tipSlot: result.slot,
+                caughtUp: true,
+              });
+            }
+            return;
+          }
+          events += chunk.events;
+          const cursorSlot = this.cursor!.point.slot;
+          if (startSlot !== undefined && cursorSlot <= startSlot) {
+            throw new ChainSyncNoProgressError(
+              `local node chain-sync appended ${chunk.events.toString()} events without moving past slot ${startSlot.toString()} toward tip slot ${chunk.tip.slot.toString()}`,
             );
           }
-          result = this.cursor.point;
-          return;
+          this.catchUp = { events, cursorSlot, tipSlot: chunk.tip.slot };
+          this.onCatchUpProgress?.({ ...this.catchUp, caughtUp: false });
         }
-        this.assertSourcePoint(batch.event.point, "chain-sync event");
-        const sequence = (this.cursor?.sequence ?? -1) + 1;
-        const rollbackGeneration =
-          (this.cursor?.rollbackGeneration ?? 0) +
-          (batch.event.direction === "roll_backward" ? 1 : 0);
-        const cursor: ChainSyncCursor = {
-          sequence,
-          point: batch.event.point,
-          rollbackGeneration,
-        };
-        try {
-          await this.store.append(batch.event, cursor);
-        } catch (error) {
-          // The append may or may not have reached the durable journal (a
-          // failed write is transient, not an integrity fault). Forget the
-          // cached cursor so the next sync resumes from whatever the store
-          // recovers; the event source re-intersects from that cursor.
-          this.cursor = undefined;
-          this.loaded = false;
-          throw error;
-        }
-        this.cursor = cursor;
-        if (sameCanonicalPoint(batch.event.point, batch.tip)) {
-          result = cursor.point;
-          return;
-        }
+      } finally {
+        this.catchUp = undefined;
       }
-      throw new Error(
-        `local node chain-sync did not reach its advertised tip within ${maxEvents.toString()} events`,
-      );
     });
     this.operation = run.catch(() => undefined);
     await run;
     return result!;
+  }
+
+  /** Set while a synchronization has not reached the tip yet. */
+  catchUpProgress(): ChainSyncCatchUpProgress | undefined {
+    return this.catchUp;
+  }
+
+  private async synchronizeChunk(
+    maxEvents: number,
+    intersectionCandidates: readonly CanonicalChainPoint[] | undefined,
+  ): Promise<
+    | { readonly reachedTip: true; readonly events: number }
+    | {
+        readonly reachedTip: false;
+        readonly events: number;
+        readonly tip: CanonicalChainPoint;
+      }
+  > {
+    let tip: CanonicalChainPoint | undefined;
+    for (let count = 0; count < maxEvents; count += 1) {
+      const batch = await this.source.next(this.cursor, intersectionCandidates);
+      this.assertSourcePoint(batch.tip, "chain-sync tip");
+      tip = batch.tip;
+      if (batch.event === undefined) {
+        if (
+          this.cursor === undefined ||
+          !sameCanonicalPoint(this.cursor.point, batch.tip)
+        ) {
+          throw new Error(
+            "chain-sync source reported no event before the canonical tip was reached",
+          );
+        }
+        return { reachedTip: true, events: count };
+      }
+      this.assertSourcePoint(batch.event.point, "chain-sync event");
+      const sequence = (this.cursor?.sequence ?? -1) + 1;
+      const rollbackGeneration =
+        (this.cursor?.rollbackGeneration ?? 0) +
+        (batch.event.direction === "roll_backward" ? 1 : 0);
+      const cursor: ChainSyncCursor = {
+        sequence,
+        point: batch.event.point,
+        rollbackGeneration,
+      };
+      try {
+        await this.store.append(batch.event, cursor);
+      } catch (error) {
+        // The append may or may not have reached the durable journal (a
+        // failed write is transient, not an integrity fault). Forget the
+        // cached cursor so the next sync resumes from whatever the store
+        // recovers; the event source re-intersects from that cursor.
+        this.cursor = undefined;
+        this.loaded = false;
+        throw error;
+      }
+      this.cursor = cursor;
+      if (sameCanonicalPoint(batch.event.point, batch.tip)) {
+        return { reachedTip: true, events: count + 1 };
+      }
+    }
+    if (tip === undefined) {
+      throw new Error("local node chain-sync chunk must allow an event");
+    }
+    return { reachedTip: false, events: maxEvents, tip };
   }
 
   async currentPoint(): Promise<CanonicalChainPoint> {
@@ -1504,6 +1595,10 @@ export class LocalNodeStateQueueProvider
     return this.consumerCursorStore.load();
   }
 
+  chainSyncCatchUpProgress(): ChainSyncCatchUpProgress | undefined {
+    return this.authority.catchUpProgress();
+  }
+
   async acknowledgeChainSyncCursor(cursor: ChainSyncCursor): Promise<void> {
     const current = await this.authority.currentCursor();
     if (!samePersistedCursor(current, cursor)) {
@@ -1740,6 +1835,19 @@ export const localNodeChainAuthorityFromConfig = (
         source.chainSyncProviderUrl,
       ),
     ),
+    // A catch-up after a long outage runs chunk after chunk: one line per
+    // chunk shows it moving instead of looking hung.
+    ({ caughtUp, events, cursorSlot, tipSlot }) =>
+      process.stdout.write(
+        `${JSON.stringify({
+          event: caughtUp
+            ? "l1_chain_sync_caught_up"
+            : "l1_chain_sync_catching_up",
+          events,
+          cursorSlot,
+          tipSlot,
+        })}\n`,
+      ),
   );
   localAuthorityRegistry.set(registryKey, authority);
   return authority;

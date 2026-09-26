@@ -339,6 +339,7 @@ const main = async (): Promise<void> => {
     write: (stream, line) => process[stream].write(line),
     shutdown,
     exit: (code) => process.exit(code),
+    slowTickMs: config.pollIntervalMs,
   });
 
   if (process.argv.includes("--once")) {

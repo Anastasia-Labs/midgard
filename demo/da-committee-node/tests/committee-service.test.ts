@@ -175,6 +175,50 @@ describe("CommitteeService", () => {
     );
   });
 
+  it("is not ready while local chain-sync is still catching up to the tip", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    let catchUp:
+      | { events: number; cursorSlot: number; tipSlot: number }
+      | undefined;
+    const service = new CommitteeService({
+      config,
+      store: await openJsonCommitteeStore(dir),
+      stateQueueProvider: {
+        ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
+        chainSyncCatchUpProgress: () => catchUp,
+      } as StateQueueProvider,
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: true,
+    });
+
+    // A later sync that is still catching up leaves the last tick's view
+    // behind: the member reports not ready until it reaches the tip.
+    catchUp = { events: 4_096, cursorSlot: 1_000, tipSlot: 90_000 };
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: false,
+      reasons: [
+        "l1_chain_sync_catching_up: events=4096, cursorSlot=1000, tipSlot=90000",
+      ],
+    });
+    catchUp = undefined;
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: true,
+    });
+  });
+
   it("fetches, verifies, signs, and persists one finalized unattested header", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();

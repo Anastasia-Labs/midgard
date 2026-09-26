@@ -56,6 +56,11 @@ export type CommitteeTickRunnerDeps = {
    * resources `shutdown` waits on, so the exit never depends on it settling.
    */
   readonly shutdownGraceMs?: number;
+  /**
+   * A tick that takes longer than this, normally the poll interval, logs one
+   * `committee_tick_slow` line with its phase timings. Fast ticks log nothing.
+   */
+  readonly slowTickMs?: number;
 };
 
 const DEFAULT_SHUTDOWN_GRACE_MS = 10_000;
@@ -217,15 +222,28 @@ export const createCommitteeTickRunner = (deps: CommitteeTickRunnerDeps) => {
     const tickStartedAtMs = deps.nowMs();
     inFlightTickStartedAtMs = tickStartedAtMs;
     let l1Error: string | undefined;
+    // Where a slow tick spent its time; a phase that did not run is absent.
+    const phaseMs: Record<string, number> = {};
+    let phaseStartedAtMs = tickStartedAtMs;
+    const endPhase = (phase: string): void => {
+      const nowMs = deps.nowMs();
+      phaseMs[phase] = nowMs - phaseStartedAtMs;
+      phaseStartedAtMs = nowMs;
+    };
     try {
       try {
         const result = await deps.tick();
+        endPhase("tickMs");
         if (result.errors.length > 0) {
           l1Error = result.errors.join("; ");
           deps.write("stderr", `${JSON.stringify(result)}\n`);
         }
         await deps.runAvailabilityResponse();
+        endPhase("availabilityResponseMs");
       } catch (error) {
+        endPhase(
+          phaseMs.tickMs === undefined ? "tickMs" : "availabilityResponseMs",
+        );
         l1Error ??= errorText(error);
         deps.write(
           "stderr",
@@ -234,7 +252,9 @@ export const createCommitteeTickRunner = (deps: CommitteeTickRunnerDeps) => {
       }
       if (exiting) return;
       await runRetentionStep(tickStartedAtMs, l1Error);
+      endPhase("retentionMs");
     } catch (error) {
+      endPhase("retentionMs");
       if (error instanceof L1ViewUnavailableError) {
         await exitForUnavailableL1View(error);
         return;
@@ -245,6 +265,22 @@ export const createCommitteeTickRunner = (deps: CommitteeTickRunnerDeps) => {
       );
     } finally {
       tickInFlight = false;
+      const durationMs = deps.nowMs() - tickStartedAtMs;
+      if (
+        !exiting &&
+        deps.slowTickMs !== undefined &&
+        durationMs > deps.slowTickMs
+      ) {
+        deps.write(
+          "stderr",
+          `${JSON.stringify({
+            event: "committee_tick_slow",
+            durationMs,
+            slowTickMs: deps.slowTickMs,
+            ...phaseMs,
+          })}\n`,
+        );
+      }
     }
   };
 

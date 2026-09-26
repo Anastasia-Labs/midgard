@@ -14,8 +14,12 @@ import {
 import {
   assertOgmiosNetworkMagic,
   type CanonicalChainPoint,
+  type ChainSyncCatchUpProgress,
+  type ChainSyncCursor,
   type ChainSyncCursorStore,
+  type ChainSyncEvent,
   type ChainSyncEventBatch,
+  ChainSyncNoProgressError,
   fetchKupoCheckpoint,
   FileChainSyncConsumerCursorStore,
   FileChainSyncCursorStore,
@@ -3331,5 +3335,305 @@ describe("restarted local-node chain sync", () => {
     await expect(
       new FileChainSyncCursorStore(cursorPath, "11".repeat(32)).load(),
     ).rejects.toThrow(L1SourceIntegrityError);
+  });
+});
+
+/** A durable cursor store held in memory, for catch-ups too long to fsync. */
+const memoryCursorStore = (
+  initial: readonly FakeOgmiosBlock[],
+): ChainSyncCursorStore & {
+  readonly entries: { event: ChainSyncEvent; cursor: ChainSyncCursor }[];
+} => {
+  const entries: { event: ChainSyncEvent; cursor: ChainSyncCursor }[] =
+    initial.map((block, sequence) => ({
+      event: { direction: "roll_forward" as const, point: nodePoint(block) },
+      cursor: {
+        sequence,
+        point: nodePoint(block),
+        rollbackGeneration: 0,
+      },
+    }));
+  return {
+    entries,
+    load: async () => entries.at(-1)?.cursor,
+    append: async (event, cursor) => {
+      entries.push({ event, cursor });
+    },
+    replay: async (afterSequence) =>
+      entries
+        .filter(({ cursor }) => cursor.sequence > afterSequence)
+        .map(({ event }) => event),
+  };
+};
+
+/**
+ * A chain-sync source that follows `chain()` from whatever cursor it is given,
+ * rolling a cursor that left the chain back to the last point they share.
+ */
+const followingSource = (chain: () => readonly FakeOgmiosBlock[]) => {
+  let calls = 0;
+  return {
+    calls: () => calls,
+    next: async (
+      cursor: ChainSyncCursor | undefined,
+    ): Promise<ChainSyncEventBatch> => {
+      calls += 1;
+      const blocks = chain();
+      const tip = nodePoint(blocks.at(-1)!);
+      const at = blocks.findIndex(
+        (block) =>
+          block.slot === cursor?.point.slot &&
+          block.id === cursor.point.blockHash,
+      );
+      if (at < 0) {
+        const shared = blocks.filter(
+          (block) => block.slot < (cursor?.point.slot ?? 0),
+        );
+        return {
+          event: {
+            direction: "roll_backward",
+            point: nodePoint(shared.at(-1)!),
+          },
+          tip,
+        };
+      }
+      const block = blocks[at + 1];
+      return block === undefined
+        ? { tip }
+        : {
+            event: { direction: "roll_forward", point: nodePoint(block) },
+            tip,
+          };
+    },
+  };
+};
+
+describe("long-outage chain-sync catch-up", () => {
+  it("starts after an outage longer than one chunk, delivering exactly the missed blocks in order through a mid-catch-up rollback", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const blocks = Array.from({ length: 40 }, (_, index) => blockAt(index + 1));
+    await writeFollowedJournal(cursorPath, blocks.slice(0, 10));
+    const node = liveOgmiosNode(blocks);
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const progress: (ChainSyncCatchUpProgress & { caughtUp: boolean })[] = [];
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        "Preview",
+        new OgmiosChainSyncEventSource(
+          "ws://ogmios.local",
+          "Preview",
+          "node-a",
+        ),
+        new FileChainSyncCursorStore(cursorPath, "11".repeat(32)),
+        (report) => {
+          progress.push(report);
+          if (progress.length === 1) {
+            // The chain forks while the member is still catching up.
+            node.rollBackTo(12);
+            for (let slot = 13; slot <= 40; slot += 1) {
+              node.extend(blockAt(slot, 1));
+            }
+          }
+        },
+      );
+      const consumer = consumerOf(authority, cursorPath);
+      await expect(
+        settlesWithin(authority.synchronizeToTip(4), 5_000),
+      ).resolves.toMatchObject({ slot: 40, blockHash: blockAt(40, 1).id });
+
+      expect(
+        (await authority.replay(9)).map(({ direction, point }) => [
+          direction,
+          point.slot,
+          point.blockHash.slice(0, 2),
+        ]),
+      ).toEqual([
+        ...[11, 12, 13, 14].map((slot) => ["roll_forward", slot, "00"]),
+        ["roll_backward", 12, "00"],
+        ...Array.from({ length: 28 }, (_, index) => [
+          "roll_forward",
+          index + 13,
+          "01",
+        ]),
+      ]);
+      await expect(authority.currentCursor()).resolves.toMatchObject({
+        sequence: 9 + 4 + 1 + 28,
+        rollbackGeneration: 1,
+      });
+      expect(node.intersections()).toHaveLength(1);
+      // One progress line per full chunk, then one when the tip is reached.
+      expect(
+        progress.map(({ events, caughtUp }) => [events, caughtUp]),
+      ).toEqual([
+        [4, false],
+        [8, false],
+        [12, false],
+        [16, false],
+        [20, false],
+        [24, false],
+        [28, false],
+        [32, false],
+        [33, true],
+      ]);
+      expect(progress[0]).toMatchObject({ cursorSlot: 14, tipSlot: 40 });
+      expect(progress.at(-1)).toMatchObject({ cursorSlot: 40, tipSlot: 40 });
+      expect(consumer.chainSyncCatchUpProgress()).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("syncs past the default chunk size in order instead of failing startup", async () => {
+    const history = 10;
+    const outage = 2 * 4_096 + 100;
+    const blocks = Array.from({ length: history + outage }, (_, index) =>
+      blockAt(index + 1),
+    );
+    const store = memoryCursorStore(blocks.slice(0, history));
+    const progress: number[] = [];
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      followingSource(() => blocks),
+      store,
+      ({ events, caughtUp }) => {
+        if (!caughtUp) progress.push(events);
+      },
+    );
+    await expect(authority.synchronizeToTip()).resolves.toMatchObject({
+      slot: history + outage,
+    });
+    expect(progress).toEqual([4_096, 8_192]);
+    const delivered = store.entries.slice(history);
+    expect(delivered).toHaveLength(outage);
+    expect(
+      delivered.every(
+        ({ event, cursor }, index) =>
+          event.direction === "roll_forward" &&
+          event.point.slot === history + index + 1 &&
+          cursor.sequence === history + index,
+      ),
+    ).toBe(true);
+  });
+
+  it("fails a chunk that makes no progress with a retryable error, then resumes", async () => {
+    const blocks = Array.from({ length: 20 }, (_, index) => blockAt(index + 1));
+    let oscillating = true;
+    const honest = followingSource(() => blocks);
+    const source = {
+      calls: 0,
+      next: async (cursor: ChainSyncCursor | undefined) => {
+        source.calls += 1;
+        if (source.calls > 1_000) {
+          throw new Error("chain-sync never gave up on a source going nowhere");
+        }
+        if (!oscillating) return honest.next(cursor);
+        const tip = nodePoint(blocks.at(-1)!);
+        // Forward to slot 11 and back to slot 10, forever.
+        return cursor!.point.slot === 10
+          ? {
+              event: {
+                direction: "roll_forward" as const,
+                point: nodePoint(blocks[10]!),
+              },
+              tip,
+            }
+          : {
+              event: {
+                direction: "roll_backward" as const,
+                point: nodePoint(blocks[9]!),
+              },
+              tip,
+            };
+      },
+    };
+    const store = memoryCursorStore(blocks.slice(0, 10));
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      source,
+      store,
+    );
+    const failure = authority.synchronizeToTip(4);
+    await expect(failure).rejects.toThrow(ChainSyncNoProgressError);
+    await expect(failure).rejects.not.toThrow(L1SourceIntegrityError);
+    expect(source.calls).toBe(4);
+    expect(authority.catchUpProgress()).toBeUndefined();
+
+    // Nothing durable is wrong: once the source delivers the chain, the next
+    // attempt resumes from the durable cursor and reaches the tip.
+    oscillating = false;
+    await expect(authority.synchronizeToTip(4)).resolves.toMatchObject({
+      slot: 20,
+    });
+    expect(store.entries.map(({ cursor }) => cursor.sequence)).toEqual(
+      Array.from({ length: store.entries.length }, (_, index) => index),
+    );
+  });
+
+  it("reports catch-up until the tip and reads no query surface before it", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    // Longer than one default chunk, which is what the snapshot's sync uses.
+    const blocks = Array.from({ length: 5 + 4_096 + 20 }, (_, index) =>
+      blockAt(index + 1),
+    );
+    const followed = followingSource(() => blocks);
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const store = memoryCursorStore(blocks.slice(0, 5));
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async (cursor) => {
+          // Hold the catch-up after its first chunk.
+          if (cursor!.point.slot === 5 + 4_096) await held;
+          return followed.next(cursor);
+        },
+      },
+      store,
+    );
+    let snapshotReads = 0;
+    const provider = new LocalNodeStateQueueProvider(
+      authority,
+      [
+        {
+          fetchStateQueueNodes: async () => [],
+          fetchStateQueueSnapshot: async () => {
+            snapshotReads += 1;
+            throw new Error("query surface read");
+          },
+          fetchStateQueueReplayCheckpoints: async () => [],
+          currentChainPoint: () => authority.currentPoint(),
+        },
+      ],
+      ["query:node-a:0"],
+      new FileChainSyncConsumerCursorStore(
+        `${cursorPath}.watcher-consumer-v1`,
+        "11".repeat(32),
+      ),
+    );
+    const snapshot = provider.fetchStateQueueSnapshot();
+    snapshot.catch(() => undefined);
+    await expect
+      .poll(() => provider.chainSyncCatchUpProgress())
+      .toEqual({
+        events: 4_096,
+        cursorSlot: 5 + 4_096,
+        tipSlot: 5 + 4_096 + 20,
+      });
+    expect(snapshotReads).toBe(0);
+    release!();
+    await expect(snapshot).rejects.toThrow("query surface read");
+    expect(snapshotReads).toBe(1);
+    expect(provider.chainSyncCatchUpProgress()).toBeUndefined();
+    await expect(authority.currentPoint()).resolves.toMatchObject({
+      slot: 5 + 4_096 + 20,
+    });
   });
 });
