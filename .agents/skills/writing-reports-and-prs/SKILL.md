@@ -48,8 +48,8 @@ report carries these five things. They are rules; each is `[review]`.
 ### Green needs a count
 
 A green claim names the command, the number of tests collected and the exit
-code. A run that collected zero tests is not a pass: a bare
-`aiken check -m <module>` and a vitest `-t` that matches nothing both exit 0
+code. A run that collected zero tests is not a pass: an
+`aiken check -m` selector with no `/` and a vitest `-t` that matches nothing both exit 0
 having run nothing. Read the collected count before you write "passed". The
 traps and the guarded runner are in
 [writing-tests §5 and §8](../writing-tests/SKILL.md#5-keep-it-able-to-fail).

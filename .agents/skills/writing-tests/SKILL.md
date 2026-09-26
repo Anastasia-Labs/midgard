@@ -113,8 +113,9 @@ A test that fails only sometimes is a different problem: read
 [fixing-flaky-tests](../fixing-flaky-tests/SKILL.md) before retrying, raising
 a timeout or skipping it.
 
-- **Bare `aiken check -m <module>`, or a dotted module name.** Collects zero
-  tests and exits 0. Run
+- **`aiken check -m` with no `/` in the selector, or a dotted module name.**
+  Collects zero tests and exits 0; a selector with a `/` over-collects
+  instead ([the rules](../aiken-contract-build/references/cli-traps.md)). Run
   `node onchain/aiken/scripts/run-focused-check.mjs <module> <test>...`, which
   fails unless exactly N tests from that one module pass
   `[script: onchain/aiken/scripts/run-focused-check.mjs]`. Blind spot: a raw

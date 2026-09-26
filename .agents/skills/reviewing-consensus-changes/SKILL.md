@@ -164,7 +164,7 @@ Run the gates listed in step 1 and read their output. A report, including a
 subagent's, is a claim, not evidence `[review]`. Aiken evidence must show a
 nonzero collected count; `run-focused-check.mjs` fails unless exactly the
 named tests ran `[script: onchain/aiken/scripts/run-focused-check.mjs]`, and
-a bare `aiken check -m` selector can collect zero tests and exit 0. Before
+an `aiken check -m` selector can collect zero tests and exit 0. Before
 trusting any local Aiken result, confirm the compiler is the pinned fork
 `[script: onchain/aiken/scripts/pinned-compiler.mjs]`.
 
