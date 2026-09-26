@@ -13,7 +13,6 @@ export type FaultProofLimitEscape = {
     | "raised_tx_bytes"
     | "raised_tx_memory"
     | "raised_tx_cpu"
-    | "disabled_local_evaluation"
     | "malformed_diagnostic_marker";
   readonly diagnosticOnly: boolean;
 };
@@ -45,11 +44,6 @@ const escapeKind = (
       ? undefined
       : "oversized_publication";
   }
-  if (name === "localUPLCEval") {
-    return value?.kind === ts.SyntaxKind.TrueKeyword
-      ? undefined
-      : "disabled_local_evaluation";
-  }
   const limit =
     name === "maxTxSize"
       ? { maximum: 16_384n, kind: "raised_tx_bytes" as const }
@@ -75,6 +69,10 @@ const escapeKind = (
  * fields, shorthand options and property assignments cannot hide a switch.
  * Numeric checks cover literal overrides; this is not a data-flow analysis.
  * Only comments may mark retained unpublishable diagnostics.
+ *
+ * `localUPLCEval` is not checked here: the workspace ESLint rule
+ * `midgard/local-uplc-eval` enforces it in every package, with the same
+ * diagnostic markers (docs/agents/lint-rules.md).
  */
 export const scanFaultProofLimitEscapes = ({
   path,
