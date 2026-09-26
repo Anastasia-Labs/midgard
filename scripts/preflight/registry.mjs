@@ -21,7 +21,6 @@
 import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
-import { defaultAikenBinary } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
 import { parseSelectors } from "../../onchain/aiken/scripts/guard-focused-selector.mjs";
 import {
   AIKEN_PROJECT,
@@ -134,7 +133,7 @@ const aikenChecks = (root, index) => {
       triggers: sources,
       capabilities: ["aiken"],
       display:
-        "node onchain/aiken/scripts/guard-focused-selector.mjs <selector per touched module>; full run: aiken check",
+        "node onchain/aiken/scripts/guard-focused-selector.mjs <selector per touched module>; full run: --all",
       plan: ({ matched, full, advise }) => {
         const selectors = new Set();
         for (const file of existing(root, matched)) {
@@ -176,7 +175,12 @@ const aikenChecks = (root, index) => {
         if (full || selectors.size > 64) {
           return [
             step(node(`${AIKEN_PROJECT}/scripts/pinned-compiler.mjs`)),
-            step([defaultAikenBinary(), "check"], { cwd: AIKEN_PROJECT }),
+            step(
+              node(
+                `${AIKEN_PROJECT}/scripts/guard-focused-selector.mjs`,
+                "--all",
+              ),
+            ),
           ];
         }
         return selectors.size === 0

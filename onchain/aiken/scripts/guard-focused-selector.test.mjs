@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   evaluateSelectorReport,
+  parseInvocation,
   parseSelectors,
 } from "./guard-focused-selector.mjs";
 import { pinnedAikenVersion } from "./pinned-compiler.mjs";
@@ -21,10 +22,13 @@ const guardPath = resolve(
 // CLI path — spawn, parse, classify, exit — is exercised without paying for a
 // real compile. The stub reproduces the exact behaviour that made zero
 // collection invisible: a well-formed report and exit status 0.
+// With `expectedArgs`, the stub exits 64 and reports nothing unless the guard
+// invoked it with exactly those arguments.
 const runGuardAgainstStub = (
   stubReport,
   selectors,
   stubVersion = pinnedAikenVersion(),
+  expectedArgs = undefined,
 ) => {
   const directory = mkdtempSync(join(tmpdir(), "midgard-guard-selftest-"));
   try {
@@ -33,7 +37,13 @@ const runGuardAgainstStub = (
       stubPath,
       `#!/usr/bin/env node\nif (process.argv[2] === "--version") {\n  process.stdout.write(${JSON.stringify(
         `${stubVersion}\n`,
-      )});\n  process.exit(0);\n}\nprocess.stdout.write(${JSON.stringify(
+      )});\n  process.exit(0);\n}\n${
+        expectedArgs === undefined
+          ? ""
+          : `if (JSON.stringify(process.argv.slice(2)) !== ${JSON.stringify(
+              JSON.stringify(expectedArgs),
+            )}) {\n  process.exit(64);\n}\n`
+      }process.stdout.write(${JSON.stringify(
         JSON.stringify(stubReport),
       )});\nprocess.exit(0);\n`,
     );
@@ -61,6 +71,13 @@ test("rejects unusable selector arguments", () => {
   assert.deepEqual(parseSelectors(["midgard/state_queue"]), [
     "midgard/state_queue",
   ]);
+});
+
+test("accepts --all alone and refuses it mixed with selectors", () => {
+  assert.deepEqual(parseInvocation(["--all"]), ["--all"]);
+  assert.deepEqual(parseInvocation(["state_queue"]), ["state_queue"]);
+  assert.throws(() => parseInvocation(["--all", "state_queue"]), /usage/u);
+  assert.throws(() => parseInvocation([]), /usage/u);
 });
 
 test("treats zero collection as failure and names the selector", () => {
@@ -145,4 +162,54 @@ test("refuses a compiler other than the pinned fork even when its report is gree
   assert.equal(result.status, 1);
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /reports 'aiken v1\.1\.22\+39d6b04'/u);
+});
+
+// CI's full-suite step runs `--all`. A whole-suite report that collected
+// nothing (a source root moved, a filter left in the environment) must fail it.
+test("exits nonzero end to end when the whole suite collects nothing", () => {
+  const result = runGuardAgainstStub(
+    { summary: { total: 0, passed: 0, failed: 0 }, modules: [] },
+    ["--all"],
+    pinnedAikenVersion(),
+    ["check", "--plain-numbers"],
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /\(all modules\) collected 0 tests/u);
+});
+
+test("runs the whole suite with no module filter and reports its count", () => {
+  const result = runGuardAgainstStub(
+    { summary: { total: 4467, passed: 4467, failed: 0 }, modules: [] },
+    ["--all"],
+    pinnedAikenVersion(),
+    ["check", "--plain-numbers"],
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"selector":"\(all modules\)"/u);
+  assert.match(result.stdout, /"collected":4467/u);
+});
+
+test("names the failing tests of a red whole-suite run", () => {
+  const result = runGuardAgainstStub(
+    {
+      summary: { total: 2, passed: 1, failed: 1 },
+      modules: [
+        {
+          name: "midgard/state_queue",
+          tests: [
+            { title: "keeps_order", status: "pass" },
+            { title: "rejects_gap", status: "fail" },
+          ],
+        },
+      ],
+    },
+    ["--all"],
+    pinnedAikenVersion(),
+    ["check", "--plain-numbers"],
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /collected=2, passed=1, failed=1/u);
+  assert.match(result.stderr, /"module":"midgard\/state_queue"/u);
+  assert.match(result.stderr, /"title":"rejects_gap"/u);
+  assert.doesNotMatch(result.stderr, /keeps_order/u);
 });

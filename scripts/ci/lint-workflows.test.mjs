@@ -104,6 +104,10 @@ const reds = {
     job("b", "    needs: [nope]\n"),
     gateJob(["a", "b"]),
   ]),
+  "aiken-check-unguarded": clean.replace(
+    `      - uses: ${checkout}\n`,
+    `      - uses: ${checkout}\n      - run: cd onchain/aiken && aiken check\n`,
+  ),
   "marker-reason": `${clean}# workflow-lint: allow timeout\n`,
 };
 
@@ -139,6 +143,45 @@ test(
           "      - name: gate\n        if: false\n",
         ),
       ).includes("gate-allowlist"),
+    );
+  },
+);
+
+test(
+  "aiken-check-unguarded flags a direct check anywhere, and only a command",
+  { skip },
+  () => {
+    const withRun = (run) =>
+      found(
+        clean.replace(
+          `      - uses: ${checkout}\n`,
+          `      - uses: ${checkout}\n      - run: |\n${run
+            .split("\n")
+            .map((line) => `          ${line}`)
+            .join("\n")}\n`,
+        ),
+      );
+    assert.deepEqual(
+      withRun("node scripts/guard-focused-selector.mjs --all"),
+      [],
+    );
+    assert.deepEqual(
+      withRun("git ls-files -z '*.ak' | xargs -0 aiken fmt --check"),
+      [],
+    );
+    assert.deepEqual(withRun("# a bare aiken check exits 0 on nothing"), []);
+    assert.deepEqual(withRun("set -e\naiken check -m state_queue"), [
+      "aiken-check-unguarded",
+    ]);
+    assert.deepEqual(withRun("test -d build && aiken check"), [
+      "aiken-check-unguarded",
+    ]);
+    assert.deepEqual(
+      found(
+        "runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: aiken check\n",
+        ".github/actions/x/action.yml",
+      ),
+      ["aiken-check-unguarded"],
     );
   },
 );

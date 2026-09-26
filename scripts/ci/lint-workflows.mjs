@@ -23,6 +23,10 @@
 //                            itself (a job `if:`, e.g. a path filter)
 //   continue-on-error        a job or step whose failure is reported as success
 //   needs-unknown            `needs:` naming a job that does not exist
+//   aiken-check-unguarded    a step running `aiken check` directly, which exits
+//                            0 having collected no tests; run it through
+//                            onchain/aiken/scripts/guard-focused-selector.mjs
+//                            (`--all` for the whole suite) or run-focused-check.mjs
 //   marker-reason            a malformed or reasonless exemption marker
 //
 // Exemptions are explicit and carry a reason:
@@ -51,6 +55,7 @@ export const checks = [
   "skipped-counts-as-success",
   "continue-on-error",
   "needs-unknown",
+  "aiken-check-unguarded",
   "marker-reason",
 ];
 
@@ -60,6 +65,8 @@ const gateScript =
 const markerPattern = /#\s*workflow-lint:\s*(.*)$/u;
 const wellFormedMarker = /^allow\s+([a-z-]+)\s+(?:—|--)\s*(\S.*)$/u;
 const pinnedUses = /^[^@\s]+@[0-9a-f]{40}\s+#\s*v?\d+\.\d+\.\d+\s*$/u;
+// `aiken check` as a command word: at a line start or after a shell separator.
+const bareAikenCheck = /(^|[\s;&|(`])aiken\s+check(\s|$)/u;
 
 export const loadYaml = (root = defaultRoot) => {
   try {
@@ -151,6 +158,29 @@ const lintFile = (yaml, root, path) => {
     return findings;
   }
   const workflow = document.toJS() ?? {};
+
+  const runSteps = [
+    ...Object.values(workflow.jobs ?? {}).flatMap((job) => toArray(job?.steps)),
+    ...toArray(workflow.runs?.steps),
+  ].filter((step) => typeof step?.run === "string");
+  for (const step of runSteps) {
+    const commands = step.run
+      .split("\n")
+      .map((line) => line.replace(/(^|\s)#.*$/u, ""));
+    const command = commands.find((line) => bareAikenCheck.test(line));
+    if (command !== undefined) {
+      const at = lines.findIndex((line) => {
+        const code = line.replace(/(^|\s)#.*$/u, "");
+        return code.includes(command.trim()) && bareAikenCheck.test(code);
+      });
+      report(
+        "aiken-check-unguarded",
+        at + 1 || 1,
+        `step '${step.name ?? step.run}' runs 'aiken check' directly, which exits 0 having collected no tests; run it through node onchain/aiken/scripts/guard-focused-selector.mjs (--all for the whole suite) or run-focused-check.mjs`,
+      );
+    }
+  }
+
   if (!file.startsWith(".github/workflows/")) return findings;
 
   const jobsNode = document.get("jobs", true);
