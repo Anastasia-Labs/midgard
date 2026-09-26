@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# Runs the pre-push slice of preflight before anything leaves this machine:
+#
+#   node scripts/preflight.mjs --pre-push
+#
+# which judges only the committed diff against the merge-base with the base
+# branch (what the push sends), and runs only the checks marked "runs in the
+# pre-push hook" in docs/agents/required-checks.md: formatting, the generated
+# check list, repository tooling self-tests, workflow and agent-doc lint, and a
+# merge-conflict prediction. The heavier checks (builds, suites, ledgers) stay
+# with `node scripts/preflight.mjs`, and CI runs everything before merge.
+#
+# Preflight exit codes: 0 passed; 1 a check failed (the push is BLOCKED);
+# 2 preflight could not compute the change set; 3 a check could not run for a
+# missing capability. 2 and 3 are reported and the push goes ahead.
+#
+# Escape hatches (one push):
+#   MIDGARD_SKIP_PREFLIGHT=1 git push ...   skip this hook only
+#   MIDGARD_SKIP_HOOKS=1 git push ...       skip every repository hook
+
+set -uo pipefail
+
+if [[ "${MIDGARD_SKIP_HOOKS:-0}" == "1" || "${MIDGARD_SKIP_PREFLIGHT:-0}" == "1" ]]; then
+  echo "[midgard hooks] pre-push preflight skipped by environment" >&2
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)" || exit 0
+cd "$repo_root" || exit 0
+
+# Git sends one line per pushed ref: <local ref> <local sha> <remote ref>
+# <remote sha>. Preflight judges HEAD, so a push of anything else (another
+# branch, a tag, a deletion) is not something it can speak for.
+head="$(git rev-parse HEAD 2>/dev/null)"
+zero="0000000000000000000000000000000000000000"
+judged=0
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+  if [[ "$local_sha" == "$zero" ]]; then
+    continue
+  fi
+  if [[ "$local_sha" == "$head" ]]; then
+    judged=1
+  else
+    echo "[midgard hooks] pre-push: $local_ref is not the checked-out HEAD; preflight does not judge it" >&2
+  fi
+done
+if [[ "$judged" -eq 0 ]]; then
+  exit 0
+fi
+
+if [[ ! -f scripts/preflight.mjs ]]; then
+  exit 0
+fi
+if ! command -v node >/dev/null 2>&1; then
+  cat >&2 <<'MSG'
+[midgard hooks] pre-push: NODE IS NOT ON PATH, SO PREFLIGHT DID NOT RUN.
+The push goes ahead unchecked. Install the Node version in demo/.nvmrc and run:
+  node scripts/preflight.mjs --pre-push
+MSG
+  exit 0
+fi
+
+node scripts/preflight.mjs --pre-push
+status=$?
+case "$status" in
+  0) exit 0 ;;
+  1)
+    cat >&2 <<'MSG'
+[midgard hooks] pre-push BLOCKED: a preflight check failed (summary above).
+  1. Apply the fix printed under the failed check.
+  2. Commit the fix, then push again.
+To push anyway, once: MIDGARD_SKIP_PREFLIGHT=1 git push ...
+MSG
+    exit 1
+    ;;
+  3)
+    echo "[midgard hooks] pre-push: some checks could not run (summary above); pushing anyway. Run: node scripts/doctor.mjs" >&2
+    exit 0
+    ;;
+  *)
+    echo "[midgard hooks] pre-push: preflight could not run (exit $status, message above); pushing anyway" >&2
+    exit 0
+    ;;
+esac
