@@ -55,7 +55,12 @@ RUN pnpm --filter @al-ft/midgard-sdk build
 RUN pnpm --filter @al-ft/midgard-validation build
 RUN pnpm --filter @al-ft/midgard-fault-proofs build
 RUN pnpm --filter midgard-watcher build
-RUN pnpm --filter midgard-watcher deploy --prod /prod/midgard-watcher
+# Same store as the install step: `deploy --prod` re-resolves the git-hosted
+# merkle-patricia-forestry dependency, and only a store that already holds the
+# prepared package avoids re-running its `prepare` build (which needs dev
+# tooling a production install never fetches).
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+  pnpm --filter midgard-watcher deploy --prod /prod/midgard-watcher
 
 FROM node:22.22.2-bookworm-slim AS final
 WORKDIR /app
