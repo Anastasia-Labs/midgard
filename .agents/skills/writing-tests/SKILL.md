@@ -135,12 +135,10 @@ a timeout or skipping it.
   provider, and the emulator's `evaluateTx` echoes the budgets already in the
   transaction without running any script, so the validator never executes.
   Use `localUPLCEval: true`, per
-  [transaction-finalization.md](../../../docs/agents/transaction-finalization.md)
-  [script: demo/midgard-fault-proofs/tests/wave0-shared-substrate.test.ts],
-  which Midgard Node CI runs.
-  Blind spot: that scan covers `midgard-fault-proofs` only;
-  `demo/midgard-sdk/tests/scheduler-refresh.test.ts` uses `false` three times
-  as of 2026-09-25.
+  [transaction-finalization.md](../../../docs/agents/transaction-finalization.md).
+  Blind spot: the lint's baseline excuses the pre-existing uses, such as the
+  three structural checks in `demo/midgard-sdk/tests/scheduler-refresh.test.ts`.
+  [eslint: midgard/local-uplc-eval]
 - **A test double answering a shape the real service never sends.** The code
   passes against the double and fails against the service. Take the double's
   response from the real service or its published schema, including the
@@ -190,7 +188,9 @@ a timeout or skipping it.
   output (`demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts`), and assert
   the completed body's fee and output count
   (`demo/midgard-sdk/src/availability-challenge-transactions.ts:474-491`).
-  [review]
+  Blind spot: the lint sees a completion only in the function that pins the
+  fee, and never checks the remainder output.
+  [eslint: midgard/exact-fee-no-change-output]
 
 ## 7. Verifiers get their own negative tests
 

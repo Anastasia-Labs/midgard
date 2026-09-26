@@ -24,3 +24,5 @@ repository root.
 - Live acceptance, deployment, or recovery diagnosis: use
   `.agents/skills/midgard-e2e-acceptance/SKILL.md` before operating services.
 - Devnet setup or configuration: read `demo/midgard-node-tools/devnet/AGENTS.md`.
+- A `midgard/*` lint failure or a baseline change: read
+  `docs/agents/lint-rules.md`.

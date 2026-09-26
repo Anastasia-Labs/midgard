@@ -7,7 +7,9 @@ repository root.
 
 Keep the operator binary focused on operating the node. Add test, demo,
 benchmark, and acceptance commands to `demo/midgard-node-tools`, which has its
-own binary. Do not register them in `demo/midgard-node/src/index.ts`. [review]
+own binary. Do not register them in `demo/midgard-node/src/index.ts`. Blind
+spot: the lint judges command names only, so a test command with an
+operator-sounding name passes. [eslint: midgard/node-cli-operator-commands-only]
 
 ## Source Consumers
 

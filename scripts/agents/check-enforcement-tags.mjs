@@ -55,7 +55,23 @@ export const TAG_KINDS = [
 export const KNOWN_ENFORCERS = [
   {
     pattern: /localUPLCEval/u,
-    tag: "[script: demo/midgard-fault-proofs/tests/wave0-shared-substrate.test.ts]",
+    tag: "[eslint: midgard/local-uplc-eval]",
+  },
+  {
+    pattern: /\blocaleCompare\b/u,
+    tag: "[eslint: midgard/locale-compare-explicit-locale]",
+  },
+  {
+    pattern: /\bapplyParamsToScript\b|apply_params_to_script/u,
+    tag: "[eslint: midgard/apply-params-through-blueprint]",
+  },
+  {
+    pattern: /\bsetMinFee\b/u,
+    tag: "[eslint: midgard/exact-fee-no-change-output]",
+  },
+  {
+    pattern: /\boverrideUTxOs\b/u,
+    tag: "[eslint: midgard/scoped-utxo-override]",
   },
   {
     pattern: /workspace packages by name|\.\.\/<package>\/(?:src|dist)/iu,
