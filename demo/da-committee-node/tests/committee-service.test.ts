@@ -2396,6 +2396,71 @@ describe("CommitteeService", () => {
       );
 
       it(
+        "converges on a decided header attested before a walk's worth of appends and merged beyond the walk",
+        { timeout: 120_000 },
+        async () => {
+          const { chain, clock, store, service, signed, spare } =
+            await chainCommittee("7c", 5, walkLimit, false);
+          const committee = service();
+          await committee.initialize();
+          await expect(committee.tick()).resolves.toMatchObject({
+            signedHeaders: 1,
+          });
+          // Offline: the signed header is attested, more than a walk of
+          // appends lands after it, and it is then merged, all of it final.
+          // The output the walk leaves it at is one no snapshot shows again.
+          chain.mine({ attest: signed });
+          const attestedAt = chain.queue()[1]!.outRef;
+          for (const header of spare) chain.mine({ append: header });
+          chain.mine("merge");
+          for (let block = 0; block <= finalityDepth; block += 1) chain.mine();
+          const exits: number[] = [];
+          const runner = createCommitteeTickRunner({
+            tick: () => committee.tick(),
+            runAvailabilityResponse: async () => undefined,
+            runRetention: async () => undefined,
+            latestL1View: () => committee.latestL1View(),
+            latestL1ProgressAtMs: () => committee.latestL1ProgressAtMs(),
+            setRetentionReadiness: () => undefined,
+            l1ViewFatalMs: 3 * blockMs,
+            startedAtMs: clock.nowMs,
+            nowMs: () => clock.nowMs,
+            write: () => undefined,
+            shutdown: async () => undefined,
+            exit: (code) => exits.push(code),
+            shutdownGraceMs: 10,
+          });
+          clock.nowMs += blockMs;
+          await expect(committee.tick()).rejects.toThrow(catchingUp);
+          await expect(observationOf(store, signed)).resolves.toMatchObject({
+            stateQueueOutRef: attestedAt,
+            stateQueueStatus: UNKNOWN_STATE_QUEUE_STATUS,
+            lastKnownStatus: "unattested",
+            hasPersistedDecision: true,
+          });
+          // The next tick carries on from the anchor through the merge, and
+          // the node stays healthy past the L1 view deadline.
+          for (let tick = 0; tick < 5; tick += 1) {
+            clock.nowMs += blockMs;
+            await runner.runTick();
+            expect((await store.getL1SourceState())?.status).toBe("healthy");
+            chain.mine();
+          }
+          expect(exits).toEqual([]);
+          await expect(observationOf(store, signed)).resolves.toMatchObject({
+            stateQueueStatus: "merged",
+            hasPersistedDecision: true,
+          });
+          await expect(
+            store.getStateQueueHeader(signed),
+          ).resolves.toMatchObject({
+            status: "merged",
+            finalized: true,
+          });
+        },
+      );
+
+      it(
         "replays a history of exactly one walk that reaches the snapshot as a normal tick",
         { timeout: 120_000 },
         async () => {
