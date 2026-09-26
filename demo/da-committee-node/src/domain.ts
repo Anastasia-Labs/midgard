@@ -5,6 +5,8 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import type { ChainSyncCursor } from "./l1/provider.js";
+
 export type ChainPoint = {
   readonly slot?: number;
   readonly blockHash?: string;
@@ -44,6 +46,12 @@ export type ObservedStateQueueSnapshot = {
    * too, so one tick judges all finality at one tip.
    */
   readonly tipBlockNo?: number;
+  /**
+   * The local node's chain-sync cursor the snapshot was read at. Rollbacks
+   * after it may have undone what the snapshot shows, so a consumer that acts
+   * on the snapshot replays the rollback feed from here.
+   */
+  readonly chainSyncCursor?: ChainSyncCursor;
 };
 
 export type StateQueueHeaderStatus =

@@ -18,7 +18,16 @@ import type {
   DaStoredPayloadRootSet,
   Header,
 } from "../src/domain.js";
-import type { ChainSyncCursor, ChainSyncEvent } from "../src/l1/provider.js";
+import {
+  type CanonicalChainPoint,
+  type ChainSyncCursor,
+  type ChainSyncEvent,
+  type ChainSyncEventSource,
+  FileChainSyncConsumerCursorStore,
+  FileChainSyncCursorStore,
+  LocalNodeChainAuthority,
+  LocalNodeStateQueueProvider,
+} from "../src/l1/provider.js";
 import { L1SourceIntegrityError } from "../src/l1/source-integrity.js";
 import {
   hashBlockHeader,
@@ -754,6 +763,7 @@ describe("CommitteeService", () => {
             confirmedHeaderHash: "00".repeat(28),
             confirmedStateOutRef: `${"00".repeat(32)}#0`,
             observedChainPoint: node.chainPoint,
+            chainSyncCursor: cursor,
           };
         },
         currentChainSyncCursor: async () => cursor,
@@ -761,6 +771,7 @@ describe("CommitteeService", () => {
         loadConsumedChainSyncCursor: async () => source.consumedCursor,
         acknowledgeChainSyncCursor: async (next: ChainSyncCursor) => {
           source.consumedCursor = next;
+          return { rollbackSinceCapture: false };
         },
       };
       const store = await openJsonCommitteeStore(dir);
@@ -2731,6 +2742,10 @@ describe("CommitteeService", () => {
             { current: cursorAt(0) };
           const committee = service(true, {
             ...chainProvider,
+            fetchStateQueueSnapshot: async () => ({
+              ...chain.snapshot(),
+              chainSyncCursor: feed.current,
+            }),
             currentChainSyncCursor: async () => feed.current,
             replayChainSyncEvents: async (fromSequence: number) =>
               Array.from(
@@ -2743,6 +2758,7 @@ describe("CommitteeService", () => {
             loadConsumedChainSyncCursor: async () => feed.consumed,
             acknowledgeChainSyncCursor: async (cursor: ChainSyncCursor) => {
               feed.consumed = cursor;
+              return { rollbackSinceCapture: false };
             },
           } as StateQueueProvider);
           await committee.initialize();
@@ -2999,6 +3015,7 @@ describe("CommitteeService", () => {
       loadConsumedChainSyncCursor: async () => consumedCursor,
       acknowledgeChainSyncCursor: async (cursor: ChainSyncCursor) => {
         consumedCursor = cursor;
+        return { rollbackSinceCapture: false };
       },
     });
     const firstStore = await openJsonCommitteeStore(dir);
@@ -3093,6 +3110,352 @@ describe("CommitteeService", () => {
       quarantineReason: expect.stringContaining(
         `l1_source_chain_sync_rollback:${headerHash}:9:${"22".repeat(32)}`,
       ),
+    });
+  });
+
+  describe("acknowledging the chain-sync feed a tick checked", () => {
+    /**
+     * A signing committee on a real local-node chain authority and durable
+     * consumer. The test extends or forks the chain while a tick is still
+     * running, after its rollback check, and synchronizes the authority there
+     * as the tick's own queries do.
+     */
+    const midTickCommittee = async (seedByte: string) => {
+      const dir = await tempDir();
+      const { header, headerHash, payloadCbor } = await makePayloadFixture();
+      const seed = "00".repeat(31) + seedByte;
+      const signer = await loadDaSigner(`hex:${seed}`);
+      const config = minimalConfig({
+        dir,
+        manifestPath: `${dir}/manifest.json`,
+        deploymentInfoPath: `${dir}/deployment.json`,
+        signerSeed: seed,
+        signerPublicKey: signer.publicKeyHex,
+      });
+      const configured = {
+        ...config,
+        l1Source: {
+          sourceMode: "local_node" as const,
+          authorityNodeId: "node-a",
+          chainSyncProviderUrl: "chain-sync:ogmios:ws://ogmios.local",
+          chainSyncCursorPath: `${dir}/chain-sync.json`,
+          queryProviderUrls: ["kupmios:http://kupo.local|ws://ogmios.local"],
+        },
+        daParams: {
+          ...config.daParams,
+          committeeSignersHash: bytesToHex(
+            blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+          ),
+        },
+      };
+      const signerValidation = validateDaSignerMembership({
+        daParams: configured.daParams,
+        signer,
+        signerIndex: 0,
+      });
+      const pointAt = (slot: number, fork = 0): CanonicalChainPoint => ({
+        network: configured.network,
+        slot,
+        blockHash: `${fork.toString(16).padStart(2, "0")}${slot.toString(16).padStart(62, "0")}`,
+        providerSource: "chain-sync:node-a",
+        observedAt: "2026-07-28T00:00:00.000Z",
+      });
+      const chain = {
+        points: Array.from({ length: 12 }, (_, index) => pointAt(index + 1)),
+      };
+      // Follows `chain`; a cursor that left it rolls back to the newest point
+      // below it, so a fork's blocks sit above the old tip's slot.
+      const source: ChainSyncEventSource = {
+        next: async (cursor) => {
+          const tip = chain.points.at(-1)!;
+          const at = chain.points.findIndex(
+            (point) =>
+              point.slot === cursor?.point.slot &&
+              point.blockHash === cursor.point.blockHash,
+          );
+          if (cursor !== undefined && at < 0) {
+            return {
+              event: {
+                direction: "roll_backward",
+                point: chain.points
+                  .filter((point) => point.slot < cursor.point.slot)
+                  .at(-1)!,
+              },
+              tip,
+            };
+          }
+          const next = chain.points[at + 1];
+          return next === undefined
+            ? { tip }
+            : { event: { direction: "roll_forward", point: next }, tip };
+        },
+      };
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        configured.network,
+        source,
+        new FileChainSyncCursorStore(`${dir}/chain-sync.json`, "11".repeat(32)),
+      );
+      const local = new LocalNodeStateQueueProvider(
+        authority,
+        [
+          {
+            fetchStateQueueNodes: () => {
+              throw new Error("the test serves the snapshot itself");
+            },
+            currentChainPoint: () => authority.currentPoint(),
+          },
+        ],
+        ["query:node-a:0"],
+        new FileChainSyncConsumerCursorStore(
+          `${dir}/chain-sync-consumer.json`,
+          "11".repeat(32),
+        ),
+      );
+      const node = makeObservedNode({
+        header,
+        headerHash,
+        depth: 10,
+        slot: 10,
+        blockHash: pointAt(10).blockHash,
+      });
+      const replays: (readonly ChainSyncEvent[])[] = [];
+      // Each runs once: right after the tick's snapshot is read, or at its
+      // first header upsert, after its rollback check and before it
+      // acknowledges the feed.
+      const inject: {
+        afterSnapshot?: () => Promise<void>;
+        afterRollbackCheck?: () => Promise<void>;
+      } = {};
+      const runInjected = async (point: keyof typeof inject) => {
+        const run = inject[point];
+        inject[point] = undefined;
+        await run?.();
+      };
+      const finalSnapshot = withFinalSnapshot({
+        // As on the local-node provider, a snapshot first synchronizes the
+        // authority to the tip.
+        fetchStateQueueNodes: async () => {
+          await authority.synchronizeToTip();
+          return [node];
+        },
+        currentChainSyncCursor: () => local.currentChainSyncCursor(),
+        replayChainSyncEvents: async (afterSequence: number) => {
+          const events = await local.replayChainSyncEvents(afterSequence);
+          replays.push(events);
+          return events;
+        },
+        loadConsumedChainSyncCursor: () => local.loadConsumedChainSyncCursor(),
+        acknowledgeChainSyncCursor: (cursor: ChainSyncCursor) =>
+          local.acknowledgeChainSyncCursor(cursor),
+      });
+      const stateQueueProvider = Object.assign(
+        Object.create(finalSnapshot) as typeof finalSnapshot,
+        {
+          fetchStateQueueSnapshot: async () => {
+            const snapshot = await finalSnapshot.fetchStateQueueSnapshot();
+            await runInjected("afterSnapshot");
+            return snapshot;
+          },
+        },
+      );
+      const store = await openJsonCommitteeStore(dir);
+      const tickStore = new Proxy(store, {
+        get: (target, property) => {
+          if (property === "upsertStateQueueHeader") {
+            return async (
+              ...args: Parameters<
+                JsonFileCommitteeStore["upsertStateQueueHeader"]
+              >
+            ) => {
+              await runInjected("afterRollbackCheck");
+              return target.upsertStateQueueHeader(...args);
+            };
+          }
+          const value = Reflect.get(target, property) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const events: Record<string, unknown>[] = [];
+      const service = new CommitteeService({
+        config: configured,
+        store: tickStore,
+        stateQueueProvider,
+        payloadSource: payloadSourceFromBytes(payloadCbor),
+        signer,
+        signerValidation,
+        coordinator: { publishSignature: async () => "posted" },
+        writeEvent: (line) => {
+          events.push(JSON.parse(line) as Record<string, unknown>);
+        },
+      });
+      await service.initialize();
+      const extend = (slots: readonly number[], fork = 0) => {
+        chain.points.push(...slots.map((slot) => pointAt(slot, fork)));
+      };
+      /** The node forks back to slot 8, below the header's slot 10. */
+      const forkBelowHeader = async () => {
+        chain.points.length = 8;
+        extend([20, 21], 1);
+        await authority.synchronizeToTip();
+      };
+      const rollbackQuarantine = `l1_source_chain_sync_rollback:${headerHash}:8:${pointAt(8).blockHash}`;
+      return {
+        service,
+        store,
+        authority,
+        local,
+        extend,
+        forkBelowHeader,
+        rollbackQuarantine,
+        inject,
+        replays,
+        events,
+      };
+    };
+
+    describe.each(["afterSnapshot", "afterRollbackCheck"] as const)(
+      "with the chain moving %s",
+      (point) => {
+        it("acknowledges the snapshot's cursor and replays exactly the newer events next tick", async () => {
+          const { service, store, authority, local, extend, inject, replays } =
+            await midTickCommittee("61");
+          await expect(service.tick()).resolves.toMatchObject({
+            signedHeaders: 1,
+            errors: [],
+          });
+          await expect(
+            local.loadConsumedChainSyncCursor(),
+          ).resolves.toMatchObject({ sequence: 11 });
+
+          // Two blocks before the next tick; five more while it runs.
+          extend([13, 14]);
+          inject[point] = async () => {
+            extend([15, 16, 17, 18, 19]);
+            await authority.synchronizeToTip();
+          };
+          await expect(service.tick()).resolves.toMatchObject({ errors: [] });
+          expect(inject[point]).toBeUndefined();
+          await expect(
+            local.loadConsumedChainSyncCursor(),
+          ).resolves.toMatchObject({ sequence: 13, rollbackGeneration: 0 });
+          await expect(authority.currentCursor()).resolves.toMatchObject({
+            sequence: 18,
+          });
+
+          // The next tick replays exactly the five events after the cursor
+          // the last one's snapshot was read at.
+          await expect(service.tick()).resolves.toMatchObject({ errors: [] });
+          expect(
+            replays
+              .at(-1)!
+              .map(({ direction, point: { slot } }) => [direction, slot]),
+          ).toEqual([15, 16, 17, 18, 19].map((slot) => ["roll_forward", slot]));
+          await expect(
+            local.loadConsumedChainSyncCursor(),
+          ).resolves.toMatchObject({ sequence: 18 });
+          expect((await store.getL1SourceState())?.status).toBe("healthy");
+        });
+
+        it("quarantines on the next tick when the chain rolled back below a decision the first tick made", async () => {
+          const {
+            service,
+            store,
+            local,
+            forkBelowHeader,
+            rollbackQuarantine,
+            inject,
+            events,
+          } = await midTickCommittee("62");
+          inject[point] = forkBelowHeader;
+          await expect(service.tick()).resolves.toMatchObject({
+            signedHeaders: 1,
+            errors: [],
+          });
+          expect(inject[point]).toBeUndefined();
+          // The decision was made at the snapshot's cursor, which is what the
+          // tick acknowledged, so the rollback after it is still to replay.
+          await expect(local.loadConsumedChainSyncCursor()).resolves.toEqual(
+            expect.objectContaining({ sequence: 11, rollbackGeneration: 0 }),
+          );
+          expect(events).toContainEqual({
+            event: "l1_chain_sync_rollback_after_acknowledged_cursor",
+            sequence: 11,
+            rollbackGeneration: 0,
+          });
+          expect((await store.getL1SourceState())?.status).toBe("healthy");
+
+          await expect(service.tick()).resolves.toMatchObject({
+            signedHeaders: 0,
+            errors: [expect.stringContaining("chain_sync_rollback")],
+          });
+          await expect(store.getL1SourceState()).resolves.toMatchObject({
+            status: "quarantined",
+            quarantineReason: rollbackQuarantine,
+          });
+        });
+      },
+    );
+
+    it("quarantines on the next tick when the chain rolled back below a decision after the rollback check, with a consumed cursor recorded", async () => {
+      const {
+        service,
+        store,
+        local,
+        extend,
+        forkBelowHeader,
+        rollbackQuarantine,
+        inject,
+      } = await midTickCommittee("63");
+      await expect(service.tick()).resolves.toMatchObject({
+        signedHeaders: 1,
+        errors: [],
+      });
+      extend([13, 14]);
+      inject.afterRollbackCheck = forkBelowHeader;
+      await expect(service.tick()).resolves.toMatchObject({ errors: [] });
+      expect(inject.afterRollbackCheck).toBeUndefined();
+      await expect(local.loadConsumedChainSyncCursor()).resolves.toMatchObject({
+        sequence: 13,
+        rollbackGeneration: 0,
+      });
+      expect((await store.getL1SourceState())?.status).toBe("healthy");
+
+      await expect(service.tick()).resolves.toMatchObject({
+        signedHeaders: 0,
+        errors: [expect.stringContaining("chain_sync_rollback")],
+      });
+      await expect(store.getL1SourceState()).resolves.toMatchObject({
+        status: "quarantined",
+        quarantineReason: rollbackQuarantine,
+      });
+    });
+
+    it("quarantines in the same tick when the chain rolled back below a recorded decision after the snapshot", async () => {
+      const {
+        service,
+        store,
+        extend,
+        forkBelowHeader,
+        rollbackQuarantine,
+        inject,
+      } = await midTickCommittee("64");
+      await expect(service.tick()).resolves.toMatchObject({
+        signedHeaders: 1,
+        errors: [],
+      });
+      // The rollback check replays through the authority's current cursor,
+      // so a rollback below a decision already recorded is found at once.
+      extend([13, 14]);
+      inject.afterSnapshot = forkBelowHeader;
+      await expect(service.tick()).resolves.toMatchObject({
+        signedHeaders: 0,
+        errors: [expect.stringContaining("chain_sync_rollback")],
+      });
+      await expect(store.getL1SourceState()).resolves.toMatchObject({
+        status: "quarantined",
+        quarantineReason: rollbackQuarantine,
+      });
     });
   });
 

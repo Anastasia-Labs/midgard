@@ -653,6 +653,7 @@ export class CommitteeService {
     this.authenticatedSteps = authenticatedSteps;
     let scannedL1View: StateQueueL1View | undefined;
     let catchUp: StateQueueCatchUp | undefined;
+    let snapshotChainSyncCursor: ChainSyncCursor | undefined;
     const durableReplayAnchor =
       priorL1State?.stateQueueReplayAnchor ?? this.unpersistedReplayAnchor;
     try {
@@ -695,6 +696,9 @@ export class CommitteeService {
         recordCatchUp: (progress) => {
           catchUp = progress;
         },
+        recordChainSyncCursor: (cursor) => {
+          snapshotChainSyncCursor = cursor;
+        },
       });
       this.replayAnchorCandidate = replayAnchorCandidate;
       this.unpersistedReplayAnchor = replayAnchor;
@@ -711,6 +715,7 @@ export class CommitteeService {
       rollbackCheck = await checkL1RollbackFeed(
         priorL1State,
         this.deps.stateQueueProvider,
+        snapshotChainSyncCursor,
       );
     } catch (error) {
       return this.quarantineOnIntegrityFailure(
@@ -980,6 +985,7 @@ export class CommitteeService {
       await acknowledgeL1RollbackFeed(
         this.deps.stateQueueProvider,
         rollbackCheck.cursor,
+        (event) => this.writeEvent(event),
       );
     }
     return result;
@@ -1129,6 +1135,7 @@ export class CommitteeService {
       await acknowledgeL1RollbackFeed(
         this.deps.stateQueueProvider,
         rollbackCheck.cursor,
+        (event) => this.writeEvent(event),
       );
     }
     this.l1ProgressAtMs = (this.deps.now?.() ?? new Date()).getTime();
@@ -1921,6 +1928,7 @@ const l1ObservationTransitionFailure = (
 };
 
 type L1RollbackFeedCheck = {
+  /** Where the next tick's rollback replay starts: the snapshot's cursor. */
   readonly cursor?: ChainSyncCursor;
   readonly failure?: string;
 };
@@ -1928,13 +1936,27 @@ type L1RollbackFeedCheck = {
 type DurableChainSyncReplayProvider = StateQueueProvider &
   ChainSyncReplayProvider;
 
+/**
+ * Replays the rollback feed since the durable consumer cursor against the
+ * persisted decisions. This tick decides on a snapshot read at
+ * `snapshotCursor`, and a rollback after it may undo what that snapshot
+ * showed, so the tick acknowledges `snapshotCursor`, not the authority's
+ * current cursor: the next tick replays every later event against the
+ * decisions this tick persists.
+ */
 const checkL1RollbackFeed = async (
   previous: L1SourceState | undefined,
   provider: StateQueueProvider,
+  snapshotCursor: ChainSyncCursor | undefined,
 ): Promise<L1RollbackFeedCheck> => {
   const replayProvider = durableChainSyncReplayProvider(provider);
   if (replayProvider === undefined) {
     return {};
+  }
+  if (snapshotCursor === undefined) {
+    throw new Error(
+      "local-node state-queue snapshot carries no chain-sync cursor to acknowledge",
+    );
   }
   const current = await replayProvider.currentChainSyncCursor();
   const consumed = await replayProvider.loadConsumedChainSyncCursor();
@@ -1943,7 +1965,7 @@ const checkL1RollbackFeed = async (
       ({ hasPersistedDecision }) => hasPersistedDecision,
     ) ?? [];
   if (previous === undefined || decisions.length === 0) {
-    return { cursor: current };
+    return { cursor: snapshotCursor };
   }
   if (consumed === undefined) {
     throw new L1SourceIntegrityError(
@@ -1987,18 +2009,24 @@ const checkL1RollbackFeed = async (
           rollback.point.blockHash !== decision.blockHash)
       ) {
         return {
-          cursor: current,
+          cursor: snapshotCursor,
           failure: `l1_source_chain_sync_rollback:${decision.headerHash}:${rollback.point.slot.toString()}:${rollback.point.blockHash}`,
         };
       }
     }
   }
-  return { cursor: current };
+  return { cursor: snapshotCursor };
 };
 
+/**
+ * Acknowledges the cursor the tick's decisions were made at. The authority
+ * may have synchronized past it during the tick, rollbacks included; the next
+ * tick replays those events from this cursor.
+ */
 const acknowledgeL1RollbackFeed = async (
   provider: StateQueueProvider,
   cursor: ChainSyncCursor,
+  writeEvent: (event: Readonly<Record<string, unknown>>) => void,
 ): Promise<void> => {
   const replayProvider = durableChainSyncReplayProvider(provider);
   if (replayProvider === undefined) {
@@ -2006,7 +2034,15 @@ const acknowledgeL1RollbackFeed = async (
       "chain-sync rollback replay capabilities disappeared before acknowledgement",
     );
   }
-  await replayProvider.acknowledgeChainSyncCursor(cursor);
+  const acknowledgement =
+    await replayProvider.acknowledgeChainSyncCursor(cursor);
+  if (acknowledgement.rollbackSinceCapture) {
+    writeEvent({
+      event: "l1_chain_sync_rollback_after_acknowledged_cursor",
+      sequence: cursor.sequence,
+      rollbackGeneration: cursor.rollbackGeneration,
+    });
+  }
 };
 
 const durableChainSyncReplayProvider = (

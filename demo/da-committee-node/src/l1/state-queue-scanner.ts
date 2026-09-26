@@ -145,6 +145,11 @@ export type StateQueueScanConfig = {
    * snapshot is not reached, so nothing about it is observed.
    */
   readonly recordCatchUp?: (catchUp: StateQueueCatchUp) => void;
+  /**
+   * Receives the local node's chain-sync cursor this scan's snapshot was read
+   * at, when the snapshot carries one.
+   */
+  readonly recordChainSyncCursor?: (cursor: ChainSyncCursor) => void;
 };
 
 export type StateQueueL1View = Readonly<{
@@ -160,6 +165,9 @@ export const scanStateQueue = async (
     provider.fetchStateQueueSnapshot === undefined
       ? undefined
       : await provider.fetchStateQueueSnapshot();
+  if (snapshot?.chainSyncCursor !== undefined) {
+    config.recordChainSyncCursor?.(snapshot.chainSyncCursor);
+  }
   const nodes = snapshot?.nodes ?? (await provider.fetchStateQueueNodes());
   const current = nodes
     .filter((node) => node.linkedListKey !== "Empty")

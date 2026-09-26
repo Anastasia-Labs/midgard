@@ -76,6 +76,11 @@ export interface ChainSyncCursorStore {
   load(): Promise<ChainSyncCursor | undefined>;
   append(event: ChainSyncEvent, cursor: ChainSyncCursor): Promise<void>;
   replay(afterSequence: number): Promise<readonly ChainSyncEvent[]>;
+  /**
+   * The durable cursor journaled with the event at `sequence`, or undefined
+   * when the journal does not hold it (pruned, or not yet appended).
+   */
+  cursorAt(sequence: number): Promise<ChainSyncCursor | undefined>;
   intersectionPoints?(limit: number): Promise<readonly CanonicalChainPoint[]>;
   prune?(consumedSequence: number): Promise<void>;
 }
@@ -126,9 +131,28 @@ export interface ChainSyncReplayProvider {
     afterSequence: number,
   ): Promise<readonly ChainSyncEvent[]>;
   loadConsumedChainSyncCursor(): Promise<ChainSyncCursor | undefined>;
-  acknowledgeChainSyncCursor(cursor: ChainSyncCursor): Promise<void>;
+  acknowledgeChainSyncCursor(
+    cursor: ChainSyncCursor,
+  ): Promise<ChainSyncAcknowledgement>;
   /** Set while a synchronization is still catching up to the tip. */
   chainSyncCatchUpProgress?(): ChainSyncCatchUpProgress | undefined;
+}
+
+/**
+ * The outcome of acknowledging a consumed chain-sync cursor. The authority may
+ * have moved on since the consumer captured the cursor, rollbacks included:
+ * those events come after the acknowledged cursor, so the consumer's next
+ * replay delivers them.
+ */
+export type ChainSyncAcknowledgement = {
+  /** A rollback the consumer has not replayed yet follows the cursor. */
+  readonly rollbackSinceCapture: boolean;
+};
+
+/** Where the durable consumer records how far it has replayed the journal. */
+export interface ChainSyncConsumerCursorStore {
+  load(): Promise<ChainSyncCursor | undefined>;
+  save(cursor: ChainSyncCursor): Promise<void>;
 }
 
 type PersistedChainSyncState = {
@@ -246,6 +270,22 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
     return journal
       .filter(({ sequence }) => sequence > afterSequence)
       .map(({ event }) => event);
+  }
+
+  async cursorAt(sequence: number): Promise<ChainSyncCursor | undefined> {
+    if (!Number.isSafeInteger(sequence) || sequence < 0) {
+      throw new Error("chain-sync journal sequence must be an integer >= 0");
+    }
+    const state = await this.initialize();
+    if (
+      sequence < this.cachedJournalFirstSequence ||
+      sequence >= this.cachedJournalNextSequence
+    ) {
+      return undefined;
+    }
+    const journal = await this.readJournal();
+    await this.assertJournalMatchesCursor(state.cursor, journal);
+    return journal.find((entry) => entry.sequence === sequence)?.cursor;
   }
 
   async intersectionPoints(
@@ -511,7 +551,9 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
   }
 }
 
-export class FileChainSyncConsumerCursorStore {
+export class FileChainSyncConsumerCursorStore
+  implements ChainSyncConsumerCursorStore
+{
   constructor(
     private readonly path: string,
     private readonly authorityFingerprint: string,
@@ -740,16 +782,81 @@ export class LocalNodeChainAuthority {
   }
 
   /**
-   * Prunes journal entries the durable consumer has replayed through
-   * `consumedSequence` and no resumption would intersect with. Serialized with
-   * synchronization, so it never races an append.
+   * Records in `consumer` that it has replayed every journal event through
+   * `cursor`, then prunes the entries it no longer needs.
+   *
+   * The consumer captures `cursor` before it acts on the chain view and
+   * acknowledges it afterwards, so the authority may have synchronized
+   * further in between, rollbacks included. That is expected: those events
+   * follow the cursor, stay journaled, and the consumer's next replay
+   * delivers them. Anything else (a cursor ahead of the authority, one the
+   * journal does not hold, or one behind the durable consumer) is refused.
+   *
+   * Serialized with synchronization, so no append lands between the check
+   * and the prune.
    */
-  async pruneConsumed(consumedSequence: number): Promise<void> {
+  async acknowledgeConsumed(
+    cursor: ChainSyncCursor,
+    consumer: ChainSyncConsumerCursorStore,
+  ): Promise<ChainSyncAcknowledgement> {
+    let outcome: ChainSyncAcknowledgement | undefined;
     const run = this.operation.then(async () => {
-      await this.store.prune?.(consumedSequence);
+      await this.loadCursor();
+      const current = this.cursor;
+      if (current === undefined) {
+        throw new L1SourceIntegrityError(
+          "refusing to acknowledge a chain-sync cursor before the authority has one",
+        );
+      }
+      if (
+        cursor.sequence > current.sequence ||
+        cursor.rollbackGeneration > current.rollbackGeneration
+      ) {
+        throw new L1SourceIntegrityError(
+          "refusing to acknowledge a chain-sync cursor ahead of the authority cursor",
+        );
+      }
+      const consumed = await consumer.load();
+      if (
+        consumed !== undefined &&
+        (cursor.sequence < consumed.sequence ||
+          cursor.rollbackGeneration < consumed.rollbackGeneration ||
+          (cursor.sequence === consumed.sequence &&
+            !samePersistedCursor(cursor, consumed)))
+      ) {
+        throw new L1SourceIntegrityError(
+          "refusing to acknowledge a chain-sync cursor behind or conflicting with the durable consumer cursor",
+        );
+      }
+      // The consumed cursor itself may already be pruned from the journal;
+      // every event after it is still journaled.
+      const alreadyConsumed =
+        consumed !== undefined && samePersistedCursor(cursor, consumed);
+      if (!alreadyConsumed) {
+        const journaled = await this.store.cursorAt(cursor.sequence);
+        if (
+          journaled === undefined ||
+          !samePersistedCursor(journaled, cursor)
+        ) {
+          throw new L1SourceIntegrityError(
+            "refusing to acknowledge a chain-sync cursor the durable event journal does not hold",
+          );
+        }
+      }
+      if (!alreadyConsumed) {
+        await consumer.save(cursor);
+      }
+      // Only what a resumption intersects with and what the consumer has not
+      // replayed yet is still needed, so the journal stays bounded.
+      await this.store.prune?.(cursor.sequence);
+      outcome = {
+        rollbackSinceCapture:
+          cursor.rollbackGeneration !== current.rollbackGeneration,
+      };
     });
     this.operation = run.catch(() => undefined);
     await run;
+    return outcome!;
   }
 
   assertAligned(point: CanonicalChainPoint, sourceLabel: string): void {
@@ -1368,7 +1475,7 @@ export class LocalNodeStateQueueProvider
     private readonly authority: LocalNodeChainAuthority,
     private readonly queryProviders: readonly ChainPointAwareStateQueueProvider[],
     private readonly queryIdentities: readonly string[],
-    private readonly consumerCursorStore: FileChainSyncConsumerCursorStore,
+    private readonly consumerCursorStore: ChainSyncConsumerCursorStore,
   ) {
     if (queryProviders.length === 0) {
       throw new Error(
@@ -1416,6 +1523,12 @@ export class LocalNodeStateQueueProvider
 
   private async readStateQueueSnapshotAtOnePoint(): Promise<ObservedStateQueueSnapshot> {
     const canonicalBefore = await this.authority.synchronizeToTip();
+    const cursorBefore = await this.authority.currentCursor();
+    if (!sameCanonicalPoint(canonicalBefore, cursorBefore.point)) {
+      throw new ChainMovedDuringSnapshotError(
+        "local node chain authority moved on before query snapshots were collected",
+      );
+    }
     const assertAtAuthorityPoint = (
       point: CanonicalChainPoint,
       index: number,
@@ -1448,8 +1561,11 @@ export class LocalNodeStateQueueProvider
         return { snapshot, queryPoint: after };
       }),
     );
-    const canonicalAfter = await this.authority.currentPoint();
-    if (!sameCanonicalPoint(canonicalBefore, canonicalAfter)) {
+    // The same cursor, not only the same point: a rollback and a re-adoption
+    // of the block in between would leave the point unchanged.
+    const cursorAfter = await this.authority.currentCursor();
+    const canonicalAfter = cursorAfter.point;
+    if (!samePersistedCursor(cursorBefore, cursorAfter)) {
       throw new ChainMovedDuringSnapshotError(
         "local node chain authority changed while query snapshots were being collected",
       );
@@ -1515,6 +1631,7 @@ export class LocalNodeStateQueueProvider
         ].join(","),
         observedAt: new Date().toISOString(),
       } satisfies ChainPoint,
+      chainSyncCursor: cursorAfter,
     };
   }
 
@@ -1599,18 +1716,10 @@ export class LocalNodeStateQueueProvider
     return this.authority.catchUpProgress();
   }
 
-  async acknowledgeChainSyncCursor(cursor: ChainSyncCursor): Promise<void> {
-    const current = await this.authority.currentCursor();
-    if (!samePersistedCursor(current, cursor)) {
-      throw new Error(
-        "refusing to acknowledge a stale local-node chain-sync cursor",
-      );
-    }
-    await this.consumerCursorStore.save(cursor);
-    // The consumer has replayed every event through this cursor: only what a
-    // resumption intersects with is still needed, and the journal stays
-    // bounded instead of holding the whole history since it was created.
-    await this.authority.pruneConsumed(cursor.sequence);
+  async acknowledgeChainSyncCursor(
+    cursor: ChainSyncCursor,
+  ): Promise<ChainSyncAcknowledgement> {
+    return this.authority.acknowledgeConsumed(cursor, this.consumerCursorStore);
   }
 }
 

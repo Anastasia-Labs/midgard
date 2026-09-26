@@ -6,7 +6,8 @@ import type { StateQueueProvider } from "../../src/l1/state-queue-scanner.js";
  * final, read at one tip. With final nodes, the committee's first scan of it
  * records a durable replay anchor, which every decision requires. The queue
  * it names must not change between scans: there is no replay source to
- * authenticate a change.
+ * authenticate a change. A provider with a chain-sync cursor reads the
+ * snapshot at it.
  */
 export const withFinalSnapshot = <Provider extends StateQueueProvider>(
   provider: Provider,
@@ -25,5 +26,9 @@ export const withFinalSnapshot = <Provider extends StateQueueProvider>(
         finalized: true,
         providerSource: "fixture",
       },
+      // A local-node provider reads its snapshot at its chain-sync cursor.
+      ...(provider.currentChainSyncCursor === undefined
+        ? {}
+        : { chainSyncCursor: await provider.currentChainSyncCursor() }),
     }),
   });

@@ -24,6 +24,8 @@ import {
 import {
   assertOgmiosNetworkMagic,
   type CanonicalChainPoint,
+  CHAIN_SYNC_INTERSECTION_POINTS,
+  CHAIN_SYNC_JOURNAL_PRUNE_SLACK,
   type ChainSyncCatchUpProgress,
   type ChainSyncCursor,
   type ChainSyncCursorStore,
@@ -953,6 +955,7 @@ describe("L1 provider adapters", () => {
     const store: ChainSyncCursorStore = {
       load: () => inner.load(),
       replay: (afterSequence) => inner.replay(afterSequence),
+      cursorAt: (sequence) => inner.cursorAt(sequence),
       intersectionPoints: (limit) => inner.intersectionPoints(limit),
       append: async (event, cursor) => {
         if (cursor.sequence !== 1 || failures > 0) {
@@ -1028,6 +1031,7 @@ describe("L1 provider adapters", () => {
     const store: ChainSyncCursorStore = {
       load: () => inner.load(),
       replay: (afterSequence) => inner.replay(afterSequence),
+      cursorAt: (sequence) => inner.cursorAt(sequence),
       intersectionPoints: (limit) => inner.intersectionPoints(limit),
       append: async (event, cursor) => {
         if (cursor.sequence === 1 && failures === 0) {
@@ -1098,6 +1102,7 @@ describe("L1 provider adapters", () => {
     const store: ChainSyncCursorStore = {
       load: () => inner.load(),
       replay: (afterSequence) => inner.replay(afterSequence),
+      cursorAt: (sequence) => inner.cursorAt(sequence),
       intersectionPoints: (limit) => inner.intersectionPoints(limit),
       append: async (event, cursor) => {
         if (cursor.sequence !== 1 || failures > 0) {
@@ -1408,6 +1413,67 @@ describe("L1 provider adapters", () => {
       confirmedHeaderHash: "00".repeat(28),
     });
     expect(fetchStateQueueSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads a local query snapshot at one chain-sync cursor, retaking it when the authority rolled back and re-adopted the same point", async () => {
+    const dir = await tempDir();
+    const blocks = [1, 2, 3, 4, 5].map((slot) => blockAt(slot));
+    const chain = { blocks: [...blocks] };
+    await writeFollowedJournal(`${dir}/cursor.json`, blocks);
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      followingSource(() => chain.blocks),
+      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+    );
+    let reads = 0;
+    const fetchStateQueueSnapshot = vi.fn(async () => {
+      reads += 1;
+      if (reads === 1) {
+        // While the first read runs, the tip block is rolled back and then
+        // adopted again: the chain point is unchanged, the cursor is not.
+        chain.blocks = blocks.slice(0, 4);
+        await authority.synchronizeToTip();
+        chain.blocks = [...blocks];
+        await authority.synchronizeToTip();
+      }
+      return {
+        nodes: [],
+        confirmedHeaderHash: "00".repeat(28),
+        confirmedStateOutRef: `${"00".repeat(32)}#0`,
+        observedChainPoint: {
+          ...nodePoint(blocks[4]!),
+          providerSource: "query:node-a:0",
+        },
+      };
+    });
+    const provider = new LocalNodeStateQueueProvider(
+      authority,
+      [
+        {
+          fetchStateQueueNodes: async () => [],
+          fetchStateQueueSnapshot,
+          currentChainPoint: async () => ({
+            ...(await authority.currentPoint()),
+            providerSource: "query:node-a:0",
+          }),
+        },
+      ],
+      ["query:node-a:0"],
+      new FileChainSyncConsumerCursorStore(
+        `${dir}/consumer.json`,
+        "11".repeat(32),
+      ),
+    );
+
+    const snapshot = await provider.fetchStateQueueSnapshot();
+    expect(fetchStateQueueSnapshot).toHaveBeenCalledTimes(2);
+    expect(snapshot.chainSyncCursor).toEqual(await authority.currentCursor());
+    expect(snapshot.chainSyncCursor).toMatchObject({
+      sequence: 6,
+      point: nodePoint(blocks[4]!),
+      rollbackGeneration: 1,
+    });
   });
 
   it("merges aligned local query depth and finality conservatively", async () => {
@@ -3129,6 +3195,7 @@ const followingAuthority = (cursorPath: string) =>
 const consumerOf = (
   authority: LocalNodeChainAuthority,
   cursorPath: string,
+  consumerPath = `${cursorPath}.watcher-consumer-v1`,
 ): LocalNodeStateQueueProvider =>
   new LocalNodeStateQueueProvider(
     authority,
@@ -3141,10 +3208,7 @@ const consumerOf = (
       },
     ],
     ["query:node-a:0"],
-    new FileChainSyncConsumerCursorStore(
-      `${cursorPath}.watcher-consumer-v1`,
-      "11".repeat(32),
-    ),
+    new FileChainSyncConsumerCursorStore(consumerPath, "11".repeat(32)),
   );
 
 describe("restarted local-node chain sync", () => {
@@ -3343,6 +3407,8 @@ const memoryCursorStore = (
       entries
         .filter(({ cursor }) => cursor.sequence > afterSequence)
         .map(({ event }) => event),
+    cursorAt: async (sequence) =>
+      entries.find(({ cursor }) => cursor.sequence === sequence)?.cursor,
   };
 };
 
@@ -3907,3 +3973,262 @@ const daSignatureRecordAt = ({
     },
   };
 };
+
+describe("chain-sync consumer acknowledgement", () => {
+  /**
+   * A member whose journal already holds `history` followed blocks, with an
+   * authority following a chain the test extends or forks mid-tick, and the
+   * durable consumer the committee acknowledges through.
+   */
+  const followingMember = async (history: number) => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const chain = {
+      blocks: Array.from({ length: history }, (_, index) => blockAt(index + 1)),
+    };
+    await writeFollowedJournal(cursorPath, chain.blocks);
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      followingSource(() => chain.blocks),
+      new FileChainSyncCursorStore(cursorPath, "11".repeat(32)),
+    );
+    const consumer = consumerOf(authority, cursorPath);
+    const extend = async (count: number) => {
+      const from = chain.blocks.at(-1)!.slot + 1;
+      for (let slot = from; slot < from + count; slot += 1) {
+        chain.blocks.push(blockAt(slot));
+      }
+      await authority.synchronizeToTip();
+    };
+    const journal = () => readFile(`${cursorPath}.events.jsonl`, "utf8");
+    await authority.synchronizeToTip();
+    return { dir, cursorPath, chain, authority, consumer, extend, journal };
+  };
+
+  /** The cursor a follower journals at `sequence` on the unforked chain. */
+  const followedCursor = (sequence: number): ChainSyncCursor => ({
+    sequence,
+    point: nodePoint(blockAt(sequence + 1)),
+    rollbackGeneration: 0,
+  });
+
+  it("acknowledges the cursor a slow tick captured after the authority moved on, keeps every newer event, and leaves exactly those to replay", async () => {
+    const { cursorPath, authority, consumer, extend } =
+      await followingMember(5_000);
+    // The tick captures the authority cursor for its rollback check...
+    const captured = await consumer.currentChainSyncCursor();
+    expect(captured).toEqual(followedCursor(4_999));
+    // ...and outlives a few blocks: its own queries synchronize the
+    // authority past the captured cursor.
+    const newer = 12;
+    await extend(newer);
+    const current = await authority.currentCursor();
+    expect(current.sequence).toBe(captured.sequence + newer);
+
+    await expect(
+      consumer.acknowledgeChainSyncCursor(captured),
+    ).resolves.toEqual({ rollbackSinceCapture: false });
+    await expect(consumer.loadConsumedChainSyncCursor()).resolves.toEqual(
+      captured,
+    );
+    // Pruned down to the intersection window, which still holds every
+    // event after the captured cursor.
+    const kept = await journalSequences(cursorPath);
+    expect(kept).toHaveLength(CHAIN_SYNC_INTERSECTION_POINTS);
+    expect(kept[0]).toBeLessThanOrEqual(captured.sequence + 1);
+    expect(kept.at(-1)).toBe(current.sequence);
+    // The next tick replays from the consumed cursor: exactly the newer
+    // events, in order.
+    const replayed = await consumer.replayChainSyncEvents(
+      (await consumer.loadConsumedChainSyncCursor())!.sequence,
+    );
+    expect(
+      replayed.map(({ direction, point }) => [direction, point.slot]),
+    ).toEqual(
+      Array.from({ length: newer }, (_, index) => [
+        "roll_forward",
+        captured.point.slot + 1 + index,
+      ]),
+    );
+    // Acknowledging the newer cursor afterwards moves the consumer on.
+    await expect(consumer.acknowledgeChainSyncCursor(current)).resolves.toEqual(
+      {
+        rollbackSinceCapture: false,
+      },
+    );
+    await expect(consumer.loadConsumedChainSyncCursor()).resolves.toEqual(
+      current,
+    );
+  });
+
+  it("acknowledges a first captured cursor though the chain rolled back after it, keeping the rollback to replay", async () => {
+    const { cursorPath, chain, authority, consumer } =
+      await followingMember(5_000);
+    const captured = await consumer.currentChainSyncCursor();
+    // Mid-tick, the node forks at the captured block.
+    chain.blocks.length = 4_999;
+    for (let slot = 5_000; slot <= 5_003; slot += 1) {
+      chain.blocks.push(blockAt(slot, 1));
+    }
+    await authority.synchronizeToTip();
+    const current = await authority.currentCursor();
+    expect(current).toMatchObject({ sequence: 5_004, rollbackGeneration: 1 });
+
+    await expect(
+      consumer.acknowledgeChainSyncCursor(captured),
+    ).resolves.toEqual({ rollbackSinceCapture: true });
+    await expect(consumer.loadConsumedChainSyncCursor()).resolves.toEqual(
+      captured,
+    );
+    // Pruned, but never past the acknowledged cursor: the rollback after it
+    // is still journaled, and the next replay delivers it.
+    const kept = await journalSequences(cursorPath);
+    expect(kept.length).toBeLessThan(current.sequence + 1);
+    expect(kept[0]).toBeLessThanOrEqual(captured.sequence + 1);
+    expect(kept.at(-1)).toBe(current.sequence);
+    await expect(
+      consumer.replayChainSyncEvents(
+        (await consumer.loadConsumedChainSyncCursor())!.sequence,
+      ),
+    ).resolves.toEqual([
+      { direction: "roll_backward", point: nodePoint(blockAt(4_999)) },
+      ...[5_000, 5_001, 5_002, 5_003].map((slot) => ({
+        direction: "roll_forward",
+        point: nodePoint(blockAt(slot, 1)),
+      })),
+    ]);
+  });
+
+  it("moves an existing consumed cursor to a later capture the chain rolled back after, keeping the rollback to replay", async () => {
+    const { chain, authority, consumer, extend } = await followingMember(20);
+    const consumed = await consumer.currentChainSyncCursor();
+    await expect(
+      consumer.acknowledgeChainSyncCursor(consumed),
+    ).resolves.toEqual({ rollbackSinceCapture: false });
+    await extend(3);
+    const captured = await consumer.currentChainSyncCursor();
+    expect(captured).toEqual(followedCursor(22));
+    chain.blocks.length = 22;
+    chain.blocks.push(blockAt(23, 1), blockAt(24, 1));
+    await authority.synchronizeToTip();
+
+    await expect(
+      consumer.acknowledgeChainSyncCursor(captured),
+    ).resolves.toEqual({ rollbackSinceCapture: true });
+    await expect(consumer.loadConsumedChainSyncCursor()).resolves.toEqual(
+      captured,
+    );
+    // The next tick replays from the acknowledged cursor: the rollback first.
+    await expect(
+      consumer.replayChainSyncEvents(captured.sequence),
+    ).resolves.toEqual([
+      { direction: "roll_backward", point: nodePoint(blockAt(22)) },
+      ...[23, 24].map((slot) => ({
+        direction: "roll_forward",
+        point: nodePoint(blockAt(slot, 1)),
+      })),
+    ]);
+  });
+
+  it("refuses a cursor ahead of the authority, a forged one, one behind the consumer, and one whose event was pruned, recording nothing", async () => {
+    const { dir, authority, consumer, extend, journal } =
+      await followingMember(5_000);
+    const consumed = await consumer.currentChainSyncCursor();
+    await expect(
+      consumer.acknowledgeChainSyncCursor(consumed),
+    ).resolves.toEqual({ rollbackSinceCapture: false });
+    await extend(5);
+    const current = await authority.currentCursor();
+    expect(current).toEqual(followedCursor(5_004));
+    const before = await journal();
+    const laterObservation = "2026-07-29T00:00:00.000Z";
+
+    const refused: readonly ChainSyncCursor[] = [
+      // Ahead of the authority cursor.
+      followedCursor(current.sequence + 1),
+      { ...current, rollbackGeneration: 1 },
+      // A journaled sequence carrying a point the journal does not hold.
+      {
+        ...followedCursor(5_002),
+        point: { ...followedCursor(5_002).point, observedAt: laterObservation },
+      },
+      { ...followedCursor(5_002), point: nodePoint(blockAt(5_003, 1)) },
+      { ...followedCursor(5_002), sequence: 5_003 },
+      // Behind the durable consumer cursor, though still journaled.
+      followedCursor(consumed.sequence - 1),
+      // At the consumer's sequence, but not the cursor it recorded.
+      {
+        ...consumed,
+        point: { ...consumed.point, observedAt: laterObservation },
+      },
+    ];
+    for (const cursor of refused) {
+      await expect(consumer.acknowledgeChainSyncCursor(cursor)).rejects.toThrow(
+        L1SourceIntegrityError,
+      );
+      expect(await journal()).toBe(before);
+      await expect(consumer.loadConsumedChainSyncCursor()).resolves.toEqual(
+        consumed,
+      );
+    }
+
+    // A consumer without a durable cursor cannot acknowledge an event the
+    // journal no longer holds, even one the follower genuinely journaled.
+    const fresh = consumerOf(authority, dir, `${dir}/fresh-consumer.json`);
+    await expect(
+      fresh.acknowledgeChainSyncCursor(followedCursor(100)),
+    ).rejects.toThrow(/journal does not hold/u);
+    expect(await journal()).toBe(before);
+    await expect(fresh.loadConsumedChainSyncCursor()).resolves.toBeUndefined();
+
+    // The recorded cursor is still accepted again, though its own event may
+    // be pruned, and so is the current one.
+    await expect(
+      consumer.acknowledgeChainSyncCursor(consumed),
+    ).resolves.toEqual({ rollbackSinceCapture: false });
+    await expect(consumer.acknowledgeChainSyncCursor(current)).resolves.toEqual(
+      {
+        rollbackSinceCapture: false,
+      },
+    );
+    await expect(consumer.loadConsumedChainSyncCursor()).resolves.toEqual(
+      current,
+    );
+  });
+
+  it(
+    "keeps the journal bounded across many ticks that each outlive new blocks",
+    { timeout: 30_000 },
+    async () => {
+      const perTick = 30;
+      const { cursorPath, authority, consumer, extend } = await followingMember(
+        CHAIN_SYNC_INTERSECTION_POINTS + CHAIN_SYNC_JOURNAL_PRUNE_SLACK,
+      );
+      const lengths: number[] = [];
+      let captured = await consumer.currentChainSyncCursor();
+      for (let tick = 0; tick < 12; tick += 1) {
+        await extend(perTick);
+        await expect(
+          consumer.acknowledgeChainSyncCursor(captured),
+        ).resolves.toEqual({ rollbackSinceCapture: false });
+        await expect(consumer.loadConsumedChainSyncCursor()).resolves.toEqual(
+          captured,
+        );
+        lengths.push((await journalSequences(cursorPath)).length);
+        captured = await authority.currentCursor();
+      }
+      // The first acknowledgement rewrites the journal down to the intersection
+      // window, and it then grows only by what later ticks append, never past
+      // the rewrite threshold.
+      expect(lengths).toEqual(
+        lengths.map(
+          (_, tick) => CHAIN_SYNC_INTERSECTION_POINTS + tick * perTick,
+        ),
+      );
+      expect(Math.max(...lengths)).toBeLessThan(
+        CHAIN_SYNC_INTERSECTION_POINTS + CHAIN_SYNC_JOURNAL_PRUNE_SLACK,
+      );
+    },
+  );
+});
