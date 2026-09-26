@@ -1,7 +1,7 @@
 import "./utils.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

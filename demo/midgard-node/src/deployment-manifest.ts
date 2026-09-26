@@ -29,13 +29,13 @@ import {
   verifyFinalizedDeploymentManifest,
   verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   hashHexWithBlake2b,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
 } from "@al-ft/midgard-sdk";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
