@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { appendFile, open, readFile, writeFile } from "node:fs/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
@@ -39,6 +40,12 @@ import {
   tempDir,
   writeJson,
 } from "./helpers.js";
+
+// Passthrough, so a test can make the store's own journal append fail part-way.
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, appendFile: vi.fn(actual.appendFile) };
+});
 
 describe("L1 provider adapters", () => {
   it("keeps fixture providers for deterministic integration tests", async () => {
@@ -307,6 +314,263 @@ describe("L1 provider adapters", () => {
     await expect(
       new FileChainSyncCursorStore(cursorPath, "11".repeat(32)).load(),
     ).rejects.toThrow(/cursor does not match its durable event journal/u);
+  });
+
+  it("discards a torn final journal line left by an interrupted append", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const journalPath = `${cursorPath}.events.jsonl`;
+    const points = await seedChainSyncJournal(cursorPath, 3);
+    const committed = await readFile(journalPath, "utf8");
+    const nextPoint = externalPoint("chain-sync:node-a", 4, "04");
+    await appendFile(journalPath, journalLine(3, nextPoint).slice(0, 57));
+
+    const restarted = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    await expect(restarted.load()).resolves.toEqual({
+      sequence: 2,
+      point: points[2],
+      rollbackGeneration: 0,
+    });
+    await expect(readFile(journalPath, "utf8")).resolves.toBe(committed);
+    await restarted.append(
+      { direction: "roll_forward", point: nextPoint },
+      { sequence: 3, point: nextPoint, rollbackGeneration: 0 },
+    );
+    const replayed = [...points, nextPoint].map((point) => ({
+      direction: "roll_forward",
+      point,
+    }));
+    await expect(restarted.replay(-1)).resolves.toEqual(replayed);
+    const reopened = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    await expect(reopened.load()).resolves.toMatchObject({ sequence: 3 });
+    await expect(reopened.replay(-1)).resolves.toEqual(replayed);
+  });
+
+  it("discards an unterminated final journal line even when it is complete JSON", async () => {
+    // The newline is the commit marker: the cursor metadata is written only
+    // after the whole line, newline included, is durable, so an unterminated
+    // line was never acknowledged. It is dropped, not adopted; the chain-sync
+    // source re-delivers its event from the recovered cursor.
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const journalPath = `${cursorPath}.events.jsonl`;
+    const points = await seedChainSyncJournal(cursorPath, 3);
+    const committed = await readFile(journalPath, "utf8");
+    const nextPoint = externalPoint("chain-sync:node-a", 4, "04");
+    await appendFile(journalPath, journalLine(3, nextPoint));
+
+    const restarted = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    await expect(restarted.load()).resolves.toMatchObject({
+      sequence: 2,
+      point: points[2],
+    });
+    await expect(readFile(journalPath, "utf8")).resolves.toBe(committed);
+    await expect(restarted.replay(-1)).resolves.toHaveLength(3);
+    await restarted.append(
+      { direction: "roll_forward", point: nextPoint },
+      { sequence: 3, point: nextPoint, rollbackGeneration: 0 },
+    );
+    await expect(
+      new FileChainSyncCursorStore(cursorPath, "11".repeat(32)).replay(-1),
+    ).resolves.toEqual(
+      [...points, nextPoint].map((point) => ({
+        direction: "roll_forward",
+        point,
+      })),
+    );
+  });
+
+  it("repairs the journal after its own append fails part-way through a line", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const journalPath = `${cursorPath}.events.jsonl`;
+    const points = await seedChainSyncJournal(cursorPath, 2);
+    const committed = await readFile(journalPath, "utf8");
+    const { appendFile: realAppendFile } =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    vi.mocked(appendFile).mockImplementationOnce(async (path, data) => {
+      await realAppendFile(path, String(data).slice(0, 61));
+      throw Object.assign(new Error("ENOSPC: no space left on device, write"), {
+        code: "ENOSPC",
+      });
+    });
+    const store = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    const nextPoint = externalPoint("chain-sync:node-a", 3, "03");
+    const nextEvent = { direction: "roll_forward", point: nextPoint } as const;
+    const nextCursor = { sequence: 2, point: nextPoint, rollbackGeneration: 0 };
+    await expect(store.append(nextEvent, nextCursor)).rejects.toThrow(
+      /ENOSPC/u,
+    );
+    expect(await readFile(journalPath, "utf8")).not.toMatch(/\n$/u);
+
+    await expect(store.load()).resolves.toMatchObject({
+      sequence: 1,
+      point: points[1],
+    });
+    await expect(readFile(journalPath, "utf8")).resolves.toBe(committed);
+    await store.append(nextEvent, nextCursor);
+    await expect(
+      new FileChainSyncCursorStore(cursorPath, "11".repeat(32)).replay(-1),
+    ).resolves.toEqual(
+      [...points, nextPoint].map((point) => ({
+        direction: "roll_forward",
+        point,
+      })),
+    );
+  });
+
+  it("makes each journal line durable before the cursor metadata commits it, and each tail repair durable", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const journalPath = `${cursorPath}.events.jsonl`;
+    const probe = await open(`${dir}/probe`, "w");
+    const fileHandlePrototype = Object.getPrototypeOf(probe) as {
+      datasync(): Promise<void>;
+    };
+    await probe.close();
+    const datasync = fileHandlePrototype.datasync;
+    const observed: { journal: string; metadataSequence?: number }[] = [];
+    const spy = vi
+      .spyOn(fileHandlePrototype, "datasync")
+      .mockImplementation(async function (this: unknown) {
+        let metadataSequence: number | undefined;
+        try {
+          metadataSequence = (
+            JSON.parse(readFileSync(cursorPath, "utf8")) as {
+              cursor?: { sequence: number };
+            }
+          ).cursor?.sequence;
+        } catch {
+          metadataSequence = undefined;
+        }
+        observed.push({
+          journal: readFileSync(journalPath, "utf8"),
+          metadataSequence,
+        });
+        return datasync.call(this);
+      });
+    try {
+      const points = await seedChainSyncJournal(cursorPath, 2);
+      // Each append synced the journal with its newline-terminated line while
+      // the metadata still named the previous cursor.
+      expect(observed).toEqual([
+        { journal: `${journalLine(0, points[0]!)}\n` },
+        {
+          journal: `${journalLine(0, points[0]!)}\n${journalLine(1, points[1]!)}\n`,
+          metadataSequence: 0,
+        },
+      ]);
+      const committed = await readFile(journalPath, "utf8");
+      await appendFile(
+        journalPath,
+        journalLine(2, externalPoint("chain-sync:node-a", 3, "03")).slice(
+          0,
+          40,
+        ),
+      );
+      observed.length = 0;
+      await new FileChainSyncCursorStore(cursorPath, "11".repeat(32)).load();
+      expect(observed).toEqual([{ journal: committed, metadataSequence: 1 }]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  describe("chain-sync journal integrity beside a torn tail", () => {
+    const seededWithJournal = async (
+      rewrite: (lines: readonly string[]) => string,
+    ): Promise<{ cursorPath: string; journal: string }> => {
+      const dir = await tempDir();
+      const cursorPath = `${dir}/chain-sync-cursor.json`;
+      const points = await seedChainSyncJournal(cursorPath, 3);
+      const journal = rewrite(
+        points.map((point, sequence) => journalLine(sequence, point)),
+      );
+      await writeFile(`${cursorPath}.events.jsonl`, journal);
+      return { cursorPath, journal };
+    };
+    const loadFails = async (
+      { cursorPath, journal }: { cursorPath: string; journal: string },
+      expected: (error: unknown) => void,
+    ): Promise<void> => {
+      const error = await new FileChainSyncCursorStore(
+        cursorPath,
+        "11".repeat(32),
+      )
+        .load()
+        .then(
+          () => undefined,
+          (failure: unknown) => failure,
+        );
+      expected(error);
+      // Nothing on the path to a refusal rewrites the journal.
+      await expect(
+        readFile(`${cursorPath}.events.jsonl`, "utf8"),
+      ).resolves.toBe(journal);
+    };
+
+    it("refuses a newline-terminated unparseable final line", async () => {
+      await loadFails(
+        await seededWithJournal(
+          (lines) => `${lines.join("\n")}\n${lines[2]!.slice(0, 40)}\n`,
+        ),
+        (error) => expect(error).toBeInstanceOf(SyntaxError),
+      );
+    });
+
+    it("refuses a torn line followed by complete lines", async () => {
+      // What appending after an unrepaired torn line produces.
+      await loadFails(
+        await seededWithJournal(
+          ([line0, line1, line2]) =>
+            `${line0!}\n${line1!.slice(0, 40)}${line1!}\n${line2!}\n${line2!.slice(0, 30)}`,
+        ),
+        (error) => expect(error).toBeInstanceOf(SyntaxError),
+      );
+    });
+
+    it("refuses a duplicate sequence among the complete lines", async () => {
+      await loadFails(
+        await seededWithJournal(
+          ([line0, line1, line2]) =>
+            `${line0!}\n${line1!}\n${line1!}\n${line2!}\n${line2!.slice(0, 30)}`,
+        ),
+        (error) => {
+          expect(error).toBeInstanceOf(L1SourceIntegrityError);
+          expect(error).toHaveProperty(
+            "message",
+            expect.stringMatching(/sequences must be contiguous/u),
+          );
+        },
+      );
+    });
+
+    it.each([
+      ["torn", (line: string) => line.slice(0, 40)],
+      ["unterminated complete-JSON", (line: string) => line],
+    ])(
+      "refuses cursor metadata that points at a %s final line",
+      async (_label, tail) => {
+        // Metadata is written only after its line is durable, so a cursor that
+        // names an incomplete line was not written by this store.
+        await loadFails(
+          await seededWithJournal(
+            ([line0, line1, line2]) => `${line0!}\n${line1!}\n${tail(line2!)}`,
+          ),
+          (error) => {
+            expect(error).toBeInstanceOf(L1SourceIntegrityError);
+            expect(error).toHaveProperty(
+              "message",
+              expect.stringMatching(
+                /cursor does not match its durable event journal/u,
+              ),
+            );
+          },
+        );
+      },
+    );
   });
 
   it("persists an authority-bound monotonic rollback consumer cursor", async () => {
@@ -782,6 +1046,100 @@ describe("L1 provider adapters", () => {
       ]);
       // The session had already delivered block 2, so it re-intersected at the
       // durable cursor instead of continuing past the lost block.
+      expect(node.sockets()).toBe(2);
+      expect(node.intersections()[1]![0]).toEqual({
+        slot: 1,
+        id: "aa".repeat(32),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("re-delivers a block whose journal append tore part-way through its line", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const journalPath = `${cursorPath}.events.jsonl`;
+    const fingerprint = "11".repeat(32);
+    const node = fakeOgmiosNode([
+      { slot: 1, id: "aa".repeat(32) },
+      { slot: 2, id: "bb".repeat(32) },
+      { slot: 3, id: "cc".repeat(32) },
+      { slot: 4, id: "dd".repeat(32) },
+    ]);
+    let inner = new FileChainSyncCursorStore(cursorPath, fingerprint);
+    const point1 = externalPoint("chain-sync:node-a", 1, "aa");
+    await inner.append(
+      { direction: "roll_forward", point: point1 },
+      { sequence: 0, point: point1, rollbackGeneration: 0 },
+    );
+    let failures = 0;
+    const store: ChainSyncCursorStore = {
+      load: () => inner.load(),
+      replay: (afterSequence) => inner.replay(afterSequence),
+      intersectionPoints: (limit) => inner.intersectionPoints(limit),
+      append: async (event, cursor) => {
+        if (cursor.sequence !== 1 || failures > 0) {
+          await inner.append(event, cursor);
+          return;
+        }
+        failures += 1;
+        // The disk fills part-way through the journal line: a torn,
+        // unterminated line, no cursor metadata, and a store that forgets its
+        // cache, exactly as FileChainSyncCursorStore does on a failed append.
+        await appendFile(
+          journalPath,
+          JSON.stringify({ sequence: cursor.sequence, event, cursor }).slice(
+            0,
+            73,
+          ),
+        );
+        inner = new FileChainSyncCursorStore(cursorPath, fingerprint);
+        throw new Error("ENOSPC: no space left on device, write");
+      },
+    };
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        "Preview",
+        new OgmiosChainSyncEventSource(
+          "ws://ogmios.local",
+          "Preview",
+          "node-a",
+        ),
+        store,
+      );
+      await expect(authority.synchronizeToTip()).rejects.toThrow(/ENOSPC/u);
+      await expect(authority.synchronizeToTip()).resolves.toMatchObject({
+        slot: 4,
+        blockHash: "dd".repeat(32),
+      });
+      await expect(authority.currentCursor()).resolves.toMatchObject({
+        sequence: 3,
+        point: { slot: 4 },
+      });
+      expect(
+        (await authority.replay(-1)).map(({ direction, point }) => [
+          direction,
+          point.slot,
+        ]),
+      ).toEqual([
+        ["roll_forward", 1],
+        ["roll_forward", 2],
+        ["roll_forward", 3],
+        ["roll_forward", 4],
+      ]);
+      const journal = await readFile(journalPath, "utf8");
+      expect(journal.endsWith("\n")).toBe(true);
+      expect(
+        journal
+          .split("\n")
+          .filter((line) => line.length > 0)
+          .map((line) => (JSON.parse(line) as { sequence: number }).sequence),
+      ).toEqual([0, 1, 2, 3]);
+      // The session had delivered block 2, so it re-intersected at the
+      // recovered cursor rather than continuing past the torn block.
       expect(node.sockets()).toBe(2);
       expect(node.intersections()[1]![0]).toEqual({
         slot: 1,
@@ -2322,6 +2680,35 @@ const externalPoint = (
   providerSource,
   observedAt: "2026-07-28T00:00:00.000Z",
 });
+
+const journalLine = (sequence: number, point: CanonicalChainPoint): string =>
+  JSON.stringify({
+    sequence,
+    event: { direction: "roll_forward", point },
+    cursor: { sequence, point, rollbackGeneration: 0 },
+  });
+
+/** Appends `count` roll-forward events through the real store. */
+const seedChainSyncJournal = async (
+  cursorPath: string,
+  count: number,
+): Promise<readonly CanonicalChainPoint[]> => {
+  const store = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+  const points: CanonicalChainPoint[] = [];
+  for (let sequence = 0; sequence < count; sequence += 1) {
+    const point = externalPoint(
+      "chain-sync:node-a",
+      sequence + 1,
+      (sequence + 1).toString(16).padStart(2, "0"),
+    );
+    await store.append(
+      { direction: "roll_forward", point },
+      { sequence, point, rollbackGeneration: 0 },
+    );
+    points.push(point);
+  }
+  return points;
+};
 
 type FakeOgmiosBlock = { readonly slot: number; readonly id: string };
 

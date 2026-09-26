@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   appendFile,
   mkdir,
+  open,
   readFile,
   rename,
   writeFile,
@@ -104,6 +105,18 @@ type PersistedChainSyncJournalEntry = {
   readonly cursor: ChainSyncCursor;
 };
 
+/**
+ * The journal as it stands on disk. A line is committed only once its
+ * terminating newline is written, so `entries` holds the complete lines and
+ * `committedBytes` is where they end; anything past that is an interrupted
+ * append that nothing references.
+ */
+type CommittedChainSyncJournal = {
+  readonly entries: readonly PersistedChainSyncJournalEntry[];
+  readonly committedBytes: number;
+  readonly totalBytes: number;
+};
+
 export class FileChainSyncCursorStore implements ChainSyncCursorStore {
   private readonly journalPath: string;
   private cachedState: PersistedChainSyncState | undefined;
@@ -149,11 +162,17 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
       cursor,
     };
     try {
+      // A failure part-way through leaves an unterminated line; the next
+      // initialize discards it, since no cursor metadata can reference it.
       await appendFile(
         this.journalPath,
         `${JSON.stringify({ sequence: cursor.sequence, event, cursor })}\n`,
         { encoding: "utf8", mode: 0o600 },
       );
+      // The cursor metadata below commits this line, so the line must be
+      // durable first: metadata that outlives its journal line is refused as an
+      // integrity failure on the next start.
+      await syncFileData(this.journalPath);
       const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
       await writeFile(temporaryPath, `${JSON.stringify(next)}\n`, {
         encoding: "utf8",
@@ -211,7 +230,8 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
       return this.cachedState!;
     }
     let state = await this.readState();
-    const journal = await this.readJournal();
+    const committedJournal = await this.readCommittedJournal();
+    const journal = committedJournal.entries;
     if (
       state.cursor !== undefined &&
       (journal[state.cursor.sequence] === undefined ||
@@ -225,17 +245,29 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
       );
     }
     const journalCursor = journal.at(-1)?.cursor;
-    if (
+    const rollsForward =
       journalCursor !== undefined &&
       (state.cursor === undefined ||
-        journalCursor.sequence > state.cursor.sequence)
-    ) {
+        journalCursor.sequence > state.cursor.sequence);
+    if (rollsForward) {
       const expectedNext = (state.cursor?.sequence ?? -1) + 1;
       if (journal[expectedNext]?.sequence !== expectedNext) {
         throw new L1SourceIntegrityError(
           "persisted chain-sync journal tail is not contiguous with its cursor",
         );
       }
+    }
+    if (committedJournal.totalBytes > committedJournal.committedBytes) {
+      // An append that never completed: the metadata is written only after
+      // its line returns, so the checks above prove nothing references it.
+      // Drop it before the next append would extend it into a garbage line;
+      // the chain-sync source re-delivers the event from the recovered cursor.
+      await truncateFileDurably(
+        this.journalPath,
+        committedJournal.committedBytes,
+      );
+    }
+    if (rollsForward) {
       state = {
         schemaVersion: 2,
         authorityFingerprint: this.authorityFingerprint,
@@ -275,9 +307,13 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
   private async readJournal(): Promise<
     readonly PersistedChainSyncJournalEntry[]
   > {
-    let raw: string;
+    return (await this.readCommittedJournal()).entries;
+  }
+
+  private async readCommittedJournal(): Promise<CommittedChainSyncJournal> {
+    let raw: Buffer;
     try {
-      raw = await readFile(this.journalPath, "utf8");
+      raw = await readFile(this.journalPath);
     } catch (error) {
       if (
         typeof error === "object" &&
@@ -285,11 +321,17 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
         "code" in error &&
         error.code === "ENOENT"
       ) {
-        return [];
+        return { entries: [], committedBytes: 0, totalBytes: 0 };
       }
       throw error;
     }
-    return raw
+    // Every complete line ends in a newline byte, which never occurs inside a
+    // multi-byte UTF-8 sequence. Only a final unterminated segment can be an
+    // interrupted append; an unparseable complete line is still refused.
+    const committedBytes = raw.lastIndexOf(0x0a) + 1;
+    const entries = raw
+      .subarray(0, committedBytes)
+      .toString("utf8")
       .split("\n")
       .filter((line) => line.length > 0)
       .map((line, index) => {
@@ -322,6 +364,7 @@ export class FileChainSyncCursorStore implements ChainSyncCursorStore {
           cursor,
         };
       });
+    return { entries, committedBytes, totalBytes: raw.length };
   }
 
   private async writeState(state: PersistedChainSyncState): Promise<void> {
@@ -3055,6 +3098,28 @@ const assertNetworkMagic = (
     throw new L1SourceIntegrityError(
       `${provider} network magic ${liveNetworkMagic.toString()} does not match configured ${configuredNetwork} magic ${expected.toString()}`,
     );
+  }
+};
+
+const syncFileData = async (path: string): Promise<void> => {
+  const handle = await open(path, "r+");
+  try {
+    await handle.datasync();
+  } finally {
+    await handle.close();
+  }
+};
+
+const truncateFileDurably = async (
+  path: string,
+  length: number,
+): Promise<void> => {
+  const handle = await open(path, "r+");
+  try {
+    await handle.truncate(length);
+    await handle.datasync();
+  } finally {
+    await handle.close();
   }
 };
 
