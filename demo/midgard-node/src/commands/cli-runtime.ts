@@ -45,20 +45,6 @@ export const parseNonNegativeIntegerOption = (
   return parsed;
 };
 
-export const parsePositiveBigIntOption = (
-  value: unknown,
-  label: string,
-): bigint => {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  const parsed = BigInt(value);
-  if (parsed <= 0n) {
-    throw new Error(`${label} must be greater than zero`);
-  }
-  return parsed;
-};
-
 export const collectStringOption = (
   value: string,
   previous: string[] = [],

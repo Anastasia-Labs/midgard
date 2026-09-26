@@ -14,12 +14,10 @@ import { describe, expect, it, vi } from "vitest";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildReferenceScriptDeploymentPlan,
-  buildReferenceScriptSweepPlan,
   buildReferenceScriptWalletStatus,
   nodeRuntimeReferenceScriptTargets,
   REFERENCE_SCRIPT_COMMAND_NAMES,
   REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
-  REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
   referenceScriptTargetsByCommand,
   referenceScriptWalletStatusProgram,
   resolveSpendableWalletUtxos,
@@ -29,8 +27,6 @@ import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const REFERENCE_SCRIPT_ADDRESS = "addr_test1reference";
-const RETURN_ADDRESS = "addr_test1return";
-const BURN_ADDRESS = "addr_test1burn";
 
 const txHashFixture = (value: string): string => value.padStart(64, "0");
 
@@ -343,120 +339,7 @@ describe("node-runtime reference-script registry", () => {
   });
 });
 
-describe("reference-script wallet sweep planner", () => {
-  it("selects script-ref and token-bearing UTxOs while retaining plain ADA-only UTxOs by default", () => {
-    const roleUnit = `${"a".repeat(56)}01`;
-    const otherUnit = `${"b".repeat(56)}02`;
-    const scriptRefUtxo = mkUtxo({
-      txHash: "1",
-      assets: { lovelace: 4_000_000n, [roleUnit]: 1n },
-      scriptRef: true,
-    });
-    const tokenOnlyUtxo = mkUtxo({
-      txHash: "2",
-      assets: { lovelace: 2_000_000n, [otherUnit]: 3n },
-    });
-    const plainUtxo = mkUtxo({
-      txHash: "3",
-      assets: { lovelace: 10_000_000n },
-    });
-
-    const plan = buildReferenceScriptSweepPlan({
-      utxos: [plainUtxo, tokenOnlyUtxo, scriptRefUtxo],
-      referenceScriptsAddress: REFERENCE_SCRIPT_ADDRESS,
-      returnAddress: RETURN_ADDRESS,
-      burnAddress: BURN_ADDRESS,
-      dryRun: true,
-    });
-
-    expect(plan.summary.sweepableUtxoCount).toEqual(2);
-    expect(plan.summary.retainedUtxoCount).toEqual(1);
-    expect(plan.summary.inputLovelace).toEqual(6_000_000n);
-    expect(plan.summary.quarantineLovelace).toEqual(
-      REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
-    );
-    expect(plan.summary.nonLovelaceAssets).toEqual({
-      [roleUnit]: 1n,
-      [otherUnit]: 3n,
-    });
-    expect(plan.summary.sweepableOutRefs).toEqual([
-      `${scriptRefUtxo.txHash}#0`,
-      `${tokenOnlyUtxo.txHash}#0`,
-    ]);
-    expect(plan.summary.retainedOutRefs).toEqual([`${plainUtxo.txHash}#0`]);
-    expect(plan.summary.walletStatus.total.lovelace).toEqual(16_000_000n);
-    expect(plan.summary.walletStatus.plainAdaOnly.lovelace).toEqual(
-      10_000_000n,
-    );
-    expect(plan.summary.walletStatus.scriptRefOrTokenBearing.lovelace).toEqual(
-      6_000_000n,
-    );
-    expect(plan.summary.walletStatus.sweepHint?.dryRunCommand).toContain(
-      "sweep-reference-script-wallet",
-    );
-  });
-
-  it("includes plain ADA-only UTxOs when full consolidation is requested", () => {
-    const roleUnit = `${"c".repeat(56)}03`;
-    const referenceUtxo = mkUtxo({
-      txHash: "10",
-      assets: { lovelace: 4_000_000n, [roleUnit]: 1n },
-      scriptRef: true,
-    });
-    const plainUtxo = mkUtxo({
-      txHash: "11",
-      assets: { lovelace: 12_000_000n },
-    });
-
-    const plan = buildReferenceScriptSweepPlan({
-      utxos: [plainUtxo, referenceUtxo],
-      referenceScriptsAddress: REFERENCE_SCRIPT_ADDRESS,
-      returnAddress: RETURN_ADDRESS,
-      dryRun: true,
-      includePlainUtxos: true,
-    });
-
-    expect(plan.summary.sweepableUtxoCount).toEqual(2);
-    expect(plan.summary.retainedUtxoCount).toEqual(0);
-    expect(plan.summary.inputLovelace).toEqual(16_000_000n);
-  });
-
-  it("chunks token quarantine outputs by configured non-ADA asset count", () => {
-    const units = [
-      `${"d".repeat(56)}00`,
-      `${"d".repeat(56)}01`,
-      `${"d".repeat(56)}02`,
-    ];
-    const utxo = mkUtxo({
-      txHash: "20",
-      assets: {
-        lovelace: 10_000_000n,
-        [units[0]]: 1n,
-        [units[1]]: 2n,
-        [units[2]]: 3n,
-      },
-    });
-
-    const plan = buildReferenceScriptSweepPlan({
-      utxos: [utxo],
-      referenceScriptsAddress: REFERENCE_SCRIPT_ADDRESS,
-      returnAddress: RETURN_ADDRESS,
-      burnAddress: BURN_ADDRESS,
-      dryRun: true,
-      tokenOutputLovelace: 2_000_000n,
-      maxAssetsPerTokenOutput: 2,
-    });
-
-    expect(plan.summary.tokenOutputs.map((output) => output.units)).toEqual([
-      [units[0], units[1]],
-      [units[2]],
-    ]);
-    expect(
-      plan.summary.tokenOutputs.map((output) => output.nonLovelaceAssetCount),
-    ).toEqual([2, 1]);
-    expect(plan.summary.quarantineLovelace).toEqual(4_000_000n);
-  });
-
+describe("reference-script wallet status", () => {
   it("reports datum-bearing ADA separately from plain ADA-only and sweepable trapped ADA", () => {
     const roleUnit = `${"e".repeat(56)}04`;
     const plainUtxo = mkUtxo({
@@ -501,6 +384,12 @@ describe("reference-script wallet sweep planner", () => {
       utxoCount: 2,
       lovelace: 11_000_000n,
     });
+    expect(status.sweepHint?.dryRunCommand).toContain(
+      "sweep-reference-script-wallet --retired-auth-policy <retired-policy-id>",
+    );
+    expect(status.sweepHint?.executeCommand).toContain(
+      "--execute --i-am-retiring-reference-scripts",
+    );
   });
 });
 

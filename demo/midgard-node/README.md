@@ -537,9 +537,16 @@ node dist/index.js reference-script-wallet-status --json
 ```
 
 The status separates explorer-like total ADA from plain ADA-only ADA that can be
-used for deployment funding. If stale script-ref or token-bearing ADA is present,
-use `node dist/index.js sweep-reference-script-wallet` as a dry run and execute
-it only after confirming the referenced scripts are retired.
+used for deployment funding. If a retired deployment's reference scripts are
+still present, reclaim them with
+`node dist/index.js sweep-reference-script-wallet --retired-auth-policy <policy-id>`.
+Without `--execute` it only prints the batch plan. The sweep spends only UTxOs
+that carry a reference script and a token of that retired policy, and it refuses
+the live auth policy and any script the live deployment uses. It burns the
+retired tokens while their policy is still satisfiable (pass
+`--retired-auth-policy-script`), and otherwise moves them to min-ADA quarantine
+outputs. Execute it with `--execute --i-am-retiring-reference-scripts`; batches
+are confirmed one at a time, and a rerun resumes from chain.
 
 ```sh
 cd midgard-node

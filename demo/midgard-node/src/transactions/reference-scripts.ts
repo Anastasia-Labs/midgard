@@ -7,11 +7,7 @@ import {
   type ReferenceScriptAuthPolicyRef,
   referenceScriptAuthTokenNameText,
 } from "@al-ft/midgard-sdk";
-import {
-  type Assets,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -68,8 +64,6 @@ export type ReferenceScriptDeploymentPlan = {
 const SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE =
   SDK.SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE;
 const REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE = 50_000_000n;
-export const REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE = 3_000_000n;
-export const REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT = 32;
 const REFERENCE_SCRIPT_PUBLICATION_DEFAULT_MAX_TARGETS_PER_BATCH = 4;
 const WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES = 24;
 const WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY = "5 seconds";
@@ -88,12 +82,6 @@ const REFERENCE_SCRIPT_CONFIRMATION_OPTIONS = {
 } as const;
 
 export { REFERENCE_SCRIPT_COMMAND_NAMES, type ReferenceScriptCommandName };
-
-export type ReferenceScriptSweepTokenOutputSummary = {
-  readonly nonLovelaceAssetCount: number;
-  readonly lovelace: bigint;
-  readonly units: readonly string[];
-};
 
 export type ReferenceScriptWalletBucketSummary = {
   readonly utxoCount: number;
@@ -114,44 +102,42 @@ export type ReferenceScriptWalletStatusSummary = {
   };
 };
 
-export type ReferenceScriptSweepSummary = {
-  readonly dryRun: boolean;
-  readonly referenceScriptsAddress: string;
-  readonly returnAddress: string;
-  readonly burnAddress?: string;
-  readonly includePlainUtxos: boolean;
-  readonly sweepableUtxoCount: number;
-  readonly retainedUtxoCount: number;
-  readonly inputLovelace: bigint;
-  readonly tokenOutputLovelace: bigint;
-  readonly quarantineLovelace: bigint;
-  readonly nonLovelaceAssetCount: number;
-  readonly nonLovelaceAssets: Readonly<Assets>;
-  readonly tokenOutputs: readonly ReferenceScriptSweepTokenOutputSummary[];
-  readonly sweepableOutRefs: readonly string[];
-  readonly retainedOutRefs: readonly string[];
-  readonly walletStatus: ReferenceScriptWalletStatusSummary;
-  readonly txHash?: string;
-};
-
-export type ReferenceScriptSweepPlan = {
-  readonly summary: ReferenceScriptSweepSummary;
-  readonly sweepableUtxos: readonly UTxO[];
-  readonly tokenOutputs: readonly Readonly<Assets>[];
-};
-
-export type ReferenceScriptSweepOptions = {
-  readonly burnAddress?: string;
-  readonly execute?: boolean;
-  readonly acknowledgeRetirement?: boolean;
-  readonly includePlainUtxos?: boolean;
-  readonly tokenOutputLovelace?: bigint;
-  readonly maxAssetsPerTokenOutput?: number;
-};
-
 export const isSameScriptRef = SDK.isSameScriptRef;
 
 export const hasReferenceScriptAuthRole = SDK.hasReferenceScriptAuthRole;
+
+/**
+ * Whether the live resolution accepts `utxo` for `target`: it sits at the
+ * reference-script address, holds the target's role token under the auth
+ * policy, and carries the target's script.
+ */
+export const acceptsReferenceScriptUtxo = (
+  utxo: UTxO,
+  referenceScriptsAddress: string,
+  target: ReferenceScriptTarget,
+  authPolicy: ReferenceScriptAuthPolicyRef,
+): boolean =>
+  utxo.address === referenceScriptsAddress &&
+  hasReferenceScriptAuthRole(utxo, target, authPolicy) &&
+  isSameScriptRef(utxo.scriptRef, target.script);
+
+/** The UTxO the live resolution picks for `target`, if any. */
+export const resolveReferenceScriptUtxo = (
+  utxos: readonly UTxO[],
+  referenceScriptsAddress: string,
+  target: ReferenceScriptTarget,
+  authPolicy: ReferenceScriptAuthPolicyRef,
+): UTxO | undefined =>
+  utxos
+    .filter((utxo) =>
+      acceptsReferenceScriptUtxo(
+        utxo,
+        referenceScriptsAddress,
+        target,
+        authPolicy,
+      ),
+    )
+    .sort(compareOutRefs)[0];
 
 export const fetchReferenceScriptUtxosAt = (
   lucid: LucidEvolution,
@@ -187,14 +173,12 @@ export const fetchReferenceScriptUtxosProgram = (
     );
     return yield* Effect.forEach(targets, (target) =>
       Effect.gen(function* () {
-        const resolved = [...referenceScriptUtxos]
-          .filter(
-            (utxo) =>
-              utxo.address === referenceScriptsAddress &&
-              hasReferenceScriptAuthRole(utxo, target, authPolicy) &&
-              isSameScriptRef(utxo.scriptRef, target.script),
-          )
-          .sort(compareOutRefs)[0];
+        const resolved = resolveReferenceScriptUtxo(
+          referenceScriptUtxos,
+          referenceScriptsAddress,
+          target,
+          authPolicy,
+        );
         if (resolved === undefined) {
           return yield* Effect.fail(
             new SDK.StateQueueError({
@@ -243,7 +227,7 @@ const filterPlainWalletUtxos = (utxos: readonly UTxO[]): readonly UTxO[] =>
 const sumWalletLovelace = (utxos: readonly UTxO[]): bigint =>
   utxos.reduce((total, utxo) => total + lovelaceOf(utxo), 0n);
 
-export const isReferenceScriptSweepCandidate = (utxo: UTxO): boolean =>
+const isScriptRefOrTokenBearingUtxo = (utxo: UTxO): boolean =>
   utxo.scriptRef !== undefined || hasPositiveNonLovelaceAsset(utxo);
 
 const countNonLovelaceAssetUnits = (utxos: readonly UTxO[]): number =>
@@ -269,9 +253,10 @@ const summarizeReferenceScriptWalletBucket = (
 
 const referenceScriptSweepHint =
   (): ReferenceScriptWalletStatusSummary["sweepHint"] => ({
-    dryRunCommand: "node dist/index.js sweep-reference-script-wallet",
+    dryRunCommand:
+      "node dist/index.js sweep-reference-script-wallet --retired-auth-policy <retired-policy-id>",
     executeCommand:
-      "node dist/index.js sweep-reference-script-wallet --execute --i-am-retiring-reference-scripts --burn-address <quarantine-address>",
+      "node dist/index.js sweep-reference-script-wallet --retired-auth-policy <retired-policy-id> --execute --i-am-retiring-reference-scripts",
   });
 
 export const buildReferenceScriptWalletStatus = ({
@@ -282,7 +267,7 @@ export const buildReferenceScriptWalletStatus = ({
   readonly referenceScriptsAddress: string;
 }): ReferenceScriptWalletStatusSummary => {
   const plainAdaOnly = utxos.filter(isPlainAdaOnlyUtxo);
-  const scriptRefOrTokenBearing = utxos.filter(isReferenceScriptSweepCandidate);
+  const scriptRefOrTokenBearing = utxos.filter(isScriptRefOrTokenBearingUtxo);
   const accounted = new Set([
     ...plainAdaOnly.map(utxoOutRefKey),
     ...scriptRefOrTokenBearing.map(utxoOutRefKey),
@@ -319,143 +304,6 @@ const formatReferenceScriptWalletStatusCause = (
       ? "sweep_hint=none"
       : `sweep_hint_dry_run="${status.sweepHint.dryRunCommand}",sweep_hint_execute="${status.sweepHint.executeCommand}"`,
   ].join(",");
-
-const addPositiveAsset = (
-  assets: Assets,
-  unit: string,
-  amount: bigint,
-): void => {
-  if (amount <= 0n) {
-    return;
-  }
-  assets[unit] = (assets[unit] ?? 0n) + amount;
-};
-
-const sumNonLovelaceAssets = (utxos: readonly UTxO[]): Assets => {
-  const totals: Assets = {};
-  for (const utxo of utxos) {
-    for (const [unit, amount] of Object.entries(utxo.assets)) {
-      if (unit !== "lovelace") {
-        addPositiveAsset(totals, unit, amount);
-      }
-    }
-  }
-  return totals;
-};
-
-const sortedPositiveAssetEntries = (
-  assets: Readonly<Assets>,
-): readonly (readonly [string, bigint])[] =>
-  Object.entries(assets)
-    .filter(([, amount]) => amount > 0n)
-    .sort(([leftUnit], [rightUnit]) => leftUnit.localeCompare(rightUnit));
-
-const chunkNonLovelaceAssets = (
-  assets: Readonly<Assets>,
-  maxAssetsPerOutput: number,
-  tokenOutputLovelace: bigint,
-): readonly Readonly<Assets>[] => {
-  const entries = sortedPositiveAssetEntries(assets);
-  const outputs: Assets[] = [];
-  for (let index = 0; index < entries.length; index += maxAssetsPerOutput) {
-    const outputAssets: Assets = { lovelace: tokenOutputLovelace };
-    for (const [unit, amount] of entries.slice(
-      index,
-      index + maxAssetsPerOutput,
-    )) {
-      outputAssets[unit] = amount;
-    }
-    outputs.push(outputAssets);
-  }
-  return outputs;
-};
-
-const summarizeTokenOutput = (
-  outputAssets: Readonly<Assets>,
-): ReferenceScriptSweepTokenOutputSummary => {
-  const entries = sortedPositiveAssetEntries(outputAssets).filter(
-    ([unit]) => unit !== "lovelace",
-  );
-  return {
-    nonLovelaceAssetCount: entries.length,
-    lovelace: outputAssets.lovelace ?? 0n,
-    units: entries.map(([unit]) => unit),
-  };
-};
-
-export const buildReferenceScriptSweepPlan = ({
-  utxos,
-  referenceScriptsAddress,
-  returnAddress,
-  burnAddress,
-  dryRun,
-  includePlainUtxos = false,
-  tokenOutputLovelace = REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
-  maxAssetsPerTokenOutput = REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
-}: {
-  readonly utxos: readonly UTxO[];
-  readonly referenceScriptsAddress: string;
-  readonly returnAddress: string;
-  readonly burnAddress?: string;
-  readonly dryRun: boolean;
-  readonly includePlainUtxos?: boolean;
-  readonly tokenOutputLovelace?: bigint;
-  readonly maxAssetsPerTokenOutput?: number;
-}): ReferenceScriptSweepPlan => {
-  if (tokenOutputLovelace <= 0n) {
-    throw new Error("tokenOutputLovelace must be greater than zero");
-  }
-  if (
-    !Number.isSafeInteger(maxAssetsPerTokenOutput) ||
-    maxAssetsPerTokenOutput <= 0
-  ) {
-    throw new Error("maxAssetsPerTokenOutput must be a safe positive integer");
-  }
-  const sweepableUtxos = [...utxos]
-    .filter((utxo) =>
-      includePlainUtxos ? true : isReferenceScriptSweepCandidate(utxo),
-    )
-    .sort(compareOutRefs);
-  const sweepableOutRefs = new Set(sweepableUtxos.map(utxoOutRefKey));
-  const retainedUtxos = [...utxos]
-    .filter((utxo) => !sweepableOutRefs.has(utxoOutRefKey(utxo)))
-    .sort(compareOutRefs);
-  const nonLovelaceAssets = sumNonLovelaceAssets(sweepableUtxos);
-  const tokenOutputs = chunkNonLovelaceAssets(
-    nonLovelaceAssets,
-    maxAssetsPerTokenOutput,
-    tokenOutputLovelace,
-  );
-  const quarantineLovelace = BigInt(tokenOutputs.length) * tokenOutputLovelace;
-  const walletStatus = buildReferenceScriptWalletStatus({
-    utxos,
-    referenceScriptsAddress,
-  });
-
-  return {
-    summary: {
-      dryRun,
-      referenceScriptsAddress,
-      returnAddress,
-      ...(burnAddress === undefined ? {} : { burnAddress }),
-      includePlainUtxos,
-      sweepableUtxoCount: sweepableUtxos.length,
-      retainedUtxoCount: retainedUtxos.length,
-      inputLovelace: sumWalletLovelace(sweepableUtxos),
-      tokenOutputLovelace,
-      quarantineLovelace,
-      nonLovelaceAssetCount:
-        sortedPositiveAssetEntries(nonLovelaceAssets).length,
-      nonLovelaceAssets,
-      tokenOutputs: tokenOutputs.map(summarizeTokenOutput),
-      sweepableOutRefs: sweepableUtxos.map(outRefLabel),
-      retainedOutRefs: retainedUtxos.map(outRefLabel),
-      walletStatus,
-    },
-    sweepableUtxos,
-    tokenOutputs,
-  };
-};
 
 const resolveReferenceScriptPublicationFundingTarget = (
   missingTargetCount: number,
@@ -1178,116 +1026,6 @@ export const referenceScriptWalletStatusProgram = (
     });
   });
 
-export const sweepReferenceScriptWalletProgram = (
-  referenceScriptsLucid: LucidEvolution,
-  referenceScriptsAddress: string,
-  options: ReferenceScriptSweepOptions,
-): Effect.Effect<
-  ReferenceScriptSweepSummary,
-  | SDK.StateQueueError
-  | SDK.LucidError
-  | TxConfirmError
-  | TxSignError
-  | TxSubmitError
-> =>
-  Effect.gen(function* () {
-    const execute = options.execute === true;
-    const returnAddress = yield* Effect.tryPromise({
-      try: () => referenceScriptsLucid.wallet().address(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Failed to resolve reference-script wallet address for sweep return",
-          cause,
-        }),
-    });
-    const utxos = yield* fetchReferenceScriptUtxosAt(
-      referenceScriptsLucid,
-      referenceScriptsAddress,
-      `reference-script sweep UTxO fetch at ${referenceScriptsAddress}`,
-      `Failed to fetch reference-script sweep UTxOs at ${referenceScriptsAddress}`,
-    );
-    const plan = buildReferenceScriptSweepPlan({
-      utxos,
-      referenceScriptsAddress,
-      returnAddress,
-      burnAddress: options.burnAddress,
-      dryRun: !execute,
-      includePlainUtxos: options.includePlainUtxos,
-      tokenOutputLovelace: options.tokenOutputLovelace,
-      maxAssetsPerTokenOutput: options.maxAssetsPerTokenOutput,
-    });
-
-    if (!execute || plan.sweepableUtxos.length === 0) {
-      return plan.summary;
-    }
-    if (options.acknowledgeRetirement !== true) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Refusing to execute reference-script sweep without retirement acknowledgement",
-          cause:
-            "Pass --i-am-retiring-reference-scripts to confirm that the published reference scripts at L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS are no longer live.",
-        }),
-      );
-    }
-    if (
-      plan.summary.nonLovelaceAssetCount > 0 &&
-      options.burnAddress === undefined
-    ) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Refusing to execute reference-script sweep without a token burn/quarantine address",
-          cause:
-            "Pass --burn-address so non-lovelace assets can be moved off the reference-script wallet.",
-        }),
-      );
-    }
-    if (plan.summary.inputLovelace <= plan.summary.quarantineLovelace) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Reference-script sweep inputs do not contain enough lovelace for token quarantine outputs",
-          cause: `input_lovelace=${plan.summary.inputLovelace.toString()},quarantine_lovelace=${plan.summary.quarantineLovelace.toString()}`,
-        }),
-      );
-    }
-
-    const unsigned = yield* Effect.tryPromise({
-      try: () => {
-        let tx = referenceScriptsLucid
-          .newTx()
-          .collectFrom([...plan.sweepableUtxos]);
-        if (options.burnAddress !== undefined) {
-          for (const tokenOutput of plan.tokenOutputs) {
-            tx = tx.pay.ToAddress(options.burnAddress, { ...tokenOutput });
-          }
-        }
-        return tx.complete({
-          coinSelection: false,
-          localUPLCEval: true,
-          presetWalletInputs: [...plan.sweepableUtxos],
-        });
-      },
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: `Failed to build reference-script sweep transaction: ${String(cause)}`,
-          cause,
-        }),
-    });
-    const txHash = yield* handleSignSubmit(
-      referenceScriptsLucid,
-      unsigned,
-      REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
-    );
-    return {
-      ...plan.summary,
-      dryRun: false,
-      txHash,
-    };
-  });
-
 export const ensureNodeRuntimeReferenceScriptsProgram = (
   referenceScriptsLucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -1365,14 +1103,12 @@ export const verifyNodeRuntimeReferenceScriptsProgram = (
     const resolved: ReferenceScriptResolved[] = [];
     const missing: string[] = [];
     for (const target of targets) {
-      const utxo = [...referenceScriptUtxos]
-        .filter(
-          (candidate) =>
-            candidate.address === referenceScriptsAddress &&
-            hasReferenceScriptAuthRole(candidate, target, authPolicy) &&
-            isSameScriptRef(candidate.scriptRef, target.script),
-        )
-        .sort(compareOutRefs)[0];
+      const utxo = resolveReferenceScriptUtxo(
+        referenceScriptUtxos,
+        referenceScriptsAddress,
+        target,
+        authPolicy,
+      );
       if (utxo === undefined) {
         missing.push(target.name);
       } else {

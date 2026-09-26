@@ -18,7 +18,6 @@ import {
   parseE2EEnvInheritanceOption,
   parseL1AddressOption,
   parseNonNegativeIntegerOption,
-  parsePositiveBigIntOption,
   parsePositiveIntegerOption,
   parseStringListOption,
   provideDatabaseServices,
@@ -83,14 +82,16 @@ import * as Initialization from "./transactions/initialization.js";
 import * as OperatorCommands from "./transactions/operators/commands.js";
 import * as PhasMembershipRegistration from "./transactions/phas-membership-registration.js";
 import {
+  liveReferenceScriptDeployment,
+  referenceScriptSweepLimitsFromProtocolParameters,
+  sweepRetiredReferenceScriptsProgram,
+} from "./transactions/reference-script-sweep.js";
+import {
   fetchReferenceScriptUtxosProgram,
   planReferenceScriptCommandProgram,
-  REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
-  REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
   referenceScriptByName,
   referenceScriptTargetsByCommand,
   referenceScriptWalletStatusProgram,
-  sweepReferenceScriptWalletProgram,
 } from "./transactions/reference-scripts.js";
 import * as RegisterActiveOperator from "./transactions/register-active-operator.js";
 import * as SubmitDeposit from "./transactions/submit-deposit.js";
@@ -1607,100 +1608,115 @@ program
 program
   .command("sweep-reference-script-wallet")
   .description(
-    "Retire published reference-script UTxOs, quarantine non-ADA assets, and consolidate recovered ADA back to the reference-script wallet",
+    "Reclaim the ADA in reference-script UTxOs of one retired auth policy, in confirmed batches; burns the retired tokens while the policy is satisfiable, otherwise quarantines them",
+  )
+  .requiredOption(
+    "--retired-auth-policy <policyId>",
+    "Reference-script auth policy of the retired deployment; only UTxOs carrying a reference script and a token of this policy are spent",
   )
   .option(
-    "--burn-address <address>",
-    "L1 address that receives non-ADA assets; this quarantines tokens unless their minting policies are still burnable",
+    "--retired-auth-policy-script <cborHex>",
+    "Native script CBOR of the retired policy; lets the sweep burn its tokens while the policy is still satisfiable",
+  )
+  .option(
+    "--quarantine-address <address>",
+    "Receives the retired tokens with minimum ADA when they cannot be burned (default: the reference-script wallet address)",
+  )
+  .option(
+    "--max-reference-script-bytes-per-batch <bytes>",
+    "Lower the per-transaction reference-script byte budget (default: 90% of the protocol maximum)",
+    (value) =>
+      parsePositiveIntegerOption(
+        value,
+        "--max-reference-script-bytes-per-batch",
+      ),
   )
   .option(
     "--execute",
-    "Submit the sweep transaction. Without this flag the command only prints the plan.",
+    "Submit the batches. Without this flag the command only prints the plan.",
   )
   .option(
     "--i-am-retiring-reference-scripts",
-    "Required with --execute; confirms the published reference scripts at L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS are no longer live.",
-  )
-  .option(
-    "--include-plain",
-    "Also collect plain ADA-only UTxOs at L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS for full wallet consolidation.",
-  )
-  .option(
-    "--token-output-lovelace <lovelace>",
-    "Lovelace attached to each token quarantine output.",
-    (value) => {
-      parsePositiveBigIntOption(value, "--token-output-lovelace");
-      return value.trim();
-    },
-    REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE.toString(),
-  )
-  .option(
-    "--max-assets-per-token-output <count>",
-    "Maximum non-ADA asset units per token quarantine output.",
-    (value) =>
-      parsePositiveIntegerOption(value, "--max-assets-per-token-output"),
-    REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
+    "Required with --execute; confirms the retired policy's reference scripts are no longer live.",
   )
   .action(async (_args, options) => {
     const opts = options.opts() as {
-      readonly burnAddress?: string;
+      readonly retiredAuthPolicy: string;
+      readonly retiredAuthPolicyScript?: string;
+      readonly quarantineAddress?: string;
+      readonly maxReferenceScriptBytesPerBatch?: number;
       readonly execute?: boolean;
       readonly iAmRetiringReferenceScripts?: boolean;
-      readonly includePlain?: boolean;
-      readonly tokenOutputLovelace: string;
-      readonly maxAssetsPerTokenOutput: number;
     };
-    const mainEffect = provideLucidOnlyServices(
+    const mainEffect = provideTxServices(
       Effect.gen(function* () {
         const nodeConfig = yield* Services.NodeConfig;
+        const contracts = yield* Services.MidgardContracts;
         const lucidService = yield* Services.Lucid;
         yield* lucidService.switchToReferenceScriptWallet;
-        const burnAddress = yield* Effect.try({
+        const quarantineAddress = yield* Effect.try({
           try: () =>
-            opts.burnAddress === undefined
+            opts.quarantineAddress === undefined
               ? undefined
               : parseL1AddressOption(
-                  opts.burnAddress,
-                  "--burn-address",
+                  opts.quarantineAddress,
+                  "--quarantine-address",
                   nodeConfig.NETWORK,
                 ),
           catch: (cause) =>
             cause instanceof Error
               ? cause
-              : new Error(`Failed to parse --burn-address: ${String(cause)}`),
-        });
-        const tokenOutputLovelace = yield* Effect.try({
-          try: () =>
-            parsePositiveBigIntOption(
-              opts.tokenOutputLovelace,
-              "--token-output-lovelace",
-            ),
-          catch: (cause) =>
-            cause instanceof Error
-              ? cause
               : new Error(
-                  `Failed to parse --token-output-lovelace: ${String(cause)}`,
+                  `Failed to parse --quarantine-address: ${String(cause)}`,
                 ),
         });
-        return yield* sweepReferenceScriptWalletProgram(
-          lucidService.referenceScriptsApi,
-          lucidService.referenceScriptsAddress,
-          {
-            burnAddress,
+        const limits = yield* Effect.tryPromise({
+          try: async () => {
+            const provider = lucidService.referenceScriptsApi.config().provider;
+            if (provider === undefined) {
+              throw new Error("Lucid has no configured Cardano provider");
+            }
+            const { snapshot } =
+              await ContractDeploymentInfo.cardanoProtocolParametersIdentityFromProvider(
+                provider,
+                await ContractDeploymentInfo.queryLocalOgmiosProtocolParameters(
+                  nodeConfig.L1_OGMIOS_KEY,
+                ),
+              );
+            return referenceScriptSweepLimitsFromProtocolParameters(snapshot);
+          },
+          catch: (cause) =>
+            new Error(
+              `Failed to read current protocol parameters: ${String(cause)}`,
+            ),
+        });
+        return yield* sweepRetiredReferenceScriptsProgram({
+          lucid: lucidService.referenceScriptsApi,
+          referenceScriptsAddress: lucidService.referenceScriptsAddress,
+          live: liveReferenceScriptDeployment(contracts),
+          limits,
+          options: {
+            retiredAuthPolicyId: opts.retiredAuthPolicy,
+            ...(opts.retiredAuthPolicyScript === undefined
+              ? {}
+              : {
+                  retiredAuthPolicyScript: {
+                    type: "Native" as const,
+                    script: opts.retiredAuthPolicyScript.trim().toLowerCase(),
+                  },
+                }),
+            ...(quarantineAddress === undefined ? {} : { quarantineAddress }),
+            ...(opts.maxReferenceScriptBytesPerBatch === undefined
+              ? {}
+              : {
+                  maxReferenceScriptBytesPerBatch:
+                    opts.maxReferenceScriptBytesPerBatch,
+                }),
             execute: opts.execute === true,
             acknowledgeRetirement: opts.iAmRetiringReferenceScripts === true,
-            includePlainUtxos: opts.includePlain === true,
-            tokenOutputLovelace,
-            maxAssetsPerTokenOutput: opts.maxAssetsPerTokenOutput,
           },
-        );
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.logInfo(
-            `sweep-reference-script-wallet completed: ${formatJson(result)}`,
-          ),
-        ),
-      ),
+        });
+      }).pipe(tapJson()),
     );
 
     runCliEffect(mainEffect);
