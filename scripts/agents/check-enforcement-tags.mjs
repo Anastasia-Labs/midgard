@@ -116,6 +116,7 @@ export const LINE_BUDGETS = {
   ".agents/skills/debugging-ci-failures/SKILL.md": 230,
   ".agents/skills/editing-agent-instructions/SKILL.md": 160,
   ".agents/skills/fixing-flaky-tests/SKILL.md": 150,
+  ".agents/skills/local-test-environment/SKILL.md": 140,
   ".agents/skills/regenerating-goldens-and-ledgers/SKILL.md": 210,
   ".agents/skills/reviewing-consensus-changes/SKILL.md": 260,
   ".agents/skills/running-the-devnet/SKILL.md": 170,

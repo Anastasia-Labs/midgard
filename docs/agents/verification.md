@@ -37,17 +37,12 @@ completion, which is wider than this table.
   `.github/workflows/aiken-ci.yml`, or point `MIDGARD_AIKEN_BIN` at it.
   `pnpm --dir demo deployment:build preprod-testing` builds
   `onchain/aiken/plutus.json` and refuses any other compiler.
-- **Test Postgres.** The node and node-tools suites need a server on
-  127.0.0.1:5433; `scripts/start-test-postgres.sh` starts one, or reuses one
-  that is already listening without restarting it.
-- **Test databases per worktree.** Each suite creates sharded databases named
-  `<prefix>_w<N>`. The main checkout keeps the prefixes `midgard_test` and
-  `midgard_tools_test`; a linked worktree appends a hash of its path, so
-  concurrent checkouts get separate databases. An explicit
-  `MIDGARD_TEST_DATABASE_PREFIX` takes precedence.
-  `node scripts/lib/worktree-identity.mjs` prints the checkout's identity.
-- **Devnet names and ports.** The phase 4 process devnet derives its compose
-  project name and host ports the same way (see
+- **Test Postgres, test databases, dist and the blueprint stamp.** Read the
+  [local-test-environment](../../.agents/skills/local-test-environment/SKILL.md)
+  skill before running a Postgres-backed or blueprint-reading suite in a fresh
+  checkout or worktree, or when `node scripts/doctor.mjs` fails.
+- **Devnet names and ports.** A linked worktree's phase 4 process devnet
+  derives its compose project name and host ports from the worktree path (see
   `demo/midgard-node-tools/devnet/phase4-process/README.md`). So does the
   operator stack in `demo/midgard-node` when it is run through
   `demo/midgard-node/scripts/operator-compose.sh`; the main checkout keeps
