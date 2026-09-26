@@ -54,6 +54,7 @@ import * as ReconcileCommand from "./commands/reconcile.js";
 import * as ReserveInspectionCommand from "./commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "./commands/reserve-payout.js";
 import * as RetentionCheck from "./commands/retention-check.js";
+import * as StateReconciliation from "./commands/state-reconciliation.js";
 import * as SubmitL2Transfer from "./commands/submit-l2-transfer.js";
 import * as SubmitWithdrawalCommand from "./commands/submit-withdrawal.js";
 import * as UtxosCommand from "./commands/utxos.js";
@@ -2595,6 +2596,57 @@ program
     );
     runCliEffect(mainEffect);
   });
+
+program
+  .command("reconcile-state")
+  .description(
+    "Read-only: compare L1, SQL, the native ledger root and the ledger cache; exit 1 on any failing check",
+  )
+  .option("--json", "print the report as JSON", false)
+  .option(
+    "--node-url <url>",
+    "node HTTP base URL for the Architecture-G native root (default: this host on PORT)",
+  )
+  .option(
+    "--allow-in-flight",
+    "accept transient states the reconciler cannot prove (listed in the report) instead of failing",
+    false,
+  )
+  .action(
+    async (opts: {
+      json: boolean;
+      nodeUrl?: string;
+      allowInFlight: boolean;
+    }) => {
+      const mainEffect = pipe(
+        StateReconciliation.stateReconciliationProgram({
+          allowInFlight: opts.allowInFlight,
+          ...(opts.nodeUrl === undefined ? {} : { nodeUrl: opts.nodeUrl }),
+        }),
+        Effect.tap((report) =>
+          Effect.sync(() =>
+            opts.json
+              ? writeJson(report)
+              : process.stdout.write(
+                  `${StateReconciliation.formatStateReconciliationReport(report)}\n`,
+                ),
+          ),
+        ),
+        Effect.flatMap((report) =>
+          report.ok
+            ? Effect.succeed(report)
+            : Effect.fail(
+                new Error(
+                  `state reconciliation: ${report.summary.fail.toString()} failing check(s)`,
+                ),
+              ),
+        ),
+        Effect.provide(Services.Database.layer),
+        provideTxServices,
+      );
+      runCliEffect(mainEffect);
+    },
+  );
 
 program
   .command("mpf-replay")

@@ -42,6 +42,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/migration-runner.test.ts
  *   tests/pipeline-status-route.test.ts
  *   tests/retention-enforcement.test.ts
+ *   tests/state-reconciliation-emulator.test.ts
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts
  *   tests/tx-order-carriage-l1-observation.test.ts
