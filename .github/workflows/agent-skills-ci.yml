@@ -1,0 +1,41 @@
+name: Agent Skills CI
+
+# No path filter, on purpose. A skill goes stale when something it links to
+# moves, and that change lands outside .agents/**; a filter scoped to the
+# skills would skip exactly the change that broke them. The job takes seconds.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-skills-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: demo/.nvmrc
+
+      - name: Test the skill checker
+        run: node --test scripts/ci/check-agent-skills.test.mjs
+
+      - name: Check skills and the .claude/skills link
+        run: node scripts/ci/check-agent-skills.mjs
+
+      - name: Test scripts shipped inside skills
+        run: |
+          mapfile -t tests < <(find .agents/skills -path '*/scripts/*.test.mjs' | sort)
+          if [[ ${#tests[@]} -eq 0 ]]; then
+            echo "no skill script tests yet"
+            exit 0
+          fi
+          node --test "${tests[@]}"
