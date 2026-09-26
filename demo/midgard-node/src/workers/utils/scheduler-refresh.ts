@@ -536,10 +536,22 @@ export const resolveSchedulerFirstAppointmentValidityWindow = (
     );
   }
   const maxRefreshValidTo = validFrom + SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS;
-  const validTo =
-    targetCommitEndTime < maxRefreshValidTo
-      ? targetCommitEndTime
-      : maxRefreshValidTo;
+  // AppointFirstOperator binds the appointed start_time to the inclusive upper
+  // bound the ledger presents, and the ledger carries that bound as a slot:
+  // Lucid floors a millisecond validTo to its enclosing slot. The commit target
+  // is wall-clock derived and generally falls mid-slot, so validTo must be the
+  // slot boundary at or before it; otherwise `validTo - 1` names a time the
+  // on-chain range never contains and the validator refuses the appointment.
+  const validTo = BigInt(
+    alignUnixTimeToSlotBoundary(
+      lucid,
+      Number(
+        targetCommitEndTime < maxRefreshValidTo
+          ? targetCommitEndTime
+          : maxRefreshValidTo,
+      ),
+    ),
+  );
   if (
     targetCommitEndTime - validFrom <
       SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS ||
@@ -571,7 +583,9 @@ export const resolveRefreshedSchedulerStartTime = ({
   readonly startTimeMode?: SchedulerRefreshStartTimeMode;
 }): bigint => {
   if (selection.kind === "AppointFirst") {
-    // Lucid's validTo is exclusive; Aiken sees the inclusive upper bound.
+    // Lucid's validTo is exclusive; Aiken sees the inclusive upper bound. This
+    // holds only because resolveSchedulerFirstAppointmentValidityWindow puts
+    // validTo on a slot boundary.
     return validTo - 1n;
   }
   if (currentSchedulerState === undefined) {

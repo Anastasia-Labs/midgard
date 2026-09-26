@@ -401,6 +401,62 @@ describe("scheduler refresh witness selection", () => {
     );
   });
 
+  it("puts first-appointment validTo on the slot boundary the ledger presents for a mid-slot commit target", async () => {
+    const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([operator]);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(operator.seedPhrase);
+    emulator.awaitSlot(60);
+
+    const snapshot = captureSchedulerSlotSnapshot(lucid);
+    // The live commit target is `Date.now() + buffer`, which falls mid-slot.
+    const targetCommitEndTime = BigInt(
+      snapshot.currentSlotStartMs + 7 * 60 * 1000 + 327,
+    );
+
+    const window = resolveSchedulerFirstAppointmentValidityWindow(
+      lucid,
+      targetCommitEndTime,
+      snapshot,
+    );
+    const ledgerUpperBoundExclusive = BigInt(
+      lucid.slotToUnixTime(lucid.unixTimeToSlot(Number(window.validTo))),
+    );
+    const startTime = resolveRefreshedSchedulerStartTime({
+      selection: {
+        kind: "AppointFirst",
+        activeNode: mkNode("22".repeat(32), 0, {
+          key: { Key: { key: "bb" } },
+          next: "Empty",
+          data: "00" as SDK.LinkedListNodeView["data"],
+        }),
+        registeredWitnessNode: mkNode("33".repeat(32), 0, {
+          key: "Empty",
+          next: "Empty",
+          data: "00" as SDK.LinkedListNodeView["data"],
+        }),
+      },
+      currentSchedulerState: undefined,
+      validFrom: window.validFrom,
+      validTo: window.validTo,
+    });
+
+    expect(window.validTo).toBe(ledgerUpperBoundExclusive);
+    expect(window.validTo).toBe(targetCommitEndTime - 327n);
+    // AppointFirstOperator requires start_time == inclusive upper bound.
+    expect(startTime).toBe(ledgerUpperBoundExclusive - 1n);
+    expect(
+      schedulerStateCoversCommitTarget({
+        currentSchedulerState: {
+          operator: "bb",
+          startTime,
+        },
+        operatorKeyHash: "bb",
+        targetStartTime: targetCommitEndTime,
+      }),
+    ).toBe(true);
+  });
+
   it("keeps scheduler refresh confirmation wait tolerant of live preprod confirmation latency", () => {
     expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBe(5 * 60_000);
     expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBeLessThan(
