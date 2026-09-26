@@ -10,7 +10,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { getAddressDetails } from "@lucid-evolution/lucid";
-import { Effect, Schedule } from "effect";
+import { Effect, Runtime, Schedule } from "effect";
 
 import {
   DaPayloadTerminalOutcomesDB,
@@ -24,10 +24,13 @@ import {
   observeAttestationTimeoutQueue,
   timeoutCorrectionJournalNeedsRecovery,
 } from "../services/attestation-timeout-observation.js";
+import { runHistoryProducer } from "../services/event-history-producer.js";
+import { publishMempoolLedgerDelta } from "../services/globals.js";
 import {
   ContractDeploymentIdentity,
   createDatabaseStateQueueCorrectionObserverStore,
   Database,
+  Globals,
   Lucid,
   makeLocalKupmiosStateQueueCorrectionSource,
   MidgardContracts,
@@ -35,23 +38,143 @@ import {
   reconcileStateQueueCorrectionObserver,
   reincludeFinalizedStateQueueCorrectionTransition,
   restoreRetractedStateQueueCorrectionTransition,
+  type StateQueueCorrectionObserverResult,
+  type StateQueueCorrectionObserverSource,
 } from "../services/index.js";
 
 export const ATTESTATION_TIMEOUT_ALERT_LEAD_MS =
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;
 const TIMEOUT_CORRECTION_LEASE_HOLDER = "attestation_timeout_removal";
 
+/**
+ * Admits authenticated state-queue corrections into the durable observer and
+ * applies their local consequences. Reinclusion (a removed block's payloads
+ * return to the pending set) and its post-finality rollback inverse rewrite
+ * history-owned event rows, so each runs as its own registered Ready history
+ * producer, exactly like every other node writer; nothing else holds one here.
+ * A closed gate or lagging follower refuses the whole reconciliation before
+ * the observer persists, so the next tick replays the same transition from the
+ * chain. Both mutations are idempotent, so a crash after either commits is also
+ * resumed by replay.
+ *
+ * Both also change which deposit outputs are spendable (a deposit's L2 output
+ * is spendable only while it is assigned to a header), so the producer that
+ * committed the change publishes a full validation-cache reload before it
+ * releases its registration, the way every ledger mutator publishes its delta.
+ */
+export const reconcileStateQueueCorrections = ({
+  source,
+  deploymentIdentityDigest,
+  stateQueuePolicyId,
+  requiredFinalityDepth,
+  deploymentManifest,
+  ledgerDeltaLogMax,
+}: {
+  readonly source: StateQueueCorrectionObserverSource;
+  readonly deploymentIdentityDigest: string;
+  readonly stateQueuePolicyId: string;
+  readonly requiredFinalityDepth: bigint;
+  readonly deploymentManifest: unknown;
+  readonly ledgerDeltaLogMax: number;
+}): Effect.Effect<
+  StateQueueCorrectionObserverResult,
+  unknown,
+  Database | Globals
+> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const globals = yield* Globals;
+    const run = Runtime.runPromise(yield* Effect.runtime<Database | Globals>());
+    const authority = {
+      expectedDeploymentIdentityDigest: deploymentIdentityDigest,
+      requiredFinalityDepth,
+    };
+    const reloadLedgerCacheIf = (changed: boolean) =>
+      changed
+        ? publishMempoolLedgerDelta(
+            globals,
+            { full: true, upserts: [], deletes: [] },
+            ledgerDeltaLogMax,
+          )
+        : Effect.void;
+    return yield* Effect.tryPromise({
+      try: () =>
+        reconcileStateQueueCorrectionObserver({
+          deploymentIdentityDigest,
+          stateQueuePolicyId,
+          requiredFinalityDepth,
+          source,
+          store: createDatabaseStateQueueCorrectionObserverStore({
+            sql,
+            deploymentManifest,
+          }),
+          reinclude: async (transition) => {
+            await run(
+              Effect.suspend(() =>
+                reincludeFinalizedStateQueueCorrectionTransition(
+                  transition,
+                  authority,
+                ),
+              ).pipe(
+                Effect.tap((results) =>
+                  reloadLedgerCacheIf(
+                    results.some(
+                      (result) =>
+                        result.reopenedEvents > 0 ||
+                        result.restoredMempoolTransactions > 0 ||
+                        result.restoredProcessedTransactions > 0,
+                    ),
+                  ),
+                ),
+                runHistoryProducer,
+              ),
+            );
+          },
+          restoreAfterRollback: async (transition) => {
+            await run(
+              Effect.suspend(() =>
+                restoreRetractedStateQueueCorrectionTransition(
+                  transition,
+                  authority,
+                ),
+              ).pipe(
+                Effect.tap((results) =>
+                  reloadLedgerCacheIf(
+                    results.some((result) => result.restoredCanonicalBlock),
+                  ),
+                ),
+                runHistoryProducer,
+              ),
+            );
+          },
+          revokeTerminal: async (transition) => {
+            await run(
+              DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
+                transition,
+                deploymentManifest,
+              ),
+            );
+          },
+        }),
+      catch: (cause) => cause,
+    });
+  });
+
 export const attestationTimeoutCorrectionAction = (): Effect.Effect<
   void,
   unknown,
-  Lucid | MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Database
+  | Globals
+  | NodeConfig
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const nodeConfig = yield* NodeConfig;
     const contracts = yield* MidgardContracts;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
-    const sql = yield* SqlClient.SqlClient;
     const fetchConfig = {
       stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
       stateQueuePolicyId: contracts.stateQueue.policyId,
@@ -125,45 +248,13 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
           ),
         ),
     });
-    const observerResult = yield* Effect.tryPromise({
-      try: () =>
-        reconcileStateQueueCorrectionObserver({
-          deploymentIdentityDigest: deploymentIdentity.manifestId!,
-          stateQueuePolicyId: contracts.stateQueue.policyId,
-          requiredFinalityDepth: BigInt(manifestFinalityDepth),
-          source,
-          store: createDatabaseStateQueueCorrectionObserverStore({
-            sql,
-            deploymentManifest: deploymentIdentity.manifest,
-          }),
-          reinclude: async (transition) => {
-            await Effect.runPromise(
-              reincludeFinalizedStateQueueCorrectionTransition(transition, {
-                expectedDeploymentIdentityDigest:
-                  deploymentIdentity.manifestId!,
-                requiredFinalityDepth: BigInt(manifestFinalityDepth),
-              }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
-            );
-          },
-          restoreAfterRollback: async (transition) => {
-            await Effect.runPromise(
-              restoreRetractedStateQueueCorrectionTransition(transition, {
-                expectedDeploymentIdentityDigest:
-                  deploymentIdentity.manifestId!,
-                requiredFinalityDepth: BigInt(manifestFinalityDepth),
-              }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
-            );
-          },
-          revokeTerminal: async (transition) => {
-            await Effect.runPromise(
-              DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
-                transition,
-                deploymentIdentity.manifest,
-              ).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
-            );
-          },
-        }),
-      catch: (cause) => cause,
+    const observerResult = yield* reconcileStateQueueCorrections({
+      source,
+      deploymentIdentityDigest: deploymentIdentity.manifestId,
+      stateQueuePolicyId: contracts.stateQueue.policyId,
+      requiredFinalityDepth: BigInt(manifestFinalityDepth),
+      deploymentManifest: deploymentIdentity.manifest,
+      ledgerDeltaLogMax: nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
     });
     if (
       observerResult.admittedTransactionHashes.length > 0 ||
@@ -297,7 +388,12 @@ export const attestationTimeoutCorrectionFiber = (
 ): Effect.Effect<
   void,
   never,
-  Lucid | MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Database
+  | Globals
+  | NodeConfig
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("Attestation-timeout correction fiber started.");
