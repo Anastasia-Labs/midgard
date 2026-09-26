@@ -193,6 +193,10 @@ you checked it by reading.
 - [ ] Catalogue order and a unique 8-hex ID, mirrored in core.
       [ci: Midgard Node CI/Build, typecheck, and test Midgard SDK]
       (`fraud-proof-catalogue-registration.test.ts`)
+- [ ] Every category-ID literal in TypeScript or Aiken is registered and is
+      its family's ID; a deliberately unregistered ID (a negative-test value)
+      is listed with its reason in that test's `UNREGISTERED_CATEGORY_ID_USES`.
+      [ci: Midgard Node CI/Build, typecheck, and test Midgard SDK]
 - [ ] Every family contract has a reference-script role and token name.
       [ci: Midgard Node CI/Build and test Midgard core DA transport]
 - [ ] Node role-map mirror equals core's.
