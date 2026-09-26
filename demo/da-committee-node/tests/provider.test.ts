@@ -23,9 +23,15 @@ import {
   MultiStateQueueProvider,
   OgmiosChainSyncEventSource,
   providerFromUrl,
+  requireStateQueueReplaySource,
+  STATE_QUEUE_REPLAY_ATTEMPTS,
   stateQueueUtxosToObservedNodes,
 } from "../src/l1/provider.js";
-import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
+import { L1SourceIntegrityError } from "../src/l1/source-integrity.js";
+import {
+  hashBlockHeader,
+  type StateQueueProvider,
+} from "../src/l1/state-queue-scanner.js";
 import {
   makeObservedNode,
   makePayloadFixture,
@@ -44,6 +50,19 @@ describe("L1 provider adapters", () => {
       stateQueuePolicyId: "11".repeat(28),
     });
     await expect(provider.fetchStateQueueNodes()).resolves.toEqual([]);
+  });
+
+  it("refuses a Blockfrost state-queue provider at startup: it has no replay source", async () => {
+    await expect(
+      providerFromUrl("blockfrost:https://preview.example/api#project", {
+        network: "Preview",
+        cardanoL1Source: localNodeSource,
+        stateQueueAddress: "addr_test1statequeue",
+        stateQueuePolicyId: "11".repeat(28),
+      }),
+    ).rejects.toThrow(
+      "blockfrost: cannot serve the state queue: it has no authenticated ordered history source; use kupmios:<kupo-url>|<ogmios-url>",
+    );
   });
 
   it("normalizes SDK StateQueueUTxOs into scanner observations", async () => {
@@ -1143,11 +1162,16 @@ describe("L1 provider adapters", () => {
       expect(fetchFn).toHaveBeenCalledTimes(3);
     });
 
-    it("refuses surfaces that stay on different chain points", async () => {
+    it("refuses surfaces that stay on different chain points, as an observation failure", async () => {
       const fetchFn = kupoCheckpoints(100);
-      await expect(readTip(fetchFn)).rejects.toThrow(
+      const failure = await readTip(fetchFn).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect((failure as Error).message).toMatch(
         /not aligned after \d+ reads: Kupo=100:3{64}, Ogmios=101:4{64}/u,
       );
+      expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
       expect(fetchFn).toHaveBeenCalledTimes(KUPMIOS_TIP_ALIGNMENT_ATTEMPTS);
     });
   });
@@ -1334,6 +1358,694 @@ describe("L1 provider adapters", () => {
     await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
       /current chain-point disagreement/u,
     );
+  });
+
+  describe("L1 observation versus integrity failures", () => {
+    /** A local-node authority whose chain-sync source replays `pending`. */
+    const scriptedAuthority = (dir: string, first: CanonicalChainPoint) => {
+      const pending: {
+        direction: "roll_forward" | "roll_backward";
+        point: CanonicalChainPoint;
+      }[] = [{ direction: "roll_forward", point: first }];
+      let tip = first;
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        "Preview",
+        {
+          next: async () => {
+            const event = pending.shift();
+            if (event === undefined) return { tip };
+            tip = event.point;
+            return { event, tip: event.point };
+          },
+        },
+        new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+      );
+      return {
+        authority,
+        advance: (point: CanonicalChainPoint) =>
+          pending.push({ direction: "roll_forward", point }),
+        rollBack: (point: CanonicalChainPoint) =>
+          pending.push({ direction: "roll_backward", point }),
+      };
+    };
+    const emptySnapshot = (point: CanonicalChainPoint) => ({
+      nodes: [],
+      confirmedHeaderHash: "00".repeat(28),
+      confirmedStateOutRef: `${"00".repeat(32)}#0`,
+      observedChainPoint: point,
+    });
+    const consumerStore = (dir: string) =>
+      new FileChainSyncConsumerCursorStore(
+        `${dir}/consumer.json`,
+        "11".repeat(32),
+      );
+    const disagreeingHistories = [
+      async () => [],
+      async () => [{ checkpointKind: "merge" } as never],
+    ];
+
+    it("treats an exhausted local snapshot retake as an observation failure", async () => {
+      const dir = await tempDir();
+      const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+      const { authority } = scriptedAuthority(dir, canonical);
+      const queryPoint = { ...canonical, providerSource: "query:node-a:0" };
+      const moved = { ...queryPoint, slot: 21, blockHash: "cd".repeat(32) };
+      // Every read sees a block land before its closing check.
+      let reads = 0;
+      const currentChainPoint = vi.fn(async () =>
+        reads++ % 2 === 0 ? queryPoint : moved,
+      );
+      const provider = new LocalNodeStateQueueProvider(
+        authority,
+        [
+          {
+            fetchStateQueueNodes: async () => [],
+            fetchStateQueueSnapshot: async () => emptySnapshot(queryPoint),
+            currentChainPoint,
+          },
+        ],
+        ["query:node-a:0"],
+        consumerStore(dir),
+      );
+
+      const failure = await provider.fetchStateQueueSnapshot().then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toMatch(
+        /changed chain point while its snapshot was read/u,
+      );
+      expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
+      expect(currentChainPoint).toHaveBeenCalledTimes(
+        2 * LOCAL_NODE_SNAPSHOT_ATTEMPTS,
+      );
+    });
+
+    it("retakes the snapshot when the Kupmios chain moves during block-confirmation derivation", async () => {
+      const txHash = "aa".repeat(32);
+      const inclusion = { slot: 10, id: "11".repeat(32) };
+      const tip = { slot: 100, id: "44".repeat(32), height: 4 };
+      const nextTip = { slot: 101, id: "55".repeat(32), height: 5 };
+      const descendants = [
+        { slot: 20, id: "22".repeat(32) },
+        { slot: 50, id: "33".repeat(32) },
+        tip,
+      ];
+      let tipQueries = 0;
+      let nextBlockIndex = 0;
+      class MovingTipWebSocket {
+        onopen: ((event: unknown) => void) | null = null;
+        onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        onclose: ((event: unknown) => void) | null = null;
+
+        constructor(_url: string) {
+          queueMicrotask(() => this.onopen?.({}));
+        }
+
+        send(raw: string): void {
+          const request = JSON.parse(raw) as {
+            readonly id: string;
+            readonly method: string;
+          };
+          let result: unknown;
+          if (request.method === "queryNetwork/tip") {
+            // A block arrives after the opening tip read.
+            result = tipQueries++ === 0 ? tip : nextTip;
+          } else if (request.method === "queryNetwork/genesisConfiguration") {
+            result = { networkMagic: 2 };
+          } else if (request.method === "findIntersection") {
+            result = { intersection: inclusion, tip };
+          } else if (nextBlockIndex === 0) {
+            nextBlockIndex += 1;
+            result = { direction: "backward", point: inclusion, tip };
+          } else {
+            result = {
+              direction: "forward",
+              block: descendants[nextBlockIndex++ - 1],
+              tip,
+            };
+          }
+          queueMicrotask(() =>
+            this.onmessage?.({
+              data: JSON.stringify({ jsonrpc: "2.0", id: request.id, result }),
+            }),
+          );
+        }
+
+        close(): void {}
+      }
+      let kupoReads = 0;
+      const fetchFn = vi.fn(async () => {
+        const at = kupoReads++ === 0 ? tip : nextTip;
+        return new Response(`kupo_most_recent_checkpoint ${at.slot}\n`, {
+          headers: { etag: `"${at.id}"` },
+        });
+      });
+      vi.stubGlobal("WebSocket", MovingTipWebSocket);
+      let moved: unknown;
+      try {
+        moved = await kupmiosChainPointResolver(
+          {
+            transactionStatus: async () => ({
+              status: "confirmed",
+              txHash,
+              confirmation: {
+                txHash,
+                slot: inclusion.slot,
+                blockHash: inclusion.id,
+              },
+            }),
+          } as unknown as LucidEvolution,
+          "http://kupo.local",
+          fetchFn as typeof fetch,
+          "ws://ogmios.local",
+          "Preview",
+          3,
+        )({ txHash, outputIndex: 1 } as never).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      expect(moved).toBeInstanceOf(Error);
+      expect((moved as Error).message).toBe(
+        "Kupmios chain point changed while deriving block confirmations",
+      );
+      expect(moved).not.toBeInstanceOf(L1SourceIntegrityError);
+
+      // Raised from a local-node query surface, the snapshot is retaken.
+      const dir = await tempDir();
+      const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+      const { authority } = scriptedAuthority(dir, canonical);
+      const queryPoint = { ...canonical, providerSource: "query:node-a:0" };
+      let snapshotReads = 0;
+      const fetchStateQueueSnapshot = vi.fn(async () => {
+        if (snapshotReads++ === 0) throw moved;
+        return emptySnapshot(queryPoint);
+      });
+      const provider = new LocalNodeStateQueueProvider(
+        authority,
+        [
+          {
+            fetchStateQueueNodes: async () => [],
+            fetchStateQueueSnapshot,
+            currentChainPoint: async () => queryPoint,
+          },
+        ],
+        ["query:node-a:0"],
+        consumerStore(dir),
+      );
+      await expect(provider.fetchStateQueueSnapshot()).resolves.toMatchObject({
+        confirmedHeaderHash: "00".repeat(28),
+      });
+      expect(fetchStateQueueSnapshot).toHaveBeenCalledTimes(2);
+    });
+
+    // Per replay attempt: whether the chain moves under it (a block, or a
+    // rollback), and whether the two surfaces' histories disagree.
+    type ReplayAttempt = {
+      readonly move?: "forward" | "rollback";
+      readonly disagree: boolean;
+    };
+    it.each<
+      readonly [
+        string,
+        readonly ReplayAttempt[],
+        "integrity" | "observation" | "replayed",
+      ]
+    >([
+      ["the chain held", [{ disagree: true }], "integrity"],
+      [
+        "a block landed during the first attempt only",
+        [{ move: "forward", disagree: true }, { disagree: true }],
+        "integrity",
+      ],
+      [
+        "a block landed during the first attempt, whose retake agreed",
+        [{ move: "forward", disagree: true }, { disagree: false }],
+        "replayed",
+      ],
+      [
+        "a block landed during every attempt",
+        [
+          { move: "forward", disagree: true },
+          { move: "forward", disagree: true },
+          { move: "forward", disagree: true },
+        ],
+        "observation",
+      ],
+      [
+        "a rollback landed during the first attempt",
+        [
+          { move: "rollback", disagree: true },
+          { disagree: true },
+          { disagree: true },
+        ],
+        "observation",
+      ],
+    ])(
+      "classifies a local-node replay disagreement when %s",
+      async (_label, attempts, outcome) => {
+        const dir = await tempDir();
+        const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+        const { authority, advance, rollBack } = scriptedAuthority(
+          dir,
+          canonical,
+        );
+        let attempt = -1;
+        let slot = 20;
+        const surface = (identity: string, index: number) => ({
+          fetchStateQueueNodes: async () => [],
+          fetchStateQueueSnapshot: async () =>
+            emptySnapshot({ ...canonical, providerSource: identity }),
+          currentChainPoint: async () => ({
+            ...canonical,
+            providerSource: identity,
+          }),
+          fetchStateQueueReplayCheckpoints: async (
+            _anchor: unknown,
+            _current: unknown,
+            tipBlockNo: number,
+          ) => {
+            expect(tipBlockNo).toBe(7);
+            if (index === 0) {
+              attempt += 1;
+              const move = attempts[attempt]?.move;
+              if (move === "forward") {
+                slot += 1;
+                advance(externalPoint("chain-sync:node-a", slot, "cd"));
+              } else if (move === "rollback") {
+                rollBack(externalPoint("chain-sync:node-a", 19, "ef"));
+              }
+            }
+            return attempts[attempt]?.disagree === true
+              ? disagreeingHistories[index]!()
+              : disagreeingHistories[0]!();
+          },
+        });
+        const provider = new LocalNodeStateQueueProvider(
+          authority,
+          [surface("query:node-a:0", 0), surface("query:node-a:1", 1)],
+          ["query:node-a:0", "query:node-a:1"],
+          consumerStore(dir),
+        );
+        await provider.fetchStateQueueSnapshot();
+
+        const failure = await provider
+          .fetchStateQueueReplayCheckpoints([], [], 7, 64)
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+        expect(attempt + 1).toBe(attempts.length);
+        if (outcome === "replayed") {
+          expect(failure).toBeUndefined();
+          return;
+        }
+        expect((failure as Error).message).toMatch(
+          /local-node state-queue replay disagreement/u,
+        );
+        if (outcome === "observation") {
+          expect((failure as Error).message).toMatch(
+            new RegExp(
+              `^chain moved while state-queue history was replayed, ${STATE_QUEUE_REPLAY_ATTEMPTS.toString()} times`,
+              "u",
+            ),
+          );
+          expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
+        } else {
+          expect(failure).toBeInstanceOf(L1SourceIntegrityError);
+        }
+      },
+    );
+
+    it("asks every local-node query surface for at most the caller's limit", async () => {
+      const dir = await tempDir();
+      const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+      const { authority } = scriptedAuthority(dir, canonical);
+      const limits: number[] = [];
+      const surface = (identity: string) => ({
+        fetchStateQueueNodes: async () => [],
+        fetchStateQueueSnapshot: async () =>
+          emptySnapshot({ ...canonical, providerSource: identity }),
+        currentChainPoint: async () => ({
+          ...canonical,
+          providerSource: identity,
+        }),
+        fetchStateQueueReplayCheckpoints: async (
+          _anchor: unknown,
+          _current: unknown,
+          _tipBlockNo: number,
+          limit: number,
+        ) => {
+          limits.push(limit);
+          return [];
+        },
+      });
+      const provider = new LocalNodeStateQueueProvider(
+        authority,
+        [surface("query:node-a:0"), surface("query:node-a:1")],
+        ["query:node-a:0", "query:node-a:1"],
+        consumerStore(dir),
+      );
+      await provider.fetchStateQueueSnapshot();
+      await expect(
+        provider.fetchStateQueueReplayCheckpoints([], [], 7, 13),
+      ).resolves.toEqual([]);
+      expect(limits).toEqual([13, 13]);
+    });
+
+    it("treats a local-node query surface without a replay source as an observation failure", async () => {
+      const dir = await tempDir();
+      const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+      const { authority } = scriptedAuthority(dir, canonical);
+      const provider = new LocalNodeStateQueueProvider(
+        authority,
+        [
+          {
+            fetchStateQueueNodes: async () => [],
+            fetchStateQueueSnapshot: async () =>
+              emptySnapshot({ ...canonical, providerSource: "query:node-a:0" }),
+            currentChainPoint: async () => ({
+              ...canonical,
+              providerSource: "query:node-a:0",
+            }),
+          },
+        ],
+        ["query:node-a:0"],
+        consumerStore(dir),
+      );
+      await provider.fetchStateQueueSnapshot();
+      const failure = await provider
+        .fetchStateQueueReplayCheckpoints([], [], 7, 64)
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect((failure as Error).message).toMatch(
+        /has no authenticated ordered history source/u,
+      );
+      expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
+    });
+
+    it.each([
+      ["still holds", true, "integrity", 2],
+      ["no longer holds", false, "observation", STATE_QUEUE_REPLAY_ATTEMPTS],
+      [
+        "cannot tell whether it holds",
+        undefined,
+        "observation",
+        STATE_QUEUE_REPLAY_ATTEMPTS,
+      ],
+    ] as const)(
+      "retakes an external replay from the new points only when the chain %s the snapshot's",
+      async (_label, holds, outcome, expectedReplays) => {
+        // A block lands during the first attempt only; every attempt
+        // disagrees.
+        let slot = 100;
+        let replays = 0;
+        const held: CanonicalChainPoint[] = [];
+        const provider = new MultiStateQueueProvider(
+          (["provider-a", "provider-b"] as const).map((identity, index) => ({
+            fetchStateQueueNodes: async () => [],
+            fetchStateQueueSnapshot: async () =>
+              emptySnapshot(externalPoint(identity)),
+            currentChainPoint: async () =>
+              externalPoint(identity, slot, slot === 100 ? "ab" : "cd"),
+            ...(holds === undefined
+              ? {}
+              : {
+                  holdsChainPoint: async (point: CanonicalChainPoint) => {
+                    held.push(point);
+                    return holds;
+                  },
+                }),
+            fetchStateQueueReplayCheckpoints: async (
+              _anchor: unknown,
+              _current: unknown,
+              _tipBlockNo: number,
+              limit: number,
+            ) => {
+              expect(limit).toBe(64);
+              if (index === 0) {
+                replays += 1;
+                if (replays === 1) slot = 101;
+              }
+              return disagreeingHistories[index]!();
+            },
+          })),
+          {
+            sourceMode: "external_providers",
+            identities: ["provider-a", "provider-b"],
+          },
+        );
+        await provider.fetchStateQueueSnapshot();
+
+        const failure = await provider
+          .fetchStateQueueReplayCheckpoints([], [], 7, 64)
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+        expect((failure as Error).message).toMatch(
+          /state-queue replay disagreement between provider-a and provider-b/u,
+        );
+        expect(replays).toBe(expectedReplays);
+        if (holds !== undefined) {
+          // Each provider was asked about its own snapshot point.
+          expect(
+            held
+              .slice(0, 2)
+              .map(({ providerSource, slot: at }) => [providerSource, at]),
+          ).toEqual([
+            ["provider-a", 100],
+            ["provider-b", 100],
+          ]);
+        }
+        if (outcome === "integrity") {
+          expect(failure).toBeInstanceOf(L1SourceIntegrityError);
+        } else {
+          expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
+        }
+      },
+    );
+
+    it("retakes an external replay from the snapshot's points when any provider no longer holds its snapshot point", async () => {
+      // A block lands during the first attempt only; every attempt
+      // disagrees. Provider-b no longer holds its snapshot's point, so no
+      // retake may be watched from the new points.
+      let slot = 100;
+      let replays = 0;
+      const provider = new MultiStateQueueProvider(
+        (["provider-a", "provider-b"] as const).map((identity, index) => ({
+          fetchStateQueueNodes: async () => [],
+          fetchStateQueueSnapshot: async () =>
+            emptySnapshot(externalPoint(identity)),
+          currentChainPoint: async () =>
+            externalPoint(identity, slot, slot === 100 ? "ab" : "cd"),
+          holdsChainPoint: async () => index === 0,
+          fetchStateQueueReplayCheckpoints: async () => {
+            if (index === 0) {
+              replays += 1;
+              if (replays === 1) slot = 101;
+            }
+            return disagreeingHistories[index]!();
+          },
+        })),
+        {
+          sourceMode: "external_providers",
+          identities: ["provider-a", "provider-b"],
+        },
+      );
+      await provider.fetchStateQueueSnapshot();
+      const failure = await provider
+        .fetchStateQueueReplayCheckpoints([], [], 7, 64)
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect((failure as Error).message).toMatch(
+        /state-queue replay disagreement between provider-a and provider-b/u,
+      );
+      expect(replays).toBe(STATE_QUEUE_REPLAY_ATTEMPTS);
+      expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
+    });
+
+    it("refuses at startup a live provider without a snapshot and replay source, but not a fixture", () => {
+      const snapshotOnly: StateQueueProvider = {
+        fetchStateQueueNodes: async () => [],
+        fetchStateQueueSnapshot: async () =>
+          emptySnapshot(externalPoint("provider-a")),
+      };
+      const nodesOnly: StateQueueProvider = {
+        fetchStateQueueNodes: async () => [],
+        fetchStateQueueReplayCheckpoints: async () => [],
+      };
+      for (const provider of [snapshotOnly, nodesOnly]) {
+        expect(() =>
+          requireStateQueueReplaySource(
+            "kupmios:http://kupo.test|ws://ogmios.test#secret",
+            provider,
+          ),
+        ).toThrow(
+          "state-queue provider kupmios:http://kupo.test has no authenticated ordered history source",
+        );
+      }
+      const capable = { ...snapshotOnly, ...nodesOnly };
+      expect(
+        requireStateQueueReplaySource("kupmios:http://kupo.test", capable),
+      ).toBe(capable);
+      for (const url of ["fixture:/tmp/queue.json", "file:///tmp/queue.json"]) {
+        expect(requireStateQueueReplaySource(url, snapshotOnly)).toBe(
+          snapshotOnly,
+        );
+      }
+    });
+
+    it("treats an external provider without a replay source as an observation failure", async () => {
+      const provider = new MultiStateQueueProvider(
+        (["provider-a", "provider-b"] as const).map((identity, index) => ({
+          fetchStateQueueNodes: async () => [],
+          fetchStateQueueSnapshot: async () =>
+            emptySnapshot(externalPoint(identity)),
+          currentChainPoint: async () => externalPoint(identity),
+          ...(index === 0
+            ? { fetchStateQueueReplayCheckpoints: async () => [] }
+            : {}),
+        })),
+        {
+          sourceMode: "external_providers",
+          identities: ["provider-a", "provider-b"],
+        },
+      );
+      await provider.fetchStateQueueSnapshot();
+      const failure = await provider
+        .fetchStateQueueReplayCheckpoints([], [], 7, 64)
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect((failure as Error).message).toBe(
+        "state-queue provider provider-b has no authenticated ordered history source",
+      );
+      expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
+    });
+
+    it.each([
+      ["held", false],
+      ["moved", true],
+    ] as const)(
+      "keeps an external replay disagreement as integrity only while the chain %s",
+      async (_label, chainMoves) => {
+        let slot = 100;
+        let replays = 0;
+        const provider = new MultiStateQueueProvider(
+          (["provider-a", "provider-b"] as const).map((identity, index) => ({
+            fetchStateQueueNodes: async () => [],
+            fetchStateQueueSnapshot: async () =>
+              emptySnapshot(externalPoint(identity)),
+            currentChainPoint: async () =>
+              externalPoint(identity, slot, slot === 100 ? "ab" : "cd"),
+            fetchStateQueueReplayCheckpoints: async (
+              _anchor: unknown,
+              _current: unknown,
+              tipBlockNo: number,
+              limit: number,
+            ) => {
+              expect(tipBlockNo).toBe(7);
+              expect(limit).toBe(64);
+              if (index === 0) replays += 1;
+              if (chainMoves) slot = 101;
+              return disagreeingHistories[index]!();
+            },
+          })),
+          {
+            sourceMode: "external_providers",
+            identities: ["provider-a", "provider-b"],
+          },
+        );
+        await provider.fetchStateQueueSnapshot();
+
+        const failure = await provider
+          .fetchStateQueueReplayCheckpoints([], [], 7, 64)
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+        expect((failure as Error).message).toMatch(
+          /state-queue replay disagreement between provider-a and provider-b/u,
+        );
+        if (chainMoves) {
+          // These providers cannot show the snapshot survived, so every
+          // retake is watched from it and the moved chain excuses them all.
+          expect(replays).toBe(STATE_QUEUE_REPLAY_ATTEMPTS);
+          expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
+        } else {
+          expect(replays).toBe(1);
+          expect(failure).toBeInstanceOf(L1SourceIntegrityError);
+        }
+      },
+    );
+
+    it.each([
+      ["one tip height", [42, 42], 42],
+      ["different tip heights", [42, 43], undefined],
+    ] as const)(
+      "merges external snapshots read at %s",
+      async (_label, heights, merged) => {
+        const provider = new MultiStateQueueProvider(
+          (["provider-a", "provider-b"] as const).map((identity, index) => ({
+            fetchStateQueueNodes: async () => [],
+            fetchStateQueueSnapshot: async () => ({
+              ...emptySnapshot(externalPoint(identity)),
+              tipBlockNo: heights[index]!,
+            }),
+            currentChainPoint: async () => externalPoint(identity),
+          })),
+          {
+            sourceMode: "external_providers",
+            identities: ["provider-a", "provider-b"],
+          },
+        );
+        const snapshot = provider.fetchStateQueueSnapshot();
+        if (merged === undefined) {
+          await expect(snapshot).rejects.toThrow(
+            /read their state-queue snapshots at different tip heights/u,
+          );
+          await expect(snapshot).rejects.not.toBeInstanceOf(
+            L1SourceIntegrityError,
+          );
+        } else {
+          await expect(snapshot).resolves.toMatchObject({ tipBlockNo: merged });
+        }
+      },
+    );
+
+    it("classifies surface disagreement at one proven chain point as integrity", async () => {
+      const { header, headerHash } = await makePayloadFixture();
+      const provider = new MultiStateQueueProvider(
+        [
+          {
+            fetchStateQueueNodes: async () => [
+              makeObservedNode({ header, headerHash, depth: 10 }),
+            ],
+            currentChainPoint: async () => externalPoint("provider-a"),
+          },
+          {
+            fetchStateQueueNodes: async () => [],
+            currentChainPoint: async () => externalPoint("provider-b"),
+          },
+        ],
+        { sourceMode: "external_providers" },
+      );
+      await expect(provider.fetchStateQueueNodes()).rejects.toBeInstanceOf(
+        L1SourceIntegrityError,
+      );
+    });
   });
 });
 

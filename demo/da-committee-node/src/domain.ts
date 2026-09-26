@@ -37,6 +37,13 @@ export type ObservedStateQueueSnapshot = {
   readonly confirmedHeaderHash: string;
   readonly confirmedStateOutRef: string;
   readonly observedChainPoint: ChainPoint;
+  /**
+   * Block height of the chain tip the snapshot was read at, when the source
+   * can read it at that same point. The depths of the snapshot's outputs are
+   * counted from this tip, and replayed history is judged final against it
+   * too, so one tick judges all finality at one tip.
+   */
+  readonly tipBlockNo?: number;
 };
 
 export type StateQueueHeaderStatus =

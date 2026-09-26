@@ -34,6 +34,13 @@ export type CommitteeTickRunnerDeps = {
   /** One retention pass against a fresh L1 view. */
   readonly runRetention: (view: RetentionL1View) => Promise<void>;
   readonly latestL1View: () => CommitteeL1View | undefined;
+  /**
+   * When a tick last made authenticated progress toward an L1 view without
+   * reaching one (catching up on a long state-queue history). The deadline
+   * counts such progress as a fresh view, so a node catching up after
+   * downtime is not stopped for being behind.
+   */
+  readonly latestL1ProgressAtMs: () => number | undefined;
   readonly setRetentionReadiness: (
     snapshot: CommitteeRetentionReadinessSnapshot,
   ) => void;
@@ -61,16 +68,24 @@ export const createCommitteeTickRunner = (deps: CommitteeTickRunnerDeps) => {
   let inFlightTickStartedAtMs = 0;
   let exiting = false;
 
-  /** Age of the last accepted L1 view, from startup when none was accepted. */
+  /**
+   * Age of the last accepted L1 view or of later progress toward one, from
+   * startup when there was neither.
+   */
   const l1ViewAge = (): {
     readonly nowMs: number;
     readonly l1ViewAgeMs: number;
   } => {
     const nowMs = deps.nowMs();
-    const view = deps.latestL1View();
+    const freshest = Math.max(
+      deps.latestL1View()?.observedAtMs ?? Number.NEGATIVE_INFINITY,
+      deps.latestL1ProgressAtMs() ?? Number.NEGATIVE_INFINITY,
+    );
     return {
       nowMs,
-      l1ViewAgeMs: nowMs - (view?.observedAtMs ?? deps.startedAtMs),
+      l1ViewAgeMs:
+        nowMs -
+        (freshest === Number.NEGATIVE_INFINITY ? deps.startedAtMs : freshest),
     };
   };
 

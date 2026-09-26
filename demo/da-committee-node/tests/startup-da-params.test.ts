@@ -9,7 +9,11 @@ import { bytesToHex } from "../src/utils/hex.js";
 import { minimalConfig, tempDir } from "./helpers.js";
 
 describe("committee node startup DA params checks", () => {
-  it("fails closed when live DA params do not match config", async () => {
+  const startup = async (
+    fetchDaParams: (
+      committeeSignersHash: string,
+    ) => ReturnType<DaAttestationChainReader["fetchDaParams"]>,
+  ) => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
@@ -41,9 +45,10 @@ describe("committee node startup DA params checks", () => {
       signer,
       signerIndex: committeeKeys.indexOf(signer.publicKeyHex),
     });
+    const store = await JsonFileCommitteeStore.open(dir);
     const service = new CommitteeService({
       config,
-      store: await JsonFileCommitteeStore.open(dir),
+      store,
       stateQueueProvider: { fetchStateQueueNodes: async () => [] },
       payloadSource: {
         fetchPayloadCandidates: async () => {
@@ -53,20 +58,40 @@ describe("committee node startup DA params checks", () => {
       signer,
       signerValidation,
       daChainReader: {
-        // Floor-compliant, but a different committee than the config names —
-        // the mismatch is the whole point of the test.
-        fetchDaParams: async () => ({
-          outRef: "tx#0",
-          committeeHex: "fe".repeat(32) + "ff".repeat(32),
-          committeeSignersHash,
-          threshold: 2,
-          ownerCount: 2,
-          updateThreshold: 2,
-          rawDatum: {} as never,
-        }),
+        fetchDaParams: async () => fetchDaParams(committeeSignersHash),
         fetchDaAttestationCandidates: async () => [],
       } satisfies DaAttestationChainReader,
     });
+    return { service, store };
+  };
+
+  it("fails closed and quarantines when live DA params do not match config", async () => {
+    const { service, store } = await startup(async (committeeSignersHash) => ({
+      outRef: "tx#0",
+      // Floor-compliant, but a different committee than the config names —
+      // the mismatch is the whole point of the test.
+      committeeHex: "fe".repeat(32) + "ff".repeat(32),
+      committeeSignersHash,
+      threshold: 2,
+      ownerCount: 2,
+      updateThreshold: 2,
+      rawDatum: {} as never,
+    }));
     await expect(service.initialize()).rejects.toThrow(/on-chain DA committee/);
+    await expect(store.getL1SourceState()).resolves.toMatchObject({
+      status: "quarantined",
+      quarantineReason:
+        "l1_da_params_mismatch: on-chain DA committee does not match committee node config",
+    });
+  });
+
+  it("fails startup without quarantining when live DA params cannot be read", async () => {
+    const { service, store } = await startup(async () => {
+      throw new Error("Kupo request timed out");
+    });
+    await expect(service.initialize()).rejects.toThrow(
+      "Kupo request timed out",
+    );
+    expect((await store.getL1SourceState())?.status).not.toBe("quarantined");
   });
 });

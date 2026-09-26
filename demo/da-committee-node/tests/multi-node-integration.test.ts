@@ -15,6 +15,7 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from "./helpers.js";
+import { withFinalSnapshot } from "./helpers/final-snapshot.js";
 
 describe("multi-node DA committee integration", () => {
   it("uses a peer signature to init, add, and apply threshold DA attestation without HTTP DA transport", async () => {
@@ -65,11 +66,11 @@ describe("multi-node DA committee integration", () => {
       `${dir}/coordinator-store`,
     );
     const peerStore = await JsonFileCommitteeStore.open(`${dir}/peer-store`);
-    const observedHeaderProvider = {
+    const observedHeaderProvider = withFinalSnapshot({
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],
-    };
+    });
     const payloadSource = payloadSourceFromBytes(payloadCbor, "producer-peer");
     const peerService = new CommitteeService({
       config: peerConfig,

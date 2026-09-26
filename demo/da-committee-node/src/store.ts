@@ -37,6 +37,7 @@ import {
   parseDaStoredPayloadRecord,
 } from "./domain.js";
 import type { StateQueueReplayAnchor } from "./l1/state-queue-scanner.js";
+import type { StateQueueOutputStep } from "./l1/terminal-retention-observation.js";
 import {
   retentionBlockEndTimeMs,
   retentionQueueReference,
@@ -100,14 +101,42 @@ export type DecisionOutboxRecord = {
   readonly quarantinedAt?: string;
 };
 
+/**
+ * The status of an observation made where the node saw only authenticated
+ * replay, which carries each header's outputs but not their datums: a
+ * catch-up that moved a header to an output the snapshot does not show it at.
+ * It is never guessed. A later observation of the same output fills it in, as
+ * does one that final replay explains moving the header on from there, and
+ * neither may contradict the status known before it; no decision binds to an
+ * observation with this status.
+ */
+export const UNKNOWN_STATE_QUEUE_STATUS = "unknown";
+
+export type L1ObservedStatus =
+  | StateQueueHeaderRecord["status"]
+  | typeof UNKNOWN_STATE_QUEUE_STATUS;
+
 export type L1ObservedDecision = {
   readonly headerHash: string;
   readonly stateQueueOutRef: string;
-  readonly stateQueueStatus: StateQueueHeaderRecord["status"];
+  readonly stateQueueStatus: L1ObservedStatus;
+  /**
+   * Present exactly when `stateQueueStatus` is unknown: the last status the
+   * node knew this header by, which a later observation filling the unknown
+   * status in may not contradict (see `persistedDecisionTransition`).
+   */
+  readonly lastKnownStatus?: StateQueueHeaderRecord["status"];
   readonly slot?: number;
   readonly blockHash?: string;
   readonly finalized: boolean;
   readonly hasPersistedDecision: boolean;
+  /**
+   * The final authenticated replay steps, oldest first, that moved or removed
+   * this header's output in the scan that made this observation. Present only
+   * when there were any; they are what lets a persisted decision's output or
+   * status change (see `persistedDecisionTransition`).
+   */
+  readonly authenticatedSteps?: readonly StateQueueOutputStep[];
 };
 
 export type L1SourceState = {
@@ -1357,13 +1386,118 @@ export const mergeL1SourceState = (
   if (proposed.status === "quarantined") {
     return proposed;
   }
+  // The replay anchor only ever advances; a healthy write that carries none
+  // (such as a decision effect) must not drop the recorded one.
+  const stateQueueReplayAnchor =
+    proposed.stateQueueReplayAnchor ?? current.stateQueueReplayAnchor;
   return {
     ...proposed,
     observations: mergePersistedDecisionObservations(
       current.observations,
       proposed.observations,
     ),
+    ...(stateQueueReplayAnchor === undefined ? {} : { stateQueueReplayAnchor }),
   };
+};
+
+/**
+ * How a persisted decision's L1 observation changed from `prior` to `next`:
+ * - `same`: the same output, status and chain point; or the same output and
+ *   chain point where `prior`'s status was unknown and `next` observed it
+ *   (an output's datum never changes, so this only fills it in).
+ * - `explained`: final authenticated replay explains the change. `next`
+ *   carries the final steps of its scan; walked from the prior output they
+ *   must lead, unbroken, to the next output (or take the header out of the
+ *   queue, for a merged or removed header), and the last of them must be
+ *   where `next` was observed. A status may only advance to `attested`, or
+ *   become terminal with the last step; a move may also take a known status
+ *   to unknown (a catch-up that did not see the new output's datum).
+ * - `unexplained`: anything else, which is a fork of a decided observation;
+ *   in particular a known status contradicted at an unchanged output.
+ * An unknown status stands in for its `lastKnownStatus` in these rules, so
+ * filling it in may only advance that status as a direct change could: a
+ * status contradicted across an unknown one is a fork too.
+ * Both the committee's tick and the store's merge judge changes by this alone.
+ */
+export const persistedDecisionTransition = (
+  prior: L1ObservedDecision,
+  next: L1ObservedDecision,
+): "same" | "explained" | "unexplained" => {
+  const priorKnown = knownStatus(prior);
+  const nextKnown = knownStatus(next);
+  const advances =
+    priorKnown !== undefined &&
+    nextKnown !== undefined &&
+    (nextKnown === priorKnown ||
+      ((priorKnown === "unattested" || priorKnown === "attesting") &&
+        nextKnown === "attested"));
+  if (
+    next.stateQueueOutRef === prior.stateQueueOutRef &&
+    (next.stateQueueStatus === prior.stateQueueStatus ||
+      prior.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS) &&
+    advances &&
+    next.slot === prior.slot &&
+    next.blockHash === prior.blockHash
+  ) {
+    return "same";
+  }
+  const steps = next.authenticatedSteps ?? [];
+  const first = steps.findIndex(
+    ({ fromOutRef }) => fromOutRef === prior.stateQueueOutRef,
+  );
+  const last = steps.at(-1);
+  const terminal = (status: L1ObservedDecision["stateQueueStatus"]) =>
+    status === "merged" || status === "removed";
+  const statusExplained =
+    last?.toOutRef === undefined
+      ? terminal(next.stateQueueStatus)
+      : !terminal(next.stateQueueStatus) && advances;
+  return next.finalized &&
+    first >= 0 &&
+    last !== undefined &&
+    priorKnown !== undefined &&
+    !terminal(priorKnown) &&
+    priorKnown !== "conflicted" &&
+    statusExplained &&
+    steps
+      .slice(first + 1)
+      .every(
+        ({ fromOutRef }, index) =>
+          steps[first + index]!.toOutRef === fromOutRef,
+      ) &&
+    (last.toOutRef ?? last.fromOutRef) === next.stateQueueOutRef &&
+    next.slot === last.slot &&
+    next.blockHash === last.blockHash &&
+    prior.slot !== undefined &&
+    last.slot >= prior.slot
+    ? "explained"
+    : "unexplained";
+};
+
+/**
+ * The status `observation` was last known by: its own, or for an unknown one
+ * the `lastKnownStatus` it carries.
+ */
+const knownStatus = (
+  observation: L1ObservedDecision,
+): StateQueueHeaderRecord["status"] | undefined =>
+  observation.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS
+    ? observation.lastKnownStatus
+    : observation.stateQueueStatus;
+
+/**
+ * `observation` with `status`, which for an unknown status carries the status
+ * `observation` was last known by.
+ */
+export const withObservedStatus = (
+  observation: L1ObservedDecision,
+  status: L1ObservedStatus,
+): L1ObservedDecision => {
+  const { lastKnownStatus: _lastKnownStatus, ...rest } = observation;
+  const lastKnownStatus = knownStatus(observation);
+  return status === UNKNOWN_STATE_QUEUE_STATUS && lastKnownStatus !== undefined
+    ? { ...rest, stateQueueStatus: status, lastKnownStatus }
+    : { ...rest, stateQueueStatus: status };
 };
 
 const mergePersistedDecisionObservations = (
@@ -1382,23 +1516,7 @@ const mergePersistedDecisionObservations = (
       observations.set(prior.headerHash, prior);
       continue;
     }
-    const expectedAttestationAdvance =
-      (prior.stateQueueStatus === "unattested" ||
-        prior.stateQueueStatus === "attesting") &&
-      next.stateQueueStatus === "attested" &&
-      prior.slot !== undefined &&
-      next.slot !== undefined &&
-      next.slot > prior.slot &&
-      next.stateQueueOutRef !== prior.stateQueueOutRef &&
-      next.finalized;
-    if (
-      (!expectedAttestationAdvance &&
-        next.stateQueueOutRef !== prior.stateQueueOutRef) ||
-      (!expectedAttestationAdvance &&
-        (next.stateQueueStatus !== prior.stateQueueStatus ||
-          next.slot !== prior.slot ||
-          next.blockHash !== prior.blockHash))
-    ) {
+    if (persistedDecisionTransition(prior, next) === "unexplained") {
       throw new Error(
         "persisted L1 decision changed canonical output or chain point",
       );
@@ -1455,6 +1573,7 @@ const assertDecisionSourceState = (
     sourceState.sourceMode !== effect.sourceMode ||
     sourceState.network !== effect.network ||
     observation?.stateQueueOutRef !== effect.stateQueueOutRef ||
+    observation.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS ||
     observation.finalized !== true ||
     observation.hasPersistedDecision !== true ||
     observation.slot !== effect.slot ||
@@ -1481,6 +1600,45 @@ const assertDecisionSignature = (
   ) {
     throw new Error("decision outbox signature does not match effect identity");
   }
+};
+
+const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
+
+/** A non-empty list of well-formed steps, or undefined. */
+const parseStateQueueOutputSteps = (
+  value: unknown,
+): readonly StateQueueOutputStep[] | undefined => {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const steps: StateQueueOutputStep[] = [];
+  for (const entry of value as unknown[]) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return undefined;
+    }
+    const step = entry as Partial<StateQueueOutputStep>;
+    if (
+      Object.keys(step).some(
+        (key) => !["fromOutRef", "toOutRef", "slot", "blockHash"].includes(key),
+      ) ||
+      typeof step.fromOutRef !== "string" ||
+      !OUT_REF.test(step.fromOutRef) ||
+      (step.toOutRef !== undefined &&
+        (typeof step.toOutRef !== "string" || !OUT_REF.test(step.toOutRef))) ||
+      typeof step.slot !== "number" ||
+      !Number.isSafeInteger(step.slot) ||
+      step.slot < 0 ||
+      typeof step.blockHash !== "string" ||
+      !/^[0-9a-f]{64}$/u.test(step.blockHash)
+    ) {
+      return undefined;
+    }
+    steps.push({
+      fromOutRef: step.fromOutRef,
+      ...(step.toOutRef === undefined ? {} : { toOutRef: step.toOutRef }),
+      slot: step.slot,
+      blockHash: step.blockHash,
+    });
+  }
+  return steps;
 };
 
 const parseStateQueueReplayAnchor = (
@@ -1607,11 +1765,16 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
       "headerHash",
       "stateQueueOutRef",
       "stateQueueStatus",
+      "lastKnownStatus",
       "slot",
       "blockHash",
       "finalized",
       "hasPersistedDecision",
+      "authenticatedSteps",
     ]);
+    const authenticatedSteps = parseStateQueueOutputSteps(
+      record.authenticatedSteps,
+    );
     if (
       Object.keys(record).some((key) => !observationKeys.has(key)) ||
       typeof record.headerHash !== "string" ||
@@ -1623,14 +1786,25 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
         record.stateQueueStatus !== "attested" &&
         record.stateQueueStatus !== "merged" &&
         record.stateQueueStatus !== "removed" &&
-        record.stateQueueStatus !== "conflicted") ||
+        record.stateQueueStatus !== "conflicted" &&
+        record.stateQueueStatus !== UNKNOWN_STATE_QUEUE_STATUS) ||
+      (record.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS
+        ? record.lastKnownStatus !== "unattested" &&
+          record.lastKnownStatus !== "attesting" &&
+          record.lastKnownStatus !== "attested" &&
+          record.lastKnownStatus !== "merged" &&
+          record.lastKnownStatus !== "removed" &&
+          record.lastKnownStatus !== "conflicted"
+        : record.lastKnownStatus !== undefined) ||
       typeof record.finalized !== "boolean" ||
       typeof record.hasPersistedDecision !== "boolean" ||
       (record.slot !== undefined &&
         (!Number.isSafeInteger(record.slot) || record.slot < 0)) ||
       (record.blockHash !== undefined &&
         (typeof record.blockHash !== "string" ||
-          !/^[0-9a-f]{64}$/u.test(record.blockHash)))
+          !/^[0-9a-f]{64}$/u.test(record.blockHash))) ||
+      (record.authenticatedSteps !== undefined &&
+        authenticatedSteps === undefined)
     ) {
       throw new Error("committee node L1 source observation is malformed");
     }
@@ -1638,12 +1812,16 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
       headerHash: record.headerHash,
       stateQueueOutRef: record.stateQueueOutRef,
       stateQueueStatus: record.stateQueueStatus,
+      ...(record.lastKnownStatus === undefined
+        ? {}
+        : { lastKnownStatus: record.lastKnownStatus }),
       ...(record.slot === undefined ? {} : { slot: record.slot }),
       ...(record.blockHash === undefined
         ? {}
         : { blockHash: record.blockHash }),
       finalized: record.finalized,
       hasPersistedDecision: record.hasPersistedDecision,
+      ...(authenticatedSteps === undefined ? {} : { authenticatedSteps }),
     };
   });
   observations.sort((left, right) =>

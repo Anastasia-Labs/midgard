@@ -35,6 +35,8 @@ const harness = (
   let now = START;
   let view: CommitteeL1View | undefined;
   let l1Readable = true;
+  let catchingUp = false;
+  let progressAt: number | undefined;
   let hangs = false;
   const exits: number[] = [];
   const lines: string[] = [];
@@ -45,6 +47,11 @@ const harness = (
     tick: async () => {
       if (hangs && options.hangBeforeView === true)
         return new Promise<never>(() => undefined);
+      if (catchingUp) {
+        // Authenticated progress toward a view, but no view.
+        progressAt = now;
+        throw new Error("state-queue replay is catching up");
+      }
       if (!l1Readable) throw new Error("ogmios connection refused");
       view = {
         observedAtMs: now,
@@ -67,6 +74,7 @@ const harness = (
       };
     },
     latestL1View: () => view,
+    latestL1ProgressAtMs: () => progressAt,
     setRetentionReadiness: (snapshot) => {
       readiness = snapshot;
     },
@@ -88,6 +96,9 @@ const harness = (
     },
     setL1Readable: (value: boolean) => {
       l1Readable = value;
+    },
+    setCatchingUp: (value: boolean) => {
+      catchingUp = value;
     },
     startHanging: () => {
       hangs = true;
@@ -155,6 +166,30 @@ describe("committee tick runner L1-view exit rule", () => {
     await h.runner.runTick();
     expect(h.readiness()?.status).toBe("ok");
     expect(h.exits).toEqual([]);
+  });
+
+  it("counts catch-up progress toward a view against the deadline, and exits once it stops", async () => {
+    const h = harness();
+    await h.runner.runTick();
+    h.setCatchingUp(true);
+    // Catching up for several deadlines' worth of time, progressing on
+    // every tick: no view is accepted, nothing is pruned, and no exit.
+    for (let tick = 0; tick < 5; tick += 1) {
+      h.advance(FATAL_MS);
+      await h.runner.runTick();
+      expect(h.exits).toEqual([]);
+      expect(h.readiness()?.status).toBe("l1_view_stale");
+    }
+    expect(h.retentionRuns).toEqual([START]);
+    // Progress stops: the deadline runs from the last progress.
+    h.setCatchingUp(false);
+    h.setL1Readable(false);
+    h.advance(FATAL_MS);
+    await h.runner.runTick();
+    expect(h.exits).toEqual([]);
+    h.advance(1);
+    await h.runner.runTick();
+    expect(h.exits).toEqual([L1_VIEW_UNAVAILABLE_EXIT_CODE]);
   });
 
   it("measures the deadline from startup when no view was ever accepted", async () => {

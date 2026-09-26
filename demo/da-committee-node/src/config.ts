@@ -990,9 +990,11 @@ const cardanoL1SourceConfig = ({
       "external_providers mode requires at least two Cardano provider URLs",
     );
   }
-  if (cardanoProviderUrls.some((url) => !isLiveLucidProviderUrl(url))) {
+  if (cardanoProviderUrls.some((url) => !url.startsWith("kupmios:"))) {
+    // The state queue is read through every provider, and only Kupmios
+    // serves its authenticated ordered history.
     throw new Error(
-      "external_providers mode requires live blockfrost or kupmios providers",
+      "external_providers mode requires kupmios providers: blockfrost has no authenticated ordered state-queue history source",
     );
   }
   const providerAuthorityIds = splitList(

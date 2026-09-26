@@ -464,6 +464,22 @@ describe("loadCommitteeConfig", () => {
         CARDANO_PROVIDER_AUTHORITY_IDS: "11".repeat(32),
       }),
     ).rejects.toThrow(/at least two/);
+    // Every external provider serves the state queue, and Blockfrost has no
+    // authenticated ordered history of it: refused at startup.
+    for (const urls of [
+      "blockfrost:https://preview-a.example/api#project-a,blockfrost:https://preview-b.example/api#project-b",
+      "kupmios:https://kupo-a.example|wss://ogmios-a.example,blockfrost:https://preview-b.example/api#project-b",
+    ]) {
+      await expect(
+        loadCommitteeConfig({
+          ...baseEnv,
+          ...externalProviderConfigEnv(),
+          CARDANO_PROVIDER_URLS: urls,
+        }),
+      ).rejects.toThrow(
+        "external_providers mode requires kupmios providers: blockfrost has no authenticated ordered state-queue history source",
+      );
+    }
   });
 
   it("requires an explicit L1 source mode and keeps local query surfaces under one authority", async () => {
@@ -1341,7 +1357,7 @@ const externalProviderConfigEnv = (): Record<string, string | undefined> => ({
   CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: undefined,
   CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: undefined,
   CARDANO_PROVIDER_URLS:
-    "blockfrost:https://preview-a.example/api#project-a,blockfrost:https://preview-b.example/api#project-b",
+    "kupmios:https://kupo-a.example|wss://ogmios-a.example,kupmios:https://kupo-b.example|wss://ogmios-b.example",
   CARDANO_PROVIDER_AUTHORITY_IDS: `${"11".repeat(32)},${"22".repeat(32)}`,
   CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
 });

@@ -327,6 +327,7 @@ const main = async (): Promise<void> => {
     runAvailabilityResponse,
     runRetention,
     latestL1View: () => service.latestL1View(),
+    latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
     setRetentionReadiness: (snapshot) => {
       retentionReadiness = snapshot;
     },
@@ -420,8 +421,8 @@ Usage:
 
 Required configuration follows demo/da-committee-node/docs/da-committee-node-architecture.md in the repository.
 L1 submission requires L1_SUBMITTER_KEY_SOURCE for a funded Cardano wallet.
-Supported CARDANO_PROVIDER_URLS forms:
-  blockfrost:https://cardano-preview.blockfrost.io/api/v0#PROJECT_ID
+Supported CARDANO_PROVIDER_URLS forms (Blockfrost cannot serve the state
+queue: it has no authenticated ordered history source):
   kupmios:http://kupo:1442|http://ogmios:1337
   fixture:/path/to/state-queue.json (tests only; requires
     CARDANO_L1_TEST_MODE=true)

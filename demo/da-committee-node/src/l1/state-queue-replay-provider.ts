@@ -3,6 +3,11 @@ import { createHash } from "node:crypto";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import {
+  L1SourceIntegrityError,
+  StateQueueHistoryNotExtendingAnchorError,
+} from "./source-integrity.js";
+
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
@@ -133,7 +138,18 @@ const fetchSpend = async (
       (item as { transaction_id?: unknown }).transaction_id === txHash &&
       (item as { output_index?: unknown }).output_index === index,
   );
-  if (matches.length !== 1) throw new Error("Kupo spend lookup is not unique");
+  // Replay walks outputs of the history it has just read from its anchor,
+  // and Kupo keeps spent outputs. An output it does not know is not on this
+  // chain: from a final anchor it was rolled back deeper than finality, from
+  // a bootstrap candidate the candidate was rolled back. One it knows more
+  // than once means a corrupt index. A rollback during the replay itself is
+  // told apart by the held-chain check around it.
+  if (matches.length !== 1) {
+    const message = `Kupo does not know state-queue output ${reference} exactly once (${matches.length.toString()} matches)`;
+    throw matches.length === 0
+      ? new StateQueueHistoryNotExtendingAnchorError(message)
+      : new L1SourceIntegrityError(message);
+  }
   const match = matches[0] as { datum?: unknown; spent_at?: unknown };
   if (!("datum" in match)) {
     throw new Error("Kupo replay requires resolve_hashes support");
@@ -410,7 +426,9 @@ const readTransaction = async (
         (item) => (item as { id?: unknown }).id === spend.transactionHash,
       );
       if (index < 0)
-        throw new Error("Kupo spend transaction is absent from Ogmios block");
+        throw new L1SourceIntegrityError(
+          "Kupo spend transaction is absent from Ogmios block",
+        );
       return parseTransaction(
         block.transactions[index],
         { blockHash: block.id, slot: block.slot, blockNo: block.height },
@@ -473,7 +491,9 @@ const fetchOutputs = async (
       output.datum_type !== "inline" ||
       typeof output.datum !== "string"
     ) {
-      throw new Error("state-queue policy output has invalid provenance");
+      throw new L1SourceIntegrityError(
+        "state-queue policy output has invalid provenance",
+      );
     }
     const assetName = assets[0]!.assetName;
     const headerHash =
@@ -486,7 +506,7 @@ const fetchOutputs = async (
           ? assetName.slice(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length)
           : undefined;
     if (headerHash === undefined)
-      throw new Error("unknown state-queue asset name");
+      throw new L1SourceIntegrityError("unknown state-queue asset name");
     let view: SDK.LinkedListNodeView;
     try {
       view = SDK.linkedListDatumToNodeView(
@@ -494,11 +514,13 @@ const fetchOutputs = async (
         assetName,
       );
     } catch (cause) {
-      throw new Error("state-queue replay datum is invalid", { cause });
+      throw new L1SourceIntegrityError("state-queue replay datum is invalid", {
+        cause,
+      });
     }
     const viewHeader = view.key === "Empty" ? null : view.key.Key.key;
     if (viewHeader !== headerHash)
-      throw new Error("state-queue asset and datum disagree");
+      throw new L1SourceIntegrityError("state-queue asset and datum disagree");
     outputs.push({
       node: {
         headerHash,
@@ -719,7 +741,7 @@ const correctionLockWitness = async ({
       locksReferenced.length !== 0 ||
       outputs.length !== 0
     ) {
-      throw new Error(
+      throw new L1SourceIntegrityError(
         "non-mint checkpoint unexpectedly carries CorrectionLock",
       );
     }
@@ -730,12 +752,14 @@ const correctionLockWitness = async ({
       purpose === "mint" && index === policyIndex.toString(),
   );
   if (mint.length !== 1)
-    throw new Error("state-queue mint redeemer is not unique");
+    throw new L1SourceIntegrityError("state-queue mint redeemer is not unique");
   let decoded: SDK.StateQueueRedeemer;
   try {
     decoded = Data.from(mint[0]!.cborHex, SDK.StateQueueRedeemer);
   } catch (cause) {
-    throw new Error("state-queue mint redeemer is invalid", { cause });
+    throw new L1SourceIntegrityError("state-queue mint redeemer is invalid", {
+      cause,
+    });
   }
   if (typeof decoded === "object" && decoded !== null && "InitV1" in decoded) {
     if (
@@ -744,7 +768,9 @@ const correctionLockWitness = async ({
       outputs.length !== 1 ||
       outputs[0]!.datum !== "Idle"
     ) {
-      throw new Error("state-queue init CorrectionLock topology is invalid");
+      throw new L1SourceIntegrityError(
+        "state-queue init CorrectionLock topology is invalid",
+      );
     }
     return {
       kind: "genesis",
@@ -759,7 +785,9 @@ const correctionLockWitness = async ({
       locksReferenced.length !== 0 ||
       outputs.length !== 0
     ) {
-      throw new Error("state-queue deinit CorrectionLock topology is invalid");
+      throw new L1SourceIntegrityError(
+        "state-queue deinit CorrectionLock topology is invalid",
+      );
     }
     return {
       kind: "deinit",
@@ -778,7 +806,9 @@ const correctionLockWitness = async ({
       locksReferenced[0]!.datum !== "Idle" ||
       outputs.length !== 0
     ) {
-      throw new Error("append/merge CorrectionLock topology is invalid");
+      throw new L1SourceIntegrityError(
+        "append/merge CorrectionLock topology is invalid",
+      );
     }
     return {
       kind: "idle_reference",
@@ -798,7 +828,9 @@ const correctionLockWitness = async ({
       locksReferenced.length !== 0 ||
       outputs.length !== 1
     ) {
-      throw new Error("correction CorrectionLock topology is invalid");
+      throw new L1SourceIntegrityError(
+        "correction CorrectionLock topology is invalid",
+      );
     }
     const targetHeaderHash =
       "RemoveUnattestedBlockAfterTimeout" in decoded
@@ -835,7 +867,7 @@ const correctionLockWitness = async ({
                       targetHeaderHash,
                     );
               if (assetName === null)
-                throw new Error(
+                throw new L1SourceIntegrityError(
                   "fraud proof CorrectionLock identity is invalid",
                 );
               return { FraudProof: { fraud_proof_asset_name: assetName } };
@@ -850,7 +882,9 @@ const correctionLockWitness = async ({
       nextDatum: outputs[0]!.datum,
     };
   }
-  throw new Error("state-queue checkpoint has no CorrectionLock topology");
+  throw new L1SourceIntegrityError(
+    "state-queue checkpoint has no CorrectionLock topology",
+  );
 };
 
 const reconstruct = (
@@ -874,7 +908,9 @@ const reconstruct = (
         !spent.has(previousByIdentity.get(node.headerHash)!.outRef),
     )
   ) {
-    throw new Error("state-queue replay outputs do not follow their inputs");
+    throw new L1SourceIntegrityError(
+      "state-queue replay outputs do not follow their inputs",
+    );
   }
   const retained = previousQueue.flatMap((node) => {
     if (!spent.has(node.outRef)) return [node];
@@ -888,7 +924,9 @@ const reconstruct = (
     introduced.length > 1 ||
     introduced.some(({ headerHash }) => headerHash === null)
   ) {
-    throw new Error("state-queue replay introduced invalid identities");
+    throw new L1SourceIntegrityError(
+      "state-queue replay introduced invalid identities",
+    );
   }
   const nextQueue = [...retained, ...introduced];
   if (
@@ -898,7 +936,9 @@ const reconstruct = (
       nextQueue.length ||
     new Set(nextQueue.map(({ outRef }) => outRef)).size !== nextQueue.length
   ) {
-    throw new Error("state-queue replay reconstructed an invalid queue");
+    throw new L1SourceIntegrityError(
+      "state-queue replay reconstructed an invalid queue",
+    );
   }
   const expectedLinks = new Map(
     nextQueue.map((node, index) => [
@@ -912,13 +952,19 @@ const reconstruct = (
         expectedLinks.get(node.headerHash) !== nextHeaderHash,
     )
   ) {
-    throw new Error("state-queue replay linked-list outputs disagree");
+    throw new L1SourceIntegrityError(
+      "state-queue replay linked-list outputs disagree",
+    );
   }
   return nextQueue;
 };
 
-/** The node's tip block height; Ogmios v6 carries it only on this query. */
-const fetchTipBlockNo = async (
+/**
+ * The node's tip block height; Ogmios v6 carries it only on this query. A
+ * snapshot reads it at the chain point it is taken at, and replay counts
+ * checkpoint depths from that height.
+ */
+export const fetchOgmiosTipBlockNo = async (
   ogmiosUrl: string,
   fetchImpl: StateQueueReplayFetch,
 ): Promise<number> => {
@@ -928,7 +974,7 @@ const fetchTipBlockNo = async (
     body: JSON.stringify({
       jsonrpc: "2.0",
       method: "queryNetwork/blockHeight",
-      id: "midgard-committee-state-queue-replay-tip-v1",
+      id: "midgard-committee-state-queue-tip-height-v1",
     }),
   })) as { result?: unknown };
   const height = body.result;
@@ -937,9 +983,31 @@ const fetchTipBlockNo = async (
     !Number.isSafeInteger(height) ||
     height < 0
   ) {
-    throw new Error("Ogmios replay tip height is invalid");
+    throw new Error("Ogmios tip height is invalid");
   }
   return height;
+};
+
+/**
+ * Whether Kupo's chain still holds `target`: its checkpoint at that slot is
+ * the block `target` names. False when the block was rolled back, and when
+ * Kupo keeps no checkpoint at that exact slot.
+ */
+export const kupoHoldsChainPoint = async (
+  kupoUrl: string,
+  target: Point,
+  fetchImpl: StateQueueReplayFetch,
+): Promise<boolean> => {
+  const body = await json(
+    fetchImpl,
+    `${httpUrl(kupoUrl)}/checkpoints/${target.slot.toString()}`,
+  );
+  if (body === null) return false;
+  const held = point(body, "Kupo checkpoint");
+  return (
+    held.slot === target.slot &&
+    held.blockHash === target.blockHash.toLowerCase()
+  );
 };
 
 /** Independent committee-side local Kupmios ordered state-queue replay. */
@@ -971,6 +1039,8 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
 }): ((
   previousQueue: Queue,
   currentQueue: Queue,
+  tipBlockNo: number,
+  limit: number,
 ) => Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpoint[]>) => {
   if (
     !HEX_32.test(deploymentIdentityDigest) ||
@@ -982,12 +1052,21 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
   ) {
     throw new Error("committee state-queue replay release identity is invalid");
   }
-  return async (previousQueue, currentQueue) => {
+  // Walks history in order from `previousQueue` toward `currentQueue`, and
+  // stops after `limit` checkpoints: the caller resumes from the final part
+  // of what it was given.
+  return async (previousQueue, currentQueue, tipBlockNo, limit) => {
+    if (!Number.isSafeInteger(tipBlockNo) || tipBlockNo < 0) {
+      throw new Error("state-queue replay tip height is invalid");
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("state-queue replay checkpoint limit is invalid");
+    }
     let queue = previousQueue;
     const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpoint[] = [];
-    const tipBlockNo = await fetchTipBlockNo(ogmiosUrl, fetchImpl);
-    for (let replayed = 0; replayed < 1_000; replayed += 1) {
-      if (sameQueue(queue, currentQueue)) return checkpoints;
+    for (;;) {
+      if (sameQueue(queue, currentQueue) || checkpoints.length >= limit)
+        return checkpoints;
       const spends = await Promise.all(
         queue.map(({ outRef }) => fetchSpend(kupoUrl, outRef, fetchImpl)),
       );
@@ -1000,14 +1079,16 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
           (prior.point.slot !== spend.point.slot ||
             prior.point.blockHash !== spend.point.blockHash)
         ) {
-          throw new Error(
+          throw new L1SourceIntegrityError(
             "Kupo replay assigned one transaction to competing points",
           );
         }
         unique.set(spend.transactionHash, spend);
       }
       if (unique.size === 0)
-        throw new Error("committee replay cannot advance its durable queue");
+        throw new StateQueueHistoryNotExtendingAnchorError(
+          "committee replay cannot advance its durable queue",
+        );
       const transactions = await Promise.all(
         [...unique.values()].map(
           async (spend) =>
@@ -1028,7 +1109,7 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
       const transaction = transactions[0]!;
       if (tipBlockNo < transaction.blockNo) {
         throw new Error(
-          "Ogmios replay tip precedes the observed queue transaction",
+          "state-queue snapshot tip precedes a transaction of its history",
         );
       }
       const outputs = await fetchOutputs(
@@ -1082,13 +1163,12 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
         nextQueue,
       });
       if (checkpoint === null) {
-        throw new Error(
+        throw new L1SourceIntegrityError(
           "committee state-queue transaction failed exact checkpoint derivation",
         );
       }
       checkpoints.push(checkpoint);
       queue = nextQueue;
     }
-    throw new Error("committee state-queue replay exceeded its safety bound");
   };
 };

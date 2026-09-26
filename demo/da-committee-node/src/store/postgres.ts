@@ -40,6 +40,7 @@ import {
   parseL1SourceState,
   resolveDaPayloadSave,
   type RetainedPayloadPruneRequest,
+  UNKNOWN_STATE_QUEUE_STATUS,
 } from "../store.js";
 import {
   retentionBlockEndTimeMs,
@@ -1295,6 +1296,7 @@ const assertPostgresDecisionSourceState = (
     sourceState.sourceMode !== effect.sourceMode ||
     sourceState.network !== effect.network ||
     observation?.stateQueueOutRef !== effect.stateQueueOutRef ||
+    observation.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS ||
     observation.finalized !== true ||
     observation.hasPersistedDecision !== true ||
     observation.slot !== effect.slot ||
