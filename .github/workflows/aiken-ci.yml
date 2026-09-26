@@ -4,10 +4,40 @@ on:
   push:
     branches: ["main"]
     paths:
-      - onchain/aiken/**
+      - "onchain/aiken/**"
+      - "config/deployments/**"
+      - "demo/scripts/deployment-profiles.mjs"
+      - "demo/scripts/deployment-profiles.test.mjs"
+      - "demo/midgard-core/src/generated-deployment-profiles.ts"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "scripts/generate-user-events-witness-script-prefix.sh"
+      - "scripts/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/aiken-ci.yml"
   pull_request:
     paths:
-      - onchain/aiken/**
+      - "onchain/aiken/**"
+      - "config/deployments/**"
+      - "demo/scripts/deployment-profiles.mjs"
+      - "demo/scripts/deployment-profiles.test.mjs"
+      - "demo/midgard-core/src/generated-deployment-profiles.ts"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "scripts/generate-user-events-witness-script-prefix.sh"
+      - "scripts/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/aiken-ci.yml"
+  workflow_dispatch:
+
+# A newer push to the same pull request supersedes the running one; pushes to
+# main always run to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 env:
   # THE COMPILER PIN. Issue #579, rider 1, and the owner's 2026-08-13 ruling A:
@@ -53,6 +83,10 @@ env:
   # `aiken check` wall-clock on 4 vCPU has NOT been re-taken on this rev; it is
   # recorded as not-re-measured rather than quietly restated, and the same
   # headroom that made that safe to defer at the previous advance still holds.
+  #
+  # `onchain/aiken/scripts/pinned-compiler.mjs` fails if this workflow and
+  # midgard-node-ci.yml ever disagree on any of these values, and
+  # `scripts/ci/build-aiken-fork.sh` builds from them.
   AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
   AIKEN_FORK_TAG: midgard-5adf7837
   AIKEN_FORK_REV: 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
@@ -60,105 +94,38 @@ env:
   AIKEN_FORK_BINARY_MD5: ea9b39054f166e94771f838a662712f7
 
 jobs:
-  build:
+  deployment-profiles:
+    name: Deployment profiles
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./onchain/aiken
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
         with:
-          package_json_file: demo/package.json
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: demo/.nvmrc
-          cache: pnpm
-          cache-dependency-path: demo/pnpm-lock.yaml
-      - name: Install profile generator dependencies
-        working-directory: .
-        run: pnpm --dir demo install --frozen-lockfile --filter midgard-demo
+          install-filter: midgard-demo
       - name: Check deployment profiles
-        working-directory: .
         run: |
           pnpm --dir demo deployment:check preprod-testing
           node --test demo/scripts/deployment-profiles.test.mjs
-      # No `setup-aiken` step: stock v1.1.22 is retired from every role by the
-      # owner's 2026-08-13 ruling A, so this workflow installs exactly one
-      # compiler. The fork both compiles and executes. Two reasons it has to be
-      # the fork rather than the release:
-      #   1. Identity. Stock v1.1.22 keys generated expect-decoders by LOCAL
-      #      type name with no module path (issue #521), so two same-named types
-      #      in different modules share one decoder. That bites live on this
-      #      tree: `MintRedeemer` is shared by 12 modules, and the stock
-      #      blueprint's `user_events/tx_order_v1.mint` is the WRONG artifact.
-      #      The retirement snapshot below records the measurement.
-      #   2. Runtime. Upstream aiken#1389 makes a full stock `aiken check` take
-      #      485 minutes on this tree against a 360-minute job ceiling, so a
-      #      stock-executed suite could never pass here at all.
-      - name: Cache the pinned Aiken fork
-        id: aiken-fork
-        uses: actions/cache@v4
+
+  # The gates that prove the other gates can fail. They need no compiler, no
+  # cache and no toolchain, and finish in seconds, so they run in their own job
+  # where no other failure can take them offline. (They used to sit behind the
+  # formatter check, where a formatting drift in any one .ak file took the
+  # gate-can-fail evidence offline along with the suite — which is exactly
+  # what had happened, in nine files, when #577's round-2 review looked.)
+  guard-self-tests:
+    name: Guard self-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./onchain/aiken
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          path: ~/.aiken-fork
-          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
-      - name: Build the pinned Aiken fork
-        if: steps.aiken-fork.outputs.cache-hit != 'true'
-        working-directory: .
-        run: |
-          rustup toolchain install 1.94.1 --profile minimal
-          # --locked honours the fork's committed Cargo.lock; without it cargo
-          # re-resolves every dependency on each cache miss, so an unrelated
-          # crate release could redden this branch or silently change the
-          # toolchain the measurement above was taken on.
-          cargo +1.94.1 install \
-            --git "$AIKEN_FORK_REPO" \
-            --rev "$AIKEN_FORK_REV" \
-            --locked \
-            --root ~/.aiken-fork \
-            aiken
-      # Assert, don't just print: a cache poisoned by an earlier rev must fail
-      # here rather than silently changing which compiler produced the result.
-      # Putting the fork on PATH is what makes it the compiler for every later
-      # step AND for the scripts those steps invoke — `aiken fmt`,
-      # `aiken build`, `aiken check`, and the shell/node helpers that spawn a
-      # bare `aiken`. There is no second compiler on PATH to fall through to.
-      - name: Assert the pinned compiler identity and put it on PATH
-        run: |
-          set -euo pipefail
-          patched="$(~/.aiken-fork/bin/aiken --version)"
-          printf 'pinned fork: %s\nexpected:    %s\n' "$patched" "$AIKEN_FORK_VERSION"
-          test "$patched" = "$AIKEN_FORK_VERSION"
-          test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
-          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
-      - name: Assert no stock compiler is reachable
-        run: |
-          set -euo pipefail
-          # Fail closed if a stock binary ever returns to PATH: a step that
-          # silently compiled under v1.1.22 would publish the wrong identity,
-          # and this is the cheapest place to notice.
-          resolved="$(command -v aiken)"
-          version="$(aiken --version)"
-          printf 'aiken on PATH: %s (%s)\n' "$resolved" "$version"
-          test "$version" = "$AIKEN_FORK_VERSION"
-      - name: Verify generated user events witness prefix
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
-        working-directory: .
-        run: |
-          ./scripts/generate-user-events-witness-script-prefix.sh
-          git diff --name-only --exit-code onchain/aiken/env/default.ak onchain/aiken/env/testnet.ak
-      # The two guard self-tests run BEFORE the formatter check, and the
-      # position is deliberate. They are the gates that prove the other gates
-      # can fail; they need no compiler, no cache and no toolchain, and they
-      # finish in seconds. Behind the formatter check they were conditional on
-      # it: every step after the first failure is `skipped`, so a formatting
-      # drift in any one of the 408 tracked .ak files took the gate-can-fail
-      # evidence offline along with the suite — which is exactly what had
-      # happened, in nine files, when #577's round-2 review looked. Nothing is
-      # weakened by the move: `aiken fmt` still runs below and still fails the
-      # job, and the steps that genuinely need a compiler still sit after it.
-      #
+          node-version-file: demo/.nvmrc
       # Issue #523. A focused `aiken check -m <selector>` whose selector matches
       # nothing prints an empty report and exits 0, so every gate citing it
       # reports success while running no tests. scripts/guard-focused-selector.mjs
@@ -173,8 +140,79 @@ jobs:
       # that module returning nonzero. Stubbing the reading source proves it
       # here, in seconds, without a compile.
       - name: Self-test the within-basis execution-ledger checker
+        if: ${{ !cancelled() }}
         run: node --test scripts/exec-ledger-within-basis-v1.test.mjs
+
+  # Everything that needs the compiler. Once the compiler is established, every
+  # later step runs even when an earlier one failed (`steps.compiler` guards
+  # them), so a formatting drift, a red suite or one drifted ledger no longer
+  # hides the verdict of the others.
+  aiken:
+    name: Aiken format, check and execution ledgers
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./onchain/aiken
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      # No `setup-aiken` step: stock v1.1.22 is retired from every role by the
+      # owner's 2026-08-13 ruling A, so this workflow installs exactly one
+      # compiler. The fork both compiles and executes. Two reasons it has to be
+      # the fork rather than the release:
+      #   1. Identity. Stock v1.1.22 keys generated expect-decoders by LOCAL
+      #      type name with no module path (issue #521), so two same-named types
+      #      in different modules share one decoder. That bites live on this
+      #      tree: `MintRedeemer` is shared by 12 modules, and the stock
+      #      blueprint's `user_events/tx_order_v1.mint` is the WRONG artifact.
+      #      The retirement snapshot below records the measurement.
+      #   2. Runtime. Upstream aiken#1389 makes a full stock `aiken check` take
+      #      485 minutes on this tree against a 360-minute job ceiling, so a
+      #      stock-executed suite could never pass here at all.
+      - name: Cache the pinned Aiken fork
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.aiken-fork
+          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
+      # A restored cache that already reports the pin is left alone; anything
+      # else is rebuilt with `cargo install --locked` from the pinned rev, so an
+      # unrelated crate release cannot silently change the toolchain the
+      # measurements above were taken on.
+      - name: Build the pinned Aiken fork
+        working-directory: .
+        run: scripts/ci/build-aiken-fork.sh --prefix ~/.aiken-fork
+      # Assert, don't just print: a cache poisoned by an earlier rev must fail
+      # here rather than silently changing which compiler produced the result.
+      # Putting the fork on PATH is what makes it the compiler for every later
+      # step AND for the scripts those steps invoke — `aiken fmt`,
+      # `aiken build`, `aiken check`, and the shell/node helpers that spawn a
+      # bare `aiken`. There is no second compiler on PATH to fall through to.
+      - name: Assert the pinned compiler identity and put it on PATH
+        run: |
+          set -euo pipefail
+          node scripts/pinned-compiler.mjs ~/.aiken-fork/bin/aiken
+          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
+      - name: Assert no stock compiler is reachable
+        id: compiler
+        run: |
+          set -euo pipefail
+          # Fail closed if a stock binary ever returns to PATH: a step that
+          # silently compiled under v1.1.22 would publish the wrong identity,
+          # and this is the cheapest place to notice.
+          printf 'aiken on PATH: %s (%s)\n' "$(command -v aiken)" "$(aiken --version)"
+          node scripts/pinned-compiler.mjs aiken
+      - name: Verify generated user events witness prefix
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')) }}
+        working-directory: .
+        run: |
+          ./scripts/generate-user-events-witness-script-prefix.sh
+          git diff --name-only --exit-code onchain/aiken/env/default.ak onchain/aiken/env/testnet.ak
       - name: Run normalized Aiken auto-formatter check
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: |
           # `aiken` here is the pinned fork — see the PATH step above. The fork
           # is the formatting authority as well as the build and check
@@ -189,49 +227,53 @@ jobs:
       # here (released compiler compiles, patched compiler executes) is gone
       # with stock's retirement.
       - name: Compile and run the Aiken test suite with the pinned fork
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: aiken check
+      # THE EXECUTION LEDGERS. Every `scripts/*-exec-ledger-v1.json` has a
+      # `scripts/verify-*-exec-ledger-v1.mjs` that re-measures it, and every
+      # verifier runs here; `scripts/ci/exec-ledgers-wired.test.mjs` derives
+      # both halves of that sentence from the files and fails if either stops
+      # being true. Aiken tests cannot assert their own execution units (the
+      # units are the report's observation of the test, not a value in scope),
+      # so this is the level at which a published cost claim can be falsified.
+      #
       # Issue #574. `docs/spec/midgard-tx.md` §8.10 publishes thirteen absolute
       # execution readings and nine subtractions derived from them. They were
       # hand-transcribed and nothing asserted them — a grep for any published
       # figure hit only the document — so the validator could drift arbitrarily
-      # far from its own published cost with the suite still green. The step
-      # above cannot catch that: `aiken check` reports execution units, it does
-      # not compare them to anything, and an Aiken test cannot assert its own
-      # units because the units are the report's observation of the test rather
-      # than a value in scope. This is the level at which the comparison is
-      # possible, so this is where it lives.
+      # far from its own published cost with the suite still green.
       - name: Pin the §8.10 carriage execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-carriage-exec-ledger-v1.mjs
-      # Issue #575, the Q1x family-rebind wave of #565. Same reasoning as the
-      # step above, applied to the lane's own exit criterion: the Q1x steps'
+      # Issue #575, the Q1x family-rebind wave of #565: the Q1x steps'
       # execution costs at the 13,200,000-mem GOAL_SPEC §3.3 basis, and the
       # Q1X-F6 claim (#551) that a step's cost no longer scales with the
       # disputed transaction's spend-input count. That claim is the whole point
       # of the rebind, so it is asserted here rather than reported once and
       # trusted afterwards.
       - name: Pin the Q1x family execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-q1x-exec-ledger-v1.mjs
       # Issue #576, the Q31 reference-input-no-idx lane. Its ledger was written
       # with a verifier and no step, so nothing ran it: the lane's exit
-      # criterion existed as a file. All four ledgers in scripts/ are pinned
-      # here now, on the same terms, so "which ledgers are enforced" stops being
-      # a per-lane accident.
+      # criterion existed as a file.
       - name: Pin the Q31 reference-input-no-idx family execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-q31-exec-ledger-v1.mjs
-      # Issue #577, the Q21 transition-trace lane of the same wave. Pinned here
-      # for the reason the three steps above are, plus one specific to this
-      # lane: its two rebound call sites moved in opposite directions — the
-      # forced-order path got cheaper, the two-field L2 path got dearer because
-      # opening two fields re-derives the transaction id twice over. A
-      # regression that is understood and accepted still has to be held to the
-      # number it was accepted at, and only a step that runs can do that.
+      # Issue #577, the Q21 transition-trace lane of the same wave. Its two
+      # rebound call sites moved in opposite directions — the forced-order path
+      # got cheaper, the two-field L2 path got dearer because opening two fields
+      # re-derives the transaction id twice over. A regression that is
+      # understood and accepted still has to be held to the number it was
+      # accepted at, and only a step that runs can do that.
       - name: Pin the Q21 transition-trace family execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-q21-exec-ledger-v1.mjs
@@ -244,6 +286,7 @@ jobs:
       # cardinalities, the per-item cost of the variable-width fields'
       # `walk_to_end` that the published sentence does not mention.
       - name: Pin the tx-order mint material-carriage execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-tx-order-mint-exec-ledger-v1.mjs
@@ -257,6 +300,7 @@ jobs:
       # with a fixture-only control beside each, the per-item cost of the §5.1
       # walk the verdict runs.
       - name: Pin the canonical-decodability committed-preimage execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-canonical-decodability-exec-ledger-v1.mjs
@@ -270,9 +314,40 @@ jobs:
       # bound on §8.4's chunked route and, at two cardinalities with a
       # fixture-only control beside each, the per-item cost of that walk.
       - name: Pin the committed-field-shape slot-verdict execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-committed-field-shape-exec-ledger-v1.mjs
+      # Issue #635, the native-script decoding-fault thread. Its design
+      # published a per-node throughput and a worst-case transaction count
+      # derived from the scan ledger's one-shot rates; the first measurement of
+      # the staged fold itself moved that number (≈3.5× the derived rate), which
+      # is exactly the kind of fact an unpinned derivation hides.
+      - name: Pin the native-script decoding-engine execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs
+      # Issue #633, the tag-0 structural predicate, pinned as an
+      # INFEASIBILITY: the largest payload the arm can see costs about 81x the
+      # memory basis, and a wave item was dropped on the strength of that
+      # number. An `exceeds` row that starts fitting is the regression this
+      # step exists to catch — it would bring the dropped item back.
+      - name: Pin the native-script scan execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-native-script-scan-exec-ledger-v1.mjs
+      # Issue #628, the §5.5.3 transition-trace and §5.3 descriptor-derivation
+      # ExUnits frontier. Rows come in derive / fixture-only pairs so the
+      # marginal validator cost is recomputed from fresh readings rather than
+      # taken on trust; a whole-test reading over the basis does not by itself
+      # say the validator is.
+      - name: Pin the transition-trace descriptor execution ledger
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs
       # RETIREMENT RECORD — the dual-compiler blueprint-agreement guard
       # (issue #521; `scripts/verify-dual-compiler-blueprint-agreement.mjs`),
       # retired by the owner's 2026-08-13 ruling A on #579 together with the
@@ -302,4 +377,23 @@ jobs:
       # now carried by the pin itself: the identity assertion above fails
       # closed if anything but `v1.1.23+5adf783` ever compiles this tree.
       - name: Check that aiken.lock is up-to-date
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: git diff --name-only --exit-code aiken.lock
+
+  # The one check branch protection should require. It runs even when jobs
+  # above failed or were skipped, and fails unless every one of them
+  # succeeded.
+  gate:
+    name: Aiken CI gate
+    if: ${{ !cancelled() }}
+    needs: [deployment-profiles, guard-self-tests, aiken]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: scripts/ci
+      - name: Require every job to have succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci/check-needs-results.mjs --allow success
