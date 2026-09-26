@@ -9,6 +9,7 @@ import { Duration, Effect, Option, Ref } from "effect";
 
 import {
   ConfirmedLedgerDB,
+  MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import {
@@ -21,6 +22,7 @@ import {
   reviveEarliestCanonicalPayloadJournal,
 } from "../services/canonical-journal-recovery.js";
 import {
+  DatabaseInitializationError,
   Globals,
   Lucid,
   MidgardContracts,
@@ -516,3 +518,100 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
   ),
   Effect.orDie,
 );
+
+/**
+ * Journal statuses of a submitted block whose local finalization has not
+ * completed. A failed finalization attempt for such a block is owned by the
+ * runtime: the commit worker retries it while the block is live, and if the
+ * block is removed on L1 the correction path abandons the journal and removes
+ * the moot job with it. Refusing startup here would stop the correction observer from ever
+ * admitting that removal.
+ */
+const RUNTIME_OWNED_FAILED_FINALIZATION_JOURNAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
+  [
+    PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
+    PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
+    PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+  ];
+
+const LOCAL_FINALIZATION_JOB_ID_PATTERN = new RegExp(
+  `^${MutationJobsDB.Kind.LocalBlockFinalization}:([0-9a-f]{56})$`,
+);
+
+/** The header of a failed local-finalization job, or none for any other job. */
+const failedLocalFinalizationHeader = (
+  job: MutationJobsDB.Entry,
+): Buffer | undefined => {
+  if (
+    job[MutationJobsDB.Columns.KIND] !==
+      MutationJobsDB.Kind.LocalBlockFinalization ||
+    job[MutationJobsDB.Columns.STATUS] !== MutationJobsDB.Status.Failed
+  )
+    return undefined;
+  const match = LOCAL_FINALIZATION_JOB_ID_PATTERN.exec(
+    job[MutationJobsDB.Columns.JOB_ID],
+  );
+  return match === null ? undefined : Buffer.from(match[1]!, "hex");
+};
+
+/**
+ * Whether startup may hand an unfinished job to the runtime. Only a failed
+ * local-finalization job whose own journal still records its submitted block
+ * as awaiting local finalization qualifies. Every other unfinished job
+ * refuses, exactly as before: a running job (a crash mid-mutation), a failed
+ * merge finalization, and a failed local finalization whose journal is
+ * missing, finalized, abandoned or never submitted.
+ */
+export const classifyUnfinishedMutationJobOnStartup = (
+  job: MutationJobsDB.Entry,
+  journalStatus: PendingBlockFinalizationsDB.Status | undefined,
+): "runtime" | "refuse" =>
+  failedLocalFinalizationHeader(job) !== undefined &&
+  journalStatus !== undefined &&
+  RUNTIME_OWNED_FAILED_FINALIZATION_JOURNAL_STATUSES.includes(journalStatus)
+    ? "runtime"
+    : "refuse";
+
+/**
+ * Startup gate over unfinished local mutation jobs. It runs after pending
+ * history reconciliation (a correction rewind that abandons a removed block's
+ * journal also removes its job) and refuses to serve while any job needs
+ * operator recovery; see classifyUnfinishedMutationJobOnStartup.
+ */
+export const assertStartupMutationJobsRecoverable = Effect.gen(function* () {
+  const unfinished = yield* MutationJobsDB.retrieveUnfinished;
+  const refused: MutationJobsDB.Entry[] = [];
+  for (const job of unfinished) {
+    const header = failedLocalFinalizationHeader(job);
+    const journal =
+      header === undefined
+        ? Option.none()
+        : yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(header);
+    const journalStatus = Option.isSome(journal)
+      ? journal.value[PendingBlockFinalizationsDB.Columns.STATUS]
+      : undefined;
+    if (
+      classifyUnfinishedMutationJobOnStartup(job, journalStatus) === "refuse"
+    ) {
+      refused.push(job);
+      continue;
+    }
+    yield* Effect.logWarning(
+      `Startup left failed local mutation job ${job[MutationJobsDB.Columns.JOB_ID]} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()},journal_status=${journalStatus ?? "none"}) to the runtime: finalization is retried while its block is live, and a correction removing the block also removes the job. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`,
+    );
+  }
+  if (refused.length > 0)
+    return yield* Effect.fail(
+      new DatabaseInitializationError({
+        message:
+          "Startup found unfinished local mutation jobs; refusing to serve until recovery is performed",
+        cause: refused.map((job) => ({
+          jobId: job[MutationJobsDB.Columns.JOB_ID],
+          kind: job[MutationJobsDB.Columns.KIND],
+          status: job[MutationJobsDB.Columns.STATUS],
+          updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
+          lastError: job[MutationJobsDB.Columns.LAST_ERROR],
+        })),
+      }),
+    );
+});

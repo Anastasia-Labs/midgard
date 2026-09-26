@@ -118,6 +118,52 @@ export const markFailed = (
     ),
   );
 
+/** The job that finalizes one committed block into the local database. */
+export const localBlockFinalizationJobId = (headerHashHex: string): string =>
+  `${Kind.LocalBlockFinalization}:${headerHashHex}`;
+
+/**
+ * Removes the unfinished local-finalization job of a block whose
+ * pending-finalization journal is being abandoned. Callers run it in the same
+ * SQL transaction as that abandonment, so a refused abandonment keeps the job.
+ *
+ * This is the bounded-retention rule applied, not a workaround: rows are
+ * prunable once past their horizon or removed, never retained without bound.
+ * The block no longer exists on L1 (or provably never reached it), so its
+ * finalization is moot, and the abandoned journal row, with its correction
+ * digest where a correction removed it, is the durable record. The job's
+ * attempts and last error (already cause-chained) are logged with the reason
+ * so the diagnosis survives the row.
+ *
+ * Only this header's job of this kind is removed, and only while running or
+ * failed; a completed job keeps its record. A late markFailed/markCompleted
+ * from an attempt still in flight is an UPDATE and cannot bring the row back;
+ * `start` inserts a fresh row only when a revived journal is replayed.
+ */
+export const abandonLocalBlockFinalization = (
+  headerHash: Buffer,
+  reason: string,
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const headerHashHex = headerHash.toString("hex");
+    const removed = yield* sql<Entry>`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.JOB_ID)} = ${localBlockFinalizationJobId(headerHashHex)}
+        AND ${sql(Columns.KIND)} = ${Kind.LocalBlockFinalization}
+        AND ${sql(Columns.STATUS)} IN (${Status.Running}, ${Status.Failed})
+      RETURNING *`;
+    for (const job of removed)
+      yield* Effect.logWarning(
+        `Removing moot local block finalization job with its journal abandonment (rolled back with it if the abandonment fails): header=${headerHashHex},status=${job[Columns.STATUS]},attempts=${job[Columns.ATTEMPTS].toString()},reason=${reason},last_error=${job[Columns.LAST_ERROR] ?? "none"}`,
+      );
+    return removed;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to remove abandoned block's local finalization job",
+    ),
+  );
+
 /** The job that finalizes one L1-confirmed merge into the local database. */
 export const confirmedMergeFinalizationJobId = (
   headerHashHex: string,

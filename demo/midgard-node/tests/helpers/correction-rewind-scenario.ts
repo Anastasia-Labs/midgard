@@ -1,8 +1,11 @@
+import { inspect } from "node:util";
+
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { SqlClient } from "@effect/sql";
 import { Cause, Effect, Exit, Option } from "effect";
 import { expect, vi } from "vitest";
 
+import * as MutationJobs from "../../src/database/mutationJobs.js";
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import { reconcileStateQueueCorrections } from "../../src/fibers/attestation-timeout-correction.js";
 import { Database } from "../../src/services/database.js";
@@ -72,14 +75,89 @@ const submitDeposit = async (h: Handle, lovelace: bigint) => {
   return built.metadata.inclusionTime;
 };
 
-/** Commit, confirm and locally finalize the next block on the current
- * state-queue tail with the production owner, as the running node does. */
+/** Confirm the committed block and run its local finalization with the
+ * production commit worker, as the running node does. Resolves to the
+ * worker's output; a worker refusal rejects. */
+const runLocalFinalization = async (h: Handle) => {
+  const { fixture, lucidService, globals, production } = h;
+  await runBlockConfirmation(
+    globals,
+    fixture.contracts,
+    lucidService,
+    production.nodeConfig,
+    production,
+  );
+  return runLocalFinalizationRecoveryWorker(
+    globals,
+    fixture.contracts,
+    lucidService,
+    fixture.runtimeOverrides!.deploymentIdentity,
+    production.nodeConfig,
+    { ...production, globals },
+  );
+};
+
+/** Confirm and locally finalize the block `headerHash`, which must succeed. */
+export const finalizeLocally = async (h: Handle, headerHash: string) => {
+  const finalized = await runLocalFinalization(h);
+  expect(finalized.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+  if (finalized.type !== "SuccessfulLocalFinalizationRecoveryOutput")
+    throw new Error("The block must be locally finalized");
+  expect(finalized.finalizedHeaderHash).toBe(headerHash);
+  await h.synchronize();
+  return finalized.finalizedHeaderHash;
+};
+
+/** An outref no ledger holds: a spend of it can never apply to any base. */
+export const ABSENT_OUTREF_HEX = "ab".repeat(34);
+
+/** The live f5215638 defect, reproduced deterministically: the journal's
+ * ledger delta spends an outref absent from its authenticated base, so every
+ * local finalization attempt fails before its SQL mutation. */
+const corruptLedgerDelta = (headerHash: string) =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const header = Buffer.from(headerHash, "hex");
+      const [row] = yield* sql<{ ledger_delta_spent: unknown }>`SELECT
+        ledger_delta_spent FROM pending_block_finalizations
+        WHERE header_hash = ${header}`;
+      const stored = row!.ledger_delta_spent;
+      const spent = (
+        typeof stored === "string" ? JSON.parse(stored) : stored
+      ) as string[];
+      // Written back the way the journal writes it.
+      const rows = yield* sql`UPDATE pending_block_finalizations
+        SET ledger_delta_spent = ${JSON.stringify([...spent, ABSENT_OUTREF_HEX])}
+        WHERE header_hash = ${header}
+        RETURNING header_hash`;
+      expect(rows).toHaveLength(1);
+    }),
+  );
+
+export const readLocalFinalizationJob = (headerHash: string) =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const rows = yield* sql<MutationJobs.Entry>`SELECT * FROM
+        local_mutation_jobs WHERE job_id = ${MutationJobs.localBlockFinalizationJobId(
+          headerHash,
+        )}`;
+      return rows[0];
+    }),
+  );
+
+/** Commit the next block on the current state-queue tail with the production
+ * owner, as the running node does, then confirm it and locally finalize it.
+ * With `failed`, local finalization fails deterministically (the live
+ * f5215638 state): a failed job row, the journal still pending, and the
+ * ledger never advanced. */
 const commitLocallyFinalizedBlock = async (
   h: Pick<Lifecycle, "deployment"> & Handle,
   inclusionTime: number,
+  localFinalization: "completed" | "failed" = "completed",
 ) => {
   const { fixture, lucidService, globals, production } = h;
-  const identity = fixture.runtimeOverrides!.deploymentIdentity;
   await h.deployment.chain.awaitLedgerTime(inclusionTime + 1000);
   vi.setSystemTime(fixture.emulator.now());
   await h.synchronize();
@@ -97,27 +175,38 @@ const commitLocallyFinalizedBlock = async (
     true,
   );
   await h.synchronize();
-  await runBlockConfirmation(
-    globals,
-    fixture.contracts,
-    lucidService,
-    production.nodeConfig,
-    production,
-  );
-  const finalized = await runLocalFinalizationRecoveryWorker(
-    globals,
-    fixture.contracts,
-    lucidService,
-    identity,
-    production.nodeConfig,
-    { ...production, globals },
-  );
-  expect(finalized.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-  if (finalized.type !== "SuccessfulLocalFinalizationRecoveryOutput")
-    throw new Error("The deposit block must be locally finalized");
-  expect(finalized.finalizedHeaderHash).toBe(committed.submittedHeaderHash);
+  if (localFinalization === "completed")
+    return finalizeLocally(h, committed.submittedHeaderHash);
+  const headerHash = committed.submittedHeaderHash;
+  await corruptLedgerDelta(headerHash);
+  // The commit worker retries a failed finalization while its block is live;
+  // two attempts fail the same way.
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const outcome = await runLocalFinalization(h).then(
+      (output) => output,
+      (error: unknown) => ({
+        type: "Rejected" as const,
+        error: inspect(error, { depth: 20 }),
+      }),
+    );
+    expect(outcome.type).not.toBe("SuccessfulLocalFinalizationRecoveryOutput");
+    const job = await readLocalFinalizationJob(headerHash);
+    expect(
+      job?.[MutationJobs.Columns.STATUS],
+      inspect(outcome, { depth: 20 }),
+    ).toBe(MutationJobs.Status.Failed);
+    expect(job?.[MutationJobs.Columns.ATTEMPTS]).toBe(attempt);
+    // The job's last error names the underlying reason, not only the
+    // DatabaseError's summary.
+    expect(job?.[MutationJobs.Columns.LAST_ERROR]).toContain(
+      "Pending-finalization ledger delta is invalid for its authenticated base",
+    );
+    expect(job?.[MutationJobs.Columns.LAST_ERROR]).toContain(
+      `ledger delta spends an outref absent from its authenticated base: ${ABSENT_OUTREF_HEX}`,
+    );
+  }
   await h.synchronize();
-  return finalized.finalizedHeaderHash;
+  return headerHash;
 };
 
 /** Advance to just after the next operator shift starts. */
@@ -148,8 +237,12 @@ const advanceToNextShift = async (h: Handle) => {
  */
 export const openCorrectionRewindScenario = async ({
   blocks,
+  localFinalization = "completed",
 }: {
   readonly blocks: number;
+  /** `failed`: the one removed block's local finalization failed (the live
+   * f5215638 state) instead of completing. */
+  readonly localFinalization?: "completed" | "failed";
 }) => {
   const h = await openHistoryProductionOwnerLifecycle();
   try {
@@ -175,8 +268,10 @@ export const openCorrectionRewindScenario = async ({
     const headers: string[] = [];
     if (blocks === 1) {
       const inclusion = await submitDeposit(h, 12_000_000n);
-      headers.push(await commitLocallyFinalizedBlock(h, inclusion));
-    } else if (blocks === 2) {
+      headers.push(
+        await commitLocallyFinalizedBlock(h, inclusion, localFinalization),
+      );
+    } else if (blocks === 2 && localFinalization === "completed") {
       // A two-block unattested suffix exists only if the second block is
       // committed before the first one's DA attestation timeout: the node
       // refuses to commit on an expired unattested tail. Each commit also
@@ -190,7 +285,10 @@ export const openCorrectionRewindScenario = async ({
       headers.push(await commitLocallyFinalizedBlock(h, first));
       expect((await readJournal(headers[0]!)).depositEventIds).toHaveLength(1);
       headers.push(await commitLocallyFinalizedBlock(h, second));
-    } else throw new Error("Scenario supports one or two removed blocks");
+    } else
+      throw new Error(
+        "Scenario supports one or two removed blocks, and a failed local finalization only for one",
+      );
     const removals: Removal[] = [];
     const fetchConfig = {
       stateQueueAddress: fixture.contracts.stateQueue.spendingScriptAddress,

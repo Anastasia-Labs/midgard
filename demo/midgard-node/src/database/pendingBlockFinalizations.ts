@@ -20,6 +20,7 @@ import * as DaPayloadsDB from "./daPayloads.js";
 import * as DepositsDB from "./deposits.js";
 import * as HistoryAuthority from "./eventHistoryAuthority.js";
 import * as ForcedTransactionsDB from "./forcedTransactions.js";
+import * as MutationJobsDB from "./mutationJobs.js";
 import {
   clearTable,
   DatabaseError,
@@ -2710,6 +2711,10 @@ export const markAbandoned = (
         }),
       );
     }
+    yield* MutationJobsDB.abandonLocalBlockFinalization(
+      headerHash,
+      "pending block journal abandoned before its commit was signed",
+    );
   }).pipe(
     withHistoryWrite,
     Effect.withLogSpan(`markAbandoned ${tableName}`),
@@ -2751,6 +2756,10 @@ export const markCorrectedAfterStateQueueRemoval = (
         }),
       );
     }
+    yield* MutationJobsDB.abandonLocalBlockFinalization(
+      headerHash,
+      `block removed on L1 by admitted state-queue correction ${transitionDigest}`,
+    );
   }).pipe(
     withHistoryWrite,
     Effect.withLogSpan(`markCorrectedAfterStateQueueRemoval ${tableName}`),
@@ -2773,7 +2782,12 @@ export const markUnsubmittedAbandoned = (
         AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
       AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL
       RETURNING *`;
-    return rows.length === 1;
+    if (rows.length !== 1) return false;
+    yield* MutationJobsDB.abandonLocalBlockFinalization(
+      headerHash,
+      "pending block journal abandoned before submission",
+    );
+    return true;
   }).pipe(
     withHistoryWrite,
     Effect.withLogSpan(`markUnsubmittedAbandoned ${tableName}`),

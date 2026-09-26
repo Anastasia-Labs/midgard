@@ -11,6 +11,7 @@ import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import { AuthorizedHistoryHeaderRetirement } from "../database/eventHistoryLedgerRepair.js";
 import { materializeCanonicalHistory } from "../database/eventHistoryMaterialization.js";
 import { prepareRetainedNativeHistoryRecoveryPlan } from "../database/eventHistoryRecoveryPlans.js";
+import * as MutationJobsDB from "../database/mutationJobs.js";
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import * as StateQueueLeases from "../database/stateQueueMutationLeases.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -413,6 +414,10 @@ export const prepareSignedHeaderRecovery = (input: {
           return yield* Effect.fail(
             failure("Recovery journal disposition changed"),
           );
+        yield* MutationJobsDB.abandonLocalBlockFinalization(
+          record[C.HEADER_HASH],
+          "signed commit proved absent from canonical L1 history; journal retired by signed-header recovery",
+        );
         yield* materializeCanonicalHistory(
           { kind: "resume", before: checkpoint, after: checkpoint },
           input.config.NETWORK,

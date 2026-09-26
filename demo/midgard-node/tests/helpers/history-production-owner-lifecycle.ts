@@ -8,6 +8,7 @@ import { Effect, Exit, Layer, ManagedRuntime, Ref, Scope } from "effect";
 import { expect, vi } from "vitest";
 
 import {
+  assertStartupMutationJobsRecoverable,
   hydratePendingBlockFinalizationOnStartup,
   seedLatestLocalBlockBoundaryOnStartup,
 } from "../../src/commands/listen-startup.js";
@@ -164,8 +165,10 @@ export const openHistoryProductionOwnerLifecycle = async (
             yield* preparation.assertCurrent;
             if (nativeOwner === undefined) {
               yield* seedLatestLocalBlockBoundaryOnStartup;
-              if (generation > 0)
+              if (generation > 0) {
                 yield* hydratePendingBlockFinalizationOnStartup;
+                yield* assertStartupMutationJobsRecoverable;
+              }
               nativeOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
               if (nativeOwner === undefined)
                 nativeOwner = yield* initializeArchitectureGOwner(

@@ -33,7 +33,7 @@ import {
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
-import { DaPayloadsDB, InitDB, MutationJobsDB } from "../database/index.js";
+import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
@@ -79,6 +79,7 @@ import { initializeArchitectureGOwner } from "../services/native-mpf-startup.js"
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { buildListenRouter } from "./listen-router.js";
 import {
+  assertStartupMutationJobsRecoverable,
   ensureProtocolInitializedOnStartup,
   hydratePendingBlockFinalizationOnStartup,
   seedLatestLocalBlockBoundaryOnStartup,
@@ -270,24 +271,7 @@ export const runNode = (
             ),
           );
           yield* hydratePendingBlockFinalizationOnStartup;
-          const unfinishedMutationJobs =
-            yield* MutationJobsDB.retrieveUnfinished;
-          if (unfinishedMutationJobs.length > 0) {
-            return yield* Effect.fail(
-              new DatabaseInitializationError({
-                message:
-                  "Startup found unfinished local mutation jobs; refusing to serve until recovery is performed",
-                cause: unfinishedMutationJobs.map((job) => ({
-                  jobId: job[MutationJobsDB.Columns.JOB_ID],
-                  kind: job[MutationJobsDB.Columns.KIND],
-                  status: job[MutationJobsDB.Columns.STATUS],
-                  updatedAt:
-                    job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
-                  lastError: job[MutationJobsDB.Columns.LAST_ERROR],
-                })),
-              }),
-            );
-          }
+          yield* assertStartupMutationJobsRecoverable;
           yield* runStartupProviderStepWithRetry(
             "Startup tx-order catch-up",
             fetchAndInsertTxOrderUTxOs,

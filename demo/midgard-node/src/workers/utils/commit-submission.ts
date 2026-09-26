@@ -63,8 +63,34 @@ const uniqueBuffersByHex = (buffers: readonly Buffer[]): readonly Buffer[] => [
   ).values(),
 ];
 
-const localBlockFinalizationJobId = (headerHash: string): string =>
-  `local_block_finalization:${headerHash}`;
+const LOCAL_FINALIZATION_FAILURE_MAX_CAUSES = 8;
+const LOCAL_FINALIZATION_FAILURE_MAX_CHARS = 4000;
+
+/**
+ * A finalization failure with its cause chain (for a DatabaseError, the
+ * underlying reason, e.g. which outref a ledger delta spends that its base
+ * lacks). Bounded in depth and length, and cycle-safe; errors carry only
+ * messages here, never connection parameters.
+ */
+export const describeLocalFinalizationFailure = (error: unknown): string => {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (
+    parts.length < LOCAL_FINALIZATION_FAILURE_MAX_CAUSES &&
+    current !== undefined &&
+    current !== null &&
+    !seen.has(current)
+  ) {
+    seen.add(current);
+    parts.push(formatUnknownError(current));
+    current =
+      typeof current === "object"
+        ? (current as { readonly cause?: unknown }).cause
+        : undefined;
+  }
+  return parts.join("; cause=").slice(0, LOCAL_FINALIZATION_FAILURE_MAX_CHARS);
+};
 
 const withLocalBlockFinalizationJob = <A, E, R>(
   input: {
@@ -76,7 +102,7 @@ const withLocalBlockFinalizationJob = <A, E, R>(
   },
   program: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | DatabaseError, R | Database> => {
-  const jobId = localBlockFinalizationJobId(input.headerHash);
+  const jobId = MutationJobsDB.localBlockFinalizationJobId(input.headerHash);
   return Effect.gen(function* () {
     yield* MutationJobsDB.start({
       jobId,
@@ -94,13 +120,14 @@ const withLocalBlockFinalizationJob = <A, E, R>(
     return result;
   }).pipe(
     Effect.tapError((error) =>
-      MutationJobsDB.markFailed(jobId, formatUnknownError(error)).pipe(
-        Effect.catchAll(() => Effect.void),
-      ),
+      MutationJobsDB.markFailed(
+        jobId,
+        describeLocalFinalizationFailure(error),
+      ).pipe(Effect.catchAll(() => Effect.void)),
     ),
     Effect.tapError((error) =>
       Effect.logError(
-        `🔹 Local block finalization job failed (job=${jobId},error=${formatUnknownError(error)})`,
+        `🔹 Local block finalization job failed (job=${jobId},error=${describeLocalFinalizationFailure(error)})`,
       ),
     ),
   );
@@ -346,7 +373,7 @@ export const finalizeCommittedBlockLocally = (
     Effect.tapError((error) =>
       Effect.gen(function* () {
         yield* Effect.logError(
-          `🔹 Local commit finalization failed (header=${newHeaderHash},error=${formatUnknownError(error)})`,
+          `🔹 Local commit finalization failed (header=${newHeaderHash},error=${describeLocalFinalizationFailure(error)})`,
         );
       }),
     ),
