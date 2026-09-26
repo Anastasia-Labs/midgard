@@ -1,0 +1,1185 @@
+{
+  "midgard/apply-params-through-blueprint": {
+    "midgard-core/scripts/measure-validation-proof-item-envelope.mjs": {
+      "reason": "Measurement script that sizes applied validators outside the SDK; it never deploys or hashes a production script.",
+      "sites": ["script: applyParamsToScript("]
+    },
+    "midgard-fault-proofs/tests/cek-material-traversal-maximum.test.ts": {
+      "reason": "Test harness builds an applied script for the emulator directly to measure a traversal maximum; it is test material, not a deployed script.",
+      "sites": ["script: applyParamsToScript(validator.compiledCode, params),"]
+    },
+    "midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts": {
+      "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",
+      "sites": [
+        "const expected = applyParamsToScript(entry.compiledCode, params);"
+      ]
+    },
+    "midgard-fault-proofs/tests/runtime-blueprint-construction.test.ts": {
+      "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",
+      "sites": [").toBe(applyParamsToScript(compiledCode, [policy]));"]
+    },
+    "midgard-node/tests/reference-script-sweep-emulator.test.ts": {
+      "reason": "Test builds a sized always-succeeds filler script for a reference-script sweep; it is not a Midgard validator and has no blueprint entry.",
+      "sites": ["applyParamsToScript(alwaysSucceedsCode, ["]
+    },
+    "midgard-sdk/tests/fault-proof.test.ts": {
+      "reason": "Independent oracles: expected CBOR for applied fault-proof steps is recomputed outside the blueprint module and compared against the SDK's result.",
+      "sites": [
+        "applyParamsToScript(",
+        "applyParamsToScript(",
+        "applyParamsToScript(",
+        "applyParamsToScript(",
+        "applyParamsToScript(compiledScript(blueprint, title), [",
+        "applyParamsToScript(compiledScript(blueprint, title), [",
+        "const expectedAward = applyParamsToScript(",
+        "const expectedBoundaryCbor = applyParamsToScript(",
+        "const expectedCbor = applyParamsToScript(",
+        "const expectedGameCbor = applyParamsToScript(",
+        "const expectedRouteCbor = applyParamsToScript(",
+        "const expectedSourceCbor = applyParamsToScript(",
+        "const expectedStageOneRedeemerEnvelope = applyParamsToScript(",
+        "const expectedStageOneRedeemerFinalizeFrameExecutor = applyParamsToScript(",
+        "const expectedStageOneRedeemerFoldMapExecutor = applyParamsToScript(",
+        "const expectedStageOneRedeemerOuterNormalizer = applyParamsToScript(",
+        "const expectedStageOneRedeemerSettlement = applyParamsToScript(",
+        "const expectedStageOneRedeemerSourceAuthenticator = applyParamsToScript(",
+        "const expectedStageOneRedeemerTraversalNormalizer = applyParamsToScript(",
+        "const expectedStep01Cbor = applyParamsToScript(",
+        "const expectedStep01Cbor = applyParamsToScript(",
+        "const expectedStep01Cbor = applyParamsToScript(",
+        "const expectedStep01Cbor = applyParamsToScript(",
+        "const expectedStep02Cbor = applyParamsToScript(",
+        "const expectedStep02Cbor = applyParamsToScript(",
+        "const expectedStep02Cbor = applyParamsToScript(",
+        "const expectedStep02Cbor = applyParamsToScript(",
+        "const expectedStep03Cbor = applyParamsToScript(",
+        "const expectedStep04Cbor = applyParamsToScript(",
+        "const expectedTimeoutCbor = applyParamsToScript(",
+        "return applyParamsToScript("
+      ]
+    },
+    "midgard-sdk/tests/state-queue.test.ts": {
+      "reason": "Test helper applies parameters directly to exercise its own arity check against the raw validator; it is test material, not a deployed script.",
+      "sites": ["return applyParamsToScript(validator.compiledCode, params);"]
+    },
+    "midgard-sdk/tests/user-event-contracts.test.ts": {
+      "reason": "Independent oracle (independentlyApply): the test recomputes applied scripts outside the blueprint module to check that module's output against it.",
+      "sites": [": applyParamsToScript(entry.compiledCode, parameters);"]
+    },
+    "midgard-sdk/tests/validation-resolver-applied-hashes.test.ts": {
+      "reason": "Independent oracle: the test recomputes applied script hashes outside the blueprint module to check the resolver's hashes against them.",
+      "sites": ["script: applyParamsToScript("]
+    },
+    "midgard-validation/tests/complete-item-carriage-tiers-emulator.test.ts": {
+      "reason": "Test rebuilds the applied observer script to recompute its hash independently for the carriage-tier emulator check.",
+      "sites": ["script: applyParamsToScript(compiledScript(OBSERVE_TITLE), ["]
+    }
+  },
+  "midgard/exact-fee-no-change-output": {
+    "midgard-fault-proofs/src/remove-fraudulent-block.ts": {
+      "reason": "Completion passes coinSelection: fraudRemovalUsesWalletCoinSelection(approach), which the rule cannot evaluate; the bond-backed branch disables coin selection with an exactly balanced remainder, and the signed fee is checked against the penalty after signing.",
+      "sites": [": tx.setMinFee(slashEconomics.exactFeeLovelace);"]
+    },
+    "midgard-node/tests/helpers/availability-challenge-emulator.ts": {
+      "reason": "The completion helpers take coinSelection = false as a parameter default and add the remainder output explicitly; the rule cannot follow a build into a helper's default options.",
+      "sites": [
+        ".setMinFee(fee)",
+        ".setMinFee(fee)",
+        ".setMinFee(fee)",
+        ".setMinFee(fee)",
+        ".setMinFee(fee)"
+      ]
+    },
+    "midgard-sdk/src/operator-lifecycle/exit.ts": {
+      "reason": "The completion programs in this file always plan the exact fee (applyExactFeePlan in the build) and complete with exactFeeCompleteOptions in a different function, which the rule cannot follow; only a direct caller of the exported builder that passes no plan would complete with a change output.",
+      "sites": [
+        ".setMinFee(config.slashingPenaltyLovelace);",
+        "tx = tx.setMinFee(forcedRetirementPenalty(config));"
+      ]
+    },
+    "midgard-sdk/src/settlement.ts": {
+      "reason": "Genuine finding, recorded for the owner: disproveResolutionClaim sets the slashing penalty as the minimum fee and completes through completeTxWithLocalUPLCEvalProgram with coin selection on, so the fee can exceed the penalty. Only the event ABI test builds it today.",
+      "sites": [".setMinFee(params.slashingPenaltyLovelace);"]
+    }
+  },
+  "midgard/fault-proof-reference-scripts-only": {
+    "midgard-sdk/src/fraud-proof/catalogue.ts": {
+      "reason": "One-shot catalogue initialization mint attaches its minting policy inline; it is not a fault-proof step validator, and whether the reference-script ruling covers it is an open owner question.",
+      "sites": [".attach.Script(params.validator.mintingScript);"]
+    },
+    "midgard-sdk/src/fraud-proof/field-preimage-carriage.ts": {
+      "reason": "The inline_emulator_only certificate witness branch, which exists for emulator tests; production carriage takes the reference-script branch.",
+      "sites": ["? transaction.attach.MintingPolicy("]
+    }
+  },
+  "midgard/local-uplc-eval": {
+    "midgard-node-tools/devnet/watcher-journeys/attestation-evaluation.test.ts": {
+      "reason": "Deliberate evaluator switch: MIDGARD_WATCHER_ATTESTATION_EVALUATOR=node hands evaluation to the real devnet node, which is the point of that journey mode.",
+      "sites": ["localUPLCEval:"]
+    },
+    "midgard-sdk/tests/scheduler-refresh.test.ts": {
+      "reason": "Structural test of script carriage (reference versus attached witness) whose causal negative expects the builder itself to throw; local evaluation would change why the negative fails, so switching it is not behaviour-neutral.",
+      "sites": [
+        ").complete({ localUPLCEval: false }),",
+        ").complete({ localUPLCEval: false });",
+        ").complete({ localUPLCEval: false });"
+      ]
+    }
+  },
+  "midgard/locale-compare-explicit-locale": {
+    "da-committee-node/src/availability/factory.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "? left.commitment.header_hash.localeCompare(right.commitment.header_hash)",
+        "`${a.txHash}#${a.outputIndex}`.localeCompare("
+      ]
+    },
+    "da-committee-node/src/committee-service.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "].sort((left, right) => left.headerHash.localeCompare(right.headerHash));",
+        "left.headerHash.localeCompare(right.headerHash),"
+      ]
+    },
+    "da-committee-node/src/config.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.authorityId.localeCompare(right.authorityId));"
+      ]
+    },
+    "da-committee-node/src/coordinator/on-chain.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.digest.localeCompare(right.digest) ||",
+        "left.id.localeCompare(right.id),"
+      ]
+    },
+    "da-committee-node/src/domain.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["`${headerHash}${commitmentDigest}`.localeCompare("]
+    },
+    "da-committee-node/src/l1/da-attestation-reader.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.outRef.localeCompare(right.outRef),",
+        "left.outRef.localeCompare(right.outRef),"
+      ]
+    },
+    "da-committee-node/src/l1/provider.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "canonicalObservedNode(left).localeCompare(canonicalObservedNode(right)),"
+      ]
+    },
+    "da-committee-node/src/l1/state-queue-replay-provider.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        "left.transactionHash.localeCompare(right.transactionHash),"
+      ]
+    },
+    "da-committee-node/src/l1/submitter.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["outRefKey(left).localeCompare(outRefKey(right)),"]
+    },
+    "da-committee-node/src/l1/terminal-retention-observation.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.headerHash.localeCompare(right.headerHash),"]
+    },
+    "da-committee-node/src/peer/signatures.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["firstIdentity.localeCompare(secondIdentity) < 0"]
+    },
+    "da-committee-node/src/store.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.effectId.localeCompare(right.effectId));",
+        "left.availabilityCommitmentDigest.localeCompare(",
+        "left.availabilityCommitmentDigest.localeCompare(",
+        "left.evidenceHash.localeCompare(right.evidenceHash),",
+        "left.headerHash.localeCompare(right.headerHash) ||",
+        "left.headerHash.localeCompare(right.headerHash) ||",
+        "left.headerHash.localeCompare(right.headerHash) ||",
+        "left.headerHash.localeCompare(right.headerHash) ||",
+        "left.headerHash.localeCompare(right.headerHash) ||",
+        "left.headerHash.localeCompare(right.headerHash),",
+        "left.headerHash.localeCompare(right.headerHash),",
+        "left.headerHash.localeCompare(right.headerHash),",
+        "left.headerHash.localeCompare(right.headerHash),",
+        "left.outRef.localeCompare(right.outRef),",
+        "left.peerId.localeCompare(right.peerId),",
+        "left.peerId.localeCompare(right.peerId),",
+        "left.txHash.localeCompare(right.txHash),",
+        "left.txKind.localeCompare(right.txKind) ||"
+      ]
+    },
+    "da-committee-node/tests/cardano-capability-retained-da-corpus.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "].sort(([left], [right]) => left.localeCompare(right)),",
+        "].sort(([left], [right]) => left.localeCompare(right)),"
+      ]
+    },
+    "da-committee-node/tests/conflict-evidence.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "].sort((left, right) => left.digest.localeCompare(right.digest));"
+      ]
+    },
+    "da-committee-node/tests/helpers.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [").sort((left, right) => left.txId.localeCompare(right.txId));"]
+    },
+    "da-committee-node/tests/payload.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort((left, right) => left.txId.localeCompare(right.txId));"]
+    },
+    "midgard-core/src/codec/native.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [").sort((a, b) => a.localeCompare(b));"]
+    },
+    "midgard-fault-proofs/src/cross-block-duplicate-event/settlement-authority.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "a.headerHash.localeCompare(b.headerHash) ||",
+        "a.outRef.localeCompare(b.outRef),"
+      ]
+    },
+    "midgard-fault-proofs/src/distinct-asset-accumulation-limit/authenticated-replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.detection.detectionId.localeCompare(right.detection.detectionId),"
+      ]
+    },
+    "midgard-fault-proofs/src/evidence/fraud-proof-evidence.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [": left.detectionId.localeCompare(right.detectionId),"]
+    },
+    "midgard-fault-proofs/src/execution-source-script-decoding/authenticated-replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.detectionId.localeCompare(right.detectionId),"]
+    },
+    "midgard-fault-proofs/src/execution-source-script-decoding/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.detection.detectionId.localeCompare(right.detection.detectionId)",
+        "left.detection.detectionId.localeCompare(right.detection.detectionId),"
+      ]
+    },
+    "midgard-fault-proofs/src/input-set-uniqueness/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
+    },
+    "midgard-fault-proofs/src/mint-declared-asset-limit/artifact.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),"
+      ]
+    },
+    "midgard-fault-proofs/src/mint-declared-asset-limit/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
+    },
+    "midgard-fault-proofs/src/missing-redeemer/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.detection.detectionId.localeCompare(right.detection.detectionId),"
+      ]
+    },
+    "midgard-fault-proofs/src/missing-script-source/authenticated-replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["a.detectionId.localeCompare(b.detectionId),"]
+    },
+    "midgard-fault-proofs/src/missing-script-source/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.detection.detectionId.localeCompare(right.detection.detectionId)",
+        "left.detection.detectionId.localeCompare(right.detection.detectionId),"
+      ]
+    },
+    "midgard-fault-proofs/src/observer-order-invalid/artifact.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),"
+      ]
+    },
+    "midgard-fault-proofs/src/observer-order-invalid/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "? left.detectionId.localeCompare(right.detectionId)",
+        "? left.detectionId.localeCompare(right.detectionId)"
+      ]
+    },
+    "midgard-fault-proofs/src/observers-forbidden-on-untagged-network/artifact.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),"
+      ]
+    },
+    "midgard-fault-proofs/src/observers-forbidden-on-untagged-network/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
+    },
+    "midgard-fault-proofs/src/receive-purpose-language/authenticated-replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.detection.detectionId.localeCompare(right.detection.detectionId),"
+      ]
+    },
+    "midgard-fault-proofs/src/receive-purpose-language/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "? left.detection.detectionId.localeCompare(",
+        "? left.detection.detectionId.localeCompare(right.detection.detectionId)"
+      ]
+    },
+    "midgard-fault-proofs/src/redeemer-canonicity/family.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.subject.transaction_id.localeCompare(right.subject.transaction_id),"
+      ]
+    },
+    "midgard-fault-proofs/src/redeemer-canonicity/runtime.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
+    },
+    "midgard-fault-proofs/src/remove-fraudulent-block.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.outRef.localeCompare(right.outRef));"
+      ]
+    },
+    "midgard-fault-proofs/src/script-integrity-hash-mismatch/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.detectionId.localeCompare(right.detectionId),"]
+    },
+    "midgard-fault-proofs/src/transition-trace/l1-events.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.utxo.txHash.localeCompare(right.utxo.txHash) ||"]
+    },
+    "midgard-fault-proofs/src/unused-redeemer/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.detectionId.localeCompare(right.detectionId),"]
+    },
+    "midgard-fault-proofs/src/unused-script-witness/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.detectionId.localeCompare(right.detectionId),"]
+    },
+    "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => outRef(left).localeCompare(outRef(right)));"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/funding-requirements.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        "fundingAssets[assetIndex - 1]!.unit.localeCompare(asset.unit) >= 0,",
+        "identityAssets[assetIndex - 1]!.unit.localeCompare(asset.unit) >= 0,",
+        "previous.outRef.localeCompare(reference.outRef) >= 0)",
+        "previous.role.localeCompare(reference.role) > 0 ||"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/funding-reservation-permit.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([a], [b]) => a.localeCompare(b))",
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        ".sort(([left], [right]) => left.localeCompare(right));",
+        "index > 0 && assets[index - 1]!.unit.localeCompare(asset.unit) >= 0,",
+        "index > 0 && values[index - 1]!.localeCompare(value) >= 0,"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/historical-native-script-corpus.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        "left.headerHash.localeCompare(right.headerHash) ||",
+        "left.source.localeCompare(right.source) ||",
+        "left.txId.localeCompare(right.txId) ||"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "([left], [right]) => left.localeCompare(right),",
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        ".sort(([left], [right]) => left.localeCompare(right));",
+        ".sort(([left], [right]) => left.localeCompare(right));"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/local-kupmios-raw-l1-authority.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-fault-proofs/src/workflow/raw-l1-snapshot.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.role.localeCompare(right.role)),",
+        ".sort((left, right) => left.txHash.localeCompare(right.txHash)),",
+        ".sort((left, right) => left.unit.localeCompare(right.unit)),",
+        "[...values].sort((left, right) => left.outRef.localeCompare(right.outRef));"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/runtime-funding-policy.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.address.localeCompare(right.address));",
+        ".sort((left, right) => left.outRef.localeCompare(right.outRef));"
+      ]
+    },
+    "midgard-fault-proofs/src/zero-input/replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
+    },
+    "midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ".sort(([left], [right]) => left.localeCompare(right)),",
+        "].sort(([left], [right]) => left.localeCompare(right)),"
+      ]
+    },
+    "midgard-fault-proofs/tests/fixtures/build-cardano-capability-p2-boundary-corpus-v1.mjs": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ".sort((left, right) => left.label.localeCompare(right.label));"
+      ]
+    },
+    "midgard-fault-proofs/tests/native-script-invalid-wrongful-rejection-lifecycle.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort((a, b) => a.hash.localeCompare(b.hash));"]
+    },
+    "midgard-fault-proofs/tests/remove-unattested-block-submit.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["].sort((a, b) => a.txHash.localeCompare(b.txHash));"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-event-history-list.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "(a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,",
+        ").sort((a, b) => mintingPolicyToId(a).localeCompare(mintingPolicyToId(b)));",
+        "keyedNonces.sort((a, b) => a.key.localeCompare(b.key));"
+      ]
+    },
+    "midgard-fault-proofs/tests/support/emulator/history-pair.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "(a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
+      ]
+    },
+    "midgard-fault-proofs/tests/support/emulator/setup-tx.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ".sort((left, right) => left[1]!.localeCompare(right[1]!))",
+        ".sort((left, right) => left[1]!.localeCompare(right[1]!))"
+      ]
+    },
+    "midgard-fault-proofs/tests/support/retained-reason-classifier.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["([left], [right]) => left.localeCompare(right),"]
+    },
+    "midgard-fault-proofs/tests/support/transition-trace-retained.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "Data.to(a.event.id, SDK.OutputReference).localeCompare(",
+        "retained.sort(([a], [b]) => a.localeCompare(b));",
+        "values.sort(([a], [b]) => a.localeCompare(b));"
+      ]
+    },
+    "midgard-fault-proofs/tests/transition-proof-material.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["event_to_step.sort(([a], [b]) => a.localeCompare(b));"]
+    },
+    "midgard-fault-proofs/tests/value-conservation-replay.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["[...left, ...right].sort(([l], [r]) => l.localeCompare(r));"]
+    },
+    "midgard-fault-proofs/tests/workflow-runtime.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/activate-retained-successor-live.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "assets: Object.entries(utxo.assets).sort(([a], [b]) => a.localeCompare(b)),"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/history-archive-server.mjs": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [") || a.publicationOutRef.localeCompare(b.publicationOutRef),"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/history-cases.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["entries.sort(([left], [right]) => left.localeCompare(right));"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/history-events.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "SDK.committedWithdrawalKeyBytes(left.id).localeCompare(",
+        "SDK.committedWithdrawalKeyBytes(left.id).localeCompare(",
+        "entries.sort(([left], [right]) => left.localeCompare(right));",
+        "entries.sort(([left], [right]) => left.localeCompare(right));"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/native-script-publication.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/transaction-recovery-live.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["left.txHash.localeCompare(right.txHash) ||"]
+    },
+    "midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ".sort((left, right) => left.localeCompare(right));",
+        "JSON.stringify(left).localeCompare(JSON.stringify(right)),",
+        "[...value.spent].sort((left, right) => left.localeCompare(right)),",
+        "[...value].sort((left, right) => left.localeCompare(right)),",
+        "].sort((left, right) => left.localeCompare(right));",
+        "const wanted = [...expected].sort((left, right) => left.localeCompare(right));",
+        "left.localeCompare(right),"
+      ]
+    },
+    "midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.localeCompare(right))",
+        ".sort((left, right) => left.localeCompare(right));",
+        ".sort((left, right) => left.localeCompare(right));",
+        ".sort((left, right) => left.localeCompare(right));",
+        ".sort((left, right) => left.txId.localeCompare(right.txId)),"
+      ]
+    },
+    "midgard-node-tools/src/commands/stress-corpus-generate.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.shardPath.localeCompare(right.shardPath))"
+      ]
+    },
+    "midgard-node-tools/src/commands/stress-corpus/verify.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["sampleKey(corpusSha256, left).localeCompare("]
+    },
+    "midgard-node-tools/src/commands/stress-corpus/wallet-set-identity.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.walletId.localeCompare(right.walletId),"]
+    },
+    "midgard-node-tools/src/commands/stress-environment-fingerprint.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-node-tools/src/commands/stress-wallets.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([a], [b]) => a.localeCompare(b))",
+        ".sort((a, b) => outRefKey(a).localeCompare(outRefKey(b)))"
+      ]
+    },
+    "midgard-node-tools/src/e2e/pipelined-commit-process-harness.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.txId.localeCompare(right.txId));",
+        "JSON.stringify(left).localeCompare(JSON.stringify(right)),",
+        "JSON.stringify(left).localeCompare(JSON.stringify(right)),"
+      ]
+    },
+    "midgard-node/scripts/benchmark-scenario.mjs": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort(([a], [b]) => a.localeCompare(b)),"]
+    },
+    "midgard-node/scripts/phase1-formal-identity.mjs": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "left.localeCompare(right),",
+        "return key(left).localeCompare(key(right));"
+      ]
+    },
+    "midgard-node/src/commands/contract-deployment-info.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        "entries.sort(([left], [right]) => left.localeCompare(right)),"
+      ]
+    },
+    "midgard-node/src/commands/l1-utxos.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["unitA.localeCompare(unitB),"]
+    },
+    "midgard-node/src/commands/state-reconciliation.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-node/src/database/depositSubmissionAttempts.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-node/src/database/eventHistoryJournal.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([a], [b]) => a.localeCompare(b))"]
+    },
+    "midgard-node/src/database/eventHistoryJournalCodec.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "Object.entries(value.assets).sort(([a], [b]) => a.localeCompare(b)),"
+      ]
+    },
+    "midgard-node/src/e2e/env.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort((left, right) => left.localeCompare(right))"]
+    },
+    "midgard-node/src/l1-event-history-initialization.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([a], [b]) => a.localeCompare(b))",
+        "a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
+      ]
+    },
+    "midgard-node/src/l1-event-history-list-replay.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([a], [b]) => a.localeCompare(b))",
+        "[...outputs].sort((a, b) => refLabel(a).localeCompare(refLabel(b)));",
+        "a.key === null ? -1 : b.key === null ? 1 : a.key.localeCompare(b.key),"
+      ]
+    },
+    "midgard-node/src/l1-event-history-source.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
+      ]
+    },
+    "midgard-node/src/mpf/root-view-store.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.localeCompare(right),"]
+    },
+    "midgard-node/src/services/state-queue-correction-observer.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        "left.transaction.txHash.localeCompare(right.transaction.txHash),"
+      ]
+    },
+    "midgard-node/src/transactions/da-attestation.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.txHash.localeCompare(right.txHash) ||"]
+    },
+    "midgard-node/src/transactions/script-reward-registration.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["? left.txHash.localeCompare(right.txHash) ||"]
+    },
+    "midgard-node/src/transactions/submit-deposit.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([a], [b]) => a.localeCompare(b))",
+        ".sort(([left], [right]) => left.localeCompare(right));"
+      ]
+    },
+    "midgard-node/src/workers/mpf-engine-probe.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-node/src/workers/utils/mpf-event-flat.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.localeCompare(right),"]
+    },
+    "midgard-node/tests/benchmark-regression.test.mjs": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["return key(left).localeCompare(key(right));"]
+    },
+    "midgard-node/tests/deposit-flow-emulator-shared.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ".sort((left, right) => left.txId.localeCompare(right.txId));",
+        "return outRefLabel(left).localeCompare(outRefLabel(right));"
+      ]
+    },
+    "midgard-node/tests/event-history-ready-append.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["items.sort((a, b) => a.key.localeCompare(b.key));"]
+    },
+    "midgard-node/tests/helpers/availability-challenge-emulator.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["].sort((a, b) => a.hash.localeCompare(b.hash)),"]
+    },
+    "midgard-node/tests/helpers/history-owner-rollback-journey.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ") => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex;"
+      ]
+    },
+    "midgard-node/tests/helpers/operator-inactivity.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["left.keyHash.localeCompare(right.keyHash),"]
+    },
+    "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "[...joined.incarnations].sort((a, b) => a.id.localeCompare(b.id)),"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-initialization.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "histories[a].list.policyId.localeCompare(histories[b].list.policyId),"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ") => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex;"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-projection-emulator.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["nonceOutputs.sort((a, b) => key(a).localeCompare(key(b)));"]
+    },
+    "midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["nonces.sort((a, b) => key(a).localeCompare(key(b)));"]
+    },
+    "midgard-node/tests/l1-event-history-source-owner-emulator.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "nonces.sort((a, b) => eventKey(a).localeCompare(eventKey(b)));"
+      ]
+    },
+    "midgard-node/tests/mpf.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-node/tests/native-transaction-integration.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": ["(a, b) => a.localeCompare(b),"]
+    },
+    "midgard-node/tests/operator-lifecycle-emulator.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort((left, right) => left.key.localeCompare(right.key));"]
+    },
+    "midgard-node/tests/retention-enforcement.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort(([a], [b]) => a.localeCompare(b))"]
+    },
+    "midgard-node/tests/state-queue-correction-observer.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-sdk/src/state-queue-authenticated-replay-checkpoint.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "index > 0 && input.mintPolicyIds[index - 1]!.localeCompare(policy) >= 0,"
+      ]
+    },
+    "midgard-sdk/src/state-queue-correction-transition.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "index === 0 || values[index - 1]!.localeCompare(entry) < 0,",
+        "left.consumedOutRef.localeCompare(right.consumedOutRef),",
+        "left.consumedOutRef.localeCompare(right.consumedOutRef),",
+        "left.consumedOutRef.localeCompare(right.consumedOutRef),"
+      ]
+    },
+    "midgard-sdk/src/user-events/history-query.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [": left.key.localeCompare(right.key),"]
+    },
+    "midgard-sdk/tests/state-queue-correction-transition.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-validation/tests/cek-program.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort((left, right) => left[1].localeCompare(right[1]));"]
+    },
+    "midgard-validation/tests/helpers/ordered-collection-boundary.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "left.policyHashHex.localeCompare(right.policyHashHex),",
+        "left.txHash.localeCompare(right.txHash) ||"
+      ]
+    },
+    "midgard-validation/tests/nested-value-boundary.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "leftName.localeCompare(rightName),",
+        "leftPolicy.localeCompare(rightPolicy) ||"
+      ]
+    },
+    "midgard-validation/tests/ordered-collection-reference-inputs-boundary.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right));"]
+    },
+    "midgard-validation/tests/redeemer-collateral-schema-feasibility.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "left.assetNameHex.localeCompare(right.assetNameHex),",
+        "left.rewardAccountHex.localeCompare(right.rewardAccountHex),",
+        "}).sort((left, right) => left.policyIdHex.localeCompare(right.policyIdHex));"
+      ]
+    },
+    "midgard-watcher/src/availability/runtime.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": ["? `${left.txHash}#${left.outputIndex}`.localeCompare("]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-queue-journal.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "entries.sort((left, right) => left.name.localeCompare(right.name));"
+      ]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-supervisor.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "headerEntries.sort((left, right) => left.name.localeCompare(right.name));",
+        "return left.headerHash.localeCompare(right.headerHash);"
+      ]
+    },
+    "midgard-watcher/src/funding/prover-funding-authority.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort((a, b) => a.unit.localeCompare(b.unit)),"]
+    },
+    "midgard-watcher/src/funding/prover-funding-calculation.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-watcher/src/funding/prover-funding-reservation.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        "].sort((left, right) => left.outRef.localeCompare(right.outRef)),",
+        "index > 0 && assets[index - 1]!.unit.localeCompare(asset.unit) >= 0,",
+        "index > 0 && consumedOutRefs[index - 1]!.localeCompare(outRef) >= 0,",
+        "index > 0 && inputs[index - 1]!.outRef.localeCompare(input.outRef) >= 0,",
+        "left.outRef.localeCompare(right.outRef);"
+      ]
+    },
+    "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "(left, right) => left.outRef.localeCompare(right.outRef),",
+        ".sort(([left], [right]) => left.localeCompare(right))",
+        "left.outRef.localeCompare(right.outRef),"
+      ]
+    },
+    "midgard-watcher/src/indexers/authenticated-state-queue-observation.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": ["return left.queueOutRef.localeCompare(right.queueOutRef);"]
+    },
+    "midgard-watcher/src/indexers/user-event-indexer.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.outRef.localeCompare(right.outRef));",
+        "`${left.terminalPointDigest}:${left.outRef}`.localeCompare(",
+        "left.outRef.localeCompare(right.outRef),",
+        "left.outRef.localeCompare(right.outRef),",
+        "watcherCanonicalJson(a).localeCompare(watcherCanonicalJson(b)),"
+      ]
+    },
+    "midgard-watcher/src/indexers/user-event-reference-authority.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-watcher/src/l1/finality-engine.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.providerId.localeCompare(right.providerId),"]
+    },
+    "midgard-watcher/src/l1/local-kupmios-native-observation.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": ["left.providerId.localeCompare(right.providerId),"]
+    },
+    "midgard-watcher/src/l1/multi-provider-consistency.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.providerId.localeCompare(right.providerId),",
+        "left.providerId.localeCompare(right.providerId),"
+      ]
+    },
+    "midgard-watcher/src/l1/rollback-engine.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
+      ]
+    },
+    "midgard-watcher/src/runtime/chain-coordinator.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [": left.blockHash.localeCompare(right.blockHash);"]
+    },
+    "midgard-watcher/src/runtime/deployment-identity.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
+    },
+    "midgard-watcher/src/runtime/operations-observability.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "left.code.localeCompare(right.code) ||",
+        "left.subjectDigest.localeCompare(right.subjectDigest),"
+      ]
+    },
+    "midgard-watcher/src/storage/durable-store.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "? left.key.localeCompare(right.key)",
+        "[...records].sort((left, right) => keyOf(left).localeCompare(keyOf(right)));",
+        "const namespaceOrder = left.namespace.localeCompare(right.namespace);"
+      ]
+    },
+    "midgard-watcher/src/verification/authenticated-replay-transcript.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "result.sort((left, right) => left.outRef.localeCompare(right.outRef));"
+      ]
+    },
+    "midgard-watcher/src/verification/block-replay.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort((left, right) => left.outRef.localeCompare(right.outRef)),"
+      ]
+    },
+    "midgard-watcher/src/verification/replay-transcript-records.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        "[...priorState].sort((a, b) => a.outRef.localeCompare(b.outRef)),"
+      ]
+    },
+    "midgard-watcher/tests/funding/prover-funding-calculation.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
+      ]
+    },
+    "midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        "(a, b) => a.outRef.localeCompare(b.outRef),",
+        ".sort((a, b) => a.outRef.localeCompare(b.outRef)),",
+        "].sort((a, b) => a.outRef.localeCompare(b.outRef)),",
+        "left.outRef.localeCompare(right.outRef),"
+      ]
+    },
+    "midgard-watcher/tests/l1/local-historical-capture.test.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "sites": [
+        ".sort((left, right) => left.txHash.localeCompare(right.txHash));"
+      ]
+    }
+  },
+  "midgard/scoped-utxo-override": {
+    "da-committee-node/src/l1/submitter.ts": {
+      "reason": "The DA submitter's readiness refresh pins the verified plain-ADA spendable set on purpose and re-runs before each submission; the persistent pin is the design, and releasing it would drop that filtering.",
+      "sites": ["lucid.overrideUTxOs([...summary.spendableUtxos]);"]
+    },
+    "midgard-fault-proofs/src/remove-unattested-block.ts": {
+      "reason": "Re-pins a fresh provider snapshot (utxosAt) immediately before this build, which is the documented cure for a stale pin; the pin then stays on the caller's instance, which the rule cannot see is re-pinned before each use.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
+      ]
+    },
+    "midgard-fault-proofs/tests/support/emulator/retired-family-proof.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["lucid.overrideUTxOs(await lucid.utxosAt(signer.address));"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/forced-order.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/history-event-local-staging.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(funding);",
+        "lucid.overrideUTxOs(funding);",
+        "lucid.overrideUTxOs(funding);"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/history-event-staging.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));",
+        "lucid.overrideUTxOs(funding);"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/history-settlement.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["lucid.overrideUTxOs(funding);"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/journey-session.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "deployment.publisherLucid.overrideUTxOs(",
+        "deployment.publisherLucid.overrideUTxOs("
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/staging.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
+      ]
+    },
+    "midgard-node/src/transactions/reference-scripts.ts": {
+      "reason": "Pins a merged provider-plus-cache wallet view that later builds on this instance rely on to keep script-reference UTxOs visible; the persistent pin is intended.",
+      "sites": [
+        "yield* Effect.sync(() => lucid.overrideUTxOs([...mergedWalletUtxos]));"
+      ]
+    },
+    "midgard-node/src/transactions/utils.ts": {
+      "reason": "reconcileWalletUtxosFromSignedTx pins the predicted post-submit wallet view for every later build on the instance, the known origin of the stale-pin trap; builders that follow it clear it first (funding-preflight.ts). Scoping it is an open owner question.",
+      "sites": ["wallet.overrideUTxOs(Array.from(reconciled.values()));"]
+    },
+    "midgard-node/tests/helpers/correction-rewind-scenario.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "wallet.overrideUTxOs(await wallet.utxosAt(address));",
+        "wallet.overrideUTxOs(await wallet.utxosAt(address));"
+      ]
+    },
+    "midgard-node/tests/helpers/history-projection-lifecycle.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
+      ]
+    },
+    "midgard-node/tests/helpers/history-source-owner-emulator.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["owner.overrideUTxOs("]
+    },
+    "midgard-node/tests/l1-event-history-initialization-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(",
+        "lucid.overrideUTxOs((await lucid.utxosAt(address)).filter(ordinary));"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-parent-lease-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
+    },
+    "midgard-node/tests/l1-event-history-projection-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(",
+        "lucid.overrideUTxOs((await lucid.utxosAt(address)).filter(ordinary));"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-projection-native-assets-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["owner.overrideUTxOs(await owner.utxosAt(ownerAddress));"]
+    },
+    "midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["lucid.overrideUTxOs("]
+    },
+    "midgard-node/tests/l1-event-history-raw-production-lifecycle-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "owner.overrideUTxOs(await owner.utxosAt(await owner.wallet().address()));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-ready-append-escalation-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
+    },
+    "midgard-node/tests/l1-event-history-signed-intent-continuation-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
+    },
+    "midgard-node/tests/l1-event-history-signed-intent-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
+    },
+    "midgard-node/tests/l1-event-history-signed-intent-restart-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
+    },
+    "midgard-node/tests/l1-event-history-source-owner-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "funding.overrideUTxOs(",
+        "funding.overrideUTxOs(await funding.utxosAt(ownerAddress));"
+      ]
+    },
+    "midgard-node/tests/l1-event-history-streaming-production-lifecycle-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "owner.overrideUTxOs(await owner.utxosAt(await owner.wallet().address()));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));"
+      ]
+    },
+    "midgard-node/tests/mpf-audit-merge-permit-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
+    },
+    "midgard-node/tests/native-mpf-startup-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
+    },
+    "midgard-node/tests/operator-exit-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["lucid.overrideUTxOs(await lucid.utxosAt(address));"]
+    },
+    "midgard-node/tests/operator-lifecycle-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": ["referenceScriptsLucid.overrideUTxOs([]);"]
+    },
+    "midgard-node/tests/reserve-payout-economic-acceptance-emulator.test.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
+        "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));"
+      ]
+    },
+    "midgard-watcher/tests/support/published-block-actor.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));"
+      ]
+    },
+    "midgard-watcher/tests/support/published-deposit-trace.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
+        "lucid.overrideUTxOs(await lucid.utxosAt(address));"
+      ]
+    }
+  },
+  "midgard/valid-from-wall-clock-margin": {
+    "midgard-sdk/src/operator-lifecycle/strike.ts": {
+      "reason": "Genuine finding, recorded for the owner: the inactivity takeover lower bound is max(nowMs, threshold + 1) with no backoff, so a submit whose node clock lags fails OutsideValidityInterval; changing it moves when a takeover becomes valid.",
+      "sites": [
+        "const validity: InactivityTakeoverValidity = { validFrom, validTo };"
+      ]
+    }
+  }
+}

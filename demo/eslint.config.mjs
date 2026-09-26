@@ -3,6 +3,10 @@ import simpleImportSort from "eslint-plugin-simple-import-sort";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+import midgard, {
+  loadBaseline,
+} from "./scripts/lib/eslint-plugin-midgard/index.mjs";
+
 // Workspace packages are consumed by name so that their exports maps, the
 // `midgard-source` exports condition (source-first resolution for tsc,
 // typescript-eslint, and vitest), and the declared dependency graph stay
@@ -31,6 +35,9 @@ export default tseslint.config(
       "**/.architecture-f-wasm/**",
       "**/.probe-dist/**",
       "**/.tmp/**",
+      // Rule fixtures hold deliberate violations; the plugin's own test
+      // lints them.
+      "scripts/lib/eslint-plugin-midgard/fixtures/**",
     ],
   },
   eslint.configs.recommended,
@@ -284,6 +291,27 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+  {
+    // Owner rulings checked as lint (docs/agents/lint-rules.md). The rules are
+    // syntactic and run on every file. Violations that predate a rule are
+    // listed, each with a reason, in the shrink-only baseline
+    // scripts/lib/eslint-plugin-midgard/baseline.json; a listed violation
+    // does not fail, and a listed one that no longer occurs does.
+    plugins: { midgard },
+    settings: {
+      midgard: { root: import.meta.dirname, baseline: loadBaseline() },
+    },
+    rules: {
+      "midgard/apply-params-through-blueprint": "error",
+      "midgard/exact-fee-no-change-output": "error",
+      "midgard/fault-proof-reference-scripts-only": "error",
+      "midgard/local-uplc-eval": "error",
+      "midgard/locale-compare-explicit-locale": "error",
+      "midgard/node-cli-operator-commands-only": "error",
+      "midgard/scoped-utxo-override": "error",
+      "midgard/valid-from-wall-clock-margin": "error",
     },
   },
 );
