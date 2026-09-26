@@ -9,6 +9,9 @@ on:
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
       - "demo/midgard-validation/**"
+      - "demo/lucid-midgard/**"
+      - "demo/patches/**"
+      - "demo/.dockerignore"
       - "demo/package.json"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
@@ -21,11 +24,18 @@ on:
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
       - "demo/midgard-validation/**"
+      - "demo/lucid-midgard/**"
+      - "demo/patches/**"
+      - "demo/.dockerignore"
       - "demo/package.json"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/.nvmrc"
       - ".github/workflows/midgard-watcher-ci.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -33,9 +43,10 @@ permissions:
 jobs:
   watcher:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.25.7"
           cache-dependency-path: demo/midgard-watcher/native-chain-sync/go.sum
@@ -48,11 +59,11 @@ jobs:
           go test ./...
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/midgard-chain-sync .
           test -x /tmp/midgard-chain-sync
-      # The watcher's TypeScript build, typecheck, lint, format check and test
-      # suite run in midgard-node-ci.yml, which triggers on a superset of these
-      # paths and builds the Aiken blueprint those tests read. This job covers
-      # what that one does not: the native helper, the compose stack and the
-      # production image.
+      # The watcher's TypeScript build, typecheck, format check and test suite
+      # run in midgard-node-ci.yml (its lint in that workflow's workspace lint
+      # job), which triggers on a superset of these paths and builds the Aiken
+      # blueprint those tests read. This job covers what that one does not:
+      # the native helper, the compose stack and the production image.
       # The operator launch surface: the compose file must render from
       # `.env.example` alone, like the node stacks in midgard-node-ci.yml.
       - name: Render the watcher compose stack from .env.example

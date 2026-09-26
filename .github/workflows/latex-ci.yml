@@ -3,27 +3,32 @@ name: Latex CI
 on:
   push:
     branches: ["main", "staging"]
-    paths: ["technical-spec/**"]
+    paths: ["technical-spec/**", ".github/workflows/latex-ci.yml"]
   pull_request:
-    paths: ["technical-spec/**"]
+    paths: ["technical-spec/**", ".github/workflows/latex-ci.yml"]
   workflow_dispatch: # For manual testing
   # TODO: Change to release trigger later
   # release:
   #   types: [published]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
   generate_pdf:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Compile LaTeX to PDF
-        uses: xu-cheng/latex-action@v3
+        uses: xu-cheng/latex-action@e2f99d4b3685b0da93f97e1b86ad8fab81105098 # 3.3.0
         with:
           root_file: midgard.tex
           working_directory: technical-spec/
@@ -42,7 +47,7 @@ jobs:
       # site and this PDF from one artifact. This workflow only validates the
       # LaTeX build and keeps the PDF downloadable per run.
       - name: Upload PDF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: midgard-pdf
           path: pdfs/
