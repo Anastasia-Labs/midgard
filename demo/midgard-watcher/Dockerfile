@@ -46,7 +46,15 @@ COPY midgard-validation ./midgard-validation
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-watcher ./midgard-watcher
-RUN pnpm --filter midgard-watcher... build
+# The production chain only, dependencies first. `midgard-watcher...` would
+# also select its dev-only workspace edges (midgard-node and the packages
+# behind it), whose sources this image does not copy.
+RUN pnpm --filter @al-ft/lucid-midgard build
+RUN pnpm --filter @al-ft/midgard-core build
+RUN pnpm --filter @al-ft/midgard-sdk build
+RUN pnpm --filter @al-ft/midgard-validation build
+RUN pnpm --filter @al-ft/midgard-fault-proofs build
+RUN pnpm --filter midgard-watcher build
 RUN pnpm --filter midgard-watcher deploy --prod /prod/midgard-watcher
 
 FROM node:22.22.2-bookworm-slim AS final
