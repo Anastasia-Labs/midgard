@@ -280,10 +280,11 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
   - **Done when:** the default prefix comes from a hash of the worktree's
     `realpath`, and two concurrent worktree runs don't collide.
   - **From:** phrocs `SocketPathFor` and the `bin/sandbox` port allocation.
-- [ ] **W2.12 Derive the compose project name and host ports from the worktree
+- [x] **W2.12 Derive the compose project name and host ports from the worktree
       path**, so parallel devnets don't collide. (S)
   - **Done for** the phase 4 process devnet. The operator compose files in
     `demo/midgard-node` still fix their container names and host ports.
+  - **Done 2026-09-26:** `demo/midgard-node/scripts/operator-compose.sh` derives the project and a 100-port block per linked worktree; the main checkout keeps today's names and ports, and explicit settings win. Tested by `operator-compose.test.mjs` in the compose-render job. Blind spot: a bare `docker compose` in a linked worktree still collides.
 - [x] **W2.13 A `doctor` command.** A few targeted checks, each printing an exact
       fix. (S–M)
   - **Checks:**
@@ -420,7 +421,7 @@ were stale. When this wave is done, memory holds only personal items.
 
 ### 4a. Owner rulings as lint rules
 
-- [ ] **W4.1 Ratchet infrastructure for custom ESLint rules.** (M)
+- [x] **W4.1 Ratchet infrastructure for custom ESLint rules.** (M)
   - **From:** the semgrep `--baseline-commit` WARNING→ERROR lifecycle, the
     `api_ratchet.py` idea (about 150 of its 1,262 lines), and
     `ALLOWED_REASONS` in `test_feature_flag_gated_writes.py`.
@@ -431,42 +432,54 @@ were stale. When this wave is done, memory holds only personal items.
     - a baseline file allows existing violations, the fix command can only
       shrink it, and every entry has a reason;
     - violations the base branch already had don't fail a PR.
-- [ ] **W4.2 Ban one-argument `localeCompare`** outside the canonical-JSON helper.
+  - **Done 2026-09-26:** a local plugin in `demo/scripts/lib/eslint-plugin-midgard/` run by `pnpm --dir demo run lint`, with fixtures, a reasoned `baseline.json` and a prune command that only shrinks it. Rules and blind spots: `docs/agents/lint-rules.md`.
+- [x] **W4.2 Ban one-argument `localeCompare`** outside the canonical-JSON helper.
       The ruling pins collation to `"en"`, and 125 call sites remain, some feeding
       digests. Keep the watcher's code-unit ordering, which the ruling says not to
       unify. (S + baseline)
-- [ ] **W4.3 Ban `.complete({ localUPLCEval: false })` everywhere outside
+  - **Done 2026-09-26:** `midgard/locale-compare-explicit-locale`; 248 sites baselined as untriaged, since the "en" sweep is a per-site consensus call.
+- [x] **W4.3 Ban `.complete({ localUPLCEval: false })` everywhere outside
       diagnostic markers.** Today the AST scan covers only fault-proofs, and
       `midgard-sdk/tests/scheduler-refresh.test.ts` has 3 uses. (S)
-- [ ] **W4.4 Ban attaching fault-proof scripts inline;** they are always
+  - **Done 2026-09-26:** `midgard/local-uplc-eval` (replaces the fault-proofs scan branch); 4 deliberate sites baselined.
+- [x] **W4.4 Ban attaching fault-proof scripts inline;** they are always
       reference scripts (ruling 2026-08-26). (S)
-- [ ] **W4.5 Allow `applyParamsToScript` only in
+  - **Done 2026-09-26:** `midgard/fault-proof-reference-scripts-only`; 2 sites baselined (catalogue init mint, emulator-only carriage branch).
+- [x] **W4.5 Allow `applyParamsToScript` only in
       `midgard-sdk/src/fraud-proof/contracts/blueprint.ts`.** This keeps the #609
       shape guard as the only way in. (S)
-- [ ] **W4.6 Flag an exact-fee builder that also has a change output.** Using
+  - **Done 2026-09-26:** `midgard/apply-params-through-blueprint`; 40 test-oracle and harness sites baselined.
+- [x] **W4.6 Flag an exact-fee builder that also has a change output.** Using
       `setMinFee` together with a change output leaves a fee surplus of about 3k
       lovelace, which breaks every on-chain `fee == penalty` check. (S–M)
-- [ ] **W4.7 Require `clearUTxOOverride()` before building from a wallet whose
+  - **Done 2026-09-26:** `midgard/exact-fee-no-change-output` (heuristic); 9 sites baselined, including `settlement.ts` `disproveResolutionClaim`, which needs an owner look.
+- [x] **W4.7 Require `clearUTxOOverride()` before building from a wallet whose
       UTxO view is overridden**, or route those builds through one helper that
       calls it. A stale override surfaces as "Could not spend UTxO" or as a missing
       signature for your own key. (S–M)
-- [ ] **W4.8 Flag `validFrom` lower bounds derived from `Date.now()` without the
+  - **Done 2026-09-26:** `midgard/scoped-utxo-override` (heuristic); 65 sites baselined, 4 of them production.
+- [x] **W4.8 Flag `validFrom` lower bounds derived from `Date.now()` without the
       30-second margin** (42 call sites to triage). Separately, flag test, demo and
       bench commands added to `midgard-node/src/index.ts`. (S each)
+  - **Done 2026-09-26:** `midgard/valid-from-wall-clock-margin` (1 site, `strike.ts`, an owner call) and `midgard/node-cli-operator-commands-only` (none).
 
 ### 4b. Obligations written only as prose, made into tests
 
-- [ ] **W4.9 Map each validator to its passing and failing emulator
+- [x] **W4.9 Map each validator to its passing and failing emulator
       scenarios.** A registry lists them, and a test fails when a validator in
       `plutus.json` or the family registry has no entry. This enforces the
       both-polarity rule in `contracts.md`. (M)
-- [ ] **W4.10 Every Aiken check in CI must report how many tests it collected,
+  - **Done 2026-09-26:** `demo/midgard-fault-proofs/tests/support/validator-scenario-registry.ts` and its test. 14 of 579 blueprint validators and 46 of 55 families are mapped; the rest sit on reasoned lists with pinned counts.
+- [x] **W4.10 Every Aiken check in CI must report how many tests it collected,
       and fail on zero.** Route all CI Aiken invocations through the guard. (S)
-- [ ] **W4.11 Test the Ogmios provider against recorded real responses.** The
+  - **Done 2026-09-26:** `guard-focused-selector.mjs --all` runs the full suite in Aiken CI and preflight, failing on zero collected; the workflow lint `aiken-check-unguarded` refuses a bare `aiken check` in CI.
+- [x] **W4.11 Test the Ogmios provider against recorded real responses.** The
       test doubles encoded a response shape that doesn't exist: Ogmios v6
       `queryNetwork/tip` has no height. (M)
-- [ ] **W4.12 Make the reserved fault-proof test-id ranges a checked registry**
+  - **Done 2026-09-26:** 469618782 already covered the DA committee provider (confirmed it can fail); the midgard-node history follower now replays the recorded preprod session. Three readers still lack recordings.
+- [x] **W4.12 Make the reserved fault-proof test-id ranges a checked registry**
       (`0000000e`–`00000018` and later), not a note. (S)
+  - **Done 2026-09-26:** the SDK catalogue is the registry: `fraud-proof-catalogue-registration.test.ts` checks every category-id literal in demo TypeScript and Aiken against it.
 
 ### 4c. Skills that ship a script
 
@@ -480,12 +493,13 @@ is lint-checked in CI.
   - `git commit -a` sweeps up files other sessions have staged.
   - The Nix pre-commit hook stashes unstaged files mid-commit.
   - Script: a commit helper that uses a temporary index. (M)
-- [ ] **W4.14 `local-test-environment`.**
+- [x] **W4.14 `local-test-environment`.**
   - Postgres on 5433 via `scripts/start-test-postgres.sh`, with
     `synchronous_commit` on.
   - The per-worktree prefix.
   - Which suites need `dist` built in `pretest`.
   - Script: `doctor`. (S)
+  - **Done 2026-09-26:** `.agents/skills/local-test-environment/`, with `scripts/doctor.mjs` as its script.
 - [x] **W4.15 `regenerating-goldens-and-ledgers`.**
   - What regenerates what; `:sync` versus `:check`.
   - Never hand-edit generated Aiken.
