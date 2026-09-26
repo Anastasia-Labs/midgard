@@ -33,6 +33,16 @@
       "types": "./dist/store.d.ts",
       "import": "./dist/store.js"
     },
+    "./coordinator/lucid-submitter": {
+      "midgard-source": "./src/coordinator/lucid-submitter.ts",
+      "types": "./dist/coordinator/lucid-submitter.d.ts",
+      "import": "./dist/coordinator/lucid-submitter.js"
+    },
+    "./coordinator/tx-builders": {
+      "midgard-source": "./src/coordinator/tx-builders.ts",
+      "types": "./dist/coordinator/tx-builders.d.ts",
+      "import": "./dist/coordinator/tx-builders.js"
+    },
     "./da/libp2p": {
       "midgard-source": "./src/da/libp2p/index.ts",
       "types": "./dist/da/libp2p/index.d.ts",
@@ -45,7 +55,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/store/postgres.ts src/store/public-retained-da.ts src/availability/index.ts src/da/libp2p/index.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/store/postgres.ts src/store/public-retained-da.ts src/availability/index.ts src/coordinator/lucid-submitter.ts src/coordinator/tx-builders.ts src/da/libp2p/index.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

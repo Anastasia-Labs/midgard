@@ -17,7 +17,6 @@ import {
 } from "midgard-node/da/local-signers";
 import { availabilityParametersFromManifest } from "midgard-node/services/midgard-contracts";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
-import { daAttestationApplyValidityRangeProgram } from "midgard-node/transactions/da-attestation";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
@@ -728,7 +727,7 @@ export const createPublishedWatcherBlockActor = async ({
     // when this immutable header can no longer accept the resulting apply.
     // The apply path checks again after those transactions have confirmed.
     await Effect.runPromise(
-      daAttestationApplyValidityRangeProgram({
+      SDK.daAttestationApplyValidityRangeProgram({
         currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
         headerEndTime: existingTarget.stateQueueNode.header.endTime,
       }),
@@ -831,7 +830,7 @@ export const createPublishedWatcherBlockActor = async ({
       if (target.stateQueueNode.da_attestation !== SDK.NO_DA_ATTESTATION)
         return { kind: "attested", txHash: target.stateQueueUtxo.utxo.txHash };
       const validityRange = await Effect.runPromise(
-        daAttestationApplyValidityRangeProgram({
+        SDK.daAttestationApplyValidityRangeProgram({
           currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
           headerEndTime: block.header.endTime,
         }),

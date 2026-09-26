@@ -8,7 +8,7 @@ import {
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 
 import type { DaAttestationValidatorSet } from "../l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../l1/reference-scripts.js";
@@ -213,6 +213,7 @@ export const buildApplyAttestationTx = async ({
   daParamsUtxo,
   daParamsDatum,
   referenceScripts,
+  validityRange,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DaAttestationValidatorSet;
@@ -223,12 +224,9 @@ export const buildApplyAttestationTx = async ({
   readonly daParamsUtxo: UTxO;
   readonly daParamsDatum: SDK.DaParamsDatum;
   readonly referenceScripts: DaAttestationReferenceScripts;
+  /** From {@link daAttestationApplyValidityRange}. */
+  readonly validityRange: DaAttestationApplyValidityRange;
 }): Promise<TxSignBuilder> => {
-  const validFrom = BigInt(lucid.slotToUnixTime(lucid.currentSlot()));
-  const deadline =
-    target.stateQueueNode.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
-  const validTo =
-    validFrom + 120_000n < deadline ? validFrom + 120_000n : deadline;
   return completeWithLocalUplc(
     await Effect.runPromise(
       SDK.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
@@ -241,11 +239,43 @@ export const buildApplyAttestationTx = async ({
           datum: attestationDatum,
         },
         referenceScripts,
-        validityRange: { validFrom, validTo },
+        validityRange,
       }),
     ),
     "DA attestation apply",
   );
+};
+
+export type DaAttestationApplyValidityRange = {
+  readonly validFrom: bigint;
+  readonly validTo: bigint;
+};
+
+/**
+ * The apply validity range for `target` at `currentTime`, derived by the SDK
+ * exactly as the node derives it.
+ *
+ * Rejects with the SDK's `DaAttestationBuildError` itself (reason
+ * `validity_range_past_deadline`) once the attestation deadline has passed,
+ * so a caller can recognise that no later attempt for this header can land.
+ */
+export const daAttestationApplyValidityRange = async ({
+  target,
+  currentTime,
+}: {
+  readonly target: DaAttestationTarget;
+  readonly currentTime: bigint;
+}): Promise<DaAttestationApplyValidityRange> => {
+  const result = await Effect.runPromise(
+    SDK.daAttestationApplyValidityRangeProgram({
+      currentTime,
+      headerEndTime: target.stateQueueNode.header.endTime,
+    }).pipe(Effect.either),
+  );
+  if (Either.isLeft(result)) {
+    throw result.left;
+  }
+  return result.right;
 };
 
 export const addSignaturesToDaAttestationDatum = (

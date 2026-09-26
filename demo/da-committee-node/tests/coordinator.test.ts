@@ -497,6 +497,45 @@ describe("coordinator witness and candidate planning", () => {
     expect(addCalls).toBe(1);
   });
 
+  it("does not retry an apply whose attestation deadline has passed", async () => {
+    let applyCalls = 0;
+    const coordinator = new OnChainLifecycleCoordinator({
+      threshold: 2,
+      raceRecoveryRetryCount: 2,
+      raceRecoveryRetryDelayMs: 0,
+      chainReader: {
+        fetchDaAttestationCandidates: async () => [
+          candidateRecord({ attestationCount: 2, status: "threshold" }),
+        ],
+      },
+      submitter: {
+        initAttestation: async () => {
+          throw new Error("unexpected init");
+        },
+        addSignatures: async () => {
+          throw new Error("unexpected add");
+        },
+        applyAttestation: async () => {
+          applyCalls += 1;
+          throw new SDK.DaAttestationBuildError({
+            reason: "validity_range_past_deadline",
+            message: "DA attestation apply deadline has already elapsed",
+            cause: "current_time=2,deadline=1",
+          });
+        },
+      },
+    });
+    const record = signatureRecord();
+
+    await expect(coordinator.publishSignature(record)).resolves.toBe(
+      "post_failed",
+    );
+    expect(applyCalls).toBe(1);
+    expect(coordinator.lastPublishError(record)).toMatch(
+      /apply deadline has already elapsed/,
+    );
+  });
+
   it("fails publish when init never becomes visible", async () => {
     let initCalls = 0;
     const coordinator = new OnChainLifecycleCoordinator({

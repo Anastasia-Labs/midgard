@@ -173,6 +173,12 @@ export const reportAvailabilityScenario = (
 export const createAvailabilityFixture = async (
   payloadBytes = 14_021,
   descendantCount = 0,
+  /**
+   * Places the target header's end time this far after fixture start. Setup
+   * advances the emulator by several minutes, which can exceed the selected
+   * profile's DA attestation timeout; a lead keeps apply's deadline ahead.
+   */
+  headerEndTimeLeadMs = 0,
 ) => {
   const responder = generateEmulatorAccountFromPrivateKey({
     lovelace: 100_000_000_000n,
@@ -231,7 +237,7 @@ export const createAvailabilityFixture = async (
       depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
       startTime: BigInt(now - 1_000),
-      endTime: BigInt(now),
+      endTime: BigInt(now + headerEndTimeLeadMs),
       blockSlot: 0n,
       expectedNetworkId: 0n,
       minFeeA: 44n,

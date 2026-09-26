@@ -10,6 +10,8 @@ import { describe, expect, it } from "vitest";
 import {
   addSignaturesToDaAttestationDatum,
   buildAddSignaturesTx,
+  daAttestationApplyValidityRange,
+  type DaAttestationTarget,
 } from "../src/coordinator/tx-builders.js";
 import type { DaAttestationValidatorSet } from "../src/l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../src/l1/reference-scripts.js";
@@ -116,6 +118,67 @@ describe("DA attestation transaction builders", () => {
     expect(builder.completeOptions).toEqual([{ localUPLCEval: true }]);
   });
 });
+
+describe("DA attestation apply validity range", () => {
+  const HEADER_END_TIME = 1_800_000_000_000n;
+  const DEADLINE = HEADER_END_TIME + SDK.DA_ATTESTATION_TIMEOUT_MS;
+  const rangeAt = (currentTime: bigint) =>
+    daAttestationApplyValidityRange({
+      target: applyTarget(HEADER_END_TIME),
+      currentTime,
+    });
+
+  it("opens before the submitter's clock so a trailing L1 tip still admits it", async () => {
+    const currentTime = DEADLINE - SDK.MAX_VALIDITY_RANGE_LENGTH_MS * 2n;
+    await expect(rangeAt(currentTime)).resolves.toEqual({
+      validFrom: currentTime - SDK.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS,
+      validTo:
+        currentTime -
+        SDK.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS +
+        SDK.MAX_VALIDITY_RANGE_LENGTH_MS,
+    });
+    expect(SDK.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS).toBe(60_000n);
+  });
+
+  it.each([
+    [
+      "once the maximum range would close 1 ms past it",
+      DEADLINE -
+        SDK.MAX_VALIDITY_RANGE_LENGTH_MS +
+        SDK.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS +
+        1n,
+    ],
+    ["one millisecond before the deadline", DEADLINE - 1n],
+  ])("caps validTo at the attestation deadline %s", async (_, currentTime) => {
+    const range = await rangeAt(currentTime);
+    expect(range.validTo).toBe(DEADLINE);
+    expect(range.validFrom).toBeLessThan(currentTime);
+  });
+
+  it.each([
+    ["exactly at the deadline, leaving an empty window", DEADLINE],
+    ["after the deadline", DEADLINE + 1n],
+  ])(
+    "rejects with the SDK's typed past-deadline build error %s",
+    async (_, currentTime) => {
+      const error = await rangeAt(currentTime).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(error).toBeInstanceOf(SDK.DaAttestationBuildError);
+      expect(error).toMatchObject({
+        _tag: "DaAttestationBuildError",
+        reason: "validity_range_past_deadline",
+      });
+    },
+  );
+});
+
+const applyTarget = (headerEndTime: bigint): DaAttestationTarget =>
+  ({
+    headerHash: HEADER_HASH,
+    stateQueueNode: { header: { endTime: headerEndTime } },
+  }) as unknown as DaAttestationTarget;
 
 const HEADER_HASH = "01".repeat(28);
 

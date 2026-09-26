@@ -776,6 +776,55 @@ export const incompleteAddDaAttestationSignaturesTxProgram = (
       );
   });
 
+/**
+ * How far before the submitter's clock the DA apply validity range opens.
+ *
+ * The ledger checks the lower bound against the chain's slot (the mempool uses
+ * tip slot + 1), and the tip trails the wall clock by seconds on a live
+ * network. A lower bound at the submitter's clock is therefore routinely in
+ * the chain's future and the transaction is refused until a block lands,
+ * burning the attestation deadline. On-chain, apply only bounds the range from
+ * above, so opening it early costs nothing.
+ */
+export const DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS = 60_000n;
+
+/**
+ * The validity range for the DA apply transaction: it opens
+ * {@link DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS} before `currentTime` and
+ * closes at the earlier of the maximum range length and the attestation
+ * deadline, so `validTo` never exceeds the deadline.
+ *
+ * Fails with `validity_range_past_deadline` when no inclusion window remains,
+ * i.e. the deadline is at or before `currentTime`. That failure is terminal for
+ * the header: no later attempt can produce a range the validator accepts.
+ */
+export const daAttestationApplyValidityRangeProgram = ({
+  currentTime,
+  headerEndTime,
+}: {
+  readonly currentTime: bigint;
+  readonly headerEndTime: bigint;
+}): Effect.Effect<
+  { readonly validFrom: bigint; readonly validTo: bigint },
+  DaAttestationBuildError
+> =>
+  Effect.gen(function* () {
+    const deadline = headerEndTime + DA_ATTESTATION_TIMEOUT_MS;
+    if (currentTime >= deadline) {
+      return yield* failBuild(
+        "validity_range_past_deadline",
+        "DA attestation apply deadline has already elapsed",
+        `current_time=${currentTime.toString()},deadline=${deadline.toString()}`,
+      );
+    }
+    const validFrom = currentTime - DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS;
+    const maximumValidTo = validFrom + MAX_VALIDITY_RANGE_LENGTH_MS;
+    return {
+      validFrom,
+      validTo: maximumValidTo < deadline ? maximumValidTo : deadline,
+    };
+  });
+
 export const incompleteApplyDaAttestationToStateQueueTxProgram = (
   lucid: LucidEvolution,
   contracts: Pick<

@@ -511,6 +511,57 @@ describe("L1 submitter helpers", () => {
     expect(signCalls).toBe(0);
   });
 
+  it.each([
+    ["exactly at the deadline", 0n],
+    ["after the deadline", 1n],
+  ])(
+    "refuses apply %s with the typed build error before any further L1 read or submission",
+    async (_, elapsedMs) => {
+      const headerEndTime = 1_800_000_000_000n;
+      let signCalls = 0;
+      let refreshCalls = 0;
+      const submitter = new LucidDaAttestationSubmitter({
+        // Any L1 read past the state-queue lookup would throw on this Lucid.
+        lucid: {} as LucidEvolution,
+        contracts,
+        referenceScripts: {} as never,
+        availabilityParameters,
+        currentTime: () =>
+          headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS + elapsedMs,
+        refreshFundingUtxos: async () => {
+          refreshCalls += 1;
+        },
+        signSubmit: async () => {
+          signCalls += 1;
+          return "txhash";
+        },
+      });
+      const probe = submitter as unknown as SubmitterProbe;
+      probe.findStateQueueHeader = async () => ({
+        stateQueueNode: {
+          da_attestation: SDK.NO_DA_ATTESTATION,
+          header: { endTime: headerEndTime },
+        },
+      });
+
+      const error = await submitter
+        .applyAttestation({
+          record: { headerHash: "01".repeat(28) } as never,
+          candidate: { outRef: `${"02".repeat(32)}#0` } as never,
+        })
+        .then(
+          () => undefined,
+          (cause: unknown) => cause,
+        );
+      expect(error).toBeInstanceOf(SDK.DaAttestationBuildError);
+      expect(error).toMatchObject({
+        reason: "validity_range_past_deadline",
+      });
+      expect(signCalls).toBe(0);
+      expect(refreshCalls).toBe(0);
+    },
+  );
+
   it("rejects apply verification while the state-queue node stays unattested", async () => {
     const submitter = new LucidDaAttestationSubmitter({
       lucid: {} as LucidEvolution,
@@ -535,6 +586,7 @@ type SubmitterProbe = {
   findStateQueueHeader(headerHash: string): Promise<{
     readonly stateQueueNode: {
       readonly da_attestation: SDK.DaAvailabilityStateQueueStatus;
+      readonly header?: { readonly endTime: bigint };
     };
   }>;
   waitForApplied(headerHash: string): Promise<void>;

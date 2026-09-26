@@ -23,6 +23,7 @@ import {
   buildAddSignaturesTx,
   buildApplyAttestationTx,
   buildInitDaAttestationTx,
+  daAttestationApplyValidityRange,
   type DaAttestationTarget,
 } from "./tx-builders.js";
 
@@ -35,6 +36,12 @@ export type LucidDaAttestationSubmitterDeps = {
   readonly refreshFundingUtxos?: () => Promise<void>;
   readonly postSubmitVerificationRetryCount?: number;
   readonly postSubmitVerificationDelayMs?: number;
+  /**
+   * The submitter's clock in POSIX milliseconds, from which the apply validity
+   * range is derived. Defaults to Lucid's current slot, which on a live
+   * provider is the wall clock rather than the chain tip.
+   */
+  readonly currentTime?: () => bigint;
 };
 
 export class LucidDaAttestationSubmitter
@@ -43,6 +50,7 @@ export class LucidDaAttestationSubmitter
   private readonly deps: LucidDaAttestationSubmitterDeps & {
     readonly signSubmit: (tx: TxSignBuilder) => Promise<string>;
     readonly refreshFundingUtxos: () => Promise<void>;
+    readonly currentTime: () => bigint;
   };
 
   constructor(deps: LucidDaAttestationSubmitterDeps) {
@@ -55,6 +63,9 @@ export class LucidDaAttestationSubmitter
         (async () => {
           await refreshL1SubmitterPlainAdaUtxos(deps.lucid);
         }),
+      currentTime:
+        deps.currentTime ??
+        (() => BigInt(deps.lucid.slotToUnixTime(deps.lucid.currentSlot()))),
     };
   }
 
@@ -128,6 +139,13 @@ export class LucidDaAttestationSubmitter
     if (target.status === "already_attested") {
       return { status: "already_attested" };
     }
+    // Derived before any further L1 read: once the attestation deadline has
+    // passed this rejects with the SDK's `validity_range_past_deadline` build
+    // error, and nothing for this header can be built or submitted again.
+    const validityRange = await daAttestationApplyValidityRange({
+      target,
+      currentTime: this.deps.currentTime(),
+    });
     const attestation = await this.fetchCandidateUtxo(candidate);
     const daParams = await this.fetchDaParamsUtxo();
     const hubOracleRefInput = await Effect.runPromise(
@@ -147,6 +165,7 @@ export class LucidDaAttestationSubmitter
       daParamsDatum: daParams.datum,
       referenceScripts: this.deps.referenceScripts,
       hubOracleRefInput: hubOracleRefInput.utxo,
+      validityRange,
     });
     const txHash = await this.deps.signSubmit(tx);
     await this.waitForApplied(record.headerHash);
