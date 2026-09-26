@@ -48,9 +48,11 @@ completion, which is wider than this table.
   `node scripts/lib/worktree-identity.mjs` prints the checkout's identity.
 - **Devnet names and ports.** The phase 4 process devnet derives its compose
   project name and host ports the same way (see
-  `demo/midgard-node-tools/devnet/phase4-process/README.md`). The operator
-  compose files in `demo/midgard-node` fix their container names and host
-  ports instead, so only one of those stacks runs per machine.
+  `demo/midgard-node-tools/devnet/phase4-process/README.md`). So does the
+  operator stack in `demo/midgard-node` when it is run through
+  `demo/midgard-node/scripts/operator-compose.sh`; the main checkout keeps
+  project `midgard-node` and today's ports, and bare `docker compose` in a
+  linked worktree still takes them.
 - **Hooks.** `bash .githooks/install` makes every checkout run its own copy of
   `.githooks`. With `core.fileMode=false`, git neither shows that a hook lost
   its executable bit nor runs it; re-running the installer restores the bit.

@@ -31,15 +31,20 @@ probe.
    `run.env` (`require_run_dir` in
    `demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh`). Work
    only on a run directory you generated. [review]
-2. **Pick your own ports and run id.** On this branch the generator defaults
-   every run to Ogmios 2337, Kupo 2442 and Postgres 5544, and derives the
-   project name from the run directory's basename alone
-   (`demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh`). Two
-   worktrees with default settings collide. Set `MIDGARD_PHASE4_RUN_ID` and
-   all three `MIDGARD_PHASE4_*_PORT` variables explicitly. [review]
-3. **The demo-node stack binds host port 5433 for Postgres**
-   (`demo/midgard-node/docker-compose.yaml`), the same port as the test
-   Postgres from `scripts/start-test-postgres.sh`. Only one of them can run. [review]
+2. **Pick your own ports and run id.** The generator
+   (`demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh`)
+   keeps the main checkout on Ogmios 2337, Kupo 2442, Postgres 5544 and
+   project `midgard_phase4_process_<run id>`; a linked worktree gets
+   `midgard_phase4_process_<hash>_<run id>` and ports shifted by its own
+   offset, and it prints both. Two runs in one checkout still collide: set
+   `MIDGARD_PHASE4_RUN_ID` and all three `MIDGARD_PHASE4_*_PORT` variables. [review]
+3. **The demo-node stack binds host port 5433 for Postgres in the main
+   checkout** (`demo/midgard-node/docker-compose.yaml`), the same port as the
+   test Postgres from `scripts/start-test-postgres.sh`; only one of them can
+   run there. In a linked worktree, run the stack through
+   `demo/midgard-node/scripts/operator-compose.sh`, which gives it its own
+   project, container names and host ports; bare `docker compose` there takes
+   the main checkout's. [review]
 4. **Wiping local state means a full on-chain redeploy.** Never delete a
    Postgres volume, `db/`, or part of a run directory while keeping the chain
    state it belongs to. Follow [state-reset](../../../docs/agents/state-reset.md);
@@ -138,10 +143,3 @@ something else started.
    its L1 view writes `{"event":"l1_view_unavailable_exit",…}` and exits 70,
    which its supervisor restarts by design.
 4. Decide relaunch or redeploy from the table above before restarting.
-
-## Pending change
-
-Commit `86d66c6f8` ("Give each worktree's phase4 devnet its own project and
-ports") is not on this branch as of 2026-09-25. When it lands, the phase4
-generator gives each linked worktree its own project name and port offset and
-prints them; rule 2 above then becomes a default rather than a manual step.

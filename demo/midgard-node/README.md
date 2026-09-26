@@ -105,6 +105,12 @@ Cardano L1 (cardano-node bootstrapped from a certified Mithril snapshot, Ogmios,
 Kupo). The base file alone starts no L1, and the node accepts only a `Kupmios`
 provider, so every command below uses both files.
 
+The stack is compose project `midgard-node` with fixed host ports. To run a
+second one from a linked git worktree, replace `docker compose` with
+`scripts/operator-compose.sh`, which gives that worktree its own project name,
+container names and host ports (`scripts/operator-compose.sh --print-env` lists
+them) and changes nothing in the main checkout.
+
 Bringing up a node is three phases: build, one-time protocol bring-up, run.
 `listen` refuses to start until the bring-up artifacts exist.
 

@@ -10,6 +10,7 @@ on:
       - "docs/consensus-profile-v1.md"
       - "docs/spec/**"
       - "scripts/ci/**"
+      - "scripts/lib/worktree-identity.mjs"
       - ".github/actions/**"
       - ".github/workflows/midgard-node-ci.yml"
   pull_request:
@@ -20,6 +21,7 @@ on:
       - "docs/consensus-profile-v1.md"
       - "docs/spec/**"
       - "scripts/ci/**"
+      - "scripts/lib/worktree-identity.mjs"
       - ".github/actions/**"
       - ".github/workflows/midgard-node-ci.yml"
   workflow_dispatch:
@@ -199,6 +201,11 @@ jobs:
           render -f docker-compose.yaml -f docker-compose.kupmios.yaml -f docker-compose.benchmark.yaml \
             --profile observability --profile load-generator-cohosted
           render -f docker-compose.yaml --profile test
+      # The main checkout must keep today's project name, container names and
+      # host ports; a linked worktree must get its own. Renders the real files.
+      - name: Test the operator compose worktree derivation
+        if: ${{ !cancelled() }}
+        run: node --test demo/midgard-node/scripts/operator-compose.test.mjs
       - name: Render the phase4 devnet compose
         if: ${{ !cancelled() }}
         working-directory: demo/midgard-node-tools/devnet/phase4-process

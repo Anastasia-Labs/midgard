@@ -33,6 +33,9 @@ Sources:
 - Watcher: the healthchecks in `demo/midgard-watcher/compose.yaml`.
 - Kupo and Ogmios: `demo/midgard-node/docker-compose.kupmios.yaml` and
   `demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh`.
+- Demo-stack host ports in the table are the main checkout's. A linked
+  worktree running the stack through `demo/midgard-node/scripts/operator-compose.sh`
+  publishes every one of them elsewhere; `--print-env` lists its ports.
 - Acceptance ports: `demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts`.
 
 ### What each healthcheck really proves
