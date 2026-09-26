@@ -115,6 +115,14 @@ export const decodeLedgerSnapshotOutput = (
   });
 };
 
+/** Ogmios has no address index, so every address-scope ledger query walks the
+ * whole UTxO set, and concurrent scans by other clients of the same node
+ * slow each other down. The first-start image and the exact-point recovery
+ * captures get this scan deadline instead of the per-request ChainSync
+ * timeout. The lease keeps renewing meanwhile: the startup health loop on
+ * first start, the follower's heartbeats during recovery. */
+export const LEDGER_SCAN_TIMEOUT_MS = 15 * 60_000;
+
 /** One acquired Ogmios ledger state covers all requested list, retention and
  * deployment addresses. No Kupo lookup or unpinned datum fetch is mixed in.
  * See https://ogmios.dev/mini-protocols/local-state-query/ . */

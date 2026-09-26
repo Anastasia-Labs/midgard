@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
@@ -24,6 +25,7 @@ import {
   readBoundRecoveryLedgerSnapshot,
 } from "../l1-event-history-source.js";
 import type { HistoryTransportOptions } from "../l1-event-history-transport.js";
+import { LEDGER_SCAN_TIMEOUT_MS } from "../l1-ledger-snapshot.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
@@ -258,13 +260,17 @@ export const prepareSignedHeaderRecovery = (input: {
       try: (signal) =>
         readBoundRecoveryLedgerSnapshot({
           ...input.transport,
+          timeoutMs: LEDGER_SCAN_TIMEOUT_MS,
           binding: input.binding,
           addresses: [input.contracts.stateQueue.spendingScriptAddress],
           at: checkpoint.head,
           signal,
         }),
       catch: (cause) =>
-        failure("Exact-point recovery queue capture failed", cause),
+        failure(
+          `Exact-point recovery queue capture failed: ${formatUnknownError(cause, { includeCause: true })}`,
+          cause,
+        ),
     });
     yield* preparation.assertCurrent;
     const target = yield* validateRecoveryStateQueue({
