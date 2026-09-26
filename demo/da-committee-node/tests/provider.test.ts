@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { appendFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assertOgmiosNetworkMagic,
   type CanonicalChainPoint,
+  type ChainSyncCursorStore,
   type ChainSyncEventBatch,
   fetchKupoCheckpoint,
   FileChainSyncConsumerCursorStore,
@@ -642,6 +643,267 @@ describe("L1 provider adapters", () => {
         { slot: 1, id: "aa".repeat(32) },
         "origin",
       ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("resumes after a journal append whose cursor metadata failed without re-recording the block", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const fingerprint = "11".repeat(32);
+    const node = fakeOgmiosNode([
+      { slot: 1, id: "aa".repeat(32) },
+      { slot: 2, id: "bb".repeat(32) },
+      { slot: 3, id: "cc".repeat(32) },
+      { slot: 4, id: "dd".repeat(32) },
+    ]);
+    let inner = new FileChainSyncCursorStore(cursorPath, fingerprint);
+    const point1 = externalPoint("chain-sync:node-a", 1, "aa");
+    await inner.append(
+      { direction: "roll_forward", point: point1 },
+      { sequence: 0, point: point1, rollbackGeneration: 0 },
+    );
+    let failures = 0;
+    const store: ChainSyncCursorStore = {
+      load: () => inner.load(),
+      replay: (afterSequence) => inner.replay(afterSequence),
+      intersectionPoints: (limit) => inner.intersectionPoints(limit),
+      append: async (event, cursor) => {
+        if (cursor.sequence !== 1 || failures > 0) {
+          await inner.append(event, cursor);
+          return;
+        }
+        failures += 1;
+        // The journal line reaches disk, then the cursor metadata write fails
+        // (ENOSPC): the metadata stays at the previous cursor and the store
+        // forgets its cache, exactly as FileChainSyncCursorStore does.
+        const previousMetadata = await readFile(cursorPath, "utf8");
+        await inner.append(event, cursor);
+        await writeFile(cursorPath, previousMetadata);
+        inner = new FileChainSyncCursorStore(cursorPath, fingerprint);
+        throw new Error("ENOSPC: no space left on device, write");
+      },
+    };
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        "Preview",
+        new OgmiosChainSyncEventSource(
+          "ws://ogmios.local",
+          "Preview",
+          "node-a",
+        ),
+        store,
+      );
+      await expect(authority.synchronizeToTip()).rejects.toThrow(/ENOSPC/u);
+      await expect(authority.synchronizeToTip()).resolves.toMatchObject({
+        slot: 4,
+        blockHash: "dd".repeat(32),
+      });
+      await expect(authority.currentCursor()).resolves.toMatchObject({
+        sequence: 3,
+        point: { slot: 4 },
+      });
+      expect(
+        (await authority.replay(-1)).map(({ direction, point }) => [
+          direction,
+          point.slot,
+        ]),
+      ).toEqual([
+        ["roll_forward", 1],
+        ["roll_forward", 2],
+        ["roll_forward", 3],
+        ["roll_forward", 4],
+      ]);
+      // The session already stood at the recovered cursor: no re-intersection.
+      expect(node.sockets()).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("re-delivers a block whose journal append failed before reaching disk", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const node = fakeOgmiosNode([
+      { slot: 1, id: "aa".repeat(32) },
+      { slot: 2, id: "bb".repeat(32) },
+      { slot: 3, id: "cc".repeat(32) },
+      { slot: 4, id: "dd".repeat(32) },
+    ]);
+    const inner = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    const point1 = externalPoint("chain-sync:node-a", 1, "aa");
+    await inner.append(
+      { direction: "roll_forward", point: point1 },
+      { sequence: 0, point: point1, rollbackGeneration: 0 },
+    );
+    let failures = 0;
+    const store: ChainSyncCursorStore = {
+      load: () => inner.load(),
+      replay: (afterSequence) => inner.replay(afterSequence),
+      intersectionPoints: (limit) => inner.intersectionPoints(limit),
+      append: async (event, cursor) => {
+        if (cursor.sequence === 1 && failures === 0) {
+          failures += 1;
+          throw new Error("ENOSPC: no space left on device, write");
+        }
+        await inner.append(event, cursor);
+      },
+    };
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        "Preview",
+        new OgmiosChainSyncEventSource(
+          "ws://ogmios.local",
+          "Preview",
+          "node-a",
+        ),
+        store,
+      );
+      await expect(authority.synchronizeToTip()).rejects.toThrow(/ENOSPC/u);
+      await expect(authority.synchronizeToTip()).resolves.toMatchObject({
+        slot: 4,
+        blockHash: "dd".repeat(32),
+      });
+      expect(
+        (await authority.replay(-1)).map(({ direction, point }) => [
+          direction,
+          point.slot,
+        ]),
+      ).toEqual([
+        ["roll_forward", 1],
+        ["roll_forward", 2],
+        ["roll_forward", 3],
+        ["roll_forward", 4],
+      ]);
+      // The session had already delivered block 2, so it re-intersected at the
+      // durable cursor instead of continuing past the lost block.
+      expect(node.sockets()).toBe(2);
+      expect(node.intersections()[1]![0]).toEqual({
+        slot: 1,
+        id: "aa".repeat(32),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("re-intersects Ogmios at a caller cursor that diverges from its delivered point", async () => {
+    const node = fakeOgmiosNode([
+      { slot: 1, id: "aa".repeat(32) },
+      { slot: 2, id: "bb".repeat(32) },
+      { slot: 3, id: "cc".repeat(32) },
+    ]);
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const point1 = externalPoint("chain-sync:node-a", 1, "aa");
+      const point2 = externalPoint("chain-sync:node-a", 2, "bb");
+      const source = new OgmiosChainSyncEventSource(
+        "ws://ogmios.local",
+        "Preview",
+        "node-a",
+      );
+      const block2 = {
+        event: { direction: "roll_forward", point: { slot: 2 } },
+      };
+      await expect(
+        source.next({ sequence: 0, point: point1, rollbackGeneration: 0 }),
+      ).resolves.toMatchObject(block2);
+      // The caller did not record block 2: the source must hand it back, not
+      // continue to block 3 and not surface the handshake rollback.
+      await expect(
+        source.next({ sequence: 0, point: point1, rollbackGeneration: 0 }),
+      ).resolves.toMatchObject(block2);
+      expect(node.sockets()).toBe(2);
+      // A caller at the delivered point continues the same session.
+      await expect(
+        source.next({ sequence: 1, point: point2, rollbackGeneration: 0 }),
+      ).resolves.toMatchObject({
+        event: { direction: "roll_forward", point: { slot: 3 } },
+      });
+      expect(node.sockets()).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("re-delivers an unrecorded intersection rollback once across a forced reconnect", async () => {
+    const node = fakeOgmiosNode([
+      { slot: 1, id: "aa".repeat(32) },
+      { slot: 2, id: "ee".repeat(32) },
+      { slot: 3, id: "ff".repeat(32) },
+    ]);
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const point1 = externalPoint("chain-sync:node-a", 1, "aa");
+      const orphan2 = externalPoint("chain-sync:node-a", 2, "bb");
+      const source = new OgmiosChainSyncEventSource(
+        "ws://ogmios.local",
+        "Preview",
+        "node-a",
+      );
+      const orphanCursor = {
+        sequence: 1,
+        point: orphan2,
+        rollbackGeneration: 0,
+      };
+      const rollback = {
+        event: { direction: "roll_backward", point: { slot: 1 } },
+      };
+      await expect(
+        source.next(orphanCursor, [orphan2, point1]),
+      ).resolves.toMatchObject(rollback);
+      // The rollback was not recorded: the orphaned cursor is handed back.
+      await expect(
+        source.next(orphanCursor, [orphan2, point1]),
+      ).resolves.toMatchObject(rollback);
+      expect(node.sockets()).toBe(2);
+      // Once recorded, the handshake echo of the intersection is suppressed.
+      await expect(
+        source.next({ sequence: 2, point: point1, rollbackGeneration: 1 }, [
+          point1,
+          orphan2,
+        ]),
+      ).resolves.toMatchObject({
+        event: {
+          direction: "roll_forward",
+          point: { slot: 2, blockHash: "ee".repeat(32) },
+        },
+      });
+      expect(node.sockets()).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps one Ogmios session while its caller idles at the tip", async () => {
+    const node = fakeOgmiosNode([
+      { slot: 1, id: "aa".repeat(32) },
+      { slot: 2, id: "bb".repeat(32) },
+    ]);
+    vi.stubGlobal("WebSocket", node.WebSocket);
+    try {
+      const atTip = {
+        sequence: 1,
+        point: externalPoint("chain-sync:node-a", 2, "bb"),
+        rollbackGeneration: 0,
+      };
+      const source = new OgmiosChainSyncEventSource(
+        "ws://ogmios.local",
+        "Preview",
+        "node-a",
+      );
+      await expect(source.next(atTip)).resolves.toEqual({
+        tip: expect.objectContaining({ slot: 2 }),
+      });
+      await expect(source.next(atTip)).resolves.toEqual({
+        tip: expect.objectContaining({ slot: 2 }),
+      });
+      expect(node.sockets()).toBe(1);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -2060,6 +2322,90 @@ const externalPoint = (
   providerSource,
   observedAt: "2026-07-28T00:00:00.000Z",
 });
+
+type FakeOgmiosBlock = { readonly slot: number; readonly id: string };
+
+/**
+ * A stateful Ogmios chain-sync double over a fixed chain: each socket keeps
+ * its own read pointer, set only by findIntersection (which also queues the
+ * handshake rollback echo) and advanced by every nextBlock it answers.
+ */
+const fakeOgmiosNode = (chain: readonly FakeOgmiosBlock[]) => {
+  let sockets = 0;
+  const intersections: unknown[][] = [];
+  const tip = chain.at(-1)!;
+  class FakeOgmiosWebSocket {
+    onopen: ((event: unknown) => void) | null = null;
+    onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+    onerror: ((event: unknown) => void) | null = null;
+    onclose: ((event: unknown) => void) | null = null;
+    private readPointer = -1;
+    private handshakeEcho: FakeOgmiosBlock | "origin" | undefined;
+
+    constructor(_url: string) {
+      sockets += 1;
+      queueMicrotask(() => this.onopen?.({}));
+    }
+
+    send(raw: string): void {
+      const request = JSON.parse(raw) as {
+        readonly id: string;
+        readonly method: string;
+        readonly params: Record<string, unknown>;
+      };
+      let result: unknown;
+      if (request.method === "queryNetwork/genesisConfiguration") {
+        result = { networkMagic: 2 };
+      } else if (request.method === "queryNetwork/tip") {
+        result = tip;
+      } else if (request.method === "findIntersection") {
+        const points = request.params.points as readonly (
+          | FakeOgmiosBlock
+          | "origin"
+        )[];
+        intersections.push([...points]);
+        this.readPointer = -1;
+        this.handshakeEcho = "origin";
+        for (const point of points) {
+          if (point === "origin") {
+            break;
+          }
+          const index = chain.findIndex(
+            ({ slot, id }) => slot === point.slot && id === point.id,
+          );
+          if (index >= 0) {
+            this.readPointer = index;
+            this.handshakeEcho = chain[index]!;
+            break;
+          }
+        }
+        result = { intersection: this.handshakeEcho, tip };
+      } else if (this.handshakeEcho !== undefined) {
+        result = { direction: "backward", point: this.handshakeEcho, tip };
+        this.handshakeEcho = undefined;
+      } else {
+        this.readPointer += 1;
+        const block = chain[this.readPointer];
+        if (block === undefined) {
+          throw new Error("fake Ogmios node has no block past its tip");
+        }
+        result = { direction: "forward", block, tip };
+      }
+      queueMicrotask(() =>
+        this.onmessage?.({
+          data: JSON.stringify({ jsonrpc: "2.0", id: request.id, result }),
+        }),
+      );
+    }
+
+    close(): void {}
+  }
+  return {
+    WebSocket: FakeOgmiosWebSocket,
+    sockets: () => sockets,
+    intersections: () => intersections,
+  };
+};
 
 const localNodeSource = {
   sourceMode: "local_node",

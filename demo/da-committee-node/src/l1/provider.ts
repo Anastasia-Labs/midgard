@@ -467,7 +467,17 @@ export class LocalNodeChainAuthority {
           point: batch.event.point,
           rollbackGeneration,
         };
-        await this.store.append(batch.event, cursor);
+        try {
+          await this.store.append(batch.event, cursor);
+        } catch (error) {
+          // The append may or may not have reached the durable journal (a
+          // failed write is transient, not an integrity fault). Forget the
+          // cached cursor so the next sync resumes from whatever the store
+          // recovers; the event source re-intersects from that cursor.
+          this.cursor = undefined;
+          this.loaded = false;
+          throw error;
+        }
         this.cursor = cursor;
         if (sameCanonicalPoint(batch.event.point, batch.tip)) {
           result = cursor.point;
@@ -2475,6 +2485,11 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
   let session: OgmiosRpcSession | undefined;
   let sessionUrl: string | undefined;
   let intersection: CanonicalChainPoint | undefined;
+  // The caller position this session is synchronized with: the cursor it
+  // intersected from, then each event point it hands back. A caller that did
+  // not record a delivered event (a failed durable append, say) passes an older
+  // cursor; continuing the session would then skip the events it lost.
+  let delivered: CanonicalChainPoint | undefined;
   let pendingRollback: ChainSyncEventBatch | undefined;
   let suppressHandshakeRollback = false;
 
@@ -2483,8 +2498,16 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
     session = undefined;
     sessionUrl = undefined;
     intersection = undefined;
+    delivered = undefined;
     pendingRollback = undefined;
     suppressHandshakeRollback = false;
+  };
+
+  const deliver = (batch: ChainSyncEventBatch): ChainSyncEventBatch => {
+    if (batch.event !== undefined) {
+      delivered = batch.event.point;
+    }
+    return batch;
   };
 
   return async (
@@ -2497,7 +2520,15 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
     const source = `chain-sync:${authorityNodeId}`;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        if (session === undefined || sessionUrl !== ogmiosUrl) {
+        if (
+          session === undefined ||
+          sessionUrl !== ogmiosUrl ||
+          cursor === undefined ||
+          delivered === undefined ||
+          !sameCanonicalPoint(cursor, delivered)
+        ) {
+          // Only a caller at the session's delivered point may continue it;
+          // any other cursor re-intersects so no event is skipped or repeated.
           disconnect();
           session = await OgmiosRpcSession.open(ogmiosUrl);
           sessionUrl = ogmiosUrl;
@@ -2566,6 +2597,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
             source,
             "findIntersection intersection",
           );
+          delivered = cursor;
           suppressHandshakeRollback = true;
           if (cursor === undefined) {
             if (
@@ -2577,10 +2609,10 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
                 "Ogmios bootstrap tip left the canonical chain before intersection; retrying from a fresh node-derived tip",
               );
             }
-            return {
+            return deliver({
               event: { direction: "roll_forward", point: bootstrapTip },
               tip,
-            };
+            });
           }
           if (cursor !== undefined && intersection === undefined) {
             throw new L1SourceIntegrityError(
@@ -2600,7 +2632,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
           if (pendingRollback !== undefined) {
             const result = pendingRollback;
             pendingRollback = undefined;
-            return result;
+            return deliver(result);
           }
           if (cursor !== undefined && sameCanonicalPoint(cursor, tip)) {
             return { tip };
@@ -2628,7 +2660,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
           if (direction === "forward") {
             suppressHandshakeRollback = false;
             const block = getRecord(nextResult.block, "nextBlock block");
-            return {
+            return deliver({
               event: {
                 direction: "roll_forward",
                 point: parseOgmiosPoint(
@@ -2639,7 +2671,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
                 ),
               },
               tip,
-            };
+            });
           }
           if (direction === "backward") {
             const point = parseOgmiosPointOrOrigin(
@@ -2674,10 +2706,10 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
               continue;
             }
             suppressHandshakeRollback = false;
-            return {
+            return deliver({
               event: { direction: "roll_backward", point },
               tip,
-            };
+            });
           }
           throw new Error("Ogmios nextBlock returned an unsupported direction");
         }
