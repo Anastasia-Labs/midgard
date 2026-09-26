@@ -20,6 +20,10 @@ import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
+import {
+  prepareStateQueueCorrectionRewind,
+  stateQueueCorrectionRewindDisposition,
+} from "./state-queue-correction-rewind.js";
 import { WriteBehind } from "./write-behind.js";
 
 type OwnerOptions<E, R> = Parameters<typeof makeEventHistoryOwner<E, R>>[0];
@@ -61,13 +65,35 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         }),
     });
     const prepareCompletion = input.prepareCompletion;
+    // Architecture G is the only engine whose ledger root is a promoted native
+    // owner: a correction that removes a committed block rewinds it through
+    // this owner's recovery. Other engines keep the correction fiber's plain
+    // reinclusion producer.
+    const rewindAuthority =
+      config.MPF_ENGINE === "architecture_g" &&
+      identity.manifestId !== undefined &&
+      identity.manifest !== undefined
+        ? {
+            manifestId: identity.manifestId,
+            stateQueuePolicyId: contracts.stateQueue.policyId,
+            requiredFinalityDepth: BigInt(
+              identity.manifest.l1Finality.confirmationDepth,
+            ),
+          }
+        : undefined;
     return yield* makeEventHistoryOwner<
       | E
       | DatabaseError
-      | Effect.Effect.Error<ReturnType<typeof prepareSignedHeaderRecovery>>,
+      | Effect.Effect.Error<ReturnType<typeof prepareSignedHeaderRecovery>>
+      | Effect.Effect.Error<
+          ReturnType<typeof prepareStateQueueCorrectionRewind>
+        >,
       | R
       | SqlClient.SqlClient
       | Effect.Effect.Context<ReturnType<typeof prepareSignedHeaderRecovery>>
+      | Effect.Effect.Context<
+          ReturnType<typeof prepareStateQueueCorrectionRewind>
+        >
     >({
       ...input,
       prepareCompletion:
@@ -87,16 +113,33 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                 cause: undefined,
               }),
             )
-          : prepareSignedHeaderRecovery({
-              binding,
-              checkpoint,
-              preparation,
-              transport: input.transport,
-              contracts,
-              config,
-              confirmationDepth: identity.manifest.l1Finality.confirmationDepth,
-              slotToUnixTime: lucid.api.slotToUnixTime,
-            }),
+          : // A retained or owed correction rewind runs first: it resolves
+            // the removed blocks' journals, and a prepared plan of either kind
+            // must be applied before another can be prepared.
+            (rewindAuthority === undefined
+              ? Effect.void
+              : prepareStateQueueCorrectionRewind({
+                  bindingDigest: binding.digest,
+                  checkpoint,
+                  preparation,
+                  config,
+                  authority: rewindAuthority,
+                })
+            ).pipe(
+              Effect.zipRight(
+                prepareSignedHeaderRecovery({
+                  binding,
+                  checkpoint,
+                  preparation,
+                  transport: input.transport,
+                  contracts,
+                  config,
+                  confirmationDepth:
+                    identity.manifest.l1Finality.confirmationDepth,
+                  slotToUnixTime: lucid.api.slotToUnixTime,
+                }),
+              ),
+            ),
       binding,
       histories,
       cache,
@@ -111,6 +154,11 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         Effect.gen(function* () {
           const pending = yield* pendingHistoryLedgerDisposition(change);
           if (pending !== undefined) return pending;
+          if (rewindAuthority !== undefined) {
+            const rewind =
+              yield* stateQueueCorrectionRewindDisposition(rewindAuthority);
+            if (rewind !== undefined) return rewind;
+          }
           yield* materializeCanonicalHistory(change, config.NETWORK);
           const { reconciled } = yield* reconcileDepositProjection(
             new Date(lucid.api.slotToUnixTime(change.after.head.slot)),

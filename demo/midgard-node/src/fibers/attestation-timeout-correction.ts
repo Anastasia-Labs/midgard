@@ -27,6 +27,7 @@ import {
 import { runHistoryProducer } from "../services/event-history-producer.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
 import {
+  authorizeStateQueueCorrectionReinclusion,
   ContractDeploymentIdentity,
   createDatabaseStateQueueCorrectionObserverStore,
   Database,
@@ -61,6 +62,14 @@ const TIMEOUT_CORRECTION_LEASE_HOLDER = "attestation_timeout_removal";
  * is spendable only while it is assigned to a header), so the producer that
  * committed the change publishes a full validation-cache reload before it
  * releases its registration, the way every ledger mutator publishes its delta.
+ *
+ * Under Architecture G a removed block this node committed has already moved
+ * the native ledger root, so its reinclusion is a rewind, not a forward
+ * write: the fiber only admits the correction (the observer persists it) and
+ * the history owner's recovery rewinds the native root and reincludes the
+ * payloads (see state-queue-correction-rewind). The admission needs no
+ * producer, so a gate the owner closed for an earlier removal of the same
+ * suffix never blocks admitting the later one.
  */
 export const reconcileStateQueueCorrections = ({
   source,
@@ -69,6 +78,7 @@ export const reconcileStateQueueCorrections = ({
   requiredFinalityDepth,
   deploymentManifest,
   ledgerDeltaLogMax,
+  rewindThroughHistoryOwner,
 }: {
   readonly source: StateQueueCorrectionObserverSource;
   readonly deploymentIdentityDigest: string;
@@ -76,6 +86,8 @@ export const reconcileStateQueueCorrections = ({
   readonly requiredFinalityDepth: bigint;
   readonly deploymentManifest: unknown;
   readonly ledgerDeltaLogMax: number;
+  /** Architecture G: admit only; the history owner rewinds and reincludes. */
+  readonly rewindThroughHistoryOwner: boolean;
 }): Effect.Effect<
   StateQueueCorrectionObserverResult,
   unknown,
@@ -109,6 +121,11 @@ export const reconcileStateQueueCorrections = ({
             deploymentManifest,
           }),
           reinclude: async (transition) => {
+            if (rewindThroughHistoryOwner) {
+              // Refuse an unauthorized transition before the observer admits it.
+              authorizeStateQueueCorrectionReinclusion(transition, authority);
+              return;
+            }
             await run(
               Effect.suspend(() =>
                 reincludeFinalizedStateQueueCorrectionTransition(
@@ -255,6 +272,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       requiredFinalityDepth: BigInt(manifestFinalityDepth),
       deploymentManifest: deploymentIdentity.manifest,
       ledgerDeltaLogMax: nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+      rewindThroughHistoryOwner: nodeConfig.MPF_ENGINE === "architecture_g",
     });
     if (
       observerResult.admittedTransactionHashes.length > 0 ||

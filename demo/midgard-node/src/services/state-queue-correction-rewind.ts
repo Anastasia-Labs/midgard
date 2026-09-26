@@ -66,7 +66,9 @@ const observerDocument = (sql: SqlClient.SqlClient) => sql`
 
 /** Headers removed by an admitted correction whose local journal was never
  * resolved. Cheap enough for every forward append: one indexed join. */
-const unresolvedRemovedHeaders = (authority: StateQueueCorrectionRewindAuthority) =>
+const unresolvedRemovedHeaders = (
+  authority: StateQueueCorrectionRewindAuthority,
+) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ header_hash: Buffer }>`
@@ -216,11 +218,7 @@ const chainIdentity = (chain: readonly Pending.Record[]) =>
 const validateChain = (
   chain: readonly ChainMember[],
   manifestId: string,
-): Effect.Effect<
-  Obligation,
-  DatabaseError,
-  SqlClient.SqlClient
-> =>
+): Effect.Effect<Obligation, DatabaseError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     for (let index = 0; index < chain.length; index += 1) {
       const { record } = chain[index]!;
@@ -287,8 +285,7 @@ const loadObligation = (authority: StateQueueCorrectionRewindAuthority) =>
     const unresolved = yield* unresolvedRemovedHeaders(authority);
     if (unresolved.length === 0) return { kind: "none" } satisfies Obligation;
     const admitted = yield* admittedRemovals(authority);
-    if (admitted.kind === "blocked")
-      return admitted satisfies Obligation;
+    if (admitted.kind === "blocked") return admitted satisfies Obligation;
     const owed = new Map<string, ChainMember>();
     for (const header of unresolved) {
       const digest = admitted.removals.get(header);
@@ -381,7 +378,8 @@ const loadRetainedChain = (
         ),
       );
     if (
-      chainIdentity(chain.map(({ record }) => record)) !== intent.journalDigest ||
+      chainIdentity(chain.map(({ record }) => record)) !==
+        intent.journalDigest ||
       chain[0]!.record[C.BASE_UTXOS_ROOT] !== intent.targetRoot
     )
       return yield* Effect.fail(

@@ -205,12 +205,18 @@ describe("native canonical root recovery", () => {
 
   it("refuses an unavailable target closure and leaves the current owner usable", async () => {
     const { service, options, plan } = await fixture();
-    await expect(
-      service.restoreCanonicalRoot({
-        ...plan,
-        targetRoot: Buffer.alloc(32, 99).toString("hex"),
-      }),
-    ).rejects.toThrow(/missing record/);
+    const targetRoot = Buffer.alloc(32, 99).toString("hex");
+    const refusal = await service
+      .restoreCanonicalRoot({ ...plan, targetRoot })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(Error);
+    expect((refusal as Error).message).toBe(
+      `Native MPF canonical recovery target root ${targetRoot} is not retained in full; refusing to restore`,
+    );
+    expect(String((refusal as Error).cause)).toMatch(/missing record/);
     expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
     const generation = await service.fork(plan.expectedRoot);
     await service.discard(generation);
