@@ -131,14 +131,20 @@ const git = (root, args) => {
 export const trackedFiles = (root) =>
   new Set(git(root, ["ls-files", "-z"]).split("\0").filter(Boolean));
 
+// Generated from a registry that is itself the enforcement: every entry in
+// required-checks.md is a check preflight runs, and `--check-docs` keeps the
+// file equal to the registry. Tagging each line would restate that.
+export const GENERATED_FILES = new Set(["docs/agents/required-checks.md"]);
+
 export const agentFacingFiles = (tracked) =>
   [...tracked]
     .filter(
       (path) =>
-        path === "AGENTS.md" ||
-        path.endsWith("/AGENTS.md") ||
-        /^docs\/agents\/[^/]+\.md$/u.test(path) ||
-        /^\.agents\/skills\/[^/]+\/SKILL\.md$/u.test(path),
+        !GENERATED_FILES.has(path) &&
+        (path === "AGENTS.md" ||
+          path.endsWith("/AGENTS.md") ||
+          /^docs\/agents\/[^/]+\.md$/u.test(path) ||
+          /^\.agents\/skills\/[^/]+\/SKILL\.md$/u.test(path)),
     )
     .sort();
 

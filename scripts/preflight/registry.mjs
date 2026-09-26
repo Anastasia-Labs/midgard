@@ -46,8 +46,6 @@ import {
 export const PENDING_SIBLING_PATHS = [
   "scripts/ci/lint-workflows.mjs",
   "scripts/ci/workflow-triggers.test.mjs",
-  "scripts/agents/check-doc-links.mjs",
-  "scripts/agents/check-enforcement-tags.mjs",
 ];
 
 // A change to any of these can move the result of every check, so it selects

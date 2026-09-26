@@ -609,7 +609,7 @@ Postgres-backed test suites (midgard-node, midgard-node-tools) of the touched pa
 
 When CI fails on something preflight did not select, append one JSON object
 per line to `scripts/preflight/misses.jsonl` (create it on the first miss; never rewrite
-earlier lines):
+earlier lines): <!-- doc-links:future -->
 
 ```text
 {"date":"2026-09-25","ciRun":"<url>","commit":"<sha>","ciCheck":"<workflow / step>","changedPaths":["<path>"],"preflightRan":["<check id>"],"why":"<why selection missed it>","remedy":"<trigger or full-run change, and the commit that made it>"}
