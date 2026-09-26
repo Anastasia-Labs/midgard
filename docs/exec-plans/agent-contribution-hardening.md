@@ -244,7 +244,7 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
   - **From:** phrocs `SocketPathFor` and the `bin/sandbox` port allocation.
 - [ ] **W2.12 Derive the compose project name and host ports from the worktree
       path**, so parallel devnets don't collide. (S)
-- [ ] **W2.13 A `doctor` command.** A few targeted checks, each printing an exact
+- [x] **W2.13 A `doctor` command.** A few targeted checks, each printing an exact
       fix. (S–M)
   - **Checks:**
     - pinned Aiken on PATH or in `MIDGARD_AIKEN_BIN`;
@@ -255,15 +255,25 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
     - pnpm and Node versions.
   - **Exit codes:** distinguish "check failed" from "could not check".
   - **From:** the `hogli doctor` remediation strings. Leave its 3.8k lines.
+  - **Done:** `scripts/doctor.mjs` (reuses `scripts/preflight/probes.mjs`).
+    Exit 0 ok, 1 failed, 3 could not check. The hooks check follows
+    `git rev-parse --git-path hooks` and every symlink, and fails any hook git
+    would run (and any chained `<hook>.local`) that is not executable, with
+    `chmod +x <path>`. Node below the engines floor fails; a version other
+    than `demo/.nvmrc` warns. sdk/validation `dist` freshness is a timestamp
+    check; only core has a source digest.
 - [ ] **W2.14 A tracked script to build the Aiken fork**, called by both
       workflows and by local setup. Today the recipe exists only inside
       `aiken-ci.yml`. (S)
-- [ ] **W2.15 A tracked SessionStart hook in `.claude/settings.json`.** (S)
+- [x] **W2.15 A tracked SessionStart hook in `.claude/settings.json`.** (S)
   - It runs `doctor` in report-only mode, starts the durable test Postgres
     (`scripts/start-test-postgres.sh`), and states the blueprint stamp's
     condition.
   - **From:** `setup-cloud.sh`, which derives toolchain versions from the
     repository's pins.
+  - **Done, narrowed:** the hook only runs `doctor --report-only`, which never
+    fails and prints the Postgres start command instead of starting it. It
+    starts nothing, and the file has no permission keys.
 - [ ] **W2.16 Lock down the shape of the shared agent configuration.** (S)
   - A lint allows only listed keys in `.claude/settings.json` and cannot widen
     permissions.
@@ -277,7 +287,7 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
 
 ## Wave 3: A preflight scoped to the change
 
-- [ ] **W3.1 A check registry.** (M)
+- [x] **W3.1 A check registry.** (M)
   - **From:** the `DiffCheck` registry in `ci_preflight.py`. The core is about
     300 of its 857 lines.
   - Each check has:
@@ -287,7 +297,10 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
     - an optional fix command;
     - the capabilities it needs;
     - a flag saying whether failure only warns.
-- [ ] **W3.2 Map each kind of change to its checks.** (M)
+  - **Done:** `scripts/preflight/registry.mjs`. Golden channels, execution
+    ledgers, workspace packages and Postgres needs are derived from the tools
+    by `scripts/preflight/derive.mjs`.
+- [x] **W3.2 Map each kind of change to its checks.** (M)
   - `onchain/**/*.ak`:
     - fork `fmt --check`;
     - focused checks for touched modules, through `run-focused-check.mjs`;
@@ -303,7 +316,13 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
     (W1.4).
   - `docs/**`, `AGENTS.md`, skills: the link check (W2.7) and the tag test
     (W2.3).
-- [ ] **W3.3 Capability probes that report "skipped with reason", never
+  - **Done, except W4.9's both-polarity rule.** Focused checks go through
+    `guard-focused-selector.mjs` (fail-closed) with one selector per touched
+    module, because `run-focused-check.mjs` needs test names. `fmt` uses
+    `aiken fmt --stdin` plus CI's trailing-space normalisation, because
+    `aiken fmt --check` reports clean files as unformatted. Channels and
+    ledgers that no workflow runs only warn.
+- [x] **W3.3 Capability probes that report "skipped with reason", never
       "passed".** (S)
   - Probes: Postgres 5433, pinned compiler, blueprint stamp, `dist` freshness,
     a unique DB prefix.
@@ -311,12 +330,19 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
   - **Verify:** the audit says missing Postgres makes Vitest print "No test
     files found". `global-setup.ts` says connection failures throw. Confirm
     which behaviour is real, and add a test for it.
-- [ ] **W3.4 Output and a pre-push mode.** (S)
+  - **Verified 2026-09-25:** both are right. With Postgres unreachable,
+    `global-setup.ts` throws, and Vitest prints "No test files found" and exits
+    with status 1. Preflight fails any step that prints that line, and runs the node
+    suites only when the `postgres` capability is present.
+- [x] **W3.4 Output and a pre-push mode.** (S)
   - `--json` prints a machine-readable verdict.
   - `--strict` checks only the committed diff and runs from a pre-push hook.
   - A `git merge-tree` check predicts conflicts with the base without
     rebasing.
-- [ ] **W3.5 Selection must never be the final gate.** (S)
+  - **Done:** `--json`, `--strict`, `--base`, `--list`, the merge-tree check
+    (warn only), and `.githooks/pre-push` (`--pre-push`, escape
+    `MIDGARD_SKIP_PREFLIGHT=1`).
+- [x] **W3.5 Selection must never be the final gate.** (S)
   - **From:** the `ci-backend.yml` header contract and `FULL_RUN_PATTERNS`.
   - **Done when:** the doctrine is written down and enforced:
     - CI runs everything before merge;
@@ -324,14 +350,22 @@ name>]`, `[script: <path>]`, `[aiken-test: <module>/]`, `[runtime: <symbol>]`,
       the pin, blueprint inputs, shared fixtures;
     - a kill switch exists;
     - misses are recorded wherever selection is used.
-- [ ] **W3.6 Advisory hook messages written for agents,** as numbered fix steps
+  - **Done:** `FULL_RUN` in the registry, a pin change compared by value,
+    `--full` and `MIDGARD_PREFLIGHT_FULL=1`. The misses log is a documented
+    format in `docs/agents/required-checks.md`, not yet a file.
+- [x] **W3.6 Advisory hook messages written for agents,** as numbered fix steps
       ending in the exact command. (S)
   - **From:** `check-comment-density.sh`, and the `.husky/pre-commit` note that
     lint-staged swallows output from checks that exit zero.
   - **Example:** "you changed a validator and no golden or ledger was
     regenerated".
-- [ ] **W3.7 Generate W2.6's required-checks table from the registry** and
+  - **Done:** preflight prints numbered advisories: an input changed without
+    its golden or ledger, and a module no focused test selects.
+- [x] **W3.7 Generate W2.6's required-checks table from the registry** and
       delete the hand-written one. (S)
+  - **Done:** `node scripts/preflight.mjs --write-docs` writes
+    `docs/agents/required-checks.md`; `--check-docs` and a test fail when it
+    is stale.
 
 ## Wave 4: Move knowledge from memory into the repository
 
