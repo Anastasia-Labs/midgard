@@ -305,17 +305,51 @@ type KupoMatch = {
   readonly datum?: unknown;
 };
 
+/**
+ * Which transaction spent an output, and where on Kupo's selected chain.
+ *
+ * **Only those two facts, on purpose.** Kupo's `spent_at` also carries
+ * `input_index` and `redeemer`, and neither is surfaced because in Kupo v2.11.0
+ * neither describes the spent output once its spending transaction has more than
+ * one input. `matchBlock` (`src/Kupo/Data/Pattern.hs`) numbers a transaction's
+ * inputs with a *right* fold over their ascending set, so the largest input gets
+ * index 0: it reports `input_index = n - 1 - i` for the input at ledger position
+ * `i`, and looks the spend redeemer up at that mirrored pointer. The redeemer it
+ * reports is therefore some *other* input's: `null` for a Plutus spend whose
+ * mirror is a key input, another script's bytes when the mirror is a script
+ * input, and a script's redeemer on a key input. Upstream master still does this
+ * (fix proposed in CardanoSolutions/kupo#210, unmerged). The v2.11.0 API schema
+ * separately makes `redeemer` nullable (`BinaryData | null`) — `null` is also
+ * the answer for an output spent without a redeemer, and for rows indexed before
+ * the v2.7.0 migration.
+ *
+ * Seen live on preprod: the scheduler UTxO spent by `AppointFirstOperator` sits
+ * at ledger input 1 of 2 and ran spend redeemer 1, while Kupo reported
+ * `input_index: 0, redeemer: null` — the redeemer slot of the key input beside
+ * it.
+ *
+ * So a Kupo `null` redeemer is not evidence of a key spend, and a Kupo string is
+ * not evidence of which script ran. Anything that needs a spend's redeemer reads
+ * it off the transaction itself — {@link readOgmiosBlockTransaction}'s
+ * `redeemers`, whose `validator.index` is the ledger's pointer — which is where
+ * the state-queue correction observer already takes every redeemer it decodes.
+ */
 export type KupoSpend = Readonly<{
   point: L1ChainPoint;
   transactionId: string;
-  inputIndex: number;
-  redeemer: string | null;
 }>;
+
+/** Non-empty base16 bytes, as Kupo encodes a Plutus `BinaryData`. */
+const BASE16_BYTES = /^(?:[0-9a-f]{2})+$/u;
 
 /**
  * Reads the exact canonical spend attached by Kupo to an output match. A null
  * result means the output is currently unspent on Kupo's selected chain; a
  * malformed partial spend is refused rather than treated as absence.
+ *
+ * `input_index` and `redeemer` are still checked against Kupo's schema, so an
+ * answer that is not a v2.11 `SpentAt` is refused, but their values are
+ * discarded: see {@link KupoSpend} for why neither can be trusted.
  */
 export const fetchKupoSpend = async ({
   kupoUrl,
@@ -358,14 +392,18 @@ export const fetchKupoSpend = async ({
   ) {
     throw new Error("Kupo spent_at.input_index is not an input index");
   }
-  if (spent.redeemer !== undefined && typeof spent.redeemer !== "string") {
+  // `null` is schema-legal and is what Kupo serves even for a Plutus spend (see
+  // KupoSpend); it is accepted here and, like any redeemer value, never read.
+  if (
+    spent.redeemer !== undefined &&
+    spent.redeemer !== null &&
+    (typeof spent.redeemer !== "string" || !BASE16_BYTES.test(spent.redeemer))
+  ) {
     throw new Error("Kupo spent_at.redeemer is not base16 data");
   }
   return Object.freeze({
     point: exactPoint(match.spent_at, "kupo.match.spent_at"),
     transactionId: spent.transaction_id,
-    inputIndex: spent.input_index,
-    redeemer: spent.redeemer ?? null,
   });
 };
 

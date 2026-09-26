@@ -62,6 +62,17 @@ import { CML } from "@lucid-evolution/lucid";
  * - Header hashes are content-derived from the block's transaction ids. An
  *   emulated ledger produces no headers, and the reader only ever compares them
  *   for equality against the one Kupo reported.
+ * - **`spent_at` reproduces Kupo v2.11.0's attribution, defects included.** When
+ *   a later block spends an indexed output, its match gains `spent_at {slot_no,
+ *   header_hash, transaction_id, input_index, redeemer}`. Kupo's `matchBlock`
+ *   (`src/Kupo/Data/Pattern.hs`) numbers a transaction's inputs with a right fold
+ *   over their ascending set, so the input at ledger position `i` of `n` is
+ *   reported as `input_index: n - 1 - i` and given the spend redeemer found at
+ *   that mirrored pointer, or `null` when there is none. This file computes both
+ *   the same way rather than from the ledger, because a harness that served the
+ *   ledger's own pointer would green a reader that trusts a field the real index
+ *   gets wrong: a live preprod Kupo reports `redeemer: null` for a Plutus spend.
+ *   {@link LocalL1.rewriteSpentAt} serves malformed spends for the negatives.
  */
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -104,7 +115,29 @@ export type LocalL1 = {
    * reading a missing field as an output that carries no carriage.
    */
   readonly ignoreResolveHashes: (ignore: boolean) => void;
+  /**
+   * Rewrites the `spent_at` served on every spent match, for the negatives that
+   * prove the spend read refuses an answer that is not Kupo's schema. The rewrite
+   * is handed the honest (Kupo v2.11.0) `spent_at` and returns the value to serve
+   * in its place. Passing `null` restores honest answers.
+   */
+  readonly rewriteSpentAt: (
+    rewrite: ((spentAt: KupoSpentAt) => unknown) | null,
+  ) => void;
   readonly close: () => Promise<void>;
+};
+
+/**
+ * Kupo v2.11.0's `SpentAt`: every property required, and `transaction_id`,
+ * `input_index` and `redeemer` each nullable. `input_index` and `redeemer` are
+ * Kupo's mirrored attribution, not the ledger's; see the fidelity notes above.
+ */
+export type KupoSpentAt = {
+  readonly slot_no: number;
+  readonly header_hash: string;
+  readonly transaction_id: string;
+  readonly input_index: number;
+  readonly redeemer: string | null;
 };
 
 /**
@@ -126,7 +159,7 @@ type KupoMatch = {
     readonly slot_no: number;
     readonly header_hash: string;
   };
-  readonly spent_at: null;
+  readonly spent_at: KupoSpentAt | null;
 };
 
 /** The same match under `?resolve_hashes`: both joins present, either may be null. */
@@ -262,6 +295,10 @@ const outRefsOf = (
 type DecodedTransaction = {
   readonly txHash: string;
   readonly json: unknown;
+  /** Spent inputs, in the transaction's own CBOR order. */
+  readonly inputs: readonly { transaction: { id: string }; index: number }[];
+  /** Spend redeemers by the ledger's input pointer. */
+  readonly spendRedeemers: ReadonlyMap<number, string>;
   readonly outputs: readonly {
     readonly address: string;
     readonly datum: string | null;
@@ -299,21 +336,65 @@ const decodeTransaction = (cborHex: string): DecodedTransaction => {
       ...(datum === null ? {} : { datum }),
     });
   }
+  const inputs = outRefsOf(body.inputs());
+  const redeemers = transactionRedeemers(transaction.witness_set());
   return {
     txHash,
     outputs: outputViews,
+    inputs,
+    spendRedeemers: new Map(
+      redeemers
+        .filter(({ validator }) => validator.purpose === "spend")
+        .map(({ validator, redeemer }) => [validator.index, redeemer]),
+    ),
     json: {
       id: txHash,
       spends: "inputs",
-      inputs: outRefsOf(body.inputs()),
+      inputs,
       references: outRefsOf(body.reference_inputs()),
       outputs: outputsJson,
       mint: transactionMint(body),
-      redeemers: transactionRedeemers(transaction.witness_set()),
+      redeemers,
       signatories: [],
       fee: { ada: { lovelace: body.fee().toString() } },
     },
   };
+};
+
+/**
+ * The `spent_at` Kupo v2.11.0 records for each input of `transaction`, keyed by
+ * `txHash#index`. Inputs are ascending as the ledger's `Set TxIn` orders them
+ * (transaction id bytes, then index; lowercase hex compares like the bytes), and
+ * Kupo's right fold hands index 0 to the *last* of them — so both the reported
+ * `input_index` and the redeemer looked up at it are the mirrored input's.
+ */
+const kupoSpentAtByInput = (
+  transaction: DecodedTransaction,
+  point: { readonly slot: number; readonly headerHash: string },
+): ReadonlyMap<string, KupoSpentAt> => {
+  const ascending = [...transaction.inputs].sort(
+    (left, right) =>
+      (left.transaction.id < right.transaction.id
+        ? -1
+        : left.transaction.id > right.transaction.id
+          ? 1
+          : 0) || left.index - right.index,
+  );
+  return new Map(
+    ascending.map((input, ledgerIndex) => {
+      const kupoIndex = ascending.length - 1 - ledgerIndex;
+      return [
+        `${input.transaction.id}#${input.index.toString()}`,
+        {
+          slot_no: point.slot,
+          header_hash: point.headerHash,
+          transaction_id: transaction.txHash,
+          input_index: kupoIndex,
+          redeemer: transaction.spendRedeemers.get(kupoIndex) ?? null,
+        },
+      ];
+    }),
+  );
 };
 
 const headerHashOf = (slot: number, txHashes: readonly string[]): string =>
@@ -411,6 +492,7 @@ export const startLocalL1Observation = async (): Promise<LocalL1> => {
   const datums = new Map<string, string>();
   let datumRewrite: ((datum: string) => string | null) | null = null;
   let ignoringResolveHashes = false;
+  let spentAtRewrite: ((spentAt: KupoSpentAt) => unknown) | null = null;
   // A genesis checkpoint, so the first real block always has an ancestor to
   // intersect at — exactly as a synced Kupo always does.
   blocks.push({
@@ -436,6 +518,15 @@ export const startLocalL1Observation = async (): Promise<LocalL1> => {
     };
     blocks.push(block);
     decoded.forEach((transaction, transactionIndex) => {
+      // Spends first: a transaction consumes outputs of earlier ones, never its
+      // own. An input this index never saw created has no match to mark, exactly
+      // as in Kupo.
+      for (const [key, spentAt] of kupoSpentAtByInput(transaction, block)) {
+        const spent = matches.get(key);
+        if (spent !== undefined) {
+          matches.set(key, { ...spent, spent_at: spentAt });
+        }
+      }
       transaction.outputs.forEach((output, outputIndex) => {
         const datumHash =
           output.datum === null ? null : datumHashOf(output.datum);
@@ -500,10 +591,14 @@ export const startLocalL1Observation = async (): Promise<LocalL1> => {
         // which ignores it — the match is served with neither join, which is what
         // makes a reader that does not ask, or an index that cannot answer,
         // visibly different from one that got its bytes.
-        send([
+        const served =
           url.searchParams.has("resolve_hashes") && !ignoringResolveHashes
             ? resolveHashesOn(match)
-            : match,
+            : match;
+        send([
+          match.spent_at !== null && spentAtRewrite !== null
+            ? { ...served, spent_at: spentAtRewrite(match.spent_at) }
+            : served,
         ]);
         return;
       }
@@ -672,6 +767,9 @@ export const startLocalL1Observation = async (): Promise<LocalL1> => {
     },
     ignoreResolveHashes: (ignore) => {
       ignoringResolveHashes = ignore;
+    },
+    rewriteSpentAt: (rewrite) => {
+      spentAtRewrite = rewrite;
     },
     close: async () => {
       for (const socket of sockets) {

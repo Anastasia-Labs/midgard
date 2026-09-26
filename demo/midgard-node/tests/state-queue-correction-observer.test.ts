@@ -728,7 +728,22 @@ describe("node-owned state-queue correction observer", () => {
     ).toBeNull();
   });
 
-  it("classifies a timeout from Kupo history plus the exact Ogmios mint arm", async () => {
+  /**
+   * The spent inputs, ascending as the ledger's `Set TxIn` orders them. Kupo
+   * v2.11.0 attributes them in mirrored order — the input at ledger position `i`
+   * of `n` is reported at `n - 1 - i` with the spend redeemer found there, which
+   * is `null` for every input of this transaction because the Ogmios block below
+   * carries no spend redeemer at all. A live preprod Kupo served exactly that
+   * `null` for a Plutus spend, and the observer failed every pass on it.
+   */
+  const timeoutSpentInputs = [h32("1"), h32("2"), h32("f")] as const;
+  type KupoAttribution = (ledgerIndex: number) => {
+    input_index: number;
+    redeemer: string | null;
+  };
+  const classifiesTimeoutFromKupoHistory = async (
+    kupoAttribution: KupoAttribution,
+  ) => {
     const mintRedeemer = Data.to(
       {
         RemoveUnattestedBlockAfterTimeout: {
@@ -755,11 +770,10 @@ describe("node-owned state-queue correction observer", () => {
       transactions: [
         {
           id: transactionHash,
-          inputs: [
-            { transaction: { id: h32("1") }, index: 0 },
-            { transaction: { id: h32("2") }, index: 0 },
-            { transaction: { id: h32("f") }, index: 0 },
-          ],
+          inputs: timeoutSpentInputs.map((id) => ({
+            transaction: { id },
+            index: 0,
+          })),
           references: [],
           mint: { [policy]: { "": -1 } },
           redeemers: [
@@ -841,13 +855,11 @@ describe("node-owned state-queue correction observer", () => {
                       slot_no: 100,
                       header_hash: h32("7"),
                       transaction_id: transactionHash,
-                      input_index:
-                        match[2] === h32("1")
-                          ? 0
-                          : match[2] === h32("2")
-                            ? 1
-                            : 2,
-                      redeemer: "d87980",
+                      ...kupoAttribution(
+                        timeoutSpentInputs.indexOf(
+                          match[2] as (typeof timeoutSpentInputs)[number],
+                        ),
+                      ),
                     }
                   : null,
             },
@@ -927,10 +939,29 @@ describe("node-owned state-queue correction observer", () => {
     ).resolves.toMatchObject([
       {
         checkpointKind: "timeout_correction",
+        // The redeemer the classification rests on is the transaction's own,
+        // read through Ogmios — never Kupo's `spent_at.redeemer`.
+        stateQueueMintRedeemer: {
+          purpose: "mint",
+          index: "0",
+          cborHex: mintRedeemer,
+        },
         terminalTransition: { finalityDepth: "30" },
       },
     ]);
-  });
+  };
+
+  it("classifies a timeout from Kupo history plus the exact Ogmios mint arm", () =>
+    classifiesTimeoutFromKupoHistory((ledgerIndex) => ({
+      input_index: ledgerIndex,
+      redeemer: "d87980",
+    })));
+
+  it("classifies the same timeout from Kupo v2.11.0's mirrored, null-redeemer spends", () =>
+    classifiesTimeoutFromKupoHistory((ledgerIndex) => ({
+      input_index: timeoutSpentInputs.length - 1 - ledgerIndex,
+      redeemer: null,
+    })));
 
   it.each([0, 1, 2])(
     "replays three transitions observed offline with timeout at ordered position %i",
