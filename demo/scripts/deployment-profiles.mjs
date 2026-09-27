@@ -84,6 +84,32 @@ const positiveIntegers = (value, keys, field) => {
   }
 };
 
+// Minimum DA response budget. Before either response window closes, the
+// committee must see the open at the profile's confirmation depth, then land
+// every chained publication of the largest small-class payload, and it gets one
+// more block for its poll and submission. Publications are chained: each one
+// spends the previous carrier, so they land one per L1 block. The payload and
+// chunk sizes copy demo/midgard-sdk/src/availability-challenge.ts
+// DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES and
+// DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE.chunkByteLength; this
+// script runs before any package builds, so it cannot import them, and
+// midgard-sdk/tests/availability-challenge.test.ts pins the copies. Blocks use
+// Cardano's 20 s mean; production is Poisson, so the budget doubles it.
+export const DA_RESPONSE_L1_BLOCK_MS = 20_000;
+export const DA_RESPONSE_BLOCK_SAFETY_FACTOR = 2;
+export const DA_SMALL_PAYLOAD_MAX_BYTES = 65_536;
+export const DA_RESPONSE_CHUNK_BYTES = 14_020;
+export const DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS = Math.ceil(
+  DA_SMALL_PAYLOAD_MAX_BYTES / DA_RESPONSE_CHUNK_BYTES,
+);
+export const DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS = 1;
+export const minimumDaResponseBudgetMs = (profile) =>
+  (profile.l1_finality.confirmation_depth +
+    DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS +
+    DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS) *
+  DA_RESPONSE_L1_BLOCK_MS *
+  DA_RESPONSE_BLOCK_SAFETY_FACTOR;
+
 export const validateProfile = (profile, name) => {
   exactKeys(
     profile,
@@ -139,6 +165,36 @@ export const validateProfile = (profile, name) => {
   ) {
     throw new Error(
       "DA response windows must be ordered and shorter than block maturity",
+    );
+  }
+  // The ordering above keeps the full window at least the small one, so the
+  // small window reaching the budget carries both.
+  const responseBudget = minimumDaResponseBudgetMs(profile);
+  if (timing.da_small_response_window_ms < responseBudget) {
+    throw new Error(
+      `DA response windows must each cover the minimum response budget of ${responseBudget} ms`,
+    );
+  }
+  // Fraud must stay provable after the latest DA response: the latest
+  // attestation, then an open that front-runs the honest one with the widest
+  // validity range (its window starts at the upper bound), then the whole full
+  // window, then the whole validation-dispute schedule, all before maturity.
+  // The last term is what can_open_before_maturity (validation-dispute-v1.ak)
+  // requires of a dispute opened when the response lands: opening upper +
+  // max dispute duration <= end_time + maturity. The comparison is strict
+  // because the dispute opening lands after the response it depends on.
+  // Fifteen-minute maturity cannot hold this, so the non-interactive testing
+  // profiles are exempt: they are not fault-proof security configurations.
+  if (
+    !nonInteractiveTesting &&
+    BigInt(timing.da_attestation_timeout_ms) +
+      BigInt(timing.max_validity_range_ms) +
+      BigInt(timing.da_full_response_window_ms) +
+      disputeDuration >=
+      maturity
+  ) {
+    throw new Error(
+      "DA attestation timeout, maximum validity range, full response window and dispute schedule must end before block maturity",
     );
   }
   if (

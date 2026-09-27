@@ -1496,6 +1496,8 @@ export const planDaAvailabilityTrancheFunding = (input: {
  * Datum/value-topology plan for the approved split challenger fee bond. It
  * fixes identity, deadline and the initial per-tranche shares, while the
  * measured fee ceiling and each exact transaction fee remain separate.
+ * `openedAt` must be the open transaction's inclusive upper validity bound
+ * (`validTo - 1`); the validator refuses any other anchor.
  */
 export const buildDaAvailabilityChallengeDatumPlan = (input: {
   readonly availableBond: DaAvailabilityBondDatum;

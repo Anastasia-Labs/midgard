@@ -352,12 +352,19 @@ pub fn validate_open_challenge(
   )
   let challenger_input = input_at(tx.inputs, challenger_input_index)
   let bond_output = output_at(tx.outputs, bond_output_index)
-  let (inclusive_lower_bound, _inclusive_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+  // The response window opens at the inclusive upper validity bound. The
+  // ledger admits the open only at or before that instant, so the committee
+  // always has at least the full window after the open lands. The challenger
+  // chooses the lower bound freely; anchoring there would let a backdated
+  // range shrink the window by up to the maximum validity range, or place the
+  // deadline in the past on landing. A later upper bound only lengthens the
+  // window, and by at most the maximum validity range past landing.
+  let (_inclusive_lower_bound, inclusive_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
     tx.validity_range,
   )
   expect Some(response_deadline) = availability.response_deadline_v1(
     commitment.payload_byte_length,
-    inclusive_lower_bound,
+    inclusive_upper_bound,
   )
   let expected_bond_datum: availability.BondDatumV1 = availability.ChallengedBond {
     commitment,
@@ -366,7 +373,7 @@ pub fn validate_open_challenge(
     attested_signers,
     challenge_asset_name,
     challenger,
-    opened_at: inclusive_lower_bound,
+    opened_at: inclusive_upper_bound,
     response_deadline,
   }
   let expected_bond_datum_data: Data = expected_bond_datum

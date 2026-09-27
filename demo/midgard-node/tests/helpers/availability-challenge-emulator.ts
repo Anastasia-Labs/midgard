@@ -708,6 +708,7 @@ const yieldTx = (
 export const openAvailability = async (
   f: AvailabilityFixture,
   bonded: Awaited<ReturnType<typeof attestAvailability>>,
+  validity: { validFrom?: bigint; validTo?: bigint } = {},
 ) => {
   const { lucid, contracts } = f;
   lucid.selectWallet.fromPrivateKey(f.challenger.privateKey);
@@ -728,15 +729,20 @@ export const openAvailability = async (
       TEST_AVAILABILITY_PARAMETERS.challenger_bond_lovelace + fee,
   );
   if (!funding) throw new Error("Missing isolated challenger funding");
-  const openedAt = BigInt(f.emulator.now());
+  const validFrom = validity.validFrom ?? BigInt(f.emulator.now());
+  const validTo = validity.validTo ?? validFrom + 60_000n;
   const available = Data.from(bonded.bond.datum!, SDK.DaAvailabilityBondDatum);
-  const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
-    availableBond: available,
-    bondInputOutRef: outRef(bonded.bond),
-    challenger: f.challengerKey,
-    openedAt,
-    parameters: TEST_AVAILABILITY_PARAMETERS,
-  });
+  const planAt = (openedAt: bigint) =>
+    SDK.buildDaAvailabilityChallengeDatumPlan({
+      availableBond: available,
+      bondInputOutRef: outRef(bonded.bond),
+      challenger: f.challengerKey,
+      openedAt,
+      parameters: TEST_AVAILABILITY_PARAMETERS,
+    });
+  // The validator anchors the response window at the inclusive upper validity
+  // bound; the ledger's upper end is exclusive.
+  const plan = planAt(validTo - 1n);
   const policy = contracts.availabilityChallenge.policyId;
   const address = contracts.availabilityChallenge.spendingScriptAddress;
   const terminalUnit =
@@ -759,8 +765,12 @@ export const openAvailability = async (
       omitSigner?: boolean;
       omitYield?: boolean;
       wrongYield?: boolean;
+      /** Datums anchored at this `opened_at` instead of the upper bound. */
+      anchorAt?: bigint;
     } = {},
   ) => {
+    const outputs =
+      options.anchorAt === undefined ? plan : planAt(options.anchorAt);
     const yieldReference = f.reference(
       options.wrongYield
         ? "availability-challenge close withdrawal"
@@ -792,8 +802,8 @@ export const openAvailability = async (
     let tx = lucid
       .newTx()
       .setMinFee(fee)
-      .validFrom(Number(openedAt))
-      .validTo(Number(openedAt + 60_000n))
+      .validFrom(Number(validFrom))
+      .validTo(Number(validTo))
       .collectFrom([bonded.bond], coordinate(ctx, policy))
       .collectFrom([funding])
       .collectFrom([bonded.queue], queueUpdate(ctx, policy, bonded.queue, 1n))
@@ -822,7 +832,7 @@ export const openAvailability = async (
       )
       .pay.ToContract(
         address,
-        inline(SDK.encodeDaAvailabilityBondDatum(plan.challengedBond)),
+        inline(SDK.encodeDaAvailabilityBondDatum(outputs.challengedBond)),
         { ...bonded.bond.assets, [policy + plan.challengeAssetName]: 1n },
       )
       .pay.ToContract(
@@ -833,7 +843,9 @@ export const openAvailability = async (
     for (let i = 0; i < plan.trancheThreads.length; i += 1)
       tx = tx.pay.ToContract(
         address,
-        inline(SDK.encodeDaAvailabilityTrancheDatum(plan.trancheThreads[i]!)),
+        inline(
+          SDK.encodeDaAvailabilityTrancheDatum(outputs.trancheThreads[i]!),
+        ),
         {
           lovelace: plan.trancheFunding[i]!.initialLovelace,
           [policy +
@@ -847,7 +859,7 @@ export const openAvailability = async (
       address,
       inline(
         SDK.encodeDaAvailabilityTerminalAccumulatorDatum(
-          plan.terminalAccumulator,
+          outputs.terminalAccumulator,
         ),
       ),
       { lovelace: plan.terminalAccumulatorFundingLovelace, [terminalUnit]: 1n },

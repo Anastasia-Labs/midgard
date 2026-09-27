@@ -13,6 +13,7 @@ import {
   DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
   DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS,
   DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
+  DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES,
   DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS,
   daAvailabilityAttestationMessage,
   daAvailabilityBondAssetName,
@@ -1603,4 +1604,32 @@ describe("availability mint delegation ABI", () => {
       ).toThrow();
     },
   );
+});
+
+describe("deployment:check DA response budget inputs", () => {
+  // demo/scripts/deployment-profiles.mjs is plain Node and runs before any
+  // package builds, so it restates these two protocol sizes. This pins the
+  // copies to their sources: a smaller chunk or a larger small-payload class
+  // raises the chained-publication count the budget must cover.
+  it("uses the SDK small-payload class and response chunk size", async () => {
+    const budget = (await import(
+      new URL("../../scripts/deployment-profiles.mjs", import.meta.url).href
+    )) as {
+      DA_SMALL_PAYLOAD_MAX_BYTES: number;
+      DA_RESPONSE_CHUNK_BYTES: number;
+      DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS: number;
+    };
+    expect(budget.DA_SMALL_PAYLOAD_MAX_BYTES).toBe(
+      DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES,
+    );
+    expect(budget.DA_RESPONSE_CHUNK_BYTES).toBe(
+      DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE.chunkByteLength,
+    );
+    expect(budget.DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS).toBe(
+      Math.ceil(
+        DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES /
+          DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE.chunkByteLength,
+      ),
+    );
+  });
 });

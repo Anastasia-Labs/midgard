@@ -84,8 +84,8 @@ export const DEPLOYMENT_PROFILES = {
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
-      da_small_response_window_ms: 60000,
-      da_full_response_window_ms: 120000,
+      da_small_response_window_ms: 720000,
+      da_full_response_window_ms: 840000,
     },
     limits: {
       max_bisection_rounds: 32,
@@ -118,8 +118,8 @@ export const DEPLOYMENT_PROFILES = {
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
-      da_small_response_window_ms: 60000,
-      da_full_response_window_ms: 120000,
+      da_small_response_window_ms: 720000,
+      da_full_response_window_ms: 840000,
     },
     limits: {
       max_bisection_rounds: 32,
@@ -142,9 +142,9 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-public":
     "4eeab53f02559e1b48d40ad0e44b9bd25b092c50670244ec610d7f1656f7b6c5",
   "preprod-testing":
-    "dc7e401ff4107a6bb96ae8cf0015b871963077d99084a683ae17a23ad1c2a7b8",
+    "091a1600fa874768c8a9f357b4d036e2c37083815417ececb397150d5809f5d8",
   "local-devnet-testing":
-    "5041ba76f1858e475adf304854a5af08a2c6535cb30378f47030a6542553e3f2",
+    "1a020029c7421fcba8a07f07212c991557efc141a1801f162c9c9d7732fa74bf",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

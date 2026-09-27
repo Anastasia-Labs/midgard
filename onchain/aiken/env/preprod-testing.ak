@@ -55,9 +55,9 @@ pub const max_validity_range_length: Int = 480_000
 
 pub const da_attestation_timeout_v1: Int = 600_000
 
-pub const small_response_window_ms_v1: Int = 60_000
+pub const small_response_window_ms_v1: Int = 720_000
 
-pub const full_response_window_ms_v1: Int = 120_000
+pub const full_response_window_ms_v1: Int = 840_000
 
 pub const max_bisection_rounds: Int = 32
 

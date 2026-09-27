@@ -13,8 +13,8 @@ timing:
   new_shift_inactivity_grace_period_ms: 300000
   max_validity_range_ms: 480000
   da_attestation_timeout_ms: 600000
-  da_small_response_window_ms: 60000
-  da_full_response_window_ms: 120000
+  da_small_response_window_ms: 720000
+  da_full_response_window_ms: 840000
 limits:
   max_bisection_rounds: 32
   max_inactivity_strikes: 5

@@ -205,6 +205,13 @@ roster gate separately signed and submitted all 513 node-runtime targets under
 16,384 bytes; its largest unrelated target is 16,032 bytes. The 512-byte reserve
 claim above applies to the availability reference scripts.
 
+The results below were measured on 2026-09-08, before the response window was
+anchored at the open's inclusive upper validity bound and before the testing
+windows were widened. They predate the lifecycle narrowing described in
+[Current scope under testing windows](#current-scope-under-testing-windows), and
+the testing and testnet environments no longer reproduce the complete-response
+and 300-chunk maximum claims.
+
 Four real lifecycle scenarios passed, with 704 signed/submitted transactions
 including fixture publication and registration, plus nine on-chain refusal
 attempts. The largest lifecycle transaction was 15,949 bytes (435 bytes below
@@ -251,10 +258,50 @@ Verification completed:
   tests, committee deployment/resolver/coordinator/transaction tests, package
   typechecks and scoped formatting/lint checks.
 
-Reproduce the primary gates from the repository root:
+## Current scope under testing windows
+
+The lifecycle suite takes its windows from the selected deployment profile. The
+testing profiles (`preprod-testing`, `local-devnet-testing`) and the generated
+`testnet` environment carry a 720 s small and 840 s full response window. The
+emulator lands one transaction per 20 s block. Under those windows:
+
+- the complete-response scenario (301 chunks plus one settlement, 302 blocks) is
+  skipped, with the derived reason in its title, because 302 × 20 s exceeds
+  840 s. It runs only on a long-window profile;
+- the maximum-commitment scenario still opens all 16 tranches with 19 outputs,
+  then publishes one maximum chunk of tranche 0 with the full-tranche proof and
+  the tranche-1 partial, settles all 16 and times out with queue removal. It no
+  longer publishes the whole 300-chunk tranche. Its fit report key is
+  `maximum-first-chunk`; the committed
+  [measurement summary](availability-challenge-fit.json) predates this and its
+  `maximum` and `full-response` entries describe the earlier scenarios.
+
+Under this document's Acceptance rule, a skipped publication scenario does not
+establish completion. The complete-response fit, and with it the settlement of
+a completed 300-carrier tranche (its first tranche), is measured only with a
+long-window profile (`preprod-public` or `mainnet`, 1 h small and 48 h full
+windows):
 
 ```sh
-(cd onchain/aiken && aiken build --env testnet)
+pnpm --dir demo deployment:build preprod-public
+# rebuild midgard-core, lucid-midgard, midgard-sdk and midgard-node, then:
+NODE_ENV=emulator MIDGARD_DEPLOYMENT_PROFILE=preprod-public \
+  MIDGARD_REAL_BLUEPRINT_PATH="$PWD/onchain/aiken/plutus.json" \
+  pnpm --dir demo/midgard-node exec vitest run \
+  tests/availability-challenge-lifecycle.test.ts
+pnpm --dir demo deployment:build preprod-testing   # restore the selection
+```
+
+The node test environment defaults `MIDGARD_DEPLOYMENT_PROFILE` to
+`preprod-testing`, and global setup refuses a profile that differs from the
+compiled one, so the long-window run must export the profile it was built for.
+Without it vitest reports "No test files found" and measures nothing.
+
+Reproduce the primary gates from the repository root (the testing profile skips
+the complete-response scenario; see above):
+
+```sh
+pnpm --dir demo deployment:build preprod-testing
 NODE_ENV=emulator MIDGARD_REAL_BLUEPRINT_PATH="$PWD/onchain/aiken/plutus.json" \
   pnpm --dir demo/midgard-node exec vitest run \
   tests/availability-challenge-publication-admission.test.ts \

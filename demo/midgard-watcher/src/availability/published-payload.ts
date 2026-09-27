@@ -216,7 +216,10 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
           descriptor,
         ),
         carrierOutputIndex: carrierIndex,
-        inclusiveValidityUpper: BigInt(input.slotToUnixTime(Number(ttl))),
+        // The ledger ttl is the EXCLUSIVE upper validity end; the validator
+        // and the SDK builder bound publications by the inclusive upper,
+        // ttl - 1 ms.
+        inclusiveValidityUpper: BigInt(input.slotToUnixTime(Number(ttl))) - 1n,
       });
     }
     tranches.push({ descriptor, publications });

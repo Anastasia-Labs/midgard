@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  minimumDaResponseBudgetMs,
   profileDigest,
   readProfiles,
   renderAiken,
@@ -71,8 +72,8 @@ test("fast testing profiles exclude interactive disputes without weakening publi
     assert.equal(testing.timing.da_attestation_timeout_ms, 600_000);
     assert.equal(testing.timing.operator_shift_ms, 600_000);
     assert.equal(testing.timing.registration_ms, 30_000);
-    assert.equal(testing.timing.da_small_response_window_ms, 60_000);
-    assert.equal(testing.timing.da_full_response_window_ms, 120_000);
+    assert.equal(testing.timing.da_small_response_window_ms, 720_000);
+    assert.equal(testing.timing.da_full_response_window_ms, 840_000);
     assert.equal(testing.limits.max_bisection_rounds, 32);
     validateProfile(testing, name);
     testing.timing.dispute_response_window_ms = 1_000;
@@ -85,6 +86,87 @@ test("fast testing profiles exclude interactive disputes without weakening publi
     const profile = structuredClone(profiles[name]);
     profile.timing = structuredClone(profiles["preprod-testing"].timing);
     assert.throws(() => validateProfile(profile, name), /Dispute schedule/u);
+  }
+});
+
+test("every DA response window covers the minimum response budget, and the bound is exact", () => {
+  const profiles = readProfiles();
+  // (confirmation depth + 5 chained 64 KiB publications + 1 poll block)
+  // × 20 s × 2, derived by hand.
+  const expected = {
+    mainnet: 1_440_000,
+    "preprod-public": 1_440_000,
+    "preprod-testing": 360_000,
+    "local-devnet-testing": 360_000,
+  };
+  for (const [name, profile] of Object.entries(profiles)) {
+    const budget = minimumDaResponseBudgetMs(profile);
+    assert.equal(budget, expected[name]);
+    assert.ok(profile.timing.da_small_response_window_ms >= budget);
+    assert.ok(profile.timing.da_full_response_window_ms >= budget);
+    const atBound = structuredClone(profile);
+    atBound.timing.da_small_response_window_ms = budget;
+    validateProfile(atBound, name);
+    atBound.timing.da_small_response_window_ms = budget - 1;
+    assert.throws(
+      () => validateProfile(atBound, name),
+      new RegExp(`minimum response budget of ${budget} ms`, "u"),
+    );
+  }
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    const previous = structuredClone(profiles[name]);
+    previous.timing.da_small_response_window_ms = 60_000;
+    previous.timing.da_full_response_window_ms = 120_000;
+    assert.throws(
+      () => validateProfile(previous, name),
+      /minimum response budget/u,
+    );
+  }
+});
+
+test("public profiles leave the whole dispute schedule after the latest DA response; testing profiles are exempt", () => {
+  const profiles = readProfiles();
+  // (2 × rounds + 2) × dispute response window, as validation-dispute-v1.ak
+  // max_dispute_duration computes it.
+  const disputeDuration = ({ limits, timing }) =>
+    (2 * limits.max_bisection_rounds + 2) * timing.dispute_response_window_ms;
+  for (const name of ["mainnet", "preprod-public"]) {
+    const profile = structuredClone(profiles[name]);
+    const { timing } = profile;
+    assert.equal(disputeDuration(profile), 19_800_000);
+    const latestFullWindow =
+      timing.block_maturity_ms -
+      timing.da_attestation_timeout_ms -
+      timing.max_validity_range_ms -
+      disputeDuration(profile);
+    assert.ok(timing.da_full_response_window_ms < latestFullWindow);
+    timing.da_full_response_window_ms = latestFullWindow - 1;
+    validateProfile(profile, name);
+    timing.da_full_response_window_ms = latestFullWindow;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /dispute schedule must end before block maturity/u,
+    );
+    // A window that clears maturity only without the dispute schedule, which
+    // the half-maturity dispute check alone does not catch.
+    timing.da_full_response_window_ms =
+      latestFullWindow + disputeDuration(profile) - 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /dispute schedule must end before block maturity/u,
+    );
+  }
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    const profile = profiles[name];
+    const { timing } = profile;
+    assert.ok(
+      timing.da_attestation_timeout_ms +
+        timing.max_validity_range_ms +
+        timing.da_full_response_window_ms +
+        disputeDuration(profile) >=
+        timing.block_maturity_ms,
+    );
+    validateProfile(structuredClone(profile), name);
   }
 });
 

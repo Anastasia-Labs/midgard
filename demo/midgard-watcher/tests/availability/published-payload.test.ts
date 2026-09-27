@@ -38,6 +38,7 @@ const transaction = (
   inputs: readonly UTxO[],
   outputs: readonly UTxO[],
   blockNo: number,
+  ttlSlot = 2_000 + blockNo,
 ) => {
   const bodyInputs = CML.TransactionInputList.new();
   for (const input of inputs)
@@ -50,7 +51,7 @@ const transaction = (
   const bodyOutputs = CML.TransactionOutputList.new();
   for (const output of outputs) bodyOutputs.add(utxoToCore(output).output());
   const body = CML.TransactionBody.new(bodyInputs, bodyOutputs, 500_000n);
-  body.set_ttl(2_000n + BigInt(blockNo));
+  body.set_ttl(BigInt(ttlSlot));
   const txHash = CML.hash_transaction(body).to_hex();
   const raw: FraudProofRawL1Transaction = {
     txHash,
@@ -78,7 +79,17 @@ const transaction = (
   };
 };
 
-const historyFixture = () => {
+/**
+ * Slots are whole seconds (`slotToUnixTime(slot) = slot * 1000`). A ledger
+ * ttl is the EXCLUSIVE upper validity end, so a publication's inclusive upper
+ * bound is `ttl * 1000 - 1`.
+ */
+const historyFixture = (
+  options: {
+    /** Ttl of the final publication, as milliseconds past the response deadline. */
+    finalTtlPastDeadlineMs?: bigint;
+  } = {},
+) => {
   const parameters = SDK.daAvailabilityParameters({
     responseGeometry: SDK.availabilityResponseGeometry(
       SDK.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
@@ -116,11 +127,14 @@ const historyFixture = () => {
     { lovelace: parameters.da_bond_lovelace, [policy + bondAsset]: 1n },
     SDK.encodeDaAvailabilityBondDatum(available),
   );
+  // The open lands in block 1: its inclusive upper validity bound, the ttl
+  // slot's start less one millisecond, anchors the response window.
+  const openedAt = (2_000n + 1n) * 1_000n - 1n;
   const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
     availableBond: available,
     bondInputOutRef: SDK.outputReferenceFromUTxO(bond),
     challenger: "22".repeat(28),
-    openedAt: 1_000_000n,
+    openedAt,
     parameters,
   });
   const unit =
@@ -154,11 +168,29 @@ const historyFixture = () => {
   let thread = open.outputs[1]!;
   const history: FraudProofRawL1Transaction[] = [open.raw];
   for (const [index, publication] of publications.entries()) {
+    const isFinal = index === publications.length - 1;
+    const finalTtlMs =
+      options.finalTtlPastDeadlineMs === undefined
+        ? undefined
+        : plan.responseDeadline + options.finalTtlPastDeadlineMs;
+    if (finalTtlMs !== undefined && finalTtlMs % 1_000n !== 0n)
+      throw new Error("final publication ttl must land on a slot boundary");
+    const ttlSlot =
+      isFinal && finalTtlMs !== undefined
+        ? Number(finalTtlMs / 1_000n)
+        : 2_000 + index + 2;
+    const inclusiveValidityUpper = BigInt(ttlSlot) * 1_000n - 1n;
     state = SDK.advanceDaAvailabilityTranche({
       active: state,
       publication,
       responseGeometry: parameters.response_geometry,
-      inclusiveValidityUpper: 2_000_000n + BigInt(index + 2) * 1_000n,
+      // The datum transition does not record the bound; the negative case
+      // builds its (on-chain inadmissible) successor with the deadline so the
+      // watcher, not the fixture, is what refuses it.
+      inclusiveValidityUpper:
+        inclusiveValidityUpper > plan.responseDeadline
+          ? plan.responseDeadline
+          : inclusiveValidityUpper,
       carrierOutputIndex: 1n,
     });
     const published = transaction(
@@ -176,6 +208,7 @@ const historyFixture = () => {
         ),
       ],
       index + 2,
+      ttlSlot,
     );
     history.push(published.raw);
     thread = published.outputs[0]!;
@@ -193,7 +226,7 @@ const historyFixture = () => {
     readHistory: async (requested: string) =>
       requested.startsWith(queuePolicy) ? [open.raw] : [...history].reverse(),
   };
-  return { input, bytes, history, open, unit };
+  return { input, bytes, history, open, unit, plan };
 };
 
 describe("watcher public L1 payload reconstruction", () => {
@@ -202,6 +235,26 @@ describe("watcher public L1 payload reconstruction", () => {
     await expect(
       reconstructWatcherAvailabilityPublishedPayload(fixture.input),
     ).resolves.toEqual(Buffer.from(fixture.bytes));
+  });
+
+  it("admits a final publication whose exclusive ttl is one millisecond past the response deadline", async () => {
+    // The chain admits this publication: its inclusive upper bound
+    // (ttl - 1 ms) equals the deadline. The committee's publish builder
+    // clamps a late publication's validTo to exactly deadline + 1.
+    const fixture = historyFixture({ finalTtlPastDeadlineMs: 1n });
+    expect(fixture.plan.responseDeadline % 1_000n).toBe(999n);
+    await expect(
+      reconstructWatcherAvailabilityPublishedPayload(fixture.input),
+    ).resolves.toEqual(Buffer.from(fixture.bytes));
+  });
+
+  it("refuses a final publication whose ttl is one slot later, so its inclusive upper passes the deadline", async () => {
+    const fixture = historyFixture({ finalTtlPastDeadlineMs: 1_001n });
+    await expect(
+      reconstructWatcherAvailabilityPublishedPayload(fixture.input),
+    ).rejects.toThrow(
+      "availability publication validity upper exceeds the response deadline",
+    );
   });
 
   it("rejects incomplete publication history instead of substituting retained private bytes", async () => {

@@ -32,7 +32,16 @@ authorize deployment or alter an existing deployment.
 `preprod-testing` and `local-devnet-testing` use fifteen-minute block maturity,
 a ten-minute operator shift, 30-second registration, and the existing eight-minute
 maximum transaction validity. DA attestation has a ten-minute timeout; full
-responses have two minutes and small responses have one minute. Attestation waits
+responses have fourteen minutes and small responses have twelve minutes. A
+response window opens at the challenge open's inclusive upper validity bound,
+so a backdated open cannot shorten it. Validation requires every profile's
+windows to cover a minimum response budget: the confirmation depth, the five
+chained publications of a 64 KiB payload and one poll block, at twice the
+twenty-second mean block time (six minutes for the testing profiles, 24 minutes
+for the public ones). The fourteen-minute full window still holds only about 38
+chained publications per tranche at twenty-second blocks, roughly 530 KB, far
+short of the 300 publications of a whole 4 MiB tranche. On these profiles a
+challenge against a larger payload cannot be answered in full. Attestation waits
 for three descendant blocks before signing and then lands three
 confirmation-serialized transactions, about two and a half minutes on average at
 twenty-second blocks; a four-minute timeout missed about one block in ten, and a

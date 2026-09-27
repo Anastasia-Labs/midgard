@@ -1,7 +1,7 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/crypto
-use aiken/interval.{between}
+use aiken/interval.{Finite, Interval, IntervalBound, between}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use availability_challenge as availability_validator
@@ -12,6 +12,7 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Spend, Transaction,
   Withdraw,
 }
+use env
 use midgard/availability_challenge as availability
 use midgard/availability_challenge_yield as yielding
 use midgard/da_attestation_types as da_attestation
@@ -50,6 +51,10 @@ const committee_hash =
   #"9999999999999999999999999999999999999999999999999999999999999999"
 
 const close_fee = 100
+
+/// Inclusive upper bound of the `between(0, 1_000)` range the default open
+/// fixtures use. An open anchors `opened_at` there, not at the lower bound.
+const open_inclusive_upper = 1_000
 
 fn parameters() -> availability.ParametersV1 {
   availability.ParametersV1 {
@@ -279,7 +284,11 @@ fn available_bond_input(owner: ByteArray) -> Input {
   }
 }
 
-fn challenged_bond_output(owner: ByteArray, claimant: ByteArray) -> Output {
+fn challenged_bond_output(
+  owner: ByteArray,
+  claimant: ByteArray,
+  opened_at: Int,
+) -> Output {
   let datum: availability.BondDatumV1 = availability.ChallengedBond {
     commitment: commitment(owner),
     da_bond_asset_name,
@@ -287,8 +296,8 @@ fn challenged_bond_output(owner: ByteArray, claimant: ByteArray) -> Output {
     attested_signers: #"",
     challenge_asset_name: challenge_asset_name(),
     challenger: claimant,
-    opened_at: 0,
-    response_deadline: availability.small_response_window_ms_v1,
+    opened_at,
+    response_deadline: opened_at + availability.small_response_window_ms_v1,
   }
   Output {
     address: address.from_script(availability_policy),
@@ -300,7 +309,7 @@ fn challenged_bond_output(owner: ByteArray, claimant: ByteArray) -> Output {
   }
 }
 
-fn initial_tranche_output(claimant: ByteArray) -> Output {
+fn initial_tranche_output(claimant: ByteArray, opened_at: Int) -> Output {
   expect Some(lovelace) = availability.tranche_initial_lovelace_v1(
     commitment(bond_owner),
     parameters(),
@@ -318,7 +327,7 @@ fn initial_tranche_output(claimant: ByteArray) -> Output {
       descriptor(),
     ),
     latest_carrier_output_index: None,
-    response_deadline: availability.small_response_window_ms_v1,
+    response_deadline: opened_at + availability.small_response_window_ms_v1,
     challenger: claimant,
   }
   Output {
@@ -330,7 +339,10 @@ fn initial_tranche_output(claimant: ByteArray) -> Output {
   }
 }
 
-fn initial_terminal_accumulator_output(claimant: ByteArray) -> Output {
+fn initial_terminal_accumulator_output(
+  claimant: ByteArray,
+  opened_at: Int,
+) -> Output {
   expect Some(lovelace) = availability.terminal_accumulator_initial_lovelace_v1(
     commitment(bond_owner),
     parameters(),
@@ -345,7 +357,7 @@ fn initial_terminal_accumulator_output(claimant: ByteArray) -> Output {
       challenge_asset_name(),
     ),
     has_timed_out_tranche: False,
-    response_deadline: availability.small_response_window_ms_v1,
+    response_deadline: opened_at + availability.small_response_window_ms_v1,
     challenger: claimant,
     remaining_challenger_lovelace: lovelace,
   }
@@ -397,6 +409,26 @@ fn open_transaction(
   claimant: ByteArray,
   signatory: ByteArray,
 ) -> Transaction {
+  open_transaction_anchored(
+    bond_output_index,
+    state_queue_output_index,
+    claimant,
+    signatory,
+    between(0, open_inclusive_upper),
+    open_inclusive_upper,
+  )
+}
+
+/// An open whose outputs carry `opened_at` and the response deadlines derived
+/// from it, under the given validity range.
+fn open_transaction_anchored(
+  bond_output_index: Int,
+  state_queue_output_index: Int,
+  claimant: ByteArray,
+  signatory: ByteArray,
+  validity_range: Interval,
+  opened_at: Int,
+) -> Transaction {
   let redeemer = open_redeemer(
     bond_output_index,
     state_queue_output_index,
@@ -413,15 +445,15 @@ fn open_transaction(
       challenger_input(claimant),
     ],
     outputs: [
-      challenged_bond_output(bond_owner, claimant),
+      challenged_bond_output(bond_owner, claimant, opened_at),
       node_output(
         availability.Challenged {
           da_bond_asset_name,
           challenge_asset_name: challenge_asset_name(),
         },
       ),
-      initial_tranche_output(claimant),
-      initial_terminal_accumulator_output(claimant),
+      initial_tranche_output(claimant, opened_at),
+      initial_terminal_accumulator_output(claimant, opened_at),
     ],
     reference_inputs: [hub_reference_input()],
     mint: assets.from_asset(availability_policy, challenge_asset_name(), 1)
@@ -430,7 +462,7 @@ fn open_transaction(
     redeemers: [Pair(Mint(availability_policy), redeemer_data)],
     extra_signatories: [signatory],
     fee: close_fee,
-    validity_range: between(0, 1_000),
+    validity_range,
   }
 }
 
@@ -850,8 +882,8 @@ fn maximum_challenged_bond_output(
     attested_signers: #"",
     challenge_asset_name: challenge_asset_name(),
     challenger,
-    opened_at: 0,
-    response_deadline: availability.full_response_window_ms_v1,
+    opened_at: open_inclusive_upper,
+    response_deadline: open_inclusive_upper + availability.full_response_window_ms_v1,
   }
   Output {
     address: address.from_script(availability_policy),
@@ -880,7 +912,7 @@ fn maximum_initial_tranche_output(
       descriptor,
     ),
     latest_carrier_output_index: None,
-    response_deadline: availability.full_response_window_ms_v1,
+    response_deadline: open_inclusive_upper + availability.full_response_window_ms_v1,
     challenger,
   }
   Output {
@@ -930,7 +962,7 @@ fn maximum_initial_terminal_accumulator_output(
     ),
     False,
     lovelace,
-    availability.full_response_window_ms_v1,
+    open_inclusive_upper + availability.full_response_window_ms_v1,
   )
 }
 
@@ -1011,7 +1043,7 @@ fn maximum_open_transaction() -> Transaction {
     redeemers: [Pair(Mint(availability_policy), redeemer_data)],
     extra_signatories: [challenger],
     fee: close_fee,
-    validity_range: between(0, 1_000),
+    validity_range: between(0, open_inclusive_upper),
   }
 }
 
@@ -2155,6 +2187,98 @@ test q58_open_rejects_missing_challenger_signature() fail {
 test q58_open_rejects_aliased_bond_and_state_queue_outputs() fail {
   let redeemer = open_redeemer(0, 0, challenger)
   validates_close(open_transaction(0, 0, challenger, challenger), redeemer)
+}
+
+/// The widest range the open accepts, with the ledger's exclusive upper end:
+/// a challenger who backdates the lower bound by the whole maximum validity
+/// range. Normalization makes the inclusive upper bound `upper - 1`.
+fn backdated_open_range() -> Interval {
+  Interval {
+    lower_bound: IntervalBound { bound_type: Finite(0), is_inclusive: True },
+    upper_bound: IntervalBound {
+      bound_type: Finite(env.max_validity_range_length + 1),
+      is_inclusive: False,
+    },
+  }
+}
+
+test availability_open_anchors_response_deadline_at_inclusive_upper_bound() {
+  let redeemer = open_redeemer(0, 1, challenger)
+  validates_close(
+    open_transaction_anchored(
+      0,
+      1,
+      challenger,
+      challenger,
+      backdated_open_range(),
+      env.max_validity_range_length,
+    ),
+    redeemer,
+  )
+}
+
+/// Differential twin of the test above: only the anchor differs. A deadline
+/// counted from the backdated lower bound would reach the responder already
+/// shortened by the whole backdate, so the open must refuse it.
+test availability_open_rejects_response_deadline_anchored_at_lower_bound() fail {
+  let redeemer = open_redeemer(0, 1, challenger)
+  validates_close(
+    open_transaction_anchored(
+      0,
+      1,
+      challenger,
+      challenger,
+      backdated_open_range(),
+      0,
+    ),
+    redeemer,
+  )
+}
+
+/// The ledger's upper end is exclusive. Anchoring at it instead of at
+/// `upper - 1` would disagree with the off-chain builders, which anchor at
+/// `validTo - 1`.
+test availability_open_rejects_response_deadline_anchored_at_exclusive_upper_end() fail {
+  let redeemer = open_redeemer(0, 1, challenger)
+  validates_close(
+    open_transaction_anchored(
+      0,
+      1,
+      challenger,
+      challenger,
+      backdated_open_range(),
+      env.max_validity_range_length + 1,
+    ),
+    redeemer,
+  )
+}
+
+/// Upper-bound anchoring leaves the open's maximum-validity-range check as the
+/// only bound on how far a challenger can push the response deadline. The
+/// ledger admits ranges of any length, so this Aiken test is the only place
+/// that pins it. Differential twin of
+/// `availability_open_anchors_response_deadline_at_inclusive_upper_bound`: the
+/// inclusive range is one millisecond longer than the maximum, with every datum
+/// anchored consistently at its inclusive upper bound.
+test availability_open_rejects_validity_range_longer_than_maximum() fail {
+  let redeemer = open_redeemer(0, 1, challenger)
+  validates_close(
+    open_transaction_anchored(
+      0,
+      1,
+      challenger,
+      challenger,
+      Interval {
+        lower_bound: IntervalBound { bound_type: Finite(0), is_inclusive: True },
+        upper_bound: IntervalBound {
+          bound_type: Finite(env.max_validity_range_length + 2),
+          is_inclusive: False,
+        },
+      },
+      env.max_validity_range_length + 1,
+    ),
+    redeemer,
+  )
 }
 
 test q58_settle_published_tranche_accepts_exact_thread_and_carrier() {

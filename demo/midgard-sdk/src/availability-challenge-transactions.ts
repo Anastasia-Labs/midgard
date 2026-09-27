@@ -621,7 +621,9 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
       availableBond: b,
       bondInputOutRef: outputReferenceFromUTxO(p.bond),
       challenger: p.challenger,
-      openedAt: p.validFrom,
+      // The validator anchors the response window at the inclusive upper
+      // validity bound; the ledger's upper end is exclusive.
+      openedAt: p.validTo - 1n,
       parameters: d.parameters,
     });
     assertDaAvailabilityOpeningWorkingCapital(lucid, d, plan);
