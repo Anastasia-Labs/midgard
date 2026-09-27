@@ -542,9 +542,6 @@ export const seedCorrectionObserver = async (
         h.deployment.manifest.l1Finality.confirmationDepth,
       ),
       deploymentManifest: identity.manifest,
-      ledgerDeltaLogMax:
-        h.production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-      rewindThroughHistoryOwner: true,
     }).pipe(
       Effect.provideService(Globals, h.globals),
       Effect.provide(Database.layer),

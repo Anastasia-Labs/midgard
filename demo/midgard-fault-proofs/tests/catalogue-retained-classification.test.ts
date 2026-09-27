@@ -5,6 +5,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -89,11 +90,7 @@ import {
 
 const DEPLOYMENT = "d1".repeat(32);
 const RELEASE = "e1".repeat(32);
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,

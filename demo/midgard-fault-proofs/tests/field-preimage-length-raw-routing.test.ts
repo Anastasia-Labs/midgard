@@ -6,6 +6,7 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core/codec";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
@@ -43,11 +44,7 @@ import {
 
 const category = "fieldPreimageLengthMismatch";
 const deploymentFingerprint = "22".repeat(32);
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({

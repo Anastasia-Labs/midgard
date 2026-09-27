@@ -17,6 +17,7 @@ import {
   DepositInfo,
   EMPTY_MERKLE_TREE_ROOT,
   encodeEventHistoryData,
+  EVENT_WAIT_DURATION_MS,
   EventHistoryData,
   eventHistoryDataHash,
   eventHistoryKey,
@@ -763,7 +764,7 @@ const journey = async (
           event_id: h.originalId,
           inclusion_time:
             next.upper +
-            60_000n -
+            BigInt(EVENT_WAIT_DURATION_MS) -
             (admissionFault === "backdated-inclusion" ? 1n : 0n),
           location: external
             ? {

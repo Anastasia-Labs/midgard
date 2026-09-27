@@ -854,6 +854,13 @@ const submitSchedulerAppointmentTx = async ({
 };
 
 /**
+ * Lower bound of a header commit's validity range: 60 s before the header
+ * start. The upper bound is `header.endTime + 1`.
+ */
+export const headerCommitValidFrom = (header: Header): bigint =>
+  header.startTime - 60_000n;
+
+/**
  * Transaction 4: commit the (fraudulent) header onto the state queue behind
  * the root, holding the operator's bond.
  */
@@ -895,7 +902,7 @@ const submitHeaderCommitTx = async ({
     utxoToStateQueueUTxO(stateQueueRootUtxo, contracts.stateQueue.policyId),
   );
   const commitFeeInput = await firstWalletUtxo(lucid, "commit fee input");
-  const commitValidFrom = header.startTime - 60_000n;
+  const commitValidFrom = headerCommitValidFrom(header);
   const commitValidTo = header.endTime + 1n;
   const continuedActiveOperatorDatum = encodeLinkedListNodeView({
     key: { Key: { key: header.operatorVkey } },

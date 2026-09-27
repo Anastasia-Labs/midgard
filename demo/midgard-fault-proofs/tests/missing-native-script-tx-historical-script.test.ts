@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { missingNativeScriptTxVersionedScriptHash } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -31,11 +32,7 @@ import {
 const DEPLOYMENT = "11".repeat(32);
 const RELEASE = "22".repeat(32);
 const APPLICATION_OVERLAY = "23".repeat(32);
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,

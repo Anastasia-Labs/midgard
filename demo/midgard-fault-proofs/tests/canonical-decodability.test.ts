@@ -4,6 +4,7 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeCbor,
 } from "@al-ft/midgard-core";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type L2TransactionSource,
   L2TransactionSource as L2TransactionSourceCodec,
@@ -39,11 +40,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 
 const DEPLOYMENT_FINGERPRINT = "d7".repeat(32);
-const RELEASE_FINALITY_POLICY = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 
 const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -192,7 +189,8 @@ describe("production canonical-decodability public-evidence workflow V1", () => 
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     let fetchCount = 0;
     const source: RetainedDaPayloadSource = {

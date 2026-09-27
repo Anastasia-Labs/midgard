@@ -10,7 +10,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import {
-  type CheckId,
   type ReconciliationReport,
   STATE_RECONCILIATION_CHECK_IDS,
   stateReconciliationProgram,
@@ -100,27 +99,13 @@ const describeReconciliation = (report: ReconciliationReport): string =>
     .join("\n");
 
 /**
- * The fixture runs the default `legacy` MPF engine, whose confirmed-merge
- * finalization resynchronizes the LevelDB ledger store from confirmed_ledger
- * (`synchronizeCommitMpfStoresFromConfirmedLedger`). With blocks still queued
- * behind the merged one, that store then holds the confirmed root rather than
- * the committed tip, so the two native-root checks cannot hold there. The
- * operator runs `architecture_g`, whose owner keeps the tip across a merge.
- */
-const LEGACY_NATIVE_ROOT_CHECKS_AFTER_PARTIAL_MERGE = [
-  "native-root",
-  "state-queue-tail-root",
-] as const satisfies readonly CheckId[];
-
-/**
  * `reconcile-state` exactly as the CLI runs it (no in-flight allowance), at a
- * quiescent point of the journey: every check must PASS, none may be skipped,
- * except the named checks, which are left unasserted.
+ * quiescent point of the journey: every check must PASS and none may be
+ * skipped.
  */
 const expectReconciled = async (
   stage: string,
   harness: Parameters<typeof runNodeCommandProgram>[1],
-  unasserted: readonly CheckId[] = [],
 ): Promise<ReconciliationReport> => {
   const report = await runNodeCommandProgram(
     stateReconciliationProgram({ maxAttempts: 1 }),
@@ -131,10 +116,9 @@ const expectReconciled = async (
     ...STATE_RECONCILIATION_CHECK_IDS,
   ]);
   for (const check of report.checks) {
-    if (unasserted.includes(check.id)) continue;
     expect(check.status, described).toBe("PASS");
   }
-  if (unasserted.length === 0) expect(report.ok, described).toBe(true);
+  expect(report.ok, described).toBe(true);
   return report;
 };
 
@@ -722,7 +706,6 @@ describe.sequential("deposit flow emulator", () => {
       await expectReconciled(
         `after scheduled merge ${(index + 1).toString()} of 3`,
         harness,
-        LEGACY_NATIVE_ROOT_CHECKS_AFTER_PARTIAL_MERGE,
       );
     }
 

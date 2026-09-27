@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -113,11 +114,7 @@ const PROOF_TX_HASH = "a1".repeat(32);
 const REMOVAL_TX_HASH = "a2".repeat(32);
 const REFERENCE_OUT_REF = `${"b2".repeat(32)}#0`;
 const REFERENCE_SCRIPT_HASH = "c3".repeat(28);
-const RELEASE_FINALITY_POLICY = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinalityAuthority = (
   overrides: Partial<{
     readonly deploymentIdentityDigest: string;
@@ -966,7 +963,10 @@ describe("Q51/W-O4 resumable workflow", () => {
         observedPolicies.push(releaseFinality.policyDigest);
         return {
           ...candidate,
-          observedAt: { ...candidate.observedAt, confirmationDepth: 29 },
+          observedAt: {
+            ...candidate.observedAt,
+            confirmationDepth: RELEASE_FINALITY_POLICY.confirmationDepth - 1,
+          },
         };
       },
     };
@@ -982,7 +982,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     expect(result).toMatchObject({
       kind: "stalled",
       reason: expect.stringContaining(
-        "confirmation depth is below the release threshold: required=30 actual=29",
+        `confirmation depth is below the release threshold: required=${RELEASE_FINALITY_POLICY.confirmationDepth} actual=${RELEASE_FINALITY_POLICY.confirmationDepth - 1}`,
       ),
     });
   });

@@ -36,7 +36,11 @@ import {
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
 import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import { prepareFamilyHistory } from "./support/emulator/family-history.js";
+import {
+  awaitHeaderCommitWindow,
+  FAMILY_HISTORY_HEADER_LEAD_MS,
+  prepareFamilyHistory,
+} from "./support/emulator/family-history.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import {
@@ -183,7 +187,7 @@ it.each([false, true])(
     const now =
       alignUnixTimeToEmulatorSlotBoundary(
         h.funderLucid,
-        h.emulator.now() + 240_000,
+        h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
       ) - 1;
     const retained = await depositEventsRetainedBlock({
       operatorVkey: await funderPaymentKeyHash(h.funderLucid),
@@ -242,6 +246,7 @@ it.each([false, true])(
           },
         );
         await history.submit("raw-deposit-admission", admission.tx);
+        awaitHeaderCommitWindow(h.emulator, retained.header);
       },
     });
     const witness = await SDK.fetchEventHistoryWitness(

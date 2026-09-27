@@ -3,6 +3,7 @@ import {
   encodeMidgardNativeTxProofFieldLengths,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -44,11 +45,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 
 const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
-const RELEASE_FINALITY_POLICY = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 
 const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -162,7 +159,8 @@ describe("production authenticated-header classifier V1", () => {
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     const fetched = { count: 0 };
     const decision = await classifyHeader({
@@ -230,7 +228,8 @@ describe("production authenticated-header classifier V1", () => {
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     const fetched = { count: 0 };
     const decision = await classifyHeader({
@@ -274,7 +273,8 @@ describe("production authenticated-header classifier V1", () => {
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     const fetched = { count: 0 };
     const decision = await classifyHeader({
@@ -325,7 +325,8 @@ describe("production authenticated-header classifier V1", () => {
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     const decision = await classifyHeader({
       classifier,
@@ -374,7 +375,8 @@ describe("production authenticated-header classifier V1", () => {
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     const decision = await classifyHeader({
       classifier,
@@ -406,7 +408,8 @@ describe("production authenticated-header classifier V1", () => {
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     const decision = await classifyHeader({
       classifier,
@@ -493,7 +496,8 @@ describe("production authenticated-header classifier V1", () => {
     const authenticatedObservationDigest =
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
     const payloads = new Map([
       [current.headerHash, current.payloadEnvelopeCbor],

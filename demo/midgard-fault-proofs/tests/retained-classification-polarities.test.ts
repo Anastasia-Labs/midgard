@@ -13,6 +13,7 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   decodeRetainedValidationWitnessKey,
@@ -74,11 +75,7 @@ import {
 } from "./support/retained-reason-classifier.js";
 
 const deploymentFingerprint = "d1".repeat(32);
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({

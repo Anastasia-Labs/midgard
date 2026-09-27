@@ -27,7 +27,11 @@ import {
   submitTransitionTraceRoute,
 } from "../src/transition-trace/submit.js";
 import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
-import { prepareFamilyHistory } from "./support/emulator/family-history.js";
+import {
+  awaitHeaderCommitWindow,
+  FAMILY_HISTORY_HEADER_LEAD_MS,
+  prepareFamilyHistory,
+} from "./support/emulator/family-history.js";
 import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
@@ -203,7 +207,7 @@ describe("applied transition history", () => {
       const now =
         alignUnixTimeToEmulatorSlotBoundary(
           h.funderLucid,
-          h.emulator.now() + 240_000,
+          h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
         ) - 1;
       const fixture = await buildDepositTransitionFixture({
         operatorVkey: await funderPaymentKeyHash(h.funderLucid),
@@ -229,6 +233,7 @@ describe("applied transition history", () => {
             fixture.header,
             { lovelace: 25_000_000n, ...nativeAssets },
           );
+          awaitHeaderCommitWindow(h.emulator, fixture.header);
         },
       });
       if (admitted === undefined || hub === undefined)

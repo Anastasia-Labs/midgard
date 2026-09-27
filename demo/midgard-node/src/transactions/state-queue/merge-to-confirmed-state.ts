@@ -201,7 +201,8 @@ export const observeNativeOwnerAfterConfirmedMerge = ({
  * Finalizes one L1-confirmed merge into the local database under its
  * confirmed-merge job: folds the header's ledger delta chain into the
  * confirmed ledger, clears its block rows, marks its projected events, then
- * synchronizes the commit MPFs. `headerUtxosRoot` is the header's committed
+ * confirms the native MPF owner is live (see
+ * observeNativeOwnerAfterConfirmedMerge). `headerUtxosRoot` is the header's committed
  * UTxO root, which the folded ledger must reach.
  *
  * Idempotent, so a failed or interrupted attempt can simply run again: a
@@ -214,7 +215,7 @@ export const finalizeConfirmedMergeProgram = ({
 }: {
   readonly headerHash: Buffer;
   readonly headerUtxosRoot: string;
-}): Effect.Effect<void, DatabaseError, Database | Globals | NodeConfig> =>
+}): Effect.Effect<void, DatabaseError, Database | Globals> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
@@ -507,7 +508,7 @@ export const finalizeMergesLandedThrough = (
 ): Effect.Effect<
   readonly string[],
   DatabaseError | SDK.HashingError,
-  Database | Globals | NodeConfig
+  Database | Globals
 > =>
   Effect.gen(function* () {
     const pending = yield* landedUnfinalizedMerges(confirmedState);
@@ -549,7 +550,7 @@ export const finalizeLandedMergesProgram = (
   | SDK.LucidError
   | SDK.StateQueueError
   | SDK.DataCoercionError,
-  Database | Globals | NodeConfig
+  Database | Globals
 > =>
   fetchL1ConfirmedState(lucid, fetchConfig).pipe(
     Effect.flatMap(finalizeMergesLandedThrough),

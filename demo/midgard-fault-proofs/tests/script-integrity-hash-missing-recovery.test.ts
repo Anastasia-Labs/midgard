@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it, vi } from "vitest";
 
 import {
@@ -43,11 +44,7 @@ const category = "scriptIntegrityHashMissing";
 const headerHash = "11".repeat(28);
 const deploymentFingerprint = hash("22");
 const transactionHash = hash("33");
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: deploymentFingerprint,

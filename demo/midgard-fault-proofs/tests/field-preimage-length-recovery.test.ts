@@ -6,6 +6,7 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core/codec";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, Lucid, type TxSigned } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
@@ -127,11 +128,7 @@ const provenance = {
   sourceId: "scripted-local-observation",
   grade: "security",
 } as const;
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: deploymentFingerprint,
@@ -585,7 +582,8 @@ it.each([
         authenticatedObservationDigest:
           await authenticatedStateQueueObservationDigest({
             observation,
-            minimumConfirmationDepth: 30,
+            minimumConfirmationDepth:
+              DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
           }),
         sources: [publicSource],
       });

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -89,7 +90,11 @@ import {
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { prepareFamilyHistory } from "./support/emulator/family-history.js";
+import {
+  awaitHeaderCommitWindow,
+  FAMILY_HISTORY_HEADER_LEAD_MS,
+  prepareFamilyHistory,
+} from "./support/emulator/family-history.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
@@ -118,11 +123,8 @@ const HISTORY_BOUNDS = {
 const historyRecords: unknown[] = [];
 
 const DEPLOYMENT = "11".repeat(32);
-const finalityPolicy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+// The release-finality check requires the selected profile's policy exactly.
+const finalityPolicy = DEPLOYMENT_MANIFEST_L1_FINALITY;
 const economicsPolicy = {
   profile: "bounded-acceptance-v1",
   requiredBondLovelace: "900000000",
@@ -348,7 +350,7 @@ describe("transition trace installed retained-history workflow", () => {
         const now =
           alignUnixTimeToEmulatorSlotBoundary(
             h.funderLucid,
-            h.emulator.now() + 120000,
+            h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
           ) - 1;
         const nonce = history.nonce(kind);
         const id = {
@@ -463,9 +465,11 @@ describe("transition trace installed retained-history workflow", () => {
             };
             if (timing !== null && honest) admitAfterPredecessor = admitEvent;
             else await admitEvent();
+            awaitHeaderCommitWindow(h.emulator, fixture.predecessor.header);
           },
         });
         await admitAfterPredecessor?.();
+        awaitHeaderCommitWindow(h.emulator, fixture.current.header);
         await submitSecondHeaderTx({
           lucid: h.funderLucid,
           contracts,
@@ -752,7 +756,7 @@ describe("transition trace installed retained-history workflow", () => {
           authenticatedObservationDigest:
             await authenticatedStateQueueObservationDigest({
               observation,
-              minimumConfirmationDepth: 30,
+              minimumConfirmationDepth: finalityPolicy.confirmationDepth,
             }),
           sources,
         });

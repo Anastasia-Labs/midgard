@@ -47,7 +47,11 @@ import {
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import { prepareFamilyHistory } from "./support/emulator/family-history.js";
+import {
+  awaitHeaderCommitWindow,
+  FAMILY_HISTORY_HEADER_LEAD_MS,
+  prepareFamilyHistory,
+} from "./support/emulator/family-history.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
@@ -368,6 +372,7 @@ const setupWithdrawalChallenge = async ({
         { ...header, endTime: inclusionTime },
         { lovelace: 25_000_000n },
       );
+      awaitHeaderCommitWindow(harness.emulator, header);
     },
   });
   if (admission === undefined)
@@ -465,7 +470,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       await makeHarness();
     const header = makeHeader(
       await funderPaymentKeyHash(harness.funderLucid),
-      await alignedHeaderStart(harness, 240_000),
+      await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
     );
     const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,
@@ -721,7 +726,10 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
     const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
     const operator = await funderPaymentKeyHash(harness.funderLucid);
-    const startTime = await alignedHeaderStart(harness, 240_000);
+    const startTime = await alignedHeaderStart(
+      harness,
+      FAMILY_HISTORY_HEADER_LEAD_MS,
+    );
     const withdrawalId = withdrawalIdFor(history);
     const eventKey: SDK.EventKey = {
       WithdrawalEventKey: { withdrawal_id: withdrawalId },
@@ -894,7 +902,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       await makeHarness();
     const header = makeHeader(
       await funderPaymentKeyHash(harness.funderLucid),
-      await alignedHeaderStart(harness, 240_000),
+      await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
     );
     const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,

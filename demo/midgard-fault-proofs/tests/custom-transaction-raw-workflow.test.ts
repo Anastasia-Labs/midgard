@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it, vi } from "vitest";
 
 import { prepareMintDeclaredAssetLimitAcceptedArtifact } from "../src/mint-declared-asset-limit/replay.js";
@@ -40,11 +41,7 @@ const categories = [
 ] as const;
 type Category = (typeof categories)[number];
 const deploymentFingerprint = "22".repeat(32);
-const policy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({

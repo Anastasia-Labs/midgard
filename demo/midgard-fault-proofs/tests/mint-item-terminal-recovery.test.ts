@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {
@@ -124,11 +125,7 @@ const fixture = (depth = 1, removalConfirmed = true) => {
       confirmationDepth: depth,
     },
   };
-  const policy = {
-    confirmationDepth: 30,
-    automaticRecoveryMaxDepth: 2160,
-    deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-  } as const;
+  const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
   const observe = vi.fn(async () => ({
     stage: { kind: "removed" as const, terminal },
   }));

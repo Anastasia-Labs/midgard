@@ -14,6 +14,33 @@ import { type makeFaultProofEmulatorHarness } from "./harness.js";
 import { index, same } from "./history-pair.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
+import { headerCommitValidFrom } from "./setup-tx.js";
+
+/**
+ * Header lead for a block that commits a family-history admission: the widest
+ * one the setup's init transaction admits (valid from 60 s before the current
+ * slot until the header start, within the maximum validity range, less one
+ * slot of rounding). `admit` must land before
+ * `endTime + 1 - EVENT_WAIT_DURATION_MS`, after the setup transactions that
+ * precede it, so the compiled profile's event wait has to fit inside it.
+ */
+export const FAMILY_HISTORY_HEADER_LEAD_MS =
+  Number(SDK.MAX_VALIDITY_RANGE_LENGTH_MS) - 61_000;
+
+/**
+ * Admission lands an event wait before the end of the header it is admitted
+ * for, which can be earlier than the commit's lower bound
+ * (`headerCommitValidFrom`). A caller waits here, on the header it actually
+ * commits next, before committing it.
+ */
+export const awaitHeaderCommitWindow = (
+  emulator: { now(): number; awaitSlot(slots: number): void },
+  header: SDK.Header,
+): void => {
+  const commitValidFrom = Number(headerCommitValidFrom(header));
+  if (emulator.now() < commitValidFrom)
+    emulator.awaitSlot(Math.ceil((commitValidFrom - emulator.now()) / 1000));
+};
 
 export const recordFamilyTransaction = (
   records: unknown[],

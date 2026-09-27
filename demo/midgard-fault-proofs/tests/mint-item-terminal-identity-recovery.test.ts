@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it, vi } from "vitest";
 
 import {
@@ -98,11 +99,7 @@ it("continues the retained terminal journal under refreshed authority without ch
       throw new Error("must not rebuild removed proof");
     });
     const transactionConfirmed = vi.fn(async () => true);
-    const policy = {
-      confirmationDepth: 30,
-      automaticRecoveryMaxDepth: 2160,
-      deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-    } as const;
+    const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
     const workflow = {
       binding: {
         deploymentFingerprint: original.deploymentFingerprint,

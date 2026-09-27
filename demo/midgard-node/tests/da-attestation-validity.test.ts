@@ -242,7 +242,7 @@ describe("DA committee apply against an L1 tip that trails the submitter's clock
       referenceScripts: f.daReferences,
       availabilityParameters: TEST_AVAILABILITY_PARAMETERS,
       currentTime: submitterClock,
-      refreshFundingUtxos: async () => {},
+      refreshFundingUtxos: async () => undefined,
       signSubmit: async (tx) => {
         const signed = await tx.sign.withWallet().complete();
         const body = CML.Transaction.from_cbor_hex(signed.toCBOR()).body();

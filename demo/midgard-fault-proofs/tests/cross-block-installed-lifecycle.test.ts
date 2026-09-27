@@ -1,3 +1,5 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -40,11 +42,7 @@ import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.
 import { crossBlockRetainedFixture } from "./support/cross-block-retained.js";
 import { settleOldestCrossBlockHeader } from "./support/cross-block-settlement-emulator.js";
 import { makeHeader } from "./support/submit-init-emulator-shared.js";
-const finalityPolicy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -310,7 +308,8 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
           authenticatedObservationDigest:
             await authenticatedStateQueueObservationDigest({
               observation: observed,
-              minimumConfirmationDepth: 30,
+              minimumConfirmationDepth:
+                DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
             }),
           sources: [
             {

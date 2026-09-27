@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -110,11 +111,7 @@ import {
 } from "./support/family-common-infrastructure.js";
 
 const DEPLOYMENT = "d7".repeat(32);
-const RELEASE_FINALITY_POLICY = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 
 const admittedActuation = async () => {
   const sharedInput = outRefCbor(91, 0n);
@@ -147,7 +144,8 @@ const admittedActuation = async () => {
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({
         observation,
-        minimumConfirmationDepth: 30,
+        minimumConfirmationDepth:
+          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       }),
     sources: [
       {

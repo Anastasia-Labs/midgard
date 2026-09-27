@@ -67,9 +67,8 @@ const routerConfig = {
   VALIDATION_WORKER_JOB_TIMEOUT_MS: 60_000,
   STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: 60_000,
   WAIT_BETWEEN_MERGE_TXS: 10_000,
-  MPF_ENGINE: "architecture_g",
   MIN_QUEUE_LENGTH_FOR_MERGING: 1,
-} as unknown as NodeConfig["Type"];
+} satisfies Partial<NodeConfig["Type"]> as unknown as NodeConfig["Type"];
 
 /** The owner the served node holds; `diagnostics` rejects when unhealthy. */
 let ownerHealthy = true;
@@ -180,10 +179,9 @@ const observe = (port: number, nodeUrl?: string) =>
   Effect.runPromise(
     readNativeRoot(nodeUrl === undefined ? {} : { nodeUrl }).pipe(
       Effect.provideService(NodeConfig, {
-        MPF_ENGINE: "architecture_g",
         PORT: port,
         LEDGER_MPF_DB_PATH: levelPath,
-      } as unknown as NodeConfig["Type"]),
+      } satisfies Partial<NodeConfig["Type"]> as unknown as NodeConfig["Type"]),
     ),
   );
 

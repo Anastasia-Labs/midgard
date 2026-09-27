@@ -57,6 +57,8 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { historyWitnessFixture } from "./helpers/history-witness-fixture.js";
 import {
+  awaitHeaderCommitWindow,
+  FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
   recordFamilyTransaction,
 } from "./support/emulator/family-history.js";
@@ -284,8 +286,10 @@ const setupChallengedBlockOnEmulator = async (
   ]);
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
   const headerStartTime =
-    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 240_000) -
-    1;
+    alignUnixTimeToEmulatorSlotBoundary(
+      funderLucid,
+      emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
+    ) - 1;
   // `header_v1_is_valid` (state-queue `CommitBlockHeader`) enforces the
   // transition-commitment identities: `total_event_count` must equal the sum
   // of the per-kind counts, `transition_step_count` must equal it, and the
@@ -334,6 +338,7 @@ const setupChallengedBlockOnEmulator = async (
         },
         header,
       );
+      awaitHeaderCommitWindow(emulator, header);
     },
   });
   if (admitted === undefined) throw new Error("History admission did not run");

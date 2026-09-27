@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -24,11 +25,8 @@ describe("transition event authority raw test transport", () => {
     const seed = requireTransitionTraceL1Events(
       await captureRetainedPlutusIdentityOrigins(fixture, { omitEvent: true }),
     ).snapshot;
-    const policy = {
-      confirmationDepth: 30,
-      automaticRecoveryMaxDepth: 2160,
-      deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-    } as const;
+    // Must equal the retained fixture's policy, which follows the selected profile.
+    const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
     const binding = {
       deploymentFingerprint: "d1".repeat(32),
       network: "Preprod",

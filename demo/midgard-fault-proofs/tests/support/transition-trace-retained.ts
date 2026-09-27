@@ -433,7 +433,12 @@ export const transitionTraceTimingRetainedFixture = async (input: {
   const current = await depositEventsRetainedBlock({
     operatorVkey: input.operatorVkey,
     startTime: predecessor.header.endTime,
-    endTime: BigInt(input.now + 120_000),
+    // An honest late event is admitted after the predecessor commits (from
+    // 60 s before its start) yet an event wait before this block's end, so
+    // the block must outlast the event wait.
+    endTime: BigInt(
+      input.now + 60_000 + Math.max(60_000, SDK.EVENT_WAIT_DURATION_MS),
+    ),
     blockSlot: 10n,
     prevHeaderHash: predecessor.headerHash,
     prevUtxosRoot: predecessor.header.utxosRoot,

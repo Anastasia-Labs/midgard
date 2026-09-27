@@ -6,6 +6,7 @@ import {
   type MidgardValidationTraceProof,
   selectMidgardValidationDisputeReveal,
 } from "@al-ft/midgard-core";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   FraudProofComputationThreadStepDatum,
   validationDisputeCoreFromData,
@@ -108,11 +109,7 @@ import { buildAcceptedClaimOverMinAdaRejectingTransactionFixture } from "./suppo
 const DEPLOYMENT = "11".repeat(32);
 const PAYLOAD_ENVELOPE_SHA = "ab".repeat(32);
 const PAYLOAD_SHA = "cd".repeat(32);
-const finalityPolicy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const economicsPolicy = {
   profile: "bounded-acceptance-v1",
   requiredBondLovelace: "900000000",

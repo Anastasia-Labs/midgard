@@ -20,7 +20,11 @@ import {
   submitTransitionTraceFinal,
   submitTransitionTraceRoute,
 } from "../src/transition-trace/submit.js";
-import { prepareFamilyHistory } from "./support/emulator/family-history.js";
+import {
+  awaitHeaderCommitWindow,
+  FAMILY_HISTORY_HEADER_LEAD_MS,
+  prepareFamilyHistory,
+} from "./support/emulator/family-history.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
@@ -224,7 +228,7 @@ describe("applied timed history final", () => {
       const now =
         alignUnixTimeToEmulatorSlotBoundary(
           h.funderLucid,
-          h.emulator.now() + 240_000,
+          h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
         ) - 1;
       const header: SDK.Header = {
         ...makeHeader(await funderPaymentKeyHash(h.funderLucid), now),
@@ -307,6 +311,7 @@ describe("applied timed history final", () => {
               : header,
             { lovelace: payloadBytes === 12000 ? 100_000_000n : 25_000_000n },
           );
+          awaitHeaderCommitWindow(h.emulator, header);
         },
       });
       if (admitted === undefined || hub === undefined)

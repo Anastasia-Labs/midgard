@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   castConfirmedStateToData,
@@ -45,11 +46,7 @@ export const OPERATOR = policy("11");
 export const PROVER = policy("12");
 export const DEPLOYMENT = hash32("13");
 export const RELEASE = hash32("14");
-export const finalityPolicy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+export const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 export const FINALITY =
   computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy);
 export const releaseFinality = {

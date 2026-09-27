@@ -156,7 +156,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     const accounts = createPublishedWorkflowDeploymentAccounts();
     const availabilityAccount = generateEmulatorAccount({ lovelace: 0n });
     const deployment = await stage("published deployment", () =>
-      publishWorkflowDeployment({ network: "Preprod", accounts }),
+      publishWorkflowDeployment({ accounts }),
     );
     vi.spyOn(Date, "now").mockImplementation(() => deployment.emulator.now());
     await stage("deposit history admission readiness", async () => {
@@ -308,7 +308,10 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       "blocks.json",
     );
     cleanup.push(chain.close);
-    await chain.grow(40);
+    // Settle the setup history to the configured finality depth plus one real
+    // block before the watcher starts, and no further: every extra block ages
+    // the fraudulent commitment towards its merge before detection.
+    await chain.grow(native.watcherConfig.l1.finality.depth + 1);
     // Submission growth supplies the configured finality depth plus one real
     // block. Background growth matches the fixture's 20-second block interval
     // so durable ingestion need not race a chain accelerated fourfold.
@@ -606,7 +609,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
             });
             expect(
               terminal.terminal.observedAt.confirmationDepth,
-            ).toBeGreaterThanOrEqual(30);
+            ).toBeGreaterThanOrEqual(native.watcherConfig.l1.finality.depth);
             return terminal.terminal;
           }
           const next = intents[confirmed.length];
@@ -621,7 +624,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         }
       },
       // The deposit proof folds through multiple on-chain checkpoints. Each
-      // transaction must independently reach the normal 30-block finality.
+      // transaction must independently reach the configured finality depth.
       720_000,
     );
     await stage("corrected on-chain state", async () => {

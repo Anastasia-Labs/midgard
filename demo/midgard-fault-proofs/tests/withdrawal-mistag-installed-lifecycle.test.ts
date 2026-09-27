@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -59,11 +60,7 @@ import {
 import { runWithdrawalMistagMaximumProof } from "./support/withdrawal-mistag-maximum-proof.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
 
-const finalityPolicy = {
-  confirmationDepth: 30,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
+const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const economicsPolicy = {
   profile: "bounded-acceptance-v1",
   requiredBondLovelace: "900000000",

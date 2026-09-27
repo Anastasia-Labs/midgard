@@ -888,6 +888,13 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
       facts.commitment.inclusion_time,
       committedHash,
     );
+    // The accused header ends at the event's inclusion time, an event wait
+    // after admission; capture may start only once that interval has closed.
+    const captureFrom = p.headerEnd + timing.slotLengthMs;
+    if (BigInt(h.emulator.now()) < captureFrom)
+      h.emulator.awaitSlot(
+        Number((captureFrom - BigInt(h.emulator.now()) + 999n) / 1000n),
+      );
     const window = SDK.eventHistoryCaptureWindow({
       now: BigInt(h.emulator.now()),
       headerEnd: p.headerEnd,

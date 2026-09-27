@@ -3,6 +3,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { EventKeySchema, forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
@@ -162,11 +163,7 @@ describe("unused-redeemer authenticated observation", () => {
       const retained =
         scenario.redeemerIndex === 1 ? fixture : await retainedRejection(0);
       const deploymentFingerprint = "d1".repeat(32);
-      const policy = {
-        confirmationDepth: 30,
-        automaticRecoveryMaxDepth: 2160,
-        deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-      } as const;
+      const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
       const { decision } = await classifyRetainedReasonFixture({
         observation: authenticatedHeaderObservation(retained.committed),
         payloadEnvelopeCbor: retained.committed.payloadEnvelopeCbor,

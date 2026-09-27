@@ -19,6 +19,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import {
@@ -350,11 +351,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
         },
       ],
     });
-    const policy = {
-      confirmationDepth: 30,
-      automaticRecoveryMaxDepth: 2160,
-      deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-    } as const;
+    const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
     const releaseFinality = {
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
       deploymentIdentityDigest: "11".repeat(32),
