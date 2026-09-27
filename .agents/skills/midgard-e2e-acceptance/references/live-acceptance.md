@@ -580,8 +580,9 @@ curl -sf "http://127.0.0.1:3000/utxos?address=$USER_L2_ADDRESS"
 
 The running node's history owner records and projects the deposit, so this
 step only waits for it; no block commit is involved. The deposit is due at its
-`inclusionTime`, the deposit transaction's validity upper bound (at most 60 s
-out) plus the profile's `event_wait_ms` (300 s on preprod-testing), and the
+`inclusionTime`, the deposit transaction's validity upper bound (at most 120 s
+out: the validity window is 180 s and starts 60 s in the past) plus the
+profile's `event_wait_ms` (300 s on preprod-testing), and the
 history owner projects it once its authenticated L1 source reaches that time.
 The 20-minute bound covers that wait and the history owner's L1 lag with a wide
 margin. A `404` or an `awaiting` status inside the bound is not a failure. On
