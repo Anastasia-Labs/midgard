@@ -3,7 +3,9 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input, Output, OutputReference, Transaction, ValidityRange}
+use cardano/transaction.{
+  Input, Output, OutputReference, Transaction, ValidityRange,
+}
 use env
 use midgard/availability_challenge as availability
 use midgard/common/utils
@@ -11,7 +13,8 @@ use midgard/fraud_proof
 use midgard/ledger_state.{
   ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot,
   HeaderHash, HeaderV1, MidgardTxsRoot, TransitionTraceRoot,
-  ValidationTracesRoot, WithdrawalsRoot, block_maturity_duration_v1, protocol_version_v1,
+  ValidationTracesRoot, WithdrawalsRoot, block_maturity_duration_v1,
+  protocol_version_v1,
 }
 
 /// TODO: It might be better to be space-conscious and use an empty name.
@@ -62,8 +65,9 @@ pub fn commit_bound_header_time_is_valid(
   header_end_time: Int,
   commit_validity_range: ValidityRange,
 ) -> Bool {
-  let (_, inclusive_commit_upper_bound) =
-    utils.get_inclusive_bounds_of_a_short_validity_range(commit_validity_range)
+  let (_, inclusive_commit_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    commit_validity_range,
+  )
   and {
     header_start_time < header_end_time,
     header_end_time == inclusive_commit_upper_bound,
@@ -254,17 +258,16 @@ pub fn get_confirmed_state(
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
 ) -> ConfirmedState {
-  expect Some(Input { output, .. }) =
-    reference_inputs
-      |> list.at(state_queue_node_ref_input_index)
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
-      _state_queue_element_address,
-      _state_queue_element_lovelace,
-      m_state_queue_element_key,
-      state_queue_element_data,
-      _state_queue_element_link,
-    <- linked_list.get_element_info(output)
+        _state_queue_element_address,
+        _state_queue_element_lovelace,
+        m_state_queue_element_key,
+        state_queue_element_data,
+        _state_queue_element_link
+      <- linked_list.get_element_info(output)
     expect None = m_state_queue_element_key
     expect coerced_confirmed_state: ConfirmedState = state_queue_element_data
     coerced_confirmed_state
@@ -301,17 +304,16 @@ pub fn get_state_queue_node(
   state_queue_node_ref_input_index: Int,
   return: fn(StateQueueNode, HeaderHash) -> result,
 ) -> result {
-  expect Some(Input { output, .. }) =
-    reference_inputs
-      |> list.at(state_queue_node_ref_input_index)
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
-      _state_queue_element_address,
-      _state_queue_element_lovelace,
-      m_state_queue_element_key,
-      state_queue_element_data,
-      _state_queue_element_link,
-    <- linked_list.get_element_info(output)
+        _state_queue_element_address,
+        _state_queue_element_lovelace,
+        m_state_queue_element_key,
+        state_queue_element_data,
+        _state_queue_element_link
+      <- linked_list.get_element_info(output)
     expect Some(header_hash) = m_state_queue_element_key
     expect state_queue_node: StateQueueNode = state_queue_element_data
     return(state_queue_node, header_hash)
@@ -334,17 +336,16 @@ pub fn get_confirmed_state_root(
   confirmed_state_ref_input_index: Int,
   return: fn(ConfirmedState, Option<HeaderHash>) -> result,
 ) -> result {
-  expect Some(Input { output, .. }) =
-    reference_inputs
-      |> list.at(confirmed_state_ref_input_index)
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(confirmed_state_ref_input_index)
   let linked_list_eval = {
     let
-      _confirmed_state_address,
-      _confirmed_state_lovelace,
-      m_confirmed_state_key,
-      confirmed_state_data,
-      head_link,
-    <- linked_list.get_element_info(output)
+        _confirmed_state_address,
+        _confirmed_state_lovelace,
+        m_confirmed_state_key,
+        confirmed_state_data,
+        head_link
+      <- linked_list.get_element_info(output)
     expect m_confirmed_state_key == None
     expect confirmed_state: ConfirmedState = confirmed_state_data
     return(confirmed_state, head_link)
@@ -364,13 +365,9 @@ fn get_node_info(
   return: fn(Int, HeaderHash, StateQueueNode, linked_list.Link) -> result,
 ) -> result {
   let linked_list_eval = {
-    let
-      _address,
-      lovelace,
-      m_header_hash,
-      data,
-      link,
-    <- linked_list.get_element_info(output)
+    let _address, lovelace, m_header_hash, data, link <- linked_list.get_element_info(
+      output,
+    )
     expect Some(header_hash) = m_header_hash
     expect state_queue_node: StateQueueNode = data
     return(lovelace, header_hash, state_queue_node, link)
@@ -405,12 +402,12 @@ pub fn validate_da_attestation_attachment(
       no_da_attestation,
       availability.Attested { da_bond_asset_name },
     )
-  expect Some(Input { output: input_output, .. }) =
-    inputs
-      |> list.at(state_queue_input_index)
+  expect Some(Input { output: input_output, .. }) = inputs
+    |> list.at(state_queue_input_index)
   let _, _, input_block, _ <- get_node_info(input_output, state_queue_policy)
-  let (_, inclusive_tx_upper_bound) =
-    utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
+  let (_, inclusive_tx_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    validity_range,
+  )
   expect
     inclusive_tx_upper_bound <= input_block.header.end_time + da_attestation_timeout_v1
   True
@@ -430,26 +427,21 @@ pub fn validate_da_availability_status_transition(
   expected_input_status: availability.StateQueueStatusV1,
   expected_output_status: availability.StateQueueStatusV1,
 ) -> Bool {
-  expect Some(Input { output: input_output, .. }) =
-    inputs
-      |> list.at(state_queue_input_index)
+  expect Some(Input { output: input_output, .. }) = inputs
+    |> list.at(state_queue_input_index)
   expect Some(output) = outputs |> list.at(state_queue_output_index)
   let Output { address: input_address, .. } = input_output
   let Output { address: output_address, .. } = output
   expect input_address == output_address
 
-  let
-    input_lovelace,
-    input_header_hash,
-    input_block,
-    input_link,
-  <- get_node_info(input_output, state_queue_policy)
-  let
-    output_lovelace,
-    output_header_hash,
-    output_block,
-    output_link,
-  <- get_node_info(output, state_queue_policy)
+  let input_lovelace, input_header_hash, input_block, input_link <- get_node_info(
+    input_output,
+    state_queue_policy,
+  )
+  let output_lovelace, output_header_hash, output_block, output_link <- get_node_info(
+    output,
+    state_queue_policy,
+  )
 
   expect input_header_hash == expected_header_hash
   expect output_header_hash == expected_header_hash
@@ -535,7 +527,9 @@ pub fn require_completed_fraud_witness(
   let _, header_hash, node, _ <- get_node_info(output, state_queue_policy)
   expect Some(recorded_proof) = node.proven_fraud
   let header_data: Data = node.header
-  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(tx.validity_range)
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
   and {
     bytearray.length(terminal_proof_asset) == 32,
     bytearray.length(recorded_proof) == 32,
@@ -554,15 +548,11 @@ pub fn get_prev_header_hash_of_node_v1(
   state_queue_node_ref_input_index: Int,
   expected_state_queue_node_header_hash: HeaderHash,
 ) -> HeaderHash {
-  let
-    header,
-    retrieved_state_queue_node_header_hash,
-  <-
-    get_block_datum_v1(
-      reference_inputs,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
+  let header, retrieved_state_queue_node_header_hash <- get_block_datum_v1(
+    reference_inputs,
+    state_queue_policy,
+    state_queue_node_ref_input_index,
+  )
   expect
     retrieved_state_queue_node_header_hash == expected_state_queue_node_header_hash
   header.prev_header_hash
