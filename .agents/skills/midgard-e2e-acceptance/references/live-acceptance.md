@@ -44,8 +44,14 @@ Verify `.env` without printing seed phrases:
 - `RUN_GENESIS_ON_STARTUP=false`;
 - distinct operator, reference-script, merge, user, and DA submitter roles;
 - `MIDGARD_DEPLOYMENT_MANIFEST_PATH` points to the producer runtime manifest;
-  and
-- `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity.
+- `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity; and
+- the native MPF owner is pinned: `MPF_NATIVE_OWNER_BINARY_PATH=/app/native/architecture-g-owner`,
+  `MPF_NATIVE_OWNER_SIDECAR_PATH` set, and `MPF_NATIVE_OWNER_BINARY_SHA256` set
+  to the value printed by
+  `$COMPOSE run --rm --no-deps --entrypoint cat midgard-node /app/native/architecture-g-owner.sha256`.
+  `.env.example` leaves the SHA-256 blank on purpose, and the node refuses to
+  `listen` without it (under `restart: always` that is a crash loop). Re-pin
+  after every image rebuild.
 
 For a fresh deployment, configure explicit positive integers for
 `MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES`,
