@@ -14,6 +14,11 @@ import { join } from "node:path";
 import { inspect } from "node:util";
 
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import {
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
@@ -203,6 +208,7 @@ import {
   resolveCurrentOperatorSchedulerWindow,
 } from "../src/workers/utils/scheduler-refresh.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
+import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import { correctAcceptedT1BlockAfterTimeout } from "./helpers/history-timeout-correction-fixture.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -1901,6 +1907,15 @@ export const normalizeT1RecoveryGlobals = (
     }),
   );
 
+// One signed transaction for every T1 run, so the flag-on and flag-off runs
+// retain identical rows.
+const t1RetainedProcessedTxCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
+  makeCardanoSignedMapOutputTxBytes(),
+);
+const t1RetainedProcessedTxId = computeMidgardNativeTxId(
+  decodeMidgardNativeTxFullFromCanonicalCbor(t1RetainedProcessedTxCbor),
+);
+
 export const runT1RecoveryScenario = async (
   speculationEnabled: boolean,
 ): Promise<{
@@ -1960,26 +1975,30 @@ export const runT1RecoveryScenario = async (
       [TxUtils.Columns.TX]: Buffer.from("a1".repeat(96), "hex"),
     };
     const retainedProcessedTx = {
-      [TxUtils.Columns.TX_ID]: Buffer.alloc(32, 0xa2),
-      [TxUtils.Columns.TX]: Buffer.from("a2".repeat(96), "hex"),
+      [TxUtils.Columns.TX_ID]: t1RetainedProcessedTxId,
+      [TxUtils.Columns.TX]: t1RetainedProcessedTxCbor,
     };
-    // The retained payload is opaque bytes, so each carries the ledger delta
-    // admission records for it. The correction's ledger restore reads that
-    // delta to decide whether a pending transaction depends on reopened state;
-    // these touch nothing it reopens, so recovery must keep both.
+    // The correction's ledger restore decides from each pending transaction's
+    // spends whether it depends on reopened state; neither of these touches
+    // anything it reopens, so recovery must keep both. The mempool row keeps
+    // opaque bytes with an empty admission delta: the restore reads a present
+    // delta and never decodes the bytes behind it. A processed row holds no
+    // delta in production (MempoolDB.clearTxs drops it when the transaction
+    // moves), so it carries canonical admitted bytes and the restore takes
+    // the decode fallback, as a live recovery does.
     const seedRetainedPayload = () =>
       runNodeDatabaseEffect(
         Effect.all(
           [
             TxUtils.insertEntry(MempoolDB.tableName, retainedMempoolTx),
-            ProcessedMempoolDB.insertTx(retainedProcessedTx),
-            MempoolTxDeltasDB.upsertMany(
-              [retainedMempoolTx, retainedProcessedTx].map((tx) => ({
-                txId: tx[TxUtils.Columns.TX_ID],
+            MempoolTxDeltasDB.upsertMany([
+              {
+                txId: retainedMempoolTx[TxUtils.Columns.TX_ID],
                 spent: [],
                 produced: [],
-              })),
-            ),
+              },
+            ]),
+            ProcessedMempoolDB.insertTx(retainedProcessedTx),
           ],
           { discard: true },
         ),

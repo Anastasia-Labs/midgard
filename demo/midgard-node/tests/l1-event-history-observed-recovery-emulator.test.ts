@@ -221,6 +221,14 @@ it("recovers a genuinely observed deposit-only signed commitment before local fi
           yield* Deferred.succeed(prepared, undefined);
         }),
     });
+    // The lifecycle reset keeps recovery plans, and `state` reads them all:
+    // drop any an earlier file left on this shard.
+    await read(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM event_history_recovery_plans`;
+      }),
+    );
     const { fixture, production, globals } = h;
     const source = transport!;
     const wallet = fixture.depositorLucid;

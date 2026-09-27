@@ -154,13 +154,20 @@ it("revives a replaced commit that wins its base slot after all, abandons its un
     await expectReplaced(E.journal, { handle: h });
 
     // NEW_E: the same members on the same base, handed to L1 and lost too.
-    // Built as the production worker builds it at E's TTL: inside E's
-    // scheduler window, with no fixture scheduler alignment. The fixture's
-    // alignment asks for a full non-history validity range and, once E's TTL
-    // sits late in the shift, refreshes the scheduler: that spends a
-    // reference input of E after E's TTL, which a fork that included E before
-    // its TTL would order after E, but the emulator cannot reorder.
+    // This deliberately skips a production step. The node's pre-lease
+    // alignment (alignCommitSchedulerBeforeMutationWorker in
+    // src/fibers/block-commitment.ts) would Rewind the scheduler here, since
+    // E's TTL sits late in the shift, so a production NEW_E references the
+    // refreshed scheduler UTxO. That is harmless: E's validTo is at or before
+    // its shift end (schedulerStateCoversCommitTarget), and a refresh's
+    // validFrom is at or after it (resolveSchedulerRefreshValidityWindow in
+    // src/workers/utils/scheduler-refresh.ts; onchain scheduler.ak
+    // validate_end_of_shift_and_get_operators), so a fork that includes E
+    // orders the refresh after E. The emulator cannot place an unobserved E
+    // before that refresh, so the test skips the alignment to keep E's
+    // reference inputs unspent and E landable below.
     const N = await loseNextCommit(h, undefined, { alignScheduler: false });
+    // Harness precondition, not a production property: see above.
     expect(signedReferenceInputs(N.journal)).toEqual(
       signedReferenceInputs(E.journal),
     );
