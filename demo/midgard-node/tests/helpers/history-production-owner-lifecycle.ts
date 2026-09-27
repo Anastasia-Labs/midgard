@@ -89,6 +89,7 @@ type HistoryAuthorityRow = {
   readonly reason: string;
   readonly live: boolean;
   readonly remaining_ms: string;
+  readonly updated_at: string;
 };
 
 const readHistoryAuthority = () =>
@@ -99,7 +100,7 @@ const readHistoryAuthority = () =>
         generation::text AS generation, state, reason,
         lease_until > clock_timestamp() AS live,
         round(extract(epoch FROM lease_until - clock_timestamp()) * 1000)::text
-          AS remaining_ms
+          AS remaining_ms, updated_at::text AS updated_at
         FROM event_history_authority WHERE singleton = true`;
       return rows[0];
     }).pipe(Effect.provide(Database.layer)),
@@ -228,6 +229,7 @@ export const openHistoryProductionOwnerLifecycle = async (
     generation: number,
     synchronizeOnStart = true,
     ogmiosUrl = transport.options.ogmiosUrl,
+    stoppedHolder?: string,
   ) => {
     const services = Layer.mergeAll(
       Layer.succeed(NodeConfig, nodeConfig),
@@ -279,42 +281,58 @@ export const openHistoryProductionOwnerLifecycle = async (
     const scope = await runtime.runPromise(Scope.make());
     const cache = await runtime.runPromise(MempoolLedgerCache);
     let nativeOwner: NativeMpfOwnerService | undefined;
-    const owner = await runtime.runPromise(
-      makeProductionEventHistoryOwner({
-        transport: { ...transport.options, ogmiosUrl },
-        expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256(
-          recorded.genesis,
-        ),
-        heartbeatIntervalMs: 100,
-        retainedPointLimit: 128,
-        maximumReceiptBytes: 16 * 1024 * 1024,
-        leaseDurationMs: 60_000,
-        prepareCompletion: (checkpoint, preparation) =>
-          Effect.gen(function* () {
-            yield* preparation.assertCurrent;
-            if (options.beforeCompletion !== undefined)
-              yield* options.beforeCompletion(generation, globals);
-            if (nativeOwner === undefined) {
-              yield* seedLatestLocalBlockBoundaryOnStartup;
-              if (generation > 0) {
-                yield* hydratePendingBlockFinalizationOnStartup;
-                yield* assertStartupMutationJobsRecoverable;
+    const owner = await runtime
+      .runPromise(
+        makeProductionEventHistoryOwner({
+          transport: { ...transport.options, ogmiosUrl },
+          expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256(
+            recorded.genesis,
+          ),
+          heartbeatIntervalMs: 100,
+          retainedPointLimit: 128,
+          maximumReceiptBytes: 16 * 1024 * 1024,
+          leaseDurationMs: 60_000,
+          prepareCompletion: (checkpoint, preparation) =>
+            Effect.gen(function* () {
+              yield* preparation.assertCurrent;
+              if (options.beforeCompletion !== undefined)
+                yield* options.beforeCompletion(generation, globals);
+              if (nativeOwner === undefined) {
+                yield* seedLatestLocalBlockBoundaryOnStartup;
+                if (generation > 0) {
+                  yield* hydratePendingBlockFinalizationOnStartup;
+                  yield* assertStartupMutationJobsRecoverable;
+                }
+                nativeOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+                if (nativeOwner === undefined)
+                  nativeOwner = yield* initializeArchitectureGOwner(
+                    globals,
+                    nodeConfig,
+                    preparation,
+                  );
               }
-              nativeOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-              if (nativeOwner === undefined)
-                nativeOwner = yield* initializeArchitectureGOwner(
-                  globals,
-                  nodeConfig,
-                  preparation,
-                );
-            }
-            yield* preparation.assertCurrent;
-            if (options.afterNativePreparation !== undefined)
-              yield* options.afterNativePreparation(checkpoint, preparation);
-            yield* preparation.assertCurrent;
-          }),
-      }).pipe(Effect.provideService(Scope.Scope, scope)),
-    );
+              yield* preparation.assertCurrent;
+              if (options.afterNativePreparation !== undefined)
+                yield* options.afterNativePreparation(checkpoint, preparation);
+              yield* preparation.assertCurrent;
+            }),
+        }).pipe(Effect.provideService(Scope.Scope, scope)),
+      )
+      .catch(async (error: unknown) => {
+        // A live foreign lease can appear after the restart's release check.
+        // Name the row this owner lost to, so the holder can be traced.
+        if (
+          !inspect(error).includes("History authority still has a live owner")
+        )
+          throw error;
+        const row = await readHistoryAuthority().catch((cause: unknown) =>
+          inspect(cause),
+        );
+        throw new Error(
+          `History owner generation ${generation} found a live foreign lease (stopped owner ${stoppedHolder ?? "none"}; test database ${testDatabaseName()}): ${JSON.stringify(row)}`,
+          { cause: error },
+        );
+      });
     await runtime.runPromise(Ref.set(globals.EVENT_HISTORY_OWNER, owner));
     const emptyIntervals: RecordedHistoryBatch[] = [];
     const checkpoints: unknown[] = [];
@@ -621,6 +639,7 @@ export const openHistoryProductionOwnerLifecycle = async (
           1,
           synchronize,
           ogmiosUrl,
+          holder,
         );
         return next.handle;
       } catch (error) {
