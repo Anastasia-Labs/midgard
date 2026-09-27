@@ -16,6 +16,14 @@ and the existing **30 millisecond** registration interval. Mainnet's former
 30 millisecond operator shift is replaced by the one-hour shift used off chain.
 Testing economics remain explicit; selecting a test network does not select them.
 
+Every profile allows twenty minutes without a block commitment, and twenty
+minutes for a deposit, withdrawal or transaction order to be included, before an
+operator can be struck for inactivity. Validation requires the negligence timeout
+to be at least the commitment gap, so a neglected event never licenses an earlier
+strike than the gap, and the gap to be shorter than the operator shift, so an
+operator whose shift starts at the last block's end time (its commit's validity
+upper bound) can still be struck.
+
 `timing.event_wait_ms` is the delay between a user event's transaction
 valid-to and its on-chain `inclusion_time`; no block may include the event
 earlier. The public profiles use the worst-case wall time for N Cardano blocks,
@@ -38,7 +46,7 @@ authorize deployment or alter an existing deployment.
 ### Fast non-interactive testing
 
 `preprod-testing` and `local-devnet-testing` use fifteen-minute block maturity,
-a ten-minute operator shift, 30-second registration, and the existing eight-minute
+a thirty-minute operator shift, 30-second registration, and the existing eight-minute
 maximum transaction validity. DA attestation has a ten-minute timeout; full
 responses have fourteen minutes and small responses have twelve minutes. A
 response window opens at the challenge open's inclusive upper validity bound,
@@ -131,7 +139,7 @@ generated environments or `demo/midgard-core/src/generated-deployment-profiles.t
 
 Validation rejects unknown fields, incorrect network/name combinations, unsafe or
 nonpositive integers, inconsistent bond/reward values, invalid DA timing order,
-operator shifts shorter than grace/validity windows, and incompatible dispute
+operator shifts shorter than grace/validity windows or the commitment gap, and incompatible dispute
 schedules (with the explicit non-interactive testing rule above). Digests use SHA-256 over recursively
 key-sorted JSON, independent of YAML formatting and key order.
 

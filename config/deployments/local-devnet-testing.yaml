@@ -5,11 +5,11 @@ l1_finality:
 timing:
   block_maturity_ms: 900000
   dispute_response_window_ms: 60000
-  operator_shift_ms: 600000
+  operator_shift_ms: 1800000
   registration_ms: 30000
   event_wait_ms: 300000 # fixed 5 min for testing
-  user_events_negligence_timeout_ms: 300000
-  max_inactivity_between_block_commitments_ms: 60000
+  user_events_negligence_timeout_ms: 1200000
+  max_inactivity_between_block_commitments_ms: 1200000
   new_shift_inactivity_grace_period_ms: 300000
   max_validity_range_ms: 480000
   da_attestation_timeout_ms: 600000

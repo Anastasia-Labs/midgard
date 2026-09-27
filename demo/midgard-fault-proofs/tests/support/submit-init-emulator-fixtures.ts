@@ -42,6 +42,7 @@ import {
   ActiveOperatorSpendRedeemer,
   buildPhasMembershipRewardRegistrationTxProgram,
   commitCountedRootProgram,
+  computeInactivityThreshold,
   CORRECTION_LOCK_ASSET_NAME,
   DA_PAYLOAD_VERSION,
   DoubleSpendStep02Datum,
@@ -2540,13 +2541,19 @@ export const retireFixtureOperatorAfterInactivity = async (
     );
     expect(currentActiveDatum.inactivity_strikes).toBe(expectedInputStrikes);
 
-    const inactivityThreshold = Math.max(
-      Number(schedulerDatum.ActiveOperator.start_time) + 300_000,
-      Number(
+    const threshold = computeInactivityThreshold({
+      shiftStartMs: BigInt(schedulerDatum.ActiveOperator.start_time),
+      stateQueueTailEndTimeMs: BigInt(
         fixture.successors.at(-1)?.header.endTime ??
           fixture.fraudulentHeader.endTime,
-      ) + 60_000,
-    );
+      ),
+    });
+    if (threshold.kind !== "threshold") {
+      throw new Error(
+        "Inactivity strike threshold does not fall before the shift ends.",
+      );
+    }
+    const inactivityThreshold = Number(threshold.thresholdMs);
     const firstValidSlot =
       fixture.funderLucid.unixTimeToSlot(inactivityThreshold) + 2;
     const slotsToAdvance = firstValidSlot - fixture.funderLucid.currentSlot();

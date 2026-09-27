@@ -6,15 +6,15 @@
  *
  * Cadence: the fiber runs on the block-commitment schedule and defers itself
  * through the slot-aware due-work registry. A shift that cannot be struck for
- * another 40 minutes costs one directory read, not one per tick, and a node
+ * many minutes yet costs one directory read, not one per tick, and a node
  * with nothing to watch re-reads the directory once a minute.
  *
  * Scope: the watchdog strikes on the commitment-gap threshold only, which
  * loses nothing under the shipped parameters. A neglected event's threshold is
  * its inclusion time (on chain, at or after the state-queue tail's end time)
- * plus `user_events_negligence_timeout`, and that timeout (300 s) exceeds
- * `max_inactivity_between_block_commitments` (60 s), so the event never
- * yields an earlier threshold. Naming one is left to the SDK planner's
+ * plus `user_events_negligence_timeout`, and that timeout (20 min) is at
+ * least `max_inactivity_between_block_commitments` (20 min), so the event
+ * never yields an earlier threshold. Naming one is left to the SDK planner's
  * `neglectedEvent` option, which this fiber does not supply.
  */
 import * as SDK from "@al-ft/midgard-sdk";

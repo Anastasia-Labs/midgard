@@ -41,12 +41,12 @@ All values come from the deployed protocol parameters
 | `slashing_penalty`                         | 500 ADA | Fee of a duplicate-registration slash; the remaining 400 ADA rewards the submitter. |
 | `inactivity_slashing_penalty`              | 100 ADA | Fee of a forced retirement; the retired node keeps 800 ADA.                         |
 | `max_inactivity_strikes`                   | 5       | Strike count at which anyone may force-retire the operator.                         |
-| `shift_duration`                           | 1 hour  | Length of one scheduler shift.                                                      |
+| `shift_duration`                           | 30 min  | Length of one scheduler shift.                                                      |
 | `new_shift_inactivity_grace_period`        | 5 min   | Minimum idle time after a shift starts before a strike is possible.                 |
-| `max_inactivity_between_block_commitments` | 60 s    | Idle time after the last committed block before a strike is possible.               |
-| `user_events_negligence_timeout`           | 5 min   | Time a deposit, withdrawal, or tx-order may wait for inclusion.                     |
+| `max_inactivity_between_block_commitments` | 20 min  | Idle time after the last committed block before a strike is possible.               |
+| `user_events_negligence_timeout`           | 20 min  | Time a deposit, withdrawal, or tx-order may wait for inclusion.                     |
 | `max_validity_range_length`                | 8 min   | Every lifecycle transaction must use a closed validity range this short.            |
-| `registration_duration`                    | 30 ms   | Delay between registration and earliest activation.                                 |
+| `registration_duration`                    | 30 s    | Delay between registration and earliest activation.                                 |
 
 A bond is never fully lost through inactivity. The only full-bond forfeit is a
 fraud proof or duplicate-registration slash.
@@ -164,8 +164,8 @@ The inactivity threshold is the later of:
   was neglected, that event's inclusion time plus
   `user_events_negligence_timeout`.
 
-The strike transaction's validity range must lie entirely after the threshold
-and must end before the shift would have ended anyway.
+The threshold must fall strictly before the shift would have ended anyway, and
+the strike transaction's validity range must lie entirely after the threshold.
 
 ### The watchdog fiber
 
@@ -182,8 +182,8 @@ The watchdog acts on the commitment-gap threshold only. A neglected deposit,
 withdrawal or transaction order never makes a shift strikable earlier under
 the shipped parameters: the validator requires the event's inclusion time to be
 at or after the last committed block's end time, and
-`user_events_negligence_timeout` (300 s) is longer than
-`max_inactivity_between_block_commitments` (60 s), so the event's threshold is
+`user_events_negligence_timeout` (20 min) is at least
+`max_inactivity_between_block_commitments` (20 min), so the event's threshold is
 never before the commitment-gap one. A neglected-event strike also needs the
 event as a witness; the node does not select one, and
 `strike-inactive-operator` has no option to name one.

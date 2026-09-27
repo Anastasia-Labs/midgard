@@ -8,8 +8,8 @@ timing:
   operator_shift_ms: 3600000
   registration_ms: 30
   event_wait_ms: 129600000 # worst case for k=2160 blocks = 3k/f slots = 3*2160/0.05 s (36 h)
-  user_events_negligence_timeout_ms: 300000
-  max_inactivity_between_block_commitments_ms: 60000
+  user_events_negligence_timeout_ms: 1200000
+  max_inactivity_between_block_commitments_ms: 1200000
   new_shift_inactivity_grace_period_ms: 300000
   max_validity_range_ms: 480000
   da_attestation_timeout_ms: 3600000

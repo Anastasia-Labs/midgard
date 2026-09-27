@@ -71,7 +71,7 @@ test("fast testing profiles exclude interactive disputes without weakening publi
     const testing = structuredClone(profiles[name]);
     assert.equal(testing.timing.block_maturity_ms, 900_000);
     assert.equal(testing.timing.da_attestation_timeout_ms, 600_000);
-    assert.equal(testing.timing.operator_shift_ms, 600_000);
+    assert.equal(testing.timing.operator_shift_ms, 1_800_000);
     assert.equal(testing.timing.registration_ms, 30_000);
     assert.equal(testing.timing.da_small_response_window_ms, 720_000);
     assert.equal(testing.timing.da_full_response_window_ms, 840_000);
@@ -235,6 +235,28 @@ test("every profile keeps the negligence timeout at or above the commitment gap,
     assert.throws(
       () => validateProfile(profile, name),
       /negligence timeout must be at least/u,
+    );
+  }
+});
+
+test("every profile keeps the commitment gap shorter than the operator shift, and the bound is exact", () => {
+  for (const [name, original] of Object.entries(readProfiles())) {
+    const profile = structuredClone(original);
+    profile.timing.max_inactivity_between_block_commitments_ms =
+      profile.timing.operator_shift_ms - 1;
+    profile.timing.user_events_negligence_timeout_ms = Math.max(
+      profile.timing.user_events_negligence_timeout_ms,
+      profile.timing.max_inactivity_between_block_commitments_ms,
+    );
+    validateProfile(profile, name);
+    profile.timing.max_inactivity_between_block_commitments_ms += 1;
+    profile.timing.user_events_negligence_timeout_ms = Math.max(
+      profile.timing.user_events_negligence_timeout_ms,
+      profile.timing.max_inactivity_between_block_commitments_ms,
+    );
+    assert.throws(
+      () => validateProfile(profile, name),
+      /inactivity between block commitments must be shorter than the operator shift/u,
     );
   }
 });

@@ -39,15 +39,15 @@ pub const block_maturity_duration_v1: Int = 900_000
 
 pub const response_window_milliseconds: Int = 60_000
 
-pub const shift_duration: Int = 600_000
+pub const shift_duration: Int = 1_800_000
 
 pub const registration_duration: Int = 30_000
 
 pub const event_wait_duration: Int = 300_000
 
-pub const user_events_negligence_timeout: Int = 300_000
+pub const user_events_negligence_timeout: Int = 1_200_000
 
-pub const max_inactivity_between_block_commitments: Int = 60_000
+pub const max_inactivity_between_block_commitments: Int = 1_200_000
 
 pub const new_shift_inactivity_grace_period: Int = 300_000
 

@@ -142,8 +142,8 @@ const expectNeglectedEventStrike = async (
   // The event goes in straight after the appointment on purpose: its
   // threshold (event validTo + event wait + negligence) must fall before the
   // shift ends (appointment validTo + shift). Under preprod-testing that
-  // leaves only about 40 s, so extra emulator time between the two calls
-  // makes the neglected threshold unsatisfiable.
+  // leaves only a few minutes, so extra emulator time between the two calls
+  // can make the neglected threshold unsatisfiable.
   const neglected =
     kind === "Deposit"
       ? await submitNeglectedDeposit(fixture)
@@ -152,8 +152,8 @@ const expectNeglectedEventStrike = async (
   // Under every shipped profile a neglected event can never license an
   // *earlier* strike than the plain commitment gap: on-chain `inclusion_time
   // >= last_state_queue_elements_end_time` and
-  // `user_events_negligence_timeout (300_000) >
-  // max_inactivity_between_block_commitments (60_000)`, so the neglected
+  // `user_events_negligence_timeout (1_200_000) >=
+  // max_inactivity_between_block_commitments (1_200_000)`, so the neglected
   // term dominates. This event is therefore the binding term.
   const snapshot = await fetchInactivityDirectorySnapshot(fixture);
   expect(neglected.inclusionTimeMs).toBeGreaterThanOrEqual(
@@ -270,8 +270,8 @@ describe("stalled-operator strike and takeover", () => {
     });
     expect(threshold.kind).toBe("threshold");
 
-    // Still inside the shift's grace period: the planner says so, and the
-    // validator says so too when the range is dated anyway.
+    // Still before the threshold: the planner says so, and the validator says
+    // so too when the range is dated anyway.
     const earlyPlan = SDK.planInactivityTakeover({
       snapshot,
       nowMs: BigInt(fixture.emulator.now()),
@@ -313,7 +313,9 @@ describe("stalled-operator strike and takeover", () => {
     const submission = await submitInactivityStrike(fixture);
     expect(submission.plan.tier).toBe("GoToNext");
     expect(submission.plan.newOperatorKey).toBe(successor);
-    expect(submission.plan.thresholdSource).toBe("new-shift-grace-period");
+    // The shift starts within minutes of genesis, so the commitment gap past
+    // the genesis tail ends after the shift's grace period.
+    expect(submission.plan.thresholdSource).toBe("block-commitment-gap");
     expect(submission.result.struckInactivityStrikes).toBe(1n);
 
     const shift = await requireActiveOperatorShift(fixture);

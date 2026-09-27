@@ -248,6 +248,21 @@ export const validateProfile = (profile, name) => {
       "User-event negligence timeout must be at least the maximum inactivity between block commitments",
     );
   }
+  // A strike needs its threshold, at least the tail's end time plus the
+  // commitment gap, strictly before the convicted shift ends (scheduler.ak,
+  // validate_operator_inactivity_and_get_its_link). A shift that starts at the
+  // tail's end time (the last commit's validity upper bound) is strikable only
+  // when the gap is shorter than the shift; otherwise a dead operator following
+  // a live one rotates out unstruck. This assumes a predecessor that respects
+  // the end-time cap; one that commits past its shift end shortens the window.
+  if (
+    timing.max_inactivity_between_block_commitments_ms >=
+    timing.operator_shift_ms
+  ) {
+    throw new Error(
+      "Maximum inactivity between block commitments must be shorter than the operator shift",
+    );
+  }
   const economics = profile.economics;
   if (
     BigInt(economics.requiredBondLovelace) !==

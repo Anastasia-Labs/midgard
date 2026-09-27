@@ -45,9 +45,9 @@ pub const registration_duration: Int = 30
 
 pub const event_wait_duration: Int = 129_600_000
 
-pub const user_events_negligence_timeout: Int = 300_000
+pub const user_events_negligence_timeout: Int = 1_200_000
 
-pub const max_inactivity_between_block_commitments: Int = 60_000
+pub const max_inactivity_between_block_commitments: Int = 1_200_000
 
 pub const new_shift_inactivity_grace_period: Int = 300_000
 
