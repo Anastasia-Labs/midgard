@@ -212,8 +212,12 @@ export const withRecovery = <A, E, R>(
 ): Effect.Effect<A, E | DatabaseError, R | Database> =>
   withState(token, "recovering", mutation, true);
 
-/** Claim an absent/expired owner. A foreign deployment is never overwritten.
- * Even the same owner must advance generation and revalidate after restart. */
+/** Claim an absent, expired or suspended owner. A foreign deployment is never
+ * overwritten. Even the same owner must advance generation and revalidate
+ * after restart. A suspended row confers no authority, so its lease end is not
+ * compared with the clock: release and suspend stamp it with
+ * clock_timestamp(), and a backward wall-clock step would otherwise make a
+ * released owner read as live and refuse its successor. */
 export const acquire = (input: {
   readonly deploymentIdentity: string;
   readonly ownerToken: string;
@@ -239,7 +243,11 @@ export const acquire = (input: {
           return yield* Effect.fail(
             failure("History authority belongs to another deployment"),
           );
-        if (row.lease_live && row.owner_token !== input.ownerToken)
+        if (
+          row.state !== "suspended" &&
+          row.lease_live &&
+          row.owner_token !== input.ownerToken
+        )
           return yield* Effect.fail(
             failure("History authority still has a live owner"),
           );

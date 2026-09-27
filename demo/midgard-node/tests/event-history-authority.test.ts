@@ -162,6 +162,37 @@ describe("durable canonical history generation fence", () => {
     );
   });
 
+  // A backward wall-clock step (WSL2 time sync steps ~1 s) after release or
+  // suspend leaves lease_until in the future on a row that confers no
+  // authority. Kills the mutant that drops the suspended-state term in acquire.
+  for (const [name, stop] of [
+    ["release", (token: Authority.Token) => Authority.release(token)],
+    [
+      "suspend",
+      (token: Authority.Token) =>
+        Authority.suspend(token, "Ogmios disconnected"),
+    ],
+  ] as const)
+    it(`a successor acquires after ${name} even when the clock steps back past the stamped lease end`, async () => {
+      const owner = await run(acquire());
+      await run(Authority.publishReady(owner, capture));
+      await run(stop(owner));
+      await run(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE event_history_authority
+            SET lease_until = clock_timestamp() + interval '1 second'`;
+        }),
+      );
+      const before = Option.getOrThrow(await run(Authority.retrieve));
+      expect(before.state).toBe("suspended");
+      const successor = await run(acquire());
+      expect(successor.ownerToken).not.toBe(owner.ownerToken);
+      expect(BigInt(successor.generation)).toBe(BigInt(before.generation) + 1n);
+      // A live lease in any other state still refuses a foreign claim.
+      await expect(run(acquire())).rejects.toThrow(/live owner/);
+    });
+
   it("same-owner reacquisition revokes persisted ready state instead of treating it as fresh authority", async () => {
     const token = await run(acquire());
     await run(Authority.publishReady(token, capture));

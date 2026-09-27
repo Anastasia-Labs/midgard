@@ -98,7 +98,7 @@ const readHistoryAuthority = () =>
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql<HistoryAuthorityRow>`SELECT owner_token,
         generation::text AS generation, state, reason,
-        lease_until > clock_timestamp() AS live,
+        state <> 'suspended' AND lease_until > clock_timestamp() AS live,
         round(extract(epoch FROM lease_until - clock_timestamp()) * 1000)::text
           AS remaining_ms, updated_at::text AS updated_at
         FROM event_history_authority WHERE singleton = true`;
@@ -319,8 +319,8 @@ export const openHistoryProductionOwnerLifecycle = async (
         }).pipe(Effect.provideService(Scope.Scope, scope)),
       )
       .catch(async (error: unknown) => {
-        // A live foreign lease can appear after the restart's release check.
-        // Name the row this owner lost to, so the holder can be traced.
+        // Name the row this owner lost to, so the holder can be traced. `live`
+        // uses acquire's rule: a suspended (released) row is never live.
         if (
           !inspect(error).includes("History authority still has a live owner")
         )
@@ -328,8 +328,14 @@ export const openHistoryProductionOwnerLifecycle = async (
         const row = await readHistoryAuthority().catch((cause: unknown) =>
           inspect(cause),
         );
+        const holder =
+          typeof row === "object" && row !== undefined
+            ? row.owner_token === stoppedHolder
+              ? "the stopped owner"
+              : "another owner"
+            : "an unread holder";
         throw new Error(
-          `History owner generation ${generation} found a live foreign lease (stopped owner ${stoppedHolder ?? "none"}; test database ${testDatabaseName()}): ${JSON.stringify(row)}`,
+          `History owner generation ${generation} was refused by a live lease held by ${holder} (stopped owner ${stoppedHolder ?? "none"}; test database ${testDatabaseName()}): ${JSON.stringify(row)}`,
           { cause: error },
         );
       });
