@@ -779,7 +779,14 @@ stop: the sweep is not runnable and must not be replaced with manual proof CLI
 steps or a hand-authored success record.
 
 The same artifact must record a real withdrawal through order, reserve, payout
-init, every payout add, and payout conclude. Hash the canonical expected and
+init, every payout add, and payout conclude. The executable commands for that
+leg (`submit-withdrawal`, `withdrawal-status`,
+`resolve-event-settlement-proof --kind withdrawal`, `initialize-payout`,
+`add-reserve-funds-to-payout`, `conclude-payout`, `payout-status`) are in
+sections 5 to 11 of
+[DEPOSIT_SEND_AND_WITHDRAW.md](../../../../demo/midgard-node/docs/DEPOSIT_SEND_AND_WITHDRAW.md).
+Skip its manual `/commit` and `/merge` calls, which are devnet-only: wait for
+the commit fiber and rerun the `await-automatic-merge` step above instead. Hash the canonical expected and
 observed payout/reserve values independently, require exact destination and
 value equality, and retain the final paid chain point. The Q57 value digest is
 SHA-256 over UTF-8 canonical JSON of a unit-to-decimal-string object: omit zero

@@ -13,6 +13,16 @@ This runbook covers the operator-facing preprod flow for:
 The commands below resolve settlement UTxOs, PHAS proofs, and reference scripts
 internally. No step requires hand-built CBOR or manually assembled proofs.
 
+**The manual `/commit` and `/merge` calls in sections 2, 4 and 8 are for a
+local devnet only.** They bypass the node's commit fiber and automatic merge
+fiber, so a run that uses them is not fresh-deploy acceptance evidence. For
+acceptance, follow
+[live-acceptance.md](../../../.agents/skills/midgard-e2e-acceptance/references/live-acceptance.md):
+skip every manual `/commit` and `/merge` call here, and instead wait for the
+running node to commit and to merge automatically, as its
+`await-automatic-merge` step does. The deposit, withdrawal and payout commands
+in this runbook are the same in both cases.
+
 ## Prerequisites
 
 Start from `demo/midgard-node/.env.example` and verify the preprod deployment is
@@ -153,13 +163,17 @@ once confirmation assigns its header; the runbook waits for settlement as an
 additional sequencing check. Deposits are applied after transactions within a block; projection into
 the local ledger does not make a same-block deposit spend valid.
 
+Devnet only (see the note at the top; for acceptance, wait for the commit
+fiber instead):
+
 ```sh
 curl -fsS \
   -H "x-midgard-admin-key: $ADMIN_API_KEY" \
   "$MIDGARD_NODE_URL/commit" | jq .
 ```
 
-Wait for L1 confirmation, committee DA attestation, and maturity, then merge:
+Wait for L1 confirmation, committee DA attestation, and maturity, then merge (devnet only; for acceptance, wait for the automatic
+merge fiber instead):
 
 ```sh
 curl -fsS \
@@ -200,13 +214,17 @@ curl -fsS "$MIDGARD_NODE_URL/tx-status?tx_hash=$TRANSFER_TX_ID" | jq .
 
 The admin endpoints require a configured `ADMIN_API_KEY`.
 
+Devnet only (see the note at the top; for acceptance, wait for the commit
+fiber instead):
+
 ```sh
 curl -fsS \
   -H "x-midgard-admin-key: $ADMIN_API_KEY" \
   "$MIDGARD_NODE_URL/commit" | jq .
 ```
 
-Wait until the queued block is eligible for merge, then merge:
+Wait until the queued block is eligible for merge, then merge (devnet only; for acceptance, wait for the automatic
+merge fiber instead):
 
 ```sh
 curl -fsS \
@@ -332,13 +350,17 @@ sleep "$(node -e '
 
 Commit the withdrawal block:
 
+Devnet only (see the note at the top; for acceptance, wait for the commit
+fiber instead):
+
 ```sh
 curl -fsS \
   -H "x-midgard-admin-key: $ADMIN_API_KEY" \
   "$MIDGARD_NODE_URL/commit" | jq .
 ```
 
-Wait until it is eligible, then merge:
+Wait until it is eligible, then merge (devnet only; for acceptance, wait for the automatic
+merge fiber instead):
 
 ```sh
 curl -fsS \
