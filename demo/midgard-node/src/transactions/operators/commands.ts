@@ -73,7 +73,9 @@ const operatorCommandContext = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
   const economics = yield* configuredOperatorEconomicsProgram;
   yield* lucid.switchToOperatorsMainWallet;
-  const ownOperatorKeyHash = yield* resolveOwnOperatorKeyHashProgram(lucid.api);
+  const ownOperatorKeyHash = yield* resolveOwnOperatorKeyHashProgram(
+    lucid.operatorMainAddress,
+  );
   return { lucid, contracts, economics, ownOperatorKeyHash };
 });
 

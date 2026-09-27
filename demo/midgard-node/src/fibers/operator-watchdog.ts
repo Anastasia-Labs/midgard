@@ -171,7 +171,7 @@ const deferWatchdog = (input: {
   );
 };
 
-const operatorWatchdogTick: Effect.Effect<
+export const operatorWatchdogTick: Effect.Effect<
   void,
   never,
   Globals | Lucid | MidgardContracts | NodeConfig
@@ -191,10 +191,13 @@ const operatorWatchdogTick: Effect.Effect<
     return;
   }
 
-  yield* lucid.switchToOperatorsMainWallet;
+  // The shared Lucid's selected wallet belongs to the L1 control-plane holder
+  // (a merge signs with the merge wallet), so the tick reads with the
+  // configured operator identity and selects the operator wallet only once it
+  // holds the permit.
   const prepared = yield* Effect.either(
     Effect.all([
-      resolveOwnOperatorKeyHashProgram(lucid.api),
+      resolveOwnOperatorKeyHashProgram(lucid.operatorMainAddress),
       planTakeoverProgram(lucid.api, contracts),
     ]),
   );
@@ -317,7 +320,9 @@ const operatorWatchdogTick: Effect.Effect<
         withL1ControlPlaneIfAvailable(
           globals,
           { scope: "operator_watchdog", maxHoldMs: 180_000 },
-          Effect.either(submission),
+          lucid.switchToOperatorsMainWallet.pipe(
+            Effect.zipRight(Effect.either(submission)),
+          ),
         ),
       );
       if (guarded._tag === "Left") {

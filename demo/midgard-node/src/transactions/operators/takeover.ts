@@ -24,31 +24,23 @@ import { requireOperatorFundingProgram } from "./funding-preflight.js";
 export type TakeoverError = OperatorExitError | SDK.SchedulerError;
 
 /**
- * The payment key hash of the wallet currently selected in `lucid`.
+ * The payment key hash of an operator wallet address. Callers pass the address
+ * derived from the configured seed, not the shared Lucid's selected wallet,
+ * which belongs to whichever L1 control-plane holder selected it last.
  */
 export const resolveOwnOperatorKeyHashProgram = (
-  lucid: LucidEvolution,
-): Effect.Effect<string, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const address = yield* Effect.tryPromise({
-      try: () => lucid.wallet().address(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: "Failed to resolve operator wallet address",
-          cause,
-        }),
-    });
-    const credential = paymentCredentialOf(address);
-    if (credential.type !== "Key") {
-      return yield* Effect.fail(
+  address: string,
+): Effect.Effect<string, SDK.StateQueueError> => {
+  const credential = paymentCredentialOf(address);
+  return credential.type === "Key"
+    ? Effect.succeed(credential.hash)
+    : Effect.fail(
         new SDK.StateQueueError({
           message: "Operator wallet must use a payment key credential",
           cause: address,
         }),
       );
-    }
-    return credential.hash;
-  });
+};
 
 /** The first slot boundary at or after `unixTimeMs`. */
 export const alignedUnixTimeAtOrAfter = (
