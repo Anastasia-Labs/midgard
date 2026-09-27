@@ -616,7 +616,16 @@ export const reopenAfterStateQueueCorrectionByEventIds = (
           Effect.gen(function* () {
             const [current] =
               yield* sql<Entry>`SELECT * FROM ${sql(tableName)} WHERE ${sql(Columns.ID)} = ${id} FOR UPDATE`;
+            // A block that never reached confirmation (an unlanded signed
+            // commit, or one awaiting its submission acknowledgement)
+            // selected and classified the withdrawal without assigning it a
+            // header; no other block holds it while its journal does.
+            const selectedUnassigned =
+              current !== undefined &&
+              current[Columns.PROJECTED_HEADER_HASH] === null &&
+              current[Columns.STATUS] === Status.Projected;
             if (
+              !selectedUnassigned &&
               !current?.[Columns.PROJECTED_HEADER_HASH]?.equals(
                 removedHeaderHash,
               )

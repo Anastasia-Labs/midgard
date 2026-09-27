@@ -15,6 +15,9 @@ import {
   type HistoryRecoveryPlan,
   prepareHistoryRecoveryPlan,
   prepareRetainedNativeHistoryRecoveryPlan,
+  retainedPreparedRecoveryPlan,
+  SIGNED_HEADER_RECOVERY_DOMAIN,
+  SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
 } from "../src/database/eventHistoryRecoveryPlans.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
 import {
@@ -264,7 +267,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, intent(), hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          intent(),
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect((await rows())[0]!.row.owner_generation).toBe(0);
@@ -282,10 +290,16 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(plan).toEqual({
+      domain: SIGNED_HEADER_RECOVERY_DOMAIN,
       recoveryId: sha(document(value)),
       intent: value,
       evidenceDigest: hash(30),
@@ -318,14 +332,24 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const first = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     const next = await append(token, checkpoint);
     const refreshed = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(next, value, hash(31)),
+        prepareHistoryRecoveryPlan(
+          next,
+          value,
+          hash(31),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(refreshed.recoveryId).toBe(first.recoveryId);
@@ -360,7 +384,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
       await run(
         Authority.withRecovery(
           token,
-          prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+          prepareHistoryRecoveryPlan(
+            checkpoint,
+            value,
+            hash(30),
+            SIGNED_HEADER_RECOVERY_DOMAIN,
+          ),
         ),
       );
       const before = await rows();
@@ -371,7 +400,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
       await refusal(
         Authority.withRecovery(
           token,
-          prepareHistoryRecoveryPlan(checkpoint, changed, hash(30)),
+          prepareHistoryRecoveryPlan(
+            checkpoint,
+            changed,
+            hash(30),
+            SIGNED_HEADER_RECOVERY_DOMAIN,
+          ),
         ),
         "A different durable native recovery must be resolved first",
       );
@@ -394,7 +428,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, intent(), hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          intent(),
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(
@@ -429,7 +468,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     await run(
@@ -448,7 +492,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const refreshed = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(next, value, hash(31)),
+        prepareHistoryRecoveryPlan(
+          next,
+          value,
+          hash(31),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(refreshed.state).toBe("applied");
@@ -472,13 +521,23 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const stale = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(31)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(31),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     const before = await rows();
@@ -498,7 +557,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     await append(token, checkpoint);
@@ -506,7 +570,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     await refusal(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(31)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(31),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
       "Recovery plan checkpoint changed",
     );
@@ -526,7 +595,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     const fresh = await run(
@@ -552,7 +626,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const renewed = await run(
       Authority.withRecovery(
         fresh,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(31)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(31),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(renewed.recoveryId).toBe(plan.recoveryId);
@@ -570,13 +649,23 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     const before = await rows();
     const message = "History journal requires an owned recovery transaction";
     await refusal(
-      prepareHistoryRecoveryPlan(checkpoint, value, hash(31)),
+      prepareHistoryRecoveryPlan(
+        checkpoint,
+        value,
+        hash(31),
+        SIGNED_HEADER_RECOVERY_DOMAIN,
+      ),
       message,
     );
     await refusal(
@@ -587,7 +676,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
-          prepareHistoryRecoveryPlan(checkpoint, value, hash(31)),
+          prepareHistoryRecoveryPlan(
+            checkpoint,
+            value,
+            hash(31),
+            SIGNED_HEADER_RECOVERY_DOMAIN,
+          ),
         );
       }),
       message,
@@ -601,7 +695,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     await refusal(
       Authority.withReady(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, value, hash(31)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(31),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
       message,
     );
@@ -620,7 +719,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, intent(), hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          intent(),
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     const before = await rows();
@@ -664,7 +768,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
     const plan = await run(
       Authority.withRecovery(
         token,
-        prepareHistoryRecoveryPlan(checkpoint, mutable, hash(30)),
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          mutable,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(mutable.targetRoot).toBe(hash(999));
@@ -679,7 +788,12 @@ describe("durable history recovery plans (modeled source, real SQL)", () => {
       const plan = await run(
         Authority.withRecovery(
           token,
-          prepareHistoryRecoveryPlan(checkpoint, intent(), hash(30)),
+          prepareHistoryRecoveryPlan(
+            checkpoint,
+            intent(),
+            hash(30),
+            SIGNED_HEADER_RECOVERY_DOMAIN,
+          ),
         ),
       );
       const before = await rows();
@@ -726,6 +840,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
             value,
             hash(30),
             { durableRoot, candidateRoot },
+            SIGNED_HEADER_RECOVERY_DOMAIN,
           ),
         ),
       );
@@ -758,19 +873,31 @@ describe("retained native recovery root selection (real SQL component)", () => {
     const first = await run(
       Authority.withRecovery(
         token,
-        prepareRetainedNativeHistoryRecoveryPlan(checkpoint, value, hash(30), {
-          durableRoot: candidateRoot,
-          candidateRoot,
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          {
+            durableRoot: candidateRoot,
+            candidateRoot,
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     const afterNative = await run(
       Authority.withRecovery(
         token,
-        prepareRetainedNativeHistoryRecoveryPlan(checkpoint, value, hash(31), {
-          durableRoot: value.targetRoot,
-          candidateRoot,
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(31),
+          {
+            durableRoot: value.targetRoot,
+            candidateRoot,
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(afterNative.recoveryId).toBe(first.recoveryId);
@@ -791,10 +918,16 @@ describe("retained native recovery root selection (real SQL component)", () => {
     await refusal(
       Authority.withRecovery(
         token,
-        prepareRetainedNativeHistoryRecoveryPlan(next, value, hash(32), {
-          durableRoot: value.targetRoot,
-          candidateRoot,
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          next,
+          value,
+          hash(32),
+          {
+            durableRoot: value.targetRoot,
+            candidateRoot,
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
       "History authority generation or owner changed",
     );
@@ -802,10 +935,16 @@ describe("retained native recovery root selection (real SQL component)", () => {
     const resumed = await run(
       Authority.withRecovery(
         replacement,
-        prepareRetainedNativeHistoryRecoveryPlan(next, value, hash(32), {
-          durableRoot: value.targetRoot,
-          candidateRoot,
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          next,
+          value,
+          hash(32),
+          {
+            durableRoot: value.targetRoot,
+            candidateRoot,
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(resumed.recoveryId).toBe(first.recoveryId);
@@ -854,6 +993,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
               value,
               hash(30),
               { durableRoot: candidateRoot, candidateRoot },
+              SIGNED_HEADER_RECOVERY_DOMAIN,
             ),
           ),
         );
@@ -866,6 +1006,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
             value,
             hash(31),
             { durableRoot: hash(999), candidateRoot },
+            SIGNED_HEADER_RECOVERY_DOMAIN,
           ),
         ),
         "Native recovery root is outside the authenticated journal",
@@ -894,6 +1035,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
             value,
             hash(30),
             { durableRoot: candidateRoot, candidateRoot },
+            SIGNED_HEADER_RECOVERY_DOMAIN,
           ),
         ),
       );
@@ -912,6 +1054,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
             changed,
             hash(31),
             { durableRoot: changed.targetRoot, candidateRoot },
+            SIGNED_HEADER_RECOVERY_DOMAIN,
           ),
         ),
         "Retained native recovery requires a different disposition",
@@ -927,20 +1070,32 @@ describe("retained native recovery root selection (real SQL component)", () => {
     await run(
       Authority.withRecovery(
         token,
-        prepareRetainedNativeHistoryRecoveryPlan(checkpoint, value, hash(30), {
-          durableRoot: candidateRoot,
-          candidateRoot,
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          {
+            durableRoot: candidateRoot,
+            candidateRoot,
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     const before = await rows();
     await refusal(
       Authority.withRecovery(
         token,
-        prepareRetainedNativeHistoryRecoveryPlan(checkpoint, value, hash(31), {
-          durableRoot: value.targetRoot,
-          candidateRoot: hash(999),
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(31),
+          {
+            durableRoot: value.targetRoot,
+            candidateRoot: hash(999),
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
       "Retained native recovery requires a different disposition",
     );
@@ -954,10 +1109,16 @@ describe("retained native recovery root selection (real SQL component)", () => {
     const first = await run(
       Authority.withRecovery(
         token,
-        prepareRetainedNativeHistoryRecoveryPlan(checkpoint, value, hash(30), {
-          durableRoot: value.targetRoot,
-          candidateRoot,
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          {
+            durableRoot: value.targetRoot,
+            candidateRoot,
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
     );
     expect(first.native.expectedRoot).toBe(value.targetRoot);
@@ -966,10 +1127,16 @@ describe("retained native recovery root selection (real SQL component)", () => {
     await refusal(
       Authority.withRecovery(
         token,
-        prepareRetainedNativeHistoryRecoveryPlan(checkpoint, value, hash(31), {
-          durableRoot: candidateRoot,
-          candidateRoot,
-        }),
+        prepareRetainedNativeHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(31),
+          {
+            durableRoot: candidateRoot,
+            candidateRoot,
+          },
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
       ),
       "Retained native recovery requires a different disposition",
     );
@@ -987,6 +1154,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
         value,
         hash(30),
         observed,
+        SIGNED_HEADER_RECOVERY_DOMAIN,
       ),
       "History journal requires an owned recovery transaction",
     );
@@ -999,11 +1167,75 @@ describe("retained native recovery root selection (real SQL component)", () => {
           value,
           hash(30),
           observed,
+          SIGNED_HEADER_RECOVERY_DOMAIN,
         ),
       ),
       "Recovery plan checkpoint changed",
     );
     expect(await rows()).toEqual([]);
     expect(await probes()).toEqual([]);
+  });
+  it("keeps a signed-intent release and a signed-header recovery of one header as distinct operations", async () => {
+    const { token, checkpoint } = await start();
+    const value = intent();
+    const header = await run(
+      Authority.withRecovery(
+        token,
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
+      ),
+    );
+    expect(await run(retainedPreparedRecoveryPlan(binding.digest))).toEqual({
+      kind: "signed_header",
+      headerHash: value.headerHash,
+    });
+    // The identical intent under the release's domain is another operation:
+    // it never adopts the retained signed-header plan as its own.
+    await refusal(
+      Authority.withRecovery(
+        token,
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
+        ),
+      ),
+      "A different durable native recovery must be resolved first",
+    );
+    await run(
+      Authority.withRecovery(
+        token,
+        applyHistoryRecoveryPlan(checkpoint, header, repair("header")),
+      ),
+    );
+    const release = await run(
+      Authority.withRecovery(
+        token,
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
+        ),
+      ),
+    );
+    expect(release.recoveryId).not.toBe(header.recoveryId);
+    expect(release.state).toBe("prepared");
+    expect(await run(retainedPreparedRecoveryPlan(binding.digest))).toEqual({
+      kind: "signed_intent_release",
+      headerHash: value.headerHash,
+    });
+    await run(
+      Authority.withRecovery(
+        token,
+        applyHistoryRecoveryPlan(checkpoint, release, repair("release")),
+      ),
+    );
+    expect(await probes()).toEqual([{ label: "header" }, { label: "release" }]);
   });
 });

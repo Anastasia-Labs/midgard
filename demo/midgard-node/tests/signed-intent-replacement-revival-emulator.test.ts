@@ -407,3 +407,54 @@ it("stops with an integrity error and persists nothing when a replaced commit wi
     await closeLifecycle(h);
   }
 }, 900_000);
+
+it("never revives a replaced journal from the confirmation worker's unauthenticated view of the queue, and persists nothing", async () => {
+  const h = await openHistoryProductionOwnerLifecycle();
+  try {
+    await resetSharedRows();
+    await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+    const inclusion = await submitDeposit(h, 12_000_000n);
+    const E = await loseNextCommit(h, inclusion);
+    moveToExactSlot(h, E.ttl);
+    await h.synchronize();
+    await expectReplaced(E.journal, { handle: h });
+
+    // The confirmation worker's unauthenticated snapshot reports E's node on
+    // the canonical queue while nothing built on E's base has landed. Only
+    // the history owner, from its authenticated exact-point view, revives a
+    // replaced block. (Kills "revive a replacement-abandoned journal from
+    // the unauthenticated view".)
+    const node = await signedCommitNode(h, E.journal);
+    const output: SuccessfulConfirmationOutput = {
+      type: "SuccessfulConfirmationOutput",
+      latestBlocksUTxO: node.serialized,
+      matchedPendingBlocksUTxO: null,
+      canonicalHeaders: [
+        {
+          headerHash: E.header,
+          endTimeMs: node.endTimeMs,
+          blockUTxO: node.serialized,
+        },
+      ],
+    };
+    const before = await snapshotRevivalRows();
+    const outcome = await h
+      .runWithoutSynchronizing(
+        buildBlockConfirmationAction(() => Effect.succeed(output)),
+      )
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(outcome).toBeUndefined();
+    expect(await snapshotRevivalRows()).toEqual(before);
+    const journal = await readJournal(E.header);
+    expect(journal[C.STATUS]).toBe(Pending.Status.Abandoned);
+    expect(journal[C.CORRECTION_TRANSITION_DIGEST]).toBe(
+      signedIntentReplacementDigest(E.journal),
+    );
+    expect(readGlobals(h).localFinalizationPending).toBe(false);
+  } finally {
+    await closeLifecycle(h);
+  }
+}, 900_000);

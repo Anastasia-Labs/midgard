@@ -155,13 +155,13 @@ type AdmittedRemovals = Readonly<{
   state: StateQueueCorrectionObserverState;
 }>;
 
-/** Every admitted removal, re-validated from the persisted observer state:
- * each envelope is re-parsed and re-authorized against the configured
- * deployment and release depth. This is the observer's durable authenticated
- * view, not a fresh L1 read. With `lock`, the observer row is held FOR SHARE,
- * so no observer save can retract a removal before the caller's transaction
- * ends. */
-const admittedRemovals = (
+/** The correction observer's persisted authenticated view of the state queue
+ * (its cursor queue and every pending and admitted transition: timeout
+ * corrections, fraud removals and merges), re-parsed and bound to the
+ * configured deployment. This is the observer's durable view, not a fresh L1
+ * read. With `lock`, the observer row is held FOR SHARE, so no observer save
+ * can change it before the caller's transaction ends. */
+export const loadStateQueueCorrectionObserverState = (
   authority: StateQueueCorrectionRewindAuthority,
   lock = false,
 ) =>
@@ -191,6 +191,24 @@ const admittedRemovals = (
         kind: "blocked" as const,
         reason: "the observer state is non-canonical",
       };
+    return { kind: "observed" as const, state };
+  });
+
+/** Every admitted removal, re-validated from the persisted observer state:
+ * each envelope is re-parsed and re-authorized against the configured
+ * deployment and release depth. With `lock`, no observer save can retract a
+ * removal before the caller's transaction ends. */
+const admittedRemovals = (
+  authority: StateQueueCorrectionRewindAuthority,
+  lock = false,
+) =>
+  Effect.gen(function* () {
+    const observed = yield* loadStateQueueCorrectionObserverState(
+      authority,
+      lock,
+    );
+    if (observed.kind === "blocked") return observed;
+    const { state } = observed;
     const removals = new Map<string, string>();
     const transitions = new Map<string, StateQueueAuthenticatedTransition>();
     for (const transition of state.admitted) {
@@ -687,7 +705,13 @@ export const prepareStateQueueCorrectionRewind = (input: {
         const retained = yield* retainedPreparedRecoveryPlan(
           input.bindingDigest,
         );
-        if (retained?.kind === "signed_header") return undefined;
+        // A signed-header recovery or a signed-intent release resumes its
+        // own plan; the rewind waits for it.
+        if (
+          retained?.kind === "signed_header" ||
+          retained?.kind === "signed_intent_release"
+        )
+          return undefined;
         if (retained?.kind === "correction_rewind") {
           const ready = yield* loadRetainedChain(authority, retained.intent);
           return { ready, retained: retained.intent };

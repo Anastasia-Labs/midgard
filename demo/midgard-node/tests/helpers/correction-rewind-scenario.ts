@@ -526,7 +526,7 @@ export const outputOf = async (
 };
 
 /** Submit an L1 withdrawal of one of the depositor's L2 outputs. */
-const submitWithdrawal = async (h: ContentHandle, target: NodeUtxo) => {
+export const submitWithdrawal = async (h: ContentHandle, target: NodeUtxo) => {
   const { fixture, lucidService } = h;
   const wallet = fixture.depositorLucid;
   const address = await wallet.wallet().address();
@@ -579,7 +579,7 @@ const submitWithdrawal = async (h: ContentHandle, target: NodeUtxo) => {
 
 /** A forced transaction spending one of the depositor's L2 outputs, as the
  * tx-order watcher records a valid order. */
-const insertForcedTransfer = async (
+export const insertForcedTransfer = async (
   h: ContentHandle,
   built: BuiltTransferTx,
 ) => {
@@ -728,6 +728,7 @@ export const openCorrectionRewindScenario = async ({
   localFinalization = "completed",
   unlandedTail = false,
   content = false,
+  transportFactory,
 }: {
   readonly blocks: number;
   /** `failed`: the one removed block's local finalization failed (the live
@@ -740,8 +741,12 @@ export const openCorrectionRewindScenario = async ({
   /** With two blocks: the second block's commit is submitted but never lands
    * (`headers[1]` is then an unlanded descendant of `headers[0]`). */
   readonly unlandedTail?: boolean;
+  /** The history transport, for a scenario that rewrites the served queue. */
+  readonly transportFactory?: NonNullable<
+    Parameters<typeof openHistoryProductionOwnerLifecycle>[0]
+  >["transportFactory"];
 }) => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openHistoryProductionOwnerLifecycle({ transportFactory });
   try {
     const { fixture } = h;
     const identity = fixture.runtimeOverrides!.deploymentIdentity;

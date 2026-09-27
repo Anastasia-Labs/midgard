@@ -31,6 +31,9 @@ export type HistoryRecoveryIntent = Readonly<{
   journalDigest: string;
 }>;
 export type HistoryRecoveryPlan = Readonly<{
+  /** The service whose operation this is: a signed-header recovery or a
+   * signed-intent release. Each resumes only its own retained plan. */
+  domain: HistoryRecoveryDomain;
   recoveryId: string;
   intent: HistoryRecoveryIntent;
   evidenceDigest: string;
@@ -39,12 +42,33 @@ export type HistoryRecoveryPlan = Readonly<{
   native: NativeMpfCanonicalRootRecovery;
 }>;
 
-const SIGNED_HEADER_RECOVERY_DOMAIN = "midgard-history-recovery-intent-v1";
+export const SIGNED_HEADER_RECOVERY_DOMAIN =
+  "midgard-history-recovery-intent-v1";
+/** The expired signed-intent release (replacement or revival of a missed
+ * signed commit). It shares the signed-header intent shape but is a different
+ * operation, so it never shares an identity with a signed-header recovery of
+ * the same header. */
+export const SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN =
+  "midgard-history-signed-intent-release-intent-v1";
 export const CORRECTION_REWIND_RECOVERY_DOMAIN =
   "midgard-history-correction-rewind-intent-v1";
-type RecoveryPlanDomain =
+export type HistoryRecoveryDomain =
   | typeof SIGNED_HEADER_RECOVERY_DOMAIN
+  | typeof SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN;
+type RecoveryPlanDomain =
+  | HistoryRecoveryDomain
   | typeof CORRECTION_REWIND_RECOVERY_DOMAIN;
+const HISTORY_RECOVERY_KIND = {
+  [SIGNED_HEADER_RECOVERY_DOMAIN]: "signed_header",
+  [SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN]: "signed_intent_release",
+} as const;
+export type HistoryRecoveryKind =
+  (typeof HISTORY_RECOVERY_KIND)[HistoryRecoveryDomain];
+const historyRecoveryKind = (domain: unknown) =>
+  domain === SIGNED_HEADER_RECOVERY_DOMAIN ||
+  domain === SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN
+    ? HISTORY_RECOVERY_KIND[domain]
+    : undefined;
 
 /** One block the rewind resolves, in the order its payloads are reincluded
  * (earliest first). A `removed` member's header was removed from the state
@@ -136,7 +160,7 @@ const planIdentity = (plan: DependentRecoveryPlan) =>
         ...plan.intent,
       })
     : eventHistoryCanonicalJson({
-        domain: SIGNED_HEADER_RECOVERY_DOMAIN,
+        domain: plan.domain,
         ...plan.intent,
       });
 
@@ -214,6 +238,7 @@ export const prepareHistoryRecoveryPlan = (
   checkpoint: Checkpoint,
   intent: HistoryRecoveryIntent,
   evidenceDigest: string,
+  domain: HistoryRecoveryDomain,
 ) =>
   Effect.gen(function* () {
     intent = Object.freeze({ ...intent });
@@ -224,7 +249,8 @@ export const prepareHistoryRecoveryPlan = (
       !Object.entries(intent).every(
         ([key, value]) => key === "headerHash" || isHash(value),
       ) ||
-      !isHash(evidenceDigest)
+      !isHash(evidenceDigest) ||
+      historyRecoveryKind(domain) === undefined
     ) {
       yield* lockCheckpoint(checkpoint);
       return yield* fail("Invalid recovery plan identity");
@@ -232,12 +258,13 @@ export const prepareHistoryRecoveryPlan = (
     const copied = Object.freeze({ ...intent });
     const { recoveryId, state } = yield* persistRecoveryPlan(
       checkpoint,
-      SIGNED_HEADER_RECOVERY_DOMAIN,
+      domain,
       copied,
       evidenceDigest,
       copied.headerHash,
     );
     return Object.freeze({
+      domain,
       recoveryId,
       intent: copied,
       evidenceDigest,
@@ -263,6 +290,7 @@ export const prepareRetainedNativeHistoryRecoveryPlan = (
   intent: Omit<HistoryRecoveryIntent, "expectedRoot">,
   evidenceDigest: string,
   native: Readonly<{ durableRoot: string; candidateRoot: string }>,
+  domain: HistoryRecoveryDomain,
 ) =>
   Effect.gen(function* () {
     const captured = Object.freeze({ ...intent });
@@ -305,7 +333,7 @@ export const prepareRetainedNativeHistoryRecoveryPlan = (
         (observed.durableRoot !== prior.expectedRoot &&
           observed.durableRoot !== captured.targetRoot) ||
         eventHistoryCanonicalJson({
-          domain: SIGNED_HEADER_RECOVERY_DOMAIN,
+          domain,
           ...captured,
           expectedRoot: prior.expectedRoot,
         }) !== retained[0]!.intent
@@ -319,13 +347,49 @@ export const prepareRetainedNativeHistoryRecoveryPlan = (
       checkpoint,
       { ...captured, expectedRoot },
       evidenceDigest,
+      domain,
     );
   });
 
+/** Deletes the binding's prepared `domain` plan for `headerHash`, whose
+ * operation the caller proved moot at this checkpoint, in the caller's owned
+ * recovery transaction. Its native CAS may already have run: the caller's
+ * disposition must make the native root consistent again without it. Any
+ * other retained operation is refused. */
+export const discardPreparedHistoryRecoveryPlan = (
+  checkpoint: Checkpoint,
+  domain: HistoryRecoveryDomain,
+  headerHash: string,
+) =>
+  Effect.gen(function* () {
+    yield* lockCheckpoint(checkpoint);
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ recovery_id: Buffer; intent: string }>`
+      SELECT recovery_id, intent FROM event_history_recovery_plans
+      WHERE binding_digest = ${Buffer.from(checkpoint.bindingDigest, "hex")}
+        AND state = 'prepared' FOR UPDATE`;
+    if (rows.length !== 1)
+      return yield* fail("No single prepared native recovery to discard");
+    let decoded: Record<string, unknown> | null;
+    try {
+      decoded = JSON.parse(rows[0]!.intent) as Record<string, unknown> | null;
+    } catch {
+      decoded = null;
+    }
+    if (decoded?.domain !== domain || decoded.headerHash !== headerHash)
+      return yield* fail(
+        "The prepared native recovery is not the operation to discard",
+      );
+    yield* sql`DELETE FROM event_history_recovery_plans
+      WHERE recovery_id = ${rows[0]!.recovery_id} AND state = 'prepared'`;
+  }).pipe(
+    sqlErrorToDatabaseError(table, "Failed to discard a prepared recovery"),
+  );
+
 /** The single prepared native recovery of this binding, if any, decoded by
- * domain. A signed-header plan is reported by kind and header: the service
- * that prepared it for that header resumes it. An undecodable retained
- * identity fails closed. */
+ * domain. A signed-header or signed-intent release plan is reported by kind
+ * and header: the service that prepared it for that header resumes it. An
+ * undecodable retained identity fails closed. */
 export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -346,13 +410,14 @@ export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
           cause: undefined,
         }),
     });
-    if (decoded?.domain === SIGNED_HEADER_RECOVERY_DOMAIN) {
+    const historyKind = historyRecoveryKind(decoded?.domain);
+    if (historyKind !== undefined) {
       if (!isHeaderHash(decoded.headerHash))
         return yield* fail(
           "Malformed retained signed-header recovery identity",
         );
       return {
-        kind: "signed_header" as const,
+        kind: historyKind,
         headerHash: decoded.headerHash,
       };
     }
@@ -466,7 +531,7 @@ export const applyHistoryRecoveryPlan = <A, E, R>(
  * a correction rewind or a signed-header recovery in state `applied`. */
 export type AppliedNativeRecovery = Readonly<{
   recoveryId: string;
-  kind: "correction_rewind" | "signed_header";
+  kind: "correction_rewind" | HistoryRecoveryKind;
   targetRoot: string;
 }>;
 
@@ -521,9 +586,7 @@ export const retrieveAppliedRecoveryAfterJournal = (
     const kind =
       decoded?.domain === CORRECTION_REWIND_RECOVERY_DOMAIN
         ? ("correction_rewind" as const)
-        : decoded?.domain === SIGNED_HEADER_RECOVERY_DOMAIN
-          ? ("signed_header" as const)
-          : undefined;
+        : historyRecoveryKind(decoded?.domain);
     const targetRoot = decoded?.targetRoot;
     if (
       kind === undefined ||

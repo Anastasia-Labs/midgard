@@ -17,7 +17,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
-import { prepareHistoryRecoveryPlan } from "../src/database/eventHistoryRecoveryPlans.js";
+import {
+  prepareHistoryRecoveryPlan,
+  SIGNED_HEADER_RECOVERY_DOMAIN,
+} from "../src/database/eventHistoryRecoveryPlans.js";
 import { MempoolLedgerDB } from "../src/database/index.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
 import {
@@ -204,6 +207,7 @@ const fixture = Effect.gen(function* () {
           journalDigest: hash(24),
         },
         hash(25),
+        SIGNED_HEADER_RECOVERY_DOMAIN,
       ),
     );
   const inspect = Effect.gen(function* () {

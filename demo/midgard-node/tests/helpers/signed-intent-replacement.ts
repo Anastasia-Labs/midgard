@@ -29,8 +29,9 @@ import { makeStreamingHistoryTransport } from "./history-source-owner-emulator.j
  * Architecture G, and emulator transactions. */
 
 const C = Pending.Columns;
-export const SIGNED_HEADER_RECOVERY_DOMAIN =
-  "midgard-history-recovery-intent-v1";
+/** The release's own plan domain, never the signed-header recovery's. */
+export const SIGNED_INTENT_RELEASE_DOMAIN =
+  "midgard-history-signed-intent-release-intent-v1";
 export const UNLANDED: readonly string[] = [
   Pending.Status.PendingSubmission,
   Pending.Status.SubmittedLocalFinalizationPending,
@@ -330,7 +331,7 @@ export const expectReplaced = async (
   const plans = await readPlans();
   const plan = plans.find(({ intent }) => intent.headerHash === header);
   expect(plan?.state).toBe("applied");
-  expect(plan?.intent.domain).toBe(SIGNED_HEADER_RECOVERY_DOMAIN);
+  expect(plan?.intent.domain).toBe(SIGNED_INTENT_RELEASE_DOMAIN);
   expect(plan?.intent.targetRoot).toBe(journal[C.BASE_UTXOS_ROOT]);
   expect(await readLocalFinalizationJob(header)).toBeUndefined();
   expect(await readLeaseStatus(journal[C.STATE_QUEUE_LEASE_TOKEN])).not.toBe(

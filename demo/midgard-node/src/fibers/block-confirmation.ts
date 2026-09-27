@@ -21,7 +21,6 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import {
   findSignedIntentReplacementIntegrityError,
-  journalAbandonment,
   reviveEarliestCanonicalPayloadJournal,
   SignedIntentReplacementIntegrityError,
   withCanonicalHeaderJournals,
@@ -710,15 +709,6 @@ export const buildBlockConfirmationAction = (
               revivedCanonicalPayloadJournal.value.endTimeMs,
               journalBoundaryMs,
             );
-            // A replaced journal's revival assigned its deposits to it again.
-            const revivedJournal = revivedCanonicalPayloadJournal.value.journal;
-            if (
-              Option.isSome(revivedJournal) &&
-              journalAbandonment(revivedJournal.value) === "replacement"
-            )
-              yield* publishProjectedDeposits(
-                revivedJournal.value.depositEventIds,
-              );
             yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
             yield* Ref.set(
               globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,

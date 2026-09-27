@@ -305,6 +305,38 @@ export const reviveReplacedCanonicalJournal = (
     ),
   );
 
+/** Read-only: a replaced block reported on the queue after a sibling on its
+ * base landed or was locally finalized is the explicit integrity failure (see
+ * reviveReplacedCanonicalJournal); the node refuses to continue. */
+const assertNoLandedReplacementSibling = (
+  record: PendingBlockFinalizationsDB.Record,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const siblings = yield* sql<{
+      header_hash: Buffer;
+      status: PendingBlockFinalizationsDB.Status;
+    }>`SELECT header_hash, status FROM pending_block_finalizations
+      WHERE base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+        AND header_hash <> ${record[J.HEADER_HASH]}
+      ORDER BY created_at, header_hash`;
+    const landed = siblings.find(({ status }) =>
+      REVIVAL_BLOCKING_SIBLING_STATUSES.includes(status),
+    );
+    if (landed !== undefined)
+      return yield* Effect.fail(
+        new SignedIntentReplacementIntegrityError(
+          record[J.HEADER_HASH].toString("hex"),
+          `block ${landed.header_hash.toString("hex")} built on the same base is already ${landed.status}`,
+        ),
+      );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      PendingBlockFinalizationsDB.tableName,
+      "Failed to read a replaced journal's siblings",
+    ),
+  );
+
 export const withCanonicalHeaderJournals = (
   headers: readonly CanonicalCommittedHeaderIdentity[],
 ): Effect.Effect<
@@ -352,13 +384,15 @@ export const fetchCanonicalCommittedHeaders = Effect.gen(function* () {
 });
 
 /** An abandoned payload-bearing local journal of a block on the canonical
- * queue. A journal an admitted correction abandoned is never revivable here,
- * even when the same members appear in another journal. */
+ * queue whose abandonment is unattributed. A journal an admitted correction
+ * abandoned is never revivable here, even when the same members appear in
+ * another journal; one a signed-intent replacement abandoned is revived only
+ * by the history owner's decision on its authenticated exact-point view. */
 const revivableCanonicalJournal = ({ journal }: CanonicalCommittedHeader) =>
   Option.isSome(journal) &&
   journal.value[J.STATUS] === Status.Abandoned &&
   localJournalHasPayloadMembers(journal.value) &&
-  journalAbandonment(journal.value) !== "correction";
+  journalAbandonment(journal.value) === "unattributed";
 
 export const findEarliestCanonicalPayloadJournal = (
   canonicalHeaders: readonly CanonicalCommittedHeader[],
@@ -370,10 +404,13 @@ export const findEarliestCanonicalPayloadJournal = (
 /**
  * Revives the earliest abandoned payload-bearing journal whose block is on
  * the canonical queue, so local finalization replays it before later
- * canonical descendants. A journal abandoned by a signed-intent replacement
- * is taken back in full (reviveReplacedCanonicalJournal). One an admitted
- * correction abandoned is never revived: the correction observer alone
- * reconciles a retracted correction.
+ * canonical descendants. Only an unattributed abandonment is revived here.
+ * One an admitted correction abandoned is never revived: the correction
+ * observer alone reconciles a retracted correction. One a signed-intent
+ * replacement abandoned is revived only by the history owner, from its
+ * authenticated view (reviveReplacedCanonicalJournal); this unauthenticated
+ * view only refuses to continue when such a block is reported on the queue
+ * after a sibling on its base already landed or was locally finalized.
  */
 export const reviveEarliestCanonicalPayloadJournal = ({
   canonicalHeaders,
@@ -397,6 +434,18 @@ export const reviveEarliestCanonicalPayloadJournal = ({
         yield* Effect.logWarning(
           `${logPrefix} will not revive canonical block ${headerHash.toString("hex")}: its journal was abandoned by admitted correction ${journal.value[J.CORRECTION_TRANSITION_DIGEST]!}; only the correction observer reconciles a retracted correction.`,
         );
+    for (const { headerHash, journal } of canonicalHeaders)
+      if (
+        Option.isSome(journal) &&
+        journal.value[J.STATUS] === Status.Abandoned &&
+        localJournalHasPayloadMembers(journal.value) &&
+        journalAbandonment(journal.value) === "replacement"
+      ) {
+        yield* assertNoLandedReplacementSibling(journal.value);
+        yield* Effect.logWarning(
+          `${logPrefix} will not revive canonical block ${headerHash.toString("hex")}: its journal was replaced after its signed commit missed its validity window; only the history owner revives a replaced block, from its authenticated view of the queue.`,
+        );
+      }
     const candidateIndex = canonicalHeaders.findIndex(
       revivableCanonicalJournal,
     );
@@ -432,16 +481,6 @@ export const reviveEarliestCanonicalPayloadJournal = ({
       }
     }
 
-    if (
-      Option.isSome(candidate.journal) &&
-      journalAbandonment(candidate.journal.value) === "replacement"
-    ) {
-      yield* reviveReplacedCanonicalJournal(candidate.headerHash);
-      yield* Effect.logWarning(
-        `${logPrefix} revived replaced journal ${candidate.headerHash.toString("hex")}: its signed commit won its state-queue slot, so its reopened members were taken back and local finalization will replay it.`,
-      );
-      return Option.some(candidate);
-    }
     yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
       candidate.headerHash,
       BigInt(Date.now()),

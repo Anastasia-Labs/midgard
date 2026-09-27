@@ -11,7 +11,10 @@ import { loadCanonicalHistoryCoverage } from "../database/eventHistoryCanonicalC
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import { AuthorizedHistoryHeaderRetirement } from "../database/eventHistoryLedgerRepair.js";
 import { materializeCanonicalHistory } from "../database/eventHistoryMaterialization.js";
-import { prepareRetainedNativeHistoryRecoveryPlan } from "../database/eventHistoryRecoveryPlans.js";
+import {
+  prepareRetainedNativeHistoryRecoveryPlan,
+  SIGNED_HEADER_RECOVERY_DOMAIN,
+} from "../database/eventHistoryRecoveryPlans.js";
 import * as MutationJobsDB from "../database/mutationJobs.js";
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import * as StateQueueLeases from "../database/stateQueueMutationLeases.js";
@@ -384,6 +387,7 @@ export const prepareSignedHeaderRecovery = (input: {
               durableRoot: diagnostics.durableRoot,
               candidateRoot: record[C.EXPECTED_UTXOS_ROOT],
             },
+            SIGNED_HEADER_RECOVERY_DOMAIN,
           ),
         ),
       ),
