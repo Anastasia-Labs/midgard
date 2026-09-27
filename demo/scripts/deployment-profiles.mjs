@@ -93,10 +93,14 @@ const positiveIntegers = (value, keys, field) => {
 // DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES and
 // DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE.chunkByteLength; this
 // script runs before any package builds, so it cannot import them, and
-// midgard-sdk/tests/availability-challenge.test.ts pins the copies. Blocks use
-// Cardano's 20 s mean; production is Poisson, so the budget doubles it.
-export const DA_RESPONSE_L1_BLOCK_MS = 20_000;
-export const DA_RESPONSE_BLOCK_SAFETY_FACTOR = 2;
+// midgard-sdk/tests/availability-challenge.test.ts pins the copies.
+//
+// Every "d blocks of time" budget in this file uses Cardano's 20 s mean block
+// interval; production is Poisson, so each budget doubles it.
+export const L1_MEAN_BLOCK_MS = 20_000;
+export const L1_BLOCK_SAFETY_FACTOR = 2;
+export const l1BlocksBudgetMs = (blocks) =>
+  blocks * L1_MEAN_BLOCK_MS * L1_BLOCK_SAFETY_FACTOR;
 export const DA_SMALL_PAYLOAD_MAX_BYTES = 65_536;
 export const DA_RESPONSE_CHUNK_BYTES = 14_020;
 export const DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS = Math.ceil(
@@ -104,11 +108,26 @@ export const DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS = Math.ceil(
 );
 export const DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS = 1;
 export const minimumDaResponseBudgetMs = (profile) =>
-  (profile.l1_finality.confirmation_depth +
-    DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS +
-    DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS) *
-  DA_RESPONSE_L1_BLOCK_MS *
-  DA_RESPONSE_BLOCK_SAFETY_FACTOR;
+  l1BlocksBudgetMs(
+    profile.l1_finality.confirmation_depth +
+      DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS +
+      DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS,
+  );
+
+// Minimum event wait of a public profile. An event's inclusion time is its
+// transaction's validity upper bound plus the event wait (user-events.ak,
+// order-facts.ak), and a block header's end time is its commit's validity
+// upper bound, at most the maximum validity range after the commit's lower
+// bound. So every event a header must include was on L1 at least (event wait -
+// maximum validity range) before that commit became valid. The floor sizes
+// that span as confirmation-depth blocks at twice the mean interval, so an
+// honest operator can omit a required event only if L1 rolls back past its
+// finality depth or produces under half its mean block rate for the whole
+// span. That margin is probabilistic, and weaker than the 3N/f worst case
+// config/deployments/README.md uses to size the event wait itself.
+export const minimumPublicEventWaitMs = (profile) =>
+  profile.timing.max_validity_range_ms +
+  l1BlocksBudgetMs(profile.l1_finality.confirmation_depth);
 
 export const validateProfile = (profile, name) => {
   exactKeys(
@@ -195,6 +214,15 @@ export const validateProfile = (profile, name) => {
   ) {
     throw new Error(
       "DA attestation timeout, maximum validity range, full response window and dispute schedule must end before block maturity",
+    );
+  }
+  // The testing profiles' short event wait is shorter than the maximum
+  // validity range, so there a short L1 fork can make an honest block omit an
+  // event. That is accepted: they are not public security configurations.
+  const eventWaitFloor = minimumPublicEventWaitMs(profile);
+  if (!nonInteractiveTesting && timing.event_wait_ms < eventWaitFloor) {
+    throw new Error(
+      `Event wait must cover the maximum validity range plus confirmation depth, at least ${eventWaitFloor} ms`,
     );
   }
   if (

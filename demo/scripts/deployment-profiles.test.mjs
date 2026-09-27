@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   minimumDaResponseBudgetMs,
+  minimumPublicEventWaitMs,
   profileDigest,
   readProfiles,
   renderAiken,
@@ -235,6 +236,32 @@ test("every profile keeps the negligence timeout at or above the commitment gap,
       () => validateProfile(profile, name),
       /negligence timeout must be at least/u,
     );
+  }
+});
+
+test("public profiles wait out the validity range plus confirmation depth before requiring an event; testing profiles are exempt", () => {
+  const profiles = readProfiles();
+  // 480 s maximum validity range + 30 blocks × 20 s × 2, derived by hand.
+  for (const name of ["mainnet", "preprod-public"]) {
+    const profile = structuredClone(profiles[name]);
+    assert.equal(minimumPublicEventWaitMs(profile), 1_680_000);
+    assert.ok(profile.timing.event_wait_ms >= 1_680_000);
+    profile.timing.event_wait_ms = 1_680_000;
+    validateProfile(profile, name);
+    profile.timing.event_wait_ms -= 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /Event wait must cover the maximum validity range plus confirmation depth, at least 1680000 ms/u,
+    );
+    // A deeper finality assumption raises the floor.
+    profile.timing.event_wait_ms = 1_680_000;
+    profile.l1_finality.confirmation_depth += 1;
+    assert.throws(() => validateProfile(profile, name), /Event wait/u);
+  }
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    const profile = structuredClone(profiles[name]);
+    assert.ok(profile.timing.event_wait_ms < minimumPublicEventWaitMs(profile));
+    validateProfile(profile, name);
   }
 });
 

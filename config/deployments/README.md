@@ -22,6 +22,14 @@ earlier. The public profiles use the worst-case wall time for N Cardano blocks,
 3N/f slots at f = 0.05 and one-second slots: 36 hours on `mainnet` (N = k = 2160)
 and 30 minutes on `preprod-public` (N = 30). Both testing profiles use a fixed
 five minutes.
+Validation requires each public profile's event wait to be at least the maximum
+validity range plus confirmation-depth blocks at twice the 20-second mean block
+time: 28 minutes for `mainnet` and `preprod-public`. Every event a block must
+include was on L1 at least that validity range less than the event wait before
+the commit became valid, so an honest block omits one only if L1 rolls back past
+that span. Under the 3N/f standard above, `preprod-public`'s 30 minutes leave 22
+blocks after the eight-minute validity range, not 30. The testing profiles are
+exempt: a short L1 fork there can make an honest block omit an event.
 The existing economics schedule identifiers are retained as manifest data, not
 runtime selectors. Profiles sharing a schedule identifier must have identical
 economics. Settle launch parameter choices before deploying; generation does not
