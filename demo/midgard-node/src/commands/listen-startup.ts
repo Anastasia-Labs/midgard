@@ -22,6 +22,7 @@ import {
   localJournalHasPayloadMembers,
   reviveEarliestCanonicalPayloadJournal,
 } from "../services/canonical-journal-recovery.js";
+import { signedCommitNode } from "../services/history-expired-intent-release.js";
 import {
   DatabaseInitializationError,
   Globals,
@@ -44,7 +45,10 @@ import {
   applyConfirmedLedgerDeltaChainTransaction,
   materializeConfirmedLedgerSnapshot,
 } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
-import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import {
+  deserializeStateQueueUTxO,
+  serializeStateQueueUTxO,
+} from "../workers/utils/commit-block-header.js";
 import * as ContractDeploymentInfo from "./contract-deployment-info.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
@@ -498,8 +502,24 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
       globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
       record[PendingBlockFinalizationsDB.Columns.UPDATED_AT].getTime(),
     );
-    yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
     const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
+    // An observed block's node may already be merged into the confirmed state
+    // (or removed), so no queue read ever yields it again: re-derive the node
+    // its retained signed commit created, which local finalization binds to
+    // the journal by every header root.
+    yield* Ref.set(
+      globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+      status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability
+        ? yield* signedCommitNode(record, yield* MidgardContracts).pipe(
+            Effect.flatMap(({ node }) => serializeStateQueueUTxO(node)),
+            Effect.catchAll((cause) =>
+              Effect.logWarning(
+                `Observed journal ${record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")} retains no node its signed commit creates; local finalization waits for the confirmation path: ${formatUnknownError(cause)}`,
+              ).pipe(Effect.as("" as const)),
+            ),
+          )
+        : "",
+    );
     yield* Ref.set(
       globals.LOCAL_FINALIZATION_PENDING,
       status === PendingBlockFinalizationsDB.Status.PendingSubmission ||

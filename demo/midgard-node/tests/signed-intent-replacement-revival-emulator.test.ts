@@ -12,7 +12,10 @@ import {
 } from "../src/services/canonical-journal-recovery.js";
 import { serializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import type { SuccessfulConfirmationOutput } from "../src/workers/utils/confirm-block-commitments.js";
-import { advanceEmulatorPastLatestBlockEndTime } from "./deposit-flow-emulator-shared.js";
+import {
+  advanceEmulatorPastLatestBlockEndTime,
+  runLocalFinalizationRecoveryWorker,
+} from "./deposit-flow-emulator-shared.js";
 import {
   closeLifecycle,
   commitNextBlock,
@@ -42,8 +45,10 @@ import {
   readLeaseStatus,
   readPlans,
   resetSharedRows,
+  seedCorrectionObserver,
   signedTtl,
   snapshotUnreplaced,
+  synchronizeWithin,
   updateJournal,
 } from "./helpers/signed-intent-replacement.js";
 
@@ -415,13 +420,43 @@ it("stops with an integrity error and persists nothing when a replaced commit wi
   }
 }, 900_000);
 
-it("never revives a replaced journal from the confirmation worker's unauthenticated view of the queue, and persists nothing", async () => {
+/** The replaced block E revived with no journal active: its journal observed,
+ * its members taken back, its SQL marker at its candidate root, and its own
+ * node made available to local finalization. In the running process native
+ * state is at its base and no submission is tracked; after a restart the
+ * startup hydration tracks its signed commit and the native owner's startup
+ * replays the observed journal to its candidate root. */
+const expectRevivedWithoutActiveJournal = async (
+  h: Handle,
+  E: Awaited<ReturnType<typeof loseNextCommit>>,
+  depositId: Buffer,
+  { restarted = false }: { readonly restarted?: boolean } = {},
+) => {
+  const revived = await readJournal(E.header);
+  expect(revived[C.STATUS]).toBe(Pending.Status.ObservedWaitingStability);
+  expect(await readDepositHeader(depositId)).toBe(E.header);
+  expect((await readSqlLedgerRoot()).root_hex).toBe(
+    E.journal[C.EXPECTED_UTXOS_ROOT],
+  );
+  expect(await nativeRoot(h)).toBe(
+    E.journal[restarted ? C.EXPECTED_UTXOS_ROOT : C.BASE_UTXOS_ROOT],
+  );
+  const globals = readGlobals(h);
+  expect(globals.localFinalizationPending).toBe(true);
+  expect(globals.unconfirmed).toBe(
+    restarted ? E.journal[C.INTENDED_TX_HASH]!.toString("hex") : "",
+  );
+  expect(availableBlockAssetName(h)).toBe(nodeAssetName(E.header));
+};
+
+it("revives a landed replaced block only from the history owner's authenticated view while no journal is active, never from the confirmation worker's unauthenticated one, and locally finalizes it once", async () => {
   const h = await openHistoryProductionOwnerLifecycle();
   try {
     await resetSharedRows();
     await advanceEmulatorPastLatestBlockEndTime(h.fixture);
     const inclusion = await submitDeposit(h, 12_000_000n);
     const E = await loseNextCommit(h, inclusion);
+    const depositId = E.journal.depositEventIds[0]!;
     moveToExactSlot(h, E.ttl);
     await h.synchronize();
     await expectReplaced(E.journal, { handle: h });
@@ -461,6 +496,69 @@ it("never revives a replaced journal from the confirmation worker's unauthentica
       signedIntentReplacementDigest(E.journal),
     );
     expect(readGlobals(h).localFinalizationPending).toBe(false);
+
+    // Whichever lands wins: the chain followed now included E inside its
+    // window, and nothing replaced it on its base, so no journal is active.
+    // The history owner, from the queue captured at its checkpoint, revives E
+    // exactly once; local finalization replays it natively. (Kills "no
+    // revival while no journal is active": E stays abandoned and the commit
+    // worker refuses to build on it for good.)
+    await landSignedCommitAsFork(h, E.journal[C.SIGNED_TX_CBOR]!);
+    await seedCorrectionObserver(h);
+    await nextPoint(h);
+    await expectRevivedWithoutActiveJournal(h, E, depositId);
+    await finalizeLocally(h, E.header);
+    expect(await nativeRoot(h)).toBe(E.journal[C.EXPECTED_UTXOS_ROOT]);
+    expect((await readJournal(E.header))[C.STATUS]).not.toBe(
+      Pending.Status.Abandoned,
+    );
+    await nextPoint(h);
+    expect(await nativeRoot(h)).toBe(E.journal[C.EXPECTED_UTXOS_ROOT]);
+  } finally {
+    await closeLifecycle(h);
+  }
+}, 900_000);
+
+it("revives a replaced block that landed while the node was down, with no journal active at restart, and locally finalizes it once from the recorded node alone", async () => {
+  const initial = await openHistoryProductionOwnerLifecycle();
+  let h: Handle & Pick<typeof initial, "close"> = initial;
+  try {
+    await resetSharedRows();
+    await advanceEmulatorPastLatestBlockEndTime(initial.fixture);
+    const inclusion = await submitDeposit(initial, 12_000_000n);
+    const E = await loseNextCommit(initial, inclusion);
+    const depositId = E.journal.depositEventIds[0]!;
+    moveToExactSlot(initial, E.ttl);
+    await initial.synchronize();
+    await expectReplaced(E.journal, { handle: initial });
+    // E lands while the node is down; the correction fiber's cursor sees it.
+    await landSignedCommitAsFork(initial, E.journal[C.SIGNED_TX_CBOR]!);
+    await seedCorrectionObserver(initial);
+    const restarted = await initial.restartRuntime({ synchronize: false });
+    h = restarted;
+    // Bounded: the restarted owner converges and revives E. (Kills "no
+    // revival while no journal is active": the restart keeps E abandoned.)
+    await synchronizeWithin(restarted);
+    await expectRevivedWithoutActiveJournal(restarted, E, depositId, {
+      restarted: true,
+    });
+    // Local finalization reads only the node the owner recorded, which the
+    // startup hydration re-derives from E's signed commit after the revival;
+    // no confirmation pass runs first. (Kills "hydrate an observed journal
+    // without its node".)
+    const finalized = await runLocalFinalizationRecoveryWorker(
+      restarted.globals,
+      restarted.fixture.contracts,
+      restarted.lucidService,
+      restarted.fixture.runtimeOverrides!.deploymentIdentity,
+      restarted.production.nodeConfig,
+      { ...restarted.production, globals: restarted.globals },
+    );
+    expect(finalized.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+    if (finalized.type === "SuccessfulLocalFinalizationRecoveryOutput")
+      expect(finalized.finalizedHeaderHash).toBe(E.header);
+    await restarted.synchronize();
+    expect(await nativeRoot(restarted)).toBe(E.journal[C.EXPECTED_UTXOS_ROOT]);
   } finally {
     await closeLifecycle(h);
   }

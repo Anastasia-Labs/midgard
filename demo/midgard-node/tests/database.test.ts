@@ -4998,6 +4998,92 @@ describe("PendingBlockFinalizationsDB", () => {
   );
 
   it.effect(
+    "reopens after a correction a withdrawal an unlanded block selected, and refuses one assigned to another header or never selected",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          yield* WithdrawalsDB.clear;
+          const removed = databaseFixtureBytes("reopen-removed-header", 28);
+          const other = databaseFixtureBytes("reopen-other-header", 28);
+          const entry = (label: string): WithdrawalsDB.Entry => ({
+            ...makeHistoryWithdrawalEntry(),
+            [WithdrawalsDB.Columns.ID]: databaseOutputReferenceId(
+              `reopen-${label}`,
+            ),
+            [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: databaseTxHash(
+              `reopen-${label}-l1`,
+            ),
+          });
+          const selected = entry("selected");
+          const elsewhere = entry("elsewhere");
+          const unselected = entry("unselected");
+          const classify = (row: WithdrawalsDB.Entry) => ({
+            eventId: row[WithdrawalsDB.Columns.ID],
+            expectedClassificationRevision: 0,
+            settlementEventInfo: Buffer.from("8101", "hex"),
+            validity: WithdrawalsDB.Validity.WithdrawalIsValid,
+            validityDetail: {},
+          });
+          yield* WithdrawalsDB.insertEntries([selected, elsewhere, unselected]);
+          const classified = [selected, elsewhere].map(classify);
+          yield* WithdrawalsDB.setSettlementInfoForEventIds(classified);
+          yield* WithdrawalsDB.markAwaitingAsProjected(classified);
+          yield* WithdrawalsDB.markProjectedByEventIds([classified[1]!], other);
+          const current = (row: WithdrawalsDB.Entry) =>
+            WithdrawalsDB.retrieveByEventId(row[WithdrawalsDB.Columns.ID]).pipe(
+              Effect.map(Option.getOrThrow),
+            );
+          const before = {
+            elsewhere: yield* current(elsewhere),
+            unselected: yield* current(unselected),
+          };
+          // A withdrawal another header holds (kills "accept any projected
+          // row"), and one no block selected (kills "drop the Projected
+          // clause" and "accept any null-header row"), are not the removed
+          // block's to reopen.
+          for (const refused of [elsewhere, unselected]) {
+            const error = yield* Effect.flip(
+              WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
+                [refused[WithdrawalsDB.Columns.ID]],
+                removed,
+              ),
+            );
+            // The unowned-history fixture gate wraps the refusal as its cause.
+            const refusal =
+              error.cause instanceof DatabaseError ? error.cause : error;
+            expect(refusal.message).toBe(
+              "Cannot reopen withdrawal not assigned to the corrected header",
+            );
+          }
+          expect(yield* current(elsewhere)).toEqual(before.elsewhere);
+          expect(yield* current(unselected)).toEqual(before.unselected);
+          // Selected and classified by the removed unlanded block, with no
+          // header assigned: it reopens from the removed header.
+          yield* WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
+            [selected[WithdrawalsDB.Columns.ID]],
+            removed,
+          );
+          const reopened = yield* current(selected);
+          expect(reopened[WithdrawalsDB.Columns.STATUS]).toBe(
+            WithdrawalsDB.Status.Awaiting,
+          );
+          expect(reopened[WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]).toBe(
+            null,
+          );
+          expect(reopened[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toBe(
+            null,
+          );
+          expect(
+            reopened[WithdrawalsDB.Columns.REOPENED_FROM_HEADER_HASH],
+          ).toEqual(removed);
+          expect(reopened[WithdrawalsDB.Columns.CLASSIFICATION_REVISION]).toBe(
+            1,
+          );
+        }),
+      ),
+  );
+
+  it.effect(
     "retains durable signed intent across cleanup, conflicting writes and duplicate acknowledgement",
     () =>
       isolatedDb(

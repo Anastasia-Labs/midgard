@@ -31,6 +31,7 @@ import {
   readImmutableCounts,
   resetSharedRows,
   signedTtl,
+  synchronizeWithin,
 } from "./helpers/signed-intent-replacement.js";
 
 /**
@@ -176,7 +177,7 @@ describe.sequential("signed-intent replacement of every member kind", () => {
       await advanceEmulatorPastLatestBlockEndTime(h.fixture);
       const E = await loseContentCommit(h);
       moveToExactSlot(h, E.ttl);
-      await h.synchronize();
+      await synchronizeWithin(h, 240_000);
       await expectReplaced(E.journal, { handle: h });
       // Every member is pending again, none committed.
       expect(await readMemberHeaders(E.journal)).toEqual({
@@ -215,12 +216,27 @@ describe.sequential("signed-intent replacement of every member kind", () => {
       await advanceEmulatorPastLatestBlockEndTime(h.fixture);
       const E = await loseContentCommit(h);
       moveToExactSlot(h, E.ttl);
-      await h.synchronize();
+      await synchronizeWithin(h, 240_000);
       await expectReplaced(E.journal, { handle: h });
       // NEW_E: the same members on the same base, handed to L1 and lost.
+      // This deliberately skips a production step. The node's pre-lease
+      // alignment (alignCommitSchedulerBeforeMutationWorker in
+      // src/fibers/block-commitment.ts) would Rewind the scheduler here, since
+      // E's TTL sits late in the shift, so a production NEW_E references the
+      // refreshed scheduler UTxO. That is harmless: E's validTo is at or
+      // before its shift end (schedulerStateCoversCommitTarget), and a
+      // refresh's validFrom is at or after it
+      // (resolveSchedulerRefreshValidityWindow in
+      // src/workers/utils/scheduler-refresh.ts; onchain scheduler.ak
+      // validate_end_of_shift_and_get_operators), so a fork that includes E
+      // orders the refresh after E. The emulator cannot place an unobserved E
+      // before that refresh, so the test skips the alignment to keep E's
+      // reference inputs unspent and E landable below. Keeping them unspent is
+      // a harness precondition, not a production property.
       const lost = await submitUnlandedBlock(
         h,
         h.fixture.emulator.now() - 1000,
+        { alignScheduler: false },
       );
       const N = await readJournal(lost.submittedHeaderHash);
       expect(N[C.BASE_TAIL_OUT_REF]).toBe(E.journal[C.BASE_TAIL_OUT_REF]);
@@ -230,7 +246,7 @@ describe.sequential("signed-intent replacement of every member kind", () => {
       // The chain now followed included E before its TTL.
       await landSignedCommitAsFork(h, E.journal[C.SIGNED_TX_CBOR]!);
       if (h.fixture.emulator.slot < nTtl) moveToExactSlot(h, nTtl);
-      await h.synchronize();
+      await synchronizeWithin(h, 240_000);
       expect((await readJournal(E.header))[C.STATUS]).toBe(
         Pending.Status.ObservedWaitingStability,
       );

@@ -63,13 +63,18 @@ const samePoint = (
   a: SignedIntentCoverageBlock["point"],
   b: SignedIntentCoverageBlock["point"],
 ) => a.id === b.id && a.slot === b.slot && a.height === b.height;
+/** The one failure that means the retained coverage cannot serve as evidence
+ * (incomplete, pruned or no longer this checkpoint's), as opposed to a
+ * database failure. */
+export const CANONICAL_COVERAGE_UNAVAILABLE =
+  "Canonical transaction coverage is incomplete or changed";
 const checked = <A>(work: () => A) =>
   Effect.try({
     try: work,
     catch: (cause) =>
       new DatabaseError({
         table,
-        message: "Canonical transaction coverage is incomplete or changed",
+        message: CANONICAL_COVERAGE_UNAVAILABLE,
         cause,
       }),
   });

@@ -1,15 +1,18 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
-import { Effect, Ref } from "effect";
+import { Cause, Effect, Exit, Ref } from "effect";
 import { expect, vi } from "vitest";
 
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
+import { reconcileStateQueueCorrections } from "../../src/fibers/attestation-timeout-correction.js";
 import type { LedgerSnapshotOutput } from "../../src/l1-ledger-snapshot.js";
 import {
   journalAbandonment,
   signedIntentReplacementDigest,
 } from "../../src/services/canonical-journal-recovery.js";
+import { Database } from "../../src/services/database.js";
+import { Globals } from "../../src/services/globals.js";
 import { commitConfirmRecoverAndMerge } from "../deposit-flow-emulator-shared.js";
 import {
   admitTransfer,
@@ -482,3 +485,94 @@ export const makeRewritableQueueTransport = () => {
     },
   };
 };
+
+/** The emulator's current state queue as the correction observer sees it. */
+export const readEmulatorQueue = async (
+  h: Pick<Handle, "fixture">,
+): Promise<SDK.StateQueueTransitionNode[]> =>
+  Promise.all(
+    (
+      await Effect.runPromise(
+        SDK.fetchSortedStateQueueUTxOsProgram(h.fixture.operatorLucid, {
+          stateQueueAddress:
+            h.fixture.contracts.stateQueue.spendingScriptAddress,
+          stateQueuePolicyId: h.fixture.contracts.stateQueue.policyId,
+        }),
+      )
+    ).map(async (node, index) => ({
+      headerHash:
+        index === 0
+          ? null
+          : await Effect.runPromise(SDK.headerHashFromStateQueueUTxO(node)),
+      outRef: `${node.utxo.txHash}#${node.utxo.outputIndex}`,
+    })),
+  );
+
+/** Bootstrap the production correction observer's cursor at `queue` (the
+ * emulator's current queue by default), as the running node's correction
+ * fiber does on its first tick: the observer row is replaced. */
+export const seedCorrectionObserver = async (
+  h: Handle,
+  queue?: readonly SDK.StateQueueTransitionNode[],
+) => {
+  const start = queue ?? (await readEmulatorQueue(h));
+  const identity = h.fixture.runtimeOverrides!.deploymentIdentity;
+  const manifestId = identity.manifestId;
+  if (manifestId === undefined)
+    throw new Error("The fixture deployment must be manifest-bound");
+  await read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM state_queue_terminal_observer_states`;
+    }),
+  );
+  const unexpected = async () => {
+    throw new Error("No transition is observed while seeding");
+  };
+  const exit = await Effect.runPromiseExit(
+    reconcileStateQueueCorrections({
+      source: {
+        readQueue: async () => start,
+        observeTransitions: unexpected,
+        canonicalDepth: unexpected,
+      },
+      deploymentIdentityDigest: manifestId,
+      stateQueuePolicyId: h.fixture.contracts.stateQueue.policyId,
+      requiredFinalityDepth: BigInt(
+        h.deployment.manifest.l1Finality.confirmationDepth,
+      ),
+      deploymentManifest: identity.manifest,
+      ledgerDeltaLogMax:
+        h.production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+      rewindThroughHistoryOwner: true,
+    }).pipe(
+      Effect.provideService(Globals, h.globals),
+      Effect.provide(Database.layer),
+    ),
+  );
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  expect(exit.value.status).toBe("bootstrapped");
+  return start;
+};
+
+/** Bounded wait: `work` must settle within `ms` of real time, so a wedge
+ * fails here instead of hanging until the test timeout. */
+export const settleWithin = async <A>(work: Promise<A>, ms: number) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stuck = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Did not settle within ${ms} ms`)),
+      ms,
+    );
+  });
+  try {
+    return await Promise.race([work, stuck]);
+  } finally {
+    clearTimeout(timer);
+    work.catch(() => undefined);
+  }
+};
+
+/** One synchronization that must converge within `ms` of real time. */
+export const synchronizeWithin = (h: Handle, ms = 120_000) =>
+  settleWithin(h.synchronize(), ms);

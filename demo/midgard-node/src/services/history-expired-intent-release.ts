@@ -7,7 +7,10 @@ import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { Effect, Option, Queue, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
-import { loadCanonicalHistoryCoverage } from "../database/eventHistoryCanonicalCoverage.js";
+import {
+  CANONICAL_COVERAGE_UNAVAILABLE,
+  loadCanonicalHistoryCoverage,
+} from "../database/eventHistoryCanonicalCoverage.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import {
   discardPreparedHistoryRecoveryPlan,
@@ -47,6 +50,10 @@ import type { HistoryOwnerChange } from "./event-history-owner.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
 import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
+import type {
+  NativeMpfOwnerService,
+  PersistedNativeMpfReplay,
+} from "./mpf-native-owner/index.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
 import { reincludeStateQueueCorrectedBlocks } from "./state-queue-correction-recovery.js";
 import {
@@ -73,24 +80,29 @@ import {
  * The confirmation worker only defers to it. Once the observed head slot has
  * reached the signed commit's TTL (its exclusive validity upper bound, so E
  * can never be included in any later block of this chain), authenticated
- * evidence decides, in this order: the exact-point queue, the correction
- * observer's persisted view of every state-queue removal (corrections and
- * merges, pending or admitted), and the canonical history the owner
- * journaled.
- *  - E's own node is on the queue: E landed; its observation is recorded.
+ * evidence decides. Evidence bound to the checkpoint decides first (the
+ * exact-point queue and the canonical history the owner journaled); the
+ * correction observer's persisted view of every state-queue removal
+ * (corrections and merges, pending or admitted), which is not bound to the
+ * checkpoint, only explains a correction of E or why neither E nor D is on
+ * the checkpoint's queue.
+ *  - E's own node is on the queue, or the confirmed state is E's header: E
+ *    landed; its observation is recorded.
  *  - A correction removed E: E landed and was removed; the correction path
- *    owns its journal, so this defers (below).
- *  - E landed and left the queue by a merge: its signed commit is in the
- *    journaled canonical history, the confirmed state is E's header, or an
- *    observed merge folded E. E landed; its observation is recorded against
- *    the node its signed commit created, and local finalization replays it.
- *  - A correction removed D: when this node journals D, the correction path
- *    owns E's journal (its rewind proves and abandons an unlanded descendant
- *    of a removed block), so this defers to it without holding the gate
- *    closed: the deferral is remembered for this journal until a rollback
- *    (the only way D returns) or a runtime restart, both of which re-read
- *    the queue. Without a journal of D nothing else ever resolves E, and the
- *    correction consumed the node E spends: E is replaced.
+ *    owns its journal, so this defers (below). Never a landed block.
+ *  - E's signed commit is in the journaled canonical history, or (neither E
+ *    nor D on the queue) an observed merge folded E: E landed; its
+ *    observation is recorded against the node its signed commit created, and
+ *    local finalization replays it.
+ *  - A correction removed D (neither E nor D on the queue): when this node
+ *    journals D, the correction path owns E's journal (its rewind proves and
+ *    abandons an unlanded descendant of a removed block), so this defers to
+ *    it without holding the gate closed. An admitted correction's deferral
+ *    is remembered for this journal until a rollback (the only way D
+ *    returns) or a runtime restart; a pending one only until the observer's
+ *    view changes, since it may be retracted. Without a journal of D nothing
+ *    else ever resolves E, and the correction consumed the node E spends: E
+ *    is replaced.
  *  - D's `next` is still empty, or holds a block that is not this node's
  *    replaced sibling of E (a foreign block): E is replaced. Its journal is
  *    abandoned under its replacement digest, its local-finalization job row
@@ -103,14 +115,22 @@ import {
  *  - D was merged into the confirmed state (an observed merge removed it):
  *    its successor at that merge decides as D's `next` does, and a D merged
  *    while it was still the tail means E can never land: E is replaced.
- *  - D absent before the observer recorded why: nothing is decided at this
- *    source point and the gate stays open (E stays active, so nothing is
- *    built); the next point decides again. The observer runs independently
- *    of the gate, so a recorded removal or merge resolves it.
+ *  - D absent before the observer recorded why: nothing is decided and the
+ *    gate stays open (E stays active, so nothing is built) until the
+ *    observer's view changes. The observer runs independently of the gate,
+ *    so a recorded removal or merge resolves it.
  *  - Anything else (another own block of a different kind in D's slot, D's
  *    successor node absent) keeps the gate closed and says why.
  * A signed commit is never replaced before its TTL, and never on wall-clock
- * time or queue absence alone.
+ * time or queue absence alone. With E's replacement plan already retained, a
+ * landed E discards it (after replaying E natively), and a deferral to the
+ * correction path resumes it instead, since the correction path waits for
+ * every retained plan.
+ *
+ * With no journal active, a replaced block of this node can still win its
+ * base's slot (it landed late, or a rollback brought it back);
+ * `prepareReplacedBlockRevival` revives it on the same checkpoint-bound
+ * evidence, or an admitted merge that saw it on the queue.
  */
 
 const table = "event_history_recovery_plans";
@@ -186,6 +206,15 @@ const activeSignedIntent = Effect.gen(function* () {
   } satisfies ActiveSignedIntent;
 });
 
+/** Whether any journal is active, landed or not. */
+const anyActiveJournal = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ header_hash: Buffer }>`SELECT header_hash
+    FROM pending_block_finalizations WHERE status IN ${sql.in(ACTIVE_STATUSES)}
+    LIMIT 1`;
+  return rows.length > 0;
+});
+
 /** Last reported reason per binding and topic: WARN when it first appears or
  * changes, debug while it persists. */
 const reported = new Map<string, string>();
@@ -201,22 +230,39 @@ const reportOnce = (key: string, message: string | undefined) =>
   });
 
 /** The one signed intent (header and intended transaction) whose
- * reconciliation defers: to the correction path (`current`, until a rollback),
- * or only at one source point (`atPoint`, while the correction observer has
- * not yet recorded why its base left the queue; the next point decides
- * again). Owned by one history runtime: a restart starts empty. */
+ * reconciliation defers: to the correction path (`current`, until a rollback;
+ * only on an admitted correction), or until the correction observer's
+ * persisted view changes (`untilObserved`: it has not yet recorded why its
+ * base left the queue, or has recorded only a correction not yet admitted;
+ * without a change of that view or a rollback, the same evidence decides the
+ * same way, so nothing is captured again). `revival`: the replaced blocks and
+ * source point at which no authenticated evidence showed one of them holding
+ * its base's slot. Owned by one history runtime: a restart starts empty. */
 export type SignedIntentDeferral = {
   current: string | undefined;
-  atPoint: string | undefined;
+  untilObserved: string | undefined;
+  revival: string | undefined;
 };
 
 export const makeSignedIntentDeferral = (): SignedIntentDeferral => ({
   current: undefined,
-  atPoint: undefined,
+  untilObserved: undefined,
+  revival: undefined,
 });
 
-const deferredAtPoint = (key: string, point: { readonly id: string }) =>
-  `${key}@${point.id}`;
+/** The correction observer's persisted view, named by its state digest (or
+ * why it has none). */
+const observerFingerprint = (authority: StateQueueCorrectionRewindAuthority) =>
+  loadStateQueueCorrectionObserverState(authority).pipe(
+    Effect.map((observer) =>
+      observer.kind === "observed"
+        ? `observed:${observer.state.stateDigest}`
+        : `blocked:${observer.reason}`,
+    ),
+  );
+
+const deferredUntilObserved = (key: string, fingerprint: string) =>
+  `${key}#${fingerprint}`;
 
 const deferralKey = (intent: {
   readonly headerHash: Buffer;
@@ -228,24 +274,35 @@ const deferralKey = (intent: {
  * signed intent's TTL has been reached at this checkpoint, so the gate closes
  * and recovery reconciles its base's state-queue slot. Before the TTL the
  * normal confirmation path stays in charge, and after a deferral to the
- * correction path (its base was removed) it stays open until a rollback. SQL
+ * correction path (its base was removed) it stays open until a rollback, and
+ * after a deferral to the correction observer until its view changes. SQL
  * only; the reason is stable while the journal is unchanged, so the owner's
  * retry backoff applies. */
 export const expiredIntentReleaseDisposition = (input: {
   readonly binding: EventHistorySourceBinding;
   readonly change: HistoryOwnerChange;
   readonly deferral: SignedIntentDeferral;
+  readonly rewindAuthority: StateQueueCorrectionRewindAuthority;
 }) =>
   Effect.gen(function* () {
-    // Only a rollback (or a fresh seed) can bring a removed base back.
-    if (input.change.kind === "rollback" || input.change.kind === "seed")
+    // Only a rollback (or a fresh seed) can bring a removed base back, or
+    // change the evidence a deferral was decided on without the observer.
+    if (input.change.kind === "rollback" || input.change.kind === "seed") {
       input.deferral.current = undefined;
+      input.deferral.untilObserved = undefined;
+      input.deferral.revival = undefined;
+    }
     const intent = yield* activeSignedIntent;
     if (intent === undefined) return undefined;
+    const key = deferralKey(intent);
+    if (input.deferral.current === key) return undefined;
     if (
-      input.deferral.current === deferralKey(intent) ||
-      input.deferral.atPoint ===
-        deferredAtPoint(deferralKey(intent), input.change.after.head)
+      input.deferral.untilObserved?.startsWith(`${key}#`) === true &&
+      input.deferral.untilObserved ===
+        deferredUntilObserved(
+          key,
+          yield* observerFingerprint(input.rewindAuthority),
+        )
     )
       return undefined;
     const header = intent.headerHash.toString("hex");
@@ -396,13 +453,7 @@ const authenticateNode = (
         );
     }
     return { node, headerHash } satisfies QueueNode;
-  }).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof DatabaseError
-        ? cause
-        : failure("State-queue capture does not authenticate", cause),
-    ),
-  );
+  });
 
 /** Authenticates every state-queue output of the exact-point capture. Any
  * malformed queue output fails the whole view. */
@@ -431,14 +482,22 @@ const authenticateQueue = (
         failure("The state queue must have exactly one root"),
       );
     return { nodes, root: roots[0]! } satisfies QueueView;
-  });
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof DatabaseError
+        ? cause
+        : failure("State-queue capture does not authenticate", cause),
+    ),
+  );
 
 /** The node a journal's signed commit created for its own block: that
  * commit's output carrying the block's node token, before any later
  * transaction continued or merged it. Local finalization binds it to the
  * journal by every header root. Bytes that do not hash to the journal's
- * intended transaction or create no such node fail closed. */
-const signedCommitNode = (
+ * intended transaction or create no such node fail closed. Startup hydration
+ * re-derives an observed journal's node the same way (a merged node is on no
+ * queue to read back). */
+export const signedCommitNode = (
   record: Pending.Record,
   contracts: StateQueueContracts,
 ) =>
@@ -496,7 +555,16 @@ const signedCommitNode = (
         failure(`The signed commit of block ${header} creates another node`),
       );
     return created;
-  });
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof DatabaseError
+        ? cause
+        : failure(
+            `The node the retained signed commit of block ${record[C.HEADER_HASH].toString("hex")} creates does not authenticate`,
+            cause,
+          ),
+    ),
+  );
 
 type Decision =
   | Readonly<{ kind: "landed"; node: QueueNode; evidence: string }>
@@ -522,7 +590,9 @@ type ReleaseEvidence = Readonly<{
 
 /** Whether the retained canonical history (complete transaction rosters from
  * its anchor to the checkpoint head) includes `txHash` as a valid (inputs
- * spending) transaction. Unavailable coverage is no evidence. */
+ * spending) transaction. Unavailable coverage is no evidence; any other
+ * failure (a database error, which aborts the owned transaction) fails the
+ * attempt, which recovery retries. */
 const includedInCanonicalHistory = (
   binding: EventHistorySourceBinding,
   checkpoint: Checkpoint,
@@ -536,15 +606,22 @@ const includedInCanonicalHistory = (
         ),
       ),
     ),
-    Effect.catchAll((cause) =>
-      Effect.logDebug(
-        `Canonical history coverage unavailable as signed-intent evidence: ${formatUnknownError(cause)}`,
-      ).pipe(Effect.as(false)),
+    Effect.catchIf(
+      (cause) =>
+        cause instanceof DatabaseError &&
+        cause.message === CANONICAL_COVERAGE_UNAVAILABLE,
+      (cause) =>
+        Effect.logDebug(
+          `Canonical history coverage unavailable as signed-intent evidence: ${formatUnknownError(cause)}`,
+        ).pipe(Effect.as(false)),
     ),
   );
 
 /** Reads which block holds the active journal's base slot (see the module
- * comment). Read-only; runs in the recovery transaction. */
+ * comment). Checkpoint-bound evidence decides first; the correction observer's
+ * view (not bound to the checkpoint, and pending transitions may still be
+ * retracted) only explains a correction of E, or why neither E nor its base D
+ * is on the checkpoint's queue. Read-only; runs in the recovery transaction. */
 const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
   Effect.gen(function* () {
     const { queue, contracts } = evidence;
@@ -559,60 +636,55 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
         node: own,
         evidence: "its node is on the queue",
       } satisfies Decision;
+    if (queue.root.headerHash === header)
+      return {
+        kind: "landed",
+        node: yield* signedCommitNode(record, contracts),
+        evidence: "the confirmed state is its header",
+      } satisfies Decision;
     const observer = yield* loadStateQueueCorrectionObserverState(
       evidence.rewindAuthority,
       true,
     );
-    const transitions =
-      observer.kind === "observed"
-        ? [...observer.state.pending, ...observer.state.admitted]
-        : [];
-    const removing = (hash: string, merge: boolean) =>
-      transitions.find(
-        (transition) =>
-          (transition.transitionKind === "merge") === merge &&
-          transition.removedHeaderHashes.includes(hash),
-      );
+    /** The observed removal of `hash` of one kind, an admitted one first. */
+    const removing = (hash: string, merge: boolean) => {
+      if (observer.kind !== "observed") return undefined;
+      const matches = (transition: SDK.StateQueueAuthenticatedTransition) =>
+        (transition.transitionKind === "merge") === merge &&
+        transition.removedHeaderHashes.includes(hash);
+      const admitted = observer.state.admitted.find(matches);
+      if (admitted !== undefined)
+        return { transition: admitted, admitted: true };
+      const pending = observer.state.pending.find(matches);
+      return pending === undefined
+        ? undefined
+        : { transition: pending, admitted: false };
+    };
+    /** Only an admitted correction is resolved by the correction path, so
+     * only it makes the deferral sticky. A pending one may be retracted; the
+     * next change of the observer's view decides again. */
+    const deferToCorrection = (
+      removal: NonNullable<ReturnType<typeof removing>>,
+      removed: string,
+    ) =>
+      ({
+        kind: "defer",
+        sticky: removal.admitted,
+        reason: removal.admitted
+          ? `admitted state-queue correction ${removal.transition.transactionHash} removed ${removed}, and the correction path reconciles this node's removed block with its unlanded descendants`
+          : `pending state-queue correction ${removal.transition.transactionHash} removed ${removed}; it is not admitted yet`,
+      }) satisfies Decision;
+    // A block that landed and was then removed is the correction path's,
+    // never a landed block to finalize.
     const correctionOfBlock = removing(header, false);
     if (correctionOfBlock !== undefined)
-      return {
-        kind: "defer",
-        sticky: true,
-        reason: `state-queue correction ${correctionOfBlock.transactionHash} removed it after it landed, so the correction path reconciles it`,
-      } satisfies Decision;
-    const mergeOfBlock = removing(header, true);
-    const landed = evidence.inCanonicalHistory
-      ? "its signed commit is in the journaled canonical history"
-      : queue.root.headerHash === header
-        ? "the confirmed state is its header"
-        : mergeOfBlock !== undefined
-          ? `merge ${mergeOfBlock.transactionHash} folded it into the confirmed state`
-          : undefined;
-    if (landed !== undefined)
+      return deferToCorrection(correctionOfBlock, "it after it landed");
+    if (evidence.inCanonicalHistory)
       return {
         kind: "landed",
         node: yield* signedCommitNode(record, contracts),
-        evidence: landed,
+        evidence: "its signed commit is in the journaled canonical history",
       } satisfies Decision;
-    const correctionOfBase = removing(base, false);
-    if (correctionOfBase !== undefined) {
-      const baseJournal = yield* Pending.retrieveByHeaderHash(
-        Buffer.from(base, "hex"),
-      );
-      if (
-        Option.isSome(baseJournal) &&
-        baseJournal.value[C.STATUS] !== Pending.Status.Abandoned
-      )
-        return {
-          kind: "defer",
-          sticky: true,
-          reason: `state-queue correction ${correctionOfBase.transactionHash} removed its base ${base}, and the correction path reconciles this node's removed block with its unlanded descendants`,
-        } satisfies Decision;
-      return {
-        kind: "replace",
-        cause: `state-queue correction ${correctionOfBase.transactionHash} consumed the node of its base ${base}, which this node does not journal`,
-      } satisfies Decision;
-    }
 
     /** `winner` holds D's slot. A merged slot's winner may have left the
      * queue too; its node is then the one its own signed commit created. */
@@ -699,15 +771,38 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
         } satisfies Decision;
       return yield* successor(next.Key.key, false);
     }
-    // D left the queue. Only a recorded removal says how; absence alone
-    // never decides. The observer records it independently of the history
-    // gate, so the gate stays open and the next source point decides again.
+    // Neither E nor D is on the checkpoint's queue. Only a recorded removal
+    // says how; absence alone never decides. The observer records it
+    // independently of the history gate, so the gate stays open and the next
+    // change of its view decides again.
     if (observer.kind === "blocked")
       return {
         kind: "defer",
         sticky: false,
         reason: `its base ${base} is no longer on the queue and the state-queue correction observer has no usable view of why yet (${observer.reason})`,
       } satisfies Decision;
+    const mergeOfBlock = removing(header, true);
+    if (mergeOfBlock !== undefined)
+      return {
+        kind: "landed",
+        node: yield* signedCommitNode(record, contracts),
+        evidence: `merge ${mergeOfBlock.transition.transactionHash} folded it into the confirmed state`,
+      } satisfies Decision;
+    const correctionOfBase = removing(base, false);
+    if (correctionOfBase !== undefined) {
+      const baseJournal = yield* Pending.retrieveByHeaderHash(
+        Buffer.from(base, "hex"),
+      );
+      if (
+        Option.isSome(baseJournal) &&
+        baseJournal.value[C.STATUS] !== Pending.Status.Abandoned
+      )
+        return deferToCorrection(correctionOfBase, `its base ${base}`);
+      return {
+        kind: "replace",
+        cause: `state-queue correction ${correctionOfBase.transition.transactionHash} consumed the node of its base ${base}, which this node does not journal`,
+      } satisfies Decision;
+    }
     const mergeOfBase = removing(base, true);
     if (mergeOfBase === undefined)
       return {
@@ -715,17 +810,70 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
         sticky: false,
         reason: `its base ${base} is no longer on the queue and the state-queue correction observer has recorded neither a correction nor a merge of it yet`,
       } satisfies Decision;
-    const index = mergeOfBase.previousQueue.findIndex(
-      (node) => node.headerHash === base,
-    );
-    const merged = mergeOfBase.previousQueue[index + 1]?.headerHash ?? null;
+    const previous = mergeOfBase.transition.previousQueue;
+    const index = previous.findIndex((node) => node.headerHash === base);
+    const merged = previous[index + 1]?.headerHash ?? null;
     if (merged === null)
       return {
         kind: "replace",
-        cause: `its base ${base} was merged into the confirmed state by ${mergeOfBase.transactionHash} while it was still the queue tail`,
+        cause: `its base ${base} was merged into the confirmed state by ${mergeOfBase.transition.transactionHash} while it was still the queue tail`,
       } satisfies Decision;
     return yield* successor(merged, true);
   });
+
+/** With this intent's own replacement plan retained, a sticky deferral would
+ * leave the plan retained while the correction path waits for it. The plan
+ * binds only the replaced journal, so it is resumed instead. */
+const effective = (decision: Decision, retainedPlan: boolean): Decision =>
+  retainedPlan && decision.kind === "defer" && decision.sticky
+    ? {
+        kind: "replace",
+        cause: `${decision.reason}; its retained replacement plan is resumed`,
+      }
+    : decision;
+
+/** The node's native owner, opening only its retained native bytes when none
+ * is open: never a genesis bootstrap or a journal replay. Create validates the
+ * durable marker. */
+const openRetainedNativeOwner = (globals: Globals, config: NodeConfigDep) =>
+  Effect.gen(function* () {
+    const open = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+    if (open !== undefined) return open;
+    return yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const opened = yield* Effect.tryPromise({
+          try: () =>
+            ProductionNativeMpfOwnerService.create({
+              levelPath: config.LEDGER_MPF_DB_PATH,
+              binaryPath: config.MPF_NATIVE_OWNER_BINARY_PATH,
+              binarySha256: config.MPF_NATIVE_OWNER_BINARY_SHA256,
+              maxFrameBytes: config.MPF_NATIVE_OWNER_MAX_FRAME_BYTES,
+              maxChunkBytes: config.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES,
+              requestTimeoutMs: config.MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS,
+              restartLimit: config.MPF_NATIVE_OWNER_RESTART_LIMIT,
+              sidecarPath: config.MPF_NATIVE_OWNER_SIDECAR_PATH,
+            }),
+          catch: (cause) =>
+            failure("Retained native owner could not open", cause),
+        });
+        yield* Ref.set(globals.NATIVE_MPF_OWNER, opened);
+        return opened as NativeMpfOwnerService;
+      }),
+    );
+  });
+
+const persistedReplay = (
+  replay: NonNullable<Pending.Record["nativeMpfReplay"]>,
+): PersistedNativeMpfReplay => ({
+  schema: 1,
+  ownerBinarySha256: replay.ownerBinarySha256.toString("hex"),
+  baseRoot: replay.baseRoot.toString("hex"),
+  candidateRoot: replay.candidateRoot.toString("hex"),
+  eventLog: replay.eventLog,
+  eventLogDigest: replay.eventLogDigest.toString("hex"),
+  eventRoots: replay.eventRoots,
+  eventCount: replay.eventCount,
+});
 
 /**
  * Recovery preparation: once the active signed intent's TTL is reached at
@@ -758,10 +906,6 @@ export const prepareExpiredIntentRelease = (input: {
     yield* preparation.assertCurrent;
     const derived = yield* owned(
       Effect.gen(function* () {
-        const rewind = yield* stateQueueCorrectionRewindDisposition(
-          input.rewindAuthority,
-        );
-        if (rewind !== undefined) return undefined;
         const intent = yield* activeSignedIntent;
         const retained = yield* retainedPreparedRecoveryPlan(
           input.binding.digest,
@@ -773,6 +917,15 @@ export const prepareExpiredIntentRelease = (input: {
             retained.headerHash !== intent.headerHash.toString("hex"))
         )
           return undefined;
+        // This intent's own retained plan is resumed or discarded first: an
+        // owed rewind waits for every retained plan, so waiting for the
+        // rewind here would deadlock both.
+        if (retained === undefined) {
+          const rewind = yield* stateQueueCorrectionRewindDisposition(
+            input.rewindAuthority,
+          );
+          if (rewind !== undefined) return undefined;
+        }
         if (intent === undefined) return undefined;
         const ttl = signedTtl(intent.signedTxCbor);
         if (ttl === undefined || BigInt(checkpoint.head.slot) < ttl)
@@ -835,7 +988,10 @@ export const prepareExpiredIntentRelease = (input: {
           return yield* Effect.fail(
             failure(`Signed-intent journal ${header} identity changed`),
           );
-        const decision = yield* decide(journal.record, evidence);
+        const decision = effective(
+          yield* decide(journal.record, evidence),
+          derived.retainedPlan,
+        );
         if (decision.kind !== expected)
           return yield* Effect.fail(
             failure(
@@ -844,7 +1000,10 @@ export const prepareExpiredIntentRelease = (input: {
           );
         return { ...journal, decision };
       });
-    const decision = yield* owned(decide(record, evidence));
+    const decision = effective(
+      yield* owned(decide(record, evidence)),
+      derived.retainedPlan,
+    );
     const globals = yield* Globals;
     const context = `signed commit ${signedTx} of block ${header} (TTL slot ${derived.ttl.toString()}, head slot ${checkpoint.head.slot.toString()})`;
 
@@ -861,25 +1020,45 @@ export const prepareExpiredIntentRelease = (input: {
         intendedTxHash: record[C.INTENDED_TX_HASH]!,
       });
       if (decision.sticky) input.deferral.current = key;
-      else input.deferral.atPoint = deferredAtPoint(key, checkpoint.head);
+      else
+        input.deferral.untilObserved = deferredUntilObserved(
+          key,
+          yield* owned(observerFingerprint(input.rewindAuthority)),
+        );
       yield* reportOnce(
         reportKey,
         decision.sticky
           ? `Not replacing ${context}: ${decision.reason}. The history gate stays open and its journal stays active until the correction path resolves it.`
-          : `Not replacing ${context} yet: ${decision.reason}. The history gate stays open, its journal stays active, and the next source point decides again.`,
+          : `Not replacing ${context} yet: ${decision.reason}. The history gate stays open, its journal stays active, and the next change of the correction observer's view decides again.`,
       );
       return;
     }
     if (decision.kind === "landed") {
       const serialized = yield* serializeStateQueueUTxO(decision.node.node);
+      if (derived.retainedPlan) {
+        // A replacement prepared before the block was seen to land may already
+        // have restored the base root natively (its CAS ran, its SQL repair did
+        // not), so the journal is intact but the native root may be at its
+        // base. Replay it to the candidate first (a no-op when the CAS never
+        // ran): a locally finalized journal is not replayed again at local
+        // finalization.
+        const owner = yield* openRetainedNativeOwner(globals, config);
+        yield* preparation.assertCurrent;
+        yield* Effect.tryPromise({
+          try: () => owner.recover(persistedReplay(record.nativeMpfReplay!)),
+          catch: (cause) =>
+            failure(
+              `Native replay of landed block ${header} over its discarded replacement failed`,
+              cause,
+            ),
+        }).pipe(Effect.uninterruptible);
+        yield* preparation.assertCurrent;
+      }
       const requiresLocalFinalization = yield* owned(
         current("landed").pipe(
           Effect.tap(() =>
-            // A replacement prepared before the block was seen to land may
-            // already have restored the base root natively, but its SQL repair
-            // never ran, so the journal is intact. Local finalization replays
-            // it natively from either root: the replacement is discarded, not
-            // resumed.
+            // The native root is at the candidate again; the replacement is
+            // discarded, not resumed.
             derived.retainedPlan
               ? discardPreparedHistoryRecoveryPlan(
                   checkpoint,
@@ -942,32 +1121,7 @@ export const prepareExpiredIntentRelease = (input: {
     );
     if (config.SPECULATIVE_COMMIT_BUILD)
       yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
-    let owner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-    if (owner === undefined) {
-      // Open only retained native bytes; never genesis-bootstrap or replay the
-      // replaced journal on this path. Create validates the durable marker.
-      owner = yield* Effect.uninterruptible(
-        Effect.gen(function* () {
-          const opened = yield* Effect.tryPromise({
-            try: () =>
-              ProductionNativeMpfOwnerService.create({
-                levelPath: config.LEDGER_MPF_DB_PATH,
-                binaryPath: config.MPF_NATIVE_OWNER_BINARY_PATH,
-                binarySha256: config.MPF_NATIVE_OWNER_BINARY_SHA256,
-                maxFrameBytes: config.MPF_NATIVE_OWNER_MAX_FRAME_BYTES,
-                maxChunkBytes: config.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES,
-                requestTimeoutMs: config.MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS,
-                restartLimit: config.MPF_NATIVE_OWNER_RESTART_LIMIT,
-                sidecarPath: config.MPF_NATIVE_OWNER_SIDECAR_PATH,
-              }),
-            catch: (cause) =>
-              failure("Retained native owner could not open", cause),
-          });
-          yield* Ref.set(globals.NATIVE_MPF_OWNER, opened);
-          return opened;
-        }),
-      );
-    }
+    const owner = yield* openRetainedNativeOwner(globals, config);
     yield* preparation.assertCurrent;
     const diagnostics = yield* Effect.tryPromise({
       try: () => owner.diagnostics(),
@@ -1077,5 +1231,298 @@ export const prepareExpiredIntentRelease = (input: {
       decision.kind === "replace"
         ? `Replaced ${context}: ${decision.cause}. Restored native root ${targetRoot} and reopened its members for recommit.`
         : `Revived replaced block ${revived![C.HEADER_HASH].toString("hex")}: it holds the base slot of ${context}, which was abandoned; local finalization replays the winner.`,
+    );
+  });
+
+/** This node's replacement-abandoned journals whose blocks the correction
+ * observer's persisted view shows on a state queue: its cursor queue, a queue
+ * a recorded transition saw, or a block a recorded merge folded. A block a
+ * recorded correction removed is excluded: its members stay reopened, which
+ * is what that correction's path does anyway. A hint only: it is not bound to
+ * the checkpoint, so it only selects which blocks the checkpoint-bound
+ * evidence is read for. Sorted by header. */
+const revivalCandidates = (
+  authority: StateQueueCorrectionRewindAuthority,
+  lock = false,
+) =>
+  Effect.gen(function* () {
+    const observer = yield* loadStateQueueCorrectionObserverState(
+      authority,
+      lock,
+    );
+    if (observer.kind !== "observed") return [];
+    const { cursorQueue, pending, admitted } = observer.state;
+    const transitions = [...pending, ...admitted];
+    const corrected = new Set(
+      transitions
+        .filter((transition) => transition.transitionKind !== "merge")
+        .flatMap((transition) => transition.removedHeaderHashes),
+    );
+    const seen = new Set<string>();
+    for (const node of [
+      ...cursorQueue,
+      ...transitions.flatMap((transition) => [
+        ...transition.previousQueue,
+        ...transition.nextQueue,
+      ]),
+    ])
+      if (node.headerHash !== null) seen.add(node.headerHash);
+    for (const transition of transitions)
+      if (transition.transitionKind === "merge")
+        for (const hash of transition.removedHeaderHashes) seen.add(hash);
+    const hashes = [...seen].filter((hash) => !corrected.has(hash)).sort();
+    if (hashes.length === 0) return [];
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ header_hash: Buffer }>`SELECT header_hash
+      FROM pending_block_finalizations
+      WHERE status = ${Pending.Status.Abandoned}
+        AND header_hash IN ${sql.in(hashes.map((hash) => Buffer.from(hash, "hex")))}
+      ORDER BY header_hash`;
+    const records: Pending.Record[] = [];
+    for (const row of rows) {
+      const found = yield* Pending.retrieveByHeaderHash(row.header_hash);
+      if (
+        Option.isSome(found) &&
+        journalAbandonment(found.value) === "replacement"
+      )
+        records.push(found.value);
+    }
+    return records;
+  });
+
+const revivalKey = (
+  candidates: readonly Pending.Record[],
+  point: { readonly id: string },
+) =>
+  `${candidates.map((record) => record[C.HEADER_HASH].toString("hex")).join(",")}@${point.id}`;
+
+/** Forward-append and resume disposition: pending when no journal is active
+ * and the correction observer's view shows one of this node's replaced blocks
+ * on a state queue (whichever lands wins: a replaced block that won its base's
+ * slot, by landing late or through a rollback, is revived, otherwise the
+ * commit worker refuses to build on it for good). Once no checkpoint-bound
+ * evidence showed a candidate at a source point, it stays open until the next
+ * point. SQL only. */
+export const replacedBlockRevivalDisposition = (input: {
+  readonly change: HistoryOwnerChange;
+  readonly deferral: SignedIntentDeferral;
+  readonly rewindAuthority: StateQueueCorrectionRewindAuthority;
+}) =>
+  Effect.gen(function* () {
+    if (input.change.kind === "rollback" || input.change.kind === "seed")
+      input.deferral.revival = undefined;
+    if (yield* anyActiveJournal) return undefined;
+    const candidates = yield* revivalCandidates(input.rewindAuthority);
+    if (candidates.length === 0) return undefined;
+    if (
+      input.deferral.revival === revivalKey(candidates, input.change.after.head)
+    )
+      return undefined;
+    return {
+      status: "pending" as const,
+      reason: `The state-queue correction observer shows replaced block ${candidates.map((record) => record[C.HEADER_HASH].toString("hex")).join(", ")} of this node on the state queue while no journal is active; a replaced block that holds its base's slot must be revived`,
+    };
+  });
+
+/**
+ * Recovery preparation: revives this node's replaced block when authenticated
+ * evidence bound to the checkpoint shows it landed, while no journal is active
+ * (with one active, `prepareExpiredIntentRelease` reconciles its base's slot,
+ * reviving there). Evidence: its node on the exact-point queue, the confirmed
+ * state equal to its header, its signed commit in the journaled canonical
+ * history, or an admitted (final) merge that folded it or saw it on the
+ * queue. The revival abandons nothing: with no journal active every sibling on
+ * its base is already abandoned, which the revival itself enforces (a sibling
+ * that landed or was locally finalized is an integrity failure). Its members
+ * are taken back, its SQL marker moves to its candidate root, and local
+ * finalization replays it natively. Defers while a correction rewind is owed
+ * or any plan is retained.
+ */
+export const prepareReplacedBlockRevival = (input: {
+  readonly binding: EventHistorySourceBinding;
+  readonly checkpoint: Checkpoint;
+  readonly preparation: HistoryRecoveryPreparation;
+  readonly config: NodeConfigDep;
+  readonly rewindAuthority: StateQueueCorrectionRewindAuthority;
+  readonly transport: Omit<HistoryTransportOptions, "signal">;
+  readonly contracts: Pick<SDK.MidgardValidators, "stateQueue">;
+  readonly deferral: SignedIntentDeferral;
+}) =>
+  Effect.gen(function* () {
+    const { checkpoint, preparation, config } = input;
+    const reportKey = `${input.binding.digest}:revival`;
+    const owned = <A, E, R>(work: Effect.Effect<A, E, R>) =>
+      Authority.withRecovery(
+        preparation.token,
+        preparation.assertCurrent.pipe(
+          Effect.zipRight(work),
+          Effect.tap(() => preparation.assertCurrent),
+        ),
+      );
+    // Every candidate that is not excluded, or undefined when another recovery
+    // goes first or a journal is active.
+    const derive = Effect.gen(function* () {
+      if (
+        (yield* stateQueueCorrectionRewindDisposition(
+          input.rewindAuthority,
+        )) !== undefined ||
+        (yield* retainedPreparedRecoveryPlan(input.binding.digest)) !==
+          undefined ||
+        (yield* anyActiveJournal)
+      )
+        return undefined;
+      return yield* revivalCandidates(input.rewindAuthority, true);
+    });
+    yield* preparation.assertCurrent;
+    const candidates = yield* owned(derive);
+    if (candidates === undefined || candidates.length === 0) return;
+    const capture = yield* Effect.tryPromise({
+      try: (signal) =>
+        readBoundRecoveryLedgerSnapshot({
+          ...input.transport,
+          timeoutMs: LEDGER_SCAN_TIMEOUT_MS,
+          binding: input.binding,
+          addresses: [input.contracts.stateQueue.spendingScriptAddress],
+          at: checkpoint.head,
+          signal,
+        }),
+      catch: (cause) =>
+        failure(
+          `Exact-point state-queue capture failed: ${formatUnknownError(cause, { includeCause: true })}`,
+          cause,
+        ),
+    });
+    yield* preparation.assertCurrent;
+    const queue = yield* authenticateQueue(
+      capture.ledger.outputs,
+      input.contracts,
+    );
+    const inCanonicalHistory = new Map<string, boolean>();
+    for (const record of candidates) {
+      const signed = record[C.INTENDED_TX_HASH];
+      inCanonicalHistory.set(
+        record[C.HEADER_HASH].toString("hex"),
+        signed != null &&
+          (yield* owned(
+            includedInCanonicalHistory(
+              input.binding,
+              checkpoint,
+              signed.toString("hex"),
+            ),
+          )),
+      );
+    }
+    // Which candidates the evidence shows landed, with their nodes. Read in
+    // the recovery transaction, re-derived before anything is written.
+    const landed = Effect.gen(function* () {
+      const current = yield* derive;
+      if (current === undefined) return [];
+      const observer = yield* loadStateQueueCorrectionObserverState(
+        input.rewindAuthority,
+        true,
+      );
+      const transitions =
+        observer.kind === "observed"
+          ? [...observer.state.pending, ...observer.state.admitted]
+          : [];
+      const admitted =
+        observer.kind === "observed" ? observer.state.admitted : [];
+      const found: {
+        record: Pending.Record;
+        node: QueueNode;
+        evidence: string;
+      }[] = [];
+      for (const record of current) {
+        const header = record[C.HEADER_HASH].toString("hex");
+        if (
+          transitions.some(
+            (transition) =>
+              transition.transitionKind !== "merge" &&
+              transition.removedHeaderHashes.includes(header),
+          )
+        )
+          continue;
+        const onQueue = queue.nodes.find(
+          (entry) => entry.headerHash === header && entry !== queue.root,
+        );
+        if (onQueue !== undefined) {
+          found.push({
+            record,
+            node: onQueue,
+            evidence: "its node is on the queue",
+          });
+          continue;
+        }
+        const merge = admitted.find(
+          (transition) =>
+            (transition.transitionKind === "merge" &&
+              transition.removedHeaderHashes.includes(header)) ||
+            [...transition.previousQueue, ...transition.nextQueue].some(
+              (node) => node.headerHash === header,
+            ),
+        );
+        const evidence =
+          queue.root.headerHash === header
+            ? "the confirmed state is its header"
+            : inCanonicalHistory.get(header) === true
+              ? "its signed commit is in the journaled canonical history"
+              : merge !== undefined
+                ? `admitted state-queue transition ${merge.transactionHash} saw it on the queue`
+                : undefined;
+        if (evidence !== undefined)
+          found.push({
+            record,
+            node: yield* signedCommitNode(record, input.contracts),
+            evidence,
+          });
+      }
+      if (found.length > 1)
+        return yield* Effect.fail(
+          failure(
+            `Replaced blocks ${found.map(({ record }) => record[C.HEADER_HASH].toString("hex")).join(", ")} of this node all landed`,
+          ),
+        );
+      return found;
+    });
+    const winners = yield* owned(landed);
+    const header = winners[0]?.record[C.HEADER_HASH].toString("hex");
+    if (header === undefined) {
+      input.deferral.revival = revivalKey(candidates, checkpoint.head);
+      yield* reportOnce(
+        reportKey,
+        `The correction observer shows replaced block ${candidates.map((record) => record[C.HEADER_HASH].toString("hex")).join(", ")} of this node on the state queue, but no evidence bound to checkpoint ${checkpoint.head.id} shows it landed; the next source point decides again.`,
+      );
+      return;
+    }
+    const winner = winners[0]!;
+    const serialized = yield* serializeStateQueueUTxO(winner.node.node);
+    const globals = yield* Globals;
+    if (config.SPECULATIVE_COMMIT_BUILD)
+      yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
+    yield* owned(
+      landed.pipe(
+        Effect.flatMap((current) =>
+          current.length === 1 &&
+          current[0]!.record[C.HEADER_HASH].toString("hex") === header &&
+          current[0]!.node.node.utxo.txHash === winner.node.node.utxo.txHash &&
+          current[0]!.node.node.utxo.outputIndex ===
+            winner.node.node.utxo.outputIndex
+            ? reviveReplacedCanonicalJournal(winner.record[C.HEADER_HASH])
+            : Effect.fail(
+                failure(`The revival evidence for block ${header} changed`),
+              ),
+        ),
+      ),
+    );
+    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+    yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+    yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, serialized);
+    yield* Queue.takeAll(globals.COMMIT_SUBMIT_WAKE_QUEUE);
+    yield* Queue.takeAll(globals.SPECULATIVE_BUILD_WAKE_QUEUE);
+    input.deferral.revival = undefined;
+    yield* reportOnce(reportKey, undefined);
+    yield* Effect.logWarning(
+      `Revived replaced block ${header}: ${winner.evidence}, and no journal was active; local finalization replays it.`,
     );
   });

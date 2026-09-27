@@ -11,6 +11,8 @@ import * as Journal from "../src/database/eventHistoryJournal.js";
 import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
 import {
   applyHistoryRecoveryPlan,
+  discardPreparedHistoryRecoveryPlan,
+  type HistoryRecoveryDomain,
   type HistoryRecoveryIntent,
   type HistoryRecoveryPlan,
   prepareHistoryRecoveryPlan,
@@ -1237,5 +1239,63 @@ describe("retained native recovery root selection (real SQL component)", () => {
       ),
     );
     expect(await probes()).toEqual([{ label: "header" }, { label: "release" }]);
+  });
+  it("discards only the single prepared release plan of its own header, which meanwhile blocks a signed-header recovery", async () => {
+    const { token, checkpoint } = await start();
+    const value = intent();
+    const discard = (domain: HistoryRecoveryDomain, headerHash: string) =>
+      Authority.withRecovery(
+        token,
+        discardPreparedHistoryRecoveryPlan(checkpoint, domain, headerHash),
+      );
+    // Nothing is prepared. (Kills "drop the single-plan refusal": the
+    // discard then refuses for another reason.)
+    await refusal(
+      discard(SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN, value.headerHash),
+      "No single prepared native recovery to discard",
+    );
+    await run(
+      Authority.withRecovery(
+        token,
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
+        ),
+      ),
+    );
+    // The retained release blocks a signed-header recovery of the same
+    // header. (Kills "drop the conflicting-plan refusal".)
+    await refusal(
+      Authority.withRecovery(
+        token,
+        prepareHistoryRecoveryPlan(
+          checkpoint,
+          value,
+          hash(30),
+          SIGNED_HEADER_RECOVERY_DOMAIN,
+        ),
+      ),
+      "A different durable native recovery must be resolved first",
+    );
+    // Neither a signed-header discard of that header nor a release discard of
+    // another header may delete it: its native CAS may have run. (Kills "drop
+    // the domain/header refusal".)
+    await refusal(
+      discard(SIGNED_HEADER_RECOVERY_DOMAIN, value.headerHash),
+      "The prepared native recovery is not the operation to discard",
+    );
+    await refusal(
+      discard(SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN, "cd".repeat(28)),
+      "The prepared native recovery is not the operation to discard",
+    );
+    expect(await run(retainedPreparedRecoveryPlan(binding.digest))).toEqual({
+      kind: "signed_intent_release",
+      headerHash: value.headerHash,
+    });
+    await run(discard(SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN, value.headerHash));
+    expect(await rows()).toEqual([]);
+    expect(await probes()).toEqual([]);
   });
 });

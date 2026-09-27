@@ -17,6 +17,8 @@ import {
   expiredIntentReleaseDisposition,
   makeSignedIntentDeferral,
   prepareExpiredIntentRelease,
+  prepareReplacedBlockRevival,
+  replacedBlockRevivalDisposition,
 } from "./history-expired-intent-release.js";
 import { prepareSignedHeaderRecovery } from "./history-signed-header-recovery.js";
 import { Lucid } from "./lucid.js";
@@ -70,7 +72,8 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
     });
     const prepareCompletion = input.prepareCompletion;
     // A signed intent whose base a correction removed defers to the
-    // correction path; this runtime remembers it until a rollback.
+    // correction path; this runtime remembers it until a rollback. A replaced
+    // block without evidence it landed is re-read at the next source point.
     const signedIntentDeferral = makeSignedIntentDeferral();
     // Architecture G is the only engine whose ledger root is a promoted native
     // owner: a correction that removes a committed block rewinds it through
@@ -95,7 +98,8 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
       | Effect.Effect.Error<
           ReturnType<typeof prepareStateQueueCorrectionRewind>
         >
-      | Effect.Effect.Error<ReturnType<typeof prepareExpiredIntentRelease>>,
+      | Effect.Effect.Error<ReturnType<typeof prepareExpiredIntentRelease>>
+      | Effect.Effect.Error<ReturnType<typeof prepareReplacedBlockRevival>>,
       | R
       | SqlClient.SqlClient
       | Effect.Effect.Context<ReturnType<typeof prepareSignedHeaderRecovery>>
@@ -103,6 +107,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
           ReturnType<typeof prepareStateQueueCorrectionRewind>
         >
       | Effect.Effect.Context<ReturnType<typeof prepareExpiredIntentRelease>>
+      | Effect.Effect.Context<ReturnType<typeof prepareReplacedBlockRevival>>
     >({
       ...input,
       prepareCompletion:
@@ -166,6 +171,23 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                       deferral: signedIntentDeferral,
                     }),
               ),
+              // With no journal active, a replaced block of this node that
+              // holds its base's slot after all (it landed late, or a rollback
+              // brought it back) is revived.
+              Effect.zipRight(
+                rewindAuthority === undefined
+                  ? Effect.void
+                  : prepareReplacedBlockRevival({
+                      binding,
+                      checkpoint,
+                      preparation,
+                      config,
+                      rewindAuthority,
+                      transport: input.transport,
+                      contracts,
+                      deferral: signedIntentDeferral,
+                    }),
+              ),
             ),
       binding,
       histories,
@@ -189,8 +211,15 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
               binding,
               change,
               deferral: signedIntentDeferral,
+              rewindAuthority,
             });
             if (release !== undefined) return release;
+            const revival = yield* replacedBlockRevivalDisposition({
+              change,
+              deferral: signedIntentDeferral,
+              rewindAuthority,
+            });
+            if (revival !== undefined) return revival;
           }
           yield* materializeCanonicalHistory(change, config.NETWORK);
           const { reconciled } = yield* reconcileDepositProjection(
