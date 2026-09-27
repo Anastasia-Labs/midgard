@@ -2180,11 +2180,6 @@ program
     "Midgard node HTTP endpoint used for /utxos and /submit",
     defaultMidgardNodeEndpoint(),
   )
-  .option(
-    "--submission-mode <mode>",
-    'Transfer submission mode: "api" posts to /submit, "local" validates and inserts directly into the local Midgard mempool tables',
-    "api",
-  )
   .argument(
     "[assetSpecs...]",
     "Optional additional assets in policyId.assetName:amount form (hex policy/asset name, integer amount)",
@@ -2198,7 +2193,6 @@ program
         readonly walletSeedPhrase?: string;
         readonly walletSeedPhraseEnv: string;
         readonly endpoint: string;
-        readonly submissionMode: string;
       },
     ) => {
       let transferConfig: SubmitL2Transfer.SubmitL2TransferConfig;
@@ -2209,7 +2203,6 @@ program
           lovelace: options.lovelace,
           assetSpecs,
           nodeEndpoint: options.endpoint,
-          submissionMode: options.submissionMode,
         });
         resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
           walletSeedPhrase: options.walletSeedPhrase,
@@ -2245,9 +2238,7 @@ program
             ),
           ),
         ),
-        Effect.provide(Services.WriteBehindLive),
         Effect.provide(Services.Lucid.Default),
-        Effect.provide(Services.Database.layer),
         Effect.provide(Services.NodeConfig.layer),
         Effect.provide(Services.MidgardContractServices),
       );

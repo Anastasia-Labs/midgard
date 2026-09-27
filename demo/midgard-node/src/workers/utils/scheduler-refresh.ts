@@ -313,6 +313,21 @@ const activeSchedulerDatum = (
   },
 });
 
+/**
+ * The latest inclusive header end a commit can carry in `active`'s shift. The
+ * shift is half-open, so the header's exclusive validTo, one past its end,
+ * lands at most on the shift end that `schedulerStateCoversCommitTarget`
+ * accepts. See `CurrentOperatorSchedulerWindow`.
+ */
+export const latestSchedulerShiftHeaderEndTime = (
+  active: ActiveSchedulerState,
+): bigint => active.startTime + SCHEDULER_SHIFT_DURATION_MS - 1n;
+
+/**
+ * `targetStartTime` is a commit's exclusive validTo (the witness build passes
+ * the resolved validTo), so it may equal the shift end, one past
+ * `latestSchedulerShiftHeaderEndTime`.
+ */
 export const schedulerStateCoversCommitTarget = ({
   currentSchedulerState,
   operatorKeyHash,
@@ -874,7 +889,7 @@ export const resolveCurrentOperatorSchedulerWindow = (
       return undefined;
     }
     const startTimeMs = Number(active.startTime);
-    const endTimeMs = Number(active.startTime + SCHEDULER_SHIFT_DURATION_MS);
+    const endTimeMs = Number(latestSchedulerShiftHeaderEndTime(active));
     if (
       !Number.isSafeInteger(startTimeMs) ||
       !Number.isSafeInteger(endTimeMs)

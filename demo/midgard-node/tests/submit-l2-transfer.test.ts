@@ -22,7 +22,6 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
-import { SqlClient } from "@effect/sql";
 import {
   assetsToValue,
   CML,
@@ -49,15 +48,10 @@ import {
   selectTransferInputs,
   submitL2TransferProgram,
   submitNativeTransferTx,
-  toQueuedTx,
 } from "../src/commands/submit-l2-transfer.js";
 import { NodeConfig } from "../src/services/config.js";
-import { Lucid as LucidService } from "../src/services/lucid.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
-import {
-  WriteBehind,
-  WriteBehindService,
-} from "../src/services/write-behind.js";
+import { toQueuedTx } from "./helpers/local-l2-transfer.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,
@@ -68,13 +62,6 @@ const TEST_SEED =
 const OTHER_TEST_SEED =
   "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail";
 
-const unusedWriteBehind: WriteBehindService = {
-  enqueueTxDeltas: () => Effect.void,
-  enqueueAddressHistory: () => Effect.void,
-  flushNow: Effect.void,
-  depths: Effect.succeed({ queueDepth: 0, pendingDepth: 0, totalDepth: 0 }),
-  run: Effect.never,
-};
 const launchDeploymentIdentity = ContractDeploymentIdentity.make({
   kind: "derived" as const,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -116,40 +103,6 @@ const mkNodeUtxo = ({
   };
 };
 
-const mockLucidService = LucidService.make({
-  api: {
-    currentSlot: () => 0,
-  } as never,
-  referenceScriptsApi: {
-    currentSlot: () => 0,
-  } as never,
-  operatorMainAddress: "",
-  operatorMergeAddress: "",
-  referenceScriptsWalletAddress: "",
-  referenceScriptsAddress: "",
-  submitSlotSnapshot: () =>
-    Effect.succeed({
-      source: "test",
-      currentSlot: 0,
-      observedAtMs: 0,
-      slotLengthMs: 1_000,
-    }),
-  switchToOperatorsMainWallet: Effect.succeed(undefined),
-  switchToOperatorsMergingWallet: Effect.succeed(undefined),
-  switchToReferenceScriptWallet: Effect.succeed(undefined),
-});
-
-const unusedSqlClient = new Proxy(
-  {},
-  {
-    get: (_target, property) => {
-      throw new Error(
-        `Unexpected database access in API-mode transfer test: ${String(property)}`,
-      );
-    },
-  },
-) as SqlClient.SqlClient;
-
 describe("submit-l2-transfer config helpers", () => {
   it("preserves a bounded lower submit cap in the static provider", async () => {
     const maxSubmitTxCborBytes =
@@ -182,7 +135,6 @@ describe("submit-l2-transfer config helpers", () => {
     expect(config.lovelace).toBe(5_000_000n);
     expect(config.nodeEndpoint).toBe("http://127.0.0.1:3000");
     expect(config.networkId).toBe(0n);
-    expect(config.submissionMode).toBe("api");
   });
 
   it("parses protected Midgard destination addresses with the Midgard codec", () => {
@@ -637,9 +589,6 @@ describe("submit-l2-transfer program", () => {
           config,
           resolvedWalletSeedPhrase,
         }).pipe(
-          Effect.provideService(LucidService, mockLucidService),
-          Effect.provideService(SqlClient.SqlClient, unusedSqlClient),
-          Effect.provideService(WriteBehind, unusedWriteBehind),
           Effect.provideService(
             ContractDeploymentIdentity,
             launchDeploymentIdentity,
@@ -701,9 +650,6 @@ describe("submit-l2-transfer program", () => {
           config,
           resolvedWalletSeedPhrase,
         }).pipe(
-          Effect.provideService(LucidService, mockLucidService),
-          Effect.provideService(SqlClient.SqlClient, unusedSqlClient),
-          Effect.provideService(WriteBehind, unusedWriteBehind),
           Effect.provideService(
             ContractDeploymentIdentity,
             launchDeploymentIdentity,
@@ -788,9 +734,6 @@ describe("submit-l2-transfer program", () => {
         resolvedWalletSeedPhrase,
         assertWalletAddress,
       }).pipe(
-        Effect.provideService(LucidService, mockLucidService),
-        Effect.provideService(SqlClient.SqlClient, unusedSqlClient),
-        Effect.provideService(WriteBehind, unusedWriteBehind),
         Effect.provideService(
           ContractDeploymentIdentity,
           launchDeploymentIdentity,

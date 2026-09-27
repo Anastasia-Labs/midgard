@@ -416,9 +416,7 @@ Writers include:
   `tx_admissions` in one transaction
   ([txAdmissions.ts](src/database/txAdmissions.ts));
 - commitment preprocessing for malformed mempool txs
-  ([commit-rejection.ts](src/mpf/commit-rejection.ts));
-- local submit tooling that records immediate local rejection evidence
-  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
+  ([commit-rejection.ts](src/mpf/commit-rejection.ts)).
 
 ### Readers
 
@@ -898,9 +896,6 @@ Expected invariants:
 
 Known gaps:
 
-- Some local submission paths can still bypass durable admission and write
-  directly to mempool/rejection tables
-  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
 - Admission history should not be generically pruned while it remains canonical
   status evidence.
 

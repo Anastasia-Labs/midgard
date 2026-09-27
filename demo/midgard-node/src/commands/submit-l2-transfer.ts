@@ -6,21 +6,12 @@
  * `/submit` endpoint.
  */
 import { isZeroAssets, normalizeAssets } from "@al-ft/midgard-core/assets";
-import {
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardProofSubmission,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardAddressBytes,
   encodeMidgardAddressText,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
-import {
-  processedTxFromValidatedTx,
-  type QueuedTx,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
 import {
   type Assets,
   getAddressDetails,
@@ -32,21 +23,13 @@ import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "../asset-specs.js";
-import * as MempoolDB from "../database/mempool.js";
-import * as MempoolLedgerDB from "../database/mempoolLedger.js";
-import * as TxRejectionsDB from "../database/txRejections.js";
-import { DatabaseError } from "../database/utils/common.js";
 import {
   ContractDeploymentIdentity,
-  Database as DatabaseService,
-  Lucid,
   NodeConfig as NodeConfigService,
-  WriteBehind,
 } from "../services/index.js";
 import { sleep } from "../sleep.js";
 import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
-  decodeNodeUtxo,
   defaultMidgardNodeEndpoint,
   fetchNodeUtxosByAddress,
   formatJson,
@@ -59,7 +42,6 @@ import {
 import {
   buildTerminalDrainTx,
   buildTransferTxWithMinFee,
-  type BuiltTransferTx,
 } from "./transfer-build-core.js";
 
 export {
@@ -73,8 +55,6 @@ export {
   type TransferNetworkName,
 } from "./transfer-build-core.js";
 
-export type SubmissionMode = "api" | "local";
-
 export type SubmitL2TransferConfig = {
   readonly l2Address: string;
   readonly lovelace: bigint;
@@ -83,7 +63,6 @@ export type SubmitL2TransferConfig = {
   readonly submitRequestTimeoutMs?: number;
   readonly utxoRequestTimeoutMs?: number;
   readonly networkId: bigint;
-  readonly submissionMode: SubmissionMode;
 };
 
 export type SubmitL2TransferResult = {
@@ -165,19 +144,6 @@ const toError = (cause: unknown, prefix: string): Error =>
     : new Error(`${prefix}: ${String(cause)}`);
 
 /**
- * Parses the submission mode from CLI or environment input.
- */
-const parseSubmissionMode = (value: string | undefined): SubmissionMode => {
-  const normalized = value?.trim().toLowerCase() ?? "api";
-  if (normalized === "api" || normalized === "local") {
-    return normalized;
-  }
-  throw new Error(
-    `Invalid submission mode "${value}". Expected "api" or "local".`,
-  );
-};
-
-/**
  * Reduces a required-asset set by the contribution made from one candidate
  * input.
  */
@@ -254,7 +220,6 @@ export const parseSubmitL2TransferConfig = ({
   nodeEndpoint,
   submitRequestTimeoutMs,
   utxoRequestTimeoutMs,
-  submissionMode,
 }: {
   readonly l2Address: string;
   readonly lovelace: string;
@@ -262,7 +227,6 @@ export const parseSubmitL2TransferConfig = ({
   readonly nodeEndpoint?: string;
   readonly submitRequestTimeoutMs?: number;
   readonly utxoRequestTimeoutMs?: number;
-  readonly submissionMode?: string;
 }): SubmitL2TransferConfig => {
   let addressBytes: ReturnType<typeof midgardAddressFromText>;
   try {
@@ -287,7 +251,6 @@ export const parseSubmitL2TransferConfig = ({
     ...(submitRequestTimeoutMs === undefined ? {} : { submitRequestTimeoutMs }),
     ...(utxoRequestTimeoutMs === undefined ? {} : { utxoRequestTimeoutMs }),
     networkId: BigInt(addressDetails.networkId),
-    submissionMode: parseSubmissionMode(submissionMode),
   };
 };
 
@@ -364,27 +327,6 @@ export const fetchNodeUtxos = (
     catch: (cause) =>
       new Error(`Failed to fetch Midgard UTxOs: ${String(cause)}`),
   });
-
-/**
- * Reads the sender's spendable UTxOs from the local mempool-ledger view rather
- * than the public HTTP API.
- */
-export const fetchLocalUtxos = (
-  address: string,
-): Effect.Effect<readonly NodeUtxo[], Error, DatabaseService> =>
-  MempoolLedgerDB.retrieveSpendableByAddress(address).pipe(
-    Effect.map((entries) =>
-      entries.map((entry) =>
-        decodeNodeUtxo({
-          outref: entry.outref.toString("hex"),
-          outputCbor: entry.output.toString("hex"),
-        }),
-      ),
-    ),
-    Effect.mapError((cause) =>
-      toError(cause, "Failed to fetch local Midgard UTxOs"),
-    ),
-  );
 
 /**
  * Submits a Midgard-native transfer through the node's public `/submit`
@@ -501,101 +443,12 @@ export const submitNativeTransferTx = (
   });
 
 /**
- * Converts a built transfer into the queue-entry shape expected by validation.
- */
-export const toQueuedTx = (built: BuiltTransferTx): QueuedTx => ({
-  txId: built.txId,
-  txCbor: built.txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-  arrivalSeq: 0n,
-  createdAt: new Date(),
-});
-
-/**
- * Runs the transfer through local validation and inserts it directly into the
- * mempool tables when accepted.
- */
-export const submitNativeTransferLocally = (
-  built: BuiltTransferTx,
-): Effect.Effect<
-  { readonly txId: string; readonly status: string },
-  Error | DatabaseError,
-  | DatabaseService
-  | NodeConfigService
-  | ContractDeploymentIdentity
-  | Lucid
-  | WriteBehind
-> =>
-  Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfigService;
-    const deploymentIdentity = yield* ContractDeploymentIdentity;
-    const { api: lucid } = yield* Lucid;
-    const phaseA = yield* runPhaseAValidation([toQueuedTx(built)], {
-      expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
-      minFeeA: nodeConfig.MIN_FEE_A,
-      minFeeB: nodeConfig.MIN_FEE_B,
-      concurrency: 1,
-      strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
-      consensusProfile: deploymentIdentity.consensusProfile,
-    });
-
-    const preStateEntries = yield* MempoolLedgerDB.retrieveSpendable;
-    const preState = new Map<string, Buffer>();
-    for (const entry of preStateEntries) {
-      preState.set(entry.outref.toString("hex"), entry.output);
-    }
-
-    const phaseB = yield* runPhaseBValidationWithPatch(
-      phaseA.accepted,
-      preState,
-      {
-        nowCardanoSlotNo: BigInt(lucid.currentSlot()),
-        bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-        enforceScriptBudget: true,
-      },
-    );
-    const rejected = [...phaseA.rejected, ...phaseB.rejected];
-    if (rejected.length > 0) {
-      yield* TxRejectionsDB.insertMany(
-        rejected.map((entry) => ({
-          tx_id: entry.txId,
-          reject_code: entry.code,
-          reject_detail: entry.detail,
-        })),
-      );
-      const first = rejected[0]!;
-      return yield* Effect.fail(
-        new Error(
-          `Local Midgard transfer validation rejected ${built.txIdHex}: ${first.code} (${first.detail})`,
-        ),
-      );
-    }
-
-    if (phaseB.accepted.length !== 1) {
-      return yield* Effect.fail(
-        new Error(
-          `Expected exactly one accepted transfer, got ${phaseB.accepted.length}.`,
-        ),
-      );
-    }
-
-    yield* MempoolDB.insertMultiple(
-      phaseB.accepted.map(processedTxFromValidatedTx),
-    );
-    return {
-      txId: built.txIdHex,
-      status: "accepted-local",
-    };
-  });
-
-/**
- * End-to-end L2 transfer submission program.
+ * Builds and signs an L2 transfer without submitting it.
  *
- * The flow derives the sender wallet, gathers available inputs, builds a
- * fee-balanced Midgard-native transfer, and submits it through either the HTTP
- * API or the local validation path.
+ * The flow derives the sender wallet, gathers its inputs from the node's
+ * public `/utxos` endpoint, and builds a fee-balanced Midgard-native transfer.
  */
-const prepareL2TransferWithBuiltProgram = ({
+export const prepareL2TransferProgram = ({
   config,
   resolvedWalletSeedPhrase,
   assertWalletAddress,
@@ -604,13 +457,9 @@ const prepareL2TransferWithBuiltProgram = ({
   readonly resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
   readonly assertWalletAddress?: (walletAddress: string) => void;
 }): Effect.Effect<
-  { readonly prepared: PreparedL2Transfer; readonly built: BuiltTransferTx },
-  Error | DatabaseError,
-  | DatabaseService
-  | NodeConfigService
-  | ContractDeploymentIdentity
-  | Lucid
-  | WriteBehind
+  PreparedL2Transfer,
+  Error,
+  NodeConfigService | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
@@ -648,14 +497,11 @@ const prepareL2TransferWithBuiltProgram = ({
     }
 
     const requestedAssets = buildRequestedAssets(config);
-    const availableUtxos =
-      config.submissionMode === "local"
-        ? yield* fetchLocalUtxos(senderAddress)
-        : yield* fetchNodeUtxos(
-            config.nodeEndpoint,
-            senderAddress,
-            config.utxoRequestTimeoutMs,
-          );
+    const availableUtxos = yield* fetchNodeUtxos(
+      config.nodeEndpoint,
+      senderAddress,
+      config.utxoRequestTimeoutMs,
+    );
     if (availableUtxos.length === 0) {
       return yield* Effect.fail(
         new Error(
@@ -682,38 +528,17 @@ const prepareL2TransferWithBuiltProgram = ({
         toError(cause, "Failed to build Midgard-native transfer"),
     });
     return {
-      built,
-      prepared: {
-        txId: built.txIdHex,
-        signedTxCbor: built.txHex,
-        senderAddress,
-        destinationAddress: config.l2Address,
-        selectedInputs: built.selectedInputs.map(outRefLabel),
-        requestedAssets: built.requestedAssets,
-        changeAssets: built.changeAssets,
-        walletSeedSource: resolvedWalletSeedPhrase.resolvedFrom,
-        nodeEndpoint: config.nodeEndpoint,
-      },
+      txId: built.txIdHex,
+      signedTxCbor: built.txHex,
+      senderAddress,
+      destinationAddress: config.l2Address,
+      selectedInputs: built.selectedInputs.map(outRefLabel),
+      requestedAssets: built.requestedAssets,
+      changeAssets: built.changeAssets,
+      walletSeedSource: resolvedWalletSeedPhrase.resolvedFrom,
+      nodeEndpoint: config.nodeEndpoint,
     };
   });
-
-/** Builds and signs an L2 transfer without submitting it. */
-export const prepareL2TransferProgram = (args: {
-  readonly config: SubmitL2TransferConfig;
-  readonly resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
-  readonly assertWalletAddress?: (walletAddress: string) => void;
-}): Effect.Effect<
-  PreparedL2Transfer,
-  Error | DatabaseError,
-  | DatabaseService
-  | NodeConfigService
-  | ContractDeploymentIdentity
-  | Lucid
-  | WriteBehind
-> =>
-  prepareL2TransferWithBuiltProgram(args).pipe(
-    Effect.map(({ prepared }) => prepared),
-  );
 
 /** Builds and signs an all-input, exact-zero source sweep without submitting. */
 export const prepareL2TerminalDrainProgram = ({
@@ -736,12 +561,8 @@ export const prepareL2TerminalDrainProgram = ({
   readonly assertWalletAddress?: (walletAddress: string) => void;
 }): Effect.Effect<
   PreparedL2TerminalDrain,
-  Error | DatabaseError,
-  | DatabaseService
-  | NodeConfigService
-  | ContractDeploymentIdentity
-  | Lucid
-  | WriteBehind
+  Error,
+  NodeConfigService | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
@@ -823,29 +644,22 @@ export const submitL2TransferProgram = ({
   readonly apiSubmitRetryPolicy?: NativeTransferSubmitRetryPolicy;
 }): Effect.Effect<
   SubmitL2TransferResult,
-  Error | DatabaseError,
-  | DatabaseService
-  | NodeConfigService
-  | ContractDeploymentIdentity
-  | Lucid
-  | WriteBehind
+  Error,
+  NodeConfigService | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
-    const { prepared, built } = yield* prepareL2TransferWithBuiltProgram({
+    const prepared = yield* prepareL2TransferProgram({
       config,
       resolvedWalletSeedPhrase,
       assertWalletAddress,
     });
-    const submitResult =
-      config.submissionMode === "local"
-        ? yield* submitNativeTransferLocally(built)
-        : yield* submitNativeTransferTx(
-            config.nodeEndpoint,
-            prepared.signedTxCbor,
-            prepared.txId,
-            config.submitRequestTimeoutMs,
-            apiSubmitRetryPolicy,
-          );
+    const submitResult = yield* submitNativeTransferTx(
+      config.nodeEndpoint,
+      prepared.signedTxCbor,
+      prepared.txId,
+      config.submitRequestTimeoutMs,
+      apiSubmitRetryPolicy,
+    );
     const { signedTxCbor: _signedTxCbor, ...publicResult } = prepared;
     return {
       ...publicResult,

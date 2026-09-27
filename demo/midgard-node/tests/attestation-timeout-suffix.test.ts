@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either, Ref } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { observeAndRecordAttestationTimeoutQueue } from "../src/fibers/attestation-timeout-correction.js";
 import {
@@ -147,6 +147,9 @@ describe("pending queue attestation expiry", () => {
       stateQueuePolicyId: policyId,
     };
     const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    // Before every fixture node's deadline: an expired node refuses instead.
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
+    onTestFinished(() => now.mockRestore());
     // The head (end 1000) is attested and the tail (end 2000) is not. The
     // on-chain fence reads the head only; the build must still land before
     // the tail's deadline, or timeout correction loses the tail to it.
@@ -199,6 +202,54 @@ describe("pending queue attestation expiry", () => {
             ),
           ),
         ).toBe(1_000 + timeoutMs - 1);
+      }
+    }
+  });
+  it("refuses to fence an expired unattested suffix with the build's own expired-suffix error", async () => {
+    const fetchConfig = {
+      stateQueueAddress: address,
+      stateQueuePolicyId: policyId,
+    };
+    const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    const now = vi.spyOn(Date, "now");
+    onTestFinished(() => now.mockRestore());
+    const cases = [
+      // An unattested tail behind an attested head, its deadline 2000 + T.
+      { queue: await fixture(), deadlineMs: 2_000 + timeoutMs },
+      // An unattested head, its deadline 1000 + T, before an attested tail.
+      { queue: await fixture(true, false), deadlineMs: 1_000 + timeoutMs },
+    ];
+    for (const { queue, deadlineMs } of cases) {
+      for (const pendingTailEndTimeMs of [undefined, 3_000]) {
+        const fence = () =>
+          Effect.runPromise(
+            resolveCommitAppendFenceEndTimeCapLocal(
+              queue.api,
+              fetchConfig,
+              pendingTailEndTimeMs,
+            ),
+          );
+        // One millisecond before the deadline the node still caps the end.
+        now.mockReturnValue(deadlineMs - 1);
+        expect(await fence()).toBe(deadlineMs - 1);
+        // At the deadline no end remains below it: the fence refuses exactly
+        // as the build's fence references do, rather than leaving an end cap
+        // in the past for a later validity check to trip over.
+        now.mockReturnValue(deadlineMs);
+        await expect(fence()).rejects.toThrow(
+          "Commit paused until expired unattested suffix is corrected",
+        );
+        await expect(
+          Effect.runPromise(
+            resolveCommitAppendFenceReferencesLocal(
+              queue.api,
+              fetchConfig,
+              queue.queue[2]!,
+            ),
+          ),
+        ).rejects.toThrow(
+          "Commit paused until expired unattested suffix is corrected",
+        );
       }
     }
   });

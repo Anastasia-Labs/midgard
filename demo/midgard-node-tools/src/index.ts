@@ -561,7 +561,6 @@ program
                       lovelace: lovelace.toString(10),
                       assetSpecs: [],
                       nodeEndpoint: options.endpoint,
-                      submissionMode: "api",
                     });
                   return runShared(
                     Effect.gen(function* () {
@@ -809,7 +808,6 @@ program
                       lovelace: lovelace.toString(10),
                       assetSpecs: [],
                       nodeEndpoint: options.endpoint,
-                      submissionMode: "api",
                       submitRequestTimeoutMs:
                         StressWalletsCommand.parseStressWalletCount(
                           options.requestTimeoutMs,

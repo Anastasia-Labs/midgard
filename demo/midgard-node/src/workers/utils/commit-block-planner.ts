@@ -141,6 +141,21 @@ export const calibratedCommitBuildMsPerTx = ({
       (Number.isFinite(safetyFactor) && safetyFactor > 0 ? safetyFactor : 1),
   );
 
+/**
+ * The local operator's current scheduler shift. The shift is half-open,
+ * `[start_time, start_time + shift_duration)`: the next shift's refresh may
+ * take effect at `start_time + shift_duration` (scheduler.ak requires its
+ * inclusive lower bound at or after that instant), so a commit whose exclusive
+ * validity end passes it is outside this shift.
+ *
+ * Both bounds are INCLUSIVE header end times. `endTimeMs` is the latest header
+ * end a commit can carry in this shift, `start_time + shift_duration - 1`: a
+ * header end is its transaction's inclusive upper bound, so its exclusive
+ * validTo is `endTimeMs + 1`, exactly the shift end that
+ * `schedulerStateCoversCommitTarget` still accepts. Every consumer treats it
+ * as an inclusive cap (`maximumEndTimeMs`, `blockEndTimeCapMs`, the L2
+ * transaction timestamp filter).
+ */
 export type CurrentOperatorSchedulerWindow = {
   readonly schedulerOutRef: string;
   readonly operatorKeyHash: string;

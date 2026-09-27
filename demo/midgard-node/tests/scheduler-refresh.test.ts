@@ -10,9 +10,11 @@ import { describe, expect, it } from "vitest";
 
 import { createSlotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
+import { resolveLatestFeasibleCommitEndTime } from "../src/workers/utils/commit-end-time.js";
 import {
   captureSchedulerSlotSnapshot,
   filterLocallyConsumedUtxos,
+  latestSchedulerShiftHeaderEndTime,
   type NodeUtxoWithDatum,
   requireExistingSchedulerWitnessUtxo,
   resolveRefreshedSchedulerStartTime,
@@ -380,6 +382,42 @@ describe("scheduler refresh witness selection", () => {
         targetStartTime: startTime + SDK.SHIFT_DURATION_MS + 1n,
       }),
     ).toBe(false);
+  });
+
+  it("caps the scheduler window at the latest header end whose validTo the shift still covers", () => {
+    const operatorKeyHash = "aa";
+    // AppointFirst writes start_time = validTo - 1, so a live shift start is
+    // one millisecond before a slot boundary, and so is its shift end.
+    const currentSchedulerState = {
+      operator: operatorKeyHash,
+      startTime: 1_000_999n,
+    };
+    const covers = (validTo: bigint) =>
+      schedulerStateCoversCommitTarget({
+        currentSchedulerState,
+        operatorKeyHash,
+        targetStartTime: validTo,
+      });
+    const latestHeaderEnd = latestSchedulerShiftHeaderEndTime(
+      currentSchedulerState,
+    );
+    // The header end is the inclusive upper bound; its validTo is one past it.
+    expect(covers(latestHeaderEnd + 1n)).toBe(true);
+    expect(covers(latestHeaderEnd + 2n)).toBe(false);
+
+    // The planner's consumer takes the window end as an inclusive cap and
+    // picks the latest slot-aligned validTo at or below cap + 1. That validTo
+    // must stay inside the shift the covers check accepts.
+    const fit = resolveLatestFeasibleCommitEndTime({
+      lucid: customSlotLucid as never,
+      latestEndTime: Number(currentSchedulerState.startTime),
+      nowMs: Number(currentSchedulerState.startTime),
+      minimumFutureBufferMs: 0,
+      maximumEndTimeMs: Number(latestHeaderEnd),
+    });
+    expect(fit.status).toBe("fits");
+    expect(covers(BigInt(fit.resolvedEndTime))).toBe(true);
+    expect(covers(BigInt(fit.resolvedEndTime) + 1_000n)).toBe(false);
   });
 
   it("rejects end-of-shift refresh starts before the previous shift end", () => {

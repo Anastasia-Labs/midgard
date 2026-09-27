@@ -3685,7 +3685,6 @@ export const runE2EL2StressThroughput = async (
         assetSpecs: [],
         nodeEndpoint: config.nodeEndpoint,
         submitRequestTimeoutMs: config.submitRequestTimeoutMs,
-        submissionMode: "api",
       });
       submitResult = await runtime.submitTransfer({
         index,

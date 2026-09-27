@@ -10,11 +10,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { expect, vi } from "vitest";
 
 import type { NodeUtxo } from "../../src/commands/command-utils.js";
-import {
-  buildTransferTxWithMinFee,
-  fetchLocalUtxos,
-  toQueuedTx,
-} from "../../src/commands/submit-l2-transfer.js";
+import { buildTransferTxWithMinFee } from "../../src/commands/submit-l2-transfer.js";
 import type { BuiltTransferTx } from "../../src/commands/transfer-build-core.js";
 import {
   ledgerReceiptIsIncomplete,
@@ -54,6 +50,7 @@ import {
 } from "../deposit-flow-emulator-shared.js";
 import { openHistoryProductionOwnerLifecycle } from "./history-production-owner-lifecycle.js";
 import { prepareTimedOutTailRemoval } from "./history-timeout-correction-fixture.js";
+import { fetchLocalUtxos, toQueuedTx } from "./local-l2-transfer.js";
 
 export const read = <A, E>(program: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(program.pipe(Effect.provide(Database.layer)));

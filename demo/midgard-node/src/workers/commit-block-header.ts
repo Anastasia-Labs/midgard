@@ -2045,6 +2045,10 @@ const databaseOperationsProgram = (
                   }),
               ),
             );
+            // The fence reads the live state queue, the first L1 read of this
+            // candidate build; a lost submit response is reconciled first,
+            // exactly as every submit attempt requires.
+            yield* PendingBlockFinalizationsDB.assertNoUnreconciledSignedSubmission;
             const appendFenceEndTimeMs =
               yield* resolveCommitAppendFenceEndTimeCapLocal(
                 lucid.api,

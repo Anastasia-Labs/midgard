@@ -21,9 +21,7 @@ import { expect, vi } from "vitest";
 
 import {
   buildTransferTxWithMinFee,
-  fetchLocalUtxos,
   makeTransferMidgard,
-  toQueuedTx,
 } from "../../src/commands/submit-l2-transfer.js";
 import type { BuiltTransferTx } from "../../src/commands/transfer-build-core.js";
 import * as Authority from "../../src/database/eventHistoryAuthority.js";
@@ -63,6 +61,7 @@ import {
   submitHistoryObservation,
 } from "./history-projection-observations.js";
 import { makeRollbackHistoryTransport } from "./history-rollback-transport.js";
+import { fetchLocalUtxos, toQueuedTx } from "./local-l2-transfer.js";
 import { createMainnetEmulatorLucid } from "./mainnet-protocol-parameters.js";
 
 const snapshotEmulator = (emulator: Emulator) =>

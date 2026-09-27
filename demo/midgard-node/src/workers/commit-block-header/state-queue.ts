@@ -108,13 +108,61 @@ export type CommitAppendFenceReferences = {
 };
 
 /**
+ * The header ends of every unattested node after the root, failing instead
+ * when any of them is past its DA attestation deadline. Appending to an
+ * expired unattested suffix only creates more work for permissionless
+ * correction, so the commit pauses until correction removes it. Every pending
+ * node counts, including tails hidden behind an attested queue head. Both the
+ * append-fence cap and the build's fence references go through this one check,
+ * so a commit refuses an expired suffix with the same error wherever it first
+ * meets it.
+ */
+const unexpiredUnattestedSuffixEndTimes = (
+  ordered: readonly SDK.StateQueueUTxO[],
+): Effect.Effect<readonly number[], SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const nowMs = BigInt(Date.now());
+    const unattestedEndTimesMs: number[] = [];
+    for (const entry of ordered.slice(1)) {
+      const node = yield* localizeSdkEffect<
+        SDK.StateQueueNode,
+        SDK.DataCoercionError
+      >(SDK.getStateQueueNodeFromStateQueueDatum(entry.datum)).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: "Failed to inspect pending DA attestation before commit",
+              cause,
+            }),
+        ),
+      );
+      if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
+        continue;
+      }
+      if (nowMs >= node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Commit paused until expired unattested suffix is corrected",
+            cause: `expired_out_ref=${stateQueueOutRef(entry)}`,
+          }),
+        );
+      }
+      unattestedEndTimesMs.push(Number(node.header.endTime));
+    }
+    return unattestedEndTimesMs;
+  });
+
+/**
  * Q61's append fence as a cap on the new header's end. The header end is the
  * append's inclusive upper bound, so it must fall strictly before the DA
  * attestation deadline of every unattested node still in the queue, not only
  * the head's: an append landing after a pending tail's deadline takes the
  * tail that timeout correction is about to remove. A pending tail the caller
  * builds on is not yet on chain and is fenced the same way. Only the head's
- * fence is enforced on chain; the rest is this node's own build policy.
+ * fence is enforced on chain; the rest is this node's own build policy. An
+ * on-chain node already past its deadline leaves no end to cap: the fence
+ * fails with the build's expired-suffix refusal instead.
  */
 export const resolveCommitAppendFenceEndTimeCapLocal = (
   lucid: Parameters<typeof SDK.fetchSortedStateQueueUTxOsProgram>[0],
@@ -129,26 +177,10 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
       SDK.StateQueueUTxO[],
       SDK.LucidError | SDK.LinkedListError
     >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
-    const unattestedEndTimesMs =
-      pendingTailEndTimeMs === undefined ? [] : [pendingTailEndTimeMs];
-    for (const entry of ordered.slice(1)) {
-      const node = yield* localizeSdkEffect<
-        SDK.StateQueueNode,
-        SDK.DataCoercionError
-      >(SDK.getStateQueueNodeFromStateQueueDatum(entry.datum)).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to inspect a pending node's DA attestation for the append fence",
-              cause,
-            }),
-        ),
-      );
-      if (node.da_attestation === SDK.NO_DA_ATTESTATION) {
-        unattestedEndTimesMs.push(Number(node.header.endTime));
-      }
-    }
+    const unattestedEndTimesMs = [
+      ...(pendingTailEndTimeMs === undefined ? [] : [pendingTailEndTimeMs]),
+      ...(yield* unexpiredUnattestedSuffixEndTimes(ordered)),
+    ];
     return unattestedEndTimesMs.length === 0
       ? undefined
       : Math.min(...unattestedEndTimesMs) +
@@ -176,36 +208,7 @@ export const resolveCommitAppendFenceReferencesLocal = (
       SDK.StateQueueUTxO[],
       SDK.LucidError | SDK.LinkedListError
     >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
-    // Appending to an expired unattested suffix only creates more work for
-    // permissionless correction. Check every pending node, including tails
-    // hidden behind an attested queue head, before any commit is signed.
-    for (const entry of ordered.slice(1)) {
-      const node = yield* localizeSdkEffect<
-        SDK.StateQueueNode,
-        SDK.DataCoercionError
-      >(SDK.getStateQueueNodeFromStateQueueDatum(entry.datum)).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message: "Failed to inspect pending DA attestation before commit",
-              cause,
-            }),
-        ),
-      );
-      if (
-        node.da_attestation === SDK.NO_DA_ATTESTATION &&
-        BigInt(Date.now()) >=
-          node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS
-      ) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "Commit paused until expired unattested suffix is corrected",
-            cause: `expired_out_ref=${stateQueueOutRef(entry)}`,
-          }),
-        );
-      }
-    }
+    yield* unexpiredUnattestedSuffixEndTimes(ordered);
     const canonicalTail = ordered.at(-1);
     if (canonicalTail === undefined) {
       return yield* Effect.fail(
