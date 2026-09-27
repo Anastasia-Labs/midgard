@@ -1021,21 +1021,23 @@ export const readObserver = async () => {
 
 /** A crash after local reconciliation but before the observer saved: the
  * durable cursor is still the pre-removal one. */
-export const restoreObserverRow = (
+export const observerRowRestore = (
   row: Awaited<ReturnType<typeof readObserverRow>>,
 ) =>
-  read(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const record =
-        typeof row.state_record === "string"
-          ? row.state_record
-          : JSON.stringify(row.state_record);
-      yield* sql`UPDATE state_queue_terminal_observer_states
-        SET state_digest = ${row.state_digest}, state_record = ${record}
-        WHERE deployment_identity_digest = ${row.deployment_identity_digest}`;
-    }),
-  );
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const record =
+      typeof row.state_record === "string"
+        ? row.state_record
+        : JSON.stringify(row.state_record);
+    yield* sql`UPDATE state_queue_terminal_observer_states
+      SET state_digest = ${row.state_digest}, state_record = ${record}
+      WHERE deployment_identity_digest = ${row.deployment_identity_digest}`;
+  });
+
+export const restoreObserverRow = (
+  row: Awaited<ReturnType<typeof readObserverRow>>,
+) => read(observerRowRestore(row));
 
 export const readRecoveryPlans = () =>
   read(

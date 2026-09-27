@@ -26,6 +26,7 @@ import {
   depositorL2Utxos,
   flushWriteBehind,
   type Lifecycle,
+  observerRowRestore,
   openCorrectionRewindScenario,
   outputOf,
   read,
@@ -89,26 +90,54 @@ const inspectObligation = (scenario: Scenario) =>
 
 /** Direct journal surgery: the adversarial or broken local state a proof
  * must refuse. Returns the previous values so the test can restore them. */
+const journalUpdate = (
+  headerHash: string,
+  fields: Readonly<Record<string, unknown>>,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const key = Buffer.from(headerHash, "hex");
+    const rows = yield* sql<Record<string, unknown>>`
+      SELECT * FROM pending_block_finalizations
+      WHERE header_hash = ${key}`;
+    expect(rows).toHaveLength(1);
+    const before = Object.fromEntries(
+      Object.keys(fields).map((column) => [column, rows[0]![column]]),
+    );
+    const updated = yield* sql`UPDATE pending_block_finalizations
+      SET ${sql.update(fields as Record<string, never>)}
+      WHERE header_hash = ${key} RETURNING header_hash`;
+    expect(updated).toHaveLength(1);
+    return before;
+  });
 const updateJournal = (
   headerHash: string,
   fields: Readonly<Record<string, unknown>>,
+) => read(journalUpdate(headerHash, fields));
+
+/**
+ * Commits `write` and inspects the obligation it leaves in the same
+ * transaction. While a refusal keeps the gate closed, the running owner
+ * retries the blocked recovery on its own timer and acts on the first
+ * committed state in which the obligation proves. Surgery that moves from one
+ * refusal to another is therefore one write, and a restore that makes the
+ * obligation prove is inspected exactly as the owner can first see it: the
+ * owner may start the rewind as soon as this commits.
+ */
+const writeAndInspect = (
+  scenario: Scenario,
+  write: Effect.Effect<unknown, unknown, SqlClient.SqlClient>,
 ) =>
   read(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const key = Buffer.from(headerHash, "hex");
-      const rows = yield* sql<Record<string, unknown>>`
-        SELECT * FROM pending_block_finalizations
-        WHERE header_hash = ${key}`;
-      expect(rows).toHaveLength(1);
-      const before = Object.fromEntries(
-        Object.keys(fields).map((column) => [column, rows[0]![column]]),
+      return yield* sql.withTransaction(
+        write.pipe(
+          Effect.zipRight(
+            inspectStateQueueCorrectionRewindObligation(scenario.authority),
+          ),
+        ),
       );
-      const updated = yield* sql`UPDATE pending_block_finalizations
-        SET ${sql.update(fields as Record<string, never>)}
-        WHERE header_hash = ${key} RETURNING header_hash`;
-      expect(updated).toHaveLength(1);
-      return before;
     }),
   );
 
@@ -388,11 +417,13 @@ it("abandons a removed block's unlanded descendant in the same repair and commit
     await scenario.nextSourceBlockWhileRefused();
     await scenario.nextSourceBlockWhileRefused();
     await expectNoRewind(scenario, untouched);
-    await updateJournal(childHeader, signed);
 
     // Refused: a descendant whose commit does not spend the queue node the
-    // admitted correction consumed may still land.
+    // admitted correction consumed may still land. Its signed bytes come back
+    // in the same write, so the obligation never proves in between (see
+    // writeAndInspect).
     const baseTail = await updateJournal(childHeader, {
+      ...signed,
       [C.BASE_TAIL_OUT_REF]: `${"ab".repeat(32)}#0`,
     });
     const elsewhere = await inspectObligation(scenario);
@@ -402,13 +433,10 @@ it("abandons a removed block's unlanded descendant in the same repair and commit
     );
     await scenario.nextSourceBlockWhileRefused();
     await expectNoRewind(scenario, untouched);
-    await updateJournal(childHeader, baseTail);
 
-    // Proven: the same repair rewinds to the removed block's base and
-    // abandons both journals under the removal's admitted correction.
-    expect(await inspectObligation(scenario)).toEqual(ready);
     // The running node's commit fiber recorded the lost submission as in
-    // flight and awaiting local finalization.
+    // flight and awaiting local finalization. Recorded before the restore:
+    // the owner may rewind as soon as the obligation proves.
     Effect.runSync(
       Effect.all([
         Ref.set(h.globals.LOCAL_FINALIZATION_PENDING, true),
@@ -418,6 +446,16 @@ it("abandons a removed block's unlanded descendant in the same repair and commit
         ),
       ]),
     );
+    // Proven: the same repair rewinds to the removed block's base and
+    // abandons both journals under the removal's admitted correction.
+    expect(
+      await writeAndInspect(
+        scenario,
+        journalUpdate(childHeader, {
+          [C.BASE_TAIL_OUT_REF]: baseTail[C.BASE_TAIL_OUT_REF],
+        }),
+      ),
+    ).toEqual(ready);
     await scenario.nextSourceBlock();
     const target = parent[C.BASE_UTXOS_ROOT];
     expect(await nativeRoot(h)).toBe(target);
@@ -645,10 +683,11 @@ it("rewinds a removed block whose journal stopped at pending_submission with its
     );
     await scenario.nextSourceBlockWhileRefused();
     await expectNoRewind(scenario, untouched);
-    // Proven by its retained signed intent: rewound, abandoned, reincluded.
-    await updateJournal(removedHeader, signed);
     // Refused: a journal of another deployment is never this removal's block.
+    // Its retained signed intent comes back in the same write, so the
+    // obligation never proves in between (see writeAndInspect).
     const deployment = await updateJournal(removedHeader, {
+      ...signed,
       [C.DEPLOYMENT_MANIFEST_ID]: foreignManifest(removed),
     });
     expect(await inspectObligation(scenario)).toEqual({
@@ -657,10 +696,10 @@ it("rewinds a removed block whose journal stopped at pending_submission with its
     });
     await scenario.nextSourceBlockWhileRefused();
     await expectNoRewind(scenario, untouched);
-    await updateJournal(removedHeader, deployment);
     // Refused: an observer state bound to another deployment is never this
     // deployment's authority, even when it is internally consistent and sits
-    // in this deployment's row.
+    // in this deployment's row. Written before the journal's deployment is
+    // restored, so the obligation never proves in between.
     const observerRow = await readObserverRow();
     const foreignState = rebindObserverDeployment(
       (await readObserver()) as unknown as Record<string, unknown>,
@@ -668,12 +707,17 @@ it("rewinds a removed block whose journal stopped at pending_submission with its
     );
     expect(parseStateQueueCorrectionObserverState(foreignState)).not.toBeNull();
     await writeObserverState(foreignState);
+    await updateJournal(removedHeader, {
+      [C.DEPLOYMENT_MANIFEST_ID]: deployment[C.DEPLOYMENT_MANIFEST_ID],
+    });
     expect(await inspectObligation(scenario)).toEqual({
       kind: "blocked",
       reason: "the observer state is non-canonical",
     });
-    await restoreObserverRow(observerRow);
-    expect(await inspectObligation(scenario)).toEqual({
+    // Proven by its retained signed intent: rewound, abandoned, reincluded.
+    expect(
+      await writeAndInspect(scenario, observerRowRestore(observerRow)),
+    ).toEqual({
       kind: "ready",
       members: [{ headerHash: removedHeader, kind: "removed" }],
     });
