@@ -116,7 +116,7 @@
     ]
   },
   "artifacts": {
-    "blueprintHash": "08804058a4d3ada80da2a7ffd08f02883f0ef5fc306b06d119cd2baa22b42581"
+    "blueprintHash": "6ebac79a334c72588eb757e5fbfab5225c55946613a158d9971d7c97d189ec37"
   },
   "contracts": {
     "referenceScriptAuthMint": {

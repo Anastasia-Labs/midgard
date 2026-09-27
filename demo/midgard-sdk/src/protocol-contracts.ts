@@ -36,6 +36,11 @@ export const DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
   spend: "da_params_governor.da_params_governor.spend",
 } as const;
 
+export const DA_BOND_POOL_SCRIPT_TITLES = {
+  mint: "da_bond_pool.da_bond_pool.mint",
+  spend: "da_bond_pool.da_bond_pool.spend",
+} as const;
+
 export const DA_ATTESTATION_SCRIPT_TITLES = {
   mint: "da_attestation.da_attestation.mint",
   spend: "da_attestation.da_attestation.spend",
@@ -185,6 +190,34 @@ export const buildDaParamsGovernorValidator = (
       BigInt(maxOwnerCount),
     ],
   );
+
+/**
+ * The pooled DA committee bond. Its parameters deliberately exclude the
+ * availability-challenge and DA-attestation policies, so the pool's identity
+ * survives a redeployment of either.
+ */
+export const buildDaBondPoolValidator = (
+  blueprint: FaultProofBlueprint,
+  network: Network,
+  initOutRef: OutRefLike,
+  hubOraclePolicyId: string,
+  daParamsPolicyId: string,
+  parameters: DaAvailabilityParameters,
+): AuthenticatedValidator => {
+  const poolParameters = [
+    outputReferenceParam(initOutRef),
+    hubOraclePolicyId,
+    daParamsPolicyId,
+    Data.from(encodeDaAvailabilityParameters(parameters)),
+  ];
+  return buildAuthenticatedBlueprintValidator(
+    blueprint,
+    network,
+    DA_BOND_POOL_SCRIPT_TITLES,
+    poolParameters,
+    () => poolParameters,
+  );
+};
 
 export const buildDaAttestationValidator = (
   blueprint: FaultProofBlueprint,

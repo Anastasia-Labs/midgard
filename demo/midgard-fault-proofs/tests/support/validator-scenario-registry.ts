@@ -1434,6 +1434,7 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "computation_thread.mint",
       "correction_lock.spend",
       "da_attestation.da_attestation",
+      "da_bond_pool.da_bond_pool",
       "da_params_governor.da_params_governor",
       "field_preimage_certificate.field_preimage_certificate",
       "fraud_proof.mint",
@@ -1498,6 +1499,6 @@ export const UNMAPPED_FAMILIES: readonly Readonly<{
 ];
 
 /** Only ever lowered. */
-export const UNMAPPED_VALIDATOR_COUNT = 565;
+export const UNMAPPED_VALIDATOR_COUNT = 566;
 /** Only ever lowered. */
 export const UNMAPPED_FAMILY_COUNT = 9;

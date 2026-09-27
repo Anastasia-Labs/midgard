@@ -10,6 +10,7 @@ use midgard/da_attestation_types.{
   DaParamsDatum, da_params_asset_name, max_indexed_signer_count,
   verification_key_byte_count,
 }
+use midgard/da_params.{owner_quorum_met}
 
 const verification_key_hash_byte_count: Int = 28
 
@@ -264,41 +265,6 @@ fn value_not_drained(input_value: Value, output_value: Value) -> Bool {
     output_value_data,
     fn(input_lovelace, output_lovelace) { output_lovelace >= input_lovelace },
   )
-}
-
-fn has_key(keys: List<VerificationKeyHash>, key: VerificationKeyHash) -> Bool {
-  when keys is {
-    [] -> False
-    [current, ..rest] ->
-      if current == key {
-        True
-      } else {
-        has_key(rest, key)
-      }
-  }
-}
-
-fn owner_quorum_met(
-  owners: List<VerificationKeyHash>,
-  signers: List<VerificationKeyHash>,
-  threshold: Int,
-  count: Int,
-) -> Bool {
-  if count >= threshold {
-    True
-  } else {
-    when owners is {
-      [] -> False
-      [owner, ..rest] -> {
-        let next_count = if has_key(signers, owner) {
-          count + 1
-        } else {
-          count
-        }
-        owner_quorum_met(rest, signers, threshold, next_count)
-      }
-    }
-  }
 }
 
 // ## Q63 governed-floor fixtures

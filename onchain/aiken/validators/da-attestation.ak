@@ -22,6 +22,7 @@ use midgard/da_attestation_types.{
   signature_witness_byte_count, state_queue_mint_reference_script_asset_name,
   verification_key_byte_count,
 }
+use midgard/da_params.{get_da_params}
 use midgard/ledger_state.{HeaderHash}
 use midgard/state_queue
 
@@ -63,43 +64,6 @@ fn set_attested_signer(attested: ByteArray, signer_index: Int) -> ByteArray {
           attested_signer_bitmap_byte_count - byte_index - 1,
         ),
       )
-}
-
-fn get_da_params(
-  reference_inputs: List<Input>,
-  da_params_policy_id: PolicyId,
-  da_params_ref_input_index: Int,
-) -> DaParamsDatum {
-  expect
-      Some(Input {
-        output: Output {
-          address,
-          value,
-          datum: InlineDatum(datum_data),
-          reference_script: None,
-        },
-        ..
-      })
-    = reference_inputs |> list.at(da_params_ref_input_index)
-
-  expect Script(params_script_hash) = address.payment_credential
-  expect params_script_hash == da_params_policy_id
-  expect
-    assets.quantity_of(value, da_params_policy_id, da_params_asset_name) == 1
-
-  expect datum: DaParamsDatum = datum_data
-
-  // W-C15 / decision row D-DA4. Until this line the committee hash was taken on
-  // the datum's word: every consumer compared its own frozen
-  // `committee_signers_hash` against a field that nothing here re-derived, so a
-  // params datum carrying a rotated `committee` under the *pre-rotation* hash
-  // would satisfy every such comparison while signatures verified against the
-  // new keys. Re-deriving it once, here, is what makes `committee` and
-  // `committee_signers_hash` a single fact for every caller. This is the sole
-  // re-derivation site in this module, and it is paid once per params read.
-  expect blake2b_256(datum.committee) == datum.committee_signers_hash
-
-  datum
 }
 
 fn get_authenticated_state_queue_policy_id(
