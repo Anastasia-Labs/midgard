@@ -41,6 +41,53 @@ The forfeiture of a particular operator bond to pay the protocol penalty and
 prover reward for fraud. It does not permanently prohibit the operator
 identity from registering again.
 
+### Data availability bonding
+
+**DA bond pool**:
+The single collateral that backs every attestation of the DA committee as a
+whole. Anyone may fund it, and no contributor holds a share or a claim on it.
+_Avoid_: member bond, per-block DA bond, committee member stake
+
+**DA bond**:
+The fixed amount of pool backing an attestation needs in order to apply, and
+the amount one DA slash takes. It is a unit of liability, not a UTxO.
+_Avoid_: DA bond UTxO, attestation bond
+
+**Pool backing**:
+The part of the DA bond pool's value that a DA slash can take: everything
+above the pool's fixed floor.
+_Avoid_: pool balance
+
+**Pool top-up**:
+A permissionless addition of backing to the DA bond pool.
+
+**Pool withdrawal**:
+Governance's removal of backing from the DA bond pool, which only completes
+after every challenge the pool could still owe has run out.
+_Avoid_: bond reclaim, bond release
+
+**Attested commitment**:
+The availability commitment the DA committee signed for a block, bound to that
+block when its attestation applies. An availability challenge can only run
+against it.
+
+**Availability challenge**:
+A demand on L1 that the DA committee publish a block's attested data. It ends
+either in a close, where the data was published, or a timeout, where the block
+is removed and the pool is slashed.
+_Avoid_: DA challenge (unqualified), data challenge
+
+**Challenger bond**:
+The collateral an availability challenger posts, which pays the committee's
+costs of publishing the data. It is sized independently of the DA bond.
+
+**DA slash**:
+The forfeiture of up to one DA bond from the pool backing when an availability
+challenge times out. It pays the protocol penalty and the challenger's reward.
+Unlike a fraud slash, it holds no individual accountable: it removes no member
+and bars no one.
+_Avoid_: bond slash, committee slash
+
 ### Dispute access model (flat field-hash commitments)
 
 **Field preimage**:
