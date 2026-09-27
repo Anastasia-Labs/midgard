@@ -636,7 +636,16 @@ For every committed header:
 1. Retain the producer libp2p publication report for the header, including
    deployment fingerprint, threshold, announcement topic, and per-peer results.
 2. Retain the exact payload bytes obtained through libp2p retrieval and their
-   digest. The operator HTTP server has no DA payload retrieval route.
+   digest. The operator HTTP server has no DA payload retrieval route; retrieve
+   from the `midgard-public-retained-da` process over libp2p, as the
+   [DA committee guide](../../../../docs-site/content/docs/watchers/da-committee-node.mdx)
+   describes under "Publish, retain, and retrieve". Retrieve each header's payload
+   as soon as the header is attested, and always before its successor merges
+   and before its `end_time` plus 1.5 × block maturity (1,350 s on
+   preprod-testing). The committee prunes a merged non-head block's payload at
+   that horizon, so a header retrieved later returns not-found. That is the
+   expected retention behaviour, not a DA failure, but the header's retrieval
+   evidence is then lost and cannot be recovered in this run.
 3. Query the committee node deployment/header status.
 4. Record payload hash/schema, committee node verification, attestation init,
    add-signatures, and apply transaction hashes.
