@@ -224,6 +224,20 @@ test("profile validation rejects unsafe timing, economics, networks, and unknown
   }
 });
 
+test("every profile keeps the negligence timeout at or above the commitment gap, and the bound is exact", () => {
+  for (const [name, original] of Object.entries(readProfiles())) {
+    const profile = structuredClone(original);
+    profile.timing.user_events_negligence_timeout_ms =
+      profile.timing.max_inactivity_between_block_commitments_ms;
+    validateProfile(profile, name);
+    profile.timing.user_events_negligence_timeout_ms -= 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /negligence timeout must be at least/u,
+    );
+  }
+});
+
 test("dispute schedule accepts the exact half-maturity bound", () => {
   const profile = structuredClone(readProfiles()["preprod-public"]);
   profile.timing.dispute_response_window_ms = 4_581_818;

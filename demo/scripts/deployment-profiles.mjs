@@ -205,6 +205,21 @@ export const validateProfile = (profile, name) => {
       "Operator shift must cover grace and maximum validity range",
     );
   }
+  // The scheduler's neglected-event guard (scheduler.ak,
+  // inactivity_threshold_from_user_event_inclusion_time) accepts an event whose
+  // inclusion time equals the tail block's end time, which that block already
+  // includes. The commitment-gap threshold (tail end + max inactivity) must
+  // therefore never be later than a neglected event's threshold (inclusion +
+  // negligence), or an operator could be struck for an event it included.
+  // The operator watchdog relies on the same ordering.
+  if (
+    timing.user_events_negligence_timeout_ms <
+    timing.max_inactivity_between_block_commitments_ms
+  ) {
+    throw new Error(
+      "User-event negligence timeout must be at least the maximum inactivity between block commitments",
+    );
+  }
   const economics = profile.economics;
   if (
     BigInt(economics.requiredBondLovelace) !==
