@@ -19,13 +19,13 @@ output="$MIDGARD_PHASE4_RUN_DIR/secrets/acceptance.env"
 [ ! -e "$output" ] || die "refusing to overwrite acceptance env"
 (
   cd "$node_root"
-  node --input-type=module - "$node_env" "$wallet_env" "$run_env" "$output" "$manifest" "$blueprint" "$node_root" <<'NODE'
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+  node --input-type=module - "$node_env" "$wallet_env" "$run_env" "$output" "$manifest" "$blueprint" "$node_root" "$script_dir/native-owner.mjs" <<'NODE'
+import { readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import dotenv from "dotenv";
 
-const [nodePath, walletPath, runPath, outputPath, manifestPath, blueprintPath, nodeRoot] = process.argv.slice(2);
+const [nodePath, walletPath, runPath, outputPath, manifestPath, blueprintPath, nodeRoot, resolverPath] = process.argv.slice(2);
+const { resolveNativeOwnerBinary } = await import(pathToFileURL(resolverPath).href);
 const nodeValues = dotenv.parse(readFileSync(nodePath, "utf8"));
 const walletValues = dotenv.parse(readFileSync(walletPath, "utf8"));
 const runValues = dotenv.parse(readFileSync(runPath, "utf8"));
@@ -74,37 +74,10 @@ if (!values.TESTNET_GENESIS_WALLET_SEED_PHRASE_C?.trim()) {
   values.TESTNET_GENESIS_WALLET_SEED_PHRASE_C = values.TESTNET_GENESIS_WALLET_SEED_PHRASE_A;
 }
 // Every node runs the Architecture G native owner and refuses to start unless
-// the owner binary is pinned by path and SHA-256. Pin the binary this checkout
-// built (or the one node.env names), refusing a node.env pin that does not
-// match it, so a missing or stale owner fails here rather than as a node that
-// never becomes ready.
-const configuredOwnerPath = nodeValues.MPF_NATIVE_OWNER_BINARY_PATH?.trim();
-const ownerBinaryPath = resolve(
-  nodeRoot,
-  configuredOwnerPath ||
-    "native/mpf-event-flat-wasm/target/release/architecture-g-owner",
-);
-if (!existsSync(ownerBinaryPath)) {
-  // Building fixes only the checkout default: a node.env path (for example
-  // the image's /app/native/architecture-g-owner kept from .env.example)
-  // overrides the build output, so name that path instead.
-  throw new Error(
-    configuredOwnerPath
-      ? `node.env names MPF_NATIVE_OWNER_BINARY_PATH=${configuredOwnerPath}, which does not exist on this host; remove it to use this checkout's build, or point it at a host binary`
-      : `native owner binary is missing at ${ownerBinaryPath}; build it with \`pnpm --dir ${nodeRoot} run native:mpf-owner:build\``,
-  );
-}
-const ownerBinarySha256 = createHash("sha256")
-  .update(readFileSync(ownerBinaryPath))
-  .digest("hex");
-const pinnedSha256 = nodeValues.MPF_NATIVE_OWNER_BINARY_SHA256?.trim();
-if (pinnedSha256 && pinnedSha256 !== ownerBinarySha256) {
-  throw new Error(
-    `node.env pins MPF_NATIVE_OWNER_BINARY_SHA256=${pinnedSha256}, but ${ownerBinaryPath} hashes to ${ownerBinarySha256}`,
-  );
-}
-values.MPF_NATIVE_OWNER_BINARY_PATH = ownerBinaryPath;
-values.MPF_NATIVE_OWNER_BINARY_SHA256 = ownerBinarySha256;
+// the owner binary is pinned by path and SHA-256 (see native-owner.mjs).
+const owner = resolveNativeOwnerBinary(nodeValues, nodeRoot);
+values.MPF_NATIVE_OWNER_BINARY_PATH = owner.path;
+values.MPF_NATIVE_OWNER_BINARY_SHA256 = owner.sha256;
 // The sidecar is bound to its node's ledger store. The process gate gives each
 // node its own LEDGER_MPF_DB_PATH, so each must derive its own sidecar from it
 // (<LEDGER_MPF_DB_PATH>.architecture-g.sidecar) instead of sharing one path.

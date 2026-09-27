@@ -73,6 +73,7 @@ test("all shell assets parse", async () => {
     "protocol-bootstrap.sh",
     "phas-registration-preflight.sh",
     "write-acceptance-env.sh",
+    "native-owner-preflight.sh",
     "capture-snapshot.sh",
     "reset.sh",
     "t1-recover.sh",
@@ -238,7 +239,11 @@ const unbuiltOwnerCheckout = () => {
   const operator = join(checkout, "demo/midgard-node");
   for (const directory of [scripts, operator, join(checkout, "onchain/aiken")])
     mkdirSync(directory, { recursive: true });
-  for (const name of ["common.sh", "write-acceptance-env.sh"])
+  for (const name of [
+    "common.sh",
+    "write-acceptance-env.sh",
+    "native-owner.mjs",
+  ])
     copyFileSync(join(root, "scripts", name), join(scripts, name));
   symlinkSync(
     join(root, "../../../midgard-node/node_modules"),
@@ -326,6 +331,89 @@ test("acceptance env refuses a node.env pin that does not match the owner binary
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, new RegExp(`hashes to ${ownerSha256}`));
   rmSync(runDir, { recursive: true, force: true });
+});
+
+/**
+ * Runs bootstrap.sh with docker, curl and jq replaced by stubs that record
+ * their call and fail, so the test sees whether bootstrap reached the devnet.
+ */
+const bootstrapWithStubs = async (runDir) => {
+  const binaries = mkdtempSync(join(temporaryRoot, "midgard-phase4-stubs-"));
+  const calls = join(binaries, "calls");
+  try {
+    for (const name of ["docker", "curl", "jq"])
+      writeFileSync(
+        join(binaries, name),
+        `#!/bin/sh\necho ${name} >> "${calls}"\nexit 97\n`,
+        { mode: 0o755 },
+      );
+    const result = await run("sh", [join(root, "scripts", "bootstrap.sh")], {
+      env: {
+        ...process.env,
+        PATH: `${binaries}:${process.env.PATH}`,
+        MIDGARD_PHASE4_RUN_DIR: runDir,
+      },
+    });
+    let called = "";
+    try {
+      called = readFileSync(calls, "utf8");
+    } catch {
+      called = "";
+    }
+    return { ...result, called };
+  } finally {
+    rmSync(binaries, { recursive: true, force: true });
+  }
+};
+
+test("bootstrap refuses a missing native owner before starting the devnet", async () => {
+  const { runDir } = acceptanceEnvRun(
+    () => "MPF_NATIVE_OWNER_BINARY_PATH=/app/native/architecture-g-owner\n",
+  );
+  try {
+    const result = await bootstrapWithStubs(runDir);
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /node\.env names MPF_NATIVE_OWNER_BINARY_PATH=\/app\/native\/architecture-g-owner, which does not exist on this host/,
+    );
+    assert.equal(result.called, "");
+  } finally {
+    rmSync(runDir, { recursive: true, force: true });
+  }
+});
+
+test("bootstrap refuses a mismatched native owner pin before starting the devnet", async () => {
+  const { runDir, ownerSha256 } = acceptanceEnvRun(
+    (ownerBinary) =>
+      `MPF_NATIVE_OWNER_BINARY_PATH=${ownerBinary}\nMPF_NATIVE_OWNER_BINARY_SHA256=${"0".repeat(64)}\n`,
+  );
+  try {
+    const result = await bootstrapWithStubs(runDir);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, new RegExp(`hashes to ${ownerSha256}`));
+    assert.equal(result.called, "");
+  } finally {
+    rmSync(runDir, { recursive: true, force: true });
+  }
+});
+
+test("bootstrap starts the devnet once the native owner resolves", async () => {
+  const { runDir, ownerBinary } = acceptanceEnvRun(
+    (ownerBinary) => `MPF_NATIVE_OWNER_BINARY_PATH=${ownerBinary}\n`,
+  );
+  try {
+    const result = await bootstrapWithStubs(runDir);
+    assert.match(
+      result.stdout,
+      new RegExp(`^nativeOwnerBinary=${ownerBinary}$`, "m"),
+    );
+    // The first external call after the preflight is `compose up`.
+    assert.equal(result.called, "docker\n");
+    assert.equal(result.status, 97);
+  } finally {
+    rmSync(runDir, { recursive: true, force: true });
+  }
 });
 
 test("generator refuses an existing run directory before Docker", async () => {

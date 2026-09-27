@@ -8,6 +8,9 @@ require_command jq
 require_run_dir
 [ -f "$MIDGARD_PHASE4_RUN_DIR/secrets/wallets.env" ] || die "missing run-scoped secrets/wallets.env"
 [ -f "$MIDGARD_PHASE4_RUN_DIR/secrets/node.env" ] || die "missing run-scoped secrets/node.env"
+# Refuse a missing or mismatched native owner before starting the devnet or
+# spending anything on L1; write-acceptance-env.sh pins the same binary last.
+"$script_dir/native-owner-preflight.sh"
 
 node_env="$MIDGARD_PHASE4_RUN_DIR/secrets/node.env"
 umask 077

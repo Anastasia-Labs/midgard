@@ -32,6 +32,15 @@ Every node runs the Architecture G native owner, so build it before bootstrap:
 pnpm --dir ../midgard-node run native:mpf-owner:build
 ```
 
+Bootstrap checks the owner first, before it starts the devnet or submits
+anything on L1 (`scripts/native-owner-preflight.sh`), with the same rules as
+below, so a missing or mismatched binary costs nothing. If
+`write-acceptance-env.sh` still refuses at the end of a bootstrap (for example
+the binary was rebuilt or removed meanwhile), fix the binary and rerun only
+`scripts/write-acceptance-env.sh`: rerunning `bootstrap.sh` would repeat the
+protocol bootstrap, including a fresh hub-oracle one-shot nonce, on an already
+initialized chain.
+
 `write-acceptance-env.sh` (run by bootstrap) pins that binary into
 `acceptance.env`: it writes its absolute `MPF_NATIVE_OWNER_BINARY_PATH` and its
 `MPF_NATIVE_OWNER_BINARY_SHA256`. `node.env` may name another binary with
