@@ -1206,7 +1206,8 @@ describe("loadCommitteeConfig", () => {
       l1SubmitterKeySource: "private-key:ed25519_sk_test",
       l1SubmitterPreflight: {
         enabled: true,
-        minPlainAdaLovelace: DEFAULT_L1_SUBMITTER_PREFLIGHT.minPlainAdaLovelace,
+        // The fixture deployment's 12,000 ADA bond plus 50 ADA of fees.
+        minPlainAdaLovelace: 12_050_000_000n,
         minCollateralLovelace:
           DEFAULT_L1_SUBMITTER_PREFLIGHT.minCollateralLovelace,
         minSpendableUtxoCount:
@@ -1240,7 +1241,7 @@ describe("loadCommitteeConfig", () => {
       ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
-      DA_L1_MIN_PLAIN_ADA_LOVELACE: "75000000",
+      DA_L1_MIN_PLAIN_ADA_LOVELACE: "30000000000",
       DA_L1_MIN_COLLATERAL_LOVELACE: "6000000",
       DA_L1_MIN_SPENDABLE_UTXO_COUNT: "3",
       DA_L1_AUTO_FUND_KEY_SOURCE: "file:/tmp/funder.seed",
@@ -1251,7 +1252,7 @@ describe("loadCommitteeConfig", () => {
 
     expect(config.l1SubmitterPreflight).toEqual({
       enabled: true,
-      minPlainAdaLovelace: 75_000_000n,
+      minPlainAdaLovelace: 30_000_000_000n,
       minCollateralLovelace: 6_000_000n,
       minSpendableUtxoCount: 3,
       autoFundKeySource: "file:/tmp/funder.seed",
@@ -1289,6 +1290,14 @@ describe("loadCommitteeConfig", () => {
         DA_L1_MIN_PLAIN_ADA_LOVELACE: "not-a-number",
       }),
     ).rejects.toThrow(/DA_L1_MIN_PLAIN_ADA_LOVELACE/);
+    await expect(
+      loadCommitteeConfig({
+        ...baseEnv,
+        DA_L1_MIN_PLAIN_ADA_LOVELACE: "12049999999",
+      }),
+    ).rejects.toThrow(
+      /DA_L1_MIN_PLAIN_ADA_LOVELACE must be at least 12050000000 \(the deployment's daBondLovelace 12000000000 \+ 50000000 fee headroom\)/u,
+    );
     await expect(
       loadCommitteeConfig({
         ...baseEnv,

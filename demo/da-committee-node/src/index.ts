@@ -14,6 +14,7 @@ import {
   l1SubmitterWalletPreflightFromConfig,
   onChainCoordinatorFromConfig,
 } from "./coordinator/factory.js";
+import type { DaBondFundingCheck } from "./coordinator/lucid-submitter.js";
 import { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import {
   createDaLibp2pAttestationGossipHandlers,
@@ -177,8 +178,18 @@ const main = async (): Promise<void> => {
     store,
     requestTimeoutMs: config.peerRequestTimeoutMs,
   });
+  // The latest check of the submitter's plain ADA against the next bond.
+  let l1SubmitterBondFunding: DaBondFundingCheck | undefined;
   const onChainCoordinator = config.l1SubmissionEnabled
-    ? await onChainCoordinatorFromConfig(config, daChainReader, store)
+    ? await onChainCoordinatorFromConfig(
+        config,
+        daChainReader,
+        store,
+        undefined,
+        (check) => {
+          l1SubmitterBondFunding = check;
+        },
+      )
     : undefined;
   const peerPoller =
     onChainCoordinator !== undefined && daAttestationPeers.length > 0
@@ -406,6 +417,7 @@ const main = async (): Promise<void> => {
       service.readinessSnapshot({
         localPeerId: daIdentity.peerId,
         l1SubmitterPreflight,
+        l1SubmitterBondFunding,
         retention: retentionReadiness,
       }),
     manifest: config.deploymentManifest,

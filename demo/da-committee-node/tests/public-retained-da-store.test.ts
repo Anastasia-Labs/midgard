@@ -355,6 +355,38 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
     }
   }, 60_000);
 
+  it("keeps serving after the server terminates an idle pooled connection", async () => {
+    // pg re-emits an idle client's connection error on the pool, which
+    // crashes the process unless the pool has an error listener.
+    const stderr = vi.spyOn(process.stderr, "write");
+    const store = await openReal();
+    try {
+      await expect(store.getDaPayload(HEADER_HASH)).resolves.toMatchObject({
+        headerHash: HEADER_HASH,
+      });
+      const terminated = await clusterClient.query<{
+        readonly terminated: boolean;
+      }>(
+        "SELECT pg_terminate_backend(pid) AS terminated FROM pg_stat_activity WHERE usename = $1",
+        [readerRole],
+      );
+      expect(terminated.rows.map((row) => row.terminated)).toContain(true);
+      await vi.waitFor(
+        () =>
+          expect(stderr).toHaveBeenCalledWith(
+            expect.stringContaining('"event":"public_retained_da_pool_error"'),
+          ),
+        { timeout: 10_000 },
+      );
+      await expect(store.getDaPayload(HEADER_HASH)).resolves.toMatchObject({
+        headerHash: HEADER_HASH,
+      });
+    } finally {
+      stderr.mockRestore();
+      await store.close();
+    }
+  }, 60_000);
+
   it("refuses the same login the moment PostgreSQL grants it DELETE, and admits it again when the grant is revoked", async () => {
     // The whole point of the probe: a login that merely HOLDS DELETE on the
     // retained-evidence table is refused. Only a real cluster can decide

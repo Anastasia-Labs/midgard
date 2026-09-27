@@ -108,12 +108,13 @@ export type CommitAppendFenceReferences = {
 };
 
 /**
- * Q61's append fence as a cap on the new header's end. While the queue head is
- * unattested, an append's inclusive upper bound, which is the header end, must
- * fall strictly before the head's end plus the DA attestation timeout. An
- * append to the bare root has no head to fence against, unless the caller is
- * building on a pending tail that will be the head by the time this lands.
- * Other head states impose no end-time cap here.
+ * Q61's append fence as a cap on the new header's end. The header end is the
+ * append's inclusive upper bound, so it must fall strictly before the DA
+ * attestation deadline of every unattested node still in the queue, not only
+ * the head's: an append landing after a pending tail's deadline takes the
+ * tail that timeout correction is about to remove. A pending tail the caller
+ * builds on is not yet on chain and is fenced the same way. Only the head's
+ * fence is enforced on chain; the rest is this node's own build policy.
  */
 export const resolveCommitAppendFenceEndTimeCapLocal = (
   lucid: Parameters<typeof SDK.fetchSortedStateQueueUTxOsProgram>[0],
@@ -128,27 +129,31 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
       SDK.StateQueueUTxO[],
       SDK.LucidError | SDK.LinkedListError
     >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
-    const head = ordered[1];
-    if (head === undefined) {
-      return pendingTailEndTimeMs === undefined
-        ? undefined
-        : pendingTailEndTimeMs + Number(SDK.DA_ATTESTATION_TIMEOUT_MS) - 1;
+    const unattestedEndTimesMs =
+      pendingTailEndTimeMs === undefined ? [] : [pendingTailEndTimeMs];
+    for (const entry of ordered.slice(1)) {
+      const node = yield* localizeSdkEffect<
+        SDK.StateQueueNode,
+        SDK.DataCoercionError
+      >(SDK.getStateQueueNodeFromStateQueueDatum(entry.datum)).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message:
+                "Failed to inspect a pending node's DA attestation for the append fence",
+              cause,
+            }),
+        ),
+      );
+      if (node.da_attestation === SDK.NO_DA_ATTESTATION) {
+        unattestedEndTimesMs.push(Number(node.header.endTime));
+      }
     }
-    const node = yield* localizeSdkEffect<
-      SDK.StateQueueNode,
-      SDK.DataCoercionError
-    >(SDK.getStateQueueNodeFromStateQueueDatum(head.datum)).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to inspect the state-queue head's DA attestation",
-            cause,
-          }),
-      ),
-    );
-    return node.da_attestation === SDK.NO_DA_ATTESTATION
-      ? Number(node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS) - 1
-      : undefined;
+    return unattestedEndTimesMs.length === 0
+      ? undefined
+      : Math.min(...unattestedEndTimesMs) +
+          Number(SDK.DA_ATTESTATION_TIMEOUT_MS) -
+          1;
   });
 
 /**

@@ -13,8 +13,8 @@ import {
   Database,
   Effect,
   ensureSeparateCollateralUtxo,
-  fetchWithdrawalsOnceProgram,
   paymentCredentialOf,
+  reconcileVisibleWithdrawalUTxOs,
   resolveEventSettlementProofProgram,
   runNodeCommandProgram,
   SDK,
@@ -118,9 +118,9 @@ it("projects an ordinary invalid withdrawal through real settlement, refund and 
       Number(withdrawal.facts.inclusion_time) + 1000,
     );
     vi.setSystemTime(fixture.emulator.now());
-    expect((await command(fetchWithdrawalsOnceProgram)).reconciledCount).toBe(
-      1,
-    );
+    expect(
+      (await command(reconcileVisibleWithdrawalUTxOs())).reconciledCount,
+    ).toBe(1);
     const block = await commitConfirmRecoverAndMerge(context);
     const resolution = await command(
       resolveEventSettlementProofProgram({

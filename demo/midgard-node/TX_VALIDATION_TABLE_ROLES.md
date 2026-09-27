@@ -958,9 +958,10 @@ Local block finalization is wrapped in a local mutation job
 ([commit-submission.ts](src/workers/utils/commit-submission.ts)).
 
 Confirmed merge finalization starts, completes, or fails a merge finalization
-job around the local `confirmed_ledger` and `blocks` updates
-([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts),
-[merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
+job around the local `confirmed_ledger` and `blocks` updates, both right after
+the merge's L1 confirmation and when a later merge attempt finalizes a merge L1
+confirmed that this database has not
+([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
 
 ### Readers
 
@@ -996,8 +997,16 @@ Expected invariants:
 Known gaps:
 
 - `plan_hash` exists in the schema but is not populated by the adapter.
-- There is no automated replay/adoption executor for unfinished jobs.
-- Unfinished mutation jobs block listener startup until recovery is performed.
+- Two kinds of job are retried automatically. `confirmed_merge_finalization`
+  jobs are retried by the merge fiber: every merge attempt first finalizes each
+  merge L1 confirmed that this database has not, and fails until that
+  succeeds; the merge builder does the same up to the confirmed state its merge
+  spends. A failed `local_block_finalization` job whose journal still awaits
+  local finalization is retried by the commit worker while its block is live.
+  Every other unfinished job needs recovery.
+- Unfinished mutation jobs block listener startup until recovery is performed,
+  except confirmed-merge jobs and failed local-finalization jobs whose journal
+  still awaits local finalization, which startup leaves to the runtime.
 
 ## `schema_migrations`
 

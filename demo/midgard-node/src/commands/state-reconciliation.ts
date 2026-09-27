@@ -60,6 +60,7 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import { materializeConfirmedLedgerDeltaChain } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
+import { READINESS_ENDPOINT } from "./readiness.js";
 
 // ---------------------------------------------------------------------------
 // Report model
@@ -120,13 +121,13 @@ const COMPARES: Record<CheckId, string> = {
   "confirmed-root":
     "L1 state-queue root node ConfirmedState.utxoRoot (provider) vs the MPF root recomputed from SQL confirmed_ledger",
   "native-root":
-    "persisted native ledger root (Architecture-G owner durableRoot from node readiness, else the LEDGER_MPF_DB_PATH __root__ marker read from a private copy) vs the root recomputed from SQL confirmed_ledger plus the finalized-but-unmerged pending_block_finalizations deltas (the committed tip), or plus the active journal delta",
+    "persisted native ledger root (Architecture-G owner durableRoot from node /readyz, else, when no --node-url was given and the node gave no owner answer, the LEDGER_MPF_DB_PATH __root__ marker read from a private copy) vs the root recomputed from SQL confirmed_ledger plus the finalized-but-unmerged pending_block_finalizations deltas (the committed tip), or plus the active journal delta",
   "state-queue-journal":
     "L1 state-queue headers (provider) vs pending_block_finalizations, foreign_tip_reconciliations, blocks and the admitted correction transitions in state_queue_terminal_observer_states (SQL)",
   "state-queue-tail-root":
     "utxosRoot of the last L1 state-queue header (ConfirmedState.utxoRoot when the queue is empty) vs the persisted native ledger root",
   deposits:
-    "L1 deposit orders (provider, decoded exactly as ingestion does) vs deposits_utxos payload, status and projected header; every SQL header assignment vs the L1 queue and the merged chain",
+    "L1 deposit orders (provider, decoded exactly as ingestion does) vs deposits_utxos payload, status and projected header; every SQL deposit whose header is not merged vs the L1 deposit orders; every SQL header assignment vs the L1 queue and the merged chain",
   withdrawals:
     "L1 withdrawal orders (provider, decoded exactly as ingestion does) vs withdrawal_utxos payload (including l2_value), status and projected header; every SQL header assignment vs the L1 queue and the merged chain",
   payouts:
@@ -349,6 +350,8 @@ export type NativeRootObservation =
       readonly root: string;
       readonly source: "node-readiness" | "leveldb-copy";
     }
+  /** The node reports its Architecture-G owner unhealthy. */
+  | { readonly kind: "unhealthy"; readonly reason: string }
   | { readonly kind: "unavailable"; readonly reason: string };
 
 export type L1Observation =
@@ -715,6 +718,11 @@ const checkNativeRoot = (
   if (native.kind === "unavailable") {
     return skipCheck("native-root", native.reason);
   }
+  if (native.kind === "unhealthy") {
+    const acc = newAccumulator();
+    acc.failures.push(native.reason);
+    return finishCheck("native-root", acc, allowInFlight, "");
+  }
   if (ctx.sql.confirmedRootError !== null) {
     return skipCheck("native-root", unencodableConfirmedReason(ctx));
   }
@@ -976,6 +984,12 @@ const checkTailRoot = (
   if (native.kind === "unavailable") {
     return skipCheck("state-queue-tail-root", native.reason);
   }
+  if (native.kind === "unhealthy") {
+    return skipCheck(
+      "state-queue-tail-root",
+      `no native root to compare (reported by native-root): ${native.reason}`,
+    );
+  }
   const tail = ctx.l1.unmerged.at(-1);
   const tailRoot =
     tail === undefined
@@ -1086,11 +1100,31 @@ const checkDeposits = (
       );
     }
   }
+  const l1EventIds = new Set(
+    ctx.l1.deposits.flatMap((order) =>
+      order.payload === null ? [] : [order.payload.eventId],
+    ),
+  );
   let assigned = 0;
+  let unmerged = 0;
   for (const row of ctx.sql.deposits) {
     const label = `SQL deposit ${row.payload.eventId}`;
     const header = row.projectedHeaderHash;
     const placement = placeHeader(ctx, header);
+    // Only a settlement, which the merge creates, lets a deposit order be
+    // spent, so every deposit whose header is not merged keeps its order.
+    if (placement !== "merged" && placement !== "unknown") {
+      unmerged += 1;
+      if (!l1EventIds.has(row.payload.eventId)) {
+        if (missingOrderIsImmature(ctx, row.payload.inclusionTimeMs)) {
+          acc.inFlight.push(
+            `${label} is not among the L1 deposit orders; its inclusion time is after every committed block`,
+          );
+        } else {
+          acc.failures.push(`${label} is not among the L1 deposit orders`);
+        }
+      }
+    }
     if (header === null) continue;
     assigned += 1;
     if (placement === "unknown") {
@@ -1126,7 +1160,7 @@ const checkDeposits = (
     "deposits",
     acc,
     allowInFlight,
-    `${plural(ctx.l1.deposits.length, "L1 deposit order")} match SQL; ${plural(assigned, "SQL deposit")} with a header assignment point at on-chain or merged headers`,
+    `${plural(ctx.l1.deposits.length, "L1 deposit order")} match SQL; L1 orders cover ${plural(unmerged, "unmerged SQL deposit")}; ${plural(assigned, "SQL deposit")} with a header assignment point at on-chain or merged headers`,
   );
 };
 
@@ -1449,6 +1483,7 @@ const attemptLedgerCache = (
     const deposit = depositByOutref.get(row.outref);
     if (deposit === undefined || deposit.payload.eventId !== row.sourceEventId)
       continue;
+    if (deposit.status !== DepositsDB.Status.Projected) continue;
     if (deposit.payload.ledgerOutput !== row.output) continue;
     const header = deposit.projectedHeaderHash;
     const beyondPoint =
@@ -1457,6 +1492,18 @@ const attemptLedgerCache = (
         (ctx.activeHeaders.has(header) ||
           (ctx.onChainUnmerged.has(header) && !isMerged(ctx, header))));
     if (beyondPoint) expected.set(row.outref, row.output);
+  }
+  // Projection writes a deposit into the cache and only a pending spend takes
+  // it out, so a projected deposit no block holds yet is expected there even
+  // when the cache lost it.
+  for (const [outref, deposit] of depositByOutref) {
+    if (
+      deposit.status === DepositsDB.Status.Projected &&
+      deposit.projectedHeaderHash === null &&
+      !cache.has(outref)
+    ) {
+      expected.set(outref, deposit.payload.ledgerOutput);
+    }
   }
   for (const delta of deltas) {
     for (const produced of delta.produced)
@@ -1658,7 +1705,7 @@ export const evaluateStateReconciliation = (
       nativeRoot:
         input.native.kind === "observed"
           ? `${input.native.root} (${input.native.source})`
-          : `unavailable: ${input.native.reason}`,
+          : `${input.native.kind}: ${input.native.reason}`,
       sqlConfirmedRoot: input.sql.confirmedRoot,
       finalizedTip: pointLabel(input.sql.finalizedTip),
       activeJournal: pointLabel(input.sql.activeTip),
@@ -2436,7 +2483,7 @@ export const readNativeRootFromReadiness = async (
 ): Promise<NativeRootObservation> => {
   let response: Response;
   try {
-    response = await fetch(new URL("/readiness", nodeUrl), {
+    response = await fetch(new URL(`/${READINESS_ENDPOINT}`, nodeUrl), {
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
@@ -2470,14 +2517,15 @@ export const readNativeRootFromReadiness = async (
       reason: "node readiness carries no native MPF owner diagnostics",
     };
   }
-  const { healthy, durableRoot } = owner as {
+  const { healthy, durableRoot, error } = owner as {
     healthy?: unknown;
     durableRoot?: unknown;
+    error?: unknown;
   };
   if (healthy !== true) {
     return {
-      kind: "unavailable",
-      reason: "node reports its native MPF owner unhealthy",
+      kind: "unhealthy",
+      reason: `node reports its native MPF owner unhealthy (${redactSensitive(String(error))})`,
     };
   }
   if (typeof durableRoot !== "string" || !HEX_32.test(durableRoot)) {
@@ -2558,7 +2606,11 @@ export const readNativeRoot = (
       const fromReadiness = yield* Effect.promise(() =>
         readNativeRootFromReadiness(url),
       );
-      if (fromReadiness.kind === "observed") return fromReadiness;
+      // The copy stands in only for a default-URL node that gave no owner
+      // answer: an explicit --node-url, or an owner reported unhealthy, is
+      // the result itself.
+      if (fromReadiness.kind !== "unavailable" || options.nodeUrl !== undefined)
+        return fromReadiness;
       const fromCopy = yield* Effect.promise(() =>
         readNativeRootFromLevelCopy(config.LEDGER_MPF_DB_PATH),
       );
@@ -2584,9 +2636,7 @@ export type StateReconciliationOptions = NativeRootSourceOptions & {
 };
 
 const nativeKey = (native: NativeRootObservation): string =>
-  native.kind === "observed"
-    ? `${native.source}:${native.root}`
-    : "unavailable";
+  native.kind === "observed" ? `${native.source}:${native.root}` : native.kind;
 
 /**
  * Collects L1, native root and SQL, re-reads L1 and the native root after the

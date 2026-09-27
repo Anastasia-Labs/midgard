@@ -1342,12 +1342,12 @@ export const mergeCompletionVerdict = (
   if (observed.job !== undefined)
     return {
       status: "blocked",
-      nextAction: `The header left the state queue but its confirmed-merge local finalization is ${String(jobStatus)}; there is no automatic retry, so the node refuses to start and the final merge stays blocked until an operator recovers it.`,
+      nextAction: `The header left the state queue but its confirmed-merge local finalization is ${String(jobStatus)}; the running node's merge fiber retries it before every merge while the history owner is Ready, and no merge proceeds until it succeeds. If it keeps failing, inspect the job's last_error.`,
     };
   return {
     status: "ambiguous",
     nextAction:
-      "The header is not queued and this database holds no confirmed-merge finalization job for it: it was merged before this database existed, local finalization failed before the job started, or it was removed by state-queue correction; inspect pending_block_finalization.",
+      "The header is not queued and this database holds no confirmed-merge finalization job for it: its merge landed and the running node's merge fiber has not finalized it yet (it does so before its next merge once the history owner is Ready), it was merged before this database existed, or it was removed by state-queue correction; inspect pending_block_finalization.",
   };
 };
 

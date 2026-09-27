@@ -1057,13 +1057,6 @@ const DEPLOYMENT_MANIFEST_SCRIPT_TYPES = Object.freeze([
   "PlutusV3",
 ] as const);
 
-const DEPLOYMENT_MANIFEST_NETWORKS = new Set([
-  "Mainnet",
-  "Preprod",
-  "Preview",
-  "Custom",
-]);
-
 type DeploymentManifestOutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
@@ -1821,12 +1814,6 @@ const validateValidationDispute = (
 const validateDeploymentManifestCommon = (
   candidate: Record<string, unknown>,
 ): void => {
-  const network = requireNonEmptyString(candidate.network, "network");
-  if (!DEPLOYMENT_MANIFEST_NETWORKS.has(network)) {
-    throw new Error(
-      "Deployment manifest network must be Mainnet, Preprod, Preview, or Custom",
-    );
-  }
   const createdAt = requireIsoTimestamp(candidate.createdAt, "createdAt");
   const updatedAt = requireIsoTimestamp(candidate.updatedAt, "updatedAt");
   if (updatedAt < createdAt) {

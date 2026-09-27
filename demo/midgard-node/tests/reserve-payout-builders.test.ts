@@ -29,6 +29,11 @@ import { Effect } from "effect";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
+  submitAbsorbAfterProtectionProgram,
+  submitInitializePayoutAfterProtectionProgram,
+} from "../src/commands/reserve-payout.js";
+import { SUBMIT_SLOT_LENGTH_MS } from "../src/local-ledger-slot.js";
+import {
   __reservePayoutTest,
   buildAbsorbConfirmedDepositToReserveTxProgram,
   buildAddReserveFundsToPayoutTxProgram,
@@ -244,6 +249,11 @@ afterAll(() => {
     );
 });
 
+const validityWindowSlots = (tx: TxSignBuilder): bigint => {
+  const body = CML.Transaction.from_cbor_hex(tx.toCBOR()).body();
+  return body.ttl()! - body.validity_interval_start()!;
+};
+
 const submitWithWallet = async (tx: TxSignBuilder): Promise<string> => {
   try {
     const signed = await tx.sign.withWallet().complete();
@@ -451,7 +461,12 @@ const makeSeededScriptAccount = ({
       }),
 });
 
-const makeReservePayoutBuilderFixture = async () => {
+const makeReservePayoutBuilderFixture = async ({
+  plantedDatumReserve = false,
+}: {
+  /** Anyone can pay a datum-bearing UTxO to the reserve address. */
+  readonly plantedDatumReserve?: boolean;
+} = {}) => {
   const operator = generateEmulatorAccount({
     lovelace: 30_000_000_000n,
   });
@@ -523,6 +538,15 @@ const makeReservePayoutBuilderFixture = async () => {
         assets: { lovelace: 3_000_000n, [payoutUnit]: 1n },
         inlineDatum: canonicalDatumCbor(payoutDatumCbor),
       }),
+      ...(plantedDatumReserve
+        ? [
+            makeSeededScriptAccount({
+              address: contracts.reserve.spendingScriptAddress,
+              assets: { lovelace: 20_000_000n },
+              inlineDatum: Data.void(),
+            }),
+          ]
+        : []),
       makeSeededScriptAccount({
         address: contracts.reserve.spendingScriptAddress,
         assets: { lovelace: 8_000_000n },
@@ -1584,6 +1608,60 @@ describe("reserve/payout transaction builder primitives", () => {
     ).toBe(true);
   });
 
+  it("skips a planted datum reserve UTxO, which the validators refuse, and funds from the honest reserve", async () => {
+    const {
+      contracts,
+      feeInputs,
+      hubOracleRefInput,
+      lucid,
+      payoutInput,
+      payoutUnit,
+      referenceScripts,
+      reserveInput,
+    } = await makeReservePayoutBuilderFixture({ plantedDatumReserve: true });
+    const reserveUtxos = await lucid.utxosAt(
+      contracts.reserve.spendingScriptAddress,
+    );
+    const planted = reserveUtxos.find((utxo) => utxo.datum != null);
+    if (planted === undefined) throw new Error("Missing planted reserve UTxO");
+    // The planted UTxO is listed first and ties on contribution, so without
+    // the shape filter both first-match and canonical out-ref order take it.
+    expect(reserveUtxos[0]).toEqual(planted);
+    expect(compareOutRefs(planted, reserveInput)).toBeLessThan(0);
+    const funding = (reserve: UTxO) =>
+      buildAddReserveFundsToPayoutTxProgram(lucid, contracts, {
+        hubOracleRefInput,
+        feeInput: feeInputs[0],
+        payoutInput,
+        referenceScripts,
+        reserveInput: reserve,
+      });
+
+    const refused = expectLeft(
+      await Effect.runPromise(Effect.either(funding(planted))),
+    );
+    expect(refused.message).toMatch(/failed script execution\s+Spend\[\d+\]/);
+
+    const selected = SDK.selectReserveFundingInput(
+      reserveUtxos,
+      SDK.subtractAssets(
+        { lovelace: 7_000_000n },
+        SDK.removeAssetUnit(payoutInput.assets, payoutUnit, 1n),
+      ),
+      lucid.config().protocolParameters!.coinsPerUtxoByte,
+    );
+    expect(selected).toEqual(reserveInput);
+    const addFunds = await Effect.runPromise(funding(selected!));
+    await lucid.awaitTx(await submitWithWallet(addFunds.tx));
+    expect(
+      findUtxoWithUnit(
+        await lucid.utxosAt(contracts.payout.spendingScriptAddress),
+        payoutUnit,
+      ).assets.lovelace,
+    ).toBe(7_000_000n);
+    expect(await lucid.utxosByOutRef([planted])).toHaveLength(1);
+  });
+
   it("builds and submits absorb, initialize, reserve collection, and payout conclusion", async () => {
     const {
       beneficiary,
@@ -1618,6 +1696,9 @@ describe("reserve/payout transaction builder primitives", () => {
     );
     expect(absorb.layout.reserveOutputIndex).toBeGreaterThanOrEqual(0n);
     expectAbsorbRedeemerLayout(absorb);
+    // The continued predecessor is protected until this window's upper bound
+    // plus the deployment duration, so retirements keep the window short.
+    expect(validityWindowSlots(absorb.tx)).toBe(180n);
     await lucid.awaitTx(await submitWithWallet(absorb.tx));
     expect(
       (await lucid.utxosAt(contracts.deposit.spendingScriptAddress)).some(
@@ -1650,6 +1731,7 @@ describe("reserve/payout transaction builder primitives", () => {
     );
     expect(initialize.layout.payoutOutputIndex).toBeGreaterThanOrEqual(0n);
     expectInitializeRedeemerLayout(initialize, contracts);
+    expect(validityWindowSlots(initialize.tx)).toBe(180n);
     await lucid.awaitTx(await submitWithWallet(initialize.tx));
 
     const initializedPayout = findUtxoWithUnit(
@@ -2096,8 +2178,9 @@ describe("reserve/payout transaction builder primitives", () => {
     expect(String(expectLeft(drift).cause)).toContain(
       "immutable facts or original Value",
     );
+    const protectedUntil = BigInt(Date.now() + 1_000_000);
     const protectedFixture = await makeReserveLifecycleBuilderFixture({
-      protectedUntil: BigInt(Date.now() + 1_000_000),
+      protectedUntil,
     });
     const protectedResult = await Effect.runPromise(
       Effect.either(
@@ -2116,10 +2199,56 @@ describe("reserve/payout transaction builder primitives", () => {
         ),
       ),
     );
-    expect(String(expectLeft(protectedResult).cause)).toContain(
-      "still protected",
-    );
+    const protectedCause = expectLeft(protectedResult).cause;
+    expect(String(protectedCause)).toContain("still protected");
+    // Callers wait on the exact bound the builder refused below.
+    expect(protectedCause).toBeInstanceOf(SDK.HistoryRetirementProtectedError);
+    expect(
+      (protectedCause as SDK.HistoryRetirementProtectedError).protectedUntilMs,
+    ).toBe(protectedUntil);
+    expect(
+      (protectedCause as SDK.HistoryRetirementProtectedError)
+        .protectionDurationMs,
+    ).toBe(protectedFixture.history.deposit.recipe.protectionDurationMs);
   });
+
+  it.each(["absorb", "initialize"] as const)(
+    "%s waits out a protected Order, then rebuilds and submits",
+    async (retirement) => {
+      // Far enough ahead to outlast a cold fixture build and the first build.
+      const protectedUntil = BigInt(Date.now() + 12_000);
+      const f = await makeReserveLifecycleBuilderFixture({ protectedUntil });
+      const common = {
+        hubOracleRefInput: f.hubOracleRefInput,
+        referenceScripts: f.referenceScripts,
+        referenceScriptsAddress: f.referenceScriptsAddress,
+        settlementRefInput: f.settlementRefInput,
+      };
+      // Without protection at the first build nothing here would wait.
+      expect(Number(protectedUntil) - Date.now()).toBeGreaterThan(4_000);
+      const txHash = await Effect.runPromise(
+        retirement === "absorb"
+          ? submitAbsorbAfterProtectionProgram(f.lucid, f.contracts, {
+              ...common,
+              deposit: f.deposit,
+              membershipProof: f.depositMembershipProof,
+            })
+          : submitInitializePayoutAfterProtectionProgram(f.lucid, f.contracts, {
+              ...common,
+              withdrawal: f.withdrawal,
+              membershipProof: f.withdrawalMembershipProof,
+            }),
+      );
+      expect(Date.now()).toBeGreaterThanOrEqual(
+        Number(protectedUntil) + SUBMIT_SLOT_LENGTH_MS,
+      );
+      const [retired] = await f.lucid.utxosByOutRef([
+        retirement === "absorb" ? f.deposit.utxo : f.withdrawal.utxo,
+      ]);
+      expect(retired).toBeUndefined();
+      expect(txHash).toMatch(/^[0-9a-f]{64}$/);
+    },
+  );
 
   it("rejects explicit fee inputs that overlap protected protocol inputs", async () => {
     const protocolInput = mkUtxo("10", 0);

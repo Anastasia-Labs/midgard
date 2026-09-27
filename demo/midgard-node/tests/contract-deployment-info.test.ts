@@ -905,7 +905,9 @@ describe("contract deployment info", () => {
           ...invalidNetwork,
           manifestId: computeDeploymentManifestId(invalidNetwork),
         }),
-      ).toThrow(/Mainnet, Preprod, Preview, or Custom/);
+      ).toThrow(
+        "Deployment profile, digest, and network must match the compiled profile",
+      );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

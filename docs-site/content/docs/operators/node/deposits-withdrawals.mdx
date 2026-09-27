@@ -46,7 +46,6 @@ flowchart LR
 | Command                               | Effect                                                                                                                  |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `submit-deposit`                      | Builds and submits the L1 deposit transaction. Funds move to the deposit validator.                                     |
-| `project-deposits-once`               | Projects due deposits into the local mempool ledger; their spendability also requires confirmed-header assignment.      |
 | `reconcile deposit-projected`         | Inspects visibility/projection; `--repair` fetches visible deposits and projects due events.                            |
 | `absorb-confirmed-deposit-to-reserve` | Moves a settled deposit's funds into the L1 protocol reserve using its settlement proof.                                |
 | `reconcile-deposit-submission`        | Checks a persisted deposit submission against provider evidence before retry; unresolved observations remain ambiguous. |
@@ -64,11 +63,10 @@ so a transaction cannot spend that block's newly introduced deposit.
   order and reserve balance before submitting a payout.
 </RiskCallout>
 
-| Command                  | Effect                                                                                  |
-| ------------------------ | --------------------------------------------------------------------------------------- |
-| `submit-withdrawal`      | Builds and submits the L1 withdrawal order. Starts the withdrawal, does not pay it out. |
-| `fetch-withdrawals-once` | Reads pending L1 withdrawal orders and records them locally, so they can be classified. |
-| `withdrawal-status`      | Reports the order's classification and payout progress. Read-only.                      |
+| Command             | Effect                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `submit-withdrawal` | Builds and submits the L1 withdrawal order. Starts the withdrawal, does not pay it out. |
+| `withdrawal-status` | Reports the order's classification and payout progress. Read-only.                      |
 
 A withdrawal order is classified before it is paid. An order can be found invalid, for
 example `NonExistentWithdrawalUtxo` or `IncorrectWithdrawalOwner`. Payment happens

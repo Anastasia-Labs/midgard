@@ -3,6 +3,7 @@ import "./utils.js";
 import { Effect, Ref } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../src/services/history-commit-window.js";
 import { Globals, NodeConfig } from "../src/services/index.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
@@ -271,6 +272,47 @@ describe("block commitment provider-evidence preflight", () => {
       commitWorkerActive: false,
       pipelinePhase: "idle",
     });
+  });
+
+  // The worker caps a source-owned commit to the current shift, so the
+  // pre-lease alignment and the recheck of its due work must ask only for the
+  // landing margin. Asking for the long-window buffer idled the worker for the
+  // last 419 s of every shift and started an appointed first shift after the
+  // ends the worker builds.
+  it("aims pre-lease scheduler alignment and its due-work recheck at the history landing margin", async () => {
+    const nowMs = 1_800_000_000_000;
+    slotAwareDueWorkRegistry.register({
+      kind: "commit_scheduler_refresh",
+      key: "block_commitment",
+      callerLabel: "test",
+      reason: "test",
+      observedSlot: 0,
+      dueSlot: 1,
+      dueAtMs: nowMs,
+      waitMs: 0,
+      slotSource: "test",
+      dependencyKey: "scheduler=scheduler#0",
+      invalidationKey: "scheduler=scheduler#0",
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    try {
+      await runAction();
+    } finally {
+      now.mockRestore();
+    }
+
+    // [target commit end, scheduler refresh allowed]: the due-work recheck
+    // first, then the alignment that may refresh.
+    expect(
+      fetchRealStateQueueWitnessContextMock.mock.calls.map((call) => [
+        call[2],
+        call[6],
+      ]),
+    ).toStrictEqual([
+      [nowMs + HISTORY_COMMIT_LANDING_MARGIN_MS, false],
+      [nowMs + HISTORY_COMMIT_LANDING_MARGIN_MS, true],
+    ]);
+    expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
   });
 
   it("reaches the mutation lease after successful provider evidence and detailed alignment", async () => {

@@ -11,6 +11,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import { type CommitteeConfig, l1SourceAuthorityDigest } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
+import type { DaBondFundingCheck } from "./coordinator/lucid-submitter.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import type {
   DaGossipMessageHandler,
@@ -272,10 +273,13 @@ export class CommitteeService {
   > = new Map();
   /**
    * When a tick last moved the durable replay anchor forward while catching
-   * up on history too long for one tick. Such a tick accepts no L1 view, but
-   * it is progress on one.
+   * up on history too long for one tick, or was seen moving the chain-sync
+   * cursor toward the tip. Such a tick accepts no L1 view, but it is progress
+   * on one.
    */
   private l1ProgressAtMs: number | undefined;
+  /** The chain-sync catch-up cursor slot `latestL1ProgressAtMs` last saw. */
+  private chainSyncCatchUpCursorSlot: number | undefined;
   /**
    * Stored payloads (`headerHash:payloadSha256`) whose cached malformed or
    * root-mismatch verdict this process has already re-checked. A cached
@@ -324,9 +328,21 @@ export class CommitteeService {
 
   /**
    * When a tick last made authenticated progress toward an L1 view without
-   * reaching one: it moved the durable replay anchor while catching up.
+   * reaching one: it moved the durable replay anchor while catching up, or
+   * local chain-sync, still short of the tip inside one tick, moved its cursor
+   * since the previous call.
    */
   latestL1ProgressAtMs(): number | undefined {
+    const chainSyncCatchUp = (
+      this.deps.stateQueueProvider as Partial<ChainSyncReplayProvider>
+    ).chainSyncCatchUpProgress?.();
+    if (
+      chainSyncCatchUp !== undefined &&
+      chainSyncCatchUp.cursorSlot !== this.chainSyncCatchUpCursorSlot
+    ) {
+      this.l1ProgressAtMs = (this.deps.now?.() ?? new Date()).getTime();
+    }
+    this.chainSyncCatchUpCursorSlot = chainSyncCatchUp?.cursorSlot;
     return this.l1ProgressAtMs;
   }
 
@@ -446,6 +462,7 @@ export class CommitteeService {
     args: {
       readonly localPeerId?: string;
       readonly l1SubmitterPreflight?: CommitteeL1SubmitterPreflightSnapshot;
+      readonly l1SubmitterBondFunding?: DaBondFundingCheck;
       readonly retention?: CommitteeRetentionReadinessSnapshot;
     } = {},
   ): Promise<CommitteeReadinessSnapshot> {
@@ -584,6 +601,11 @@ export class CommitteeService {
       l1SubmitterPreflight.status === "failed"
     ) {
       reasons.push("L1 submitter preflight failed");
+    }
+    if (args.l1SubmitterBondFunding?.sufficient === false) {
+      reasons.push(
+        `l1_submitter_bond_funding_short: plainAdaLovelace=${args.l1SubmitterBondFunding.plainAdaLovelace.toString()}, requiredLovelace=${args.l1SubmitterBondFunding.requiredLovelace.toString()}, checkedAt=${args.l1SubmitterBondFunding.checkedAt}`,
+      );
     }
     if (args.retention?.status === "not_checked") {
       reasons.push("retention check has not completed");

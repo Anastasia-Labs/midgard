@@ -240,6 +240,54 @@ describe("native canonical root recovery", () => {
     await assertAncestorContents(service, plan.targetRoot);
   });
 
+  it("holds the restore until an in-flight diagnostics read has finished on the displaced child", async () => {
+    // The read is parked after taking the current child and before asking it,
+    // as a readiness probe is when the restore arrives. An ungated restore
+    // would close that child under it and commit first.
+    const events: string[] = [];
+    let holdRead = false;
+    let readParked!: () => void;
+    const parked = new Promise<void>((resolve) => (readParked = resolve));
+    let releaseRead!: () => void;
+    const released = new Promise<void>((resolve) => (releaseRead = resolve));
+    const { service, plan } = await fixture(async (point) => {
+      if (point === "diagnostics_before_request" && holdRead) {
+        holdRead = false;
+        readParked();
+        await released;
+        events.push("read_released");
+      }
+      if (point === "before_root_restore_batch") {
+        events.push("restore_batch");
+        releaseRead();
+      }
+    });
+    holdRead = true;
+    const reading = service.diagnostics();
+    await parked;
+    const restoring = service.restoreCanonicalRoot(plan);
+    // A gated restore stays parked behind the read for this whole interval.
+    const timer = setTimeout(releaseRead, 2_000);
+    try {
+      expect((await reading).durableRoot).toBe(plan.expectedRoot);
+      await restoring;
+    } finally {
+      clearTimeout(timer);
+    }
+    expect(events).toEqual(["read_released", "restore_batch"]);
+    await assertAncestorContents(service, plan.targetRoot);
+  });
+
+  it("still refuses to restore under an in-flight mutating operation", async () => {
+    const { service, plan } = await fixture();
+    const forking = service.fork(plan.expectedRoot);
+    await expect(service.restoreCanonicalRoot(plan)).rejects.toThrow(
+      /requires drained operations/,
+    );
+    await service.discard(await forking);
+    expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
+  });
+
   it("rejects reuse of a recovery identity for a different plan after restart", async () => {
     const { service, options, plan } = await fixture();
     await service.restoreCanonicalRoot(plan);
@@ -268,16 +316,26 @@ describe("native canonical root recovery", () => {
       const { service, options, plan } = await fixture((observed) => {
         if (observed === point) throw new Error(`injected:${point}`);
       });
+      expect(service.terminalFailure()).toBeUndefined();
       await expect(service.restoreCanonicalRoot(plan)).rejects.toThrow(
         `injected:${point}`,
       );
       if (point === "after_root_restore_batch_before_ack") {
+        // Committed but not installed: the node must exit, not stay up refusing.
+        const terminal = service.terminalFailure();
+        expect(terminal?.message).toMatch(/requires process restart/);
+        expect((terminal?.cause as Error | undefined)?.message).toBe(
+          `injected:${point}`,
+        );
         await expect(service.diagnostics()).rejects.toThrow(
           /requires process restart/,
         );
         await expect(service.fork(plan.expectedRoot)).rejects.toThrow(
           /requires process restart/,
         );
+      } else {
+        // Refused before the marker moved: the old root still serves.
+        expect(service.terminalFailure()).toBeUndefined();
       }
       await close(service);
       const committed = point === "after_root_restore_batch_before_ack";

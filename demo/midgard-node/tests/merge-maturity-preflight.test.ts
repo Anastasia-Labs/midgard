@@ -27,6 +27,7 @@ const fetchStateQueueSnapshotProgramMock = vi.hoisted(() => vi.fn());
 const buildAndSubmitMergeTxMock = vi.hoisted(() => vi.fn());
 const captureMergeLocalLedgerGateMock = vi.hoisted(() => vi.fn());
 const fetchCanonicalMergeCandidateReadinessMock = vi.hoisted(() => vi.fn());
+const finalizeLandedMergesProgramMock = vi.hoisted(() => vi.fn());
 const tryWithLeaseMock = vi.hoisted(() => vi.fn());
 const revalidateMock = vi.hoisted(() => vi.fn());
 
@@ -46,6 +47,7 @@ vi.mock("../src/transactions/state-queue/merge-to-confirmed-state.js", () => ({
   captureMergeLocalLedgerGate: captureMergeLocalLedgerGateMock,
   fetchCanonicalMergeCandidateReadiness:
     fetchCanonicalMergeCandidateReadinessMock,
+  finalizeLandedMergesProgram: finalizeLandedMergesProgramMock,
   mergeSemanticSkipResult: (readiness: {
     readonly status:
       | "skipped_oldest_block_unattested"
@@ -314,10 +316,14 @@ describe("merge maturity semantic preflight", () => {
     buildAndSubmitMergeTxMock.mockReset();
     captureMergeLocalLedgerGateMock.mockReset();
     fetchCanonicalMergeCandidateReadinessMock.mockReset();
+    finalizeLandedMergesProgramMock.mockReset();
     tryWithLeaseMock.mockReset();
     revalidateMock.mockReset();
     switchToOperatorsMergingWalletMock.mockReset();
     runProducerMock.mockReset();
+    finalizeLandedMergesProgramMock.mockImplementation(() =>
+      Effect.succeed([]),
+    );
 
     fetchStateQueueSnapshotProgramMock.mockImplementation(
       (
@@ -368,6 +374,49 @@ describe("merge maturity semantic preflight", () => {
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
     expect(fetchStateQueueSnapshotProgramMock).not.toHaveBeenCalled();
     expect(switchToOperatorsMergingWalletMock).not.toHaveBeenCalled();
+  });
+
+  it("finalizes landed merges before any skip, and a failed catch-up stops the attempt", async () => {
+    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
+      Effect.succeed(makeCandidate("skipped_oldest_block_not_mature")),
+    );
+
+    // An early skip still runs the catch-up first, under the permit.
+    const permits: (HistoryProducerPermit | null)[] = [];
+    finalizeLandedMergesProgramMock.mockImplementation(() =>
+      Effect.gen(function* () {
+        const permit = yield* Effect.serviceOption(HistoryProducer);
+        permits.push(Option.getOrNull(permit));
+        return [];
+      }),
+    );
+    expect(await runMergeAction(false)).toMatchObject({
+      status: "skipped_oldest_block_not_mature",
+    });
+    expect(finalizeLandedMergesProgramMock).toHaveBeenCalledTimes(1);
+    expect(finalizeLandedMergesProgramMock).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        stateQueueAddress: "addr_test1statequeue",
+        stateQueuePolicyId: "00".repeat(28),
+      },
+    );
+    expect(permits).toEqual([stubPermit]);
+
+    // A catch-up failure fails the attempt: nothing is built on top of a
+    // landed merge that is not finalized.
+    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
+      Effect.succeed(makeCandidate("ready")),
+    );
+    finalizeLandedMergesProgramMock.mockImplementation(() =>
+      Effect.fail(new Error("landed merge finalization failed")),
+    );
+    await expect(runMergeAction(true)).rejects.toThrow(
+      "landed merge finalization failed",
+    );
+    expect(fetchCanonicalMergeCandidateReadinessMock).toHaveBeenCalledTimes(1);
+    expect(tryWithLeaseMock).not.toHaveBeenCalled();
+    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
   });
 
   it("skips DA-unattested candidates before taking the mutation lease", async () => {
@@ -447,12 +496,24 @@ describe("merge maturity semantic preflight", () => {
       }),
     );
 
+    const attemptStartedAt = Date.now();
     const result = await runMergeAction(false);
+    const attemptEndedAt = Date.now();
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_local_ledger_not_ready",
       reason: "local_submit_ledger_still_behind_after_wait",
     });
+    // The confirmation wait ends 30 s before the 180 s hold does, leaving
+    // the local finalization room inside the hold.
+    const { confirmationDeadlineMs } = buildAndSubmitMergeTxMock.mock
+      .calls[0]![3] as { readonly confirmationDeadlineMs: number };
+    expect(confirmationDeadlineMs).toBeGreaterThanOrEqual(
+      attemptStartedAt + 150_000,
+    );
+    expect(confirmationDeadlineMs).toBeLessThanOrEqual(
+      attemptEndedAt + 150_000,
+    );
     expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
     expect(fetchCanonicalMergeCandidateReadinessMock).toHaveBeenCalledTimes(2);
     expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(1);
@@ -482,12 +543,16 @@ describe("merge history producer permit", () => {
       buildAndSubmitMergeTxMock,
       captureMergeLocalLedgerGateMock,
       fetchCanonicalMergeCandidateReadinessMock,
+      finalizeLandedMergesProgramMock,
       tryWithLeaseMock,
       revalidateMock,
       switchToOperatorsMergingWalletMock,
       runProducerMock,
     ])
       mock.mockReset();
+    finalizeLandedMergesProgramMock.mockImplementation(() =>
+      Effect.succeed([]),
+    );
     fetchStateQueueSnapshotProgramMock.mockImplementation(
       (
         _lucid: unknown,

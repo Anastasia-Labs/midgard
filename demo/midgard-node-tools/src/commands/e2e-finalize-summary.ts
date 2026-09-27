@@ -418,7 +418,7 @@ export const REQUIRED_FRESH_E2E_STEP_IDS = [
   "da-libp2p-bind-listen-preflight",
   "midgard-node-ready",
   "submit-deposit",
-  "project-deposits",
+  "deposit-projected",
   "submit-l2-transfer-a",
   "submit-l2-transfer-b",
   "await-automatic-merge",

@@ -123,6 +123,8 @@ export interface NativeMpfOwnerService extends NativeMpfOwnerClient {
   recover(replay: PersistedNativeMpfReplay): Promise<void>;
   restoreCanonicalRoot(plan: NativeMpfCanonicalRootRecovery): Promise<void>;
   diagnostics(): Promise<NativeMpfOwnerDiagnostics>;
+  /** Set once the owner can no longer operate in this process. */
+  terminalFailure(): Error | undefined;
   close(): Promise<void>;
 }
 

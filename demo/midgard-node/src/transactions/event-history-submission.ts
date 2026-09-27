@@ -9,7 +9,14 @@ import {
   type UTxO,
   validatorToRewardAddress,
 } from "@lucid-evolution/lucid";
-import { Data as EffectData, Effect, Option, Runtime } from "effect";
+import {
+  Clock,
+  Data as EffectData,
+  Duration,
+  Effect,
+  Option,
+  Runtime,
+} from "effect";
 
 import * as Journal from "../database/eventHistorySubmissions.js";
 import { Database } from "../services/database.js";
@@ -230,14 +237,22 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
   ) => Effect.Effect<void, F, Database>;
   readonly nonceInput?: Pick<UTxO, "txHash" | "outputIndex">;
   readonly scriptReference?: UTxO;
+  /** Publication and confirmation budget. The deadline also covers the
+   * recipe's worst-case predecessor-protection wait. */
   readonly timeoutMs?: number;
 }) =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<Database>();
     const run = Runtime.runPromise(runtime);
+    const now = () => Runtime.runSync(runtime)(Clock.currentTimeMillis);
     const wrap = (cause: unknown) =>
       new HistorySubmissionError({
-        message: `History submission ${submissionId} requires reconciliation: ${String(cause)}`,
+        // With no transaction in flight, the journal resumes the same request.
+        message:
+          cause instanceof SDK.EventHistorySubmissionPendingError &&
+          cause.resumeAfterMs !== undefined
+            ? `History submission ${submissionId} has no transaction in flight; rerun the same submission ID after ${new Date(cause.resumeAfterMs).toISOString()}: ${cause.message}`
+            : `History submission ${submissionId} requires reconciliation: ${String(cause)}`,
         submissionId,
         cause,
       });
@@ -362,6 +377,7 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
           row = await run(Journal.saveCheckpoint(row, checkpoint));
         };
         const transport = historySubmissionTransport(lucid, walletAddress);
+        const retryDelayMs = 1_000;
         const submit = async (
           tx: ReturnType<LucidEvolution["fromTx"]>,
           attempt: SDK.EventHistorySubmissionAttempt,
@@ -375,10 +391,13 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
           request,
           checkpoint: row.checkpoint,
           maxAttempts: 4,
-          deadlineMs: Date.now() + timeoutMs,
+          deadlineMs:
+            now() +
+            timeoutMs +
+            SDK.eventHistoryProtectionWaitBoundMs(history.recipe),
           validityDurationMs: 180_000,
           outputVisibilityAttempts: 8,
-          retryDelayMs: 1_000,
+          retryDelayMs,
           driver: {
             save,
             submit,
@@ -407,10 +426,18 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
                 )
                 .sort(compareOutRefs);
             },
-            now: Date.now,
-            waitUntil: async (target) => {
-              await new Promise((resolve) =>
-                setTimeout(resolve, Math.max(0, target - Date.now())),
+            now,
+            waitUntil: (target) => {
+              const waitMs = Math.max(0, target - now());
+              return run(
+                Effect.gen(function* () {
+                  // Only predecessor-protection waits outlast a retry delay.
+                  if (waitMs > retryDelayMs)
+                    yield* Effect.logInfo(
+                      `History submission ${submissionId} is waiting until ${new Date(target).toISOString()} for its list predecessor's protection to end; if interrupted, rerun the same submission ID`,
+                    );
+                  yield* Effect.sleep(Duration.millis(waitMs));
+                }),
               );
             },
           },

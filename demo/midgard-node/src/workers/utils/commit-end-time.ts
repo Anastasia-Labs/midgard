@@ -1,3 +1,4 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
@@ -8,11 +9,10 @@ export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS = 5 * 60 * 1000;
 // lookups under provider latency; keep enough validity for submission after
 // the witness context is assembled without exceeding on-chain range limits.
 export const COMMIT_DEFAULT_MINIMUM_FUTURE_BUFFER_MS = 240_000;
-export const COMMIT_VALIDITY_MAX_RANGE_MS = 8 * 60 * 1_000;
 export const COMMIT_VALIDITY_BACKDATE_MS = 60 * 1_000;
 const COMMIT_SLOT_ALIGNMENT_MARGIN_MS = 1_000;
 export const COMMIT_MINIMUM_FUTURE_BUFFER_MS =
-  COMMIT_VALIDITY_MAX_RANGE_MS -
+  SDK.COMMIT_MAX_VALIDITY_RANGE_MS -
   COMMIT_VALIDITY_BACKDATE_MS -
   COMMIT_SLOT_ALIGNMENT_MARGIN_MS;
 export const COMMIT_MIN_PRE_WITNESS_BUDGET_MS = 6 * 60 * 1_000;
@@ -133,12 +133,12 @@ export const resolveCommitValidityInterval = ({
     currentSlotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
   );
   const minimumRangeBoundedValidFromMs =
-    validToMs - COMMIT_VALIDITY_MAX_RANGE_MS;
+    validToMs - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
   let validFromMs = alignUnixTimeToSlotBoundary(
     lucid,
     Math.max(backdatedCurrentSlotStartMs, minimumRangeBoundedValidFromMs),
   );
-  if (validToMs - validFromMs > COMMIT_VALIDITY_MAX_RANGE_MS) {
+  if (validToMs - validFromMs > SDK.COMMIT_MAX_VALIDITY_RANGE_MS) {
     validFromMs = alignedUnixTimeStrictlyAfter(
       lucid,
       minimumRangeBoundedValidFromMs,
@@ -148,7 +148,7 @@ export const resolveCommitValidityInterval = ({
   if (
     !Number.isSafeInteger(validFromMs) ||
     validFromMs >= validToMs ||
-    inclusiveUpperBoundMs - validFromMs > COMMIT_VALIDITY_MAX_RANGE_MS
+    inclusiveUpperBoundMs - validFromMs > SDK.COMMIT_MAX_VALIDITY_RANGE_MS
   ) {
     throw new Error(
       `Commit validity interval is invalid: valid_from_ms=${validFromMs.toString()},valid_to_ms=${validToMs.toString()},inclusive_upper_bound_ms=${inclusiveUpperBoundMs.toString()}`,
@@ -254,7 +254,7 @@ export const resolveCommitEndTimeFit = ({
  * The latest inclusive header end a commit built in `currentSlot` can carry.
  * The header end is the transaction's inclusive upper bound, and
  * `resolveCommitValidityInterval` backdates the lower bound to one minute
- * before the submit slot within the on-chain 480 s range. An end past this
+ * before the submit slot within the profile's validity range. An end past this
  * point would push the lower bound after the submit slot, and the ledger would
  * not admit the transaction yet.
  */
@@ -332,7 +332,7 @@ export const resolveLatestFeasibleCommitEndTime = ({
  * history horizon is a cap, never a floor: the end is the latest one that
  * every cap admits, namely the event horizon and ingestion barriers, the
  * submit-slot validity cap, the operator's current scheduler window when the
- * planner selected it, and Q61's append fence when the queue head is
+ * planner selected it, and Q61's append fence while any pending node is
  * unattested.
  */
 export const resolveHistoryCommitEndTime = ({

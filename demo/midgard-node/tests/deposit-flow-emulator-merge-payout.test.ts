@@ -35,7 +35,6 @@ import {
   expectedAuthenticatedEventRoot,
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
-  fetchWithdrawalsOnceProgram,
   findUtxoWithUnit,
   ImmutableDB,
   initializeNodeRuntime,
@@ -54,6 +53,7 @@ import {
   processedTxFromValidatedTx,
   type QueuedTx,
   randomUUID,
+  reconcileVisibleWithdrawalUTxOs,
   reserveUtxosProgram,
   resetActiveRuntimePaths,
   resolveEventSettlementProofProgram,
@@ -938,12 +938,12 @@ describe.sequential("deposit flow emulator", () => {
     vi.setSystemTime(new Date(fixture.emulator.now()));
 
     const withdrawalFetch = await runNodeCommandProgram(
-      fetchWithdrawalsOnceProgram,
+      reconcileVisibleWithdrawalUTxOs(),
       { fixture, lucidService, globals },
     );
     expect(withdrawalFetch.reconciledCount).toEqual(1);
     const withdrawalFetchAgain = await runNodeCommandProgram(
-      fetchWithdrawalsOnceProgram,
+      reconcileVisibleWithdrawalUTxOs(),
       { fixture, lucidService, globals },
     );
     expect(withdrawalFetchAgain.reconciledCount).toEqual(1);

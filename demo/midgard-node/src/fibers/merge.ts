@@ -41,6 +41,7 @@ import {
   captureMergeLocalLedgerGate,
   type ConfirmedMergeFinalization,
   fetchCanonicalMergeCandidateReadiness,
+  finalizeLandedMergesProgram,
   mergeSemanticSkipResult,
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
 import {
@@ -94,6 +95,16 @@ type CurrentMergeDueWorkEvidence = {
 
 export const SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS = 30_000;
 
+/** How long one merge attempt may hold the L1 control plane. */
+const MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS = 180_000;
+
+/**
+ * The part of the hold kept for the local finalization after an L1
+ * confirmation: the confirmation wait gives up this long before the hold
+ * ends, so a confirmed merge is finalized within its attempt.
+ */
+const MERGE_LOCAL_FINALIZATION_RESERVE_MS = 30_000;
+
 export const withScheduledMergeControlPlaneWait = <A, E, R>({
   globals,
   effect,
@@ -108,7 +119,7 @@ export const withScheduledMergeControlPlaneWait = <A, E, R>({
     {
       scope: "state_queue_merge",
       waitTimeoutMs,
-      maxHoldMs: 180_000,
+      maxHoldMs: MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS,
     },
     effect,
   );
@@ -286,6 +297,11 @@ const mergeActionWithL1ControlPlaneHeld = (
   Lucid | MidgardContracts | Database | Globals | NodeConfig
 > =>
   Effect.gen(function* () {
+    // The L1 control plane's hold began when this attempt acquired it.
+    const confirmationDeadlineMs =
+      Date.now() +
+      MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS -
+      MERGE_LOCAL_FINALIZATION_RESERVE_MS;
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
     yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
@@ -333,6 +349,12 @@ const mergeActionWithL1ControlPlaneHeld = (
       stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
+    // Finalize any merge that landed without its local finalization before
+    // deciding anything else, so even an attempt that skips catches it up.
+    // Its failure fails this attempt, and the attempt runs under the producer
+    // permit, so only while the history owner is Ready. A merge landing after
+    // this read is finalized by buildAndSubmitMergeTx before it builds on it.
+    yield* finalizeLandedMergesProgram(lucid.api, fetchConfig);
     const minQueueLength =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
@@ -546,6 +568,7 @@ const mergeActionWithL1ControlPlaneHeld = (
                 ),
               onConfirmedFinalization: (outcome) =>
                 Ref.set(confirmed, Option.some({ ...outcome, trigger })),
+              confirmationDeadlineMs,
               referenceScriptsAddress: lucid.referenceScriptsAddress,
               submitSlotSnapshot: lucid.submitSlotSnapshot,
             },
@@ -708,7 +731,10 @@ export const mergeAction = (
       const attempt = force
         ? withL1ControlPlane(
             globals,
-            { scope: "state_queue_merge", maxHoldMs: 180_000 },
+            {
+              scope: "state_queue_merge",
+              maxHoldMs: MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS,
+            },
             mergeActionWithL1ControlPlaneHeld(
               true,
               expectedHeaderHash,

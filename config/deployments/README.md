@@ -37,8 +37,9 @@ for three descendant blocks before signing and then lands three
 confirmation-serialized transactions, about two and a half minutes on average at
 twenty-second blocks; a four-minute timeout missed about one block in ten, and a
 single dropped transaction alone costs 160 seconds. Economics remain the bounded
-testing schedule. Runtime retention polling defaults to 60 seconds so the shorter
-L1 freshness deadline works.
+testing schedule. The node derives its retention defaults from the DA timeout:
+the retention poll runs every quarter timeout (150 seconds) and the L1 view
+deadline, `L1_VIEW_FATAL_MS`, is the timeout itself (ten minutes).
 
 `l1_finality.confirmation_depth` selects the L1 confirmation count. Both testing
 profiles use 3; `mainnet` and `preprod-public` use 30. The count is included in

@@ -238,6 +238,117 @@ describe("CommitteeService", () => {
     });
   });
 
+  it("is not ready while the L1 submitter's plain ADA cannot cover the next bond", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const service = new CommitteeService({
+      config,
+      store: await openJsonCommitteeStore(dir),
+      stateQueueProvider: withFinalSnapshot({
+        fetchStateQueueNodes: async () => [],
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    const check = {
+      checkedAt: "2026-09-26T00:00:00.000Z",
+      plainAdaLovelace: 12_049_999_999n,
+      requiredLovelace: 12_050_000_000n,
+    };
+
+    await expect(
+      service.readinessSnapshot({
+        l1SubmitterBondFunding: { ...check, sufficient: false },
+      }),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [
+        "l1_submitter_bond_funding_short: plainAdaLovelace=12049999999, requiredLovelace=12050000000, checkedAt=2026-09-26T00:00:00.000Z",
+      ],
+    });
+    await expect(
+      service.readinessSnapshot({
+        l1SubmitterBondFunding: {
+          ...check,
+          plainAdaLovelace: 12_050_000_000n,
+          sufficient: true,
+        },
+      }),
+    ).resolves.toMatchObject({ ready: true, reasons: [] });
+  });
+
+  it("keeps a tick whose local chain-sync is still moving toward the tip clear of the L1-view deadline", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
+    let catchUp:
+      | { events: number; cursorSlot: number; tipSlot: number }
+      | undefined;
+    const service = new CommitteeService({
+      config,
+      store: await openJsonCommitteeStore(dir),
+      stateQueueProvider: {
+        ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
+        chainSyncCatchUpProgress: () => catchUp,
+      } as StateQueueProvider,
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+      now: () => new Date(nowMs),
+    });
+    await service.initialize();
+    const fatalMs = 240_000;
+    const exits: number[] = [];
+    const runner = createCommitteeTickRunner({
+      // The first tick of a member far behind: synchronizeToTip walks
+      // chain-sync for longer than the deadline before any view exists.
+      tick: () => new Promise<never>(() => undefined),
+      runAvailabilityResponse: async () => undefined,
+      runRetention: async () => undefined,
+      latestL1View: () => service.latestL1View(),
+      latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
+      setRetentionReadiness: () => undefined,
+      l1ViewFatalMs: fatalMs,
+      startedAtMs: nowMs,
+      nowMs: () => nowMs,
+      write: () => undefined,
+      shutdown: async () => undefined,
+      exit: (code) => exits.push(code),
+      shutdownGraceMs: 10,
+    });
+    void runner.runTick();
+
+    for (let chunk = 1; chunk <= 3; chunk += 1) {
+      nowMs += fatalMs;
+      catchUp = {
+        events: chunk * 4_096,
+        cursorSlot: chunk * 1_000,
+        tipSlot: 90_000,
+      };
+      await runner.runTick();
+      expect(exits).toEqual([]);
+    }
+    // A cursor that stops moving is no progress.
+    nowMs += fatalMs + 1;
+    await runner.runTick();
+    expect(exits).toEqual([L1_VIEW_UNAVAILABLE_EXIT_CODE]);
+  });
+
   it("fetches, verifies, signs, and persists one finalized unattested header", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();

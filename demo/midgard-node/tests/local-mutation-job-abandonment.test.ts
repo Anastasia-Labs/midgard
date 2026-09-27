@@ -390,7 +390,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
   );
 
   it.effect(
-    "refuses a failed merge finalization and a failed local finalization without a journal, naming only those",
+    "refuses a failed local finalization without a journal and leaves failed and running merge finalizations to the runtime",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -407,9 +407,25 @@ describe("startup gate over unfinished local mutation jobs", () => {
             kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
           });
           yield* MutationJobsDB.markFailed(mergeJobId, "merge failed");
-          const refused = yield* startupGate;
-          expect(new Set(refused)).toEqual(
-            new Set([localJobId(orphan), mergeJobId]),
+          const crashedMergeJobId =
+            MutationJobsDB.confirmedMergeFinalizationJobId(
+              header("crashed-merge").toString("hex"),
+            );
+          yield* MutationJobsDB.start({
+            jobId: crashedMergeJobId,
+            kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
+          });
+          const { result: refused, logs } = yield* withLogs(startupGate);
+          expect(refused).toEqual([localJobId(orphan)]);
+          const handOffs = logs.filter((line) =>
+            line.includes("confirmed-merge finalization job"),
+          );
+          expect(handOffs).toHaveLength(2);
+          expect(handOffs.join("\n")).toContain(
+            `failed confirmed-merge finalization job ${mergeJobId}`,
+          );
+          expect(handOffs.join("\n")).toContain(
+            `running confirmed-merge finalization job ${crashedMergeJobId}`,
           );
         }),
       ),
@@ -431,7 +447,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
     ),
   );
 
-  it("classifies only a failed local finalization of a submitted, unfinalized block as runtime-owned", () => {
+  it("classifies merge finalizations and a failed local finalization of a submitted, unfinalized block as runtime-owned", () => {
     const job = (
       overrides: Partial<Record<MutationJobsDB.Columns, unknown>>,
     ): MutationJobsDB.Entry =>
@@ -466,17 +482,26 @@ describe("startup gate over unfinished local mutation jobs", () => {
         Status.ObservedWaitingStability,
       ),
     ).toBe("refuse");
-    expect(
-      classifyUnfinishedMutationJobOnStartup(
-        job({
-          [J.KIND]: MutationJobsDB.Kind.ConfirmedMergeFinalization,
-          [J.JOB_ID]: MutationJobsDB.confirmedMergeFinalizationJobId(
-            header("classified").toString("hex"),
+    // The merge fiber retries every merge finalization idempotently, failed
+    // or interrupted mid-way, whatever its journal records.
+    for (const status of [
+      MutationJobsDB.Status.Failed,
+      MutationJobsDB.Status.Running,
+    ])
+      for (const journalStatus of [...Object.values(Status), undefined])
+        expect(
+          classifyUnfinishedMutationJobOnStartup(
+            job({
+              [J.KIND]: MutationJobsDB.Kind.ConfirmedMergeFinalization,
+              [J.JOB_ID]: MutationJobsDB.confirmedMergeFinalizationJobId(
+                header("classified").toString("hex"),
+              ),
+              [J.STATUS]: status,
+            }),
+            journalStatus,
           ),
-        }),
-        Status.ObservedWaitingStability,
-      ),
-    ).toBe("refuse");
+          `${status}/${String(journalStatus)}`,
+        ).toBe("runtime");
     expect(
       classifyUnfinishedMutationJobOnStartup(
         job({ [J.JOB_ID]: "local_block_finalization:not-a-header" }),

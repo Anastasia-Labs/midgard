@@ -60,8 +60,9 @@ It is responsible for:
   mempool/immutable transaction CBOR. The writer never drops live-process rows:
   queue overflow falls back to an inline write, and graceful shutdown drains the
   queue.
-- The retention sweeper runs every `WAIT_BETWEEN_RETENTION_SWEEPS` ms (default
-  900000, 15 minutes).
+- The retention sweeper runs every `WAIT_BETWEEN_RETENTION_SWEEPS` ms. The
+  default is a quarter of the profile's DA attestation timeout, capped at 15
+  minutes: 900000 on the public profiles and 150000 on the testing profiles.
   `da_payloads` pruning always runs, whatever `RETENTION_DAYS` says. A payload is
   deleted once its block end time is past the challengeability horizon (10.5
   days) or its header was removed from the state queue under this deployment.
@@ -75,9 +76,10 @@ It is responsible for:
 - Each sweep reads the state queue from L1 first. If that read fails, the
   sweeper logs `retention_pass_skipped` and deletes no DA payload. Once the last
   successful read is older than `L1_VIEW_FATAL_MS`, the node exits non-zero.
-  The default is the DA attestation timeout (one hour, four default sweep
-  intervals). The value must be at least three sweep intervals and at most the
-  retention margin (4.5 days).
+  The default is the DA attestation timeout, four default sweep intervals: one
+  hour on the public profiles and ten minutes on the testing profiles. The value
+  must be at least three sweep intervals and at most the retention margin (4.5
+  days).
 
 ## Transaction Preparation Checks
 
@@ -326,8 +328,6 @@ pnpm listen
   Midgard deposit contract for a target L2 address. Submitted deposits are
   journaled before confirmation wait so timeouts can be reconciled by tx hash.
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
-- `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
-  project newly visible deposits into the local Midgard ledger view.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
 - The e2e step runner, service supervisor, run finalizer, stress-wallet
@@ -384,7 +384,10 @@ only the oldest queued block, and only under the running node's history
 producer permit. When the permit cannot be taken (a standalone CLI process
 holds no history owner; a node's owner may not be Ready) nothing runs: it
 reports `blocked` with `merge_producer_permit` evidence and points at the
-node's admin `GET /merge`, which answers `503` in the same situation.
+node's admin `GET /merge`, which answers `503` in the same situation. A merge
+that landed without its local finalization (a restart, a hold timeout or a
+history recovery during the confirmation wait) needs no repair: every merge
+attempt first finalizes each merge L1 confirmed that the database has not.
 
 If a reconciler reports `ambiguous`, do not blindly repeat the original
 state-changing step. Inspect the emitted evidence and next action first.

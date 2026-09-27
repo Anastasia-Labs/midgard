@@ -59,7 +59,6 @@ import {
   type NodeUtxo,
 } from "../src/commands/command-utils.js";
 import { resolveEventSettlementProofProgram } from "../src/commands/event-settlement-proof.js";
-import { fetchWithdrawalsOnceProgram } from "../src/commands/fetch-withdrawals-once.js";
 import { seedLatestLocalBlockBoundaryOnStartup } from "../src/commands/listen-startup.js";
 import {
   payoutStatusProgram,
@@ -110,6 +109,7 @@ import {
 } from "../src/fibers/block-commitment.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
 import { reconcileVisibleDepositUTxOs } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
+import { reconcileVisibleWithdrawalUTxOs } from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
@@ -3037,7 +3037,6 @@ export {
   Effect,
   encodeMidgardCekProgramMaterialSidecar,
   fetchStateQueueSnapshotProgram,
-  fetchWithdrawalsOnceProgram,
   ForcedTransactionsDB,
   ForeignTipReconciliationsDB,
   Globals,
@@ -3067,6 +3066,7 @@ export {
   Queue,
   randomUUID,
   reconcileVisibleDepositUTxOs,
+  reconcileVisibleWithdrawalUTxOs,
   Ref,
   reserveUtxosProgram,
   resolveCurrentOperatorSchedulerWindow,

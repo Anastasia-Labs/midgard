@@ -6,6 +6,7 @@ import {
   EntryWithTimeStamp,
 } from "../src/database/utils/tx.js";
 import { establishEffectiveEndTimeFromDecodedMempool } from "../src/mpf/index.js";
+import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../src/services/history-commit-window.js";
 import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
@@ -16,6 +17,7 @@ import {
   planCommitBatchBudgets,
   planEarliestCommitSchedulerDueWork,
   planSchedulerAwareCommitSelection,
+  schedulerAwareCommitWindowBudgets,
   selectCommitRoots,
   selectCommitTxCandidates,
   updateCommitBuildEwma,
@@ -409,6 +411,43 @@ describe("commit block planner", () => {
     expect(plan.candidateSelection).toBe(selection);
     expect(plan.userEventOnlyEndTime.getTime()).toBe(
       Date.parse("2026-01-01T00:06:00.000Z"),
+    );
+  });
+
+  it("caps a source-owned commit to the current shift only while the shift leaves the landing margin", () => {
+    const cap = Date.parse("2026-01-01T00:10:00.000Z");
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [mkTxEntry(1, new Date(cap - 300_000))],
+      processedMempoolTxs: [],
+    });
+    const planAt = (nowMs: number) =>
+      planSchedulerAwareCommitSelection({
+        candidateSelection: selection,
+        userEventOnlyEndTime: new Date(cap),
+        currentSchedulerWindow: {
+          schedulerOutRef: "aa#0",
+          operatorKeyHash: "operator",
+          startTimeMs: cap - 600_000,
+          endTimeMs: cap,
+        },
+        currentBlockStartTimeMs: cap - 600_000,
+        nowMs,
+        ...schedulerAwareCommitWindowBudgets(true),
+        currentWindowCommitEndTimeFit: fitInsideSchedulerWindow({
+          resolvedEndTimeMs: cap + 1,
+          maximumEndTimeMs: cap,
+        }),
+      });
+
+    // The header end, which is the commit's TTL, is the shift end, so the
+    // commit keeps at least the margin to land.
+    const lastCappedNowMs = cap - HISTORY_COMMIT_LANDING_MARGIN_MS;
+    expect(planAt(lastCappedNowMs)).toMatchObject({
+      status: "using_current_scheduler_window",
+      blockEndTimeCapMs: cap,
+    });
+    expect(planAt(lastCappedNowMs + 1).status).toBe(
+      "current_scheduler_budget_too_low",
     );
   });
 

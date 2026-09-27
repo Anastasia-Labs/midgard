@@ -6,6 +6,7 @@ import {
   waitForFile,
   writeScript,
 } from "@al-ft/midgard-test-support/temp-files";
+import { formatJson } from "midgard-node/commands/command-utils";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -124,6 +125,46 @@ describe("e2e step runner", () => {
     await expect(readFile(summary.rawLogPath, "utf8")).resolves.toContain(
       "prelude",
     );
+  });
+
+  it("parses the node CLI's pretty-printed JSON result", async () => {
+    const dir = await makeTempDir();
+    const result = {
+      txHash: "cd".repeat(32),
+      status: "submitted",
+      metadata: { depositEventId: "ef".repeat(36), lovelace: 12_000_000n },
+    };
+    const script = await writeScript(
+      dir,
+      "pretty-success.mjs",
+      [
+        "console.log('prelude { not json }');",
+        `process.stdout.write(${JSON.stringify(`${formatJson(result)}\n`)});`,
+        `console.log('submit-deposit completed: txHash=${result.txHash}');`,
+      ].join("\n"),
+    );
+
+    const summary = await runCommandStep({
+      id: "submit-deposit",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      rawLogPath: join(dir, "logs", "pretty-success.log"),
+    });
+
+    expect(summary.parsedJson).toEqual({
+      txHash: "cd".repeat(32),
+      status: "submitted",
+      metadata: { depositEventId: "ef".repeat(36), lovelace: "12000000" },
+    });
+    expect(summary.txObservations).toContainEqual({
+      txHash: "cd".repeat(32),
+      role: "submitted",
+      status: "submitted",
+      source: "parsedJson",
+      field: "$.txHash",
+      stepId: "submit-deposit",
+    });
   });
 
   it("does not promote generic JSON tx hashes without explicit tx status", async () => {

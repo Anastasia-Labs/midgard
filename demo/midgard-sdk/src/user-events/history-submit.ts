@@ -55,6 +55,10 @@ export class EventHistorySubmissionPendingError extends Error {
     readonly checkpoint: EventHistorySubmissionCheckpoint,
     message: string,
     readonly cause?: unknown,
+    /** Set only when the submission stopped on time or predecessor
+     * protection with no transaction in flight: the earliest time a rerun
+     * from this checkpoint can make progress. */
+    readonly resumeAfterMs?: number,
   ) {
     super(message);
     this.name = "EventHistorySubmissionPendingError";
@@ -79,6 +83,20 @@ export type EventHistorySubmissionDriver = {
   readonly now: () => number;
   readonly waitUntil: (unixTimeMs: number) => Promise<void>;
 };
+
+/** Admission lower bounds trail the local clock by this backoff, so a
+ * protected predecessor is retried this long after its protection ends. */
+const ADMISSION_LOWER_BOUND_BACKOFF_MS = 60_000;
+
+/** Longest predecessor-protection wait one admission attempt can meet. Any
+ * list mutation may use the maximum validity range, and its nodes stay
+ * protected for the recipe duration after that upper bound. A submission
+ * deadline must add this to its own publication and confirmation budget. */
+export const eventHistoryProtectionWaitBoundMs = (
+  recipe: Pick<EventHistoryBuildContext["recipe"], "protectionDurationMs">,
+): number =>
+  Number(MAX_VALIDITY_RANGE_LENGTH_MS + recipe.protectionDurationMs) +
+  ADMISSION_LOWER_BOUND_BACKOFF_MS;
 
 export type EventHistorySubmissionRequest = Omit<
   EventHistoryAdmission,
@@ -148,7 +166,7 @@ export const submitEventHistory = async ({
       outputVisibilityAttempts,
       retryDelayMs,
     ].every((value) => Number.isSafeInteger(value) && value > 0) ||
-    validityDurationMs <= 60_000 ||
+    validityDurationMs <= ADMISSION_LOWER_BOUND_BACKOFF_MS ||
     BigInt(validityDurationMs) > MAX_VALIDITY_RANGE_LENGTH_MS
   )
     throw new Error("Invalid bounded history submission timing or attempts");
@@ -188,12 +206,21 @@ export const submitEventHistory = async ({
     await driver.save(next);
     checkpoint = next;
   };
+  // Every checkTime and waitUntil runs after resolve() settled the pending
+  // attempt or before a broadcast saved one, so their deferrals are resumable.
   const checkTime = () => {
     const now = driver.now();
-    if (!Number.isSafeInteger(now) || now < 60_000 || now >= deadlineMs)
+    if (!Number.isSafeInteger(now) || now < 60_000)
       throw new EventHistorySubmissionPendingError(
         checkpoint,
-        "History submission deadline reached or clock invalid",
+        "History submission clock is invalid",
+      );
+    if (now >= deadlineMs)
+      throw new EventHistorySubmissionPendingError(
+        checkpoint,
+        "History submission deadline reached",
+        undefined,
+        now,
       );
     return now;
   };
@@ -202,6 +229,8 @@ export const submitEventHistory = async ({
       throw new EventHistorySubmissionPendingError(
         checkpoint,
         "History submission cannot wait past its deadline",
+        undefined,
+        Number.isSafeInteger(target) ? target : undefined,
       );
     await driver.waitUntil(target);
     checkTime();
@@ -354,8 +383,8 @@ export const submitEventHistory = async ({
         {
           ...request,
           externalData,
-          validFrom: now - 60_000,
-          validTo: now - 60_000 + validityDurationMs,
+          validFrom: now - ADMISSION_LOWER_BOUND_BACKOFF_MS,
+          validTo: now - ADMISSION_LOWER_BOUND_BACKOFF_MS + validityDurationMs,
         },
       );
     } catch (cause) {
@@ -366,17 +395,23 @@ export const submitEventHistory = async ({
       }
       if (!(cause instanceof EventHistoryPredecessorProtectedError))
         throw cause;
-      if (attempt === maxAttempts) break;
       // Round up the protection timestamp to a ledger slot, retaining the
       // production lower-bound backoff when attempting the mutation again.
       const protectedTime = Number(cause.protectedUntil);
       const slot = context.lucid.unixTimeToSlot(protectedTime);
       const atSlot = context.lucid.slotToUnixTime(slot);
-      await waitUntil(
+      const retryAt =
         (atSlot < protectedTime
           ? context.lucid.slotToUnixTime(slot + 1)
-          : atSlot) + 60_000,
-      );
+          : atSlot) + ADMISSION_LOWER_BOUND_BACKOFF_MS;
+      if (attempt === maxAttempts)
+        throw new EventHistorySubmissionPendingError(
+          checkpoint,
+          "History admission exhausted its attempts on a protected predecessor",
+          cause,
+          retryAt,
+        );
+      await waitUntil(retryAt);
       continue;
     }
     const outcome = await broadcast(
@@ -390,6 +425,6 @@ export const submitEventHistory = async ({
   }
   throw new EventHistorySubmissionPendingError(
     checkpoint,
-    "History admission exhausted its protection/input-conflict attempts",
+    "History admission exhausted its input-conflict attempts",
   );
 };

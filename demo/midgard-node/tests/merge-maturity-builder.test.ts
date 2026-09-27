@@ -108,6 +108,28 @@ const makeLink = () =>
     assetName: "",
   }) as SDK.StateQueueUTxO;
 
+// The root node at genesis: no earlier merge exists for the builder to
+// finalize before it builds.
+const genesisConfirmed = {
+  utxo: {
+    txHash: "cc".repeat(32),
+    outputIndex: 0,
+  },
+  datum: {
+    key: "Empty",
+    next: { Key: { key: headerHash } },
+    data: SDK.castConfirmedStateToData({
+      headerHash: SDK.GENESIS_HEADER_HASH,
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+      utxoRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      startTime: 0n,
+      endTime: 0n,
+      protocolVersion: 0n,
+    }),
+  },
+  assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+} as SDK.StateQueueUTxO;
+
 const configureCandidate = ({
   daAttestation,
   endTime,
@@ -120,7 +142,7 @@ const configureCandidate = ({
   } as SDK.Header;
   fetchConfirmedStateAndItsLinkProgramMock.mockImplementation(() =>
     Effect.succeed({
-      confirmed: {} as SDK.StateQueueUTxO,
+      confirmed: genesisConfirmed,
       link: makeLink(),
     }),
   );

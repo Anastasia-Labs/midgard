@@ -1,3 +1,4 @@
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   assetsEqual,
@@ -6,15 +7,11 @@ import {
   subtractAssets,
   valueToAssets,
 } from "@al-ft/midgard-sdk";
-import {
-  type Assets,
-  Data as LucidData,
-  toUnit,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { Data as LucidData, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { Clock, Effect, Option } from "effect";
 
 import * as WithdrawalsDB from "../database/withdrawals.js";
+import { SUBMIT_SLOT_LENGTH_MS } from "../local-ledger-slot.js";
 import {
   Database,
   Lucid,
@@ -44,6 +41,11 @@ export type EventIdConfig = {
   readonly eventId: string;
 };
 
+export type AddReserveFundsConfig = EventIdConfig & {
+  /** Reserve UTxO to spend instead of the automatic selection. */
+  readonly reserveOutRef?: string;
+};
+
 export type PayoutCommandResult = {
   readonly txHash: string;
   readonly eventId: string;
@@ -55,13 +57,82 @@ type PayoutByWithdrawalEvent = {
   readonly payoutUnit: string;
 };
 
-const contributesToNeed = (
-  reserveAssets: Readonly<Assets>,
-  neededAssets: Readonly<Assets>,
-): boolean =>
-  Object.entries(neededAssets).some(
-    ([unit, needed]) => needed > 0n && (reserveAssets[unit] ?? 0n) > 0n,
+/** Sleeps until the clock reads `wakeAtMs`. A timer can fire early against the
+ * clock (the event loop's cached time), so it re-arms for what remains. */
+const sleepUntil = (wakeAtMs: number): Effect.Effect<void> =>
+  Effect.flatMap(Clock.currentTimeMillis, (nowMs) =>
+    nowMs >= wakeAtMs
+      ? Effect.void
+      : Effect.zipRight(
+          Effect.sleep(wakeAtMs - nowMs),
+          Effect.suspend(() => sleepUntil(wakeAtMs)),
+        ),
   );
+
+/** Rebuilds a retirement once after its protection bound passes. The wait is
+ * bounded by the longest protection an honest mutation can set from now: a
+ * full validity window plus the list's protection duration. */
+export const retryAfterRetirementProtection = <A, E, R>(
+  retirement: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | Error, R> => {
+  const protection = (
+    error: E,
+  ): SDK.HistoryRetirementProtectedError | undefined =>
+    error instanceof SDK.ReservePayoutTxError &&
+    error.cause instanceof SDK.HistoryRetirementProtectedError
+      ? error.cause
+      : undefined;
+  const stillProtected = (until: bigint, cause: unknown) =>
+    new Error(
+      `History retirement is still protected; protected_until=${until.toString()}`,
+      { cause },
+    );
+  return retirement.pipe(
+    Effect.catchIf(
+      (error) => protection(error) !== undefined,
+      (error) =>
+        Effect.gen(function* () {
+          const { protectedUntilMs, protectionDurationMs } = protection(error)!;
+          const wakeAtMs = Number(protectedUntilMs) + SUBMIT_SLOT_LENGTH_MS;
+          const waitMs = wakeAtMs - (yield* Clock.currentTimeMillis);
+          const maxWaitMs =
+            Number(SDK.MAX_VALIDITY_RANGE_LENGTH_MS + protectionDurationMs) +
+            SUBMIT_SLOT_LENGTH_MS;
+          if (waitMs > maxWaitMs)
+            return yield* Effect.fail(stillProtected(protectedUntilMs, error));
+          yield* Effect.logInfo(
+            `History retirement is protected until ${protectedUntilMs.toString()}; waiting ${waitMs.toString()}ms before rebuilding`,
+          );
+          yield* sleepUntil(wakeAtMs);
+          return yield* retirement.pipe(
+            Effect.catchIf(
+              (retry) => protection(retry) !== undefined,
+              (retry) =>
+                Effect.fail(
+                  stillProtected(protection(retry)!.protectedUntilMs, retry),
+                ),
+            ),
+          );
+        }),
+    ),
+  );
+};
+
+/** Deposit absorption, waiting once for the protection bound it was refused
+ * below. */
+export const submitAbsorbAfterProtectionProgram = (
+  ...submission: Parameters<typeof submitAbsorbConfirmedDepositToReserveProgram>
+) =>
+  retryAfterRetirementProtection(
+    submitAbsorbConfirmedDepositToReserveProgram(...submission),
+  );
+
+/** Payout initialization, waiting once for the protection bound it was refused
+ * below. */
+export const submitInitializePayoutAfterProtectionProgram = (
+  ...submission: Parameters<typeof submitInitializePayoutProgram>
+) =>
+  retryAfterRetirementProtection(submitInitializePayoutProgram(...submission));
 
 const fetchReferenceScripts = (
   targets: readonly ReferenceScriptTarget[],
@@ -179,7 +250,7 @@ export const absorbConfirmedDepositToReserveProgram = (
         script: history.deposit.retirement.withdrawalScript,
       },
     ]);
-    const txHash = yield* submitAbsorbConfirmedDepositToReserveProgram(
+    const txHash = yield* submitAbsorbAfterProtectionProgram(
       lucidService.api,
       contracts,
       {
@@ -239,7 +310,7 @@ export const initializePayoutProgram = (
       },
       { name: "payout minting", script: contracts.payout.mintingScript },
     ]);
-    const txHash = yield* submitInitializePayoutProgram(
+    const txHash = yield* submitInitializePayoutAfterProtectionProgram(
       lucidService.api,
       contracts,
       {
@@ -322,7 +393,7 @@ const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
 };
 
 export const addReserveFundsToPayoutProgram = (
-  config: EventIdConfig,
+  config: AddReserveFundsConfig,
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
@@ -347,15 +418,52 @@ export const addReserveFundsToPayoutProgram = (
           cause,
         }),
     });
-    const reserve = reserveUtxos.find((utxo) =>
-      contributesToNeed(utxo.assets, remaining),
-    );
-    if (reserve === undefined) {
+    const coinsPerUtxoByte =
+      lucidService.api.config().protocolParameters?.coinsPerUtxoByte;
+    if (coinsPerUtxoByte === undefined) {
       return yield* Effect.fail(
-        new Error(
-          "No reserve UTxO contributes to the payout's remaining target.",
-        ),
+        new Error("Reserve funding needs live protocol parameters."),
       );
+    }
+    let reserve: UTxO | undefined;
+    if (config.reserveOutRef === undefined) {
+      reserve = SDK.selectReserveFundingInput(
+        reserveUtxos,
+        remaining,
+        coinsPerUtxoByte,
+      );
+      if (reserve === undefined) {
+        return yield* Effect.fail(
+          new Error(
+            "No spendable reserve UTxO can fund the payout's remaining target.",
+          ),
+        );
+      }
+    } else {
+      const requestedOutRef = config.reserveOutRef;
+      const requested = yield* Effect.try({
+        try: () => outRefLabel(parseOutRefLabel(requestedOutRef)),
+        catch: (cause) =>
+          new Error(
+            `--reserve-out-ref: ${cause instanceof Error ? cause.message : String(cause)}`,
+          ),
+      });
+      reserve = reserveUtxos.find((utxo) => outRefLabel(utxo) === requested);
+      if (reserve === undefined) {
+        return yield* Effect.fail(
+          new Error(`Reserve UTxO ${requested} is not at the reserve address.`),
+        );
+      }
+      const rejection = SDK.reserveFundingRejection(
+        reserve,
+        remaining,
+        coinsPerUtxoByte,
+      );
+      if (rejection !== undefined) {
+        return yield* Effect.fail(
+          new Error(`Reserve UTxO ${requested} ${rejection}.`),
+        );
+      }
     }
     const refs = yield* fetchReferenceScripts([
       { name: "reserve spending", script: contracts.reserve.spendingScript },

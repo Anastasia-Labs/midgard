@@ -218,8 +218,18 @@ const invalidStateQueueHeaderRecord = (): never => {
 
 const defaultPublicRetainedDaPoolFactory: PublicRetainedDaPoolFactory = ({
   databaseUrl,
-}): PublicRetainedDaPool =>
-  new Pool({
+}): PublicRetainedDaPool => {
+  const pool = new Pool({
     connectionString: databaseUrl,
     max: 4,
-  }) as unknown as PublicRetainedDaPool;
+  });
+  // An idle client that loses its connection (a server restart, an
+  // administrator's terminate) is re-emitted here; unhandled, it would crash
+  // the reader. The pool discards that client and the next query reconnects.
+  pool.on("error", (error) => {
+    process.stderr.write(
+      `${JSON.stringify({ event: "public_retained_da_pool_error", error: error.message })}\n`,
+    );
+  });
+  return pool as unknown as PublicRetainedDaPool;
+};

@@ -45,6 +45,7 @@ import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
 } from "./da-publication-trigger.js";
+import { nativeMpfWorkerInput } from "./native-mpf-worker-input.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 import {
   barrierWatermarksAreFresh,
@@ -770,13 +771,11 @@ export const runSpeculativeCommitBuilderOnce = (
       const nativeMpfInput =
         nativeMpfOwner === undefined
           ? undefined
-          : {
-              port: nativeMpfOwner.createWorkerPort(),
-              durableRoot: (yield* Effect.promise(() =>
-                nativeMpfOwner.diagnostics(),
-              )).durableRoot,
-              ownerBinarySha256: config.MPF_NATIVE_OWNER_BINARY_SHA256,
-            };
+          : yield* nativeMpfWorkerInput(
+              nativeMpfOwner,
+              "speculative-commit-builder",
+              config.MPF_NATIVE_OWNER_BINARY_SHA256,
+            );
       const candidate = yield* spawnSpeculativeSession({
         nativeMpf: nativeMpfInput,
         data: {

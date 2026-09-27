@@ -83,13 +83,18 @@ node "$TOOLS_CLI" create-l2-wallet \
 node "$TOOLS_CLI" stress-wallets:prepare \
   --count 64 \
   --lovelace-per-wallet 12000000 \
+  --verify-timeout-ms 1200000 \
   --out-dir .stress-wallets
 ```
 
 `stress-wallets:prepare` reads existing wallet JSON files, creates missing files
 only when `--create-missing` is passed, submits one deposit for each wallet that
-does not already have sufficient spendable L2 funding, runs deposit projection,
-and verifies each wallet through the node's `/utxos?address=...` endpoint. The
+does not already have sufficient spendable L2 funding, and waits until the
+running node's `/utxos?address=...` endpoint shows each wallet funded. The node
+ingests and projects the deposits itself; they become spendable once a
+confirmed header includes them. A deposit is due five minutes after its
+validity upper bound on the testing profiles, so the example allows 20 minutes
+instead of the five-minute default. The
 wallet directory contains private seed phrases and is gitignored.
 
 After preparation, pass the generated argument file to the stress runner. Use 16

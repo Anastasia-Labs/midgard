@@ -48,7 +48,11 @@ import {
   completeWithFinalLayoutProgram,
 } from "./reserve-payout/completion.js";
 import { formatLayout } from "./reserve-payout/diagnostics.js";
-import { fail, ReservePayoutTxError } from "./reserve-payout/errors.js";
+import {
+  fail,
+  HistoryRetirementProtectedError,
+  ReservePayoutTxError,
+} from "./reserve-payout/errors.js";
 import { fetchHubOracleReferenceProgram } from "./reserve-payout/hub-reference.js";
 import {
   disposableFeeInputCandidates,
@@ -110,9 +114,17 @@ export {
   valueToAssets,
 } from "./reserve-payout/assets.js";
 export type { BuiltReservePayoutTx } from "./reserve-payout/completion.js";
-export { ReservePayoutTxError } from "./reserve-payout/errors.js";
+export {
+  HistoryRetirementProtectedError,
+  ReservePayoutTxError,
+} from "./reserve-payout/errors.js";
 export type { ReservePayoutReferenceScripts } from "./reserve-payout/references.js";
 export { mergeReferenceScripts } from "./reserve-payout/references.js";
+export {
+  reserveFundingRejection,
+  reserveInputShapeRejection,
+  selectReserveFundingInput,
+} from "./reserve-payout/reserve-inputs.js";
 
 type CommonBuilderConfig = {
   readonly hubOracleRefInput?: UTxO;
@@ -342,6 +354,14 @@ const requireResolvedLayout = <L>(layout: L | undefined, label: string): L => {
   return layout;
 };
 
+/** The continued predecessor stays protected until this window's upper bound
+ * plus the deployment duration, so a short window lets the next retirement on
+ * the same list follow soon after, as it does after an admission. */
+const HISTORY_RETIREMENT_VALIDITY_RANGE_MS = Math.min(
+  180_000,
+  Number(MAX_VALIDITY_RANGE_LENGTH_MS),
+);
+
 type RetirementConfig = CommonBuilderConfig & {
   readonly settlementRefInput: UTxO;
   readonly confirmedRefInput?: UTxO;
@@ -478,7 +498,11 @@ const buildHistoryRetirementProgram = (
             ? predecessor.node.protected_until
             : presence.anchor.node.protected_until;
         if (protocolLower > BigInt(now))
-          throw new Error("History predecessor or Order is still protected");
+          throw new HistoryRetirementProtectedError(
+            protocolLower,
+            now,
+            history.recipe.protectionDurationMs,
+          );
         const desiredLower = Number(
           protocolLower > BigInt(now - 60_000)
             ? protocolLower
@@ -488,7 +512,7 @@ const buildHistoryRetirementProgram = (
         let lowerSlot = lucid.unixTimeToSlot(desiredLower);
         if (lucid.slotToUnixTime(lowerSlot) < desiredLower) lowerSlot++;
         const validFrom = lucid.slotToUnixTime(lowerSlot);
-        const validTo = validFrom + Number(MAX_VALIDITY_RANGE_LENGTH_MS);
+        const validTo = validFrom + HISTORY_RETIREMENT_VALIDITY_RANGE_MS;
         const upper =
           BigInt(lucid.slotToUnixTime(lucid.unixTimeToSlot(validTo))) - 1n;
         if (

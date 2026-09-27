@@ -126,13 +126,13 @@ import {
   establishEndTimeFromTxRequests,
   planCommitBatchBudgets,
   planSchedulerAwareCommitSelection,
+  schedulerAwareCommitWindowBudgets,
   selectCommitTxCandidates,
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
   updateCommitBuildEwma,
 } from "./utils/commit-block-planner.js";
 import {
-  COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveCommitEndTimeFit,
   resolveExplicitCommitCandidateEndTimeMs,
@@ -1955,14 +1955,7 @@ const databaseOperationsProgram = (
       currentSchedulerWindow,
       currentBlockStartTimeMs: currentBlockStartTime.getTime(),
       nowMs: schedulerPlanningNowMs,
-      minimumCurrentWindowBudgetMs:
-        workerInput.history === undefined
-          ? COMMIT_MIN_PRE_WITNESS_BUDGET_MS
-          : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-      productionMinimumFutureBufferMs:
-        workerInput.history === undefined
-          ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
-          : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      ...schedulerAwareCommitWindowBudgets(workerInput.history !== undefined),
       currentWindowCommitEndTimeFit,
     });
     if (

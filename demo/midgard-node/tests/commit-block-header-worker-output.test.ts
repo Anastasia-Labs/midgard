@@ -1,7 +1,15 @@
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  preLeaseCommitSchedulerTargetMs,
   releaseCommitMutationWorkerPhase,
   releaseCommitSchedulerAlignmentPhase,
   shouldAttemptCommitPipeline,
@@ -11,6 +19,10 @@ import {
   tryAcquireCommitSchedulerAlignmentPhase,
 } from "../src/fibers/block-commitment.js";
 import { MidgardMpf, withMpfRootTransactions } from "../src/mpf/index.js";
+import {
+  HISTORY_COMMIT_LANDING_MARGIN_MS,
+  HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+} from "../src/services/history-commit-window.js";
 import { Globals } from "../src/services/index.js";
 import {
   shouldPreserveCommitMpfRoots,
@@ -21,6 +33,16 @@ import type {
   SerializedStateQueueUTxO,
   WorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
+import {
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  resolveHistoryCommitEndTime,
+  resolveLatestFeasibleCommitEndTime,
+} from "../src/workers/utils/commit-end-time.js";
+import {
+  captureSchedulerSlotSnapshot,
+  resolveSchedulerFirstAppointmentValidityWindow,
+  schedulerStateCoversCommitTarget,
+} from "../src/workers/utils/scheduler-refresh.js";
 
 const dueWork = {
   kind: "commit_scheduler_refresh",
@@ -411,4 +433,94 @@ describe("commit block worker output handling", () => {
       });
     },
   );
+});
+
+describe("pre-lease scheduler target", () => {
+  const operator = "aa";
+  const shiftCovers = (startTime: bigint, targetMs: number): boolean =>
+    schedulerStateCoversCommitTarget({
+      currentSchedulerState: { operator, startTime },
+      operatorKeyHash: operator,
+      targetStartTime: BigInt(targetMs),
+    });
+
+  it("keeps the current shift aligned while a history commit still fits inside it", () => {
+    const secondSlotLucid = {
+      slotToUnixTime: (slot: number) => slot * 1_000,
+      unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
+    } as unknown as LucidEvolution;
+    const startTime = 1_000_000_000n;
+    const shiftEndMs = Number(startTime + SDK.SHIFT_DURATION_MS);
+    // A target of now + the long-window buffer left the shift from here on,
+    // and the scheduler admits a refresh only after the shift ends.
+    const midShiftNowMs = shiftEndMs - COMMIT_MINIMUM_FUTURE_BUFFER_MS + 1_000;
+    expect(
+      shiftCovers(startTime, preLeaseCommitSchedulerTargetMs(midShiftNowMs)),
+    ).toBe(true);
+    expect(
+      resolveLatestFeasibleCommitEndTime({
+        lucid: secondSlotLucid,
+        latestEndTime: Number(startTime),
+        nowMs: midShiftNowMs,
+        minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        maximumEndTimeMs: shiftEndMs,
+      }).status,
+    ).toBe("fits");
+    // A refresh is required only once the shift leaves less than the landing
+    // margin, which is also the least TTL a commit capped to the shift keeps.
+    const lastCoveredNowMs = shiftEndMs - HISTORY_COMMIT_LANDING_MARGIN_MS;
+    expect(
+      shiftCovers(startTime, preLeaseCommitSchedulerTargetMs(lastCoveredNowMs)),
+    ).toBe(true);
+    expect(
+      shiftCovers(
+        startTime,
+        preLeaseCommitSchedulerTargetMs(lastCoveredNowMs + 1),
+      ),
+    ).toBe(false);
+  });
+
+  it("appoints the first shift no later than the history end the worker builds next", async () => {
+    const account = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([account]);
+    const lucid = await Lucid(emulator, "Custom");
+    emulator.awaitSlot(60);
+    const snapshot = captureSchedulerSlotSnapshot(lucid);
+    const nowMs = emulator.now();
+    const window = resolveSchedulerFirstAppointmentValidityWindow(
+      lucid,
+      BigInt(preLeaseCommitSchedulerTargetMs(nowMs)),
+      snapshot,
+    );
+    // AppointFirstOperator starts the shift at the inclusive upper bound, so
+    // the appointment keeps the landing margin to land.
+    const startTime = window.validTo - 1n;
+    expect(Number(window.validTo) - nowMs).toBe(
+      HISTORY_COMMIT_LANDING_MARGIN_MS,
+    );
+    // The worker's history commit right after: the latest end every cap
+    // admits, with history covered up to the event wait less the margin
+    // behind the current slot, still falls inside the appointed shift.
+    const historyEndMs = (historyLagMs: number) =>
+      resolveHistoryCommitEndTime({
+        lucid,
+        currentSlot: snapshot.currentSlot,
+        latestEndTime: 0,
+        nowMs,
+        minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        eventEndTimeMs:
+          snapshot.currentSlotStartMs -
+          historyLagMs +
+          SDK.EVENT_WAIT_DURATION_MS -
+          1,
+        schedulerWindowEndTimeMs: Number(startTime + SDK.SHIFT_DURATION_MS),
+      }).resolvedEndTime - 1;
+    const tolerableLagMs =
+      SDK.EVENT_WAIT_DURATION_MS - HISTORY_COMMIT_LANDING_MARGIN_MS;
+    expect(shiftCovers(startTime, historyEndMs(0))).toBe(true);
+    expect(shiftCovers(startTime, historyEndMs(tolerableLagMs))).toBe(true);
+    expect(shiftCovers(startTime, historyEndMs(tolerableLagMs + 1_000))).toBe(
+      false,
+    );
+  });
 });

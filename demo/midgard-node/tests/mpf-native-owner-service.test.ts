@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -594,6 +601,135 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       applied.candidateRoot,
     );
     await service.close();
+  });
+
+  const openEmptyRootService = async (
+    prefix: string,
+    options: {
+      readonly binaryPath?: string;
+      readonly restartLimit?: number;
+      readonly restartWindowMs?: number;
+    },
+  ) => {
+    const root = await mkdtemp(join(tmpdir(), prefix));
+    temporaryPaths.push(root);
+    const levelPath = join(root, "ledger");
+    const seed = new Level<string, unknown>(levelPath, {
+      valueEncoding: "json",
+    });
+    await seed.open();
+    await seed.put("__root__", SDK.EMPTY_MERKLE_TREE_ROOT);
+    await seed.close();
+    const childPids: number[] = [];
+    const service = await ProductionNativeMpfOwnerService.create({
+      levelPath,
+      binaryPath,
+      binarySha256,
+      ...options,
+      onChildSpawnForTests(pid) {
+        childPids.push(pid);
+      },
+    });
+    return { root, service, childPids };
+  };
+
+  const waitUntil = async (condition: () => boolean): Promise<void> => {
+    const deadline = Date.now() + 15_000;
+    while (!condition() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  it("allows child restarts again once earlier ones leave the window", async () => {
+    const restartWindowMs = 1_000;
+    const { service, childPids } = await openEmptyRootService(
+      "midgard-native-owner-restart-window-",
+      { restartLimit: 1, restartWindowMs },
+    );
+    try {
+      process.kill(childPids[0]!, "SIGKILL");
+      await waitUntil(() => childPids.length === 2);
+      expect((await service.diagnostics()).childRestarts).toBe(1);
+      await new Promise((resolve) =>
+        setTimeout(resolve, restartWindowMs + 250),
+      );
+      // The first restart has left the window: this death is restarted too.
+      process.kill(childPids[1]!, "SIGKILL");
+      await waitUntil(() => childPids.length === 3);
+      expect(childPids).toHaveLength(3);
+      expect((await service.diagnostics()).childRestarts).toBe(2);
+      expect(service.terminalFailure()).toBeUndefined();
+    } finally {
+      await service.close();
+    }
+  });
+
+  it("fails terminally once a window's restart budget is spent", async () => {
+    // A window far longer than one restart, so both deaths land inside it.
+    const { service, childPids } = await openEmptyRootService(
+      "midgard-native-owner-restart-exhaustion-",
+      { restartLimit: 1, restartWindowMs: 600_000 },
+    );
+    try {
+      process.kill(childPids[0]!, "SIGKILL");
+      await waitUntil(() => childPids.length === 2);
+      expect((await service.diagnostics()).childRestarts).toBe(1);
+      expect(service.terminalFailure()).toBeUndefined();
+      // A second death inside the window exceeds restartLimit=1.
+      process.kill(childPids[1]!, "SIGKILL");
+      await waitUntil(() => service.terminalFailure() !== undefined);
+      expect(service.terminalFailure()?.message).toMatch(
+        /restart limit exhausted: 1 restart\(s\) within 600000 ms/,
+      );
+      expect(childPids).toHaveLength(2);
+      await expect(service.diagnostics()).rejects.toThrow(
+        /restart limit exhausted/,
+      );
+      expect(() => service.createWorkerPort()).toThrow(
+        /restart limit exhausted/,
+      );
+    } finally {
+      await service.close();
+    }
+  });
+
+  it("re-verifies the binary pin before a restart spawns the child again", async () => {
+    const pinned = await mkdtemp(join(tmpdir(), "midgard-native-owner-pin-"));
+    temporaryPaths.push(pinned);
+    const pinnedBinaryPath = join(pinned, "architecture-g-owner");
+    await copyFile(binaryPath, pinnedBinaryPath);
+    const { service, childPids } = await openEmptyRootService(
+      "midgard-native-owner-repin-",
+      { binaryPath: pinnedBinaryPath },
+    );
+    try {
+      // Replace the file the way a rebuild does, while the child runs: the
+      // replacement is a working owner, but not the pinned one.
+      const rebuilt = join(pinned, "rebuilt");
+      await writeFile(
+        rebuilt,
+        Buffer.concat([await readFile(binaryPath), Buffer.from([0])]),
+        { mode: 0o755 },
+      );
+      await rename(rebuilt, pinnedBinaryPath);
+      process.kill(childPids[0]!, "SIGKILL");
+      // Once the child is reaped its exit has closed the RPC, so the next
+      // operation waits on the restart rather than racing the dying child.
+      await waitUntil(() => {
+        try {
+          process.kill(childPids[0]!, 0);
+          return false;
+        } catch {
+          return true;
+        }
+      });
+      await expect(service.diagnostics()).rejects.toThrow(
+        /binary SHA-256 mismatch/,
+      );
+      expect(childPids).toHaveLength(1);
+    } finally {
+      await service.close();
+    }
   });
 
   it("recovers the authoritative old-or-candidate marker across both promotion crash boundaries", async () => {

@@ -11,19 +11,22 @@ import {
   CML,
   commitConfirmRecoverAndMerge,
   concludePayoutProgram,
+  Data,
   Database,
   Effect,
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
-  fetchWithdrawalsOnceProgram,
   initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
+  reconcileVisibleWithdrawalUTxOs,
+  reserveUtxosProgram,
   resolveEventSettlementProofProgram,
   runNodeCommandProgram,
   SDK,
   submitDepositWithDiagnostics,
   submitWithdrawalWithDiagnostics,
+  submitWithWallet,
   utxosProgram,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
@@ -79,6 +82,17 @@ it("projects a real node deposit settlement and withdrawal payout to conclusion"
       depositBlock.settlementUtxo,
     );
     await ensureSeparateCollateralUtxo(lucid);
+    // Anyone can pay to the reserve address. A larger datum-carrying output
+    // there is one the reserve and payout validators refuse to spend.
+    const plantedTx = await fixture.depositorLucid
+      .newTx()
+      .pay.ToContract(
+        fixture.contracts.reserve.spendingScriptAddress,
+        { kind: "inline", value: Data.void() },
+        { lovelace: 50_000_000n },
+      )
+      .complete({ localUPLCEval: true });
+    const plantedLabel = `${await submitWithWallet(fixture.depositorLucid, plantedTx)}#0`;
     const absorbed = await command(
       absorbConfirmedDepositToReserveProgram({ eventId: depositId }),
     );
@@ -134,9 +148,9 @@ it("projects a real node deposit settlement and withdrawal payout to conclusion"
       Number(withdrawal.facts.inclusion_time) + 1000,
     );
     vi.setSystemTime(fixture.emulator.now());
-    expect((await command(fetchWithdrawalsOnceProgram)).reconciledCount).toBe(
-      1,
-    );
+    expect(
+      (await command(reconcileVisibleWithdrawalUTxOs())).reconciledCount,
+    ).toBe(1);
     const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
     const resolution = await command(
       resolveEventSettlementProofProgram({
@@ -160,6 +174,31 @@ it("projects a real node deposit settlement and withdrawal payout to conclusion"
     await command(initializePayoutProgram({ eventId }));
     expect(h.capture().history.withdrawals).toHaveLength(0);
     await ensureSeparateCollateralUtxo(lucid);
+    const reserveListing = await lucid.utxosAt(
+      fixture.contracts.reserve.spendingScriptAddress,
+    );
+    // Planted before the honest reserve, so a first-match selection would take
+    // it and the funding would fail in the reserve validator.
+    expect(
+      reserveListing.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`),
+    ).toEqual([plantedLabel, `${reserve!.txHash}#${reserve!.outputIndex}`]);
+    const reserveSummary = await command(reserveUtxosProgram);
+    expect(
+      reserveSummary.utxos.find((utxo) => utxo.outRef === plantedLabel),
+    ).toMatchObject({
+      datum: "InlineDatum",
+      spendable: false,
+      unspendableReason: "carries an inline datum",
+    });
+    expect(reserveSummary.spendableTotals.lovelace).toBe(12_000_000n);
+    await expect(
+      command(
+        addReserveFundsToPayoutProgram({
+          eventId,
+          reserveOutRef: plantedLabel,
+        }),
+      ),
+    ).rejects.toThrow(`Reserve UTxO ${plantedLabel} carries an inline datum.`);
     const added = await command(addReserveFundsToPayoutProgram({ eventId }));
     expect(added.details.reserveOutRef).toBe(
       `${reserve!.txHash}#${reserve!.outputIndex}`,

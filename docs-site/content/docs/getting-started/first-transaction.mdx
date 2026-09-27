@@ -13,17 +13,35 @@ running and its node is reachable on `http://127.0.0.1:3000`.
 ### Fund your L2 account with a deposit
 
 Funds enter Midgard through an L1 deposit. From `demo/midgard-node`, run
-`submit-deposit` with your wallet, then, once the deposit's inclusion time is
-due, project it into the L2 ledger. Set `USER_L2_ADDRESS` to your receiving L2
-address and supply your funded user seed through `USER_SEED_PHRASE`; do not use
-an operator or reference-script wallet for this tutorial:
+`submit-deposit` with your wallet. The running node records the deposit and
+projects it into the L2 ledger once its inclusion time is due, which is the
+deposit's validity upper bound plus the profile's `event_wait_ms` (300 s on the
+testing profiles). Set `USER_L2_ADDRESS` to your receiving L2 address and supply
+your funded user seed through `USER_SEED_PHRASE`; do not use an operator or
+reference-script wallet for this tutorial. If the submission is interrupted,
+rerun it with the same `DEPOSIT_SUBMISSION_ID`. The loop waits at most 20
+minutes for the node to report the deposit projected, and the last line fails
+if it never does:
 
 ```sh
-node dist/index.js submit-deposit \
+DEPOSIT_SUBMISSION_ID="deposit-$(node -p 'crypto.randomUUID()')"
+DEPOSIT_EVENT_ID="$(node dist/index.js submit-deposit \
+  --submission-id "$DEPOSIT_SUBMISSION_ID" \
   --l2-address "$USER_L2_ADDRESS" \
   --lovelace 10000000 \
-  --wallet-seed-phrase-env USER_SEED_PHRASE
-node dist/index.js project-deposits-once
+  --wallet-seed-phrase-env USER_SEED_PHRASE \
+  | jq -r '.metadata.depositEventId // empty')"
+test -n "$DEPOSIT_EVENT_ID"
+DEPOSIT_STATUS=""
+for attempt in $(seq 1 80); do
+  DEPOSIT_STATUS="$(curl -fsS \
+    "http://127.0.0.1:3000/deposit-status?eventId=$DEPOSIT_EVENT_ID" \
+    | jq -r '.status')" || DEPOSIT_STATUS=""
+  case "$DEPOSIT_STATUS" in projected | consumed) break ;; esac
+  sleep 15
+done
+echo "deposit status: $DEPOSIT_STATUS"
+case "$DEPOSIT_STATUS" in projected | consumed) ;; *) false ;; esac
 ```
 
 Before building a spend, wait for the deposit block to be committed and merged;

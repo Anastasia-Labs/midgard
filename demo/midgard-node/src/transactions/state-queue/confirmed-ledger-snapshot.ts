@@ -351,6 +351,40 @@ export const materializeConfirmedLedgerSnapshot = (
     });
   });
 
+/**
+ * The snapshot a confirmed merge's local finalization applies. A confirmed
+ * ledger already at the journal's expected root (an earlier attempt folded it
+ * and failed later, or startup repaired it) yields an empty delta chain on
+ * that ledger, so re-running the finalization only redoes its idempotent
+ * steps; any other ledger folds the journal chain exactly as
+ * materializeConfirmedLedgerSnapshot does.
+ */
+export const materializeConfirmedMergeLedgerSnapshot = (
+  record: PendingBlockFinalizationsDB.Record,
+): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
+    const confirmedRoot = yield* computeRecoveredRoot(confirmedEntries);
+    if (
+      confirmedRoot ===
+      record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]
+    )
+      return {
+        entries: confirmedEntries,
+        baseRoot: confirmedRoot,
+        root: confirmedRoot,
+        deltaChain: [],
+        delta: { spent: [], produced: [] },
+      };
+    return yield* materializeFromBase({
+      record,
+      confirmedEntries,
+      confirmedRoot,
+      retrieveParent: PendingBlockFinalizationsDB.retrieveByHeaderHash,
+      seen: new Set(),
+    });
+  });
+
 export const applyConfirmedLedgerDelta = ({
   spent,
   produced,

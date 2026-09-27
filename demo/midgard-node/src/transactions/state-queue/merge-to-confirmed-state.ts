@@ -22,6 +22,7 @@ import { SqlClient } from "@effect/sql";
 import {
   Address,
   credentialToAddress,
+  Data,
   LucidEvolution,
   scriptHashToCredential,
   toUnit,
@@ -84,7 +85,7 @@ import {
 import {
   applyConfirmedLedgerDeltaChainTransaction,
   type ConfirmedLedgerSnapshot,
-  materializeConfirmedLedgerSnapshot,
+  materializeConfirmedMergeLedgerSnapshot,
 } from "./confirmed-ledger-snapshot.js";
 import {
   classifyOldestQueuedBlockCandidateReadiness,
@@ -227,6 +228,374 @@ export const synchronizeCommitMpfAfterConfirmedMerge = <E, R>({
   });
 };
 
+/**
+ * Finalizes one L1-confirmed merge into the local database under its
+ * confirmed-merge job: folds the header's ledger delta chain into the
+ * confirmed ledger, clears its block rows, marks its projected events, then
+ * synchronizes the commit MPFs. `headerUtxosRoot` is the header's committed
+ * UTxO root, which the folded ledger must reach.
+ *
+ * Idempotent, so a failed or interrupted attempt can simply run again: a
+ * ledger already at the journal's expected root is not folded twice, and every
+ * other step converges. A failure records the job as failed.
+ */
+export const finalizeConfirmedMergeProgram = ({
+  headerHash,
+  headerUtxosRoot,
+}: {
+  readonly headerHash: Buffer;
+  readonly headerUtxosRoot: string;
+}): Effect.Effect<void, DatabaseError, Database | Globals | NodeConfig> =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    const nodeConfig = yield* NodeConfig;
+    const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
+      headerHash.toString("hex"),
+    );
+    const projectedDepositEntries =
+      yield* DepositsDB.retrieveByProjectedHeaderHash(headerHash);
+    const projectedForcedTransactionEntries =
+      yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
+    const projectedWithdrawalEntries =
+      yield* WithdrawalsDB.retrieveByProjectedHeaderHash(headerHash);
+    const projectedDepositEventIds = projectedDepositEntries.map(
+      (entry) => entry[DepositsDB.Columns.ID],
+    );
+    const projectedWithdrawalEventIds = projectedWithdrawalEntries.map(
+      (entry) => entry[WithdrawalsDB.Columns.ID],
+    );
+    const projectedForcedTransactionEventIds =
+      projectedForcedTransactionEntries.map(
+        (entry) => entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
+      );
+    const finalizedJournal =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
+    if (Option.isNone(finalizedJournal)) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Failed to finalize confirmed-state merge locally because the pending-finalization journal is missing",
+          cause: `header_hash=${headerHash.toString("hex")}`,
+        }),
+      );
+    }
+    const confirmedLedgerSnapshot =
+      yield* materializeConfirmedMergeLedgerSnapshot(finalizedJournal.value);
+    const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
+    const expectedSnapshotRoot =
+      finalizedJournal.value[
+        PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
+      ];
+    if (
+      confirmedLedgerSnapshotRoot !== expectedSnapshotRoot ||
+      confirmedLedgerSnapshotRoot !== headerUtxosRoot
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Failed to finalize confirmed-state merge locally because the durable UTxO snapshot root does not match the confirmed block",
+          cause: `header_hash=${headerHash.toString(
+            "hex",
+          )},snapshot_root=${confirmedLedgerSnapshotRoot},journal_expected_root=${expectedSnapshotRoot},confirmed_header_root=${headerUtxosRoot}`,
+        }),
+      );
+    }
+    yield* MutationJobsDB.start({
+      jobId,
+      kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
+      payload: {
+        headerHash: headerHash.toString("hex"),
+        depositEventCount: projectedDepositEventIds.length,
+        forcedTransactionEventCount: projectedForcedTransactionEventIds.length,
+        withdrawalEventCount: projectedWithdrawalEventIds.length,
+        confirmedLedgerSnapshotRoot,
+        ledgerDeltaSpentCount: confirmedLedgerSnapshot.delta.spent.length,
+        ledgerDeltaProducedCount: confirmedLedgerSnapshot.delta.produced.length,
+      },
+    });
+    yield* finalizeConfirmedMergeTransaction({
+      headerHash,
+      snapshot: confirmedLedgerSnapshot,
+      projectedDepositEventIds,
+      projectedWithdrawalEventIds,
+      projectedForcedTransactionEventIds,
+    });
+    const syncResult = yield* synchronizeCommitMpfAfterConfirmedMerge({
+      mpfEngine: nodeConfig.MPF_ENGINE,
+      nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
+      confirmedLedgerEntryCount: confirmedLedgerSnapshot.entries.length,
+      confirmedLedgerRoot: confirmedLedgerSnapshotRoot,
+      synchronizePersistentStores:
+        synchronizeCommitMpfStoresFromConfirmedLedger,
+    }).pipe(
+      Effect.mapError(
+        (error) =>
+          new DatabaseError({
+            table: "confirmed_merge_finalization",
+            message:
+              "Failed to synchronize commit MPF stores after confirmed-state merge",
+            cause: formatUnknownError(error),
+          }),
+      ),
+    );
+    yield* syncResult.mode === "architecture_g_owner"
+      ? Effect.logInfo(
+          `🔸 Retained Architecture G owner after merge local finalization (header=${headerHash.toString(
+            "hex",
+          )},confirmed_ledger_entries=${syncResult.confirmedLedgerEntryCount.toString()},confirmed_ledger_root=${syncResult.confirmedLedgerRoot},durable_tail_root=${syncResult.durableLedgerRoot},active_generations=${syncResult.activeGenerations.toString()}).`,
+        )
+      : Effect.logInfo(
+          `🔸 Synchronized commit MPFs after merge local finalization (header=${headerHash.toString(
+            "hex",
+          )},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+        );
+    yield* MutationJobsDB.markCompleted(jobId);
+  }).pipe(
+    Effect.tapError((error) =>
+      MutationJobsDB.markFailed(
+        MutationJobsDB.confirmedMergeFinalizationJobId(
+          headerHash.toString("hex"),
+        ),
+        formatUnknownError(error),
+      ).pipe(Effect.catchAll(() => Effect.void)),
+    ),
+  );
+
+/** A landed merge whose local finalization the catch-up has to run. */
+type LandedUnfinalizedMerge = {
+  readonly headerHash: Buffer;
+  readonly headerUtxosRoot: string;
+};
+
+/**
+ * Upper bound on the headers one catch-up walks back through. Every merge
+ * attempt runs the catch-up first and fails while it fails, so at most the
+ * merges that landed while the node was down or recovering are unfinalized.
+ */
+const MAX_LANDED_MERGE_CATCH_UP = 1_000;
+
+const fetchL1ConfirmedState = (
+  lucid: LucidEvolution,
+  fetchConfig: SDK.StateQueueFetchConfig,
+): Effect.Effect<
+  SDK.ConfirmedState,
+  SDK.LucidError | SDK.StateQueueError | SDK.DataCoercionError
+> =>
+  Effect.gen(function* () {
+    const unit = toUnit(
+      fetchConfig.stateQueuePolicyId,
+      SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    );
+    const matches = yield* Effect.tryPromise({
+      try: () => lucid.utxosAtWithUnit(fetchConfig.stateQueueAddress, unit),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: `Failed to fetch the state-queue root at: ${fetchConfig.stateQueueAddress}`,
+          cause,
+        }),
+    });
+    if (matches.length !== 1) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "State-queue root unit is missing or not unique",
+          cause: `unit=${unit},matches=${matches.length.toString()}`,
+        }),
+      );
+    }
+    const root = yield* SDK.utxoToStateQueueUTxO(
+      matches[0],
+      fetchConfig.stateQueuePolicyId,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to authenticate the state-queue root",
+            cause,
+          }),
+      ),
+    );
+    if (root.assetName !== SDK.STATE_QUEUE_ROOT_ASSET_NAME) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "State-queue root unit returned the wrong node",
+          cause: `asset_name=${root.assetName}`,
+        }),
+      );
+    }
+    return (yield* SDK.getConfirmedStateFromStateQueueDatum(root.datum)).data;
+  });
+
+const decodeJournalHeader = (
+  record: PendingBlockFinalizationsDB.Record,
+): Effect.Effect<SDK.Header, DatabaseError> =>
+  Effect.try({
+    try: () =>
+      Data.from(
+        record[PendingBlockFinalizationsDB.Columns.HEADER_CBOR].toString("hex"),
+        SDK.Header,
+      ) as SDK.Header,
+    catch: (cause) =>
+      new DatabaseError({
+        table: PendingBlockFinalizationsDB.tableName,
+        message: "Failed to decode the pending-finalization journal's header",
+        cause: `header_hash=${record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")},error=${formatUnknownError(cause)}`,
+      }),
+  });
+
+/**
+ * The merges L1 has confirmed that this database has not finalized, oldest
+ * first. The walk starts at the header L1's confirmed state names and follows
+ * each header's authenticated predecessor through the local journals. It stops
+ * at genesis, at a header whose confirmed-merge job completed (every earlier
+ * one did too, since a merge is built only after this walk from the confirmed
+ * state it spends has finalized everything), or at a header this database
+ * holds no journal for (another operator's block, which this node never
+ * finalized). Only a merge that landed can be the confirmed state's header or
+ * its ancestor, so an unlanded merge is never returned.
+ */
+const landedUnfinalizedMerges = (
+  confirmedState: SDK.ConfirmedState,
+): Effect.Effect<
+  readonly LandedUnfinalizedMerge[],
+  DatabaseError | SDK.HashingError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const pending: LandedUnfinalizedMerge[] = [];
+    let current = confirmedState.headerHash;
+    // The confirmed state carries its header's UTxO root; every older header
+    // carries its own, authenticated by the header hash.
+    let confirmedUtxosRoot: string | undefined = confirmedState.utxoRoot;
+    while (current !== SDK.GENESIS_HEADER_HASH) {
+      if (pending.length >= MAX_LANDED_MERGE_CATCH_UP) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: MutationJobsDB.tableName,
+            message:
+              "Landed-merge catch-up exceeded its bound without reaching a finalized merge",
+            cause: `max_headers=${MAX_LANDED_MERGE_CATCH_UP.toString()},header_hash=${current}`,
+          }),
+        );
+      }
+      const headerHash = Buffer.from(current, "hex");
+      const job = yield* MutationJobsDB.retrieveByJobId(
+        MutationJobsDB.confirmedMergeFinalizationJobId(current),
+      );
+      if (
+        job?.[MutationJobsDB.Columns.STATUS] === MutationJobsDB.Status.Completed
+      )
+        break;
+      const journal =
+        yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
+      if (Option.isNone(journal)) break;
+      const header = yield* decodeJournalHeader(journal.value);
+      const recomputedHeaderHash = yield* SDK.hashBlockHeader(header);
+      if (recomputedHeaderHash !== current) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Pending-finalization journal header does not hash to its header hash",
+            cause: `header_hash=${current},recomputed=${recomputedHeaderHash}`,
+          }),
+        );
+      }
+      if (
+        confirmedUtxosRoot !== undefined &&
+        header.utxosRoot !== confirmedUtxosRoot
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "L1 confirmed-state UTxO root does not match its header's journal",
+            cause: `header_hash=${current},l1_utxo_root=${confirmedUtxosRoot},header_utxos_root=${header.utxosRoot}`,
+          }),
+        );
+      }
+      if (
+        journal.value[PendingBlockFinalizationsDB.Columns.STATUS] !==
+        PendingBlockFinalizationsDB.Status.Finalized
+      ) {
+        // Its block rows are not local yet; clearing them now would leave the
+        // later block finalization to write them back after the merge.
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "A landed merge's block is not locally finalized yet, so its merge cannot be finalized",
+            cause: `header_hash=${current},journal_status=${journal.value[PendingBlockFinalizationsDB.Columns.STATUS]}`,
+          }),
+        );
+      }
+      pending.push({ headerHash, headerUtxosRoot: header.utxosRoot });
+      confirmedUtxosRoot = undefined;
+      current = header.prevHeaderHash;
+    }
+    return pending.reverse();
+  });
+
+/**
+ * Finalizes every merge up to `confirmedState`'s header that this database has
+ * not, oldest first, and returns their header hashes. `confirmedState` must be
+ * one authenticated from the L1 state-queue root. Each finalization runs to
+ * completion once started.
+ */
+export const finalizeMergesLandedThrough = (
+  confirmedState: SDK.ConfirmedState,
+): Effect.Effect<
+  readonly string[],
+  DatabaseError | SDK.HashingError,
+  Database | Globals | NodeConfig
+> =>
+  Effect.gen(function* () {
+    const pending = yield* landedUnfinalizedMerges(confirmedState);
+    const finalized: string[] = [];
+    for (const merge of pending) {
+      const headerHashHex = merge.headerHash.toString("hex");
+      yield* Effect.logWarning(
+        `🔸 Finalizing a merge L1 confirmed without its local finalization (header=${headerHashHex}).`,
+      );
+      yield* Effect.uninterruptible(finalizeConfirmedMergeProgram(merge)).pipe(
+        Effect.tapError((error) =>
+          Effect.gen(function* () {
+            yield* Metric.increment(mergeLocalFinalizationFailureCounter);
+            yield* Effect.logError(
+              `🔸 Landed merge local finalization failed; merges stay blocked until it succeeds (header=${headerHashHex},error=${formatUnknownError(error)}).`,
+            );
+          }),
+        ),
+      );
+      finalized.push(headerHashHex);
+    }
+    return finalized;
+  });
+
+/**
+ * Finalizes every merge L1 has confirmed that this database has not (see
+ * finalizeMergesLandedThrough). It is the runtime retry of a failed
+ * confirmed-merge finalization and the catch-up of a merge that landed after
+ * its attempt stopped waiting: a hold timeout, a restart, or a history
+ * recovery that revoked the permit before the finalization could write.
+ */
+export const finalizeLandedMergesProgram = (
+  lucid: LucidEvolution,
+  fetchConfig: SDK.StateQueueFetchConfig,
+): Effect.Effect<
+  readonly string[],
+  | DatabaseError
+  | SDK.HashingError
+  | SDK.LucidError
+  | SDK.StateQueueError
+  | SDK.DataCoercionError,
+  Database | Globals | NodeConfig
+> =>
+  fetchL1ConfirmedState(lucid, fetchConfig).pipe(
+    Effect.flatMap(finalizeMergesLandedThrough),
+  );
+
 export const MERGE_CONFIRMATION_PROVIDER_RETRIES = 12;
 
 const mergeFailureCounter = Metric.counter("merge_failure_count", {
@@ -330,6 +699,13 @@ type MergeOptions = {
   readonly onConfirmedFinalization?: (
     outcome: ConfirmedMergeFinalization,
   ) => Effect.Effect<void>;
+  /**
+   * Unix time (ms) at which the L1 confirmation wait gives up with a
+   * confirmation failure, so a caller bounded by a hold keeps room for the
+   * local finalization. The merge may still land; the next attempt's
+   * finalizeLandedMergesProgram then finalizes it.
+   */
+  readonly confirmationDeadlineMs?: number;
 };
 
 /** A merge confirmed on L1 and the exit of its local finalization. */
@@ -638,9 +1014,11 @@ const mergeSubmitRecoveryOptions = (
     readonly invalidationKey: string;
   },
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
+  confirmationDeadlineMs?: number,
 ): NoInlineSubmitRecoveryOptions => ({
   label: "merge",
   confirmationRetries: MERGE_CONFIRMATION_PROVIDER_RETRIES,
+  ...(confirmationDeadlineMs === undefined ? {} : { confirmationDeadlineMs }),
   slotSnapshot:
     submitSlotSnapshot ??
     makeLocalOgmiosSubmitSlotSnapshotProvider({
@@ -968,6 +1346,14 @@ export const buildAndSubmitMergeTx = (
         readyAfterUnixTime: oldestBlockReadiness.readyAfterUnixTime,
       };
       const recomputedHeaderHash = oldestBlockReadiness.headerHash;
+      // The merge spends exactly `confirmedUTxO`, so every merge up to its
+      // header is finalized first. A previous merge that landed after this
+      // attempt's catch-up read L1 would otherwise have its ledger delta
+      // folded into this block's finalization and never be finalized itself.
+      yield* finalizeMergesLandedThrough(
+        (yield* SDK.getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum))
+          .data,
+      );
       // Fetch transactions from the first block
       yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
       const {
@@ -1013,12 +1399,6 @@ export const buildAndSubmitMergeTx = (
         );
       }
       const preflightDecodedBlockTxs = preflightDecodedBlockTxsResult.right;
-      const preflightSpentOutRefs: Buffer[] = [];
-      const preflightProducedUTxOs: LedgerEntry[] = [];
-      for (const decoded of preflightDecodedBlockTxs) {
-        preflightSpentOutRefs.push(...decoded.spent);
-        preflightProducedUTxOs.push(...decoded.produced);
-      }
       yield* Effect.logInfo(
         `🔸 Preflight decoded ${preflightDecodedBlockTxs.length} block tx(s) successfully (header=${headerHash.toString("hex")}).`,
       );
@@ -1225,129 +1605,15 @@ export const buildAndSubmitMergeTx = (
         nodeConfig,
         submitDueWorkEvidence,
         options?.submitSlotSnapshot,
+        options?.confirmationDeadlineMs,
       );
       if (options?.assertSubmitAuthority !== undefined) {
         yield* options.assertSubmitAuthority();
       }
-      const finalizeLocalMergeProgram = Effect.gen(function* () {
-        const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
-          headerHash.toString("hex"),
-        );
-        const projectedDepositEntries =
-          yield* DepositsDB.retrieveByProjectedHeaderHash(headerHash);
-        const projectedForcedTransactionEntries =
-          yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
-        const projectedWithdrawalEntries =
-          yield* WithdrawalsDB.retrieveByProjectedHeaderHash(headerHash);
-        const projectedDepositEventIds = projectedDepositEntries.map(
-          (entry) => entry[DepositsDB.Columns.ID],
-        );
-        const projectedWithdrawalEventIds = projectedWithdrawalEntries.map(
-          (entry) => entry[WithdrawalsDB.Columns.ID],
-        );
-        const projectedForcedTransactionEventIds =
-          projectedForcedTransactionEntries.map(
-            (entry) => entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
-          );
-        const finalizedJournal =
-          yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
-        if (Option.isNone(finalizedJournal)) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: PendingBlockFinalizationsDB.tableName,
-              message:
-                "Failed to finalize confirmed-state merge locally because the pending-finalization journal is missing",
-              cause: `header_hash=${headerHash.toString("hex")}`,
-            }),
-          );
-        }
-        const confirmedLedgerSnapshot =
-          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
-        const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
-        const expectedSnapshotRoot =
-          finalizedJournal.value[
-            PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
-          ];
-        if (
-          confirmedLedgerSnapshotRoot !== expectedSnapshotRoot ||
-          confirmedLedgerSnapshotRoot !== blockHeader.utxosRoot
-        ) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: PendingBlockFinalizationsDB.tableName,
-              message:
-                "Failed to finalize confirmed-state merge locally because the durable UTxO snapshot root does not match the confirmed block",
-              cause: `header_hash=${headerHash.toString(
-                "hex",
-              )},snapshot_root=${confirmedLedgerSnapshotRoot},journal_expected_root=${expectedSnapshotRoot},confirmed_header_root=${blockHeader.utxosRoot}`,
-            }),
-          );
-        }
-        yield* MutationJobsDB.start({
-          jobId,
-          kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
-          payload: {
-            headerHash: headerHash.toString("hex"),
-            spentOutRefCount: preflightSpentOutRefs.length,
-            producedUtxoCount: preflightProducedUTxOs.length,
-            depositEventCount: projectedDepositEventIds.length,
-            forcedTransactionEventCount:
-              projectedForcedTransactionEventIds.length,
-            withdrawalEventCount: projectedWithdrawalEventIds.length,
-            confirmedLedgerSnapshotRoot,
-            ledgerDeltaSpentCount: confirmedLedgerSnapshot.delta.spent.length,
-            ledgerDeltaProducedCount:
-              confirmedLedgerSnapshot.delta.produced.length,
-          },
-        });
-        yield* finalizeConfirmedMergeTransaction({
-          headerHash,
-          snapshot: confirmedLedgerSnapshot,
-          projectedDepositEventIds,
-          projectedWithdrawalEventIds,
-          projectedForcedTransactionEventIds,
-        });
-        const syncResult = yield* synchronizeCommitMpfAfterConfirmedMerge({
-          mpfEngine: nodeConfig.MPF_ENGINE,
-          nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
-          confirmedLedgerEntryCount: confirmedLedgerSnapshot.entries.length,
-          confirmedLedgerRoot: confirmedLedgerSnapshotRoot,
-          synchronizePersistentStores:
-            synchronizeCommitMpfStoresFromConfirmedLedger,
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new DatabaseError({
-                table: "confirmed_merge_finalization",
-                message:
-                  "Failed to synchronize commit MPF stores after confirmed-state merge",
-                cause: formatUnknownError(error),
-              }),
-          ),
-        );
-        yield* syncResult.mode === "architecture_g_owner"
-          ? Effect.logInfo(
-              `🔸 Retained Architecture G owner after merge local finalization (header=${headerHash.toString(
-                "hex",
-              )},confirmed_ledger_entries=${syncResult.confirmedLedgerEntryCount.toString()},confirmed_ledger_root=${syncResult.confirmedLedgerRoot},durable_tail_root=${syncResult.durableLedgerRoot},active_generations=${syncResult.activeGenerations.toString()}).`,
-            )
-          : Effect.logInfo(
-              `🔸 Synchronized commit MPFs after merge local finalization (header=${headerHash.toString(
-                "hex",
-              )},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
-            );
-        yield* MutationJobsDB.markCompleted(jobId);
+      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram({
+        headerHash,
+        headerUtxosRoot: blockHeader.utxosRoot,
       }).pipe(
-        Effect.tapError((error) =>
-          MutationJobsDB.markFailed(
-            MutationJobsDB.confirmedMergeFinalizationJobId(
-              headerHash.toString("hex"),
-            ),
-            formatUnknownError(error),
-          ).pipe(Effect.catchAll(() => Effect.void)),
-        ),
-      );
-      const finalizeLocalMergeLogged = finalizeLocalMergeProgram.pipe(
         Effect.tapError((error) =>
           Effect.gen(function* () {
             yield* Metric.increment(mergeLocalFinalizationFailureCounter);
@@ -1364,12 +1630,15 @@ export const buildAndSubmitMergeTx = (
         ),
       );
       // Only signing, submission and the L1 confirmation wait stay
-      // interruptible. Once the merge is confirmed, its local finalization
-      // starts at once and runs to completion (or records a failed job) even
-      // if the caller is interrupted meanwhile, e.g. by the L1 control plane's
-      // hold timeout; an interrupted finalization would leave its job running
-      // with no retry path. Its exit goes to `onConfirmedFinalization`, so an
-      // interrupting caller can still report what actually happened.
+      // interruptible; the wait ends by `confirmationDeadlineMs` so the
+      // finalization still fits in the caller's hold. Once the merge is
+      // confirmed, its local finalization starts at once and runs to
+      // completion (or records a failed job) even if the caller is interrupted
+      // meanwhile. A merge that lands after the wait stopped, or whose
+      // finalization failed, is finalized by the next attempt's
+      // finalizeLandedMergesProgram. The exit goes to
+      // `onConfirmedFinalization`, so an interrupting caller can still report
+      // what actually happened.
       const submitOutcome = yield* Effect.uninterruptibleMask((restore) =>
         restore(
           handleSignSubmit(lucid, txBuilder, submitRecoveryOptions).pipe(

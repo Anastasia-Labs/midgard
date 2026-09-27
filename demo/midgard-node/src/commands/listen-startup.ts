@@ -561,20 +561,28 @@ const failedLocalFinalizationHeader = (
 };
 
 /**
- * Whether startup may hand an unfinished job to the runtime. Only a failed
- * local-finalization job whose own journal still records its submitted block
- * as awaiting local finalization qualifies. Every other unfinished job
- * refuses, exactly as before: a running job (a crash mid-mutation), a failed
- * merge finalization, and a failed local finalization whose journal is
- * missing, finalized, abandoned or never submitted.
+ * Whether startup may hand an unfinished job to the runtime. Two kinds
+ * qualify:
+ *
+ * - a confirmed-merge finalization, failed or running (a crash mid-way): it
+ *   is idempotent, and every merge attempt first finalizes each merge L1
+ *   confirmed that this database has not (finalizeLandedMergesProgram);
+ * - a failed local-finalization job whose own journal still records its
+ *   submitted block as awaiting local finalization.
+ *
+ * Every other unfinished job refuses: a running local finalization (a crash
+ * mid-mutation), and a failed one whose journal is missing, finalized,
+ * abandoned or never submitted.
  */
 export const classifyUnfinishedMutationJobOnStartup = (
   job: MutationJobsDB.Entry,
   journalStatus: PendingBlockFinalizationsDB.Status | undefined,
 ): "runtime" | "refuse" =>
-  failedLocalFinalizationHeader(job) !== undefined &&
-  journalStatus !== undefined &&
-  RUNTIME_OWNED_FAILED_FINALIZATION_JOURNAL_STATUSES.includes(journalStatus)
+  job[MutationJobsDB.Columns.KIND] ===
+    MutationJobsDB.Kind.ConfirmedMergeFinalization ||
+  (failedLocalFinalizationHeader(job) !== undefined &&
+    journalStatus !== undefined &&
+    RUNTIME_OWNED_FAILED_FINALIZATION_JOURNAL_STATUSES.includes(journalStatus))
     ? "runtime"
     : "refuse";
 
@@ -603,7 +611,10 @@ export const assertStartupMutationJobsRecoverable = Effect.gen(function* () {
       continue;
     }
     yield* Effect.logWarning(
-      `Startup left failed local mutation job ${job[MutationJobsDB.Columns.JOB_ID]} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()},journal_status=${journalStatus ?? "none"}) to the runtime: finalization is retried while its block is live, and a correction removing the block also removes the job. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`,
+      job[MutationJobsDB.Columns.KIND] ===
+        MutationJobsDB.Kind.ConfirmedMergeFinalization
+        ? `Startup left ${job[MutationJobsDB.Columns.STATUS]} confirmed-merge finalization job ${job[MutationJobsDB.Columns.JOB_ID]} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()}) to the runtime: the merge fiber finalizes every merge L1 confirmed before it merges again, once the history owner is Ready. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`
+        : `Startup left failed local mutation job ${job[MutationJobsDB.Columns.JOB_ID]} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()},journal_status=${journalStatus ?? "none"}) to the runtime: finalization is retried while its block is live, and a correction removing the block also removes the job. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`,
     );
   }
   if (refused.length > 0)

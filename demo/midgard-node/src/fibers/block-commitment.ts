@@ -30,6 +30,7 @@ import {
   runHistoryProducer,
 } from "../services/event-history-producer.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
+import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../services/history-commit-window.js";
 import {
   type CommitPipelinePhase,
   Database,
@@ -70,6 +71,7 @@ import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
 } from "./da-publication-trigger.js";
+import { nativeMpfWorkerInput } from "./native-mpf-worker-input.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 import {
@@ -536,10 +538,21 @@ const isDetailedSchedulerAlignmentDueWork = (
   entry.key === BLOCK_COMMITMENT_DUE_WORK_KEY &&
   entry.dependencyKey.startsWith("scheduler=");
 
+/**
+ * The commit end the scheduler must cover before the mutation worker runs.
+ * Every runtime commit is source-owned and the worker caps its end to the
+ * current shift, so the shift must still leave the history landing margin.
+ * A later target would demand a refresh the scheduler admits only after the
+ * shift ends, and an AppointFirst aimed further out would start the first
+ * shift after ends the worker may build, which then fail until it begins.
+ */
+export const preLeaseCommitSchedulerTargetMs = (nowMs: number): number =>
+  nowMs + HISTORY_COMMIT_LANDING_MARGIN_MS;
+
 const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const alignedEndTime = Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
+  const alignedEndTime = preLeaseCommitSchedulerTargetMs(Date.now());
   const alignment = yield* fetchRealStateQueueWitnessContext(
     lucid.api,
     contracts,
@@ -736,7 +749,7 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
   }
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const alignedEndTime = Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
+  const alignedEndTime = preLeaseCommitSchedulerTargetMs(Date.now());
   const alignment = yield* Effect.either(
     fetchRealStateQueueWitnessContext(
       lucid.api,
@@ -950,13 +963,11 @@ export const buildAndSubmitCommitmentBlockAction = (
     const nativeMpfInput =
       nativeMpfOwner === undefined
         ? undefined
-        : {
-            port: nativeMpfOwner.createWorkerPort(),
-            durableRoot: (yield* Effect.promise(() =>
-              nativeMpfOwner.diagnostics(),
-            )).durableRoot,
-            ownerBinarySha256: nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
-          };
+        : yield* nativeMpfWorkerInput(
+            nativeMpfOwner,
+            "commit-block-header",
+            nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+          );
     const ledgerStoreLeaseOwner = `commit:${randomUUID()}`;
     const databaseRuntime = yield* Effect.runtime<Database>();
     const releaseTerminatedWorkerLedgerLease = () =>

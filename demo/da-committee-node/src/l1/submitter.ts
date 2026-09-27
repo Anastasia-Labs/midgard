@@ -84,6 +84,10 @@ type UtxoOverrideLucid = Pick<LucidEvolution, "wallet"> & {
     }[],
   ) => Promise<UTxO[]>;
   readonly overrideUTxOs?: (utxos: UTxO[]) => void;
+  readonly currentSlot?: () => number;
+  readonly transactionStatus?: (
+    txHash: string,
+  ) => Promise<{ readonly status: string }>;
 };
 
 type L1SubmitterPreflightLucid = Pick<
@@ -92,7 +96,22 @@ type L1SubmitterPreflightLucid = Pick<
 > &
   UtxoOverrideLucid;
 
-const spentOutRefsByLucid = new WeakMap<object, Set<string>>();
+/**
+ * A submitted transaction whose inputs refreshes keep out of the spendable
+ * set, because the provider may still list them. It is forgotten once its
+ * inputs leave the wallet listing (it landed, or they were spent otherwise),
+ * or once it can no longer land while they are still listed: past its TTL, or
+ * after its confirmation wait gave up and the chain has not seen it.
+ */
+type InFlightSpend = {
+  readonly outRefs: readonly string[];
+  /** The body's TTL: the first slot the transaction is invalid in. */
+  readonly ttlSlot?: number;
+  /** Set when the confirmation wait ended without seeing the transaction. */
+  unconfirmed: boolean;
+};
+
+const inFlightSpendsByLucid = new WeakMap<object, Map<string, InFlightSpend>>();
 
 const DEFAULT_READINESS_REQUIREMENTS: L1SubmitterReadinessRequirements = {
   minPlainAdaLovelace: 0n,
@@ -130,7 +149,7 @@ export const refreshL1SubmitterPlainAdaUtxos = async (
     typeof lucid.utxosAt === "function"
       ? await lucid.utxosAt(address)
       : await wallet.getUtxos();
-  const spentOutRefs = spentOutRefsByLucid.get(lucid);
+  const spentOutRefs = await pruneInFlightSpends(lucid, utxos);
   const staleOutRefs = await staleCandidateOutRefs(lucid, utxos, spentOutRefs);
   const summary = classifyL1SubmitterUtxos({
     address,
@@ -377,16 +396,72 @@ export const signSubmitAndConfirm = async (
   const signed = await tx.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
   const txHash = await signed.submit();
-  rememberSpentOutRefs(lucid, signedCbor);
+  const inFlightSpend = rememberInFlightSpend(lucid, txHash, signedCbor);
   if (options.awaitConfirmation !== false) {
-    await lucid.awaitTxConfirmation(txHash, {
-      ...(options.confirmationPollIntervalMs === undefined
-        ? {}
-        : { checkInterval: options.confirmationPollIntervalMs }),
-    });
+    try {
+      await lucid.awaitTxConfirmation(txHash, {
+        ...(options.confirmationPollIntervalMs === undefined
+          ? {}
+          : { checkInterval: options.confirmationPollIntervalMs }),
+      });
+    } catch (error) {
+      if (inFlightSpend !== undefined) {
+        inFlightSpend.unconfirmed = true;
+      }
+      throw error;
+    }
     await refreshL1SubmitterPlainAdaUtxos(lucid);
   }
   return txHash;
+};
+
+/**
+ * Forgets the in-flight spends that no longer protect anything (see
+ * `InFlightSpend`) and returns the inputs of the rest.
+ */
+const pruneInFlightSpends = async (
+  lucid: Partial<UtxoOverrideLucid>,
+  utxos: readonly UTxO[],
+): Promise<ReadonlySet<string> | undefined> => {
+  const inFlight = inFlightSpendsByLucid.get(lucid);
+  if (inFlight === undefined) {
+    return undefined;
+  }
+  const listedOutRefs = new Set(utxos.map(outRefKey));
+  const currentSlot =
+    typeof lucid.currentSlot === "function" ? lucid.currentSlot() : undefined;
+  const spentOutRefs = new Set<string>();
+  for (const [txHash, spend] of inFlight) {
+    if (
+      !spend.outRefs.some((outRef) => listedOutRefs.has(outRef)) ||
+      (spend.ttlSlot !== undefined &&
+        currentSlot !== undefined &&
+        currentSlot >= spend.ttlSlot) ||
+      (spend.unconfirmed && (await transactionAbsent(lucid, txHash)))
+    ) {
+      inFlight.delete(txHash);
+      continue;
+    }
+    for (const outRef of spend.outRefs) {
+      spentOutRefs.add(outRef);
+    }
+  }
+  return spentOutRefs;
+};
+
+/** Whether the chain has not seen `txHash`; a failed lookup is no proof. */
+const transactionAbsent = async (
+  lucid: Partial<UtxoOverrideLucid>,
+  txHash: string,
+): Promise<boolean> => {
+  if (typeof lucid.transactionStatus !== "function") {
+    return true;
+  }
+  try {
+    return (await lucid.transactionStatus(txHash)).status === "not_found";
+  } catch {
+    return false;
+  }
 };
 
 const staleCandidateOutRefs = async (
@@ -599,21 +674,13 @@ const parseInlineCredential = (value: string): L1SubmitterCredential => {
   return requiredCredential("private_key", value);
 };
 
-const rememberSpentOutRefs = (lucid: object, txCbor: string): void => {
-  const outRefs = spentOutRefsFromTx(txCbor);
-  if (outRefs.length === 0) {
-    return;
-  }
-  const spentOutRefs = spentOutRefsByLucid.get(lucid) ?? new Set<string>();
-  for (const outRef of outRefs) {
-    spentOutRefs.add(outRef);
-  }
-  spentOutRefsByLucid.set(lucid, spentOutRefs);
-};
-
-const spentOutRefsFromTx = (txCbor: string): readonly string[] => {
-  const tx = CML.Transaction.from_cbor_hex(txCbor);
-  const inputs = tx.body().inputs();
+const rememberInFlightSpend = (
+  lucid: object,
+  txHash: string,
+  txCbor: string,
+): InFlightSpend | undefined => {
+  const body = CML.Transaction.from_cbor_hex(txCbor).body();
+  const inputs = body.inputs();
   const outRefs: string[] = [];
   for (let index = 0; index < inputs.len(); index += 1) {
     const input = inputs.get(index);
@@ -621,7 +688,20 @@ const spentOutRefsFromTx = (txCbor: string): readonly string[] => {
       `${input.transaction_id().to_hex()}#${input.index().toString()}`,
     );
   }
-  return outRefs;
+  if (outRefs.length === 0) {
+    return undefined;
+  }
+  const ttl = body.ttl();
+  const spend: InFlightSpend = {
+    outRefs,
+    ...(ttl === undefined ? {} : { ttlSlot: Number(ttl) }),
+    unconfirmed: false,
+  };
+  const inFlight =
+    inFlightSpendsByLucid.get(lucid) ?? new Map<string, InFlightSpend>();
+  inFlight.set(txHash, spend);
+  inFlightSpendsByLucid.set(lucid, inFlight);
+  return spend;
 };
 
 const outRefKey = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>

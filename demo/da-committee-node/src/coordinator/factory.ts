@@ -14,7 +14,10 @@ import {
 } from "../l1/submitter.js";
 import type { CommitteeStore } from "../store.js";
 import { normalizeHex } from "../utils/hex.js";
-import { LucidDaAttestationSubmitter } from "./lucid-submitter.js";
+import {
+  type DaBondFundingCheck,
+  LucidDaAttestationSubmitter,
+} from "./lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "./on-chain.js";
 
 type OnChainCoordinatorFactoryDeps = {
@@ -41,6 +44,7 @@ export const onChainCoordinatorFromConfig = async (
     "saveDaAttestationCandidate" | "saveL1Submission" | "listDaSignatures"
   >,
   deps: OnChainCoordinatorFactoryDeps = defaultDeps,
+  recordBondFunding?: (check: DaBondFundingCheck) => void,
 ): Promise<OnChainLifecycleCoordinator> => {
   if (config.l1SubmitterKeySource === undefined) {
     throw new Error("L1_SUBMITTER_KEY_SOURCE is required for L1 submission");
@@ -85,6 +89,7 @@ export const onChainCoordinatorFromConfig = async (
     lucid,
     contracts,
     referenceScripts,
+    ...(recordBondFunding === undefined ? {} : { recordBondFunding }),
     availabilityParameters: SDK.daAvailabilityParameters({
       responseGeometry: SDK.availabilityResponseGeometry(
         config.availabilityChallenge.responseGeometry,

@@ -1,19 +1,17 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, type Network } from "@lucid-evolution/lucid";
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 
 import { DepositsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { depositDataToEntry } from "../l1-event-history-entries.js";
 import {
   Database,
-  Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
 import {
-  logReconciledVisibleUserEvents,
   persistVisibleUserEventUTxOs,
   runCommitTimeUserEventIngestionBarrier,
   type UserEventFetchBounds,
@@ -91,28 +89,6 @@ export const reconcileVisibleDepositUTxOs = (
     );
     return yield* persistDepositUTxOs(depositUTxOs, nodeConfig.NETWORK);
   });
-
-/**
- * Runs one deposit-discovery pass and persists newly visible deposits into the
- * deposit observation log.
- */
-export const fetchAndInsertDepositUTxOs: Effect.Effect<
-  void,
-  SDK.LucidError | DatabaseError,
-  MidgardContracts | Lucid | Database | Globals | NodeConfig
-> = Effect.gen(function* () {
-  const globals = yield* Globals;
-
-  yield* Effect.logDebug("🏦 fetching DepositUTxOs...");
-  const { reconciledCount, completedAt } =
-    yield* reconcileVisibleDepositUTxOs();
-  yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, completedAt.getTime());
-  yield* logReconciledVisibleUserEvents({
-    reconciledCount,
-    message: (count) =>
-      `🏦 Reconciled ${count} visible deposit UTxO(s) into deposits_utxos.`,
-  });
-});
 
 export const fetchAndInsertDepositUTxOsForCommitBarrier = (
   inclusionTimeUpperBound: Date,

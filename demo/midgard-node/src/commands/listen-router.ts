@@ -124,7 +124,7 @@ import {
   validateSubmitTxCanonicalCbor,
 } from "./listen-utils.js";
 import * as ProtocolInfoCommand from "./protocol-info.js";
-import { evaluateReadiness } from "./readiness.js";
+import { evaluateReadiness, READINESS_ENDPOINT } from "./readiness.js";
 import { resolveTxStatus, resolveTxStatusBatch } from "./tx-status.js";
 import * as UtxosCommand from "./utxos.js";
 
@@ -685,7 +685,6 @@ const PIPELINE_STATUS_ENDPOINT: string = "pipeline-status";
 const DEPOSIT_STATUS_ENDPOINT: string = "deposit-status";
 const PROTOCOL_INFO_ENDPOINT: string = "protocol-info";
 const HEALTH_ENDPOINT: string = "healthz";
-const READINESS_ENDPOINT: string = "readyz";
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -1623,7 +1622,10 @@ const getReadinessHandler = Effect.gen(function* () {
       : nativeMpfOwner === undefined
         ? undefined
         : yield* Effect.either(
-            Effect.promise(() => nativeMpfOwner.diagnostics()),
+            Effect.tryPromise({
+              try: () => nativeMpfOwner.diagnostics(),
+              catch: (cause) => cause,
+            }),
           );
   if (nodeConfig.MPF_ENGINE === "architecture_g") {
     if (nativeMpfOwner === undefined) {

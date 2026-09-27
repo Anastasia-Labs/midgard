@@ -625,16 +625,32 @@ const explicitTxObservations = ({
     ...structuredTxObservations(parsedJson, stepId),
   ]);
 
-const parseLastJsonLine = (text: string): unknown | null => {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("{") && line.endsWith("}"));
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    try {
-      return JSON.parse(lines[index]!);
-    } catch {
-      continue;
+/**
+ * Returns the last JSON object in stdout: either a one-line object or a
+ * pretty-printed one (the node CLI's `formatJson`) whose top-level braces
+ * sit alone at column 0.
+ */
+const parseLastJsonDocument = (text: string): unknown | null => {
+  const lines = text.split(/\r?\n/);
+  for (let end = lines.length - 1; end >= 0; end -= 1) {
+    const line = lines[end]!;
+    const trimmed = line.trim();
+    const candidates: string[] = [];
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      candidates.push(trimmed);
+    }
+    if (line === "}" && end > 0) {
+      const start = lines.lastIndexOf("{", end - 1);
+      if (start >= 0) {
+        candidates.push(lines.slice(start, end + 1).join("\n"));
+      }
+    }
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        continue;
+      }
     }
   }
   return null;
@@ -682,7 +698,7 @@ export const runCommandStep = async (spec: StepSpec): Promise<StepSummary> => {
           : attempt.exitCode === 0
             ? "success"
             : "failed";
-  const parsedJson = parseLastJsonLine(attempt.stdout);
+  const parsedJson = parseLastJsonDocument(attempt.stdout);
   return parseE2EStep({
     schemaVersion: E2E_STEP_SCHEMA_VERSION,
     id: spec.id,

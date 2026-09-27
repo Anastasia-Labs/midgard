@@ -93,8 +93,13 @@ node dist/index.js deployment-status | jq .
 
 ## 2. Submit The Deposit
 
+Reuse the same `DEPOSIT_SUBMISSION_ID` if you retry an interrupted
+submission; a new deposit needs a new ID.
+
 ```sh
+export DEPOSIT_SUBMISSION_ID="deposit-$(node -p 'crypto.randomUUID()')"
 DEPOSIT_JSON="$(node dist/index.js submit-deposit \
+  --submission-id "$DEPOSIT_SUBMISSION_ID" \
   --wallet-seed-phrase-env USER_SEED_PHRASE \
   --l2-address "$USER_L2_ADDRESS" \
   --lovelace 12000000)"
@@ -102,7 +107,8 @@ DEPOSIT_JSON="$(node dist/index.js submit-deposit \
 printf '%s\n' "$DEPOSIT_JSON" | jq .
 
 export DEPOSIT_TX_HASH="$(printf '%s\n' "$DEPOSIT_JSON" | jq -r '.txHash')"
-export DEPOSIT_EVENT_ID="$(printf '%s\n' "$DEPOSIT_JSON" | jq -r '.metadata.depositEventId')"
+export DEPOSIT_EVENT_ID="$(printf '%s\n' "$DEPOSIT_JSON" | jq -r '.metadata.depositEventId // empty')"
+test -n "$DEPOSIT_EVENT_ID"
 ```
 
 Expected fields:
@@ -113,11 +119,26 @@ Expected fields:
 - `metadata.depositAuthUnit`
 - `metadata.inclusionTime`
 
-Wait until the deposit inclusion time has elapsed, then project deposits once:
+The running node records and projects the deposit itself. The deposit is due
+at `metadata.inclusionTime`, the transaction's validity upper bound plus the
+profile's `event_wait_ms` (300 s on the testing profiles). Wait at most 20
+minutes for `/deposit-status` to report it projected:
 
 ```sh
-node dist/index.js project-deposits-once
+DEPOSIT_STATUS=""
+for attempt in $(seq 1 80); do
+  DEPOSIT_STATUS="$(curl -fsS \
+    "$MIDGARD_NODE_URL/deposit-status?eventId=$DEPOSIT_EVENT_ID" \
+    | jq -r '.status')" || DEPOSIT_STATUS=""
+  case "$DEPOSIT_STATUS" in projected | consumed) break ;; esac
+  sleep 15
+done
+printf 'DEPOSIT_STATUS=%s\n' "$DEPOSIT_STATUS"
+case "$DEPOSIT_STATUS" in projected | consumed) ;; *) false ;; esac
 ```
+
+The last line fails unless `DEPOSIT_STATUS` is `projected` or `consumed`. A
+`404` or `awaiting` before the deposit is due is not a failure.
 
 Inspect the spendable L2 ledger view (the new deposit remains hidden until
 its header is confirmed):
@@ -241,8 +262,13 @@ printf 'WITHDRAW_L2_OUT_REF=%s\n' "$WITHDRAW_L2_OUT_REF"
 
 ## 7. Submit The Withdrawal Order
 
+Reuse the same `WITHDRAWAL_SUBMISSION_ID` if you retry an interrupted
+submission; a new withdrawal needs a new ID.
+
 ```sh
+export WITHDRAWAL_SUBMISSION_ID="withdrawal-$(node -p 'crypto.randomUUID()')"
 WITHDRAWAL_JSON="$(node dist/index.js submit-withdrawal \
+  --submission-id "$WITHDRAWAL_SUBMISSION_ID" \
   --wallet-seed-phrase-env DEST_WALLET \
   --endpoint "$MIDGARD_NODE_URL" \
   --l2-out-ref "$WITHDRAW_L2_OUT_REF" \
@@ -256,7 +282,7 @@ export WITHDRAWAL_EVENT_ID="$(printf '%s\n' "$WITHDRAWAL_JSON" | jq -r '.withdra
 
 `withdrawalEventId` is the canonical OutputReference CBOR for the L1 nonce
 input spent by the withdrawal order transaction. Use this value for withdrawal
-fetching, settlement proof resolution, and payout lifecycle commands.
+status, settlement proof resolution, and payout lifecycle commands.
 
 Expected fields:
 
@@ -272,15 +298,36 @@ Expected fields:
 - `validTo`
 - `inclusionTime`
 
-## 8. Fetch, Commit, And Merge The Withdrawal
+## 8. Wait For, Commit, And Merge The Withdrawal
 
-After the withdrawal order inclusion time has elapsed:
+The running node records the withdrawal order itself. `withdrawal-status`
+fails until the order is recorded, so wait at most 20 minutes for it:
 
 ```sh
-node dist/index.js fetch-withdrawals-once | jq .
+WITHDRAWAL_STATUS_JSON=""
+for attempt in $(seq 1 80); do
+  WITHDRAWAL_STATUS_JSON="$(node dist/index.js withdrawal-status \
+    --event-id "$WITHDRAWAL_EVENT_ID")" && break
+  WITHDRAWAL_STATUS_JSON=""
+  sleep 15
+done
+test -n "$WITHDRAWAL_STATUS_JSON"
+printf '%s\n' "$WITHDRAWAL_STATUS_JSON" | jq .
+```
 
-node dist/index.js withdrawal-status \
-  --event-id "$WITHDRAWAL_EVENT_ID" | jq .
+A recorded order is still `awaiting` and is not due until its `inclusionTime`,
+the order's `validTo` plus the profile's `event_wait_ms` (300 s on the testing
+profiles). A block committed before then cannot include it, so wait until that
+time has passed:
+
+```sh
+WITHDRAWAL_INCLUSION_TIME="$(printf '%s\n' "$WITHDRAWAL_STATUS_JSON" \
+  | jq -r '.inclusionTime')"
+sleep "$(node -e '
+  const due = Date.parse(process.argv[1]);
+  if (Number.isNaN(due)) throw new Error("invalid inclusionTime");
+  console.log(Math.max(0, Math.ceil((due - Date.now()) / 1000)));
+' "$WITHDRAWAL_INCLUSION_TIME")"
 ```
 
 Commit the withdrawal block:
@@ -353,9 +400,13 @@ while true; do
 done
 ```
 
-If no reserve UTxO contributes to the remaining target value, the funding
-command fails closed and prints a diagnostic instead of consuming unrelated
-reserve state.
+The funding command picks the reserve UTxO with the largest lovelace
+contribution among those the validators can spend: no datum, no reference
+script, and any change left at least the minimum UTxO lovelace. Anyone can
+pay to the reserve address, so it skips UTxOs outside that shape. If none
+qualifies, it fails closed with a diagnostic. `--reserve-out-ref
+<txHash#outputIndex>` names the reserve UTxO to spend instead, and is refused
+with the reason when that UTxO cannot fund the payout.
 
 ## 11. Conclude The Payout
 
@@ -420,10 +471,12 @@ Reserve and payout commands intentionally do not auto-register this account
 while spending protocol state. The repair command submits the canonical
 registration transaction and relies on normal transaction confirmation.
 
-### `project-deposits-once` Or `fetch-withdrawals-once` Finds Nothing
+### The Deposit Or Withdrawal Does Not Appear
 
-The L1 event may not have reached its inclusion time. Wait and rerun the
-one-shot command. These commands are idempotent.
+The L1 event may not have reached its inclusion time. Compare its
+`inclusionTime` with the current time, then check the node's `/readyz`
+reasons, for example `history_owner_not_ready`. Only the running node ingests
+L1 events; there is no one-shot ingestion command.
 
 ### `submit-withdrawal` Rejects The L2 Out-Ref
 
@@ -445,6 +498,8 @@ is missing from L1.
 
 ### Payout Funding Is Underfunded
 
-Run `reserve-utxos` and compare its aggregate totals with
-`payout-status.remainingAssets`. The funding command only consumes reserve UTxOs
-that contribute to the remaining target value.
+Run `reserve-utxos` and compare its `spendableTotals` with
+`payout-status.remainingAssets`. `totals` also counts UTxOs marked
+`spendable: false` (their `unspendableReason` names the datum or reference
+script), which the validators refuse to spend. The funding command only
+consumes spendable reserve UTxOs that contribute to the remaining target value.

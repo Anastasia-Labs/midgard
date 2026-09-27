@@ -4701,14 +4701,6 @@ export const verifyFinalizedDeploymentManifest = (
   if (verifiedFinalizedManifestIds.has(verifiedManifestId)) {
     return candidate as DeploymentManifest;
   }
-  if (
-    candidate.network !== "Mainnet" &&
-    candidate.network !== "Preprod" &&
-    candidate.network !== "Preview" &&
-    candidate.network !== "Custom"
-  ) {
-    throw new Error("Deployment manifest network is unsupported");
-  }
   const createdAt = requireIsoTimestamp(candidate.createdAt, "createdAt");
   const updatedAt = requireIsoTimestamp(candidate.updatedAt, "updatedAt");
   if (updatedAt < createdAt) {

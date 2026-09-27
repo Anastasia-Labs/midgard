@@ -29,6 +29,12 @@ export const historyEligibilityHorizon = (
  * causes a new selection/build against fresh coverage. The ordinary long-window
  * fixture policy and on-chain range/size/execution limits remain independent. */
 export const HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS = 30_000;
+/** A source-owned commit capped to the current scheduler shift ends at that
+ * shift's end, and the header end is its inclusive TTL. Several L1 block
+ * intervals (~20 s each) must remain for it to land, so neither the pre-lease
+ * scheduler target nor the worker's current-window cap admits a shift with
+ * less left than this. A shorter remainder waits for the next shift. */
+export const HISTORY_COMMIT_LANDING_MARGIN_MS = 120_000;
 const reserves: Readonly<Record<CommitTimingCheckpoint, number>> = {
   pre_witness: 30_000,
   pre_build: 20_000,

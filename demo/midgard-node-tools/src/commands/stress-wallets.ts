@@ -167,7 +167,6 @@ export type PrepareStressWalletsRuntime = {
   readonly submitDeposit: (
     request: StressWalletDepositRequest,
   ) => Promise<StressWalletDepositResult>;
-  readonly projectDeposits: () => Promise<void>;
   readonly fetchUtxos?: (
     nodeEndpoint: string,
     address: string,
@@ -2575,7 +2574,6 @@ const prepareStressWalletsUnlocked = async (
     if (projectionWaitMs > 0) {
       await sleepImpl(projectionWaitMs);
     }
-    await runtime.projectDeposits();
   }
 
   const startedVerification = monotonicNow();
@@ -2619,7 +2617,6 @@ const prepareStressWalletsUnlocked = async (
       );
     }
     await sleepImpl(pollIntervalMs);
-    await runtime.projectDeposits();
   }
 
   const preparedAt = now().toISOString();

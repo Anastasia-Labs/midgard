@@ -6,9 +6,17 @@ import {
   EntryWithTimeStamp,
 } from "../../database/utils/tx.js";
 import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
+import {
+  HISTORY_COMMIT_LANDING_MARGIN_MS,
+  HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+} from "../../services/history-commit-window.js";
 import { planSubmitTiming } from "../../transactions/submit-timing.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../../transactions/submit-timing-due-work.js";
-import type { CommitEndTimeFit } from "./commit-end-time.js";
+import {
+  COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  type CommitEndTimeFit,
+} from "./commit-end-time.js";
 
 export type SuccessfulCommitBatch = {
   readonly txsToInsertImmutable: readonly EntryWithTimeStamp[];
@@ -517,6 +525,26 @@ export const planCommitBatchBudgets = ({
     ),
   };
 };
+
+/** The budgets `planSchedulerAwareCommitSelection` applies. A source-owned
+ * commit caps its end, which is its inclusive TTL, to the current shift only
+ * while the shift still leaves the history landing margin. */
+export const schedulerAwareCommitWindowBudgets = (
+  sourceOwned: boolean,
+): {
+  readonly minimumCurrentWindowBudgetMs: number;
+  readonly productionMinimumFutureBufferMs: number;
+} =>
+  sourceOwned
+    ? {
+        minimumCurrentWindowBudgetMs: HISTORY_COMMIT_LANDING_MARGIN_MS,
+        productionMinimumFutureBufferMs:
+          HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      }
+    : {
+        minimumCurrentWindowBudgetMs: COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
+        productionMinimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      };
 
 export const planSchedulerAwareCommitSelection = ({
   candidateSelection,

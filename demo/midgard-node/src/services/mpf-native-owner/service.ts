@@ -45,6 +45,7 @@ const SIDECAR_MAGIC = "MGNS";
 const SIDECAR_HEADER_BYTES = 144;
 const SIDECAR_DIGEST_DOMAIN = Buffer.from("MIDGARD-MPF-OWNER-NODE-SIDECAR-V1");
 const NATIVE_OWNER_MIN_RUNTIME_HEADROOM_BYTES = 1024 * 1024 * 1024;
+const DEFAULT_RESTART_WINDOW_MS = 60 * 60 * 1000;
 
 type StoredLeaf = {
   readonly __kind: "Leaf";
@@ -109,10 +110,14 @@ export type NativeMpfOwnerServiceOptions = {
   readonly maxChunkBytes?: number;
   readonly requestTimeoutMs?: number;
   readonly restartLimit?: number;
+  /** Sliding window in which at most `restartLimit` child restarts may start. */
+  readonly restartWindowMs?: number;
   readonly sidecarPath?: string;
-  /** Process-crash test seam; production callers must leave this undefined. */
+  /** Process-crash and interleaving test seam; production callers must leave
+   * this undefined. */
   readonly faultInjectionForTests?: (
     point:
+      | "diagnostics_before_request"
       | "before_promotion_batch"
       | "after_promotion_batch_before_ack"
       | "before_root_restore_batch"
@@ -127,6 +132,7 @@ type NormalizedNativeMpfOwnerServiceOptions = NativeMpfOwnerServiceOptions & {
   readonly maxChunkBytes: number;
   readonly requestTimeoutMs: number;
   readonly restartLimit: number;
+  readonly restartWindowMs: number;
 };
 
 const digest = (...parts: readonly Uint8Array[]): Buffer => {
@@ -145,9 +151,11 @@ const normalizeOwnerOptions = (
   const requestTimeoutMs =
     options.requestTimeoutMs ?? NATIVE_MPF_OWNER_DEFAULT_CAPS.loadTimeoutMs;
   const restartLimit = options.restartLimit ?? 3;
+  const restartWindowMs = options.restartWindowMs ?? DEFAULT_RESTART_WINDOW_MS;
   positiveSafeInteger(maxFrameBytes, "maxFrameBytes");
   positiveSafeInteger(maxChunkBytes, "maxChunkBytes");
   positiveSafeInteger(requestTimeoutMs, "requestTimeoutMs");
+  positiveSafeInteger(restartWindowMs, "restartWindowMs");
   if (!Number.isSafeInteger(restartLimit) || restartLimit < 0) {
     throw new Error("restartLimit must be a non-negative safe integer");
   }
@@ -166,6 +174,7 @@ const normalizeOwnerOptions = (
     maxChunkBytes,
     requestTimeoutMs,
     restartLimit,
+    restartWindowMs,
   };
 };
 
@@ -1088,6 +1097,20 @@ class NativeChildRpc {
   }
 }
 
+const assertPinnedOwnerBinary = async (
+  binaryPath: string,
+  binarySha256: string,
+): Promise<void> => {
+  const actualSha = createHash("sha256")
+    .update(await readFile(binaryPath))
+    .digest("hex");
+  if (actualSha !== binarySha256) {
+    throw new Error(
+      `Native MPF owner binary SHA-256 mismatch: expected=${binarySha256},actual=${actualSha}`,
+    );
+  }
+};
+
 const startNativeChild = async ({
   options,
   fullIndex,
@@ -1097,6 +1120,9 @@ const startNativeChild = async ({
   readonly fullIndex: Buffer;
   readonly marker: string;
 }): Promise<NativeChildRpc> => {
+  // Restarts and restores spawn the path again; the file there may have been
+  // replaced since create() checked it, so every spawn re-verifies the pin.
+  await assertPinnedOwnerBinary(options.binaryPath, options.binarySha256);
   const rpc = new NativeChildRpc(
     options.binaryPath,
     options.binarySha256,
@@ -1174,10 +1200,13 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     WorkerGenerationLease
   >();
   private childRestarts = 0;
-  private restartAttempts = 0;
+  private restartStartedAt: number[] = [];
+  private restartExhaustion: Error | undefined;
   private restartPromise: Promise<void> | undefined;
   private closing = false;
   private activeOperations = 0;
+  private activeReads = 0;
+  private readDrainWaiters: (() => void)[] = [];
   private restoration: Promise<void> | undefined;
   private recoveryFailure: Error | undefined;
   private lastChildError: Error | undefined;
@@ -1200,14 +1229,10 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       v8HeapLimitBytes: getHeapStatistics().heap_size_limit,
     });
     assertNativeMpfHashHex(normalized.binarySha256, "binarySha256");
-    const actualSha = createHash("sha256")
-      .update(await readFile(normalized.binaryPath))
-      .digest("hex");
-    if (actualSha !== normalized.binarySha256) {
-      throw new Error(
-        `Native MPF owner binary SHA-256 mismatch: expected=${normalized.binarySha256},actual=${actualSha}`,
-      );
-    }
+    await assertPinnedOwnerBinary(
+      normalized.binaryPath,
+      normalized.binarySha256,
+    );
     const db = new Level<string, StoredValue>(normalized.levelPath, {
       valueEncoding: "json",
     });
@@ -1219,13 +1244,13 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         db,
         marker,
         options: normalized,
-        binarySha256: actualSha,
+        binarySha256: normalized.binarySha256,
       });
       rpc = await startNativeChild({ options: normalized, fullIndex, marker });
       const service = new ProductionNativeMpfOwnerService(
         db,
         rpc,
-        actualSha,
+        normalized.binarySha256,
         marker,
         normalized,
       );
@@ -1478,8 +1503,9 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   }
 
   public async diagnostics(): Promise<NativeMpfOwnerDiagnostics> {
-    return this.runOperation(async () => {
+    return this.runReadOperation(async () => {
       const rpc = await this.ensureRpc();
+      await this.options.faultInjectionForTests?.("diagnostics_before_request");
       const response = await rpc.request(
         NativeMpfRpcKind.Diagnostics,
         Buffer.alloc(0),
@@ -1530,6 +1556,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
    * authenticate the recovery plan and drain producers before this operation.
    * SQL reconciliation and Ready publication remain the caller's responsibility.
    * A new child epoch invalidates all handles from the displaced native state.
+   * In-flight read-only diagnostics (readiness, audits) are awaited, not refused;
+   * new operations are refused from this call until the restore settles.
    */
   public restoreCanonicalRoot(
     plan: NativeMpfCanonicalRootRecovery,
@@ -1554,7 +1582,9 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         error instanceof Error ? error : new Error(String(error)),
       );
     }
-    const restore = this.restoreRetainedRoot(captured);
+    const restore = this.readsDrained().then(() =>
+      this.restoreRetainedRoot(captured),
+    );
     this.restoration = restore;
     void restore
       .finally(() => {
@@ -1666,8 +1696,23 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
   }
 
+  /** A state this process cannot leave: the child restart budget is spent, or
+   * a committed canonical recovery failed to install. Every operation refuses
+   * from then on, so the node must exit rather than stay up unable to commit.
+   */
+  public terminalFailure(): Error | undefined {
+    if (this.restartExhaustion !== undefined) return this.restartExhaustion;
+    if (this.recoveryFailure !== undefined)
+      return new Error(
+        "Native MPF canonical recovery requires process restart",
+        { cause: this.recoveryFailure },
+      );
+    return undefined;
+  }
+
   private assertCanOperate(): void {
     if (this.closing) throw new Error("Native MPF owner service is closed");
+    if (this.restartExhaustion !== undefined) throw this.restartExhaustion;
     if (this.recoveryFailure !== undefined)
       throw new Error(
         "Native MPF canonical recovery requires process restart",
@@ -1685,6 +1730,23 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     } finally {
       this.activeOperations -= 1;
     }
+  }
+
+  private async runReadOperation<A>(work: () => Promise<A>): Promise<A> {
+    this.assertCanOperate();
+    this.activeReads += 1;
+    try {
+      return await work();
+    } finally {
+      this.activeReads -= 1;
+      if (this.activeReads === 0)
+        for (const resolve of this.readDrainWaiters.splice(0)) resolve();
+    }
+  }
+
+  private readsDrained(): Promise<void> {
+    if (this.activeReads === 0) return Promise.resolve();
+    return new Promise((resolve) => this.readDrainWaiters.push(resolve));
   }
 
   public createWorkerPort(): MessagePort {
@@ -1730,14 +1792,21 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       return Promise.reject(new Error("Native MPF owner service is closing"));
     }
     if (this.restartPromise !== undefined) return this.restartPromise;
-    if (this.restartAttempts >= this.options.restartLimit) {
-      return Promise.reject(
-        new Error(
-          `Native MPF owner restart limit exhausted after ${this.restartAttempts.toString()} attempt(s): ${error.message}`,
-        ),
+    if (this.restartExhaustion !== undefined)
+      return Promise.reject(this.restartExhaustion);
+    // Monotonic: a wall-clock step must neither refill nor drain the window.
+    const now = performance.now();
+    this.restartStartedAt = this.restartStartedAt.filter(
+      (startedAt) => now - startedAt < this.options.restartWindowMs,
+    );
+    if (this.restartStartedAt.length >= this.options.restartLimit) {
+      this.restartExhaustion = new Error(
+        `Native MPF owner restart limit exhausted: ${this.restartStartedAt.length.toString()} restart(s) within ${this.options.restartWindowMs.toString()} ms: ${error.message}`,
+        { cause: error },
       );
+      return Promise.reject(this.restartExhaustion);
     }
-    this.restartAttempts += 1;
+    this.restartStartedAt.push(now);
     const restart = this.restartChild();
     this.restartPromise = restart;
     void restart.then(

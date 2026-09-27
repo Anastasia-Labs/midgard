@@ -804,7 +804,7 @@ describe("e2e run summary", () => {
             }),
           ],
         }),
-        step({ id: "project-deposits", status: "success" }),
+        step({ id: "deposit-projected", status: "success" }),
         step({
           id: "submit-l2-transfer-a",
           status: "success",

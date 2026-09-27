@@ -47,6 +47,7 @@ import {
   mergeFiber,
   monitorMempoolFiber,
   mpfPayloadAuditFiber,
+  nativeMpfOwnerSupervisorFiber,
   operatorWatchdogFiber,
   refreshAdmissionBacklogGauge,
   retentionSweeperFiber,
@@ -440,6 +441,9 @@ export const runNode = (
           mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
         ),
         mpfPayloadAuditFiber,
+        nativeMpfOwnerSupervisorFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+        ),
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
         txQueueProcessorFiber(mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS)),
       ],

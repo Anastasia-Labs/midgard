@@ -309,8 +309,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     );
     const UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS = yield* Ref.make<number>(0);
 
-    const LATEST_DEPOSIT_FETCH_TIME = yield* Ref.make<number>(0);
-
     // The end time of the latest block the node has locally accepted as the
     // pre-state boundary for the next block (confirmed on startup, then
     // advanced optimistically on successful submissions).
@@ -393,7 +391,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       PROCESSED_UNSUBMITTED_TXS_SIZE,
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
       UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
-      LATEST_DEPOSIT_FETCH_TIME,
       LATEST_LOCAL_BLOCK_END_TIME_MS,
       MEMPOOL_LEDGER_DELTA_LOG,
       TX_QUEUE_PROCESSOR_ACTIVE,

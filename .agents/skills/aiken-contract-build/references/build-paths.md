@@ -60,7 +60,8 @@ the record, so a plain or traced `--env testnet` build is fine for them.
 
 `onchain/aiken/env/` holds one module per deployment profile plus two aliases,
 all generated from `config/deployments/*.yaml` and
-`config/deployments/env.ak.template` by `deployment-profiles.mjs:204-213`:
+`config/deployments/env.ak.template` by
+`demo/scripts/deployment-profiles.mjs:209-223`:
 
 | Aiken env              | File               | Same bytes as            |
 | ---------------------- | ------------------ | ------------------------ |
@@ -73,9 +74,10 @@ user-events witness prefix, fixed constants) is identical in every env; what
 differs is the profile block: timing (block maturity, response window, shift
 and registration durations, DA attestation and response windows), economics
 (bond, slashing penalties, prover reward) and limits. For example
-`block_maturity_duration_v1` is `300_000` under `testnet` and `604_800_000`
-under the default env; `required_bond` is `900_000_000` versus
-`100_000_000_000`.
+`block_maturity_duration_v1` under `testnet` is `timing.block_maturity_ms` in
+`config/deployments/preprod-testing.yaml`, and `604_800_000` under the default
+env; `required_bond` is `900_000_000` versus `100_000_000_000`. Read testing
+values from the YAML, not from this page.
 
 So omitting `--env` compiles **mainnet** parameters. A plain `aiken check`,
 and both `run-focused-check.mjs` and `guard-focused-selector.mjs` without

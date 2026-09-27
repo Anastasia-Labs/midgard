@@ -606,6 +606,11 @@ export type SubmitRecoveryInlineOptions = {
   readonly confirmationTimeoutMs?: number;
   readonly confirmationRetries?: number;
   readonly confirmationPollIntervalMs?: number;
+  /**
+   * Unix time (ms) at which the whole confirmation wait, retries included,
+   * fails with TxConfirmError whatever retries remain.
+   */
+  readonly confirmationDeadlineMs?: number;
   readonly inlineWaitPolicy?: Extract<InlineWaitPolicy, "allow_inline_wait">;
   readonly noInlineSubmitDefer?: never;
 };
@@ -1358,6 +1363,7 @@ export const awaitSubmittedTransactionConfirmation = (
     | "confirmationTimeoutMs"
     | "confirmationRetries"
     | "confirmationPollIntervalMs"
+    | "confirmationDeadlineMs"
     | "requiredOutputIndexes"
     | "label"
   > = {},
@@ -1376,13 +1382,15 @@ export const awaitSubmittedTransactionConfirmation = (
       !Number.isSafeInteger(confirmationRetries) ||
       confirmationRetries < 0 ||
       !Number.isSafeInteger(confirmationPollIntervalMs) ||
-      confirmationPollIntervalMs <= 0
+      confirmationPollIntervalMs <= 0 ||
+      (options.confirmationDeadlineMs !== undefined &&
+        !Number.isSafeInteger(options.confirmationDeadlineMs))
     ) {
       return yield* Effect.fail(
         new TxConfirmError({
           message: "Invalid transaction confirmation options",
           txHash,
-          cause: `timeout_ms=${confirmationTimeoutMs.toString()},retries=${confirmationRetries.toString()},poll_interval_ms=${confirmationPollIntervalMs.toString()}`,
+          cause: `timeout_ms=${confirmationTimeoutMs.toString()},retries=${confirmationRetries.toString()},poll_interval_ms=${confirmationPollIntervalMs.toString()},deadline_ms=${String(options.confirmationDeadlineMs)}`,
         }),
       );
     }
@@ -1408,16 +1416,36 @@ export const awaitSubmittedTransactionConfirmation = (
       ),
     );
 
-    yield* awaitWithTimeout;
-    yield* awaitRequiredOutputVisibility(
-      lucid,
-      submission,
-      options.requiredOutputIndexes ?? [],
-      Math.min(confirmationTimeoutMs, TX_OUTPUT_VISIBILITY_TIMEOUT_MS),
-      Math.min(
-        confirmationPollIntervalMs,
-        TX_OUTPUT_VISIBILITY_POLL_INTERVAL_MS,
+    const confirmationDeadlineMs = options.confirmationDeadlineMs;
+    yield* awaitWithTimeout.pipe(
+      Effect.zipRight(
+        awaitRequiredOutputVisibility(
+          lucid,
+          submission,
+          options.requiredOutputIndexes ?? [],
+          Math.min(confirmationTimeoutMs, TX_OUTPUT_VISIBILITY_TIMEOUT_MS),
+          Math.min(
+            confirmationPollIntervalMs,
+            TX_OUTPUT_VISIBILITY_POLL_INTERVAL_MS,
+          ),
+        ),
       ),
+      (wait) =>
+        confirmationDeadlineMs === undefined
+          ? wait
+          : wait.pipe(
+              Effect.timeoutFail({
+                duration: Duration.millis(
+                  Math.max(0, confirmationDeadlineMs - Date.now()),
+                ),
+                onTimeout: () =>
+                  new TxConfirmError({
+                    message: "Transaction confirmation deadline passed",
+                    txHash,
+                    cause: `deadline_ms=${confirmationDeadlineMs.toString()}`,
+                  }),
+              }),
+            ),
     );
     yield* reconcileWalletUtxosFromSignedTx(lucid, submission);
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);

@@ -1,7 +1,9 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { onChainCoordinatorFromConfig } from "../src/coordinator/factory.js";
+import type { LucidDaAttestationSubmitter } from "../src/coordinator/lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
 import type { L1SubmitterPreflightOptions } from "../src/l1/submitter.js";
@@ -259,6 +261,63 @@ describe("onChainCoordinatorFromConfig", () => {
         passingDeps(),
       ),
     ).resolves.toBeInstanceOf(OnChainLifecycleCoordinator);
+  });
+
+  it("hands the bond funding hook to the submitter, which reports each check to it", async () => {
+    const config = l1ReadyConfig();
+    const walletUtxo = {
+      txHash: "44".repeat(32),
+      outputIndex: 0,
+      address: "addr_test1submitter",
+      assets: { lovelace: 7_000_000n },
+    } as UTxO;
+    const lucid = {
+      wallet: () => ({ address: async () => walletUtxo.address }),
+      utxosAt: async () => [walletUtxo],
+      overrideUTxOs: () => undefined,
+      // No DA params UTxO, so an init stops right after its funding check.
+      utxosAtWithUnit: async () => [],
+    } as unknown as LucidEvolution;
+    const checks: unknown[] = [];
+    const coordinator = await onChainCoordinatorFromConfig(
+      config,
+      fakeChainReader,
+      undefined,
+      {
+        ...passingDeps(),
+        lucidFromProviderUrl: async () => ({ lucid, providerSource: "test" }),
+      },
+      (check) => checks.push(check),
+    );
+    const submitter = (
+      coordinator as unknown as {
+        readonly deps: { readonly submitter: LucidDaAttestationSubmitter };
+      }
+    ).deps.submitter;
+    (
+      submitter as unknown as {
+        findStateQueueHeader: () => Promise<unknown>;
+      }
+    ).findStateQueueHeader = async () => ({
+      stateQueueNode: { da_attestation: SDK.NO_DA_ATTESTATION },
+    });
+
+    await expect(
+      submitter.initAttestation({
+        headerHash: "01".repeat(28),
+        availabilityCommitmentCbor: "",
+        availabilityCommitmentDigest: "",
+      }),
+    ).rejects.toThrow(/expected exactly one DA params UTxO, found 0/);
+    expect(checks).toEqual([
+      {
+        checkedAt: expect.any(String),
+        plainAdaLovelace: 7_000_000n,
+        requiredLovelace:
+          BigInt(config.availabilityChallenge.daBondLovelace) + 50_000_000n,
+        sufficient: false,
+      },
+    ]);
   });
 
   it("does not construct an unproven fallback chain reader", async () => {

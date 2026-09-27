@@ -43,7 +43,6 @@ import {
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import * as DeploymentRunStateCommand from "./commands/deployment-run-state.js";
 import * as EventSettlementProofCommand from "./commands/event-settlement-proof.js";
-import * as FetchWithdrawalsOnceCommand from "./commands/fetch-withdrawals-once.js";
 import * as L1ProviderPreflightCommand from "./commands/l1-provider-preflight.js";
 import * as L1UtxosCommand from "./commands/l1-utxos.js";
 import { runNode } from "./commands/listen.js";
@@ -72,10 +71,6 @@ import {
 } from "./da/libp2p-runtime-manifest.js";
 import * as MigrationRunner from "./database/migrations/runner.js";
 import { buildE2EProcessEnv, parseEnvOverrides } from "./e2e/env.js";
-import {
-  fetchAndInsertDepositUTxOs,
-  projectDepositsToMempoolLedger,
-} from "./fibers/index.js";
 import { loadRuntimeDotenv } from "./runtime-env.js";
 import * as Services from "./services/index.js";
 import * as DaAttestation from "./transactions/da-attestation.js";
@@ -2374,37 +2369,6 @@ program
   });
 
 program
-  .command("project-deposits-once")
-  .description(
-    "Fetch deposit events from L1 once and project all deposits due by now into the local Midgard mempool ledger",
-  )
-  .action(async () => {
-    const mainEffect = provideNodeRuntimeServices(
-      fetchAndInsertDepositUTxOs.pipe(
-        Effect.andThen(projectDepositsToMempoolLedger),
-        Effect.tap(() =>
-          Effect.logInfo("project-deposits-once completed successfully"),
-        ),
-      ),
-    );
-
-    runCliEffect(mainEffect);
-  });
-
-program
-  .command("fetch-withdrawals-once")
-  .description(
-    "Fetch visible withdrawal order UTxOs from L1 once and reconcile them into withdrawal_utxos",
-  )
-  .action(async () => {
-    const mainEffect = provideNodeRuntimeServices(
-      FetchWithdrawalsOnceCommand.fetchWithdrawalsOnceProgram.pipe(tapJson()),
-    );
-
-    runCliEffect(mainEffect);
-  });
-
-program
   .command("resolve-event-settlement-proof")
   .description(
     "Resolve a deposit, withdrawal, or tx-order event's settlement UTxO and membership proof",
@@ -2483,11 +2447,16 @@ program
     "--withdrawal-event-id <hex>",
     "Canonical OutputReference CBOR withdrawal event id",
   )
+  .option(
+    "--reserve-out-ref <txHash#outputIndex>",
+    "Reserve UTxO to spend instead of the automatic selection",
+  )
   .action(async (_args, options) => {
     const opts = options.opts();
     const mainEffect = provideDatabaseTxServices(
       ReservePayoutCommand.addReserveFundsToPayoutProgram({
         eventId: opts.withdrawalEventId,
+        reserveOutRef: opts.reserveOutRef,
       }).pipe(tapJson()),
     );
 
@@ -2616,7 +2585,7 @@ program
   .option("--json", "print the report as JSON", false)
   .option(
     "--node-url <url>",
-    "node HTTP base URL for the Architecture-G native root (default: this host on PORT)",
+    "node HTTP base URL for the Architecture-G native root, read from /readyz with no LevelDB-copy fallback (default: this host on PORT, falling back to a copy of LEDGER_MPF_DB_PATH when the node gives no owner answer)",
   )
   .option(
     "--allow-in-flight",

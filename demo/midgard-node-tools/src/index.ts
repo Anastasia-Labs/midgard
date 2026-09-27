@@ -27,7 +27,6 @@ import {
   parseStringListOption,
   provideDatabaseServices,
   provideDatabaseTxServices,
-  provideNodeRuntimeServices,
   provideTxServices,
   runCliEffect,
   tapJson,
@@ -42,10 +41,6 @@ import {
 } from "midgard-node/commands/command-utils";
 import * as SubmitL2Transfer from "midgard-node/commands/submit-l2-transfer";
 import { parseEnvOverrides } from "midgard-node/e2e/env";
-import {
-  fetchAndInsertDepositUTxOs,
-  projectDepositsToMempoolLedger,
-} from "midgard-node/fibers/index";
 import { loadRuntimeDotenv } from "midgard-node/runtime-env";
 import * as Services from "midgard-node/services/index";
 import {
@@ -239,12 +234,12 @@ program
   )
   .option(
     "--projection-wait-ms <ms>",
-    "Delay after submitted deposits before projecting L1 deposit events",
+    "Delay after submitted deposits before polling /utxos for their funding",
     StressWalletsCommand.DEFAULT_PROJECTION_WAIT_MS.toString(),
   )
   .option(
     "--verify-timeout-ms <ms>",
-    "Maximum time to poll /utxos for projected L2 funding",
+    "Maximum time to poll /utxos for confirmed L2 funding",
     StressWalletsCommand.DEFAULT_VERIFY_TIMEOUT_MS.toString(),
   )
   .option(
@@ -391,14 +386,6 @@ program
                       depositEventId: submitted.metadata.depositEventId,
                     };
                   }),
-                ),
-              ),
-            projectDeposits: async () =>
-              Effect.runPromise(
-                provideNodeRuntimeServices(
-                  fetchAndInsertDepositUTxOs.pipe(
-                    Effect.andThen(projectDepositsToMempoolLedger),
-                  ),
                 ),
               ),
           },

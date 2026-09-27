@@ -27,15 +27,19 @@ import { addressDataToBech32 } from "./withdrawal-utils.js";
 type ReserveUtxoSummary = {
   readonly outRef: string;
   readonly assets: Readonly<Assets>;
-  readonly datum: "NoDatum";
-  readonly hasReferenceScript: false;
-  readonly spendable: true;
+  readonly datum: "NoDatum" | "InlineDatum" | "DatumHash";
+  readonly hasReferenceScript: boolean;
+  /** False when the reserve and payout validators can never spend it. */
+  readonly spendable: boolean;
+  readonly unspendableReason: string | null;
 };
 
 export type ReserveUtxosResult = {
   readonly reserveAddress: string;
   readonly utxoCount: number;
   readonly totals: Readonly<Assets>;
+  /** Totals over the spendable UTxOs only; what reserve funding can use. */
+  readonly spendableTotals: Readonly<Assets>;
   readonly utxos: readonly ReserveUtxoSummary[];
 };
 
@@ -65,14 +69,6 @@ const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
   return LucidData.from(payout.datum, SDK.PayoutDatum) as SDK.PayoutDatum;
 };
 
-const assertReserveUtxoShape = (utxo: UTxO): void => {
-  if (utxo.datum != null || utxo.scriptRef !== undefined) {
-    throw new Error(
-      `Reserve UTxO ${outRefLabel(utxo)} has unexpected datum or reference script.`,
-    );
-  }
-};
-
 export const reserveUtxosProgram: Effect.Effect<
   ReserveUtxosResult,
   Error | SDK.LucidError,
@@ -88,23 +84,33 @@ export const reserveUtxosProgram: Effect.Effect<
         cause,
       }),
   });
-  for (const utxo of utxos) {
-    assertReserveUtxoShape(utxo);
-  }
+  const summaries = utxos.map((utxo): ReserveUtxoSummary => {
+    const unspendableReason = SDK.reserveInputShapeRejection(utxo) ?? null;
+    return {
+      outRef: outRefLabel(utxo),
+      assets: utxo.assets,
+      datum:
+        utxo.datum != null
+          ? "InlineDatum"
+          : utxo.datumHash != null
+            ? "DatumHash"
+            : "NoDatum",
+      hasReferenceScript: utxo.scriptRef != null,
+      spendable: unspendableReason === null,
+      unspendableReason,
+    };
+  });
+  const total = (selected: readonly ReserveUtxoSummary[]) =>
+    selected.reduce<Assets>(
+      (totals, utxo) => addAssets(totals, utxo.assets),
+      {},
+    );
   return {
     reserveAddress: contracts.reserve.spendingScriptAddress,
     utxoCount: utxos.length,
-    totals: utxos.reduce<Assets>(
-      (totals, utxo) => addAssets(totals, utxo.assets),
-      {},
-    ),
-    utxos: utxos.map((utxo) => ({
-      outRef: outRefLabel(utxo),
-      assets: utxo.assets,
-      datum: "NoDatum",
-      hasReferenceScript: false,
-      spendable: true,
-    })),
+    totals: total(summaries),
+    spendableTotals: total(summaries.filter((utxo) => utxo.spendable)),
+    utxos: summaries,
   };
 });
 

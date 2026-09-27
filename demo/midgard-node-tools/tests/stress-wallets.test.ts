@@ -423,7 +423,6 @@ describe("stress wallet commands", () => {
         [second.l2Address, []],
       ]);
       const submitted: string[] = [];
-      let projectCount = 0;
 
       const result = await prepareStressWallets(
         {
@@ -452,9 +451,6 @@ describe("stress wallet commands", () => {
               depositEventId: "bb".repeat(34),
             };
           },
-          projectDeposits: async () => {
-            projectCount += 1;
-          },
           fetchUtxos: async (_endpoint, address) =>
             utxosByAddress.get(address) ?? [],
           sleep: async () => {},
@@ -462,7 +458,6 @@ describe("stress wallet commands", () => {
       );
 
       expect(submitted).toEqual(["STRESS_WALLET_SEED_PHRASE_0002"]);
-      expect(projectCount).toBe(1);
       expect(result.submittedDepositCount).toBe(1);
       expect(result.alreadyFundedCount).toBe(1);
       expect(result.verifiedWalletCount).toBe(2);
@@ -538,7 +533,6 @@ describe("stress wallet commands", () => {
             ]);
             return { txHash: "cc".repeat(32) };
           },
-          projectDeposits: async () => {},
           fetchUtxos: async (_endpoint, address) =>
             utxosByAddress.get(address) ?? [],
           sleep: async () => {},
@@ -580,7 +574,6 @@ describe("stress wallet commands", () => {
           },
           {
             submitDeposit: async () => ({ txHash: "dd".repeat(32) }),
-            projectDeposits: async () => {},
             fetchUtxos: async () => [],
             sleep: async () => {},
           },
@@ -2218,7 +2211,6 @@ describe("stress wallet commands", () => {
             funded = true;
             return { txHash: "aa".repeat(32) };
           },
-          projectDeposits: async () => {},
           fetchUtxos: async (_e, address) =>
             funded
               ? [nodeUtxo({ txHashByte: "ab", address, lovelace: 1000n })]

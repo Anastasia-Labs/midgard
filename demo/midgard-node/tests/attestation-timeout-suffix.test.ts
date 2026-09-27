@@ -9,7 +9,10 @@ import {
   timeoutCorrectionJournalNeedsRecovery,
 } from "../src/services/attestation-timeout-observation.js";
 import type { AttestationTimeoutCorrectionHealth } from "../src/services/globals.js";
-import { resolveCommitAppendFenceReferencesLocal } from "../src/workers/commit-block-header/state-queue.js";
+import {
+  resolveCommitAppendFenceEndTimeCapLocal,
+  resolveCommitAppendFenceReferencesLocal,
+} from "../src/workers/commit-block-header/state-queue.js";
 
 const policyId = "aa".repeat(28);
 const address =
@@ -32,7 +35,7 @@ const header = (endTime: bigint): SDK.Header => ({
   operatorVkey: "99".repeat(28),
   protocolVersion: 1n,
 });
-const fixture = async (tailApplied = false) => {
+const fixture = async (tailApplied = false, headApplied = true) => {
   const firstHash = await Effect.runPromise(SDK.hashBlockHeader(header(1000n)));
   const tailHash = await Effect.runPromise(SDK.hashBlockHeader(header(2000n)));
   const node = (
@@ -70,7 +73,9 @@ const fixture = async (tailApplied = false) => {
       data: SDK.castStateQueueNodeToData({
         proven_fraud: null,
         header: header(1000n),
-        da_attestation: { Attested: { da_bond_asset_name: "11".repeat(32) } },
+        da_attestation: headApplied
+          ? { Attested: { da_bond_asset_name: "11".repeat(32) } }
+          : SDK.NO_DA_ATTESTATION,
       }) as SDK.LinkedListNodeView["data"],
     },
     "11",
@@ -135,6 +140,67 @@ describe("pending queue attestation expiry", () => {
         ),
       ),
     ).toEqual({ status: "queue-attested" });
+  });
+  it("fences the commit end below every unattested node's deadline, not only the head's", async () => {
+    const fetchConfig = {
+      stateQueueAddress: address,
+      stateQueuePolicyId: policyId,
+    };
+    const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    // The head (end 1000) is attested and the tail (end 2000) is not. The
+    // on-chain fence reads the head only; the build must still land before
+    // the tail's deadline, or timeout correction loses the tail to it.
+    const unattestedTail = await fixture();
+    expect(
+      await Effect.runPromise(
+        resolveCommitAppendFenceEndTimeCapLocal(
+          unattestedTail.api,
+          fetchConfig,
+        ),
+      ),
+    ).toBe(2_000 + timeoutMs - 1);
+    // A later pending tail does not lift the earlier on-chain deadline.
+    expect(
+      await Effect.runPromise(
+        resolveCommitAppendFenceEndTimeCapLocal(
+          unattestedTail.api,
+          fetchConfig,
+          3_000,
+        ),
+      ),
+    ).toBe(2_000 + timeoutMs - 1);
+    const attested = await fixture(true);
+    expect(
+      await Effect.runPromise(
+        resolveCommitAppendFenceEndTimeCapLocal(attested.api, fetchConfig),
+      ),
+    ).toBeUndefined();
+    // A pending tail built on behind an attested head is unattested too.
+    expect(
+      await Effect.runPromise(
+        resolveCommitAppendFenceEndTimeCapLocal(
+          attested.api,
+          fetchConfig,
+          3_000,
+        ),
+      ),
+    ).toBe(3_000 + timeoutMs - 1);
+    // An unattested head fences first, on chain as well, whatever follows it:
+    // the earliest deadline wins, not the youngest node's or the last one's.
+    for (const tailApplied of [false, true]) {
+      const unattestedHead = await fixture(tailApplied, false);
+      for (const pendingTailEndTimeMs of [undefined, 3_000]) {
+        expect(
+          await Effect.runPromise(
+            resolveCommitAppendFenceEndTimeCapLocal(
+              unattestedHead.api,
+              fetchConfig,
+              pendingTailEndTimeMs,
+            ),
+          ),
+        ).toBe(1_000 + timeoutMs - 1);
+      }
+    }
   });
   it("refuses a commit preflight extending an expired suffix and permits an applied tail", async () => {
     const now = vi

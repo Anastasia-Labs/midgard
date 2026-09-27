@@ -535,23 +535,58 @@ node "$TOOLS_CLI" e2e-run-step \
   --l2-address "$USER_L2_ADDRESS" \
   --lovelace 12000000
 
-PROJECT_DEPOSITS_LOG="logs/$RUN_ID/project-deposits.log"
-PROJECT_DEPOSITS_STEP="$E2E_STEP_DIR/project-deposits.json"
+DEPOSIT_EVENT_ID="$(node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  const summary = JSON.parse(readFileSync(process.argv[1], "utf8"));
+  const eventId = summary.parsedJson?.metadata?.depositEventId;
+  if (typeof eventId !== "string") throw new Error("no metadata.depositEventId");
+  console.log(eventId);
+' "$DEPOSIT_STEP")"
+
+DEPOSIT_PROJECTED_LOG="logs/$RUN_ID/deposit-projected.log"
+DEPOSIT_PROJECTED_STEP="$E2E_STEP_DIR/deposit-projected.json"
 node "$TOOLS_CLI" e2e-run-step \
-  --id project-deposits \
+  --id deposit-projected \
   --cwd "$NODE_DIR" \
-  --raw-log "$PROJECT_DEPOSITS_LOG" \
-  --summary-out "$PROJECT_DEPOSITS_STEP" \
-  --timeout-ms 300000 \
+  --raw-log "$DEPOSIT_PROJECTED_LOG" \
+  --summary-out "$DEPOSIT_PROJECTED_STEP" \
+  --timeout-ms 1200000 \
   -- \
-  bash -lc "$COMPOSE exec -T midgard-node node dist/index.js project-deposits-once"
+  env "DEPOSIT_EVENT_ID=$DEPOSIT_EVENT_ID" \
+  node --input-type=module -e '
+    const eventId = process.env.DEPOSIT_EVENT_ID ?? "";
+    if (!/^[0-9a-f]+$/.test(eventId)) {
+      console.log(JSON.stringify({ error: "DEPOSIT_EVENT_ID is not hex", eventId }));
+      process.exit(1);
+    }
+    const deadline = Date.now() + 1170000;
+    const url = `http://127.0.0.1:3000/deposit-status?eventId=${eventId}`;
+    let last = null;
+    while (Date.now() < deadline) {
+      const response = await fetch(url).catch(() => null);
+      if (response !== null) last = await response.json().catch(() => null);
+      if (last?.status === "projected" || last?.status === "consumed") {
+        console.log(JSON.stringify(last));
+        process.exit(0);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+    console.log(JSON.stringify({ timedOut: true, last }));
+    process.exit(1);
+  '
 
 curl -sf "http://127.0.0.1:3000/utxos?address=$USER_L2_ADDRESS"
 ```
 
-If projection is empty, inspect `deposits_utxos.inclusion_time`. Wait until the
-record is due plus a small buffer, then rerun `project-deposits-once`. A deposit
-not yet due is not a failure.
+The running node's history owner records and projects the deposit, so this
+step only waits for it; no block commit is involved. The deposit is due at its
+`inclusionTime`, the deposit transaction's validity upper bound (at most 60 s
+out) plus the profile's `event_wait_ms` (300 s on preprod-testing), and the
+history owner projects it once its authenticated L1 source reaches that time.
+The 20-minute bound covers that wait and the history owner's L1 lag with a wide
+margin. A `404` or an `awaiting` status inside the bound is not a failure. On
+timeout, compare the last `inclusionTime` with the node's `/readyz` reasons
+(for example `history_owner_not_ready`) before retrying anything.
 
 Before spending the deposit, wait for its block to commit, receive DA attestation,
 mature, and merge through the normal fibers. Confirm its settlement membership
@@ -914,7 +949,7 @@ for step in \
   "$DA_LIBP2P_PREFLIGHT_STEP" \
   "$READY_STEP" \
   "$DEPOSIT_STEP" \
-  "$PROJECT_DEPOSITS_STEP" \
+  "$DEPOSIT_PROJECTED_STEP" \
   "$L2_TRANSFER_A_STEP" \
   "$L2_TRANSFER_B_STEP" \
   "$AUTOMATIC_MERGE_STEP"; do

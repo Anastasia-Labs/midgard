@@ -120,6 +120,24 @@ export const initializeArchitectureGOwner = (
               genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
             ),
           );
+        } else if (!alreadyInitialized) {
+          // An unstamped nonempty trie is trusted only at the committed tail
+          // root. A store left from an earlier run must not be stamped onto a
+          // fresh database, where it would first fail at the next commit.
+          const lucid = yield* Lucid;
+          const contracts = yield* MidgardContracts;
+          const snapshot = yield* fetchStateQueueSnapshotProgram(
+            lucid.api,
+            contracts.stateQueue,
+            "startup",
+          );
+          const leftoverRoot = yield* bootstrap.rootHex();
+          if (leftoverRoot !== snapshot.tailCommitBase.roots.utxosRoot)
+            return yield* Effect.fail(
+              new Error(
+                `Stale native ledger store at LEDGER_MPF_DB_PATH: root=${leftoverRoot} differs from the committed state-queue root ${snapshot.tailCommitBase.roots.utxosRoot}; wipe it before starting on a fresh database`,
+              ),
+            );
         }
         const root = yield* bootstrap.rootHex();
         if (!alreadyInitialized)

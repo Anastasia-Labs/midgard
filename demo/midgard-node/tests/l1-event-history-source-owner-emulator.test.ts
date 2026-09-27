@@ -28,10 +28,10 @@ import {
   Effect,
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
-  fetchWithdrawalsOnceProgram,
   initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
+  reconcileVisibleWithdrawalUTxOs,
   resolveEventSettlementProofProgram,
   runNodeCommandProgram,
   SDK,
@@ -169,9 +169,9 @@ it("runs the default history owner through actual bootstrap, continuation, retir
       Number(withdrawal.facts.inclusion_time) + 1000,
     );
     vi.setSystemTime(fixture.emulator.now());
-    expect((await command(fetchWithdrawalsOnceProgram)).reconciledCount).toBe(
-      1,
-    );
+    expect(
+      (await command(reconcileVisibleWithdrawalUTxOs())).reconciledCount,
+    ).toBe(1);
     const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
     const resolution = await command(
       resolveEventSettlementProofProgram({

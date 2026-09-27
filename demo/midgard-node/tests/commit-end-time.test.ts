@@ -1,3 +1,4 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -11,7 +12,6 @@ import {
   COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   COMMIT_VALIDITY_BACKDATE_MS,
-  COMMIT_VALIDITY_MAX_RANGE_MS,
   commitTimingBudget,
   EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   makeSubmitSlotAnchoredClock,
@@ -242,7 +242,7 @@ describe("commit end-time resolver", () => {
       slotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
     );
     expect(interval.validToMs - interval.validFromMs).toBeLessThanOrEqual(
-      COMMIT_VALIDITY_MAX_RANGE_MS,
+      SDK.COMMIT_MAX_VALIDITY_RANGE_MS,
     );
     expect(interval.inclusiveUpperBoundMs).toBe(validToMs - 1);
   });
@@ -252,7 +252,9 @@ describe("commit end-time resolver", () => {
     const currentSlot = lucid.currentSlot();
     const slotStartMs = lucid.slotToUnixTime(currentSlot);
     const validToMs =
-      slotStartMs + COMMIT_VALIDITY_MAX_RANGE_MS + COMMIT_VALIDITY_BACKDATE_MS;
+      slotStartMs +
+      SDK.COMMIT_MAX_VALIDITY_RANGE_MS +
+      COMMIT_VALIDITY_BACKDATE_MS;
 
     const interval = resolveCommitValidityInterval({
       lucid,
@@ -269,7 +271,7 @@ describe("commit end-time resolver", () => {
       slotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
     );
     expect(interval.validToMs - interval.validFromMs).toBeLessThanOrEqual(
-      COMMIT_VALIDITY_MAX_RANGE_MS,
+      SDK.COMMIT_MAX_VALIDITY_RANGE_MS,
     );
   });
 
@@ -444,7 +446,7 @@ describe("commit end-time resolver", () => {
     expect(interval.inclusiveUpperBoundMs).toBe(endTimeMs);
     expect(
       interval.inclusiveUpperBoundMs - interval.validFromMs,
-    ).toBeLessThanOrEqual(COMMIT_VALIDITY_MAX_RANGE_MS);
+    ).toBeLessThanOrEqual(SDK.COMMIT_MAX_VALIDITY_RANGE_MS);
     // The ledger admits the transaction in the submit slot.
     expect(interval.validFromMs).toBeLessThanOrEqual(slotStartMs);
   });

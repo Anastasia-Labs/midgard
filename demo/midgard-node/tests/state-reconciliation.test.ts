@@ -11,6 +11,7 @@ import {
   type NativeRootObservation,
   readNativeRootFromLevelCopy,
   redactSensitive,
+  type SqlDepositRow,
   type SqlStateSnapshot,
   STATE_RECONCILIATION_CHECK_IDS,
   type StateReconciliationInput,
@@ -268,6 +269,30 @@ const input = (
   };
 };
 
+/** A SQL deposit no block holds yet, whose ledger entry is `0d -> OUT_P`. */
+const unassignedDeposit = (
+  eventId: string,
+  status: string,
+  inclusionTimeMs = 1_000,
+): SqlDepositRow => ({
+  payload: { ...depositPayload, eventId, inclusionTimeMs, ledgerOutput: OUT_P },
+  status,
+  projectedHeaderHash: null,
+  ledgerOutref: "0d",
+});
+
+const orderOf = (row: SqlDepositRow): L1StateView["deposits"][number] => ({
+  outRef: `${h32("1d")}#0`,
+  payload: row.payload,
+  decodeError: null,
+});
+
+const cacheRowOf = (row: SqlDepositRow) => ({
+  outref: row.ledgerOutref!,
+  output: row.payload.ledgerOutput,
+  sourceEventId: row.payload.eventId,
+});
+
 const statuses = (report: ReturnType<typeof evaluateStateReconciliation>) =>
   Object.fromEntries(report.checks.map((c) => [c.id, c.status]));
 
@@ -417,6 +442,28 @@ describe("state reconciliation evaluator", () => {
     );
     expect(statuses(foreignParent)["native-root"]).toBe("SKIPPED");
     expect(statuses(foreignParent)["ledger-cache"]).toBe("SKIPPED");
+  });
+
+  it("native-root fails, and state-queue-tail-root skips, when the node reports its native owner unhealthy", () => {
+    const reason = "node reports its native MPF owner unhealthy (Error: gone)";
+    const report = evaluateStateReconciliation(
+      input(() => ({ native: { kind: "unhealthy", reason } })),
+    );
+    const byId = statuses(report);
+    for (const id of STATE_RECONCILIATION_CHECK_IDS) {
+      expect(byId[id]).toBe(
+        id === "native-root"
+          ? "FAIL"
+          : id === "state-queue-tail-root"
+            ? "SKIPPED"
+            : "PASS",
+      );
+    }
+    expect(report.exitCode).toBe(1);
+    expect(report.checks.find((c) => c.id === "native-root")?.failures).toEqual(
+      [reason],
+    );
+    expect(report.snapshot.nativeRoot).toBe(`unhealthy: ${reason}`);
   });
 
   it("native-root passes with a note when the native root is at the active journal", () => {
@@ -779,6 +826,141 @@ describe("state reconciliation evaluator", () => {
     expect(
       report.checks.find((c) => c.id === "deposits")?.inFlight,
     ).toHaveLength(1);
+  });
+
+  it("deposits fails alone when an unmerged SQL deposit's L1 order is gone, in-flight only when newer than every committed block, and not for a merged deposit", () => {
+    const orphan = unassignedDeposit("e2", "projected");
+    const unassigned = evaluateStateReconciliation(
+      input(({ sql }) => ({
+        sql: {
+          ...sql,
+          deposits: [...sql.deposits, orphan],
+          mempoolLedger: [...sql.mempoolLedger, cacheRowOf(orphan)],
+        },
+      })),
+    );
+    expectOnlyFailure(
+      unassigned,
+      "deposits",
+      "SQL deposit e2 is not among the L1 deposit orders",
+    );
+    const assigned = evaluateStateReconciliation(
+      input(({ l1 }) => ({ l1: { ...l1, deposits: [] } })),
+    );
+    expectOnlyFailure(
+      assigned,
+      "deposits",
+      `SQL deposit ${depositPayload.eventId} is not among the L1 deposit orders`,
+    );
+    const fresh = unassignedDeposit("e3", "awaiting", 9_000);
+    const mutateFresh = ({ sql }: World): Partial<World> => ({
+      sql: { ...sql, deposits: [...sql.deposits, fresh] },
+    });
+    const strict = evaluateStateReconciliation(input(mutateFresh));
+    expect(statuses(strict).deposits).toBe("FAIL");
+    const deposits = strict.checks.find((c) => c.id === "deposits");
+    expect(deposits?.failures).toEqual([]);
+    expect(deposits?.inFlight).toEqual([
+      "SQL deposit e3 is not among the L1 deposit orders; its inclusion time is after every committed block",
+    ]);
+    const accepted = evaluateStateReconciliation(input(mutateFresh, true));
+    expect(accepted.ok).toBe(true);
+    // The settlement a merge creates is what spends the order, so a deposit
+    // of a merged header is not required to keep one.
+    const absorbed = evaluateStateReconciliation(
+      input(({ sql }) => ({
+        sql: {
+          ...sql,
+          deposits: [
+            ...sql.deposits,
+            {
+              ...unassignedDeposit("e6", "consumed"),
+              projectedHeaderHash: CONFIRMED,
+            },
+          ],
+        },
+      })),
+    );
+    for (const check of absorbed.checks) {
+      expect(check.status, `${check.id}: ${check.reason}`).toBe("PASS");
+    }
+  });
+
+  it("ledger-cache fails alone when a cached deposit row is not projected", () => {
+    const awaiting = unassignedDeposit("e4", "awaiting");
+    const report = evaluateStateReconciliation(
+      input(({ l1, sql }) => ({
+        l1: { ...l1, deposits: [...l1.deposits, orderOf(awaiting)] },
+        sql: {
+          ...sql,
+          deposits: [...sql.deposits, awaiting],
+          mempoolLedger: [...sql.mempoolLedger, cacheRowOf(awaiting)],
+        },
+      })),
+    );
+    expectOnlyFailure(report, "ledger-cache", "unexpected outref (first 0d)");
+  });
+
+  it("ledger-cache fails alone when a projected deposit no block holds is missing from the cache, unless a pending transaction spent it, and expects no other deposit", () => {
+    const projected = unassignedDeposit("e5", "projected");
+    const missing = evaluateStateReconciliation(
+      input(({ l1, sql }) => ({
+        l1: { ...l1, deposits: [...l1.deposits, orderOf(projected)] },
+        sql: { ...sql, deposits: [...sql.deposits, projected] },
+      })),
+    );
+    expectOnlyFailure(missing, "ledger-cache", "missing outref (first 0d)");
+    const spent = evaluateStateReconciliation(
+      input(({ l1, sql }) => ({
+        l1: { ...l1, deposits: [...l1.deposits, orderOf(projected)] },
+        sql: {
+          ...sql,
+          deposits: [...sql.deposits, projected],
+          pendingTxs: [
+            ...sql.pendingTxs,
+            {
+              txId: h32("7a"),
+              source: "processed_mempool",
+              delta: {
+                spent: ["0d"],
+                produced: [{ outref: "0e", output: OUT_C }],
+              },
+              rejectDetail: null,
+            },
+          ],
+          mempoolLedger: [
+            ...sql.mempoolLedger,
+            { outref: "0e", output: OUT_C, sourceEventId: null },
+          ],
+        },
+      })),
+    );
+    for (const check of spent.checks) {
+      expect(check.status, `${check.id}: ${check.reason}`).toBe("PASS");
+    }
+    // Only a projected deposit no block holds is owed a cache entry: a spend
+    // marks it consumed, an awaiting one is not projected yet, and the
+    // recomputed ledger point, not the deposit row, accounts for one a block
+    // of that point holds.
+    const notOwed = [
+      unassignedDeposit("e7", "consumed"),
+      unassignedDeposit("e8", "awaiting"),
+      { ...unassignedDeposit("e9", "projected"), projectedHeaderHash: TIP },
+    ];
+    for (const deposit of notOwed) {
+      const report = evaluateStateReconciliation(
+        input(({ l1, sql }) => ({
+          l1: { ...l1, deposits: [...l1.deposits, orderOf(deposit)] },
+          sql: { ...sql, deposits: [...sql.deposits, deposit] },
+        })),
+      );
+      for (const check of report.checks) {
+        expect(
+          check.status,
+          `${deposit.payload.eventId} ${check.id}: ${check.reason}`,
+        ).toBe("PASS");
+      }
+    }
   });
 
   it("withdrawals fails alone when the SQL status contradicts a finalized journal", () => {

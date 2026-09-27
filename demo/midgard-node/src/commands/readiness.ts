@@ -1,3 +1,6 @@
+/** Path segment of the node's readiness route, `GET /readyz`. */
+export const READINESS_ENDPOINT = "readyz";
+
 /**
  * Latest heartbeat timestamps reported by each long-running worker.
  */

@@ -1093,6 +1093,66 @@ describe("sign/submit wrapper recovery options", () => {
     }
   });
 
+  it("ends the whole confirmation wait, retries included, at the confirmation deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      // Each provider wait times out after a second; twelve retries alone
+      // would keep the caller waiting 25 seconds.
+      const awaitTxConfirmation = vi.fn(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            setTimeout(
+              () => reject(new Error("provider wait timed out")),
+              1_000,
+            );
+          }),
+      );
+      const confirmation = Effect.runPromise(
+        Effect.either(
+          awaitSubmittedTransactionConfirmation(
+            {
+              config: () => ({ provider: undefined }),
+              awaitTxConfirmation,
+              wallet: () => ({}),
+            } as never,
+            {
+              txHash: "tx-confirmation-deadline",
+              signedTxCbor: "00",
+              walletAddress: "addr_test1confirmationdeadline",
+            },
+            {
+              confirmationTimeoutMs: 1_000,
+              confirmationRetries: 12,
+              confirmationPollIntervalMs: 1_000,
+              confirmationDeadlineMs: Date.now() + 5_000,
+            },
+          ),
+        ),
+      );
+      let settled = false;
+      void confirmation.then(() => {
+        settled = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      const result = await confirmation;
+
+      expect(result._tag).toBe("Left");
+      if (result._tag !== "Left") throw new Error("expected the deadline");
+      expect(result.left).toMatchObject({
+        _tag: "TxConfirmError",
+        message: "Transaction confirmation deadline passed",
+        txHash: "tx-confirmation-deadline",
+      });
+      expect(awaitTxConfirmation).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("forwards submit recovery options through signSubmitTransaction", async () => {
     const slots = [7, 12];
     const waits: number[] = [];

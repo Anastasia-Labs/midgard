@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { inspect } from "node:util";
@@ -39,7 +39,7 @@ import { openHistoryProductionOwnerLifecycle } from "./helpers/history-productio
 
 /** Actual public admissions and native promotion establish the empty restart
  * state. Network transport labels remain synthetic, as in the shared fixture. */
-it("restarts the production native initializer after withdrawal empties an unmerged and merged ledger without replaying genesis, and refuses a missing initialized store", async () => {
+it("restarts the production native initializer after withdrawal empties an unmerged and merged ledger without replaying genesis, and refuses a missing initialized store or a stale store beside a fresh database", async () => {
   const h = await openHistoryProductionOwnerLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const context = { fixture, lucidService, globals, production };
@@ -50,6 +50,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
   const missingRoot = await mkdtemp(
     join(tmpdir(), "midgard-native-startup-missing-"),
   );
+  const staleLedgerPath = join(missingRoot, "stale-ledger");
   const diagnostic: Record<string, unknown> = { stage: "deposit" };
   const native = async () => {
     const value = await Effect.runPromise(Ref.get(globals.NATIVE_MPF_OWNER));
@@ -66,6 +67,21 @@ it("restarts the production native initializer after withdrawal empties an unmer
           marker:
             yield* sql`SELECT store_name, migration_version, root_hex, audit_diverged FROM mpf_engine_state WHERE store_name = 'ledger'`,
         };
+      }),
+    );
+  // A fresh database has no ledger stamp; clearing its root reproduces that.
+  const clearLedgerStamp = () =>
+    h.command(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const [row] = yield* sql<{
+          readonly utxo_payload_entry_count: string | null;
+          readonly utxo_payload_encoded_tuple_bytes: string | null;
+        }>`SELECT utxo_payload_entry_count, utxo_payload_encoded_tuple_bytes
+          FROM mpf_engine_state WHERE store_name = 'ledger'`;
+        yield* sql`UPDATE mpf_engine_state SET root_hex = NULL
+          WHERE store_name = 'ledger'`;
+        return row!;
       }),
     );
   const queue = () =>
@@ -130,6 +146,39 @@ it("restarts the production native initializer after withdrawal empties an unmer
     const nonemptyNative = await (await native()).diagnostics();
     expect(nonemptyNative.durableRoot).not.toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
     diagnostic.nonemptyNative = nonemptyNative;
+    // A fresh database beside a nonempty trie at the committed tail root (a
+    // crash between the trie write and its stamp) is stamped, not refused.
+    // The lifecycle's evidence reads the owner it started, which the first
+    // restart below closes.
+    diagnostic.ownerBeforeRestart = await h.evidence();
+    diagnostic.stage = "fresh-database-nonempty-tail-store";
+    const stampedBefore = await ledger();
+    await (await native()).close();
+    await cp(production.nodeConfig.LEDGER_MPF_DB_PATH, staleLedgerPath, {
+      recursive: true,
+    });
+    const cleared = await clearLedgerStamp();
+    const restamped = await h.command(
+      initializeArchitectureGOwner(globals, production.nodeConfig),
+    );
+    if (restamped === undefined)
+      throw new Error("Expected restamped native owner");
+    replacements.push(restamped);
+    expect((await restamped.diagnostics()).durableRoot).toBe(
+      nonemptyNative.durableRoot,
+    );
+    // A stamp over a cleared root drops the payload aggregate; put it back so
+    // the rest of the journey runs on the original marker.
+    await h.command(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE mpf_engine_state SET
+          utxo_payload_entry_count = ${cleared.utxo_payload_entry_count},
+          utxo_payload_encoded_tuple_bytes = ${cleared.utxo_payload_encoded_tuple_bytes}
+          WHERE store_name = 'ledger'`;
+      }),
+    );
+    expect(await ledger()).toEqual(stampedBefore);
     // Explicit reload sentinel: this is the actual subsequently withdrawn L2
     // output, not a claim that the published empty genesis originally held it.
     const sentinel: UTxO = {
@@ -253,7 +302,6 @@ it("restarts the production native initializer after withdrawal empties an unmer
         configuredGenesisSentinel: sentinel,
       };
     };
-    diagnostic.ownerBeforeRestart = await h.evidence();
     await restart("restart-unmerged-empty");
     await attestQueuedStateQueueHeader({
       fixture,
@@ -297,6 +345,31 @@ it("restarts the production native initializer after withdrawal empties an unmer
         : "unexpected native owner created";
     expect(rejected._tag).toBe("Left");
     expect(await ledger()).toEqual(beforeMissing);
+    // The nonempty trie copied earlier is now behind the empty committed tail:
+    // a fresh database beside it is refused, and nothing is stamped.
+    diagnostic.stage = "fresh-database-stale-store";
+    await clearLedgerStamp();
+    const beforeStale = await ledger();
+    const stale = await h.command(
+      Effect.either(
+        initializeArchitectureGOwner(globals, {
+          ...production.nodeConfig,
+          LEDGER_MPF_DB_PATH: staleLedgerPath,
+          MPF_NATIVE_OWNER_SIDECAR_PATH: join(missingRoot, "stale.sidecar"),
+        }),
+      ),
+    );
+    if (stale._tag === "Right" && stale.right !== undefined)
+      replacements.push(stale.right);
+    diagnostic.staleStoreResult =
+      stale._tag === "Left"
+        ? inspect(stale.left, { depth: 20 })
+        : "unexpected native owner created";
+    expect(stale._tag).toBe("Left");
+    expect(String(stale._tag === "Left" ? stale.left : undefined)).toContain(
+      `Stale native ledger store at LEDGER_MPF_DB_PATH: root=${nonemptyNative.durableRoot} differs from the committed state-queue root ${SDK.EMPTY_MERKLE_TREE_ROOT}`,
+    );
+    expect(await ledger()).toEqual(beforeStale);
     diagnostic.stage = "complete";
   } catch (error) {
     diagnostic.failure = inspect(error, { depth: 20, colors: false });

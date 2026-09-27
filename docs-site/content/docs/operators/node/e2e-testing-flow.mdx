@@ -89,7 +89,7 @@ Pick a mode before any state-changing command:
   E --> F["register + activate operator"]
   F --> G["start DA committee, independent retained reader, producer preflight"]
   G --> H["start node, wait /readyz"]
-  H --> I["submit-deposit, project-deposits-once"]
+  H --> I["submit-deposit, wait for /deposit-status projected"]
   I --> P["deposit block commit, attestation, automatic merge"]
   P --> J["submit L2 transfers A + B"]
   J --> K["poll /tx-status until committed"]
@@ -201,7 +201,7 @@ Classify a blocker and take the safe next action rather than resubmitting blindl
 | Local Kupmios unhealthy              | Run `l1-provider-preflight --json`; fix local Kupo/Ogmios/Cardano-node. Do not switch to a remote provider.    |
 | Fresh one-shot mismatch              | Stop. Attach/resume if already initialized; otherwise restart fresh with a new one-shot and matching manifest. |
 | Operator registered but not active   | Reconcile operator lifecycle; use activate-only recovery only when chain state proves registration exists.     |
-| Deposit not projected                | Check `deposits_utxos.inclusion_time`; wait until due, then run `project-deposits-once`.                       |
+| Deposit not projected                | Check `inclusionTime` in `/deposit-status`; the node projects it once due. Check `/readyz` if it stays late.   |
 | DA node not ready before L2 activity | Stop before transfers. Fix DA wallet/config/provider and restart the DA node.                                  |
 | DA payload conflict or root mismatch | Stop. Do not merge. Diagnose payload construction and the endpoint set.                                        |
 | DA signatures below threshold        | Start enough DA signer instances or fix peer propagation. Do not lower the threshold.                          |
