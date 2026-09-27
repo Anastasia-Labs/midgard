@@ -45,7 +45,7 @@ const challengeFixture = (
   });
   const parameters = SDK.daAvailabilityParameters({
     responseGeometry: commitment.response_geometry,
-    daBondLovelace: 12_000_000_000n,
+    ...SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
     challengerBondLovelace: 12_000_000_000n,
     maxOpenFeeLovelace: 500_000n,
     maxPublicationFeeLovelace: 500_000n,

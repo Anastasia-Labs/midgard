@@ -99,6 +99,10 @@ export const availabilityParametersFromManifest = (
   return SDK.daAvailabilityParameters({
     responseGeometry: SDK.availabilityResponseGeometry(parsed.responseGeometry),
     daBondLovelace: BigInt(parsed.daBondLovelace),
+    daSlashPenaltyLovelace: BigInt(parsed.daSlashPenaltyLovelace),
+    daBondMinTopUpLovelace: BigInt(parsed.daBondMinTopUpLovelace),
+    daBondPoolFloorLovelace: BigInt(parsed.daBondPoolFloorLovelace),
+    challengeRecordLovelace: BigInt(parsed.challengeRecordLovelace),
     challengerBondLovelace: BigInt(parsed.challengerBondLovelace),
     maxOpenFeeLovelace: BigInt(parsed.maxOpenFeeLovelace),
     maxPublicationFeeLovelace: BigInt(parsed.maxPublicationFeeLovelace),

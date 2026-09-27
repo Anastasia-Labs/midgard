@@ -20,7 +20,10 @@ import {
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  daBondManifestAmounts,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { inject } from "vitest";
@@ -456,7 +459,7 @@ export const minimalConfig = ({
       trancheByteLength: 4 * 1024 * 1024,
       maxTrancheCount: 16,
     },
-    daBondLovelace: 10_000_000_000,
+    ...daBondManifestAmounts(),
     challengerBondLovelace: 10_000_000_000,
     maxOpenFeeLovelace: 500_000,
     maxPublicationFeeLovelace: 500_000,

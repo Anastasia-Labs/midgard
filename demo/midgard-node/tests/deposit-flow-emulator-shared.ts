@@ -258,10 +258,6 @@ for (const [name, value] of [
     TEST_AVAILABILITY_CHALLENGE.responseGeometry.maxTrancheCount,
   ],
   [
-    "MIDGARD_DA_AVAILABILITY_BOND_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE.daBondLovelace,
-  ],
-  [
     "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
     TEST_AVAILABILITY_CHALLENGE.challengerBondLovelace,
   ],

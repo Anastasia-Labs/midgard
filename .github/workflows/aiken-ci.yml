@@ -232,6 +232,17 @@ jobs:
       - name: Compile and run the Aiken test suite with the pinned fork
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: node scripts/guard-focused-selector.mjs --all
+      # The suite above compiles against the default env only. The pooled DA
+      # bond relations (challenge window ordering, both withdrawal-delay forms,
+      # 0 < slash penalty < DA bond, positive top-up, pool floor and record
+      # lovelace) are pinned by env-bound tests, so they run once per
+      # deployment profile to catch a profile that breaks them.
+      - name: Check the DA bond relations under every deployment profile
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        run: |
+          for env in mainnet preprod_public preprod_testing local_devnet_testing; do
+            MIDGARD_AIKEN_ENV="$env" node scripts/guard-focused-selector.mjs midgard/da_bond_profile || exit 1
+          done
       # THE EXECUTION LEDGERS. Every `scripts/*-exec-ledger-v1.json` has a
       # `scripts/verify-*-exec-ledger-v1.mjs` that re-measures it, and every
       # verifier runs here; `scripts/ci/exec-ledgers-wired.test.mjs` derives

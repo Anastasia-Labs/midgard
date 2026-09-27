@@ -38,6 +38,18 @@ const timingConstants = {
   da_attestation_timeout_ms: "da_attestation_timeout_v1",
   da_small_response_window_ms: "small_response_window_ms_v1",
   da_full_response_window_ms: "full_response_window_ms_v1",
+  da_challenge_window_ms: "da_challenge_window_ms_v1",
+  da_slash_grace_ms: "da_slash_grace_ms_v1",
+  da_bond_withdraw_delay_ms: "da_bond_withdraw_delay_ms_v1",
+};
+// The pooled DA committee bond (#685). The availability ParametersV1 carries
+// these amounts on-chain; off-chain consumers must match the selected profile.
+const daBondConstants = {
+  da_bond_lovelace: "da_bond_lovelace_v1",
+  da_slash_penalty_lovelace: "da_slash_penalty_lovelace_v1",
+  da_bond_min_top_up_lovelace: "da_bond_min_top_up_lovelace_v1",
+  da_bond_pool_floor_lovelace: "da_bond_pool_floor_lovelace_v1",
+  challenge_record_lovelace: "challenge_record_lovelace_v1",
 };
 const economicsConstants = {
   requiredBondLovelace: "required_bond",
@@ -129,10 +141,50 @@ export const minimumPublicEventWaitMs = (profile) =>
   profile.timing.max_validity_range_ms +
   l1BlocksBudgetMs(profile.l1_finality.confirmation_depth);
 
+// Minimum span a public profile keeps between the latest Apply (end time plus
+// the attestation timeout) and the Open deadline (end time plus the challenge
+// window). A challenger must first see a timeout-edge Apply at the profile's
+// confirmation depth, then land an Open whose validity range may be a full
+// maximum range wide (the record's opened_at is its upper bound). The second
+// range covers clock skew and the poll-and-submit block.
+export const minimumPublicOpenAfterApplyMarginMs = (profile) =>
+  2 * profile.timing.max_validity_range_ms +
+  l1BlocksBudgetMs(profile.l1_finality.confirmation_depth);
+
+// Earliest a DA committee may complete a pool withdrawal after BeginWithdraw
+// and still leave every block it applied slashable. The spec (#685 section 6)
+// form: the last applied block ends at most one validity range after
+// BeginWithdraw, the open lands inside the challenge window, the response
+// deadline is one full window later and the timeout gets the slash grace.
+export const specDaBondWithdrawDelayFloorMs = (timing) =>
+  timing.max_validity_range_ms +
+  timing.da_challenge_window_ms +
+  timing.da_full_response_window_ms +
+  timing.da_slash_grace_ms;
+// The enforced form. An unavailable block is timed out only once it is the
+// queue head, and its predecessors merge no earlier than end time plus block
+// maturity, so the timeout can wait for maturity rather than the response
+// deadline. The grace then starts at whichever is later.
+export const daBondWithdrawDelayFloorMs = (timing) =>
+  timing.max_validity_range_ms +
+  Math.max(
+    timing.da_challenge_window_ms + timing.da_full_response_window_ms,
+    timing.block_maturity_ms,
+  ) +
+  timing.da_slash_grace_ms;
+
 export const validateProfile = (profile, name) => {
   exactKeys(
     profile,
-    ["name", "network", "l1_finality", "timing", "limits", "economics"],
+    [
+      "name",
+      "network",
+      "l1_finality",
+      "timing",
+      "da_bond",
+      "limits",
+      "economics",
+    ],
     "profile",
   );
   const index = profileNames.indexOf(name);
@@ -147,6 +199,8 @@ export const validateProfile = (profile, name) => {
   positiveIntegers(profile.l1_finality, ["confirmation_depth"], "l1_finality");
   exactKeys(profile.timing, Object.keys(timingConstants), "timing");
   positiveIntegers(profile.timing, Object.keys(timingConstants), "timing");
+  exactKeys(profile.da_bond, Object.keys(daBondConstants), "da_bond");
+  positiveIntegers(profile.da_bond, Object.keys(daBondConstants), "da_bond");
   exactKeys(profile.limits, Object.keys(limitConstants), "limits");
   positiveIntegers(profile.limits, Object.keys(limitConstants), "limits");
   exactKeys(
@@ -186,6 +240,28 @@ export const validateProfile = (profile, name) => {
       "DA response windows must be ordered and shorter than block maturity",
     );
   }
+  // A block attested at the last moment can still be challenged, and a block
+  // can never be both challengeable and mergeable.
+  if (
+    timing.da_challenge_window_ms <= timing.da_attestation_timeout_ms ||
+    timing.da_challenge_window_ms > timing.block_maturity_ms
+  ) {
+    throw new Error(
+      "DA challenge window must be longer than the attestation timeout and at most block maturity",
+    );
+  }
+  const specWithdrawDelayFloor = specDaBondWithdrawDelayFloorMs(timing);
+  if (timing.da_bond_withdraw_delay_ms < specWithdrawDelayFloor) {
+    throw new Error(
+      `DA bond withdrawal delay must cover the maximum validity range, challenge window, full response window and slash grace, at least ${specWithdrawDelayFloor} ms`,
+    );
+  }
+  const withdrawDelayFloor = daBondWithdrawDelayFloorMs(timing);
+  if (timing.da_bond_withdraw_delay_ms < withdrawDelayFloor) {
+    throw new Error(
+      `DA bond withdrawal delay must cover the maximum validity range, the later of the challenge response deadline and block maturity, and the slash grace, at least ${withdrawDelayFloor} ms`,
+    );
+  }
   // The ordering above keeps the full window at least the small one, so the
   // small window reaching the budget carries both.
   const responseBudget = minimumDaResponseBudgetMs(profile);
@@ -194,9 +270,9 @@ export const validateProfile = (profile, name) => {
       `DA response windows must each cover the minimum response budget of ${responseBudget} ms`,
     );
   }
-  // Fraud must stay provable after the latest DA response: the latest
-  // attestation, then an open that front-runs the honest one with the widest
-  // validity range (its window starts at the upper bound), then the whole full
+  // Fraud must stay provable after the latest DA response: the latest open,
+  // landing at the end of the challenge window with the widest validity range
+  // (its response window starts at the upper bound), then the whole full
   // window, then the whole validation-dispute schedule, all before maturity.
   // The last term is what can_open_before_maturity (validation-dispute-v1.ak)
   // requires of a dispute opened when the response lands: opening upper +
@@ -206,14 +282,31 @@ export const validateProfile = (profile, name) => {
   // profiles are exempt: they are not fault-proof security configurations.
   if (
     !nonInteractiveTesting &&
-    BigInt(timing.da_attestation_timeout_ms) +
+    BigInt(timing.da_challenge_window_ms) +
       BigInt(timing.max_validity_range_ms) +
       BigInt(timing.da_full_response_window_ms) +
       disputeDuration >=
       maturity
   ) {
     throw new Error(
-      "DA attestation timeout, maximum validity range, full response window and dispute schedule must end before block maturity",
+      "DA challenge window, maximum validity range, full response window and dispute schedule must end before block maturity",
+    );
+  }
+  // An Apply may land as late as end time plus the attestation timeout, and an
+  // open must land before end time plus the challenge window. On a public
+  // profile a challenger must see that latest Apply at confirmation depth and
+  // then land an open whose validity range may be a full maximum range wide,
+  // so the span between them is at least minimumPublicOpenAfterApplyMarginMs.
+  // The testing profiles keep less and are exempt: they are not public
+  // security configurations.
+  const openAfterApplyMargin = minimumPublicOpenAfterApplyMarginMs(profile);
+  if (
+    !nonInteractiveTesting &&
+    timing.da_challenge_window_ms - timing.da_attestation_timeout_ms <
+      openAfterApplyMargin
+  ) {
+    throw new Error(
+      `DA challenge window must exceed the attestation timeout by two maximum validity ranges plus confirmation depth, at least ${openAfterApplyMargin} ms`,
     );
   }
   // The testing profiles' short event wait is shorter than the maximum
@@ -263,6 +356,14 @@ export const validateProfile = (profile, name) => {
       "Maximum inactivity between block commitments must be shorter than the operator shift",
     );
   }
+  if (
+    profile.da_bond.da_slash_penalty_lovelace >=
+    profile.da_bond.da_bond_lovelace
+  ) {
+    throw new Error(
+      "DA slash penalty must be smaller than the DA bond, leaving the challenger a reward",
+    );
+  }
   const economics = profile.economics;
   if (
     BigInt(economics.requiredBondLovelace) !==
@@ -296,6 +397,7 @@ export const readProfiles = () =>
 export const renderAiken = (profile, template) => {
   const constants = [
     [profile.timing, timingConstants],
+    [profile.da_bond, daBondConstants],
     [profile.limits, limitConstants],
     [profile.economics, economicsConstants],
   ].flatMap(([values, names]) =>
@@ -342,7 +444,7 @@ export const generateProfiles = async (selected, check = false) => {
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +
-    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  Object.freeze(profile);\n}\n` +
+    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
     `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;

@@ -15,6 +15,20 @@ timing:
   da_attestation_timeout_ms: 600000
   da_small_response_window_ms: 720000
   da_full_response_window_ms: 840000
+  da_challenge_window_ms: 720000
+  da_slash_grace_ms: 300000
+  da_bond_withdraw_delay_ms: 2340000 # validity + max(window + full response, maturity) + grace
+da_bond:
+  da_bond_lovelace: 500000000
+  da_slash_penalty_lovelace: 100000000
+  da_bond_min_top_up_lovelace: 5000000
+  da_bond_pool_floor_lovelace: 5000000
+  # min-UTxO of the largest admitted ChallengeRecordV1 (64 tranche
+  # descriptors at worst-case field widths, 32-byte DACH token, inline datum,
+  # enterprise script address): datum 5,838 B, output 5,953 B,
+  # (160 + 5,953) x 4,310 = 26,347,030 lovelace, rounded up to a whole ADA.
+  # A stake credential on the address (+28 B) would need 26,467,710.
+  challenge_record_lovelace: 27000000
 limits:
   max_bisection_rounds: 32
   max_inactivity_strikes: 5

@@ -98,6 +98,69 @@ the checkout's `preprod-testing` selection; configuring the local profile does n
 compile or deploy it. Generation with an explicit profile selects the off-chain
 configuration, while `deployment:build` also compiles and binds its blueprint.
 
+### Pooled DA committee bond
+
+The committee backs every block it attests from one pooled bond. Each profile's
+`da_bond` section holds its amounts, and three `timing` keys hold its windows:
+
+| Key                                   | Public profiles         | Testing profiles   |
+| ------------------------------------- | ----------------------- | ------------------ |
+| `da_bond.da_bond_lovelace`            | 100,000 ADA             | 500 tADA           |
+| `da_bond.da_slash_penalty_lovelace`   | 25,000 ADA              | 100 tADA           |
+| `da_bond.da_bond_min_top_up_lovelace` | 1,000 ADA               | 5 tADA             |
+| `da_bond.da_bond_pool_floor_lovelace` | 5 ADA                   | 5 tADA             |
+| `da_bond.challenge_record_lovelace`   | 27 ADA                  | 27 tADA            |
+| `timing.da_challenge_window_ms`       | 259,200,000 (3 d)       | 720,000 (12 min)   |
+| `timing.da_slash_grace_ms`            | 172,800,000 (2 d)       | 300,000 (5 min)    |
+| `timing.da_bond_withdraw_delay_ms`    | 778,080,000 (9 d 8 min) | 2,340,000 (39 min) |
+
+A slash burns the penalty as fee and pays the rest of one DA bond to the
+challenger. The pool floor stays in the pool UTxO for its minimum ADA and never
+counts as backing. `challenge_record_lovelace` is the exact lovelace of a
+challenge record, the minimum ADA of the largest admitted record; the YAML
+comment and the [economics record](../../docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
+§2.6 carry its measurement. An availability challenge must open before the
+block's end time plus the challenge window. The withdrawal delay separates the
+two steps of a committee withdrawal, and the timeout slash has the slash grace
+to land. The public figures await owner confirmation.
+
+Validation requires:
+
+- `da_attestation_timeout_ms < da_challenge_window_ms ≤ block_maturity_ms`, so a
+  block attested at the last moment can still be challenged and a challenge and
+  a merge of the same block are never both valid;
+- `0 < da_slash_penalty_lovelace < da_bond_lovelace`, and a positive minimum
+  top-up, pool floor and challenge-record lovelace;
+- a withdrawal delay of at least the maximum validity range plus the later of
+  the challenge response deadline (challenge window plus full response window)
+  and block maturity, plus the slash grace. An unavailable block is removed
+  only as the queue head, after its predecessors merge at maturity, so this is
+  stronger than the challenge path alone;
+- on public profiles only, a challenge window that exceeds the attestation
+  timeout by at least two maximum validity ranges plus the confirmation-depth
+  budget (`confirmation_depth` blocks at twice the 20-second mean), 2,160,000 ms
+  on public timing. A challenger must first see an Apply that landed at the
+  attestation timeout at confirmation depth, then land an open whose validity
+  range may be a full maximum range wide. The testing profiles have two minutes
+  of slack and are exempt;
+- on public profiles only, the challenge window, the maximum validity range,
+  the full response window and the dispute schedule fit before block maturity,
+  so fraud stays provable after the latest DA response. This rule used to count
+  from the attestation timeout.
+
+The generated environments carry these values as `da_bond_lovelace_v1`,
+`da_slash_penalty_lovelace_v1`, `da_bond_min_top_up_lovelace_v1`,
+`da_bond_pool_floor_lovelace_v1`, `challenge_record_lovelace_v1`,
+`da_challenge_window_ms_v1`, `da_slash_grace_ms_v1` and
+`da_bond_withdraw_delay_ms_v1`; `onchain/aiken/lib/midgard/da-bond-profile.test.ak`
+checks the relations against each environment, and Aiken CI runs it under every
+profile. The availability `ParametersV1` amounts in a finalized manifest must
+equal the selected profile's `da_bond` section, so the node takes them from the
+profile rather than from an environment variable. The challenger bond stays a
+deploy-time manifest value (`MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`);
+it no longer has to equal the DA bond, and it alone must cover the maximum
+publication, settlement and terminal fees.
+
 ## Build
 
 From the repository root, with the compiler pinned in
@@ -139,8 +202,11 @@ generated environments or `demo/midgard-core/src/generated-deployment-profiles.t
 
 Validation rejects unknown fields, incorrect network/name combinations, unsafe or
 nonpositive integers, inconsistent bond/reward values, invalid DA timing order,
-operator shifts shorter than grace/validity windows or the commitment gap, and incompatible dispute
-schedules (with the explicit non-interactive testing rule above). Digests use SHA-256 over recursively
+operator shifts shorter than grace/validity windows or the commitment gap, incompatible dispute
+schedules (with the explicit non-interactive testing rule above), and pooled DA
+bond values that break the relations above (challenge window order, slash
+penalty inside the DA bond, withdrawal delay, and the public challenge-window
+margin). Digests use SHA-256 over recursively
 key-sorted JSON, independent of YAML formatting and key order.
 
 ## Runtime and manifests

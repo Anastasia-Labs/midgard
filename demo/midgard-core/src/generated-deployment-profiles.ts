@@ -18,6 +18,16 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
+      da_challenge_window_ms: 259200000,
+      da_slash_grace_ms: 172800000,
+      da_bond_withdraw_delay_ms: 778080000,
+    },
+    da_bond: {
+      da_bond_lovelace: 100000000000,
+      da_slash_penalty_lovelace: 25000000000,
+      da_bond_min_top_up_lovelace: 1000000000,
+      da_bond_pool_floor_lovelace: 5000000,
+      challenge_record_lovelace: 27000000,
     },
     limits: {
       max_bisection_rounds: 32,
@@ -52,6 +62,16 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
+      da_challenge_window_ms: 259200000,
+      da_slash_grace_ms: 172800000,
+      da_bond_withdraw_delay_ms: 778080000,
+    },
+    da_bond: {
+      da_bond_lovelace: 100000000000,
+      da_slash_penalty_lovelace: 25000000000,
+      da_bond_min_top_up_lovelace: 1000000000,
+      da_bond_pool_floor_lovelace: 5000000,
+      challenge_record_lovelace: 27000000,
     },
     limits: {
       max_bisection_rounds: 32,
@@ -86,6 +106,16 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 720000,
       da_full_response_window_ms: 840000,
+      da_challenge_window_ms: 720000,
+      da_slash_grace_ms: 300000,
+      da_bond_withdraw_delay_ms: 2340000,
+    },
+    da_bond: {
+      da_bond_lovelace: 500000000,
+      da_slash_penalty_lovelace: 100000000,
+      da_bond_min_top_up_lovelace: 5000000,
+      da_bond_pool_floor_lovelace: 5000000,
+      challenge_record_lovelace: 27000000,
     },
     limits: {
       max_bisection_rounds: 32,
@@ -120,6 +150,16 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 720000,
       da_full_response_window_ms: 840000,
+      da_challenge_window_ms: 720000,
+      da_slash_grace_ms: 300000,
+      da_bond_withdraw_delay_ms: 2340000,
+    },
+    da_bond: {
+      da_bond_lovelace: 500000000,
+      da_slash_penalty_lovelace: 100000000,
+      da_bond_min_top_up_lovelace: 5000000,
+      da_bond_pool_floor_lovelace: 5000000,
+      challenge_record_lovelace: 27000000,
     },
     limits: {
       max_bisection_rounds: 32,
@@ -138,13 +178,13 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "ff1ab60efbc01f7ae77a259045bf12a4196cb2bc1fbfdbca516d264a1a7d5365",
+  mainnet: "49eff45a76fa11fdc52b04eb32ba39176137b33bf2ca5666ae0d3f7a7b60f11d",
   "preprod-public":
-    "3dab30eedcbb3eb8988219c1e0b31f9278609fa686e3b6b526d063b77014c252",
+    "b2660905760a27e23fdcccc7adb25a7991a1cf16caa806283fa29621622b3ea2",
   "preprod-testing":
-    "09b45695d2ac268b0e24018dea4889c7091b4087d590982131b6b202d7c3d9a7",
+    "6ac7c84ebbcf1dee6659eb5028617b6a565acc70b917e138563f6e95c2dd4cda",
   "local-devnet-testing":
-    "503ea3278cc9e08fde44a6d83bea3a54ceb9ad66c4359b3c5c8730868f2f883d",
+    "d830215686d4a23d94dceb93a64e469076efb1f9abc419fa4231eef7575a57a0",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
@@ -173,6 +213,7 @@ export const SELECTED_DEPLOYMENT_PROFILE_DIGEST =
 for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
   Object.freeze(profile.l1_finality);
   Object.freeze(profile.timing);
+  Object.freeze(profile.da_bond);
   Object.freeze(profile.limits);
   Object.freeze(profile.economics);
   Object.freeze(profile);

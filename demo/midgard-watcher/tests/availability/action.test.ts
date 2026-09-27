@@ -20,7 +20,7 @@ const fixture = () => {
     responseGeometry: SDK.availabilityResponseGeometry(
       SDK.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
     ),
-    daBondLovelace: 10_000_000_000n,
+    ...SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
     challengerBondLovelace: 10_000_000_000n,
     maxOpenFeeLovelace: 500_000n,
     maxPublicationFeeLovelace: 500_000n,

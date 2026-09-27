@@ -95,6 +95,18 @@ export const onChainCoordinatorFromConfig = async (
         config.availabilityChallenge.responseGeometry,
       ),
       daBondLovelace: BigInt(config.availabilityChallenge.daBondLovelace),
+      daSlashPenaltyLovelace: BigInt(
+        config.availabilityChallenge.daSlashPenaltyLovelace,
+      ),
+      daBondMinTopUpLovelace: BigInt(
+        config.availabilityChallenge.daBondMinTopUpLovelace,
+      ),
+      daBondPoolFloorLovelace: BigInt(
+        config.availabilityChallenge.daBondPoolFloorLovelace,
+      ),
+      challengeRecordLovelace: BigInt(
+        config.availabilityChallenge.challengeRecordLovelace,
+      ),
       challengerBondLovelace: BigInt(
         config.availabilityChallenge.challengerBondLovelace,
       ),

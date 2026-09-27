@@ -1,5 +1,8 @@
 import type { DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  daBondManifestAmounts,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 
 /** Explicit bounded-acceptance Q58 release candidate used by node tests. */
@@ -17,7 +20,9 @@ export const TEST_AVAILABILITY_CHALLENGE = Object.freeze({
     trancheByteLength: 4_194_304,
     maxTrancheCount: 16,
   }),
-  daBondLovelace: 12_000_000_000,
+  // The pooled DA bond amounts are the selected profile's; the challenger bond
+  // is independent of them.
+  ...daBondManifestAmounts(),
   challengerBondLovelace: 12_000_000_000,
   maxOpenFeeLovelace: 2_000_000,
   maxPublicationFeeLovelace: 2_000_000,
@@ -32,6 +37,18 @@ export const TEST_AVAILABILITY_PARAMETERS = SDK.daAvailabilityParameters({
     TEST_AVAILABILITY_CHALLENGE.responseGeometry,
   ),
   daBondLovelace: BigInt(TEST_AVAILABILITY_CHALLENGE.daBondLovelace),
+  daSlashPenaltyLovelace: BigInt(
+    TEST_AVAILABILITY_CHALLENGE.daSlashPenaltyLovelace,
+  ),
+  daBondMinTopUpLovelace: BigInt(
+    TEST_AVAILABILITY_CHALLENGE.daBondMinTopUpLovelace,
+  ),
+  daBondPoolFloorLovelace: BigInt(
+    TEST_AVAILABILITY_CHALLENGE.daBondPoolFloorLovelace,
+  ),
+  challengeRecordLovelace: BigInt(
+    TEST_AVAILABILITY_CHALLENGE.challengeRecordLovelace,
+  ),
   challengerBondLovelace: BigInt(
     TEST_AVAILABILITY_CHALLENGE.challengerBondLovelace,
   ),

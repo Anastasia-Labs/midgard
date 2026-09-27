@@ -285,6 +285,10 @@ const availabilityParametersFromConfig = (
   return SDK.daAvailabilityParameters({
     responseGeometry: SDK.availabilityResponseGeometry(p.responseGeometry),
     daBondLovelace: BigInt(p.daBondLovelace),
+    daSlashPenaltyLovelace: BigInt(p.daSlashPenaltyLovelace),
+    daBondMinTopUpLovelace: BigInt(p.daBondMinTopUpLovelace),
+    daBondPoolFloorLovelace: BigInt(p.daBondPoolFloorLovelace),
+    challengeRecordLovelace: BigInt(p.challengeRecordLovelace),
     challengerBondLovelace: BigInt(p.challengerBondLovelace),
     maxOpenFeeLovelace: BigInt(p.maxOpenFeeLovelace),
     maxPublicationFeeLovelace: BigInt(p.maxPublicationFeeLovelace),

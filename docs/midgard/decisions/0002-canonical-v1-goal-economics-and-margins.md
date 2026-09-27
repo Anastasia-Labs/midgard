@@ -4,9 +4,10 @@
   after the named consumers pass. Amended 2026-08-31: §2.4 superseded by
   §2.4a (claim registry removed; concurrent fraud proofs permitted).
 - **Owner/approver:** repository owner (Philip DiSarro).
-- **Consumers:** Q53, Q54, Q61, Q63, W04, W12, W31, C74, C80, and W46 (production
-  hardware floor, §5.2) (`GOAL_SPEC.md` §3.3, §7). No task may invent a value
-  this record owns.
+- **Consumers:** Q53, Q54, Q61, Q63, W04, W12, W31, C74, C80, W46 (production
+  hardware floor, §5.2) (`GOAL_SPEC.md` §3.3, §7), and the pooled DA committee
+  bond (§2.6; `config/deployments/*.yaml` `da_bond` and the three `timing.da_*`
+  pool keys, issues #685–#693). No task may invent a value this record owns.
 
 ## 1. Fixed protocol constants (recorded, not chosen)
 
@@ -198,6 +199,79 @@ The settlement remainder helper and unrelated SDK penalty constants are not
 economics authorities. An F04-approved profile must not be described as deployed or
 economics-complete without the corresponding acceptance evidence.
 
+### 2.6 DA committee bond pool (values ACCEPTED for testing; public figures awaiting owner confirmation)
+
+The DA committee backs every block it attests from one pooled bond
+([decision record](da-committee-bond-pool.md)). The deployment profiles carry
+these values in their `da_bond` section and three `timing` keys; generation
+renders them into `env/*.ak`, and the off-chain manifest parser, SDK and node
+require the availability `ParametersV1` amounts to equal them. The challenger
+bond is not part of this table: it stays a deploy-time manifest value and alone
+must exceed the reserve-coverage floor (the DA bond is no longer forced equal
+to it).
+
+| Parameter                     | Public (mainnet, preprod-public)                       | Testing (preprod-testing, local-devnet-testing) |
+| ----------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
+| `da_bond_lovelace`            | 100,000 ADA — awaiting owner confirmation              | 500 tADA                                        |
+| `da_slash_penalty_lovelace`   | 25,000 ADA (75,000 ADA reward) — awaiting confirmation | 100 tADA (400 tADA reward)                      |
+| `da_bond_min_top_up_lovelace` | 1,000 ADA — awaiting owner confirmation                | 5 tADA                                          |
+| `da_bond_pool_floor_lovelace` | 5 ADA — awaiting owner confirmation                    | 5 tADA                                          |
+| `challenge_record_lovelace`   | 27 ADA (measured, below)                               | 27 tADA (measured, below)                       |
+| `da_challenge_window_ms`      | 259,200,000 (3 d) — awaiting owner confirmation        | 720,000 (12 min)                                |
+| `da_slash_grace_ms`           | 172,800,000 (2 d) — awaiting owner confirmation        | 300,000 (5 min)                                 |
+| `da_bond_withdraw_delay_ms`   | 778,080,000 (9 d 8 min) — awaiting owner confirmation  | 2,340,000 (39 min)                              |
+
+Relations, enforced by profile validation and pinned per profile by
+`onchain/aiken/lib/midgard/da-bond-profile.test.ak` (run under every profile in
+Aiken CI):
+
+- `da_attestation_timeout < da_challenge_window ≤ block_maturity_duration`;
+- `0 < da_slash_penalty < da_bond`; the minimum top-up, pool floor and
+  challenge-record lovelace are positive;
+- the spec withdrawal-delay form, `delay ≥ max_validity_range +
+da_challenge_window + full_response_window + da_slash_grace`, and the
+  enforced, stronger form, `delay ≥ max_validity_range +
+max(da_challenge_window + full_response_window, block_maturity_duration) +
+da_slash_grace`;
+- public profiles only (profile validation; no Aiken mirror):
+  `da_challenge_window − da_attestation_timeout ≥ 2 × max_validity_range +
+confirmation_depth × 20 s × 2`, which is 2 × 480,000 + 1,200,000 = 2,160,000
+  ms on public timing. A challenger must first see an apply that landed at the
+  attestation timeout at confirmation depth, then land an open whose validity
+  range may be a full maximum range wide; the second range covers clock skew
+  and the poll-and-submit block. The testing profiles keep 120 s of slack
+  (720,000 − 600,000) and are exempt (owner flag);
+- public profiles only: the latest DA response deadline, the maximum validity
+  range and the dispute schedule end before block maturity (259,200,000 +
+  480,000 + 172,800,000 + 19,800,000 = 452,280,000 < 604,800,000); this rule
+  now counts from the challenge window instead of the attestation timeout.
+
+**Withdrawal-delay amendment.** An unavailable block can be timed out only once
+it is the state-queue head, and its predecessors merge no earlier than their end
+time plus block maturity, so the slash grace can start as late as maturity
+rather than at the response deadline. The enforced form therefore replaces the
+spec's public 605,280,000 (7 d 8 min, which left zero margin against the 7-day
+maturity) with 778,080,000; the testing figure is unchanged because there the
+challenge path (720,000 + 840,000 = 1,560,000) already exceeds the 900,000
+maturity.
+
+**`challenge_record_lovelace` measurement.** It is the exact lovelace of a
+challenge record: the min-UTxO of the largest admitted `ChallengeRecordV1`,
+measured with the CML encoder (`min_ada_required`, iterated to its fixpoint) on
+a draft encoding of the spec type. The record holds a commitment with 64
+tranche descriptors at worst-case field widths, the 32-byte challenge token,
+the challenger key hash and two POSIX times, as an inline datum at the
+availability script's enterprise address, at `coins_per_utxo_byte` 4,310:
+
+- datum 5,838 bytes, output 5,953 bytes, `(160 + 5,953) × 4,310 = 26,347,030`
+  lovelace;
+- the same output with a stake credential on the address needs 26,467,710, and
+  a pessimistic geometry with 5-byte chunk counts 26,476,330;
+- rounded up to a whole ADA: **27,000,000**, about 2.5% above the realisable
+  case. The value is exact on chain (`==`), so a `coins_per_utxo_byte` rise of
+  more than about 2.5% makes the largest-commitment Opens unbuildable until a
+  redeploy (owner flag).
+
 ## 3. Finality, retries, deadlines (status per row)
 
 | Parameter                                                        | Value                                                                                                                                                                                                                      | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -208,7 +282,10 @@ economics-complete without the corresponding acceptance evidence.
 | Automated deep-rollback handling — **ACCEPTED owner condition**  | A rollback deeper than `finalityDepth` but within `k` triggers automated W13 rewind/replay recovery plus W33 submission reconciliation and an explicit incident record; verification resumes without manual state surgery. | This automation is the condition under which `finalityDepth` 30 is acceptable for public launch: shallow finality for latency, full-`k` automated recovery for safety. W44 must include a deeper-than-finality rollback case.                                                                                                                                                                                                  |
 | Rollback handling below `finalityDepth`                          | pending-state rewind (W13), permit invalidation, and submission reconciliation                                                                                                                                             | Spec §3.1.8. Invalidate cached authority, re-observe canonical state, reconcile outstanding submissions, and resume under fresh authority. Reuse suitable signed bytes; rebuild only when necessary. Reconstruct wallet availability from canonical UTxOs and unresolved attempts. Terminal inclusion releases the execution slot but remains recoverable until anchoring; no blanket capital hold until finality is required. |
 | Submission retry budget                                          | 5 attempts, exponential backoff capped at 120 s                                                                                                                                                                            | Bounded by §3.3 maturity fit; W33 reconciles ambiguity before any retry.                                                                                                                                                                                                                                                                                                                                                       |
-| DA availability-challenge response deadline                      | 3,600,000 ms (1 h)                                                                                                                                                                                                         | Fits drill inside the acceptance window; retention makes longer response unnecessary.                                                                                                                                                                                                                                                                                                                                          |
+| DA availability-challenge response deadline                      | small payloads (≤ 64 KiB): 3,600,000 ms (1 h) public, 720,000 ms (12 min) testing; full payloads: 172,800,000 ms (2 d) public, 840,000 ms (14 min) testing                                                                 | Profile `timing.da_small_response_window_ms` and `da_full_response_window_ms`, counted from the challenge open's inclusive upper validity bound. Validation requires every window to cover the minimum response budget (confirmation depth, five chained publications of a 64 KiB payload and one poll block, at twice the mean block time).                                                                                   |
+| DA challenge window (`da_challenge_window_ms`)                   | 259,200,000 ms (3 d) public — awaiting owner confirmation; 720,000 ms (12 min) testing                                                                                                                                     | An availability challenge must open before `header.end_time` plus this window. Longer than the attestation timeout and at most block maturity (§2.6).                                                                                                                                                                                                                                                                          |
+| DA slash grace (`da_slash_grace_ms`)                             | 172,800,000 ms (2 d) public — awaiting owner confirmation; 300,000 ms (5 min) testing                                                                                                                                      | Time the challenger has to land the timeout slash once it is possible: after the response deadline or, when later, once the challenged block is the queue head (its predecessors merge at maturity).                                                                                                                                                                                                                           |
+| DA bond withdrawal delay (`da_bond_withdraw_delay_ms`)           | 778,080,000 ms (9 d 8 min) public — awaiting owner confirmation; 2,340,000 ms (39 min) testing                                                                                                                             | Between BeginWithdraw and CompleteWithdraw; covers the latest possible slash of any block the pool still backs, including the head-only removal amendment (§2.6).                                                                                                                                                                                                                                                              |
 | `da_attestation_timeout` (Q61)                                   | 3,600,000 ms (1 h)                                                                                                                                                                                                         | Bounds how long a pending commitment may remain unattested. Timeout removal discards its dependent suffix at any queue position while preserving the earlier prefix. It does not slash (D-L1 recommendation).                                                                                                                                                                                                                  |
 | DA retention (`RETENTION_DAYS`, `minimumRetentionDays`)          | 15 days                                                                                                                                                                                                                    | ≥ maturity (7 d) + worst-case proof time + margin; matches `LIBP2P_DA_MIN_RETENTION_DAYS = 15`.                                                                                                                                                                                                                                                                                                                                |
 
@@ -268,10 +345,15 @@ results refine the non-node role sizing but cannot lower the node floor.
 
 ## 6. Acceptance-window check (`GOAL_SPEC.md` §7 F04)
 
-With the 1 h availability/attestation deadlines, 30-block finality, and
-journal-resumable parallel drills (C83/Q57 single-execution rule), the
-complete C83–C87 sweep is planned ≤ 48 h. Any value change that breaks this
-bound or a §3.3 threshold reopens this record.
+The drills run on the bounded testing profile, where every DA deadline is
+short: a 10-minute attestation timeout, 12- and 14-minute response windows, a
+12-minute challenge window, a 5-minute slash grace and a 39-minute pool
+withdrawal delay. With those deadlines, journal-resumable parallel drills
+(C83/Q57 single-execution rule) and 30-block finality, the complete
+C83–C87 sweep is planned ≤ 48 h. The public figures (1 h attestation timeout
+and small response window, 2-day full response window and slash grace, 3-day
+challenge window, 9-day withdrawal delay) are not drilled inside this window.
+Any value change that breaks this bound or a §3.3 threshold reopens this record.
 
 ## 7. Accepted values and raise-only measurement triggers
 

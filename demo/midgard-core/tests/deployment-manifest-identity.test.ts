@@ -43,6 +43,7 @@ import {
   verifyFinalizedDeploymentManifest,
 } from "../src/deployment-manifest-identity.js";
 import {
+  daBondManifestAmounts,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "../src/deployment-profile.js";
@@ -127,7 +128,7 @@ const identityInput = () => ({
       trancheByteLength: 4_194_304,
       maxTrancheCount: 16,
     },
-    daBondLovelace: 10_000_000_000,
+    ...daBondManifestAmounts(),
     challengerBondLovelace: 10_000_000_000,
     maxOpenFeeLovelace: 500_000,
     maxPublicationFeeLovelace: 500_000,
@@ -937,6 +938,134 @@ describe("DeploymentManifestV1 shared identity", () => {
         },
       }),
     ).toThrow(/safety\/coverage bounds/u);
+  });
+
+  it("500 tADA DA bond + 10k challenger bond passes on preprod-testing", () => {
+    expect(SELECTED_DEPLOYMENT_PROFILE.name).toBe("preprod-testing");
+    const identity = identityInput();
+    expect(identity.availabilityChallenge.daBondLovelace).toBe(500_000_000);
+    expect(identity.availabilityChallenge.challengerBondLovelace).toBe(
+      10_000_000_000,
+    );
+    const parsed = parseDeploymentManifestAvailabilityChallenge(
+      identity.availabilityChallenge,
+    );
+    expect(parsed).toMatchObject({
+      daBondLovelace: 500_000_000,
+      daSlashPenaltyLovelace: 100_000_000,
+      daBondMinTopUpLovelace: 5_000_000,
+      daBondPoolFloorLovelace: 5_000_000,
+      challengeRecordLovelace: 27_000_000,
+      challengerBondLovelace: 10_000_000_000,
+    });
+    const manifest = {
+      ...identity,
+      manifestId: computeDeploymentManifestId(identity),
+    };
+    expect(() => verifyDeploymentManifestIdentity(manifest)).not.toThrow();
+  });
+
+  it("unequal bonds accepted", () => {
+    const availability = identityInput().availabilityChallenge;
+    // Any challenger bond that covers the fee reserve, none equal to the
+    // profile's 500 tADA DA bond.
+    for (const challengerBondLovelace of [
+      2_409_200_001, 9_999_999_999, 12_000_000_000,
+    ]) {
+      expect(
+        parseDeploymentManifestAvailabilityChallenge({
+          ...availability,
+          challengerBondLovelace,
+        }).challengerBondLovelace,
+      ).toBe(challengerBondLovelace);
+    }
+  });
+
+  it("coverage floor binds the challenger bond only", () => {
+    const availability = identityInput().availabilityChallenge;
+    // 16 tranches x ceil(4 MiB / 14,020) = 4,800 publications at 500,000,
+    // plus 16 settlements at 500,000, plus max(close, timeout) = 1,200,000.
+    const reserve = 4_800 * 500_000 + 16 * 500_000 + 1_200_000;
+    expect(reserve).toBe(2_409_200_000);
+    // The 500 tADA DA bond sits far below the reserve and is still accepted.
+    expect(availability.daBondLovelace).toBeLessThan(reserve);
+    expect(
+      parseDeploymentManifestAvailabilityChallenge({
+        ...availability,
+        challengerBondLovelace: reserve + 1,
+      }).challengerBondLovelace,
+    ).toBe(reserve + 1);
+    expect(() =>
+      parseDeploymentManifestAvailabilityChallenge({
+        ...availability,
+        challengerBondLovelace: reserve,
+      }),
+    ).toThrow(/challenger bond must cover every maximum-size publication/u);
+    // With one-lovelace fee ceilings the reserve drops below the DA bond. A
+    // challenger bond equal to that reserve is still refused: a DA bond above
+    // the reserve never stands in for the challenger bond.
+    const oneLovelaceFees = {
+      maxOpenFeeLovelace: 1,
+      maxPublicationFeeLovelace: 1,
+      maxSettlementFeeLovelace: 1,
+      maxCloseFeeLovelace: 1,
+      maxTimeoutFeeLovelace: 1,
+    };
+    const smallReserve = 4_800 + 16 + 1;
+    expect(availability.daBondLovelace).toBeGreaterThan(smallReserve);
+    expect(
+      parseDeploymentManifestAvailabilityChallenge({
+        ...availability,
+        ...oneLovelaceFees,
+        challengerBondLovelace: smallReserve + 1,
+      }).challengerBondLovelace,
+    ).toBe(smallReserve + 1);
+    expect(() =>
+      parseDeploymentManifestAvailabilityChallenge({
+        ...availability,
+        ...oneLovelaceFees,
+        challengerBondLovelace: smallReserve,
+      }),
+    ).toThrow(/challenger bond must cover every maximum-size publication/u);
+  });
+
+  it("DA amounts must equal the selected profile", () => {
+    const availability = identityInput().availabilityChallenge;
+    for (const [key, expected] of Object.entries(daBondManifestAmounts())) {
+      for (const wrong of [expected - 1, expected + 1]) {
+        expect(() =>
+          parseDeploymentManifestAvailabilityChallenge({
+            ...availability,
+            [key]: wrong,
+          }),
+        ).toThrow(
+          new RegExp(
+            `availabilityChallenge\\.${key} must equal the selected deployment profile's value ${expected.toString()}`,
+            "u",
+          ),
+        );
+      }
+      const { [key as keyof typeof availability]: _omitted, ...missing } =
+        availability;
+      expect(() =>
+        parseDeploymentManifestAvailabilityChallenge(missing),
+      ).toThrow(/availabilityChallenge must contain exactly/u);
+    }
+    // A manifest written before the pooled bond carries the old DA bond and
+    // none of the pool amounts.
+    const {
+      daSlashPenaltyLovelace: _penalty,
+      daBondMinTopUpLovelace: _topUp,
+      daBondPoolFloorLovelace: _floor,
+      challengeRecordLovelace: _record,
+      ...legacy
+    } = availability;
+    expect(() =>
+      parseDeploymentManifestAvailabilityChallenge({
+        ...legacy,
+        daBondLovelace: 10_000_000_000,
+      }),
+    ).toThrow(/availabilityChallenge must contain exactly/u);
   });
 
   it("owns the sole exact DeploymentMarkerV1 boundary", () => {

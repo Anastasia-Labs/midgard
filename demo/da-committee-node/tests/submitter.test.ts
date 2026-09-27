@@ -895,7 +895,7 @@ const availabilityParameters = SDK.daAvailabilityParameters({
     trancheByteLength: 4 * 1_024 * 1_024,
     maxTrancheCount: 16,
   }),
-  daBondLovelace: 10_000_000_000n,
+  ...SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
   challengerBondLovelace: 10_000_000_000n,
   maxOpenFeeLovelace: 500_000n,
   maxPublicationFeeLovelace: 500_000n,

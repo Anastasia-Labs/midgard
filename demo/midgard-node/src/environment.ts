@@ -1,4 +1,5 @@
 import {
+  daBondManifestAmounts,
   requireSelectedDeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
@@ -11,7 +12,7 @@ import {
  * `NodeConfig` layer, and stays the primary one. What it cannot cover are the
  * plain functions — commands, workers, fibers, blueprint loaders — that read a
  * handful of variables directly on the way past. Those reads had drifted into
- * several near-copies of the same parse: two copies of the eleven-variable
+ * several near-copies of the same parse: two copies of the ten-variable
  * DA-availability block (with the same validation under two different error
  * strings), three of the deployment-manifest path, two of the blueprint path
  * override, two of the bond-owner credential, and a third copy of the
@@ -78,8 +79,10 @@ const DA_AVAILABILITY_RESPONSE_CLASSES = {
 } as const;
 
 /**
- * The eleven `MIDGARD_DA_AVAILABILITY_*` variables, parsed into the shape
- * `parseDeploymentManifestAvailabilityChallenge` accepts.
+ * The ten `MIDGARD_DA_AVAILABILITY_*` variables, parsed into the shape
+ * `parseDeploymentManifestAvailabilityChallenge` accepts, with the pooled DA
+ * bond amounts taken from the selected deployment profile: the manifest parser
+ * refuses any other value, so they are not configurable.
  *
  * Returned unparsed so each caller keeps its own downstream conversion — one
  * builds `SDK.DaAvailabilityParameters`, the other a manifest section — while
@@ -97,7 +100,7 @@ export const daAvailabilityChallengeEnvironmentInput = (
       trancheByteLength: integer("MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH"),
       maxTrancheCount: integer("MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT"),
     },
-    daBondLovelace: integer("MIDGARD_DA_AVAILABILITY_BOND_LOVELACE"),
+    ...daBondManifestAmounts(),
     challengerBondLovelace: integer(
       "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
     ),

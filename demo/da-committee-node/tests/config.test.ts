@@ -1275,8 +1275,8 @@ describe("loadCommitteeConfig", () => {
       l1SubmitterKeySource: "private-key:ed25519_sk_test",
       l1SubmitterPreflight: {
         enabled: true,
-        // The fixture deployment's 12,000 ADA bond plus 50 ADA of fees.
-        minPlainAdaLovelace: 12_050_000_000n,
+        // The selected profile's 500 ADA DA bond plus 50 ADA of fees.
+        minPlainAdaLovelace: 550_000_000n,
         minCollateralLovelace:
           DEFAULT_L1_SUBMITTER_PREFLIGHT.minCollateralLovelace,
         minSpendableUtxoCount:
@@ -1362,10 +1362,10 @@ describe("loadCommitteeConfig", () => {
     await expect(
       loadCommitteeConfig({
         ...baseEnv,
-        DA_L1_MIN_PLAIN_ADA_LOVELACE: "12049999999",
+        DA_L1_MIN_PLAIN_ADA_LOVELACE: "549999999",
       }),
     ).rejects.toThrow(
-      /DA_L1_MIN_PLAIN_ADA_LOVELACE must be at least 12050000000 \(the deployment's daBondLovelace 12000000000 \+ 50000000 fee headroom\)/u,
+      /DA_L1_MIN_PLAIN_ADA_LOVELACE must be at least 550000000 \(the deployment's daBondLovelace 500000000 \+ 50000000 fee headroom\)/u,
     );
     await expect(
       loadCommitteeConfig({

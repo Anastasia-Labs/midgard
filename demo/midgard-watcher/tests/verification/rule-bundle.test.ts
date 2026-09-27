@@ -23,6 +23,7 @@ import {
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  daBondManifestAmounts,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
@@ -265,7 +266,7 @@ const canonicalManifestIdentity = (): MutableRecord => {
         trancheByteLength: 4_194_304,
         maxTrancheCount: 16,
       },
-      daBondLovelace: 10_000_000_000,
+      ...daBondManifestAmounts(),
       challengerBondLovelace: 10_000_000_000,
       maxOpenFeeLovelace: 500_000,
       maxPublicationFeeLovelace: 500_000,

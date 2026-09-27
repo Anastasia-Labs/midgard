@@ -7,6 +7,7 @@ use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
 use env
 use midgard/common/utils
+use midgard/da_bond_profile
 use midgard/ledger_state.{HeaderHash}
 use midgard/validation_merkle_v1
 
@@ -40,6 +41,10 @@ pub type ParametersV1 {
   max_settlement_fee_lovelace: Int,
   max_close_fee_lovelace: Int,
   max_timeout_fee_lovelace: Int,
+  da_slash_penalty_lovelace: Int,
+  da_bond_min_top_up_lovelace: Int,
+  da_bond_pool_floor_lovelace: Int,
+  challenge_record_lovelace: Int,
 }
 
 pub type TrancheDescriptorV1 {
@@ -360,7 +365,15 @@ pub fn parameters_are_canonical_v1(parameters: ParametersV1) -> Bool {
   and {
     response_geometry_is_canonical_v1(geometry),
     parameters.da_bond_lovelace > 0,
-    parameters.challenger_bond_lovelace == parameters.da_bond_lovelace,
+    da_bond_profile.slash_penalty_is_bounded_v1(
+      parameters.da_slash_penalty_lovelace,
+      parameters.da_bond_lovelace,
+    ),
+    da_bond_profile.pool_amounts_are_positive_v1(
+      parameters.da_bond_min_top_up_lovelace,
+      parameters.da_bond_pool_floor_lovelace,
+      parameters.challenge_record_lovelace,
+    ),
     parameters.max_open_fee_lovelace > 0,
     parameters.max_publication_fee_lovelace > 0,
     parameters.max_settlement_fee_lovelace > 0,

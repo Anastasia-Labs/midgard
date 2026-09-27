@@ -59,6 +59,22 @@ pub const small_response_window_ms_v1: Int = 720_000
 
 pub const full_response_window_ms_v1: Int = 840_000
 
+pub const da_challenge_window_ms_v1: Int = 720_000
+
+pub const da_slash_grace_ms_v1: Int = 300_000
+
+pub const da_bond_withdraw_delay_ms_v1: Int = 2_340_000
+
+pub const da_bond_lovelace_v1: Int = 500_000_000
+
+pub const da_slash_penalty_lovelace_v1: Int = 100_000_000
+
+pub const da_bond_min_top_up_lovelace_v1: Int = 5_000_000
+
+pub const da_bond_pool_floor_lovelace_v1: Int = 5_000_000
+
+pub const challenge_record_lovelace_v1: Int = 27_000_000
+
 pub const max_bisection_rounds: Int = 32
 
 pub const max_inactivity_strikes: Int = 5

@@ -28,6 +28,7 @@ import {
   parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  daBondManifestAmounts,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
@@ -469,7 +470,7 @@ export const buildDaDeploymentFixture = async (
         trancheByteLength: 4_194_304,
         maxTrancheCount: 16,
       },
-      daBondLovelace: 12_000_000_000,
+      ...daBondManifestAmounts(),
       challengerBondLovelace: 12_000_000_000,
       maxOpenFeeLovelace: 2_000_000,
       maxPublicationFeeLovelace: 2_000_000,

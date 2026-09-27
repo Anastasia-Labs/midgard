@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalJson } from "../src/canonical-json.js";
 import {
+  daBondManifestAmounts,
   DEPLOYMENT_PROFILES,
   requireSelectedDeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
@@ -60,5 +61,17 @@ describe("deployment profile binding", () => {
     ).toThrow();
     expect(() => requireSelectedDeploymentProfile(undefined)).toThrow();
     expect(() => requireSelectedDeploymentProfile("preprod-public")).toThrow();
+  });
+
+  it("maps each DA bond amount to its own manifest key", () => {
+    // The testing profiles set the minimum top-up equal to the pool floor, so
+    // only a public profile, where every amount differs, catches a swap.
+    expect(daBondManifestAmounts(DEPLOYMENT_PROFILES.mainnet)).toEqual({
+      daBondLovelace: 100_000_000_000,
+      daSlashPenaltyLovelace: 25_000_000_000,
+      daBondMinTopUpLovelace: 1_000_000_000,
+      daBondPoolFloorLovelace: 5_000_000,
+      challengeRecordLovelace: 27_000_000,
+    });
   });
 });

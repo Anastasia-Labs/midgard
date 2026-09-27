@@ -6,7 +6,10 @@ import {
   MIDGARD_MAX_DA_PAYLOAD_BYTES,
   verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  daBondManifestAmounts,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, fromHex, toHex } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -31,8 +34,27 @@ export const DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS =
 export const DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS =
   SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms;
 
-export const DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE =
-  10_000_000_000n;
+/**
+ * The selected deployment profile's pooled DA committee bond amounts
+ * (`config/deployments/*.yaml` `da_bond`). Availability parameters must carry
+ * exactly these; builders spread them into `daAvailabilityParameters`.
+ */
+export const DA_AVAILABILITY_PROFILE_BOND_AMOUNTS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(daBondManifestAmounts()).map(([key, value]) => [
+      key,
+      BigInt(value),
+    ]),
+  ) as {
+    readonly daBondLovelace: bigint;
+    readonly daSlashPenaltyLovelace: bigint;
+    readonly daBondMinTopUpLovelace: bigint;
+    readonly daBondPoolFloorLovelace: bigint;
+    readonly challengeRecordLovelace: bigint;
+  },
+);
+
+/** Deploy-time and independent of the DA bond; the fee reserve binds it alone. */
 export const DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE =
   10_000_000_000n;
 
@@ -259,8 +281,10 @@ export const DaAvailabilityResponseGeometry =
 
 /**
  * Authenticated release/DA parameters selected after applied response-cost
- * measurement. The two bonds remain matching, but their activated lovelace
- * amount is deployment data rather than a wire-level constant.
+ * measurement. Field order is the on-chain `ParametersV1` constructor layout.
+ * The DA bond, slash penalty, minimum top-up, pool floor and challenge-record
+ * lovelace are the selected profile's `da_bond` amounts; the challenger bond
+ * is independent deployment data and the only bond the fee reserve binds.
  */
 export const DaAvailabilityParametersSchema = Data.Object({
   response_geometry: DaAvailabilityResponseGeometrySchema,
@@ -271,6 +295,10 @@ export const DaAvailabilityParametersSchema = Data.Object({
   max_settlement_fee_lovelace: Data.Integer(),
   max_close_fee_lovelace: Data.Integer(),
   max_timeout_fee_lovelace: Data.Integer(),
+  da_slash_penalty_lovelace: Data.Integer(),
+  da_bond_min_top_up_lovelace: Data.Integer(),
+  da_bond_pool_floor_lovelace: Data.Integer(),
+  challenge_record_lovelace: Data.Integer(),
 });
 export type DaAvailabilityParameters = Data.Static<
   typeof DaAvailabilityParametersSchema
@@ -667,11 +695,37 @@ export const assertCanonicalDaAvailabilityParameters = (
   assertCanonicalDaAvailabilityResponseGeometry(parameters.response_geometry);
   if (
     parameters.da_bond_lovelace <= 0n ||
-    parameters.challenger_bond_lovelace !== parameters.da_bond_lovelace
+    parameters.da_slash_penalty_lovelace <= 0n ||
+    parameters.da_slash_penalty_lovelace >= parameters.da_bond_lovelace
   ) {
     throw new DaAvailabilityCommitmentError(
-      "availability release parameters require positive, exactly matching DA and challenger bonds",
+      "availability release parameters require a positive DA bond and a slash penalty strictly between zero and it",
     );
+  }
+  if (
+    parameters.da_bond_min_top_up_lovelace <= 0n ||
+    parameters.da_bond_pool_floor_lovelace <= 0n ||
+    parameters.challenge_record_lovelace <= 0n
+  ) {
+    throw new DaAvailabilityCommitmentError(
+      "availability release parameters require a positive DA bond minimum top-up, pool floor and challenge-record lovelace",
+    );
+  }
+  const profileAmounts = {
+    daBondLovelace: parameters.da_bond_lovelace,
+    daSlashPenaltyLovelace: parameters.da_slash_penalty_lovelace,
+    daBondMinTopUpLovelace: parameters.da_bond_min_top_up_lovelace,
+    daBondPoolFloorLovelace: parameters.da_bond_pool_floor_lovelace,
+    challengeRecordLovelace: parameters.challenge_record_lovelace,
+  };
+  for (const [key, expected] of Object.entries(
+    DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
+  )) {
+    if (profileAmounts[key as keyof typeof profileAmounts] !== expected) {
+      throw new DaAvailabilityCommitmentError(
+        `availability release parameters ${key} must equal the selected deployment profile's value ${expected.toString()}`,
+      );
+    }
   }
   if (
     parameters.max_open_fee_lovelace <= 0n ||
@@ -713,6 +767,10 @@ export const daAvailabilityParameters = (input: {
   readonly maxSettlementFeeLovelace: bigint;
   readonly maxCloseFeeLovelace: bigint;
   readonly maxTimeoutFeeLovelace: bigint;
+  readonly daSlashPenaltyLovelace: bigint;
+  readonly daBondMinTopUpLovelace: bigint;
+  readonly daBondPoolFloorLovelace: bigint;
+  readonly challengeRecordLovelace: bigint;
 }): DaAvailabilityParameters => {
   const parameters = {
     response_geometry: input.responseGeometry,
@@ -723,6 +781,10 @@ export const daAvailabilityParameters = (input: {
     max_settlement_fee_lovelace: input.maxSettlementFeeLovelace,
     max_close_fee_lovelace: input.maxCloseFeeLovelace,
     max_timeout_fee_lovelace: input.maxTimeoutFeeLovelace,
+    da_slash_penalty_lovelace: input.daSlashPenaltyLovelace,
+    da_bond_min_top_up_lovelace: input.daBondMinTopUpLovelace,
+    da_bond_pool_floor_lovelace: input.daBondPoolFloorLovelace,
+    challenge_record_lovelace: input.challengeRecordLovelace,
   };
   assertCanonicalDaAvailabilityParameters(parameters);
   return parameters;

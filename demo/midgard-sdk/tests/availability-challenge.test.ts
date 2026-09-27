@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -9,9 +10,9 @@ import {
   availabilityResponseGeometry,
   buildDaAvailabilityChallengeDatumPlan,
   buildDaAvailabilityCommitment,
-  DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
   DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
   DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS,
+  DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
   DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
   DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES,
   DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS,
@@ -41,6 +42,7 @@ import {
   encodeDaAvailabilityPublicationDatum,
   encodeDaAvailabilityTerminalAccumulatorDatum,
   encodeDaAvailabilityTrancheDatum,
+  maximumDaAvailabilityPublicationCount,
   parseDaAvailabilityBondDatumCbor,
   parseDaAvailabilityCommitmentCbor,
   parseDaAvailabilityParametersCbor,
@@ -71,6 +73,27 @@ const MAX_TIMEOUT_FEE = 1_200_000n;
 const CANDIDATE_GEOMETRY = availabilityResponseGeometry(
   DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
 );
+
+type DaAvailabilityParametersInput = Parameters<
+  typeof daAvailabilityParameters
+>[0];
+
+// The selected profile's DA amounts, a 10k tADA challenger bond and the test
+// fee ceilings, with any field overridden.
+const parameterInput = (
+  overrides: Partial<DaAvailabilityParametersInput>,
+): DaAvailabilityParametersInput => ({
+  responseGeometry: CANDIDATE_GEOMETRY,
+  ...DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
+  challengerBondLovelace:
+    DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
+  maxOpenFeeLovelace: MAX_OPEN_FEE,
+  maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,
+  maxSettlementFeeLovelace: MAX_SETTLEMENT_FEE,
+  maxCloseFeeLovelace: MAX_CLOSE_FEE,
+  maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
+  ...overrides,
+});
 
 const payload = (length: number): Uint8Array =>
   Uint8Array.from({ length }, (_, index) => (index * 17 + 3) % 256);
@@ -246,55 +269,180 @@ const build = (length: number) =>
   });
 
 describe("Q58 canonical DA availability commitment V1", () => {
-  it("fixes the approved deadlines while keeping matching bonds release-bound", () => {
+  it("fixes the approved deadlines and binds the DA amounts to the profile", () => {
     expect(daAvailabilityResponseWindowMs(64 * 1024)).toBe(
       DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS,
     );
     expect(daAvailabilityResponseWindowMs(64 * 1024 + 1)).toBe(
       DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS,
     );
-    expect(DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE).toBe(
+    expect(DA_AVAILABILITY_PROFILE_BOND_AMOUNTS).toEqual({
+      daBondLovelace: BigInt(
+        SELECTED_DEPLOYMENT_PROFILE.da_bond.da_bond_lovelace,
+      ),
+      daSlashPenaltyLovelace: BigInt(
+        SELECTED_DEPLOYMENT_PROFILE.da_bond.da_slash_penalty_lovelace,
+      ),
+      daBondMinTopUpLovelace: BigInt(
+        SELECTED_DEPLOYMENT_PROFILE.da_bond.da_bond_min_top_up_lovelace,
+      ),
+      daBondPoolFloorLovelace: BigInt(
+        SELECTED_DEPLOYMENT_PROFILE.da_bond.da_bond_pool_floor_lovelace,
+      ),
+      challengeRecordLovelace: BigInt(
+        SELECTED_DEPLOYMENT_PROFILE.da_bond.challenge_record_lovelace,
+      ),
+    });
+    expect(DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE).toBe(
       10_000_000_000n,
     );
-    expect(DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE).toBe(
-      DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
+    expect(() =>
+      daAvailabilityParameters(
+        parameterInput({ maxPublicationFeeLovelace: 1_000_000_000n }),
+      ),
+    ).toThrow("must cover every maximum-size publication fee");
+  });
+
+  it("unequal bonds accepted", () => {
+    for (const challengerBondLovelace of [
+      2_409_200_001n,
+      9_999_999_999n,
+      12_000_000_000n,
+    ]) {
+      const parameters = daAvailabilityParameters(
+        parameterInput({ challengerBondLovelace }),
+      );
+      expect(parameters.challenger_bond_lovelace).toBe(challengerBondLovelace);
+      expect(parameters.da_bond_lovelace).toBe(
+        DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace,
+      );
+      expect(parameters.da_bond_lovelace).not.toBe(
+        parameters.challenger_bond_lovelace,
+      );
+      expect(
+        parseDaAvailabilityParametersCbor(
+          encodeDaAvailabilityParameters(parameters),
+        ),
+      ).toEqual(parameters);
+    }
+  });
+
+  it("coverage floor binds the challenger bond only", () => {
+    // Every maximum-size publication fee, one settlement fee per tranche and
+    // the larger terminal fee ceiling.
+    const floor =
+      BigInt(maximumDaAvailabilityPublicationCount(CANDIDATE_GEOMETRY)) *
+        MAX_PUBLICATION_FEE +
+      CANDIDATE_GEOMETRY.max_tranche_count * MAX_SETTLEMENT_FEE +
+      MAX_TIMEOUT_FEE;
+    expect(
+      daAvailabilityParameters(
+        parameterInput({ challengerBondLovelace: floor + 1n }),
+      ).challenger_bond_lovelace,
+    ).toBe(floor + 1n);
+    expect(() =>
+      daAvailabilityParameters(
+        parameterInput({ challengerBondLovelace: floor }),
+      ),
+    ).toThrow("challenger bond must cover every maximum-size publication fee");
+    // The DA bond is never compared to the fee floor: the preprod-testing
+    // 500 tADA DA bond sits far below it and is accepted.
+    expect(DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace).toBeLessThan(
+      floor,
+    );
+    // With one-lovelace fee ceilings the floor drops below the DA bond. A
+    // challenger bond equal to that floor is still refused: a DA bond above
+    // the floor never stands in for the challenger bond.
+    const oneLovelaceFees = {
+      maxOpenFeeLovelace: 1n,
+      maxPublicationFeeLovelace: 1n,
+      maxSettlementFeeLovelace: 1n,
+      maxCloseFeeLovelace: 1n,
+      maxTimeoutFeeLovelace: 1n,
+    };
+    const smallFloor =
+      BigInt(maximumDaAvailabilityPublicationCount(CANDIDATE_GEOMETRY)) +
+      CANDIDATE_GEOMETRY.max_tranche_count +
+      1n;
+    expect(DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace).toBeGreaterThan(
+      smallFloor,
     );
     expect(
-      daAvailabilityParameters({
-        responseGeometry: CANDIDATE_GEOMETRY,
-        daBondLovelace: 12_000_000_000n,
-        challengerBondLovelace: 12_000_000_000n,
-        maxOpenFeeLovelace: MAX_OPEN_FEE,
-        maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,
-        maxSettlementFeeLovelace: MAX_SETTLEMENT_FEE,
-        maxCloseFeeLovelace: MAX_CLOSE_FEE,
-        maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
-      }).da_bond_lovelace,
-    ).toBe(12_000_000_000n);
+      daAvailabilityParameters(
+        parameterInput({
+          ...oneLovelaceFees,
+          challengerBondLovelace: smallFloor + 1n,
+        }),
+      ).challenger_bond_lovelace,
+    ).toBe(smallFloor + 1n);
     expect(() =>
-      daAvailabilityParameters({
-        responseGeometry: CANDIDATE_GEOMETRY,
-        daBondLovelace: 12_000_000_000n,
-        challengerBondLovelace: 11_999_999_999n,
-        maxOpenFeeLovelace: MAX_OPEN_FEE,
-        maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,
-        maxSettlementFeeLovelace: MAX_SETTLEMENT_FEE,
-        maxCloseFeeLovelace: MAX_CLOSE_FEE,
-        maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
-      }),
-    ).toThrow("exactly matching DA and challenger bonds");
-    expect(() =>
-      daAvailabilityParameters({
-        responseGeometry: CANDIDATE_GEOMETRY,
-        daBondLovelace: 12_000_000_000n,
-        challengerBondLovelace: 12_000_000_000n,
-        maxOpenFeeLovelace: MAX_OPEN_FEE,
-        maxPublicationFeeLovelace: 1_000_000_000n,
-        maxSettlementFeeLovelace: MAX_SETTLEMENT_FEE,
-        maxCloseFeeLovelace: MAX_CLOSE_FEE,
-        maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
-      }),
-    ).toThrow("must cover every maximum-size publication fee");
+      daAvailabilityParameters(
+        parameterInput({
+          ...oneLovelaceFees,
+          challengerBondLovelace: smallFloor,
+        }),
+      ),
+    ).toThrow("challenger bond must cover every maximum-size publication fee");
+  });
+
+  it("500 tADA DA bond + 10k challenger bond passes on preprod-testing", () => {
+    expect(SELECTED_DEPLOYMENT_PROFILE.name).toBe("preprod-testing");
+    expect(DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace).toBe(
+      500_000_000n,
+    );
+    const parameters = daAvailabilityParameters(
+      parameterInput({ challengerBondLovelace: 10_000_000_000n }),
+    );
+    expect(parameters.da_bond_lovelace).toBe(500_000_000n);
+    expect(parameters.challenger_bond_lovelace).toBe(10_000_000_000n);
+    expect(parameters.da_slash_penalty_lovelace).toBe(100_000_000n);
+    expect(parameters.da_bond_min_top_up_lovelace).toBe(5_000_000n);
+    expect(parameters.da_bond_pool_floor_lovelace).toBe(5_000_000n);
+    expect(parameters.challenge_record_lovelace).toBe(27_000_000n);
+  });
+
+  it("DA amounts must equal the selected profile", () => {
+    for (const [key, expected] of Object.entries(
+      DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
+    )) {
+      for (const drifted of [expected - 1n, expected + 1n]) {
+        expect(() =>
+          daAvailabilityParameters(parameterInput({ [key]: drifted })),
+        ).toThrow(
+          `availability release parameters ${key} must equal the selected deployment profile's value ${expected.toString()}`,
+        );
+      }
+    }
+    const parameters = daAvailabilityParameters(parameterInput({}));
+    const driftedCbor = Data.to(
+      { ...parameters, da_bond_lovelace: parameters.da_bond_lovelace + 1n },
+      DaAvailabilityParameters,
+    );
+    expect(() => parseDaAvailabilityParametersCbor(driftedCbor)).toThrow(
+      "daBondLovelace must equal the selected deployment profile's value",
+    );
+  });
+
+  it("refuses a slash penalty outside the DA bond and non-positive pool amounts", () => {
+    const bond = DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace;
+    for (const daSlashPenaltyLovelace of [0n, -1n, bond, bond + 1n]) {
+      expect(() =>
+        daAvailabilityParameters(parameterInput({ daSlashPenaltyLovelace })),
+      ).toThrow(
+        "require a positive DA bond and a slash penalty strictly between zero and it",
+      );
+    }
+    for (const key of [
+      "daBondMinTopUpLovelace",
+      "daBondPoolFloorLovelace",
+      "challengeRecordLovelace",
+    ] as const) {
+      expect(() =>
+        daAvailabilityParameters(parameterInput({ [key]: 0n })),
+      ).toThrow(
+        "require a positive DA bond minimum top-up, pool floor and challenge-record lovelace",
+      );
+    }
   });
 
   it("uses the authenticated measured geometry without freezing its starting probe", () => {
@@ -866,7 +1014,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     });
     const parameters = daAvailabilityParameters({
       responseGeometry: geometry,
-      daBondLovelace: DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
+      ...DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
       challengerBondLovelace:
         DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
       maxOpenFeeLovelace: MAX_OPEN_FEE,
@@ -1057,10 +1205,37 @@ describe("Q58 canonical DA availability commitment V1", () => {
     });
   });
 
+  it("pins the ParametersV1 field order against the on-chain vector", () => {
+    // onchain/aiken/lib/midgard/availability-challenge.test.ak serialises the
+    // same record to these bytes. Every field carries a different value, so a
+    // reordered schema field changes the bytes.
+    const cbor = "d8799fd8799f010203ff0405060708090a0b0c0d0eff";
+    const parameters: DaAvailabilityParameters = {
+      response_geometry: {
+        chunk_byte_length: 1n,
+        tranche_byte_length: 2n,
+        max_tranche_count: 3n,
+      },
+      da_bond_lovelace: 4n,
+      challenger_bond_lovelace: 5n,
+      max_open_fee_lovelace: 6n,
+      max_publication_fee_lovelace: 7n,
+      max_settlement_fee_lovelace: 8n,
+      max_close_fee_lovelace: 9n,
+      max_timeout_fee_lovelace: 10n,
+      da_slash_penalty_lovelace: 11n,
+      da_bond_min_top_up_lovelace: 12n,
+      da_bond_pool_floor_lovelace: 13n,
+      challenge_record_lovelace: 14n,
+    };
+    expect(Data.to(parameters, DaAvailabilityParameters)).toBe(cbor);
+    expect(Data.from(cbor, DaAvailabilityParameters)).toEqual(parameters);
+  });
+
   it("strictly decodes release parameters and signed commitments for durable handoff", () => {
     const parameters = daAvailabilityParameters({
       responseGeometry: CANDIDATE_GEOMETRY,
-      daBondLovelace: 12_000_000_000n,
+      ...DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
       challengerBondLovelace: 12_000_000_000n,
       maxOpenFeeLovelace: MAX_OPEN_FEE,
       maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,
@@ -1076,16 +1251,25 @@ describe("Q58 canonical DA availability commitment V1", () => {
       parseDaAvailabilityParametersCbor(parametersCbor.toUpperCase()),
     ).toThrow("lowercase CBOR hex");
 
-    const mismatchedBondsCbor = Data.to(
+    const unequalBonds = {
+      ...parameters,
+      challenger_bond_lovelace: parameters.challenger_bond_lovelace - 1n,
+    };
+    expect(
+      parseDaAvailabilityParametersCbor(
+        Data.to(unequalBonds, DaAvailabilityParameters),
+      ),
+    ).toEqual(unequalBonds);
+    const penaltyAtBondCbor = Data.to(
       {
         ...parameters,
-        challenger_bond_lovelace: parameters.challenger_bond_lovelace - 1n,
+        da_slash_penalty_lovelace: parameters.da_bond_lovelace,
       },
       DaAvailabilityParameters,
     );
-    expect(() =>
-      parseDaAvailabilityParametersCbor(mismatchedBondsCbor),
-    ).toThrow("exactly matching DA and challenger bonds");
+    expect(() => parseDaAvailabilityParametersCbor(penaltyAtBondCbor)).toThrow(
+      "a slash penalty strictly between zero and it",
+    );
 
     const commitment = build(70 * 1024);
     const commitmentCbor = encodeDaAvailabilityCommitment(commitment);
@@ -1198,7 +1382,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     });
     const parameters = daAvailabilityParameters({
       responseGeometry: geometry,
-      daBondLovelace: 10_000_000_000n,
+      ...DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
       challengerBondLovelace: 10_000_000_000n,
       maxOpenFeeLovelace: MAX_OPEN_FEE,
       maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,
@@ -1325,7 +1509,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     });
     const parameters = daAvailabilityParameters({
       responseGeometry: geometry,
-      daBondLovelace: 10_000_000_000n,
+      ...DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
       challengerBondLovelace: 10_000_000_000n,
       maxOpenFeeLovelace: MAX_OPEN_FEE,
       maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,
@@ -1473,7 +1657,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
   it("folds published and timed-out tranches into the one canonical terminal accumulator", () => {
     const parameters = daAvailabilityParameters({
       responseGeometry: CANDIDATE_GEOMETRY,
-      daBondLovelace: 10_000_000_000n,
+      ...DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
       challengerBondLovelace: 10_000_000_000n,
       maxOpenFeeLovelace: MAX_OPEN_FEE,
       maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,

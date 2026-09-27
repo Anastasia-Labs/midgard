@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/crypto
 use aiken/primitive/bytearray
 use midgard/availability_challenge as availability
@@ -39,6 +40,32 @@ test tranche_asset_names_match_little_endian_cross_language_vectors() {
   }
 }
 
+/// Literal cross-language vector shared with the SDK
+/// (`demo/midgard-sdk/tests/availability-challenge.test.ts`): every field
+/// carries a different value, so a reordered field on either side changes the
+/// bytes.
+test parameters_v1_field_order_matches_cross_language_vector() {
+  let parameters = availability.ParametersV1 {
+    response_geometry: availability.ResponseGeometryV1 {
+      chunk_byte_length: 1,
+      tranche_byte_length: 2,
+      max_tranche_count: 3,
+    },
+    da_bond_lovelace: 4,
+    challenger_bond_lovelace: 5,
+    max_open_fee_lovelace: 6,
+    max_publication_fee_lovelace: 7,
+    max_settlement_fee_lovelace: 8,
+    max_close_fee_lovelace: 9,
+    max_timeout_fee_lovelace: 10,
+    da_slash_penalty_lovelace: 11,
+    da_bond_min_top_up_lovelace: 12,
+    da_bond_pool_floor_lovelace: 13,
+    challenge_record_lovelace: 14,
+  }
+  cbor.serialise(parameters) == #"d8799fd8799f010203ff0405060708090a0b0c0d0eff"
+}
+
 fn candidate_geometry() -> availability.ResponseGeometryV1 {
   availability.ResponseGeometryV1 {
     chunk_byte_length: 14_020,
@@ -65,6 +92,10 @@ fn candidate_parameters() -> availability.ParametersV1 {
     max_settlement_fee_lovelace: 500_000,
     max_close_fee_lovelace: 1_000_000,
     max_timeout_fee_lovelace: 1_200_000,
+    da_slash_penalty_lovelace: 2_500_000_000,
+    da_bond_min_top_up_lovelace: 100_000_000,
+    da_bond_pool_floor_lovelace: 5_000_000,
+    challenge_record_lovelace: 27_000_000,
   }
 }
 
@@ -123,18 +154,34 @@ test q58_geometry_is_release_authenticated_not_probe_frozen() {
   }
 }
 
-/// Both halves are exact to the lovelace. The bond match is off by one; so is
-/// the publication-fee reserve. Under the candidate geometry a full response
-/// costs at most `16 * ceil(4 MiB / 14,020) = 4,800` publications, so the
-/// reserve is `4,800 * publication + 16 * 500,000 settlement + max(close,
-/// timeout) = 4,800 * publication + 9,200,000`, which must stay strictly under
-/// the 10,000,000,000 challenger bond. The last funded publication fee is
+/// The DA bond and the challenger bond are independent: a challenger bond one
+/// lovelace off the DA bond, a 500 tADA DA bond under a 10,000 ADA challenger
+/// bond, and a DA bond larger than the challenger bond are all canonical.
+/// The fee reserve is exact to the lovelace and binds the challenger bond
+/// only. Under the candidate geometry a full response costs at most
+/// `16 * ceil(4 MiB / 14,020) = 4,800` publications, so the reserve is
+/// `4,800 * publication + 16 * 500,000 settlement + max(close, timeout) =
+/// 4,800 * publication + 9,200,000`, which must stay strictly under the
+/// 10,000,000,000 challenger bond. The last funded publication fee is
 /// therefore 2,081,416 and the first unfunded one 2,081,417 — and it is the
-/// timeout ceiling, not the smaller close ceiling, that binds there.
-test q58_matching_bond_and_fee_reserve_are_exact() {
-  let mismatch = availability.ParametersV1 {
+/// timeout ceiling, not the smaller close ceiling, that binds there. No DA
+/// bond, however large, funds a reserve the challenger bond does not.
+test q58_unequal_bonds_and_fee_reserve_are_exact() {
+  let off_by_one = availability.ParametersV1 {
     ..candidate_parameters(),
     challenger_bond_lovelace: 9_999_999_999,
+  }
+  let testing_da_bond = availability.ParametersV1 {
+    ..candidate_parameters(),
+    da_bond_lovelace: 500_000_000,
+    da_slash_penalty_lovelace: 100_000_000,
+    da_bond_min_top_up_lovelace: 5_000_000,
+  }
+  let public_da_bond = availability.ParametersV1 {
+    ..candidate_parameters(),
+    da_bond_lovelace: 100_000_000_000,
+    da_slash_penalty_lovelace: 25_000_000_000,
+    da_bond_min_top_up_lovelace: 1_000_000_000,
   }
   let funded_publication_fee = availability.ParametersV1 {
     ..candidate_parameters(),
@@ -144,23 +191,103 @@ test q58_matching_bond_and_fee_reserve_are_exact() {
     ..candidate_parameters(),
     max_publication_fee_lovelace: 2_081_417,
   }
+  let excessive_fee_under_large_da_bond = availability.ParametersV1 {
+    ..public_da_bond,
+    max_publication_fee_lovelace: 2_081_417,
+  }
   and {
-    !availability.parameters_are_canonical_v1(mismatch),
+    availability.parameters_are_canonical_v1(off_by_one),
+    availability.parameters_are_canonical_v1(testing_da_bond),
+    availability.parameters_are_canonical_v1(public_da_bond),
     availability.parameters_are_canonical_v1(funded_publication_fee),
     !availability.parameters_are_canonical_v1(excessive_publication_fee),
+    !availability.parameters_are_canonical_v1(excessive_fee_under_large_da_bond),
   }
+}
+
+/// A slash penalty of at least the whole bond leaves the challenger no
+/// reward, and a zero penalty burns nothing; both bounds are exact.
+test q58_slash_penalty_is_strictly_inside_the_da_bond() {
+  let largest = availability.ParametersV1 {
+    ..candidate_parameters(),
+    da_slash_penalty_lovelace: 9_999_999_999,
+  }
+  let smallest = availability.ParametersV1 {
+    ..candidate_parameters(),
+    da_slash_penalty_lovelace: 1,
+  }
+  let whole_bond = availability.ParametersV1 {
+    ..candidate_parameters(),
+    da_slash_penalty_lovelace: 10_000_000_000,
+  }
+  let zero = availability.ParametersV1 {
+    ..candidate_parameters(),
+    da_slash_penalty_lovelace: 0,
+  }
+  and {
+    availability.parameters_are_canonical_v1(largest),
+    availability.parameters_are_canonical_v1(smallest),
+    !availability.parameters_are_canonical_v1(whole_bond),
+    !availability.parameters_are_canonical_v1(zero),
+  }
+}
+
+test q58_zero_min_top_up_is_refused() {
+  !availability.parameters_are_canonical_v1(
+    availability.ParametersV1 {
+      ..candidate_parameters(),
+      da_bond_min_top_up_lovelace: 0,
+    },
+  )
+}
+
+test q58_zero_pool_floor_is_refused() {
+  !availability.parameters_are_canonical_v1(
+    availability.ParametersV1 {
+      ..candidate_parameters(),
+      da_bond_pool_floor_lovelace: 0,
+    },
+  )
+}
+
+test q58_zero_challenge_record_lovelace_is_refused() {
+  !availability.parameters_are_canonical_v1(
+    availability.ParametersV1 {
+      ..candidate_parameters(),
+      challenge_record_lovelace: 0,
+    },
+  )
+}
+
+test q58_pool_amounts_of_one_lovelace_are_accepted() {
+  availability.parameters_are_canonical_v1(
+    availability.ParametersV1 {
+      ..candidate_parameters(),
+      da_bond_min_top_up_lovelace: 1,
+      da_bond_pool_floor_lovelace: 1,
+      challenge_record_lovelace: 1,
+    },
+  )
 }
 
 /// 4 MiB / 14,020 is non-integral. The reserve must charge 300 publications
 /// for every full tranche, rather than ceil(64 MiB / 14,020), which would
-/// undercount the independent per-tranche terminal fragments.
+/// undercount the independent per-tranche terminal fragments: 16 * 300 *
+/// 500,000 + 16 * 500,000 + 1,200,000 = 2,409,200,000 must stay strictly
+/// under the challenger bond.
 test q58_non_divisible_tranche_publication_rounding_is_funded() {
   let underfunded = availability.ParametersV1 {
     ..candidate_parameters(),
-    da_bond_lovelace: 2_409_200_000,
     challenger_bond_lovelace: 2_409_200_000,
   }
-  !availability.parameters_are_canonical_v1(underfunded)
+  let funded = availability.ParametersV1 {
+    ..candidate_parameters(),
+    challenger_bond_lovelace: 2_409_200_001,
+  }
+  and {
+    !availability.parameters_are_canonical_v1(underfunded),
+    availability.parameters_are_canonical_v1(funded),
+  }
 }
 
 test q58_canonical_commitment_accepts() {

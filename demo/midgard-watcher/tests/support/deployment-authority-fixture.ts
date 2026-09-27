@@ -34,6 +34,7 @@ import {
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  daBondManifestAmounts,
   DEPLOYMENT_PROFILE_DIGESTS,
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
@@ -437,7 +438,7 @@ const buildWatcherDeploymentAuthorityFixture = (
         trancheByteLength: 4_194_304,
         maxTrancheCount: 16,
       },
-      daBondLovelace: 10_000_000_000,
+      ...daBondManifestAmounts(),
       challengerBondLovelace: 10_000_000_000,
       maxOpenFeeLovelace: 500_000,
       maxPublicationFeeLovelace: 500_000,

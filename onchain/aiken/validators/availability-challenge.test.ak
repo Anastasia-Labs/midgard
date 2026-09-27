@@ -70,6 +70,10 @@ fn parameters() -> availability.ParametersV1 {
     max_settlement_fee_lovelace: 500_000,
     max_close_fee_lovelace: 1_000_000,
     max_timeout_fee_lovelace: 1_200_000,
+    da_slash_penalty_lovelace: 2_500_000_000,
+    da_bond_min_top_up_lovelace: 100_000_000,
+    da_bond_pool_floor_lovelace: 5_000_000,
+    challenge_record_lovelace: 27_000_000,
   }
 }
 

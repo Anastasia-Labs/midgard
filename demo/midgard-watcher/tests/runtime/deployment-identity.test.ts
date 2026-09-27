@@ -27,6 +27,7 @@ import {
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  daBondManifestAmounts,
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
@@ -261,7 +262,7 @@ const canonicalIdentity = (): MutableRecord => {
         trancheByteLength: 4_194_304,
         maxTrancheCount: 16,
       },
-      daBondLovelace: 10_000_000_000,
+      ...daBondManifestAmounts(),
       challengerBondLovelace: 10_000_000_000,
       maxOpenFeeLovelace: 500_000,
       maxPublicationFeeLovelace: 500_000,
@@ -622,7 +623,7 @@ describe("watcher deployment identity", () => {
         trancheByteLength: 4_194_304,
         maxTrancheCount: 16,
       },
-      daBondLovelace: 10_000_000_000,
+      ...daBondManifestAmounts(),
       challengerBondLovelace: 10_000_000_000,
       maxOpenFeeLovelace: 500_000,
       maxPublicationFeeLovelace: 500_000,

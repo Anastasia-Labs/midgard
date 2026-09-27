@@ -20,6 +20,31 @@ export const requireSelectedDeploymentProfile = (name: string | undefined) => {
   return SELECTED_DEPLOYMENT_PROFILE;
 };
 
+/**
+ * A profile's pooled DA committee bond amounts, keyed as a deployment
+ * manifest's `availabilityChallenge` section and the availability
+ * `ParametersV1` builders key them. Off-chain consumers must carry exactly
+ * these values; the generator already validated their relations.
+ */
+export type DaBondManifestAmounts = Readonly<{
+  daBondLovelace: number;
+  daSlashPenaltyLovelace: number;
+  daBondMinTopUpLovelace: number;
+  daBondPoolFloorLovelace: number;
+  challengeRecordLovelace: number;
+}>;
+
+export const daBondManifestAmounts = (
+  profile: DeploymentProfile = SELECTED_DEPLOYMENT_PROFILE,
+): DaBondManifestAmounts =>
+  Object.freeze({
+    daBondLovelace: profile.da_bond.da_bond_lovelace,
+    daSlashPenaltyLovelace: profile.da_bond.da_slash_penalty_lovelace,
+    daBondMinTopUpLovelace: profile.da_bond.da_bond_min_top_up_lovelace,
+    daBondPoolFloorLovelace: profile.da_bond.da_bond_pool_floor_lovelace,
+    challengeRecordLovelace: profile.da_bond.challenge_record_lovelace,
+  });
+
 export const verifyDeploymentProfileBinding = (
   profile: unknown,
   digest: unknown,

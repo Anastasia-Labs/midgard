@@ -22,6 +22,7 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "./da-transport.js";
 import {
+  daBondManifestAmounts,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   type DeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
@@ -2616,13 +2617,19 @@ export type DeploymentManifestAvailabilityChallenge = Readonly<{
     trancheByteLength: number;
     maxTrancheCount: number;
   }>;
+  /** The pooled DA bond amounts equal the selected profile's `da_bond`. */
   daBondLovelace: number;
+  /** Deploy-time; independent of the DA bond, and the only bond the fee reserve binds. */
   challengerBondLovelace: number;
   maxOpenFeeLovelace: number;
   maxPublicationFeeLovelace: number;
   maxSettlementFeeLovelace: number;
   maxCloseFeeLovelace: number;
   maxTimeoutFeeLovelace: number;
+  daSlashPenaltyLovelace: number;
+  daBondMinTopUpLovelace: number;
+  daBondPoolFloorLovelace: number;
+  challengeRecordLovelace: number;
   /** Exact enterprise vkey credential that owns the retained per-header bond. */
   bondOwnerCredential: string;
 }>;
@@ -3058,6 +3065,10 @@ export const parseDeploymentManifestAvailabilityChallenge = (
     "maxSettlementFeeLovelace",
     "maxCloseFeeLovelace",
     "maxTimeoutFeeLovelace",
+    "daSlashPenaltyLovelace",
+    "daBondMinTopUpLovelace",
+    "daBondPoolFloorLovelace",
+    "challengeRecordLovelace",
     "bondOwnerCredential",
   ] as const;
   if (
@@ -3170,10 +3181,38 @@ export const parseDeploymentManifestAvailabilityChallenge = (
     candidate.maxTimeoutFeeLovelace,
     "Deployment manifest availabilityChallenge.maxTimeoutFeeLovelace",
   );
-  if (challengerBondLovelace !== daBondLovelace) {
-    throw new Error(
-      "Deployment manifest availabilityChallenge DA and challenger bonds must match exactly",
-    );
+  const daSlashPenaltyLovelace = exactAvailabilityInteger(
+    candidate.daSlashPenaltyLovelace,
+    "Deployment manifest availabilityChallenge.daSlashPenaltyLovelace",
+  );
+  const daBondMinTopUpLovelace = exactAvailabilityInteger(
+    candidate.daBondMinTopUpLovelace,
+    "Deployment manifest availabilityChallenge.daBondMinTopUpLovelace",
+  );
+  const daBondPoolFloorLovelace = exactAvailabilityInteger(
+    candidate.daBondPoolFloorLovelace,
+    "Deployment manifest availabilityChallenge.daBondPoolFloorLovelace",
+  );
+  const challengeRecordLovelace = exactAvailabilityInteger(
+    candidate.challengeRecordLovelace,
+    "Deployment manifest availabilityChallenge.challengeRecordLovelace",
+  );
+  // The pooled DA bond amounts are profile constants (config/deployments),
+  // not deploy-time choices; the generator has already validated their
+  // relations. The challenger bond stays deploy-time and independent.
+  const daBondAmounts = {
+    daBondLovelace,
+    daSlashPenaltyLovelace,
+    daBondMinTopUpLovelace,
+    daBondPoolFloorLovelace,
+    challengeRecordLovelace,
+  };
+  for (const [key, expected] of Object.entries(daBondManifestAmounts())) {
+    if (daBondAmounts[key as keyof typeof daBondAmounts] !== expected) {
+      throw new Error(
+        `Deployment manifest availabilityChallenge.${key} must equal the selected deployment profile's value ${expected.toString()}`,
+      );
+    }
   }
   const bondOwnerCredential = candidate.bondOwnerCredential;
   if (
@@ -3221,6 +3260,10 @@ export const parseDeploymentManifestAvailabilityChallenge = (
     maxSettlementFeeLovelace,
     maxCloseFeeLovelace,
     maxTimeoutFeeLovelace,
+    daSlashPenaltyLovelace,
+    daBondMinTopUpLovelace,
+    daBondPoolFloorLovelace,
+    challengeRecordLovelace,
     bondOwnerCredential,
   });
 };
