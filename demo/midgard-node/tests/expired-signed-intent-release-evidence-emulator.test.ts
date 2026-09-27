@@ -4,13 +4,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit, Ref } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { SIGNED_HEADER_RECOVERY_DOMAIN } from "../src/database/eventHistoryRecoveryPlans.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { reconcileStateQueueCorrections } from "../src/fibers/attestation-timeout-correction.js";
 import type { LedgerSnapshotOutput } from "../src/l1-ledger-snapshot.js";
 import { Database } from "../src/services/database.js";
 import { Globals } from "../src/services/globals.js";
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.js";
 import type { StateQueueCorrectionObserverSource } from "../src/services/state-queue-correction-observer.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
@@ -24,6 +26,8 @@ import {
   readDeposits,
   readJournal,
   readObserver,
+  readSqlLedgerRoot,
+  settleWithin,
   submitDeposit,
   submitUnlandedBlock,
 } from "./helpers/correction-rewind-scenario.js";
@@ -38,10 +42,11 @@ import {
   moveToExactSlot,
   nativeRoot,
   nextPoint,
+  readEmulatorQueue,
   readImmutableCounts,
   readPlans,
   resetSharedRows,
-  settleWithin,
+  seedCorrectionObserver,
   signedTtl,
   snapshotUnreplaced,
   synchronizeWithin,
@@ -61,11 +66,13 @@ import {
  */
 
 const C = Pending.Columns;
+type Scenario = Awaited<ReturnType<typeof openCorrectionRewindScenario>>;
 
 /** The served queue reduced to its root, whose confirmed state is `header`
- * (the merged block): every node output is dropped. */
+ * (the merged block) over `previous` (by default the confirmed header before
+ * it, as one merge leaves it): every node output is dropped. */
 const mergedIntoRootView =
-  (h: Pick<Handle, "fixture">, header: string) =>
+  (h: Pick<Handle, "fixture">, header: string, previous?: string) =>
   (outputs: readonly LedgerSnapshotOutput[]) => {
     const { policyId } = h.fixture.contracts.stateQueue;
     const rootUnit = policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME;
@@ -83,7 +90,7 @@ const mergedIntoRootView =
             Root: {
               data: SDK.castConfirmedStateToData({
                 ...confirmed,
-                prevHeaderHash: confirmed.headerHash,
+                prevHeaderHash: previous ?? confirmed.headerHash,
                 headerHash: header,
               }) as never,
             },
@@ -121,6 +128,14 @@ const finalizeRecordedBlock = async (h: Handle, headerHash: string) => {
     throw new Error("The block must be locally finalized");
   expect(finalized.finalizedHeaderHash).toBe(headerHash);
   await synchronizeWithin(h);
+};
+
+/** The block local finalization replays next, named by its node's asset. */
+const availableBlockAssetName = (h: Handle) => {
+  const available = Effect.runSync(
+    Ref.get(h.globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK),
+  );
+  return available === "" ? "" : available.assetName;
 };
 
 const expectLandedAndFinalizedOnce = async (
@@ -246,14 +261,123 @@ describe.sequential("signed-intent release evidence", () => {
       await closeLifecycle(h);
     }
   }, 900_000);
+
+  it("replaces a signed commit built on the root once the confirmed state shows a foreign block took the root's slot, never before its TTL", async () => {
+    const view = makeRewritableQueueTransport();
+    const h = await openHistoryProductionOwnerLifecycle({
+      transportFactory: view.transportFactory,
+    });
+    try {
+      await resetSharedRows();
+      await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+      const inclusion = await submitDeposit(h, 12_000_000n);
+      const lost = await submitUnlandedBlock(h, inclusion);
+      const header = lost.submittedHeaderHash;
+      const journal = await readJournal(header);
+      const ttl = signedTtl(journal[C.SIGNED_TX_CBOR]!);
+      // E was built on the root: its base is the confirmed header, which no
+      // merge or correction ever names. The observer's view is current and
+      // records nothing.
+      expect(await seedCorrectionObserver(h)).toHaveLength(1);
+      // A foreign block F took the root's slot and was merged: the confirmed
+      // state is F and links to E's base. (Kills "drop the confirmed-state
+      // slot holder": E's base is absent with nothing recorded, and E defers
+      // forever.)
+      view.setRewrite(mergedIntoRootView(h, "f2".repeat(28)));
+      const untouched = await snapshotUnreplaced(header);
+      moveToExactSlot(h, ttl - 1);
+      await synchronizeWithin(h);
+      expect(await snapshotUnreplaced(header)).toEqual(untouched);
+      moveToExactSlot(h, ttl);
+      await synchronizeWithin(h);
+      await expectReplaced(journal, { handle: h });
+    } finally {
+      await closeLifecycle(h);
+    }
+  }, 900_000);
+
+  it("revives this node's replaced root-built block that the confirmed state holds from its own signed commit, abandons the unlanded replacement, and locally finalizes the winner once", async () => {
+    const view = makeRewritableQueueTransport();
+    const h = await openHistoryProductionOwnerLifecycle({
+      transportFactory: view.transportFactory,
+    });
+    try {
+      await resetSharedRows();
+      await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+      const inclusion = await submitDeposit(h, 12_000_000n);
+      const lost = await submitUnlandedBlock(h, inclusion);
+      const header = lost.submittedHeaderHash;
+      const journal = await readJournal(header);
+      expect(await readEmulatorQueue(h)).toHaveLength(1);
+      moveToExactSlot(h, signedTtl(journal[C.SIGNED_TX_CBOR]!));
+      await synchronizeWithin(h);
+      await expectReplaced(journal, { handle: h });
+      // N: E's members on the same base (the root), handed to L1 and lost.
+      // The scheduler alignment is skipped as in the revival tests; the view
+      // below is synthetic anyway.
+      const next = await submitUnlandedBlock(
+        h,
+        h.fixture.emulator.now() - 1000,
+        { alignScheduler: false },
+      );
+      const replacement = await readJournal(next.submittedHeaderHash);
+      expect(replacement[C.BASE_TAIL_HEADER_HASH]).toEqual(
+        journal[C.BASE_TAIL_HEADER_HASH],
+      );
+      // E landed on the root after all and was merged: the confirmed state is
+      // E and links to the base. E's node exists only as its signed commit
+      // created it; the root is not it. (Kills "drop the confirmed-state slot
+      // holder": N defers forever. Kills "take the queue entry holding the
+      // winner's header as its node": the root is revived as E's node.)
+      await seedCorrectionObserver(h);
+      view.setRewrite(mergedIntoRootView(h, header));
+      moveToExactSlot(h, signedTtl(replacement[C.SIGNED_TX_CBOR]!));
+      await synchronizeWithin(h);
+      await expectReplaced(replacement, { globalsReset: false, handle: h });
+      expect((await readJournal(header))[C.STATUS]).toBe(
+        Pending.Status.ObservedWaitingStability,
+      );
+      expect(availableBlockAssetName(h)).toBe(
+        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + header,
+      );
+      await finalizeRecordedBlock(h, header);
+      expect(await nativeRoot(h)).toBe(journal[C.EXPECTED_UTXOS_ROOT]);
+    } finally {
+      await closeLifecycle(h);
+    }
+  }, 900_000);
 });
 
-/** A synthetic authenticated merge of `previous[1]` into the root. */
+/** What the synthetic observer history is bound to: a correction-rewind
+ * scenario, or a lifecycle through `observerContext`. */
+type ObserverContext = Pick<
+  Scenario,
+  "manifestId" | "requiredFinalityDepth"
+> & {
+  readonly h: Pick<Handle, "fixture" | "globals">;
+};
+
+const observerContext = (h: Handle): ObserverContext => {
+  const manifestId = h.fixture.runtimeOverrides!.deploymentIdentity.manifestId;
+  if (manifestId === undefined)
+    throw new Error("The fixture deployment must be manifest-bound");
+  return {
+    h,
+    manifestId,
+    requiredFinalityDepth: BigInt(
+      h.deployment.manifest.l1Finality.confirmationDepth,
+    ),
+  };
+};
+
+/** A synthetic authenticated merge of `previous[1]` into the root, whose
+ * continued root is output `rootOutputIndex` of `transactionHash`. */
 const mergeCheckpoint = (
-  scenario: Awaited<ReturnType<typeof openCorrectionRewindScenario>>,
+  scenario: ObserverContext,
   previous: readonly SDK.StateQueueTransitionNode[],
   transactionHash: string,
   blockNo: number,
+  rootOutputIndex = 0,
 ) => {
   const policyId = scenario.h.fixture.contracts.stateQueue.policyId;
   const [root, merged, ...rest] = previous;
@@ -284,7 +408,7 @@ const mergeCheckpoint = (
                 transactionId: rootTx,
                 outputIndex: BigInt(rootIndex),
               },
-              confirmed_state_output_index: 0n,
+              confirmed_state_output_index: BigInt(rootOutputIndex),
               m_settlement_redeemer_index: null,
               merged_block_withdrawals_root: zero,
               merged_block_forced_transactions_root: zero,
@@ -314,23 +438,188 @@ const mergeCheckpoint = (
       datum: "Idle",
     },
     previousQueue: previous,
-    nextQueue: [{ headerHash: null, outRef: `${transactionHash}#0` }, ...rest],
+    nextQueue: [
+      {
+        headerHash: null,
+        outRef: `${transactionHash}#${rootOutputIndex.toString()}`,
+      },
+      ...rest,
+    ],
   });
   if (checkpoint === null) throw new Error("The synthetic merge is not exact");
   expect(checkpoint.checkpointKind).toBe("merge");
   return checkpoint;
 };
 
+/** A synthetic authenticated commit of `headerHash` onto the tail of
+ * `previous` (the root when the queue is empty), which it spends. */
+const appendCheckpoint = (
+  context: ObserverContext,
+  previous: readonly SDK.StateQueueTransitionNode[],
+  transactionHash: string,
+  headerHash: string,
+  blockNo: number,
+) => {
+  const policyId = context.h.fixture.contracts.stateQueue.policyId;
+  const tail = previous.at(-1)!;
+  const lockRef = `${"ee".repeat(32)}#0`;
+  const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
+    deploymentIdentityDigest: context.manifestId,
+    stateQueuePolicyId: policyId,
+    transactionHash,
+    blockHash: transactionHash,
+    chainPointId: transactionHash,
+    slot: blockNo.toString(),
+    blockNo: blockNo.toString(),
+    transactionIndex: "0",
+    finalityDepth: "1",
+    mintPolicyIds: [policyId],
+    redeemers: [
+      {
+        purpose: "mint",
+        index: "0",
+        cborHex: Data.to(
+          {
+            CommitBlockHeader: {
+              yield_to_ref_input_index: 0n,
+              new_block_output_index: 1n,
+              continued_latest_block_output_index: 0n,
+              operator: "99".repeat(28),
+              scheduler_ref_input_index: 0n,
+              active_operators_input_index: 0n,
+              active_operators_redeemer_index: 0n,
+              m_confirmed_state_ref_input_index: null,
+              m_head_state_queue_node_ref_input_index: null,
+            },
+          },
+          SDK.StateQueueRedeemer,
+        ),
+      },
+    ],
+    spentInputOutRefs: [tail.outRef],
+    referenceInputOutRefs: [lockRef],
+    correctionLockWitness: {
+      kind: "idle_reference",
+      referenceOutRef: lockRef,
+      datum: "Idle",
+    },
+    previousQueue: previous,
+    nextQueue: [
+      ...previous.slice(0, -1),
+      { headerHash: tail.headerHash, outRef: `${transactionHash}#0` },
+      { headerHash, outRef: `${transactionHash}#1` },
+    ],
+  });
+  if (checkpoint === null) throw new Error("The synthetic commit is not exact");
+  expect(checkpoint.checkpointKind).toBe("append");
+  return checkpoint;
+};
+
+/** One tick of the production correction observer over a synthetic source. */
+const observerTick = async (
+  scenario: ObserverContext,
+  source: StateQueueCorrectionObserverSource,
+) => {
+  const { h } = scenario;
+  const exit = await Effect.runPromiseExit(
+    reconcileStateQueueCorrections({
+      source,
+      deploymentIdentityDigest: scenario.manifestId,
+      stateQueuePolicyId: h.fixture.contracts.stateQueue.policyId,
+      requiredFinalityDepth: scenario.requiredFinalityDepth,
+      deploymentManifest:
+        h.fixture.runtimeOverrides!.deploymentIdentity.manifest,
+    }).pipe(
+      Effect.provideService(Globals, h.globals),
+      Effect.provide(Database.layer),
+    ),
+  );
+  if (Exit.isSuccess(exit)) return exit.value;
+  throw new Error(Cause.pretty(exit.cause));
+};
+
+/** The observer's pending terminal transitions, in record order. */
+const readPending = async () =>
+  (
+    (await readObserver()) as unknown as {
+      pending: readonly { transactionHash: string; transitionKind: string }[];
+    }
+  ).pending;
+
+/** Record `checkpoints` with the production correction observer, from a
+ * cursor re-seeded at `start`: every terminal among them is pending below the
+ * release depth. Returns the observer's cursor queue after them and the
+ * terminals' transaction hashes. */
+const recordTransitions = async (
+  context: ObserverContext,
+  start: readonly SDK.StateQueueTransitionNode[],
+  checkpoints: readonly SDK.StateQueueAuthenticatedReplayCheckpoint[],
+) => {
+  await read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM state_queue_terminal_observer_states`;
+    }),
+  );
+  const unexpected = async () => {
+    throw new Error("No transition is observed while seeding");
+  };
+  expect(
+    (
+      await observerTick(context, {
+        readQueue: async () => start,
+        observeTransitions: unexpected,
+        canonicalDepth: unexpected,
+      })
+    ).status,
+  ).toBe("bootstrapped");
+  return extendTransitions(context, start, checkpoints);
+};
+
+/** Record `checkpoints` from the observer's current cursor `from`, pending
+ * below the release depth, as `recordTransitions` does. */
+const extendTransitions = async (
+  context: ObserverContext,
+  from: readonly SDK.StateQueueTransitionNode[],
+  checkpoints: readonly SDK.StateQueueAuthenticatedReplayCheckpoint[],
+) => {
+  const queue = checkpoints.at(-1)?.nextQueue ?? from;
+  const terminals = checkpoints.filter(
+    ({ checkpointKind }) => checkpointKind !== "append",
+  );
+  const before = (await readPending()).length;
+  expect(
+    (
+      await observerTick(context, {
+        readQueue: async () => queue,
+        observeTransitions: async (previous) => {
+          expect(previous).toEqual(from);
+          return checkpoints;
+        },
+        canonicalDepth: async () => 1n,
+      })
+    ).status,
+  ).toBe("reconciled");
+  expect(
+    (await readPending())
+      .slice(before)
+      .map(({ transactionHash }) => transactionHash),
+  ).toEqual(terminals.map(({ transactionHash }) => transactionHash));
+  return {
+    queue,
+    transactionHashes: terminals.map(({ transactionHash }) => transactionHash),
+  };
+};
+
 /** Record merges of the queue's first nodes with the production correction
  * observer: the cursor is re-seeded at `start` (D followed by `successors`),
- * then each merge is observed, pending below the release depth. */
+ * then each merge is observed, pending below the release depth. Returns the
+ * observer's cursor queue after the merges and their transaction hashes. */
 const observeMerges = async (
-  scenario: Awaited<ReturnType<typeof openCorrectionRewindScenario>>,
+  scenario: ObserverContext,
   start: readonly SDK.StateQueueTransitionNode[],
   merges: number,
 ) => {
-  const { h } = scenario;
-  const identity = h.fixture.runtimeOverrides!.deploymentIdentity;
   const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpoint[] = [];
   let queue = start;
   for (let index = 0; index < merges; index += 1) {
@@ -343,58 +632,32 @@ const observeMerges = async (
     checkpoints.push(checkpoint);
     queue = checkpoint.nextQueue;
   }
-  const tick = async (source: StateQueueCorrectionObserverSource) => {
-    const exit = await Effect.runPromiseExit(
-      reconcileStateQueueCorrections({
-        source,
-        deploymentIdentityDigest: scenario.manifestId,
-        stateQueuePolicyId: h.fixture.contracts.stateQueue.policyId,
-        requiredFinalityDepth: scenario.requiredFinalityDepth,
-        deploymentManifest: identity.manifest,
-      }).pipe(
-        Effect.provideService(Globals, h.globals),
-        Effect.provide(Database.layer),
-      ),
-    );
-    if (Exit.isSuccess(exit)) return exit.value;
-    throw new Error(Cause.pretty(exit.cause));
-  };
-  await read(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`DELETE FROM state_queue_terminal_observer_states`;
-    }),
-  );
-  const unexpected = async () => {
-    throw new Error("No transition is observed while seeding");
-  };
+  const recorded = await recordTransitions(scenario, start, checkpoints);
   expect(
-    (
-      await tick({
-        readQueue: async () => start,
-        observeTransitions: unexpected,
-        canonicalDepth: unexpected,
-      })
-    ).status,
-  ).toBe("bootstrapped");
+    (await readPending()).map(({ transitionKind }) => transitionKind),
+  ).toEqual(checkpoints.map(() => "merge"));
+  return recorded;
+};
+
+/** The merges `observeMerges` recorded reach the release depth: the observer
+ * admits them (final), its cursor unchanged. */
+const admitObservedMerges = async (
+  scenario: ObserverContext,
+  observed: Awaited<ReturnType<typeof observeMerges>>,
+) => {
+  const result = await observerTick(scenario, {
+    readQueue: async () => observed.queue,
+    observeTransitions: async () => {
+      throw new Error("The cursor is current; nothing new is observed");
+    },
+    canonicalDepth: async () => scenario.requiredFinalityDepth,
+  });
+  expect(result.admittedTransactionHashes).toEqual(observed.transactionHashes);
   expect(
-    (
-      await tick({
-        readQueue: async () => queue,
-        observeTransitions: async (previous) => {
-          expect(previous).toEqual(start);
-          return checkpoints;
-        },
-        canonicalDepth: async () => 1n,
-      })
-    ).status,
-  ).toBe("reconciled");
-  const observer = (await readObserver()) as unknown as {
-    pending: readonly { transitionKind: string }[];
-  };
-  expect(observer.pending.map(({ transitionKind }) => transitionKind)).toEqual(
-    checkpoints.map(() => "merge"),
-  );
+    (await readObserver()).admitted.map(
+      ({ transactionHash }) => transactionHash,
+    ),
+  ).toEqual(observed.transactionHashes);
 };
 
 describe.sequential(
@@ -678,10 +941,7 @@ describe.sequential(
         expect((await readJournal(header))[C.STATUS]).toBe(
           Pending.Status.ObservedWaitingStability,
         );
-        const available = Effect.runSync(
-          Ref.get(h.globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK),
-        );
-        expect(available === "" ? "" : available.assetName).toBe(
+        expect(availableBlockAssetName(h)).toBe(
           SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + header,
         );
         await finalizeRecordedBlock(h, header);
@@ -806,8 +1066,397 @@ describe.sequential(
   },
 );
 
+/** Every durable row and runtime flag a revival would change. */
+const snapshotRevival = async (h: Handle) => ({
+  rows: await read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return {
+        journals: yield* sql`SELECT header_hash, status,
+          correction_transition_digest FROM pending_block_finalizations
+          ORDER BY header_hash`,
+        deposits: yield* sql`SELECT event_id, projected_header_hash
+          FROM deposits_utxos ORDER BY event_id`,
+        ledger: yield* sql`SELECT root_hex FROM mpf_engine_state
+          WHERE store_name = 'ledger'`,
+      };
+    }),
+  ),
+  native: await nativeRoot(h),
+  localFinalizationPending: Effect.runSync(
+    Ref.get(h.globals.LOCAL_FINALIZATION_PENDING),
+  ),
+  available: availableBlockAssetName(h),
+});
+
+const RETAINED_SIGNED_HEADER_RECOVERY_ID = "fc".repeat(32);
+
+/** A prepared signed-header recovery plan at the current cursor, as a crash
+ * between its native restore and its SQL repair leaves it. Its header is no
+ * journal of this node, so that recovery finds no candidate to resume it
+ * with and the plan stays retained. */
+const retainSignedHeaderPlan = () =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const cursors = yield* sql<{
+        binding_digest: Buffer;
+        manifest_id: Buffer;
+        revision: string;
+        head_hash: Buffer;
+        snapshot_digest: Buffer;
+      }>`SELECT binding_digest, manifest_id, revision, head_hash,
+          snapshot_digest FROM event_history_cursor`;
+      expect(cursors).toHaveLength(1);
+      const cursor = cursors[0]!;
+      const headerHash = "fd".repeat(28);
+      yield* sql`INSERT INTO event_history_recovery_plans
+        (recovery_id, binding_digest, manifest_id, header_hash, intent,
+         evidence_digest, checkpoint_revision, head_hash, snapshot_digest,
+         owner_generation, state)
+        VALUES (${Buffer.from(RETAINED_SIGNED_HEADER_RECOVERY_ID, "hex")},
+          ${cursor.binding_digest}, ${cursor.manifest_id},
+          ${Buffer.from(headerHash, "hex")},
+          ${JSON.stringify({
+            domain: SIGNED_HEADER_RECOVERY_DOMAIN,
+            headerHash,
+            expectedRoot: "fe".repeat(32),
+          })},
+          ${Buffer.from("fb".repeat(32), "hex")}, ${cursor.revision},
+          ${cursor.head_hash}, ${cursor.snapshot_digest}, 0, 'prepared')`;
+    }),
+  );
+
+const discardSignedHeaderPlan = () =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM event_history_recovery_plans
+        WHERE recovery_id = ${Buffer.from(RETAINED_SIGNED_HEADER_RECOVERY_ID, "hex")}`;
+    }),
+  );
+
+/** Two blocks of this node built on one root output: E, replaced at its TTL
+ * while the queue still showed that root as the tail, and its replacement N,
+ * handed to L1 and lost (the scheduler alignment is skipped as in the revival
+ * tests; the served view is synthetic anyway). */
+const replacedRootBuiltPair = async (h: Handle) => {
+  await resetSharedRows();
+  await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+  const inclusion = await submitDeposit(h, 12_000_000n);
+  const lost = await submitUnlandedBlock(h, inclusion);
+  const header = lost.submittedHeaderHash;
+  const journal = await readJournal(header);
+  expect(await readEmulatorQueue(h)).toHaveLength(1);
+  moveToExactSlot(h, signedTtl(journal[C.SIGNED_TX_CBOR]!));
+  await synchronizeWithin(h);
+  await expectReplaced(journal, { handle: h });
+  const next = await submitUnlandedBlock(h, h.fixture.emulator.now() - 1000, {
+    alignScheduler: false,
+  });
+  const replacement = await readJournal(next.submittedHeaderHash);
+  expect(replacement[C.BASE_TAIL_OUT_REF]).toBe(journal[C.BASE_TAIL_OUT_REF]);
+  expect(replacement[C.BASE_TAIL_HEADER_HASH]).toEqual(
+    journal[C.BASE_TAIL_HEADER_HASH],
+  );
+  return { header, journal, replacement };
+};
+
+/** A synthetic merge of `base` (the confirmed state's block) that leaves the
+ * queue empty under the root output `rootOutRef`, and the queue before it. */
+const mergeLeavingRoot = (
+  context: ObserverContext,
+  base: string,
+  rootOutRef: string,
+) => {
+  const [transactionHash, index] = rootOutRef.split("#") as [string, string];
+  const previous: readonly SDK.StateQueueTransitionNode[] = [
+    { headerHash: null, outRef: `${"d0".repeat(32)}#0` },
+    { headerHash: base, outRef: `${"d1".repeat(32)}#1` },
+  ];
+  const merge = mergeCheckpoint(
+    context,
+    previous,
+    transactionHash,
+    10,
+    Number(index),
+  );
+  expect(merge.nextQueue).toEqual([{ headerHash: null, outRef: rootOutRef }]);
+  return { previous, merge };
+};
+
+/** Appends of `headers` in order onto `from`, then merges of each, from block
+ * `blockNo` on. Each append's transaction is `transactions[i]` when given. */
+const appendThenMerge = (
+  context: ObserverContext,
+  from: readonly SDK.StateQueueTransitionNode[],
+  headers: readonly string[],
+  blockNo: number,
+  transactions: readonly string[] = [],
+) => {
+  const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpoint[] = [];
+  let queue = from;
+  const push = (checkpoint: SDK.StateQueueAuthenticatedReplayCheckpoint) => {
+    checkpoints.push(checkpoint);
+    queue = checkpoint.nextQueue;
+  };
+  headers.forEach((header, index) =>
+    push(
+      appendCheckpoint(
+        context,
+        queue,
+        transactions[index] ?? (0xb1 + index).toString(16).repeat(32),
+        header,
+        blockNo + index,
+      ),
+    ),
+  );
+  headers.forEach((_, index) =>
+    push(
+      mergeCheckpoint(
+        context,
+        queue,
+        (0xc1 + index).toString(16).repeat(32),
+        blockNo + headers.length + index,
+      ),
+    ),
+  );
+  return checkpoints;
+};
+
+describe.sequential(
+  "signed-intent release of a root-built commit after merges",
+  () => {
+    it("replaces a root-built commit once the observer records the transition after the root was left empty, naming a foreign block, though merges hid the slot from the confirmed state; never before", async () => {
+      const view = makeRewritableQueueTransport();
+      const h = await openHistoryProductionOwnerLifecycle({
+        transportFactory: view.transportFactory,
+      });
+      try {
+        await resetSharedRows();
+        await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+        const inclusion = await submitDeposit(h, 12_000_000n);
+        const lost = await submitUnlandedBlock(h, inclusion);
+        const header = lost.submittedHeaderHash;
+        const journal = await readJournal(header);
+        const ttl = signedTtl(journal[C.SIGNED_TX_CBOR]!);
+        expect(await readEmulatorQueue(h)).toHaveLength(1);
+        const context = observerContext(h);
+        const base = journal[C.BASE_TAIL_HEADER_HASH].toString("hex");
+        // E was built on the root output B, which the merge of its base D
+        // left with an empty queue; the observer recorded that merge. A
+        // foreign F then took B, a foreign G followed, and both were merged:
+        // the confirmed state is G over F, so nothing links it to D.
+        const { previous, merge } = mergeLeavingRoot(
+          context,
+          base,
+          journal[C.BASE_TAIL_OUT_REF],
+        );
+        const recorded = await recordTransitions(context, previous, [merge]);
+        const foreign = "f4".repeat(28);
+        const later = "f5".repeat(28);
+        view.setRewrite(mergedIntoRootView(h, later, foreign));
+        const untouched = await snapshotUnreplaced(header);
+        moveToExactSlot(h, ttl - 1);
+        await synchronizeWithin(h);
+        expect(await snapshotUnreplaced(header)).toEqual(untouched);
+        // Past E's TTL no later transition is recorded yet: which block took
+        // B is unknown, so E defers. (Kills "drop the root-emptying arm":
+        // the recorded merge of D reads as D merged while still the tail, and
+        // E is replaced. Kills "replace while no later transition is
+        // recorded".)
+        moveToExactSlot(h, ttl);
+        await synchronizeWithin(h);
+        expect(await snapshotUnreplaced(header)).toEqual(untouched);
+        // The observer then records F's and G's appends and merges: the
+        // merge of F names F as the block that took B, so the next point
+        // replaces E. (Kills "the root-emptying arm always defers".)
+        await extendTransitions(
+          context,
+          recorded.queue,
+          appendThenMerge(context, recorded.queue, [foreign, later], 11),
+        );
+        await nextPoint(h);
+        await expectReplaced(journal, { handle: h });
+      } finally {
+        await closeLifecycle(h);
+      }
+    }, 900_000);
+
+    it("revives this node's replaced root-built block that the observer records taking the emptied root's slot, abandons its unlanded replacement, and locally finalizes the winner once", async () => {
+      const view = makeRewritableQueueTransport();
+      const h = await openHistoryProductionOwnerLifecycle({
+        transportFactory: view.transportFactory,
+      });
+      try {
+        const { header, journal, replacement } = await replacedRootBuiltPair(h);
+        const context = observerContext(h);
+        // E landed on the root output B after all, which the merge of its
+        // base D had left empty; G followed and E and G were merged, all
+        // still pending. The confirmed state is G over E: neither it nor an
+        // admitted transition shows E landed.
+        const { previous, merge } = mergeLeavingRoot(
+          context,
+          journal[C.BASE_TAIL_HEADER_HASH].toString("hex"),
+          journal[C.BASE_TAIL_OUT_REF],
+        );
+        const later = "f6".repeat(28);
+        await recordTransitions(context, previous, [
+          merge,
+          ...appendThenMerge(context, merge.nextQueue, [header, later], 11, [
+            journal[C.INTENDED_TX_HASH]!.toString("hex"),
+          ]),
+        ]);
+        view.setRewrite(mergedIntoRootView(h, later, header));
+        // Past N's TTL, the merge after B was left empty names E as the
+        // block that took it: N is replaced and E revived. (Kills "drop the
+        // root-emptying arm": the recorded merge of D reads as D merged
+        // while still the tail, and N is replaced without reviving E.)
+        moveToExactSlot(h, signedTtl(replacement[C.SIGNED_TX_CBOR]!));
+        await synchronizeWithin(h);
+        await expectReplaced(replacement, { globalsReset: false, handle: h });
+        expect((await readJournal(header))[C.STATUS]).toBe(
+          Pending.Status.ObservedWaitingStability,
+        );
+        expect(availableBlockAssetName(h)).toBe(
+          SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + header,
+        );
+        await finalizeRecordedBlock(h, header);
+        expect(await nativeRoot(h)).toBe(journal[C.EXPECTED_UTXOS_ROOT]);
+      } finally {
+        await closeLifecycle(h);
+      }
+    }, 900_000);
+
+    it("revives this node's replaced block on the same base output once an admitted merge folds it, with no transition recorded around its base; never on a pending one", async () => {
+      const view = makeRewritableQueueTransport();
+      const h = await openHistoryProductionOwnerLifecycle({
+        transportFactory: view.transportFactory,
+      });
+      try {
+        const { header, journal, replacement } = await replacedRootBuiltPair(h);
+        const context = observerContext(h);
+        // E landed on the root and G followed; the observer saw only the
+        // queue [root, E, G] and then the merges of E and G, still pending.
+        // Nothing it recorded names E's base or its root output.
+        const eTx = journal[C.INTENDED_TX_HASH]!.toString("hex");
+        const later = "f7".repeat(28);
+        const observed = await observeMerges(
+          context,
+          [
+            { headerHash: null, outRef: `${eTx}#0` },
+            { headerHash: header, outRef: `${eTx}#1` },
+            { headerHash: later, outRef: `${"c7".repeat(32)}#1` },
+          ],
+          2,
+        );
+        view.setRewrite(mergedIntoRootView(h, later, header));
+        // Past N's TTL a pending merge of E may still be retracted: N defers.
+        // (Kills "a pending merge shows a replaced sibling landed".)
+        const untouched = await snapshotUnreplaced(
+          replacement[C.HEADER_HASH].toString("hex"),
+        );
+        moveToExactSlot(h, signedTtl(replacement[C.SIGNED_TX_CBOR]!));
+        await synchronizeWithin(h);
+        expect(
+          await snapshotUnreplaced(replacement[C.HEADER_HASH].toString("hex")),
+        ).toEqual(untouched);
+        // Once the merges are admitted, E's own landing decides: N is
+        // replaced and E revived. (Kills "drop the replaced-sibling arm": N
+        // defers forever.)
+        await admitObservedMerges(context, observed);
+        await nextPoint(h);
+        await expectReplaced(replacement, { globalsReset: false, handle: h });
+        expect((await readJournal(header))[C.STATUS]).toBe(
+          Pending.Status.ObservedWaitingStability,
+        );
+        expect(availableBlockAssetName(h)).toBe(
+          SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + header,
+        );
+        await finalizeRecordedBlock(h, header);
+        expect(await nativeRoot(h)).toBe(journal[C.EXPECTED_UTXOS_ROOT]);
+      } finally {
+        await closeLifecycle(h);
+      }
+    }, 900_000);
+  },
+);
+
+describe.sequential("replaced-block revival evidence", () => {
+  it("revives a replaced block while no journal is active only once an admitted merge saw it on the queue, never on a pending merge's hint or while a plan is retained, and hands it to local finalization", async () => {
+    const scenario = await openCorrectionRewindScenario({
+      blocks: 2,
+      unlandedTail: true,
+    });
+    const { h } = scenario;
+    try {
+      const [, header] = scenario.headers as [string, string];
+      const journal = await readJournal(header);
+      const queue = await scenario.readQueue();
+      moveToExactSlot(h, signedTtl(journal[C.SIGNED_TX_CBOR]!));
+      await synchronizeWithin(h);
+      await expectReplaced(journal, { handle: h });
+      const replaced = await snapshotRevival(h);
+      // The observer records a merge of D that saw E as D's successor, below
+      // its release depth: a hint that makes E a revival candidate, bound to
+      // no checkpoint and not final. No journal is active and nothing bound
+      // to the checkpoint shows E landed, so nothing is revived. (Kills
+      // "revive a candidate on the observer's hint alone" and "take a pending
+      // merge as evidence".)
+      const observed = await observeMerges(
+        scenario,
+        [
+          ...queue,
+          {
+            headerHash: header,
+            outRef: `${journal[C.INTENDED_TX_HASH]!.toString("hex")}#1`,
+          },
+        ],
+        1,
+      );
+      await nextPoint(h);
+      expect(await snapshotRevival(h)).toEqual(replaced);
+      // The merge becomes final while a signed-header recovery plan is
+      // retained: the revival waits for it, and the gate stays closed.
+      // (Kills "revive while a plan is retained".)
+      await admitObservedMerges(scenario, observed);
+      await retainSignedHeaderPlan();
+      try {
+        h.fixture.emulator.awaitBlock(1);
+        vi.setSystemTime(new Date(h.fixture.emulator.now()));
+        expect(await h.appendTipWhileGateClosed()).toBeDefined();
+        expect(await snapshotRevival(h)).toEqual(replaced);
+      } finally {
+        await discardSignedHeaderPlan();
+      }
+      // With no plan retained, the admitted merge that saw E on the queue
+      // revives it. (Kills "drop the admitted-merge evidence": E stays
+      // abandoned.)
+      await nextPoint(h);
+      expect((await readJournal(header))[C.STATUS]).toBe(
+        Pending.Status.ObservedWaitingStability,
+      );
+      expect((await readSqlLedgerRoot()).root_hex).toBe(
+        journal[C.EXPECTED_UTXOS_ROOT],
+      );
+      expect(
+        Effect.runSync(Ref.get(h.globals.LOCAL_FINALIZATION_PENDING)),
+      ).toBe(true);
+      expect(availableBlockAssetName(h)).toBe(
+        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + header,
+      );
+      // The native root stays at the base: local finalization replays E.
+      expect(await nativeRoot(h)).toBe(journal[C.BASE_UTXOS_ROOT]);
+    } finally {
+      await discardSignedHeaderPlan();
+      await closeLifecycle(h);
+    }
+  }, 900_000);
+});
+
 const INJECTED_PLAN_FAILURE =
   "injected crash while marking the release applied";
+const INJECTED_REPLAY_INTERRUPT = "injected crash after the native replay";
 
 /** A database fault at the plan's final state change, inside the release's
  * own transaction. */
@@ -988,6 +1637,102 @@ describe.sequential("signed-intent release with a retained plan", () => {
         (await readPlans()).filter(({ state }) => state !== "applied"),
       ).toEqual([]);
     } finally {
+      await refusePlanApplication(false);
+      await closeLifecycle(h);
+    }
+  }, 900_000);
+
+  it("records an unpromoted signed commit landed over its retained base-to-base plan without replaying it natively, so an interrupted attempt stays resumable, and locally finalizes it once", async () => {
+    const initial = await openHistoryProductionOwnerLifecycle();
+    let h: Handle & Pick<typeof initial, "close"> = initial;
+    const prototype = ProductionNativeMpfOwnerService.prototype;
+    const recover = prototype.recover;
+    let replayedWhileRetained = 0;
+    try {
+      await resetSharedRows();
+      await advanceEmulatorPastLatestBlockEndTime(initial.fixture);
+      const inclusion = await submitDeposit(initial, 12_000_000n);
+      const lost = await submitUnlandedBlock(initial, inclusion);
+      const header = lost.submittedHeaderHash;
+      const journal = await readJournal(header);
+      const ttl = signedTtl(journal[C.SIGNED_TX_CBOR]!);
+      const base = journal[C.BASE_UTXOS_ROOT];
+      const candidate = journal[C.EXPECTED_UTXOS_ROOT];
+      // E was never promoted: its commit is signed but unacknowledged and
+      // the native root is still at its base. The fixture worker always
+      // promotes, so the state is set up directly.
+      expect(await nativeRoot(initial)).toBe(candidate);
+      await updateJournal(header, {
+        [C.STATUS]: Pending.Status.PendingSubmission,
+        [C.SUBMITTED_TX_HASH]: null,
+      });
+      const owner = await Effect.runPromise(
+        Ref.get(initial.globals.NATIVE_MPF_OWNER),
+      );
+      if (owner === undefined) throw new Error("Native owner is not open");
+      await owner.restoreCanonicalRoot({
+        recoveryId: "0e".repeat(32),
+        expectedRoot: candidate,
+        targetRoot: base,
+      });
+      expect(await nativeRoot(initial)).toBe(base);
+      // Past E's TTL the release prepares its plan from the base root, base
+      // to base, and then fails to apply it: the plan is retained.
+      await refusePlanApplication(true);
+      moveToExactSlot(initial, ttl);
+      const failure = await settleWithin(
+        initial.synchronize().then(
+          () => undefined,
+          (error: unknown) => inspect(error, { depth: 40 }),
+        ),
+        240_000,
+      );
+      expect(failure).toContain("Failed to apply history recovery plan");
+      const plans = await readPlans();
+      expect(plans.map(({ state }) => state)).toEqual(["prepared"]);
+      expect(
+        (plans[0]!.intent as { expectedRoot?: unknown }).expectedRoot,
+      ).toBe(base);
+      expect(await nativeRoot(initial)).toBe(base);
+      // E landed after all. The restarted owner discards the base-to-base
+      // plan and records E landed without replaying it first; the observed
+      // journal is replayed natively only after that (as any startup replays
+      // an observed journal), with no plan retained. A native replay while
+      // the plan is still retained is interrupted right after it ran, as a
+      // crash before the discard would. (Kills "replay the landed block over
+      // any retained plan": that replay moves the native root to E's
+      // candidate, outside the plan's roots, and the interrupted attempt can
+      // never resume.)
+      await landSignedCommitAsFork(initial, journal[C.SIGNED_TX_CBOR]!);
+      const restarted = await initial.restartRuntime({
+        synchronize: false,
+        afterStop: async () => {
+          await refusePlanApplication(false);
+          prototype.recover = async function (
+            this: ProductionNativeMpfOwnerService,
+            replay,
+          ) {
+            await recover.call(this, replay);
+            if ((await readPlans()).some(({ state }) => state === "prepared")) {
+              replayedWhileRetained += 1;
+              throw new Error(INJECTED_REPLAY_INTERRUPT);
+            }
+          };
+        },
+      });
+      h = restarted;
+      try {
+        await synchronizeWithin(restarted);
+      } finally {
+        prototype.recover = recover;
+      }
+      expect(replayedWhileRetained).toBe(0);
+      await expectLandedAndFinalizedOnce(restarted, journal, finalizeLocally);
+      expect(
+        (await readDeposits()).map(({ projectedHeader }) => projectedHeader),
+      ).toEqual([header]);
+    } finally {
+      prototype.recover = recover;
       await refusePlanApplication(false);
       await closeLifecycle(h);
     }

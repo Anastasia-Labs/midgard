@@ -23,6 +23,7 @@ import {
   readJournal,
   readLocalFinalizationJob,
   readSqlLedgerRoot,
+  settleWithin,
   submitDeposit,
 } from "./correction-rewind-scenario.js";
 import { makeStreamingHistoryTransport } from "./history-source-owner-emulator.js";
@@ -244,11 +245,12 @@ export const nativeRoot = async (handle: Pick<Handle, "evidence">) => {
   return native.durableRoot;
 };
 
-/** The next authenticated source point, one L1 block later. */
+/** The next authenticated source point, one L1 block later. Bounded, so a
+ * wedged owner fails here. */
 export const nextPoint = async (handle: Handle) => {
   handle.fixture.emulator.awaitBlock(1);
   vi.setSystemTime(new Date(handle.fixture.emulator.now()));
-  await handle.synchronize();
+  await synchronizeWithin(handle);
 };
 
 /** Advance L1 (and the faked wall clock) to `slot` without appending any
@@ -550,24 +552,6 @@ export const seedCorrectionObserver = async (
   if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
   expect(exit.value.status).toBe("bootstrapped");
   return start;
-};
-
-/** Bounded wait: `work` must settle within `ms` of real time, so a wedge
- * fails here instead of hanging until the test timeout. */
-export const settleWithin = async <A>(work: Promise<A>, ms: number) => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const stuck = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`Did not settle within ${ms} ms`)),
-      ms,
-    );
-  });
-  try {
-    return await Promise.race([work, stuck]);
-  } finally {
-    clearTimeout(timer);
-    work.catch(() => undefined);
-  }
 };
 
 /** One synchronization that must converge within `ms` of real time. */

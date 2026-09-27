@@ -387,9 +387,9 @@ export const discardPreparedHistoryRecoveryPlan = (
   );
 
 /** The single prepared native recovery of this binding, if any, decoded by
- * domain. A signed-header or signed-intent release plan is reported by kind
- * and header: the service that prepared it for that header resumes it. An
- * undecodable retained identity fails closed. */
+ * domain. A signed-header or signed-intent release plan is reported by kind,
+ * header and the native root its CAS moves from: the service that prepared it
+ * for that header resumes it. An undecodable retained identity fails closed. */
 export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -412,13 +412,18 @@ export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
     });
     const historyKind = historyRecoveryKind(decoded?.domain);
     if (historyKind !== undefined) {
-      if (!isHeaderHash(decoded.headerHash))
+      if (
+        !isHeaderHash(decoded.headerHash) ||
+        typeof decoded.expectedRoot !== "string" ||
+        !isHash(decoded.expectedRoot)
+      )
         return yield* fail(
           "Malformed retained signed-header recovery identity",
         );
       return {
         kind: historyKind,
         headerHash: decoded.headerHash,
+        expectedRoot: decoded.expectedRoot,
       };
     }
     if (decoded?.domain !== CORRECTION_REWIND_RECOVERY_DOMAIN)

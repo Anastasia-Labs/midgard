@@ -112,18 +112,38 @@ import {
  *    same base (any generation): that block won after all (a rollback brought
  *    it back). The active journal is abandoned as above and the winner is
  *    revived with its members taken back; local finalization then replays it.
+ *  - Neither E nor D on the queue, and the confirmed state links to D (a
+ *    merge sets the confirmed predecessor to the header it folded over): the
+ *    block it confirms took D's slot after D was merged, and decides as D's
+ *    `next` does. This is checkpoint-bound and covers a D no removal ever
+ *    names, such as the root E was built on, but only until the next merge:
+ *    no queue output or transition links a confirmed header to anything
+ *    after that.
+ *  - A replaced sibling of E (this node's block built on the same base
+ *    output, so its commit spends what E's spends) shows it landed, by the
+ *    evidence the reviver reads: it holds the slot and is revived as D's
+ *    `next` would be. This needs no link from the slot to the base.
+ *  - E's base output is a root that an observed transition left with an
+ *    empty queue (E was built on the root): the next observed transition
+ *    names the block appended first after it, which spent that output, and it
+ *    decides as D's `next` does (or, removed by a correction, E is replaced;
+ *    this node's block only once that correction is admitted). The merge of
+ *    D, made before E was built on the root, says nothing about E's slot.
  *  - D was merged into the confirmed state (an observed merge removed it):
  *    its successor at that merge decides as D's `next` does, and a D merged
  *    while it was still the tail means E can never land: E is replaced.
- *  - D absent before the observer recorded why: nothing is decided and the
- *    gate stays open (E stays active, so nothing is built) until the
- *    observer's view changes. The observer runs independently of the gate,
- *    so a recorded removal or merge resolves it.
+ *  - D absent with none of that recorded: nothing is decided and the gate
+ *    stays open (E stays active, so nothing is built) until the observer's
+ *    view changes. Nothing ever resolves it when E was built on a root that
+ *    no observed transition produced (the genesis root, or one produced
+ *    before the observer first ran), a foreign block took that slot, and two
+ *    or more merges passed it before this decision.
  *  - Anything else (another own block of a different kind in D's slot, D's
  *    successor node absent) keeps the gate closed and says why.
  * A signed commit is never replaced before its TTL, and never on wall-clock
  * time or queue absence alone. With E's replacement plan already retained, a
- * landed E discards it (after replaying E natively), and a deferral to the
+ * landed E discards it (after replaying E natively when the plan was prepared
+ * from E's candidate root, so its rewind may have run), and a deferral to the
  * correction path resumes it instead, since the correction path waits for
  * every retained plan.
  *
@@ -399,12 +419,19 @@ const replaceableJournal = (headerHash: Buffer, manifestId: string) =>
     return { record, parentAggregate };
   });
 
-type QueueNode = Readonly<{ node: SDK.StateQueueUTxO; headerHash: string }>;
+/** A queue output named by the header it commits and the header that header
+ * links to (for the root, the confirmed header's predecessor, which a merge
+ * sets to the header it folded over). */
+type QueueNode = Readonly<{
+  node: SDK.StateQueueUTxO;
+  headerHash: string;
+  prevHeaderHash: string;
+}>;
 type QueueView = Readonly<{ nodes: readonly QueueNode[]; root: QueueNode }>;
 type StateQueueContracts = Pick<SDK.MidgardValidators, "stateQueue">;
 
 /** Authenticates one state-queue output and names it by the header it
- * commits (the root by its confirmed header). */
+ * commits and that header's predecessor (the root by its confirmed state). */
 const authenticateNode = (
   output: LedgerSnapshotOutput,
   contracts: StateQueueContracts,
@@ -433,15 +460,19 @@ const authenticateNode = (
       policyId,
     );
     let headerHash: string;
+    let prevHeaderHash: string;
     if (node.assetName === SDK.STATE_QUEUE_ROOT_ASSET_NAME) {
       if (node.datum.key !== "Empty")
         return yield* Effect.fail(failure("State-queue root has a key"));
-      headerHash = (yield* SDK.getConfirmedStateFromStateQueueDatum(node.datum))
-        .data.headerHash;
+      const confirmed = (yield* SDK.getConfirmedStateFromStateQueueDatum(
+        node.datum,
+      )).data;
+      headerHash = confirmed.headerHash;
+      prevHeaderHash = confirmed.prevHeaderHash;
     } else {
-      headerHash = yield* SDK.hashBlockHeader(
-        yield* SDK.getHeaderFromStateQueueDatum(node.datum),
-      );
+      const header = yield* SDK.getHeaderFromStateQueueDatum(node.datum);
+      headerHash = yield* SDK.hashBlockHeader(header);
+      prevHeaderHash = header.prevHeaderHash;
       if (
         node.datum.key === "Empty" ||
         node.datum.key.Key.key !== headerHash ||
@@ -452,7 +483,7 @@ const authenticateNode = (
           failure(`State-queue node ${headerHash} is not keyed by its header`),
         );
     }
-    return { node, headerHash } satisfies QueueNode;
+    return { node, headerHash, prevHeaderHash } satisfies QueueNode;
   });
 
 /** Authenticates every state-queue output of the exact-point capture. Any
@@ -577,45 +608,139 @@ type Decision =
   | Readonly<{ kind: "revive"; revived: Pending.Record; node: QueueNode }>;
 
 /** Authenticated evidence of the chain at the checkpoint: its exact-point
- * queue, and whether the owner's journaled canonical history holds the
- * signed commit (presence is proof it landed; absence proves nothing, as
- * retention is bounded). The correction observer's view is read in `decide`
- * itself, under a share lock, so a re-derivation sees any change. */
+ * queue, and which signed commits (the active journal's and its replaced
+ * siblings') the owner's journaled canonical history holds (presence is proof
+ * a commit landed; absence proves nothing, as retention is bounded). The
+ * correction observer's view is read in `decide` itself, under a share lock,
+ * so a re-derivation sees any change. */
 type ReleaseEvidence = Readonly<{
   queue: QueueView;
-  inCanonicalHistory: boolean;
+  canonicalHistory: ReadonlySet<string>;
   contracts: StateQueueContracts;
   rewindAuthority: StateQueueCorrectionRewindAuthority;
 }>;
 
-/** Whether the retained canonical history (complete transaction rosters from
- * its anchor to the checkpoint head) includes `txHash` as a valid (inputs
- * spending) transaction. Unavailable coverage is no evidence; any other
- * failure (a database error, which aborts the owned transaction) fails the
- * attempt, which recovery retries. */
+/** Which of `txHashes` the retained canonical history (complete transaction
+ * rosters from its anchor to the checkpoint head) includes as valid (inputs
+ * spending) transactions. Unavailable coverage is no evidence (none is
+ * included); any other failure (a database error, which aborts the owned
+ * transaction) fails the attempt, which recovery retries. */
 const includedInCanonicalHistory = (
   binding: EventHistorySourceBinding,
   checkpoint: Checkpoint,
-  txHash: string,
+  txHashes: readonly string[],
 ) =>
-  loadCanonicalHistoryCoverage(binding, checkpoint).pipe(
-    Effect.map((coverage) =>
-      coverage.blocks.some((block) =>
-        block.transactions.some(
-          (tx) => tx.txHash === txHash && tx.spends === "inputs",
+  txHashes.length === 0
+    ? Effect.succeed<ReadonlySet<string>>(new Set())
+    : loadCanonicalHistoryCoverage(binding, checkpoint).pipe(
+        Effect.map((coverage): ReadonlySet<string> => {
+          const wanted = new Set(txHashes);
+          const included = new Set<string>();
+          for (const block of coverage.blocks)
+            for (const tx of block.transactions)
+              if (tx.spends === "inputs" && wanted.has(tx.txHash))
+                included.add(tx.txHash);
+          return included;
+        }),
+        Effect.catchIf(
+          (cause) =>
+            cause instanceof DatabaseError &&
+            cause.message === CANONICAL_COVERAGE_UNAVAILABLE,
+          (cause) =>
+            Effect.logDebug(
+              `Canonical history coverage unavailable as signed-intent evidence: ${formatUnknownError(cause)}`,
+            ).pipe(Effect.as<ReadonlySet<string>>(new Set())),
         ),
-      ),
-    ),
-    Effect.catchIf(
-      (cause) =>
-        cause instanceof DatabaseError &&
-        cause.message === CANONICAL_COVERAGE_UNAVAILABLE,
-      (cause) =>
-        Effect.logDebug(
-          `Canonical history coverage unavailable as signed-intent evidence: ${formatUnknownError(cause)}`,
-        ).pipe(Effect.as(false)),
-    ),
+      );
+
+type ObserverView = Effect.Effect.Success<
+  ReturnType<typeof loadStateQueueCorrectionObserverState>
+>;
+
+/** Authenticated evidence that this node's replaced block `record` landed:
+ * its node on the exact-point queue (returned), the confirmed state equal to
+ * its header, its signed commit in the journaled canonical history, or an
+ * admitted (final) state-queue transition that merged it or saw it on the
+ * queue. A block a recorded correction removed never counts: its members stay
+ * reopened, which is what that correction's path does anyway. */
+const replacedBlockLanding = (
+  record: Pending.Record,
+  queue: QueueView,
+  observer: ObserverView,
+  canonicalHistory: ReadonlySet<string>,
+): { onQueue: QueueNode | undefined; evidence: string } | undefined => {
+  const header = record[C.HEADER_HASH].toString("hex");
+  const pending = observer.kind === "observed" ? observer.state.pending : [];
+  const admitted = observer.kind === "observed" ? observer.state.admitted : [];
+  if (
+    [...pending, ...admitted].some(
+      (transition) =>
+        transition.transitionKind !== "merge" &&
+        transition.removedHeaderHashes.includes(header),
+    )
+  )
+    return undefined;
+  const onQueue = queue.nodes.find(
+    (entry) => entry.headerHash === header && entry !== queue.root,
   );
+  if (onQueue !== undefined)
+    return { onQueue, evidence: "its node is on the queue" };
+  const signed = record[C.INTENDED_TX_HASH]?.toString("hex");
+  const seen = admitted.find(
+    (transition) =>
+      (transition.transitionKind === "merge" &&
+        transition.removedHeaderHashes.includes(header)) ||
+      [...transition.previousQueue, ...transition.nextQueue].some(
+        (node) => node.headerHash === header,
+      ),
+  );
+  const evidence =
+    queue.root.headerHash === header
+      ? "the confirmed state is its header"
+      : signed !== undefined && canonicalHistory.has(signed)
+        ? "its signed commit is in the journaled canonical history"
+        : seen !== undefined
+          ? `admitted state-queue transition ${seen.transactionHash} saw it on the queue`
+          : undefined;
+  return evidence === undefined ? undefined : { onQueue: undefined, evidence };
+};
+
+/** This node's journals built on the same base output as `record` (so their
+ * commits spend what its commit spends) that were abandoned for replacement.
+ * Sorted by header. */
+const replacedSiblings = (record: Pending.Record) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ header_hash: Buffer }>`SELECT header_hash
+      FROM pending_block_finalizations
+      WHERE base_tail_out_ref = ${record[C.BASE_TAIL_OUT_REF]}
+        AND status = ${Pending.Status.Abandoned}
+        AND header_hash <> ${record[C.HEADER_HASH]}
+      ORDER BY header_hash`;
+    const siblings: Pending.Record[] = [];
+    for (const row of rows) {
+      const found = yield* Pending.retrieveByHeaderHash(row.header_hash);
+      if (
+        Option.isSome(found) &&
+        journalAbandonment(found.value) === "replacement"
+      )
+        siblings.push(found.value);
+    }
+    return siblings;
+  });
+
+/** L1 order of two recorded state-queue transitions. */
+const chainOrder = (
+  left: SDK.StateQueueAuthenticatedTransition,
+  right: SDK.StateQueueAuthenticatedTransition,
+) => {
+  const block = BigInt(left.blockNo) - BigInt(right.blockNo);
+  const index =
+    block === 0n
+      ? BigInt(left.transactionIndex) - BigInt(right.transactionIndex)
+      : block;
+  return index === 0n ? 0 : index < 0n ? -1 : 1;
+};
 
 /** Reads which block holds the active journal's base slot (see the module
  * comment). Checkpoint-bound evidence decides first; the correction observer's
@@ -679,7 +804,8 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
     const correctionOfBlock = removing(header, false);
     if (correctionOfBlock !== undefined)
       return deferToCorrection(correctionOfBlock, "it after it landed");
-    if (evidence.inCanonicalHistory)
+    const signed = record[C.INTENDED_TX_HASH]?.toString("hex");
+    if (signed !== undefined && evidence.canonicalHistory.has(signed))
       return {
         kind: "landed",
         node: yield* signedCommitNode(record, contracts),
@@ -687,7 +813,8 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
       } satisfies Decision;
 
     /** `winner` holds D's slot. A merged slot's winner may have left the
-     * queue too; its node is then the one its own signed commit created. */
+     * queue too, or be the confirmed state itself; its node is then the one
+     * its own signed commit created (the root is never a block's node). */
     const successor = (winner: string, merged: boolean) =>
       Effect.gen(function* () {
         if (winner === header)
@@ -750,9 +877,13 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
               `block ${blocking.header_hash.toString("hex")} built on the same base is already ${blocking.status}`,
             ),
           );
+        const onQueue = find(winner);
         const node =
-          find(winner) ??
-          (merged ? yield* signedCommitNode(revived, contracts) : undefined);
+          onQueue !== undefined && onQueue !== queue.root
+            ? onQueue
+            : merged
+              ? yield* signedCommitNode(revived, contracts)
+              : undefined;
         if (node === undefined)
           return {
             kind: "wait",
@@ -771,8 +902,20 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
         } satisfies Decision;
       return yield* successor(next.Key.key, false);
     }
-    // Neither E nor D is on the checkpoint's queue. Only a recorded removal
-    // says how; absence alone never decides. The observer records it
+    // The block that took D's slot links to D by its header. Once that block
+    // is merged, the confirmed state names it and links to D (a merge sets
+    // the confirmed predecessor to the header it folded over), so the
+    // checkpoint's queue still says who won when no removal names D: the root
+    // E was built on, whose confirmed header no transition removes, or a D
+    // the observer never saw leave. A merged D was never corrected, so this
+    // needs no observer. A queue node linking to an absent D is not read:
+    // only a correction removes a node and keeps its successor, and the
+    // correction arm below decides that once it is recorded.
+    if (queue.root.prevHeaderHash === base && queue.root.headerHash !== base)
+      return yield* successor(queue.root.headerHash, true);
+    // Neither E nor D is on the checkpoint's queue. A recorded removal, a
+    // replaced sibling's own landing, or the recorded transitions around a
+    // root base say how; absence alone never decides. The observer records
     // independently of the history gate, so the gate stays open and the next
     // change of its view decides again.
     if (observer.kind === "blocked")
@@ -803,12 +946,81 @@ const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
         cause: `state-queue correction ${correctionOfBase.transition.transactionHash} consumed the node of its base ${base}, which this node does not journal`,
       } satisfies Decision;
     }
+    // Every commit built on E's base spends the same output, so whichever of
+    // them landed holds the slot and E never can. A replaced sibling of this
+    // node on that output shows it by its own landing (read as the reviver
+    // reads it), which needs no link from the slot back to the base: once two
+    // merges pass a root base, nothing links that confirmed header to the
+    // block that took its slot.
+    const landedSiblings: string[] = [];
+    for (const sibling of yield* replacedSiblings(record))
+      if (
+        replacedBlockLanding(
+          sibling,
+          queue,
+          observer,
+          evidence.canonicalHistory,
+        ) !== undefined
+      )
+        landedSiblings.push(sibling[C.HEADER_HASH].toString("hex"));
+    if (landedSiblings.length > 1)
+      return yield* Effect.fail(
+        new SignedIntentReplacementIntegrityError(
+          landedSiblings[0]!,
+          `blocks ${landedSiblings.join(", ")} of this node, all built on the base output of block ${header}, landed`,
+        ),
+      );
+    if (landedSiblings.length === 1)
+      return yield* successor(landedSiblings[0]!, true);
+    // E's base output is a root that a recorded transition left with an empty
+    // queue (a merge of the tail, or a correction of the only node): E was
+    // built on the root. Only a commit spends a root with an empty queue, so
+    // the first block appended after that transition took the slot, and every
+    // later transition sees it first on the queue until it leaves: the next
+    // recorded transition names it, however many merges followed. The merge
+    // of D, made before E was built on the root, says nothing about E's slot,
+    // so this decides before it.
+    const recorded = [...observer.state.pending, ...observer.state.admitted];
+    recorded.sort(chainOrder);
+    const emptied = recorded.findIndex(
+      ({ nextQueue }) =>
+        nextQueue.length === 1 &&
+        nextQueue[0]!.headerHash === null &&
+        nextQueue[0]!.outRef === record[C.BASE_TAIL_OUT_REF],
+    );
+    if (emptied >= 0) {
+      const after = recorded[emptied + 1];
+      const holder = after?.previousQueue[1]?.headerHash ?? null;
+      if (holder === null)
+        return {
+          kind: "defer",
+          sticky: false,
+          reason: `it was built on the root that state-queue transition ${recorded[emptied]!.transactionHash} left empty, and the state-queue correction observer has recorded no later transition naming the block that took that slot yet`,
+        } satisfies Decision;
+      const correctionOfHolder = removing(holder, false);
+      if (correctionOfHolder !== undefined) {
+        const own = yield* Pending.retrieveByHeaderHash(
+          Buffer.from(holder, "hex"),
+        );
+        if (Option.isSome(own) && !correctionOfHolder.admitted)
+          return {
+            kind: "defer",
+            sticky: false,
+            reason: `this node's block ${holder} took the slot of its root base, and pending state-queue correction ${correctionOfHolder.transition.transactionHash} removed it; it is not admitted yet`,
+          } satisfies Decision;
+        return {
+          kind: "replace",
+          cause: `block ${holder} spent the root output it was built on, and state-queue correction ${correctionOfHolder.transition.transactionHash} then removed that block`,
+        } satisfies Decision;
+      }
+      return yield* successor(holder, true);
+    }
     const mergeOfBase = removing(base, true);
     if (mergeOfBase === undefined)
       return {
         kind: "defer",
         sticky: false,
-        reason: `its base ${base} is no longer on the queue and the state-queue correction observer has recorded neither a correction nor a merge of it yet`,
+        reason: `its base ${base} is no longer on the queue, the confirmed state does not link to it, no replaced block of this node on the same base shows it landed, and the state-queue correction observer has recorded neither a correction nor a merge of it, nor a transition that left the root it was built on empty`,
       } satisfies Decision;
     const previous = mergeOfBase.transition.previousQueue;
     const index = previous.findIndex((node) => node.headerHash === base);
@@ -939,6 +1151,13 @@ export const prepareExpiredIntentRelease = (input: {
           ttl,
           identity: journalIdentity(journal.record),
           retainedPlan: retained !== undefined,
+          // The retained plan's CAS moves the native root from its candidate
+          // only when the journal held it there when the plan was prepared
+          // (promoted or locally finalized); otherwise the CAS is base to
+          // base and never moved it.
+          replayRetained:
+            retained !== undefined &&
+            retained.expectedRoot === journal.record[C.EXPECTED_UTXOS_ROOT],
         };
       }),
     );
@@ -970,8 +1189,18 @@ export const prepareExpiredIntentRelease = (input: {
     );
     const evidence: ReleaseEvidence = {
       queue,
-      inCanonicalHistory: yield* owned(
-        includedInCanonicalHistory(input.binding, checkpoint, signedTx),
+      canonicalHistory: yield* owned(
+        replacedSiblings(record).pipe(
+          Effect.flatMap((siblings) =>
+            includedInCanonicalHistory(input.binding, checkpoint, [
+              signedTx,
+              ...siblings.flatMap((sibling) => {
+                const hash = sibling[C.INTENDED_TX_HASH];
+                return hash == null ? [] : [hash.toString("hex")];
+              }),
+            ]),
+          ),
+        ),
       ),
       contracts: input.contracts,
       rewindAuthority: input.rewindAuthority,
@@ -1035,13 +1264,18 @@ export const prepareExpiredIntentRelease = (input: {
     }
     if (decision.kind === "landed") {
       const serialized = yield* serializeStateQueueUTxO(decision.node.node);
-      if (derived.retainedPlan) {
-        // A replacement prepared before the block was seen to land may already
-        // have restored the base root natively (its CAS ran, its SQL repair did
-        // not), so the journal is intact but the native root may be at its
-        // base. Replay it to the candidate first (a no-op when the CAS never
-        // ran): a locally finalized journal is not replayed again at local
-        // finalization.
+      if (derived.replayRetained) {
+        // A replacement prepared from the candidate root before the block was
+        // seen to land may already have restored the base root natively (its
+        // CAS ran, its SQL repair did not), so the journal is intact but the
+        // native root may be at its base. Replay it to the candidate first (a
+        // no-op when the CAS never ran): a locally finalized journal is not
+        // replayed again at local finalization. The native root stays within
+        // the retained plan's two roots, so the plan can still be resumed if
+        // this attempt stops before it is discarded. A plan prepared from the
+        // base root (a journal never promoted) is base to base: the native
+        // root never left the base, local finalization replays the journal,
+        // and replaying here would strand the plan outside its roots.
         const owner = yield* openRetainedNativeOwner(globals, config);
         yield* preparation.assertCurrent;
         yield* Effect.tryPromise({
@@ -1057,20 +1291,37 @@ export const prepareExpiredIntentRelease = (input: {
       const requiresLocalFinalization = yield* owned(
         current("landed").pipe(
           Effect.tap(() =>
-            // The native root is at the candidate again; the replacement is
-            // discarded, not resumed.
+            // The native root is where the journal's status says it is again;
+            // the replacement is discarded, not resumed. The plan must still
+            // be the one the replay choice was made for.
             derived.retainedPlan
-              ? discardPreparedHistoryRecoveryPlan(
-                  checkpoint,
-                  SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
-                  header,
-                ).pipe(
-                  Effect.zipRight(
-                    Effect.logWarning(
-                      `Discarded the prepared replacement of block ${header}: it landed.`,
+              ? retainedPreparedRecoveryPlan(input.binding.digest)
+                  .pipe(
+                    Effect.flatMap((retained) =>
+                      retained?.kind === "signed_intent_release" &&
+                      retained.headerHash === header &&
+                      (retained.expectedRoot ===
+                        record[C.EXPECTED_UTXOS_ROOT]) ===
+                        derived.replayRetained
+                        ? discardPreparedHistoryRecoveryPlan(
+                            checkpoint,
+                            SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
+                            header,
+                          )
+                        : Effect.fail(
+                            failure(
+                              `The retained replacement plan of landed block ${header} changed`,
+                            ),
+                          ),
                     ),
-                  ),
-                )
+                  )
+                  .pipe(
+                    Effect.zipRight(
+                      Effect.logWarning(
+                        `Discarded the prepared replacement of block ${header}: it landed.`,
+                      ),
+                    ),
+                  )
               : Effect.void,
           ),
           Effect.flatMap((journal) =>
@@ -1397,21 +1648,16 @@ export const prepareReplacedBlockRevival = (input: {
       capture.ledger.outputs,
       input.contracts,
     );
-    const inCanonicalHistory = new Map<string, boolean>();
-    for (const record of candidates) {
-      const signed = record[C.INTENDED_TX_HASH];
-      inCanonicalHistory.set(
-        record[C.HEADER_HASH].toString("hex"),
-        signed != null &&
-          (yield* owned(
-            includedInCanonicalHistory(
-              input.binding,
-              checkpoint,
-              signed.toString("hex"),
-            ),
-          )),
-      );
-    }
+    const canonicalHistory = yield* owned(
+      includedInCanonicalHistory(
+        input.binding,
+        checkpoint,
+        candidates.flatMap((record) => {
+          const hash = record[C.INTENDED_TX_HASH];
+          return hash == null ? [] : [hash.toString("hex")];
+        }),
+      ),
+    );
     // Which candidates the evidence shows landed, with their nodes. Read in
     // the recovery transaction, re-derived before anything is written.
     const landed = Effect.gen(function* () {
@@ -1421,59 +1667,25 @@ export const prepareReplacedBlockRevival = (input: {
         input.rewindAuthority,
         true,
       );
-      const transitions =
-        observer.kind === "observed"
-          ? [...observer.state.pending, ...observer.state.admitted]
-          : [];
-      const admitted =
-        observer.kind === "observed" ? observer.state.admitted : [];
       const found: {
         record: Pending.Record;
         node: QueueNode;
         evidence: string;
       }[] = [];
       for (const record of current) {
-        const header = record[C.HEADER_HASH].toString("hex");
-        if (
-          transitions.some(
-            (transition) =>
-              transition.transitionKind !== "merge" &&
-              transition.removedHeaderHashes.includes(header),
-          )
-        )
-          continue;
-        const onQueue = queue.nodes.find(
-          (entry) => entry.headerHash === header && entry !== queue.root,
+        const landing = replacedBlockLanding(
+          record,
+          queue,
+          observer,
+          canonicalHistory,
         );
-        if (onQueue !== undefined) {
+        if (landing !== undefined)
           found.push({
             record,
-            node: onQueue,
-            evidence: "its node is on the queue",
-          });
-          continue;
-        }
-        const merge = admitted.find(
-          (transition) =>
-            (transition.transitionKind === "merge" &&
-              transition.removedHeaderHashes.includes(header)) ||
-            [...transition.previousQueue, ...transition.nextQueue].some(
-              (node) => node.headerHash === header,
-            ),
-        );
-        const evidence =
-          queue.root.headerHash === header
-            ? "the confirmed state is its header"
-            : inCanonicalHistory.get(header) === true
-              ? "its signed commit is in the journaled canonical history"
-              : merge !== undefined
-                ? `admitted state-queue transition ${merge.transactionHash} saw it on the queue`
-                : undefined;
-        if (evidence !== undefined)
-          found.push({
-            record,
-            node: yield* signedCommitNode(record, input.contracts),
-            evidence,
+            node:
+              landing.onQueue ??
+              (yield* signedCommitNode(record, input.contracts)),
+            evidence: landing.evidence,
           });
       }
       if (found.length > 1)

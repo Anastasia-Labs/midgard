@@ -1194,6 +1194,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
     expect(await run(retainedPreparedRecoveryPlan(binding.digest))).toEqual({
       kind: "signed_header",
       headerHash: value.headerHash,
+      expectedRoot: value.expectedRoot,
     });
     // The identical intent under the release's domain is another operation:
     // it never adopts the retained signed-header plan as its own.
@@ -1231,6 +1232,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
     expect(await run(retainedPreparedRecoveryPlan(binding.digest))).toEqual({
       kind: "signed_intent_release",
       headerHash: value.headerHash,
+      expectedRoot: value.expectedRoot,
     });
     await run(
       Authority.withRecovery(
@@ -1293,6 +1295,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
     expect(await run(retainedPreparedRecoveryPlan(binding.digest))).toEqual({
       kind: "signed_intent_release",
       headerHash: value.headerHash,
+      expectedRoot: value.expectedRoot,
     });
     await run(discard(SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN, value.headerHash));
     expect(await rows()).toEqual([]);

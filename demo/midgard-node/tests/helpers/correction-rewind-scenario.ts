@@ -52,6 +52,34 @@ import { openHistoryProductionOwnerLifecycle } from "./history-production-owner-
 import { prepareTimedOutTailRemoval } from "./history-timeout-correction-fixture.js";
 import { fetchLocalUtxos, toQueuedTx } from "./local-l2-transfer.js";
 
+/** Bounded wait: `work` must settle within `ms` of real time, so a wedge
+ * fails here instead of hanging until the test timeout. */
+export const settleWithin = async <A>(work: Promise<A>, ms: number) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stuck = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Did not settle within ${ms} ms`)),
+      ms,
+    );
+  });
+  try {
+    return await Promise.race([work, stuck]);
+  } finally {
+    clearTimeout(timer);
+    work.catch(() => undefined);
+  }
+};
+
+/** The bound on one history-owner synchronization at or after a signed
+ * intent's TTL, where a wedged owner would otherwise hang until the test
+ * timeout. */
+export const SYNCHRONIZE_BOUND_MS = 240_000;
+
+/** One bounded history-owner synchronization. */
+export const synchronizeBounded = (h: {
+  synchronize: () => Promise<unknown>;
+}) => settleWithin(h.synchronize(), SYNCHRONIZE_BOUND_MS);
+
 export const read = <A, E>(program: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(program.pipe(Effect.provide(Database.layer)));
 
@@ -129,7 +157,7 @@ export const finalizeLocally = async (h: Handle, headerHash: string) => {
   if (finalized.type !== "SuccessfulLocalFinalizationRecoveryOutput")
     throw new Error("The block must be locally finalized");
   expect(finalized.finalizedHeaderHash).toBe(headerHash);
-  await h.synchronize();
+  await synchronizeBounded(h);
   return finalized.finalizedHeaderHash;
 };
 
@@ -248,7 +276,7 @@ export const submitUnlandedBlock = async (
   const { fixture, lucidService, globals, production } = h;
   await h.deployment.chain.awaitLedgerTime(inclusionTime + 1000);
   vi.setSystemTime(fixture.emulator.now());
-  await h.synchronize();
+  await synchronizeBounded(h);
   const committed = await runCommitWorkerUntilSubmitted({
     fixture,
     lucidService,
@@ -269,7 +297,7 @@ export const submitUnlandedBlock = async (
     (await fixture.operatorLucid.transactionStatus(committed.submittedTxHash))
       .status,
   ).not.toBe("confirmed");
-  await h.synchronize();
+  await synchronizeBounded(h);
   return committed;
 };
 
@@ -899,7 +927,7 @@ export const openCorrectionRewindScenario = async ({
       });
       const removed = await removal.submit();
       removals.push(removed);
-      if (observe) await h.synchronize();
+      if (observe) await synchronizeBounded(h);
       return removed;
     };
     /** Advance until every accepted removal reaches the release depth;
@@ -914,14 +942,15 @@ export const openCorrectionRewindScenario = async ({
         (fixture.emulator.blockHeight - latest + 1);
       if (needed > 0) fixture.emulator.awaitBlock(needed);
       vi.setSystemTime(new Date(fixture.emulator.now()));
-      if (observe) await handle.synchronize();
+      if (observe) await synchronizeBounded(handle);
     };
     /** The next source block: a forward append at an open gate, which is what
-     * notices an owed rewind in production (one L1 block later). */
+     * notices an owed rewind in production (one L1 block later). Bounded, so
+     * a wedged owner fails here instead of at the test timeout. */
     const nextSourceBlock = async (handle: Handle = h) => {
       fixture.emulator.awaitBlock(1);
       vi.setSystemTime(new Date(fixture.emulator.now()));
-      await handle.synchronize();
+      await synchronizeBounded(handle);
     };
     /** The next source block while the owed rewind is refused: the owner
      * journals it and keeps its gate closed, so nothing waits for readiness. */
