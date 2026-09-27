@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 
-import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
+import {
+  requireRetentionAlertThresholdMs,
+  resolveL1ViewFatalMs,
+} from "@al-ft/midgard-core";
 import {
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardConsensusProfile,
@@ -169,6 +172,17 @@ export type CommitteeConfig = {
    * before it exits with code 70.
    */
   readonly l1ViewFatalMs: number;
+  /**
+   * Opt-in retention deadline alert (`DA_RETENTION_ALERT_THRESHOLD_MS`): a
+   * still-challengeable payload with at most this many milliseconds left to
+   * its challengeability deadline is logged as `da_retention_deadline_alert`.
+   * Unset, no deadline alert is raised. Informational only: every merged
+   * payload passes through the threshold on its way to pruning, so the alert
+   * never affects `/readyz`, and pruning is the same either way. Must be below
+   * the merged-payload window (horizon minus block maturity), or it would
+   * alert on every merged payload from the moment it merges.
+   */
+  readonly retentionAlertThresholdMs?: number;
 };
 
 export type LoadedCommitteeConfig = CommitteeConfig & {
@@ -458,6 +472,9 @@ export const loadCommitteeConfig = async (
     pollIntervalMs,
     fieldName: "L1_VIEW_FATAL_MS",
   });
+  const retentionAlertThresholdRaw = optionalNonEmpty(
+    env.DA_RETENTION_ALERT_THRESHOLD_MS,
+  );
 
   return {
     network,
@@ -560,6 +577,17 @@ export const loadCommitteeConfig = async (
     ),
     pollIntervalMs,
     l1ViewFatalMs,
+    ...(retentionAlertThresholdRaw === undefined
+      ? {}
+      : {
+          retentionAlertThresholdMs: requireRetentionAlertThresholdMs(
+            nonNegativeInt(
+              retentionAlertThresholdRaw,
+              "DA_RETENTION_ALERT_THRESHOLD_MS",
+            ),
+            "DA_RETENTION_ALERT_THRESHOLD_MS",
+          ),
+        }),
   };
 };
 

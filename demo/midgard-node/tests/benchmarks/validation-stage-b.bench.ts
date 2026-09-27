@@ -40,7 +40,6 @@ import {
   MempoolLedgerDB,
   MigrationRunner,
 } from "../../src/database/index.js";
-import { projectDepositsToMempoolLedger } from "../../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
   txQueueProcessorDrainOnce,
   validationBatchDurationSummary,
@@ -77,6 +76,7 @@ import {
 } from "../../src/services/write-behind.js";
 import type { ValidationCacheStats } from "../../src/workers/utils/validation-pool.js";
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
+import { projectDepositsToMempoolLedger } from "../helpers/deposit-projection.js";
 
 type WorkerCacheSnapshot = {
   readonly publicKeyCache: ValidationCacheStats;

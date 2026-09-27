@@ -105,7 +105,6 @@ import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.j
 import { reconcileVisibleDepositUTxOs } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
 import { reconcileVisibleWithdrawalUTxOs } from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
-import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
   listSlotAwareDueWork,
   type SlotAwareDueWork,
@@ -204,6 +203,7 @@ import {
   resolveCurrentOperatorSchedulerWindow,
 } from "../src/workers/utils/scheduler-refresh.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
+import { projectDepositsToMempoolLedger } from "./helpers/deposit-projection.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import {
   nativeOwnerBinaryPath,

@@ -8,5 +8,12 @@
 # L1_SUBMITTER_KEY_SOURCE: "seed:L1 fee-paying wallet mnemonic"
 # DA_AVAILABILITY_SUBMITTER_KEY_SOURCE: "seed:availability responder mnemonic"
 # DA_LIBP2P_PRIVATE_KEY_SOURCE: "seed:32-byte-hex-transport-seed"
+# Opt-in, log-only retention deadline alert: a still-challengeable payload
+# with at most this many ms left is logged as da_retention_deadline_alert.
+# Unset: no alert. It never affects /readyz: every merged payload ages into
+# the threshold on its normal way to pruning, so an alert is not a fault.
+# Must be below block maturity / 2 (the most a merged payload has left:
+# 450000 on the testing profiles), or it is refused at startup.
+# DA_RETENTION_ALERT_THRESHOLD_MS: "60000"
 # Existing deployment/provider/database settings can also be specified here.
 # Remove {} when uncommenting settings. Do not paste real seeds into this example.

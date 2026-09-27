@@ -6,6 +6,7 @@ import {
   type RetentionQueueReference,
 } from "@al-ft/midgard-core";
 
+import type { CommitteeConfig } from "../config.js";
 import type {
   DaStoredPayloadRecord,
   StateQueueHeaderRecord,
@@ -225,7 +226,8 @@ export type RetentionDeadlineEntry = {
   readonly reasonCode: RetentionPruneDecision["reasonCode"];
   readonly challengeableUntilMs: number;
   readonly remainingMs: number;
-  readonly headroomMs: number;
+  /** Remaining time minus the threshold; null when no threshold is set. */
+  readonly headroomMs: number | null;
   readonly alerting: boolean;
 };
 
@@ -234,7 +236,8 @@ export type RetentionDeadlineReport = {
   readonly requiredRetentionMs: number;
   readonly deployedRetentionMs: number;
   readonly marginMs: number;
-  readonly alertThresholdMs: number;
+  /** The operator's threshold, or null when the deadline alert is off. */
+  readonly alertThresholdMs: number | null;
   readonly scanned: number;
   readonly retained: number;
   readonly prunable: number;
@@ -242,16 +245,62 @@ export type RetentionDeadlineReport = {
   readonly entries: readonly RetentionDeadlineEntry[];
 };
 
+/**
+ * Retention deadline options. `alertThresholdMs` is the operator's opt-in
+ * deadline alert (`DA_RETENTION_ALERT_THRESHOLD_MS`): with none, no entry
+ * alerts. Pruning never removes still-challengeable evidence, and every
+ * retained payload ages towards its deadline on its way to pruning, so an
+ * alerting entry is information, never a fault, and never affects committee
+ * readiness.
+ */
+export type RetentionDeadlineOptions = RetentionScanOptions & {
+  readonly alertThresholdMs?: number;
+};
+
+/**
+ * The options of one runtime retention cycle: the operator's configuration
+ * (including the opt-in alert threshold) and the L1 view accepted this tick.
+ */
+export const retentionCycleOptions = (
+  config: Pick<
+    CommitteeConfig,
+    "retentionAlertThresholdMs" | "deploymentFingerprint" | "finalityDepth"
+  > & {
+    readonly daTransport: Pick<CommitteeConfig["daTransport"], "retentionDays">;
+  },
+  view: RetentionL1View,
+  nowMs: number,
+): RetentionDeadlineOptions => ({
+  nowMs,
+  alertThresholdMs: config.retentionAlertThresholdMs,
+  retentionDays: config.daTransport.retentionDays,
+  deploymentFingerprint: config.deploymentFingerprint,
+  minimumFinalityDepth: config.finalityDepth,
+  confirmedHeadHash: view.confirmedHeadHash,
+  liveQueueHeaderHashes: view.liveQueueHeaderHashes,
+});
+
 const retentionDeadlineReportFromCandidates = (
   candidates: readonly RetentionCandidate[],
-  options: RetentionScanOptions & { readonly alertThresholdMs?: number },
+  options: RetentionDeadlineOptions,
 ): RetentionDeadlineReport => {
-  const alertThresholdMs =
-    options.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW.marginMs;
-  if (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0) {
+  const { alertThresholdMs } = options;
+  if (
+    alertThresholdMs !== undefined &&
+    (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0)
+  ) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
   const entries = candidates.map<RetentionDeadlineEntry>((candidate) => {
+    const base = {
+      headerHash: candidate.headerHash,
+      reasonCode: candidate.decision.reasonCode,
+      challengeableUntilMs: candidate.decision.challengeableUntilMs,
+      remainingMs: candidate.decision.remainingMs,
+    };
+    if (alertThresholdMs === undefined) {
+      return { ...base, headroomMs: null, alerting: false };
+    }
     const alert = retentionDeadlineAlert({
       nowMs: options.nowMs,
       blockEndTimeMs: candidate.blockEndTimeMs,
@@ -260,10 +309,7 @@ const retentionDeadlineReportFromCandidates = (
       headerHash: candidate.headerHash,
     });
     return {
-      headerHash: candidate.headerHash,
-      reasonCode: candidate.decision.reasonCode,
-      challengeableUntilMs: alert.challengeableUntilMs,
-      remainingMs: alert.remainingMs,
+      ...base,
       headroomMs: alert.headroomMs,
       alerting:
         candidate.decision.reasonCode === "still_challengeable" &&
@@ -278,7 +324,7 @@ const retentionDeadlineReportFromCandidates = (
     requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     deployedRetentionMs: MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
     marginMs: MIDGARD_RETENTION_WINDOW.marginMs,
-    alertThresholdMs,
+    alertThresholdMs: alertThresholdMs ?? null,
     scanned: candidates.length,
     retained: candidates.length - prunable,
     prunable,
@@ -290,7 +336,7 @@ const retentionDeadlineReportFromCandidates = (
 /** Executable deadline report over the retained DA payload set. */
 export const retentionDeadlineReport = async (
   store: CommitteeStore,
-  options: RetentionScanOptions & { readonly alertThresholdMs?: number },
+  options: RetentionDeadlineOptions,
 ): Promise<RetentionDeadlineReport> => {
   const candidates = await retentionCandidates(store, options);
   return retentionDeadlineReportFromCandidates(candidates, options);
@@ -304,7 +350,7 @@ export type RetentionCycleResult = {
 /** One non-overlapping production retention cycle: report before deletion. */
 export const runRetentionCycle = async (
   store: CommitteeStore,
-  options: RetentionScanOptions & { readonly alertThresholdMs?: number },
+  options: RetentionDeadlineOptions,
 ): Promise<RetentionCycleResult> => {
   // Use one joined snapshot for both reporting and deletion. Incoming DA writes
   // may run concurrently with the committee node tick; a second scan could otherwise

@@ -1,5 +1,5 @@
 import { SqlClient } from "@effect/sql";
-import { Effect, Schedule } from "effect";
+import { Effect } from "effect";
 
 import { DepositsDB, MempoolLedgerDB } from "../database/index.js";
 import {
@@ -7,12 +7,6 @@ import {
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
 import { withHistoryIngestion } from "../services/event-history-producer.js";
-import {
-  Database,
-  Globals,
-  NodeConfig,
-  publishMempoolLedgerDelta,
-} from "../services/index.js";
 
 const sameProjectedDepositEntry = (
   expected: MempoolLedgerDB.DepositEntry,
@@ -147,51 +141,3 @@ export const reconcileDepositProjection = (upTo: Date) =>
     const projectedCount = yield* projectAwaitingDeposits(upTo);
     return { reconciled, projectedCount };
   }).pipe(withHistoryIngestion);
-
-export const projectDepositsToMempoolLedger: Effect.Effect<
-  void,
-  DatabaseError,
-  Database | Globals | NodeConfig
-> = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const config = yield* NodeConfig;
-  const { reconciled, projectedCount } = yield* reconcileDepositProjection(
-    new Date(),
-  );
-  const reconciledCount = reconciled.mutationCount;
-  const totalMutations = reconciledCount + projectedCount;
-  if (totalMutations <= 0) {
-    return;
-  }
-  yield* publishMempoolLedgerDelta(
-    globals,
-    {
-      full: false,
-      // Newly projected deposits remain intentionally hidden from
-      // retrieveSpendable until a confirmed header is assigned. An empty
-      // incremental delta advances the cache journal without a full reload;
-      // recovery rows already assigned to a header are immediately spendable.
-      upserts: reconciled.spendableUpserts.map((entry) => [
-        entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-        entry[MempoolLedgerDB.Columns.OUTPUT],
-      ]),
-      deletes: [],
-    },
-    config.VALIDATION_LEDGER_DELTA_LOG_MAX,
-  );
-  yield* Effect.logInfo(
-    `🏦 Reconciled ${reconciledCount} projected deposit UTxO(s) and projected ${projectedCount} awaiting deposit UTxO(s) into mempool_ledger.`,
-  );
-});
-
-export const projectDepositsToMempoolLedgerFiber = (
-  schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Database | Globals | NodeConfig> =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🏦 Deposit projector fiber started.");
-    const action = projectDepositsToMempoolLedger.pipe(
-      Effect.withSpan("project-deposits-to-mempool-ledger-fiber"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    yield* Effect.repeat(action, schedule);
-  });

@@ -78,14 +78,12 @@ flowchart TB
 
 subgraph node [midgard-node process]
 H[HTTP API server<br/>listen-router.ts]
+HO[history owner<br/>event-history runtime]
 subgraph fibers [Background fibers]
 FC[block-commitment]
 FK[block-confirmation]
 FM[merge]
-FD[fetch-and-insert deposits]
-FW[fetch-and-insert withdrawals]
 FT[fetch-and-insert tx-order]
-FP[project-deposits-to-mempool-ledger]
 FR[retention-sweeper]
 FQ[tx-queue-processor]
 FMM[monitor-mempool<br/>--with-monitoring only]
@@ -107,10 +105,9 @@ FC --> PG
 FC -->|commit block header| L1
 FK -->|confirm commitment| L1
 FM -->|merge to confirmed| L1
-FD -->|read deposit UTxOs| L1
-FW -->|read withdrawal UTxOs| L1
 FT -->|read tx-order UTxOs| L1
-FP --> PG
+HO -->|read deposit and withdrawal events| L1
+HO -->|materialize history, project due deposits| PG
 FR --> PG
 `} />
 

@@ -368,12 +368,33 @@ default and return `schemaVersion: "midgard-e2e-reconciliation-v1"` plus
 ```sh
 node dist/index.js reconcile phas-registered --json [--repair]
 node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json [--repair]
-node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json [--repair]
+node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json
 node dist/index.js reconcile tx-committed --tx-hash <l2-tx-id> --json
 node dist/index.js reconcile da-attested --header-hash <hash> --committee-url <url> --contract-deployment-info deploymentInfo/contract-deployment-info.json --json [--repair]
 node dist/index.js reconcile block-committed --header-hash <hash> --json
 node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repair]
+node dist/index.js reconcile retention-check --json [--alert-threshold-ms <ms>]
 ```
+
+`deposit-projected` is read-only. The running node's history owner projects
+every due deposit; a standalone CLI process holds no history-ingestion permit,
+so there is no projection repair. Use `reconcile-deposit-submission` (below) to
+settle an unconfirmed deposit submission.
+
+`retention-check` counts the retained DA payloads (`checked`) and those still
+inside the challengeability horizon (`stillChallengeable`). Its deadline alert
+is opt-in: only with `--alert-threshold-ms` does it list, under `alerts`, each
+still-challengeable payload with at most that many milliseconds left (its
+remaining time and headroom), and exit 1 when it lists any. A listed payload is
+not at risk: every merged payload ages into the threshold on its normal way to
+pruning, so with blocks merging more often than the threshold some payload is
+always listed. Treat the output as information about upcoming pruning, not as a
+health gate. The threshold must be below the merged-payload window (block
+maturity / 2, the challengeability horizon minus block maturity), since a
+header merges no earlier than block maturity after its end time; a larger one
+would list every merged payload from the moment it merges. Without it `alerts`
+is empty and the check never fails on a deadline, since pruning never removes
+still-challengeable evidence.
 
 For deposit confirmation timeouts, use:
 

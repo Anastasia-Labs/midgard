@@ -78,6 +78,7 @@ import {
   UNKNOWN_STATE_QUEUE_STATUS,
   withObservedStatus,
 } from "./store.js";
+import type { RetentionDeadlineReport } from "./store/retention.js";
 import { hexToBytes } from "./utils/hex.js";
 
 export type CommitteeServiceDeps = {
@@ -146,21 +147,39 @@ export type CommitteeL1SubmitterPreflightSnapshot = {
 };
 
 export type CommitteeRetentionReadinessSnapshot = {
-  readonly status:
-    | "not_checked"
-    | "ok"
-    | "alerting"
-    | "failed"
-    | "l1_view_stale";
+  readonly status: "not_checked" | "ok" | "failed" | "l1_view_stale";
   readonly checkedAt?: string;
   /** Age of the last fresh authenticated L1 view, when it is stale. */
   readonly l1ViewAgeMs?: number;
   readonly scanned: number;
   readonly retained: number;
   readonly prunable: number;
+  /**
+   * Payloads the opt-in deadline alert flagged in the last cycle. Informational
+   * only: it never makes the committee not ready.
+   */
   readonly alerting: number;
   readonly error?: string;
 };
+
+/**
+ * The readiness view of one completed retention cycle: always `ok`, whatever
+ * the opt-in deadline alert (`DA_RETENTION_ALERT_THRESHOLD_MS`) reported.
+ * Every merged payload ages to its deadline on its normal way to pruning, so
+ * with any threshold some payload is inside it whenever blocks merge more often
+ * than the threshold; a deadline alert that drove readiness would keep the
+ * committee not ready in steady state. The count is carried for visibility.
+ */
+export const retentionReadinessFromDeadlines = (
+  deadlines: RetentionDeadlineReport,
+): CommitteeRetentionReadinessSnapshot => ({
+  status: "ok",
+  checkedAt: new Date(deadlines.nowMs).toISOString(),
+  scanned: deadlines.scanned,
+  retained: deadlines.retained,
+  prunable: deadlines.prunable,
+  alerting: deadlines.alerting,
+});
 
 export type CommitteeReadinessPeerSnapshot = {
   readonly localPeerId?: string;
@@ -618,11 +637,6 @@ export class CommitteeService {
     if (args.retention?.status === "l1_view_stale") {
       reasons.push(
         `l1_view_stale:${(args.retention.l1ViewAgeMs ?? 0).toString()}`,
-      );
-    }
-    if (args.retention?.status === "alerting") {
-      reasons.push(
-        `retention_deadline_alert:${args.retention.alerting.toString()}`,
       );
     }
 

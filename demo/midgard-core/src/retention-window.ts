@@ -402,6 +402,47 @@ export const resolveL1ViewFatalMs = (args: {
   return value;
 };
 
+/**
+ * The most time a merged, no-longer-head payload can have left before its
+ * challengeability deadline: the horizon minus block maturity. A header leaves
+ * the state queue only by merging, which the state-queue validator allows no
+ * earlier than block maturity after the header's end time, so once a payload
+ * is still challengeable outside the queue it has at most this long left.
+ */
+export const MIDGARD_MERGED_PAYLOAD_MAX_REMAINING_MS =
+  MIDGARD_RETENTION_WINDOW.requiredRetentionMs -
+  MIDGARD_RETENTION_WINDOW.maturityMs;
+
+/**
+ * Validates an operator's opt-in retention deadline alert threshold (the node's
+ * `--alert-threshold-ms`, the committee's `DA_RETENTION_ALERT_THRESHOLD_MS`).
+ * It must be a non-negative safe integer strictly below
+ * `MIDGARD_MERGED_PAYLOAD_MAX_REMAINING_MS`: a threshold at or above it alerts
+ * on every merged payload for the whole of its retained life after the merge,
+ * so it can never single one out. Configuration refuses that.
+ *
+ * A threshold below the bound still alerts on every merged payload during its
+ * last `threshold` ms, because every such payload ages to its deadline on its
+ * way to pruning. The alert is therefore information about pruning that is
+ * coming, not a risk signal, and no readiness surface depends on it.
+ */
+export const requireRetentionAlertThresholdMs = (
+  value: unknown,
+  fieldName: string,
+): number => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${fieldName} must be a non-negative safe integer of ms`);
+  }
+  if (value >= MIDGARD_MERGED_PAYLOAD_MAX_REMAINING_MS) {
+    throw new Error(
+      `${fieldName}=${String(value)} must be below the merged-payload window ${String(
+        MIDGARD_MERGED_PAYLOAD_MAX_REMAINING_MS,
+      )} ms (challengeability horizon minus block maturity): a threshold at or above it alerts on every merged payload from the moment it merges`,
+    );
+  }
+  return value;
+};
+
 export type RetentionDeadlineAlert = {
   readonly headerHash?: string;
   readonly challengeableUntilMs: number;
@@ -411,23 +452,26 @@ export type RetentionDeadlineAlert = {
 };
 
 /**
- * Executable deadline alert primitive. `alertThresholdMs` defaults to the
- * derived operational margin, so the alert fires exactly when a still
- * challengeable record has burned through its entire headroom.
+ * Executable deadline alert primitive: alerts when a record's remaining time to
+ * its challengeability deadline is at or below `alertThresholdMs`.
+ *
+ * The threshold has no default. Pruning never removes still-challengeable
+ * evidence, and every retained record ages towards its deadline on its normal
+ * way to pruning, so an alerting record is not a fault: the alert is
+ * informational and exists only for an operator who chose a threshold. (The derived margin is no
+ * usable default: under the testing profiles it exceeds the whole horizon, and
+ * on mainnet it exceeds what every merged non-head block has left, so it would
+ * alert on every still-challengeable record.)
  */
 export const retentionDeadlineAlert = (args: {
   readonly nowMs: number;
   readonly blockEndTimeMs: number;
   readonly retentionDays?: number;
-  readonly alertThresholdMs?: number;
+  readonly alertThresholdMs: number;
   readonly headerHash?: string;
 }): RetentionDeadlineAlert => {
-  const alertThresholdMs =
-    args.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW.marginMs;
-  if (
-    !Number.isSafeInteger(alertThresholdMs) ||
-    (alertThresholdMs as number) < 0
-  ) {
+  const { alertThresholdMs } = args;
+  if (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
   const deadline = retentionDeadlineForBlock({

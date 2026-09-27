@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { inspect } from "node:util";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   computeDeploymentManifestId,
@@ -24,6 +25,7 @@ import {
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { loadPublicRetainedDaRuntimeConfig } from "../src/public-retained-da-config.js";
+import { retentionCycleOptions } from "../src/store/retention.js";
 import { tempDir } from "./helpers.js";
 import { readDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
@@ -312,6 +314,73 @@ describe("loadCommitteeConfig", () => {
     ).rejects.toThrow(
       /must exactly equal the verified deployment manifest l1Finality\.confirmationDepth/u,
     );
+  });
+
+  it("leaves the retention deadline alert off unless the operator sets a threshold", async () => {
+    const dir = await tempDir();
+    const manifest = libp2pManifest("01".repeat(32));
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      manifest,
+    );
+    const base = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+
+    const view = {
+      confirmedHeadHash: "aa".repeat(28),
+      liveQueueHeaderHashes: new Set<string>(),
+    };
+    const unset = await loadCommitteeConfig(base);
+    expect(unset.retentionAlertThresholdMs).toBeUndefined();
+    // The runtime cycle is built from the loaded config: no threshold, no alert.
+    expect(retentionCycleOptions(unset, view, 1).alertThresholdMs).toBe(
+      undefined,
+    );
+    const blank = await loadCommitteeConfig({
+      ...base,
+      DA_RETENTION_ALERT_THRESHOLD_MS: " ",
+    });
+    expect(blank.retentionAlertThresholdMs).toBeUndefined();
+    // A header merges no earlier than block maturity after its end time, so a
+    // merged payload has at most horizon - maturity left: the largest useful
+    // threshold is one below that. At it, or anywhere up to the horizon, every
+    // merged payload would alert from the moment it merges.
+    const mergedWindowMs =
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs -
+      MIDGARD_RETENTION_WINDOW.maturityMs;
+    const set = await loadCommitteeConfig({
+      ...base,
+      DA_RETENTION_ALERT_THRESHOLD_MS: (mergedWindowMs - 1).toString(),
+    });
+    expect(set.retentionAlertThresholdMs).toBe(mergedWindowMs - 1);
+    expect(retentionCycleOptions(set, view, 1)).toMatchObject({
+      nowMs: 1,
+      alertThresholdMs: mergedWindowMs - 1,
+      retentionDays: set.daTransport.retentionDays,
+      deploymentFingerprint: set.deploymentFingerprint,
+      minimumFinalityDepth: set.finalityDepth,
+      confirmedHeadHash: view.confirmedHeadHash,
+    });
+    for (const refused of [
+      mergedWindowMs,
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs - 1,
+    ]) {
+      await expect(
+        loadCommitteeConfig({
+          ...base,
+          DA_RETENTION_ALERT_THRESHOLD_MS: refused.toString(),
+        }),
+      ).rejects.toThrow(
+        /DA_RETENTION_ALERT_THRESHOLD_MS=\d+ must be below the merged-payload window/u,
+      );
+    }
+    for (const bad of ["-1", "1.5", "soon"]) {
+      await expect(
+        loadCommitteeConfig({
+          ...base,
+          DA_RETENTION_ALERT_THRESHOLD_MS: bad,
+        }),
+      ).rejects.toThrow(/DA_RETENTION_ALERT_THRESHOLD_MS/u);
+    }
   });
 
   it("parses libp2p DA transport manifests without HTTP endpoint config", async () => {

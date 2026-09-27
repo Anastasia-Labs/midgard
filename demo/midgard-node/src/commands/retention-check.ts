@@ -1,6 +1,7 @@
 import {
   daRetentionPruneDecision,
   MIDGARD_RETENTION_WINDOW,
+  requireRetentionAlertThresholdMs,
   retentionDeadlineAlert,
   type RetentionHeaderStatus,
   type RetentionPruneReasonCode,
@@ -11,6 +12,7 @@ import { Effect } from "effect";
 
 import { fetchRetentionL1View } from "../fibers/retention-sweeper.js";
 import { ContractDeploymentIdentity } from "../services/index.js";
+import { parseNonNegativeIntegerOption } from "./cli-runtime.js";
 
 /**
  * Executable retention deadline alert (GOAL_SPEC 9.4 / Q54).
@@ -21,6 +23,12 @@ import { ContractDeploymentIdentity } from "../services/index.js";
  * still-challengeable record has burned through its alert headroom, so the CLI
  * verb can exit nonzero. `retentionCheckProgram` gathers those records from the
  * database and the node's authenticated L1 view.
+ *
+ * The deadline alert is opt-in: it is evaluated only when the operator passes
+ * `alertThresholdMs` (`--alert-threshold-ms`). Without one no record raises a
+ * deadline alert, because pruning never removes still-challengeable evidence.
+ * With one, every merged payload is listed during its last `alertThresholdMs`
+ * on its normal way to pruning, so a listed record is not a fault.
  */
 
 /** One retained DA record as observed by the caller. */
@@ -42,7 +50,10 @@ export type RetentionCheckRecord = {
 export type RetentionCheckInput = {
   readonly nowMillis: number;
   readonly records: readonly RetentionCheckRecord[];
-  /** Defaults to the derived operational margin (388_800_000 ms). */
+  /**
+   * Remaining time at or below which a still-challengeable record alerts.
+   * No default: when absent, no record raises a deadline alert.
+   */
   readonly alertThresholdMs?: number;
   /** Deployed retention in whole days; defaults to the derived 15. */
   readonly retentionDays?: number;
@@ -60,7 +71,8 @@ export type RetentionCheckFinding = {
 
 export type RetentionCheckResult = {
   readonly ok: boolean;
-  readonly alertThresholdMs: number;
+  /** The configured threshold, or null when the deadline alert is off. */
+  readonly alertThresholdMs: number | null;
   readonly requiredRetentionMs: number;
   readonly deployedRetentionMs: number;
   readonly marginMs: number;
@@ -73,17 +85,20 @@ export type RetentionCheckResult = {
 /**
  * Evaluates retention deadlines for the supplied records.
  *
- * A record alerts when it is still challengeable AND its remaining time to the
- * challengeability deadline is at or below `alertThresholdMs`, or when its
+ * A record alerts when a threshold is supplied, it is still challengeable, AND
+ * its remaining time to the challengeability deadline is at or below
+ * `alertThresholdMs`; or when its
  * deployment fingerprint does not match the expected one. The mismatch is a
  * diagnostic only; it never changes the retention decision.
  */
 export const evaluateRetentionCheck = (
   input: RetentionCheckInput,
 ): RetentionCheckResult => {
-  const alertThresholdMs =
-    input.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW.marginMs;
-  if (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0) {
+  const alertThresholdMs = input.alertThresholdMs;
+  if (
+    alertThresholdMs !== undefined &&
+    (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0)
+  ) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
   const retentionDays =
@@ -121,6 +136,9 @@ export const evaluateRetentionCheck = (
       continue;
     }
     stillChallengeable += 1;
+    if (alertThresholdMs === undefined) {
+      continue;
+    }
 
     const alert = retentionDeadlineAlert({
       nowMs: input.nowMillis,
@@ -144,7 +162,7 @@ export const evaluateRetentionCheck = (
 
   return {
     ok: alerts.length === 0,
-    alertThresholdMs,
+    alertThresholdMs: alertThresholdMs ?? null,
     requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     deployedRetentionMs: MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
     marginMs: MIDGARD_RETENTION_WINDOW.marginMs,
@@ -154,6 +172,22 @@ export const evaluateRetentionCheck = (
     reasons,
   };
 };
+
+/**
+ * Parses `--alert-threshold-ms`: absent leaves the deadline alert off. A value
+ * at or above the merged-payload window (horizon minus block maturity) is
+ * refused, because every merged payload would alert against it from the moment
+ * it merges.
+ */
+export const parseRetentionAlertThresholdOption = (
+  value: string | undefined,
+): number | undefined =>
+  value === undefined
+    ? undefined
+    : requireRetentionAlertThresholdMs(
+        parseNonNegativeIntegerOption(value, "--alert-threshold-ms"),
+        "--alert-threshold-ms",
+      );
 
 /** Process exit code for a retention check result: 0 clean, 1 alerting. */
 export const retentionCheckExitCode = (result: RetentionCheckResult): number =>

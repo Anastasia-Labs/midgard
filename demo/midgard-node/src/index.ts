@@ -642,20 +642,15 @@ reconcile
 reconcile
   .command("deposit-projected")
   .description(
-    "Reconcile deposit visibility and projection into the L2 mempool ledger",
+    "Inspect deposit visibility and projection into the L2 mempool ledger (read-only)",
   )
   .option("--event-id <hex>", "Canonical OutputReference CBOR deposit event id")
   .option("--cardano-tx-hash <hex>", "32-byte Cardano deposit transaction hash")
-  .option(
-    "--repair",
-    "Reconcile visible deposit UTxOs and project due deposits",
-  )
   .option("--json", "Print machine-readable JSON output", true)
   .action(
     async (options: {
       readonly eventId?: string;
       readonly cardanoTxHash?: string;
-      readonly repair?: boolean;
     }) => {
       let eventId: Buffer | undefined;
       let cardanoTxHash: Buffer | undefined;
@@ -676,11 +671,10 @@ reconcile
         return;
       }
 
-      const mainEffect = provideNodeRuntimeServices(
+      const mainEffect = provideDatabaseServices(
         ReconcileCommand.reconcileDepositProjectedProgram({
           eventId,
           cardanoTxHash,
-          repair: options.repair === true,
         }).pipe(tapJson()),
       );
 
@@ -785,23 +779,19 @@ reconcile
 reconcile
   .command("retention-check")
   .description(
-    "Check retained DA payload retention deadlines; exits nonzero when any still-challengeable record is inside its alert threshold",
+    "Check retained DA payload retention deadlines; with --alert-threshold-ms, lists still-challengeable records inside that threshold and exits nonzero when any is listed (every merged payload passes through it on its way to pruning, so this is information, not a health gate)",
   )
   .option(
     "--alert-threshold-ms <ms>",
-    "Alert headroom in milliseconds (defaults to the derived canonical V1 retention margin)",
+    "Alert when a still-challengeable record has at most this many milliseconds left; must be below the merged-payload window, the challengeability horizon minus block maturity (no default: without it no deadline alert is raised)",
   )
   .option("--json", "Print machine-readable JSON output", true)
   .action(async (options: { readonly alertThresholdMs?: string }) => {
     let alertThresholdMs: number | undefined;
     try {
-      alertThresholdMs =
-        options.alertThresholdMs === undefined
-          ? undefined
-          : parseNonNegativeIntegerOption(
-              options.alertThresholdMs,
-              "--alert-threshold-ms",
-            );
+      alertThresholdMs = RetentionCheck.parseRetentionAlertThresholdOption(
+        options.alertThresholdMs,
+      );
     } catch (error) {
       failCli("reconcile retention-check", error);
       return;

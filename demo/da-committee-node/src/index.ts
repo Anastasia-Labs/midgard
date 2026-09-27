@@ -8,6 +8,7 @@ import { availabilityResponderFromConfig } from "./availability/factory.js";
 import {
   type CommitteeRetentionReadinessSnapshot,
   CommitteeService,
+  retentionReadinessFromDeadlines,
 } from "./committee-service.js";
 import { loadCommitteeConfig } from "./config.js";
 import {
@@ -39,7 +40,11 @@ import {
   validateDaSignerMembership,
 } from "./signer.js";
 import { openCommitteeStore } from "./store/factory.js";
-import { type RetentionL1View, runRetentionCycle } from "./store/retention.js";
+import {
+  retentionCycleOptions,
+  type RetentionL1View,
+  runRetentionCycle,
+} from "./store/retention.js";
 import { createCommitteeTickRunner } from "./tick-runner.js";
 
 /** Upper bound on the shutdown before exiting for a lost store instance lock. */
@@ -306,24 +311,10 @@ const main = async (): Promise<void> => {
   };
   const runRetention = async (view: RetentionL1View): Promise<void> => {
     // The exemption sets come from the L1 view the poller accepted this tick.
-    const options = {
-      nowMs: Date.now(),
-      retentionDays: config.daTransport.retentionDays,
-      deploymentFingerprint: config.deploymentFingerprint,
-      minimumFinalityDepth: config.finalityDepth,
-      confirmedHeadHash: view.confirmedHeadHash,
-      liveQueueHeaderHashes: view.liveQueueHeaderHashes,
-    };
+    const options = retentionCycleOptions(config, view, Date.now());
     try {
       const { deadlines, prune } = await runRetentionCycle(store, options);
-      retentionReadiness = {
-        status: deadlines.alerting > 0 ? "alerting" : "ok",
-        checkedAt: new Date(options.nowMs).toISOString(),
-        scanned: deadlines.scanned,
-        retained: deadlines.retained,
-        prunable: deadlines.prunable,
-        alerting: deadlines.alerting,
-      };
+      retentionReadiness = retentionReadinessFromDeadlines(deadlines);
       if (prune.prunedHeaderHashes.length > 0) {
         process.stdout.write(
           `${JSON.stringify({ event: "da_retention_pruned", ...prune })}\n`,

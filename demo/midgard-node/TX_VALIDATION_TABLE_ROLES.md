@@ -327,13 +327,17 @@ trailing bytes, undefined values, indefinite encoding, and duplicate map keys
 
 ### Writers
 
-`MempoolDB.insert` and `MempoolDB.insertMultiple` commit membership, ledger
-effects, and consumed-deposit state first, then enqueue deltas and address
-history through `enqueueAcceptedWriteBehind`. The normal admission path also
-commits its terminal status atomically with those core effects. Auxiliary
-projections are bounded write-behind work, with inline overflow handling and
-graceful-shutdown draining; a crash may lose the unflushed window
-([mempool.ts](src/database/mempool.ts),
+In a running node these rows come only from durable admission. For each
+validated batch the tx queue processor calls `TxAdmissionsDB.markAccepted`, which, in one
+transaction under the active validation lease, inserts mempool membership from
+the durable admission payloads, applies the net ledger effects and
+consumed-deposit state, and marks the admissions accepted. Only after that
+commit does it enqueue deltas and address history through
+`MempoolDB.enqueueAcceptedWriteBehind`. Auxiliary projections are bounded
+write-behind work, with inline overflow handling and graceful-shutdown
+draining; a crash may lose the unflushed window
+([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts),
+[txAdmissions.ts](src/database/txAdmissions.ts),
 [mempool.ts](src/database/mempool.ts)).
 
 ### Readers

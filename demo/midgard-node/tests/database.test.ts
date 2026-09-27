@@ -126,7 +126,6 @@ import {
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
 } from "../src/fibers/admission-backlog-gauge.js";
-import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
   collectAcceptedReferenceProgramEnvelopes,
   requestTxQueueProcessorWakeup,
@@ -179,6 +178,7 @@ import { resolvePendingJournalLedgerState } from "../src/workers/commit-block-he
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.js";
 import { finalizeCommittedBlockLocally } from "../src/workers/utils/commit-submission.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+import { projectDepositsToMempoolLedger } from "./helpers/deposit-projection.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { externalTimeoutTransition } from "./helpers/state-queue-correction-transition.js";
 import {
@@ -7675,6 +7675,27 @@ describe("Reconciliation commands", () => {
             safeToRetryOriginalStep: true,
           }),
         ).toThrow("status, retry, or repair binding is inconsistent");
+        const repairedBy = (action: string) => ({
+          ...resolved,
+          status: "repaired",
+          safeToRetryOriginalStep: true,
+          nextAction: null,
+          repairActions: [action],
+        });
+        expect(parseReconciliationResult(repairedBy("merge_action"))).toEqual(
+          repairedBy("merge_action"),
+        );
+        // `reconcile deposit-projected --repair` is deleted; nothing can
+        // produce these actions, so a result claiming them is refused.
+        for (const deleted of [
+          "reconcile_deposit_submission_attempt",
+          "reconcile_visible_deposit_utxos",
+          "project_deposits_to_mempool_ledger",
+        ]) {
+          expect(() => parseReconciliationResult(repairedBy(deleted))).toThrow(
+            "repairActions[0] must be one of",
+          );
+        }
         expect(() =>
           parseReconciliationResult({
             ...resolved,

@@ -46,7 +46,7 @@ flowchart LR
 | Command                               | Effect                                                                                                                  |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `submit-deposit`                      | Builds and submits the L1 deposit transaction. Funds move to the deposit validator.                                     |
-| `reconcile deposit-projected`         | Inspects visibility/projection; `--repair` fetches visible deposits and projects due events.                            |
+| `reconcile deposit-projected`         | Read-only: inspects visibility and projection. The running node projects due deposits; there is no CLI repair.          |
 | `absorb-confirmed-deposit-to-reserve` | Moves a settled deposit's funds into the L1 protocol reserve using its settlement proof.                                |
 | `reconcile-deposit-submission`        | Checks a persisted deposit submission against provider evidence before retry; unresolved observations remain ambiguous. |
 
@@ -72,9 +72,11 @@ A withdrawal order is classified before it is paid. An order can be found invali
 example `NonExistentWithdrawalUtxo` or `IncorrectWithdrawalOwner`. Payment happens
 separately, through [reserve and payout](/docs/operators/node/reserve-payout).
 
-Deposit fetching/projection and withdrawal fetching also run continuously in
-the [background fibers](/docs/operators/node/background-fibers). Their relevant
-one-shot commands can inspect or advance the same stages.
+Deposit and withdrawal discovery and deposit projection are not background
+fibers. The node's history owner (event-history runtime) materializes L1
+deposit and withdrawal events and projects each deposit once its inclusion time
+is due; see [background fibers](/docs/operators/node/background-fibers). The
+`reconcile deposit-projected` command inspects the projection read-only.
 
 ## HTTP endpoints
 

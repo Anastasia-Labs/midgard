@@ -38,11 +38,6 @@ export type ReadinessInput = {
     readonly remainingMs: number | null;
     readonly holder: string | null;
   };
-  /**
-   * Retention deadline signal (GOAL_SPEC 9.4 / Q54): number of retained DA
-   * records that are still challengeable and inside their alert threshold.
-   */
-  readonly retentionDeadlineAlerts?: number;
   /** The operator's attestation-timeout correction step. Every node runs it;
    * the field is optional only so callers without the fiber (tests) may omit
    * it. */
@@ -150,15 +145,6 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
       `state_queue_lease_stale:${
         input.stateQueueMutationLease.holder ?? "unknown"
       }:${input.stateQueueMutationLease.remainingMs ?? "unknown"}`,
-    );
-  }
-
-  if (
-    input.retentionDeadlineAlerts !== undefined &&
-    input.retentionDeadlineAlerts > 0
-  ) {
-    reasons.push(
-      `retention_deadline_alert:${input.retentionDeadlineAlerts.toString()}`,
     );
   }
 

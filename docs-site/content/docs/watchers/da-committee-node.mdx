@@ -63,10 +63,27 @@ peer signature coordination, the on-chain coordinator, and submitter
 reconciliation. The process API provides health/readiness and manifest surfaces;
 DA protocol bytes travel over libp2p only.
 
-The runtime runs retention checks and exposes readiness/deadline evidence.
-Currently `src/index.ts` supplies no authenticated active-challenge authority to
-the retention decision, so it holds every payload. Reaching 14 days does not
-authorize pruning. The source labels that missing deployed authority Q58.
+The runtime runs a retention cycle each tick against the L1 view read in that
+tick. It keeps the L1 confirmed head's payload, the payloads of headers live in
+the L1 state queue, and every other payload inside the challengeability horizon
+whose header was not removed from the queue. It prunes payloads past the
+horizon and payloads whose header was removed from the queue, whatever their
+age.
+
+The retention deadline alert is opt-in and log-only. Set
+`DA_RETENTION_ALERT_THRESHOLD_MS` to have a still-challengeable payload with at
+most that many milliseconds left to its deadline logged as
+`da_retention_deadline_alert`; `/readyz` shows the count as
+`retention.alerting` but stays ready. The alert does not mean evidence is at
+risk: every merged payload ages into the threshold on its normal way to
+pruning, so while blocks merge more often than the threshold some payload is
+always alerting. The threshold must be below the merged-payload window (block
+maturity / 2, the challengeability horizon minus block maturity; 450,000 ms on
+the testing profiles), or the committee refuses to start: a header merges no
+earlier than block maturity after its end time, so a larger threshold would
+alert on every merged payload from the moment it merges. Unset, no deadline
+alert is raised. Retention deadlines never affect readiness; a retention cycle
+that fails, or an L1 view gone stale, still makes the committee not ready.
 
 ## Dedicated public reader
 

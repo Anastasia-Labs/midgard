@@ -26,9 +26,7 @@ import {
   TxRejectionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { reconcileVisibleDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
 import { mergeAction, type MergeActionResult } from "../fibers/merge.js";
-import { projectDepositsToMempoolLedger } from "../fibers/project-deposits-to-mempool-ledger.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   ContractDeploymentIdentity,
@@ -46,10 +44,6 @@ import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "../transactions/reference-scripts.js";
-import {
-  type DepositSubmissionReconciliationResult,
-  reconcileDepositSubmissionAttemptProgram,
-} from "../transactions/submit-deposit.js";
 import { runCommitBlockHeaderWorkerProgram } from "../workers/commit-block-header.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import {
@@ -263,9 +257,6 @@ export const parseReconciliationResult = (
         oneOf(entry, entryLabel, [
           "register_phas_membership_reward_account",
           "ensure_node_runtime_reference_scripts",
-          "reconcile_deposit_submission_attempt",
-          "reconcile_visible_deposit_utxos",
-          "project_deposits_to_mempool_ledger",
           "backfill_missing_da_payload",
           "recover_local_finalization",
           "merge_action",
@@ -710,19 +701,19 @@ const serializeDepositEvidence = (
     }),
   );
 
+/**
+ * Read-only: reports whether the deposit is visible and projected. Projection
+ * itself runs only under the node's history owner, which projects every due
+ * deposit; a standalone CLI process holds no history-ingestion permit, so
+ * there is no repair action here.
+ */
 export const reconcileDepositProjectedProgram = ({
   eventId,
   cardanoTxHash,
-  repair,
 }: {
   readonly eventId?: Buffer;
   readonly cardanoTxHash?: Buffer;
-  readonly repair: boolean;
-}): Effect.Effect<
-  ReconciliationResult,
-  unknown,
-  Database | Globals | MidgardContracts | Lucid | NodeConfig
-> =>
+}): Effect.Effect<ReconciliationResult, DatabaseError, Database> =>
   Effect.gen(function* () {
     const target = {
       ...(eventId === undefined ? {} : { eventId: eventId.toString("hex") }),
@@ -730,40 +721,7 @@ export const reconcileDepositProjectedProgram = ({
         ? {}
         : { cardanoTxHash: cardanoTxHash.toString("hex") }),
     };
-    let rows = yield* lookupDepositRows({ eventId, cardanoTxHash });
-    const repairActions: string[] = [];
-
-    if (rows.length === 0 && repair && cardanoTxHash !== undefined) {
-      const reconciliation = yield* Effect.either(
-        reconcileDepositSubmissionAttemptProgram(cardanoTxHash.toString("hex")),
-      );
-      repairActions.push("reconcile_deposit_submission_attempt");
-      if (
-        reconciliation._tag === "Right" &&
-        reconciliation.right.status === "ambiguous"
-      ) {
-        return result({
-          milestone: "deposit-projected",
-          target,
-          status: "ambiguous",
-          evidence: [
-            evidence("deposit_submission_reconciliation", {
-              ...(reconciliation.right as DepositSubmissionReconciliationResult),
-            }),
-          ],
-          repairActions,
-          nextAction: reconciliation.right.nextSafeAction,
-        });
-      }
-    }
-
-    if (repair) {
-      yield* reconcileVisibleDepositUTxOs();
-      yield* projectDepositsToMempoolLedger;
-      repairActions.push("reconcile_visible_deposit_utxos");
-      repairActions.push("project_deposits_to_mempool_ledger");
-      rows = yield* lookupDepositRows({ eventId, cardanoTxHash });
-    }
+    const rows = yield* lookupDepositRows({ eventId, cardanoTxHash });
 
     const depositEvidence = serializeDepositEvidence(rows);
     if (
@@ -776,9 +734,8 @@ export const reconcileDepositProjectedProgram = ({
       return result({
         milestone: "deposit-projected",
         target,
-        status: repairActions.length > 0 ? "repaired" : "satisfied",
+        status: "satisfied",
         evidence: depositEvidence,
-        repairActions,
       });
     }
 
@@ -789,9 +746,8 @@ export const reconcileDepositProjectedProgram = ({
         status: "pending",
         safeToRetryOriginalStep: false,
         evidence: depositEvidence,
-        repairActions,
         nextAction:
-          "Deposit is visible but not projected yet; wait for inclusion time or run with --repair after it is due.",
+          "Deposit is visible but not projected yet; the running node projects it once its inclusion time is due.",
       });
     }
 
@@ -801,9 +757,8 @@ export const reconcileDepositProjectedProgram = ({
       status: "ambiguous",
       safeToRetryOriginalStep: false,
       evidence: depositEvidence,
-      repairActions,
       nextAction:
-        "No matching deposit row is visible. Do not resubmit until the Cardano tx hash has been reconciled or proven absent.",
+        "No matching deposit row is visible. Do not resubmit until the Cardano tx hash has been reconciled (reconcile-deposit-submission) or proven absent.",
     });
   });
 

@@ -160,7 +160,9 @@ Expose and alert on:
 
 - Discovery: `src/fibers/fetch-and-insert-deposit-utxos.ts` and
   `src/fibers/user-event-ingestion.ts`.
-- Projection: `src/fibers/project-deposits-to-mempool-ledger.ts`.
+- Projection: `reconcileDepositProjection` in
+  `src/fibers/project-deposits-to-mempool-ledger.ts`, run by the history owner
+  (`src/services/event-history-runtime.ts`) and signed-header recovery.
 - Lifecycle and selection: `src/database/deposits.ts`,
   `src/database/utils/projected-events.ts`, and `src/database/mempoolLedger.ts`.
 - Assignment and recovery: `src/fibers/block-confirmation.ts`,

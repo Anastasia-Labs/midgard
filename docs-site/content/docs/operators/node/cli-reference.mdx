@@ -57,11 +57,11 @@ These are subcommands of `reconcile`, not top-level commands:
 - `reconcile phas-registered`
 - `reconcile reference-scripts-complete`
 - `reconcile deployment-manifest`
-- `reconcile deposit-projected`
+- `reconcile deposit-projected` (read-only)
 - `reconcile tx-committed`
 - `reconcile da-attested`
 - `reconcile block-committed`
-- `reconcile retention-check`
+- `reconcile retention-check` (deadline alert only with `--alert-threshold-ms <ms>`, which must be below block maturity / 2; every merged payload enters the threshold on its way to pruning, so a listed payload is information, not a fault)
 - `reconcile local-finalization`
 - `reconcile merge-complete`
 

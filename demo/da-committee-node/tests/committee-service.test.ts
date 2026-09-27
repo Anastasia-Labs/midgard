@@ -435,23 +435,28 @@ describe("CommitteeService", () => {
       },
       reasons: [],
     });
-    await expect(
-      service.readinessSnapshot({
-        localPeerId: "committee-peer",
-        retention: {
-          status: "alerting",
-          checkedAt: "2026-08-29T00:00:00.000Z",
-          scanned: 1,
-          retained: 1,
-          prunable: 0,
-          alerting: 1,
-        },
-      }),
-    ).resolves.toMatchObject({
-      ready: false,
-      retention: { status: "alerting", alerting: 1 },
-      reasons: expect.arrayContaining(["retention_deadline_alert:1"]),
-    });
+    // A completed retention cycle is `ok` whether or not the opt-in deadline
+    // alert flagged payloads: every merged payload ages into the threshold on
+    // its way to pruning, so the alert count is shown but never blocks.
+    for (const alerting of [0, 1]) {
+      await expect(
+        service.readinessSnapshot({
+          localPeerId: "committee-peer",
+          retention: {
+            status: "ok",
+            checkedAt: "2026-08-29T00:00:00.000Z",
+            scanned: 1,
+            retained: 1,
+            prunable: 0,
+            alerting,
+          },
+        }),
+      ).resolves.toMatchObject({
+        ready: true,
+        retention: { status: "ok", alerting },
+        reasons: [],
+      });
+    }
   });
 
   it("durably begins signature effects before publish and replays one deterministic effect immediately after an acknowledgement crash", async () => {

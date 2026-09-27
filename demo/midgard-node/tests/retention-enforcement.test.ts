@@ -15,9 +15,9 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { evaluateReadiness } from "../src/commands/readiness.js";
 import {
   evaluateRetentionCheck,
+  parseRetentionAlertThresholdOption,
   retentionCheckExitCode,
   retentionCheckProgram,
 } from "../src/commands/retention-check.js";
@@ -54,31 +54,16 @@ beforeAll(async () => {
   deploymentManifest = await makeFinalizedDeploymentManifestFixture();
 }, 120_000);
 
-const readinessBase = {
-  nowMillis: NOW.getTime(),
-  maxHeartbeatAgeMs: 60_000,
-  maxQueueDepth: 10,
-  queueDepth: 0,
-  workerHeartbeats: {
-    blockCommitment: NOW.getTime(),
-    blockConfirmation: NOW.getTime(),
-    merge: NOW.getTime(),
-    txQueueProcessor: NOW.getTime(),
-  },
-  localFinalizationPending: false,
-  unresolvedBlockSubmissionAgeMs: 0,
-  maxUnresolvedBlockSubmissionAgeMs: 60_000,
-  dbHealthy: true,
-  awaitingForeignTipReconciliations: 0,
-};
-
 describe("Q54 executable retention deadline alert", () => {
   const headerHash = "ab".repeat(28);
   const blockEndTimeMs = NOW.getTime() - REQUIRED_RETENTION_MS / 2;
 
-  it("exits 0 when every retained record has headroom", () => {
+  it("raises no deadline alert without an operator threshold", () => {
+    // Opt-in alert (owner ruling 2026-09-26): with no threshold, not even a
+    // record one millisecond from its deadline alerts. Pruning never removes
+    // still-challengeable evidence, so ageing towards the deadline is no fault.
     const result = evaluateRetentionCheck({
-      nowMillis: NOW.getTime(),
+      nowMillis: blockEndTimeMs + REQUIRED_RETENTION_MS - 1,
       records: [
         {
           headerHash,
@@ -88,13 +73,39 @@ describe("Q54 executable retention deadline alert", () => {
         },
       ],
     });
+    expect(result.stillChallengeable).toBe(1);
+    expect(result.ok).toBe(true);
+    expect(result.alerts).toEqual([]);
+    expect(result.alertThresholdMs).toBeNull();
+    expect(retentionCheckExitCode(result)).toBe(0);
+  });
+
+  it("exits 0 when every retained record has headroom", () => {
+    const alertThresholdMs = REQUIRED_RETENTION_MS / 4;
+    const result = evaluateRetentionCheck({
+      nowMillis: NOW.getTime(),
+      alertThresholdMs,
+      records: [
+        {
+          headerHash,
+          blockEndTimeMs,
+          headerStatus: "attested",
+          queueReference: "none",
+        },
+      ],
+    });
+    expect(result.stillChallengeable).toBe(1);
     expect(result.ok).toBe(true);
     expect(result.alerts).toEqual([]);
     expect(retentionCheckExitCode(result)).toBe(0);
-    expect(result.requiredRetentionMs).toBe(907_200_000);
-    expect(result.deployedRetentionMs).toBe(1_296_000_000);
-    expect(result.marginMs).toBe(388_800_000);
-    expect(result.alertThresholdMs).toBe(388_800_000);
+    expect(result.alertThresholdMs).toBe(alertThresholdMs);
+    expect(result.requiredRetentionMs).toBe(REQUIRED_RETENTION_MS);
+    expect(result.deployedRetentionMs).toBe(
+      MIDGARD_RETENTION_WINDOW.retentionDays * RETENTION_MS_PER_DAY,
+    );
+    expect(result.marginMs).toBe(
+      result.deployedRetentionMs - REQUIRED_RETENTION_MS,
+    );
   });
 
   it("alerts at zero remaining headroom but not at one millisecond", () => {
@@ -190,18 +201,29 @@ describe("Q54 executable retention deadline alert", () => {
     }
   });
 
-  it("surfaces one retention reason through node readiness", () => {
-    expect(evaluateReadiness({ ...readinessBase }).ready).toBe(true);
-    const alerting = evaluateReadiness({
-      ...readinessBase,
-      retentionDeadlineAlerts: 2,
-    });
-    expect(alerting.ready).toBe(false);
-    expect(alerting.reasons).toContain("retention_deadline_alert:2");
+  it("accepts --alert-threshold-ms only below the merged-payload window", () => {
+    // A header merges no earlier than block maturity after its end time, so a
+    // merged payload has at most the horizon minus maturity left.
+    const mergedWindowMs =
+      REQUIRED_RETENTION_MS - MIDGARD_RETENTION_WINDOW.maturityMs;
+    expect(parseRetentionAlertThresholdOption(undefined)).toBeUndefined();
     expect(
-      evaluateReadiness({ ...readinessBase, retentionDeadlineAlerts: 0 })
-        .reasons,
-    ).not.toContain("retention_deadline_alert:0");
+      parseRetentionAlertThresholdOption((mergedWindowMs - 1).toString()),
+    ).toBe(mergedWindowMs - 1);
+    // At the window, or anywhere up to the horizon, every merged payload
+    // alerts from the moment it merges.
+    for (const refused of [mergedWindowMs, REQUIRED_RETENTION_MS - 1]) {
+      expect(() =>
+        parseRetentionAlertThresholdOption(refused.toString()),
+      ).toThrow(
+        /--alert-threshold-ms=\d+ must be below the merged-payload window/u,
+      );
+    }
+    for (const bad of ["-1", "1.5", "soon", ""]) {
+      expect(() => parseRetentionAlertThresholdOption(bad)).toThrow(
+        /--alert-threshold-ms must be a non-negative integer/u,
+      );
+    }
   });
 });
 
@@ -739,8 +761,8 @@ describe.skipIf(!dbEnabled)(
         ).toString("hex"),
         liveUtxosRoots: ["71".repeat(32), "72".repeat(32)],
       });
-      // Every record is one minute from its deadline, so any that the check
-      // does not exempt is still challengeable and alerts.
+      // Every record is one minute from its deadline, inside the two-minute
+      // threshold, so any that the check does not exempt alerts.
       const nearDeadline = new Date(
         Date.now() - REQUIRED_RETENTION_MS + 60_000,
       );
@@ -761,17 +783,18 @@ describe.skipIf(!dbEnabled)(
             nearDeadline,
             nearDeadline,
           );
-          const check = yield* queue.provide(retentionCheckProgram()).pipe(
-            Effect.provideService(
-              ContractDeploymentIdentity,
-              ContractDeploymentIdentity.make({
-                kind: "manifest",
-                manifestId: deploymentManifest.manifestId,
-                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-              }),
-            ),
-          );
-          return { check, control: control.toString("hex") };
+          const identity = ContractDeploymentIdentity.make({
+            kind: "manifest",
+            manifestId: deploymentManifest.manifestId,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+          });
+          const check = yield* queue
+            .provide(retentionCheckProgram(120_000))
+            .pipe(Effect.provideService(ContractDeploymentIdentity, identity));
+          const unthresholded = yield* queue
+            .provide(retentionCheckProgram())
+            .pipe(Effect.provideService(ContractDeploymentIdentity, identity));
+          return { check, unthresholded, control: control.toString("hex") };
         }),
       );
       expect(result.check.checked).toBe(4);
@@ -779,6 +802,10 @@ describe.skipIf(!dbEnabled)(
       expect(result.check.alerts.map(({ headerHash }) => headerHash)).toEqual([
         result.control,
       ]);
+      // The same records without an operator threshold raise no alert.
+      expect(result.unthresholded.stillChallengeable).toBe(1);
+      expect(result.unthresholded.alerts).toEqual([]);
+      expect(retentionCheckExitCode(result.unthresholded)).toBe(0);
     });
 
     it("declares block_end_time NOT NULL, so no row can escape the horizon", async () => {
