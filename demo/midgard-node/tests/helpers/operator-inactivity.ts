@@ -11,6 +11,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -20,6 +21,7 @@ import {
   toUnit,
   type TxSignBuilder,
   type UTxO,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -711,21 +713,63 @@ export const strikeOperatorToMaxStrikes = async (
 // ---------------------------------------------------------------------------
 
 /**
- * Submits a deposit and returns it as a neglected-user-event claim.
+ * The validity a neglected event's admission is built with.
  *
- * The SDK's default validity dates the deposit from the wall clock and opens
- * its range a minute in the past. Neither fits the emulator: its clock runs
- * ahead of the wall clock, and a range opening before the fixture's Lucid
- * instance was created falls below that instance's zero slot, which the
- * evaluator refuses as too far in the past. The range therefore opens at the
- * emulator's current time and closes where the SDK would close it from there.
- * The `inclusion_time` the deposit carries is what the strike validator reads.
+ * The SDK's default validity dates the event from the wall clock and opens its
+ * range a minute in the past. Neither fits the emulator: its clock runs ahead
+ * of the wall clock, and a range opening before the fixture's Lucid instance
+ * was created falls below that instance's zero slot, which the evaluator
+ * refuses as too far in the past. The range therefore opens at the emulator's
+ * current time and closes where the SDK would close it from there.
+ */
+const neglectedEventValidity = (
+  fixture: OperatorInactivityFixture,
+): { readonly validFrom: number; readonly validTo: number } => {
+  const emulatorNow = fixture.emulator.now();
+  return {
+    validFrom: Number(
+      alignedUnixTimeAtOrBefore(fixture.lucid, BigInt(emulatorNow)),
+    ),
+    validTo: SDK.resolveUserEventValidTo(
+      fixture.lucid,
+      undefined,
+      () => emulatorNow,
+    ),
+  };
+};
+
+const submitNeglectedEvent = async (
+  fixture: OperatorInactivityFixture,
+  kind: "Deposit" | "Withdrawal",
+  built: {
+    readonly tx: TxSignBuilder;
+    readonly address: string;
+    readonly authUnit: string;
+    readonly inclusionTime: number;
+  },
+): Promise<SDK.NeglectedUserEventClaim> => {
+  const signed = await built.tx.sign.withWallet().complete();
+  const txHash = await signed.submit();
+  await fixture.lucid.awaitTx(txHash);
+  const [utxo] = await fixture.lucid.utxosAtWithUnit(
+    built.address,
+    built.authUnit,
+  );
+  if (utxo === undefined) {
+    throw new Error(`The submitted ${kind} history node could not be found`);
+  }
+  return { kind, utxo, inclusionTimeMs: BigInt(built.inclusionTime) };
+};
+
+/**
+ * Submits a deposit and returns its event-history Order node as a
+ * neglected-user-event claim. The `inclusion_time` in the node's Order facts
+ * is what the strike validator reads.
  */
 export const submitNeglectedDeposit = async (
   fixture: OperatorInactivityFixture,
   lovelace = 20_000_000n,
 ): Promise<SDK.NeglectedUserEventClaim> => {
-  const emulatorNow = fixture.emulator.now();
   const built = await Effect.runPromise(
     SDK.buildUnsignedDepositTxWithMetadataProgram(
       fixture.lucid,
@@ -735,34 +779,99 @@ export const submitNeglectedDeposit = async (
         l2Datum: null,
         lovelace,
         additionalAssets: {},
-        validity: {
-          validFrom: Number(
-            alignedUnixTimeAtOrBefore(fixture.lucid, BigInt(emulatorNow)),
-          ),
-          validTo: SDK.resolveUserEventValidTo(
-            fixture.lucid,
-            undefined,
-            () => emulatorNow,
-          ),
-        },
+        validity: neglectedEventValidity(fixture),
       },
     ),
   );
-  const signed = await built.tx.sign.withWallet().complete();
+  return submitNeglectedEvent(fixture, "Deposit", {
+    tx: built.tx,
+    address: built.metadata.depositAddress,
+    authUnit: built.metadata.depositAuthUnit,
+    inclusionTime: built.metadata.inclusionTime,
+  });
+};
+
+/**
+ * Submits a withdrawal order signed by the primary operator's key and returns
+ * its event-history Order node as a neglected-user-event claim. The L2 output
+ * it names need not exist: admission checks only the order's shape and
+ * funding, and the strike reads only its Order facts.
+ */
+export const submitNeglectedWithdrawal = async (
+  fixture: OperatorInactivityFixture,
+  lovelace = 20_000_000n,
+): Promise<SDK.NeglectedUserEventClaim> => {
+  const primary = requirePrimaryOperator(fixture);
+  const ownerKey = CML.PrivateKey.from_bech32(
+    walletFromSeed(primary.seedPhrase, { network: "Custom" }).paymentKey,
+  );
+  const ownerAddress = await Effect.runPromise(
+    SDK.addressDataFromBech32(primary.address),
+  );
+  const body: SDK.WithdrawalBody = {
+    l2_outref: { transactionId: "ab".repeat(32), outputIndex: 0n },
+    l2_owner: primary.keyHash,
+    l2_value: SDK.assetsToValue({ lovelace }),
+    l1_address: ownerAddress,
+    l1_datum: "NoDatum",
+  };
+  const built = await Effect.runPromise(
+    SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
+      fixture.lucid,
+      fixture.contracts,
+      {
+        body,
+        signature: SDK.signWithdrawalBody(ownerKey, body),
+        refundAddress: ownerAddress,
+        validity: neglectedEventValidity(fixture),
+      },
+    ),
+  );
+  return submitNeglectedEvent(fixture, "Withdrawal", {
+    tx: built.tx,
+    address: built.metadata.withdrawalAddress,
+    authUnit: built.metadata.withdrawalAuthUnit,
+    inclusionTime: built.metadata.inclusionTime,
+  });
+};
+
+/**
+ * Pays a copy of a neglected event's history node to the same list address
+ * with the same inline datum but without the list's NFT: an output anyone can
+ * create, which only the token bundle tells apart from the real node.
+ */
+export const submitUnauthenticatedHistoryNodeCopy = async (
+  fixture: OperatorInactivityFixture,
+  claim: SDK.NeglectedUserEventClaim,
+): Promise<SDK.NeglectedUserEventClaim> => {
+  const datum = claim.utxo.datum;
+  if (datum === undefined || datum === null) {
+    throw new Error("The history node carries no inline datum to copy");
+  }
+  const tx = await fixture.lucid
+    .newTx()
+    .pay.ToContract(
+      claim.utxo.address,
+      { kind: "inline", value: datum },
+      { lovelace: claim.utxo.assets.lovelace },
+    )
+    .complete();
+  const signed = await tx.sign.withWallet().complete();
   const txHash = await signed.submit();
   await fixture.lucid.awaitTx(txHash);
-  const [utxo] = await fixture.lucid.utxosAtWithUnit(
-    built.metadata.depositAddress,
-    built.metadata.depositAuthUnit,
-  );
-  if (utxo === undefined) {
-    throw new Error("The submitted deposit UTxO could not be found");
+  const copies = await fixture.lucid.utxosByOutRef([
+    { txHash, outputIndex: 0 },
+  ]);
+  const copy = copies[0];
+  if (
+    copy === undefined ||
+    copy.address !== claim.utxo.address ||
+    copy.datum !== datum ||
+    Object.keys(copy.assets).length !== 1
+  ) {
+    throw new Error("The unauthenticated history node copy was not created");
   }
-  return {
-    kind: "Deposit",
-    utxo,
-    inclusionTimeMs: BigInt(built.metadata.inclusionTime),
-  };
+  return { ...claim, utxo: copy };
 };
 
 export const activeOperatorNodeUnit = (

@@ -178,10 +178,15 @@ node may act. After the watchdog submits a takeover it ignores a provider that
 still serves the scheduler UTxO it spent, so a lagging provider cannot make it
 resubmit the same transaction.
 
-The watchdog acts on the commitment-gap threshold only. A neglected deposit or
-withdrawal can make a shift strikable earlier, but that strike needs the
-neglected event as a witness; the node does not yet select one automatically,
-and `strike-inactive-operator` has no option to name one.
+The watchdog acts on the commitment-gap threshold only. A neglected deposit,
+withdrawal or transaction order never makes a shift strikable earlier under
+the shipped parameters: the validator requires the event's inclusion time to be
+at or after the last committed block's end time, and
+`user_events_negligence_timeout` (300 s) is longer than
+`max_inactivity_between_block_commitments` (60 s), so the event's threshold is
+never before the commitment-gap one. A neglected-event strike also needs the
+event as a witness; the node does not select one, and
+`strike-inactive-operator` has no option to name one.
 
 | Variable                        | Default  | Meaning                                                                                                                                                                              |
 | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

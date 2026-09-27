@@ -9,10 +9,13 @@
  * another 40 minutes costs one directory read, not one per tick, and a node
  * with nothing to watch re-reads the directory once a minute.
  *
- * Scope: the watchdog strikes on the commitment-gap threshold only. A
- * neglected deposit or withdrawal can make a shift strikable earlier; that
- * threshold needs the neglected event as a witness and is left to the SDK
- * planner's `neglectedEvent` option, which this fiber does not supply.
+ * Scope: the watchdog strikes on the commitment-gap threshold only, which
+ * loses nothing under the shipped parameters. A neglected event's threshold is
+ * its inclusion time (on chain, at or after the state-queue tail's end time)
+ * plus `user_events_negligence_timeout`, and that timeout (300 s) exceeds
+ * `max_inactivity_between_block_commitments` (60 s), so the event never
+ * yields an earlier threshold. Naming one is left to the SDK planner's
+ * `neglectedEvent` option, which this fiber does not supply.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, type Schedule } from "effect";

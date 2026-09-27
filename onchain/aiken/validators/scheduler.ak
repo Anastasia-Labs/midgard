@@ -13,6 +13,7 @@ use cardano/transaction.{
 use env
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
+use midgard/event_history/order_facts
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/operator_directory
@@ -29,9 +30,7 @@ use midgard/scheduler.{
 }
 use midgard/state_queue
 use midgard/user_events
-use midgard/user_events/deposit
 use midgard/user_events/tx_order_v1 as tx_order
-use midgard/user_events/withdrawal
 
 validator mint(hub_oracle_script_hash: PolicyId) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
@@ -667,9 +666,15 @@ fn validate_operator_inactivity_and_get_its_link(
         when neglected_user_event is {
           NoNeglectedUserEvent ->
             last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
+          // Deposits and withdrawals are Order nodes of their event-history
+          // lists; each list's policy and address authenticate its own nodes.
           NeglectedDeposit { deposit_ref_input_index } -> {
-            let deposit.DepositDatum { inclusion_time, .. } = reference_inputs
-              |> deposit.get_datum(hub_datum.deposit, deposit_ref_input_index)
+            let order_facts.Facts { inclusion_time, .. } = reference_inputs
+              |> order_facts.referenced(
+                  deposit_ref_input_index,
+                  hub_datum.deposit,
+                  hub_datum.deposit_addr,
+                )
 
             inclusion_time
               |> inactivity_threshold_from_user_event_inclusion_time(
@@ -677,10 +682,11 @@ fn validate_operator_inactivity_and_get_its_link(
                 )
           }
           NeglectedWithdrawal { withdrawal_ref_input_index } -> {
-            let user_events.OptimisticDatum { inclusion_time, .. } = reference_inputs
-              |> withdrawal.get_datum(
-                  hub_datum.withdrawal,
+            let order_facts.Facts { inclusion_time, .. } = reference_inputs
+              |> order_facts.referenced(
                   withdrawal_ref_input_index,
+                  hub_datum.withdrawal,
+                  hub_datum.withdrawal_addr,
                 )
 
             inclusion_time

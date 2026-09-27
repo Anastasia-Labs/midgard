@@ -56,6 +56,22 @@ pub fn from_node(node: Link<Data>) -> Facts {
   facts
 }
 
+/// The immutable facts of a current Order node read from a reference input.
+/// The node is authenticated by the history list's own policy and address, so
+/// a root, a filler, or a node of the other history kind never yields facts.
+/// Only the facts are opened: the payload location is not resolved.
+pub fn referenced(
+  reference_inputs: List<Input>,
+  node_reference_index: Int,
+  policy: PolicyId,
+  list_address: Address,
+) -> Facts {
+  expect Some(input) = list.at(reference_inputs, node_reference_index)
+  input.output
+    |> ordering.authenticate(policy, list_address)
+    |> from_node
+}
+
 pub fn payload_id(payload: Payload) -> OutputReference {
   when payload is {
     DepositPayload { event } -> event.id

@@ -119,12 +119,17 @@ export type NeglectedUserEventKind = "Deposit" | "Withdrawal" | "TxOrder";
 /**
  * A user event the scheduled operator left unprocessed. The caller locates the
  * UTxO itself: this module never scans the deposit, withdrawal, or tx-order
- * sets.
+ * sets. For a deposit or withdrawal it is the event's Order node in that
+ * kind's event-history list, which the scheduler authenticates by the list's
+ * policy and address; for a tx order it is the tx-order UTxO.
  */
 export type NeglectedUserEventClaim = {
   readonly kind: NeglectedUserEventKind;
   readonly utxo: UTxO;
-  /** `inclusion_time` of the event's datum. */
+  /**
+   * `inclusion_time` of the event: the Order facts of a deposit or withdrawal
+   * history node, or the tx-order datum.
+   */
   readonly inclusionTimeMs: bigint;
 };
 

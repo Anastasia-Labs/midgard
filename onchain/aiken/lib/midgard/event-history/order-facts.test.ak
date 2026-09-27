@@ -134,14 +134,24 @@ test admission_rejects_inline_payload_with_too_many_data_nodes() fail {
   let info = DepositInfo { ..event.info, l2_datum: Some(wide) }
   let changed = Facts {
     ..facts(),
-    location: Inline { payload: DepositPayload { event: DepositEvent { ..event, info } } },
+    location: Inline {
+      payload: DepositPayload { event: DepositEvent { ..event, info } },
+    },
   }
   expect _ = admit(admission(changed), 15_000, None)
   True
 }
 
 test open_payload_rejects_total_byte_limit_even_below_inline_limit() fail {
-  expect _ = order_facts.open_payload(facts(), placeholder, address.from_script(retention), 1000, 1, 1024, None)
+  expect _ = order_facts.open_payload(
+    facts(),
+    placeholder,
+    address.from_script(retention),
+    1000,
+    1,
+    1024,
+    None,
+  )
   True
 }
 
@@ -468,4 +478,108 @@ test admission_does_not_accept_a_later_operator_verdict_as_initial_marker() fail
     ),
   )
   True
+}
+
+// Reading an Order's facts from a reference input (the scheduler's neglected
+// deposit / withdrawal strike). Every negative returns True whenever the reader
+// returns at all: a `fail` test also passes on False, so comparing against a
+// value the unchecked reader would not produce could not fail.
+
+const other_policy = #"55555555555555555555555555555555555555555555555555555555"
+
+fn reference(output: Output, out_index: Int) -> Input {
+  Input {
+    output_reference: OutputReference {
+      transaction_id: tx_id,
+      output_index: out_index,
+    },
+    output,
+  }
+}
+
+fn wallet_output() -> Output {
+  Output {
+    address: address.from_verification_key(owner),
+    value: assets.from_lovelace(5_000_000),
+    datum: NoDatum,
+    reference_script: None,
+  }
+}
+
+fn read_order(references: List<Input>, index: Int) -> Facts {
+  order_facts.referenced(references, index, policy, address.from_script(policy))
+}
+
+test referenced_order_yields_its_inclusion_time() {
+  let references = [
+    reference(wallet_output(), 0),
+    reference(order_output(facts(), None, 600), 1),
+  ]
+  and {
+    read_order(references, 1) == facts(),
+    read_order(references, 1).inclusion_time == 400 + env.event_wait_duration,
+  }
+}
+
+test referenced_order_is_read_after_pointer_continuation() {
+  let rewritten = order_output(
+    facts(),
+    Some(#"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+    60_700,
+  )
+  read_order([reference(rewritten, 4)], 0) == facts()
+}
+
+test referenced_rejects_an_index_past_the_reference_inputs() fail {
+  read_order([reference(order_output(facts(), None, 600), 0)], 1) == facts()
+}
+
+test referenced_rejects_a_mis_indexed_unauthenticated_input() fail {
+  let references = [
+    reference(wallet_output(), 0),
+    reference(order_output(facts(), None, 600), 1),
+  ]
+  read_order(references, 0) == facts()
+}
+
+test referenced_rejects_a_node_of_another_history_policy() fail {
+  let references = [reference(order_output(facts(), None, 600), 0)]
+  order_facts.referenced(
+    references,
+    0,
+    other_policy,
+    address.from_script(policy),
+  ) == facts()
+}
+
+test referenced_rejects_a_node_at_another_address() fail {
+  let references = [reference(order_output(facts(), None, 600), 0)]
+  order_facts.referenced(references, 0, policy, address.from_script(retention)) == facts()
+}
+
+test referenced_rejects_an_order_datum_without_its_list_token() fail {
+  let order = order_output(facts(), None, 600)
+  let forged = Output { ..order, value: assets.from_lovelace(10_000_000) }
+  read_order([reference(forged, 0)], 0) == facts()
+}
+
+test referenced_rejects_facts_for_another_event_id() fail {
+  let moved = Facts {
+    ..facts(),
+    event_id: OutputReference { transaction_id: tx_id, output_index: 1 },
+  }
+  read_order([reference(order_output(moved, None, 600), 0)], 0) == moved
+}
+
+test referenced_rejects_a_legacy_optimistic_deposit_datum() fail {
+  let legacy: Data = user_events.OptimisticDatum {
+    event: payload(),
+    inclusion_time: 400 + env.event_wait_duration,
+    witness: owner,
+    refund_address: address.from_verification_key(owner),
+    refund_datum: NoDatum,
+  }
+  let order = order_output(facts(), None, 600)
+  let old = Output { ..order, datum: InlineDatum(legacy) }
+  read_order([reference(old, 0)], 0).inclusion_time == 400 + env.event_wait_duration
 }
