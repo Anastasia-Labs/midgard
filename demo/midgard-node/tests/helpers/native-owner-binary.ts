@@ -6,7 +6,8 @@
  * `warnNativeOwnerBinaryAbsent` rather than fail on a missing optional
  * toolchain — and never pass silently.
  */
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const nativeOwnerBinaryPath = fileURLToPath(
@@ -18,6 +19,18 @@ export const nativeOwnerBinaryPath = fileURLToPath(
 
 export const nativeOwnerBinaryPresent = (): boolean =>
   existsSync(nativeOwnerBinaryPath);
+
+let pinnedSha256: string | undefined;
+
+/** The SHA-256 a node config pins for the built owner binary. Empty when the
+ * binary is absent, so a node started from that config fails closed. */
+export const nativeOwnerBinarySha256 = (): string => {
+  if (!nativeOwnerBinaryPresent()) return "";
+  pinnedSha256 ??= createHash("sha256")
+    .update(readFileSync(nativeOwnerBinaryPath))
+    .digest("hex");
+  return pinnedSha256;
+};
 
 export const warnNativeOwnerBinaryAbsent = (tag: string): void => {
   console.warn(

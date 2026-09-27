@@ -5,9 +5,7 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
-import { blake2b } from "@noble/hashes/blake2.js";
 
-import { type ParkedMpfOverlay } from "./engine-config.js";
 import { type MpfReadableValue, type MpfStoredValue } from "./types.js";
 
 export const consumeMpfMutationProof =
@@ -24,39 +22,6 @@ export const MPF_EMPTY_ROOT = Buffer.from(MPF_EMPTY_ROOT_HEX, "hex");
 export const MPF_INTERNAL_NULL_ROOT_HEX = "00".repeat(32);
 
 export const MPF_INTERNAL_NULL_ROOT = Buffer.alloc(32);
-
-export const exactArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
-
-export const parkedOverlayDigest = ({
-  trieName,
-  baseRoot,
-  candidateRoot,
-  nodeCount,
-  nodeHashes,
-  nodeValues,
-  nodeValueOffsets,
-}: Omit<
-  ParkedMpfOverlay,
-  "schemaVersion" | "closureDigest" | "encodedBytes"
->): Buffer => {
-  const trieNameBytes = Buffer.from(trieName);
-  const header = Buffer.alloc(8);
-  header.writeUInt32BE(trieNameBytes.length, 0);
-  header.writeUInt32BE(nodeCount, 4);
-  const hash = blake2b.create({ dkLen: 32 });
-  hash.update(header);
-  hash.update(trieNameBytes);
-  hash.update(new Uint8Array(baseRoot));
-  hash.update(new Uint8Array(candidateRoot));
-  hash.update(new Uint8Array(nodeHashes));
-  hash.update(new Uint8Array(nodeValueOffsets));
-  hash.update(new Uint8Array(nodeValues));
-  return Buffer.from(hash.digest());
-};
 
 export type LevelBatchOp =
   | {

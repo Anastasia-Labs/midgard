@@ -6,19 +6,14 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
-import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
 
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
 import {
-  applyTraceLedgerOpsToMpf,
   buildNativeRootProbe,
-  buildTransitionTraceResult,
-  configureMpfPathHydration,
   deleteMpfStore,
   MidgardMpf,
-  type MpfStoreDiagnostics,
   setMpfScratchBuild,
   type TransitionTraceSourceEvent,
 } from "../mpf/index.js";
@@ -32,11 +27,9 @@ import {
   decodeArchitectureGFixtureCreation,
   validateArchitectureGRootProbeResult,
 } from "./utils/mpf-commit-candidate-artifacts.js";
-import { compileAuthenticatedFlatMpfMultiproof } from "./utils/mpf-flat-multiproof.js";
 import {
   closeMpfRootWorkers,
   configureMpfRootWorkers,
-  mpfRootWorkerMetrics,
   prewarmMpfRootWorkers,
 } from "./utils/mpf-root-pool.js";
 
@@ -60,31 +53,8 @@ const require = createRequire(import.meta.url);
 const levelFixturePath = process.env.MPF_ENGINE_PROBE_LEVEL_DB?.trim() ?? "";
 const reuseLevelFixture =
   process.env.MPF_ENGINE_PROBE_REUSE_LEVEL_DB === "true";
-const keepLevelFixture = process.env.MPF_ENGINE_PROBE_KEEP_LEVEL_DB === "true";
 const createLevelFixture =
   process.env.MPF_ENGINE_PROBE_CREATE_LEVEL_FIXTURE === "true";
-const architectureG = process.env.MPF_ENGINE === "architecture_g";
-const probeEngine =
-  process.env.MPF_ENGINE === "event_flat" ? "event_flat" : "overlay";
-type BranchHashDiagnostics = {
-  readonly initializations: number;
-  readonly initializationHashes: number;
-  readonly initializationMs: number;
-  readonly incrementalUpdates: number;
-  readonly incrementalHashes: number;
-  readonly incrementalMs: number;
-  readonly rebuilds: number;
-  readonly rebuildHashes: number;
-  readonly rebuildMs: number;
-};
-const instrumentedTrie = Trie as typeof Trie & {
-  readonly enableMidgardBranchHashDiagnostics: (enabled?: boolean) => void;
-  readonly resetMidgardBranchHashDiagnostics: () => void;
-  readonly midgardBranchHashDiagnostics: () => BranchHashDiagnostics;
-};
-const branchHashDiagnosticsEnabled =
-  process.env.MPF_ENGINE_PROBE_BRANCH_HASH_DIAGNOSTICS === "true";
-
 const formatErrorChain = (error: unknown): string => {
   const rendered: string[] = [];
   const seen = new Set<unknown>();
@@ -363,49 +333,20 @@ const buildCanonicalFixtureEntries = (
   return entries;
 };
 
-const beginMeasuredOverlay = (mpf: MidgardMpf): Effect.Effect<void, unknown> =>
-  Effect.gen(function* () {
-    if (process.env.MPF_ENGINE_PROBE_COLLAPSE_INITIAL === "true") {
-      yield* mpf.beginBlockOverlay();
-      const initialRoot = yield* mpf.root();
-      yield* mpf.flushBlockOverlay(initialRoot);
-      yield* Effect.promise(
-        () =>
-          new Promise<void>((resolve) =>
-            setImmediate(() => {
-              (globalThis as { gc?: () => void }).gc?.();
-              resolve();
-            }),
-          ),
-      );
-    }
-    yield* mpf.beginBlockOverlay();
-  });
-
-const createProbeLedger = (
+const createProbeLedgerFixture = (
   name: string,
   entries: readonly {
     readonly key: Buffer;
     readonly value: Buffer;
-  }[] = initial,
+  }[],
 ): Effect.Effect<MidgardMpf, unknown> =>
   Effect.gen(function* () {
-    if (levelFixturePath.length === 0) {
-      return yield* MidgardMpf.createScratchFromList(name, entries, {
-        engine: probeEngine,
-      });
-    }
-    if (reuseLevelFixture) {
-      return yield* MidgardMpf.create(name, levelFixturePath, {
-        engine: probeEngine,
-      });
-    }
     yield* deleteMpfStore(levelFixturePath, `${name}-fixture`);
     return yield* MidgardMpf.createLevelFromListForBenchmark(
       name,
       levelFixturePath,
       entries,
-      { engine: probeEngine },
+      { mode: "overlay" },
     );
   });
 
@@ -418,25 +359,6 @@ void Effect.runPromise(
       () => new Promise<void>((resolve) => blake2b.ready(resolve)),
     );
     setMpfScratchBuild("fromlist");
-    configureMpfPathHydration({
-      mode:
-        process.env.MPF_PATH_HYDRATION_MODE === "chunked_arena"
-          ? "chunked_arena"
-          : process.env.MPF_PATH_HYDRATION_MODE === "chunked"
-            ? "chunked"
-            : "whole_block",
-      chunkOps: Math.max(
-        1,
-        Number.parseInt(process.env.MPF_HYDRATION_CHUNK_OPS ?? "512", 10),
-      ),
-      retainDepth: Math.max(
-        0,
-        Math.min(
-          8,
-          Number.parseInt(process.env.MPF_RETAIN_HYDRATED_DEPTH ?? "2", 10),
-        ),
-      ),
-    });
     configureMpfRootWorkers({
       enabled: process.env.MPF_ENGINE_PROBE_PARALLEL_ROOTS !== "false",
       workers: 2,
@@ -463,7 +385,7 @@ void Effect.runPromise(
         canonicalFunding === undefined
           ? initial
           : buildCanonicalFixtureEntries(canonicalFunding);
-      const fixture = yield* createProbeLedger(
+      const fixture = yield* createProbeLedgerFixture(
         "mpf-engine-probe-fixture",
         fixtureEntries,
       );
@@ -508,409 +430,138 @@ void Effect.runPromise(
         expectedFundingMapSha256: canonicalFunding?.sha256 ?? null,
       });
     }
-    if (architectureG) {
-      if (levelFixturePath.length === 0 || !reuseLevelFixture) {
-        return yield* Effect.fail(
-          new Error(
-            "Architecture G probe requires MPF_ENGINE_PROBE_REUSE_LEVEL_DB=true and a marker-matched Level fixture",
-          ),
-        );
-      }
-      const architectureTransactionOps =
-        canonicalSlice?.transactionOps ?? transactionOps;
-      const architectureSourceEvents =
-        canonicalSlice?.sourceEvents ?? sourceEvents;
-      const binaryPath =
-        process.env.MPF_NATIVE_OWNER_BINARY_PATH?.trim() ||
-        resolve(
-          process.cwd(),
-          "native/mpf-event-flat-wasm/target/release/architecture-g-owner",
-        );
-      const binarySha256 =
-        process.env.MPF_NATIVE_OWNER_BINARY_SHA256?.trim() ||
-        createHash("sha256")
-          .update(yield* Effect.promise(() => readFile(binaryPath)))
-          .digest("hex");
-      const startupStartedAt = performance.now();
-      const processStatus = yield* Effect.promise(() =>
-        readFile("/proc/self/status", "utf8"),
-      );
-      const cpuAffinity =
-        processStatus.match(/^Cpus_allowed_list:\s*(.+)$/m)?.[1]?.trim() ??
-        "unknown";
-      const owner = yield* Effect.promise(() =>
-        ProductionNativeMpfOwnerService.create({
-          levelPath: levelFixturePath,
-          binaryPath,
-          binarySha256,
-          sidecarPath:
-            process.env.MPF_NATIVE_OWNER_SIDECAR_PATH?.trim() ||
-            `${levelFixturePath}.architecture-g-probe.sidecar`,
-        }),
-      );
-      const startupMs = performance.now() - startupStartedAt;
-      const before = yield* Effect.promise(() => owner.diagnostics());
-      const handle = yield* Effect.promise(() =>
-        owner.fork(before.durableRoot),
-      );
-      const nativeMpf = {
-        client: owner,
-        handle,
-        ownerBinarySha256: binarySha256,
-      };
-      yield* Effect.promise(
-        () =>
-          new Promise<void>((resolve) =>
-            setImmediate(() => {
-              (globalThis as { gc?: () => void }).gc?.();
-              resolve();
-            }),
-          ),
-      );
-      const confirmedLedgerScansBefore = yield* Metric.value(
-        confirmedLedgerFullScanCounter,
-      );
-      const result = yield* buildNativeRootProbe({
-        nativeMpf,
-        sourceEvents: architectureSourceEvents,
-        transactionOps: architectureTransactionOps,
-      });
-      const confirmedLedgerScansAfter = yield* Metric.value(
-        confirmedLedgerFullScanCounter,
-      );
-      yield* Effect.promise(() => owner.discard(handle));
-      const after = yield* Effect.promise(() => owner.diagnostics());
-      yield* Effect.promise(() => owner.close());
-      closeMpfRootWorkers();
-      const artifact = {
-        engine: "architecture_g",
-        transactionCount,
-        initialUtxoCount,
-        workloadSha256: workloadSha256(
-          architectureSourceEvents,
-          architectureTransactionOps,
+    if (levelFixturePath.length === 0 || !reuseLevelFixture) {
+      return yield* Effect.fail(
+        new Error(
+          "Architecture G probe requires MPF_ENGINE_PROBE_REUSE_LEVEL_DB=true and a marker-matched Level fixture",
         ),
-        canonicalCorpusSlice:
-          canonicalSlice === undefined
-            ? null
-            : {
-                path: canonicalSlice.path,
-                sha256: canonicalSlice.sha256,
-                rowCount: canonicalSlice.transactionOps.length,
-              },
-        canonicalFunding:
-          canonicalFunding === undefined
-            ? null
-            : {
-                path: canonicalFunding.path,
-                sha256: canonicalFunding.sha256,
-                entryCount: canonicalFunding.entries.size,
-              },
-        levelBackedInitialView: true,
-        reusedLevelFixture: true,
-        ledgerOpCount: architectureSourceEvents.reduce(
-          (total, event) => total + event.ledgerOps.length,
-          0,
-        ),
-        startupMs,
-        durationMs: result.durationMs,
-        buildPlusCaptureMs: result.durationMs,
-        phaseMs: result.phaseMs,
-        utxoRoot: result.utxoRoot,
-        rawTxRoot: result.rawTxRoot,
-        txRoot: result.txRoot,
-        transitionTraceRoot: result.transitionTraceRoot,
-        eventToStepRoot: result.eventToStepRoot,
-        depositsRoot: result.depositsRoot,
-        withdrawalsRoot: result.withdrawalsRoot,
-        forcedTransactionsRoot: result.forcedTransactionsRoot,
-        transitionRoots: result.transitionRoots,
-        nativePhaseMs: result.transitionTraceBuild.nativePhaseMs,
-        pathHydration: result.transitionTraceBuild.pathHydration,
-        confirmedLedgerFullScans:
-          confirmedLedgerScansAfter.count - confirmedLedgerScansBefore.count,
+      );
+    }
+    const architectureTransactionOps =
+      canonicalSlice?.transactionOps ?? transactionOps;
+    const architectureSourceEvents =
+      canonicalSlice?.sourceEvents ?? sourceEvents;
+    const binaryPath =
+      process.env.MPF_NATIVE_OWNER_BINARY_PATH?.trim() ||
+      resolve(
+        process.cwd(),
+        "native/mpf-event-flat-wasm/target/release/architecture-g-owner",
+      );
+    const binarySha256 =
+      process.env.MPF_NATIVE_OWNER_BINARY_SHA256?.trim() ||
+      createHash("sha256")
+        .update(yield* Effect.promise(() => readFile(binaryPath)))
+        .digest("hex");
+    const startupStartedAt = performance.now();
+    const processStatus = yield* Effect.promise(() =>
+      readFile("/proc/self/status", "utf8"),
+    );
+    const cpuAffinity =
+      processStatus.match(/^Cpus_allowed_list:\s*(.+)$/m)?.[1]?.trim() ??
+      "unknown";
+    const owner = yield* Effect.promise(() =>
+      ProductionNativeMpfOwnerService.create({
+        levelPath: levelFixturePath,
+        binaryPath,
         binarySha256,
-        cpuAffinity,
-        ownerBefore: before,
-        ownerAfter: after,
-        probePath,
-        probeSha256,
-      };
-      return validateArchitectureGRootProbeResult({
-        value: artifact,
-        expectedTransactionCount: transactionCount,
-        expectedInitialUtxoCount: initialUtxoCount,
-        expectedProbePath: probePath,
-        expectedProbeSha256: probeSha256,
-      });
-    }
-    if (process.env.MPF_ENGINE_PROBE_LEDGER_ONLY === "true") {
-      const ledgerOnly = yield* createProbeLedger(
-        "mpf-engine-probe-ledger-only",
-      );
-      yield* beginMeasuredOverlay(ledgerOnly);
-      const ledgerStartedAt = performance.now();
-      for (const [index, sourceEvent] of sourceEvents.entries()) {
-        yield* applyTraceLedgerOpsToMpf(
-          ledgerOnly,
-          sourceEvent.ledgerOps,
-          index.toString(),
-        );
-        yield* ledgerOnly.rootHex();
-      }
-      const ledgerOpsMs = performance.now() - ledgerStartedAt;
-      const diagnostics = yield* ledgerOnly.diagnostics();
-      yield* ledgerOnly.close();
-      if (levelFixturePath.length > 0 && !keepLevelFixture) {
-        yield* deleteMpfStore(levelFixturePath, "mpf-engine-probe-fixture");
-      }
-      closeMpfRootWorkers();
-      return {
-        transactionCount,
-        initialUtxoCount,
-        collapsedInitialView:
-          process.env.MPF_ENGINE_PROBE_COLLAPSE_INITIAL === "true",
-        levelBackedInitialView: levelFixturePath.length > 0,
-        reusedLevelFixture: reuseLevelFixture,
-        ledgerOpCount: transactionCount * 2,
-        ledgerOpsMs,
-        diagnostics,
-      };
-    }
-    const ledger = yield* createProbeLedger("mpf-engine-probe");
-    yield* beginMeasuredOverlay(ledger);
+        sidecarPath:
+          process.env.MPF_NATIVE_OWNER_SIDECAR_PATH?.trim() ||
+          `${levelFixturePath}.architecture-g-probe.sidecar`,
+      }),
+    );
+    const startupMs = performance.now() - startupStartedAt;
+    const before = yield* Effect.promise(() => owner.diagnostics());
+    const handle = yield* Effect.promise(() => owner.fork(before.durableRoot));
+    const nativeMpf = {
+      client: owner,
+      handle,
+      ownerBinarySha256: binarySha256,
+    };
+    yield* Effect.promise(
+      () =>
+        new Promise<void>((resolve) =>
+          setImmediate(() => {
+            (globalThis as { gc?: () => void }).gc?.();
+            resolve();
+          }),
+        ),
+    );
     const confirmedLedgerScansBefore = yield* Metric.value(
       confirmedLedgerFullScanCounter,
     );
-    instrumentedTrie.resetMidgardBranchHashDiagnostics();
-    instrumentedTrie.enableMidgardBranchHashDiagnostics(
-      branchHashDiagnosticsEnabled,
-    );
-    const startedAt = performance.now();
-    const result = yield* buildTransitionTraceResult({
-      ledgerMpf: ledger,
-      sourceEvents,
-      withdrawalCount: 0,
-      forcedTransactionCount: 0,
-      l2TransactionCount: transactionCount,
-      depositCount: 0,
+    const result = yield* buildNativeRootProbe({
+      nativeMpf,
+      sourceEvents: architectureSourceEvents,
+      transactionOps: architectureTransactionOps,
     });
-    const durationMs = performance.now() - startedAt;
-    const branchHashDiagnostics =
-      instrumentedTrie.midgardBranchHashDiagnostics();
     const confirmedLedgerScansAfter = yield* Metric.value(
       confirmedLedgerFullScanCounter,
     );
-    instrumentedTrie.enableMidgardBranchHashDiagnostics(false);
-    const diagnostics = yield* ledger.diagnostics();
-    const captureAuthenticationBoundary =
-      process.env.MPF_PATH_HYDRATION_MODE === "chunked_arena"
-        ? yield* Effect.gen(function* () {
-            const writesBefore = diagnostics.levelBatchWrites;
-            const store = (
-              ledger as unknown as {
-                readonly store: {
-                  diagnostics(): Omit<MpfStoreDiagnostics, "entries">;
-                };
-              }
-            ).store;
-            if (probeEngine === "event_flat") {
-              const mutationDiagnostics = ledger.eventFlatMutationDiagnostics();
-              if (mutationDiagnostics === undefined) {
-                return yield* Effect.fail(
-                  new Error("Event-flat mutation diagnostics are unavailable"),
-                );
-              }
-              const parkStartedAt = performance.now();
-              const artifact = yield* ledger.parkEventFlatOverlayV1(4);
-              const parkMs = performance.now() - parkStartedAt;
-              const captured = store.diagnostics();
-              if (captured.levelBatchWrites !== writesBefore) {
-                return yield* Effect.fail(
-                  new Error(
-                    "Event-flat park authentication performed a Level write",
-                  ),
-                );
-              }
-              if (
-                captured.transientLiveNodes !== 0 ||
-                captured.transientDirtyNodes !== 0
-              ) {
-                return yield* Effect.fail(
-                  new Error(
-                    `Event-flat park left an unsafe mutable closure: live=${captured.transientLiveNodes.toString()},dirty=${captured.transientDirtyNodes.toString()}`,
-                  ),
-                );
-              }
-              if (
-                Buffer.from(artifact.candidateRoot).toString("hex") !==
-                result.finalUtxosRoot
-              ) {
-                return yield* Effect.fail(
-                  new Error(
-                    "Parked event-flat candidate root does not match the build",
-                  ),
-                );
-              }
-              if (levelFixturePath.length === 0) {
-                return yield* Effect.fail(
-                  new Error(
-                    "Event-flat built-bundle rehydrate verification requires a Level fixture",
-                  ),
-                );
-              }
-              const rehydrated =
-                yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
-                  "mpf-engine-probe",
-                  levelFixturePath,
-                  artifact,
-                );
-              const rehydratedRoot = yield* rehydrated.root();
-              if (rehydratedRoot.toString("hex") !== result.finalUtxosRoot) {
-                return yield* Effect.fail(
-                  new Error(
-                    "Rehydrated event-flat candidate root does not match the build",
-                  ),
-                );
-              }
-              yield* rehydrated.discardBlockOverlay();
-              yield* rehydrated.close();
-              return {
-                engine: probeEngine,
-                durationMs: parkMs,
-                flatCompileMs: 0,
-                parkMs,
-                levelBatchWritesBefore: writesBefore,
-                levelBatchWritesAfter: captured.levelBatchWrites,
-                authenticatedSnapshots: artifact.nodeCount,
-                retainedSnapshotAuthentications: 0,
-                retainedSnapshotAuthenticationMs: 0,
-                transientLiveNodesAfter: captured.transientLiveNodes,
-                transientDirtyNodesAfter: captured.transientDirtyNodes,
-                rehydratedCandidateRoot: rehydratedRoot.toString("hex"),
-                mutationDiagnostics,
-                flatMultiproof: {
-                  rootHash: result.finalUtxosRoot,
-                  nodeCount: artifact.nodeCount,
-                  leafCount: 0,
-                  branchCount: 0,
-                  estimatedBytes: artifact.encodedBytes,
-                },
-                parkedArtifact: {
-                  nodeCount: artifact.nodeCount,
-                  encodedBytes: artifact.encodedBytes,
-                  shardCount: artifact.shards.length,
-                  baseRoot: Buffer.from(artifact.baseRoot).toString("hex"),
-                  candidateRoot: Buffer.from(artifact.candidateRoot).toString(
-                    "hex",
-                  ),
-                },
-              };
-            }
-            const flatCompileStartedAt = performance.now();
-            const flatMultiproof = yield* Effect.try({
-              try: () => compileAuthenticatedFlatMpfMultiproof(ledger.trie),
-              catch: (cause) =>
-                new Error("Flat MPF compilation failed", { cause }),
-            });
-            const flatCompileMs = performance.now() - flatCompileStartedAt;
-            if (
-              flatMultiproof.rootHash.toString("hex") !== result.finalUtxosRoot
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `Flat MPF root mismatch: flat=${flatMultiproof.rootHash.toString("hex")},expected=${result.finalUtxosRoot}`,
-                ),
-              );
-            }
-            const parkStartedAt = performance.now();
-            const artifact = yield* ledger.parkBlockOverlay();
-            const parkMs = performance.now() - parkStartedAt;
-            const captured = store.diagnostics();
-            if (captured.levelBatchWrites !== writesBefore) {
-              return yield* Effect.fail(
-                new Error("MPF park authentication performed a Level write"),
-              );
-            }
-            if (
-              captured.transientLiveNodes !== 0 ||
-              captured.transientDirtyNodes !== 0 ||
-              captured.transientSnapshotsCaptured <= 0
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `MPF fork authentication left an unsafe mutable closure: live=${captured.transientLiveNodes.toString()},dirty=${captured.transientDirtyNodes.toString()},snapshots=${captured.transientSnapshotsCaptured.toString()}`,
-                ),
-              );
-            }
-            if (
-              Buffer.from(artifact.candidateRoot).toString("hex") !==
-              result.finalUtxosRoot
-            ) {
-              return yield* Effect.fail(
-                new Error("Parked MPF candidate root does not match the build"),
-              );
-            }
-            return {
-              durationMs: flatCompileMs + parkMs,
-              flatCompileMs,
-              parkMs,
-              levelBatchWritesBefore: writesBefore,
-              levelBatchWritesAfter: captured.levelBatchWrites,
-              authenticatedSnapshots: captured.transientSnapshotsCaptured,
-              retainedSnapshotAuthentications:
-                captured.retainedSnapshotAuthentications,
-              retainedSnapshotAuthenticationMs:
-                captured.retainedSnapshotAuthenticationMs,
-              transientLiveNodesAfter: captured.transientLiveNodes,
-              transientDirtyNodesAfter: captured.transientDirtyNodes,
-              flatMultiproof: {
-                rootHash: flatMultiproof.rootHash.toString("hex"),
-                nodeCount: flatMultiproof.nodeCount,
-                leafCount: flatMultiproof.leafCount,
-                branchCount: flatMultiproof.branchCount,
-                estimatedBytes: flatMultiproof.estimatedBytes,
-              },
-              parkedArtifact: {
-                nodeCount: artifact.nodeCount,
-                encodedBytes: artifact.encodedBytes,
-                baseRoot: Buffer.from(artifact.baseRoot).toString("hex"),
-                candidateRoot: Buffer.from(artifact.candidateRoot).toString(
-                  "hex",
-                ),
-              },
-            };
-          })
-        : undefined;
-    if (captureAuthenticationBoundary === undefined) yield* ledger.close();
-    if (levelFixturePath.length > 0 && !keepLevelFixture) {
-      yield* deleteMpfStore(levelFixturePath, "mpf-engine-probe-fixture");
-    }
-    const rootWorkerMetrics = mpfRootWorkerMetrics();
+    yield* Effect.promise(() => owner.discard(handle));
+    const after = yield* Effect.promise(() => owner.diagnostics());
+    yield* Effect.promise(() => owner.close());
     closeMpfRootWorkers();
-    return {
+    const artifact = {
+      engine: "architecture_g",
       transactionCount,
       initialUtxoCount,
-      collapsedInitialView:
-        process.env.MPF_ENGINE_PROBE_COLLAPSE_INITIAL === "true",
-      levelBackedInitialView: levelFixturePath.length > 0,
-      reusedLevelFixture: reuseLevelFixture,
-      ledgerOpCount: transactionCount * 2,
-      durationMs,
-      buildPlusCaptureMs:
-        durationMs + (captureAuthenticationBoundary?.durationMs ?? 0),
-      utxoRoot: result.finalUtxosRoot,
+      workloadSha256: workloadSha256(
+        architectureSourceEvents,
+        architectureTransactionOps,
+      ),
+      canonicalCorpusSlice:
+        canonicalSlice === undefined
+          ? null
+          : {
+              path: canonicalSlice.path,
+              sha256: canonicalSlice.sha256,
+              rowCount: canonicalSlice.transactionOps.length,
+            },
+      canonicalFunding:
+        canonicalFunding === undefined
+          ? null
+          : {
+              path: canonicalFunding.path,
+              sha256: canonicalFunding.sha256,
+              entryCount: canonicalFunding.entries.size,
+            },
+      levelBackedInitialView: true,
+      reusedLevelFixture: true,
+      ledgerOpCount: architectureSourceEvents.reduce(
+        (total, event) => total + event.ledgerOps.length,
+        0,
+      ),
+      startupMs,
+      durationMs: result.durationMs,
+      buildPlusCaptureMs: result.durationMs,
+      phaseMs: result.phaseMs,
+      utxoRoot: result.utxoRoot,
+      rawTxRoot: result.rawTxRoot,
+      txRoot: result.txRoot,
       transitionTraceRoot: result.transitionTraceRoot,
       eventToStepRoot: result.eventToStepRoot,
-      pathHydration: result.pathHydration,
-      branchHashDiagnostics,
-      branchHashDiagnosticsEnabled,
+      depositsRoot: result.depositsRoot,
+      withdrawalsRoot: result.withdrawalsRoot,
+      forcedTransactionsRoot: result.forcedTransactionsRoot,
+      transitionRoots: result.transitionRoots,
+      nativePhaseMs: result.transitionTraceBuild.nativePhaseMs,
+      pathHydration: result.transitionTraceBuild.pathHydration,
       confirmedLedgerFullScans:
         confirmedLedgerScansAfter.count - confirmedLedgerScansBefore.count,
-      diagnostics,
-      captureAuthenticationBoundary,
-      rootWorkerMetrics,
+      binarySha256,
+      cpuAffinity,
+      ownerBefore: before,
+      ownerAfter: after,
+      probePath,
+      probeSha256,
     };
+    return validateArchitectureGRootProbeResult({
+      value: artifact,
+      expectedTransactionCount: transactionCount,
+      expectedInitialUtxoCount: initialUtxoCount,
+      expectedProbePath: probePath,
+      expectedProbeSha256: probeSha256,
+    });
   }),
 ).then(
   (result) =>

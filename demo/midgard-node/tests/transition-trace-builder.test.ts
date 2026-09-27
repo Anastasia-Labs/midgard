@@ -27,7 +27,7 @@ import {
 } from "./helpers/transition-fixtures.js";
 
 const TRACE_PERSIST_DB = `test-transition-trace-builder-${process.pid}`;
-const TRACE_LEGACY_DB = `${TRACE_PERSIST_DB}-legacy`;
+const TRACE_DIRECT_DB = `${TRACE_PERSIST_DB}-direct`;
 const TRACE_OVERLAY_DB = `${TRACE_PERSIST_DB}-overlay`;
 
 const outRef = (byte: number) => Buffer.from([byte]);
@@ -248,13 +248,13 @@ const expectIncrementalTraceMatchesSnapshot = ({
 
 beforeAll(async () => {
   await Effect.runPromise(deleteMpfStore(TRACE_PERSIST_DB, "transition-trace"));
-  await Effect.runPromise(deleteMpfStore(TRACE_LEGACY_DB, "trace-legacy"));
+  await Effect.runPromise(deleteMpfStore(TRACE_DIRECT_DB, "trace-direct"));
   await Effect.runPromise(deleteMpfStore(TRACE_OVERLAY_DB, "trace-overlay"));
 });
 
 afterAll(async () => {
   await Effect.runPromise(deleteMpfStore(TRACE_PERSIST_DB, "transition-trace"));
-  await Effect.runPromise(deleteMpfStore(TRACE_LEGACY_DB, "trace-legacy"));
+  await Effect.runPromise(deleteMpfStore(TRACE_DIRECT_DB, "trace-direct"));
   await Effect.runPromise(deleteMpfStore(TRACE_OVERLAY_DB, "trace-overlay"));
 });
 
@@ -334,7 +334,7 @@ describe("transition trace builder", () => {
   );
 
   it.effect(
-    "replays every transition step with byte-identical legacy and overlay roots",
+    "replays every transition step with byte-identical direct and overlay store roots",
     () =>
       Effect.gen(function* () {
         const initialUtxos = [initialUtxo(10), initialUtxo(20)];
@@ -360,21 +360,21 @@ describe("transition trace builder", () => {
           key: entry.outref,
           value: entry.output,
         }));
-        const legacy = yield* MidgardMpf.create(
-          "trace-legacy",
-          TRACE_LEGACY_DB,
+        const direct = yield* MidgardMpf.create(
+          "trace-direct",
+          TRACE_DIRECT_DB,
         );
         const overlay = yield* MidgardMpf.create(
           "trace-overlay",
           TRACE_OVERLAY_DB,
-          { engine: "overlay" },
+          { mode: "overlay" },
         );
-        yield* legacy.applyBatch(initialOps);
+        yield* direct.applyBatch(initialOps);
         yield* overlay.applyBatch(initialOps);
         yield* overlay.beginBlockOverlay();
 
-        const legacyResult = yield* buildTransitionTraceResultFromMpf({
-          ledgerMpf: legacy,
+        const directResult = yield* buildTransitionTraceResultFromMpf({
+          ledgerMpf: direct,
           sourceEvents,
           withdrawalCount: 1,
           forcedTransactionCount: 1,
@@ -390,12 +390,12 @@ describe("transition trace builder", () => {
           depositCount: 1,
         });
 
-        expect(overlayResult.finalUtxosRoot).toBe(legacyResult.finalUtxosRoot);
+        expect(overlayResult.finalUtxosRoot).toBe(directResult.finalUtxosRoot);
         expect(overlayResult.transitionTraceRoot).toBe(
-          legacyResult.transitionTraceRoot,
+          directResult.transitionTraceRoot,
         );
         expect(overlayResult.eventToStepRoot).toBe(
-          legacyResult.eventToStepRoot,
+          directResult.eventToStepRoot,
         );
         expect(
           overlayResult.transitionTraceMembers.map((member) => ({
@@ -403,7 +403,7 @@ describe("transition trace builder", () => {
             post: member.value.post_utxos_root,
           })),
         ).toEqual(
-          legacyResult.transitionTraceMembers.map((member) => ({
+          directResult.transitionTraceMembers.map((member) => ({
             pre: member.value.pre_utxos_root,
             post: member.value.post_utxos_root,
           })),
@@ -412,16 +412,16 @@ describe("transition trace builder", () => {
         yield* overlay.flushBlockOverlay(
           Buffer.from(overlayResult.finalUtxosRoot, "hex"),
         );
-        yield* legacy.close();
+        yield* direct.close();
         yield* overlay.close();
         const reopened = yield* MidgardMpf.create(
           "trace-overlay",
           TRACE_OVERLAY_DB,
         );
-        expect(yield* reopened.rootHex()).toBe(legacyResult.finalUtxosRoot);
+        expect(yield* reopened.rootHex()).toBe(directResult.finalUtxosRoot);
         const proof = yield* reopened.prove(outRef(12));
         expect((yield* reopened.verify(proof, true)).toString("hex")).toBe(
-          legacyResult.finalUtxosRoot,
+          directResult.finalUtxosRoot,
         );
         yield* reopened.close();
       }),

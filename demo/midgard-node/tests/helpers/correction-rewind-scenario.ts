@@ -867,10 +867,7 @@ export const openCorrectionRewindScenario = async ({
     };
     /** One correction-fiber tick. A refusal is rethrown with its full cause
      * chain, the same text the fiber logs. */
-    const tick = async (
-      globals: Globals,
-      options: { readonly rewindThroughHistoryOwner?: boolean } = {},
-    ) => {
+    const tick = async (globals: Globals) => {
       const exit = await Effect.runPromiseExit(
         reconcileStateQueueCorrections({
           source,
@@ -878,9 +875,6 @@ export const openCorrectionRewindScenario = async ({
           stateQueuePolicyId: fixture.contracts.stateQueue.policyId,
           requiredFinalityDepth,
           deploymentManifest: identity.manifest,
-          ledgerDeltaLogMax:
-            h.production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-          rewindThroughHistoryOwner: options.rewindThroughHistoryOwner ?? true,
         }).pipe(
           Effect.provideService(Globals, globals),
           Effect.provide(Database.layer),

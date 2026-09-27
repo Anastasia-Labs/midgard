@@ -351,9 +351,6 @@ const observeMerges = async (
         stateQueuePolicyId: h.fixture.contracts.stateQueue.policyId,
         requiredFinalityDepth: scenario.requiredFinalityDepth,
         deploymentManifest: identity.manifest,
-        ledgerDeltaLogMax:
-          h.production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-        rewindThroughHistoryOwner: true,
       }).pipe(
         Effect.provideService(Globals, h.globals),
         Effect.provide(Database.layer),

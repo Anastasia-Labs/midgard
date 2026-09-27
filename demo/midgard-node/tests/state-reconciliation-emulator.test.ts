@@ -31,11 +31,12 @@ import {
   SqlClient,
   stateQueueFetchConfig,
   submitDepositWithDiagnostics,
+  withUnownedNativeOwnerStopped,
 } from "./deposit-flow-emulator-shared.js";
 
 /**
  * The reconciliation command against a real node pipeline: Lucid emulator L1,
- * the worker's Postgres shard, and the legacy MPF LevelDB. A committed,
+ * the worker's Postgres shard, and the native owner's LevelDB. A committed,
  * locally finalized deposit block must reconcile clean; one introduced SQL or
  * native inconsistency at a time must fail the check that compares it.
  */
@@ -398,8 +399,10 @@ describe.sequential(
       // Native root: a divergent persisted marker. The native root is the one
       // value both native-root (against SQL) and state-queue-tail-root (against
       // L1) compare, so exactly those two fail.
-      const nativeReport = await withNativeRootMarker("ab".repeat(32), () =>
-        reconcile(harness),
+      // The native owner holds its LevelDB lock, so it is stopped for the
+      // edit and restarted on the restored store.
+      const nativeReport = await withUnownedNativeOwnerStopped(harness, () =>
+        withNativeRootMarker("ab".repeat(32), () => reconcile(harness)),
       );
       expectStatuses(
         nativeReport,

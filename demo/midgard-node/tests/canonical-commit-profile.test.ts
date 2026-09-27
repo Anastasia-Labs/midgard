@@ -182,27 +182,25 @@ vi.mock("../src/mpf/index.js", async () => {
   const actual = await vi.importActual<typeof import("../src/mpf/index.js")>(
     "../src/mpf/index.js",
   );
-  const fakeMpf = {
-    close: vi.fn(() => Effect.void),
-    rootHex: vi.fn(() => Effect.succeed("33".repeat(32))),
-    rootIsEmpty: vi.fn(() => Effect.succeed(true)),
-    resetToEmpty: vi.fn(() => Effect.void),
-  };
   return {
     ...actual,
     configureCommitMpfRuntime: vi.fn(() => Effect.void),
-    makeMpfs: Effect.succeed({ ledgerMpf: fakeMpf, transactionsMpf: fakeMpf }),
     processMpfs: vi.fn(() =>
       Effect.fail(new Error("stop at processMpfs observation point")),
     ),
-    withMpfRootTransactions: vi.fn(
-      (
-        _mpfs: readonly unknown[],
-        effect: Effect.Effect<unknown, unknown, unknown>,
-      ) => effect,
-    ),
   };
 });
+
+// The worker forks the Architecture G owner's root before it processes the
+// block; a stub port client stands in for the owner process.
+vi.mock("../src/services/mpf-native-owner/client.js", () => ({
+  NativeMpfWorkerPortClient: class {
+    fork = vi.fn(async () => 1);
+    discard = vi.fn(async () => undefined);
+    retainForJournal = vi.fn(async () => undefined);
+    close = vi.fn();
+  },
+}));
 
 const HEADER_HASH = "11".repeat(28);
 const forcedValidationSlotConfig = {
@@ -389,7 +387,6 @@ describe("canonical V1 commit profile", () => {
 
   it("fails closed without worker slot mapping and passes the node mapping to processMpfs", async () => {
     const nodeConfig = {
-      MPF_ENGINE: "legacy",
       MPF_PAYLOAD_ROOT_CHECK: "off",
       MPF_RECORD_CORPUS: "",
       MEMPOOL_RETRIEVE_PAGE_SIZE: 100,
@@ -441,7 +438,13 @@ describe("canonical V1 commit profile", () => {
       );
 
     vi.mocked(processMpfs).mockClear();
+    const nativeMpf = {
+      port: {} as MessagePort,
+      durableRoot: "33".repeat(32),
+      ownerBinarySha256: "ab".repeat(32),
+    };
     const missingConfigOutcome = await runWorker({
+      nativeMpf,
       data: {
         ...workerInput.data,
         speculativeBuild,
@@ -458,6 +461,7 @@ describe("canonical V1 commit profile", () => {
 
     vi.mocked(processMpfs).mockClear();
     const suppliedConfigOutcome = await runWorker({
+      nativeMpf,
       data: { ...workerInput.data, speculativeBuild },
     } as never);
     expect(suppliedConfigOutcome._tag).toBe("Left");

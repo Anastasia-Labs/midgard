@@ -153,10 +153,7 @@ import {
   MempoolLedgerCache,
 } from "../src/services/mempool-ledger-cache.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
-import {
-  reincludeFinalizedStateQueueCorrectionTransition,
-  restoreRetractedStateQueueCorrectionTransition,
-} from "../src/services/state-queue-correction-recovery.js";
+import { reincludeStateQueueCorrectedBlocks } from "../src/services/state-queue-correction-recovery.js";
 import {
   ValidationPool,
   type ValidationPoolService,
@@ -4889,17 +4886,17 @@ describe("PendingBlockFinalizationsDB", () => {
   } as const;
 
   it.effect(
-    "journals correction classification and makes apply/retraction idempotent",
+    "journals correction classification and makes reinclusion idempotent",
     () =>
       isolatedDb(
         Effect.gen(function* () {
           yield* WithdrawalsDB.clear;
           const transition = externalTimeoutTransition({ terminal: true });
-          const authority = {
-            expectedDeploymentIdentityDigest:
-              transition.deploymentIdentityDigest,
-            requiredFinalityDepth: 2160n,
-          };
+          const removed = transition.removedHeaderHashes.map((headerHash) => ({
+            headerHash,
+            transitionDigest: transition.transitionDigest,
+            kind: "removed" as const,
+          }));
           const header = Buffer.from(transition.removedHeaderHashes[0]!, "hex");
           const initial = makeHistoryWithdrawalEntry();
           const assignment = {
@@ -4939,10 +4936,8 @@ describe("PendingBlockFinalizationsDB", () => {
             header,
           );
           expect(
-            (yield* reincludeFinalizedStateQueueCorrectionTransition(
-              transition,
-              authority,
-            ))[0]!.reopenedEvents,
+            (yield* reincludeStateQueueCorrectedBlocks(removed))[0]!
+              .reopenedEvents,
           ).toBe(1);
           const replacement = {
             ...assignment,
@@ -4953,38 +4948,14 @@ describe("PendingBlockFinalizationsDB", () => {
           };
           yield* WithdrawalsDB.setSettlementInfoForEventIds([replacement]);
           expect(
-            (yield* reincludeFinalizedStateQueueCorrectionTransition(
-              transition,
-              authority,
-            ))[0]!.reopenedEvents,
+            (yield* reincludeStateQueueCorrectedBlocks(removed))[0]!
+              .reopenedEvents,
           ).toBe(0);
-          let row = Option.getOrThrow(
+          const row = Option.getOrThrow(
             yield* WithdrawalsDB.retrieveByEventId(assignment.eventId),
           );
           expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toEqual(
             replacement.settlementEventInfo,
-          );
-          expect(
-            (yield* restoreRetractedStateQueueCorrectionTransition(
-              transition,
-              authority,
-            ))[0]!.restoredCanonicalBlock,
-          ).toBe(true);
-          expect(
-            (yield* restoreRetractedStateQueueCorrectionTransition(
-              transition,
-              authority,
-            ))[0]!.restoredCanonicalBlock,
-          ).toBe(false);
-          row = Option.getOrThrow(
-            yield* WithdrawalsDB.retrieveByEventId(assignment.eventId),
-          );
-          expect(row[WithdrawalsDB.Columns.CLASSIFICATION_REVISION]).toBe(2);
-          expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toEqual(
-            assignment.settlementEventInfo,
-          );
-          expect(row[WithdrawalsDB.Columns.VALIDITY_DETAIL]).toEqual(
-            assignment.validityDetail,
           );
           const sql = yield* SqlClient.SqlClient;
           yield* sql`UPDATE pending_block_finalization_withdrawals SET validity_detail = '{"tampered":true}'::jsonb WHERE header_hash = ${header}`;

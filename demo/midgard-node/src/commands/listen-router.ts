@@ -1617,22 +1617,18 @@ const getReadinessHandler = Effect.gen(function* () {
   }
   const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
   const nativeMpfDiagnostics =
-    nodeConfig.MPF_ENGINE !== "architecture_g"
+    nativeMpfOwner === undefined
       ? undefined
-      : nativeMpfOwner === undefined
-        ? undefined
-        : yield* Effect.either(
-            Effect.tryPromise({
-              try: () => nativeMpfOwner.diagnostics(),
-              catch: (cause) => cause,
-            }),
-          );
-  if (nodeConfig.MPF_ENGINE === "architecture_g") {
-    if (nativeMpfOwner === undefined) {
-      reasons.push("native_mpf_owner_unavailable");
-    } else if (nativeMpfDiagnostics?._tag === "Left") {
-      reasons.push("native_mpf_owner_unhealthy");
-    }
+      : yield* Effect.either(
+          Effect.tryPromise({
+            try: () => nativeMpfOwner.diagnostics(),
+            catch: (cause) => cause,
+          }),
+        );
+  if (nativeMpfOwner === undefined) {
+    reasons.push("native_mpf_owner_unavailable");
+  } else if (nativeMpfDiagnostics?._tag === "Left") {
+    reasons.push("native_mpf_owner_unhealthy");
   }
   if (!providerProbe.healthy) {
     reasons.push("provider_query_unhealthy:l1-provider");

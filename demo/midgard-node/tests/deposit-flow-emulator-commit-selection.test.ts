@@ -9,6 +9,7 @@ import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
   alignCommitSchedulerBeforeTestWorker,
+  attestQueuedStateQueueHeader,
   buildTransferTx,
   canonicalSlotConfigForLucid,
   CML,
@@ -35,13 +36,10 @@ import {
   initializeNodeRuntime,
   initializeProtocol,
   Ledger,
-  LedgerUtils,
   makeFixture,
   makeGlobalsService,
   makeLucidRuntimeService,
-  makeMidgardTxOutput,
   makeNodeConfigForFixture,
-  makeOutRefCbor,
   materializeConfirmedLedgerSnapshot,
   MempoolDB,
   MempoolLedgerDB,
@@ -59,10 +57,12 @@ import {
   retainAndAttestSubmittedHeader,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
+  runLocalFinalizationRecoveryWorker,
   runNodeDatabaseEffect,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   runSpeculativeWorkerWithInstruction,
+  runUnownedNativeCommit,
   SDK,
   type SpeculativeCandidateSummary,
   type SpeculativeCommitWorkerInstruction,
@@ -96,7 +96,6 @@ describe.sequential("deposit flow emulator", () => {
         ...baseNodeConfig,
         MPF_PAYLOAD_ROOT_CHECK: payloadRootCheck,
         MPF_RECORD_CORPUS: "",
-        MPF_ENGINE: "overlay",
         COMMIT_MAX_L2_TX_COUNT: 1,
         MIN_FEE_A: 0n,
         MIN_FEE_B: 0n,
@@ -197,19 +196,26 @@ describe.sequential("deposit flow emulator", () => {
       );
       let controlCandidate: SpeculativeCandidateSummary | undefined;
       const controlOutput = await Effect.runPromise(
-        commitWorkerProgram(
+        runUnownedNativeCommit(
           fixture.contracts,
           lucidService,
-          controlWorkerInput,
-          (candidate) => {
-            controlCandidate = candidate;
-            return Effect.succeed({
-              type: "InvalidateSpeculativeCandidate",
-              reason: "T1",
-            } satisfies SpeculativeCommitWorkerInstruction);
-          },
           nodeConfig,
-          () => Effect.succeed(lucidService as any),
+          controlWorkerInput,
+          (nativeInput) =>
+            commitWorkerProgram(
+              fixture.contracts,
+              lucidService,
+              nativeInput,
+              (candidate) => {
+                controlCandidate = candidate;
+                return Effect.succeed({
+                  type: "InvalidateSpeculativeCandidate",
+                  reason: "T1",
+                } satisfies SpeculativeCommitWorkerInstruction);
+              },
+              nodeConfig,
+              () => Effect.succeed(lucidService as any),
+            ),
         ).pipe(
           Effect.provideService(
             ContractDeploymentIdentity,
@@ -509,58 +515,74 @@ describe.sequential("deposit flow emulator", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date(fixture.emulator.now()));
 
-      const sender = walletFromSeed(
-        "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart",
-        { network: "Preprod" },
+      // Eight real deposits give the backlog eight independent L2 UTxOs in the
+      // committed ledger; the native owner admits no configured genesis that
+      // differs from the committed state-queue root.
+      const globals = await makeGlobalsService();
+      const nodeConfig = await makeNodeConfigForFixture(fixture);
+      for (let index = 0; index < 8; index += 1) {
+        await submitDepositAndRefreshBarriers({
+          fixture,
+          lucidService,
+          globals,
+          lovelace: 10_000_000n,
+        });
+      }
+      const fundingCommit = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: await fetchLatestCommittedBlock(
+          fixture.operatorLucid,
+          fixture.contracts,
+        ),
+        nodeConfig,
+      });
+      await fixture.operatorLucid.awaitTx(fundingCommit.submittedTxHash);
+      await runBlockConfirmation(globals, fixture.contracts, lucidService);
+      const fundingRecovery = await runLocalFinalizationRecoveryWorker(
+        globals,
+        fixture.contracts,
+        lucidService,
+      );
+      expect(fundingRecovery.type).toBe(
+        "SuccessfulLocalFinalizationRecoveryOutput",
+      );
+      await attestQueuedStateQueueHeader({
+        fixture,
+        lucidService,
+        globals,
+        headerHash: fundingCommit.submittedHeaderHash,
+      });
+      await advanceEmulatorPastUnixTime(fixture, fundingCommit.blockEndTimeMs);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      const senderAddress = await fixture.depositorLucid.wallet().address();
+      const senderSigner = CML.PrivateKey.from_bech32(
+        walletFromSeed(fixture.depositorAccount.seedPhrase, {
+          network: "Custom",
+        }).paymentKey,
       );
       const destination = walletFromSeed(
         "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
         { network: "Preprod" },
       );
-      const sourceUtxos: NodeUtxo[] = [];
-      const sourceLedger: LedgerUtils.Entry[] = [];
-      for (let index = 0; index < 8; index += 1) {
-        const txHash = (index + 1).toString(16).padStart(64, "0");
-        const outrefCbor = makeOutRefCbor(txHash, 0);
-        const outputCbor = Buffer.from(
-          makeMidgardTxOutput(
-            CML.Address.from_bech32(sender.address),
-            CML.Value.from_coin(10_000_000n),
-          ).to_cbor_bytes(),
-        );
-        sourceUtxos.push({
-          txHash,
-          outputIndex: 0,
-          outrefCbor,
-          outputCbor,
-          address: sender.address,
-          assets: { lovelace: 10_000_000n },
-        });
-        sourceLedger.push({
-          [LedgerUtils.Columns.TX_ID]: Buffer.from(txHash, "hex"),
-          [LedgerUtils.Columns.OUTREF]: outrefCbor,
-          [LedgerUtils.Columns.OUTPUT]: outputCbor,
-          [LedgerUtils.Columns.ADDRESS]: sender.address,
-        });
-      }
-      const baseNodeConfig = await makeNodeConfigForFixture(fixture);
-      const nodeConfig: NodeConfigDep = {
-        ...baseNodeConfig,
-        GENESIS_UTXOS: sourceUtxos.map(
-          ({ txHash, outputIndex, address, assets }) => ({
-            txHash,
-            outputIndex,
-            address,
-            assets,
-          }),
-        ),
-      };
+      const sourceUtxos: NodeUtxo[] = (
+        await runNodeDatabaseEffect(
+          MempoolLedgerDB.retrieveByAddress(senderAddress),
+        )
+      ).map((entry) =>
+        decodeNodeUtxo({
+          outref: entry[Ledger.Columns.OUTREF].toString("hex"),
+          outputCbor: entry[Ledger.Columns.OUTPUT].toString("hex"),
+        }),
+      );
+      expect(sourceUtxos).toHaveLength(8);
       const built = await Promise.all(
         sourceUtxos.map((source) =>
           buildTransferTx({
-            senderAddress: sender.address,
+            senderAddress,
             destinationAddress: destination.address,
-            signer: CML.PrivateKey.from_bech32(sender.paymentKey),
+            signer: senderSigner,
             selectedInputs: [source],
             requestedAssets: { lovelace: 1_000_000n },
             networkId: 0n,
@@ -652,7 +674,6 @@ describe.sequential("deposit flow emulator", () => {
               }),
             { concurrency: 1 },
           );
-          yield* MempoolLedgerDB.insert(sourceLedger);
           yield* withHistoryWrite(
             sql.withTransaction(MempoolDB.insertMultipleCore(processed)),
           );
@@ -709,10 +730,8 @@ describe.sequential("deposit flow emulator", () => {
   it.each([true, false])(
     "builds N+1 before N confirmation and requires scheduler headroom on the direct wake path (aligned: %s)",
     async (alignScheduler) => {
-      const previousMpfEngine = process.env.MPF_ENGINE;
       const previousSpeculativeCommitBuild =
         process.env.SPECULATIVE_COMMIT_BUILD;
-      process.env.MPF_ENGINE = "overlay";
       process.env.SPECULATIVE_COMMIT_BUILD = "true";
       try {
         await resetActiveRuntimePaths();
@@ -931,8 +950,6 @@ describe.sequential("deposit flow emulator", () => {
           submittedCandidateDeposit?.[DepositsDB.Columns.PROJECTED_HEADER_HASH],
         ).toBeNull();
       } finally {
-        if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
-        else process.env.MPF_ENGINE = previousMpfEngine;
         if (previousSpeculativeCommitBuild === undefined) {
           delete process.env.SPECULATIVE_COMMIT_BUILD;
         } else {

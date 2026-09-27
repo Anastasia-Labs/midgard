@@ -286,8 +286,6 @@ it("restarts the production native initializer after withdrawal empties an unmer
           GENESIS_UTXOS: [sentinel],
         }),
       );
-      if (restarted === undefined)
-        throw new Error("Expected restarted native owner");
       replacements.push(restarted);
       expect((await restarted.diagnostics()).durableRoot).toBe(
         SDK.EMPTY_MERKLE_TREE_ROOT,

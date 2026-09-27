@@ -9,7 +9,7 @@ Documentation check: 2026-09-07 (retained runner paths and package commands;
 no benchmark or live acceptance rerun).
 
 This is the formal live-soak closure gate for Throughput Phase 3. It observes
-one already initialized, production-shaped `MPF_ENGINE=architecture_g`
+one already initialized, production-shaped Architecture G
 deployment while the canonical L2 workload runs for exactly 86,400 measured
 seconds at exactly 5,000 offered and accepted-target TPS. The wrapper pins the
 achieved-rate policy to offered rate `>= 4,900/s` (98%), accepted rate
@@ -107,7 +107,7 @@ changed client, replaced socket, or changed daemon fails closed.
 Using only that client/daemon, the runner invokes `docker inspect` on the exact
 64-hex `nodeContainerId` in the SHA-bound Phase 1 artifact, requires the
 inspected ID and immutable image ID to match Phase 1, requires a running,
-healthy `MPF_ENGINE=architecture_g` runtime, and takes only its inspected
+healthy node runtime, and takes only its inspected
 `State.Pid` as the host PID. It proves that the exact readiness and metrics
 loopback URLs are unique published TCP ports of that same container and that
 its Docker healthcheck names `/readyz`. Every `/proc` identity capture reads

@@ -1,5 +1,5 @@
 /**
- * Opening the MPF stores and hydrating the ledger trie from confirmed ledger entries.
+ * Ledger trie hydration, ledger roots and transaction-root values from ledger entries.
  */
 
 import { encodeMidgardTxOutput, outRefToCbor } from "@al-ft/lucid-midgard";
@@ -21,15 +21,9 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import * as FS from "fs";
 
-import * as ConfirmedLedgerDB from "../database/confirmedLedger.js";
-import * as MempoolLedgerDB from "../database/mempoolLedger.js";
-import * as MpfEngineStateDB from "../database/mpfEngineState.js";
-import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
-import { Database, NodeConfig } from "../services/index.js";
 import { FileSystemError } from "../utils.js";
 import { keyValuePhasRoot } from "../workers/utils/mpf/phas.js";
-import { configureCommitMpfRuntime } from "./engine-config.js";
 import { MpfError } from "./errors.js";
 import {
   ledgerEntryToInsertBatchOp,
@@ -71,78 +65,6 @@ export const encodeTransactionRootValue = (
   );
 };
 
-export const makeMpfs: Effect.Effect<
-  { ledgerMpf: MidgardMpf; transactionsMpf: MidgardMpf },
-  DatabaseError | MpfError,
-  Database | NodeConfig
-> = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  if (nodeConfig.MPF_ENGINE === "architecture_g") {
-    return yield* Effect.fail(
-      MpfError.create(
-        "architecture-g-owner",
-        new Error(
-          "Architecture G ledger ownership must be supplied by the main-process native owner; refusing to open its Level path in a commit worker",
-        ),
-      ),
-    );
-  }
-  yield* configureCommitMpfRuntime(nodeConfig);
-  const transactionsMpf = yield* MidgardMpf.create(
-    "transactions",
-    nodeConfig.TRANSACTIONS_MPF_DB_PATH,
-    {
-      engine: nodeConfig.MPF_ENGINE,
-      spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
-    },
-  );
-  const ledgerMpf = yield* MidgardMpf.create(
-    "ledger",
-    nodeConfig.LEDGER_MPF_DB_PATH,
-    {
-      engine: nodeConfig.MPF_ENGINE,
-      spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
-    },
-  );
-  const ledgerRootIsEmpty = yield* ledgerMpf.rootIsEmpty();
-  if (ledgerRootIsEmpty) {
-    yield* Effect.logInfo(
-      "🔹 No previous ledger MPF root found - inserting genesis utxos",
-    );
-    const genesisEntries = yield* Effect.forEach(
-      nodeConfig.GENESIS_UTXOS,
-      (u: UTxO) =>
-        utxoToLedgerInsertMaterial(u).pipe(
-          Effect.mapError((e) => MpfError.rootBuild("ledger genesis", e)),
-          Effect.map(({ ledgerOp, outputCbor }) => ({
-            op: ledgerOp,
-            ledgerEntry: {
-              [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(u.txHash, "hex"),
-              [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
-              [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
-              [MempoolLedgerDB.Columns.ADDRESS]: u.address,
-              [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
-            } satisfies MempoolLedgerDB.EntryNoTimeStamp,
-          })),
-        ),
-    );
-    yield* MempoolLedgerDB.insert(
-      genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
-    );
-    const ops = genesisEntries.map(({ op }) => op);
-    yield* ledgerMpf.applyBatch(ops);
-    const rootAfterGenesis = yield* ledgerMpf.rootHex();
-    yield* Effect.logInfo(
-      `🔹 New ledger MPF root after inserting genesis utxos: ${rootAfterGenesis}`,
-    );
-  }
-  yield* MpfEngineStateDB.stampLedgerMigration(yield* ledgerMpf.rootHex());
-  return {
-    ledgerMpf,
-    transactionsMpf,
-  };
-});
-
 export const computeLedgerMpfRootFromLedgerEntries = (
   entries: readonly Ledger.MinimalEntry[],
 ): Effect.Effect<string, MpfError> =>
@@ -172,75 +94,6 @@ export const hydrateLedgerMpfFromLedgerEntries = (
     yield* ledgerMpf.applyBatch(ops);
     return yield* ledgerMpf.rootHex();
   });
-
-export const synchronizeCommitMpfStoresFromLedgerEntries = (
-  entries: readonly Ledger.MinimalEntry[],
-): Effect.Effect<
-  {
-    readonly ledgerEntryCount: number;
-    readonly ledgerRoot: string;
-    readonly transactionsRoot: string;
-  },
-  MpfError,
-  NodeConfig
-> =>
-  Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfig;
-    if (nodeConfig.MPF_ENGINE === "architecture_g") {
-      return yield* Effect.fail(
-        MpfError.create(
-          "architecture-g-owner",
-          new Error(
-            "Architecture G ledger ownership belongs to the live native owner; refusing to reopen its LevelDB path for persistent-store synchronization",
-          ),
-        ),
-      );
-    }
-    const ledgerMpf = yield* MidgardMpf.create(
-      "ledger",
-      nodeConfig.LEDGER_MPF_DB_PATH,
-    );
-    const transactionsMpf = yield* MidgardMpf.create(
-      "transactions",
-      nodeConfig.TRANSACTIONS_MPF_DB_PATH,
-    );
-    const closeMpfs = Effect.all(
-      [
-        ledgerMpf.close().pipe(Effect.catchAll(() => Effect.void)),
-        transactionsMpf.close().pipe(Effect.catchAll(() => Effect.void)),
-      ],
-      { discard: true },
-    );
-    return yield* Effect.gen(function* () {
-      const ledgerRoot = yield* hydrateLedgerMpfFromLedgerEntries(
-        ledgerMpf,
-        entries,
-      );
-      yield* transactionsMpf.resetToEmpty();
-      const transactionsRoot = yield* transactionsMpf.rootHex();
-      yield* Effect.logInfo(
-        `Synchronized commit MPF stores from confirmed ledger: ledger_entries=${entries.length.toString()},ledger_root=${ledgerRoot},transactions_root=${transactionsRoot}`,
-      );
-      return {
-        ledgerEntryCount: entries.length,
-        ledgerRoot,
-        transactionsRoot,
-      };
-    }).pipe(Effect.ensuring(closeMpfs));
-  });
-
-export const synchronizeCommitMpfStoresFromConfirmedLedger: Effect.Effect<
-  {
-    readonly ledgerEntryCount: number;
-    readonly ledgerRoot: string;
-    readonly transactionsRoot: string;
-  },
-  DatabaseError | MpfError,
-  Database | NodeConfig
-> = Effect.gen(function* () {
-  const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
-  return yield* synchronizeCommitMpfStoresFromLedgerEntries(confirmedEntries);
-});
 
 export const utxoToLedgerInsertMaterial = (
   utxo: UTxO,

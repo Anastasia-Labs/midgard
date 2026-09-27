@@ -18,7 +18,6 @@ import {
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
 } from "../src/fibers/block-commitment.js";
-import { MidgardMpf, withMpfRootTransactions } from "../src/mpf/index.js";
 import {
   HISTORY_COMMIT_LANDING_MARGIN_MS,
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
@@ -60,54 +59,6 @@ const dueWork = {
 
 const confirmedRecoveryBlock = {} as SerializedStateQueueUTxO;
 
-/**
- * Runs a scratch MPF mutation inside the production root-transaction wrapper
- * and reports, through real MPF roots, whether the mutation survived.
- */
-const runRootTransaction = (output: WorkerOutput) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const ledgerMpf = yield* MidgardMpf.createScratch("ledger");
-      const transactionsMpf = yield* MidgardMpf.createScratch("transactions");
-      const beforeLedgerRoot = yield* ledgerMpf.rootHex();
-      const beforeTransactionsRoot = yield* transactionsMpf.rootHex();
-      const result = yield* withMpfRootTransactions(
-        [ledgerMpf, transactionsMpf],
-        Effect.gen(function* () {
-          yield* ledgerMpf.applyBatch([
-            {
-              type: "insert",
-              key: Buffer.from("01", "hex"),
-              value: Buffer.from("aa", "hex"),
-            },
-          ]);
-          yield* transactionsMpf.applyBatch([
-            {
-              type: "insert",
-              key: Buffer.from("02", "hex"),
-              value: Buffer.from("bb", "hex"),
-            },
-          ]);
-          return output;
-        }),
-        shouldPreserveCommitMpfRoots,
-      );
-      return {
-        result,
-        ledgerKept: (yield* ledgerMpf.rootHex()) !== beforeLedgerRoot,
-        transactionsKept:
-          (yield* transactionsMpf.rootHex()) !== beforeTransactionsRoot,
-      };
-    }),
-  );
-
-/**
- * The gates below are asserted as pure decisions. That the commit fiber
- * actually consults them *before* taking the state-queue mutation lease is
- * asserted behaviourally in
- * `tests/block-commitment-provider-evidence-preflight.test.ts`, by running
- * `blockCommitmentAction` and observing that the lease store is never touched.
- */
 describe("commit block worker output handling", () => {
   it("materializes worker pre-ingestion scheduler due-work as normal worker output", () => {
     expect(
@@ -316,12 +267,13 @@ describe("commit block worker output handling", () => {
   /**
    * One case per worker-output type, keyed by the type itself: the `Record`
    * over `WorkerOutput["type"]` stops compiling when an output type is added
-   * without deciding here whether it may keep the scratch MPF roots. The
-   * expected value is the output's own meaning -- an output that told L1 (or
-   * the durable database) about the new state must keep the roots, everything
-   * else must roll them back -- not a copy of the production switch.
+   * without deciding here whether its commit effects persist. The expected
+   * value is the output's own meaning -- an output that told L1 (or the
+   * durable database) about the new state persists, and the worker revalidates
+   * its leases before returning it; everything else does not -- not a copy of
+   * the production switch.
    */
-  const ROOT_TRANSACTION_CASES: Record<
+  const COMMIT_PERSISTENCE_CASES: Record<
     WorkerOutput["type"],
     { readonly output: WorkerOutput; readonly preserve: boolean }
   > = {
@@ -421,16 +373,10 @@ describe("commit block worker output handling", () => {
     },
   };
 
-  it.each(Object.entries(ROOT_TRANSACTION_CASES))(
-    "%s keeps or rolls back the scratch MPF roots as its meaning requires",
-    async (_type, { output, preserve }) => {
-      const observed = await runRootTransaction(output);
-
-      expect(observed).toStrictEqual({
-        result: output,
-        ledgerKept: preserve,
-        transactionsKept: preserve,
-      });
+  it.each(Object.entries(COMMIT_PERSISTENCE_CASES))(
+    "%s is classified as persisting its commit effects as its meaning requires",
+    (_type, { output, preserve }) => {
+      expect(shouldPreserveCommitMpfRoots(output)).toBe(preserve);
     },
   );
 });

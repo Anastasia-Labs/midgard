@@ -2,6 +2,7 @@ import { inspect } from "node:util";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { NativeMpfWorkerPortClient } from "../src/services/mpf-native-owner/client.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -45,7 +46,6 @@ import {
   runLocalFinalizationRecoveryWorker,
   runNodeDatabaseEffect,
   runSpeculativeWorkerWithInstruction,
-  runT1RecoveryScenario,
   SDK,
   type SpeculativeCommitWorkerInstruction,
   StateQueueMutationLeasesDB,
@@ -53,24 +53,8 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 
 describe.sequential("deposit flow emulator", () => {
-  it("recovers T1 and matches flag-off database and global state", async () => {
-    const flagOn = await runT1RecoveryScenario(true);
-    const flagOff = await runT1RecoveryScenario(false);
-
-    expect(flagOn.normalizedState).toEqual(flagOff.normalizedState);
-    expect(flagOn.normalizedGlobals).toEqual(flagOff.normalizedGlobals);
-    expect(flagOn.normalizedState.deposits).toHaveLength(2);
-    expect(
-      flagOn.normalizedState.deposits.every(
-        (deposit) => !deposit.hasProjectedHeader,
-      ),
-    ).toBe(true);
-  }, 480_000);
-
   it("keeps T7 restart invalidation memory-only with the submitted base journal intact", async () => {
-    const previousMpfEngine = process.env.MPF_ENGINE;
     const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
-    process.env.MPF_ENGINE = "overlay";
     process.env.SPECULATIVE_COMMIT_BUILD = "true";
     try {
       await resetActiveRuntimePaths();
@@ -140,8 +124,6 @@ describe.sequential("deposit flow emulator", () => {
         ).toBe(blockN.submittedHeaderHash);
       }
     } finally {
-      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
-      else process.env.MPF_ENGINE = previousMpfEngine;
       if (previousSpeculativeCommitBuild === undefined) {
         delete process.env.SPECULATIVE_COMMIT_BUILD;
       } else {
@@ -151,9 +133,7 @@ describe.sequential("deposit flow emulator", () => {
   }, 240_000);
 
   it("invalidates T2 when an independently submitted header advances the confirmed tail", async () => {
-    const previousMpfEngine = process.env.MPF_ENGINE;
     const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
-    process.env.MPF_ENGINE = "overlay";
     process.env.SPECULATIVE_COMMIT_BUILD = "true";
     let t2Phase = "fixture initialization";
     try {
@@ -249,22 +229,20 @@ describe.sequential("deposit flow emulator", () => {
       });
 
       const daPayloadCountBeforeCandidate = await countDaPayloadRows();
-      const resumeSpy = vi.spyOn(MidgardMpf, "resumeParkedOverlay");
-      const resumeEventFlatSpy = vi.spyOn(
-        MidgardMpf,
-        "resumeParkedEventFlatOverlayV1",
-      );
       const discardSpy = vi.spyOn(
-        MidgardMpf.prototype,
-        "discardBlockOverlayIfActive",
+        NativeMpfWorkerPortClient.prototype,
+        "discard",
+      );
+      const retainSpy = vi.spyOn(
+        NativeMpfWorkerPortClient.prototype,
+        "retainForJournal",
       );
       const closeSpy = vi.spyOn(MidgardMpf.prototype, "close");
       let independentlySubmittedHeaderHash = "";
       let independentlySubmittedBlockEndTimeMs = 0;
       let daPayloadCountBeforeT2Decision = -1;
-      let resumeCalls = 0;
-      let resumeEventFlatCalls = 0;
-      let discardInstances: readonly MidgardMpf[] = [];
+      let discardCalls = 0;
+      let retainCalls = 0;
       let closeInstances: readonly MidgardMpf[] = [];
       const speculative = await (async () => {
         try {
@@ -410,35 +388,24 @@ describe.sequential("deposit flow emulator", () => {
               }),
           });
         } finally {
-          resumeCalls = resumeSpy.mock.calls.length;
-          resumeEventFlatCalls = resumeEventFlatSpy.mock.calls.length;
-          discardInstances = [
-            ...(discardSpy.mock.contexts as readonly MidgardMpf[]),
-          ];
+          discardCalls = discardSpy.mock.calls.length;
+          retainCalls = retainSpy.mock.calls.length;
           closeInstances = [
             ...(closeSpy.mock.contexts as readonly MidgardMpf[]),
           ];
-          resumeSpy.mockRestore();
-          resumeEventFlatSpy.mockRestore();
           discardSpy.mockRestore();
+          retainSpy.mockRestore();
           closeSpy.mockRestore();
         }
       })();
-      expect(resumeCalls).toBe(0);
-      expect(resumeEventFlatCalls).toBe(0);
-      expect(discardInstances).toHaveLength(1);
-      expect(discardInstances[0]?.trieName).toBe("ledger");
-      expect(new Set(discardInstances).size).toBe(discardInstances.length);
+      // The invalidated candidate's native generation is discarded, never
+      // retained for a journal, and its scratch transactions trie is closed.
+      expect(discardCalls).toBe(1);
+      expect(retainCalls).toBe(0);
       expect(new Set(closeInstances).size).toBe(closeInstances.length);
-      expect(closeInstances.some((mpf) => mpf.trieName === "ledger")).toBe(
-        true,
-      );
-      expect(
-        closeInstances.some((mpf) => mpf.trieName === "transactions"),
-      ).toBe(true);
       expect(
         closeInstances.some(
-          (mpf) => mpf.trieName === "speculative-transactions",
+          (mpf) => mpf.trieName === "architecture-g-transactions",
         ),
       ).toBe(true);
       expect(independentlySubmittedHeaderHash).not.toBe(
@@ -555,8 +522,6 @@ describe.sequential("deposit flow emulator", () => {
         },
       );
     } finally {
-      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
-      else process.env.MPF_ENGINE = previousMpfEngine;
       if (previousSpeculativeCommitBuild === undefined) {
         delete process.env.SPECULATIVE_COMMIT_BUILD;
       } else {
@@ -566,9 +531,7 @@ describe.sequential("deposit flow emulator", () => {
   }, 300_000);
 
   it("invalidates T3 for a late-visible deposit and includes it on rebuild", async () => {
-    const previousMpfEngine = process.env.MPF_ENGINE;
     const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
-    process.env.MPF_ENGINE = "overlay";
     process.env.SPECULATIVE_COMMIT_BUILD = "true";
     try {
       await resetActiveRuntimePaths();
@@ -719,8 +682,6 @@ describe.sequential("deposit flow emulator", () => {
         ).toBe(true);
       }
     } finally {
-      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
-      else process.env.MPF_ENGINE = previousMpfEngine;
       if (previousSpeculativeCommitBuild === undefined) {
         delete process.env.SPECULATIVE_COMMIT_BUILD;
       } else {

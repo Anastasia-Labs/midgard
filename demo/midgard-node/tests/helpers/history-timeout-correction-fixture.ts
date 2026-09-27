@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import {
   Data,
   type Script,
@@ -9,16 +8,10 @@ import {
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
-import * as Pending from "../../src/database/pendingBlockFinalizations.js";
-import {
-  reconcileStateQueueCorrectionObserver,
-  type StateQueueCorrectionObserverSource,
-  type StateQueueCorrectionObserverState,
-} from "../../src/services/state-queue-correction-observer.js";
-import { reincludeFinalizedStateQueueCorrectionTransition } from "../../src/services/state-queue-correction-recovery.js";
+import { type StateQueueCorrectionObserverSource } from "../../src/services/state-queue-correction-observer.js";
 import type { EmulatorFixture } from "../deposit-flow-emulator-shared.js";
 import { submitHistoryObservation } from "./history-projection-observations.js";
 
@@ -261,120 +254,4 @@ export const prepareTimedOutTailRemoval = async ({
     };
   };
   return { source, submit, previousQueue };
-};
-
-/** Real deployed validators, signed transaction and emulator-confirmed inputs /
- * outputs. Only block/chain-point names and observer transport are synthetic;
- * depth is counted from actual emulator block advancement. This is not live-L1
- * acceptance or a finalized production deployment-manifest fixture. */
-export const correctAcceptedT1BlockAfterTimeout = async ({
-  fixture,
-  targetHeaderHash,
-  requiredFinalityDepth,
-  runDatabase,
-}: {
-  fixture: EmulatorFixture;
-  targetHeaderHash: string;
-  requiredFinalityDepth: bigint;
-  runDatabase: <A, E>(
-    program: Effect.Effect<A, E, SqlClient.SqlClient>,
-  ) => Promise<A>;
-}) => {
-  const { contracts, emulator } = fixture;
-  const pending = Option.getOrThrow(
-    await runDatabase(Pending.retrieveActive()),
-  );
-  expect(pending.header_hash.toString("hex")).toBe(targetHeaderHash);
-  expect(pending.intended_tx_hash).not.toBeNull();
-  expect(pending.submitted_tx_hash).toEqual(pending.intended_tx_hash);
-  const deploymentIdentityDigest = pending.deployment_manifest_id;
-  const removal = await prepareTimedOutTailRemoval({
-    fixture,
-    targetHeaderHash,
-    deploymentIdentityDigest,
-  });
-  const { source, previousQueue } = removal;
-  let observerState: StateQueueCorrectionObserverState | null = null;
-  let reinclusions = 0;
-  let admittedDigest: string | undefined;
-  const reconcile = () =>
-    reconcileStateQueueCorrectionObserver({
-      deploymentIdentityDigest,
-      stateQueuePolicyId: contracts.stateQueue.policyId,
-      requiredFinalityDepth,
-      source,
-      store: {
-        load: async () => structuredClone(observerState),
-        save: async (state) => {
-          observerState = structuredClone(state);
-        },
-      },
-      reinclude: async (transition) => {
-        const result = await runDatabase(
-          reincludeFinalizedStateQueueCorrectionTransition(transition, {
-            expectedDeploymentIdentityDigest: deploymentIdentityDigest,
-            requiredFinalityDepth,
-          }),
-        );
-        expect(result).toHaveLength(1);
-        expect(result[0]).toMatchObject({
-          headerHash: targetHeaderHash,
-          journalFound: true,
-          reopenedEvents: 1,
-        });
-        admittedDigest = transition.transitionDigest;
-        reinclusions++;
-      },
-      restoreAfterRollback: async () => {
-        throw new Error("No rollback was performed in this timeout fixture");
-      },
-    });
-  expect((await reconcile()).status).toBe("bootstrapped");
-  const {
-    accepted,
-    acceptedHeight,
-    checkpoint,
-    correctedPredecessor,
-    nextQueue,
-  } = await removal.submit();
-  if (requiredFinalityDepth > 1n) {
-    expect((await reconcile()).admittedTransactionHashes).toEqual([]);
-    expect(reinclusions).toBe(0);
-    expect(
-      Option.getOrThrow(await runDatabase(Pending.retrieveActive())),
-    ).toEqual(pending);
-    emulator.awaitBlock(Number(requiredFinalityDepth - 1n));
-    vi.setSystemTime(new Date(emulator.now()));
-  }
-  expect((await reconcile()).admittedTransactionHashes).toEqual([
-    accepted.transaction.txHash,
-  ]);
-  expect(reinclusions).toBe(1);
-  const corrected = Option.getOrThrow(
-    await runDatabase(Pending.retrieveByHeaderHash(pending.header_hash)),
-  );
-  expect(corrected.status).toBe(Pending.Status.Abandoned);
-  expect(corrected.intended_tx_hash).toEqual(pending.intended_tx_hash);
-  expect(corrected.signed_tx_cbor).toEqual(pending.signed_tx_cbor);
-  expect(corrected.correction_transition_digest).toBe(admittedDigest);
-  console.info(
-    "T1 accepted timeout correction evidence",
-    JSON.stringify(
-      {
-        scope: "emulator ledger; synthetic ancestry and observer transport",
-        signedCbor: accepted.signedCbor,
-        measurement: accepted.measurement,
-        stateQueuePolicyId: contracts.stateQueue.policyId,
-        checkpoint,
-        admittedDigest,
-        releaseDepth: requiredFinalityDepth,
-        acceptedHeight,
-        releaseHeight: emulator.blockHeight,
-        previousQueue,
-        nextQueue,
-      },
-      (_key, value) => (typeof value === "bigint" ? value.toString() : value),
-    ),
-  );
-  return { correctedPredecessor, accepted, checkpoint };
 };

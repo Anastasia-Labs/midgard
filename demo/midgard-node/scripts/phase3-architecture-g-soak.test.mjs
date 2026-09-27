@@ -1643,7 +1643,6 @@ describe("Phase 3 pre-lifecycle evidence and load-generator isolation", () => {
         healthStatus: "healthy",
         startedAt: "2026-07-14T12:00:00.000Z",
         restartCount: 0,
-        engine: "architecture_g",
         healthcheckCommand: [
           "CMD",
           "node",

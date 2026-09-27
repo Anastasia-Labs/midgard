@@ -655,10 +655,6 @@
         "a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
       ]
     },
-    "midgard-node/src/mpf/root-view-store.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": ["left.localeCompare(right),"]
-    },
     "midgard-node/src/services/state-queue-correction-observer.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
@@ -685,20 +681,13 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
-    "midgard-node/src/workers/utils/mpf-event-flat.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": ["left.localeCompare(right),"]
-    },
     "midgard-node/tests/benchmark-regression.test.mjs": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": ["return key(left).localeCompare(key(right));"]
     },
     "midgard-node/tests/deposit-flow-emulator-shared.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        ".sort((left, right) => left.txId.localeCompare(right.txId));",
-        "return outRefLabel(left).localeCompare(outRefLabel(right));"
-      ]
+      "sites": ["return outRefLabel(left).localeCompare(outRefLabel(right));"]
     },
     "midgard-node/tests/event-history-ready-append.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",

@@ -575,12 +575,10 @@ const execute = (initialUtxos, fixturePath, index) => {
       env: {
         ...process.env,
         NODE_OPTIONS: "--max-old-space-size=4096",
-        MPF_ENGINE: "architecture_g",
         MPF_ENGINE_PROBE_TXS: transactionCount.toString(),
         MPF_ENGINE_PROBE_INITIAL_UTXOS: initialUtxos.toString(),
         MPF_ENGINE_PROBE_LEVEL_DB: fixturePath,
         MPF_ENGINE_PROBE_REUSE_LEVEL_DB: "true",
-        MPF_ENGINE_PROBE_KEEP_LEVEL_DB: "true",
         MPF_ENGINE_PROBE_PARALLEL_ROOTS: "true",
         MPF_NATIVE_OWNER_BINARY_PATH: binaryPath,
         MPF_NATIVE_OWNER_BINARY_SHA256: binarySha256,

@@ -10,7 +10,6 @@ export {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
 } from "../workers/utils/mpf/phas.js";
-export type { ParkedEventFlatOverlay } from "../workers/utils/mpf-event-flat.js";
 export {
   COMMIT_REJECT_CODE_DECODE_FAILED,
   COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT,
@@ -34,13 +33,12 @@ export {
   getMpfScratchBuild,
   type MpfArenaCheckpointDiagnostics,
   type MpfArenaLimits,
-  type MpfEngine,
   type MpfPathHydrationConfig,
   type MpfPathHydrationDiagnostics,
   type MpfPathHydrationMode,
   type MpfScratchBuild,
   type MpfStoreDiagnostics,
-  type ParkedMpfOverlay,
+  type MpfStoreMode,
   resetMpfArenaLimits,
   setMpfScratchBuild,
 } from "./engine-config.js";
@@ -63,9 +61,6 @@ export {
   deleteMpfStore,
   encodeTransactionRootValue,
   hydrateLedgerMpfFromLedgerEntries,
-  makeMpfs,
-  synchronizeCommitMpfStoresFromConfirmedLedger,
-  synchronizeCommitMpfStoresFromLedgerEntries,
   utxoToLedgerInsertMaterial,
 } from "./ledger-hydration.js";
 export {
@@ -82,19 +77,10 @@ export {
   utxoPayloadEntryEncodedSize,
   type UtxoPayloadSizeAggregate,
 } from "./payload-size.js";
-export {
-  processMpfs,
-  withMpfBlockOverlays,
-  withMpfRootTransaction,
-  withMpfRootTransactions,
-} from "./process.js";
+export { processMpfs } from "./process.js";
 export { type ProcessMpfsConfig } from "./process-config.js";
 export { type MpfReplayCorpusBlock } from "./replay-corpus.js";
-export {
-  emptyRootHexProgram,
-  type LedgerOverlayHandle,
-  MidgardMpf,
-} from "./store.js";
+export { emptyRootHexProgram, MidgardMpf } from "./store.js";
 export { MPF_EMPTY_ROOT_HEX } from "./store-primitives.js";
 export {
   type RetainedEventToStepMember,

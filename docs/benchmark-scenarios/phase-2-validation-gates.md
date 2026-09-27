@@ -9,8 +9,8 @@ Documentation check: 2026-09-07 (retained runner paths and package commands;
 no benchmark or live acceptance rerun).
 
 This runbook is the repeatable evidence surface for throughput Phase 2
-(parallel validation, B1–B3). Runtime-default decisions are recorded in
-[Benchmark-gated runtime options](../midgard/decisions/benchmark-gated-runtime-options.md).
+(parallel validation, B1–B3). The MPF engine decision is recorded in
+[Architecture G is the only MPF engine](../midgard/decisions/architecture-g-sole-mpf-engine.md).
 Every asserted run
 is fail-closed: the benchmark inspects the node and PostgreSQL containers, and
 `verify-phase2-benchmark-report.mjs` rejects topology drift, transaction loss,

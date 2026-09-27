@@ -2600,30 +2600,24 @@ export const readNativeRoot = (
 ): Effect.Effect<NativeRootObservation, never, NodeConfig> =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
-    if (config.MPF_ENGINE === "architecture_g") {
-      const url =
-        options.nodeUrl ?? `http://127.0.0.1:${config.PORT.toString()}`;
-      const fromReadiness = yield* Effect.promise(() =>
-        readNativeRootFromReadiness(url),
-      );
-      // The copy stands in only for a default-URL node that gave no owner
-      // answer: an explicit --node-url, or an owner reported unhealthy, is
-      // the result itself.
-      if (fromReadiness.kind !== "unavailable" || options.nodeUrl !== undefined)
-        return fromReadiness;
-      const fromCopy = yield* Effect.promise(() =>
-        readNativeRootFromLevelCopy(config.LEDGER_MPF_DB_PATH),
-      );
-      return fromCopy.kind === "observed"
-        ? fromCopy
-        : {
-            kind: "unavailable",
-            reason: `${fromReadiness.reason}; ${fromCopy.reason}`,
-          };
-    }
-    return yield* Effect.promise(() =>
+    const url = options.nodeUrl ?? `http://127.0.0.1:${config.PORT.toString()}`;
+    const fromReadiness = yield* Effect.promise(() =>
+      readNativeRootFromReadiness(url),
+    );
+    // The copy stands in only for a default-URL node that gave no owner
+    // answer: an explicit --node-url, or an owner reported unhealthy, is
+    // the result itself.
+    if (fromReadiness.kind !== "unavailable" || options.nodeUrl !== undefined)
+      return fromReadiness;
+    const fromCopy = yield* Effect.promise(() =>
       readNativeRootFromLevelCopy(config.LEDGER_MPF_DB_PATH),
     );
+    return fromCopy.kind === "observed"
+      ? fromCopy
+      : {
+          kind: "unavailable",
+          reason: `${fromReadiness.reason}; ${fromCopy.reason}`,
+        };
   });
 
 // ---------------------------------------------------------------------------

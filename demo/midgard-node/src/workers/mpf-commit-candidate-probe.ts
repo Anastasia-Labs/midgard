@@ -127,7 +127,6 @@ void (async () => {
               ),
       });
       if (
-        nodeConfig.MPF_ENGINE !== "architecture_g" ||
         nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256 !== input.binarySha256 ||
         nodeConfig.MPF_SCRATCH_BUILD !== "fromlist" ||
         nodeConfig.MPF_PAYLOAD_ROOT_CHECK !== "off" ||
@@ -179,7 +178,8 @@ void (async () => {
         journalRowsBefore: Number(journalBefore[0]?.count ?? "-1"),
         journalRowsAfter: Number(journalAfter[0]?.count ?? "-1"),
         candidateConfig: {
-          mpfEngine: nodeConfig.MPF_ENGINE,
+          // Evidence label: the engine that built the candidate.
+          mpfEngine: "architecture_g",
           scratchBuild: nodeConfig.MPF_SCRATCH_BUILD,
           payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
           parallelRoots: nodeConfig.MPF_PARALLEL_ROOTS,

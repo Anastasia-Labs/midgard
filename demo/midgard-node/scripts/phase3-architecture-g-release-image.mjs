@@ -79,7 +79,7 @@ const findCommand = (command) => {
 const response = await fetch("http://127.0.0.1:3000/readyz");
 const readiness = await response.json();
 const memoryMax = fs.readFileSync("/sys/fs/cgroup/memory.max", "utf8").trim();
-const configured = Object.fromEntries(["MPF_ENGINE", "MPF_NATIVE_OWNER_BINARY_PATH", "MPF_NATIVE_OWNER_BINARY_SHA256"].map((name) => [name, process.env[name] ?? null]));
+const configured = Object.fromEntries(["MPF_NATIVE_OWNER_BINARY_PATH", "MPF_NATIVE_OWNER_BINARY_SHA256"].map((name) => [name, process.env[name] ?? null]));
 process.stdout.write(JSON.stringify({
   nodeVersion: process.version,
   nativeEntries: fs.readdirSync("/app/native").sort(),
@@ -174,7 +174,6 @@ const main = async () => {
     },
     runtime: {
       nodeVersion: probe.nodeVersion,
-      engine: probe?.configured?.MPF_ENGINE,
       ownerBinaryPath: probe?.configured?.MPF_NATIVE_OWNER_BINARY_PATH,
       configuredOwnerSha256: probe?.configured?.MPF_NATIVE_OWNER_BINARY_SHA256,
       dockerMemoryLimitBytes: containerInspect?.HostConfig?.Memory,

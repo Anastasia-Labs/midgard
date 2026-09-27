@@ -2622,7 +2622,7 @@ program
 program
   .command("mpf-replay")
   .description(
-    "Replay a recorded MPF NDJSON corpus through legacy, overlay, and Architecture G using insert/fromlist fixtures",
+    "Replay a recorded MPF NDJSON corpus through the TypeScript reference MPF and Architecture G using insert/fromlist fixtures",
   )
   .argument("<corpus-path>", "NDJSON corpus path")
   .action(async (corpusPath: string) => {

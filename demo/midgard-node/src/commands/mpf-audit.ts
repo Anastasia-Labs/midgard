@@ -24,11 +24,11 @@ import { materializeLedgerDeltaSuffix } from "../transactions/state-queue/confir
 /**
  * Which independently recomputed ledger point the persisted MPF root matched.
  *
- * - `confirmed`: the merged ledger in `confirmed_ledger`.
  * - `tip`: the confirmed ledger plus the ledger deltas of every finalized but
- *   not-yet-merged journal, i.e. the committed tip.
+ *   not-yet-merged journal, i.e. the committed tip. The native owner persists
+ *   the committed tip, so this is the only point a clean audit can match.
  */
-export type MpfAuditLedgerPoint = "confirmed" | "tip";
+export type MpfAuditLedgerPoint = "tip";
 
 export type MpfAuditResult = {
   readonly persistedRoot: string;
@@ -62,7 +62,6 @@ export type MpfAuditResult = {
   readonly diverged: boolean;
   readonly durationMs: number;
   readonly skippedReason?:
-    | "legacy_engine"
     | "active_pending_submission"
     | "state_queue_busy"
     | "store_busy"
@@ -310,13 +309,11 @@ const readLevelDbLedgerRoot = (path: string) =>
  * Audit the persisted ledger MPF root against an independent recomputation of
  * the same ledger point.
  *
- * Architecture G's native durable root advances when a commit is submitted, so
- * it describes the committed tip and must equal the recomputed tip. The
- * overlay/event-flat LevelDB store is at the tip after a commit and is resynced
- * to the confirmed ledger after a merge or at startup, so it must equal one of
- * those two recomputed points. Both roots are read under the state-queue and
- * ledger-store leases, after the no-active-submission check, so no commit or
- * merge can move either side between the two reads.
+ * The native owner's durable root advances when a commit is submitted, so it
+ * describes the committed tip and must equal the recomputed tip. Both roots are
+ * read under the state-queue and ledger-store leases, after the
+ * no-active-submission check, so no commit or merge can move either side
+ * between the two reads.
  *
  * When the committed tip is unverifiable (see `recomputeCommittedTip`), a
  * persisted root at the native committed point is reported as
@@ -325,8 +322,8 @@ const readLevelDbLedgerRoot = (path: string) =>
  *
  * `readNativeDurableRoot` is the running node's native owner read. Without it
  * (the offline `mpf-audit` command) the durable `__root__` marker is read from
- * the LevelDB store directly, which under Architecture G is the native owner's
- * store and so still describes the committed tip.
+ * the LevelDB store directly, which is the native owner's store and so still
+ * describes the committed tip.
  */
 export const runMpfAudit = ({
   acknowledgeClean = false,
@@ -338,14 +335,8 @@ export const runMpfAudit = ({
   Effect.gen(function* () {
     const startedAt = performance.now();
     const config = yield* NodeConfig;
-    if (config.MPF_ENGINE === "legacy") {
-      return skipped(startedAt, "legacy_engine");
-    }
-    const nativeEngine = config.MPF_ENGINE === "architecture_g";
     const readPersistedRoot: Effect.Effect<string, unknown> =
-      nativeEngine && readNativeDurableRoot !== undefined
-        ? readNativeDurableRoot
-        : readLevelDbLedgerRoot(config.LEDGER_MPF_DB_PATH);
+      readNativeDurableRoot ?? readLevelDbLedgerRoot(config.LEDGER_MPF_DB_PATH);
 
     const stateQueueResult = yield* StateQueueMutationLeasesDB.tryWithLease(
       "mpf-payload-audit",
@@ -387,12 +378,9 @@ export const runMpfAudit = ({
 
                   const tipPoint = tip._tag === "Recomputed" ? tip : undefined;
                   const matchedPoint: MpfAuditLedgerPoint | undefined =
-                    !nativeEngine && persistedRoot === confirmedRoot
-                      ? "confirmed"
-                      : tipPoint !== undefined &&
-                          persistedRoot === tipPoint.root
-                        ? "tip"
-                        : undefined;
+                    tipPoint !== undefined && persistedRoot === tipPoint.root
+                      ? "tip"
+                      : undefined;
                   const tipDetail = {
                     ...(tipPoint === undefined
                       ? {}
@@ -426,7 +414,7 @@ export const runMpfAudit = ({
                       );
                     }
                     yield* Effect.logWarning(
-                      `mpf_payload_audit_unverifiable=1 engine=${config.MPF_ENGINE} persisted_root=${persistedRoot} ${points} tip_unverifiable=${JSON.stringify(tip.reason)}`,
+                      `mpf_payload_audit_unverifiable=1 persisted_root=${persistedRoot} ${points} tip_unverifiable=${JSON.stringify(tip.reason)}`,
                     );
                     return {
                       persistedRoot,
@@ -443,7 +431,7 @@ export const runMpfAudit = ({
                   }
                   const diverged = matchedPoint === undefined;
                   const recorded: RecomputedLedgerPoint =
-                    matchedPoint === "confirmed" || tipPoint === undefined
+                    tipPoint === undefined
                       ? { root: confirmedRoot, entries: confirmedEntries }
                       : tipPoint;
                   yield* MpfEngineStateDB.recordLedgerAudit({
@@ -479,7 +467,7 @@ export const runMpfAudit = ({
                   };
                   yield* diverged
                     ? Effect.logError(
-                        `mpf_payload_audit_divergence=1 engine=${config.MPF_ENGINE} persisted_root=${persistedRoot} ${points}${
+                        `mpf_payload_audit_divergence=1 persisted_root=${persistedRoot} ${points}${
                           tip._tag === "IntegrityFailure"
                             ? ` tip_integrity_failure=${JSON.stringify(tip.reason)}`
                             : tip._tag === "Unverifiable"
@@ -488,7 +476,7 @@ export const runMpfAudit = ({
                         }`,
                       )
                     : Effect.logInfo(
-                        `mpf_payload_audit_divergence=0 engine=${config.MPF_ENGINE} root=${persistedRoot} matched_point=${matchedPoint} ${points} entry_count=${result.entryCount.toString()} duration_ms=${result.durationMs.toString()} acknowledged=${acknowledgeClean.toString()}`,
+                        `mpf_payload_audit_divergence=0 root=${persistedRoot} matched_point=${matchedPoint} ${points} entry_count=${result.entryCount.toString()} duration_ms=${result.durationMs.toString()} acknowledged=${acknowledgeClean.toString()}`,
                       );
                   return result;
                 }),

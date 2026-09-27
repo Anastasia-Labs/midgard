@@ -1,31 +1,27 @@
 /**
- * The root-view store: a LevelDB-backed MPF store with parked overlays and arena checkpoints.
+ * The root-view store: a LevelDB-backed MPF store with block overlays and arena checkpoints.
  */
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { Level } from "level";
 
-import { type PackedMpfStoredValue } from "../workers/utils/mpf-event-flat.js";
 import {
   DEFAULT_MPF_ARENA_LIMITS,
   getMpfArenaLimits,
   type MpfArenaLimits,
-  type MpfEngine,
   type MpfStoreDiagnostics,
-  type ParkedMpfOverlay,
+  type MpfStoreMode,
 } from "./engine-config.js";
 import { estimateMpfStoredValueBytes } from "./payload-size.js";
 import {
   applyPendingBatch,
   consumeMpfMutationProof,
-  exactArrayBuffer,
   JSON_LEVEL_ENCODING_OPTS,
   type LevelBatchOp,
   MPF_EMPTY_ROOT,
   MPF_INTERNAL_NULL_ROOT,
   MPF_INTERNAL_NULL_ROOT_HEX,
   normalizeStoredRootHex,
-  parkedOverlayDigest,
   ROOT_KEY,
 } from "./store-primitives.js";
 import {
@@ -39,10 +35,8 @@ export class MidgardMpfRootViewStore extends Store {
   private readonly level?: Level<string, MpfStoredValue>;
   private readonly memory?: Map<string, MpfStoredValue>;
   private readonly persistRootMarker: boolean;
-  private readonly engine: MpfEngine;
+  private readonly mode: MpfStoreMode;
   private readonly spillThresholdBytes: number;
-  private readonly parentStore?: MidgardMpfRootViewStore;
-  private readonly parentOverlay?: ReadonlyMap<string, MpfStoredValue>;
   private currentRoot: Buffer;
   private batchOps: LevelBatchOp[] | undefined;
   private deferredNodePuts: Map<string, MpfSerializableValue> | undefined;
@@ -113,44 +107,32 @@ export class MidgardMpfRootViewStore extends Store {
   private jsonCodecMs = 0;
   private overlaySpillMs = 0;
   private flushMs = 0;
-  private openForks = 0;
-  private forkClosed = false;
-  private invalidatedByChildPromotion = false;
   private promotionReserved = false;
   private poisoned = false;
-  private ownsLevelLifecycle: boolean;
 
   constructor({
     level,
     memory,
     root,
     persistRootMarker,
-    engine = "legacy",
+    mode = "direct",
     spillThresholdBytes = 512 * 1024 * 1024,
-    parentStore,
-    parentOverlay,
   }: {
     readonly level?: Level<string, MpfStoredValue>;
     readonly memory?: Map<string, MpfStoredValue>;
     readonly root: Buffer;
     readonly persistRootMarker: boolean;
-    readonly engine?: MpfEngine;
+    readonly mode?: MpfStoreMode;
     readonly spillThresholdBytes?: number;
-    readonly parentStore?: MidgardMpfRootViewStore;
-    readonly parentOverlay?: ReadonlyMap<string, MpfStoredValue>;
   }) {
     super(undefined);
     this.level = level;
     this.memory = memory;
     this.currentRoot = Buffer.from(root);
     this.persistRootMarker = persistRootMarker;
-    this.engine = engine;
-    this.retainHydratedChildren = engine !== "legacy";
+    this.mode = mode;
+    this.retainHydratedChildren = mode === "overlay";
     this.spillThresholdBytes = spillThresholdBytes;
-    this.parentStore = parentStore;
-    this.parentOverlay = parentOverlay;
-    this.ownsLevelLifecycle = parentStore === undefined;
-    this.parentStore?.registerFork();
   }
 
   async ready() {
@@ -244,10 +226,6 @@ export class MidgardMpfRootViewStore extends Store {
     }
     if (storedValue !== undefined) {
       // The active or in-flight overlay supplied the value.
-    } else if (this.parentOverlay?.has(storageKey)) {
-      storedValue = this.parentOverlay.get(storageKey);
-    } else if (this.parentStore !== undefined) {
-      storedValue = await this.parentStore.lookupStoredValue(storageKey);
     } else if (this.blockPathCache?.has(storageKey)) {
       this.pathCacheHits += 1;
       storedValue = this.blockPathCache.get(storageKey);
@@ -328,13 +306,7 @@ export class MidgardMpfRootViewStore extends Store {
           }
         }
       }
-      if (!resolved && this.parentOverlay?.has(storageKey)) {
-        storedValue = this.parentOverlay.get(storageKey);
-        resolved = true;
-      } else if (!resolved && this.parentStore !== undefined) {
-        storedValue = await this.parentStore.lookupStoredValue(storageKey);
-        resolved = true;
-      } else if (!resolved && this.blockPathCache?.has(storageKey)) {
+      if (!resolved && this.blockPathCache?.has(storageKey)) {
         this.pathCacheHits += 1;
         storedValue = this.blockPathCache.get(storageKey);
         resolved = true;
@@ -637,8 +609,8 @@ export class MidgardMpfRootViewStore extends Store {
 
   beginOverlay() {
     this.assertUsable();
-    if (this.engine === "legacy") {
-      throw new Error("Cannot begin an MPF overlay when MPF_ENGINE=legacy");
+    if (this.mode === "direct") {
+      throw new Error("Cannot begin an MPF overlay on a direct-mode store");
     }
     if (this.overlay !== undefined) {
       throw new Error("MPF block overlay already active");
@@ -691,73 +663,6 @@ export class MidgardMpfRootViewStore extends Store {
       throw new Error("Cannot seal an inactive MPF block path cache");
     }
     this.blockPathCacheSealed = true;
-  }
-
-  assertEventFlatArenaCaps(nodeCount: number, estimatedBytes: number) {
-    this.assertUsable();
-    if (
-      nodeCount > this.arenaLimits.liveArenaMaxNodes ||
-      estimatedBytes > this.arenaLimits.liveArenaMaxBytes
-    ) {
-      throw new Error(
-        `Event-flat arena limit exceeded: nodes=${nodeCount.toString()}/${this.arenaLimits.liveArenaMaxNodes.toString()},bytes=${estimatedBytes.toString()}/${this.arenaLimits.liveArenaMaxBytes.toString()}`,
-      );
-    }
-  }
-
-  assertEventFlatRawCaps(nodeCount: number, estimatedBytes: number) {
-    this.assertUsable();
-    if (
-      nodeCount > this.arenaLimits.pathCacheMaxNodes ||
-      estimatedBytes > this.arenaLimits.pathCacheMaxBytes
-    ) {
-      throw new Error(
-        `Event-flat raw path limit exceeded: nodes=${nodeCount.toString()}/${this.arenaLimits.pathCacheMaxNodes.toString()},bytes=${estimatedBytes.toString()}/${this.arenaLimits.pathCacheMaxBytes.toString()}`,
-      );
-    }
-  }
-
-  async loadEventFlatRawRecords(
-    hashes: readonly Buffer[],
-  ): Promise<readonly (PackedMpfStoredValue | undefined)[]> {
-    this.assertUsable();
-    const values = (await this.getMany(hashes, (_hash, value) =>
-      value === undefined
-        ? undefined
-        : typeof value === "object" &&
-            value !== null &&
-            "serialise" in value &&
-            typeof value.serialise === "function"
-          ? value.serialise()
-          : value,
-    )) as readonly unknown[];
-    return values.map((value) =>
-      typeof value === "object" &&
-      value !== null &&
-      "__kind" in value &&
-      (value.__kind === "Leaf" || value.__kind === "Branch")
-        ? (value as PackedMpfStoredValue)
-        : undefined,
-    );
-  }
-
-  handoffRawPathsToEventFlat() {
-    this.assertUsable();
-    if (this.overlay === undefined || this.liveArenaEnabled) {
-      throw new Error("Cannot hand off an inactive or mutable raw MPF view");
-    }
-    if (
-      this.deferredNodePuts !== undefined ||
-      this.deferredNodeDeletes !== undefined ||
-      this.midgardDirtyNodes.size !== 0 ||
-      this.transientDirtyNodes.size !== 0 ||
-      this.transientLiveNodes.size !== 0 ||
-      (this.blockDeferredNodePuts?.size ?? 0) !== 0 ||
-      (this.blockDeferredNodeDeletes?.size ?? 0) !== 0
-    ) {
-      throw new Error("Cannot hand off dirty raw MPF paths to event-flat");
-    }
-    this.readCache.clear();
   }
 
   private rememberHydratedNodeSource(
@@ -944,211 +849,6 @@ export class MidgardMpfRootViewStore extends Store {
     this.assertLiveArenaCaps();
   }
 
-  async parkCurrentOverlay(
-    root: Buffer,
-    trieName: string,
-  ): Promise<ParkedMpfOverlay> {
-    this.assertUsable();
-    if (
-      this.overlay === undefined ||
-      this.overlayBaseRoot === undefined ||
-      !root.equals(this.currentRoot)
-    ) {
-      throw new Error("Cannot park an inactive or mismatched MPF overlay");
-    }
-    await this.waitForSpills();
-    const writesBefore = this.levelBatchWrites;
-    if (this.parentStore !== undefined) {
-      await this.waitForAncestorSpills();
-      this.importReachableParentCandidates(root);
-    }
-    this.pruneLiveArenaToRoot(root);
-    const parkedNodes = new Map<string, MpfStoredValue>();
-    const visited = new Set<string>();
-    const pending = root.equals(MPF_EMPTY_ROOT) ? [] : [this.storageKey(root)];
-    while (pending.length > 0) {
-      const key = pending.pop()!;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      const live = this.blockDeferredNodePuts?.get(key);
-      const serialized = this.overlay.get(key);
-      const candidate = live ?? serialized;
-      if (candidate === undefined) {
-        // A missing local candidate is an unchanged durable subtree. A new
-        // descendant cannot be reachable through an unchanged content hash.
-        continue;
-      }
-      if (live !== undefined) this.assertLiveArenaNode(key, live);
-      parkedNodes.set(key, live === undefined ? serialized! : live.serialise());
-      for (const childKey of this.candidateChildKeys(candidate)) {
-        pending.push(childKey);
-      }
-    }
-    const ordered = [...parkedNodes].sort(([left], [right]) =>
-      left.localeCompare(right),
-    );
-    const nodeHashes = new Uint8Array(ordered.length * 32);
-    const encodedValues = ordered.map(([, value]) =>
-      Buffer.from(JSON.stringify(value)),
-    );
-    const nodeValueOffsets = new Uint32Array(ordered.length * 2);
-    const nodeValues = new Uint8Array(
-      encodedValues.reduce((total, value) => total + value.length, 0),
-    );
-    let valueOffset = 0;
-    for (const [index, [key]] of ordered.entries()) {
-      const hash = Buffer.from(key, "hex");
-      if (hash.length !== 32) {
-        throw new Error(`Cannot park invalid MPF content key ${key}`);
-      }
-      nodeHashes.set(hash, index * 32);
-      const encoded = encodedValues[index]!;
-      nodeValues.set(encoded, valueOffset);
-      nodeValueOffsets.set([valueOffset, encoded.length], index * 2);
-      valueOffset += encoded.length;
-    }
-    const baseRoot = exactArrayBuffer(this.overlayBaseRoot);
-    const candidateRoot = exactArrayBuffer(root);
-    const hashesBuffer = exactArrayBuffer(nodeHashes);
-    const valuesBuffer = exactArrayBuffer(nodeValues);
-    const offsetsBuffer = exactArrayBuffer(
-      new Uint8Array(nodeValueOffsets.buffer),
-    );
-    const digest = parkedOverlayDigest({
-      trieName,
-      baseRoot,
-      candidateRoot,
-      nodeCount: ordered.length,
-      nodeHashes: hashesBuffer,
-      nodeValues: valuesBuffer,
-      nodeValueOffsets: offsetsBuffer,
-    });
-    if (this.levelBatchWrites !== writesBefore) {
-      throw new Error("Parking an MPF overlay performed a Level write");
-    }
-    const artifact: ParkedMpfOverlay = {
-      schemaVersion: 1,
-      trieName,
-      baseRoot,
-      candidateRoot,
-      closureDigest: exactArrayBuffer(digest),
-      nodeCount: ordered.length,
-      nodeHashes: hashesBuffer,
-      nodeValues: valuesBuffer,
-      nodeValueOffsets: offsetsBuffer,
-      encodedBytes:
-        hashesBuffer.byteLength +
-        valuesBuffer.byteLength +
-        offsetsBuffer.byteLength,
-    };
-    this.discardOverlay();
-    return artifact;
-  }
-
-  async importParkedOverlay(artifact: ParkedMpfOverlay): Promise<Buffer> {
-    this.assertUsable();
-    if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
-      throw new Error("Cannot import a parked MPF without an active overlay");
-    }
-    const baseRoot = Buffer.from(artifact.baseRoot);
-    if (!baseRoot.equals(this.overlayBaseRoot)) {
-      throw new Error(
-        `Parked MPF base mismatch: durable=${this.overlayBaseRoot.toString("hex")},parked=${baseRoot.toString("hex")}`,
-      );
-    }
-    if (
-      artifact.schemaVersion !== 1 ||
-      !Number.isSafeInteger(artifact.nodeCount) ||
-      artifact.nodeCount < 0 ||
-      artifact.baseRoot.byteLength !== 32 ||
-      artifact.candidateRoot.byteLength !== 32 ||
-      artifact.closureDigest.byteLength !== 32 ||
-      artifact.nodeHashes.byteLength !== artifact.nodeCount * 32 ||
-      artifact.nodeValueOffsets.byteLength !== artifact.nodeCount * 8 ||
-      artifact.encodedBytes !==
-        artifact.nodeHashes.byteLength +
-          artifact.nodeValues.byteLength +
-          artifact.nodeValueOffsets.byteLength
-    ) {
-      throw new Error("Invalid parked MPF artifact shape");
-    }
-    const expectedDigest = parkedOverlayDigest({
-      trieName: artifact.trieName,
-      baseRoot: artifact.baseRoot,
-      candidateRoot: artifact.candidateRoot,
-      nodeCount: artifact.nodeCount,
-      nodeHashes: artifact.nodeHashes,
-      nodeValues: artifact.nodeValues,
-      nodeValueOffsets: artifact.nodeValueOffsets,
-    });
-    if (!expectedDigest.equals(Buffer.from(artifact.closureDigest))) {
-      throw new Error("Parked MPF closure digest mismatch");
-    }
-    const hashes = new Uint8Array(artifact.nodeHashes);
-    const values = new Uint8Array(artifact.nodeValues);
-    const offsets = new Uint32Array(artifact.nodeValueOffsets);
-    const artifactKeys = new Set<string>();
-    const deserialise = (
-      Trie as unknown as {
-        readonly deserialise: (
-          hash: Buffer,
-          value: MpfStoredValue,
-          store: MidgardMpfRootViewStore,
-        ) => Promise<MpfSerializableValue>;
-      }
-    ).deserialise;
-    for (let index = 0; index < artifact.nodeCount; index += 1) {
-      const hash = Buffer.from(hashes.subarray(index * 32, (index + 1) * 32));
-      const key = hash.toString("hex");
-      if (artifactKeys.has(key)) {
-        throw new Error(`Parked MPF contains duplicate node ${key}`);
-      }
-      artifactKeys.add(key);
-      const valueOffset = offsets[index * 2]!;
-      const valueLength = offsets[index * 2 + 1]!;
-      if (valueOffset + valueLength > values.length) {
-        throw new Error("Parked MPF node value exceeds its packed arena");
-      }
-      const value = JSON.parse(
-        Buffer.from(
-          values.subarray(valueOffset, valueOffset + valueLength),
-        ).toString(),
-      ) as MpfStoredValue;
-      const decoded = await deserialise(hash, value, this);
-      this.assertLiveArenaNode(key, decoded);
-      this.setOverlayValue(key, value);
-    }
-    const candidateRoot = Buffer.from(artifact.candidateRoot);
-    this.currentRoot = Buffer.from(candidateRoot);
-    const reachableArtifactKeys = new Set<string>();
-    const visited = new Set<string>();
-    const pending = candidateRoot.equals(MPF_EMPTY_ROOT)
-      ? []
-      : [this.storageKey(candidateRoot)];
-    while (pending.length > 0) {
-      const key = pending.pop()!;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      const local = this.overlay.get(key);
-      if (local !== undefined) {
-        reachableArtifactKeys.add(key);
-        for (const childKey of this.candidateChildKeys(local)) {
-          pending.push(childKey);
-        }
-        continue;
-      }
-      if ((await this.lookupStoredValue(key)) === undefined) {
-        throw new Error(`Parked MPF closure is missing node ${key}`);
-      }
-    }
-    if (reachableArtifactKeys.size !== artifactKeys.size) {
-      throw new Error(
-        `Parked MPF contains unreachable nodes: reachable=${reachableArtifactKeys.size.toString()},packed=${artifactKeys.size.toString()}`,
-      );
-    }
-    return candidateRoot;
-  }
-
   private clearTransientLiveArena() {
     this.transientLiveNodes.clear();
     this.transientLiveNodeEstimates.clear();
@@ -1162,9 +862,6 @@ export class MidgardMpfRootViewStore extends Store {
     }
     if (this.deferredNodePuts !== undefined) {
       throw new Error("MPF deferred mutation already active");
-    }
-    if (this.openForks > 0) {
-      throw new Error("Cannot mutate an MPF overlay while a fork is active");
     }
     this.deferredNodePuts = new Map();
     this.deferredNodeDeletes = new Set();
@@ -1233,44 +930,10 @@ export class MidgardMpfRootViewStore extends Store {
       : Buffer.from(this.overlayBaseRoot);
   }
 
-  stageEventFlatCandidate(
-    root: Buffer,
-    records: ReadonlyMap<string, PackedMpfStoredValue>,
-  ) {
-    this.assertUsable();
-    if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
-      throw new Error(
-        "Cannot stage an event-flat candidate without an overlay",
-      );
-    }
-    if (this.openForks > 0) {
-      throw new Error("Cannot stage an event-flat candidate with open forks");
-    }
-    this.abortDeferredMutation();
-    this.overlay = new Map();
-    this.overlayValueBytes = new Map();
-    this.overlayBytes = 0;
-    this.blockDeferredNodePuts?.clear();
-    this.blockDeferredNodeDeletes?.clear();
-    this.blockDeferredNodeEstimates?.clear();
-    this.blockDeferredEstimatedBytes = 0;
-    for (const [key, value] of records) this.setOverlayValue(key, value);
-    this.currentRoot = Buffer.from(root);
-    this.blockPathCache = undefined;
-    this.blockPathCacheBytes = 0;
-    this.blockPathCacheSealed = false;
-    this.liveArenaEnabled = false;
-    this.transientCurrentRootEnabled = false;
-    this.clearTransientLiveArena();
-  }
-
   async resetOverlayRoot(root: Buffer) {
     this.assertUsable();
     if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
       throw new Error("Cannot reset an inactive MPF block overlay");
-    }
-    if (this.openForks > 0) {
-      throw new Error("Cannot reset an MPF overlay while a fork is active");
     }
     if (this.deferredNodePuts !== undefined) {
       throw new Error("Cannot reset an MPF overlay during a mutation");
@@ -1304,20 +967,14 @@ export class MidgardMpfRootViewStore extends Store {
     if (this.overlay === undefined) {
       throw new Error("Cannot flush an inactive MPF block overlay");
     }
-    if (this.openForks > 0) {
-      throw new Error("Cannot promote an MPF overlay while a fork is active");
-    }
     if (!root.equals(this.currentRoot)) {
       throw new Error(
         `Refusing to promote mismatched MPF root: requested=${root.toString("hex")},current=${this.currentRoot.toString("hex")}`,
       );
     }
-    const promotionReservations = this.reservePromotionChain();
+    // Reserve the handle so no read or write interleaves with the flush.
+    this.promotionReserved = true;
     try {
-      if (this.parentStore !== undefined) {
-        await this.waitForAncestorSpills();
-        this.importReachableParentCandidates(root);
-      }
       if (this.liveArenaEnabled) {
         this.pruneLiveArenaToRoot(root);
       }
@@ -1369,13 +1026,8 @@ export class MidgardMpfRootViewStore extends Store {
       this.overlayBaseRoot = undefined;
       this.overlayBytes = 0;
       this.readCache.clear();
-      if (this.parentStore !== undefined) {
-        this.parentStore.transferOwnershipToChild(root);
-        this.ownsLevelLifecycle = true;
-      }
-      this.closeFork();
     } finally {
-      this.releasePromotionChain(promotionReservations);
+      this.promotionReserved = false;
     }
   }
 
@@ -1383,9 +1035,6 @@ export class MidgardMpfRootViewStore extends Store {
     this.assertUsable();
     if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
       throw new Error("Cannot discard an inactive MPF block overlay");
-    }
-    if (this.openForks > 0) {
-      throw new Error("Cannot discard an MPF overlay while a fork is active");
     }
     const baseRoot = Buffer.from(this.overlayBaseRoot);
     this.overlay = undefined;
@@ -1404,7 +1053,6 @@ export class MidgardMpfRootViewStore extends Store {
     this.overlayBytes = 0;
     this.readCache.clear();
     this.currentRoot = Buffer.from(baseRoot);
-    this.closeFork();
     return baseRoot;
   }
 
@@ -1472,16 +1120,6 @@ export class MidgardMpfRootViewStore extends Store {
     }
   }
 
-  private async waitForAncestorSpills() {
-    if (this.parentStore === undefined) return;
-    await this.parentStore.waitForSpills();
-    await this.parentStore.waitForAncestorSpills();
-  }
-
-  shouldCloseLevel() {
-    return this.ownsLevelLifecycle;
-  }
-
   diagnostics(): Omit<MpfStoreDiagnostics, "entries"> {
     return {
       storePuts: this.storePuts,
@@ -1538,22 +1176,6 @@ export class MidgardMpfRootViewStore extends Store {
     };
   }
 
-  async hasStoredNode(root: Buffer): Promise<boolean> {
-    const storageKey = root.toString("hex");
-    const deferredValue = this.blockDeferredNodePuts?.get(storageKey);
-    if (deferredValue !== undefined) {
-      const liveHash = (deferredValue as { readonly hash?: Buffer }).hash;
-      if (liveHash === undefined || this.storageKey(liveHash) !== storageKey) {
-        throw new Error(
-          `Deferred MPF root is not content-addressed: expected=${storageKey},actual=${liveHash === undefined ? "undefined" : this.storageKey(liveHash)}`,
-        );
-      }
-      return true;
-    }
-    if (this.blockDeferredNodeDeletes?.has(storageKey)) return false;
-    return (await this.lookupStoredValue(storageKey)) !== undefined;
-  }
-
   async checkpointDeferredNodes(): Promise<{
     readonly serializedNodes: number;
     readonly serializedBytes: number;
@@ -1576,10 +1198,6 @@ export class MidgardMpfRootViewStore extends Store {
   recordLiveArenaCheckpoint(checkpointMs: number) {
     this.arenaCheckpointCalls += 1;
     this.arenaCheckpointMs += checkpointMs;
-  }
-
-  currentOverlayView(): ReadonlyMap<string, MpfStoredValue> | undefined {
-    return this.overlay;
   }
 
   private setOverlayValue(
@@ -1763,63 +1381,6 @@ export class MidgardMpfRootViewStore extends Store {
     );
   }
 
-  private findNonDurableCandidate(key: string): MpfReadableValue | undefined {
-    const live = this.blockDeferredNodePuts?.get(key);
-    if (live !== undefined) {
-      this.assertLiveArenaNode(key, live);
-      return live;
-    }
-    const serialized = this.overlay?.get(key);
-    if (serialized !== undefined) return serialized;
-    for (let index = this.spillingOverlays.length - 1; index >= 0; index -= 1) {
-      const spilling = this.spillingOverlays[index]!;
-      const candidate = spilling.get(key);
-      if (candidate !== undefined) return candidate;
-    }
-    return this.parentStore?.findNonDurableCandidate(key);
-  }
-
-  private importReachableParentCandidates(root: Buffer) {
-    if (this.parentStore === undefined) return;
-    const visited = new Set<string>();
-    const pending = [this.storageKey(root)];
-    while (pending.length > 0) {
-      const key = pending.pop()!;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      let candidate: MpfReadableValue | undefined =
-        this.blockDeferredNodePuts?.get(key) ?? this.overlay?.get(key);
-      if (candidate === undefined) {
-        candidate = this.parentStore.findNonDurableCandidate(key);
-        if (candidate === undefined) continue;
-        if (typeof candidate !== "string" && "serialise" in candidate) {
-          const clone = (
-            candidate as MpfSerializableValue & {
-              readonly cloneDetached?: () => MpfSerializableValue;
-            }
-          ).cloneDetached?.();
-          if (clone === undefined || clone === candidate) {
-            throw new Error(
-              `Cannot import mutable MPF parent arena node ${key}`,
-            );
-          }
-          const priorEstimate = this.blockDeferredNodeEstimates?.get(key) ?? 0;
-          const estimate = this.estimateDeferredNodeBytes(key, clone);
-          this.blockDeferredNodePuts!.set(key, clone);
-          this.blockDeferredNodeEstimates!.set(key, estimate);
-          this.blockDeferredEstimatedBytes += estimate - priorEstimate;
-          candidate = clone;
-        } else {
-          this.setOverlayValue(key, candidate as MpfStoredValue);
-        }
-      }
-      for (const childKey of this.candidateChildKeys(candidate)) {
-        pending.push(childKey);
-      }
-    }
-    if (this.liveArenaEnabled) this.assertLiveArenaCaps();
-  }
-
   private pruneLiveArenaToRoot(root: Buffer) {
     if (
       this.blockDeferredNodePuts === undefined ||
@@ -1890,12 +1451,6 @@ export class MidgardMpfRootViewStore extends Store {
       const spilling = this.spillingOverlays[index]!;
       if (spilling.has(storageKey)) return spilling.get(storageKey);
     }
-    if (this.parentOverlay?.has(storageKey)) {
-      return this.parentOverlay.get(storageKey);
-    }
-    if (this.parentStore !== undefined) {
-      return this.parentStore.lookupStoredValue(storageKey);
-    }
     if (this.blockPathCache?.has(storageKey)) {
       this.pathCacheHits += 1;
       return this.blockPathCache.get(storageKey);
@@ -1915,92 +1470,14 @@ export class MidgardMpfRootViewStore extends Store {
     return this.memory?.get(storageKey);
   }
 
-  private registerFork() {
-    this.assertUsable();
-    if (this.promotionReserved) {
-      throw new Error("Cannot fork an MPF overlay while promotion is reserved");
-    }
-    this.openForks += 1;
-  }
-
-  private reservePromotionChain(): readonly MidgardMpfRootViewStore[] {
-    const reserved: MidgardMpfRootViewStore[] = [];
-    // The traversal intentionally starts at this store and walks its parents.
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    let current: MidgardMpfRootViewStore | undefined = this;
-    try {
-      while (current !== undefined) {
-        if (current.promotionReserved) {
-          throw new Error("MPF promotion chain is already reserved");
-        }
-        if (current !== this && current.openForks !== 1) {
-          throw new Error(
-            `Cannot promote an MPF fork while an ancestor has ${current.openForks.toString()} open children`,
-          );
-        }
-        current.promotionReserved = true;
-        reserved.push(current);
-        current = current.parentStore;
-      }
-      return reserved;
-    } catch (cause) {
-      this.releasePromotionChain(reserved);
-      throw cause;
-    }
-  }
-
-  private releasePromotionChain(reserved: readonly MidgardMpfRootViewStore[]) {
-    for (const store of reserved) store.promotionReserved = false;
-  }
-
-  private transferOwnershipToChild(root: Buffer) {
-    if (this.openForks !== 1) {
-      throw new Error(
-        `Cannot transfer MPF ownership without exactly one active child: open_forks=${this.openForks.toString()}`,
-      );
-    }
-    this.parentStore?.transferOwnershipToChild(root);
-    this.closeFork();
-    this.currentRoot = Buffer.from(root);
-    this.overlay = undefined;
-    this.overlayValueBytes = new Map();
-    this.blockDeferredNodePuts = undefined;
-    this.blockDeferredNodeDeletes = undefined;
-    this.blockDeferredNodeEstimates = undefined;
-    this.blockDeferredEstimatedBytes = 0;
-    this.blockPathCache = undefined;
-    this.blockPathCacheBytes = 0;
-    this.blockPathCacheSealed = false;
-    this.liveArenaEnabled = false;
-    this.transientCurrentRootEnabled = false;
-    this.clearTransientLiveArena();
-    this.overlayBaseRoot = undefined;
-    this.overlayBytes = 0;
-    this.readCache.clear();
-    this.invalidatedByChildPromotion = true;
-    this.ownsLevelLifecycle = false;
-  }
-
   private assertUsable() {
     if (this.poisoned) {
       throw new Error(
         "MPF overlay is poisoned after a failed mutation and must be reloaded",
       );
     }
-    if (this.invalidatedByChildPromotion) {
-      throw new Error(
-        "MPF handle is stale because durable-root ownership transferred to a promoted child fork",
-      );
-    }
     if (this.promotionReserved) {
       throw new Error("MPF handle is reserved for promotion");
-    }
-  }
-
-  private closeFork() {
-    if (this.parentStore !== undefined && !this.forkClosed) {
-      this.forkClosed = true;
-      this.parentStore.openForks -= 1;
     }
   }
 

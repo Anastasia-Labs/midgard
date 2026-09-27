@@ -12,7 +12,6 @@ import {
   ForcedTransactionsDB,
   ImmutableDB,
   MempoolDB,
-  MempoolLedgerDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   WithdrawalsDB,
@@ -42,12 +41,6 @@ export type CorrectedBlockReinclusionResult = {
   readonly rejectedDependentTransactions?: readonly Buffer[];
   readonly restoredWithdrawalOutputs?: number;
 };
-
-export type CorrectedBlockRollbackRestoreResult = Readonly<{
-  headerHash: string;
-  journalFound: boolean;
-  restoredCanonicalBlock: boolean;
-}>;
 
 export type StateQueueCorrectionReinclusionAuthority = Readonly<{
   expectedDeploymentIdentityDigest: string;
@@ -410,30 +403,8 @@ export const reincludeStateQueueCorrectedBlocks = (
     ),
   );
 
-export const reincludeFinalizedStateQueueCorrectionTransition = (
-  transitionInput: unknown,
-  authority: StateQueueCorrectionReinclusionAuthority,
-): Effect.Effect<
-  readonly CorrectedBlockReinclusionResult[],
-  DatabaseError,
-  Database
-> => {
-  const transition = authorizeStateQueueCorrectionReinclusion(
-    transitionInput,
-    authority,
-  );
-  return reincludeStateQueueCorrectedBlocks(
-    transition.removedHeaderHashes.map((headerHash) => ({
-      headerHash,
-      transitionDigest: transition.transitionDigest,
-      kind: "removed" as const,
-    })),
-  );
-};
-
 /**
- * Architecture G's answer to a post-finality rollback of a correction. The
- * native rewind has no inverse: once a rewind moved the native root off a
+ * The answer to a post-finality rollback of a correction. The native rewind has no inverse: once a rewind moved the native root off a
  * removed block (its plan names the block, or it abandoned the journal under
  * this correction), the rollback is an integrity failure and is refused with
  * an explicit error. A removal whose rewind never ran left no local effect, so
@@ -479,204 +450,3 @@ export const refuseRewoundStateQueueCorrectionRollback = (
         );
     }
   });
-
-/**
- * Inverse of correction reinclusion for a post-finality L1 rollback which puts
- * the removed header back on the authenticated queue. The retained local block
- * journal is the only payload authority; every mutation is atomic and repeated
- * rollback reconciliation is idempotent in the Finalized state.
- */
-export const restoreRetractedStateQueueCorrectionTransition = (
-  transitionInput: unknown,
-  authority: StateQueueCorrectionReinclusionAuthority,
-): Effect.Effect<
-  readonly CorrectedBlockRollbackRestoreResult[],
-  DatabaseError,
-  Database
-> => {
-  const transition = authorizeStateQueueCorrectionReinclusion(
-    transitionInput,
-    authority,
-  );
-  return Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql.withTransaction(
-      Effect.forEach(
-        transition.removedHeaderHashes,
-        (headerHashHex) =>
-          Effect.gen(function* () {
-            const headerHash = Buffer.from(headerHashHex, "hex");
-            const journal =
-              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-                headerHash,
-                true,
-              );
-            if (Option.isNone(journal)) {
-              return {
-                headerHash: headerHashHex,
-                journalFound: false,
-                restoredCanonicalBlock: false,
-              } satisfies CorrectedBlockRollbackRestoreResult;
-            }
-            const record = journal.value;
-            yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(
-              record,
-            );
-            if (
-              record[
-                PendingBlockFinalizationsDB.Columns.CORRECTION_TRANSITION_DIGEST
-              ] !== transition.transitionDigest
-            ) {
-              return yield* Effect.fail(
-                new DatabaseError({
-                  table: PendingBlockFinalizationsDB.tableName,
-                  message: "Journal does not identify the retracted correction",
-                  cause: headerHashHex,
-                }),
-              );
-            }
-            const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
-            if (status === PendingBlockFinalizationsDB.Status.Finalized) {
-              return {
-                headerHash: headerHashHex,
-                journalFound: true,
-                restoredCanonicalBlock: false,
-              } satisfies CorrectedBlockRollbackRestoreResult;
-            }
-            if (status !== PendingBlockFinalizationsDB.Status.Abandoned) {
-              return yield* Effect.fail(
-                new DatabaseError({
-                  table: PendingBlockFinalizationsDB.tableName,
-                  message:
-                    "Cannot restore retracted correction from a non-abandoned journal",
-                  cause: `header_hash=${headerHashHex},status=${status}`,
-                }),
-              );
-            }
-            const mempoolTxIds = record.txMembers
-              .filter(
-                (member) =>
-                  member[
-                    PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE
-                  ] === MempoolDB.tableName,
-              )
-              .map((member) =>
-                Buffer.from(
-                  member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-                ),
-              );
-            const processedTxIds = record.txMembers
-              .filter(
-                (member) =>
-                  member[
-                    PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE
-                  ] === ProcessedMempoolDB.tableName,
-              )
-              .map((member) =>
-                Buffer.from(
-                  member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-                ),
-              );
-            const allTxIds = record.txMembers.map((member) =>
-              Buffer.from(
-                member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-              ),
-            );
-            yield* DepositsDB.markProjectedByEventIds(
-              record.depositEventIds,
-              headerHash,
-            );
-            yield* ForcedTransactionsDB.markProjectedByEventIds(
-              record.forcedTransactionEventIds,
-              headerHash,
-            );
-            yield* WithdrawalsDB.restoreCorrectedClassification(
-              record.withdrawalMembers.map((member) => ({
-                eventId:
-                  member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-                settlementEventInfo:
-                  member[
-                    PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR
-                  ],
-                validity:
-                  member[
-                    PendingBlockFinalizationsDB.WithdrawalMemberColumns.VALIDITY
-                  ],
-                validityDetail:
-                  member[
-                    PendingBlockFinalizationsDB.WithdrawalMemberColumns
-                      .VALIDITY_DETAIL
-                  ],
-              })),
-              headerHash,
-            );
-            yield* DepositsDB.markConsumedByEventIds(record.depositEventIds);
-            yield* WithdrawalsDB.markFinalizedByEventIds(
-              record.withdrawalEventIds,
-              headerHash,
-            );
-            yield* ForcedTransactionsDB.markFinalizedByEventIds(
-              record.forcedTransactionEventIds,
-              headerHash,
-            );
-            if (mempoolTxIds.length > 0)
-              yield* MempoolDB.clearTxs(mempoolTxIds);
-            if (processedTxIds.length > 0)
-              yield* ProcessedMempoolDB.clearTxs(processedTxIds);
-            // Inverse of reinclusion: the block's transactions are committed
-            // again and its valid withdrawals consume their outputs again.
-            yield* ImmutableDB.insertTxsValidatedNative(
-              record.txMembers.map(PendingBlockFinalizationsDB.txMemberToEntry),
-            );
-            const validWithdrawalIds = record.withdrawalMembers
-              .filter(
-                (member) =>
-                  member[
-                    PendingBlockFinalizationsDB.WithdrawalMemberColumns.VALIDITY
-                  ] === WithdrawalsDB.Validity.WithdrawalIsValid,
-              )
-              .map((member) =>
-                Buffer.from(
-                  member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-                ),
-              );
-            const validWithdrawals =
-              yield* WithdrawalsDB.retrieveByEventIds(validWithdrawalIds);
-            if (validWithdrawals.length !== validWithdrawalIds.length)
-              return yield* Effect.fail(
-                new DatabaseError({
-                  table: WithdrawalsDB.tableName,
-                  message: "A restored block's valid withdrawal row is missing",
-                  cause: headerHashHex,
-                }),
-              );
-            const withdrawnOutRefs = yield* Effect.forEach(
-              validWithdrawals,
-              WithdrawalsDB.toLedgerOutRef,
-            );
-            yield* DepositsDB.markConsumedByEventIds(
-              yield* MempoolLedgerDB.clearUTxOs(withdrawnOutRefs),
-            );
-            yield* BlocksDB.insert(headerHash, allTxIds);
-            yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
-              headerHash,
-              BigInt(Date.now()),
-            );
-            yield* PendingBlockFinalizationsDB.markFinalized(headerHash);
-            return {
-              headerHash: headerHashHex,
-              journalFound: true,
-              restoredCanonicalBlock: true,
-            } satisfies CorrectedBlockRollbackRestoreResult;
-          }),
-        { concurrency: 1 },
-      ),
-    );
-  }).pipe(
-    withHistoryWrite,
-    sqlErrorToDatabaseError(
-      "state_queue_correction_recovery",
-      "Failed to restore a post-finality rolled-back state-queue correction",
-    ),
-  );
-};

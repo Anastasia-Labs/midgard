@@ -22,17 +22,46 @@ import { MidgardContracts } from "./midgard-contracts.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
 import { fetchStateQueueSnapshotProgram } from "./state-queue-topology.js";
 
+/**
+ * The node refuses to start the native owner from an unpinned binary: the
+ * owner holds the ledger, so the operator must name the exact release build.
+ */
+export const requirePinnedNativeOwnerBinary = (
+  nodeConfig: Pick<
+    NodeConfigDep,
+    | "MPF_NATIVE_OWNER_BINARY_PATH"
+    | "MPF_NATIVE_OWNER_BINARY_SHA256"
+    | "MPF_NATIVE_OWNER_SIDECAR_PATH"
+  >,
+): Effect.Effect<void, Error> => {
+  if (!/^[0-9a-f]{64}$/.test(nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256))
+    return Effect.fail(
+      new Error(
+        `MPF_NATIVE_OWNER_BINARY_SHA256 must pin the native owner binary at ${nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH} as 64 lowercase hex characters`,
+      ),
+    );
+  if (nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH.trim().length === 0)
+    return Effect.fail(
+      new Error("MPF_NATIVE_OWNER_BINARY_PATH must name the native owner"),
+    );
+  if (nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH.trim().length === 0)
+    return Effect.fail(
+      new Error("MPF_NATIVE_OWNER_SIDECAR_PATH must name the owner sidecar"),
+    );
+  return Effect.void;
+};
+
 export const initializeArchitectureGOwner = (
   globals: Globals,
   nodeConfig: NodeConfigDep,
   preparation?: HistoryRecoveryPreparation,
 ): Effect.Effect<
-  ProductionNativeMpfOwnerService | undefined,
+  ProductionNativeMpfOwnerService,
   unknown,
   Database | Lucid | MidgardContracts
 > =>
   Effect.gen(function* () {
-    if (nodeConfig.MPF_ENGINE !== "architecture_g") return undefined;
+    yield* requirePinnedNativeOwnerBinary(nodeConfig);
 
     const writeSql = <A, E, R>(work: Effect.Effect<A, E, R>) =>
       preparation === undefined
@@ -53,7 +82,7 @@ export const initializeArchitectureGOwner = (
       "architecture-g-bootstrap",
       nodeConfig.LEDGER_MPF_DB_PATH,
       {
-        engine: "overlay",
+        mode: "overlay",
         spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
       },
     );

@@ -12,7 +12,7 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { Globals } from "../src/services/index.js";
 import { finalizeMergesLandedThrough } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -41,13 +41,7 @@ const isolatedDb = <A, E>(
         blocks, confirmed_ledger RESTART IDENTITY CASCADE`;
       const globals = yield* Globals;
       yield* Ref.set(globals.NATIVE_MPF_OWNER, { diagnostics } as never);
-      const nodeConfig = yield* NodeConfig;
-      return yield* effect.pipe(
-        Effect.provideService(NodeConfig, {
-          ...nodeConfig,
-          MPF_ENGINE: "architecture_g",
-        }),
-      );
+      return yield* effect;
     }).pipe(Effect.provide(Globals.Default)),
   ) as Effect.Effect<A, E, never>;
 

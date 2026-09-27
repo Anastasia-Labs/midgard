@@ -75,14 +75,10 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
     // correction path; this runtime remembers it until a rollback. A replaced
     // block without evidence it landed is re-read at the next source point.
     const signedIntentDeferral = makeSignedIntentDeferral();
-    // Architecture G is the only engine whose ledger root is a promoted native
-    // owner: a correction that removes a committed block rewinds it through
-    // this owner's recovery. Other engines keep the correction fiber's plain
-    // reinclusion producer.
+    // The ledger root is a promoted native owner: a correction that removes a
+    // committed block rewinds it through this owner's recovery.
     const rewindAuthority =
-      config.MPF_ENGINE === "architecture_g" &&
-      identity.manifestId !== undefined &&
-      identity.manifest !== undefined
+      identity.manifestId !== undefined && identity.manifest !== undefined
         ? {
             manifestId: identity.manifestId,
             stateQueuePolicyId: contracts.stateQueue.policyId,

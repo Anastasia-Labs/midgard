@@ -20,7 +20,6 @@ import {
   Option,
   PendingBlockFinalizationsDB,
   resetActiveRuntimePaths,
-  runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runConfirmationJournalInsertionRace,
   runNodeDatabaseEffect,
@@ -29,7 +28,6 @@ import {
   type SpeculativeCommitWorkerInstruction,
   submitDepositAndRefreshBarriers,
 } from "./deposit-flow-emulator-shared.js";
-import { correctAcceptedT1BlockAfterTimeout } from "./helpers/history-timeout-correction-fixture.js";
 
 describe.sequential("deposit flow emulator", () => {
   it("preserves a newer submitted journal when a delayed confirmation worker captured no pending journal", async () => {
@@ -40,10 +38,8 @@ describe.sequential("deposit flow emulator", () => {
     await runConfirmationJournalInsertionRace("after_snapshot_guard");
   }, 240_000);
 
-  it("discards a ready candidate and preserves payload when confirmation reports T1 stale recovery", async () => {
-    const previousMpfEngine = process.env.MPF_ENGINE;
+  it("keeps the submitted base journal when confirmation reports unproven stale recovery under a ready candidate, then discards the candidate", async () => {
     const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
-    process.env.MPF_ENGINE = "overlay";
     process.env.SPECULATIVE_COMMIT_BUILD = "true";
     try {
       await resetActiveRuntimePaths();
@@ -117,24 +113,6 @@ describe.sequential("deposit flow emulator", () => {
             expect(
               yield* Effect.promise(() => normalizeT1RecoveryGlobals(globals)),
             ).toEqual(globalsBefore);
-            yield* Effect.promise(() =>
-              correctAcceptedT1BlockAfterTimeout({
-                fixture,
-                targetHeaderHash: blockN.submittedHeaderHash,
-                requiredFinalityDepth: BigInt(
-                  testNodeConfig.STATE_QUEUE_CORRECTION_FINALITY_DEPTH,
-                ),
-                runDatabase: runNodeDatabaseEffect,
-              }),
-            );
-            yield* Effect.promise(() =>
-              runBlockConfirmation(
-                globals,
-                fixture.contracts,
-                lucidService,
-                testNodeConfig,
-              ),
-            );
             return {
               type: "InvalidateSpeculativeCandidate",
               reason: "T1",
@@ -146,16 +124,21 @@ describe.sequential("deposit flow emulator", () => {
         candidateId: speculative.candidate.candidateId,
         reason: "T1",
       });
-      expect(
-        Option.isNone(
-          await runNodeDatabaseEffect(
-            PendingBlockFinalizationsDB.retrieveActive(),
-          ),
+      const activeJournal = Option.getOrThrow(
+        await runNodeDatabaseEffect(
+          PendingBlockFinalizationsDB.retrieveActive(),
         ),
-      ).toBe(true);
+      );
+      expect(
+        activeJournal[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString(
+          "hex",
+        ),
+      ).toBe(blockN.submittedHeaderHash);
       const pendingDeposits = await runNodeDatabaseEffect(
         DepositsDB.retrievePendingHeaderEntriesUpTo(new Date(Date.now())),
       );
+      // Neither deposit has a header assignment: block N's is still carried by
+      // its unconfirmed journal and the discarded candidate left none.
       expect(pendingDeposits).toHaveLength(2);
       expect(
         pendingDeposits.every(
@@ -163,8 +146,6 @@ describe.sequential("deposit flow emulator", () => {
         ),
       ).toBe(true);
     } finally {
-      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
-      else process.env.MPF_ENGINE = previousMpfEngine;
       if (previousSpeculativeCommitBuild === undefined) {
         delete process.env.SPECULATIVE_COMMIT_BUILD;
       } else {

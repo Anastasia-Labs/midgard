@@ -772,10 +772,7 @@ export const runSpeculativeCommitBuilderOnce = (
         );
       }
       const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-      if (
-        config.MPF_ENGINE === "architecture_g" &&
-        nativeMpfOwner === undefined
-      ) {
+      if (nativeMpfOwner === undefined) {
         return yield* Effect.fail(
           new WorkerError({
             worker: "speculative-commit-builder",
@@ -784,14 +781,11 @@ export const runSpeculativeCommitBuilderOnce = (
           }),
         );
       }
-      const nativeMpfInput =
-        nativeMpfOwner === undefined
-          ? undefined
-          : yield* nativeMpfWorkerInput(
-              nativeMpfOwner,
-              "speculative-commit-builder",
-              config.MPF_NATIVE_OWNER_BINARY_SHA256,
-            );
+      const nativeMpfInput = yield* nativeMpfWorkerInput(
+        nativeMpfOwner,
+        "speculative-commit-builder",
+        config.MPF_NATIVE_OWNER_BINARY_SHA256,
+      );
       const candidate = yield* spawnSpeculativeSession(globals, config, {
         nativeMpf: nativeMpfInput,
         data: {

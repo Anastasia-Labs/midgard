@@ -10,7 +10,7 @@ import {
   warnNativeOwnerBinaryAbsent,
 } from "./helpers/native-owner-binary.js";
 
-// The architecture_g engine spawns the native owner binary; see the helper
+// The architecture_g replay spawns the native owner binary; see the helper
 // for the build/skip contract (#642).
 const binaryPresent = nativeOwnerBinaryPresent();
 if (!binaryPresent) {
@@ -19,7 +19,7 @@ if (!binaryPresent) {
 
 describe.skipIf(!binaryPresent)("mpf differential replay", () => {
   it.effect(
-    "binds the seeded adversarial MPF corpus to every configured engine",
+    "binds the seeded adversarial MPF corpus to the TypeScript reference and Architecture G",
     () =>
       Effect.gen(function* () {
         const corpusPath = fileURLToPath(
@@ -29,13 +29,11 @@ describe.skipIf(!binaryPresent)("mpf differential replay", () => {
         expect(summary).toMatchObject({
           corpusPath,
           blocks: 1,
-          runs: 8,
-          proofChecks: 16,
-          engines: ["legacy", "overlay", "event_flat", "architecture_g"],
-          runsByEngine: {
-            legacy: 2,
-            overlay: 2,
-            event_flat: 2,
+          runs: 4,
+          proofChecks: 8,
+          implementations: ["typescript_reference", "architecture_g"],
+          runsByImplementation: {
+            typescript_reference: 2,
             architecture_g: 2,
           },
           scratchBuilds: ["insert", "fromlist"],

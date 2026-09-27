@@ -14,11 +14,6 @@ import { join } from "node:path";
 import { inspect } from "node:util";
 
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
@@ -86,7 +81,6 @@ import {
   ForcedTransactionsDB,
   ForeignTipReconciliationsDB,
   ImmutableDB,
-  LedgerUtils,
   MempoolDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
@@ -151,7 +145,9 @@ import {
   type MempoolLedgerCacheService,
 } from "../src/services/mempool-ledger-cache.js";
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
+import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import { recoverNativeMpfForLocalFinalization } from "../src/services/native-mpf-local-finalization.js";
+import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
 import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
 import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.js";
@@ -208,15 +204,13 @@ import {
   resolveCurrentOperatorSchedulerWindow,
 } from "../src/workers/utils/scheduler-refresh.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
-import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
-import { correctAcceptedT1BlockAfterTimeout } from "./helpers/history-timeout-correction-fixture.js";
+import {
+  nativeOwnerBinaryPath,
+  nativeOwnerBinarySha256,
+} from "./helpers/native-owner-binary.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
-import {
-  makeMidgardTxOutput,
-  makeOutRefCbor,
-} from "./midgard-output-helpers.js";
 import { testDatabaseName } from "./test-env.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -800,6 +794,15 @@ export const cleanupRuntimePaths = async ({
   readonly ledgerMpfPath: string;
   readonly transactionsMpfPath: string;
 }) => {
+  const owner = unownedNativeOwners.get(ledgerMpfPath);
+  if (owner !== undefined) {
+    unownedNativeOwners.delete(ledgerMpfPath);
+    await owner.close();
+  }
+  await rm(`${ledgerMpfPath}.architecture-g.sidecar`, {
+    recursive: true,
+    force: true,
+  });
   await Effect.runPromise(
     Effect.all(
       [
@@ -1237,6 +1240,138 @@ type OwnedCommitFixture = ProductionHistoryFixtureRuntime & {
   readonly globals: Globals;
 };
 
+/**
+ * Fixtures without a production history owner still commit through the
+ * native Architecture G owner, the node's only MPF engine: one owner per
+ * fixture ledger store, started on first use and closed with the store by
+ * `cleanupRuntimePaths`.
+ */
+const unownedNativeOwners = new Map<string, NativeMpfOwnerService>();
+
+const unownedNativeOwner = (
+  contracts: SDK.MidgardValidators,
+  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+  nodeConfig: NodeConfigDep,
+) =>
+  Effect.gen(function* () {
+    const running = unownedNativeOwners.get(nodeConfig.LEDGER_MPF_DB_PATH);
+    if (running !== undefined) return running;
+    const globals = yield* Globals.pipe(Effect.provide(Globals.Default));
+    const owner = yield* initializeArchitectureGOwner(globals, nodeConfig).pipe(
+      Effect.provideService(LucidService, lucidService as any),
+      Effect.provideService(MidgardContracts, contracts as any),
+    );
+    unownedNativeOwners.set(nodeConfig.LEDGER_MPF_DB_PATH, owner);
+    return owner;
+  });
+
+/** Publishes this fixture's unowned native owner to `globals`, as node
+ * startup does, so merges and recoveries run against it. */
+const attachUnownedNativeOwner = (globals: Globals) =>
+  Effect.gen(function* () {
+    if ((yield* Ref.get(globals.NATIVE_MPF_OWNER)) !== undefined) return;
+    const ledgerMpfPath = activeRuntimePaths?.ledgerMpfPath;
+    const owner =
+      ledgerMpfPath === undefined
+        ? undefined
+        : unownedNativeOwners.get(ledgerMpfPath);
+    if (owner !== undefined) yield* Ref.set(globals.NATIVE_MPF_OWNER, owner);
+  });
+
+/** Stops this fixture's unowned native owner so a test can edit its LevelDB
+ * directly (the owner holds the store's lock), runs `edit`, then starts the
+ * owner again on the same store and republishes it to `globals`. */
+export const withUnownedNativeOwnerStopped = async <A>(
+  {
+    fixture,
+    lucidService,
+    globals,
+  }: {
+    readonly fixture: EmulatorFixture;
+    readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+    readonly globals: Globals;
+  },
+  edit: () => Promise<A>,
+): Promise<A> => {
+  const ledgerMpfPath = activeRuntimePaths?.ledgerMpfPath;
+  const owner =
+    ledgerMpfPath === undefined
+      ? undefined
+      : unownedNativeOwners.get(ledgerMpfPath);
+  if (ledgerMpfPath === undefined || owner === undefined)
+    throw new Error("Expected a running unowned native owner to stop");
+  unownedNativeOwners.delete(ledgerMpfPath);
+  await Effect.runPromise(Ref.set(globals.NATIVE_MPF_OWNER, undefined));
+  await owner.close();
+  try {
+    return await edit();
+  } finally {
+    const nodeConfig = await makeNodeConfigForFixture(fixture);
+    await Effect.runPromise(
+      unownedNativeOwner(fixture.contracts, lucidService, nodeConfig).pipe(
+        Effect.zipRight(attachUnownedNativeOwner(globals)),
+        Effect.provide(Database.layer),
+        Effect.provideService(UnownedHistoryFixture, true),
+      ),
+    );
+  }
+};
+
+/** Runs one commit worker pass against the unowned native owner the way the
+ * block-commitment fiber does: local-finalization recovery first, then the
+ * worker on a port to the owner, then promotion of a submitted block. */
+export const runUnownedNativeCommit = (
+  contracts: SDK.MidgardValidators,
+  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+  nodeConfig: NodeConfigDep,
+  input: CommitWorkerInput,
+  run: (input: CommitWorkerInput) => ReturnType<typeof commitWorkerProgram>,
+) =>
+  Effect.gen(function* () {
+    const native = yield* unownedNativeOwner(
+      contracts,
+      lucidService,
+      nodeConfig,
+    );
+    if (
+      input.data.localFinalizationPending &&
+      input.data.availableLocalFinalizationBlock !== ""
+    ) {
+      yield* recoverNativeMpfForLocalFinalization(
+        native,
+        input.data.availableLocalFinalizationBlock,
+      );
+    }
+    const nativeMpf = {
+      port: native.createWorkerPort(),
+      durableRoot: (yield* Effect.promise(() => native.diagnostics()))
+        .durableRoot,
+      ownerBinarySha256: nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+    };
+    const output = yield* run({ ...input, nativeMpf }).pipe(
+      Effect.ensuring(Effect.sync(() => nativeMpf.port.close())),
+    );
+    if (
+      "nativeMpfPromotion" in output &&
+      output.nativeMpfPromotion !== undefined
+    ) {
+      yield* promoteOrRecoverNativeMpf({
+        owner: native,
+        handle: output.nativeMpfPromotion.handle,
+      });
+    }
+    return output;
+  });
+
+const fixtureNodeConfigFromEnvironment = NodeConfig.pipe(
+  Effect.provide(NodeConfig.layer),
+  Effect.map((nodeConfig) => ({
+    ...nodeConfig,
+    MPF_NATIVE_OWNER_BINARY_PATH: nativeOwnerBinaryPath,
+    MPF_NATIVE_OWNER_BINARY_SHA256: nativeOwnerBinarySha256(),
+  })),
+);
+
 const runFixtureCommitProgram = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
@@ -1245,13 +1380,23 @@ const runFixtureCommitProgram = (
   production: OwnedCommitFixture | undefined,
 ) => {
   if (production === undefined)
-    return commitWorkerProgram(
-      contracts,
-      lucidService,
-      input,
-      undefined,
-      nodeConfig,
-    );
+    return Effect.gen(function* () {
+      const config = nodeConfig ?? (yield* fixtureNodeConfigFromEnvironment);
+      return yield* runUnownedNativeCommit(
+        contracts,
+        lucidService,
+        config,
+        input,
+        (nativeInput) =>
+          commitWorkerProgram(
+            contracts,
+            lucidService,
+            nativeInput,
+            undefined,
+            config,
+          ),
+      );
+    });
   return production.owner.runProducer((token, assertCurrent, coverage) =>
     Effect.gen(function* () {
       const startedAtMs = Date.now();
@@ -1511,6 +1656,8 @@ export const runMergeUntilMerged = async ({
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       await production?.synchronize();
+      if (production === undefined)
+        await Effect.runPromise(attachUnownedNativeOwner(globals));
       lastResult = await Effect.runPromise(
         mergeAction(force).pipe(
           (program) =>
@@ -1620,6 +1767,8 @@ export const makeNodeConfigForFixture = async (fixture: EmulatorFixture) => {
       nodeConfig.NETWORK,
     L1_OPERATOR_SEED_PHRASE: fixture.operatorAccount.seedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: fixture.operatorAccount.seedPhrase,
+    MPF_NATIVE_OWNER_BINARY_PATH: nativeOwnerBinaryPath,
+    MPF_NATIVE_OWNER_BINARY_SHA256: nativeOwnerBinarySha256(),
     // Must match the seed the bootstrap wrote into the committee, or the node
     // cannot produce the second of the two signatures the threshold needs.
     DA_COSIGNER_SEED_PHRASE:
@@ -1736,34 +1885,42 @@ export const runSpeculativeWorkerWithInstruction = async ({
   let candidate: SpeculativeCandidateSummary | undefined;
   let acquiredLeaseToken: string | undefined;
   let lucidAcquisitions = 0;
+  const config = nodeConfig ?? (await makeNodeConfigForFixture(fixture));
   const output = await Effect.runPromise(
-    commitWorkerProgram(
+    runUnownedNativeCommit(
       fixture.contracts,
       lucidService,
+      config,
       workerInput,
-      (readyCandidate) => {
-        candidate = readyCandidate;
-        expect(lucidAcquisitions).toBe(0);
-        return onReady(readyCandidate).pipe(
-          Effect.provideService(
-            ContractDeploymentIdentity,
-            fixtureDeploymentIdentity(fixture),
-          ),
-          Effect.tap((instruction) =>
-            instruction.type === "SubmitSpeculativeCandidate"
-              ? Effect.sync(() => {
-                  acquiredLeaseToken = instruction.stateQueueLeaseToken;
-                })
-              : Effect.void,
-          ),
-        );
-      },
-      nodeConfig ?? (await makeNodeConfigForFixture(fixture)),
-      () =>
-        Effect.sync(() => {
-          lucidAcquisitions += 1;
-          return lucidService as any;
-        }),
+      (nativeInput) =>
+        commitWorkerProgram(
+          fixture.contracts,
+          lucidService,
+          nativeInput,
+          (readyCandidate) => {
+            candidate = readyCandidate;
+            expect(lucidAcquisitions).toBe(0);
+            return onReady(readyCandidate).pipe(
+              Effect.provideService(
+                ContractDeploymentIdentity,
+                fixtureDeploymentIdentity(fixture),
+              ),
+              Effect.tap((instruction) =>
+                instruction.type === "SubmitSpeculativeCandidate"
+                  ? Effect.sync(() => {
+                      acquiredLeaseToken = instruction.stateQueueLeaseToken;
+                    })
+                  : Effect.void,
+              ),
+            );
+          },
+          config,
+          () =>
+            Effect.sync(() => {
+              lucidAcquisitions += 1;
+              return lucidService as any;
+            }),
+        ),
     ).pipe(
       Effect.ensuring(
         Effect.suspend(() =>
@@ -1814,19 +1971,6 @@ export const assertSpeculativeDepositSnapshotIsMemoryOnly = ({
     ).toBeNull();
   });
 
-export type NormalizedT1RecoveryState = {
-  readonly activeJournal: boolean;
-  readonly deposits: readonly {
-    readonly status: string;
-    readonly hasProjectedHeader: boolean;
-  }[];
-  readonly mempool: readonly { readonly txId: string; readonly tx: string }[];
-  readonly processed: readonly {
-    readonly txId: string;
-    readonly tx: string;
-  }[];
-};
-
 export type NormalizedT1RecoveryGlobals = {
   readonly availableConfirmedBlockPresent: boolean;
   readonly availableLocalFinalizationBlockPresent: boolean;
@@ -1836,44 +1980,6 @@ export type NormalizedT1RecoveryGlobals = {
   readonly unconfirmedSubmittedBlockSinceMs: number;
   readonly unconfirmedSubmittedBlockTxHash: string;
 };
-
-export const normalizeT1RecoveryState =
-  (): Promise<NormalizedT1RecoveryState> =>
-    runNodeDatabaseEffect(
-      Effect.gen(function* () {
-        const [activeJournal, deposits, mempool, processed] = yield* Effect.all(
-          [
-            PendingBlockFinalizationsDB.retrieveActive(),
-            DepositsDB.retrieveAllEntries(),
-            TxUtils.retrieveAllEntries(MempoolDB.tableName),
-            ProcessedMempoolDB.retrieve,
-          ],
-        );
-        const normalizeTxs = (entries: readonly TxUtils.Entry[]) =>
-          entries
-            .map((entry) => ({
-              txId: entry[TxUtils.Columns.TX_ID].toString("hex"),
-              tx: entry[TxUtils.Columns.TX].toString("hex"),
-            }))
-            .sort((left, right) => left.txId.localeCompare(right.txId));
-        return {
-          activeJournal: Option.isSome(activeJournal),
-          deposits: [...deposits]
-            .sort(
-              (left, right) =>
-                left[DepositsDB.Columns.INCLUSION_TIME].getTime() -
-                right[DepositsDB.Columns.INCLUSION_TIME].getTime(),
-            )
-            .map((entry) => ({
-              status: entry[DepositsDB.Columns.STATUS],
-              hasProjectedHeader:
-                entry[DepositsDB.Columns.PROJECTED_HEADER_HASH] !== null,
-            })),
-          mempool: normalizeTxs(mempool),
-          processed: normalizeTxs(processed),
-        };
-      }),
-    );
 
 export const normalizeT1RecoveryGlobals = (
   globals: Globals,
@@ -1906,229 +2012,6 @@ export const normalizeT1RecoveryGlobals = (
       };
     }),
   );
-
-// One signed transaction for every T1 run, so the flag-on and flag-off runs
-// retain identical rows.
-const t1RetainedProcessedTxCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
-  makeCardanoSignedMapOutputTxBytes(),
-);
-const t1RetainedProcessedTxId = computeMidgardNativeTxId(
-  decodeMidgardNativeTxFullFromCanonicalCbor(t1RetainedProcessedTxCbor),
-);
-
-export const runT1RecoveryScenario = async (
-  speculationEnabled: boolean,
-): Promise<{
-  readonly normalizedState: NormalizedT1RecoveryState;
-  readonly normalizedGlobals: NormalizedT1RecoveryGlobals;
-  readonly speculativeOutput?: CommitWorkerOutput;
-}> => {
-  const previousMpfEngine = process.env.MPF_ENGINE;
-  const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
-  process.env.MPF_ENGINE = "overlay";
-  process.env.SPECULATIVE_COMMIT_BUILD = speculationEnabled ? "true" : "false";
-  try {
-    vi.useRealTimers();
-    if (activeRuntimePaths !== null) {
-      await cleanupRuntimePaths(activeRuntimePaths);
-      activeRuntimePaths = null;
-    }
-    activeRuntimePaths = makeRuntimePaths();
-    await cleanupRuntimePaths(activeRuntimePaths);
-    await initializeNodeRuntime();
-    const fixture = await makeFixture();
-    await initializeProtocol(fixture);
-    const lucidService = await makeLucidRuntimeService(fixture);
-    const globals = await makeGlobalsService();
-    const testNodeConfig = await makeNodeConfigForFixture(fixture);
-    await advanceEmulatorPastLatestBlockEndTime(fixture);
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(fixture.emulator.now()));
-
-    await submitDepositAndRefreshBarriers({
-      fixture,
-      lucidService,
-      globals,
-      lovelace: 12_000_000n,
-    });
-    let recoveredBase = await fetchLatestCommittedBlock(
-      fixture.operatorLucid,
-      fixture.contracts,
-    );
-    const blockN = await runCommitWorkerUntilSubmitted({
-      fixture,
-      lucidService,
-      latestBlock: recoveredBase,
-    });
-    await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
-    vi.setSystemTime(new Date(fixture.emulator.now()));
-    const { watermarks } = await submitDepositAndRefreshBarriers({
-      fixture,
-      lucidService,
-      globals,
-      lovelace: 13_000_000n,
-      projectToLedger: false,
-    });
-
-    const retainedMempoolTx = {
-      [TxUtils.Columns.TX_ID]: Buffer.alloc(32, 0xa1),
-      [TxUtils.Columns.TX]: Buffer.from("a1".repeat(96), "hex"),
-    };
-    const retainedProcessedTx = {
-      [TxUtils.Columns.TX_ID]: t1RetainedProcessedTxId,
-      [TxUtils.Columns.TX]: t1RetainedProcessedTxCbor,
-    };
-    // The correction's ledger restore decides from each pending transaction's
-    // spends whether it depends on reopened state; neither of these touches
-    // anything it reopens, so recovery must keep both. The mempool row keeps
-    // opaque bytes with an empty admission delta: the restore reads a present
-    // delta and never decodes the bytes behind it. A processed row holds no
-    // delta in production (MempoolDB.clearTxs drops it when the transaction
-    // moves), so it carries canonical admitted bytes and the restore takes
-    // the decode fallback, as a live recovery does.
-    const seedRetainedPayload = () =>
-      runNodeDatabaseEffect(
-        Effect.all(
-          [
-            TxUtils.insertEntry(MempoolDB.tableName, retainedMempoolTx),
-            MempoolTxDeltasDB.upsertMany([
-              {
-                txId: retainedMempoolTx[TxUtils.Columns.TX_ID],
-                spent: [],
-                produced: [],
-              },
-            ]),
-            ProcessedMempoolDB.insertTx(retainedProcessedTx),
-          ],
-          { discard: true },
-        ),
-      );
-    const applyStaleRecovery = async () => {
-      const journalBefore = await runNodeDatabaseEffect(
-        PendingBlockFinalizationsDB.retrieveActive(),
-      );
-      const globalsBefore = await normalizeT1RecoveryGlobals(globals);
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const serializedRecoveredBase =
-            yield* serializeStateQueueUTxO(recoveredBase);
-          yield* buildBlockConfirmationAction(() =>
-            Effect.succeed({
-              type: "StaleUnconfirmedRecoveryOutput",
-              stalePendingHeaderHash: blockN.submittedHeaderHash,
-              staleSubmittedTxHash: blockN.submittedTxHash,
-              latestBlocksUTxO: serializedRecoveredBase,
-              canonicalHeaders: [],
-            }),
-          );
-        }).pipe(
-          Effect.provideService(Globals, globals),
-          Effect.provideService(NodeConfig, testNodeConfig),
-          Effect.provide(Database.layer),
-          Effect.provideService(UnownedHistoryFixture, true),
-        ),
-      );
-      // The injected worker output is intentionally unproven: it must leave the
-      // signed journal and published Globals intact before actual correction.
-      expect(
-        await runNodeDatabaseEffect(
-          PendingBlockFinalizationsDB.retrieveActive(),
-        ),
-      ).toEqual(journalBefore);
-      expect(await normalizeT1RecoveryGlobals(globals)).toEqual(globalsBefore);
-      const corrected = await correctAcceptedT1BlockAfterTimeout({
-        fixture,
-        targetHeaderHash: blockN.submittedHeaderHash,
-        requiredFinalityDepth: BigInt(
-          testNodeConfig.STATE_QUEUE_CORRECTION_FINALITY_DEPTH,
-        ),
-        runDatabase: runNodeDatabaseEffect,
-      });
-      recoveredBase = corrected.correctedPredecessor;
-      await runBlockConfirmation(
-        globals,
-        fixture.contracts,
-        lucidService,
-        testNodeConfig,
-      );
-    };
-
-    let speculativeOutput: CommitWorkerOutput | undefined;
-    if (speculationEnabled) {
-      const speculative = await runSpeculativeWorkerWithInstruction({
-        fixture,
-        lucidService,
-        watermarks,
-        onReady: (candidate) =>
-          assertSpeculativeDepositSnapshotIsMemoryOnly({
-            baseBlockEndTimeMs: blockN.blockEndTimeMs,
-            candidateEndTimeMs: candidate.endTimeMs,
-          }).pipe(
-            Effect.andThen(Effect.promise(seedRetainedPayload)),
-            Effect.andThen(Effect.promise(applyStaleRecovery)),
-            Effect.as({
-              type: "InvalidateSpeculativeCandidate",
-              reason: "T1",
-            } satisfies SpeculativeCommitWorkerInstruction),
-          ),
-      });
-      speculativeOutput = speculative.output;
-      expect(speculative.lucidAcquisitions).toBe(0);
-      expect(speculative.output).toEqual({
-        type: "SpeculativeCandidateInvalidatedOutput",
-        candidateId: speculative.candidate.candidateId,
-        reason: "T1",
-      });
-    } else {
-      await seedRetainedPayload();
-      await applyStaleRecovery();
-    }
-
-    const normalizedState = await normalizeT1RecoveryState();
-    const normalizedGlobals = await normalizeT1RecoveryGlobals(globals);
-    const serializedRecoveredBase = await Effect.runPromise(
-      serializeStateQueueUTxO(recoveredBase),
-    );
-    expect(
-      await Effect.runPromise(Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK)),
-    ).toEqual(serializedRecoveredBase);
-    expect(normalizedState.activeJournal).toBe(false);
-    expect(normalizedState.mempool).toEqual([
-      {
-        txId: retainedMempoolTx[TxUtils.Columns.TX_ID].toString("hex"),
-        tx: retainedMempoolTx[TxUtils.Columns.TX].toString("hex"),
-      },
-    ]);
-    expect(normalizedState.processed).toEqual([
-      {
-        txId: retainedProcessedTx[TxUtils.Columns.TX_ID].toString("hex"),
-        tx: retainedProcessedTx[TxUtils.Columns.TX].toString("hex"),
-      },
-    ]);
-    expect(normalizedGlobals).toMatchObject({
-      availableConfirmedBlockPresent: true,
-      availableLocalFinalizationBlockPresent: false,
-      blocksInQueue: 0,
-      latestLocalBlockBoundaryPresent: true,
-      localFinalizationPending: false,
-      unconfirmedSubmittedBlockSinceMs: 0,
-      unconfirmedSubmittedBlockTxHash: "",
-    });
-    return {
-      normalizedState,
-      normalizedGlobals,
-      speculativeOutput,
-    };
-  } finally {
-    if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
-    else process.env.MPF_ENGINE = previousMpfEngine;
-    if (previousSpeculativeCommitBuild === undefined) {
-      delete process.env.SPECULATIVE_COMMIT_BUILD;
-    } else {
-      process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
-    }
-  }
-};
 
 export const runConfirmationJournalInsertionRace = async (
   insertionPoint: "during_worker" | "after_snapshot_guard",
@@ -2326,6 +2209,7 @@ export const runNodeCommandProgram = <A>(
 ): Promise<A> =>
   withEmulatorExtraneousScriptRetry(lucidService.api, async () => {
     const nodeConfig = await makeNodeConfigForFixture(fixture);
+    await Effect.runPromise(attachUnownedNativeOwner(globals));
     return Effect.runPromise(
       effect.pipe(
         Effect.provideService(LucidService, lucidService as any),
@@ -3043,11 +2927,8 @@ export {
   ImmutableDB,
   initializePayoutProgram,
   Ledger,
-  LedgerUtils,
   LucidService,
   makeLucid,
-  makeMidgardTxOutput,
-  makeOutRefCbor,
   materializeConfirmedLedgerSnapshot,
   MempoolDB,
   MempoolLedgerDB,

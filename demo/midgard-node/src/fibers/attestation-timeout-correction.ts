@@ -29,11 +29,7 @@ import {
   observeAttestationTimeoutQueue,
   timeoutCorrectionJournalNeedsRecovery,
 } from "../services/attestation-timeout-observation.js";
-import { runHistoryProducer } from "../services/event-history-producer.js";
-import {
-  type AttestationTimeoutCorrectionHealth,
-  publishMempoolLedgerDelta,
-} from "../services/globals.js";
+import { type AttestationTimeoutCorrectionHealth } from "../services/globals.js";
 import {
   authorizeStateQueueCorrectionReinclusion,
   ContractDeploymentIdentity,
@@ -46,8 +42,6 @@ import {
   NodeConfig,
   reconcileStateQueueCorrectionObserver,
   refuseRewoundStateQueueCorrectionRollback,
-  reincludeFinalizedStateQueueCorrectionTransition,
-  restoreRetractedStateQueueCorrectionTransition,
   type StateQueueCorrectionObserverResult,
   type StateQueueCorrectionObserverSource,
   StateQueueCorrectionRewindIntegrityError,
@@ -181,28 +175,16 @@ export const withTimeoutCorrectionProgress = (
 });
 
 /**
- * Admits authenticated state-queue corrections into the durable observer and
- * applies their local consequences. Reinclusion (a removed block's payloads
- * return to the pending set) and its post-finality rollback inverse rewrite
- * history-owned event rows, so each runs as its own registered Ready history
- * producer, exactly like every other node writer; nothing else holds one here.
- * A closed gate or lagging follower refuses the whole reconciliation before
- * the observer persists, so the next tick replays the same transition from the
- * chain. Both mutations are idempotent, so a crash after either commits is also
- * resumed by replay.
+ * Admits authenticated state-queue corrections into the durable observer.
  *
- * Both also change which deposit outputs are spendable (a deposit's L2 output
- * is spendable only while it is assigned to a header), so the producer that
- * committed the change publishes a full validation-cache reload before it
- * releases its registration, the way every ledger mutator publishes its delta.
- *
- * Under Architecture G a removed block this node committed has already moved
- * the native ledger root, so its reinclusion is a rewind, not a forward
- * write: the fiber only admits the correction (the observer persists it) and
- * the history owner's recovery rewinds the native root and reincludes the
- * payloads (see state-queue-correction-rewind). The admission needs no
- * producer, so a gate the owner closed for an earlier removal of the same
- * suffix never blocks admitting the later one.
+ * A removed block this node committed has already moved the native ledger
+ * root, so its reinclusion is a rewind, not a forward write: the fiber only
+ * admits the correction (the observer persists it) and the history owner's
+ * recovery rewinds the native root and reincludes the payloads (see
+ * state-queue-correction-rewind). The admission needs no producer, so a gate
+ * the owner closed for an earlier removal of the same suffix never blocks
+ * admitting the later one. The native rewind has no inverse, so a post-finality
+ * rollback of a rewound removal is refused as an integrity failure.
  */
 export const reconcileStateQueueCorrections = ({
   source,
@@ -210,17 +192,12 @@ export const reconcileStateQueueCorrections = ({
   stateQueuePolicyId,
   requiredFinalityDepth,
   deploymentManifest,
-  ledgerDeltaLogMax,
-  rewindThroughHistoryOwner,
 }: {
   readonly source: StateQueueCorrectionObserverSource;
   readonly deploymentIdentityDigest: string;
   readonly stateQueuePolicyId: string;
   readonly requiredFinalityDepth: bigint;
   readonly deploymentManifest: unknown;
-  readonly ledgerDeltaLogMax: number;
-  /** Architecture G: admit only; the history owner rewinds and reincludes. */
-  readonly rewindThroughHistoryOwner: boolean;
 }): Effect.Effect<
   StateQueueCorrectionObserverResult,
   unknown,
@@ -228,20 +205,11 @@ export const reconcileStateQueueCorrections = ({
 > =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const globals = yield* Globals;
     const run = Runtime.runPromise(yield* Effect.runtime<Database | Globals>());
     const authority = {
       expectedDeploymentIdentityDigest: deploymentIdentityDigest,
       requiredFinalityDepth,
     };
-    const reloadLedgerCacheIf = (changed: boolean) =>
-      changed
-        ? publishMempoolLedgerDelta(
-            globals,
-            { full: true, upserts: [], deletes: [] },
-            ledgerDeltaLogMax,
-          )
-        : Effect.void;
     return yield* Effect.tryPromise({
       try: () =>
         reconcileStateQueueCorrectionObserver({
@@ -254,71 +222,22 @@ export const reconcileStateQueueCorrections = ({
             deploymentManifest,
           }),
           reinclude: async (transition) => {
-            if (rewindThroughHistoryOwner) {
-              // Refuse an unauthorized transition before the observer admits it.
-              authorizeStateQueueCorrectionReinclusion(transition, authority);
-              return;
-            }
-            await run(
-              Effect.suspend(() =>
-                reincludeFinalizedStateQueueCorrectionTransition(
-                  transition,
-                  authority,
-                ),
-              ).pipe(
-                Effect.tap((results) =>
-                  reloadLedgerCacheIf(
-                    results.some(
-                      (result) =>
-                        result.reopenedEvents > 0 ||
-                        result.restoredMempoolTransactions > 0 ||
-                        result.restoredProcessedTransactions > 0,
-                    ),
-                  ),
-                ),
-                runHistoryProducer,
-              ),
-            );
+            // Refuse an unauthorized transition before the observer admits it.
+            authorizeStateQueueCorrectionReinclusion(transition, authority);
           },
           // Refused before the terminal outcome is revoked, so the DA
           // 'removed' authority of a rewound block survives the refusal.
-          assertRollbackPermitted: rewindThroughHistoryOwner
-            ? async (transition) => {
-                await run(
-                  refuseRewoundStateQueueCorrectionRollback(
-                    transition,
-                    authority,
-                  ),
-                );
-              }
-            : undefined,
-          restoreAfterRollback: async (transition) => {
-            if (rewindThroughHistoryOwner) {
-              // The native rewind has no inverse: a rolled-back removal whose
-              // rewind ran is an explicit integrity failure, and one whose
-              // rewind never ran left nothing to restore.
-              await run(
-                refuseRewoundStateQueueCorrectionRollback(
-                  transition,
-                  authority,
-                ),
-              );
-              return;
-            }
+          assertRollbackPermitted: async (transition) => {
             await run(
-              Effect.suspend(() =>
-                restoreRetractedStateQueueCorrectionTransition(
-                  transition,
-                  authority,
-                ),
-              ).pipe(
-                Effect.tap((results) =>
-                  reloadLedgerCacheIf(
-                    results.some((result) => result.restoredCanonicalBlock),
-                  ),
-                ),
-                runHistoryProducer,
-              ),
+              refuseRewoundStateQueueCorrectionRollback(transition, authority),
+            );
+          },
+          restoreAfterRollback: async (transition) => {
+            // The native rewind has no inverse: a rolled-back removal whose
+            // rewind ran is an explicit integrity failure, and one whose
+            // rewind never ran left nothing to restore.
+            await run(
+              refuseRewoundStateQueueCorrectionRollback(transition, authority),
             );
           },
           revokeTerminal: async (transition) => {
@@ -437,8 +356,6 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       stateQueuePolicyId: contracts.stateQueue.policyId,
       requiredFinalityDepth: BigInt(manifestFinalityDepth),
       deploymentManifest: deploymentIdentity.manifest,
-      ledgerDeltaLogMax: nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-      rewindThroughHistoryOwner: nodeConfig.MPF_ENGINE === "architecture_g",
     });
     if (
       observerResult.admittedTransactionHashes.length > 0 ||
@@ -551,8 +468,8 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
           });
           // Transaction confirmation is not correction provenance or release
           // finality. Payload recovery is driven separately by the node's
-          // authenticated, rollback-aware transition observer through
-          // reincludeFinalizedStateQueueCorrectionTransition.
+          // authenticated, rollback-aware transition observer and the history
+          // owner's correction rewind.
           yield* Effect.logInfo(
             `Attestation-timeout correction result status=${result.status},target=${result.targetHeaderHash ?? "none"},transactions=${result.submittedTxHashes.join(",")}.`,
           );

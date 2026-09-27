@@ -34,7 +34,7 @@ const writeExpected = (root: string, lastKey: Buffer): void =>
 
 const crashPreFlush = Effect.gen(function* () {
   const mpf = yield* MidgardMpf.create("crash-probe", dbPath, {
-    engine: "overlay",
+    mode: "overlay",
   });
   yield* mpf.beginBlockOverlay();
   const entryCount = 256;
@@ -53,7 +53,7 @@ const crashPreFlush = Effect.gen(function* () {
 
 const crashMidFlush = Effect.gen(function* () {
   const mpf = yield* MidgardMpf.create("crash-probe", dbPath, {
-    engine: "overlay",
+    mode: "overlay",
     spillThresholdBytes: Number.MAX_SAFE_INTEGER,
   });
   yield* mpf.beginBlockOverlay();
@@ -80,7 +80,7 @@ const verify = (allowNewRoot: boolean) =>
       readonly lastKey: string;
     };
     const mpf = yield* MidgardMpf.create("crash-probe", dbPath, {
-      engine: "overlay",
+      mode: "overlay",
     });
     const durableRoot = yield* mpf.persistedRootHex();
     if (

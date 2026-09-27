@@ -252,11 +252,7 @@ export type NodeConfigDep = {
   WRITE_BEHIND_FLUSH_INTERVAL_MS: number;
   WRITE_BEHIND_MAX_BATCH: number;
   WRITE_BEHIND_QUEUE_CAPACITY: number;
-  MPF_ENGINE: "legacy" | "overlay" | "event_flat" | "architecture_g";
   MPF_SCRATCH_BUILD: "insert" | "fromlist";
-  MPF_PATH_HYDRATION_MODE: "whole_block" | "chunked" | "chunked_arena";
-  MPF_HYDRATION_CHUNK_OPS: number;
-  MPF_RETAIN_HYDRATED_DEPTH: number;
   MPF_OVERLAY_SPILL_BYTES: number;
   MPF_PAYLOAD_ROOT_CHECK: "every_block" | "periodic" | "off";
   MPF_PAYLOAD_AUDIT_INTERVAL_BLOCKS: number;
@@ -1080,75 +1076,10 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const mpfEngine = yield* Config.literal(
-    "legacy",
-    "overlay",
-    "event_flat",
-    "architecture_g",
-  )("MPF_ENGINE").pipe(Config.withDefault("legacy"));
-  if (speculativeCommitBuild && mpfEngine === "legacy") {
-    return yield* Effect.fail(
-      new ConfigError({
-        message:
-          "Speculative commit building requires an overlay-capable MPF engine",
-        cause: `MPF_ENGINE=${mpfEngine}`,
-        fieldsAndValues: [
-          ["SPECULATIVE_COMMIT_BUILD", "true"],
-          ["MPF_ENGINE", mpfEngine],
-        ],
-      }),
-    );
-  }
   const mpfScratchBuild = yield* Config.literal(
     "insert",
     "fromlist",
   )("MPF_SCRATCH_BUILD").pipe(Config.withDefault("insert"));
-  const mpfPathHydrationMode = yield* Config.literal(
-    "whole_block",
-    "chunked",
-    "chunked_arena",
-  )("MPF_PATH_HYDRATION_MODE").pipe(Config.withDefault("whole_block"));
-  if (mpfPathHydrationMode !== "whole_block" && mpfEngine === "legacy") {
-    return yield* Effect.fail(
-      new ConfigError({
-        message: "Chunked MPF hydration requires an overlay-capable MPF engine",
-        cause: `MPF_ENGINE=${mpfEngine}`,
-        fieldsAndValues: [
-          ["MPF_PATH_HYDRATION_MODE", mpfPathHydrationMode],
-          ["MPF_ENGINE", mpfEngine],
-        ],
-      }),
-    );
-  }
-  if (mpfEngine === "event_flat" && mpfPathHydrationMode !== "chunked_arena") {
-    return yield* Effect.fail(
-      new ConfigError({
-        message: "The event-flat MPF engine requires chunked_arena hydration",
-        cause: `MPF_PATH_HYDRATION_MODE=${mpfPathHydrationMode}`,
-        fieldsAndValues: [
-          ["MPF_ENGINE", mpfEngine],
-          ["MPF_PATH_HYDRATION_MODE", mpfPathHydrationMode],
-        ],
-      }),
-    );
-  }
-  const mpfHydrationChunkOps = yield* positiveSafeIntegerConfig(
-    "MPF_HYDRATION_CHUNK_OPS",
-    512,
-  );
-  const mpfRetainHydratedDepth = yield* Config.integer(
-    "MPF_RETAIN_HYDRATED_DEPTH",
-  ).pipe(
-    Config.withDefault(2),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value < 0 || value > 8) {
-        throw new Error(
-          "MPF_RETAIN_HYDRATED_DEPTH must be a safe integer between 0 and 8",
-        );
-      }
-      return value;
-    }),
-  );
   const mpfOverlaySpillBytes = yield* positiveSafeIntegerConfig(
     "MPF_OVERLAY_SPILL_BYTES",
     512 * 1024 * 1024,
@@ -1254,23 +1185,6 @@ const makeConfig = Effect.gen(function* () {
   const mpfNativeOwnerBinarySha256 = yield* Config.string(
     "MPF_NATIVE_OWNER_BINARY_SHA256",
   ).pipe(Config.withDefault(""));
-  if (
-    mpfEngine === "architecture_g" &&
-    !/^[0-9a-f]{64}$/.test(mpfNativeOwnerBinarySha256)
-  ) {
-    return yield* Effect.fail(
-      new ConfigError({
-        message:
-          "Architecture G requires an explicitly pinned native owner binary SHA-256",
-        cause: "MPF_NATIVE_OWNER_BINARY_SHA256 is absent or non-canonical",
-        fieldsAndValues: [
-          ["MPF_ENGINE", mpfEngine],
-          ["MPF_NATIVE_OWNER_BINARY_PATH", mpfNativeOwnerBinaryPath],
-          ["MPF_NATIVE_OWNER_BINARY_SHA256", mpfNativeOwnerBinarySha256],
-        ],
-      }),
-    );
-  }
   const mpfNativeOwnerSidecarPath = yield* Config.string(
     "MPF_NATIVE_OWNER_SIDECAR_PATH",
   ).pipe(Config.withDefault(`${ledgerMpfDbPath}.architecture-g.sidecar`));
@@ -1455,11 +1369,7 @@ const makeConfig = Effect.gen(function* () {
     WRITE_BEHIND_FLUSH_INTERVAL_MS: writeBehindFlushIntervalMs,
     WRITE_BEHIND_MAX_BATCH: writeBehindMaxBatch,
     WRITE_BEHIND_QUEUE_CAPACITY: writeBehindQueueCapacity,
-    MPF_ENGINE: mpfEngine,
     MPF_SCRATCH_BUILD: mpfScratchBuild,
-    MPF_PATH_HYDRATION_MODE: mpfPathHydrationMode,
-    MPF_HYDRATION_CHUNK_OPS: mpfHydrationChunkOps,
-    MPF_RETAIN_HYDRATED_DEPTH: mpfRetainHydratedDepth,
     MPF_OVERLAY_SPILL_BYTES: mpfOverlaySpillBytes,
     MPF_PAYLOAD_ROOT_CHECK: mpfPayloadRootCheck,
     MPF_PAYLOAD_AUDIT_INTERVAL_BLOCKS: mpfPayloadAuditIntervalBlocks,

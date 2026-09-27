@@ -39,16 +39,9 @@ export type MpfReplaySummary = {
   readonly blocks: number;
   readonly runs: number;
   readonly proofChecks: number;
-  readonly engines: readonly [
-    "legacy",
-    "overlay",
-    "event_flat",
-    "architecture_g",
-  ];
-  readonly runsByEngine: {
-    readonly legacy: number;
-    readonly overlay: number;
-    readonly event_flat: number;
+  readonly implementations: readonly ["typescript_reference", "architecture_g"];
+  readonly runsByImplementation: {
+    readonly typescript_reference: number;
     readonly architecture_g: number;
   };
   readonly scratchBuilds: readonly ["insert", "fromlist"];
@@ -68,7 +61,7 @@ export type MpfReplayOptions = {
   readonly nativeOwnerBinaryPath?: string;
 };
 
-const ENGINES = ["legacy", "overlay", "event_flat", "architecture_g"] as const;
+const IMPLEMENTATIONS = ["typescript_reference", "architecture_g"] as const;
 const SCRATCH_BUILDS = ["insert", "fromlist"] as const;
 const DEFAULT_NATIVE_OWNER_BINARY_PATH =
   "native/mpf-event-flat-wasm/target/release/architecture-g-owner";
@@ -154,9 +147,12 @@ const verifyIndependentFinalProofs = (
     return proofChecks;
   });
 
-const replayOne = (
+/**
+ * Replays a block through the TypeScript MPF store, the independent reference
+ * the native owner's roots are checked against.
+ */
+const replayTypeScriptReference = (
   block: MpfReplayCorpusBlock,
-  engine: "legacy" | "overlay" | "event_flat",
   scratchBuild: "insert" | "fromlist",
 ): Effect.Effect<
   { readonly roots: ReplayRoots; readonly proofChecks: number },
@@ -166,14 +162,13 @@ const replayOne = (
   return Effect.gen(function* () {
     setMpfScratchBuild(scratchBuild);
     configureMpfPathHydration({
-      mode: engine === "event_flat" ? "chunked_arena" : "whole_block",
+      mode: "whole_block",
       chunkOps: 512,
       retainDepth: 2,
     });
     const initial = block.initialLedgerEntries.map(decodeEntry);
     const ledger = yield* MidgardMpf.createScratch(
-      `${block.label}-${engine}-${scratchBuild}-ledger`,
-      { engine },
+      `${block.label}-reference-${scratchBuild}-ledger`,
     );
     yield* ledger.applyBatch(
       initial.map((entry) => ({
@@ -182,7 +177,6 @@ const replayOne = (
         value: entry.value,
       })),
     );
-    if (engine !== "legacy") yield* ledger.beginBlockOverlay();
     const sourceEvents = decodeSourceEvents(block);
     const count = (phase: SDK.TransitionPhase): number =>
       sourceEvents.filter((event) => event.phase === phase).length;
@@ -197,17 +191,12 @@ const replayOne = (
 
     const transactionOps = block.transactionOps.map(decodeEntry);
     const transactions = yield* MidgardMpf.createScratch(
-      `${block.label}-${engine}-${scratchBuild}-transactions`,
-      { engine },
+      `${block.label}-reference-${scratchBuild}-transactions`,
     );
     const transactionBatch = transactionOps.map((entry) => ({
       type: "insert" as const,
       ...entry,
     }));
-    if (engine !== "legacy") yield* transactions.beginBlockOverlay();
-    if (engine === "event_flat") {
-      yield* transactions.primeBlockPathArena(transactionBatch, 2, false);
-    }
     yield* transactions.applyBatch(transactionBatch);
     const rawTxRoot = yield* transactions.rootHex();
     const txRoot = yield* buildTransactionsSourceRoot(transactionBatch);
@@ -241,11 +230,6 @@ const replayOne = (
       throw new Error(
         `Final payload root mismatch: payload=${payloadRoot},ledger=${utxoRoot}`,
       );
-    }
-
-    if (engine !== "legacy") {
-      yield* ledger.flushBlockOverlay(yield* ledger.root());
-      yield* transactions.flushBlockOverlay(yield* transactions.root());
     }
 
     let proofChecks = 0;
@@ -322,7 +306,7 @@ const seedNativeOwnerFixture = async ({
             trieName,
             levelPath,
             initial,
-            { engine: "legacy" },
+            { mode: "direct" },
           ),
         )
       : await (async () => {
@@ -336,7 +320,7 @@ const seedNativeOwnerFixture = async ({
             await empty.close();
           }
           const created = await Effect.runPromise(
-            MidgardMpf.create(trieName, levelPath, { engine: "legacy" }),
+            MidgardMpf.create(trieName, levelPath),
           );
           try {
             await Effect.runPromise(
@@ -721,7 +705,7 @@ export const makeSeededAdversarialMpfCorpusBlock = (
         transitionRoots: [],
       },
     };
-    const result = yield* replayOne(block, "legacy", "insert");
+    const result = yield* replayTypeScriptReference(block, "insert");
     return { ...block, expected: result.roots };
   });
 
@@ -733,10 +717,8 @@ export const replayMpfCorpusBlocks = (
   Effect.gen(function* () {
     let runs = 0;
     let proofChecks = 0;
-    const runsByEngine = {
-      legacy: 0,
-      overlay: 0,
-      event_flat: 0,
+    const runsByImplementation = {
+      typescript_reference: 0,
       architecture_g: 0,
     };
     const adversarialCoverage = {
@@ -763,20 +745,18 @@ export const replayMpfCorpusBlocks = (
         blockCoverage.longestHashedPrefixNibbles,
       );
       let baseline: ReplayRoots | undefined;
-      for (const engine of ["legacy", "overlay", "event_flat"] as const) {
-        for (const scratchBuild of SCRATCH_BUILDS) {
-          const result = yield* replayOne(block, engine, scratchBuild);
-          baseline ??= result.roots;
-          assertEqual(
-            `${block.label}:${engine}:${scratchBuild}`,
-            baseline,
-            result.roots,
-          );
-          assertEqual(`${block.label}:recorded`, block.expected, result.roots);
-          runs += 1;
-          runsByEngine[engine] += 1;
-          proofChecks += result.proofChecks;
-        }
+      for (const scratchBuild of SCRATCH_BUILDS) {
+        const result = yield* replayTypeScriptReference(block, scratchBuild);
+        baseline ??= result.roots;
+        assertEqual(
+          `${block.label}:typescript_reference:${scratchBuild}`,
+          baseline,
+          result.roots,
+        );
+        assertEqual(`${block.label}:recorded`, block.expected, result.roots);
+        runs += 1;
+        runsByImplementation.typescript_reference += 1;
+        proofChecks += result.proofChecks;
       }
       for (const scratchBuild of SCRATCH_BUILDS) {
         const result = yield* replayArchitectureGOne(
@@ -791,7 +771,7 @@ export const replayMpfCorpusBlocks = (
         );
         assertEqual(`${block.label}:recorded`, block.expected, result.roots);
         runs += 1;
-        runsByEngine.architecture_g += 1;
+        runsByImplementation.architecture_g += 1;
         proofChecks += result.proofChecks;
       }
     }
@@ -800,8 +780,8 @@ export const replayMpfCorpusBlocks = (
       blocks: blocks.length,
       runs,
       proofChecks,
-      engines: ENGINES,
-      runsByEngine,
+      implementations: IMPLEMENTATIONS,
+      runsByImplementation,
       scratchBuilds: SCRATCH_BUILDS,
       nativeOwner,
       adversarialCoverage,

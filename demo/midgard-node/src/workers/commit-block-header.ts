@@ -49,19 +49,12 @@ import {
   type CommitStageLedgerRevert,
   computeLedgerMpfRootFromLedgerEntries,
   configureCommitMpfRuntime,
-  hydrateLedgerMpfFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
-  makeMpfs,
   MidgardMpf,
-  MpfError,
   type NativeMpfBuildContext,
-  type ParkedEventFlatOverlay,
-  type ParkedMpfOverlay,
   processMpfs,
   revertCommitStageRejectedLedgerEffects,
   utxoToLedgerInsertMaterial,
-  withMpfBlockOverlays,
-  withMpfRootTransactions,
 } from "../mpf/index.js";
 import {
   assertHistoryProducer,
@@ -861,7 +854,6 @@ export const selectAuthenticatedForeignBaseCandidate = ({
 const resolveCommitBaseLedgerEntries = ({
   availableConfirmedBlock,
   speculativeBase,
-  ledgerMpf,
   nativeMpfRoot,
   requireEntries,
 }: {
@@ -869,8 +861,7 @@ const resolveCommitBaseLedgerEntries = ({
   readonly speculativeBase?: NonNullable<
     WorkerInput["data"]["speculativeBuild"]
   >["base"];
-  readonly ledgerMpf?: MidgardMpf;
-  readonly nativeMpfRoot?: string;
+  readonly nativeMpfRoot: string;
   readonly requireEntries: boolean;
 }): Effect.Effect<
   ResolvedCommitBaseLedgerEntries,
@@ -878,16 +869,8 @@ const resolveCommitBaseLedgerEntries = ({
   Database | NodeConfig
 > =>
   Effect.gen(function* () {
-    const currentLedgerRoot = (): Effect.Effect<string, unknown> =>
-      ledgerMpf === undefined
-        ? nativeMpfRoot === undefined
-          ? Effect.fail(
-              new Error("Commit base resolution has no ledger root provider"),
-            )
-          : Effect.succeed(nativeMpfRoot)
-        : ledgerMpf.rootHex();
     if (speculativeBase !== undefined) {
-      const currentLedgerRootHex = yield* currentLedgerRoot();
+      const currentLedgerRootHex = nativeMpfRoot;
       const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
         Buffer.from(speculativeBase.headerHash, "hex"),
       );
@@ -985,7 +968,7 @@ const resolveCommitBaseLedgerEntries = ({
         const header = yield* SDK.getHeaderFromStateQueueDatum(
           latestBlock.datum,
         );
-        const currentLedgerRootHex = yield* currentLedgerRoot();
+        const currentLedgerRootHex = nativeMpfRoot;
         const headerHash = yield* SDK.hashBlockHeader(header);
         const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
           Buffer.from(headerHash, "hex"),
@@ -1143,7 +1126,7 @@ const resolveCommitBaseLedgerEntries = ({
     }
 
     if (!requireEntries) {
-      const currentLedgerRootHex = yield* currentLedgerRoot();
+      const currentLedgerRootHex = nativeMpfRoot;
       const aggregate =
         yield* MpfEngineStateDB.retrieveLedgerPayloadAggregate(
           currentLedgerRootHex,
@@ -1178,61 +1161,23 @@ const resolveCommitBaseLedgerEntries = ({
   });
 
 const alignCommitMpfsToBase = ({
-  ledgerMpf,
   nativeMpfRoot,
   transactionsMpf,
   base,
 }: {
-  readonly ledgerMpf?: MidgardMpf;
-  readonly nativeMpfRoot?: string;
+  readonly nativeMpfRoot: string;
   readonly transactionsMpf: MidgardMpf;
   readonly base: ResolvedCommitBaseLedgerEntries;
 }): Effect.Effect<readonly Ledger.MinimalEntry[], unknown, never> =>
   Effect.gen(function* () {
-    const currentLedgerRoot =
-      ledgerMpf === undefined ? nativeMpfRoot : yield* ledgerMpf.rootHex();
-    if (currentLedgerRoot === undefined) {
+    if (nativeMpfRoot !== base.root) {
       return yield* Effect.fail(
-        new Error("Commit base alignment has no ledger root provider"),
-      );
-    }
-    if (currentLedgerRoot !== base.root) {
-      if (ledgerMpf === undefined) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Architecture G durable marker differs from the selected commit base",
-            cause: `source=${base.source},current_root=${currentLedgerRoot},expected_root=${base.root}`,
-          }),
-        );
-      }
-      if (base.entries === undefined) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Cannot hydrate a divergent commit ledger MPF without base entries",
-            cause: `source=${base.source},current_root=${currentLedgerRoot},expected_root=${base.root}`,
-          }),
-        );
-      }
-      const hydratedRoot = yield* hydrateLedgerMpfFromLedgerEntries(
-        ledgerMpf,
-        base.entries,
-      );
-      if (hydratedRoot !== base.root) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Refusing to build a block because hydrating the commit ledger MPF did not reproduce the selected base root",
-            cause: `source=${base.source},expected_root=${base.root},hydrated_root=${hydratedRoot}`,
-          }),
-        );
-      }
-      yield* Effect.logInfo(
-        `🔹 Hydrated commit ledger MPF from ${base.source}: previous_root=${currentLedgerRoot},root=${hydratedRoot},entries=${base.entries.length.toString()}.`,
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Architecture G durable marker differs from the selected commit base",
+          cause: `source=${base.source},current_root=${nativeMpfRoot},expected_root=${base.root}`,
+        }),
       );
     }
 
@@ -1508,163 +1453,8 @@ const MEMPOOL_LEDGER_REVERTED_NOTICE: MempoolLedgerRevertedNotice = {
   type: "MempoolLedgerRevertedNotice",
 };
 
-type SpeculativeMpfArtifacts =
-  | {
-      readonly engine: "overlay";
-      readonly ledger: ParkedMpfOverlay;
-      readonly transactions: ParkedMpfOverlay;
-    }
-  | {
-      readonly engine: "event_flat";
-      readonly ledger: ParkedEventFlatOverlay;
-      readonly transactions: ParkedMpfOverlay;
-    };
-
-export const parkSpeculativeMpfsForConfirmationWait = ({
-  ledgerFork,
-  transactionsScratch,
-  ledgerParent,
-  closeOwningParents,
-}: {
-  readonly ledgerFork: MidgardMpf;
-  readonly transactionsScratch: MidgardMpf;
-  readonly ledgerParent: MidgardMpf;
-  readonly closeOwningParents: Effect.Effect<void>;
-}): Effect.Effect<SpeculativeMpfArtifacts, MpfError> => {
-  const cleanup = Effect.gen(function* () {
-    yield* ledgerFork
-      .discardBlockOverlayIfActive()
-      .pipe(Effect.catchAll(() => Effect.void));
-    yield* transactionsScratch
-      .discardBlockOverlayIfActive()
-      .pipe(Effect.catchAll(() => Effect.void));
-    yield* ledgerParent
-      .discardBlockOverlayIfActive()
-      .pipe(Effect.catchAll(() => Effect.void));
-    yield* ledgerFork.close().pipe(Effect.catchAll(() => Effect.void));
-    yield* transactionsScratch.close().pipe(Effect.catchAll(() => Effect.void));
-    yield* closeOwningParents.pipe(Effect.catchAll(() => Effect.void));
-  });
-  return Effect.gen(function* () {
-    const parked = yield* Effect.either(
-      Effect.gen(function* () {
-        const eventFlat = ledgerFork.usesEventFlatEngine();
-        let artifacts: SpeculativeMpfArtifacts;
-        if (eventFlat) {
-          artifacts = {
-            engine: "event_flat",
-            ledger: yield* ledgerFork.parkEventFlatOverlayV1(),
-            transactions: yield* transactionsScratch.parkBlockOverlay(),
-          };
-        } else {
-          artifacts = {
-            engine: "overlay",
-            ledger: yield* ledgerFork.parkBlockOverlay(),
-            transactions: yield* transactionsScratch.parkBlockOverlay(),
-          };
-        }
-        yield* ledgerParent.discardBlockOverlayIfActive();
-        yield* ledgerFork.close();
-        yield* transactionsScratch.close();
-        yield* closeOwningParents;
-        return artifacts;
-      }),
-    );
-    if (parked._tag === "Right") return parked.right;
-    yield* cleanup;
-    return yield* Effect.fail(parked.left);
-  });
-};
-
-type ResumeParkedOverlay = (
-  trieName: string,
-  levelDBFilePath: string | undefined,
-  artifact: ParkedMpfOverlay,
-) => Effect.Effect<MidgardMpf, MpfError>;
-
-type ResumeParkedEventFlatOverlay = (
-  trieName: string,
-  levelDBFilePath: string | undefined,
-  artifact: ParkedEventFlatOverlay,
-) => Effect.Effect<MidgardMpf, MpfError>;
-
-type OpenLocalFinalizationTransactionsMpf = () => Effect.Effect<
-  MidgardMpf,
-  MpfError
->;
-
-export const resumeSpeculativeMpfsForSubmission = ({
-  artifacts,
-  ledgerMpfPath,
-  needsLocalFinalizationTransactionsMpf,
-  resumeParkedOverlay = MidgardMpf.resumeParkedOverlay,
-  resumeParkedEventFlatOverlay = MidgardMpf.resumeParkedEventFlatOverlayV1,
-  openLocalFinalizationTransactionsMpf,
-}: {
-  readonly artifacts: SpeculativeMpfArtifacts;
-  readonly ledgerMpfPath: string;
-  readonly needsLocalFinalizationTransactionsMpf: boolean;
-  readonly resumeParkedOverlay?: ResumeParkedOverlay;
-  readonly resumeParkedEventFlatOverlay?: ResumeParkedEventFlatOverlay;
-  readonly openLocalFinalizationTransactionsMpf: OpenLocalFinalizationTransactionsMpf;
-}): Effect.Effect<
-  {
-    readonly ledgerMpf: MidgardMpf;
-    readonly transactionsMpf: MidgardMpf;
-    readonly localFinalizationTransactionsMpf?: MidgardMpf;
-  },
-  MpfError
-> =>
-  Effect.gen(function* () {
-    let ledgerMpf: MidgardMpf | undefined;
-    let transactionsMpf: MidgardMpf | undefined;
-    let localFinalizationTransactionsMpf: MidgardMpf | undefined;
-    const resumed = yield* Effect.either(
-      Effect.gen(function* () {
-        ledgerMpf =
-          artifacts.engine === "event_flat"
-            ? yield* resumeParkedEventFlatOverlay(
-                "ledger",
-                ledgerMpfPath,
-                artifacts.ledger,
-              )
-            : yield* resumeParkedOverlay(
-                "ledger",
-                ledgerMpfPath,
-                artifacts.ledger,
-              );
-        transactionsMpf = yield* resumeParkedOverlay(
-          "speculative-transactions",
-          undefined,
-          artifacts.transactions,
-        );
-        if (needsLocalFinalizationTransactionsMpf) {
-          localFinalizationTransactionsMpf =
-            yield* openLocalFinalizationTransactionsMpf();
-        }
-      }),
-    );
-    if (resumed._tag === "Left") {
-      yield* ledgerMpf?.close().pipe(Effect.catchAll(() => Effect.void)) ??
-        Effect.void;
-      yield* transactionsMpf
-        ?.close()
-        .pipe(Effect.catchAll(() => Effect.void)) ?? Effect.void;
-      yield* localFinalizationTransactionsMpf
-        ?.close()
-        .pipe(Effect.catchAll(() => Effect.void)) ?? Effect.void;
-      return yield* Effect.fail(resumed.left);
-    }
-    return {
-      ledgerMpf: ledgerMpf!,
-      transactionsMpf: transactionsMpf!,
-      localFinalizationTransactionsMpf,
-    };
-  });
-
 const databaseOperationsProgram = (
   workerInput: WorkerInput,
-  ledgerMpf: MidgardMpf | undefined,
   transactionsMpf: MidgardMpf,
   awaitSpeculativeInstruction?: AwaitSpeculativeCommitInstruction,
   notifyParent?: NotifyCommitWorkerParent,
@@ -1743,10 +1533,7 @@ const databaseOperationsProgram = (
     }
     const deploymentMarker = deploymentIdentity.deploymentMarker;
     yield* configureCommitMpfRuntime(nodeConfig);
-    if (
-      nodeConfig.MPF_ENGINE === "architecture_g" &&
-      (nativeMpfClient === undefined || workerInput.nativeMpf === undefined)
-    ) {
+    if (nativeMpfClient === undefined || workerInput.nativeMpf === undefined) {
       return yield* Effect.fail(
         new CommitWorkerInvariantError({
           message:
@@ -1754,9 +1541,7 @@ const databaseOperationsProgram = (
         }),
       );
     }
-    if (nodeConfig.MPF_ENGINE !== "legacy") {
-      yield* MpfEngineStateDB.assertLedgerAuditHealthy;
-    }
+    yield* MpfEngineStateDB.assertLedgerAuditHealthy;
     yield* Effect.logInfo(
       `pipeline_trace phase=commit_worker_started at_ms=${workerStartedAtMs.toString()}`,
     );
@@ -2183,8 +1968,7 @@ const databaseOperationsProgram = (
     const commitBase = yield* resolveCommitBaseLedgerEntries({
       availableConfirmedBlock,
       speculativeBase: speculativeBuild?.base,
-      ledgerMpf,
-      nativeMpfRoot: workerInput.nativeMpf?.durableRoot,
+      nativeMpfRoot: workerInput.nativeMpf.durableRoot,
       requireEntries: shouldHydrateCommitBaseEntries({
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
         recordCorpus: nodeConfig.MPF_RECORD_CORPUS,
@@ -2195,25 +1979,21 @@ const databaseOperationsProgram = (
       }),
     });
     const initialLedgerEntries = yield* alignCommitMpfsToBase({
-      ledgerMpf,
-      nativeMpfRoot: workerInput.nativeMpf?.durableRoot,
+      nativeMpfRoot: workerInput.nativeMpf.durableRoot,
       transactionsMpf,
       base: commitBase,
     });
-    const nativeMpfContext: NativeMpfBuildContext | undefined =
-      nativeMpfClient === undefined
-        ? undefined
-        : {
-            client: nativeMpfClient,
-            handle: yield* Effect.tryPromise({
-              try: () => nativeMpfClient.fork(commitBase.root),
-              catch: (cause) =>
-                new CommitWorkerInvariantError({
-                  message: `Architecture G fork failed: ${String(cause)}`,
-                }),
-            }),
-            ownerBinarySha256: workerInput.nativeMpf!.ownerBinarySha256,
-          };
+    const nativeMpfContext: NativeMpfBuildContext = {
+      client: nativeMpfClient,
+      handle: yield* Effect.tryPromise({
+        try: () => nativeMpfClient.fork(commitBase.root),
+        catch: (cause) =>
+          new CommitWorkerInvariantError({
+            message: `Architecture G fork failed: ${String(cause)}`,
+          }),
+      }),
+      ownerBinarySha256: workerInput.nativeMpf.ownerBinarySha256,
+    };
     if (nativeMpfState !== undefined) {
       nativeMpfState.context = nativeMpfContext;
     }
@@ -2244,7 +2024,7 @@ const databaseOperationsProgram = (
       );
     }
     const processed = yield* processMpfs(
-      ledgerMpf,
+      undefined,
       transactionsMpf,
       candidateSelection.candidateTxs,
       {
@@ -2842,7 +2622,6 @@ export const runCommitBlockHeaderWorkerProgram = (
   Effect.gen(function* () {
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
 
-    const nodeConfig = yield* NodeConfig;
     const stateQueueLeaseToken = workerInput.data.stateQueueLeaseToken;
     if (stateQueueLeaseToken !== undefined) {
       // Production lock order is state-queue mutation lease, then MPF store
@@ -2874,54 +2653,25 @@ export const runCommitBlockHeaderWorkerProgram = (
             context?: NativeMpfBuildContext;
             preserve: boolean;
           } = { preserve: false };
-          const opened =
-            nodeConfig.MPF_ENGINE === "architecture_g"
-              ? {
-                  ledgerMpf: undefined,
-                  transactionsMpf: yield* MidgardMpf.createScratch(
-                    "architecture-g-transactions",
-                    { engine: "overlay" },
-                  ),
-                }
-              : yield* makeMpfs;
-          const { ledgerMpf, transactionsMpf } = opened;
-          let owningParentsClosed = false;
-          const closeMpfs = Effect.suspend(() => {
-            if (owningParentsClosed) return Effect.void;
-            owningParentsClosed = true;
-            return Effect.all(
-              [
-                ledgerMpf?.close().pipe(Effect.catchAll(() => Effect.void)) ??
-                  Effect.void,
-                transactionsMpf
-                  .close()
-                  .pipe(Effect.catchAll(() => Effect.void)),
-              ],
-              { discard: true },
-            );
-          });
+          const transactionsMpf = yield* MidgardMpf.createScratch(
+            "architecture-g-transactions",
+            { mode: "overlay" },
+          );
+          const closeMpfs = transactionsMpf
+            .close()
+            .pipe(Effect.catchAll(() => Effect.void));
 
-          const mpfs = [ledgerMpf!, transactionsMpf] as const;
-          let speculativeStateQueueLeaseToken: string | undefined;
           const runProgram = (
-            activeLedgerMpf: MidgardMpf | undefined,
-            activeTransactionsMpf: MidgardMpf,
             activeAwaitSpeculativeInstruction?: AwaitSpeculativeCommitInstruction,
-            localFinalizationTransactionsMpf?: MidgardMpf,
-            postWaitMpfContext?: () => {
-              readonly transactionsMpf: MidgardMpf;
-              readonly localFinalizationTransactionsMpf?: MidgardMpf;
-            },
           ) =>
             databaseOperationsProgram(
               workerInput,
-              activeLedgerMpf,
-              activeTransactionsMpf,
+              transactionsMpf,
               activeAwaitSpeculativeInstruction,
               notifyParent,
               activeLeaseOwner,
-              localFinalizationTransactionsMpf,
-              postWaitMpfContext,
+              transactionsMpf,
+              () => ({ transactionsMpf }),
               nativeMpfClient,
               nativeMpfState,
               commitLucidFactory,
@@ -2929,11 +2679,9 @@ export const runCommitBlockHeaderWorkerProgram = (
               Effect.tap((output) =>
                 shouldPreserveCommitMpfRoots(output)
                   ? Effect.gen(function* () {
-                      const activeStateQueueLeaseToken =
-                        stateQueueLeaseToken ?? speculativeStateQueueLeaseToken;
-                      if (activeStateQueueLeaseToken !== undefined) {
+                      if (stateQueueLeaseToken !== undefined) {
                         yield* StateQueueMutationLeasesDB.revalidate(
-                          activeStateQueueLeaseToken,
+                          stateQueueLeaseToken,
                         );
                       }
                       yield* MpfEngineStateDB.revalidateLedgerStoreLease(
@@ -2943,261 +2691,54 @@ export const runCommitBlockHeaderWorkerProgram = (
                   : Effect.void,
               ),
             );
-          const program =
-            nodeConfig.MPF_ENGINE === "architecture_g"
-              ? Effect.gen(function* () {
-                  yield* transactionsMpf.beginBlockOverlay();
-                  const awaitInstructionWithRetainedNativeHandle =
-                    workerInput.data.speculativeBuild === undefined ||
-                    awaitSpeculativeInstruction === undefined
-                      ? undefined
-                      : (
-                          candidate: SpeculativeCandidateReadyOutput["candidate"],
-                        ) =>
-                          Effect.gen(function* () {
-                            yield* MpfEngineStateDB.releaseLedgerStoreLease(
-                              activeLeaseOwner,
-                            );
-                            const instruction =
-                              yield* awaitSpeculativeInstruction(candidate);
-                            if (
-                              instruction.type !== "SubmitSpeculativeCandidate"
-                            ) {
-                              return instruction;
-                            }
-                            yield* StateQueueMutationLeasesDB.revalidate(
-                              instruction.stateQueueLeaseToken,
-                            );
-                            let reacquired = false;
-                            for (let attempt = 0; attempt < 200; attempt += 1) {
-                              reacquired =
-                                yield* MpfEngineStateDB.acquireLedgerStoreLease(
-                                  {
-                                    owner: activeLeaseOwner,
-                                    ttlMs: 10 * 60 * 1000,
-                                  },
-                                );
-                              if (reacquired) break;
-                              yield* Effect.sleep("50 millis");
-                            }
-                            if (!reacquired) {
-                              return yield* Effect.fail(
-                                new CommitWorkerInvariantError({
-                                  message:
-                                    "Timed out reacquiring the logical MPF lease for Architecture G speculative submission",
-                                }),
-                              );
-                            }
-                            return instruction;
-                          });
-                  const result = yield* Effect.either(
-                    runProgram(
-                      undefined,
-                      transactionsMpf,
-                      awaitInstructionWithRetainedNativeHandle,
-                      transactionsMpf,
-                      () => ({ transactionsMpf }),
-                    ),
-                  );
-                  yield* transactionsMpf.discardBlockOverlayIfActive();
-                  if (result._tag === "Left") {
-                    return yield* Effect.fail(result.left);
-                  }
-                  return result.right;
-                })
-              : nodeConfig.MPF_ENGINE !== "legacy" &&
-                  workerInput.data.speculativeBuild !== undefined
-                ? Effect.gen(function* () {
-                    yield* ledgerMpf!.beginBlockOverlay();
-                    const speculativeLedgerMpf =
-                      yield* ledgerMpf!.forkBlockOverlay();
-                    const speculativeTransactionsMpf =
-                      yield* MidgardMpf.createScratch(
-                        "speculative-transactions",
-                        { engine: "overlay" },
+          const program = Effect.gen(function* () {
+            yield* transactionsMpf.beginBlockOverlay();
+            const awaitInstructionWithRetainedNativeHandle =
+              workerInput.data.speculativeBuild === undefined ||
+              awaitSpeculativeInstruction === undefined
+                ? undefined
+                : (candidate: SpeculativeCandidateReadyOutput["candidate"]) =>
+                    Effect.gen(function* () {
+                      yield* MpfEngineStateDB.releaseLedgerStoreLease(
+                        activeLeaseOwner,
                       );
-                    yield* speculativeTransactionsMpf.beginBlockOverlay();
-                    let activeSpeculativeLedgerMpf = speculativeLedgerMpf;
-                    let activeSpeculativeTransactionsMpf =
-                      speculativeTransactionsMpf;
-                    let activeLocalFinalizationTransactionsMpf:
-                      | MidgardMpf
-                      | undefined = transactionsMpf;
-                    let parkedForConfirmationWait = false;
-                    const closeActiveSpeculativeMpfs = Effect.suspend(() =>
-                      Effect.all(
-                        [
-                          activeSpeculativeLedgerMpf
-                            .close()
-                            .pipe(Effect.catchAll(() => Effect.void)),
-                          activeSpeculativeTransactionsMpf
-                            .close()
-                            .pipe(Effect.catchAll(() => Effect.void)),
-                          activeLocalFinalizationTransactionsMpf !==
-                            undefined &&
-                          activeLocalFinalizationTransactionsMpf !==
-                            transactionsMpf &&
-                          activeLocalFinalizationTransactionsMpf !==
-                            activeSpeculativeTransactionsMpf
-                            ? activeLocalFinalizationTransactionsMpf
-                                .close()
-                                .pipe(Effect.catchAll(() => Effect.void))
-                            : Effect.void,
-                        ],
-                        { discard: true },
-                      ),
-                    );
-                    const awaitInstructionWithParkedMpfs =
-                      awaitSpeculativeInstruction === undefined
-                        ? undefined
-                        : (
-                            candidate: SpeculativeCandidateReadyOutput["candidate"],
-                          ) =>
-                            Effect.gen(function* () {
-                              const parked =
-                                yield* parkSpeculativeMpfsForConfirmationWait({
-                                  ledgerFork: speculativeLedgerMpf,
-                                  transactionsScratch:
-                                    speculativeTransactionsMpf,
-                                  ledgerParent: ledgerMpf!,
-                                  closeOwningParents: closeMpfs,
-                                });
-                              parkedForConfirmationWait = true;
-                              // No live Trie/Store/Level reference survives the
-                              // ReadyCandidate boundary. Only after both
-                              // authenticated artifacts are parked and both
-                              // owning Level handles are closed may the logical
-                              // MPF lease be released and confirmation proceed.
-                              yield* MpfEngineStateDB.releaseLedgerStoreLease(
-                                activeLeaseOwner,
-                              );
-                              const instruction =
-                                yield* awaitSpeculativeInstruction(candidate);
-                              if (
-                                instruction.type !==
-                                "SubmitSpeculativeCandidate"
-                              ) {
-                                return instruction;
-                              }
-
-                              speculativeStateQueueLeaseToken =
-                                instruction.stateQueueLeaseToken;
-                              // The submitter acquires the state-queue lease
-                              // before posting this instruction. Revalidate it
-                              // before restoring the state_queue -> MPF lock
-                              // order and reopening any parked stores.
-                              yield* StateQueueMutationLeasesDB.revalidate(
-                                instruction.stateQueueLeaseToken,
-                              );
-                              let reacquired = false;
-                              for (
-                                let attempt = 0;
-                                attempt < 200;
-                                attempt += 1
-                              ) {
-                                reacquired =
-                                  yield* MpfEngineStateDB.acquireLedgerStoreLease(
-                                    {
-                                      owner: activeLeaseOwner,
-                                      ttlMs: 10 * 60 * 1000,
-                                    },
-                                  );
-                                if (reacquired) break;
-                                yield* Effect.sleep("50 millis");
-                              }
-                              if (!reacquired) {
-                                return yield* Effect.fail(
-                                  new CommitWorkerInvariantError({
-                                    message:
-                                      "Timed out reacquiring the ledger MPF lease for speculative submission",
-                                  }),
-                                );
-                              }
-                              const resumed =
-                                yield* resumeSpeculativeMpfsForSubmission({
-                                  artifacts: parked,
-                                  ledgerMpfPath: nodeConfig.LEDGER_MPF_DB_PATH,
-                                  needsLocalFinalizationTransactionsMpf:
-                                    instruction.localFinalizationBlock !==
-                                    undefined,
-                                  openLocalFinalizationTransactionsMpf: () =>
-                                    MidgardMpf.create(
-                                      "transactions",
-                                      nodeConfig.TRANSACTIONS_MPF_DB_PATH,
-                                      {
-                                        engine:
-                                          nodeConfig.MPF_ENGINE ===
-                                          "architecture_g"
-                                            ? "overlay"
-                                            : nodeConfig.MPF_ENGINE,
-                                        spillThresholdBytes:
-                                          nodeConfig.MPF_OVERLAY_SPILL_BYTES,
-                                      },
-                                    ),
-                                });
-                              activeSpeculativeLedgerMpf = resumed.ledgerMpf;
-                              activeSpeculativeTransactionsMpf =
-                                resumed.transactionsMpf;
-                              activeLocalFinalizationTransactionsMpf =
-                                resumed.localFinalizationTransactionsMpf;
-                              parkedForConfirmationWait = false;
-                              return instruction;
-                            });
-                    const result = yield* Effect.either(
-                      runProgram(
-                        speculativeLedgerMpf,
-                        speculativeTransactionsMpf,
-                        awaitInstructionWithParkedMpfs,
-                        transactionsMpf,
-                        () => ({
-                          transactionsMpf: activeSpeculativeTransactionsMpf,
-                          localFinalizationTransactionsMpf:
-                            activeLocalFinalizationTransactionsMpf,
-                        }),
-                      ),
-                    );
-                    const discardForksAndParents = Effect.suspend(() =>
-                      parkedForConfirmationWait
-                        ? Effect.void
-                        : Effect.gen(function* () {
-                            yield* activeSpeculativeLedgerMpf.discardBlockOverlayIfActive();
-                            yield* ledgerMpf!.discardBlockOverlayIfActive();
-                            yield* activeSpeculativeTransactionsMpf.discardBlockOverlayIfActive();
-                            yield* closeActiveSpeculativeMpfs;
+                      const instruction =
+                        yield* awaitSpeculativeInstruction(candidate);
+                      if (instruction.type !== "SubmitSpeculativeCandidate") {
+                        return instruction;
+                      }
+                      yield* StateQueueMutationLeasesDB.revalidate(
+                        instruction.stateQueueLeaseToken,
+                      );
+                      let reacquired = false;
+                      for (let attempt = 0; attempt < 200; attempt += 1) {
+                        reacquired =
+                          yield* MpfEngineStateDB.acquireLedgerStoreLease({
+                            owner: activeLeaseOwner,
+                            ttlMs: 10 * 60 * 1000,
+                          });
+                        if (reacquired) break;
+                        yield* Effect.sleep("50 millis");
+                      }
+                      if (!reacquired) {
+                        return yield* Effect.fail(
+                          new CommitWorkerInvariantError({
+                            message:
+                              "Timed out reacquiring the logical MPF lease for Architecture G speculative submission",
                           }),
-                    );
-                    if (result._tag === "Left") {
-                      yield* discardForksAndParents;
-                      return yield* Effect.fail(result.left);
-                    }
-                    if (!shouldPreserveCommitMpfRoots(result.right)) {
-                      yield* discardForksAndParents;
-                      return result.right;
-                    }
-                    // Only the ledger child owns durable candidate state. Its
-                    // promotion occurs after the submit path and both leases are
-                    // revalidated above. The per-block transaction tree is
-                    // scratch-only; the journal is its recovery source of truth.
-                    const speculativeLedgerRoot =
-                      yield* activeSpeculativeLedgerMpf.root();
-                    yield* activeSpeculativeLedgerMpf.flushBlockOverlay(
-                      speculativeLedgerRoot,
-                    );
-                    yield* activeSpeculativeTransactionsMpf.discardBlockOverlayIfActive();
-                    yield* closeActiveSpeculativeMpfs;
-                    return result.right;
-                  })
-                : nodeConfig.MPF_ENGINE !== "legacy"
-                  ? withMpfBlockOverlays(
-                      mpfs,
-                      runProgram(ledgerMpf!, transactionsMpf, undefined),
-                      shouldPreserveCommitMpfRoots,
-                    )
-                  : withMpfRootTransactions(
-                      mpfs,
-                      runProgram(ledgerMpf!, transactionsMpf, undefined),
-                      shouldPreserveCommitMpfRoots,
-                    );
+                        );
+                      }
+                      return instruction;
+                    });
+            const result = yield* Effect.either(
+              runProgram(awaitInstructionWithRetainedNativeHandle),
+            );
+            yield* transactionsMpf.discardBlockOverlayIfActive();
+            if (result._tag === "Left") {
+              return yield* Effect.fail(result.left);
+            }
+            return result.right;
+          });
           const finalizeNativeGenerationLease = Effect.suspend(() => {
             const context = nativeMpfState.context;
             if (context === undefined || nativeMpfClient === undefined) {

@@ -165,7 +165,6 @@ const releaseReport = () => {
     },
     runtime: {
       nodeVersion: "v22.22.2",
-      engine: "architecture_g",
       ownerBinaryPath: "/app/native/architecture-g-owner",
       configuredOwnerSha256: hash("b"),
       dockerMemoryLimitBytes: 8 * 1024 ** 3,

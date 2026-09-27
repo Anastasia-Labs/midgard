@@ -1,6 +1,9 @@
 # Benchmark-gated runtime options
 
-Status: Accepted defaults; changing them requires separate measured acceptance.
+Status: Superseded on 2026-09-26 by
+[Architecture G is the only MPF engine](architecture-g-sole-mpf-engine.md).
+The engine choice below no longer exists; the speculative-build and DA
+paragraphs carry forward into that record. Kept for history only.
 
 Recorded: 2026-09-07 from the delivered throughput design and current configuration.
 

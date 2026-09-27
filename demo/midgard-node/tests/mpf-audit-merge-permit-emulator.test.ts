@@ -321,11 +321,10 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     );
     return { path, root };
   };
-  const offlineAudit = (engine: "overlay" | "architecture_g", path: string) =>
+  const offlineAudit = (path: string) =>
     run(runMpfAudit(), {
       nodeConfig: {
         ...production.nodeConfig,
-        MPF_ENGINE: engine,
         LEDGER_MPF_DB_PATH: path,
       },
     });
@@ -475,24 +474,24 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(await auditHealthy()).toBe(false);
     await acknowledgeCleanAudit();
 
-    // The overlay/event-flat LevelDB store is at the tip after a commit and at
-    // the confirmed ledger after a merge or a restart; both are that store's
-    // honest states, and anything else diverges.
+    // Offline, the LevelDB store is the native owner's, so it must be at the
+    // committed tip; the merged ledger alone does not satisfy it.
     const confirmedStore = await levelDbAt("confirmed", confirmedEntries);
     expect(confirmedStore.root).toBe(clean.confirmedRoot);
     const tipStore = await levelDbAt("tip", tipSnapshot.entries);
     expect(tipStore.root).toBe(tipRoot);
-    expect(await offlineAudit("overlay", confirmedStore.path)).toMatchObject({
-      matchedPoint: "confirmed",
-      diverged: false,
+    expect(await offlineAudit(confirmedStore.path)).toMatchObject({
+      diverged: true,
     });
-    expect(await offlineAudit("overlay", tipStore.path)).toMatchObject({
+    expect(await auditHealthy()).toBe(false);
+    await acknowledgeCleanAudit();
+    expect(await offlineAudit(tipStore.path)).toMatchObject({
       matchedPoint: "tip",
       diverged: false,
     });
     expect(await auditHealthy()).toBe(true);
     // The same output under another transaction id: a ledger this node never
-    // held at either point.
+    // held at the tip.
     const foreignOutRef = Buffer.from(tipSnapshot.entries[0]!.outref);
     foreignOutRef[8] ^= 0xff;
     const foreignEntry = { ...tipSnapshot.entries[0]!, outref: foreignOutRef };
@@ -500,21 +499,11 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       ...tipSnapshot.entries.slice(1),
       foreignEntry,
     ]);
-    expect(await offlineAudit("overlay", foreignStore.path)).toMatchObject({
+    expect(await offlineAudit(foreignStore.path)).toMatchObject({
       diverged: true,
       recomputedRoot: tipRoot,
     });
     expect(await auditHealthy()).toBe(false);
-    await acknowledgeCleanAudit();
-    // Offline under Architecture G the store is the native owner's, so it must
-    // be at the committed tip; the merged ledger alone does not satisfy it.
-    expect(
-      await offlineAudit("architecture_g", confirmedStore.path),
-    ).toMatchObject({ diverged: true });
-    expect(await offlineAudit("architecture_g", tipStore.path)).toMatchObject({
-      matchedPoint: "tip",
-      diverged: false,
-    });
     await acknowledgeCleanAudit();
 
     // --- A second finalized block: the tip walk spans two journals. --------

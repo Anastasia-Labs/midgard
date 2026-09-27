@@ -1,5 +1,5 @@
 /**
- * Process-wide MPF engine configuration: engine selection, scratch-build mode,
+ * Process-wide MPF configuration: store modes, scratch-build mode,
  * path-hydration mode, arena limits, and the diagnostics they report.
  */
 
@@ -13,7 +13,12 @@ import {
 } from "../workers/utils/mpf-root-pool.js";
 import { MpfError } from "./errors.js";
 
-export type MpfEngine = "legacy" | "overlay" | "event_flat";
+/**
+ * How a TypeScript MPF store applies writes: `direct` writes each mutation
+ * through, `overlay` buffers a block's mutations until it is flushed or
+ * discarded. The node's ledger itself is held by the native owner.
+ */
+export type MpfStoreMode = "direct" | "overlay";
 
 export type MpfScratchBuild = "insert" | "fromlist";
 
@@ -24,20 +29,6 @@ export type MpfArenaLimits = {
   readonly pathCacheMaxBytes: number;
   readonly liveArenaMaxNodes: number;
   readonly liveArenaMaxBytes: number;
-};
-
-export type ParkedMpfOverlay = {
-  readonly schemaVersion: 1;
-  readonly trieName: string;
-  readonly baseRoot: ArrayBuffer;
-  readonly candidateRoot: ArrayBuffer;
-  readonly closureDigest: ArrayBuffer;
-  readonly nodeCount: number;
-  readonly nodeHashes: ArrayBuffer;
-  readonly nodeValues: ArrayBuffer;
-  /** Uint32 pairs of JSON byte offset/length, one pair per node hash. */
-  readonly nodeValueOffsets: ArrayBuffer;
-  readonly encodedBytes: number;
 };
 
 export const DEFAULT_MPF_ARENA_LIMITS: MpfArenaLimits = {
@@ -195,9 +186,6 @@ export const configureCommitMpfRuntime = (
   nodeConfig: Pick<
     NodeConfigDep,
     | "MPF_SCRATCH_BUILD"
-    | "MPF_PATH_HYDRATION_MODE"
-    | "MPF_HYDRATION_CHUNK_OPS"
-    | "MPF_RETAIN_HYDRATED_DEPTH"
     | "MPF_PARALLEL_ROOTS"
     | "MPF_ROOT_WORKERS"
     | "MPF_PARALLEL_ROOT_MIN_ENTRIES"
@@ -205,11 +193,6 @@ export const configureCommitMpfRuntime = (
 ): Effect.Effect<void, MpfError> =>
   Effect.gen(function* () {
     setMpfScratchBuild(nodeConfig.MPF_SCRATCH_BUILD);
-    configureMpfPathHydration({
-      mode: nodeConfig.MPF_PATH_HYDRATION_MODE,
-      chunkOps: nodeConfig.MPF_HYDRATION_CHUNK_OPS,
-      retainDepth: nodeConfig.MPF_RETAIN_HYDRATED_DEPTH,
-    });
     configureMpfRootWorkers({
       enabled: nodeConfig.MPF_PARALLEL_ROOTS,
       workers: nodeConfig.MPF_ROOT_WORKERS,

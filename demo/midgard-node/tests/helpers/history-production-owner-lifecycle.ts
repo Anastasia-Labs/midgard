@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { inspect } from "node:util";
 
@@ -162,15 +161,8 @@ export const openHistoryProductionOwnerLifecycle = async (
             },
           },
         };
-  const binarySha256 = createHash("sha256")
-    .update(readFileSync(nativeOwnerBinaryPath))
-    .digest("hex");
-  const nodeConfig = {
-    ...(await makeNodeConfigForFixture(fixture)),
-    MPF_ENGINE: "architecture_g" as const,
-    MPF_NATIVE_OWNER_BINARY_PATH: nativeOwnerBinaryPath,
-    MPF_NATIVE_OWNER_BINARY_SHA256: binarySha256,
-  };
+  const nodeConfig = await makeNodeConfigForFixture(fixture);
+  const binarySha256 = nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256;
   const operatorAddress = await fixture.operatorLucid.wallet().address();
   await recorded.observer.flush();
   const transport = (options.transportFactory ?? makeStreamingHistoryTransport)(
@@ -314,10 +306,6 @@ export const openHistoryProductionOwnerLifecycle = async (
                   globals,
                   nodeConfig,
                   preparation,
-                );
-              if (nativeOwner === undefined)
-                return yield* Effect.fail(
-                  new Error("Architecture G owner did not start"),
                 );
             }
             yield* preparation.assertCurrent;

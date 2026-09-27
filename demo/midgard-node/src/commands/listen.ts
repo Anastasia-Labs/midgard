@@ -76,7 +76,10 @@ import {
   WriteBehind,
   writeBehindFiber,
 } from "../services/index.js";
-import { initializeArchitectureGOwner } from "../services/native-mpf-startup.js";
+import {
+  initializeArchitectureGOwner,
+  requirePinnedNativeOwnerBinary,
+} from "../services/native-mpf-startup.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { buildListenRouter } from "./listen-router.js";
 import {
@@ -202,6 +205,27 @@ export const runNode = (
     const globals = yield* Globals;
 
     yield* assertPhase1AcceptCrashCheckpointConfiguration;
+    // The ledger MPF is always the Architecture G owner. Refuse to start before
+    // any durable work when its binary or sidecar is not pinned.
+    yield* requirePinnedNativeOwnerBinary(nodeConfig).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigError({
+            message: cause.message,
+            cause,
+            fieldsAndValues: [
+              [
+                "MPF_NATIVE_OWNER_BINARY_PATH",
+                nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH,
+              ],
+              [
+                "MPF_NATIVE_OWNER_SIDECAR_PATH",
+                nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH,
+              ],
+            ],
+          }),
+      ),
+    );
     const startupProviderRetry = {
       maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
       retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,

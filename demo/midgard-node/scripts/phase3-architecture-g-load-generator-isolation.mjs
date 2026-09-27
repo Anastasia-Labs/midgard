@@ -497,9 +497,6 @@ const inspectNodeContainer = async ({
     throw new Error("docker inspect did not return one exact node container");
   }
   const inspection = inspections[0];
-  const engine = (inspection?.Config?.Env ?? [])
-    .find((entry) => entry.startsWith("MPF_ENGINE="))
-    ?.slice("MPF_ENGINE=".length);
   const healthcheckCommand = inspection?.Config?.Healthcheck?.Test;
   const binding = {
     phase1ContainerId: containerId,
@@ -513,7 +510,6 @@ const inspectNodeContainer = async ({
     healthStatus: inspection?.State?.Health?.Status,
     startedAt: canonicalIsoTimestamp(inspection?.State?.StartedAt),
     restartCount: inspection?.RestartCount,
-    engine,
     healthcheckCommand,
     readyEndpoint: publishedEndpoint({
       inspection,
@@ -540,7 +536,6 @@ const inspectNodeContainer = async ({
     !Number.isSafeInteger(binding.restartCount) ||
     binding.restartCount < 0 ||
     !Number.isFinite(Date.parse(binding.startedAt ?? "")) ||
-    binding.engine !== "architecture_g" ||
     !Array.isArray(binding.healthcheckCommand) ||
     !binding.healthcheckCommand.some(
       (entry) =>
@@ -707,7 +702,6 @@ export const validatePhase3LoadGeneratorIsolationDocument = (
       "healthStatus",
       "startedAt",
       "restartCount",
-      "engine",
       "healthcheckCommand",
       "readyEndpoint",
       "metricsEndpoint",
@@ -788,7 +782,6 @@ export const validatePhase3LoadGeneratorIsolationDocument = (
     container.running !== true ||
     container.status !== "running" ||
     container.healthStatus !== "healthy" ||
-    container.engine !== "architecture_g" ||
     !Number.isSafeInteger(container.restartCount) ||
     container.restartCount < 0 ||
     !CANONICAL_ISO_TIMESTAMP.test(container.startedAt ?? "") ||

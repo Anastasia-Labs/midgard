@@ -968,10 +968,7 @@ export const buildAndSubmitCommitmentBlockAction = (
     const PROCESSED_UNSUBMITTED_TXS_SIZE =
       yield* globals.PROCESSED_UNSUBMITTED_TXS_SIZE;
     const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-    if (
-      nodeConfig.MPF_ENGINE === "architecture_g" &&
-      nativeMpfOwner === undefined
-    ) {
+    if (nativeMpfOwner === undefined) {
       return yield* Effect.fail(
         new WorkerError({
           worker: "commit-block-header",
@@ -1141,7 +1138,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         ),
       ),
       Effect.catchAll((workerError) =>
-        nodeConfig.MPF_ENGINE !== "architecture_g" ||
         nativeMpfOwner === undefined
           ? Effect.fail(workerError)
           : recoverNativeMpfFromActiveJournalAfterWorkerFailure(

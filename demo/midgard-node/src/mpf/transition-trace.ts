@@ -634,10 +634,7 @@ export const buildTransitionTraceResult = ({
         );
       }
       pathHydration.chunkCount += 1;
-      if (
-        hydrationConfig.mode !== "whole_block" &&
-        !ledgerMpf.usesEventFlatEngine()
-      ) {
+      if (hydrationConfig.mode !== "whole_block") {
         const authentication = yield* ledgerMpf.authenticateDecodedArena(
           hydrationConfig.mode === "chunked_arena"
             ? 0
@@ -690,10 +687,7 @@ export const buildTransitionTraceResult = ({
         };
         transitionTraceMembers.push(member);
       }
-      if (
-        hydrationConfig.mode !== "whole_block" &&
-        !ledgerMpf.usesEventFlatEngine()
-      ) {
+      if (hydrationConfig.mode !== "whole_block") {
         const checkpoint = yield* ledgerMpf.checkpointAndCollapseDecodedArena(
           hydrationConfig.retainDepth,
           hydrationConfig.mode !== "chunked_arena",
