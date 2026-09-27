@@ -152,6 +152,38 @@ export const nextL1ProviderHealthEvidence = ({
       })();
 };
 
+/**
+ * Health of the operator's attestation-timeout correction step, read by
+ * readiness. The step logs and retries a transient failure, so without this a
+ * correction that fails every tick leaves the node reporting Ready.
+ */
+export type AttestationTimeoutCorrectionHealth = {
+  /** When the step last moved a correction forward: a step that completed, or
+   * a removal transaction the correction confirmed mid-step (a correction with
+   * several descendants to prune spends several confirmations in one step).
+   * Starts at node startup, like the worker heartbeats. */
+  readonly lastProgressAtMs: number;
+  /** When the step last read and classified the state queue. Starts at node
+   * startup. */
+  readonly lastQueueReadAtMs: number;
+  /** The correction and confirmed-removal count last credited as progress, so
+   * a step that re-saves an unchanged journal is not mistaken for progress. */
+  readonly correctionProgress: {
+    readonly targetHeaderHash: string;
+    readonly confirmedRemovals: number;
+  } | null;
+  readonly lastFailureAtMs: number;
+  readonly lastError: string | null;
+  /** Failed steps since the last successful one. */
+  readonly consecutiveFailures: number;
+  /** The oldest unattested state-queue header and its DA-attestation deadline
+   * at the step's last queue read; null when the queue held none. */
+  readonly oldestUnattestedHeader: {
+    readonly headerHash: string;
+    readonly deadlineMs: number;
+  } | null;
+};
+
 export const DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS = 180_000;
 
 export class L1ControlPlaneTimeoutError extends Error {
@@ -330,6 +362,16 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const HEARTBEAT_BLOCK_CONFIRMATION = yield* Ref.make<number>(now);
     const HEARTBEAT_MERGE = yield* Ref.make<number>(now);
     const HEARTBEAT_TX_QUEUE_PROCESSOR = yield* Ref.make<number>(now);
+    const ATTESTATION_TIMEOUT_CORRECTION_HEALTH =
+      yield* Ref.make<AttestationTimeoutCorrectionHealth>({
+        lastProgressAtMs: now,
+        lastQueueReadAtMs: now,
+        correctionProgress: null,
+        lastFailureAtMs: 0,
+        lastError: null,
+        consecutiveFailures: 0,
+        oldestUnattestedHeader: null,
+      });
 
     return {
       BLOCKS_IN_QUEUE,
@@ -364,6 +406,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       HEARTBEAT_BLOCK_CONFIRMATION,
       HEARTBEAT_MERGE,
       HEARTBEAT_TX_QUEUE_PROCESSOR,
+      ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
     };
   }),
 }) {}

@@ -206,6 +206,26 @@ describe.sequential(
       expectStatuses(clean, {}, "PASS");
       expect(clean.snapshot.nativeRoot).toContain(queuedHeader.utxosRoot);
       expect(clean.snapshot.finalizedTip).toContain(headerHash);
+      expect(
+        clean.checks.find((c) => c.id === "da-attestation")?.notes.join("\n"),
+      ).toContain(`header ${headerHash}`);
+
+      // da-attestation: the same Unattested header read after its deadline
+      // (end_time + the deployment profile's da_attestation_timeout_ms).
+      const daDeadlineMs = Number(
+        queuedHeader.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS,
+      );
+      vi.setSystemTime(new Date(daDeadlineMs + 1_000));
+      const lateReport = await reconcile(harness);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      expectStatuses(lateReport, { "da-attestation": "FAIL" }, "PASS");
+      expect(
+        lateReport.checks
+          .find((c) => c.id === "da-attestation")
+          ?.failures.join("\n"),
+      ).toContain(
+        `header ${headerHash} (${queue[1]!.utxo.txHash}#${queue[1]!.utxo.outputIndex.toString()}) is Unattested past its DA-attestation deadline ${new Date(daDeadlineMs).toISOString()} (${daDeadlineMs.toString()} ms) by 1000 ms`,
+      );
 
       // confirmed-root: a well-formed but foreign confirmed_ledger entry (a
       // copy of a real L2 output under a different outref). The journal
@@ -398,6 +418,18 @@ describe.sequential(
         globals,
         headerHash,
       });
+      // An attested header is not owed a timeout correction, even when read
+      // after the deadline.
+      vi.setSystemTime(new Date(daDeadlineMs + 1_000));
+      const attestedReport = await reconcile(harness);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      const attestedCheck = attestedReport.checks.find(
+        (c) => c.id === "da-attestation",
+      );
+      expect(attestedCheck?.status, describeReport(attestedReport)).toBe(
+        "PASS",
+      );
+      expect(attestedCheck?.notes).toEqual([]);
       await advanceEmulatorPastUnixTime(
         fixture,
         mergeMaturityWindow(fixture.operatorLucid, Number(queuedHeader.endTime))

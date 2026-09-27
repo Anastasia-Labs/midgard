@@ -5,13 +5,17 @@ import {
   createFileTimeoutCorrectionJournalStore,
   createLocalKupmiosTimeoutCorrectionRecovery,
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
+  STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
   submitUnattestedTimeoutCorrection,
+  type TimeoutCorrectionJournal,
+  type TimeoutCorrectionJournalStore,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { getAddressDetails } from "@lucid-evolution/lucid";
-import { Cause, Effect, Runtime, Schedule } from "effect";
+import { Cause, Effect, type Either, Ref, Runtime, Schedule } from "effect";
 
+import { ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD } from "../commands/readiness.js";
 import {
   DaPayloadTerminalOutcomesDB,
   StateQueueMutationLeasesDB,
@@ -21,11 +25,15 @@ import {
   contractDeploymentInfoPathOverride,
 } from "../environment.js";
 import {
+  type AttestationTimeoutObservation,
   observeAttestationTimeoutQueue,
   timeoutCorrectionJournalNeedsRecovery,
 } from "../services/attestation-timeout-observation.js";
 import { runHistoryProducer } from "../services/event-history-producer.js";
-import { publishMempoolLedgerDelta } from "../services/globals.js";
+import {
+  type AttestationTimeoutCorrectionHealth,
+  publishMempoolLedgerDelta,
+} from "../services/globals.js";
 import {
   authorizeStateQueueCorrectionReinclusion,
   ContractDeploymentIdentity,
@@ -48,6 +56,129 @@ import {
 export const ATTESTATION_TIMEOUT_ALERT_LEAD_MS =
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;
 const TIMEOUT_CORRECTION_LEASE_HOLDER = "attestation_timeout_removal";
+
+/**
+ * How long readiness lets the correction go without progress, and the state
+ * queue go unread, before it reports the node unready. `tickIntervalMs` is the
+ * fiber's schedule interval.
+ *
+ * Stall: between two progress marks a healthy step waits on at most one
+ * removal transaction. Its validity range starts no later than it is built
+ * and spans STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS, so within that window it
+ * either lands or can never land. The bound takes the profile's
+ * MAX_VALIDITY_RANGE_LENGTH_MS (the protocol's cap on any validity range, 8
+ * minutes in every shipped profile) where it is the longer, and its surplus
+ * over the removal window covers building, submitting and confirmation
+ * polling. A further failure-threshold of tick intervals covers the wait for
+ * the tick that starts the step and provider indexing lag.
+ *
+ * Queue unknown: a commit's header end time equals its transaction's validity
+ * upper bound (commit_bound_header_time_is_valid), which is at or after the
+ * moment it lands, so a header the last read did not see comes due no sooner
+ * than DA_ATTESTATION_TIMEOUT_MS after that read. Shorter outages are L1 blips
+ * that hide nothing due. The bound is never below the stall bound, because a
+ * step waiting on a removal records no queue read while it waits.
+ */
+export const attestationTimeoutCorrectionReadinessBounds = (
+  tickIntervalMs: number,
+  profile: {
+    readonly maxValidityRangeMs: bigint;
+    readonly daAttestationTimeoutMs: bigint;
+  } = {
+    maxValidityRangeMs: SDK.MAX_VALIDITY_RANGE_LENGTH_MS,
+    daAttestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+  },
+): { readonly stallBoundMs: number; readonly queueUnknownBoundMs: number } => {
+  const removalWaitMs =
+    profile.maxValidityRangeMs > STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS
+      ? profile.maxValidityRangeMs
+      : STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS;
+  const stallBoundMs =
+    Number(removalWaitMs) +
+    ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD * tickIntervalMs;
+  return {
+    stallBoundMs,
+    queueUnknownBoundMs: Math.max(
+      Number(profile.daAttestationTimeoutMs),
+      stallBoundMs,
+    ),
+  };
+};
+
+/** Classifies the state queue once for the tick and records the result for
+ * readiness. A classification failure is returned rather than raised, so the
+ * tick raises it where it uses the classification and recording never moves
+ * that failure ahead of the tick's earlier work. */
+export const observeAndRecordAttestationTimeoutQueue = (
+  health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
+  queue: readonly SDK.StateQueueUTxO[],
+  nowMs: number,
+): Effect.Effect<
+  Either.Either<AttestationTimeoutObservation, SDK.DataCoercionError>
+> =>
+  observeAttestationTimeoutQueue(
+    queue,
+    BigInt(nowMs),
+    ATTESTATION_TIMEOUT_ALERT_LEAD_MS,
+  ).pipe(
+    Effect.tap((observation) =>
+      Ref.update(health, (current) => ({
+        ...current,
+        lastQueueReadAtMs: nowMs,
+        oldestUnattestedHeader:
+          "headerHash" in observation
+            ? {
+                headerHash: observation.headerHash,
+                deadlineMs: Number(observation.deadlineMs),
+              }
+            : null,
+      })),
+    ),
+    Effect.either,
+  );
+
+/** Credits a saved correction journal as progress when it starts a correction
+ * or confirms a removal not yet credited. Re-saving an unchanged journal, or
+ * resubmitting a removal that never lands, is not progress. */
+export const recordTimeoutCorrectionJournalProgress = (
+  health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
+  journal: TimeoutCorrectionJournal,
+  nowMs: number,
+): Effect.Effect<void> =>
+  Ref.update(health, (current) => {
+    const confirmedRemovals = journal.steps.filter(
+      (step) => step.status === "confirmed",
+    ).length;
+    const credited = current.correctionProgress;
+    return credited !== null &&
+      credited.targetHeaderHash === journal.targetHeaderHash &&
+      credited.confirmedRemovals >= confirmedRemovals
+      ? current
+      : {
+          ...current,
+          lastProgressAtMs: nowMs,
+          correctionProgress: {
+            targetHeaderHash: journal.targetHeaderHash,
+            confirmedRemovals,
+          },
+        };
+  });
+
+/** The journal store the correction writes through, crediting each save that
+ * moves the correction forward, so readiness sees a step that is pruning
+ * several descendants as progressing rather than stalled. */
+export const withTimeoutCorrectionProgress = (
+  store: TimeoutCorrectionJournalStore,
+  health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
+): TimeoutCorrectionJournalStore => ({
+  ...store,
+  save: async (journal) => {
+    await store.save(journal);
+    Effect.runSync(
+      recordTimeoutCorrectionJournalProgress(health, journal, Date.now()),
+    );
+  },
+});
 
 /**
  * Admits authenticated state-queue corrections into the durable observer and
@@ -215,6 +346,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
+    const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
     const contracts = yield* MidgardContracts;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
@@ -225,6 +357,14 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
     const queue = yield* SDK.fetchSortedStateQueueUTxOsProgram(
       lucid.api,
       fetchConfig,
+    );
+    // Recorded before anything below can fail, so readiness knows whether a
+    // failing step is leaving a timed-out header uncorrected. A classification
+    // failure is raised below, where the tick uses it.
+    const observed = yield* observeAndRecordAttestationTimeoutQueue(
+      globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
+      queue,
+      Date.now(),
     );
     if (deploymentIdentity.manifestId === undefined) {
       return yield* Effect.fail(
@@ -314,7 +454,10 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
         dirname(nodeConfig.LEDGER_MPF_DB_PATH),
         "attestation-timeout-correction-v1.json",
       );
-    const journalStore = createFileTimeoutCorrectionJournalStore(journalPath);
+    const journalStore = withTimeoutCorrectionProgress(
+      createFileTimeoutCorrectionJournalStore(journalPath),
+      globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
+    );
     const retainedJournal = yield* Effect.tryPromise({
       try: () => journalStore.load(),
       catch: (cause) => cause,
@@ -323,11 +466,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       retainedJournal,
       queue,
     );
-    const observation = yield* observeAttestationTimeoutQueue(
-      queue,
-      BigInt(Date.now()),
-      ATTESTATION_TIMEOUT_ALERT_LEAD_MS,
-    );
+    const observation = yield* observed;
     const lock = yield* SDK.fetchCorrectionLockUTxOProgram(lucid.api, {
       correctionLockAddress: contracts.correctionLock.spendingScriptAddress,
       hubOraclePolicyId: contracts.hubOracle.policyId,
@@ -458,18 +597,37 @@ export const findStateQueueCorrectionRewindIntegrityError = (
 
 /** One scheduled correction step. A transient failure is logged and retried
  * on the next tick; a rewind integrity failure is not transient (the node
- * cannot re-apply a rewound block), so it fails the fiber and stops the node. */
+ * cannot re-apply a rewound block), so it fails the fiber and stops the node.
+ * Every outcome is recorded in `health`, which readiness reads. */
 export const attestationTimeoutCorrectionStep = <R>(
   action: Effect.Effect<void, unknown, R>,
+  health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
 ): Effect.Effect<void, StateQueueCorrectionRewindIntegrityError, R> =>
   action.pipe(
+    Effect.zipRight(
+      Ref.update(health, (current) => ({
+        ...current,
+        lastProgressAtMs: Date.now(),
+        consecutiveFailures: 0,
+      })),
+    ),
     Effect.catchAllCause((cause) => {
+      const recordFailure = Ref.update(health, (current) => ({
+        ...current,
+        lastFailureAtMs: Date.now(),
+        lastError: String(Cause.squash(cause)),
+        consecutiveFailures: current.consecutiveFailures + 1,
+      }));
       const integrity = findStateQueueCorrectionRewindIntegrityError(cause);
-      return integrity === undefined
-        ? Effect.logWarning(cause)
-        : Effect.logError(integrity.message).pipe(
-            Effect.zipRight(Effect.fail(integrity)),
-          );
+      return recordFailure.pipe(
+        Effect.zipRight(
+          integrity === undefined
+            ? Effect.logWarning(cause)
+            : Effect.logError(integrity.message).pipe(
+                Effect.zipRight(Effect.fail(integrity)),
+              ),
+        ),
+      );
     }),
   );
 
@@ -487,12 +645,14 @@ export const attestationTimeoutCorrectionFiber = (
   | NodeConfig
 > =>
   Effect.gen(function* () {
+    const globals = yield* Globals;
     yield* Effect.logInfo("Attestation-timeout correction fiber started.");
     yield* Effect.repeat(
       attestationTimeoutCorrectionStep(
         attestationTimeoutCorrectionAction().pipe(
           Effect.withSpan("attestation-timeout-correction-fiber"),
         ),
+        globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
       ),
       schedule,
     );

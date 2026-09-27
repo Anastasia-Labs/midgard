@@ -1,12 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Either, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
+import { observeAndRecordAttestationTimeoutQueue } from "../src/fibers/attestation-timeout-correction.js";
 import {
   observeAttestationTimeoutQueue,
   timeoutCorrectionJournalNeedsRecovery,
 } from "../src/services/attestation-timeout-observation.js";
+import type { AttestationTimeoutCorrectionHealth } from "../src/services/globals.js";
 import { resolveCommitAppendFenceReferencesLocal } from "../src/workers/commit-block-header/state-queue.js";
 
 const policyId = "aa".repeat(28);
@@ -165,6 +167,66 @@ describe("pending queue attestation expiry", () => {
     } finally {
       now.mockRestore();
     }
+  });
+});
+
+it("records the tick's one queue classification for readiness, and returns a classification failure instead of raising it", async () => {
+  const health = Ref.unsafeMake<AttestationTimeoutCorrectionHealth>({
+    lastProgressAtMs: 0,
+    lastQueueReadAtMs: 0,
+    correctionProgress: null,
+    lastFailureAtMs: 0,
+    lastError: null,
+    consecutiveFailures: 0,
+    oldestUnattestedHeader: null,
+  });
+  const nowMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS) + 2_000;
+  const { queue, tailHash } = await fixture();
+  const timedOut = await Effect.runPromise(
+    observeAndRecordAttestationTimeoutQueue(health, queue, nowMs),
+  );
+  expect(Either.getOrThrow(timedOut)).toMatchObject({
+    status: "timed-out",
+    headerHash: tailHash,
+  });
+  const recorded = Effect.runSync(Ref.get(health));
+  expect(recorded).toMatchObject({
+    lastQueueReadAtMs: nowMs,
+    oldestUnattestedHeader: {
+      headerHash: tailHash,
+      deadlineMs: 2_000 + Number(SDK.DA_ATTESTATION_TIMEOUT_MS),
+    },
+  });
+
+  // An undecodable queue is unknown: nothing recorded, the failure returned.
+  const undecodable = queue.map((entry, index) =>
+    index === 2
+      ? {
+          ...entry,
+          datum: {
+            ...entry.datum,
+            data: 7n as unknown as SDK.LinkedListNodeView["data"],
+          },
+        }
+      : entry,
+  );
+  const failed = await Effect.runPromise(
+    observeAndRecordAttestationTimeoutQueue(health, undecodable, nowMs + 1),
+  );
+  expect(Either.isLeft(failed)).toBe(true);
+  expect(Effect.runSync(Ref.get(health))).toEqual(recorded);
+
+  const attested = await Effect.runPromise(
+    observeAndRecordAttestationTimeoutQueue(
+      health,
+      (await fixture(true)).queue,
+      nowMs + 2,
+    ),
+  );
+  expect(Either.getOrThrow(attested)).toEqual({ status: "queue-attested" });
+  expect(Effect.runSync(Ref.get(health))).toMatchObject({
+    lastQueueReadAtMs: nowMs + 2,
+    oldestUnattestedHeader: null,
   });
 });
 

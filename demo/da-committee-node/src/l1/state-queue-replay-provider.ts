@@ -87,12 +87,27 @@ const wsUrl = (value: string): string => {
   url.hash = "";
   return url.toString().replace(/\/$/u, "");
 };
+/** Bound on each Kupo and Ogmios HTTP read of the replay, the same as its
+ * Ogmios socket requests. Every read is a point query (a checkpoint, one
+ * output, one transaction's outputs, the tip height), never a ledger scan. */
+const STATE_QUEUE_REPLAY_REQUEST_TIMEOUT_MS = 20_000;
+
 const json = async (
   fetchImpl: StateQueueReplayFetch,
   url: string,
   init?: RequestInit,
+  timeoutMs = STATE_QUEUE_REPLAY_REQUEST_TIMEOUT_MS,
 ): Promise<unknown> => {
-  const response = await fetchImpl(url, init);
+  // A hung Kupo or Ogmios fails the read instead of wedging the replay; a
+  // caller's own signal still aborts it sooner.
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    ...init,
+    signal:
+      init?.signal === undefined || init.signal === null
+        ? timeout
+        : AbortSignal.any([init.signal, timeout]),
+  });
   const body = await response.text();
   if (!response.ok) {
     throw new Error(
@@ -234,7 +249,7 @@ const openRpc = async (
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error("Ogmios replay socket open timed out")),
-      20_000,
+      STATE_QUEUE_REPLAY_REQUEST_TIMEOUT_MS,
     );
     socket.addEventListener(
       "open",
@@ -261,7 +276,7 @@ const openRpc = async (
         const timer = setTimeout(() => {
           pending.delete(id);
           reject(new Error(`Ogmios ${method} replay timed out`));
-        }, 20_000);
+        }, STATE_QUEUE_REPLAY_REQUEST_TIMEOUT_MS);
         pending.set(id, {
           resolve: (value) => {
             clearTimeout(timer);
@@ -997,10 +1012,13 @@ export const kupoHoldsChainPoint = async (
   kupoUrl: string,
   target: Point,
   fetchImpl: StateQueueReplayFetch,
+  timeoutMs = STATE_QUEUE_REPLAY_REQUEST_TIMEOUT_MS,
 ): Promise<boolean> => {
   const body = await json(
     fetchImpl,
     `${httpUrl(kupoUrl)}/checkpoints/${target.slot.toString()}`,
+    undefined,
+    timeoutMs,
   );
   if (body === null) return false;
   const held = point(body, "Kupo checkpoint");

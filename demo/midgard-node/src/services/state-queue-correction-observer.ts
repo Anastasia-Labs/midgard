@@ -19,6 +19,7 @@ import { Effect } from "effect";
 import * as DaPayloadTerminalOutcomesDB from "../database/daPayloadTerminalOutcomes.js";
 import { correctionRewindRemovedHeaders } from "../database/eventHistoryRecoveryPlans.js";
 import {
+  DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
   fetchKupoAncestorPoint,
   fetchKupoSpend,
   type FetchLike,
@@ -751,10 +752,32 @@ const fetchTip = async (
   );
 };
 
+/** Bound on each Kupo and Ogmios HTTP read made here. Every one is a point
+ * query (the tip, one output, one transaction's outputs), never a ledger
+ * scan, so it takes the same bound as the tx-order carriage reads. */
+const STATE_QUEUE_CORRECTION_REQUEST_TIMEOUT_MS =
+  DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS;
+
+/** A hung Kupo or Ogmios fails the read after `timeoutMs` instead of wedging
+ * the fiber that awaits it; a caller's own signal still applies. */
+const withRequestTimeout =
+  (fetchImpl: FetchLike, timeoutMs: number): FetchLike =>
+  (url, init) => {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    return fetchImpl(url, {
+      ...init,
+      signal:
+        init?.signal === undefined || init.signal === null
+          ? timeout
+          : AbortSignal.any([init.signal, timeout]),
+    });
+  };
+
 /** Canonical local tip shared by operational transaction reconciliation. */
 export const readLocalOgmiosTip = (ogmiosUrl: string): Promise<Tip> =>
-  fetchTip(ogmiosUrl, (url, init) =>
-    fetch(url, { ...init, signal: AbortSignal.timeout(20_000) }),
+  fetchTip(
+    ogmiosUrl,
+    withRequestTimeout(fetch, STATE_QUEUE_CORRECTION_REQUEST_TIMEOUT_MS),
   );
 
 const sameSpend = (left: KupoSpend, right: KupoSpend): boolean =>
@@ -1411,7 +1434,8 @@ export const makeLocalKupmiosStateQueueCorrectionSource = ({
   kupoUrl,
   ogmiosUrl,
   readQueue,
-  fetchImpl = fetch,
+  fetchImpl: unboundedFetch = fetch,
+  requestTimeoutMs = STATE_QUEUE_CORRECTION_REQUEST_TIMEOUT_MS,
   webSocketFactory,
 }: {
   readonly deploymentIdentityDigest: string;
@@ -1425,8 +1449,10 @@ export const makeLocalKupmiosStateQueueCorrectionSource = ({
   readonly ogmiosUrl: string;
   readonly readQueue: () => Promise<readonly StateQueueTransitionNode[]>;
   readonly fetchImpl?: FetchLike;
+  readonly requestTimeoutMs?: number;
   readonly webSocketFactory?: WebSocketFactory;
 }): StateQueueCorrectionObserverSource => {
+  const fetchImpl = withRequestTimeout(unboundedFetch, requestTimeoutMs);
   const canonicalDepth = async (
     transition: StateQueueAuthenticatedTransition,
   ): Promise<bigint | null> => {

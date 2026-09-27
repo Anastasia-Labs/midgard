@@ -35,7 +35,10 @@ import type {
   DaStoredConflictEvidenceRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
-import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
+import type {
+  DaAttestationChainReader,
+  OnChainDaParams,
+} from "./l1/da-attestation-reader.js";
 import type {
   ChainSyncCursor,
   ChainSyncReplayProvider,
@@ -94,6 +97,29 @@ export type CommitteeServiceDeps = {
   readonly now?: () => Date;
   /** Writes one structured JSON log line; defaults to stderr. */
   readonly writeEvent?: (line: string) => void;
+  /** Overrides {@link DA_PARAMS_STARTUP_RETRY}. */
+  readonly daParamsStartupRetry?: DaParamsStartupRetry;
+};
+
+export type DaParamsStartupRetry = {
+  readonly attempts: number;
+  readonly initialDelayMs: number;
+  readonly maxDelayMs: number;
+};
+
+/**
+ * Startup reads of the on-chain DA params retry an observation failure (a
+ * Kupo or Ogmios timeout, a provider still starting) with exponential backoff,
+ * about 90 s in all, because nothing restarts a member that exits. That
+ * deliberately includes finding no DA params output and providers that
+ * disagree: right after a fresh deploy both are transient (Kupo is still
+ * indexing the deployment, the providers are at different tips). An integrity
+ * failure is never retried.
+ */
+export const DA_PARAMS_STARTUP_RETRY: DaParamsStartupRetry = {
+  attempts: 8,
+  initialDelayMs: 1_000,
+  maxDelayMs: 30_000,
 };
 
 export type CommitteeTickResult = {
@@ -333,7 +359,9 @@ export class CommitteeService {
     }
     if (this.deps.daChainReader !== undefined) {
       try {
-        const daParams = await this.deps.daChainReader.fetchDaParams();
+        const daParams = await this.fetchDaParamsAtStartup(
+          this.deps.daChainReader,
+        );
         if (daParams.committeeHex !== this.deps.config.daParams.committeeHex) {
           throw new L1SourceIntegrityError(
             "on-chain DA committee does not match committee node config",
@@ -370,6 +398,34 @@ export class CommitteeService {
         observations: [],
         observedAt: this.nowIso(),
       });
+    }
+  }
+
+  private async fetchDaParamsAtStartup(
+    reader: DaAttestationChainReader,
+  ): Promise<OnChainDaParams> {
+    const { attempts, initialDelayMs, maxDelayMs } =
+      this.deps.daParamsStartupRetry ?? DA_PARAMS_STARTUP_RETRY;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await reader.fetchDaParams();
+      } catch (error) {
+        if (error instanceof L1SourceIntegrityError || attempt >= attempts) {
+          throw error;
+        }
+        const delayMs = Math.min(
+          maxDelayMs,
+          initialDelayMs * 2 ** (attempt - 1),
+        );
+        this.writeEvent({
+          event: "da_params_startup_read_retry",
+          attempt,
+          attempts,
+          delayMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     }
   }
 

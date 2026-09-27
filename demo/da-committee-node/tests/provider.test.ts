@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { appendFile, open, readFile, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -23,6 +25,7 @@ import {
 } from "../src/domain.js";
 import {
   assertOgmiosNetworkMagic,
+  blockfrostCurrentChainPointResolver,
   type CanonicalChainPoint,
   CHAIN_SYNC_INTERSECTION_POINTS,
   CHAIN_SYNC_JOURNAL_PRUNE_SLACK,
@@ -1882,6 +1885,7 @@ describe("L1 provider adapters", () => {
     ).resolves.toEqual({ slot: 42, blockHash: "ab".repeat(32) });
     expect(fetchFn).toHaveBeenCalledWith("http://kupo.local/health", {
       headers: { accept: "text/plain" },
+      signal: expect.any(AbortSignal),
     });
 
     await expect(
@@ -1892,6 +1896,43 @@ describe("L1 provider adapters", () => {
       ),
     ).rejects.toThrow(/checkpoint ETag/u);
   });
+
+  it("fails a Kupo health read that is accepted and never answered", async () => {
+    const server = createServer(() => {});
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    try {
+      await expect(
+        fetchKupoCheckpoint(`http://127.0.0.1:${port.toString()}`, fetch, 200),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }, 5_000);
+
+  it("fails a Blockfrost tip read that is accepted and never answered", async () => {
+    const server = createServer(() => {});
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    try {
+      await expect(
+        blockfrostCurrentChainPointResolver(
+          "Preprod",
+          `http://127.0.0.1:${port.toString()}`,
+          "project",
+          200,
+        )(),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }, 5_000);
 
   describe("Kupmios current tip", () => {
     // No height: a live Ogmios v7.0.0 answers `queryNetwork/tip` with the slot

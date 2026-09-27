@@ -2399,12 +2399,18 @@ type KupoCheckpoint = {
   readonly blockHash: string;
 };
 
+/** Bound on one Kupo /health read, the same as the Ogmios network-magic
+ * preflight's; a hung Kupo fails the read instead of wedging the caller. */
+const KUPO_HEALTH_TIMEOUT_MS = 10_000;
+
 export const fetchKupoCheckpoint = async (
   kupoUrl: string,
   fetchFn: typeof fetch,
+  timeoutMs = KUPO_HEALTH_TIMEOUT_MS,
 ): Promise<KupoCheckpoint> => {
   const response = await fetchFn(`${kupoUrl.replace(/\/+$/, "")}/health`, {
     headers: { accept: "text/plain" },
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new Error(
@@ -2433,8 +2439,16 @@ export const fetchKupoCheckpoint = async (
   };
 };
 
+/** Bound on one Blockfrost read (the latest block or the genesis). */
+const BLOCKFROST_REQUEST_TIMEOUT_MS = 20_000;
+
 export const blockfrostCurrentChainPointResolver =
-  (network: string, apiUrl: string, projectId: string) =>
+  (
+    network: string,
+    apiUrl: string,
+    projectId: string,
+    timeoutMs = BLOCKFROST_REQUEST_TIMEOUT_MS,
+  ) =>
   async (): Promise<CanonicalChainPoint> => {
     const [latest, liveNetwork] = await Promise.all([
       blockfrostJson(
@@ -2442,8 +2456,15 @@ export const blockfrostCurrentChainPointResolver =
         projectId,
         "/blocks/latest",
         parseBlockfrostLatestBlock,
+        timeoutMs,
       ),
-      blockfrostJson(apiUrl, projectId, "/genesis", parseBlockfrostNetwork),
+      blockfrostJson(
+        apiUrl,
+        projectId,
+        "/genesis",
+        parseBlockfrostNetwork,
+        timeoutMs,
+      ),
     ]);
     assertNetworkMagic(network, liveNetwork.networkMagic, "Blockfrost");
     return {
@@ -2521,9 +2542,11 @@ const blockfrostJson = async <T>(
   projectId: string,
   path: string,
   parse: (value: unknown) => T,
+  timeoutMs: number,
 ): Promise<T> => {
   const response = await fetch(`${apiUrl.replace(/\/$/, "")}${path}`, {
     headers: { project_id: projectId },
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new Error(

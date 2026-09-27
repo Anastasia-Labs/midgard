@@ -33,7 +33,7 @@ import {
   Data as LucidData,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect, Either, Option } from "effect";
+import { Clock, Effect, Either, Option } from "effect";
 import { Level } from "level";
 
 import {
@@ -77,6 +77,7 @@ export const STATE_RECONCILIATION_CHECK_IDS = [
   "payouts",
   "settlements",
   "ledger-cache",
+  "da-attestation",
 ] as const;
 
 export type CheckId = (typeof STATE_RECONCILIATION_CHECK_IDS)[number];
@@ -134,6 +135,8 @@ const COMPARES: Record<CheckId, string> = {
     "L1 settlement UTxOs and their SettlementDatum (provider) vs the merged chain and the expected event roots of the journal or foreign reconciliation for that header (SQL)",
   "ledger-cache":
     "SQL mempool_ledger vs the ledger recomputed at the committed tip (or active journal) plus unincluded projected deposit rows plus the effects of every mempool and processed_mempool transaction",
+  "da-attestation":
+    "DA status of every unmerged L1 state-queue header (provider) vs its attestation deadline, header end_time + da_attestation_timeout_ms of the selected deployment profile, at the wall-clock time of the L1 read",
 };
 
 // ---------------------------------------------------------------------------
@@ -157,6 +160,8 @@ export type L1QueueHeader = {
   readonly prevHeaderHash: string | null;
   readonly endTimeMs: number | null;
   readonly roots: HeaderRoots | null;
+  /** The node's on-chain DA status; null when undecodable. */
+  readonly daStatus: SDK.DaAvailabilityStateQueueStatusKind | null;
   readonly decodeError: string | null;
 };
 
@@ -356,6 +361,10 @@ export type StateReconciliationInput = {
   readonly native: NativeRootObservation;
   readonly allowInFlight: boolean;
   readonly attempts?: number;
+  /** Wall-clock time, taken no later than the L1 read, that DA deadlines are judged at. */
+  readonly nowMs: number;
+  /** da_attestation_timeout_ms of the deployment profile the node runs. */
+  readonly daAttestationTimeoutMs: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -1555,6 +1564,53 @@ const checkLedgerCache = (
   );
 };
 
+/**
+ * An unmerged header still Unattested past end_time + da_attestation_timeout
+ * is owed a timeout correction that has not landed. Before the deadline it is
+ * a normal attestation in progress, noted and passed.
+ */
+const checkDaAttestation = (
+  ctx: Context,
+  nowMs: number,
+  timeoutMs: number,
+  allowInFlight: boolean,
+): ReconciliationCheck => {
+  if (ctx.l1 === null) {
+    return skipCheck(
+      "da-attestation",
+      `L1 unavailable: ${ctx.l1UnavailableReason}`,
+    );
+  }
+  const acc = newAccumulator();
+  for (const header of ctx.l1.unmerged) {
+    const label = `header ${header.headerHash} (${header.outRef})`;
+    if (header.daStatus === null || header.endTimeMs === null) {
+      acc.notes.push(
+        `${label}: DA status unknown, datum undecodable (state-queue-journal reports it)`,
+      );
+      continue;
+    }
+    if (header.daStatus !== "Unattested") continue;
+    const deadlineMs = header.endTimeMs + timeoutMs;
+    const deadline = `${new Date(deadlineMs).toISOString()} (${deadlineMs.toString()} ms)`;
+    if (nowMs > deadlineMs) {
+      acc.failures.push(
+        `${label} is Unattested past its DA-attestation deadline ${deadline} by ${(nowMs - deadlineMs).toString()} ms; its timeout correction has not landed`,
+      );
+    } else {
+      acc.notes.push(
+        `${label} awaits DA attestation; deadline ${deadline} in ${(deadlineMs - nowMs).toString()} ms`,
+      );
+    }
+  }
+  return finishCheck(
+    "da-attestation",
+    acc,
+    allowInFlight,
+    `no unmerged header is Unattested past its DA-attestation deadline (timeout ${timeoutMs.toString()} ms, ${plural(ctx.l1.unmerged.length, "unmerged header")})`,
+  );
+};
+
 // ---------------------------------------------------------------------------
 // Evaluation entry point (pure)
 // ---------------------------------------------------------------------------
@@ -1581,6 +1637,7 @@ export const evaluateStateReconciliation = (
     checkPayouts(ctx, allow),
     checkSettlements(ctx, allow),
     checkLedgerCache(ctx, allow),
+    checkDaAttestation(ctx, input.nowMs, input.daAttestationTimeoutMs, allow),
   ];
   const summary = {
     pass: checks.filter((c) => c.status === "PASS").length,
@@ -1694,9 +1751,18 @@ const decodeQueueHeader = (node: SDK.StateQueueUTxO) =>
     )).toLowerCase();
     const decoded = yield* Effect.either(
       Effect.gen(function* () {
-        const header = yield* SDK.getHeaderFromStateQueueDatum(node.datum);
+        const stateQueueNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
+          node.datum,
+        );
+        const header = stateQueueNode.header;
         const recomputed = yield* SDK.hashBlockHeader(header);
-        return { header, recomputed };
+        return {
+          header,
+          recomputed,
+          daStatus: SDK.daAvailabilityStateQueueStatusKind(
+            stateQueueNode.da_attestation,
+          ),
+        };
       }),
     );
     if (Either.isLeft(decoded)) {
@@ -1707,10 +1773,11 @@ const decodeQueueHeader = (node: SDK.StateQueueUTxO) =>
         prevHeaderHash: null,
         endTimeMs: null,
         roots: null,
+        daStatus: null,
         decodeError: describeError(decoded.left),
       } satisfies L1QueueHeader;
     }
-    const { header, recomputed } = decoded.right;
+    const { header, recomputed, daStatus } = decoded.right;
     return {
       outRef: outRefOf(node.utxo),
       headerHash,
@@ -1724,6 +1791,7 @@ const decodeQueueHeader = (node: SDK.StateQueueUTxO) =>
         forcedTransactions: header.forcedTransactionsRoot,
         transactions: header.transactionsRoot,
       },
+      daStatus,
       decodeError: null,
     } satisfies L1QueueHeader;
   });
@@ -2540,6 +2608,7 @@ export const stateReconciliationProgram = (
           readonly l1: L1Observation;
           readonly native: NativeRootObservation;
           readonly sql: SqlStateSnapshot;
+          readonly nowMs: number;
         }
       | undefined;
     let attempts = 0;
@@ -2553,6 +2622,9 @@ export const stateReconciliationProgram = (
         ),
         stateQueuePolicyId: contracts.stateQueue.policyId,
       });
+      // Taken before the L1 read the report uses: a header that read still
+      // shows Unattested was Unattested at this instant too.
+      const nowMs = yield* Clock.currentTimeMillis;
       const l1After = yield* Effect.either(collectL1StateView);
       const nativeAfter = yield* readNativeRoot(options);
       const nativeStable = nativeKey(nativeBefore) === nativeKey(nativeAfter);
@@ -2585,7 +2657,7 @@ export const stateReconciliationProgram = (
         l1 = { kind: "observed", view: l1After.right };
         l1Stable = true;
       }
-      last = { l1, native, sql };
+      last = { l1, native, sql, nowMs };
       if (l1Stable && nativeStable) break;
     }
     if (last === undefined) {
@@ -2601,5 +2673,7 @@ export const stateReconciliationProgram = (
       native,
       allowInFlight: options.allowInFlight === true,
       attempts,
+      nowMs: final.nowMs,
+      daAttestationTimeoutMs: Number(SDK.DA_ATTESTATION_TIMEOUT_MS),
     });
   });

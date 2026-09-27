@@ -274,6 +274,7 @@ describe("history source verification on each actual socket", () => {
       binding,
       ogmiosUrl: "http://localhost:1337",
       at: socket.ledger.point,
+      timeoutMs: 200,
       webSocketFactory: socket.factory,
     });
     expect(raw.bindingDigest).toBe(binding.digest);
@@ -310,6 +311,7 @@ describe("history source verification on each actual socket", () => {
         binding,
         ogmiosUrl: "http://localhost:1337",
         at: socket.ledger.point,
+        timeoutMs: 200,
         webSocketFactory: socket.factory,
       }),
     ).rejects.toThrow(/approved pin/);
@@ -327,6 +329,7 @@ describe("history source verification on each actual socket", () => {
       binding,
       ogmiosUrl: "ws://ogmios-proxy.example:2337/",
       at: socket.ledger.point,
+      timeoutMs: 200,
       webSocketFactory: socket.factory,
     });
     expect(raw.bindingDigest).toBe(binding.digest);
@@ -339,6 +342,7 @@ describe("history source verification on each actual socket", () => {
         binding,
         ogmiosUrl: "ws://ogmios-proxy.example:2337/",
         at: other.ledger.point,
+        timeoutMs: 200,
         webSocketFactory: other.factory,
       }),
     ).rejects.toThrow(/approved pin/);

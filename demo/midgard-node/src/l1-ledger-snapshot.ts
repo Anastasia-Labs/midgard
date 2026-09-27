@@ -130,7 +130,7 @@ export const readAcquiredLedgerSnapshot = async ({
   ogmiosUrl,
   addresses,
   at,
-  timeoutMs = 20_000,
+  timeoutMs,
   signal,
   verifySession,
   webSocketFactory = (url) => new WebSocket(url) as unknown as WebSocketLike,
@@ -140,7 +140,10 @@ export const readAcquiredLedgerSnapshot = async ({
   /** Acquire this exact retained point or fail; never fall back to the tip.
    * Successful acquisition alone does not establish canonical ancestry. */
   readonly at?: LedgerSnapshotPoint;
-  readonly timeoutMs?: number;
+  /** Required: an address-scope scan walks the whole UTxO set, so no
+   * per-request default fits it. Production captures pass
+   * LEDGER_SCAN_TIMEOUT_MS. */
+  readonly timeoutMs: number;
   readonly signal?: AbortSignal;
   /** Source-bound callers verify this exact socket before any ledger query. */
   readonly verifySession?: (

@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
 import {
   CORRECTION_LOCK_ASSET_NAME,
@@ -1524,4 +1526,33 @@ describe("node-owned state-queue correction observer", () => {
       "Ogmios tip query returned no canonical point",
     );
   });
+
+  it("fails a read from an Ogmios that accepts the request and never answers", async () => {
+    const server = createServer(() => {});
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    try {
+      const source = makeLocalKupmiosStateQueueCorrectionSource({
+        deploymentIdentityDigest: deployment,
+        stateQueuePolicyId: policy,
+        stateQueueAddress: "addr_test_state_queue",
+        hubOraclePolicyId: hubPolicy,
+        correctionLockAddress,
+        fraudProofPolicyId: fraudPolicy,
+        fraudProofAddress,
+        kupoUrl: `http://127.0.0.1:${port.toString()}`,
+        ogmiosUrl: `ws://127.0.0.1:${port.toString()}`,
+        readQueue: async () => before,
+        requestTimeoutMs: 200,
+      });
+      await expect(
+        source.observeTransitions(before, before),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }, 5_000);
 });

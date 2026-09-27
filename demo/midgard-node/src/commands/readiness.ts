@@ -40,7 +40,32 @@ export type ReadinessInput = {
    * records that are still challengeable and inside their alert threshold.
    */
   readonly retentionDeadlineAlerts?: number;
+  /** The operator's attestation-timeout correction step. Every node runs it;
+   * the field is optional only so callers without the fiber (tests) may omit
+   * it. */
+  readonly attestationTimeoutCorrection?: {
+    readonly consecutiveFailures: number;
+    readonly oldestUnattestedHeader: {
+      readonly headerHash: string;
+      readonly deadlineMs: number;
+    } | null;
+    readonly lastProgressAtMs: number;
+    readonly lastQueueReadAtMs: number;
+    /** Longest a healthy correction goes without progress. */
+    readonly stallBoundMs: number;
+    /** Longest the queue may go unread before a header could have come due
+     * unseen. */
+    readonly queueUnknownBoundMs: number;
+  };
 };
+
+/**
+ * Consecutive failed correction steps that make a pending timeout correction
+ * unready. One failed tick is a transient provider blip the next tick retries;
+ * three in a row (about 30 s at the default 10 s interval) is a correction
+ * that is not happening.
+ */
+export const ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD = 3;
 
 /**
  * Readiness outcome returned by the readiness endpoint/command.
@@ -132,6 +157,39 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
     reasons.push(
       `retention_deadline_alert:${input.retentionDeadlineAlerts.toString()}`,
     );
+  }
+
+  const correction = input.attestationTimeoutCorrection;
+  if (correction !== undefined) {
+    // Failing or stalling only matters while there is a correction to make:
+    // an unattested header past its DA-attestation deadline.
+    const unattested = correction.oldestUnattestedHeader;
+    if (unattested !== null && input.nowMillis >= unattested.deadlineMs) {
+      const overdueMs = input.nowMillis - unattested.deadlineMs;
+      if (
+        correction.consecutiveFailures >=
+        ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD
+      ) {
+        reasons.push(
+          `attestation_timeout_correction_failing:${unattested.headerHash}:${correction.consecutiveFailures}:${overdueMs}`,
+        );
+      }
+      // A step that neither fails nor finishes (hung waiting on a
+      // confirmation) never raises the failure count.
+      const sinceProgressMs = input.nowMillis - correction.lastProgressAtMs;
+      if (sinceProgressMs > correction.stallBoundMs) {
+        reasons.push(
+          `attestation_timeout_correction_stalled:${unattested.headerHash}:${sinceProgressMs}:${correction.stallBoundMs}`,
+        );
+      }
+    }
+    // A queue the step cannot read is not a queue with nothing to correct.
+    const sinceQueueReadMs = input.nowMillis - correction.lastQueueReadAtMs;
+    if (sinceQueueReadMs > correction.queueUnknownBoundMs) {
+      reasons.push(
+        `attestation_timeout_queue_unknown:${sinceQueueReadMs}:${correction.queueUnknownBoundMs}`,
+      );
+    }
   }
 
   return {

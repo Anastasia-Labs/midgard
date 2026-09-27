@@ -5,7 +5,6 @@ import { Effect } from "effect";
 import {
   type AcquiredLedgerSnapshot,
   type LedgerSnapshotOutput,
-  readAcquiredLedgerSnapshot,
 } from "./l1-ledger-snapshot.js";
 
 export type EventHistoryLedgerSnapshot = Readonly<{
@@ -90,21 +89,3 @@ export const decodeEventHistoryLedgerSnapshot = (
       withdrawals: Object.freeze(withdrawals),
     });
   });
-
-export const readEventHistoryLedgerSnapshot = async ({
-  deployments,
-  ...source
-}: Omit<Parameters<typeof readAcquiredLedgerSnapshot>[0], "addresses"> & {
-  readonly deployments: NodeEventHistoryDeployments;
-}): Promise<EventHistoryLedgerSnapshot> => {
-  const ledger = await readAcquiredLedgerSnapshot({
-    ...source,
-    addresses: Object.values(deployments).flatMap((deployment) => [
-      deployment.address,
-      deployment.retentionAddress,
-    ]),
-  });
-  return await Effect.runPromise(
-    decodeEventHistoryLedgerSnapshot(ledger, deployments),
-  );
-};

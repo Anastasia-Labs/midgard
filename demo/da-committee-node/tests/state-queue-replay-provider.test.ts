@@ -1,3 +1,6 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
@@ -548,6 +551,27 @@ describe("committee local Kupmios state-queue replay", () => {
       expect(urls).toEqual(["http://kupo.test/checkpoints/70"]);
     },
   );
+
+  it("fails a Kupo read that is accepted and never answered", async () => {
+    const server = createServer(() => {});
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    try {
+      await expect(
+        kupoHoldsChainPoint(
+          `http://127.0.0.1:${port.toString()}`,
+          { slot: 70, blockHash: h32(0x70) },
+          fetch,
+          200,
+        ),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }, 5_000);
 
   it("exposes shallow history but the SDK retention replay refuses it", async () => {
     const checkpoints = await harness({ tipHeight: 90 })(before, after);

@@ -335,6 +335,21 @@ describe("acquired node ledger snapshot", () => {
     expect(socket.requests).toEqual([]);
   });
 
+  it("refuses a capture whose caller names no timeout, before opening", async () => {
+    const socket = new Socket();
+    await expect(
+      // @ts-expect-error timeoutMs is required: no default fits a whole-UTxO-set scan.
+      readAcquiredLedgerSnapshot({
+        ogmiosUrl: "http://localhost:1337/ogmios",
+        addresses,
+        webSocketFactory: () => socket,
+      }),
+    ).rejects.toThrow(
+      "Ledger snapshot timeout must be a positive safe integer",
+    );
+    expect(socket.requests).toEqual([]);
+  });
+
   it("bounds the whole acquisition, not only each individual request", async () => {
     const socket = new Socket();
     const send = socket.send.bind(socket);

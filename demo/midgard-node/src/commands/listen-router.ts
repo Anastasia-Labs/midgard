@@ -54,6 +54,7 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import {
   admissionFailureDefinitelyDidNotInsert,
+  attestationTimeoutCorrectionReadinessBounds,
   blockCommitmentAction,
   commitAdmissionBacklogSlot,
   mergeAction,
@@ -1410,6 +1411,9 @@ const getReadinessHandler = Effect.gen(function* () {
   const txQueueProcessorHeartbeat = yield* Ref.get(
     globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
   );
+  const attestationTimeoutCorrection = yield* Ref.get(
+    globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
+  );
   const localFinalizationPending = yield* Ref.get(
     globals.LOCAL_FINALIZATION_PENDING,
   );
@@ -1584,6 +1588,12 @@ const getReadinessHandler = Effect.gen(function* () {
       remainingMs: activeLeaseRemainingMs,
       holder: activeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ?? null,
     },
+    attestationTimeoutCorrection: {
+      ...attestationTimeoutCorrection,
+      ...attestationTimeoutCorrectionReadinessBounds(
+        nodeConfig.WAIT_BETWEEN_MERGE_TXS,
+      ),
+    },
   });
   const reasons = [...baseReadiness.reasons];
   // Informational: pending signed-header recovery holding history retention
@@ -1695,6 +1705,7 @@ const getReadinessHandler = Effect.gen(function* () {
             error: providerProbe.error,
           },
     stateQueueMutationLease: encodedLeaseInspection,
+    attestationTimeoutCorrection,
     blockCommitmentCoordination: {
       commitWorkerActive,
       commitPipelinePhase,
