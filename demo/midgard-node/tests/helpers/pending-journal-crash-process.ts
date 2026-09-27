@@ -8,6 +8,7 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
 import { Database } from "../../src/services/database.js";
+import { UnownedHistoryFixture } from "../../src/services/event-history-producer.js";
 
 const mode = process.argv[2] as "before" | "during" | "after" | undefined;
 const depositIdHex = process.argv[3];
@@ -99,11 +100,14 @@ const program = Effect.gen(function* () {
   killSelf();
 });
 
-void Effect.runPromise(program.pipe(Effect.provide(Database.layer))).catch(
-  (error: unknown) => {
-    process.stderr.write(
-      `${error instanceof Error ? error.stack : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  },
-);
+void Effect.runPromise(
+  program.pipe(
+    Effect.provideService(UnownedHistoryFixture, true),
+    Effect.provide(Database.layer),
+  ),
+).catch((error: unknown) => {
+  process.stderr.write(
+    `${error instanceof Error ? error.stack : String(error)}\n`,
+  );
+  process.exitCode = 1;
+});

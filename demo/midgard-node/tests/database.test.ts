@@ -7334,6 +7334,13 @@ const makeHistoryWithdrawalEntry = (): WithdrawalsDB.Entry => {
 };
 
 describe("authenticated history pointer persistence", () => {
+  /** A deposit row that no authenticated history output has claimed. */
+  const unassociated = <T extends object>(entry: T) => ({
+    ...entry,
+    history_binding_digest: null,
+    history_incarnation_id: null,
+  });
+
   it.effect(
     "reconciles current authenticated history by intent and refuses stale cache authority",
     () =>
@@ -7590,18 +7597,18 @@ describe("authenticated history pointer persistence", () => {
             yield* resolveDepositStatusProgram({
               cardanoTxHash: admissionHash,
             }),
-          ).toEqual(moved);
+          ).toEqual(unassociated(moved));
           expect(
             yield* resolveDepositStatusProgram({
               cardanoTxHash: admissionHash,
               eventId: deposit[DepositsDB.Columns.ID],
             }),
-          ).toEqual(moved);
+          ).toEqual(unassociated(moved));
           expect(
             yield* resolveDepositStatusProgram({
               cardanoTxHash: moved[DepositsDB.Columns.DEPOSIT_L1_TX_HASH],
             }),
-          ).toEqual(moved);
+          ).toEqual(unassociated(moved));
         }),
       ),
   );
@@ -7634,12 +7641,12 @@ describe("authenticated history pointer persistence", () => {
               },
             ]);
             expect(yield* DepositsDB.retrieveAllEntries()).toEqual([
-              {
+              unassociated({
                 ...entry,
                 [DepositsDB.Columns.STATUS]: status,
                 [DepositsDB.Columns.PROJECTED_HEADER_HASH]: header,
                 [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: replacementHash,
-              },
+              }),
             ]);
             expect(
               yield* DepositsDB.retrieveByCardanoTxHash(
@@ -7730,8 +7737,8 @@ describe("authenticated history pointer persistence", () => {
             );
             expect(outcome._tag).toBe("Left");
             expect(yield* DepositsDB.retrieveAllEntries()).toEqual([
-              first,
-              second,
+              unassociated(first),
+              unassociated(second),
             ]);
           }
           const outcome = yield* Effect.either(

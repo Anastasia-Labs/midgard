@@ -11,24 +11,8 @@ import {
   deterministicFixtureOutputReferenceId,
   deterministicFixtureTxHash,
   provideDatabaseLayers,
+  resetApplicationTables,
 } from "./utils.js";
-
-const RESTORE_TABLES = [
-  "mempool",
-  "processed_mempool",
-  "mempool_tx_deltas",
-  "mempool_ledger",
-  "deposits_utxos",
-  "tx_rejections",
-] as const;
-
-/** Every row the ledger restore reads or writes, cleared before the test.
- * (resetApplicationTables replays the initial migration from its seed-row
- * marker, which now also recreates a table, so it cannot run here.) */
-const clearRestoreRows = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  for (const table of RESTORE_TABLES) yield* sql`DELETE FROM ${sql(table)}`;
-});
 
 const snapshotRestoreRows = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -50,7 +34,7 @@ it("refuses a correction's ledger restore when a pending transaction has no delt
   await Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        yield* clearRestoreRows;
+        yield* resetApplicationTables;
         const depositId = deterministicFixtureOutputReferenceId(
           "ledger-restore.reopened-deposit",
         );

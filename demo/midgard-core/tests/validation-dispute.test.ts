@@ -118,9 +118,29 @@ describe("validation dispute orchestration", () => {
 
   it("matches the inclusive L1 maturity boundary", () => {
     const blockEnd = 1_000_000;
-    const maturity = MIDGARD_CONSENSUS_LIMITS.blockMaturityMs;
+    // The testing profiles' maturity is shorter than the dispute schedule, so
+    // no dispute opens under them; the boundary is exercised with a maturity
+    // that admits the schedule, and the schedule itself is the floor.
+    const maturity = Math.max(
+      MIDGARD_CONSENSUS_LIMITS.blockMaturityMs,
+      2 * MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
+    );
     const finalOpen =
       blockEnd + maturity - MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
+    expect(
+      canOpenMidgardValidationDisputeBeforeMaturity({
+        currentTimeUpper: blockEnd,
+        challengedBlockEndTime: blockEnd,
+        maturityDuration: MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
+      }),
+    ).toBe(true);
+    expect(
+      canOpenMidgardValidationDisputeBeforeMaturity({
+        currentTimeUpper: blockEnd,
+        challengedBlockEndTime: blockEnd + 1,
+        maturityDuration: MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS - 1,
+      }),
+    ).toBe(false);
     expect(
       canOpenMidgardValidationDisputeBeforeMaturity({
         currentTimeUpper: finalOpen,

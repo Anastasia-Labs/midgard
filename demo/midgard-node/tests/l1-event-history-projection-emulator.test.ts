@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
@@ -26,6 +27,9 @@ import {
   createPublishedWorkflowDeploymentAccounts,
   publishWorkflowDeployment,
 } from "./helpers/published-workflow-deployment.js";
+
+// Deployment manifests admit only the compiled profile's network.
+const network = SELECTED_DEPLOYMENT_PROFILE.network;
 
 const ref = (output: { txHash: string; outputIndex: number }) => ({
   txHash: output.txHash,
@@ -63,7 +67,7 @@ it("projects accepted deposit and withdrawal admissions and an Order pointer con
           manifestId: manifest.manifestId,
           consensusProfile: manifest.consensusProfile,
         },
-        network: "Custom",
+        network,
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic emulator transport only",
           startTime: emulator.now(),
@@ -130,8 +134,7 @@ it("projects accepted deposit and withdrawal admissions and an Order pointer con
     expect(capture.history.deposits).toHaveLength(0);
     expect(capture.history.withdrawals).toHaveLength(0);
     const ownerKey = CML.PrivateKey.from_bech32(
-      walletFromSeed(accounts.operator.seedPhrase, { network: "Custom" })
-        .paymentKey,
+      walletFromSeed(accounts.operator.seedPhrase, { network }).paymentKey,
     );
     const ownerAddress = await Effect.runPromise(
       SDK.addressDataFromBech32(address),

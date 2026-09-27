@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TxAdmissionsDB, TxUtils as TxTable } from "../src/database/index.js";
 import { processMpfs } from "../src/mpf/index.js";
+import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   ContractDeploymentIdentity,
   Lucid,
@@ -250,11 +251,21 @@ const fakeLucid = {
 const fakeSql = Object.assign(
   ((..._args: readonly unknown[]) =>
     Effect.succeed([])) as unknown as SqlClient.SqlClient,
-  { array: vi.fn((values: readonly unknown[]) => values) },
+  {
+    array: vi.fn((values: readonly unknown[]) => values),
+    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
+  },
 ) as unknown as SqlClient.SqlClient;
 
+/** The commit path gates its SQL writes on history authority; these unit
+ * runs stand in for a database fixture with no acquired owner. */
 const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
-  Effect.runPromise(effect as Effect.Effect<A, unknown, never>);
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(SqlClient.SqlClient, fakeSql),
+    ) as Effect.Effect<A, unknown, never>,
+  );
 
 const forcedEntryMissingMaterial = {
   tx_order_id: Buffer.from("01", "hex"),
@@ -365,10 +376,7 @@ describe("canonical V1 commit profile", () => {
           mempoolTxSourceTable: "mempool",
           sizeOfProcessedTxs: 2,
         } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
-      ).pipe(
-        Effect.provideService(Lucid, fakeLucid),
-        Effect.provideService(SqlClient.SqlClient, fakeSql),
-      ),
+      ).pipe(Effect.provideService(Lucid, fakeLucid)),
     );
 
     expect(outcome._tag).toBe("Left");
@@ -429,7 +437,6 @@ describe("canonical V1 commit profile", () => {
         ).pipe(
           Effect.provideService(NodeConfig, nodeConfig),
           Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
-          Effect.provideService(SqlClient.SqlClient, fakeSql),
         ),
       );
 

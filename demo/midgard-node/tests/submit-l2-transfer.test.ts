@@ -16,6 +16,7 @@ import {
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   type QueuedTx,
   runPhaseAValidation,
@@ -25,6 +26,7 @@ import { SqlClient } from "@effect/sql";
 import {
   assetsToValue,
   CML,
+  type Network,
   valueToAssets,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
@@ -592,9 +594,23 @@ describe("submit-l2-transfer program", () => {
     vi.restoreAllMocks();
   });
 
-  it("rejects destination addresses from a different configured node network before fetching UTxOs", async () => {
-    vi.stubEnv("NETWORK", "Mainnet");
-    const destination = walletFromSeed(OTHER_TEST_SEED, { network: "Preprod" });
+  // The compiled profile fixes the configured network; the other network is
+  // the one with the other address network id.
+  const compiledNetwork = SELECTED_DEPLOYMENT_PROFILE.network as Network;
+  const otherNetwork: Network =
+    compiledNetwork === "Mainnet" ? "Preprod" : "Mainnet";
+  const networkId = (network: Network) => (network === "Mainnet" ? 1 : 0);
+
+  const expectDestinationNetworkRefusal = async ({
+    nodeNetwork,
+    destinationNetwork,
+  }: {
+    readonly nodeNetwork: Network;
+    readonly destinationNetwork: Network;
+  }) => {
+    const destination = walletFromSeed(OTHER_TEST_SEED, {
+      network: destinationNetwork,
+    });
     const config = parseSubmitL2TransferConfig({
       l2Address: destination.address,
       lovelace: "3000000",
@@ -606,6 +622,12 @@ describe("submit-l2-transfer program", () => {
       walletSeedPhraseEnv: DEFAULT_WALLET_SEED_ENV,
       env: {},
     });
+    const nodeConfig = {
+      ...(await Effect.runPromise(
+        NodeConfig.pipe(Effect.provide(NodeConfig.layer)),
+      )),
+      NETWORK: nodeNetwork,
+    };
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -622,13 +644,29 @@ describe("submit-l2-transfer program", () => {
             ContractDeploymentIdentity,
             launchDeploymentIdentity,
           ),
-          Effect.provide(NodeConfig.layer),
+          Effect.provideService(NodeConfig, nodeConfig),
         ),
       ),
     ).rejects.toThrow(
-      "Destination address network id 0 does not match configured Midgard node network Mainnet (network id 1).",
+      `Destination address network id ${networkId(destinationNetwork)} does not match configured Midgard node network ${nodeNetwork} (network id ${networkId(nodeNetwork)}).`,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  };
+
+  it("rejects destination addresses from a different configured node network before fetching UTxOs", async () => {
+    await expectDestinationNetworkRefusal({
+      nodeNetwork: compiledNetwork,
+      destinationNetwork: otherNetwork,
+    });
+  });
+
+  it("derives the node network id from the configured node network", async () => {
+    // Bypasses the config refusal of a network other than the compiled
+    // profile's, so a node id that ignores NETWORK cannot pass both cases.
+    await expectDestinationNetworkRefusal({
+      nodeNetwork: otherNetwork,
+      destinationNetwork: compiledNetwork,
+    });
   });
 
   it("aborts a hanging prepare-time UTxO query at the configured request deadline", async () => {

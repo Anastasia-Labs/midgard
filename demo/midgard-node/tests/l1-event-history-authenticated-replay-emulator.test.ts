@@ -4,6 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
@@ -58,6 +59,9 @@ import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contract
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./helpers/reference-publication-chain.js";
 import { provideDatabaseLayers } from "./utils.js";
 
+// Deployment manifests admit only the compiled profile's network.
+const network = SELECTED_DEPLOYMENT_PROFILE.network;
+
 const label = (ref: { txHash: string; outputIndex: number }) =>
   `${ref.txHash}#${ref.outputIndex}`;
 const hash = (value: string) =>
@@ -93,9 +97,9 @@ it("replays actual initialized lists and joins current external orders whose ret
     [accounts.operator, accounts.publisher, user],
     p,
   );
-  const lucid = await createMainnetEmulatorLucid(emulator, "Custom");
-  const publisher = await createMainnetEmulatorLucid(emulator, "Custom");
-  const owner = await createMainnetEmulatorLucid(emulator, "Custom");
+  const lucid = await createMainnetEmulatorLucid(emulator, network);
+  const publisher = await createMainnetEmulatorLucid(emulator, network);
+  const owner = await createMainnetEmulatorLucid(emulator, network);
   lucid.selectWallet.fromSeed(accounts.operator.seedPhrase);
   publisher.selectWallet.fromSeed(accounts.publisher.seedPhrase);
   owner.selectWallet.fromSeed(user.seedPhrase);
@@ -103,7 +107,7 @@ it("replays actual initialized lists and joins current external orders whose ret
     SDK.addressDataFromBech32(user.address),
   );
   const ownerKey = CML.PrivateKey.from_bech32(
-    walletFromSeed(user.seedPhrase, { network: "Custom" }).paymentKey,
+    walletFromSeed(user.seedPhrase, { network }).paymentKey,
   );
   const ownerHash = ownerKey.to_public().hash().to_hex();
   const reclaimAuth: SDK.CredentialD = { PublicKeyCredential: [ownerHash] };
@@ -186,7 +190,7 @@ it("replays actual initialized lists and joins current external orders whose ret
   };
   try {
     const deployment = await publishWorkflowDeploymentOnChain({
-      network: "Custom",
+      network,
       accounts,
       operatorLucid: lucid,
       publisherLucid: publisher,
@@ -394,7 +398,7 @@ it("replays actual initialized lists and joins current external orders whose ret
           manifestId: manifest.manifestId,
           consensusProfile: manifest.consensusProfile,
         },
-        network: "Custom",
+        network,
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic emulator transport",
           initialization: deployment.initialization.txHash,

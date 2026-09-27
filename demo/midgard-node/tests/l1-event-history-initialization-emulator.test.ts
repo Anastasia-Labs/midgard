@@ -4,6 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
@@ -53,6 +54,9 @@ import {
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./helpers/reference-publication-chain.js";
 import { provideDatabaseLayers } from "./utils.js";
 
+// Deployment manifests admit only the compiled profile's network.
+const network = SELECTED_DEPLOYMENT_PROFILE.network;
+
 const label = (ref: { txHash: string; outputIndex: number }) =>
   `${ref.txHash}#${ref.outputIndex}`;
 const hash = (value: string) =>
@@ -84,8 +88,8 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
     [accounts.operator, accounts.publisher],
     MAINNET_PROTOCOL_PARAMETERS,
   );
-  const lucid = await createMainnetEmulatorLucid(emulator, "Custom");
-  const publisherLucid = await createMainnetEmulatorLucid(emulator, "Custom");
+  const lucid = await createMainnetEmulatorLucid(emulator, network);
+  const publisherLucid = await createMainnetEmulatorLucid(emulator, network);
   lucid.selectWallet.fromSeed(accounts.operator.seedPhrase);
   publisherLucid.selectWallet.fromSeed(accounts.publisher.seedPhrase);
   // The manifest snapshot's rational fee representation is shared with existing
@@ -142,7 +146,7 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
   };
   try {
     const deployment = await publishWorkflowDeploymentOnChain({
-      network: "Custom",
+      network,
       accounts,
       operatorLucid: lucid,
       publisherLucid,
@@ -210,7 +214,7 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
           manifestId: manifest.manifestId,
           consensusProfile: manifest.consensusProfile,
         },
-        network: "Custom",
+        network,
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic emulator transport",
           initialization: deployment.initialization.txHash,
@@ -272,8 +276,7 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
     expect(nonces).toHaveLength(2);
     const reserved = new Set(nonces.map(label));
     const ownerKey = CML.PrivateKey.from_bech32(
-      walletFromSeed(accounts.operator.seedPhrase, { network: "Custom" })
-        .paymentKey,
+      walletFromSeed(accounts.operator.seedPhrase, { network }).paymentKey,
     );
     const ownerAddress = await Effect.runPromise(
       SDK.addressDataFromBech32(address),

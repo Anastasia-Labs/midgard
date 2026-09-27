@@ -606,11 +606,12 @@ const BUILDER_PREFLIGHT_MARKERS = [
 
 /**
  * Attempts a strike that must be refused on chain, and returns the
- * `failed script execution Spend[n]` marker of the script that refused it.
- * Local UPLC evaluation runs the deployed validators while the transaction is
- * completed, so an on-chain refusal surfaces there; this helper asserts the
- * refusal really was a script failure and not one of the builder's own
- * pre-flight guards.
+ * evaluator's `failed script execution Spend[n] <reason>` text for the script
+ * that refused it. Local UPLC evaluation runs the deployed validators while the
+ * transaction is completed, so an on-chain refusal surfaces there; this helper
+ * asserts the refusal really was a script failure and not one of the builder's
+ * own pre-flight guards. The reason tells a failed `expect` (the validator
+ * crashed) apart from a builtin failure such as a datum that did not decode.
  */
 export const expectInactivityStrikeRefusal = async (
   fixture: OperatorInactivityFixture,
@@ -639,7 +640,9 @@ export const expectInactivityStrikeRefusal = async (
       );
     }
   }
-  const scriptFailure = /failed script execution Spend\[\d+\]/.exec(message);
+  const scriptFailure = /failed script execution Spend\[\d+\][^"\n]*/.exec(
+    message,
+  );
   if (scriptFailure === null) {
     throw new Error(
       `Inactivity strike was rejected without a script execution failure: ${message}`,
@@ -710,38 +713,41 @@ export const strikeOperatorToMaxStrikes = async (
 /**
  * Submits a deposit and returns it as a neglected-user-event claim.
  *
- * `resolveUserEventValidTo` dates the deposit from the wall clock while the
- * emulator's clock runs ahead of it by however many slots the fixture has
- * awaited, so `Date.now` is pinned to emulator time for the build. The
- * `inclusion_time` the deposit carries is what the strike validator reads.
+ * The SDK's default validity dates the deposit from the wall clock and opens
+ * its range a minute in the past. Neither fits the emulator: its clock runs
+ * ahead of the wall clock, and a range opening before the fixture's Lucid
+ * instance was created falls below that instance's zero slot, which the
+ * evaluator refuses as too far in the past. The range therefore opens at the
+ * emulator's current time and closes where the SDK would close it from there.
+ * The `inclusion_time` the deposit carries is what the strike validator reads.
  */
 export const submitNeglectedDeposit = async (
   fixture: OperatorInactivityFixture,
   lovelace = 20_000_000n,
 ): Promise<SDK.NeglectedUserEventClaim> => {
   const emulatorNow = fixture.emulator.now();
-  const realNow = Date.now;
-  let built: {
-    readonly tx: TxSignBuilder;
-    readonly metadata: SDK.DepositBuildMetadata;
-  };
-  try {
-    Date.now = () => emulatorNow;
-    built = await Effect.runPromise(
-      SDK.buildUnsignedDepositTxWithMetadataProgram(
-        fixture.lucid,
-        fixture.contracts,
-        {
-          l2Address: requirePrimaryOperator(fixture).address,
-          l2Datum: null,
-          lovelace,
-          additionalAssets: {},
+  const built = await Effect.runPromise(
+    SDK.buildUnsignedDepositTxWithMetadataProgram(
+      fixture.lucid,
+      fixture.contracts,
+      {
+        l2Address: requirePrimaryOperator(fixture).address,
+        l2Datum: null,
+        lovelace,
+        additionalAssets: {},
+        validity: {
+          validFrom: Number(
+            alignedUnixTimeAtOrBefore(fixture.lucid, BigInt(emulatorNow)),
+          ),
+          validTo: SDK.resolveUserEventValidTo(
+            fixture.lucid,
+            undefined,
+            () => emulatorNow,
+          ),
         },
-      ),
-    );
-  } finally {
-    Date.now = realNow;
-  }
+      },
+    ),
+  );
   const signed = await built.tx.sign.withWallet().complete();
   const txHash = await signed.submit();
   await fixture.lucid.awaitTx(txHash);

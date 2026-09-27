@@ -1,4 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
@@ -25,12 +28,9 @@ import {
 } from "da-committee-node/da/libp2p";
 import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
 import { JsonFileCommitteeStore } from "da-committee-node/store";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
-import {
-  makePayloadFixture,
-  tempDir,
-} from "../../da-committee-node/tests/helpers.js";
+import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import {
   createDaLibp2pProducerTransport,
   type DaProducerCommitteePeer,
@@ -74,9 +74,13 @@ describe("real multi-peer DA publication", () => {
       multiaddrs: [`/ip4/127.0.0.1/tcp/0/p2p/${producerIdentity.peerId}`],
       roles: ["producer"],
     };
+    // The committee helpers' tempDir() needs that package's global setup,
+    // which this suite does not run.
+    const tempRoot = await mkdtemp(join(tmpdir(), "midgard-da-multi-peer-"));
+    onTestFinished(() => rm(tempRoot, { recursive: true, force: true }));
     const stores = await Promise.all(
       committeeSeeds.map(async () =>
-        JsonFileCommitteeStore.open(await tempDir()),
+        JsonFileCommitteeStore.open(await mkdtemp(join(tempRoot, "store-"))),
       ),
     );
     let slowThirdPeer = false;

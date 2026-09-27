@@ -58,14 +58,24 @@ const thresholdAttestation = async (
   return current();
 };
 
+// Fixture setup advances the emulator by several minutes, which can leave less
+// than a full validity range before the attestation deadline, so the header ends
+// later to keep the whole range ahead of it.
+const HEADER_END_TIME_LEAD_MS = 900_000;
+
 describe("DA apply validity at production cadence", () => {
   it.each([false, true])(
     "evaluates and submits the actual apply with deadline clipping=%s",
     async (nearDeadline) => {
-      const f = await createAvailabilityFixture(1);
+      const f = await createAvailabilityFixture(1, 0, HEADER_END_TIME_LEAD_MS);
       const attestation = await thresholdAttestation(f);
       const headerEndTime = f.target.stateQueueNode.header.endTime;
       const deadline = headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+      // Unclipped, the full range from validFrom fits before the deadline.
+      expect(deadline - BigInt(f.emulator.now())).toBeGreaterThan(
+        SDK.MAX_VALIDITY_RANGE_LENGTH_MS -
+          SDK.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS,
+      );
       if (nearDeadline)
         f.emulator.awaitSlot(
           Math.floor(Number(deadline - BigInt(f.emulator.now())) / 1000) - 120,
@@ -180,9 +190,6 @@ describe("DA apply validity at production cadence", () => {
 // preprod submitter's wall clock runs ahead of the chain.
 describe("DA committee apply against an L1 tip that trails the submitter's clock", () => {
   const CLOCK_AHEAD_OF_TIP_MS = 8_000n;
-  // Fixture setup advances the emulator past the selected profile's attestation
-  // timeout, so the header ends later to keep the apply deadline ahead.
-  const HEADER_END_TIME_LEAD_MS = 900_000;
 
   it("refuses an apply opening at the submitter's clock and lands the committee submitter's apply", async () => {
     const f = await createAvailabilityFixture(1, 0, HEADER_END_TIME_LEAD_MS);

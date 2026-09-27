@@ -112,9 +112,6 @@ const aikenIntegerConst = (
 const testnetIntegerConst = (name: string): bigint =>
   aikenIntegerConst(testnetEnv, "testnet", name);
 
-const ledgerStateIntegerConst = (name: string): bigint =>
-  aikenIntegerConst(ledgerStateSource, "ledger-state", name);
-
 const h28 = "11".repeat(28);
 const h32 = "22".repeat(32);
 const h64 = "33".repeat(64);
@@ -806,8 +803,13 @@ describe("SDK canonical ABI fixtures", () => {
     expect(SDK.REGISTRATION_DURATION_MS).toBe(
       testnetIntegerConst("registration_duration"),
     );
+    // ledger-state.ak re-exports the profile's env value, so the literal is
+    // read from the env module the same way as its siblings.
+    expect(ledgerStateSource).toMatch(
+      /^pub const block_maturity_duration_v1: Int = env\.block_maturity_duration_v1$/m,
+    );
     expect(SDK.MATURITY_DURATION_MS).toBe(
-      ledgerStateIntegerConst("block_maturity_duration_v1"),
+      testnetIntegerConst("block_maturity_duration_v1"),
     );
     expect(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS).toBe(
       testnetIntegerConst("user_events_negligence_timeout"),

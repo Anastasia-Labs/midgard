@@ -164,6 +164,12 @@ describe("history deposit submission journal", () => {
     const input = await fixture();
     const attempt = depositSubmissionAttemptFromCompletedTx(input);
     const deposit = input.deposit;
+    // The matcher must read the authenticated info bytes, not the decoded
+    // event, so drift only the bytes.
+    const withInfo = (info: SDK.DepositInfo) => ({
+      ...deposit,
+      infoCbor: Buffer.from(Data.to(info, SDK.DepositInfo), "hex"),
+    });
     for (const changed of [
       {
         ...deposit,
@@ -174,24 +180,34 @@ describe("history deposit submission journal", () => {
       },
       { ...deposit, facts: { ...deposit.facts, structural_lovelace: 0n } },
       { ...deposit, originalAssets: { lovelace: 7_000_000n } },
-      {
-        ...deposit,
-        event: {
-          ...deposit.event,
-          info: { ...deposit.event.info, l2_datum: 0n },
-        },
-      },
-      {
-        ...deposit,
-        event: {
-          ...deposit.event,
-          info: { ...deposit.event.info, l2_network_id: 1n },
-        },
-      },
+      withInfo({ ...deposit.event.info, l2_datum: 0n }),
+      withInfo({ ...deposit.event.info, l2_network_id: 1n }),
     ])
       expect(matchesDepositSubmissionIntent(changed, attempt, "Custom")).toBe(
         false,
       );
+    // A datum intent binds the datum bytes, not only their presence.
+    const datumAttempt = {
+      ...attempt,
+      [Columns.METADATA]: {
+        ...attempt[Columns.METADATA],
+        l2DatumCbor: Data.to(1n),
+      },
+    };
+    expect(
+      matchesDepositSubmissionIntent(
+        withInfo({ ...deposit.event.info, l2_datum: 1n }),
+        datumAttempt,
+        "Custom",
+      ),
+    ).toBe(true);
+    expect(
+      matchesDepositSubmissionIntent(
+        withInfo({ ...deposit.event.info, l2_datum: 2n }),
+        datumAttempt,
+        "Custom",
+      ),
+    ).toBe(false);
     const otherAddress = generateEmulatorAccount({
       lovelace: 1_000_000n,
     }).address;

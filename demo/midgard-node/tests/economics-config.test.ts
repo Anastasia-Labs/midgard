@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -24,14 +25,19 @@ describe("release-bound economics configuration", () => {
     vi.stubEnv("OPERATOR_SLASHING_PENALTY_LOVELACE", "500000000");
     vi.stubEnv("WAIT_BETWEEN_RETENTION_SWEEPS", undefined);
     vi.stubEnv("L1_VIEW_FATAL_MS", undefined);
+    const attestationTimeoutMs =
+      SELECTED_DEPLOYMENT_PROFILE.timing.da_attestation_timeout_ms;
 
     await expect(loadConfig()).resolves.toMatchObject({
       NETWORK: "Preprod",
       DEPLOYMENT_ECONOMICS_PROFILE: "bounded-acceptance-v1",
       OPERATOR_REQUIRED_BOND_LOVELACE: 900_000_000n,
       OPERATOR_SLASHING_PENALTY_LOVELACE: 500_000_000n,
-      WAIT_BETWEEN_RETENTION_SWEEPS: 60_000,
-      L1_VIEW_FATAL_MS: 240_000,
+      WAIT_BETWEEN_RETENTION_SWEEPS: Math.min(
+        900_000,
+        Math.floor(attestationTimeoutMs / 4),
+      ),
+      L1_VIEW_FATAL_MS: attestationTimeoutMs,
     });
   });
 

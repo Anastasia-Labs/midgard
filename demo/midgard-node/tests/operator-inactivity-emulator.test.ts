@@ -242,6 +242,11 @@ describe("stalled-operator strike and takeover", () => {
   it("strikes for a neglected deposit and refuses a mis-indexed one", async () => {
     const fixture = await initOperatorInactivityFixture(3);
     const appointed = await appointFirstSchedulerOperator(fixture);
+    // The deposit goes in straight after the appointment on purpose: its
+    // threshold (deposit validTo + event wait + negligence) must fall before
+    // the shift ends (appointment validTo + shift). Under preprod-testing that
+    // leaves only about 40 s, so extra emulator time between the two calls
+    // makes the neglected threshold unsatisfiable.
     const neglected = await submitNeglectedDeposit(fixture);
 
     // Under `env/testnet.ak` a neglected event can never license an *earlier*
@@ -272,7 +277,7 @@ describe("stalled-operator strike and takeover", () => {
     expect(withEvent.source).toBe("neglected-user-event");
 
     // A mis-indexed reference input is refused: the redeemer points the
-    // validator at the hub oracle instead of the deposit.
+    // validator at the hub oracle, whose NFT is not under the deposit policy.
     const honest = await prepareInactivityStrike(fixture, {
       neglectedEvent: neglected,
     });
@@ -289,7 +294,14 @@ describe("stalled-operator strike and takeover", () => {
           honestResult.layout.hubOracleRefInputIndex,
       },
     });
-    expect(wrongIndexMessage).toMatch(/failed script execution Spend\[\d+\]/);
+    // The deployed validators carry no traces, so the refusal's reason is what
+    // pins it to the policy `expect` in `get_authentic_input_with_policy_at`:
+    // a crash decoding whatever datum the index reaches would also fail
+    // `Spend`, but as a builtin deserialisation failure.
+    expect(wrongIndexMessage).toMatch(
+      /failed script execution Spend\[\d+\] the validator crashed/,
+    );
+    expect(wrongIndexMessage).not.toMatch(/failed to deserialise/);
 
     const submission = await submitInactivityStrike(fixture, {
       neglectedEvent: neglected,
@@ -540,7 +552,12 @@ describe("inactivity threshold", () => {
   });
 
   it("dates all three neglected variants from inclusion_time", () => {
-    const inclusionTimeMs = FAKE_SHIFT_START + 600_000n;
+    // The event term lands midway between the grace threshold and the shift
+    // end, so it both wins and stays satisfiable under any profile timing.
+    const inclusionTimeMs =
+      FAKE_SHIFT_START +
+      (params.newShiftInactivityGracePeriodMs + params.shiftDurationMs) / 2n -
+      params.userEventsNegligenceTimeoutMs;
     for (const kind of ["Deposit", "Withdrawal", "TxOrder"] as const) {
       expect(
         SDK.computeInactivityThreshold({

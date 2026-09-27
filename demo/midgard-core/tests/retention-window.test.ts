@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { MIDGARD_CONSENSUS_LIMITS } from "../src/consensus-profile.js";
 import { DA_TRANSPORT_LIMITS } from "../src/da-transport.js";
 import {
+  DEPLOYMENT_PROFILES,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "../src/deployment-profile.js";
+import {
   assertRetentionDaysCoverWindow,
   assertRetentionWindowCoversDeployment,
   assertWorstCaseProofTimeWithinBound,
@@ -19,47 +23,70 @@ import {
 
 const BLOCK_END = Date.UTC(2026, 0, 1, 0, 0, 0);
 
+// Expected values are worked out here from the compiled deployment profile's
+// raw timing, not read back from the module under test, so a broken
+// derivation cannot verify itself.
+const MATURITY_MS = SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms;
+const PROOF_BOUND_MS = MATURITY_MS / 2;
+const HORIZON_MS = MATURITY_MS + PROOF_BOUND_MS;
+const DEPLOYED_RETENTION_MS = 15 * RETENTION_MS_PER_DAY;
+const MARGIN_MS = DEPLOYED_RETENTION_MS - HORIZON_MS;
+const MIN_RETENTION_DAYS = Math.ceil(HORIZON_MS / RETENTION_MS_PER_DAY);
+
 const manifestWith = (retentionDays: unknown): unknown => ({
   da: { transportProfile: { retentionDays } },
 });
 
 describe("MIDGARD_RETENTION_WINDOW_V1 derived arithmetic (F04)", () => {
   it("derives every constant from the frozen profiles, never from a literal", () => {
-    expect(MIDGARD_RETENTION_WINDOW.maturityMs).toBe(604_800_000);
+    expect(MIDGARD_RETENTION_WINDOW.maturityMs).toBe(MATURITY_MS);
     expect(MIDGARD_RETENTION_WINDOW.maturityMs).toBe(
       MIDGARD_CONSENSUS_LIMITS.blockMaturityMs,
     );
     expect(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs).toBe(
-      302_400_000,
+      PROOF_BOUND_MS,
     );
-    expect(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs).toBe(
-      MIDGARD_CONSENSUS_LIMITS.blockMaturityMs / 2,
-    );
-    expect(MIDGARD_RETENTION_WINDOW.requiredRetentionMs).toBe(907_200_000);
+    expect(MIDGARD_RETENTION_WINDOW.requiredRetentionMs).toBe(HORIZON_MS);
     expect(MIDGARD_RETENTION_WINDOW.retentionDays).toBe(
       DA_TRANSPORT_LIMITS.minimumRetentionDays,
     );
     expect(MIDGARD_RETENTION_WINDOW.retentionDays).toBe(15);
     expect(MIDGARD_RETENTION_WINDOW.deployedRetentionMs).toBe(1_296_000_000);
-    expect(MIDGARD_RETENTION_WINDOW.marginMs).toBe(388_800_000);
+    expect(MIDGARD_RETENTION_WINDOW.marginMs).toBe(MARGIN_MS);
     expect(MIDGARD_RETENTION_WINDOW.deployedRetentionMs).toBeGreaterThanOrEqual(
       MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     );
-    expect(MIDGARD_MIN_RETENTION_DAYS).toBe(11);
+    expect(MIDGARD_MIN_RETENTION_DAYS).toBe(MIN_RETENTION_DAYS);
+  });
+
+  it("keeps every profile's horizon inside the 15-day retention", () => {
+    // The module-load assertion only sees the compiled profile; CI compiles
+    // preprod-testing, so the other profiles are checked here. Mainnet is the
+    // fixed decision 0002 vector: 907_200_000 ms horizon, 388_800_000 ms margin.
+    for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
+      const maturityMs = profile.timing.block_maturity_ms;
+      expect(maturityMs + maturityMs / 2).toBeLessThanOrEqual(
+        DEPLOYED_RETENTION_MS,
+      );
+    }
+    const mainnetMaturityMs =
+      DEPLOYMENT_PROFILES.mainnet.timing.block_maturity_ms;
+    expect(mainnetMaturityMs + mainnetMaturityMs / 2).toBe(907_200_000);
+    expect(
+      DEPLOYED_RETENTION_MS - (mainnetMaturityMs + mainnetMaturityMs / 2),
+    ).toBe(388_800_000);
   });
 
   it("records but never enforces against the measured dispute schedule", () => {
     expect(MIDGARD_RETENTION_WINDOW.measuredValidationDisputeScheduleMs).toBe(
       MIDGARD_CONSENSUS_LIMITS.minValidationDisputeMaturityMs,
     );
-    expect(MIDGARD_RETENTION_WINDOW.measuredValidationDisputeScheduleMs).toBe(
-      39_600_000,
-    );
-    // The measured 11h schedule is far below the enforced half-maturity bound;
-    // enforcement must key on the bound, not the measurement.
+    // The measured schedule differs from the half-maturity bound under every
+    // profile (far below it on mainnet, above it on the testing profiles), so
+    // the horizon below can only equal maturity plus the bound.
     expect(
       MIDGARD_RETENTION_WINDOW.measuredValidationDisputeScheduleMs,
-    ).toBeLessThan(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs);
+    ).not.toBe(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs);
     expect(MIDGARD_RETENTION_WINDOW.requiredRetentionMs).toBe(
       MIDGARD_RETENTION_WINDOW.maturityMs +
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
@@ -69,10 +96,12 @@ describe("MIDGARD_RETENTION_WINDOW_V1 derived arithmetic (F04)", () => {
 
 describe("worst-case proof-time bound", () => {
   it("accepts exactly the bound and rejects one millisecond past it", () => {
-    expect(assertWorstCaseProofTimeWithinBound(302_400_000)).toBe(302_400_000);
-    expect(() => assertWorstCaseProofTimeWithinBound(302_400_001)).toThrow(
-      /exceeds the canonical V1 worst-case proof-time bound/u,
+    expect(assertWorstCaseProofTimeWithinBound(PROOF_BOUND_MS)).toBe(
+      PROOF_BOUND_MS,
     );
+    expect(() =>
+      assertWorstCaseProofTimeWithinBound(PROOF_BOUND_MS + 1),
+    ).toThrow(/exceeds the canonical V1 worst-case proof-time bound/u);
   });
 
   it("rejects malformed observations", () => {
@@ -83,22 +112,27 @@ describe("worst-case proof-time bound", () => {
 });
 
 describe("retention-days floor and deployment binding", () => {
-  it("accepts the deployed 15 days and rejects 14", () => {
+  // Under a testing profile the horizon is under one day, so MIN_RETENTION_DAYS
+  // is 1 and these cases only check "days >= 1": they cannot tell the horizon
+  // from maturity alone or any other sub-day floor. Only a long-maturity
+  // compile (mainnet: 11 days pass, 10 fail) exercises the comparison itself.
+  it("accepts the derived minimum days and rejects one day fewer", () => {
     expect(assertRetentionDaysCoverWindow(15)).toBe(15);
     expect(retentionDaysCoverWindow(15)).toBe(true);
     expect(retentionDaysCoverWindow(14)).toBe(true);
-    // 11 whole days is the derived minimum covering 907_200_000 ms.
-    expect(retentionDaysCoverWindow(11)).toBe(true);
-    expect(retentionDaysCoverWindow(10)).toBe(false);
-    expect(() => assertRetentionDaysCoverWindow(10)).toThrow(
-      /must be at least 11 days/u,
-    );
+    expect(retentionDaysCoverWindow(MIN_RETENTION_DAYS)).toBe(true);
+    expect(retentionDaysCoverWindow(MIN_RETENTION_DAYS - 1)).toBe(false);
+    expect(() =>
+      assertRetentionDaysCoverWindow(MIN_RETENTION_DAYS - 1),
+    ).toThrow(`must be at least ${String(MIN_RETENTION_DAYS)} days`);
   });
 
   it("binds the window to deployment identity via da.transportProfile", () => {
     expect(assertRetentionWindowCoversDeployment(manifestWith(15))).toBe(15);
     expect(() =>
-      assertRetentionWindowCoversDeployment(manifestWith(1)),
+      assertRetentionWindowCoversDeployment(
+        manifestWith(MIN_RETENTION_DAYS - 1),
+      ),
     ).toThrow(/da\.transportProfile\.retentionDays must be at least/u);
   });
 
@@ -133,10 +167,10 @@ describe("retentionDeadlineForBlockV1", () => {
       blockEndTimeMs: BLOCK_END,
       retentionDays: 15,
     });
-    expect(deadline.challengeableUntilMs).toBe(BLOCK_END + 907_200_000);
-    expect(deadline.retainUntilMs).toBe(BLOCK_END + 1_296_000_000);
-    expect(deadline.deployedRetentionMs).toBe(1_296_000_000);
-    expect(deadline.remainingMs(BLOCK_END)).toBe(907_200_000);
+    expect(deadline.challengeableUntilMs).toBe(BLOCK_END + HORIZON_MS);
+    expect(deadline.retainUntilMs).toBe(BLOCK_END + DEPLOYED_RETENTION_MS);
+    expect(deadline.deployedRetentionMs).toBe(DEPLOYED_RETENTION_MS);
+    expect(deadline.remainingMs(BLOCK_END)).toBe(HORIZON_MS);
     expect(deadline.remainingMs(deadline.challengeableUntilMs)).toBe(0);
     expect(deadline.remainingMs(deadline.challengeableUntilMs + 1)).toBe(-1);
   });
@@ -147,7 +181,7 @@ describe("retentionDeadlineForBlockV1", () => {
       retentionDays: 0,
     });
     expect(deadline.retainUntilMs).toBe(BLOCK_END);
-    expect(deadline.challengeableUntilMs).toBe(BLOCK_END + 907_200_000);
+    expect(deadline.challengeableUntilMs).toBe(BLOCK_END + HORIZON_MS);
   });
 
   it("rejects malformed block end times", () => {
@@ -160,7 +194,7 @@ describe("retentionDeadlineForBlockV1", () => {
 });
 
 describe("daRetentionPruneDecisionV1", () => {
-  const HORIZON = 907_200_000;
+  const HORIZON = HORIZON_MS;
   const decide = (
     nowMs: number,
     headerStatus: Parameters<
@@ -361,7 +395,7 @@ describe("retentionDeadlineAlertV1", () => {
   it("alerts when remaining headroom hits zero but not at one millisecond", () => {
     const at = (remainingMs: number, alertThresholdMs: number) =>
       retentionDeadlineAlert({
-        nowMs: BLOCK_END + 907_200_000 - remainingMs,
+        nowMs: BLOCK_END + HORIZON_MS - remainingMs,
         blockEndTimeMs: BLOCK_END,
         alertThresholdMs,
       });
@@ -370,14 +404,18 @@ describe("retentionDeadlineAlertV1", () => {
   });
 
   it("defaults the alert threshold to the derived margin", () => {
+    // Pure threshold arithmetic only. Under a testing profile the margin is
+    // larger than the horizon, so nowMs here falls before BLOCK_END, a state no
+    // record can be in; this case says nothing about whether the default
+    // threshold is sensible (it is not, see the retention alert escalation).
     const margin = MIDGARD_RETENTION_WINDOW.marginMs;
     const atMargin = retentionDeadlineAlert({
-      nowMs: BLOCK_END + 907_200_000 - margin,
+      nowMs: BLOCK_END + HORIZON_MS - margin,
       blockEndTimeMs: BLOCK_END,
     });
     expect(atMargin).toMatchObject({ headroomMs: 0, alerting: true });
     const justAbove = retentionDeadlineAlert({
-      nowMs: BLOCK_END + 907_200_000 - margin - 1,
+      nowMs: BLOCK_END + HORIZON_MS - margin - 1,
       blockEndTimeMs: BLOCK_END,
     });
     expect(justAbove).toMatchObject({ headroomMs: 1, alerting: false });

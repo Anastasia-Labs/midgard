@@ -51,8 +51,10 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 const BOND_LOVELACE = 900_000_000n;
 const SLASHING_PENALTY_LOVELACE = 500_000_000n;
 const INACTIVITY_SLASHING_PENALTY_LOVELACE = 100_000_000n;
-const REGISTRATION_DURATION_MS = 30n;
-const SHIFT_DURATION_MS = 60n * 60n * 1000n;
+const { REGISTRATION_DURATION_MS, SHIFT_DURATION_MS } = SDK;
+// `advanceShiftToPredecessor` opens its range 30 s past the shift end and
+// keeps it open 8 minutes; waiting out the shift plus 200 slots lands inside.
+const PAST_SHIFT_END_SLOTS = Number(SHIFT_DURATION_MS / 1000n) + 200;
 
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
 const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
@@ -1468,7 +1470,7 @@ describe("operator exit scheduler synchronisation", () => {
     const shiftStart = requireActiveOperator(
       (await fetchDirectorySnapshot(lucid, contracts)).scheduler.datum,
     ).start_time;
-    emulator.awaitSlot(3_800);
+    emulator.awaitSlot(PAST_SHIFT_END_SLOTS);
     const incoming = await advanceShiftToPredecessor({
       fixture,
       wallets,
@@ -1843,7 +1845,7 @@ describe("duplicate operator slashing", () => {
 
     // Past the end of the shift, the ordinary advance must still go through:
     // `GoToNextDueToEndOfShift` never reads the registered list.
-    emulator.awaitSlot(3_800);
+    emulator.awaitSlot(PAST_SHIFT_END_SLOTS);
     const beforeAdvance = await fetchDirectorySnapshot(lucid, contracts);
     expect(
       SDK.findOperatorDirectoryOccupancies(beforeAdvance, strangerKeyHash),

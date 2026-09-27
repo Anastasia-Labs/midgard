@@ -1,6 +1,7 @@
 import "./utils.js";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Cause, Effect, Exit, Option, Schedule } from "effect";
@@ -174,10 +175,13 @@ describe("L1_VIEW_FATAL_MS configuration", () => {
   it("defaults to the DA attestation timeout, valid at the default sweep interval", async () => {
     vi.stubEnv("L1_VIEW_FATAL_MS", undefined);
     vi.stubEnv("WAIT_BETWEEN_RETENTION_SWEEPS", undefined);
-    expect(Number(SDK.DA_ATTESTATION_TIMEOUT_MS)).toBe(3_600_000);
+    const timeoutMs =
+      SELECTED_DEPLOYMENT_PROFILE.timing.da_attestation_timeout_ms;
+    const sweepMs = Math.min(900_000, Math.floor(timeoutMs / 4));
+    expect(Number(SDK.DA_ATTESTATION_TIMEOUT_MS)).toBe(timeoutMs);
     await expect(loadNodeConfig()).resolves.toMatchObject({
-      WAIT_BETWEEN_RETENTION_SWEEPS: 900_000,
-      L1_VIEW_FATAL_MS: 3_600_000,
+      WAIT_BETWEEN_RETENTION_SWEEPS: sweepMs,
+      L1_VIEW_FATAL_MS: timeoutMs,
     });
   });
 

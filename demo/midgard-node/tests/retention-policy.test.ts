@@ -2,6 +2,7 @@ import {
   MIDGARD_RETENTION_WINDOW,
   RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -82,11 +83,12 @@ describe("retention policy", () => {
   it("computes the challengeability cutoff from maturity plus the proof bound", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const cutoff = computeChallengeableCutoff(now);
-    expect(now.getTime() - cutoff.getTime()).toBe(907_200_000);
+    const maturityMs = SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms;
+    expect(now.getTime() - cutoff.getTime()).toBe(maturityMs + maturityMs / 2);
     expect(now.getTime() - cutoff.getTime()).toBe(
       MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     );
-    // Never the measured 11h dispute schedule.
+    // Never the measured dispute schedule.
     expect(now.getTime() - cutoff.getTime()).not.toBe(
       MIDGARD_RETENTION_WINDOW.measuredValidationDisputeScheduleMs,
     );

@@ -13,7 +13,11 @@ import {
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
-import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
+import {
+  deterministicFixtureBytes,
+  provideDatabaseLayers,
+  resetApplicationTables,
+} from "./utils.js";
 
 const RETENTION_DAYS = 15;
 /** The running deployment's verified manifest ID, and another deployment's. */
@@ -121,13 +125,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
           appVersion: "test",
           actor: "da-publication-removed-header.test",
         });
-        // `resetApplicationTables` is avoided: its seed-row replay currently
-        // re-runs schema DDL. Only the tables this file touches are cleared.
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`
-          TRUNCATE da_payload_publications, da_payload_announcements,
-            da_payload_terminal_outcomes, da_payloads,
-            pending_block_finalizations CASCADE`;
+        yield* resetApplicationTables;
         return yield* effect;
       }),
     ) as Effect.Effect<A, E, never>,

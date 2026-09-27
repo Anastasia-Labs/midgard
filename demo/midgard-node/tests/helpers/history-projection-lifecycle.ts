@@ -52,10 +52,7 @@ export const openHistoryProjectionLifecycle = async () => {
   await resetActiveRuntimePaths();
   await initializeNodeRuntime();
   const accounts = createPublishedWorkflowDeploymentAccounts();
-  const deployment = await publishWorkflowDeployment({
-    accounts,
-    network: "Preprod",
-  });
+  const deployment = await publishWorkflowDeployment({ accounts });
   const {
     emulator,
     operatorLucid: lucid,

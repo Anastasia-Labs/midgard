@@ -46,6 +46,7 @@ import {
   fetchLatestCommittedBlock,
   mergeMaturityWindow,
   type ProductionHistoryFixtureRuntime,
+  refreshWalletUtxosFromProvider,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runLocalFinalizationRecoveryWorker,
@@ -168,7 +169,11 @@ export const runHistoryOwnerRollbackJourney = async ({
     });
   let baselineLedger: readonly MempoolLedgerDB.EntryWithTimeStamp[] = [];
   let funding:
-    | { eventId: Buffer; incarnationId: Buffer; originalDeposit: unknown }
+    | {
+        eventId: Buffer;
+        incarnationId: Buffer;
+        originalDeposit: Record<string, unknown>;
+      }
     | undefined;
   let referenceInputOutref: Buffer | undefined;
   let oldEventId: Buffer | undefined;
@@ -673,6 +678,9 @@ export const runHistoryOwnerRollbackJourney = async ({
       const signedStable = await stable.tx.sign.withWallet().complete();
       const stableHash = await signedStable.submit();
       expect(await wallet.awaitTx(stableHash)).toBe(true);
+      // The collateral split pinned the wallet's UTxO view; without a refresh
+      // the original deposit reuses this deposit's spent nonce as its event id.
+      await refreshWalletUtxosFromProvider(wallet);
       await h.deployment.chain.awaitLedgerTime(
         stable.metadata.inclusionTime + 1000,
       );
@@ -1811,6 +1819,19 @@ export const runHistoryOwnerRollbackJourney = async ({
       },
     ]);
     if (funding !== undefined) {
+      // The original deposit's insertion spends its list predecessor. When
+      // that is the funding node, the funding row follows it to the new output.
+      const fundingNow = (
+        await Effect.runPromise(
+          SDK.fetchDepositUTxOsProgram(
+            fixture.operatorLucid,
+            SDK.eventHistoryDeploymentFromContracts(
+              SDK.requireEventHistoryContracts(fixture.contracts).deposit,
+            ),
+          ),
+        )
+      ).filter((deposit) => deposit.idCbor.equals(funding!.eventId));
+      expect(fundingNow).toHaveLength(1);
       const referenceResumed = await read(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
@@ -1838,7 +1859,12 @@ export const runHistoryOwnerRollbackJourney = async ({
       expect(referenceResumed.before).toHaveLength(1);
       expect(referenceResumed.before[0]!.source_event_id).toEqual(oldEventId);
       expect(referenceResumed.retained).toEqual(referenceResumed.before);
-      expect(referenceResumed.funding).toEqual([funding.originalDeposit]);
+      expect(referenceResumed.funding).toEqual([
+        {
+          ...funding.originalDeposit,
+          deposit_l1_tx_hash: Buffer.from(fundingNow[0]!.utxo.txHash, "hex"),
+        },
+      ]);
       expect(referenceResumed.spentFunding).toEqual([]);
       diagnostic.referenceResumed = referenceResumed;
     }

@@ -430,10 +430,28 @@ export const openHistoryProductionOwnerLifecycle = async (
             );
           settledAt ??= performance.now() + GATE_CLOSED_SETTLE_MS;
           if (performance.now() >= settledAt) return pending;
-        } else if (performance.now() >= deadline)
-          throw new Error(
-            `History owner head ${frontier.headHeight} did not reach source tip ${tip.height}`,
+        } else if (performance.now() >= deadline) {
+          // A journaled point takes well under a second; name what the owner
+          // saw, so a lost source block, a stalled queue and a failed owner
+          // read apart. `ready` is false in all three while the gate is
+          // closed, but a failed owner refuses any frontier at once.
+          const state = await runtime.runPromise(
+            owner.awaitReadyAt(tip).pipe(
+              Effect.match({
+                onFailure: (error) => `failed: ${inspect(error.cause)}`,
+                onSuccess: () => "ready",
+              }),
+              Effect.timeoutTo({
+                duration: "100 millis",
+                onSuccess: (state) => state,
+                onTimeout: () => "running",
+              }),
+            ),
           );
+          throw new Error(
+            `History owner head ${frontier.headHeight} did not reach source tip ${tip.height} (owner tip ${frontier.tipHeight}, owner ${state}, pending ${pending?.reason ?? "none"})`,
+          );
+        }
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
     };

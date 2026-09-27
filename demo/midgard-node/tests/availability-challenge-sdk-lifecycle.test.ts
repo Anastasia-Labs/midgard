@@ -77,16 +77,19 @@ const submit = async (
 const resources = async (
   f: AvailabilityFixture,
   feeLovelace: bigint,
+  /** A publication's range must close by the challenge's response deadline. */
+  responseDeadline?: bigint,
 ): Promise<SDK.DaAvailabilityTransactionResources> => {
   const collateralInputs = (await f.lucid.wallet().getUtxos())
     .filter((u) => u.assets.lovelace === 10_000_000n && !u.datum)
     .slice(0, 1);
-  return {
-    collateralInputs,
-    feeLovelace,
-    validFrom: BigInt(f.emulator.now()),
-    validTo: BigInt(f.emulator.now() + 60_000),
-  };
+  const validFrom = BigInt(f.emulator.now());
+  const validTo =
+    responseDeadline !== undefined &&
+    responseDeadline + 1n < validFrom + 60_000n
+      ? responseDeadline + 1n
+      : validFrom + 60_000n;
+  return { collateralInputs, feeLovelace, validFrom, validTo };
 };
 const open = async (
   f: AvailabilityFixture,
@@ -316,6 +319,7 @@ describe("production SDK availability builders", () => {
                     ...(await resources(
                       f,
                       parameters.max_publication_fee_lovelace,
+                      bond.ChallengedBond.response_deadline,
                     )),
                     thread: current.utxo,
                     previousCarrier: current.carrier,
@@ -404,7 +408,11 @@ describe("production SDK availability builders", () => {
     let carrier: UTxO | undefined;
     for (const publication of publications) {
       const p = {
-        ...(await resources(f, parameters.max_publication_fee_lovelace)),
+        ...(await resources(
+          f,
+          parameters.max_publication_fee_lovelace,
+          b.ChallengedBond.response_deadline,
+        )),
         thread,
         previousCarrier: carrier,
         publication,
@@ -643,7 +651,11 @@ describe("production SDK availability builders", () => {
       f,
       await Effect.runPromise(
         SDK.buildPublishDaAvailabilityChunkTxProgram(f.lucid, d, {
-          ...(await resources(f, parameters.max_publication_fee_lovelace)),
+          ...(await resources(
+            f,
+            parameters.max_publication_fee_lovelace,
+            b.ChallengedBond.response_deadline,
+          )),
           thread: s.tranches[0]!.utxo,
           publication,
         }),

@@ -19,6 +19,7 @@ import {
   verifyFinalizedDeploymentManifest,
   verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -676,11 +677,11 @@ export const publishWorkflowDeploymentOnChain = async ({
 export const publishWorkflowDeployment = async (
   options: Readonly<{
     accounts?: PublishedWorkflowDeploymentAccounts;
-    network?: "Custom" | "Preprod";
     publicationMaxTargetsPerBatch?: number;
   }> = {},
 ) => {
-  const network = options.network ?? "Custom";
+  // The manifest binding admits only the compiled profile's network.
+  const network: "Custom" | "Preprod" = SELECTED_DEPLOYMENT_PROFILE.network;
   const accounts =
     options.accounts ?? createPublishedWorkflowDeploymentAccounts();
   const emulator = new Emulator([accounts.operator, accounts.publisher], {

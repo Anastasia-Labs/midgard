@@ -888,6 +888,20 @@ export const buildAvailabilityPublication = (
 ) => {
   const datum = Data.from(thread.datum!, SDK.DaAvailabilityTrancheDatum);
   const parameters = TEST_AVAILABILITY_PARAMETERS;
+  if (!("Active" in datum))
+    throw new Error("Only an active tranche accepts a publication");
+  // A publication may not stay valid past the response deadline, which the
+  // selected profile's response window can place inside the default range.
+  const validFrom = BigInt(f.emulator.now());
+  // At or past the deadline the clamped range is empty or inverted, so fail
+  // here with the cause instead of submitting a transaction that cannot land.
+  if (validFrom >= datum.Active.response_deadline)
+    throw new Error(
+      `Publication built at or after the response deadline (now=${validFrom}, deadline=${datum.Active.response_deadline})`,
+    );
+  const deadlineUpper = datum.Active.response_deadline + 1n;
+  const validTo =
+    validFrom + 60_000n < deadlineUpper ? validFrom + 60_000n : deadlineUpper;
   const geometry = SDK.availabilityResponseGeometry({
     chunkByteLength: Number(parameters.response_geometry.chunk_byte_length),
     trancheByteLength: Number(parameters.response_geometry.tranche_byte_length),
@@ -897,7 +911,7 @@ export const buildAvailabilityPublication = (
     active: datum,
     publication,
     responseGeometry: geometry,
-    inclusiveValidityUpper: BigInt(f.emulator.now() + 60_000),
+    inclusiveValidityUpper: validTo - 1n,
     carrierOutputIndex: 1n,
   });
   const fee = parameters.max_publication_fee_lovelace;
@@ -928,8 +942,8 @@ export const buildAvailabilityPublication = (
   let tx = f.lucid
     .newTx()
     .setMinFee(fee)
-    .validFrom(f.emulator.now())
-    .validTo(f.emulator.now() + 60_000)
+    .validFrom(Number(validFrom))
+    .validTo(Number(validTo))
     .readFrom([f.reference("availability-challenge spending")])
     .collectFrom(
       [thread],

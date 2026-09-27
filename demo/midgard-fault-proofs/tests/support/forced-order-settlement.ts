@@ -5,6 +5,7 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -127,10 +128,16 @@ export const makeForcedOrderSettlementScenario = async (
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: { realTxOrder: true, realSettlement: true },
   });
-  const lucid = h.proverLucid;
+  // The order builder dates `inclusion_time` from the compiled profile's
+  // event wait, which the SDK refuses to read on any other network. The
+  // harness's own Lucid instances stay on "Custom", so any SDK user-event
+  // builder driven through them fails with the same opaque caught defect.
+  const network = SELECTED_DEPLOYMENT_PROFILE.network;
+  const lucid = await Lucid(h.emulator, network);
+  h.proverSigner.selectWallet(lucid);
   const wallets = [lucid];
   if (options.twoOrders) {
-    const second = await Lucid(h.emulator, "Custom");
+    const second = await Lucid(h.emulator, network);
     second.selectWallet.fromSeed(generateSeedPhrase());
     const funding = await lucid
       .newTx()

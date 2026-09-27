@@ -221,6 +221,36 @@ describe("availability responder lifecycle", () => {
     expect(await responder.tick()).toMatchObject({ status: "unavailable" });
     expect(execute).not.toHaveBeenCalled();
   });
+
+  it("publishes until the response deadline and never attempts one at or after it", async () => {
+    const fixture = challengeFixture();
+    const deadline = Number(
+      fixture.challenge.bond.datum.ChallengedBond.response_deadline,
+    );
+    const tickAt = async (now: number) => {
+      const execute = vi.fn(async () => "confirmed" as const);
+      const report = await new AvailabilityResponder({
+        deploymentIdentity,
+        deploymentFingerprint,
+        store: { getDaPayload: async () => fixture.stored },
+        discover: async () => [fixture.challenge],
+        execute,
+        reconcile: async () => "ready",
+        now: () => now,
+      }).tick();
+      return { report, execute };
+    };
+    const before = await tickAt(deadline - 1);
+    expect(before.report).toMatchObject({
+      action: "publish",
+      status: "confirmed",
+    });
+    for (const now of [deadline, deadline + 1]) {
+      const after = await tickAt(now);
+      expect(after.report).toMatchObject({ status: "unavailable" });
+      expect(after.execute).not.toHaveBeenCalled();
+    }
+  });
 });
 
 const record: DaPayloadRecord = {

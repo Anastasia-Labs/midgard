@@ -8,6 +8,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_ID,
 } from "@al-ft/midgard-core/consensus-profile";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
@@ -211,7 +212,9 @@ describe("Q54 authenticated release retention authority", () => {
         deploymentManifest,
       ),
     ).toMatchObject({
-      minimumFinalityDepth: 30n,
+      minimumFinalityDepth: BigInt(
+        SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth,
+      ),
     });
   });
 

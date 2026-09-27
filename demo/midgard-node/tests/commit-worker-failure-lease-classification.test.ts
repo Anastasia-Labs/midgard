@@ -146,6 +146,7 @@ import {
   classifyCommitWorkerOutputForMutationLease,
   type CommitWorkerFailureJournalEvidence,
 } from "../src/fibers/commit-worker-failure-classification.js";
+import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import { Lucid } from "../src/services/index.js";
 import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
 import {
@@ -331,7 +332,10 @@ const fakeLucid = {
 const fakeSql = Object.assign(
   ((..._args: readonly unknown[]) =>
     Effect.succeed([])) as unknown as SqlClient.SqlClient,
-  { array: vi.fn((values: readonly unknown[]) => values) },
+  {
+    array: vi.fn((values: readonly unknown[]) => values),
+    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
+  },
 ) as unknown as SqlClient.SqlClient;
 
 const baseCommitArgs = {
@@ -429,6 +433,7 @@ const runDepositOnlyCommit = () =>
       ),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
+      Effect.provideService(UnownedHistoryFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
   );
@@ -446,6 +451,7 @@ const runTxBackedCommit = () =>
       } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
+      Effect.provideService(UnownedHistoryFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
   );
@@ -462,6 +468,7 @@ describe("commit submission journals before it signs and submits", () => {
     vi.mocked(PendingBlockFinalizationsDB.markSubmitted).mockClear();
     vi.mocked(buildUnsignedCommitTx).mockReturnValue(
       Effect.succeed({
+        preparedTxHash: "22".repeat(32),
         newHeaderHash: HEADER_HASH,
         newHeader: NEW_HEADER,
         newHeaderCbor: Buffer.from("header"),

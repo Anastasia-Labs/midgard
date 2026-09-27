@@ -61,11 +61,11 @@ describe("committee availability responder through the durable production path",
         hubOracleRefInput: f.hubOracleRefInput,
       };
       const bonded = await attestAvailability(f);
-      const opened = await openAvailability(f, bonded);
-      await opened.submit();
       const responderWallet = generateEmulatorAccountFromPrivateKey({
         lovelace: 0n,
       });
+      // Fund collateral before the challenge opens: every emulator block
+      // spends 20 s of the selected profile's response window.
       await f.submit(
         "fund independent accountable responder collateral",
         f.lucid
@@ -73,6 +73,8 @@ describe("committee availability responder through the durable production path",
           .pay.ToAddress(responderWallet.address, { lovelace: 10_000_000n }),
         true,
       );
+      const opened = await openAvailability(f, bonded);
+      await opened.submit();
       f.lucid.selectWallet.fromPrivateKey(responderWallet.privateKey);
       const deploymentFingerprint = "ab".repeat(32);
       const actor = paymentCredentialOf(responderWallet.address).hash;

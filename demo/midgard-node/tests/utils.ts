@@ -67,17 +67,16 @@ export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   );
 
 /**
- * Marks the section of a migration that inserts rows a migrated database must
- * always contain (e.g. the `commit_build_calibration` singleton). A reset
- * replays these so it leaves the database exactly as a fresh migration would.
+ * A migration's INSERT statements are the rows a migrated database must always
+ * contain (e.g. the `commit_build_calibration` singleton). A reset replays only
+ * these, wherever they sit in the file, without re-running the migration's DDL.
+ * A seed row must therefore be a plain `INSERT INTO ...;` statement: rows
+ * seeded by `COPY` or inside a `DO` block would not be restored.
  */
-const MIGRATION_SEED_ROWS_MARKER = "-- Required singleton seed rows";
+const MIGRATION_INSERT_STATEMENT = /^\s*INSERT\s+INTO\b[^;]*;/gim;
 
 const migrationSeedRowsSql: readonly string[] = MIGRATIONS.flatMap(
-  (migration) => {
-    const start = migration.sql.indexOf(MIGRATION_SEED_ROWS_MARKER);
-    return start === -1 ? [] : [migration.sql.slice(start)];
-  },
+  (migration) => migration.sql.match(MIGRATION_INSERT_STATEMENT) ?? [],
 );
 
 const truncateApplicationTablesSql = `TRUNCATE TABLE ${APPLICATION_TABLE_NAMES.map(

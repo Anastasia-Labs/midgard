@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { inspect } from "node:util";
 
 import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as ordered,
@@ -50,6 +51,9 @@ import {
   publishWorkflowDeploymentOnChain,
 } from "./helpers/published-workflow-deployment.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./helpers/reference-publication-chain.js";
+
+// Deployment manifests admit only the compiled profile's network.
+const network = SELECTED_DEPLOYMENT_PROFILE.network;
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -279,9 +283,9 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
     [accounts.operator, accounts.publisher, user],
     p,
   );
-  const operator = await createMainnetEmulatorLucid(emulator, "Custom");
-  const publisher = await createMainnetEmulatorLucid(emulator, "Custom");
-  const lucid = await createMainnetEmulatorLucid(emulator, "Custom");
+  const operator = await createMainnetEmulatorLucid(emulator, network);
+  const publisher = await createMainnetEmulatorLucid(emulator, network);
+  const lucid = await createMainnetEmulatorLucid(emulator, network);
   operator.selectWallet.fromSeed(accounts.operator.seedPhrase);
   publisher.selectWallet.fromSeed(accounts.publisher.seedPhrase);
   lucid.selectWallet.fromSeed(user.seedPhrase);
@@ -300,7 +304,7 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
     },
   };
   const deployment = await publishWorkflowDeploymentOnChain({
-    network: "Custom",
+    network,
     accounts,
     operatorLucid: operator,
     publisherLucid: publisher,
@@ -410,7 +414,7 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
           manifestId: manifest.manifestId,
           consensusProfile: manifest.consensusProfile,
         },
-        network: "Custom",
+        network,
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic raw datum fixture",
           initialization: deployment.initialization.txHash,
@@ -642,9 +646,7 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
           field(captured.openingCbor, [1]),
         ),
       ).toBe(true);
-      const entry = await Effect.runPromise(
-        depositUTxOToEntry(order, "Custom"),
-      );
+      const entry = await Effect.runPromise(depositUTxOToEntry(order, network));
       const converted = decodeMidgardTxOutput(
         entry[DepositsDB.Columns.LEDGER_OUTPUT],
       );
@@ -682,7 +684,7 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
           previous.order.history.anchor.node.protected_until,
         );
         const reprojected = await Effect.runPromise(
-          depositUTxOToEntry(refreshed, "Custom"),
+          depositUTxOToEntry(refreshed, network),
         );
         expect(
           decodeMidgardTxOutput(
