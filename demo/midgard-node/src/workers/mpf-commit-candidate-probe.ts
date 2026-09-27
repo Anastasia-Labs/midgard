@@ -116,7 +116,6 @@ void (async () => {
           assertArchitectureGCandidateSlotRuntimeIdentity({
             input,
             runtimeNetwork: nodeConfig.NETWORK,
-            ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
             customGenesis,
           }),
         catch: (cause) =>

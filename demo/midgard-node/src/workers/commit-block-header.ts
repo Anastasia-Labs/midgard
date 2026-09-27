@@ -97,6 +97,7 @@ import {
 import {
   fetchLatestCommittedBlockLocal,
   getLatestBlockDatumEndTime,
+  resolveCommitAppendFenceEndTimeCapLocal,
 } from "./commit-block-header/state-queue.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
@@ -131,11 +132,12 @@ import {
   updateCommitBuildEwma,
 } from "./utils/commit-block-planner.js";
 import {
-  alignUnixTimeToSlotBoundary,
   COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveCommitEndTimeFit,
   resolveExplicitCommitCandidateEndTimeMs,
+  resolveHistoryCommitEndTime,
+  resolveLatestFeasibleCommitEndTime,
 } from "./utils/commit-end-time.js";
 import {
   resolveCurrentOperatorSchedulerWindow,
@@ -1923,17 +1925,28 @@ const databaseOperationsProgram = (
         const candidateEndTimeMs = Option.isSome(txBackedCandidateEndTime)
           ? txBackedCandidateEndTime.value.getTime()
           : userEventOnlyEndTime.getTime();
-        currentWindowCommitEndTimeFit = resolveCommitEndTimeFit({
-          lucid: lucid.api,
-          latestEndTime: latestEndTimeMs,
-          candidateEndTime: candidateEndTimeMs,
-          nowMs: schedulerPlanningNowMs,
-          minimumFutureBufferMs:
-            workerInput.history === undefined
-              ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
-              : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-          maximumEndTimeMs: currentSchedulerWindow.endTimeMs,
-        });
+        // A source-owned commit's history horizon caps its end; it is not a
+        // floor. The current window fits whenever some end inside it clears
+        // the monotonic and current-time floors. Selected L2 transactions are
+        // timestamped no later than the worker start, below the current-time
+        // floor.
+        currentWindowCommitEndTimeFit =
+          workerInput.history === undefined
+            ? resolveCommitEndTimeFit({
+                lucid: lucid.api,
+                latestEndTime: latestEndTimeMs,
+                candidateEndTime: candidateEndTimeMs,
+                nowMs: schedulerPlanningNowMs,
+                minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+                maximumEndTimeMs: currentSchedulerWindow.endTimeMs,
+              })
+            : resolveLatestFeasibleCommitEndTime({
+                lucid: lucid.api,
+                latestEndTime: latestEndTimeMs,
+                nowMs: schedulerPlanningNowMs,
+                minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+                maximumEndTimeMs: currentSchedulerWindow.endTimeMs,
+              });
       }
     }
     const schedulerAwareCommitSelection = planSchedulerAwareCommitSelection({
@@ -2004,23 +2017,64 @@ const databaseOperationsProgram = (
     );
     const effectiveUserEventOnlyEndTime =
       schedulerAwareCommitSelection.userEventOnlyEndTime;
-    const blockEndTimeCapMs =
+    // A source-owned block takes the latest end every cap admits. When the
+    // floors exceed the caps, the resolved end stays at the cap and the build
+    // refuses it exactly as it refused an over-cap end before.
+    const historyCommitEndTimeFit =
       historyEndTime === undefined
-        ? schedulerAwareCommitSelection.blockEndTimeCapMs
-        : Math.min(
-            historyEndTime.getTime(),
-            schedulerAwareCommitSelection.blockEndTimeCapMs ??
-              historyEndTime.getTime(),
-          );
-    const fixedHistoryEndTime =
-      blockEndTimeCapMs === undefined || historyEndTime === undefined
         ? undefined
-        : new Date(
-            alignUnixTimeToSlotBoundary(
-              (yield* acquireCommitLucidOnce).api,
-              blockEndTimeCapMs + 1,
-            ) - 1,
-          );
+        : yield* Effect.gen(function* () {
+            const lucid = yield* acquireCommitLucidOnce;
+            const contracts = yield* MidgardContracts;
+            const submitSlot = yield* lucid.submitSlotSnapshot().pipe(
+              Effect.mapError(
+                (cause) =>
+                  new SDK.LucidError({
+                    message:
+                      "Failed to acquire the submit-slot snapshot for the history commit end",
+                    cause,
+                  }),
+              ),
+            );
+            const appendFenceEndTimeMs =
+              yield* resolveCommitAppendFenceEndTimeCapLocal(
+                lucid.api,
+                {
+                  stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+                  stateQueuePolicyId: contracts.stateQueue.policyId,
+                },
+                speculativeBuild?.base.blockEndTimeMs,
+              );
+            return resolveHistoryCommitEndTime({
+              lucid: lucid.api,
+              currentSlot: submitSlot.currentSlot,
+              latestEndTime:
+                latestEndTimeMsForSchedulerPlanning ??
+                currentBlockStartTime.getTime(),
+              nowMs: schedulerPlanningNowMs,
+              minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+              eventEndTimeMs: Math.min(
+                historyEndTime.getTime(),
+                effectiveUserEventOnlyEndTime.getTime(),
+              ),
+              schedulerWindowEndTimeMs:
+                schedulerAwareCommitSelection.blockEndTimeCapMs,
+              appendFenceEndTimeMs,
+            });
+          });
+    if (historyCommitEndTimeFit?.status === "exceeds_cap") {
+      yield* Effect.logInfo(
+        `🔹 History commit floors exceed its end-time caps (${historyCommitEndTimeFit.reason}).`,
+      );
+    }
+    const blockEndTimeCapMs =
+      historyCommitEndTimeFit === undefined
+        ? schedulerAwareCommitSelection.blockEndTimeCapMs
+        : historyCommitEndTimeFit.maximumEndTimeMs;
+    const fixedHistoryEndTime =
+      historyCommitEndTimeFit === undefined
+        ? undefined
+        : new Date(historyCommitEndTimeFit.resolvedEndTime - 1);
     if (
       shouldDeferCommitSubmission({
         localFinalizationPending: workerInput.data.localFinalizationPending,
@@ -2068,8 +2122,10 @@ const databaseOperationsProgram = (
       }
     }
 
+    // Events after a source-owned block's fixed end are not work for it; an
+    // event horizon far past that end must not drive empty commits.
     const pendingUserEventCounts = yield* pendingUserEventCountsUpTo(
-      effectiveUserEventOnlyEndTime,
+      fixedHistoryEndTime ?? effectiveUserEventOnlyEndTime,
     );
     const pendingUserEventCount =
       pendingUserEventCounts.deposits +

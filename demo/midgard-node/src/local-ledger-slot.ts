@@ -114,9 +114,6 @@ export const normalizeOgmiosHttpUrl = (url: string): string => {
   return parsed.toString().replace(/\/$/, "");
 };
 
-export const ogmiosEndpointIdentitySha256 = (url: string): string =>
-  createHash("sha256").update(normalizeOgmiosHttpUrl(url)).digest("hex");
-
 const joinUrl = (base: string, path: string): string =>
   `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 

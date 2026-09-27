@@ -67,8 +67,8 @@ test("fast testing profiles exclude interactive disputes without weakening publi
   );
   for (const name of ["preprod-testing", "local-devnet-testing"]) {
     const testing = structuredClone(profiles[name]);
-    assert.equal(testing.timing.block_maturity_ms, 300_000);
-    assert.equal(testing.timing.da_attestation_timeout_ms, 240_000);
+    assert.equal(testing.timing.block_maturity_ms, 900_000);
+    assert.equal(testing.timing.da_attestation_timeout_ms, 600_000);
     assert.equal(testing.timing.operator_shift_ms, 600_000);
     assert.equal(testing.timing.registration_ms, 30_000);
     assert.equal(testing.timing.da_small_response_window_ms, 60_000);

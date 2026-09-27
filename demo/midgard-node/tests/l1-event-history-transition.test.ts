@@ -660,7 +660,6 @@ const projectionFixture = async (external = false) => {
     ...binding,
     digest: "f0".repeat(32),
     manifestId: "f1".repeat(32),
-    endpointIdentitySha256: "f2".repeat(32),
     genesisSha256: "f3".repeat(32),
     genesisAlgorithm: HISTORY_GENESIS_DIGEST_ALGORITHM,
   };

@@ -15,6 +15,13 @@ block maturity, a five-minute dispute response window, a one-hour operator shift
 and the existing **30 millisecond** registration interval. Mainnet's former
 30 millisecond operator shift is replaced by the one-hour shift used off chain.
 Testing economics remain explicit; selecting a test network does not select them.
+
+`timing.event_wait_ms` is the delay between a user event's transaction
+valid-to and its on-chain `inclusion_time`; no block may include the event
+earlier. The public profiles use the worst-case wall time for N Cardano blocks,
+3N/f slots at f = 0.05 and one-second slots: 36 hours on `mainnet` (N = k = 2160)
+and 30 minutes on `preprod-public` (N = 30). Both testing profiles use a fixed
+five minutes.
 The existing economics schedule identifiers are retained as manifest data, not
 runtime selectors. Profiles sharing a schedule identifier must have identical
 economics. Settle launch parameter choices before deploying; generation does not
@@ -22,12 +29,16 @@ authorize deployment or alter an existing deployment.
 
 ### Fast non-interactive testing
 
-`preprod-testing` and `local-devnet-testing` use five-minute block maturity, a ten-minute operator shift,
-30-second registration, and the existing eight-minute maximum transaction validity. DA
-attestation has a four-minute timeout; full responses have two minutes and small
-responses have one minute. Economics remain the bounded testing schedule. Runtime
-retention polling defaults to 60 seconds so the shorter L1
-freshness deadline works.
+`preprod-testing` and `local-devnet-testing` use fifteen-minute block maturity,
+a ten-minute operator shift, 30-second registration, and the existing eight-minute
+maximum transaction validity. DA attestation has a ten-minute timeout; full
+responses have two minutes and small responses have one minute. Attestation waits
+for three descendant blocks before signing and then lands three
+confirmation-serialized transactions, about two and a half minutes on average at
+twenty-second blocks; a four-minute timeout missed about one block in ten, and a
+single dropped transaction alone costs 160 seconds. Economics remain the bounded
+testing schedule. Runtime retention polling defaults to 60 seconds so the shorter
+L1 freshness deadline works.
 
 `l1_finality.confirmation_depth` selects the L1 confirmation count. Both testing
 profiles use 3; `mainnet` and `preprod-public` use 30. The count is included in
@@ -36,12 +47,12 @@ Three confirmations are a testing policy, not a production security guarantee.
 
 These profiles are for **non-interactive fault-proof testing only**, not interactive
 fault proofs or production security. The 32-round interactive schedule retains a
-one-minute per-response timeout and cannot fit inside five-minute maturity;
+one-minute per-response timeout and cannot fit inside fifteen-minute maturity;
 the on-chain maturity guard therefore refuses interactive dispute opening.
 Validation explicitly requires this exclusion for both testing profiles; public
 profiles still require the complete interactive schedule to fit in half maturity.
 Non-interactive proofs must be submitted before maturity. L1 inclusion and node
-polling add latency, so finalization is not guaranteed at exactly five minutes.
+polling add latency, so finalization is not guaranteed at exactly fifteen minutes.
 
 The local profile targets the real-stack deposit/transfer/withdrawal journey,
 two-member DA attestation and public retrieval, automatic merge and reserve payout,

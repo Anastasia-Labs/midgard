@@ -288,7 +288,6 @@ export const openHistorySourceOwnerLifecycle = async (
       contracts,
       identity,
       network: "Preprod",
-      ogmiosUrl: "http://projection-lifecycle-emulator.invalid:1337",
       expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256(genesis),
     }),
   );

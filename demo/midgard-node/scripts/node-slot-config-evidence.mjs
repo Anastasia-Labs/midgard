@@ -197,7 +197,10 @@ export const fetchOgmiosGenesisPayloadV1 = async ({
   }
 };
 
-export const deriveOgmiosGenesisSlotEvidenceV1 = ({ ogmiosUrl, payload }) => {
+/** The source names the chain (its canonical Shelley genesis), never the
+ * endpoint it was read through: another host, port or proxy in front of the
+ * same chain yields the same evidence. */
+export const deriveOgmiosGenesisSlotEvidenceV1 = ({ payload }) => {
   const root = exactRecord(
     payload,
     ["jsonrpc", "result", "id"],
@@ -235,9 +238,6 @@ export const deriveOgmiosGenesisSlotEvidenceV1 = ({ ogmiosUrl, payload }) => {
   return {
     source: {
       kind: "local_ogmios_genesis",
-      endpointIdentitySha256: sha256(
-        Buffer.from(normalizeOgmiosEvidenceUrl(ogmiosUrl)),
-      ),
       configurationSha256: sha256(
         Buffer.from(JSON.stringify(canonicalJsonValue(root.result))),
       ),
@@ -267,12 +267,11 @@ export const validateNodeSlotConfigEvidenceV1 = (value) => {
   if (document.network === "Custom") {
     const source = exactRecord(
       document.source,
-      ["kind", "endpointIdentitySha256", "configurationSha256"],
+      ["kind", "configurationSha256"],
       "Custom slot-config source",
     );
     if (
       source.kind !== "local_ogmios_genesis" ||
-      !isHash(source.endpointIdentitySha256) ||
       !isHash(source.configurationSha256)
     ) {
       throw new Error("Custom slot-config source is invalid");
@@ -314,22 +313,14 @@ export const readNodeSlotConfigEvidenceV1 = ({ path, expectedSha256 }) => {
 
 export const buildNodeSlotConfigEvidenceV1 = ({
   network,
-  ogmiosUrl,
   ogmiosGenesisPayload,
   capturedAtIso = new Date().toISOString(),
 }) => {
   if (network === "Custom") {
-    if (
-      typeof ogmiosUrl !== "string" ||
-      ogmiosUrl.trim().length === 0 ||
-      ogmiosGenesisPayload === undefined
-    ) {
-      throw new Error(
-        "Custom network requires an Ogmios URL and genesis response",
-      );
+    if (ogmiosGenesisPayload === undefined) {
+      throw new Error("Custom network requires an Ogmios genesis response");
     }
     const derived = deriveOgmiosGenesisSlotEvidenceV1({
-      ogmiosUrl,
       payload: ogmiosGenesisPayload,
     });
     return validateNodeSlotConfigEvidenceV1({

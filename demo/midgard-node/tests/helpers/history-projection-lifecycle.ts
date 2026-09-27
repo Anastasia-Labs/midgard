@@ -150,7 +150,6 @@ export const openHistoryProjectionLifecycle = async () => {
       contracts,
       identity,
       network: "Preprod",
-      ogmiosUrl: "http://projection-lifecycle-emulator.invalid:1337",
       expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
         scope: "synthetic emulator transport",
         initializationTxHash: deployment.initialization.txHash,

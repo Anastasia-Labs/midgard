@@ -12,10 +12,7 @@ import {
   positiveSafeInteger,
   sha256Digest,
 } from "../../artifact-schema.js";
-import {
-  ogmiosEndpointIdentitySha256,
-  type ShelleyGenesisSlotEvidence,
-} from "../../local-ledger-slot.js";
+import type { ShelleyGenesisSlotEvidence } from "../../local-ledger-slot.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -121,7 +118,6 @@ export type ArchitectureGCommitCandidateInput = {
           }
         | {
             readonly kind: "local_ogmios_genesis";
-            readonly endpointIdentitySha256: string;
             readonly configurationSha256: string;
           };
       readonly slotConfig: {
@@ -502,7 +498,7 @@ export const decodeArchitectureGCommitCandidateInput = (
       ? exactKeysRecord(
           slotConfigDocument.source,
           "Custom slot-config source",
-          ["kind", "endpointIdentitySha256", "configurationSha256"],
+          ["kind", "configurationSha256"],
         )
       : exactKeysRecord(
           slotConfigDocument.source,
@@ -513,10 +509,6 @@ export const decodeArchitectureGCommitCandidateInput = (
     if (slotConfigSource.kind !== "local_ogmios_genesis") {
       throw new Error("Custom slot-config source is invalid");
     }
-    sha256Digest(
-      slotConfigSource.endpointIdentitySha256,
-      "candidateInput.forcedValidationSlotConfigArtifact.source.endpointIdentitySha256",
-    );
     sha256Digest(
       slotConfigSource.configurationSha256,
       "candidateInput.forcedValidationSlotConfigArtifact.source.configurationSha256",
@@ -755,12 +747,10 @@ export const decodeArchitectureGCommitCandidateInput = (
 export const assertArchitectureGCandidateSlotRuntimeIdentity = ({
   input,
   runtimeNetwork,
-  ogmiosUrl,
   customGenesis,
 }: {
   readonly input: ArchitectureGCommitCandidateInput;
   readonly runtimeNetwork: "Mainnet" | "Preview" | "Preprod" | "Custom";
-  readonly ogmiosUrl?: string;
   readonly customGenesis?: ShelleyGenesisSlotEvidence;
 }): void => {
   const document = input.forcedValidationSlotConfigArtifact.document;
@@ -772,10 +762,7 @@ export const assertArchitectureGCandidateSlotRuntimeIdentity = ({
   if (runtimeNetwork !== "Custom") return;
   if (
     document.source.kind !== "local_ogmios_genesis" ||
-    ogmiosUrl === undefined ||
     customGenesis === undefined ||
-    document.source.endpointIdentitySha256 !==
-      ogmiosEndpointIdentitySha256(ogmiosUrl) ||
     document.source.configurationSha256 !== customGenesis.configurationSha256 ||
     JSON.stringify(document.slotConfig) !==
       JSON.stringify({

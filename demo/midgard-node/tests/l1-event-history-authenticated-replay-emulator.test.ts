@@ -395,7 +395,6 @@ it("replays actual initialized lists and joins current external orders whose ret
           consensusProfile: manifest.consensusProfile,
         },
         network: "Custom",
-        ogmiosUrl: "http://history-list-replay-emulator.invalid:1337",
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic emulator transport",
           initialization: deployment.initialization.txHash,

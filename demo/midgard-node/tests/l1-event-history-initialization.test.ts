@@ -66,7 +66,6 @@ beforeAll(async () => {
     digest: "11".repeat(32),
     manifestId: "22".repeat(32),
     network: "Preprod",
-    endpointIdentitySha256: "33".repeat(32),
     genesisAlgorithm: HISTORY_GENESIS_DIGEST_ALGORITHM,
     genesisSha256: "44".repeat(32),
     hubAddress: contracts.hubOracle.spendingScriptAddress,

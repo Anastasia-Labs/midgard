@@ -11,8 +11,14 @@ import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { Database } from "../src/services/database.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  resolveHistoryCommitEndTime,
+} from "../src/workers/utils/commit-end-time.js";
+import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
+import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
+  advanceEmulatorToDueWork,
   advanceHistoryAdmissionClock,
   alignCommitSchedulerBeforeTestWorker,
   CML,
@@ -133,7 +139,7 @@ it("retains the original signed intent through an accepted queue pointer continu
       lucid,
       fixture.contracts,
     );
-    const receiptsBefore = h.receipts.length;
+    let receiptsBefore = h.receipts.length;
     diagnostic.deposit = { depositHash, deposit, latestBefore };
     diagnostic.stage = "accepted-response-loss";
 
@@ -198,19 +204,43 @@ it("retains the original signed intent through an accepted queue pointer continu
       throw new Error(responseLoss);
     };
 
+    // The event wait can place the commitment beyond the current scheduler
+    // window. The history-owned worker then registers due scheduler work and
+    // leaves the refresh to the block-commitment fiber's pre-lease alignment,
+    // which runs at the due slot before the worker is re-run. No state-queue
+    // mint reaches the provider before that re-run.
     let output: Awaited<ReturnType<typeof runCommitWorker>>;
+    const dueWorkOutputs: unknown[] = [];
     try {
-      output = await runCommitWorker(
-        fixture.contracts,
-        lucidService,
-        latestBefore,
-        production.nodeConfig,
-        fixture.runtimeOverrides!.deploymentIdentity,
-        { ...production, globals },
-      );
+      for (let attempt = 1; ; attempt += 1) {
+        // Scheduler refreshes are L1 receipts of their own; the worker run
+        // that reaches the provider must add none.
+        receiptsBefore = h.receipts.length;
+        output = await runCommitWorker(
+          fixture.contracts,
+          lucidService,
+          latestBefore,
+          production.nodeConfig,
+          fixture.runtimeOverrides!.deploymentIdentity,
+          { ...production, globals },
+        );
+        if (output.type !== "RegisteredDueWorkOutput") break;
+        expect(providerCalls).toBe(0);
+        expect(attempt).toBeLessThan(4);
+        dueWorkOutputs.push(output);
+        await advanceEmulatorToDueWork(fixture, output.dueWork);
+        await alignCommitSchedulerBeforeTestWorker({
+          fixture,
+          lucidService,
+          targetEndTimeMs:
+            fixture.emulator.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        });
+        await h.synchronize();
+      }
     } finally {
       fixture.emulator.submitTx = observingSubmit;
     }
+    diagnostic.dueWorkOutputs = dueWorkOutputs;
     diagnostic.workerOutput = output;
     expect(providerCalls).toBe(1);
     expect(accepted).toBeDefined();
@@ -293,6 +323,32 @@ it("retains the original signed intent through an accepted queue pointer continu
     expect(recordedAtTtl[Pending.Columns.STATUS]).toBe(
       Pending.Status.ObservedWaitingStability,
     );
+    // The child takes the planner's end: the latest one every cap admits. The
+    // parent is the unattested queue head, so Q61's fence caps the child below
+    // the parent's end plus the attestation timeout, together with the history
+    // horizon (the synchronized source point is the current slot), the submit
+    // slot's validity range and the operator's scheduler window.
+    const childWindow = await Effect.runPromise(
+      resolveCurrentOperatorSchedulerWindow(lucid, fixture.contracts),
+    );
+    if (childWindow === undefined)
+      throw new Error("The operator has no current scheduler window");
+    const childSlot = fixture.emulator.slot;
+    const parentEndTimeMs = Number(accepted.header.endTime);
+    const childEndTime = resolveHistoryCommitEndTime({
+      lucid,
+      currentSlot: childSlot,
+      latestEndTime: parentEndTimeMs,
+      nowMs: fixture.emulator.now(),
+      minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      eventEndTimeMs:
+        lucid.slotToUnixTime(childSlot) + SDK.EVENT_WAIT_DURATION_MS - 1,
+      schedulerWindowEndTimeMs: childWindow.endTimeMs,
+      appendFenceEndTimeMs:
+        parentEndTimeMs + Number(SDK.DA_ATTESTATION_TIMEOUT_MS) - 1,
+    });
+    diagnostic.childEndTime = childEndTime;
+    expect(childEndTime.status).toBe("fits");
     // No user or L2 transaction is submitted after the parent. The empty child
     // preserves its actual UTxO root; it does not repeat the parent's deposit.
     const beforeChildReceiptCount = h.receipts.length;
@@ -304,7 +360,7 @@ it("retains the original signed intent through an accepted queue pointer continu
         depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
         withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
         l2TransactionCount: 0n,
-        endTimeMs: fixture.emulator.now() + SDK.EVENT_WAIT_DURATION_MS - 1,
+        endTimeMs: childEndTime.resolvedEndTime - 1,
         awaitConfirmation: true,
       }),
     );

@@ -4,6 +4,13 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  type CheckId,
+  type ReconciliationReport,
+  STATE_RECONCILIATION_CHECK_IDS,
+  stateReconciliationProgram,
+} from "../src/commands/state-reconciliation.js";
+import { MutationJobsDB } from "../src/database/index.js";
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   absorbConfirmedDepositToReserveProgram,
@@ -24,6 +31,7 @@ import {
   Effect,
   encodeMidgardCekProgramMaterialSidecar,
   ensureSeparateCollateralUtxo,
+  expectDaCommitteeAcceptsPersistedPayload,
   expectedAuthenticatedEventRoot,
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
@@ -36,6 +44,7 @@ import {
   makeFixture,
   makeGlobalsService,
   makeLucidRuntimeService,
+  makeNodeConfigForFixture,
   MempoolDB,
   MempoolLedgerDB,
   mergeMaturityWindow,
@@ -69,6 +78,55 @@ import {
   withdrawalStatusProgram,
   WriteBehindLive,
 } from "./deposit-flow-emulator-shared.js";
+
+const describeReconciliation = (report: ReconciliationReport): string =>
+  report.checks
+    .map(
+      (check) =>
+        `${check.id}=${check.status} (${check.reason})${check.failures
+          .map((failure) => `\n  FAIL ${failure}`)
+          .join("")}${check.notes.map((note) => `\n  NOTE ${note}`).join("")}`,
+    )
+    .join("\n");
+
+/**
+ * The fixture runs the default `legacy` MPF engine, whose confirmed-merge
+ * finalization resynchronizes the LevelDB ledger store from confirmed_ledger
+ * (`synchronizeCommitMpfStoresFromConfirmedLedger`). With blocks still queued
+ * behind the merged one, that store then holds the confirmed root rather than
+ * the committed tip, so the two native-root checks cannot hold there. The
+ * operator runs `architecture_g`, whose owner keeps the tip across a merge.
+ */
+const LEGACY_NATIVE_ROOT_CHECKS_AFTER_PARTIAL_MERGE = [
+  "native-root",
+  "state-queue-tail-root",
+] as const satisfies readonly CheckId[];
+
+/**
+ * `reconcile-state` exactly as the CLI runs it (no in-flight allowance), at a
+ * quiescent point of the journey: every check must PASS, none may be skipped,
+ * except the named checks, which are left unasserted.
+ */
+const expectReconciled = async (
+  stage: string,
+  harness: Parameters<typeof runNodeCommandProgram>[1],
+  unasserted: readonly CheckId[] = [],
+): Promise<ReconciliationReport> => {
+  const report = await runNodeCommandProgram(
+    stateReconciliationProgram({ maxAttempts: 1 }),
+    harness,
+  );
+  const described = `${stage}\n${describeReconciliation(report)}`;
+  expect(report.checks.map((check) => check.id)).toEqual([
+    ...STATE_RECONCILIATION_CHECK_IDS,
+  ]);
+  for (const check of report.checks) {
+    if (unasserted.includes(check.id)) continue;
+    expect(check.status, described).toBe("PASS");
+  }
+  if (unasserted.length === 0) expect(report.ok, described).toBe(true);
+  return report;
+};
 
 describe.sequential("deposit flow emulator", () => {
   it("merges a committed deposit-only block into confirmed state and spawns settlement with real contracts", async () => {
@@ -257,6 +315,201 @@ describe.sequential("deposit flow emulator", () => {
     });
   }, 900_000);
 
+  it("merges three queued blocks oldest-first on the scheduled path and holds the final tail while a failed local mutation job remains", async () => {
+    await resetActiveRuntimePaths();
+    await initializeNodeRuntime();
+    await configureEmulatorDaRuntimeManifest();
+
+    const fixture = await makeFixture();
+    await initializeProtocol(fixture);
+    const lucidService = await makeLucidRuntimeService(fixture);
+    const globals = await makeGlobalsService();
+    await advanceEmulatorPastLatestBlockEndTime(fixture);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+    // The live operator runs with a batch threshold of 2, so the scheduled
+    // fiber merges by threshold while two or more blocks are queued and only
+    // the last block goes through the final-tail rule.
+    const nodeConfig = {
+      ...(await makeNodeConfigForFixture(fixture)),
+      MIN_QUEUE_LENGTH_FOR_MERGING: 2,
+    };
+    const harness = { fixture, lucidService, globals };
+    const l2Address = await fixture.depositorLucid.wallet().address();
+
+    const queuedHeaders: SDK.Header[] = [];
+    for (const lovelace of [4_000_000n, 5_000_000n, 6_000_000n]) {
+      // Each deposit must be admitted after the previous header's end time,
+      // or it is due for a block that is already committed.
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      await submitDepositWithDiagnostics(fixture, {
+        l2Address,
+        l2Datum: null,
+        lovelace,
+        additionalAssets: {},
+      });
+      const latestInclusionTime = (
+        await Effect.runPromise(
+          SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
+            ...SDK.eventHistoryDeploymentFromContracts(
+              SDK.requireEventHistoryContracts(fixture.contracts).deposit,
+            ),
+          }),
+        )
+      ).reduce(
+        (latest, deposit) =>
+          deposit.facts.inclusion_time > latest
+            ? deposit.facts.inclusion_time
+            : latest,
+        0n,
+      );
+      fixture.emulator.awaitSlot(
+        fixture.operatorLucid.unixTimeToSlot(Number(latestInclusionTime)) + 1,
+      );
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      const commitOutput = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: await fetchLatestCommittedBlock(
+          fixture.operatorLucid,
+          fixture.contracts,
+        ),
+      });
+      await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
+      await runBlockConfirmation(globals, fixture.contracts, lucidService);
+      const recovery = await runLocalFinalizationRecoveryWorker(
+        globals,
+        fixture.contracts,
+        lucidService,
+      );
+      expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+      const queue = await Effect.runPromise(
+        SDK.fetchSortedStateQueueUTxOsProgram(
+          fixture.operatorLucid,
+          stateQueueFetchConfig(fixture.contracts),
+        ),
+      );
+      const header = await Effect.runPromise(
+        SDK.getHeaderFromStateQueueDatum(queue[queue.length - 1]!.datum),
+      );
+      // Attest before time moves on: an unattested block past its window
+      // pauses every later commit.
+      await attestQueuedStateQueueHeader({
+        fixture,
+        lucidService,
+        globals,
+        headerHash: await Effect.runPromise(SDK.hashBlockHeader(header)),
+      });
+      queuedHeaders.push(header);
+    }
+    const queuedHeaderHashes = await Promise.all(
+      queuedHeaders.map((header) =>
+        Effect.runPromise(SDK.hashBlockHeader(header)),
+      ),
+    );
+    expect(new Set(queuedHeaderHashes).size).toBe(3);
+    const queueBeforeMerges = await Effect.runPromise(
+      SDK.fetchSortedStateQueueUTxOsProgram(
+        fixture.operatorLucid,
+        stateQueueFetchConfig(fixture.contracts),
+      ),
+    );
+    expect(queueBeforeMerges).toHaveLength(4);
+    await advanceEmulatorPastUnixTime(
+      fixture,
+      mergeMaturityWindow(
+        fixture.operatorLucid,
+        Number(queuedHeaders[2]!.endTime),
+      ).readyAfterUnixTime,
+    );
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+    await expectReconciled("three blocks queued, none merged", harness);
+
+    const confirmedHeaderHash = async () => {
+      const queue = await Effect.runPromise(
+        SDK.fetchSortedStateQueueUTxOsProgram(
+          fixture.operatorLucid,
+          stateQueueFetchConfig(fixture.contracts),
+        ),
+      );
+      const confirmed = await Effect.runPromise(
+        SDK.getConfirmedStateFromStateQueueDatum(queue[0]!.datum),
+      );
+      return { queueLength: queue.length - 1, confirmed: confirmed.data };
+    };
+
+    for (const index of [0, 1]) {
+      const merged = await runMergeUntilMerged({
+        ...harness,
+        force: false,
+        nodeConfig,
+      });
+      if (merged.status !== "merged") throw new Error("unreachable");
+      expect(merged.trigger).toBe("threshold");
+      expect(merged.headerHash).toBe(queuedHeaderHashes[index]);
+      const after = await confirmedHeaderHash();
+      expect(after.queueLength).toBe(2 - index);
+      expect(after.confirmed.headerHash).toBe(queuedHeaderHashes[index]);
+      expect(after.confirmed.utxoRoot).toBe(queuedHeaders[index]!.utxosRoot);
+      await expectReconciled(
+        `after scheduled merge ${(index + 1).toString()} of 3`,
+        harness,
+        LEGACY_NATIVE_ROOT_CHECKS_AFTER_PARTIAL_MERGE,
+      );
+    }
+
+    // A failed local mutation job is unfinished local work: the final tail
+    // must wait (the tail may still have a successor to build on it).
+    const failedJobId = `${MutationJobsDB.Kind.ConfirmedMergeFinalization}:sweep-failed-job`;
+    await runNodeDatabaseEffect(
+      MutationJobsDB.start({
+        jobId: failedJobId,
+        kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
+      }).pipe(
+        Effect.zipRight(MutationJobsDB.markFailed(failedJobId, "injected")),
+      ),
+    );
+    await expect(
+      runMergeUntilMerged({ ...harness, force: false, nodeConfig }),
+    ).rejects.toThrow(/skipped_pending_local_work/);
+    expect((await confirmedHeaderHash()).confirmed.headerHash).toBe(
+      queuedHeaderHashes[1],
+    );
+    await runNodeDatabaseEffect(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM ${sql(MutationJobsDB.tableName)} WHERE job_id = ${failedJobId}`;
+      }),
+    );
+
+    const tail = await runMergeUntilMerged({
+      ...harness,
+      force: false,
+      nodeConfig,
+    });
+    if (tail.status !== "merged") throw new Error("unreachable");
+    expect(tail.trigger).toBe("final_tail_auto_merge");
+    expect(tail.headerHash).toBe(queuedHeaderHashes[2]);
+    const afterTail = await confirmedHeaderHash();
+    expect(afterTail.queueLength).toBe(0);
+    expect(afterTail.confirmed.headerHash).toBe(queuedHeaderHashes[2]);
+    expect(afterTail.confirmed.utxoRoot).toBe(queuedHeaders[2]!.utxosRoot);
+    for (const headerHash of queuedHeaderHashes) {
+      const settlementUnit = toUnit(
+        fixture.contracts.settlement.policyId,
+        headerHash,
+      );
+      expect(
+        await fixture.operatorLucid.utxosAtWithUnit(
+          fixture.contracts.settlement.spendingScriptAddress,
+          settlementUnit,
+        ),
+      ).toHaveLength(1);
+    }
+    await expectReconciled("after the final-tail merge", harness);
+  }, 900_000);
+
   it("runs deposit, reserve absorption, withdrawal commitment, and payout to conclusion", async () => {
     await resetActiveRuntimePaths();
     await initializeNodeRuntime();
@@ -306,6 +559,11 @@ describe.sequential("deposit flow emulator", () => {
     vi.setSystemTime(new Date(fixture.emulator.now()));
 
     const depositBlock = await commitConfirmRecoverAndMerge({
+      fixture,
+      lucidService,
+      globals,
+    });
+    await expectReconciled("after deposit block merge", {
       fixture,
       lucidService,
       globals,
@@ -363,6 +621,11 @@ describe.sequential("deposit flow emulator", () => {
         "Deposit absorption did not create a 12 ADA reserve UTxO",
       );
     }
+    await expectReconciled("after absorb-confirmed-deposit-to-reserve", {
+      fixture,
+      lucidService,
+      globals,
+    });
     const reserveSummary = await runNodeCommandProgram(reserveUtxosProgram, {
       fixture,
       lucidService,
@@ -596,6 +859,11 @@ describe.sequential("deposit flow emulator", () => {
       globals,
       expectedL2TxIds: [builtL2Transfer.txId],
     });
+    await expectReconciled("after L2 transfer block merge", {
+      fixture,
+      lucidService,
+      globals,
+    });
     expect(l2TransactionBlock.commitOutput.mempoolTxsCount).toEqual(1);
     expect(l2TransactionBlock.queuedHeader.transactionsRoot).not.toEqual(
       emptyProtocolRoot,
@@ -685,8 +953,22 @@ describe.sequential("deposit flow emulator", () => {
       lucidService,
       globals,
     });
+    await expectReconciled("after withdrawal block merge", {
+      fixture,
+      lucidService,
+      globals,
+    });
     expect(withdrawalBlock.queuedHeader.withdrawalsRoot).not.toEqual(
       emptyProtocolRoot,
+    );
+    const committeeVerifiedWithdrawalPayload =
+      await expectDaCommitteeAcceptsPersistedPayload({
+        headerHash: withdrawalBlock.queuedHeaderHash,
+        l1Header: withdrawalBlock.queuedHeader,
+      });
+    expect(committeeVerifiedWithdrawalPayload.counts.withdrawalCount).toBe(1n);
+    expect(committeeVerifiedWithdrawalPayload.roots.withdrawalsRoot).toBe(
+      withdrawalBlock.queuedHeader.withdrawalsRoot,
     );
 
     const withdrawalEntries = await runNodeDatabaseEffect(
@@ -763,6 +1045,11 @@ describe.sequential("deposit flow emulator", () => {
       payoutUnit,
     );
     expect(initializedPayout.assets[payoutUnit]).toEqual(1n);
+    await expectReconciled("after initialize-payout", {
+      fixture,
+      lucidService,
+      globals,
+    });
 
     const addFunds = await runNodeCommandProgram(
       addReserveFundsToPayoutProgram({ eventId: withdrawalEventIdHex }),
@@ -783,6 +1070,11 @@ describe.sequential("deposit flow emulator", () => {
       payoutUnit,
     );
     expect(fundedPayout.assets.lovelace).toEqual(10_000_000n);
+    await expectReconciled("after add-reserve-funds-to-payout", {
+      fixture,
+      lucidService,
+      globals,
+    });
 
     const conclude = await runNodeCommandProgram(
       concludePayoutProgram({ eventId: withdrawalEventIdHex }),
@@ -794,6 +1086,11 @@ describe.sequential("deposit flow emulator", () => {
       { fixture, lucidService, globals },
     );
     expect(concludedStatus.phase).toEqual("concluded");
+    await expectReconciled("after conclude-payout", {
+      fixture,
+      lucidService,
+      globals,
+    });
 
     expect(
       (

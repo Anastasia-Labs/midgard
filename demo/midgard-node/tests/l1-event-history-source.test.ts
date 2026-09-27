@@ -24,7 +24,22 @@ import type {
 import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
+import { productionRuntimeHistoryBinding } from "./helpers/production-history-binding.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
+
+// The production composition's owner echoes the input it is handed, so a test
+// reads the binding the runtime derives from its transport configuration.
+vi.mock("../src/services/event-history-owner.js", async (importOriginal) => {
+  const { Effect } = await import("effect");
+  const actual =
+    await importOriginal<
+      typeof import("../src/services/event-history-owner.js")
+    >();
+  return {
+    ...actual,
+    makeEventHistoryOwner: (input: unknown) => Effect.succeed(input),
+  };
+});
 
 const genesis = {
   era: "shelley",
@@ -43,7 +58,6 @@ const build = (
       contracts,
       identity,
       network: "Preprod",
-      ogmiosUrl: "http://localhost:1337",
       expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256(genesis),
       ...overrides,
     }),
@@ -305,17 +319,32 @@ describe("history source verification on each actual socket", () => {
     expect(socket.closed).toBe(true);
   });
 
-  it("rejects raw capture endpoint substitution before opening", async () => {
+  it("admits a raw capture through another endpoint only on the approved genesis", async () => {
+    // The binding names the chain, not the address it is reached at: another
+    // host and port in front of the same chain authenticates the same binding.
     const socket = new SourceSocket();
+    const raw = await readBoundEventHistoryRawLedgerSnapshot({
+      binding,
+      ogmiosUrl: "ws://ogmios-proxy.example:2337/",
+      at: socket.ledger.point,
+      webSocketFactory: socket.factory,
+    });
+    expect(raw.bindingDigest).toBe(binding.digest);
+    expect(socket.factory).toHaveBeenCalledTimes(1);
+    // The same other endpoint serving another chain is refused at its genesis.
+    const other = new SourceSocket();
+    other.genesisResponse = { ...genesis, networkMagic: 4242 };
     await expect(
       readBoundEventHistoryRawLedgerSnapshot({
         binding,
-        ogmiosUrl: "http://localhost:1338",
-        at: socket.ledger.point,
-        webSocketFactory: socket.factory,
+        ogmiosUrl: "ws://ogmios-proxy.example:2337/",
+        at: other.ledger.point,
+        webSocketFactory: other.factory,
       }),
-    ).rejects.toThrow(/endpoint/);
-    expect(socket.factory).not.toHaveBeenCalled();
+    ).rejects.toThrow(/approved pin/);
+    expect(other.requests.map(({ method }) => method)).toEqual([
+      "queryNetwork/genesisConfiguration",
+    ]);
   });
 
   it("never reuses capture authentication for a different ChainSync backend at the same URL", async () => {
@@ -368,20 +397,27 @@ describe("history source verification on each actual socket", () => {
     }
   });
 
-  it("refuses endpoint substitution before opening either socket", async () => {
+  it("authenticates capture and follower through another endpoint by genesis alone", async () => {
     const captureSocket = new SourceSocket();
-    await expect(captureSocket.read("http://localhost:1338")).rejects.toThrow(
-      /endpoint/,
-    );
-    expect(captureSocket.factory).not.toHaveBeenCalled();
+    const snapshot = await captureSocket.read("http://127.0.0.1:1338");
+    expect(snapshot.bindingDigest).toBe(binding.digest);
     const chainSocket = new SourceSocket();
-    const run = chainSocket.follow("http://localhost:1338");
-    expect(await run.completion).toMatchObject({
-      message: expect.stringMatching(/endpoint/),
+    const run = chainSocket.follow("http://127.0.0.1:1338");
+    await vi.waitFor(() => expect(chainSocket.pendingBlock).toBeDefined());
+    expect(
+      chainSocket.requests.slice(0, 2).map(({ method }) => method),
+    ).toEqual(["queryNetwork/genesisConfiguration", "findIntersection"]);
+    run.controller.abort();
+    await run.completion;
+    // Another chain behind that endpoint never reaches an intersection.
+    const otherChain = new SourceSocket();
+    otherChain.genesisResponse = { ...genesis, networkMagic: 4242 };
+    const refused = otherChain.follow("http://127.0.0.1:1338");
+    expect(await refused.completion).toMatchObject({
+      message: expect.stringMatching(/approved pin/),
     });
-    expect(chainSocket.factory).not.toHaveBeenCalled();
-    expect(run.onUnavailable).toHaveBeenCalledTimes(1);
-    expect(run.onIntersection).not.toHaveBeenCalled();
+    expect(refused.onIntersection).not.toHaveBeenCalled();
+    expect(refused.onUnavailable).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -606,17 +642,64 @@ describe("history source's approved lossless genesis pin", () => {
     );
   });
 
-  it("binds deployment, source endpoint and approved pin while normalizing HTTP/WS routing", async () => {
-    expect((await build({ ogmiosUrl: "ws://localhost:1337/" })).digest).toBe(
-      binding.digest,
-    );
+  it("binds the chain and the deployment, never the Ogmios endpoint", async () => {
+    // Nothing endpoint-shaped reaches the binding or its digest.
+    expect(Object.keys(binding).sort()).toEqual([
+      "deployments",
+      "digest",
+      "genesisAlgorithm",
+      "genesisSha256",
+      "hubAddress",
+      "hubDatumCbor",
+      "hubUnit",
+      "manifestId",
+      "network",
+    ]);
+    expect((await build()).digest).toBe(binding.digest);
+    // Another chain: a different network magic is a different genesis pin.
+    const otherChain = eventHistoryGenesisLosslessSha256({
+      ...genesis,
+      networkMagic: 4242,
+    });
+    expect(otherChain).not.toBe(eventHistoryGenesisLosslessSha256(genesis));
     expect(
-      (await build({ ogmiosUrl: "http://localhost:1338" })).digest,
+      (await build({ expectedGenesisLosslessSha256: otherChain })).digest,
     ).not.toBe(binding.digest);
     expect(
       (await build({ expectedGenesisLosslessSha256: "aa".repeat(32) })).digest,
     ).not.toBe(binding.digest);
+    // Another deployment of the same scripts on the same chain.
+    const otherDeployment = await build({
+      contracts: await loadRealMidgardContractsForTest({
+        txHash: "cd".repeat(32),
+        outputIndex: 0,
+      }),
+    });
+    expect(otherDeployment.hubUnit).not.toBe(binding.hubUnit);
+    expect(otherDeployment.digest).not.toBe(binding.digest);
     expect(Object.isFrozen(binding.deployments.deposit)).toBe(true);
+  });
+
+  it("composes the same binding in the production runtime whatever Ogmios endpoint its transport names", async () => {
+    const runtime = (ogmiosUrl: string) =>
+      productionRuntimeHistoryBinding({
+        contracts,
+        identity,
+        network: "Preprod",
+        expectedGenesisLosslessSha256:
+          eventHistoryGenesisLosslessSha256(genesis),
+        ogmiosUrl,
+      });
+    const local = await runtime("http://localhost:1337");
+    const proxied = await runtime("ws://ogmios-proxy.example:2337/");
+    // Each endpoint reaches the owner as its transport, never as its binding.
+    expect(local.transport.ogmiosUrl).toBe("http://localhost:1337");
+    expect(proxied.transport.ogmiosUrl).toBe("ws://ogmios-proxy.example:2337/");
+    expect(Object.keys(local.binding).sort()).toEqual(
+      Object.keys(binding).sort(),
+    );
+    expect(local.binding).toEqual(binding);
+    expect(proxied.binding).toEqual(binding);
   });
 
   it("refuses missing pins, derived bundles and mismatched manifest/network identities", async () => {

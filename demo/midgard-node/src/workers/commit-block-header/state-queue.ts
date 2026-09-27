@@ -108,6 +108,50 @@ export type CommitAppendFenceReferences = {
 };
 
 /**
+ * Q61's append fence as a cap on the new header's end. While the queue head is
+ * unattested, an append's inclusive upper bound, which is the header end, must
+ * fall strictly before the head's end plus the DA attestation timeout. An
+ * append to the bare root has no head to fence against, unless the caller is
+ * building on a pending tail that will be the head by the time this lands.
+ * Other head states impose no end-time cap here.
+ */
+export const resolveCommitAppendFenceEndTimeCapLocal = (
+  lucid: Parameters<typeof SDK.fetchSortedStateQueueUTxOsProgram>[0],
+  fetchConfig: SDK.StateQueueFetchConfig,
+  pendingTailEndTimeMs?: number,
+): Effect.Effect<
+  number | undefined,
+  SDK.StateQueueError | SDK.LucidError | SDK.LinkedListError
+> =>
+  Effect.gen(function* () {
+    const ordered = yield* localizeSdkEffect<
+      SDK.StateQueueUTxO[],
+      SDK.LucidError | SDK.LinkedListError
+    >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
+    const head = ordered[1];
+    if (head === undefined) {
+      return pendingTailEndTimeMs === undefined
+        ? undefined
+        : pendingTailEndTimeMs + Number(SDK.DA_ATTESTATION_TIMEOUT_MS) - 1;
+    }
+    const node = yield* localizeSdkEffect<
+      SDK.StateQueueNode,
+      SDK.DataCoercionError
+    >(SDK.getStateQueueNodeFromStateQueueDatum(head.datum)).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to inspect the state-queue head's DA attestation",
+            cause,
+          }),
+      ),
+    );
+    return node.da_attestation === SDK.NO_DA_ATTESTATION
+      ? Number(node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS) - 1
+      : undefined;
+  });
+
+/**
  * Resolves the exact singleton root/current-head reference inputs required by
  * Q61's append fence. The full topology is refetched immediately before the
  * transaction is built; if the expected tail changed, this attempt aborts and

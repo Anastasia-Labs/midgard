@@ -16,7 +16,6 @@ import {
   HISTORY_GENESIS_DIGEST_ALGORITHM,
 } from "../../src/l1-event-history-source.js";
 import type { LedgerSnapshotOutput } from "../../src/l1-ledger-snapshot.js";
-import { ogmiosEndpointIdentitySha256 } from "../../src/local-ledger-slot.js";
 import { BatchSql } from "../../src/services/database.js";
 import {
   type EventHistoryOwner,
@@ -122,9 +121,6 @@ export const makePoolIsolationHistoryOwner = (input: {
       const facts: Omit<EventHistorySourceBinding, "digest"> = {
         manifestId: hash("pool-isolation-modeled-manifest"),
         network: "Preprod" as const,
-        endpointIdentitySha256: ogmiosEndpointIdentitySha256(
-          transport.options.ogmiosUrl,
-        ),
         genesisAlgorithm: HISTORY_GENESIS_DIGEST_ALGORITHM,
         genesisSha256: eventHistoryGenesisLosslessSha256(genesis),
         hubAddress: contracts.hubOracle.spendingScriptAddress,

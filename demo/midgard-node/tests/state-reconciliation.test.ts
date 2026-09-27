@@ -557,6 +557,31 @@ describe("state reconciliation evaluator", () => {
     ).toContain("accepted");
   });
 
+  it("passes a signed-intent journal abandoned for a replacement whose header never landed", () => {
+    // The replaced intent shares its base with the landed replacement (TIP),
+    // carries the replacement digest rather than an observed correction's,
+    // and no admitted transition names it: nothing on L1 ever held it.
+    const report = evaluateStateReconciliation(
+      input(({ sql }) => ({
+        sql: {
+          ...sql,
+          journals: [
+            ...sql.journals,
+            journal({
+              headerHash: h28("3b"),
+              status: "abandoned",
+              correctionTransitionDigest: h32("3d"),
+              submittedTxHash: h32("3e"),
+            }),
+          ],
+        },
+      })),
+    );
+    for (const check of report.checks) {
+      expect(check.status, `${check.id}: ${check.reason}`).toBe("PASS");
+    }
+  });
+
   it("state-queue-tail-root fails alone when the L1 tail root differs from the native root", () => {
     // Native root and the recomputed tip agree with each other but not with
     // the L1 tail (whose roots still equal the journal's expected roots).

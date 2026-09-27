@@ -250,6 +250,125 @@ export const resolveCommitEndTimeFit = ({
   };
 };
 
+/**
+ * The latest inclusive header end a commit built in `currentSlot` can carry.
+ * The header end is the transaction's inclusive upper bound, and
+ * `resolveCommitValidityInterval` backdates the lower bound to one minute
+ * before the submit slot within the on-chain 480 s range. An end past this
+ * point would push the lower bound after the submit slot, and the ledger would
+ * not admit the transaction yet.
+ */
+export const commitValidityEndTimeCapMs = (
+  lucid: LucidEvolution,
+  currentSlot: number,
+): number => {
+  const currentSlotStartMs = lucid.slotToUnixTime(currentSlot);
+  if (!Number.isSafeInteger(currentSlotStartMs)) {
+    throw new Error(
+      `Commit submit-slot start is invalid: ${String(currentSlotStartMs)}`,
+    );
+  }
+  return currentSlotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
+};
+
+/**
+ * Chooses the latest header end at or below `maximumEndTimeMs`, the minimum
+ * of every cap the caller applies. The result still has to clear both floors:
+ * strictly after the previous block's end, and at least the future buffer past
+ * `nowMs`. When no end fits between them the fit reports `exceeds_cap` and the
+ * caller keeps its existing wait or due-work path.
+ */
+export const resolveLatestFeasibleCommitEndTime = ({
+  lucid,
+  latestEndTime,
+  nowMs,
+  minimumFutureBufferMs,
+  maximumEndTimeMs,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly latestEndTime: number;
+  readonly nowMs: number;
+  readonly minimumFutureBufferMs: number;
+  readonly maximumEndTimeMs: number;
+}): CommitEndTimeFit => {
+  // The header end is valid_to - 1, so the latest end at or below the cap is
+  // the slot boundary at or below cap + 1, less one.
+  const resolvedEndTime = alignUnixTimeToSlotBoundary(
+    lucid,
+    maximumEndTimeMs + 1,
+  );
+  // The next header starts at the previous end and must end strictly after
+  // it, so valid_to - 1 > latestEndTime.
+  const minimumMonotonicEndTime = alignedUnixTimeStrictlyAfter(
+    lucid,
+    latestEndTime + 1,
+  );
+  const minimumCurrentTimeEndTime = alignedUnixTimeStrictlyAfter(
+    lucid,
+    nowMs + minimumFutureBufferMs,
+  );
+  const resolution = {
+    alignedCandidateEndTime: resolvedEndTime,
+    minimumMonotonicEndTime,
+    minimumCurrentTimeEndTime,
+    resolvedEndTime,
+  };
+  if (
+    resolvedEndTime < minimumMonotonicEndTime ||
+    resolvedEndTime < minimumCurrentTimeEndTime
+  ) {
+    return {
+      ...resolution,
+      status: "exceeds_cap",
+      maximumEndTimeMs,
+      reason: `latest_feasible_valid_to_ms=${resolvedEndTime.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},minimum_monotonic_valid_to_ms=${minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${minimumCurrentTimeEndTime.toString()}`,
+    };
+  }
+  return { ...resolution, status: "fits", maximumEndTimeMs };
+};
+
+/**
+ * Chooses a source-owned history commit's fixed header end. The authenticated
+ * history horizon is a cap, never a floor: the end is the latest one that
+ * every cap admits, namely the event horizon and ingestion barriers, the
+ * submit-slot validity cap, the operator's current scheduler window when the
+ * planner selected it, and Q61's append fence when the queue head is
+ * unattested.
+ */
+export const resolveHistoryCommitEndTime = ({
+  lucid,
+  currentSlot,
+  latestEndTime,
+  nowMs,
+  minimumFutureBufferMs,
+  eventEndTimeMs,
+  schedulerWindowEndTimeMs,
+  appendFenceEndTimeMs,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly currentSlot: number;
+  readonly latestEndTime: number;
+  readonly nowMs: number;
+  readonly minimumFutureBufferMs: number;
+  readonly eventEndTimeMs: number;
+  readonly schedulerWindowEndTimeMs?: number;
+  readonly appendFenceEndTimeMs?: number;
+}): CommitEndTimeFit => {
+  const capsMs = [
+    eventEndTimeMs,
+    commitValidityEndTimeCapMs(lucid, currentSlot),
+    schedulerWindowEndTimeMs,
+    appendFenceEndTimeMs,
+  ].filter((capMs): capMs is number => capMs !== undefined);
+  return resolveLatestFeasibleCommitEndTime({
+    lucid,
+    latestEndTime,
+    nowMs,
+    minimumFutureBufferMs,
+    maximumEndTimeMs: Math.min(...capsMs),
+  });
+};
+
 export const minimumCommitBudgetMs = (
   checkpoint: CommitTimingCheckpoint,
 ): number => {

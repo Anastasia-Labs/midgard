@@ -1,3 +1,4 @@
+import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -31,8 +32,11 @@ describe("authenticated commit window", () => {
     const before = structuredClone(permit.coverage);
     const horizon = historyEligibilityHorizon(permit.coverage);
     // A future admission cannot have an inclusive upper bound before its
-    // actual future slot; its enforced60s delay lies beyond this horizon.
-    expect(horizon).toBeLessThan(permit.coverage.includedThroughMs + 60_000);
+    // actual future slot; its enforced event-wait delay lies beyond this
+    // horizon.
+    expect(horizon).toBeLessThan(
+      permit.coverage.includedThroughMs + EVENT_WAIT_DURATION_MS,
+    );
     expect(permit.coverage).toEqual(before);
     expect(() =>
       historyEligibilityHorizon({

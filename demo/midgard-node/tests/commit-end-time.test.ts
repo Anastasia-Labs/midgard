@@ -19,6 +19,7 @@ import {
   resolveCommitEndTimeFit,
   resolveCommitValidityInterval,
   resolveExplicitCommitCandidateEndTimeMs,
+  resolveHistoryCommitEndTime,
 } from "../src/workers/utils/commit-end-time.js";
 
 /**
@@ -396,5 +397,121 @@ describe("commit end-time resolver", () => {
     expect(minimumMonotonicEndTime).toBeGreaterThan(latestEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(alignedCandidateEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(minimumMonotonicEndTime);
+  });
+
+  // Profile timings from config/deployments: mainnet event_wait_ms, and the
+  // preprod-testing event_wait_ms and da_attestation_timeout_ms.
+  const MAINNET_EVENT_WAIT_MS = 129_600_000;
+  const TESTING_EVENT_WAIT_MS = 300_000;
+  const TESTING_DA_ATTESTATION_TIMEOUT_MS = 240_000;
+  const HISTORY_BUFFER_MS = 30_000;
+
+  it("builds a mainnet-length history horizon as the latest admissible end inside the range and window", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const nowMs = slotStartMs + 250;
+    const horizonMs = slotStartMs - 5_000 + MAINNET_EVENT_WAIT_MS - 1;
+    const schedulerWindowEndTimeMs = slotStartMs + 20 * 60_000;
+
+    const fit = resolveHistoryCommitEndTime({
+      lucid,
+      currentSlot,
+      latestEndTime: slotStartMs - 60_000,
+      nowMs,
+      minimumFutureBufferMs: HISTORY_BUFFER_MS,
+      eventEndTimeMs: horizonMs,
+      schedulerWindowEndTimeMs,
+    });
+    const endTimeMs = fit.resolvedEndTime - 1;
+    const interval = resolveCommitValidityInterval({
+      lucid,
+      submitSlotSnapshot: {
+        source: "test",
+        currentSlot,
+        observedAtMs: nowMs,
+        slotLengthMs: 1_000,
+      },
+      validToMs: fit.resolvedEndTime,
+    });
+
+    expect(fit.status).toBe("fits");
+    // The validity cap binds: the latest end the submit slot can admit.
+    expect(endTimeMs).toBe(slotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS - 1);
+    expect(endTimeMs).toBeLessThan(horizonMs);
+    expect(endTimeMs).toBeLessThanOrEqual(schedulerWindowEndTimeMs);
+    expect(endTimeMs).toBeGreaterThanOrEqual(nowMs + HISTORY_BUFFER_MS);
+    expect(interval.inclusiveUpperBoundMs).toBe(endTimeMs);
+    expect(
+      interval.inclusiveUpperBoundMs - interval.validFromMs,
+    ).toBeLessThanOrEqual(COMMIT_VALIDITY_MAX_RANGE_MS);
+    // The ledger admits the transaction in the submit slot.
+    expect(interval.validFromMs).toBeLessThanOrEqual(slotStartMs);
+  });
+
+  it("takes the minimum cap for a five-minute event wait", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const nowMs = slotStartMs + 250;
+    const horizonMs = slotStartMs - 2_000 + TESTING_EVENT_WAIT_MS - 1;
+    const headEndTimeMs = slotStartMs - 20_000;
+    // Q61: an unattested head admits appends whose inclusive upper bound is
+    // strictly before its end plus the attestation timeout.
+    const appendFenceEndTimeMs =
+      headEndTimeMs + TESTING_DA_ATTESTATION_TIMEOUT_MS - 1;
+    const schedulerWindowEndTimeMs = slotStartMs + 10 * 60_000;
+    const resolve = (fenceMs?: number) =>
+      resolveHistoryCommitEndTime({
+        lucid,
+        currentSlot,
+        latestEndTime: headEndTimeMs,
+        nowMs,
+        minimumFutureBufferMs: HISTORY_BUFFER_MS,
+        eventEndTimeMs: horizonMs,
+        schedulerWindowEndTimeMs,
+        appendFenceEndTimeMs: fenceMs,
+      });
+    const caps = (fenceMs?: number) =>
+      Math.min(
+        horizonMs,
+        slotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        schedulerWindowEndTimeMs,
+        fenceMs ?? Number.MAX_SAFE_INTEGER,
+      );
+
+    const fenced = resolve(appendFenceEndTimeMs);
+    expect(fenced.status).toBe("fits");
+    expect(fenced.maximumEndTimeMs).toBe(caps(appendFenceEndTimeMs));
+    expect(fenced.resolvedEndTime - 1).toBe(appendFenceEndTimeMs);
+    expect(fenced.resolvedEndTime - 1).toBeLessThan(
+      headEndTimeMs + TESTING_DA_ATTESTATION_TIMEOUT_MS,
+    );
+
+    const attested = resolve(undefined);
+    expect(attested.status).toBe("fits");
+    expect(attested.maximumEndTimeMs).toBe(caps(undefined));
+    expect(attested.resolvedEndTime - 1).toBe(horizonMs);
+  });
+
+  it("keeps a stale history end at its cap when the floors exceed it", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const nowMs = slotStartMs + 250;
+    const horizonMs = slotStartMs + HISTORY_BUFFER_MS - 1_000 - 1;
+
+    const fit = resolveHistoryCommitEndTime({
+      lucid,
+      currentSlot,
+      latestEndTime: slotStartMs - 60_000,
+      nowMs,
+      minimumFutureBufferMs: HISTORY_BUFFER_MS,
+      eventEndTimeMs: horizonMs,
+    });
+
+    expect(fit.status).toBe("exceeds_cap");
+    expect(fit.resolvedEndTime - 1).toBe(horizonMs);
+    expect(fit.minimumCurrentTimeEndTime).toBeGreaterThan(fit.resolvedEndTime);
   });
 });

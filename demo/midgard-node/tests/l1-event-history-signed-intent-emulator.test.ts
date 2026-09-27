@@ -10,9 +10,11 @@ import { expect, it, vi } from "vitest";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { Database } from "../src/services/database.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
+import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/workers/utils/commit-end-time.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
+  advanceEmulatorToDueWork,
   advanceHistoryAdmissionClock,
   alignCommitSchedulerBeforeTestWorker,
   attestQueuedStateQueueHeader,
@@ -130,7 +132,7 @@ it("retains the exact durable signed commitment after an accepted submission los
       lucid,
       fixture.contracts,
     );
-    const receiptsBefore = h.receipts.length;
+    let receiptsBefore = h.receipts.length;
     diagnostic.deposit = { depositHash, deposit, latestBefore };
     diagnostic.stage = "accepted-response-loss";
 
@@ -195,19 +197,43 @@ it("retains the exact durable signed commitment after an accepted submission los
       throw new Error(responseLoss);
     };
 
+    // The event wait can place the commitment beyond the current scheduler
+    // window. The history-owned worker then registers due scheduler work and
+    // leaves the refresh to the block-commitment fiber's pre-lease alignment,
+    // which runs at the due slot before the worker is re-run. No state-queue
+    // mint reaches the provider before that re-run.
     let output: Awaited<ReturnType<typeof runCommitWorker>>;
+    const dueWorkOutputs: unknown[] = [];
     try {
-      output = await runCommitWorker(
-        fixture.contracts,
-        lucidService,
-        latestBefore,
-        production.nodeConfig,
-        fixture.runtimeOverrides!.deploymentIdentity,
-        { ...production, globals },
-      );
+      for (let attempt = 1; ; attempt += 1) {
+        // Scheduler refreshes are L1 receipts of their own; the worker run
+        // that reaches the provider must add none.
+        receiptsBefore = h.receipts.length;
+        output = await runCommitWorker(
+          fixture.contracts,
+          lucidService,
+          latestBefore,
+          production.nodeConfig,
+          fixture.runtimeOverrides!.deploymentIdentity,
+          { ...production, globals },
+        );
+        if (output.type !== "RegisteredDueWorkOutput") break;
+        expect(providerCalls).toBe(0);
+        expect(attempt).toBeLessThan(4);
+        dueWorkOutputs.push(output);
+        await advanceEmulatorToDueWork(fixture, output.dueWork);
+        await alignCommitSchedulerBeforeTestWorker({
+          fixture,
+          lucidService,
+          targetEndTimeMs:
+            fixture.emulator.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        });
+        await h.synchronize();
+      }
     } finally {
       fixture.emulator.submitTx = observingSubmit;
     }
+    diagnostic.dueWorkOutputs = dueWorkOutputs;
     diagnostic.workerOutput = output;
     expect(providerCalls).toBe(1);
     expect(accepted).toBeDefined();

@@ -235,6 +235,7 @@ export const openHistoryProductionOwnerLifecycle = async (
     globals: Globals,
     generation: number,
     synchronizeOnStart = true,
+    ogmiosUrl = transport.options.ogmiosUrl,
   ) => {
     const services = Layer.mergeAll(
       Layer.succeed(NodeConfig, nodeConfig),
@@ -288,7 +289,7 @@ export const openHistoryProductionOwnerLifecycle = async (
     let nativeOwner: NativeMpfOwnerService | undefined;
     const owner = await runtime.runPromise(
       makeProductionEventHistoryOwner({
-        transport: transport.options,
+        transport: { ...transport.options, ogmiosUrl },
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256(
           recorded.genesis,
         ),
@@ -587,10 +588,13 @@ export const openHistoryProductionOwnerLifecycle = async (
     restartRuntime: async ({
       synchronize = true,
       afterStop,
+      ogmiosUrl,
     }: {
       readonly synchronize?: boolean;
       /** Observe retained storage only after every old service has closed. */
       readonly afterStop?: () => Promise<void>;
+      /** Reach the same recorded chain through another Ogmios address. */
+      readonly ogmiosUrl?: string;
     } = {}) => {
       if (restarting)
         throw new Error("Fixture runtime restart was already requested");
@@ -610,6 +614,7 @@ export const openHistoryProductionOwnerLifecycle = async (
           await makeGlobalsService(),
           1,
           synchronize,
+          ogmiosUrl,
         );
         return next.handle;
       } catch (error) {

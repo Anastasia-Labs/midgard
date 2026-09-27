@@ -1446,7 +1446,6 @@ test("node slot-config evidence pins Lucid tables and Custom Ogmios genesis iden
     };
     const document = buildNodeSlotConfigEvidenceV1({
       network: "Custom",
-      ogmiosUrl: "ws://127.0.0.1:1337/",
       ogmiosGenesisPayload,
       capturedAtIso: "2026-07-28T00:01:00.000Z",
     });
@@ -1471,7 +1470,6 @@ test("node slot-config evidence pins Lucid tables and Custom Ogmios genesis iden
 
     const reorderedDocument = buildNodeSlotConfigEvidenceV1({
       network: "Custom",
-      ogmiosUrl: "http://127.0.0.1:1337",
       ogmiosGenesisPayload: {
         id: "midgard-node-slot-config-evidence",
         result: {
@@ -1486,7 +1484,6 @@ test("node slot-config evidence pins Lucid tables and Custom Ogmios genesis iden
 
     const alternateGenesis = buildNodeSlotConfigEvidenceV1({
       network: "Custom",
-      ogmiosUrl: "http://127.0.0.1:1337",
       ogmiosGenesisPayload: {
         ...ogmiosGenesisPayload,
         result: {
@@ -1506,7 +1503,7 @@ test("node slot-config evidence pins Lucid tables and Custom Ogmios genesis iden
           network: "Custom",
           capturedAtIso: "2026-07-28T00:01:00.000Z",
         }),
-      /requires an Ogmios URL and genesis response/u,
+      /requires an Ogmios genesis response/u,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

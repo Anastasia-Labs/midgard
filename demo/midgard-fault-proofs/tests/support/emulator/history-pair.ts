@@ -2,6 +2,7 @@
 import {
   addressDataFromBech32,
   applyEventHistoryValidators,
+  EVENT_WAIT_DURATION_MS,
   eventHistoryKey,
   EventHistoryNode,
   EventHistoryObserve,
@@ -436,7 +437,8 @@ export const promoteHistoryPair = async (
               transactionId: id.txHash,
               outputIndex: BigInt(id.outputIndex),
             },
-            inclusion_time: BigInt(b.validTo - 1) + 60_000n,
+            inclusion_time:
+              BigInt(b.validTo - 1) + BigInt(EVENT_WAIT_DURATION_MS),
             location: plan.location,
             structural_lovelace: i === 0 ? 3_000_000n : 0n,
             structural_refund_key: h.owner,

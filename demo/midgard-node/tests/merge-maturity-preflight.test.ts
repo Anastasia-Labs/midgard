@@ -63,19 +63,29 @@ vi.mock("../src/transactions/state-queue/merge-to-confirmed-state.js", () => ({
   }),
 }));
 
-vi.mock("../src/database/index.js", async () => {
+// Spread the real module so load-time reads elsewhere in the import graph
+// (table names, column and status enums) keep resolving; only the members the
+// merge preflight calls are replaced.
+vi.mock("../src/database/index.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/database/index.js")>();
   const { Effect: EffectModule } = await import("effect");
   return {
+    ...actual,
     MempoolDB: {
+      ...actual.MempoolDB,
       retrieveTxCount: EffectModule.succeed(0n),
     },
     MutationJobsDB: {
+      ...actual.MutationJobsDB,
       countUnfinished: EffectModule.succeed(0n),
     },
     TxAdmissionsDB: {
+      ...actual.TxAdmissionsDB,
       countBacklog: EffectModule.succeed(0n),
     },
     StateQueueMutationLeasesDB: {
+      ...actual.StateQueueMutationLeasesDB,
       tryWithLease: tryWithLeaseMock,
       revalidate: revalidateMock,
       describeActiveLease: () => "holder=test,status=active",

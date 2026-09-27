@@ -10,7 +10,7 @@ export const DEPLOYMENT_PROFILES = {
       dispute_response_window_ms: 300000,
       operator_shift_ms: 3600000,
       registration_ms: 30,
-      event_wait_ms: 60000,
+      event_wait_ms: 129600000,
       user_events_negligence_timeout_ms: 300000,
       max_inactivity_between_block_commitments_ms: 60000,
       new_shift_inactivity_grace_period_ms: 300000,
@@ -44,7 +44,7 @@ export const DEPLOYMENT_PROFILES = {
       dispute_response_window_ms: 300000,
       operator_shift_ms: 3600000,
       registration_ms: 30,
-      event_wait_ms: 60000,
+      event_wait_ms: 1800000,
       user_events_negligence_timeout_ms: 300000,
       max_inactivity_between_block_commitments_ms: 60000,
       new_shift_inactivity_grace_period_ms: 300000,
@@ -74,16 +74,16 @@ export const DEPLOYMENT_PROFILES = {
       confirmation_depth: 3,
     },
     timing: {
-      block_maturity_ms: 300000,
+      block_maturity_ms: 900000,
       dispute_response_window_ms: 60000,
       operator_shift_ms: 600000,
       registration_ms: 30000,
-      event_wait_ms: 60000,
+      event_wait_ms: 300000,
       user_events_negligence_timeout_ms: 300000,
       max_inactivity_between_block_commitments_ms: 60000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
-      da_attestation_timeout_ms: 240000,
+      da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 60000,
       da_full_response_window_ms: 120000,
     },
@@ -108,16 +108,16 @@ export const DEPLOYMENT_PROFILES = {
       confirmation_depth: 3,
     },
     timing: {
-      block_maturity_ms: 300000,
+      block_maturity_ms: 900000,
       dispute_response_window_ms: 60000,
       operator_shift_ms: 600000,
       registration_ms: 30000,
-      event_wait_ms: 60000,
+      event_wait_ms: 300000,
       user_events_negligence_timeout_ms: 300000,
       max_inactivity_between_block_commitments_ms: 60000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
-      da_attestation_timeout_ms: 240000,
+      da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 60000,
       da_full_response_window_ms: 120000,
     },
@@ -138,13 +138,13 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "6a329bd0dedb1cf022c6c5b1f1ac65187c2d9d3dbcd469251b3c43463a1e1ed1",
+  mainnet: "58846685c90d044b74452389396390dd9a36a39da7ab3d69d0c39adddd327e24",
   "preprod-public":
-    "562a543d179ef55afb4c92cdb246ac1c4b6b015415bbf0c696581d676349d53a",
+    "4eeab53f02559e1b48d40ad0e44b9bd25b092c50670244ec610d7f1656f7b6c5",
   "preprod-testing":
-    "54861625c36e84b249db5b343fad444e4f78adff778db634aceece844af91b83",
+    "dc7e401ff4107a6bb96ae8cf0015b871963077d99084a683ae17a23ad1c2a7b8",
   "local-devnet-testing":
-    "71d2d29998418edea7e2f8dd3c5b0dedeeb412823ec53692196e210b83df1f50",
+    "5041ba76f1858e475adf304854a5af08a2c6535cb30378f47030a6542553e3f2",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Option, Tracer } from "effect";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as Deposits from "../src/database/deposits.js";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
@@ -30,6 +30,7 @@ import {
 import {
   type BoundHistoryChainBlock,
   decodeBoundEventHistoryLedgerSnapshot,
+  eventHistoryGenesisLosslessSha256,
   type EventHistorySourceBinding,
   HISTORY_GENESIS_DIGEST_ALGORITHM,
 } from "../src/l1-event-history-source.js";
@@ -39,8 +40,24 @@ import type {
 } from "../src/l1-event-history-transition.js";
 import type { LedgerSnapshotOutput } from "../src/l1-ledger-snapshot.js";
 import type { HistoryOwnerChange } from "../src/services/event-history-owner.js";
+import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
+import { productionRuntimeHistoryBinding } from "./helpers/production-history-binding.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { provideDatabaseLayers } from "./utils.js";
+
+// The production composition's owner echoes the input it is handed, so the
+// restart test reads the binding the runtime derives from its transport.
+vi.mock("../src/services/event-history-owner.js", async (importOriginal) => {
+  const { Effect } = await import("effect");
+  const actual =
+    await importOriginal<
+      typeof import("../src/services/event-history-owner.js")
+    >();
+  return {
+    ...actual,
+    makeEventHistoryOwner: (input: unknown) => Effect.succeed(input),
+  };
+});
 
 // The source owner's forward append at the head of its Ready generation, with
 // the production reconciliation, over real PostgreSQL. Retired history is
@@ -93,6 +110,7 @@ const address = {
   stakeCredential: null,
 };
 let binding: EventHistorySourceBinding;
+let contracts: SDK.MidgardValidators;
 let pair: SDK.EventHistoryContractPair;
 let initialOutputs: LedgerSnapshotOutput[];
 let addresses: string[];
@@ -663,7 +681,7 @@ const materializeCounting =
     });
 
 beforeAll(async () => {
-  const contracts = await loadRealMidgardContractsForTest({
+  contracts = await loadRealMidgardContractsForTest({
     txHash: hash(900),
     outputIndex: 0,
   });
@@ -672,7 +690,6 @@ beforeAll(async () => {
     digest: hash(902),
     manifestId: hash(903),
     network: "Preprod",
-    endpointIdentitySha256: hash(904),
     genesisAlgorithm: HISTORY_GENESIS_DIGEST_ALGORITHM,
     genesisSha256: hash(905),
     hubAddress: contracts.hubOracle.spendingScriptAddress,
@@ -1103,4 +1120,135 @@ describe("Ready head append", () => {
       token = restarted.token;
     }
   }, 300_000);
+});
+
+describe("history binding identity across restarts", () => {
+  /** The binding the production runtime composes at each start from its
+   * transport configuration, the chain (network and genesis pin) and the
+   * deployment. A restart whose transport names another Ogmios address
+   * composes this same binding. */
+  let manifest: Awaited<
+    ReturnType<typeof makeFinalizedDeploymentManifestFixture>
+  >;
+  beforeAll(async () => {
+    manifest = await makeFinalizedDeploymentManifestFixture();
+  });
+  const productionBinding = async (
+    genesis: Record<string, unknown>,
+    ogmiosUrl: string,
+  ) => {
+    const composed = await productionRuntimeHistoryBinding({
+      contracts,
+      identity: {
+        kind: "manifest",
+        manifest,
+        manifestId: manifest.manifestId,
+        consensusProfile: manifest.consensusProfile,
+      },
+      network: "Preprod",
+      expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256(genesis),
+      ogmiosUrl,
+    });
+    expect(composed.transport.ogmiosUrl).toBe(ogmiosUrl);
+    return composed.binding;
+  };
+  const genesis = {
+    networkMagic: 1,
+    systemStart: "2022-06-01T00:00:00Z",
+    slotLength: { milliseconds: 1000 },
+  };
+
+  it("adopts rows under a rebuilt binding and refuses them under another chain's binding", async () => {
+    const modelBinding = binding;
+    try {
+      const captured = await productionBinding(
+        genesis,
+        "http://localhost:1337",
+      );
+      binding = captured;
+      const history = await retiredHistory(4);
+      const started = await startReady(history);
+      const rowsBound = () =>
+        sqlRun(
+          (sql) =>
+            sql`SELECT encode(history_binding_digest, 'hex') AS digest, count(*)::int AS n
+              FROM deposits_utxos GROUP BY history_binding_digest
+              UNION ALL
+              SELECT encode(history_binding_digest, 'hex') AS digest, count(*)::int AS n
+              FROM withdrawal_utxos GROUP BY history_binding_digest`,
+        );
+      const boundBefore = await rowsBound();
+
+      // Same chain and deployment through another Ogmios address: the
+      // restart's binding is the captured one, and the startup resume adopts
+      // every row it walks.
+      binding = await productionBinding(
+        structuredClone(genesis),
+        "ws://ogmios-proxy.example:2337/",
+      );
+      expect(binding).toEqual(captured);
+      expect(binding.digest).toBe(captured.digest);
+      const restarted = await restart(started.token);
+      expect(restarted.checkpoint).toEqual(started.checkpoint);
+
+      // Another chain (a different network magic) is a different binding. The
+      // same public events captured under it are new incarnations, and the
+      // resume refuses to adopt the rows bound to the first chain's history.
+      binding = await productionBinding(
+        { ...genesis, networkMagic: 2 },
+        "ws://ogmios-proxy.example:2337/",
+      );
+      expect(binding.digest).not.toBe(captured.digest);
+      const otherHistory = await retiredHistory(4);
+      expect(otherHistory.map((value) => value.event.idCbor)).toEqual(
+        history.map((value) => value.event.idCbor),
+      );
+      expect(otherHistory.map((value) => value.id)).not.toEqual(
+        history.map((value) => value.id),
+      );
+      // The next start captures that other history into a fresh journal.
+      const recovering = await run(
+        Authority.acquire({
+          deploymentIdentity: binding.manifestId,
+          ownerToken: restarted.token.ownerToken,
+          leaseDurationMs: 600_000,
+        }),
+      );
+      await run(
+        Authority.withRecovery(
+          recovering,
+          Effect.gen(function* () {
+            const capture = yield* decodeBoundEventHistoryLedgerSnapshot(
+              {
+                point: { id: HEAD_ID, slot: HEAD_SLOT },
+                addresses,
+                outputs: initialOutputs,
+              },
+              binding,
+            );
+            const receipt = "Explicit model origin; not ledger admission";
+            yield* Journal.seed({
+              binding,
+              capture,
+              height: HEAD_HEIGHT,
+              originReceipt: receipt,
+              originReceiptDigest: sha(receipt),
+              incarnations: otherHistory,
+            });
+          }),
+        ),
+      );
+      await expect(restart(recovering)).rejects.toThrow(
+        /without its exact history incarnation/,
+      );
+      // Nothing was re-keyed: every row still names the first history.
+      expect(await rowsBound()).toEqual(boundBefore);
+      expect(boundBefore).toEqual([
+        { digest: captured.digest, n: 2 },
+        { digest: captured.digest, n: 2 },
+      ]);
+    } finally {
+      binding = modelBinding;
+    }
+  });
 });

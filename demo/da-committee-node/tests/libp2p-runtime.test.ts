@@ -1,4 +1,10 @@
+import { randomBytes } from "node:crypto";
+
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+import {
+  unwrapDaPayload,
+  wrapDaPayload,
+} from "@al-ft/midgard-core/da-payload-envelope";
 import {
   decodeDaStreamFrames,
   encodeDaStreamFrame,
@@ -6,6 +12,7 @@ import {
   writeDaStreamFrame,
 } from "@al-ft/midgard-core/da-stream-codec";
 import {
+  computeDaSha256Hash,
   DA_PUBLIC_RETAINED_DA_PROTOCOLS,
   DA_TRANSPORT_LIMITS,
   DaGossipTopic,
@@ -13,7 +20,11 @@ import {
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
   decodeDaCapabilitiesResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadChunkResponseCbor,
   encodeDaCapabilitiesRequestCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadChunkRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
@@ -705,6 +716,139 @@ describe("public retained-DA listener", () => {
     await listener.stop();
   });
 
+  it.each([
+    // The first live block with two L2 transfers and their validation traces
+    // stored a 323,146-byte identity envelope: served inline.
+    { label: "inline", envelopeBytes: 323_146, status: "found_inline" },
+    // Above the 1 MiB inline bound the same read must switch to chunks.
+    { label: "chunked", envelopeBytes: 2_621_440, status: "found_chunked" },
+  ] as const)(
+    "serves a $label retained payload of $envelopeBytes bytes byte-exact over TCP",
+    async ({ envelopeBytes, status }) => {
+      const identity = await loadDaLibp2pIdentity(`seed:${"5f".repeat(32)}`);
+      const headerHash = "9a".repeat(28);
+      const envelope = await realisticIdentityEnvelope(envelopeBytes);
+      expect(envelope.length).toBe(envelopeBytes);
+      const payloadSha256 = computeDaSha256Hash(envelope).toString("hex");
+      const listener = new PublicRetainedDaListener({
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        config: {
+          ...publicRetainedDaConfig(identity.peerId),
+          // The deployed public profile's request deadline.
+          limits: {
+            ...publicRetainedDaConfig(identity.peerId).limits,
+            requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+          },
+        },
+        store: {
+          getDaPayload: async (requested) =>
+            requested === headerHash
+              ? {
+                  deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+                  headerHash,
+                  payloadSchemaVersion: 1,
+                  payloadCborHex: envelope.toString("hex"),
+                  payloadSha256,
+                  sourcePeerId: identity.peerId,
+                  fetchedAt: new Date(0).toISOString(),
+                  // A member that has not verified (or rejected) the payload
+                  // still retains its bytes; the reader serves them.
+                  validationStatus: "fetched",
+                }
+              : undefined,
+          getStateQueueHeader: async () => undefined,
+        },
+        privateKey: identity.privateKey,
+        dataLimits: {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+          maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+          maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+          maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+          requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+        },
+      });
+      const transport = new WatcherPublicDaLibp2pTransport();
+      try {
+        await listener.start();
+        await transport.start();
+        const address = listener
+          .getMultiaddrs()
+          .find((candidate) => candidate.startsWith("/ip4/127.0.0.1/tcp/"))!
+          .replace("/ip4/127.0.0.1/", "/dns4/localhost/");
+        const request = async (
+          protocol: DaRequestResponseProtocol,
+          requestCbor: Buffer,
+        ): Promise<Uint8Array> =>
+          transport.request({
+            peerIdentity: "public-retained-da",
+            peerId: identity.peerId,
+            multiaddr: address,
+            protocol,
+            protocolId: daRequestResponseProtocolId(
+              DEPLOYMENT_FINGERPRINT,
+              protocol,
+            ),
+            requestCbor,
+            timeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+            signal: AbortSignal.timeout(DA_TRANSPORT_LIMITS.requestTimeoutMs),
+          });
+        const fingerprint = Buffer.from(DEPLOYMENT_FINGERPRINT, "hex");
+        const headerHashBytes = Buffer.from(headerHash, "hex");
+        // The request the watcher's retained-DA source sends.
+        const response = decodeDaPayloadByHeaderResponseCbor(
+          await request(
+            DaRequestResponseProtocol.payloadByHeader,
+            encodeDaPayloadByHeaderRequestCbor({
+              deploymentFingerprint: fingerprint,
+              headerHash: headerHashBytes,
+              acceptedPayloadHashes: null,
+              maxInlineBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+            }),
+          ),
+        );
+        expect(response.status).toBe(status);
+        expect(Buffer.from(response.payloadHash!).toString("hex")).toBe(
+          payloadSha256,
+        );
+        let retrieved: Buffer;
+        if (response.status === "found_inline") {
+          retrieved = Buffer.from(response.payloadBytes!);
+        } else {
+          const chunks: Buffer[] = [];
+          for (
+            let chunkIndex = 0;
+            chunkIndex < response.chunkManifest!.chunkHashes.length;
+            chunkIndex += 1
+          ) {
+            const chunk = decodeDaPayloadChunkResponseCbor(
+              await request(
+                DaRequestResponseProtocol.payloadChunk,
+                encodeDaPayloadChunkRequestCbor({
+                  deploymentFingerprint: fingerprint,
+                  headerHash: headerHashBytes,
+                  payloadHash: Buffer.from(response.payloadHash!),
+                  chunkIndex,
+                }),
+              ),
+            );
+            expect(chunk.status).toBe("found");
+            chunks.push(Buffer.from(chunk.chunkBytes!));
+          }
+          retrieved = Buffer.concat(chunks);
+        }
+        expect(retrieved.equals(envelope)).toBe(true);
+        const unwrapped = await unwrapDaPayload(retrieved, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        });
+        expect(unwrapped.innerBytes.length).toBe(envelopeBytes - 47);
+      } finally {
+        await transport.stop();
+        await listener.stop();
+      }
+    },
+    30_000,
+  );
+
   it("tears down every protocol and the runtime after an unhandle failure", async () => {
     const identity = await loadDaLibp2pIdentity(`seed:${"5d".repeat(32)}`);
     const unhandled: string[] = [];
@@ -1040,6 +1184,13 @@ const libp2pConfig = (): Libp2pDaTransportConfig => ({
     },
   ],
 });
+
+/** An identity-encoded V1 envelope of exactly `envelopeBytes` bytes. */
+const realisticIdentityEnvelope = async (
+  envelopeBytes: number,
+): Promise<Buffer> =>
+  // 47 bytes of envelope framing for a body between 64 KiB and 4 GiB.
+  wrapDaPayload(randomBytes(envelopeBytes - 47), { mode: "identity" });
 
 const publicRetainedDaConfig = (peerId: string): PublicRetainedDaConfig => ({
   peerId,

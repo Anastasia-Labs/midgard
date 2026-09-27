@@ -5,10 +5,7 @@ import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import {
-  ogmiosEndpointIdentitySha256,
-  parseOgmiosShelleyGenesisSlotConfig,
-} from "../src/local-ledger-slot.js";
+import { parseOgmiosShelleyGenesisSlotConfig } from "../src/local-ledger-slot.js";
 import {
   assertArchitectureGCandidateSlotRuntimeIdentity,
   decodeArchitectureGCommitCandidateInput,
@@ -49,7 +46,6 @@ writeFileSync(slotConfigArtifactPath, slotConfigArtifactBytes);
 const slotConfigArtifactSha256 = createHash("sha256")
   .update(slotConfigArtifactBytes)
   .digest("hex");
-const customOgmiosUrl = "ws://127.0.0.1:1337/";
 const customOgmiosPayload = {
   jsonrpc: "2.0",
   result: {
@@ -65,7 +61,6 @@ const customSlotConfigDocument = {
   network: "Custom",
   source: {
     kind: "local_ogmios_genesis",
-    endpointIdentitySha256: ogmiosEndpointIdentitySha256(customOgmiosUrl),
     configurationSha256: customGenesis.configurationSha256,
   },
   slotConfig: {
@@ -471,7 +466,6 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
-        ogmiosUrl: customOgmiosUrl,
         customGenesis,
       }),
     ).not.toThrow();
@@ -479,21 +473,73 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
-        ogmiosUrl: customOgmiosUrl,
         customGenesis: {
           ...customGenesis,
           configurationSha256: hash(99),
         },
       }),
     ).toThrow(/does not match the live configured Ogmios genesis/u);
+  });
+
+  it("names the Custom chain by its genesis, never by the Ogmios endpoint", () => {
+    // The evidence carries no endpoint, so any Ogmios in front of the same
+    // genesis is admitted; a different genesis (another chain) never is.
+    expect(customSlotConfigDocument.source).toStrictEqual({
+      kind: "local_ogmios_genesis",
+      configurationSha256: customGenesis.configurationSha256,
+    });
+    const withSource = (
+      source: Record<string, unknown>,
+      name: string,
+    ): ReturnType<typeof candidateInput> => {
+      const document = { ...customSlotConfigDocument, source };
+      const bytes = Buffer.from(`${JSON.stringify(document)}\n`);
+      const path = join(evidenceDirectory, name);
+      writeFileSync(path, bytes);
+      const standardValue = candidateInput();
+      return {
+        ...standardValue,
+        forcedValidationSlotConfigArtifact: {
+          path,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          document: structuredClone(document),
+        },
+        workerInput: {
+          data: {
+            ...standardValue.workerInput.data,
+            forcedValidationSlotConfig: { ...document.slotConfig },
+          },
+        },
+      } as unknown as ReturnType<typeof candidateInput>;
+    };
+    const otherChainGenesis = parseOgmiosShelleyGenesisSlotConfig({
+      ...customOgmiosPayload,
+      result: { ...customOgmiosPayload.result, networkMagic: 4242 },
+    });
+    expect(otherChainGenesis.configurationSha256).not.toBe(
+      customGenesis.configurationSha256,
+    );
     expect(() =>
       assertArchitectureGCandidateSlotRuntimeIdentity({
-        input: custom,
+        input: decodeArchitectureGCommitCandidateInput(
+          withSource(customSlotConfigDocument.source, "custom-same.json"),
+        ),
         runtimeNetwork: "Custom",
-        ogmiosUrl: "ws://127.0.0.1:2337/",
-        customGenesis,
+        customGenesis: otherChainGenesis,
       }),
     ).toThrow(/does not match the live configured Ogmios genesis/u);
+    // An artifact that still names an endpoint is not this schema.
+    expect(() =>
+      decodeArchitectureGCommitCandidateInput(
+        withSource(
+          {
+            ...customSlotConfigDocument.source,
+            endpointIdentitySha256: hash(98),
+          },
+          "custom-endpoint.json",
+        ),
+      ),
+    ).toThrow();
   });
 
   it.each([

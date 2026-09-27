@@ -45,6 +45,7 @@ import {
   type UTxO,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
+import { verifyDaPayloadAgainstHeader } from "da-committee-node/da/payload";
 import { Effect, Metric, Option, Queue, Ref } from "effect";
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest";
 
@@ -1399,6 +1400,11 @@ export const alignCommitSchedulerBeforeTestWorker = async ({
 }) => {
   let lastDueWork: SlotAwareDueWork | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    // Production selects a fresh operator wallet before every pre-lease
+    // alignment (planPreLeaseCommitSchedulerDueWork), which drops the wallet
+    // view a confirmed submission pinned. Without it, a later refresh reads a
+    // pin that an earlier no-confirmation refresh already spent.
+    await Effect.runPromise(lucidService.switchToOperatorsMainWallet);
     const alignment = await Effect.runPromise(
       fetchRealStateQueueWitnessContext(
         lucidService.api,
@@ -1428,6 +1434,7 @@ export const runCommitWorkerUntilSubmitted = async ({
   maxAttempts = 4,
   nodeConfig,
   production,
+  alignScheduler = true,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
@@ -1435,17 +1442,19 @@ export const runCommitWorkerUntilSubmitted = async ({
   readonly maxAttempts?: number;
   readonly nodeConfig?: NodeConfigDep;
   readonly production?: OwnedCommitFixture;
+  readonly alignScheduler?: boolean;
 }): Promise<
   Extract<
     CommitWorkerOutput,
     { readonly type: "SubmittedAwaitingConfirmationOutput" }
   >
 > => {
-  await alignCommitSchedulerBeforeTestWorker({
-    fixture,
-    lucidService,
-    targetEndTimeMs: Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-  });
+  if (alignScheduler)
+    await alignCommitSchedulerBeforeTestWorker({
+      fixture,
+      lucidService,
+      targetEndTimeMs: Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+    });
 
   let lastOutput: CommitWorkerOutput | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -1476,21 +1485,28 @@ export const runMergeUntilMerged = async ({
   globals,
   maxAttempts = 3,
   production,
+  force = true,
+  nodeConfig: nodeConfigOverride,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly globals: Globals;
   readonly maxAttempts?: number;
   readonly production?: ProductionHistoryFixtureRuntime;
+  /** `false` runs the scheduled fiber's path: queue-length and local-work gating apply. */
+  readonly force?: boolean;
+  readonly nodeConfig?: Awaited<ReturnType<typeof makeNodeConfigForFixture>>;
 }) => {
   const nodeConfig =
-    production?.nodeConfig ?? (await makeNodeConfigForFixture(fixture));
+    nodeConfigOverride ??
+    production?.nodeConfig ??
+    (await makeNodeConfigForFixture(fixture));
   let lastResult: MergeActionResult | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       await production?.synchronize();
       lastResult = await Effect.runPromise(
-        mergeAction(true).pipe(
+        mergeAction(force).pipe(
           (program) =>
             production === undefined
               ? program.pipe(Effect.provideService(UnownedHistoryFixture, true))
@@ -1947,12 +1963,23 @@ export const runT1RecoveryScenario = async (
       [TxUtils.Columns.TX_ID]: Buffer.alloc(32, 0xa2),
       [TxUtils.Columns.TX]: Buffer.from("a2".repeat(96), "hex"),
     };
+    // The retained payload is opaque bytes, so each carries the ledger delta
+    // admission records for it. The correction's ledger restore reads that
+    // delta to decide whether a pending transaction depends on reopened state;
+    // these touch nothing it reopens, so recovery must keep both.
     const seedRetainedPayload = () =>
       runNodeDatabaseEffect(
         Effect.all(
           [
             TxUtils.insertEntry(MempoolDB.tableName, retainedMempoolTx),
             ProcessedMempoolDB.insertTx(retainedProcessedTx),
+            MempoolTxDeltasDB.upsertMany(
+              [retainedMempoolTx, retainedProcessedTx].map((tx) => ({
+                txId: tx[TxUtils.Columns.TX_ID],
+                spent: [],
+                produced: [],
+              })),
+            ),
           ],
           { discard: true },
         ),
@@ -2463,6 +2490,32 @@ export const attestQueuedStateQueueHeader = async ({
     typeof node.da_attestation === "object" &&
       "Attested" in node.da_attestation,
   ).toBe(true);
+};
+
+/**
+ * Runs the DA committee member's own payload validator over the payload the
+ * node persisted for `headerHash`, against the header read back from L1. The
+ * emulator attests with the node's local signers, which never run this check,
+ * so without it a node-built payload the committee rejects stays green here.
+ */
+export const expectDaCommitteeAcceptsPersistedPayload = async ({
+  headerHash,
+  l1Header,
+}: {
+  readonly headerHash: string;
+  readonly l1Header: SDK.Header;
+}) => {
+  const row = await runNodeDatabaseEffect(
+    DaPayloadsDB.retrieveByHeaderHash(Buffer.from(headerHash, "hex")),
+  );
+  if (Option.isNone(row))
+    throw new Error(`Missing persisted DA payload for ${headerHash}`);
+  return verifyDaPayloadAgainstHeader(
+    row.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+    headerHash,
+    l1Header,
+    { payloadSchemaVersion: 1, stateQueueOutRef: `emulator:${headerHash}` },
+  );
 };
 
 export const retainAndAttestSubmittedHeader = async ({

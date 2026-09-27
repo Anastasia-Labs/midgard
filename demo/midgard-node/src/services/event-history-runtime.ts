@@ -57,7 +57,6 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
       contracts,
       identity,
       network: config.NETWORK,
-      ogmiosUrl: input.transport.ogmiosUrl,
       expectedGenesisLosslessSha256: input.expectedGenesisLosslessSha256,
     });
     const histories = yield* Effect.try({

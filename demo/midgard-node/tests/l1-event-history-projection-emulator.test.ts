@@ -64,7 +64,6 @@ it("projects accepted deposit and withdrawal admissions and an Order pointer con
           consensusProfile: manifest.consensusProfile,
         },
         network: "Custom",
-        ogmiosUrl: "http://projection-emulator.invalid:1337",
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic emulator transport only",
           startTime: emulator.now(),

@@ -411,7 +411,6 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
           consensusProfile: manifest.consensusProfile,
         },
         network: "Custom",
-        ogmiosUrl: "http://raw-deposit-emulator.invalid:1337",
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic raw datum fixture",
           initialization: deployment.initialization.txHash,

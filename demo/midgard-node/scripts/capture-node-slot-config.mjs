@@ -30,7 +30,6 @@ if (network === "Custom") {
 }
 const document = buildNodeSlotConfigEvidenceV1({
   network,
-  ogmiosUrl,
   ogmiosGenesisPayload,
 });
 mkdirSync(dirname(outputPath), { recursive: true });

@@ -203,7 +203,6 @@ describe("node history body transport and activation navigation", () => {
       digest: hash(100),
       manifestId: hash(101),
       network: "Preprod",
-      endpointIdentitySha256: hash(102),
       genesisAlgorithm: HISTORY_GENESIS_DIGEST_ALGORITHM,
       genesisSha256: hash(103),
       hubAddress: contracts.hubOracle.spendingScriptAddress,

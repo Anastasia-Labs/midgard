@@ -83,10 +83,15 @@ const readGlobals = (h: Handle) => ({
 
 /** Commit the next block and lose its signed commit; returns its journal and
  * TTL. */
-const loseNextCommit = async (h: Handle, inclusionTime?: number) => {
+const loseNextCommit = async (
+  h: Handle,
+  inclusionTime?: number,
+  options?: Parameters<typeof submitUnlandedBlock>[2],
+) => {
   const lost = await submitUnlandedBlock(
     h as Parameters<typeof submitUnlandedBlock>[0],
     inclusionTime ?? h.fixture.emulator.now() - 1000,
+    options,
   );
   const journal = await readJournal(lost.submittedHeaderHash);
   return {
@@ -94,6 +99,20 @@ const loseNextCommit = async (h: Handle, inclusionTime?: number) => {
     journal,
     ttl: signedTtl(journal[C.SIGNED_TX_CBOR]!),
   };
+};
+
+/** The reference inputs of a journal's signed commit, sorted. */
+const signedReferenceInputs = (journal: Pending.Record) => {
+  const tx = CML.Transaction.from_cbor_bytes(journal[C.SIGNED_TX_CBOR]!);
+  const body = tx.body();
+  const inputs = body.reference_inputs();
+  const refs = Array.from({ length: inputs?.len() ?? 0 }, (_, index) => {
+    const input = inputs!.get(index);
+    return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+  }).sort();
+  body.free();
+  tx.free();
+  return refs;
 };
 
 /** Every durable row the revival of a replaced journal or a refusal of it
@@ -135,7 +154,16 @@ it("revives a replaced commit that wins its base slot after all, abandons its un
     await expectReplaced(E.journal, { handle: h });
 
     // NEW_E: the same members on the same base, handed to L1 and lost too.
-    const N = await loseNextCommit(h);
+    // Built as the production worker builds it at E's TTL: inside E's
+    // scheduler window, with no fixture scheduler alignment. The fixture's
+    // alignment asks for a full non-history validity range and, once E's TTL
+    // sits late in the shift, refreshes the scheduler: that spends a
+    // reference input of E after E's TTL, which a fork that included E before
+    // its TTL would order after E, but the emulator cannot reorder.
+    const N = await loseNextCommit(h, undefined, { alignScheduler: false });
+    expect(signedReferenceInputs(N.journal)).toEqual(
+      signedReferenceInputs(E.journal),
+    );
     expect(N.header).not.toBe(E.header);
     expect(N.journal[C.BASE_TAIL_OUT_REF]).toBe(E.journal[C.BASE_TAIL_OUT_REF]);
     expect(N.journal[C.BASE_UTXOS_ROOT]).toBe(E.journal[C.BASE_UTXOS_ROOT]);

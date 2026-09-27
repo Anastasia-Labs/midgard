@@ -50,6 +50,10 @@ vi.mock("../src/database/index.js", async () => {
         EffectModule.succeed(mempoolState.txCount),
       ),
     },
+    // Read at module load by state-queue-correction-ledger-restore.ts.
+    MempoolLedgerDB: {
+      tableName: "mempool_ledger",
+    },
     PendingBlockFinalizationsDB: {
       Columns: {
         HEADER_HASH: "header_hash",

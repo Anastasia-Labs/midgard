@@ -246,6 +246,7 @@ const commitLocallyFinalizedBlock = async (
 export const submitUnlandedBlock = async (
   h: Pick<Lifecycle, "deployment" | "observer"> & Handle,
   inclusionTime: number,
+  { alignScheduler = true }: { alignScheduler?: boolean } = {},
 ) => {
   const { fixture, lucidService, globals, production } = h;
   await h.deployment.chain.awaitLedgerTime(inclusionTime + 1000);
@@ -260,6 +261,7 @@ export const submitUnlandedBlock = async (
     ),
     nodeConfig: production.nodeConfig,
     production: { ...production, globals },
+    alignScheduler,
   });
   dropPendingEmulatorTransaction(fixture.emulator, committed.submittedTxHash);
   h.observer.forgetDropped(committed.submittedTxHash);

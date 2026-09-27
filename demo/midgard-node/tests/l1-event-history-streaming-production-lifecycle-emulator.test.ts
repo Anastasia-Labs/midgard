@@ -13,6 +13,8 @@ import { expect, it, vi } from "vitest";
 import * as DepositsDB from "../src/database/deposits.js";
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
+import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/workers/utils/commit-end-time.js";
+import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
 import {
   absorbConfirmedDepositToReserveProgram,
   addReserveFundsToPayoutProgram,
@@ -92,6 +94,56 @@ it("streams public raw events through production reconciliation, native commitme
         fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     await h.synchronize();
+  };
+  /**
+   * Waits to a ledger time at which a commit can include `event` as a future
+   * event: the event's inclusion time is still ahead, yet inside the event-wait
+   * horizon of a block committed now. The block-commitment fiber first aligns
+   * the scheduler to now plus the minimum commit buffer, so the commit point
+   * must also leave that buffer inside the operator's current shift, or fall
+   * early in the next shift, where the Rewind is due at once and covers it.
+   * Otherwise the alignment waits for the shift to end and the event matures.
+   */
+  const awaitFutureEventCommitPoint = async (
+    event: SDK.DepositUTxO | SDK.WithdrawalUTxO,
+  ) => {
+    const margin = 20_000;
+    const inclusion = Number(event.facts.inclusion_time);
+    const window = await Effect.runPromise(
+      resolveCurrentOperatorSchedulerWindow(lucid, fixture.contracts),
+    );
+    if (window === undefined) {
+      throw new Error("The operator has no current scheduler window");
+    }
+    const shiftEnd = window.endTimeMs;
+    const earliest = Math.max(
+      fixture.emulator.now(),
+      inclusion - SDK.EVENT_WAIT_DURATION_MS + 1 + margin,
+    );
+    const latest = inclusion - margin;
+    const candidates: ReadonlyArray<readonly [number, number]> = [
+      [earliest, shiftEnd - COMMIT_MINIMUM_FUTURE_BUFFER_MS - margin],
+      [
+        Math.max(earliest, shiftEnd + margin),
+        shiftEnd +
+          Number(SDK.SHIFT_DURATION_MS) -
+          COMMIT_MINIMUM_FUTURE_BUFFER_MS -
+          margin,
+      ],
+    ];
+    const chosen = candidates.find(([from, to]) => from < Math.min(to, latest));
+    diagnostic.futureEventCommitPoint = {
+      now: fixture.emulator.now(),
+      inclusion,
+      shiftEnd,
+      chosen: chosen?.[0],
+    };
+    if (chosen === undefined) {
+      throw new Error(
+        `No commit point keeps event inclusion ${inclusion} in the future within shift ending ${shiftEnd}`,
+      );
+    }
+    await h.deployment.chain.awaitLedgerTime(chosen[0]);
   };
   const assertCommitWindow = async (
     block: Awaited<ReturnType<typeof commitConfirmRecoverAndMerge>>,
@@ -224,9 +276,7 @@ it("streams public raw events through production reconciliation, native commitme
       capture: depositCapture,
     };
     diagnostic.stage = "deposit-settlement";
-    await h.deployment.chain.awaitLedgerTime(
-      Number(deposit.facts.inclusion_time) - 20_000,
-    );
+    await awaitFutureEventCommitPoint(deposit);
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
     const depositRows = await Effect.runPromise(
@@ -400,6 +450,27 @@ it("streams public raw events through production reconciliation, native commitme
     await h.deployment.chain.awaitLedgerTime(
       Number(invalidWithdrawal.facts.inclusion_time) + 1000,
     );
+    // The refused attempt below runs one event wait after this synchronization.
+    // Keep that attempt, with its commit buffer, inside one operator shift, so
+    // the planner reaches the validity cap rather than registering a Rewind.
+    const staleSourceSpanMs =
+      SDK.EVENT_WAIT_DURATION_MS +
+      1000 +
+      HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS;
+    const staleShift = await Effect.runPromise(
+      resolveCurrentOperatorSchedulerWindow(lucid, fixture.contracts),
+    );
+    if (staleShift === undefined) {
+      throw new Error("The operator has no current scheduler window");
+    }
+    if (
+      staleShift.endTimeMs - fixture.emulator.now() <
+      staleSourceSpanMs + 20_000
+    ) {
+      await h.deployment.chain.awaitLedgerTime(staleShift.endTimeMs + 1000);
+      vi.setSystemTime(fixture.emulator.now());
+      await alignBeforeAdmission();
+    }
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
     // Advance the actual ledger beyond this sealed source's fixed horizon.
@@ -416,7 +487,7 @@ it("streams public raw events through production reconciliation, native commitme
       lucid,
       fixture.contracts,
     );
-    fixture.emulator.awaitSlot(61);
+    fixture.emulator.awaitSlot(SDK.EVENT_WAIT_DURATION_MS / 1000 + 1);
     vi.setSystemTime(fixture.emulator.now());
     let staleFailure: unknown;
     let staleOutput: unknown;
@@ -692,9 +763,7 @@ it("streams public raw events through production reconciliation, native commitme
       capture: withdrawalCapture,
     };
     diagnostic.stage = "withdrawal-settlement";
-    await h.deployment.chain.awaitLedgerTime(
-      Number(withdrawal.facts.inclusion_time) - 20_000,
-    );
+    await awaitFutureEventCommitPoint(withdrawal);
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
     const withdrawalRows = await Effect.runPromise(

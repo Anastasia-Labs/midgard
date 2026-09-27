@@ -20,12 +20,12 @@ const VALID_L2_ADDRESS =
 describe("submit deposit parsing", () => {
   it("keeps the offchain event wait duration aligned with the onchain environment", () => {
     expect(getProtocolParameters("Preprod").event_wait_duration).toEqual(
-      60_000,
+      300_000,
     );
     expect(() => getProtocolParameters("Mainnet")).toThrow(
       /compiled deployment profile/u,
     );
-    expect(resolveEventInclusionTime(1_000, "Preprod")).toEqual(60_999);
+    expect(resolveEventInclusionTime(1_000, "Preprod")).toEqual(300_999);
   });
 
   it("parses lovelace amounts", () => {

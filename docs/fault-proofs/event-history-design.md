@@ -227,8 +227,12 @@ reference**, not the newly created order UTxO's output reference. The event NFT
 name hashes the nonce reference. Creation binds the event ID, event address,
 witness staking script, and `inclusion_time = transaction valid-to + event_wait_duration`.
 This is an eligibility timestamp, not the observed block arrival time.
-The checked-in [default](../../onchain/aiken/env/default.ak) and
-[testnet](../../onchain/aiken/env/testnet.ak) event-wait constants are 60 seconds.
+The event wait is set per deployment profile (`timing.event_wait_ms` in
+[`config/deployments/`](../../config/deployments/)): 36 hours on `mainnet`
+(and the generated [default](../../onchain/aiken/env/default.ak) environment),
+30 minutes on `preprod-public`, and 5 minutes on `preprod-testing` (and the
+generated [testnet](../../onchain/aiken/env/testnet.ak) environment) and
+`local-devnet-testing`.
 
 A deposit locks the user's assets in an authenticated deposit UTxO. Its datum
 contains the event information; the UTxO's actual Value supplies the deposited

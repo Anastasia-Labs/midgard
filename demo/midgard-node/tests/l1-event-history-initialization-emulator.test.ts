@@ -211,7 +211,6 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
           consensusProfile: manifest.consensusProfile,
         },
         network: "Custom",
-        ogmiosUrl: "http://history-initialization-emulator.invalid:1337",
         expectedGenesisLosslessSha256: eventHistoryGenesisLosslessSha256({
           scope: "synthetic emulator transport",
           initialization: deployment.initialization.txHash,

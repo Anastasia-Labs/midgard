@@ -27,7 +27,6 @@ import {
   type WebSocketFactory,
   type WebSocketLike,
 } from "./l1-tx-order-carriage.js";
-import { ogmiosEndpointIdentitySha256 } from "./local-ledger-slot.js";
 import type { ContractDeploymentIdentityValue } from "./services/midgard-contracts.js";
 
 export const HISTORY_GENESIS_DIGEST_ALGORITHM =
@@ -91,7 +90,6 @@ export type EventHistorySourceBinding = Readonly<{
   digest: string;
   manifestId: string;
   network: Network;
-  endpointIdentitySha256: string;
   genesisAlgorithm: typeof HISTORY_GENESIS_DIGEST_ALGORITHM;
   genesisSha256: string;
   hubAddress: string;
@@ -102,12 +100,16 @@ export type EventHistorySourceBinding = Readonly<{
 
 /** Inputs come from the shared, parser-admitted MidgardContractServices layer.
  * A derived scaffold, a missing operator-approved pin, or a network mismatch
- * cannot acquire the production history authority under this binding. */
+ * cannot acquire the production history authority under this binding.
+ *
+ * The binding identifies the chain (network and the approved Shelley genesis
+ * pin, which every bound capture and follower socket re-authenticates) and the
+ * deployment, and nothing else. It never names the Ogmios endpoint: reaching
+ * the same chain through another host, port or proxy is the same history. */
 export const makeEventHistorySourceBinding = (input: {
   readonly contracts: SDK.MidgardValidators;
   readonly identity: ContractDeploymentIdentityValue;
   readonly network: Network;
-  readonly ogmiosUrl: string;
   readonly expectedGenesisLosslessSha256: string;
 }) =>
   Effect.gen(function* () {
@@ -145,7 +147,6 @@ export const makeEventHistorySourceBinding = (input: {
         return {
           manifestId: identity.manifestId,
           network: input.network,
-          endpointIdentitySha256: ogmiosEndpointIdentitySha256(input.ogmiosUrl),
           genesisAlgorithm: HISTORY_GENESIS_DIGEST_ALGORITHM,
           genesisSha256: input.expectedGenesisLosslessSha256,
           hubAddress: input.contracts.hubOracle.spendingScriptAddress,
@@ -290,18 +291,6 @@ export const decodeBoundEventHistoryLedgerSnapshot = (
     });
   });
 
-const requireBoundEndpoint = (
-  ogmiosUrl: string,
-  binding: EventHistorySourceBinding,
-) => {
-  if (
-    ogmiosEndpointIdentitySha256(ogmiosUrl) !== binding.endpointIdentitySha256
-  )
-    throw new Error(
-      "History source endpoint differs from its approved binding",
-    );
-};
-
 /** One exact-socket authenticated capture of the complete five-address scope.
  * This entry point permits pre-initialization state. It does not assert that
  * the deployment is activated, that the point remains canonical, or that the
@@ -317,7 +306,6 @@ export const readBoundEventHistoryRawLedgerSnapshot = async ({
 > & {
   readonly binding: EventHistorySourceBinding;
 }) => {
-  requireBoundEndpoint(options.ogmiosUrl, binding);
   const ledger = await readAcquiredLedgerSnapshot({
     ...options,
     addresses: [
@@ -367,7 +355,6 @@ export const readBoundEventHistoryNetworkTip = async ({
   readonly signal: AbortSignal;
   readonly webSocketFactory?: WebSocketFactory;
 }): Promise<unknown> => {
-  requireBoundEndpoint(ogmiosUrl, binding);
   const session = await openOgmiosSession({
     url: normalizeOgmiosWebSocketUrl(ogmiosUrl),
     timeoutMs,
@@ -403,7 +390,6 @@ export const readBoundRecoveryLedgerSnapshot = async ({
   readonly at: AcquiredLedgerSnapshot["point"];
   readonly addresses: readonly string[];
 }) => {
-  requireBoundEndpoint(options.ogmiosUrl, binding);
   const ledger = await readAcquiredLedgerSnapshot({
     ...options,
     addresses: [binding.hubAddress, ...addresses],
@@ -434,12 +420,6 @@ export const followBoundEventHistoryChain = async ({
   readonly binding: EventHistorySourceBinding;
   readonly onForward: (block: BoundHistoryChainBlock) => void | Promise<void>;
 }): Promise<void> => {
-  try {
-    requireBoundEndpoint(options.ogmiosUrl, binding);
-  } catch (cause) {
-    options.onUnavailable(cause);
-    throw cause;
-  }
   return followEventHistoryChain({
     ...options,
     onForward: ({ point, parent, body }) => {
