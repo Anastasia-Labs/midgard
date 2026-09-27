@@ -663,9 +663,24 @@ DEPLOYMENT_FINGERPRINT="$(node --input-type=module -e '
 If the committee node reports `root_mismatch`, `malformed_da`, or `conflicted`, stop.
 Do not merge. Diagnose payload construction, retained data, and peer identity.
 
-Wait for the running merge fiber to empty the state queue:
+Wait for the running merge fiber to empty the state queue. A header becomes
+mergeable only at its `end_time` plus the profile's block maturity, and a
+header's `end_time` can sit up to about 419 s after its commit (the commit
+validity range minus its 60 s backdate). The merge then needs about 20 s of
+slot alignment and L1 confirmation, and queued headers merge one after
+another. The budget below is derived from the compiled profile's block
+maturity: maturity + 420 s end-time lead + 20 s alignment + 180 s L1
+confirmation + 300 s for sequential merges, which is 1,820 s on
+preprod-testing. Start it right after the last header commits. The outer step
+timeout is always 60 s longer than the inner deadline, so the loop, not the
+runner, reports a timeout.
 
 ```bash
+BLOCK_MATURITY_MS="$(node --input-type=module -e '
+  import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
+  process.stdout.write(String(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs));
+')" || exit 1
+export MERGE_WAIT_S=$(( BLOCK_MATURITY_MS / 1000 + 420 + 20 + 180 + 300 ))
 AUTOMATIC_MERGE_LOG="logs/$RUN_ID/await-automatic-merge.log"
 AUTOMATIC_MERGE_STEP="$E2E_STEP_DIR/await-automatic-merge.json"
 node "$TOOLS_CLI" e2e-run-step \
@@ -673,11 +688,11 @@ node "$TOOLS_CLI" e2e-run-step \
   --cwd "$NODE_DIR" \
   --raw-log "$AUTOMATIC_MERGE_LOG" \
   --summary-out "$AUTOMATIC_MERGE_STEP" \
-  --timeout-ms 900000 \
+  --timeout-ms "$(( (MERGE_WAIT_S + 60) * 1000 ))" \
   -- \
   bash -lc '
     set -euo pipefail
-    deadline=$((SECONDS + 900))
+    deadline=$((SECONDS + ${MERGE_WAIT_S:?}))
     while [ "$SECONDS" -lt "$deadline" ]; do
       body="$(curl -sf \
         -H "x-midgard-admin-key: ${ADMIN_API_KEY:-localdev-admin}" \
