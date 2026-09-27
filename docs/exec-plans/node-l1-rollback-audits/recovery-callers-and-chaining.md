@@ -155,7 +155,7 @@ Today no second commit is built on the confirmed tail, signed or submitted while
    - The pre-lease scheduler plan short-circuits (`:388-391`).
 3. **The worker refuses to build.**
    - `canBuildOnConfirmedBlock` requires `!localFinalizationPending` (`src/workers/commit-block-header.ts:1793-1795`).
-   - `shouldDeferCommitSubmission` (`src/workers/commit-block-planner.ts:705-709`, called at `commit-block-header.ts:2078-2090`) returns NothingToCommit.
+   - `shouldDeferCommitSubmission` (`src/workers/utils/commit-block-planner.ts:748-752`, called at `commit-block-header.ts:2078-2090`) returns NothingToCommit.
    - After landing, the worker runs only `recoverLocalFinalizationAgainstConfirmedBlock` (`:2092-2110` → `markFinalized`, `commit-submission.ts:488`). The next build happens on a later tick.
 4. **Hard DB guard.** `preparePendingSubmission` refuses while another row is in `ACTIVE_STATUSES` (`pendingBlockFinalizations.ts:1996-2012`). `ACTIVE_STATUSES` (`:140-145`) includes ObservedWaitingStability.
 5. **Lost-response guard.** `assertNoUnreconciledSignedSubmission` (`pendingBlockFinalizations.ts:1762-1783`, called at `submission.ts:882-885, 1408-1411`) refuses while a PendingSubmission row with `intended_tx_hash` exists.
@@ -176,7 +176,7 @@ Today no second commit is built on the confirmed tail, signed or submitted while
 - the next tick's build, sign and submit.
 
 These timers are **not** inter-commit waits:
-- The 30/20/10 s reserves (`src/workers/utils/history-commit-window.ts:31-52`) are the minimum budget left before each commit's *own* end time at pre-witness, pre-build and pre-submit. The generic budgets are 6/3/2 min (`src/workers/utils/commit-end-time.ts:19-21`).
+- The 30/20/10 s reserves (`src/services/history-commit-window.ts:38-42`) are the minimum budget left before each commit's *own* end time at pre-witness, pre-build and pre-submit. The generic budgets are 6/3/2 min (`src/workers/utils/commit-end-time.ts:19-21`).
 - `UNCONFIRMED_BLOCK_MAX_AGE_MS` (default 180_000, `config.ts:560-562`) only triggers a warning (`confirm-block-commitments.ts:331-334`).
 
 ## Q2c — Speculative L2 build: where it happens, and whether the retention preserves it
