@@ -22,15 +22,17 @@ const Status = PendingBlockFinalizationsDB.Status;
 const STARTUP_REFUSAL =
   "Startup found unfinished local mutation jobs; refusing to serve until recovery is performed";
 
-/** Clears only the tables these tests write. The shared application-table
+/** Clears only the tables these tests write, plus the history authority: the
+ * fixture producer gate refuses any acquired owner row, and an earlier file on
+ * the same worker shard may have left one behind. The shared application-table
  * reset replays the schema's seed section, which is currently not
  * replayable. */
 const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE TABLE local_mutation_jobs, pending_block_finalizations
-        RESTART IDENTITY CASCADE`;
+      yield* sql`TRUNCATE TABLE local_mutation_jobs, pending_block_finalizations,
+        event_history_authority RESTART IDENTITY CASCADE`;
       return yield* effect;
     }),
   );
