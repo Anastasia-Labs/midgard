@@ -49,7 +49,8 @@ export type ProcessMpfsConfig = {
   readonly deferDatabaseWrites?: boolean;
   /** Runs once a commit-stage rejection's mempool_ledger revert commits. */
   readonly onMempoolLedgerReverted?: Effect.Effect<void>;
-  readonly nativeMpf?: NativeMpfBuildContext;
+  /** The native owner generation every commit builds its ledger root on. */
+  readonly nativeMpf: NativeMpfBuildContext;
   /**
    * V1 blocks must retain a descriptor for every forced and included
    * normal transaction. The provider is deliberately mandatory for that

@@ -4,6 +4,7 @@ import { Effect, Ref } from "effect";
 import { expect, it } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
+import { shutdownSpeculativeCommitSession } from "../src/fibers/speculative-commit-builder.js";
 import type { LedgerSnapshotOutput } from "../src/l1-ledger-snapshot.js";
 import { advanceEmulatorPastLatestBlockEndTime } from "./deposit-flow-emulator-shared.js";
 import {
@@ -30,6 +31,7 @@ import {
   nextPoint,
   readDepositHeader,
   readImmutableCounts,
+  readJournalColumns,
   readPlans,
   resetSharedRows,
   retireCrashedLease,
@@ -38,6 +40,10 @@ import {
   UNLANDED,
   updateJournal,
 } from "./helpers/signed-intent-replacement.js";
+import {
+  expectInvalidatedByT1,
+  installReadyCandidate,
+} from "./helpers/speculative-ready-candidate.js";
 
 /**
  * "Whichever lands wins" for a signed commit E that missed its validity
@@ -350,5 +356,75 @@ it("replaces a signed commit whose base slot a foreign block holds, never before
     await expectReplaced(journal, { handle: h });
   } finally {
     await closeLifecycle(h);
+  }
+}, 900_000);
+
+it("with speculation on, replacing an expired signed commit invalidates a Ready candidate built on it (T1) and releases the candidate's fork before any recovery plan exists, then replaces it as with speculation off", async () => {
+  const previous = process.env.SPECULATIVE_COMMIT_BUILD;
+  process.env.SPECULATIVE_COMMIT_BUILD = "true";
+  let h: Handle | undefined;
+  try {
+    h = await openHistoryProductionOwnerLifecycle();
+    expect(h.production.nodeConfig.SPECULATIVE_COMMIT_BUILD).toBe(true);
+    await resetSharedRows();
+    await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+    const inclusion = await submitDeposit(h, 12_000_000n);
+    const lost = await submitUnlandedBlock(h, inclusion);
+    const header = lost.submittedHeaderHash;
+    const journal = await readJournal(header);
+    const ttl = signedTtl(journal[C.SIGNED_TX_CBOR]!);
+    const owner = Effect.runSync(Ref.get(h.globals.NATIVE_MPF_OWNER));
+    if (owner === undefined) throw new Error("Native owner is not open");
+    // The commit worker promoted E's root into the owner when it built E,
+    // so the candidate built on E forks E's root, as the production worker's
+    // candidate does; the release must restore E's base under it.
+    expect((await owner.diagnostics()).durableRoot).toBe(
+      journal[C.EXPECTED_UTXOS_ROOT],
+    );
+    const installed = await installReadyCandidate({
+      globals: h.globals,
+      owner,
+      baseHeaderHash: header,
+      nowMs: h.fixture.emulator.now(),
+      maxAttempts: h.production.nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
+      observe: async () => ({
+        durableRoot: (await owner.diagnostics()).durableRoot,
+        status: (await readJournalColumns(header)).status,
+        plans: (await readPlans()).filter(
+          ({ intent }) => intent.headerHash === header,
+        ),
+      }),
+    });
+
+    // At TTL - 1 nothing is replaced and the candidate stays. (Kills
+    // "invalidate on every reconciliation pass".)
+    const untouched = await snapshotUnreplaced(header);
+    moveToExactSlot(h, ttl - 1);
+    await h.synchronize();
+    await expectUnreplaced(header, untouched);
+    expect(installed.worker.instructions).toEqual([]);
+
+    // At the TTL the release invalidates the candidate before it opens the
+    // owner or prepares its plan: when the fork was released E was still
+    // unreplaced, the owner still held E's root and no release plan of E
+    // existed. (Kills "drop the T1 invalidation" and "invalidate after the
+    // recovery".)
+    moveToExactSlot(h, ttl);
+    await h.synchronize();
+    expectInvalidatedByT1({ ...installed, globals: h.globals });
+    expect(installed.released.observed?.durableRoot).toBe(
+      journal[C.EXPECTED_UTXOS_ROOT],
+    );
+    expect(installed.released.observed?.plans).toEqual([]);
+    expect(UNLANDED).toContain(installed.released.observed?.status);
+    await expectReplaced(journal, { handle: h });
+  } finally {
+    try {
+      await Effect.runPromise(shutdownSpeculativeCommitSession());
+      if (h !== undefined) await closeLifecycle(h);
+    } finally {
+      if (previous === undefined) delete process.env.SPECULATIVE_COMMIT_BUILD;
+      else process.env.SPECULATIVE_COMMIT_BUILD = previous;
+    }
   }
 }, 900_000);

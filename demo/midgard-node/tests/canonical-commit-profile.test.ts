@@ -466,7 +466,7 @@ describe("canonical V1 commit profile", () => {
     } as never);
     expect(suppliedConfigOutcome._tag).toBe("Left");
     expect(processMpfs).toHaveBeenCalledTimes(1);
-    const processConfig = vi.mocked(processMpfs).mock.calls[0]?.[3] as {
+    const processConfig = vi.mocked(processMpfs).mock.calls[0]?.[2] as {
       readonly forcedValidation?: {
         readonly slotForUnixTime: (unixTimeMs: number) => bigint;
       };

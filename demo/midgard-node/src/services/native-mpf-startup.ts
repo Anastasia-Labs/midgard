@@ -25,7 +25,16 @@ import { fetchStateQueueSnapshotProgram } from "./state-queue-topology.js";
 /**
  * The node refuses to start the native owner from an unpinned binary: the
  * owner holds the ledger, so the operator must name the exact release build.
+ * The refusal names where each supported run finds the pin, so the error alone
+ * tells an operator what to set.
  */
+export const NATIVE_OWNER_PIN_REMEDY =
+  "The release image ships the pin as /app/native/architecture-g-owner.sha256; " +
+  "read it with `docker compose run --rm --no-deps --entrypoint cat midgard-node /app/native/architecture-g-owner.sha256`. " +
+  "For a host run, build the owner with `pnpm run native:mpf-owner:build` in demo/midgard-node, " +
+  "set MPF_NATIVE_OWNER_BINARY_PATH to native/mpf-event-flat-wasm/target/release/architecture-g-owner " +
+  "and pin its `sha256sum`.";
+
 export const requirePinnedNativeOwnerBinary = (
   nodeConfig: Pick<
     NodeConfigDep,
@@ -37,12 +46,14 @@ export const requirePinnedNativeOwnerBinary = (
   if (!/^[0-9a-f]{64}$/.test(nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256))
     return Effect.fail(
       new Error(
-        `MPF_NATIVE_OWNER_BINARY_SHA256 must pin the native owner binary at ${nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH} as 64 lowercase hex characters`,
+        `MPF_NATIVE_OWNER_BINARY_SHA256 must pin the native owner binary at ${nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH} as 64 lowercase hex characters. ${NATIVE_OWNER_PIN_REMEDY}`,
       ),
     );
   if (nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH.trim().length === 0)
     return Effect.fail(
-      new Error("MPF_NATIVE_OWNER_BINARY_PATH must name the native owner"),
+      new Error(
+        `MPF_NATIVE_OWNER_BINARY_PATH must name the native owner. ${NATIVE_OWNER_PIN_REMEDY}`,
+      ),
     );
   if (nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH.trim().length === 0)
     return Effect.fail(

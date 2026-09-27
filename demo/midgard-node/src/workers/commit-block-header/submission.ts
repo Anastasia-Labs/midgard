@@ -765,7 +765,7 @@ export const submitDepositOnlyCommit = ({
   readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
   readonly selectedBaseUtxosRoot: string;
   readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
-  readonly nativeMpfReplay?: NativeMpfReplayBuild;
+  readonly nativeMpfReplay: NativeMpfReplayBuild;
   readonly beforePendingJournalInsert?: (
     blockEndTimeMs: number,
   ) => Effect.Effect<void, DatabaseError, Database>;
@@ -1242,7 +1242,7 @@ export const submitTxBackedCommit = ({
   readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
   readonly selectedBaseUtxosRoot: string;
   readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
-  readonly nativeMpfReplay?: NativeMpfReplayBuild;
+  readonly nativeMpfReplay: NativeMpfReplayBuild;
   readonly transactionsMpf: MidgardMpf;
   readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
   readonly mempoolTxHashes: Buffer[];

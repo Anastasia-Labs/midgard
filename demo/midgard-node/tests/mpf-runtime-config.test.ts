@@ -9,7 +9,10 @@ import {
   getMpfScratchBuild,
   setMpfScratchBuild,
 } from "../src/mpf/index.js";
-import { requirePinnedNativeOwnerBinary } from "../src/services/native-mpf-startup.js";
+import {
+  NATIVE_OWNER_PIN_REMEDY,
+  requirePinnedNativeOwnerBinary,
+} from "../src/services/native-mpf-startup.js";
 
 describe("commit MPF runtime configuration", () => {
   afterEach(() => {
@@ -72,6 +75,28 @@ describe("commit MPF runtime configuration", () => {
           requirePinnedNativeOwnerBinary({ ...pinned, ...override }),
         ),
       ).rejects.toThrow(error);
+    },
+  );
+
+  it.each([
+    ["an unset SHA-256", { MPF_NATIVE_OWNER_BINARY_SHA256: "" }],
+    ["an empty binary path", { MPF_NATIVE_OWNER_BINARY_PATH: " " }],
+  ])(
+    "names where to find the owner pin when refusing %s",
+    async (_, override) => {
+      const refusal = await Effect.runPromise(
+        Effect.flip(requirePinnedNativeOwnerBinary({ ...pinned, ...override })),
+      );
+      expect(refusal.message).toContain(NATIVE_OWNER_PIN_REMEDY);
+      // The remedy covers both supported runs: the image's shipped pin and
+      // a host build.
+      expect(NATIVE_OWNER_PIN_REMEDY).toContain(
+        "/app/native/architecture-g-owner.sha256",
+      );
+      expect(NATIVE_OWNER_PIN_REMEDY).toContain(
+        "pnpm run native:mpf-owner:build",
+      );
+      expect(NATIVE_OWNER_PIN_REMEDY).toContain("sha256sum");
     },
   );
 });

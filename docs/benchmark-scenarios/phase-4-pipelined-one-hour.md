@@ -18,6 +18,27 @@ The node must use `SPECULATIVE_COMMIT_BUILD=true` and
 manifest covers at least 3,600 seconds. A separate-container or separate-host
 load generator is mandatory.
 
+**Open owner item: speculative invalidation coverage.** With
+`SPECULATIVE_COMMIT_BUILD=true`, each recovery that moves the native ledger
+root first invalidates a Ready candidate (reason T1), so the candidate's owner
+fork is released before the owner rewinds or restores. Flag-on emulator tests
+pin that order for three sites: the correction rewind
+(`attestation-timeout-reinclusion-emulator`), expired-intent release
+(`expired-signed-intent-release-emulator`) and replaced-block revival
+(`signed-intent-replacement-revival-emulator`). Two sites have no flag-on test:
+
+- Signed-header recovery (`history-signed-header-recovery.ts`, before it opens
+  or restores the owner). No emulator test reaches its native restore, with
+  the flag on or off. It needs an L1 rollback that orphans a signed header's
+  deposit admission, which the emulator cannot produce.
+- Stale unconfirmed recovery in block confirmation (`block-confirmation.ts`).
+  Its T1 runs after an unsigned journal is abandoned. A Ready candidate needs
+  a submitted base, every submitted journal carries a signed intent, and block
+  confirmation hands a signed intent to the history owner before reaching this
+  T1. A test would have to fabricate a state production does not reach.
+
+The owner decides whether this gate may run with these two sites untested.
+
 ## 1. Capture environment identity
 
 Record immutable container/host facts from the deployed benchmark topology,

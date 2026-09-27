@@ -29,10 +29,10 @@ engine now is Architecture G.
 
 ## Why
 
-- Recovery exists only on Architecture G. Correction rewinds, expired-intent
-  release and local-finalization recovery all rewind or promote the native
-  owner's root. The other engines had no equivalent, so a node running them
-  could not recover from those events.
+- Expired-intent release and local-finalization owner recovery exist only on
+  Architecture G; both rewind or promote the native owner's root. The other
+  engines recovered corrections through a separate forward-reinclusion path
+  that no live run exercised.
 - The tracked default had diverged from every live run. The 2026-09-07 record
   kept `MPF_ENGINE=legacy` as the default, but every live deployment, devnet
   run and acceptance run since then has used `architecture_g`. The default

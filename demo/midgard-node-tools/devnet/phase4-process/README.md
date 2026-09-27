@@ -26,6 +26,25 @@ cp /absolute/private/node.env "$MIDGARD_PHASE4_RUN_DIR/secrets/node.env"
 chmod 600 "$MIDGARD_PHASE4_RUN_DIR/secrets/node.env"
 ```
 
+Every node runs the Architecture G native owner, so build it before bootstrap:
+
+```bash
+pnpm --dir ../midgard-node run native:mpf-owner:build
+```
+
+`write-acceptance-env.sh` (run by bootstrap) pins that binary into
+`acceptance.env`: it writes its absolute `MPF_NATIVE_OWNER_BINARY_PATH` and its
+`MPF_NATIVE_OWNER_BINARY_SHA256`. `node.env` may name another binary with
+`MPF_NATIVE_OWNER_BINARY_PATH`; a `MPF_NATIVE_OWNER_BINARY_SHA256` in `node.env`
+must match the binary, or the script refuses. It fails fast when the binary is
+missing: with the build command when the checkout default is unbuilt, or by
+naming the `node.env` path when that path does not exist on this host (for
+example the image path `/app/native/architecture-g-owner` kept from
+`.env.example`; remove it or point it at a host binary). It drops any `MPF_NATIVE_OWNER_SIDECAR_PATH`, because each process-gate
+node has its own `LEDGER_MPF_DB_PATH` and derives its own sidecar from it; the
+acceptance command refuses an env file that sets one. Rebuilding the owner
+changes its hash, so a rebuilt binary needs a fresh run.
+
 Bootstrap deterministically overwrites run-scoped Postgres fields from `run.env` before starting services, collapsing duplicate keys so stale generic values in a copied `node.env` cannot cross runs.
 It also pins `MIN_FEE_A=0` and `MIN_FEE_B=0` in both the private node inputs
 and immutable acceptance environment. This makes the fixed 50,000-lovelace A/B

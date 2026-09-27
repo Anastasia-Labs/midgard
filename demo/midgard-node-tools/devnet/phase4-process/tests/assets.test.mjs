@@ -7,11 +7,12 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -174,12 +175,19 @@ test("protocol bootstrap builds the operator package before running operator com
   }
 });
 
-test("acceptance env is canonical when node.env lacks run-scoped values", async () => {
+/**
+ * A run directory that write-acceptance-env.sh accepts, with `nodeEnv` as the
+ * operator's private node.env and a stand-in owner binary whose hash the
+ * script must pin.
+ */
+const acceptanceEnvRun = (nodeEnv) => {
   const runDir = mkdtempSync(
     join(temporaryRoot, "midgard-phase4-acceptance-env-"),
   );
   mkdirSync(join(runDir, "secrets"), { recursive: true });
   mkdirSync(join(runDir, "deploymentInfo"), { recursive: true });
+  const ownerBinary = join(runDir, "architecture-g-owner");
+  writeFileSync(ownerBinary, "stand-in owner binary\n");
   writeFileSync(
     join(runDir, "run.env"),
     [
@@ -196,10 +204,7 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
       "",
     ].join("\n"),
   );
-  writeFileSync(
-    join(runDir, "secrets/node.env"),
-    "POSTGRES_HOST=stale\nL1_PROVIDER=Blockfrost\n",
-  );
+  writeFileSync(join(runDir, "secrets/node.env"), nodeEnv(ownerBinary));
   writeFileSync(
     join(runDir, "secrets/wallets.env"),
     "TESTNET_GENESIS_WALLET_SEED_PHRASE_A=test-a\nTESTNET_GENESIS_WALLET_SEED_PHRASE_B=test-b\n",
@@ -208,13 +213,49 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
     join(runDir, "deploymentInfo/contract-deployment-info.json"),
     "{}\n",
   );
-  const result = await run(
-    "sh",
-    [join(root, "scripts/write-acceptance-env.sh")],
-    {
-      env: { ...process.env, MIDGARD_PHASE4_RUN_DIR: runDir },
-    },
+  const ownerSha256 = createHash("sha256")
+    .update(readFileSync(ownerBinary))
+    .digest("hex");
+  return { runDir, ownerBinary, ownerSha256 };
+};
+
+const writeAcceptanceEnv = (runDir, scripts = join(root, "scripts")) =>
+  run("sh", [join(scripts, "write-acceptance-env.sh")], {
+    env: { ...process.env, MIDGARD_PHASE4_RUN_DIR: runDir },
+  });
+
+/**
+ * A checkout whose operator package has never built the native owner: the
+ * phase-4 scripts, a blueprint, and the real operator node_modules (the script
+ * reads node.env with dotenv), but no native build output.
+ */
+const unbuiltOwnerCheckout = () => {
+  const checkout = mkdtempSync(join(temporaryRoot, "midgard-phase4-unbuilt-"));
+  const scripts = join(
+    checkout,
+    "demo/midgard-node-tools/devnet/phase4-process/scripts",
   );
+  const operator = join(checkout, "demo/midgard-node");
+  for (const directory of [scripts, operator, join(checkout, "onchain/aiken")])
+    mkdirSync(directory, { recursive: true });
+  for (const name of ["common.sh", "write-acceptance-env.sh"])
+    copyFileSync(join(root, "scripts", name), join(scripts, name));
+  symlinkSync(
+    join(root, "../../../midgard-node/node_modules"),
+    join(operator, "node_modules"),
+  );
+  writeFileSync(join(checkout, "onchain/aiken/plutus.json"), "{}\n");
+  return { checkout, scripts, operator };
+};
+
+test("acceptance env is canonical when node.env lacks run-scoped values", async () => {
+  const { runDir, ownerBinary, ownerSha256 } = acceptanceEnvRun(
+    (ownerBinary) =>
+      // An unnormalized spelling: the child env must carry the resolved
+      // absolute path, not node.env's text.
+      `POSTGRES_HOST=stale\nL1_PROVIDER=Blockfrost\nMPF_NATIVE_OWNER_BINARY_PATH=${dirname(ownerBinary)}/secrets/../${basename(ownerBinary)}\nMPF_NATIVE_OWNER_SIDECAR_PATH=/shared/owner.sidecar\n`,
+  );
+  const result = await writeAcceptanceEnv(runDir);
   assert.equal(result.status, 0, result.stderr);
   const output = readFileSync(join(runDir, "secrets/acceptance.env"), "utf8");
   for (const expected of [
@@ -229,7 +270,61 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
   ]) {
     assert.match(output, new RegExp(`^${expected}$`, "m"));
   }
+  assert.match(
+    output,
+    new RegExp(`^MPF_NATIVE_OWNER_BINARY_PATH="${ownerBinary}"$`, "m"),
+  );
+  assert.match(
+    output,
+    new RegExp(`^MPF_NATIVE_OWNER_BINARY_SHA256="${ownerSha256}"$`, "m"),
+  );
   assert.doesNotMatch(output, /Blockfrost|POSTGRES_HOST="stale"/);
+  assert.doesNotMatch(output, /MPF_NATIVE_OWNER_SIDECAR_PATH/);
+  rmSync(runDir, { recursive: true, force: true });
+});
+
+test("acceptance env refuses a node.env owner path that does not exist on this host, without a build hint", async () => {
+  // The image path .env.example ships: building the checkout cannot fix it.
+  const { runDir } = acceptanceEnvRun(
+    () => "MPF_NATIVE_OWNER_BINARY_PATH=/app/native/architecture-g-owner\n",
+  );
+  const result = await writeAcceptanceEnv(runDir);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.stderr,
+    /node\.env names MPF_NATIVE_OWNER_BINARY_PATH=\/app\/native\/architecture-g-owner, which does not exist on this host; remove it/,
+  );
+  assert.doesNotMatch(result.stderr, /native:mpf-owner:build/);
+  rmSync(runDir, { recursive: true, force: true });
+});
+
+test("acceptance env refuses an unbuilt checkout owner with a build command that works from any directory", async () => {
+  const { checkout, scripts, operator } = unbuiltOwnerCheckout();
+  const { runDir } = acceptanceEnvRun(() => "L1_PROVIDER=Blockfrost\n");
+  try {
+    const result = await writeAcceptanceEnv(runDir, scripts);
+    assert.notEqual(result.status, 0);
+    assert.ok(
+      result.stderr.includes(
+        `native owner binary is missing at ${operator}/native/mpf-event-flat-wasm/target/release/architecture-g-owner; build it with \`pnpm --dir ${operator} run native:mpf-owner:build\``,
+      ),
+      result.stderr,
+    );
+    assert.doesNotMatch(result.stderr, /node\.env names/);
+  } finally {
+    rmSync(checkout, { recursive: true, force: true });
+    rmSync(runDir, { recursive: true, force: true });
+  }
+});
+
+test("acceptance env refuses a node.env pin that does not match the owner binary", async () => {
+  const { runDir, ownerSha256 } = acceptanceEnvRun(
+    (ownerBinary) =>
+      `MPF_NATIVE_OWNER_BINARY_PATH=${ownerBinary}\nMPF_NATIVE_OWNER_BINARY_SHA256=${"0".repeat(64)}\n`,
+  );
+  const result = await writeAcceptanceEnv(runDir);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, new RegExp(`hashes to ${ownerSha256}`));
   rmSync(runDir, { recursive: true, force: true });
 });
 

@@ -545,6 +545,27 @@ export const validatePhase4ProcessIsolationValues = (
   ]) {
     requiredValue(values, seed);
   }
+  // Every node refuses to start without a pinned native owner; refuse here, by
+  // name, instead of waiting for a seed node that never becomes ready.
+  if (!isAbsolute(requiredValue(values, "MPF_NATIVE_OWNER_BINARY_PATH"))) {
+    throw new Error(
+      "Phase 4 MPF_NATIVE_OWNER_BINARY_PATH must be absolute; regenerate acceptance.env with write-acceptance-env.sh",
+    );
+  }
+  if (
+    !/^[0-9a-f]{64}$/u.test(
+      requiredValue(values, "MPF_NATIVE_OWNER_BINARY_SHA256"),
+    )
+  ) {
+    throw new Error(
+      "Phase 4 MPF_NATIVE_OWNER_BINARY_SHA256 must be 64 lowercase hex characters",
+    );
+  }
+  if (values.MPF_NATIVE_OWNER_SIDECAR_PATH !== undefined) {
+    throw new Error(
+      "Phase 4 nodes derive their owner sidecar from their own LEDGER_MPF_DB_PATH; MPF_NATIVE_OWNER_SIDECAR_PATH must be unset",
+    );
+  }
   const composeProject = requiredValue(
     values,
     "MIDGARD_PHASE4_COMPOSE_PROJECT",

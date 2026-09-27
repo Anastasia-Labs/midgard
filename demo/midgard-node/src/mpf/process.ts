@@ -103,7 +103,6 @@ import {
 import {
   buildNativeTransitionTraceResult,
   buildTransactionsSourceRoot,
-  buildTransitionTraceResult,
   countedRootFromEncodedEntries,
   type NativeMpfReplayBuild,
   type TransitionTraceBuildResult,
@@ -140,10 +139,9 @@ const logCommitMpfPhaseTiming = (
 };
 
 export const processMpfs = (
-  ledgerMpf: MidgardMpf | undefined,
   transactionsMpf: MidgardMpf,
   mempoolTxs: readonly Tx.EntryWithTimeStamp[],
-  config?: ProcessMpfsConfig,
+  config: ProcessMpfsConfig,
 ): Effect.Effect<
   {
     utxoRoot: string;
@@ -180,24 +178,14 @@ export const processMpfs = (
     includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
     includedWithdrawalEventIds: readonly Buffer[];
     transitionTraceBuild: TransitionTraceBuildResult;
-    nativeMpfReplay?: NativeMpfReplayBuild;
-    nativeMpfHandle?: NativeMpfGenerationHandle;
+    nativeMpfReplay: NativeMpfReplayBuild;
+    nativeMpfHandle: NativeMpfGenerationHandle;
   },
   MpfError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
-    const nativeMpf = config?.nativeMpf;
-    if ((ledgerMpf === undefined) === (nativeMpf === undefined)) {
-      return yield* Effect.fail(
-        MpfError.rootBuild(
-          "ledger engine selection",
-          new Error(
-            "Exactly one of a local ledger MPF or Architecture G build context must be supplied",
-          ),
-        ),
-      );
-    }
+    const nativeMpf = config.nativeMpf;
     const processedMempoolTxs: Tx.EntryWithTimeStamp[] = [];
     const rejectedTxHashes: Buffer[] = [];
     const rejectionEntries: TxRejectionsDB.EntryNoTimestamp[] = [];
@@ -267,14 +255,14 @@ export const processMpfs = (
     );
 
     const effectiveEndTime =
-      config?.fixedBlockEndTime ??
+      config.fixedBlockEndTime ??
       establishEffectiveEndTimeFromDecodedMempool(
         decodedMempoolTxs,
-        config?.processedOnlyEndTime,
-        config?.depositOnlyEndTime,
+        config.processedOnlyEndTime,
+        config.depositOnlyEndTime,
       );
 
-    if (config?.fixedBlockEndTime !== undefined) {
+    if (config.fixedBlockEndTime !== undefined) {
       const fixedEnd = config.fixedBlockEndTime.getTime();
       if (
         !Number.isSafeInteger(fixedEnd) ||
@@ -296,7 +284,7 @@ export const processMpfs = (
 
     if (
       effectiveEndTime !== undefined &&
-      config?.depositVisibilityBarrierTime !== undefined &&
+      config.depositVisibilityBarrierTime !== undefined &&
       effectiveEndTime.getTime() > config.depositVisibilityBarrierTime.getTime()
     ) {
       return yield* Effect.fail(
@@ -311,7 +299,7 @@ export const processMpfs = (
 
     if (
       effectiveEndTime !== undefined &&
-      config?.withdrawalVisibilityBarrierTime !== undefined &&
+      config.withdrawalVisibilityBarrierTime !== undefined &&
       effectiveEndTime.getTime() >
         config.withdrawalVisibilityBarrierTime.getTime()
     ) {
@@ -327,7 +315,7 @@ export const processMpfs = (
 
     if (
       effectiveEndTime !== undefined &&
-      config?.txOrderVisibilityBarrierTime !== undefined &&
+      config.txOrderVisibilityBarrierTime !== undefined &&
       effectiveEndTime.getTime() > config.txOrderVisibilityBarrierTime.getTime()
     ) {
       return yield* Effect.fail(
@@ -342,7 +330,7 @@ export const processMpfs = (
 
     let includedDepositEntries: readonly DepositsDB.Entry[] = [];
     if (
-      config?.currentBlockStartTime !== undefined &&
+      config.currentBlockStartTime !== undefined &&
       effectiveEndTime !== undefined
     ) {
       includedDepositEntries = yield* resolveIncludedDepositEntriesForWindow({
@@ -378,7 +366,7 @@ export const processMpfs = (
     let includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[] =
       [];
     if (
-      config?.currentBlockStartTime !== undefined &&
+      config.currentBlockStartTime !== undefined &&
       effectiveEndTime !== undefined
     ) {
       includedForcedTransactionEntries =
@@ -402,9 +390,9 @@ export const processMpfs = (
         Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
       );
     const shouldCheckPayloadRoot =
-      (config?.payloadRootCheck ?? "every_block") === "every_block";
+      (config.payloadRootCheck ?? "every_block") === "every_block";
     const initialLedgerEntries =
-      config?.initialLedgerEntries ??
+      config.initialLedgerEntries ??
       (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
     const selectedLedgerOutputs =
       yield* indexSelectedLedgerOutputs(initialLedgerEntries);
@@ -412,7 +400,7 @@ export const processMpfs = (
     let includedWithdrawalEntries: readonly WithdrawalsDB.Entry[] = [];
     let classifiedWithdrawals: readonly ClassifiedWithdrawal[] = [];
     if (
-      config?.currentBlockStartTime !== undefined &&
+      config.currentBlockStartTime !== undefined &&
       effectiveEndTime !== undefined
     ) {
       includedWithdrawalEntries =
@@ -513,7 +501,7 @@ export const processMpfs = (
       yield* orderDecodedMempoolTxsForLedgerApplication(decodedMempoolTxs);
 
     const consensusProfile =
-      config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE;
+      config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE;
     if (!isMidgardConsensusProfile(consensusProfile)) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -526,7 +514,7 @@ export const processMpfs = (
     if (
       (includedForcedTransactionEntries.length > 0 ||
         orderedDecodedMempoolTxs.length > 0) &&
-      (config?.forcedValidation === undefined || effectiveEndTime === undefined)
+      (config.forcedValidation === undefined || effectiveEndTime === undefined)
     ) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -571,7 +559,7 @@ export const processMpfs = (
       }
     }
     if (
-      config?.deferDatabaseWrites !== true &&
+      config.deferDatabaseWrites !== true &&
       classifiedForcedTransactions.length > 0
     ) {
       yield* ForcedTransactionsDB.setProofClassifications(
@@ -684,7 +672,7 @@ export const processMpfs = (
           key: decoded.txHash,
           value: encodeTransactionRootValue(
             decoded.txCbor,
-            config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
+            config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
           ),
         } as const satisfies MpfInsertBatchOp;
         transactionOps.push(transactionInsertOp);
@@ -941,7 +929,7 @@ export const processMpfs = (
         ]),
       }),
     };
-    if (rejectedTxHashes.length > 0 && config?.deferDatabaseWrites !== true) {
+    if (rejectedTxHashes.length > 0 && config.deferDatabaseWrites !== true) {
       yield* Effect.logWarning(
         `Dropping ${rejectedTxHashes.length} transaction(s) from MempoolDB`,
       );
@@ -953,20 +941,19 @@ export const processMpfs = (
         });
       if (
         mempoolLedgerReverted &&
-        config?.onMempoolLedgerReverted !== undefined
+        config.onMempoolLedgerReverted !== undefined
       ) {
         yield* config.onMempoolLedgerReverted;
       }
     }
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();
-    const ledgerRootBeforeApply =
-      ledgerMpf === undefined
-        ? Buffer.from(nativeMpf!.handle.baseRoot, "hex")
-        : yield* ledgerMpf.root();
-    const ledgerRootBeforeApplyHex = ledgerRootBeforeApply.toString("hex");
+    const ledgerRootBeforeApplyHex = Buffer.from(
+      nativeMpf.handle.baseRoot,
+      "hex",
+    ).toString("hex");
     const selectedBaseUtxoRoot =
-      config?.selectedBaseUtxoRoot ??
+      config.selectedBaseUtxoRoot ??
       (shouldCheckPayloadRoot
         ? yield* computeUtxoPayloadRoot(
             materializeUtxoPayloadEntries(
@@ -1111,7 +1098,7 @@ export const processMpfs = (
       event.ledgerOps.map((op) => ({ ...op })),
     );
     const baseUtxoPayloadAggregate =
-      config?.baseUtxoPayloadAggregate ??
+      config.baseUtxoPayloadAggregate ??
       ledgerPayloadAggregateFromEntries(initialLedgerEntries);
     const utxoPayloadAggregate =
       yield* applyLedgerOpsToUtxoPayloadAggregateFromFullValues(
@@ -1129,57 +1116,39 @@ export const processMpfs = (
       transactionSourceOps,
       SDK.ROOT_DOMAINS.transactionsV1,
     ).pipe(Effect.fork);
-    const architectureGTransactionMpfFiber =
-      ledgerMpf === undefined
-        ? yield* Effect.gen(function* () {
-            const startedAtMs = Date.now();
-            yield* transactionsMpf.applyBatch(transactionOps).pipe(
-              Effect.catchAll((error) =>
-                transactionsMpf.resetToRoot(transactionRootBeforeApply).pipe(
-                  Effect.catchAll(() => Effect.void),
-                  Effect.flatMap(() => Effect.fail(error)),
-                ),
-              ),
-            );
-            return { durationMs: Date.now() - startedAtMs };
-          }).pipe(Effect.fork)
-        : undefined;
+    // The transactions trie applies on its own fiber while the native owner
+    // builds the transition trace; both roots are joined before use.
+    const transactionMpfFiber = yield* Effect.gen(function* () {
+      const startedAtMs = Date.now();
+      yield* transactionsMpf.applyBatch(transactionOps).pipe(
+        Effect.catchAll((error) =>
+          transactionsMpf.resetToRoot(transactionRootBeforeApply).pipe(
+            Effect.catchAll(() => Effect.void),
+            Effect.flatMap(() => Effect.fail(error)),
+          ),
+        ),
+      );
+      return { durationMs: Date.now() - startedAtMs };
+    }).pipe(Effect.fork);
     const transitionTraceStartedAtMs = Date.now();
-    const transitionTraceBuild = yield* ledgerMpf === undefined
-      ? buildNativeTransitionTraceResult({
-          nativeMpf: nativeMpf!,
-          sourceEvents,
-          withdrawalCount: includedWithdrawalEntries.length,
-          forcedTransactionCount: includedForcedTransactionEntries.length,
-          l2TransactionCount: processedMempoolTxs.length,
-          depositCount: includedDepositEntries.length,
-        }).pipe(
-          Effect.catchAll((error) =>
-            Effect.gen(function* () {
-              if (architectureGTransactionMpfFiber !== undefined) {
-                yield* Fiber.interrupt(architectureGTransactionMpfFiber);
-              }
-              yield* transactionsMpf
-                .resetToRoot(transactionRootBeforeApply)
-                .pipe(Effect.catchAll(() => Effect.void));
-              return yield* Effect.fail(error);
-            }),
-          ),
-        )
-      : buildTransitionTraceResult({
-          ledgerMpf,
-          sourceEvents,
-          withdrawalCount: includedWithdrawalEntries.length,
-          forcedTransactionCount: includedForcedTransactionEntries.length,
-          l2TransactionCount: processedMempoolTxs.length,
-          depositCount: includedDepositEntries.length,
-        }).pipe(
-          Effect.catchAll((error) =>
-            ledgerMpf
-              .resetToRoot(ledgerRootBeforeApply)
-              .pipe(Effect.flatMap(() => Effect.fail(error))),
-          ),
-        );
+    const transitionTraceBuild = yield* buildNativeTransitionTraceResult({
+      nativeMpf,
+      sourceEvents,
+      withdrawalCount: includedWithdrawalEntries.length,
+      forcedTransactionCount: includedForcedTransactionEntries.length,
+      l2TransactionCount: processedMempoolTxs.length,
+      depositCount: includedDepositEntries.length,
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
+          yield* Fiber.interrupt(transactionMpfFiber);
+          yield* transactionsMpf
+            .resetToRoot(transactionRootBeforeApply)
+            .pipe(Effect.catchAll(() => Effect.void));
+          return yield* Effect.fail(error);
+        }),
+      ),
+    );
     yield* logCommitMpfPhaseTiming(
       "transition_trace_build",
       transitionTraceStartedAtMs,
@@ -1227,40 +1196,20 @@ export const processMpfs = (
           rawInsertedLedgerOutputsByOutRef,
         )
       : [];
-    const transactionMpfApplyStartedAtMs = Date.now();
-    const transactionMpfApplyDurationMs =
-      architectureGTransactionMpfFiber === undefined
-        ? yield* transactionsMpf.applyBatch(transactionOps).pipe(
-            Effect.catchAll((error) =>
-              Effect.gen(function* () {
-                yield* transactionsMpf
-                  .resetToRoot(transactionRootBeforeApply)
-                  .pipe(Effect.catchAll(() => Effect.void));
-                yield* ledgerMpf!
-                  .resetToRoot(ledgerRootBeforeApply)
-                  .pipe(Effect.catchAll(() => Effect.void));
-                return yield* Effect.fail(error);
-              }),
-            ),
-            Effect.map(() => Date.now() - transactionMpfApplyStartedAtMs),
-          )
-        : (yield* Fiber.join(architectureGTransactionMpfFiber)).durationMs;
+    const transactionMpfApplyDurationMs = (yield* Fiber.join(
+      transactionMpfFiber,
+    )).durationMs;
     yield* logCommitMpfPhaseTiming(
       "transaction_mpf_apply",
       Date.now() - transactionMpfApplyDurationMs,
       {
         transaction_op_count: transactionOps.length,
-        overlapped_with_transition_trace:
-          architectureGTransactionMpfFiber === undefined ? 0 : 1,
       },
     );
 
     const rawTxRoot = yield* transactionsMpf.rootHex();
     const txRoot = yield* Fiber.join(txRootFiber);
-    const utxoRoot =
-      ledgerMpf === undefined
-        ? nativeMpf!.candidateRoot!
-        : yield* ledgerMpf.rootHex();
+    const utxoRoot = nativeMpf.candidateRoot!;
     if (shouldCheckPayloadRoot) {
       const payloadRootCheckStartedAtMs = Date.now();
       const payloadUtxoRoot = yield* computeUtxoPayloadRoot(utxoPayloadEntries);
@@ -1306,7 +1255,7 @@ export const processMpfs = (
         }
         const validation = config!.forcedValidation!;
         const validationTraceBuilder =
-          config?.validationTraceBuilder ??
+          config.validationTraceBuilder ??
           buildDeterministicValidationTraceMembers;
         const traceByEventKey = new Map<
           string,
@@ -1496,7 +1445,7 @@ export const processMpfs = (
       `🔹 New validation traces root found: ${validationTraceBuild.validationTracesRoot}`,
     );
 
-    const recordCorpusPath = config?.recordCorpusPath?.trim() ?? "";
+    const recordCorpusPath = config.recordCorpusPath?.trim() ?? "";
     if (recordCorpusPath.length > 0) {
       const finalUtxoEntries = materializeUtxoPayloadEntries(
         initialLedgerEntries,
@@ -1614,19 +1563,16 @@ export const processMpfs = (
     const includedWithdrawalEventIds = includedWithdrawalEntries.map((entry) =>
       Buffer.from(entry[WithdrawalsDB.Columns.ID]),
     );
-    const nativeMpfReplay: NativeMpfReplayBuild | undefined =
-      nativeMpf === undefined
-        ? undefined
-        : {
-            schema: 1,
-            ownerBinarySha256: Buffer.from(nativeMpf.ownerBinarySha256, "hex"),
-            baseRoot: Buffer.from(nativeMpf.handle.baseRoot, "hex"),
-            candidateRoot: Buffer.from(nativeMpf.candidateRoot!, "hex"),
-            eventLog: Buffer.from(nativeMpf.eventLog!),
-            eventLogDigest: Buffer.from(nativeMpf.eventLogDigest!, "hex"),
-            eventRoots: Buffer.from(nativeMpf.eventRoots!.join(""), "hex"),
-            eventCount: nativeMpf.eventRoots!.length,
-          };
+    const nativeMpfReplay: NativeMpfReplayBuild = {
+      schema: 1,
+      ownerBinarySha256: Buffer.from(nativeMpf.ownerBinarySha256, "hex"),
+      baseRoot: Buffer.from(nativeMpf.handle.baseRoot, "hex"),
+      candidateRoot: Buffer.from(nativeMpf.candidateRoot!, "hex"),
+      eventLog: Buffer.from(nativeMpf.eventLog!),
+      eventLogDigest: Buffer.from(nativeMpf.eventLogDigest!, "hex"),
+      eventRoots: Buffer.from(nativeMpf.eventRoots!.join(""), "hex"),
+      eventCount: nativeMpf.eventRoots!.length,
+    };
 
     return {
       utxoRoot,
@@ -1665,6 +1611,6 @@ export const processMpfs = (
       includedWithdrawalEventIds,
       transitionTraceBuild,
       nativeMpfReplay,
-      nativeMpfHandle: nativeMpf?.handle,
+      nativeMpfHandle: nativeMpf.handle,
     };
   });

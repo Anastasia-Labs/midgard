@@ -34,6 +34,8 @@ const values = (): Record<string, string> => ({
   TESTNET_GENESIS_WALLET_SEED_PHRASE_C: "test-only-a",
   MIDGARD_PHASE4_COMPOSE_PROJECT: "midgard_phase4_process_test",
   MIDGARD_PHASE4_NETWORK_MAGIC: "420042",
+  MPF_NATIVE_OWNER_BINARY_PATH: "/checkout/native/architecture-g-owner",
+  MPF_NATIVE_OWNER_BINARY_SHA256: "ab".repeat(32),
 });
 
 const canonicalPhasIdentity = SDK.phasMembershipIdentity(
@@ -219,6 +221,16 @@ describe("Phase 4 process isolation", () => {
     [{ MIN_FEE_B: "10" }, "MIN_FEE_A=0"],
     [{ MIDGARD_DOTENV_MODE: "enabled" }, "disable checkout dotenv"],
     [{ TESTNET_GENESIS_WALLET_SEED_PHRASE_C: "" }, "missing"],
+    [{ MPF_NATIVE_OWNER_BINARY_SHA256: "" }, "missing"],
+    [{ MPF_NATIVE_OWNER_BINARY_SHA256: "AB".repeat(32) }, "64 lowercase hex"],
+    [
+      { MPF_NATIVE_OWNER_BINARY_PATH: "native/architecture-g-owner" },
+      "must be absolute",
+    ],
+    [
+      { MPF_NATIVE_OWNER_SIDECAR_PATH: "/shared/owner.sidecar" },
+      "must be unset",
+    ],
   ])("rejects protected identity %#", (override, message) => {
     expect(() =>
       validatePhase4ProcessIsolationValues({ ...values(), ...override }),

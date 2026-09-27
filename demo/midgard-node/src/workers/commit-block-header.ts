@@ -2024,7 +2024,6 @@ const databaseOperationsProgram = (
       );
     }
     const processed = yield* processMpfs(
-      undefined,
       transactionsMpf,
       candidateSelection.candidateTxs,
       {

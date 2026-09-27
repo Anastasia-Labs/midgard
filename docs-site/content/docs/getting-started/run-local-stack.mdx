@@ -20,7 +20,10 @@ answering on its readiness endpoint.
 ### Get the code and toolchain
 
 Follow [Getting the code](/docs/getting-started/local-dev): clone the
-repository and install Node.js, `pnpm`, Docker with Compose v2, and Aiken.
+repository and install Node.js, `pnpm`, Docker with Compose v2, and Aiken. A
+host run also builds the native ledger owner, which needs a Rust toolchain
+with `cargo`. Use Rust 1.91.0, the version the node image builds it with (for
+example `rustup default 1.91.0`).
 
 </Step>
 
@@ -56,6 +59,36 @@ cd ../../demo && pnpm install --frozen-lockfile && pnpm run build
 
 See [Local Development](/docs/getting-started/local-dev) for the full command
 reference.
+
+</Step>
+
+<Step>
+### Build and pin the native ledger owner
+
+The node keeps its ledger in the Architecture G native owner and refuses to
+start until `.env` pins the owner binary by path and SHA-256. `pnpm run build`
+does not build it. For a host run, build it and pin the result from
+`demo/midgard-node`; the build runs `cargo`, so `cargo --version` must work
+there first (see the toolchain step):
+
+```sh
+pnpm run native:mpf-owner:build
+sha256sum native/mpf-event-flat-wasm/target/release/architecture-g-owner
+```
+
+Set `MPF_NATIVE_OWNER_BINARY_PATH` to
+`native/mpf-event-flat-wasm/target/release/architecture-g-owner` and
+`MPF_NATIVE_OWNER_BINARY_SHA256` to the printed hash. When the node runs from
+the compose stack instead, keep the image path from `.env.example` and copy the
+hash the image ships:
+
+```sh
+docker compose run --rm --no-deps --entrypoint cat midgard-node \
+  /app/native/architecture-g-owner.sha256
+```
+
+Rebuilding the owner changes the hash, so pin it again after every rebuild. See
+[Architecture G is the only MPF engine](https://github.com/Anastasia-Labs/midgard/blob/main/docs/midgard/decisions/architecture-g-sole-mpf-engine.md).
 
 </Step>
 
