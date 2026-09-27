@@ -129,6 +129,39 @@ describe("withdrawal CLI parsers", () => {
     ).toThrow("Selected L2 UTxO must be owned by a key credential.");
   });
 
+  it.each(["committed", "not_found"])(
+    "withdraws an output whose producing L2 tx is %s",
+    (status) => {
+      expect(() =>
+        __submitWithdrawalTest.requireCommittedProducer(
+          "aa".repeat(32),
+          status,
+        ),
+      ).not.toThrow();
+    },
+  );
+
+  it.each([
+    "accepted",
+    "pending_commit",
+    "awaiting_local_recovery",
+    "validating",
+    "queued",
+    "rejected",
+  ])(
+    "refuses an output whose producing L2 tx is %s until it commits",
+    (status) => {
+      expect(() =>
+        __submitWithdrawalTest.requireCommittedProducer(
+          "aa".repeat(32),
+          status,
+        ),
+      ).toThrow(
+        `Producing L2 tx ${"aa".repeat(32)} is ${status}, not committed; wait for the producing tx to commit`,
+      );
+    },
+  );
+
   it("rejects malformed selected L2 UTxO addresses", () => {
     expect(() =>
       __submitWithdrawalTest.selectedUtxoPaymentKeyHash("not-an-address"),

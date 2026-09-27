@@ -187,6 +187,15 @@ export type WorkerOutput =
   | SpeculativeCandidateInvalidatedOutput
   | SuccessfulLocalFinalizationRecoveryOutput;
 
+/**
+ * Posted by the commit worker ahead of its output, as soon as a commit-stage
+ * rejection's mempool_ledger revert has committed: the parent reloads its
+ * ledger cache without waiting for the block submission to finish.
+ */
+export type MempoolLedgerRevertedNotice = {
+  readonly type: "MempoolLedgerRevertedNotice";
+};
+
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for
 // transferability.
 export type SerializedStateQueueUTxO = Omit<

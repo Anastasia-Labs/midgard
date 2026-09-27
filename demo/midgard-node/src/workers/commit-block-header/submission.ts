@@ -732,6 +732,7 @@ export const submitDepositOnlyCommit = ({
   selectedBaseUtxosRoot,
   implicitGenesisEntries,
   beforePendingJournalInsert,
+  afterPendingJournalPrepared,
   nativeMpfReplay,
 }: {
   readonly contracts: SDK.MidgardValidators;
@@ -768,6 +769,8 @@ export const submitDepositOnlyCommit = ({
   readonly beforePendingJournalInsert?: (
     blockEndTimeMs: number,
   ) => Effect.Effect<void, DatabaseError, Database>;
+  /** Runs once the pending journal transaction has committed. */
+  readonly afterPendingJournalPrepared?: Effect.Effect<void>;
 }) =>
   Effect.gen(function* () {
     const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
@@ -1050,6 +1053,7 @@ export const submitDepositOnlyCommit = ({
                   },
                   { beforeJournalInsert },
                 ).pipe(
+                  Effect.tap(() => afterPendingJournalPrepared ?? Effect.void),
                   Effect.andThen(
                     reachPipelinedCommitCrashCheckpoint(
                       "journal_prepared_before_submit",
@@ -1207,6 +1211,7 @@ export const submitTxBackedCommit = ({
   sizeOfProcessedTxs,
   blockEndTimeCapMs,
   beforePendingJournalInsert,
+  afterPendingJournalPrepared,
   nativeMpfReplay,
 }: {
   readonly contracts: SDK.MidgardValidators;
@@ -1248,6 +1253,8 @@ export const submitTxBackedCommit = ({
   readonly beforePendingJournalInsert?: (
     blockEndTimeMs: number,
   ) => Effect.Effect<void, DatabaseError, Database>;
+  /** Runs once the pending journal transaction has committed. */
+  readonly afterPendingJournalPrepared?: Effect.Effect<void>;
 }) =>
   Effect.gen(function* () {
     const emptyRoot = yield* emptyRootHexProgram;
@@ -1599,6 +1606,7 @@ export const submitTxBackedCommit = ({
                   },
                   { beforeJournalInsert },
                 ).pipe(
+                  Effect.tap(() => afterPendingJournalPrepared ?? Effect.void),
                   Effect.andThen(
                     reachPipelinedCommitCrashCheckpoint(
                       "journal_prepared_before_submit",

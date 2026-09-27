@@ -1,16 +1,27 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 
+import { RejectCodes } from "@al-ft/midgard-validation";
+import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { describe, expect, it, vi } from "vitest";
 
+import { buildListenRouter } from "../src/commands/listen-router.js";
 import {
   type CheckId,
   type ReconciliationReport,
   STATE_RECONCILIATION_CHECK_IDS,
   stateReconciliationProgram,
 } from "../src/commands/state-reconciliation.js";
-import { MutationJobsDB } from "../src/database/index.js";
+import { submitWithdrawalCommandProgram } from "../src/commands/submit-withdrawal.js";
+import { MutationJobsDB, TxRejectionsDB } from "../src/database/index.js";
+import {
+  ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
+  decideAdmissionBatch,
+} from "../src/fibers/tx-queue-processor.js";
+import { COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT } from "../src/mpf/index.js";
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   absorbConfirmedDepositToReserveProgram,
@@ -64,7 +75,6 @@ import {
   runNodeCommandProgram,
   runNodeDatabaseEffect,
   runPhaseAValidation,
-  runPhaseBValidationWithPatch,
   SDK,
   SqlClient,
   stateQueueFetchConfig,
@@ -126,6 +136,263 @@ const expectReconciled = async (
   }
   if (unasserted.length === 0) expect(report.ok, described).toBe(true);
   return report;
+};
+
+/**
+ * Runs `submit-withdrawal` against the node's own HTTP router, served from
+ * this database on an ephemeral node:http port, and returns its refusal.
+ */
+const submitWithdrawalRefusal = async (
+  harness: Parameters<typeof runNodeCommandProgram>[1],
+  {
+    l2OutRef,
+    walletSeedPhrase,
+    l1Address,
+  }: {
+    readonly l2OutRef: string;
+    readonly walletSeedPhrase: string;
+    readonly l1Address: string;
+  },
+): Promise<string> => {
+  const server = createServer((request, response) => {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(chunk as Buffer);
+      const routed = await runNodeCommandProgram(
+        buildListenRouter().pipe(
+          Effect.provideService(
+            HttpServerRequest.HttpServerRequest,
+            HttpServerRequest.fromWeb(
+              new Request(`http://midgard.test${request.url ?? "/"}`, {
+                method: request.method,
+                headers: {
+                  "content-type":
+                    request.headers["content-type"] ?? "application/json",
+                },
+                ...(chunks.length === 0
+                  ? {}
+                  : { body: new Uint8Array(Buffer.concat(chunks)) }),
+              }),
+            ),
+          ),
+        ),
+        harness,
+      );
+      const web = HttpServerResponse.toWeb(routed);
+      response.writeHead(web.status, {
+        "content-type": web.headers.get("content-type") ?? "application/json",
+      });
+      response.end(Buffer.from(await web.arrayBuffer()));
+    })().catch((cause: unknown) => {
+      response.writeHead(500);
+      response.end(String(cause));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const refusal = await runNodeCommandProgram(
+      Effect.flip(
+        submitWithdrawalCommandProgram({
+          config: {
+            submissionId: randomUUID(),
+            walletSeedPhrase,
+            walletSeedPhraseEnv: "UNUSED_WALLET_SEED_PHRASE",
+            l2OutRef,
+            l1Address,
+            endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port.toString()}`,
+          },
+        }),
+      ),
+      harness,
+    );
+    return refusal.message;
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+};
+
+/**
+ * Runs one L2 transaction through the queue processor's admission path
+ * (durable admission, lease claim, Phase A, the batch decision against the
+ * pending withdrawals and mempool_ledger, durable accept or reject) and
+ * returns its durable admission row.
+ */
+const admitL2Tx = async (
+  fixture: Awaited<ReturnType<typeof makeFixture>>,
+  built: { readonly txId: Buffer; readonly txCbor: Buffer },
+) => {
+  const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar([]);
+  const admittedL2Transfer = await runNodeDatabaseEffect(
+    TxAdmissionsDB.admit({
+      txId: built.txId,
+      txCanonicalCbor: built.txCbor,
+      programMaterialSidecarCbor,
+      submitSource: "native",
+      currentBacklog: 0n,
+      maxBacklog: 1,
+    }),
+  );
+  expect(admittedL2Transfer.kind).toBe("new");
+  expect(admittedL2Transfer.entry[TxAdmissionsDB.Columns.STATUS]).toBe(
+    TxAdmissionsDB.Status.Queued,
+  );
+
+  const l2TransferLeaseOwner = `deposit-flow:${randomUUID()}`;
+  const claimL2TransferOnce = () =>
+    runNodeDatabaseEffect(
+      TxAdmissionsDB.claimBatchLease({
+        limit: 1,
+        leaseOwner: l2TransferLeaseOwner,
+        leaseDurationMs: 30_000,
+      }),
+    );
+  // The node's own claim loop treats an empty claim as an ordinary tick
+  // outcome and re-claims on its next tick (see the `claimedLeases.length
+  // === 0` branch in src/fibers/tx-queue-processor.ts), so requiring the
+  // very first attempt to succeed asserts more than the production contract
+  // guarantees and made this journey intermittently red under load. Poll
+  // under the same lease owner for a bounded window instead. An admission
+  // that never becomes claimable is still a hard failure, and it reports the
+  // durable row state so a genuine liveness defect cannot hide here.
+  // performance.now() is deliberate: Date is faked for this test.
+  const claimDeadlineMs = 30_000;
+  const claimStartedAt = performance.now();
+  let claimedL2Transfers = await claimL2TransferOnce();
+  let claimAttempts = 1;
+  while (
+    claimedL2Transfers.length === 0 &&
+    performance.now() - claimStartedAt < claimDeadlineMs
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    claimedL2Transfers = await claimL2TransferOnce();
+    claimAttempts += 1;
+  }
+  if (claimedL2Transfers.length === 0) {
+    const admissionRows = await runNodeDatabaseEffect(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql`
+          SELECT
+            encode(tx_id, 'hex') AS tx_id,
+            status::text AS status,
+            arrival_seq::text AS arrival_seq,
+            lease_owner,
+            next_attempt_at,
+            NOW() AS db_now,
+            (next_attempt_at <= NOW()) AS claimable
+          FROM ${sql(TxAdmissionsDB.tableName)}
+          ORDER BY arrival_seq
+        `;
+      }),
+    );
+    throw new Error(
+      `Durable admission never became claimable after ${claimAttempts.toString()} attempts across ${claimDeadlineMs.toString()}ms: expectedTxId=${built.txId.toString("hex")} rows=${JSON.stringify(admissionRows)}`,
+    );
+  }
+  expect(claimedL2Transfers).toHaveLength(1);
+  const loadedL2Transfers = await runNodeDatabaseEffect(
+    TxAdmissionsDB.loadClaimedPayloads({
+      claimed: claimedL2Transfers,
+      leaseOwner: l2TransferLeaseOwner,
+    }),
+  );
+  expect(loadedL2Transfers).toHaveLength(1);
+  const queuedL2Transfer: QueuedTx = {
+    txId: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_ID],
+    txCbor: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_CANONICAL_CBOR],
+    programMaterialSidecarCbor:
+      loadedL2Transfers[0]![
+        TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
+      ],
+    arrivalSeq: loadedL2Transfers[0]![TxAdmissionsDB.Columns.ARRIVAL_SEQ],
+    createdAt: loadedL2Transfers[0]![TxAdmissionsDB.Columns.FIRST_SEEN_AT],
+  };
+  const phaseA = await Effect.runPromise(
+    runPhaseAValidation([queuedL2Transfer], {
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      concurrency: 1,
+      strictnessProfile: "phase1_midgard",
+    }),
+  );
+  const pendingWithdrawalOutRefHexes = await runNodeDatabaseEffect(
+    WithdrawalsDB.retrievePendingLedgerOutRefHexes,
+  );
+  const ledgerEntries = await runNodeDatabaseEffect(
+    MempoolLedgerDB.retrieveSpendable,
+  );
+  const { phaseB, allRejected } = await Effect.runPromise(
+    decideAdmissionBatch({
+      phaseA,
+      pendingWithdrawalOutRefHexes,
+      ledgerState: new Map(
+        ledgerEntries.map((entry) => [
+          entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+          entry[MempoolLedgerDB.Columns.OUTPUT],
+        ]),
+      ),
+      phaseBConfig: {
+        nowCardanoSlotNo: BigInt(fixture.operatorLucid.currentSlot()),
+        bucketConcurrency: 1,
+        enforceScriptBudget: true,
+      },
+    }),
+  );
+  // This harness uses explicit unowned model writes throughout; the verdict
+  // needs the same fixture gate as admission and leasing above.
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TxAdmissionsDB.markRejected({
+          rows: claimedL2Transfers,
+          leaseOwner: l2TransferLeaseOwner,
+          rejectedTxs: allRejected,
+        });
+        if (phaseB.accepted.length > 0) {
+          yield* TxAdmissionsDB.markAccepted({
+            rows: claimedL2Transfers,
+            leaseOwner: l2TransferLeaseOwner,
+            processedTxs: phaseB.accepted.map(processedTxFromValidatedTx),
+          });
+        }
+      }).pipe(
+        Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provide(WriteBehindLive),
+        Effect.provide(Database.layer),
+        Effect.provide(NodeConfig.layer),
+      ),
+    ),
+  );
+  return await runNodeDatabaseEffect(TxAdmissionsDB.getByTxId(built.txId));
+};
+
+/**
+ * Admits one L2 transaction through {@link admitL2Tx}, requires it accepted,
+ * then dates its mempool row inside the next block window.
+ */
+const admitAndAcceptL2Tx = async (
+  fixture: Awaited<ReturnType<typeof makeFixture>>,
+  built: { readonly txId: Buffer; readonly txCbor: Buffer },
+  alignedMempoolTimestamp: Date,
+): Promise<void> => {
+  const admission = await admitL2Tx(fixture, built);
+  expect(admission?.[TxAdmissionsDB.Columns.STATUS]).toBe(
+    TxAdmissionsDB.Status.Accepted,
+  );
+  expect(alignedMempoolTimestamp.getTime()).toBeLessThanOrEqual(Date.now());
+  const alignedMempoolRows = await runNodeDatabaseEffect(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql`
+        UPDATE ${sql(MempoolDB.tableName)}
+        SET time_stamp_tz = ${alignedMempoolTimestamp}
+        WHERE tx_id = ${built.txId}
+        RETURNING tx_id
+      `;
+    }),
+  );
+  expect(alignedMempoolRows).toHaveLength(1);
 };
 
 describe.sequential("deposit flow emulator", () => {
@@ -670,6 +937,23 @@ describe.sequential("deposit flow emulator", () => {
     const l2RecipientAddress = await fixture.referenceScriptsLucid
       .wallet()
       .address();
+    const depositorKeyHash = paymentCredentialOf(l2Address)?.hash;
+    const recipientKeyHash = paymentCredentialOf(l2RecipientAddress)?.hash;
+    // `submit-withdrawal` refuses an output whose producing L2 tx has not
+    // committed. A projected deposit output has no producing L2 tx, so the
+    // command passes that check and stops at the signer check instead.
+    expect(
+      await submitWithdrawalRefusal(
+        { fixture, lucidService, globals },
+        {
+          l2OutRef: `${l2TransferSource.txHash}#${l2TransferSource.outputIndex.toString()}`,
+          walletSeedPhrase: fixture.referenceScriptsAccount.seedPhrase,
+          l1Address: l2Address,
+        },
+      ),
+    ).toBe(
+      `Selected L2 UTxO is owned by ${depositorKeyHash}, not withdrawal signer ${recipientKeyHash}.`,
+    );
     const builtL2Transfer = await buildTransferTx({
       senderAddress: l2Address,
       destinationAddress: l2RecipientAddress,
@@ -678,168 +962,12 @@ describe.sequential("deposit flow emulator", () => {
       requestedAssets: { lovelace: 2_000_000n },
       networkId: 0n,
     });
-    const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar(
-      [],
-    );
-    const admittedL2Transfer = await runNodeDatabaseEffect(
-      TxAdmissionsDB.admit({
-        txId: builtL2Transfer.txId,
-        txCanonicalCbor: builtL2Transfer.txCbor,
-        programMaterialSidecarCbor,
-        submitSource: "native",
-        currentBacklog: 0n,
-        maxBacklog: 1,
-      }),
-    );
-    expect(admittedL2Transfer.kind).toBe("new");
-    expect(admittedL2Transfer.entry[TxAdmissionsDB.Columns.STATUS]).toBe(
-      TxAdmissionsDB.Status.Queued,
-    );
-
-    const l2TransferLeaseOwner = `deposit-flow:${randomUUID()}`;
-    const claimL2TransferOnce = () =>
-      runNodeDatabaseEffect(
-        TxAdmissionsDB.claimBatchLease({
-          limit: 1,
-          leaseOwner: l2TransferLeaseOwner,
-          leaseDurationMs: 30_000,
-        }),
-      );
-    // The node's own claim loop treats an empty claim as an ordinary tick
-    // outcome and re-claims on its next tick (see the `claimedLeases.length
-    // === 0` branch in src/fibers/tx-queue-processor.ts), so requiring the
-    // very first attempt to succeed asserts more than the production contract
-    // guarantees and made this journey intermittently red under load. Poll
-    // under the same lease owner for a bounded window instead. An admission
-    // that never becomes claimable is still a hard failure, and it reports the
-    // durable row state so a genuine liveness defect cannot hide here.
-    // performance.now() is deliberate: Date is faked for this test.
-    const claimDeadlineMs = 30_000;
-    const claimStartedAt = performance.now();
-    let claimedL2Transfers = await claimL2TransferOnce();
-    let claimAttempts = 1;
-    while (
-      claimedL2Transfers.length === 0 &&
-      performance.now() - claimStartedAt < claimDeadlineMs
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      claimedL2Transfers = await claimL2TransferOnce();
-      claimAttempts += 1;
-    }
-    if (claimedL2Transfers.length === 0) {
-      const admissionRows = await runNodeDatabaseEffect(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          return yield* sql`
-            SELECT
-              encode(tx_id, 'hex') AS tx_id,
-              status::text AS status,
-              arrival_seq::text AS arrival_seq,
-              lease_owner,
-              next_attempt_at,
-              NOW() AS db_now,
-              (next_attempt_at <= NOW()) AS claimable
-            FROM ${sql(TxAdmissionsDB.tableName)}
-            ORDER BY arrival_seq
-          `;
-        }),
-      );
-      throw new Error(
-        `Durable admission never became claimable after ${claimAttempts.toString()} attempts across ${claimDeadlineMs.toString()}ms: expectedTxId=${builtL2Transfer.txId.toString("hex")} rows=${JSON.stringify(admissionRows)}`,
-      );
-    }
-    expect(claimedL2Transfers).toHaveLength(1);
-    const loadedL2Transfers = await runNodeDatabaseEffect(
-      TxAdmissionsDB.loadClaimedPayloads({
-        claimed: claimedL2Transfers,
-        leaseOwner: l2TransferLeaseOwner,
-      }),
-    );
-    expect(loadedL2Transfers).toHaveLength(1);
-    const queuedL2Transfer: QueuedTx = {
-      txId: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_ID],
-      txCbor: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_CANONICAL_CBOR],
-      programMaterialSidecarCbor:
-        loadedL2Transfers[0]![
-          TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-        ],
-      arrivalSeq: loadedL2Transfers[0]![TxAdmissionsDB.Columns.ARRIVAL_SEQ],
-      createdAt: loadedL2Transfers[0]![TxAdmissionsDB.Columns.FIRST_SEEN_AT],
-    };
-    const phaseA = await Effect.runPromise(
-      runPhaseAValidation([queuedL2Transfer], {
-        expectedNetworkId: 0n,
-        minFeeA: 0n,
-        minFeeB: 0n,
-        concurrency: 1,
-        strictnessProfile: "phase1_midgard",
-      }),
-    );
-    expect(phaseA.rejected).toEqual([]);
-    expect(phaseA.accepted).toHaveLength(1);
-    const preTransferLedgerEntries = await runNodeDatabaseEffect(
-      MempoolLedgerDB.retrieveSpendable,
-    );
-    const phaseB = await Effect.runPromise(
-      runPhaseBValidationWithPatch(
-        phaseA.accepted,
-        new Map(
-          preTransferLedgerEntries.map((entry) => [
-            entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-            entry[MempoolLedgerDB.Columns.OUTPUT],
-          ]),
-        ),
-        {
-          nowCardanoSlotNo: BigInt(fixture.operatorLucid.currentSlot()),
-          bucketConcurrency: 1,
-          enforceScriptBudget: true,
-        },
-      ),
-    );
-    expect(phaseB.rejected).toEqual([]);
-    expect(phaseB.accepted).toHaveLength(1);
-    const processedL2Transfers = phaseB.accepted.map(
-      processedTxFromValidatedTx,
-    );
-    // This harness uses explicit unowned model writes throughout; acceptance
-    // needs the same fixture gate as admission and leasing above.
-    await Effect.runPromise(
-      Effect.scoped(
-        TxAdmissionsDB.markAccepted({
-          rows: claimedL2Transfers,
-          leaseOwner: l2TransferLeaseOwner,
-          processedTxs: processedL2Transfers,
-        }).pipe(
-          Effect.provideService(UnownedHistoryFixture, true),
-          Effect.provide(WriteBehindLive),
-          Effect.provide(Database.layer),
-          Effect.provide(NodeConfig.layer),
-        ),
-      ),
-    );
-    const acceptedL2Transfer = await runNodeDatabaseEffect(
-      TxAdmissionsDB.getByTxId(builtL2Transfer.txId),
-    );
-    expect(acceptedL2Transfer?.[TxAdmissionsDB.Columns.STATUS]).toBe(
-      TxAdmissionsDB.Status.Accepted,
+    await admitAndAcceptL2Tx(
+      fixture,
+      builtL2Transfer,
+      new Date(Number(depositBlock.queuedHeader.endTime) + 1),
     );
     expect(await runNodeDatabaseEffect(MempoolDB.retrieveTxCount)).toBe(1n);
-    const alignedMempoolTimestamp = new Date(
-      Number(depositBlock.queuedHeader.endTime) + 1,
-    );
-    expect(alignedMempoolTimestamp.getTime()).toBeLessThanOrEqual(Date.now());
-    const alignedMempoolRows = await runNodeDatabaseEffect(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql`
-          UPDATE ${sql(MempoolDB.tableName)}
-          SET time_stamp_tz = ${alignedMempoolTimestamp}
-          WHERE tx_id = ${builtL2Transfer.txId}
-          RETURNING tx_id
-        `;
-      }),
-    );
-    expect(alignedMempoolRows).toHaveLength(1);
     const projectedSenderAfterAdmission = await Effect.runPromise(
       utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
     );
@@ -893,6 +1021,25 @@ describe.sequential("deposit flow emulator", () => {
     expect(projectedRecipientAfterMerge.utxoCount).toEqual(1);
     expect(projectedRecipientAfterMerge.totals.lovelace).toEqual(2_000_000n);
     const l2WithdrawalTarget = projectedSenderAfterMerge.utxos[0]!;
+    const [withdrawalTargetEntry] = await runNodeDatabaseEffect(
+      MempoolLedgerDB.retrieveSpendableByAddress(l2Address),
+    );
+    const withdrawalTargetOutRefHex =
+      withdrawalTargetEntry![MempoolLedgerDB.Columns.OUTREF].toString("hex");
+    const withdrawalTargetSource = decodeNodeUtxo({
+      outref: withdrawalTargetOutRefHex,
+      outputCbor:
+        withdrawalTargetEntry![MempoolLedgerDB.Columns.OUTPUT].toString("hex"),
+    });
+    const buildWithdrawalTargetSpend = (lovelace: bigint) =>
+      buildTransferTx({
+        senderAddress: l2Address,
+        destinationAddress: l2RecipientAddress,
+        signer: withdrawalPrivateKey,
+        selectedInputs: [withdrawalTargetSource],
+        requestedAssets: { lovelace },
+        networkId: 0n,
+      });
     const l2PaymentCredential = paymentCredentialOf(l2Address);
     if (l2PaymentCredential?.type !== "Key") {
       throw new Error("Expected withdrawal target L2 owner to be a key hash");
@@ -937,6 +1084,116 @@ describe.sequential("deposit flow emulator", () => {
     );
     vi.setSystemTime(new Date(fixture.emulator.now()));
 
+    // A spend of the withdrawal target admitted after the withdrawal landed
+    // on L1 but before the node observed it. The withdrawal block rejects it
+    // at commit, and its admitted mempool_ledger effects must leave with it.
+    const withdrawalTargetSpend = await buildWithdrawalTargetSpend(3_000_000n);
+    await admitAndAcceptL2Tx(
+      fixture,
+      withdrawalTargetSpend,
+      new Date(Number(withdrawalUtxo.facts.inclusion_time) + 1),
+    );
+    const projectedRecipientAfterSpend = await Effect.runPromise(
+      utxosProgram(l2RecipientAddress).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedRecipientAfterSpend.totals.lovelace).toEqual(5_000_000n);
+    // The recipient then spends that pending output together with its
+    // committed 2 ADA output in the same block window. The block rejects this
+    // spend too, and the committed input must come back to mempool_ledger.
+    const recipientEntries = await runNodeDatabaseEffect(
+      MempoolLedgerDB.retrieveSpendableByAddress(l2RecipientAddress),
+    );
+    expect(recipientEntries).toHaveLength(2);
+    const outRefAndOutput = (
+      entries: readonly {
+        readonly [MempoolLedgerDB.Columns.OUTREF]: Buffer;
+        readonly [MempoolLedgerDB.Columns.OUTPUT]: Buffer;
+      }[],
+    ) =>
+      entries.map((entry) => [
+        entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+        entry[MempoolLedgerDB.Columns.OUTPUT].toString("hex"),
+      ]);
+    const committedRecipientEntries = recipientEntries.filter((entry) =>
+      entry[MempoolLedgerDB.Columns.OUTREF]
+        .toString("hex")
+        .includes(builtL2Transfer.txId.toString("hex")),
+    );
+    expect(committedRecipientEntries).toHaveLength(1);
+    const [committedRecipientUtxo, pendingRecipientUtxo] = [
+      committedRecipientEntries[0]!,
+      recipientEntries.find(
+        (entry) => !committedRecipientEntries.includes(entry),
+      )!,
+    ].map((entry) =>
+      decodeNodeUtxo({
+        outref: entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+        outputCbor: entry[MempoolLedgerDB.Columns.OUTPUT].toString("hex"),
+      }),
+    );
+    // The recipient cannot withdraw the output of the still-pending spend:
+    // the withdrawal would be classified against a ledger without it. The
+    // command refuses before it builds any L1 transaction.
+    const acceptedTransactionsBeforeRefusal = acceptedTransactions.length;
+    expect(
+      await submitWithdrawalRefusal(
+        { fixture, lucidService, globals },
+        {
+          l2OutRef: `${pendingRecipientUtxo!.txHash}#${pendingRecipientUtxo!.outputIndex.toString()}`,
+          walletSeedPhrase: fixture.referenceScriptsAccount.seedPhrase,
+          l1Address: l2RecipientAddress,
+        },
+      ),
+    ).toBe(
+      `Producing L2 tx ${withdrawalTargetSpend.txId.toString("hex")} is accepted, not committed; wait for the producing tx to commit before withdrawing its output.`,
+    );
+    expect(acceptedTransactions).toHaveLength(
+      acceptedTransactionsBeforeRefusal,
+    );
+    // Its committed output passes that check and stops at the signer check.
+    expect(
+      await submitWithdrawalRefusal(
+        { fixture, lucidService, globals },
+        {
+          l2OutRef: `${committedRecipientUtxo!.txHash}#${committedRecipientUtxo!.outputIndex.toString()}`,
+          walletSeedPhrase: fixture.depositorAccount.seedPhrase,
+          l1Address: l2Address,
+        },
+      ),
+    ).toBe(
+      `Selected L2 UTxO is owned by ${recipientKeyHash}, not withdrawal signer ${depositorKeyHash}.`,
+    );
+    const recipientPrivateKey = CML.PrivateKey.from_bech32(
+      walletFromSeed(fixture.referenceScriptsAccount.seedPhrase, {
+        network: "Custom",
+      }).paymentKey,
+    );
+    const cascadedRecipientSpend = await buildTransferTx({
+      senderAddress: l2RecipientAddress,
+      destinationAddress: l2RecipientAddress,
+      signer: recipientPrivateKey,
+      selectedInputs: recipientEntries.map((entry) =>
+        decodeNodeUtxo({
+          outref: entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+          outputCbor: entry[MempoolLedgerDB.Columns.OUTPUT].toString("hex"),
+        }),
+      ),
+      requestedAssets: { lovelace: 4_000_000n },
+      networkId: 0n,
+    });
+    await admitAndAcceptL2Tx(
+      fixture,
+      cascadedRecipientSpend,
+      new Date(Number(withdrawalUtxo.facts.inclusion_time) + 2),
+    );
+    const projectedRecipientAfterCascadedSpend = await Effect.runPromise(
+      utxosProgram(l2RecipientAddress).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedRecipientAfterCascadedSpend.utxoCount).toEqual(2);
+    expect(projectedRecipientAfterCascadedSpend.totals.lovelace).toEqual(
+      5_000_000n,
+    );
+
     const withdrawalFetch = await runNodeCommandProgram(
       reconcileVisibleWithdrawalUTxOs(),
       { fixture, lucidService, globals },
@@ -947,6 +1204,43 @@ describe.sequential("deposit flow emulator", () => {
       { fixture, lucidService, globals },
     );
     expect(withdrawalFetchAgain.reconciledCount).toEqual(1);
+    // Once the withdrawal is pending, admission refuses a new spend of its
+    // outref durably, before it touches mempool_ledger.
+    expect([
+      ...(await runNodeDatabaseEffect(
+        WithdrawalsDB.retrievePendingLedgerOutRefHexes,
+      )),
+    ]).toEqual([withdrawalTargetOutRefHex]);
+    const ledgerBeforeLateSpend = await runNodeDatabaseEffect(
+      MempoolLedgerDB.retrieveSpendable,
+    );
+    const lateWithdrawalTargetSpend =
+      await buildWithdrawalTargetSpend(4_000_000n);
+    const lateSpendAdmission = await admitL2Tx(
+      fixture,
+      lateWithdrawalTargetSpend,
+    );
+    expect(lateSpendAdmission?.[TxAdmissionsDB.Columns.STATUS]).toBe(
+      TxAdmissionsDB.Status.Rejected,
+    );
+    expect(
+      (
+        await runNodeDatabaseEffect(
+          TxRejectionsDB.retrieveByTxId(lateWithdrawalTargetSpend.txId),
+        )
+      ).map((row) => [
+        row[TxRejectionsDB.Columns.REJECT_CODE],
+        row[TxRejectionsDB.Columns.REJECT_DETAIL],
+      ]),
+    ).toEqual([
+      [
+        ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
+        `Transaction spends L2 outref ${withdrawalTargetOutRefHex}, which a pending withdrawal names`,
+      ],
+    ]);
+    expect(
+      await runNodeDatabaseEffect(MempoolLedgerDB.retrieveSpendable),
+    ).toEqual(ledgerBeforeLateSpend);
 
     const withdrawalBlock = await commitConfirmRecoverAndMerge({
       fixture,
@@ -958,6 +1252,34 @@ describe.sequential("deposit flow emulator", () => {
       lucidService,
       globals,
     });
+    expect(
+      (
+        await runNodeDatabaseEffect(
+          TxRejectionsDB.retrieveByTxId(withdrawalTargetSpend.txId),
+        )
+      ).map((row) => row[TxRejectionsDB.Columns.REJECT_CODE]),
+    ).toEqual([COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT]);
+    expect(
+      (
+        await runNodeDatabaseEffect(
+          TxRejectionsDB.retrieveByTxId(cascadedRecipientSpend.txId),
+        )
+      ).map((row) => row[TxRejectionsDB.Columns.REJECT_CODE]),
+    ).toEqual([RejectCodes.InputNotFound]);
+    expect(await runNodeDatabaseEffect(MempoolDB.retrieveTxCount)).toBe(0n);
+    expect(
+      outRefAndOutput(
+        await runNodeDatabaseEffect(
+          MempoolLedgerDB.retrieveSpendableByAddress(l2RecipientAddress),
+        ),
+      ),
+    ).toEqual(outRefAndOutput(committedRecipientEntries));
+    const projectedRecipientAfterWithdrawal = await Effect.runPromise(
+      utxosProgram(l2RecipientAddress).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedRecipientAfterWithdrawal.totals.lovelace).toEqual(
+      2_000_000n,
+    );
     expect(withdrawalBlock.queuedHeader.withdrawalsRoot).not.toEqual(
       emptyProtocolRoot,
     );

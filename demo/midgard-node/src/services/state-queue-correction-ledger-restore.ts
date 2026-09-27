@@ -285,18 +285,6 @@ const ancestorRow = (outRef: Buffer, baseTailHeaderHash: Buffer) =>
     return undefined;
   });
 
-/** Restores a deposit a restored output belongs to: it is spendable again
- * exactly when its header assignment says so. */
-const unconsumeDeposits = (eventIds: readonly Buffer[]) =>
-  Effect.gen(function* () {
-    if (eventIds.length === 0) return;
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`UPDATE deposits_utxos
-      SET status = ${DepositsDB.Status.Projected}
-      WHERE event_id IN ${sql.in(eventIds)}
-        AND status = ${DepositsDB.Status.Consumed}`;
-  });
-
 const insertRows = (rows: readonly LedgerRow[]) =>
   Effect.gen(function* () {
     if (rows.length === 0) return;
@@ -367,7 +355,7 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       withdrawalRows.push(row);
     }
     yield* insertRows(withdrawalRows);
-    yield* unconsumeDeposits(withdrawalDeposits);
+    yield* DepositsDB.unconsumeByEventIds(withdrawalDeposits);
 
     // 2. Pending transactions that depend on a reopened deposit's output.
     const reopenedDepositOutRefs = new Map<string, LedgerRow>();
@@ -515,7 +503,7 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       SELECT source_event_id FROM mempool_ledger
       WHERE outref = ANY(${pg.array(byteaArray(externalRefs))}::bytea[])
         AND source_event_id IS NOT NULL`;
-    yield* unconsumeDeposits(
+    yield* DepositsDB.unconsumeByEventIds(
       restoredDepositIds.map((row) => row.source_event_id),
     );
 

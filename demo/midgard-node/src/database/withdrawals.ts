@@ -782,7 +782,7 @@ export const toRootKeyValue = (
   });
 
 export const toLedgerOutRef = (
-  entry: Entry,
+  entry: Pick<Entry, Columns.L2_OUTREF>,
 ): Effect.Effect<Buffer, DatabaseError, never> =>
   Effect.try({
     try: () => {
@@ -804,6 +804,44 @@ export const toLedgerOutRef = (
         cause,
       }),
   });
+
+/**
+ * Ledger outrefs (hex) named by withdrawals that are not finalized and not
+ * classified invalid. Each will be consumed by its withdrawal, or is still
+ * unclassified, so an L2 spend of one is refused at admission instead of at
+ * commit.
+ */
+export const retrievePendingLedgerOutRefHexes: Effect.Effect<
+  ReadonlySet<string>,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<Pick<Entry, Columns.L2_OUTREF>>`SELECT ${sql(
+    Columns.L2_OUTREF,
+  )} FROM ${sql(tableName)}
+    WHERE ${sql(Columns.STATUS)} IN (${Status.Awaiting}, ${Status.Projected})
+      AND (${sql(Columns.VALIDITY)} IS NULL
+        OR ${sql(Columns.VALIDITY)} = ${Validity.WithdrawalIsValid})`;
+  const outRefs = new Set<string>();
+  for (const row of rows) {
+    // An l2_outref that does not decode names no L2 output, so no spend can
+    // match it; one such row must not stop admission.
+    const outRef = yield* Effect.either(toLedgerOutRef(row));
+    if (outRef._tag === "Right") outRefs.add(outRef.right.toString("hex"));
+    else
+      yield* Effect.logWarning(
+        `Skipping pending withdrawal l2_outref ${row[Columns.L2_OUTREF].toString("hex")}: it does not decode to an output reference`,
+      );
+  }
+  return outRefs;
+}).pipe(
+  Effect.withLogSpan(`retrievePendingLedgerOutRefHexes ${tableName}`),
+  sqlErrorToDatabaseError(
+    tableName,
+    "Failed to retrieve outrefs named by pending withdrawals",
+  ),
+);
 
 export const pruneOlderThan = (
   cutoff: Date,

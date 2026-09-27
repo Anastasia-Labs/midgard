@@ -1,6 +1,10 @@
-import { Effect, Fiber } from "effect";
+import { Effect, Fiber, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  type CommitWorkerMessage,
+  takeCommitWorkerOutput,
+} from "../src/fibers/block-commitment.js";
 import {
   hasActiveSpeculativeCommitSession,
   invalidateSpeculativeSessionForTest,
@@ -9,10 +13,8 @@ import {
   type SpeculativeCommitWorkerPort,
 } from "../src/fibers/speculative-commit-builder.js";
 import type { SpeculativeCandidateSummary } from "../src/fibers/speculative-commit-state.js";
-import type {
-  SpeculativeCommitWorkerInstruction,
-  WorkerOutput,
-} from "../src/workers/utils/commit-block-header.js";
+import { Globals } from "../src/services/globals.js";
+import type { SpeculativeCommitWorkerInstruction } from "../src/workers/utils/commit-block-header.js";
 import { WorkerError } from "../src/workers/utils/common.js";
 
 const candidate: SpeculativeCandidateSummary = {
@@ -47,7 +49,7 @@ const candidate: SpeculativeCandidateSummary = {
 };
 
 class ControllableWorker implements SpeculativeCommitWorkerPort {
-  private messageListener?: (output: WorkerOutput) => void;
+  private messageListener?: (message: CommitWorkerMessage) => void;
   private errorListener?: (error: Error) => void;
   private exitListener?: (code: number) => void;
   private resolveTermination!: (code: number) => void;
@@ -56,18 +58,18 @@ class ControllableWorker implements SpeculativeCommitWorkerPort {
   });
   terminateCalls = 0;
 
-  on(event: "message", listener: (output: WorkerOutput) => void): void;
+  on(event: "message", listener: (message: CommitWorkerMessage) => void): void;
   on(event: "error", listener: (error: Error) => void): void;
   on(event: "exit", listener: (code: number) => void): void;
   on(
     event: "message" | "error" | "exit",
     listener:
-      | ((output: WorkerOutput) => void)
+      | ((message: CommitWorkerMessage) => void)
       | ((error: Error) => void)
       | ((code: number) => void),
   ): void {
     if (event === "message") {
-      this.messageListener = listener as (output: WorkerOutput) => void;
+      this.messageListener = listener as (message: CommitWorkerMessage) => void;
     } else if (event === "error") {
       this.errorListener = listener as (error: Error) => void;
     } else {
@@ -82,7 +84,7 @@ class ControllableWorker implements SpeculativeCommitWorkerPort {
     return this.termination;
   }
 
-  emitMessage(output: WorkerOutput): void {
+  emitMessage(output: CommitWorkerMessage): void {
     this.messageListener?.(output);
   }
 
@@ -211,6 +213,47 @@ describe("speculative worker session lifecycle", () => {
     worker.finishTermination();
     await invalidation;
     expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(hasActiveSpeculativeCommitSession()).toBe(false);
+  });
+
+  it("reloads the ledger cache on a mempool_ledger revert notice without settling the session", async () => {
+    const globals = await Effect.runPromise(
+      Globals.pipe(Effect.provide(Globals.Default)),
+    );
+    const worker = new ControllableWorker();
+    const buildResult = Effect.runPromise(
+      spawnSpeculativeSessionForTest(worker, undefined, (message) =>
+        takeCommitWorkerOutput(globals, message, 64),
+      ),
+    );
+
+    await Promise.resolve();
+    worker.emitMessage({
+      type: "SpeculativeCandidateReadyOutput",
+      candidate,
+    });
+    await buildResult;
+    // The submitting worker posts the notice once its journal transaction,
+    // and the revert with it, has committed.
+    worker.emitMessage({ type: "MempoolLedgerRevertedNotice" });
+    expect(
+      (await Effect.runPromise(Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG)))
+        .entries,
+    ).toStrictEqual([{ version: 1, full: true, upserts: [], deletes: [] }]);
+    expect(hasActiveSpeculativeCommitSession()).toBe(true);
+
+    const invalidation = Effect.runPromise(
+      invalidateSpeculativeSessionForTest("T1"),
+    );
+    await Promise.resolve();
+    worker.emitMessage({
+      type: "SpeculativeCandidateInvalidatedOutput",
+      candidateId: candidate.candidateId,
+      reason: "T1",
+    });
+    await vi.waitFor(() => expect(worker.terminateCalls).toBe(1));
+    worker.finishTermination();
+    await invalidation;
     expect(hasActiveSpeculativeCommitSession()).toBe(false);
   });
 

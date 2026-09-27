@@ -9,13 +9,17 @@ import {
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { MempoolLedgerDB } from "../src/database/index.js";
-import { publishCommitMempoolLedgerMutation } from "../src/fibers/block-commitment.js";
+import {
+  publishCommitMempoolLedgerMutation,
+  takeCommitWorkerOutput,
+} from "../src/fibers/block-commitment.js";
 import { Globals, publishMempoolLedgerDelta } from "../src/services/globals.js";
 import {
   makeMempoolLedgerCacheService,
   type MempoolLedgerState,
   validationPhaseBLockWaitTimer,
 } from "../src/services/mempool-ledger-cache.js";
+import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 
 const row = (
   outref: Buffer,
@@ -519,7 +523,7 @@ describe("mempool ledger cache", () => {
     );
   });
 
-  it("publishes exact commit deletes and a full recovery marker only for ambiguous finalization", async () => {
+  it("publishes exact commit deletes and a full recovery marker only for ambiguous finalization or failure", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const globals = yield* Globals;
@@ -566,8 +570,18 @@ describe("mempool ledger cache", () => {
           },
           64,
         );
+        yield* publishCommitMempoolLedgerMutation(
+          globals,
+          { type: "FailureOutput", error: "submission failed" },
+          64,
+        );
+        yield* publishCommitMempoolLedgerMutation(
+          globals,
+          { type: "NothingToCommitOutput" },
+          64,
+        );
         const journal = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-        expect(journal.version).toBe(2);
+        expect(journal.version).toBe(3);
         expect(journal.entries).toStrictEqual([
           {
             version: 1,
@@ -576,7 +590,50 @@ describe("mempool ledger cache", () => {
             deletes: [deletedOutRefHex],
           },
           { version: 2, full: true, upserts: [], deletes: [] },
+          { version: 3, full: true, upserts: [], deletes: [] },
         ]);
+      }).pipe(Effect.provide(Globals.Default)),
+    );
+  });
+
+  it("reloads from the table on a commit worker's mempool_ledger revert notice", async () => {
+    let backing: readonly MempoolLedgerDB.EntryWithTimeStamp[] = [];
+    let loads = 0;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const service = yield* makeMempoolLedgerCacheService(
+          globals,
+          Effect.sync(() => {
+            loads += 1;
+            return backing;
+          }),
+        );
+        const readState = service.withPhaseBLock(
+          service.currentState.pipe(Effect.map(snapshot)),
+        );
+        expect((yield* readState).size).toBe(0);
+
+        // A commit-stage rejection restores an input in the table, with no
+        // delta for the cache.
+        const restored = outRefFromByte(0x76);
+        const restoredOutput = makeOutput(14n);
+        backing = [row(restored, restoredOutput)];
+        const output: WorkerOutput = { type: "NothingToCommitOutput" };
+        expect(takeCommitWorkerOutput(globals, output, 64)).toBe(output);
+        expect((yield* readState).size).toBe(0);
+        expect(loads).toBe(1);
+
+        expect(
+          takeCommitWorkerOutput(
+            globals,
+            { type: "MempoolLedgerRevertedNotice" },
+            64,
+          ),
+        ).toBeUndefined();
+        const state = yield* readState;
+        expect(state.get(restored.toString("hex"))).toEqual(restoredOutput);
+        expect(loads).toBe(2);
       }).pipe(Effect.provide(Globals.Default)),
     );
   });

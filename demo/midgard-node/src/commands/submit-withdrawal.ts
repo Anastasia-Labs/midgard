@@ -25,6 +25,7 @@ import * as SubmitWithdrawalTx from "../transactions/submit-withdrawal.js";
 import {
   defaultMidgardNodeEndpoint,
   deriveWalletInfo,
+  fetchNodeTxStatus,
   fetchNodeUtxosByOutRefs,
   lucidUtxoFromNodeUtxo,
   parseNodeEndpoint,
@@ -89,6 +90,19 @@ const selectedUtxoPaymentKeyHash = (address: string): string => {
     throw new Error("Selected L2 UTxO must be owned by a key credential.");
   }
   return paymentCredential.hash.toString("hex");
+};
+
+/**
+ * A withdrawal is classified against the committed ledger, so an output whose
+ * producing L2 transaction has not committed yet would be classified
+ * nonexistent. Deposit and genesis outputs have no producing L2 transaction
+ * and resolve as `not_found`.
+ */
+const requireCommittedProducer = (txHash: string, status: string): void => {
+  if (status === "committed" || status === "not_found") return;
+  throw new Error(
+    `Producing L2 tx ${txHash} is ${status}, not committed; wait for the producing tx to commit before withdrawing its output.`,
+  );
 };
 
 export const withdrawalEventIdFromBuildMetadata = (
@@ -183,6 +197,19 @@ export const submitWithdrawalCommandProgram = ({
           new Error("Node returned a UTxO that does not match --l2-out-ref."),
         );
       }
+      const producerStatus = yield* Effect.tryPromise({
+        try: () => fetchNodeTxStatus(nodeEndpoint, parsedOutRef.txHash),
+        catch: (cause) =>
+          new Error(
+            `Failed to fetch the producing L2 tx status: ${String(cause)}`,
+          ),
+      });
+      yield* Effect.try({
+        try: () =>
+          requireCommittedProducer(parsedOutRef.txHash, producerStatus),
+        catch: (cause) =>
+          cause instanceof Error ? cause : new Error(String(cause)),
+      });
       return {
         owner: selectedUtxoPaymentKeyHash(selected.address),
         assets: selected.assets,
@@ -276,5 +303,6 @@ export const submitWithdrawalCommandProgram = ({
 
 export const __submitWithdrawalTest = {
   lucidUtxoFromNodeUtxo,
+  requireCommittedProducer,
   selectedUtxoPaymentKeyHash,
 };

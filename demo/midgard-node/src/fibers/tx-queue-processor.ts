@@ -4,10 +4,9 @@ import { collectMidgardReferencedProgramEnvelopes } from "@al-ft/midgard-core/sc
 import {
   LedgerColumns,
   type PhaseAResult,
+  type PhaseAValidatedTx,
   processedTxFromValidatedTx,
   QueuedTx,
-  RejectCode,
-  RejectedTx,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
@@ -23,7 +22,7 @@ import {
   Schedule,
 } from "effect";
 
-import { TxAdmissionsDB } from "../database/index.js";
+import { TxAdmissionsDB, WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import {
   isHistoryProducerGateClosed,
@@ -192,11 +191,79 @@ const validationDrainLoopsActiveGauge = Metric.gauge(
   },
 );
 
+export const ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT =
+  "E_ADMISSION_PENDING_WITHDRAWAL_INPUT";
+
+/**
+ * Refuses Phase-A survivors that spend an outref named by a pending
+ * withdrawal. The commit stage rejects such a spend, and by then its effects
+ * would already be in mempool_ledger.
+ */
+export const refusePendingWithdrawalInputs = (
+  candidates: readonly PhaseAValidatedTx[],
+  pendingWithdrawalOutRefHexes: ReadonlySet<string>,
+): {
+  readonly accepted: readonly PhaseAValidatedTx[];
+  readonly rejected: readonly TxAdmissionsDB.AdmissionRejection[];
+} => {
+  const accepted: PhaseAValidatedTx[] = [];
+  const rejected: TxAdmissionsDB.AdmissionRejection[] = [];
+  for (const candidate of candidates) {
+    const outRef = candidate.graph.spentOutRefHexes.find((spent) =>
+      pendingWithdrawalOutRefHexes.has(spent),
+    );
+    if (outRef === undefined) accepted.push(candidate);
+    else
+      rejected.push({
+        txId: Buffer.from(candidate.ledgerTx.txId),
+        code: ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
+        detail: `Transaction spends L2 outref ${outRef}, which a pending withdrawal names`,
+      });
+  }
+  return { accepted, rejected };
+};
+
+/**
+ * Decides one admission batch against the ledger state: Phase-A survivors
+ * that spend an outref named by a pending withdrawal are refused, and the rest
+ * run Phase B. Returns Phase B's result and every rejection of the batch.
+ */
+export const decideAdmissionBatch = ({
+  phaseA,
+  pendingWithdrawalOutRefHexes,
+  ledgerState,
+  phaseBConfig,
+}: {
+  readonly phaseA: PhaseAResult;
+  readonly pendingWithdrawalOutRefHexes: ReadonlySet<string>;
+  readonly ledgerState: Parameters<typeof runPhaseBValidationWithPatch>[1];
+  readonly phaseBConfig: Parameters<typeof runPhaseBValidationWithPatch>[2];
+}) =>
+  Effect.gen(function* () {
+    const admissible = refusePendingWithdrawalInputs(
+      phaseA.accepted,
+      pendingWithdrawalOutRefHexes,
+    );
+    const phaseB = yield* runPhaseBValidationWithPatch(
+      admissible.accepted,
+      ledgerState,
+      phaseBConfig,
+    );
+    const allRejected: readonly TxAdmissionsDB.AdmissionRejection[] = [
+      ...phaseA.rejected,
+      ...admissible.rejected,
+      ...phaseB.rejected,
+    ];
+    return { phaseB, allRejected };
+  });
+
 /**
  * Summarizes a rejection batch into a compact per-code counter string for
  * logs.
  */
-const summarizeRejections = (rejected: readonly RejectedTx[]): string => {
+const summarizeRejections = (
+  rejected: readonly TxAdmissionsDB.AdmissionRejection[],
+): string => {
   if (rejected.length === 0) {
     return "none";
   }
@@ -205,7 +272,7 @@ const summarizeRejections = (rejected: readonly RejectedTx[]): string => {
     const count = acc.get(r.code) ?? 0;
     acc.set(r.code, count + 1);
     return acc;
-  }, new Map<RejectCode, number>());
+  }, new Map<string, number>());
 
   return Array.from(perCode.entries())
     .map(([code, count]) => `${code}:${count}`)
@@ -663,15 +730,18 @@ const txQueueProcessorAction = (
               Effect.succeed(Duration.millis(Date.now() - phaseAStart)),
             );
 
+            const pendingWithdrawalOutRefHexes =
+              yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
             const { phaseB, allRejected, referenceProgramEnvelopesByTxId } =
               yield* phaseBSequence.runDecision(
                 Effect.gen(function* () {
                   const cachedState = yield* ledgerCache.currentState;
                   const phaseBStart = Date.now();
-                  const phaseB = yield* runPhaseBValidationWithPatch(
-                    phaseA.accepted,
-                    cachedState,
-                    {
+                  const { phaseB, allRejected } = yield* decideAdmissionBatch({
+                    phaseA,
+                    pendingWithdrawalOutRefHexes,
+                    ledgerState: cachedState,
+                    phaseBConfig: {
                       nowCardanoSlotNo: BigInt(lucid.currentSlot()),
                       bucketConcurrency:
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
@@ -681,7 +751,7 @@ const txQueueProcessorAction = (
                         ? { evaluateScript: validationPool.evaluateScript }
                         : {}),
                     },
-                  );
+                  });
                   yield* validationPhaseBLatencyGauge(
                     Effect.succeed(Date.now() - phaseBStart),
                   );
@@ -689,7 +759,6 @@ const txQueueProcessorAction = (
                     Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
                   );
 
-                  const allRejected = [...phaseA.rejected, ...phaseB.rejected];
                   const referenceProgramEnvelopesByTxId =
                     collectAcceptedReferenceProgramEnvelopes(
                       phaseB.accepted,

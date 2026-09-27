@@ -45,6 +45,8 @@ import {
   COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT,
   COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT,
   COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
+  commitStageInputPostState,
+  type CommitStageLedgerRevert,
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
   persistCommitStageRejectedTransactions,
@@ -118,6 +120,8 @@ import {
   type ValidationTraceBuildResult,
 } from "./validation-trace.js";
 
+const hexOf = (value: Buffer): string => value.toString("hex");
+
 const logCommitMpfPhaseTiming = (
   phase: string,
   startedAtMs: number,
@@ -163,6 +167,9 @@ export const processMpfs = (
     rejectedMempoolTxsCount: number;
     rejectedMempoolTxHashes: readonly Buffer[];
     rejectionEntries: readonly TxRejectionsDB.EntryNoTimestamp[];
+    /** Reverts the rejected transactions' ledger effects, for a caller that
+     * persists the rejection itself (`deferDatabaseWrites`). */
+    ledgerRevert: CommitStageLedgerRevert;
     includedDepositEntriesCount: number;
     includedDepositEntries: readonly DepositsDB.Entry[];
     includedDepositEventIds: readonly Buffer[];
@@ -907,14 +914,49 @@ export const processMpfs = (
       );
     }
 
+    // Admission already applied the rejected transactions to mempool_ledger.
+    // Their inputs resolve against this block's post-state so the revert
+    // restores exactly the inputs the block leaves unspent.
+    const rejectedTxIdHexes = new Set(rejectedTxHashes.map(hexOf));
+    const acceptedTxIdHexes = new Set(mempoolTxHashes.map(hexOf));
+    const ledgerRevert: CommitStageLedgerRevert = {
+      rejected: decodedMempoolTxs
+        .filter((decoded) => rejectedTxIdHexes.has(hexOf(decoded.txHash)))
+        .map(({ txHash, spent, produced }) => ({
+          txId: txHash,
+          spent,
+          produced,
+        })),
+      resolveInputPostState: commitStageInputPostState({
+        baseLedgerOutputs: selectedLedgerOutputs,
+        insertedOutputs: rawInsertedLedgerOutputsByOutRef,
+        spentOutRefHexes: new Set([
+          ...withdrawnOutRefHexes,
+          ...forcedSpentOutRefHexes,
+          ...decodedMempoolTxs.flatMap((decoded) =>
+            acceptedTxIdHexes.has(hexOf(decoded.txHash))
+              ? decoded.spent.map(hexOf)
+              : [],
+          ),
+        ]),
+      }),
+    };
     if (rejectedTxHashes.length > 0 && config?.deferDatabaseWrites !== true) {
       yield* Effect.logWarning(
         `Dropping ${rejectedTxHashes.length} transaction(s) from MempoolDB`,
       );
-      yield* persistCommitStageRejectedTransactions({
-        rejectedTxHashes,
-        rejectionEntries,
-      });
+      const mempoolLedgerReverted =
+        yield* persistCommitStageRejectedTransactions({
+          rejectedTxHashes,
+          rejectionEntries,
+          ledgerRevert,
+        });
+      if (
+        mempoolLedgerReverted &&
+        config?.onMempoolLedgerReverted !== undefined
+      ) {
+        yield* config.onMempoolLedgerReverted;
+      }
     }
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();
@@ -1611,6 +1653,7 @@ export const processMpfs = (
       rejectedMempoolTxsCount: rejectedTxHashes.length,
       rejectedMempoolTxHashes: rejectedTxHashes,
       rejectionEntries,
+      ledgerRevert,
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,

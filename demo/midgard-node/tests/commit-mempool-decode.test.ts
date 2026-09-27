@@ -11,6 +11,7 @@ import * as Ledger from "../src/database/utils/ledger.js";
 import * as Tx from "../src/database/utils/tx.js";
 import {
   COMMIT_REJECT_CODE_DECODE_FAILED,
+  commitStageInputPostState,
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
 } from "../src/mpf/index.js";
@@ -97,4 +98,33 @@ describe("resolveTxDeltaForCommit", () => {
       }
     }),
   );
+});
+
+describe("commitStageInputPostState", () => {
+  it("resolves an input against the block post-state", () => {
+    const committed = Buffer.from("a1", "hex");
+    const inserted = Buffer.from("b2", "hex");
+    const reinserted = Buffer.from("c3", "hex");
+    const resolve = commitStageInputPostState({
+      baseLedgerOutputs: new Map([
+        ["01", committed],
+        ["02", committed],
+        ["03", committed],
+      ]),
+      insertedOutputs: new Map([
+        ["02", reinserted],
+        ["04", inserted],
+      ]),
+      spentOutRefHexes: new Set(["03", "04"]),
+    });
+
+    // An unspent committed output, an output the block inserts over its base,
+    // committed and inserted outputs the block spends, and an outref the
+    // block's ledger never holds.
+    expect(resolve("01")).toBe(committed);
+    expect(resolve("02")).toBe(reinserted);
+    expect(resolve("03")).toBeNull();
+    expect(resolve("04")).toBeNull();
+    expect(resolve("05")).toBeUndefined();
+  });
 });

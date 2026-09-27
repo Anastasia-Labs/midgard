@@ -134,6 +134,9 @@ import {
 } from "../src/fibers/tx-queue-processor.js";
 import { resolveIncludedWithdrawalEntriesForWindow } from "../src/mpf/event-window.js";
 import {
+  COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
+  COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
+  commitStageInputPostState,
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
   persistCommitStageRejectedTransactions,
@@ -1160,6 +1163,10 @@ describe("TxAdmissionsDB", () => {
             rejectionEntries: [
               rejectionFor(successful.txId, "commit-stage rejection"),
             ],
+            ledgerRevert: {
+              rejected: [],
+              resolveInputPostState: () => undefined,
+            },
           });
           expect(
             yield* MempoolDB.retrieveTxCborByHash(successful.txId).pipe(
@@ -1181,6 +1188,10 @@ describe("TxAdmissionsDB", () => {
               rejectionEntries: [
                 rejectionFor(conflicting.txId, "duplicate conflict"),
               ],
+              ledgerRevert: {
+                rejected: [],
+                resolveInputPostState: () => undefined,
+              },
             }),
           );
           expect(failed._tag).toBe("Left");
@@ -1195,6 +1206,217 @@ describe("TxAdmissionsDB", () => {
           expect((yield* readCekProgramMaterialStoreStats).owner_count).toBe(
             "1",
           );
+        }),
+      ),
+  );
+
+  it.effect(
+    "reverts a commit-stage rejection's admitted ledger effects and rejects its pending descendants",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const address = CML.Address.from_bech32(address1);
+          const entry = (byte: number): LedgerUtils.Entry => ({
+            [LedgerUtils.Columns.TX_ID]: Buffer.alloc(32, byte),
+            [LedgerUtils.Columns.OUTREF]: makeOutRefCbor(byte, 0),
+            [LedgerUtils.Columns.OUTPUT]: Buffer.from(
+              makeMidgardTxOutput(
+                address,
+                CML.Value.from_coin(1_000_000n + BigInt(byte)),
+              ).to_cbor_bytes(),
+            ),
+            [LedgerUtils.Columns.ADDRESS]: address1,
+          });
+          const outRef = (e: LedgerUtils.Entry) =>
+            e[LedgerUtils.Columns.OUTREF];
+          const pendingTx = (
+            byte: number,
+            spent: readonly LedgerUtils.Entry[],
+            produced: readonly LedgerUtils.Entry[],
+          ): ProcessedTx => ({
+            txId: Buffer.alloc(32, byte),
+            txCbor: databaseFixtureBytes(`commit-revert.tx-${byte}`, 64),
+            spent: spent.map(outRef),
+            produced: [...produced],
+          });
+          // A deposit's ledger outref is its event id; the id is the
+          // serialiseData form of that OutputReference.
+          const projectedDeposit = (byte: number) =>
+            makeDepositEntry({
+              [DepositsDB.Columns.ID]: Buffer.concat([
+                Buffer.from("d8799f5820", "hex"),
+                Buffer.alloc(32, byte),
+                Buffer.from("00ff", "hex"),
+              ]),
+              [DepositsDB.Columns.LEDGER_OUTPUT]:
+                entry(byte)[LedgerUtils.Columns.OUTPUT],
+              [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+            });
+          // The rejected transaction spends one deposit; its pending child
+          // spends the other beside the rejected output.
+          const deposit = projectedDeposit(0x13);
+          const childDeposit = projectedDeposit(0x15);
+          yield* DepositsDB.insertEntries([deposit, childDeposit]);
+          const depositSource = yield* DepositsDB.toMempoolLedgerEntry(deposit);
+          const childDepositSource =
+            yield* DepositsDB.toMempoolLedgerEntry(childDeposit);
+          expect(outRef(depositSource)).toEqual(makeOutRefCbor(0x13, 0));
+          expect(outRef(childDepositSource)).toEqual(makeOutRefCbor(0x15, 0));
+          const [spentByBlock, unspent, unrelatedInput] = [
+            0x11, 0x12, 0x14,
+          ].map(entry) as [
+            LedgerUtils.Entry,
+            LedgerUtils.Entry,
+            LedgerUtils.Entry,
+          ];
+          const [rejectedOut0, rejectedOut1, childOut, unrelatedOut] = [
+            0x21, 0x22, 0x31, 0x41,
+          ].map(entry) as [
+            LedgerUtils.Entry,
+            LedgerUtils.Entry,
+            LedgerUtils.Entry,
+            LedgerUtils.Entry,
+          ];
+          const committed = [
+            spentByBlock,
+            unspent,
+            depositSource,
+            unrelatedInput,
+            childDepositSource,
+          ];
+          yield* MempoolLedgerDB.insert(committed);
+
+          const rejected = pendingTx(
+            0x02,
+            [spentByBlock, unspent, depositSource],
+            [rejectedOut0, rejectedOut1],
+          );
+          const child = pendingTx(
+            0x03,
+            [rejectedOut0, childDepositSource],
+            [childOut],
+          );
+          const unrelated = pendingTx(0x04, [unrelatedInput], [unrelatedOut]);
+          yield* MempoolDB.insertMultipleCore([rejected, unrelated]);
+          yield* ProcessedMempoolDB.insertTx({
+            [TxUtils.Columns.TX_ID]: child.txId,
+            [TxUtils.Columns.TX]: child.txCbor,
+          });
+          yield* MempoolDB.applyLedgerEffectsCore([child]);
+          yield* MempoolTxDeltasDB.upsertMany(
+            [child, unrelated].map(({ txId, spent, produced }) => ({
+              txId,
+              spent,
+              produced,
+            })),
+          );
+          const depositStatus = (id: Buffer) =>
+            DepositsDB.retrieveByEventId(id).pipe(
+              Effect.map((row) =>
+                Option.map(row, (value) => value[DepositsDB.Columns.STATUS]),
+              ),
+            );
+          // Admission consumed both deposits.
+          expect(yield* depositStatus(deposit[DepositsDB.Columns.ID])).toEqual(
+            Option.some(DepositsDB.Status.Consumed),
+          );
+          expect(
+            yield* depositStatus(childDeposit[DepositsDB.Columns.ID]),
+          ).toEqual(Option.some(DepositsDB.Status.Consumed));
+
+          const reverted = yield* persistCommitStageRejectedTransactions({
+            rejectedTxHashes: [rejected.txId],
+            rejectionEntries: [
+              {
+                [TxRejectionsDB.Columns.TX_ID]: rejected.txId,
+                [TxRejectionsDB.Columns.REJECT_CODE]:
+                  COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
+                [TxRejectionsDB.Columns.REJECT_DETAIL]: "withdrawn input",
+              },
+            ],
+            ledgerRevert: {
+              rejected: [rejected],
+              // The block consumes `spentByBlock` and leaves every other
+              // committed output unspent.
+              resolveInputPostState: commitStageInputPostState({
+                baseLedgerOutputs: new Map(
+                  committed.map((e) => [
+                    outRef(e).toString("hex"),
+                    e[LedgerUtils.Columns.OUTPUT],
+                  ]),
+                ),
+                insertedOutputs: new Map(),
+                spentOutRefHexes: new Set([
+                  outRef(spentByBlock).toString("hex"),
+                ]),
+              }),
+            },
+          });
+
+          expect(reverted).toBe(true);
+          const ledger = (yield* MempoolLedgerDB.retrieve)
+            .map((row) => ({
+              [MempoolLedgerDB.Columns.TX_ID]:
+                row[MempoolLedgerDB.Columns.TX_ID],
+              [MempoolLedgerDB.Columns.OUTREF]:
+                row[MempoolLedgerDB.Columns.OUTREF],
+              [MempoolLedgerDB.Columns.OUTPUT]:
+                row[MempoolLedgerDB.Columns.OUTPUT],
+              [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]:
+                row[MempoolLedgerDB.Columns.SOURCE_EVENT_ID],
+            }))
+            .sort((a, b) =>
+              Buffer.compare(
+                a[MempoolLedgerDB.Columns.OUTREF],
+                b[MempoolLedgerDB.Columns.OUTREF],
+              ),
+            );
+          const expectedRow = (
+            e: LedgerUtils.Entry,
+            sourceEventId: Buffer | null,
+          ) => ({
+            [MempoolLedgerDB.Columns.TX_ID]: e[LedgerUtils.Columns.TX_ID],
+            [MempoolLedgerDB.Columns.OUTREF]: outRef(e),
+            [MempoolLedgerDB.Columns.OUTPUT]: e[LedgerUtils.Columns.OUTPUT],
+            [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: sourceEventId,
+          });
+          expect(ledger).toEqual([
+            expectedRow(unspent, null),
+            expectedRow(depositSource, deposit[DepositsDB.Columns.ID]),
+            expectedRow(
+              childDepositSource,
+              childDeposit[DepositsDB.Columns.ID],
+            ),
+            expectedRow(unrelatedOut, null),
+          ]);
+          // Both restored deposit outputs are spendable again.
+          expect(yield* depositStatus(deposit[DepositsDB.Columns.ID])).toEqual(
+            Option.some(DepositsDB.Status.Projected),
+          );
+          expect(
+            yield* depositStatus(childDeposit[DepositsDB.Columns.ID]),
+          ).toEqual(Option.some(DepositsDB.Status.Projected));
+          expect(
+            (yield* retrieveAllMempool).map((row) =>
+              row[TxUtils.Columns.TX_ID].toString("hex"),
+            ),
+          ).toEqual([unrelated.txId.toString("hex")]);
+          expect(yield* ProcessedMempoolDB.retrieve).toEqual([]);
+          expect(
+            (yield* TxRejectionsDB.retrieveByTxId(child.txId)).map((row) => [
+              row[TxRejectionsDB.Columns.REJECT_CODE],
+              row[TxRejectionsDB.Columns.REJECT_DETAIL],
+            ]),
+          ).toEqual([
+            [
+              COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
+              `Transaction spends L2 outref ${outRef(rejectedOut0).toString(
+                "hex",
+              )}, an output of transaction ${rejected.txId.toString(
+                "hex",
+              )}, which was rejected at commit`,
+            ],
+          ]);
         }),
       ),
   );
@@ -5477,6 +5699,10 @@ describe("PendingBlockFinalizationsDB", () => {
                             rejectedMempoolTxs: [],
                             mempoolTxSourceTable: "none",
                             rejectionEntries: [],
+                            ledgerRevert: {
+                              rejected: [],
+                              resolveInputPostState: () => undefined,
+                            },
                             expectedEventRoots: {
                               deposits: candidateRoot.value,
                               forcedTransactions: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -5567,6 +5793,10 @@ describe("PendingBlockFinalizationsDB", () => {
                       rejectedMempoolTxs: [],
                       mempoolTxSourceTable: MempoolDB.tableName,
                       rejectionEntries: [],
+                      ledgerRevert: {
+                        rejected: [],
+                        resolveInputPostState: () => undefined,
+                      },
                       expectedEventRoots: {
                         deposits: SDK.EMPTY_MERKLE_TREE_ROOT,
                         forcedTransactions: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -5618,6 +5848,10 @@ describe("PendingBlockFinalizationsDB", () => {
                             "duplicate selected/rejected id test",
                         },
                       ],
+                      ledgerRevert: {
+                        rejected: [],
+                        resolveInputPostState: () => undefined,
+                      },
                       expectedEventRoots: {
                         deposits: SDK.EMPTY_MERKLE_TREE_ROOT,
                         forcedTransactions: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -5701,6 +5935,10 @@ describe("PendingBlockFinalizationsDB", () => {
                                   "injected rejected tx for rollback test",
                               },
                             ],
+                            ledgerRevert: {
+                              rejected: [],
+                              resolveInputPostState: () => undefined,
+                            },
                             expectedEventRoots: {
                               deposits: depositRoot.value,
                               forcedTransactions: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -5743,6 +5981,126 @@ describe("PendingBlockFinalizationsDB", () => {
           expect(
             yield* TxRejectionsDB.retrieveByTxId(rejectedTxId),
           ).toHaveLength(0);
+        }),
+      ),
+  );
+
+  it.effect(
+    "reverts a speculative candidate's rejected ledger effects with its sources",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const address = CML.Address.from_bech32(address1);
+          const entry = (byte: number): LedgerUtils.Entry => ({
+            [LedgerUtils.Columns.TX_ID]: Buffer.alloc(32, byte),
+            [LedgerUtils.Columns.OUTREF]: makeOutRefCbor(byte, 0),
+            [LedgerUtils.Columns.OUTPUT]: Buffer.from(
+              makeMidgardTxOutput(
+                address,
+                CML.Value.from_coin(1_000_000n + BigInt(byte)),
+              ).to_cbor_bytes(),
+            ),
+            [LedgerUtils.Columns.ADDRESS]: address1,
+          });
+          const committedInput = entry(0x51);
+          const rejectedOutput = entry(0x52);
+          const rejected: ProcessedTx = {
+            txId: databaseTxHash("speculative-ledger-revert-tx"),
+            txCbor: databaseFixtureBytes("speculative-ledger-revert-cbor", 96),
+            spent: [committedInput[LedgerUtils.Columns.OUTREF]],
+            produced: [rejectedOutput],
+          };
+          yield* MempoolLedgerDB.insert([committedInput]);
+          yield* ProcessedMempoolDB.insertTx({
+            [TxUtils.Columns.TX_ID]: rejected.txId,
+            [TxUtils.Columns.TX]: rejected.txCbor,
+          });
+          yield* MempoolDB.applyLedgerEffectsCore([rejected]);
+          const rejectedTx = (yield* ProcessedMempoolDB.retrieve).find((row) =>
+            row[TxUtils.Columns.TX_ID].equals(rejected.txId),
+          );
+          expect(rejectedTx).toBeDefined();
+          if (rejectedTx === undefined) return;
+
+          let reverted: boolean | undefined;
+          const prepared = yield* StateQueueMutationLeasesDB.tryWithLease(
+            "speculative-ledger-revert-test",
+            (stateQueueLeaseToken) =>
+              MpfEngineStateDB.tryWithLedgerStoreLease(
+                "speculative-ledger-revert-test",
+                (activeMpfLeaseOwner) =>
+                  PendingBlockFinalizationsDB.preparePendingSubmission(
+                    pendingSubmissionFixture(
+                      databaseFixtureBytes(
+                        "speculative-ledger-revert-header",
+                        28,
+                      ),
+                    ),
+                    {
+                      beforeJournalInsert:
+                        revalidateAndPersistSpeculativeCandidateSources({
+                          includedDepositEntries: [],
+                          includedForcedTransactionEntries: [],
+                          includedWithdrawalEntries: [],
+                          selectedMempoolTxs: [],
+                          rejectedMempoolTxs: [rejectedTx],
+                          mempoolTxSourceTable: ProcessedMempoolDB.tableName,
+                          rejectionEntries: [
+                            {
+                              [TxRejectionsDB.Columns.TX_ID]: rejected.txId,
+                              [TxRejectionsDB.Columns.REJECT_CODE]:
+                                COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
+                              [TxRejectionsDB.Columns.REJECT_DETAIL]:
+                                "withdrawn input",
+                            },
+                          ],
+                          ledgerRevert: {
+                            rejected: [rejected],
+                            resolveInputPostState: commitStageInputPostState({
+                              baseLedgerOutputs: new Map([
+                                [
+                                  committedInput[
+                                    LedgerUtils.Columns.OUTREF
+                                  ].toString("hex"),
+                                  committedInput[LedgerUtils.Columns.OUTPUT],
+                                ],
+                              ]),
+                              insertedOutputs: new Map(),
+                              spentOutRefHexes: new Set(),
+                            }),
+                          },
+                          expectedEventRoots: {
+                            deposits: SDK.EMPTY_MERKLE_TREE_ROOT,
+                            forcedTransactions: SDK.EMPTY_MERKLE_TREE_ROOT,
+                            withdrawals: SDK.EMPTY_MERKLE_TREE_ROOT,
+                          },
+                          ...speculativeCandidateEventSnapshot,
+                          stateQueueLeaseToken,
+                          activeMpfLeaseOwner,
+                        }).pipe(
+                          Effect.map((result) => {
+                            reverted = result;
+                          }),
+                        ),
+                    },
+                  ),
+              ),
+          );
+
+          expect(prepared._tag).toBe("Ran");
+          expect(reverted).toBe(true);
+          expect(
+            (yield* MempoolLedgerDB.retrieve).map((row) => [
+              row[MempoolLedgerDB.Columns.OUTREF],
+              row[MempoolLedgerDB.Columns.OUTPUT],
+            ]),
+          ).toEqual([
+            [
+              committedInput[LedgerUtils.Columns.OUTREF],
+              committedInput[LedgerUtils.Columns.OUTPUT],
+            ],
+          ]);
+          expect(yield* ProcessedMempoolDB.retrieve).toEqual([]);
         }),
       ),
   );
@@ -5854,6 +6212,10 @@ describe("PendingBlockFinalizationsDB", () => {
                         rejectedMempoolTxs: [],
                         mempoolTxSourceTable: "none",
                         rejectionEntries: [],
+                        ledgerRevert: {
+                          rejected: [],
+                          resolveInputPostState: () => undefined,
+                        },
                         expectedEventRoots: {
                           deposits: SDK.EMPTY_MERKLE_TREE_ROOT,
                           forcedTransactions: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -7712,6 +8074,87 @@ describe("authenticated history pointer persistence", () => {
         ),
     );
   }
+  it.effect(
+    "names only the L2 outrefs of withdrawals that are pending and not invalid",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          yield* WithdrawalsDB.clear;
+          const base = makeHistoryWithdrawalEntry();
+          const withdrawal = (
+            label: string,
+            status: WithdrawalsDB.Status,
+            validity: WithdrawalsDB.Validity | null,
+            l2OutRef: Buffer = databaseOutputReferenceId(
+              `pending-withdrawal-l2-${label}`,
+              1n,
+            ),
+          ): WithdrawalsDB.Entry => ({
+            ...base,
+            [WithdrawalsDB.Columns.ID]: databaseOutputReferenceId(
+              `pending-withdrawal-${label}`,
+            ),
+            [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: databaseTxHash(
+              `pending-withdrawal-l1-${label}`,
+            ),
+            [WithdrawalsDB.Columns.L2_OUTREF]: l2OutRef,
+            [WithdrawalsDB.Columns.STATUS]: status,
+            ...(validity === null
+              ? {}
+              : {
+                  [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]:
+                    databaseFixtureBytes(`pending-withdrawal-${label}`, 64),
+                  [WithdrawalsDB.Columns.VALIDITY]: validity,
+                  [WithdrawalsDB.Columns.VALIDITY_DETAIL]: { checked: true },
+                  [WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]:
+                    databaseFixtureBytes(`pending-withdrawal-header`, 28),
+                }),
+          });
+          const unclassified = withdrawal(
+            "unclassified",
+            WithdrawalsDB.Status.Awaiting,
+            null,
+          );
+          const projectedValid = withdrawal(
+            "projected-valid",
+            WithdrawalsDB.Status.Projected,
+            WithdrawalsDB.Validity.WithdrawalIsValid,
+          );
+          yield* WithdrawalsDB.insertEntries([
+            unclassified,
+            projectedValid,
+            withdrawal(
+              "projected-invalid",
+              WithdrawalsDB.Status.Projected,
+              WithdrawalsDB.Validity.SpentWithdrawalUtxo,
+            ),
+            withdrawal(
+              "finalized-valid",
+              WithdrawalsDB.Status.Finalized,
+              WithdrawalsDB.Validity.WithdrawalIsValid,
+            ),
+            // An l2_outref that decodes to no output reference is skipped.
+            withdrawal(
+              "undecodable",
+              WithdrawalsDB.Status.Awaiting,
+              null,
+              Buffer.from("00", "hex"),
+            ),
+          ]);
+          expect(yield* WithdrawalsDB.retrieveAllEntries()).toHaveLength(5);
+
+          const pending = yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
+          expect([...pending].sort()).toEqual(
+            (yield* Effect.forEach(
+              [unclassified, projectedValid],
+              WithdrawalsDB.toLedgerOutRef,
+            ))
+              .map((outRef) => outRef.toString("hex"))
+              .sort(),
+          );
+        }),
+      ),
+  );
   it.effect(
     "rolls back every deposit location when a batch changes immutable content",
     () =>

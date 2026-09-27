@@ -52,6 +52,7 @@ import {
   type StateQueueSnapshot,
 } from "../services/state-queue-topology.js";
 import {
+  type MempoolLedgerRevertedNotice,
   type SerializedStateQueueUTxO,
   WorkerInput,
   WorkerOutput,
@@ -332,6 +333,36 @@ export const promoteOrRecoverNativeMpf = ({
     ),
   );
 
+export const publishFullMempoolLedgerReload = (
+  globals: Globals,
+  deltaLogMax: number,
+): Effect.Effect<void> =>
+  publishMempoolLedgerDelta(
+    globals,
+    { full: true, upserts: [], deletes: [] },
+    deltaLogMax,
+  ).pipe(Effect.asVoid);
+
+/** A message the commit worker posts: its output, or a notice ahead of it. */
+export type CommitWorkerMessage = WorkerOutput | MempoolLedgerRevertedNotice;
+
+/**
+ * Applies a notice the commit worker posts while it still runs and returns
+ * undefined; any other message is the worker's output and is returned. A
+ * commit-stage rejection rewrites mempool_ledger rows (reverted outputs,
+ * restored inputs, rejected descendants) without a delta, so its notice
+ * reloads the cache from the durable table.
+ */
+export const takeCommitWorkerOutput = (
+  globals: Globals,
+  message: CommitWorkerMessage,
+  deltaLogMax: number,
+): WorkerOutput | undefined => {
+  if (message.type !== "MempoolLedgerRevertedNotice") return message;
+  Effect.runSync(publishFullMempoolLedgerReload(globals, deltaLogMax));
+  return undefined;
+};
+
 export const publishCommitMempoolLedgerMutation = (
   globals: Globals,
   workerOutput: WorkerOutput,
@@ -353,12 +384,11 @@ export const publishCommitMempoolLedgerMutation = (
             },
             deltaLogMax,
           ).pipe(Effect.asVoid);
+    // A failed attempt may have committed a commit-stage rejection's
+    // mempool_ledger revert without its notice reaching the parent.
     case "SubmittedAwaitingLocalFinalizationOutput":
-      return publishMempoolLedgerDelta(
-        globals,
-        { full: true, upserts: [], deletes: [] },
-        deltaLogMax,
-      ).pipe(Effect.asVoid);
+    case "FailureOutput":
+      return publishFullMempoolLedgerReload(globals, deltaLogMax);
     default:
       return Effect.void;
   }
@@ -1039,8 +1069,13 @@ export const buildAndSubmitCommitmentBlockAction = (
             ),
         );
       };
-      const onMessage = (output: WorkerOutput) => {
-        settle(Effect.succeed(output));
+      const onMessage = (message: CommitWorkerMessage) => {
+        const output = takeCommitWorkerOutput(
+          globals,
+          message,
+          nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+        );
+        if (output !== undefined) settle(Effect.succeed(output));
       };
       const onError = (e: Error) => {
         settle(
@@ -1096,6 +1131,14 @@ export const buildAndSubmitCommitmentBlockAction = (
               ),
             ),
         }),
+      ),
+      // A failed attempt may already have committed a commit-stage rejection
+      // whose mempool_ledger revert the cache has not seen.
+      Effect.tapError(() =>
+        publishFullMempoolLedgerReload(
+          globals,
+          nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+        ),
       ),
       Effect.catchAll((workerError) =>
         nodeConfig.MPF_ENGINE !== "architecture_g" ||

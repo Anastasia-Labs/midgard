@@ -15,12 +15,16 @@ export {
   COMMIT_REJECT_CODE_DECODE_FAILED,
   COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT,
   COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT,
+  COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
+  commitStageInputPostState,
+  type CommitStageLedgerRevert,
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
   persistCommitStageRejectedTransactions,
   type ResolvedTxDeltaForCommit,
   resolveTxDeltaForCommit,
+  revertCommitStageRejectedLedgerEffects,
 } from "./commit-rejection.js";
 export {
   configureCommitMpfRuntime,

@@ -47,6 +47,8 @@ export type ProcessMpfsConfig = {
    * before submission.
    */
   readonly deferDatabaseWrites?: boolean;
+  /** Runs once a commit-stage rejection's mempool_ledger revert commits. */
+  readonly onMempoolLedgerReverted?: Effect.Effect<void>;
   readonly nativeMpf?: NativeMpfBuildContext;
   /**
    * V1 blocks must retain a descriptor for every forced and included

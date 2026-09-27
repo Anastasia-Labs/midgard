@@ -38,8 +38,11 @@ import {
 } from "../workers/utils/commit-block-header.js";
 import { WorkerError } from "../workers/utils/common.js";
 import {
+  type CommitWorkerMessage,
   promoteOrRecoverNativeMpf,
   publishCommitMempoolLedgerMutation,
+  publishFullMempoolLedgerReload,
+  takeCommitWorkerOutput,
 } from "./block-commitment.js";
 import {
   publishFinalizedDaPayloadBestEffort,
@@ -119,7 +122,7 @@ type ActiveSpeculativeWorkerSession = {
 };
 
 export type SpeculativeCommitWorkerPort = {
-  on(event: "message", listener: (output: WorkerOutput) => void): void;
+  on(event: "message", listener: (message: CommitWorkerMessage) => void): void;
   on(event: "error", listener: (error: Error) => void): void;
   on(event: "exit", listener: (code: number) => void): void;
   postMessage(instruction: SpeculativeCommitWorkerInstruction): void;
@@ -333,6 +336,7 @@ export const hasActiveSpeculativeCommitSession = (): boolean =>
 
 const spawnSpeculativeSessionWithWorker = (
   createWorker: () => SpeculativeCommitWorkerPort,
+  takeOutput: (message: CommitWorkerMessage) => WorkerOutput | undefined,
   afterTermination: () => Promise<void> = () => Promise.resolve(),
 ): Effect.Effect<SpeculativeCandidateSummary, WorkerError> =>
   Effect.async((resume) => {
@@ -400,8 +404,9 @@ const spawnSpeculativeSessionWithWorker = (
           ),
       );
     };
-    worker.on("message", (output: WorkerOutput) => {
-      if (finalSettled) return;
+    worker.on("message", (message: CommitWorkerMessage) => {
+      const output = takeOutput(message);
+      if (output === undefined || finalSettled) return;
       if (output.type === "SpeculativeCandidateReadyOutput") {
         if (ready) {
           fail(new Error("speculative worker emitted candidate-ready twice"));
@@ -470,6 +475,8 @@ const spawnSpeculativeSessionWithWorker = (
   });
 
 const spawnSpeculativeSession = (
+  globals: Globals,
+  config: NodeConfigDep,
   input: WorkerInput,
 ): Effect.Effect<SpeculativeCandidateSummary, WorkerError, Database> =>
   Effect.gen(function* () {
@@ -497,6 +504,12 @@ const spawnSpeculativeSession = (
               input.nativeMpf === undefined ? [] : [input.nativeMpf.port],
           },
         ),
+      (message) =>
+        takeCommitWorkerOutput(
+          globals,
+          message,
+          config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+        ),
       releaseTerminatedWorkerLedgerLease,
     );
   });
@@ -504,8 +517,11 @@ const spawnSpeculativeSession = (
 export const spawnSpeculativeSessionForTest = (
   worker: SpeculativeCommitWorkerPort,
   afterTermination?: () => Promise<void>,
+  takeOutput: (message: CommitWorkerMessage) => WorkerOutput | undefined = (
+    message,
+  ) => (message.type === "MempoolLedgerRevertedNotice" ? undefined : message),
 ): Effect.Effect<SpeculativeCandidateSummary, WorkerError> =>
-  spawnSpeculativeSessionWithWorker(() => worker, afterTermination);
+  spawnSpeculativeSessionWithWorker(() => worker, takeOutput, afterTermination);
 
 const finishSpeculativeSession = (
   instruction: SpeculativeCommitWorkerInstruction,
@@ -776,7 +792,7 @@ export const runSpeculativeCommitBuilderOnce = (
               "speculative-commit-builder",
               config.MPF_NATIVE_OWNER_BINARY_SHA256,
             );
-      const candidate = yield* spawnSpeculativeSession({
+      const candidate = yield* spawnSpeculativeSession(globals, config, {
         nativeMpf: nativeMpfInput,
         data: {
           availableConfirmedBlock: "",
@@ -888,6 +904,11 @@ const applySpeculativeSubmissionOutput = (
       return;
     }
     if (output.type !== "SubmittedAwaitingConfirmationOutput") {
+      yield* publishCommitMempoolLedgerMutation(
+        globals,
+        output,
+        config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+      );
       yield* invalidateSpeculativeCommitCandidate(
         globals,
         config,
@@ -1136,7 +1157,16 @@ export const submitSpeculativeCandidateOnConfirmation = (
                   );
                   return;
                 }
-                const result = yield* finishSpeculativeSession(instruction);
+                const result = yield* finishSpeculativeSession(
+                  instruction,
+                ).pipe(
+                  Effect.tapError(() =>
+                    publishFullMempoolLedgerReload(
+                      globals,
+                      config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+                    ),
+                  ),
+                );
                 yield* applySpeculativeSubmissionOutput(
                   globals,
                   config,

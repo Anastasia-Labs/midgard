@@ -1,10 +1,13 @@
+import type { PhaseAValidatedTx } from "@al-ft/midgard-validation";
 import { Cause, Effect, Logger, LogLevel, Ref, Schedule } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { DatabaseError } from "../src/database/utils/common.js";
 import {
+  ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
   classifyPlutusEvaluationFailure,
+  refusePendingWithdrawalInputs,
   repeatScheduledWithCauseLogging,
 } from "../src/fibers/tx-queue-processor.js";
 import { HistoryRecoverySuperseded } from "../src/services/event-history-recovery.js";
@@ -165,5 +168,35 @@ describe("tx queue processor plutus evaluation failure classification", () => {
         ),
     ]);
     expect(lines.map(({ level }) => level)).toEqual(["WARN"]);
+  });
+});
+
+describe("tx queue processor pending-withdrawal admission refusal", () => {
+  /** The fields the refusal reads; the rest of Phase A's output is unused. */
+  const candidate = (txIdByte: string, spentOutRefHexes: readonly string[]) =>
+    ({
+      ledgerTx: { txId: Buffer.from(txIdByte.repeat(32), "hex") },
+      graph: { spentOutRefHexes, referenceOutRefHexes: [], produced: [] },
+    }) as unknown as PhaseAValidatedTx;
+
+  it("refuses only candidates that spend an outref a pending withdrawal names", () => {
+    const untouched = candidate("01", ["a1", "a2"]);
+    const spendsWithdrawn = candidate("02", ["a3", "b1"]);
+    expect(
+      refusePendingWithdrawalInputs(
+        [untouched, spendsWithdrawn],
+        new Set(["b1"]),
+      ),
+    ).toEqual({
+      accepted: [untouched],
+      rejected: [
+        {
+          txId: Buffer.from("02".repeat(32), "hex"),
+          code: ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
+          detail:
+            "Transaction spends L2 outref b1, which a pending withdrawal names",
+        },
+      ],
+    });
   });
 });

@@ -412,6 +412,23 @@ export const delEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to delete deposit UTxOs"),
   );
 
+/** Restores deposits whose ledger output is spendable again after the
+ * transaction that consumed it was reverted. */
+export const unconsumeByEventIds = (
+  ids: readonly Buffer[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (ids.length === 0) return;
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE ${sql(tableName)}
+      SET ${sql(Columns.STATUS)} = ${Status.Projected}
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
+        AND ${sql(Columns.STATUS)} = ${Status.Consumed}`;
+  }).pipe(
+    Effect.withLogSpan(`unconsumeByEventIds ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to unconsume deposits"),
+  );
+
 export const pruneOlderThan = (
   cutoff: Date,
 ): Effect.Effect<number, DatabaseError, Database> =>

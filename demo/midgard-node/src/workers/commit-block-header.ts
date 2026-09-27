@@ -46,6 +46,7 @@ import {
 } from "../fibers/speculative-commit-state.js";
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
 import {
+  type CommitStageLedgerRevert,
   computeLedgerMpfRootFromLedgerEntries,
   configureCommitMpfRuntime,
   hydrateLedgerMpfFromLedgerEntries,
@@ -57,6 +58,7 @@ import {
   type ParkedEventFlatOverlay,
   type ParkedMpfOverlay,
   processMpfs,
+  revertCommitStageRejectedLedgerEffects,
   utxoToLedgerInsertMaterial,
   withMpfBlockOverlays,
   withMpfRootTransactions,
@@ -109,11 +111,13 @@ import { makeEventCommitments } from "./commit-block-header/transition-commitmen
 import { reconcileOverdueAwaitingEventsAgainstRetainedForeignTips } from "./t2-foreign-event-reconciliation.js";
 import {
   deserializeStateQueueUTxO,
+  type MempoolLedgerRevertedNotice,
   type RegisteredDueWorkOutput,
   type SerializedStateQueueUTxO,
   type SpeculativeCandidateInvalidatedOutput,
   type SpeculativeCandidateReadyOutput,
   type SpeculativeCommitWorkerInstruction,
+  type SuccessfulLocalFinalizationRecoveryOutput,
   WorkerInput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
@@ -264,6 +268,7 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
   rejectedMempoolTxs,
   mempoolTxSourceTable,
   rejectionEntries,
+  ledgerRevert,
   expectedEventRoots,
   candidateEndTime,
   excludedUserEventIds,
@@ -278,6 +283,7 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
   readonly rejectedMempoolTxs: readonly EntryWithTimeStamp[];
   readonly mempoolTxSourceTable: string;
   readonly rejectionEntries: readonly TxRejectionsDB.EntryNoTimestamp[];
+  readonly ledgerRevert: CommitStageLedgerRevert;
   readonly expectedEventRoots: {
     readonly deposits: string;
     readonly forcedTransactions: string;
@@ -292,7 +298,7 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
   readonly stateQueueLeaseToken: string;
   readonly activeMpfLeaseOwner: string;
   readonly consensusProfile?: ContractDeploymentIdentityValue["consensusProfile"];
-}): Effect.Effect<void, DatabaseError, Database> =>
+}): Effect.Effect<boolean, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const failSnapshot = (table: string, cause: string) =>
@@ -801,8 +807,11 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
       }
       yield* TxRejectionsDB.insertMany(rejectionEntries);
     }
+    const mempoolLedgerReverted =
+      yield* revertCommitStageRejectedLedgerEffects(ledgerRevert);
     yield* StateQueueMutationLeasesDB.revalidate(stateQueueLeaseToken);
     yield* MpfEngineStateDB.revalidateLedgerStoreLease(activeMpfLeaseOwner);
+    return mempoolLedgerReverted;
   }).pipe(
     sqlErrorToDatabaseError(
       PendingBlockFinalizationsDB.tableName,
@@ -1488,9 +1497,16 @@ type AwaitSpeculativeCommitInstruction = (
   candidate: SpeculativeCandidateReadyOutput["candidate"],
 ) => Effect.Effect<SpeculativeCommitWorkerInstruction, unknown, Database>;
 
-type NotifySpeculativeCommitProgress = (
-  output: WorkerOutput,
-) => Effect.Effect<void, unknown>;
+/** Posts a message to the parent ahead of the worker's output. */
+type NotifyCommitWorkerParent = (
+  message:
+    | SuccessfulLocalFinalizationRecoveryOutput
+    | MempoolLedgerRevertedNotice,
+) => Effect.Effect<void>;
+
+const MEMPOOL_LEDGER_REVERTED_NOTICE: MempoolLedgerRevertedNotice = {
+  type: "MempoolLedgerRevertedNotice",
+};
 
 type SpeculativeMpfArtifacts =
   | {
@@ -1651,7 +1667,7 @@ const databaseOperationsProgram = (
   ledgerMpf: MidgardMpf | undefined,
   transactionsMpf: MidgardMpf,
   awaitSpeculativeInstruction?: AwaitSpeculativeCommitInstruction,
-  notifySpeculativeProgress?: NotifySpeculativeCommitProgress,
+  notifyParent?: NotifyCommitWorkerParent,
   activeMpfLeaseOwner?: string,
   localFinalizationTransactionsMpf?: MidgardMpf,
   postWaitMpfContext?: () => {
@@ -2277,6 +2293,7 @@ const databaseOperationsProgram = (
             ? undefined
             : new Set(speculativeBuild.excludedWithdrawalEventIds),
         deferDatabaseWrites: speculativeBuild !== undefined,
+        onMempoolLedgerReverted: notifyParent?.(MEMPOOL_LEDGER_REVERTED_NOTICE),
         nativeMpf: nativeMpfContext,
       },
     );
@@ -2409,6 +2426,8 @@ const databaseOperationsProgram = (
           blockEndTimeMs: number,
         ) => Effect.Effect<void, DatabaseError, Database>)
       | undefined;
+    let afterPendingJournalPrepared: Effect.Effect<void> | undefined;
+    let speculativeLedgerReverted = false;
 
     if (
       submitAvailableConfirmedBlock === "" &&
@@ -2555,8 +2574,8 @@ const databaseOperationsProgram = (
         ) {
           return recoveryOutput;
         }
-        if (notifySpeculativeProgress !== undefined) {
-          yield* notifySpeculativeProgress(recoveryOutput);
+        if (notifyParent !== undefined) {
+          yield* notifyParent(recoveryOutput);
         }
       }
       const excludedUserEventIds = {
@@ -2632,6 +2651,7 @@ const databaseOperationsProgram = (
           rejectedMempoolTxs,
           mempoolTxSourceTable,
           rejectionEntries,
+          ledgerRevert: processed.ledgerRevert,
           expectedEventRoots: {
             deposits: candidate.roots.deposits,
             forcedTransactions: candidate.roots.forcedTransactions,
@@ -2642,7 +2662,18 @@ const databaseOperationsProgram = (
           stateQueueLeaseToken: instruction.stateQueueLeaseToken,
           activeMpfLeaseOwner,
           consensusProfile: deploymentIdentity.consensusProfile,
-        });
+        }).pipe(
+          Effect.map((reverted) => {
+            speculativeLedgerReverted = reverted;
+          }),
+        );
+      // The revert commits with the journal, so the parent hears of it only
+      // once the journal transaction has committed.
+      afterPendingJournalPrepared = Effect.suspend(() =>
+        speculativeLedgerReverted && notifyParent !== undefined
+          ? notifyParent(MEMPOOL_LEDGER_REVERTED_NOTICE)
+          : Effect.void,
+      );
       submitAvailableConfirmedBlock = instruction.confirmedBlock;
       submitWorkerInput = {
         ...workerInput,
@@ -2731,6 +2762,7 @@ const databaseOperationsProgram = (
           implicitGenesisEntries:
             commitBase.source === "genesis" ? initialLedgerEntries : [],
           beforePendingJournalInsert,
+          afterPendingJournalPrepared,
           nativeMpfReplay,
         }).pipe(Effect.provideService(Lucid, submissionLucid));
         return attachNativeMpfPromotion(
@@ -2780,6 +2812,7 @@ const databaseOperationsProgram = (
           sizeOfProcessedTxs,
           blockEndTimeCapMs,
           beforePendingJournalInsert,
+          afterPendingJournalPrepared,
           nativeMpfReplay,
         }).pipe(Effect.provideService(Lucid, submissionLucid));
         yield* recordSuccessfulBuildCalibration(output);
@@ -2795,7 +2828,7 @@ const databaseOperationsProgram = (
 export const runCommitBlockHeaderWorkerProgram = (
   workerInput: WorkerInput,
   awaitSpeculativeInstruction?: AwaitSpeculativeCommitInstruction,
-  notifySpeculativeProgress?: NotifySpeculativeCommitProgress,
+  notifyParent?: NotifyCommitWorkerParent,
   commitLucidFactory: CommitLucidFactory = defaultCommitLucidFactory,
 ): Effect.Effect<
   WorkerOutput,
@@ -2881,7 +2914,7 @@ export const runCommitBlockHeaderWorkerProgram = (
               activeLedgerMpf,
               activeTransactionsMpf,
               activeAwaitSpeculativeInstruction,
-              notifySpeculativeProgress,
+              notifyParent,
               activeLeaseOwner,
               localFinalizationTransactionsMpf,
               postWaitMpfContext,
@@ -3292,8 +3325,8 @@ if (parentPort !== null) {
       return Effect.sync(() => workerParentPort.off("message", onInstruction));
     });
 
-  const notifySpeculativeProgress: NotifySpeculativeCommitProgress = (output) =>
-    Effect.sync(() => workerParentPort.postMessage(output));
+  const notifyParent: NotifyCommitWorkerParent = (message) =>
+    Effect.sync(() => workerParentPort.postMessage(message));
 
   const program = provideCommitBlockWorkerServices(
     runCommitBlockHeaderWorkerProgram(
@@ -3301,9 +3334,7 @@ if (parentPort !== null) {
       inputData.data.speculativeBuild === undefined
         ? undefined
         : awaitSpeculativeInstruction,
-      inputData.data.speculativeBuild === undefined
-        ? undefined
-        : notifySpeculativeProgress,
+      notifyParent,
     ),
   );
 

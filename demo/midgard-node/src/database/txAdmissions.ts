@@ -4,7 +4,6 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { RejectedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Data, Duration, Effect, Metric } from "effect";
@@ -1744,6 +1743,14 @@ export const markAccepted = ({
     sqlErrorToDatabaseError(tableName, "Failed to mark admissions accepted"),
   );
 
+/** A terminal admission rejection: a validation rejection, or a refusal by
+ * node admission policy under its own code. */
+export type AdmissionRejection = Readonly<{
+  txId: Buffer;
+  code: string;
+  detail: string | null;
+}>;
+
 export const markRejected = ({
   rows,
   leaseOwner,
@@ -1751,7 +1758,7 @@ export const markRejected = ({
 }: {
   readonly rows: readonly Pick<Entry, Columns.TX_ID>[];
   readonly leaseOwner: string;
-  readonly rejectedTxs: readonly RejectedTx[];
+  readonly rejectedTxs: readonly AdmissionRejection[];
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (rejectedTxs.length === 0) {
