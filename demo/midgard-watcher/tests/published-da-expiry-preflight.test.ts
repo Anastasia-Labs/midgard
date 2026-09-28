@@ -72,7 +72,7 @@ const fixture = async () => {
         proven_fraud: null,
         header,
         da_attestation: attested
-          ? { Attested: { da_bond_asset_name: "ee".repeat(32) } }
+          ? { Attested: { commitment_hash: "ee".repeat(32) } }
           : SDK.NO_DA_ATTESTATION,
       }) as SDK.LinkedListNodeView["data"],
     }),

@@ -5,12 +5,14 @@ import type { CommitteeStore } from "../store.js";
 import { retainedAvailabilityPayload } from "./retained-payload.js";
 
 export type AvailabilityResponderChallenge = Readonly<{
-  bond: {
+  /**
+   * The challenge record (`ChallengeRecordV1`) at the availability script,
+   * found by its DACH token. It carries the commitment, the challenger and the
+   * response deadline; the pooled DA bond is not involved in responding.
+   */
+  record: {
     readonly utxo: UTxO;
-    readonly datum: Extract<
-      SDK.DaAvailabilityBondDatum,
-      { ChallengedBond: unknown }
-    >;
+    readonly datum: SDK.DaAvailabilityChallengeRecord;
   };
   terminal: {
     readonly utxo: UTxO;
@@ -77,10 +79,10 @@ export class AvailabilityResponder {
     const challenges = await this.deps.discover();
     let deferred: AvailabilityResponderReport | undefined;
     for (const challenge of challenges) {
-      const bond = challenge.bond.datum.ChallengedBond;
+      const record = challenge.record.datum;
       const base = {
         challenges: challenges.length,
-        headerHash: bond.commitment.header_hash,
+        headerHash: record.commitment.header_hash,
       };
       let executionStarted = false;
       try {
@@ -113,11 +115,11 @@ export class AvailabilityResponder {
   private async nextAction(
     challenge: AvailabilityResponderChallenge,
   ): Promise<AvailabilityResponderAction | undefined> {
-    const bond = challenge.bond.datum.ChallengedBond;
+    const record = challenge.record.datum;
     const terminal = challenge.terminal.datum;
     if (
       terminal.next_tranche_index ===
-      BigInt(bond.commitment.tranche_descriptors.length)
+      BigInt(record.commitment.tranche_descriptors.length)
     ) {
       return terminal.has_timed_out_tranche
         ? undefined
@@ -136,17 +138,17 @@ export class AvailabilityResponder {
       return { kind: "settle", challenge, tranche: nextTranche };
     }
     const now = BigInt((this.deps.now ?? Date.now)());
-    if (now >= bond.response_deadline) return undefined;
+    if (now >= record.response_deadline) return undefined;
     const payload = await retainedAvailabilityPayload({
       store: this.deps.store,
       deploymentFingerprint: this.deps.deploymentFingerprint,
       deploymentIdentity: this.deps.deploymentIdentity,
-      commitment: bond.commitment,
+      commitment: record.commitment,
     });
     if (payload === undefined) return undefined;
     const plans = SDK.planDaAvailabilityPublications({
-      commitment: bond.commitment,
-      challengeAssetName: bond.challenge_asset_name,
+      commitment: record.commitment,
+      challengeAssetName: record.challenge_asset_name,
       payload,
     });
     const active = nextTranche.datum.Active;

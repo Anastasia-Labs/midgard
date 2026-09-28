@@ -25,8 +25,9 @@ node dist/index.js availability-challenge status \
 `HEADER_HASH` is the 28-byte header hash in lowercase hexadecimal. Load the
 dedicated actor mnemonic into the named environment variable through your secret
 manager. Fund its enterprise address; the CLI selects an enterprise wallet to
-match the challenge's payment-key funding and refund addresses. The actor payment credential must differ from the configured operator,
-merge and reference deployment wallets, and from the manifest's bond owner.
+match the challenge's payment-key funding and refund addresses. The actor
+payment credential must differ from the configured operator, merge and
+reference deployment wallets.
 Kupo and Ogmios URLs may instead come from `L1_KUPO_KEY` and `L1_OGMIOS_KEY`.
 
 The journal must have a canonical absolute path on durable storage. Processes
@@ -35,30 +36,45 @@ the executor records exact signed transactions before submission, reconciles
 ambiguous submission, and retains input reservations until finality or proven
 expiration. `recover` reconciles that actor's journal for the deployment before
 new work. It can report operations for other headers handled by the same actor.
-Opening a challenge reserves the actor wallet for that header and deployment
-until its terminal transaction reaches finality. Use a separate actor wallet
-for an independent concurrent challenge.
+An intent whose inputs were all spent by another transaction, such as a rival
+Timeout of the same header, expires only once that spend is verified from its
+raw transaction, so Ogmios must run with `--include-transaction-cbor`; without
+it reconciliation stops with an error naming that flag and releases nothing.
+Opening needs a Kupo index that keeps spent outputs, because after Apply the
+full commitment survives only in the spent DA attestation output. Opening a
+challenge starts that header's workflow, which lasts until its terminal
+transaction reaches finality. The same actor wallet may open challenges on other
+headers of the same deployment meanwhile; the journal refuses operations for a
+different deployment while any workflow is live.
 
 Add the following flags to the common arguments for each mutation:
 
-| Action    | Additional arguments and behavior                                                                                                                                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `open`    | `--collateral-out-ref <txHash#index>` and `--funding-out-ref <txHash#index>`. Funding must cover exactly the configured challenge bond and opening fee.                                                                                     |
-| `respond` | `--collateral-out-ref <txHash#index>` and `--payload-file <path>`. Reads the exact retained envelope bytes, verifies their frozen commitment, and publishes one next chunk. Optional `--tranche-index <0..15>` selects an active tranche.   |
-| `settle`  | `--collateral-out-ref <txHash#index>`. Settles the next ordered completed tranche, or an unfinished tranche after the strict response deadline.                                                                                             |
-| `close`   | `--collateral-out-ref <txHash#index>`. Closes a fully answered challenge and preserves the frozen refund beneficiaries.                                                                                                                     |
-| `timeout` | `--collateral-out-ref <txHash#index>`, plus `--funding-out-ref <txHash#index>` when removal needs actor fee funding. Advances one required step: expired tranche settlement, unavailable timeout, descendant pruning or final head removal. |
+| Action    | Additional arguments and behavior                                                                                                                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `open`    | `--collateral-out-ref <txHash#index>` and `--funding-out-ref <txHash#index>`. The funding coin must hold exactly the configured challenger bond, challenge record lovelace and maximum opening fee. The command recovers the attested commitment from Kupo and checks its hash against the queue node. |
+| `respond` | `--collateral-out-ref <txHash#index>` and `--payload-file <path>`. Reads the exact retained envelope bytes, verifies their frozen commitment, and publishes one next chunk. Optional `--tranche-index <0..15>` selects an active tranche.                                                              |
+| `settle`  | `--collateral-out-ref <txHash#index>`. Settles the next ordered completed tranche, or an unfinished tranche after the strict response deadline.                                                                                                                                                        |
+| `close`   | `--collateral-out-ref <txHash#index>`. Closes a fully answered challenge and preserves the frozen refund beneficiaries.                                                                                                                                                                                |
+| `timeout` | `--collateral-out-ref <txHash#index>`, plus `--funding-out-ref <txHash#index>` when descendant pruning or head removal needs actor fee funding. Advances one required step: expired tranche settlement, unavailable timeout, descendant pruning or final head removal.                                 |
 
 Collateral is explicit plain ADA owned by the dedicated actor; it must not
-overlap spending inputs. Output references use a lowercase 32-byte transaction
-hash and canonical decimal output index. Live reference role NFTs, script hashes,
+overlap spending inputs. The unavailable timeout slashes the DA bond pool. Its
+exact fee is the slashed penalty plus the challenger's share, at most
+`maxTimeoutFeeLovelace`. The pool and the challenger reserve pay it; the actor
+wallet adds no input and receives no change. Its collateral must hold at least
+the ledger collateral percentage (150% on Cardano) of `daSlashPenaltyLovelace +
+maxTimeoutFeeLovelace`. The queue node's rent goes to the actor's base address,
+because the builder refuses to merge it into the protected challenger refund.
+Output references use a lowercase 32-byte transaction hash and canonical decimal
+output index. Live reference role NFTs, script hashes,
 withdrawal registrations, transaction budgets and protocol deadlines are checked
 before submission.
 Opening and removal also require enough unreserved plain ADA in the actor wallet
-to pay the current descendant removal path and leave minimum change. The opening
-bond and fee are additional to that reserve. The check excludes collateral and
-reservations from every deployment in the shared journal; a longer queue can
-require additional funds before timeout proceeds.
+to pay the current descendant removal path and leave minimum change. The
+challenger bond, challenge record lovelace and opening fee are additional to that
+reserve. The check excludes collateral and reservations from every deployment in
+the shared journal; a longer queue can require additional funds before timeout
+proceeds.
 
 Each invocation advances at most one transaction. Repeated `respond`, `settle`
 or `timeout` invocations first reconcile prior intent and then continue from
@@ -66,8 +82,9 @@ authenticated on-chain progress. An included transaction can permit the next
 step while its reservations remain until finality. Pending or uncertain work is
 reported without constructing a replacement transaction.
 
-`status` reports the canonical point, retained bond state, response deadline,
-ordered tranche progress, queue availability and unfinalized operation metadata.
+`status` reports the canonical point, the challenge record, response deadline,
+DA bond pool state and backing, ordered tranche progress, queue availability and
+unfinalized operation metadata.
 It does not submit transactions or disclose stored signed CBOR. Canonical-source
 disagreement or rollback interrupts mutation and requires recovery against the
 current authenticated chain.

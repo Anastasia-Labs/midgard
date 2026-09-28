@@ -20,13 +20,17 @@ it does not change the protocol, bonds, deadlines, or reference roles.
    immutable signed CBOR before submission. Atomic resource reservations and
    fenced leases prevent conflicting work. Restart reconciles the same tx hash,
    inputs and canonical inclusion; ambiguous submission never creates a new
-   transaction. Keep reservations until finality or proven expiration with all
-   inputs still unspent. Rollback reopens reconciliation and blocks mutation when
-   canonical evidence is uncertain.
+   transaction. Keep reservations until finality or proven expiration: past
+   validity with all inputs still unspent, with one normal input spent and
+   another still unspent, or with a normal input spent at finality depth by a
+   valid transaction of another hash, verified from its raw bytes. Absence of
+   our transaction is never proof. Rollback reopens reconciliation and blocks
+   mutation when canonical evidence is uncertain.
 3. Wire the accountable responder into the committee process. Discover live
    challenges, load retained payloads and verify the entire frozen commitment
-   before publishing the next required chunk. Rotation does not change the bond
-   beneficiary. Publication is permissionless; a responding wallet need not be
+   before publishing the next required chunk. Rotation changes neither the
+   pooled DA bond nor the challenge record, and a Close refunds the challenger
+   the record names. Publication is permissionless; a responding wallet need not be
    the original signer. Resume from authenticated tranche/carrier state, then
    settle and close fully answered challenges. Missing or mismatched payloads
    remain visible failures and never produce invented bytes.
@@ -85,9 +89,31 @@ persistent audit anchor. Uncertain evidence pauses work. Positive loss of a
 finalized anchor persists an incident halt; deleting the journal is not recovery.
 Ordinary rollback and expired orphan chains reconcile without replacement bytes.
 
-An opened challenge owns the actor wallet's future capital until the terminal
-transaction is finalized. Actor processes must share one journal. Wallet funding
-excludes resources reserved under any deployment. Both watcher and CLI check the
+Each opened challenge is its own journal workflow, keyed by actor, deployment and
+header. The workflow ends when the actor's own terminal transaction is finalized
+or its own Open expires. A terminal step landed by someone else (the committee's
+Close, another watcher's Timeout, a prune or removal of the header) releases the
+row once a finalized, verified transaction burns the header's queue node or
+closes the header's challenge. The watcher checks this on every reconciliation
+for each of its rows in any deployment: from its own confirmed Open it walks the
+header's queue node from spend to spend, each spend proven by the consuming
+transaction's raw bytes at the finality depth, until a transaction burns the
+node or spends the challenge record while minting nothing under the queue
+policy. Consuming the record alone never releases the row: a Timeout with a
+descendant consumes it while the header's removal chain still needs the
+wallet's reserve. Released rows are reported under `workflowReleased`; a failed
+check keeps the row, is reported under `workflowReleaseDeferred` and is retried
+on the next reconciliation. One actor may run challenges on several headers of
+one deployment at once. While any of them is live, the journal refuses every
+step for another deployment, because the wallet's removal reserve is computed
+from one deployment's queue, and it refuses a new challenger-coin preparation
+for a header whose own Open landed. The watcher reports each refused step under
+`workflowRefused`, naming the deployment and header of the live workflow that
+blocks it. A challenge still live in a deployment nobody drives any more keeps
+refusing other deployments until someone terminates it. Actor processes must
+share one journal; it migrates a schema-1 journal (one
+workflow per actor) in place. Wallet funding excludes resources reserved under
+any deployment. Both watcher and CLI check the
 remaining live queue suffix before timeout; the transaction references that
 queue's tail to prevent appends from invalidating the checked removal budget.
 Initial timeout keeps the wallet reserved while descendants remain to be pruned.
@@ -110,6 +136,10 @@ and aggregate execution units with a 20% execution reserve. The separate
 it is not subtracted again from a fully signed response transaction.
 
 ## Verification record
+
+This record predates the pooled DA bond (#685), which replaced the bond each
+attestation used to lock; its responder-lifecycle refund wording describes that
+earlier design.
 
 Checks ran with Node 22.22.2 and the declared pnpm 9.15.4 toolchain. The unchanged
 testnet blueprint SHA-256 is

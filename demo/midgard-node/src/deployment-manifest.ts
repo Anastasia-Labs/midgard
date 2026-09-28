@@ -71,6 +71,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "hub-oracle minting": "hubOracleMint",
     "da-params-governor spending": "daParamsGovernorSpend",
     "da-params-governor minting": "daParamsGovernorMint",
+    "da-bond-pool spending": "daBondPoolSpend",
+    "da-bond-pool minting": "daBondPoolMint",
     "da-attestation spending": "daAttestationSpend",
     "da-attestation minting": "daAttestationMint",
     "state-queue spending": "stateQueueSpend",

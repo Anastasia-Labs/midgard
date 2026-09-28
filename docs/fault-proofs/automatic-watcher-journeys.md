@@ -1052,7 +1052,7 @@ attested queue output before the publisher's post-submit live-UTxO lookup. The
 publisher now checks the apply transaction returned by the independent native
 recorder. It verifies the exact signed body hash, the ledger's valid branch,
 one output at the expected queue address carrying its token, and the expected
-header and DA bond in the datum. This authenticated receipt remains checkable
+header and attested commitment hash in the datum. This authenticated receipt remains checkable
 after the output is spent. Locally signed bytes alone do not establish inclusion.
 Callers without the native receipt reader retain the existing live-output check.
 

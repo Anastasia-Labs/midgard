@@ -477,7 +477,6 @@ export const buildDaDeploymentFixture = async (
       maxSettlementFeeLovelace: 2_000_000,
       maxCloseFeeLovelace: 2_000_000,
       maxTimeoutFeeLovelace: 3_000_000,
-      bondOwnerCredential: "77".repeat(28),
     },
   };
   return {

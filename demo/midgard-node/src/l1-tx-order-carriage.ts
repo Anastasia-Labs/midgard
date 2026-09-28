@@ -121,6 +121,8 @@ export type ObservedL1Transaction = {
 export type ObservedL1TransactionAtPoint = ObservedL1Transaction & {
   readonly blockPoint: L1ChainPoint & { readonly blockNo: number };
   readonly transactionIndex: number;
+  /** The raw transaction, when Ogmios serves it (`--include-transaction-cbor`). */
+  readonly transactionCbor?: string;
 };
 
 export type ObservedL1Redeemer = {
@@ -894,6 +896,7 @@ export const readOgmiosBlockTransaction = async ({
         );
       }
       const blockNo = exactSlot(block.height, "ogmios.block.height");
+      const transactionCbor = (transactions[index] as { cbor?: unknown }).cbor;
       return {
         ...parseObservedTransaction(
           transactions[index],
@@ -905,6 +908,10 @@ export const readOgmiosBlockTransaction = async ({
           blockNo,
         },
         transactionIndex: index,
+        ...(typeof transactionCbor === "string" &&
+        BASE16_BYTES.test(transactionCbor)
+          ? { transactionCbor }
+          : {}),
       };
     }
     throw new Error(

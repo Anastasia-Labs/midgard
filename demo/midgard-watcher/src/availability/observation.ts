@@ -1,24 +1,42 @@
-import type { AvailabilityOperationIntent } from "@al-ft/midgard-core/availability-operation-journal";
+import type {
+  AvailabilityOperationIntent,
+  AvailabilityOperationRecord,
+} from "@al-ft/midgard-core/availability-operation-journal";
 import {
   computeFraudProofRawL1PointId,
+  type FraudProofRawL1Point,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
   pinAdmittedLocalKupmiosBoundaryAtPoint,
   readAdmittedLocalKupmiosAddressUtxosAtPoint,
+  readAdmittedLocalKupmiosPredecessorPoint,
   readAdmittedLocalKupmiosRawTransaction,
   readAdmittedLocalKupmiosTransactionInclusion,
+  readAdmittedLocalKupmiosUnitHistoryAtPoint,
   readAdmittedLocalKupmiosUtxosByOutRefAtPoint,
   settleLocalKupmiosReads,
   withLocalKupmiosSourceCapture,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, coreToTxOutput, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToTxOutput,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
   assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import {
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentProtocolScriptAuthority,
+} from "../runtime/deployment-identity.js";
+import {
+  recoverWatcherAttestedCommitment,
+  watcherRawTransactionCbor,
+} from "./commitment-source.js";
 
 const outRef = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
@@ -28,6 +46,8 @@ export const createWatcherAvailabilityObservation = (input: {
   identity: VerifiedWatcherDeploymentIdentity;
   source: LocalKupmiosFraudProofRawSource;
   deployment: SDK.DaAvailabilityDeployment;
+  /** Resolves hashed DAAT datums during commitment recovery (E1). */
+  lucid?: Pick<LucidEvolution, "config">;
 }) => {
   const details = localKupmiosHttpOgmiosRawSourceDetails(input.source);
   if (
@@ -67,17 +87,23 @@ export const createWatcherAvailabilityObservation = (input: {
       });
       return await read();
     });
-  const readAddress = async (
-    observation: WatcherAuthenticatedStateQueueObservation,
-    address: string,
-  ): Promise<UTxO[]> => {
+  const pointOf = (observation: WatcherAuthenticatedStateQueueObservation) => {
     const { blockHash, slot, blockNo } = observation.nativePoint;
-    const point = {
+    return {
       blockHash,
       slot,
       blockNo,
       pointId: computeFraudProofRawL1PointId({ blockHash, slot, blockNo }),
     };
+  };
+  // An Attested node's commitment never changes, so each verified recovery is
+  // kept for the node's lifetime in the finalized queue.
+  const commitments = new Map<string, SDK.DaAvailabilityCommitment>();
+  const readAddress = async (
+    observation: WatcherAuthenticatedStateQueueObservation,
+    address: string,
+  ): Promise<UTxO[]> => {
+    const point = pointOf(observation);
     const raw = await readAdmittedLocalKupmiosAddressUtxosAtPoint({
       source: input.source,
       address,
@@ -101,26 +127,40 @@ export const createWatcherAvailabilityObservation = (input: {
       headerHash: string,
     ): Promise<SDK.DaAvailabilityChallengeSnapshot> {
       return await capture(observation, async () => {
-        const [availabilityUtxos, stateQueueUtxos, correctionLockUtxos] =
-          await settleLocalKupmiosReads([
-            readAddress(
-              observation,
-              input.deployment.contracts.availabilityChallenge
-                .spendingScriptAddress,
-            ),
-            readAddress(
-              observation,
-              input.deployment.contracts.stateQueue.spendingScriptAddress,
-            ),
-            readAddress(
-              observation,
-              input.deployment.contracts.correctionLock.spendingScriptAddress,
-            ),
-          ]);
+        const [
+          availabilityUtxos,
+          stateQueueUtxos,
+          correctionLockUtxos,
+          poolUtxos,
+        ] = await settleLocalKupmiosReads([
+          readAddress(
+            observation,
+            input.deployment.contracts.availabilityChallenge
+              .spendingScriptAddress,
+          ),
+          readAddress(
+            observation,
+            input.deployment.contracts.stateQueue.spendingScriptAddress,
+          ),
+          readAddress(
+            observation,
+            input.deployment.contracts.correctionLock.spendingScriptAddress,
+          ),
+          // The pooled DA bond a Timeout slashes, at the same finalized point.
+          readAddress(
+            observation,
+            input.deployment.contracts.daBondPool.spendingScriptAddress,
+          ),
+        ]);
         const snapshot = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
           input.deployment,
           headerHash,
-          { availabilityUtxos, stateQueueUtxos, correctionLockUtxos },
+          {
+            availabilityUtxos,
+            stateQueueUtxos,
+            correctionLockUtxos,
+            poolUtxos,
+          },
         );
         const admittedHeader = observation.finalizedHeaders.find(
           (header) => header.headerHash === headerHash,
@@ -136,6 +176,182 @@ export const createWatcherAvailabilityObservation = (input: {
           );
         }
         return snapshot;
+      });
+    },
+    /**
+     * The full commitment behind an `Attested{commitment_hash}` node, recovered
+     * from the node's canonical Apply transaction at the finalized point and
+     * verified against that hash (spec #685 E1).
+     */
+    async attestedCommitment(
+      observation: WatcherAuthenticatedStateQueueObservation,
+      headerHash: string,
+      expectedCommitmentHash: string,
+    ): Promise<SDK.DaAvailabilityCommitment> {
+      const key = `${headerHash}:${expectedCommitmentHash}`;
+      const cached = commitments.get(key);
+      if (cached !== undefined) return cached;
+      const recovered = await capture(observation, async () => {
+        const point = pointOf(observation);
+        return await recoverWatcherAttestedCommitment({
+          headerHash,
+          expectedCommitmentHash,
+          stateQueuePolicyId: input.deployment.contracts.stateQueue.policyId,
+          daAttestationPolicyId: watcherDeploymentProtocolScriptAuthority(
+            input.identity,
+          ).protocolScriptHashes.daAttestationMint,
+          lucid: input.lucid ?? {
+            config: () =>
+              ({}) as ReturnType<Pick<LucidEvolution, "config">["config"]>,
+          },
+          readHistory: async (unit) => {
+            const history = await readAdmittedLocalKupmiosUnitHistoryAtPoint({
+              source: input.source,
+              unit,
+              point,
+            });
+            return await settleLocalKupmiosReads(
+              history.transactions.map(({ txHash, inclusionPoint }) =>
+                readAdmittedLocalKupmiosRawTransaction({
+                  source: input.source,
+                  txHash,
+                  expectedInclusionPoint: inclusionPoint,
+                  minimumConfirmationDepth: confirmationDepth,
+                }),
+              ),
+            );
+          },
+          readTransaction: async (txHash) => {
+            const inclusion =
+              await readAdmittedLocalKupmiosTransactionInclusion({
+                source: input.source,
+                txHash,
+              });
+            if (
+              inclusion === null ||
+              BigInt(inclusion.blockNo) > BigInt(point.blockNo)
+            )
+              return undefined;
+            return await readAdmittedLocalKupmiosRawTransaction({
+              source: input.source,
+              txHash,
+              expectedInclusionPoint: inclusion,
+              minimumConfirmationDepth: confirmationDepth,
+            });
+          },
+        });
+      });
+      for (const cachedKey of commitments.keys()) {
+        const [cachedHeader] = cachedKey.split(":");
+        if (
+          !observation.finalizedHeaders.some(
+            (header) => header.headerHash === cachedHeader,
+          )
+        )
+          commitments.delete(cachedKey);
+      }
+      commitments.set(key, recovered.commitment);
+      return recovered.commitment;
+    },
+    /**
+     * Whether this actor's challenge workflow for `headerHash` ended in a
+     * terminal step someone else landed (P20), walked from its confirmed Open
+     * at the finalized point with the same Kupo/Ogmios reads as the foreign
+     * spends of {@link operation}. Every spend is verified from its raw bytes
+     * and counted `finalityDepth` deeper than the point it lies below.
+     */
+    async workflowRelease(
+      observation: WatcherAuthenticatedStateQueueObservation,
+      openIntent: AvailabilityOperationRecord,
+      headerHash: string,
+    ): Promise<SDK.DaAvailabilityWorkflowRelease | undefined> {
+      return await capture(observation, async () => {
+        const point = pointOf(observation);
+        const spendPoints = new Map<string, FraudProofRawL1Point>();
+        const readers: SDK.DaAvailabilityForeignSpendReaders = {
+          // The finalized point is itself `finalityDepth` deep, so the
+          // boundary height counts the blocks above it.
+          readBoundary: async () => ({
+            pointId: point.pointId,
+            blockNo:
+              Number(point.blockNo) +
+              Number(observation.nativePoint.finalityDepth),
+          }),
+          fetchSpend: async (ref) => {
+            const outRef = `${ref.txHash}#${ref.outputIndex.toString()}`;
+            const observed = await readAdmittedLocalKupmiosUtxosByOutRefAtPoint(
+              { source: input.source, point, outRefs: [outRef] },
+            );
+            const spend = observed.spends.find(
+              (entry) => entry.outRef === outRef,
+            );
+            if (spend === undefined) return undefined;
+            spendPoints.set(spend.spendPoint.pointId, spend.spendPoint);
+            return {
+              transactionId: spend.spendingTxHash,
+              point: {
+                slot: Number(spend.spendPoint.slot),
+                blockHash: spend.spendPoint.blockHash,
+              },
+            };
+          },
+          fetchAncestor: async (slot) => {
+            const spendPoint = [...spendPoints.values()].find(
+              (entry) => Number(entry.slot) === slot,
+            );
+            if (spendPoint === undefined)
+              throw new Error(
+                "Availability workflow release has no spend at the requested slot",
+              );
+            const { predecessorPoint } =
+              await readAdmittedLocalKupmiosPredecessorPoint({
+                source: input.source,
+                point: spendPoint,
+              });
+            return {
+              slot: Number(predecessorPoint.slot),
+              blockHash: predecessorPoint.blockHash,
+            };
+          },
+          readTransaction: async ({ point: spendPoint, txHash }) => {
+            const inclusion =
+              await readAdmittedLocalKupmiosTransactionInclusion({
+                source: input.source,
+                txHash,
+              });
+            if (
+              inclusion === null ||
+              Number(inclusion.slot) !== spendPoint.slot ||
+              inclusion.blockHash !== spendPoint.blockHash
+            )
+              return undefined;
+            if (BigInt(inclusion.blockNo) > BigInt(point.blockNo))
+              throw new Error(
+                "Availability input spend lies above the canonical boundary",
+              );
+            const raw = await readAdmittedLocalKupmiosRawTransaction({
+              source: input.source,
+              txHash,
+              expectedInclusionPoint: inclusion,
+              minimumConfirmationDepth: confirmationDepth,
+            });
+            return {
+              txHash: raw.txHash,
+              point: {
+                slot: Number(inclusion.slot),
+                blockHash: inclusion.blockHash,
+                blockNo: Number(inclusion.blockNo),
+              },
+              cbor: watcherRawTransactionCbor(raw),
+            };
+          },
+        };
+        return await SDK.resolveDaAvailabilityWorkflowRelease(
+          readers,
+          openIntent,
+          headerHash,
+          confirmationDepth,
+        );
       });
     },
     async operation(
@@ -196,17 +412,29 @@ export const createWatcherAvailabilityObservation = (input: {
             }),
           },
         });
-        const unspent = new Set(observed.map(({ outRef }) => outRef));
+        const unspent = new Set(observed.outputs.map(({ outRef }) => outRef));
         if (consumed.every((ref) => unspent.has(ref))) {
           return {
             status: "unspent",
             currentSlot: Number(observation.nativePoint.slot),
           };
         }
+        // The observed point is itself `finalityDepth` deep, so a spend at or
+        // below it is at least that deep plus the blocks between them.
+        const foreignSpends = observed.spends.map((spend) => ({
+          outRef: spend.outRef,
+          spendingTxHash: spend.spendingTxHash,
+          spendPoint: spend.spendPoint.pointId,
+          confirmationDepth:
+            Number(blockNo) -
+            Number(spend.spendPoint.blockNo) +
+            Number(observation.nativePoint.finalityDepth),
+        }));
         return {
           status: "inputs_missing",
           currentSlot: Number(slot),
           missingOutRefs: consumed.filter((ref) => !unspent.has(ref)),
+          ...(foreignSpends.length === 0 ? {} : { foreignSpends }),
         };
       });
     },

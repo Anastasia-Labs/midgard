@@ -9,10 +9,12 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "@al-ft/midgard-fault-proofs";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadStepDatum,
   NetworkIdStep02Datum,
@@ -84,10 +86,25 @@ it("publishes every role, initializes genesis and reopens the finalized deployme
   expect(
     new Set(installed.receipts.map(({ outRef }) => outRef.txHash)).size,
   ).toBeLessThan(expectedCount);
-  expect(installed.availabilityRegistrations).toHaveLength(5);
+  // Open, settle, close and timeout: the per-header bond yield is retired.
+  expect(installed.availabilityRegistrations).toHaveLength(4);
   expect(installed.initialization).toMatchObject({
     nonceConsumed: true,
     genesisConfirmed: true,
+  });
+  // The published init alone leaves the pool Bonded with one bond of backing,
+  // so the first attestation needs no separate top-up.
+  const pool = await SDK.fetchDaBondPool(installed.operatorLucid, {
+    policyId: installed.contracts.daBondPool.policyId,
+    address: installed.contracts.daBondPool.spendingScriptAddress,
+  });
+  const { da_bond_lovelace, da_bond_pool_floor_lovelace } =
+    SELECTED_DEPLOYMENT_PROFILE.da_bond;
+  expect(pool.datum).toBe("Bonded");
+  expect(pool.utxo.txHash).toBe(installed.initialization.txHash);
+  expect(pool.utxo.assets).toEqual({
+    lovelace: BigInt(da_bond_pool_floor_lovelace + da_bond_lovelace),
+    [SDK.daBondPoolUnit(installed.contracts.daBondPool.policyId)]: 1n,
   });
   // Resolve current L1 outputs with a fresh observer after reading disk identity.
   const observer = await Lucid(installed.emulator, "Custom");

@@ -1,26 +1,38 @@
 ---
 title: "Data-Availability Validators"
-description: "The da-attestation control plane and da-params-governor validators."
+description: "The da-attestation control plane, the DA bond pool, the da-params-governor and the availability-challenge validators."
 ---
 
-The attestation, governance, and availability-challenge validators govern Midgard's **data-availability (DA)** control plane on L1,
+The attestation, bond-pool, governance, and availability-challenge validators govern Midgard's **data-availability (DA)** control plane on L1,
 enforcing the DA rules from the [Off-Chain Data Architecture](/docs/spec/offchain-data-architecture)
 chapter.
 
 Their Aiken/blueprint module identifiers include `da_attestation`,
-`da_params_governor`, and `availability_challenge`.
+`da_bond_pool`, `da_params_governor`, and `availability_challenge`.
 
 ## Validators
 
 - **`da-attestation`**: the DA attestation control plane. Records committee
   attestations that block data has been made available, gated by a signature
   threshold from the DA committee. Signatures bind the full availability
-  commitment, and application is cross-bound to minting its DA bond.
+  commitment. Applying an attestation to the state queue reads the DA bond
+  pool as a reference input and needs the pool `Bonded` with at least one
+  `da_bond_lovelace` of backing above its floor; the queue node then records
+  `Attested` with the commitment hash. Attesting a block locks no bond of its
+  own.
+- **`da-bond-pool`**: the committee's one pooled DA bond, a single UTxO
+  identified by a one-shot NFT that is never burned. Anyone may top it up. Only
+  an availability-challenge timeout slashes it, taking
+  `da_slash_penalty_lovelace` first. The DA params owner quorum withdraws from
+  it in two steps (`BeginWithdraw`, then `CompleteWithdraw` after
+  `da_bond_withdraw_delay_ms`), and can cancel a pending withdrawal.
 - **`da-params-governor`**: governs the DA parameters (for example the committee
   configuration and thresholds), controlling how those values may change.
 
-- **`availability-challenge`**: governs DA bonds, retained-data challenges,
-  publication tranches, and success/timeout settlement. Queue availability is
+- **`availability-challenge`**: governs retained-data challenges against an
+  attested block: opening a challenge record funded by the challenger,
+  publication tranches, closing on a complete response, and the timeout that
+  slashes the DA bond pool and removes the withheld block. Queue availability is
   typed state rather than a policy-id marker. See the
   [committee contract boundary](/docs/watchers/da-committee-node#contract-boundary).
 

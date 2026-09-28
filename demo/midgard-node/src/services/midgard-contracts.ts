@@ -1599,7 +1599,7 @@ export const midgardContractsFromDeploymentManifest = (
   };
   const fraudProofs = SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
 
-  const contracts: Omit<SDK.MidgardValidators, "daBondPool"> = {
+  const contracts: SDK.MidgardValidators = {
     referenceScriptAuth,
     hubOracle,
     daParamsGovernor: authenticatedValidatorFromManifest(
@@ -1608,6 +1608,13 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "daParamsGovernorSpend",
       "daParamsGovernorMint",
+    ),
+    daBondPool: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "daBondPoolSpend",
+      "daBondPoolMint",
     ),
     daAttestation: authenticatedValidatorFromManifest(
       network,
@@ -1789,47 +1796,7 @@ export const midgardContractsFromDeploymentManifest = (
     fraudProofContracts,
     fraudProofs,
   };
-  return Object.defineProperty(
-    contracts,
-    "daBondPool",
-    manifestDaBondPool(network, manifest, sourcePath),
-  ) as SDK.MidgardValidators;
-};
-
-/**
- * The DA bond pool restored from its manifest entries. A manifest that records
- * no pool (every manifest written before the pooled DA bond) yields an
- * accessor that fails closed on read, so no pool-dependent path can run
- * against a script the deployment never published.
- */
-const manifestDaBondPool = (
-  network: Network,
-  manifest: DeploymentManifest,
-  sourcePath: string,
-): PropertyDescriptor => {
-  const recorded =
-    manifest.contracts?.daBondPoolSpend !== undefined ||
-    manifest.contracts?.daBondPoolMint !== undefined;
-  if (recorded) {
-    return {
-      enumerable: true,
-      value: authenticatedValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "daBondPoolSpend",
-        "daBondPoolMint",
-      ),
-    };
-  }
-  return {
-    enumerable: true,
-    get: () => {
-      throw new Error(
-        `Deployment manifest at "${sourcePath}" does not record the DA bond pool (contracts.daBondPoolSpend / contracts.daBondPoolMint); a manifest-sourced contract bundle cannot provide it`,
-      );
-    },
-  };
+  return contracts;
 };
 
 /**

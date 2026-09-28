@@ -504,6 +504,63 @@ Golden channel committed-field-shape-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:da-commitment-v1`
+
+Golden channel da-commitment-v1 (@al-ft/midgard-sdk).
+
+- Command: `pnpm --dir demo/midgard-sdk run fixtures:da-commitment-v1:check`
+- Fix: `pnpm --dir demo/midgard-sdk run fixtures:da-commitment-v1:sync`
+- Runs on:
+  - `demo/midgard-sdk/scripts/generate-da-commitment-v1-goldens.mjs`
+  - `demo/midgard-sdk/scripts/da-vector-support.mjs`
+  - `demo/midgard-sdk/tests/fixtures/da-commitment-v1.generated.json`
+  - `onchain/aiken/lib/midgard/availability-challenge-commitment-v1-golden.test.ak`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-test-support/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:da-bond-pool-v1`
+
+Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
+
+- Command: `pnpm --dir demo/midgard-sdk run fixtures:da-bond-pool-v1:check`
+- Fix: `pnpm --dir demo/midgard-sdk run fixtures:da-bond-pool-v1:sync`
+- Runs on:
+  - `demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.mjs`
+  - `config/deployments/env.ak.template`
+  - `demo/midgard-core/src/generated-deployment-profiles.ts`
+  - `demo/midgard-sdk/scripts/da-vector-support.mjs`
+  - `demo/midgard-sdk/tests/fixtures/da-bond-pool-v1.generated.json`
+  - `demo/scripts/deployment-profiles.mjs`
+  - `demo/scripts/lib/blueprint-stamp.mjs`
+  - `onchain/aiken/env/default.ak`
+  - `onchain/aiken/env/mainnet.ak`
+  - `onchain/aiken/env/preprod-testing.ak`
+  - `onchain/aiken/env/testnet.ak`
+  - `onchain/aiken/lib/midgard/da-bond-pool-v1-golden.test.ak`
+  - `onchain/aiken/plutus.json`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-test-support/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:da-attestation-capacity-v1`
+
+Golden channel da-attestation-capacity-v1 (@al-ft/midgard-sdk).
+
+- Command: `pnpm --dir demo/midgard-sdk run fixtures:da-attestation-capacity-v1:check`
+- Fix: `pnpm --dir demo/midgard-sdk run fixtures:da-attestation-capacity-v1:sync`
+- Runs on:
+  - `demo/midgard-sdk/scripts/generate-da-attestation-capacity-v1-fixture.mjs`
+  - `demo/midgard-sdk/scripts/da-vector-support.mjs`
+  - `onchain/aiken/validators/da_attestation_capacity.test.ak`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-test-support/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `aiken-focused`
 
 Focused Aiken tests of every touched module (fail-closed selector guard).

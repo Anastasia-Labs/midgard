@@ -117,7 +117,7 @@ const openStage = async () => {
     }),
   });
   const attested = {
-    Attested: { da_bond_asset_name: "cd".repeat(32) },
+    Attested: { commitment_hash: "cd".repeat(32) },
   };
   const removalTxHash = "55".repeat(32);
   const initRecord: PublishedDaTransactionRecord = {

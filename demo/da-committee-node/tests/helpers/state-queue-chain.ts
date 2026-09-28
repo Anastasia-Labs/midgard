@@ -248,7 +248,7 @@ export const createStateQueueChain = ({
           header: {
             ...entry.header,
             daAttestation: {
-              Attested: { da_bond_asset_name: "44".repeat(32) },
+              Attested: { commitment_hash: "44".repeat(32) },
             },
           },
         };

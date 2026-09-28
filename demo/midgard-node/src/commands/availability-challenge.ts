@@ -6,9 +6,11 @@ import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deploymen
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   calculateMinLovelaceFromUTxO,
+  credentialToAddress,
   Data,
   Lucid,
   type LucidEvolution,
+  type Network,
   paymentCredentialOf,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -21,7 +23,10 @@ import {
 } from "../services/native-ledger.js";
 import { availabilityDeploymentFromManifest } from "./availability-challenge-deployment.js";
 import { availabilityCommandCanonicalSource } from "./availability-challenge-source.js";
-import { readDeploymentManifestFile } from "./contract-deployment-info.js";
+import {
+  type DeploymentManifest,
+  readDeploymentManifestFile,
+} from "./contract-deployment-info.js";
 import { resolveKupmiosConfig } from "./l1-utxos.js";
 
 export type AvailabilityCommandAction =
@@ -121,7 +126,6 @@ export const runAvailabilityChallengeCommand = async (
       "Availability requires a dedicated actor seed environment variable",
     );
   const operationalHashes = new Set<string>([
-    manifest.availabilityChallenge.bondOwnerCredential,
     paymentCredentialOf(manifest.referenceScriptDeployAddress).hash,
   ]);
   for (const name of operationalSeeds) {
@@ -195,20 +199,35 @@ export const runAvailabilityChallengeCommand = async (
         "Availability state changed during canonical discovery; rerun against the next stable point",
       );
     if (action === "status") {
+      const record = snapshot.recordDatum;
       return {
         action,
         deploymentIdentity: manifest.manifestId,
         actor: actor.hash,
         headerHash: options.headerHash,
         canonicalPoint: after.pointId,
-        bondState: snapshot.bondDatum
-          ? "Available" in snapshot.bondDatum
-            ? "available"
-            : "challenged"
-          : "absent",
-        responseDeadline:
-          snapshot.bondDatum && "ChallengedBond" in snapshot.bondDatum
-            ? snapshot.bondDatum.ChallengedBond.response_deadline.toString()
+        challengeRecord:
+          record && snapshot.record
+            ? {
+                outRef: `${snapshot.record.txHash}#${snapshot.record.outputIndex}`,
+                challengeAssetName: record.challenge_asset_name,
+                challenger: record.challenger,
+                openedAt: record.opened_at.toString(),
+              }
+            : null,
+        responseDeadline: record?.response_deadline.toString() ?? null,
+        daBondPool:
+          snapshot.pool && snapshot.poolDatum
+            ? {
+                outRef: `${snapshot.pool.txHash}#${snapshot.pool.outputIndex}`,
+                state:
+                  snapshot.poolDatum === "Bonded" ? "bonded" : "withdrawing",
+                lovelace: (snapshot.pool.assets.lovelace ?? 0n).toString(),
+                backing: SDK.daBondPoolBacking({
+                  lovelace: snapshot.pool.assets.lovelace ?? 0n,
+                  parameters: deployment.parameters,
+                }).toString(),
+              }
             : null,
         nextTrancheIndex:
           snapshot.terminalDatum?.next_tranche_index.toString() ?? null,
@@ -253,18 +272,19 @@ export const runAvailabilityChallengeCommand = async (
       action: operation,
       completesWorkflow:
         operation === "timeout" ? snapshot.descendant === undefined : undefined,
-      build: async () =>
-        (
-          await buildAvailabilityCommandTransaction(
-            lucid,
-            deployment,
-            snapshot,
-            operation,
-            options,
-            actor.hash,
-            new Set(journal.reservedOutRefs(actor.hash)),
-          )
-        ).tx,
+      // A built transaction carries the timeout's slashed fee part, which the
+      // executor needs: its timeout fee ceiling caps only the challenger's share.
+      build: () =>
+        buildAvailabilityCommandTransaction(
+          lucid,
+          deployment,
+          availabilityCommandBuildContext(manifest, connection.kupoUrl),
+          snapshot,
+          operation,
+          options,
+          actor.hash,
+          new Set(journal.reservedOutRefs(actor.hash)),
+        ),
     });
     return { action, operation, headerHash: options.headerHash, ...result };
   } finally {
@@ -276,7 +296,7 @@ export const planAvailabilityCommandAction = (
   action: Exclude<AvailabilityCommandAction, "status" | "recover">,
   snapshot: Pick<
     SDK.DaAvailabilityChallengeSnapshot,
-    | "bondDatum"
+    | "recordDatum"
     | "terminalDatum"
     | "correctionLock"
     | "headerHash"
@@ -286,9 +306,9 @@ export const planAvailabilityCommandAction = (
 ): SDK.DaAvailabilityTransactionAction => {
   if (action === "respond") return "publish";
   if (action !== "timeout") return action;
-  if (snapshot.bondDatum && "ChallengedBond" in snapshot.bondDatum) {
-    const bond = snapshot.bondDatum.ChallengedBond;
-    if (BigInt(nowMs) <= bond.response_deadline)
+  if (snapshot.recordDatum) {
+    const record = snapshot.recordDatum;
+    if (BigInt(nowMs) <= record.response_deadline)
       throw new Error(
         "Availability timeout requires the strict response deadline to have passed",
       );
@@ -298,7 +318,7 @@ export const planAvailabilityCommandAction = (
       );
     if (
       snapshot.terminalDatum.next_tranche_index <
-      BigInt(bond.commitment.tranche_descriptors.length)
+      BigInt(record.commitment.tranche_descriptors.length)
     )
       return "settle";
     if (!snapshot.terminalDatum.has_timed_out_tranche)
@@ -376,6 +396,7 @@ export const assertAvailabilityCommandRemovalCapital = (input: {
     input.minimumChangeLovelace +
     (input.action === "open"
       ? input.parameters.challenger_bond_lovelace +
+        input.parameters.challenge_record_lovelace +
         input.parameters.max_open_fee_lovelace
       : 0n);
   if (
@@ -383,16 +404,159 @@ export const assertAvailabilityCommandRemovalCapital = (input: {
     requiredCapital
   )
     throw new Error(
-      "Availability actor cannot fund the challenger bond and remaining descendant removal path after excluding collateral and reserved inputs",
+      "Availability actor cannot fund the challenger bond, the challenge record and the remaining descendant removal path after excluding collateral and reserved inputs",
     );
 };
 
-const buildAvailabilityCommandTransaction = async (
+/**
+ * The collateral a Timeout must post in the worst case: the ledger's
+ * collateral percentage of the largest Timeout fee. That fee is the slashed
+ * part, at most `da_slash_penalty_lovelace`, plus the challenger's part, at
+ * most `max_timeout_fee_lovelace`. On Cardano's 150% this is
+ * `1.5 × (penalty + max_timeout_fee)`.
+ */
+export const availabilityTimeoutCollateralLovelace = (input: {
+  readonly parameters: SDK.DaAvailabilityParameters;
+  readonly collateralPercentage: number;
+}): bigint => {
+  if (
+    !Number.isSafeInteger(input.collateralPercentage) ||
+    input.collateralPercentage <= 0
+  )
+    throw new Error(
+      "Availability timeout collateral needs a positive ledger collateral percentage",
+    );
+  const fee =
+    input.parameters.da_slash_penalty_lovelace +
+    input.parameters.max_timeout_fee_lovelace;
+  return (fee * BigInt(input.collateralPercentage) + 99n) / 100n;
+};
+
+/** Refuses a Timeout collateral coin that cannot cover the worst-case fee. */
+export const assertAvailabilityTimeoutCollateral = (input: {
+  readonly parameters: SDK.DaAvailabilityParameters;
+  readonly collateralPercentage: number;
+  readonly collateral: UTxO;
+}): void => {
+  const requiredLovelace = availabilityTimeoutCollateralLovelace(input);
+  const held = input.collateral.assets.lovelace ?? 0n;
+  if (held < requiredLovelace)
+    throw new Error(
+      `Availability timeout collateral holds ${held.toString()} lovelace; it needs at least ${requiredLovelace.toString()} (${input.collateralPercentage.toString()}% of the largest timeout fee, da_slash_penalty_lovelace + max_timeout_fee_lovelace)`,
+    );
+};
+
+/**
+ * Where a Timeout returns the queue node's rent. The builder refuses the
+ * challenger's own enterprise key address, which already receives the one
+ * protected challenger output, so the rent goes to the actor's base address
+ * (payment and stake both the actor key). The actor controls both.
+ */
+export const availabilityTimeoutRentRefundAddress = (
+  network: Network,
+  actor: string,
+): string =>
+  credentialToAddress(
+    network,
+    { type: "Key", hash: actor },
+    { type: "Key", hash: actor },
+  );
+
+type KupoFetch = (url: string) => Promise<{
+  readonly ok: boolean;
+  readonly status: number;
+  json(): Promise<unknown>;
+}>;
+
+/**
+ * Recovers the commitment preimage an Open needs. After Apply the queue node
+ * keeps only `commitment_hash`; the full commitment lives in the DA
+ * attestation datum that Apply spent. This reads every indexed output that ever
+ * held the block's DAAT token, with datums resolved, and returns the
+ * commitment whose hash equals the node's. The hash authenticates the answer,
+ * and the SDK Open builder checks it again against the node.
+ */
+export const recoverAvailabilityOpenCommitment = async (input: {
+  readonly kupoUrl: string;
+  readonly daAttestationPolicyId: string;
+  readonly headerHash: string;
+  readonly commitmentHash: string;
+  readonly fetch?: KupoFetch;
+}): Promise<SDK.DaAvailabilityCommitment> => {
+  const pattern = `${input.daAttestationPolicyId}.${SDK.daAttestationAssetName(input.headerHash)}`;
+  const url = `${input.kupoUrl.replace(/\/+$/u, "")}/matches/${pattern}?resolve_hashes`;
+  const response = await (input.fetch ?? globalThis.fetch)(url);
+  if (!response.ok)
+    throw new Error(
+      `Kupo refused the DA attestation history query ${url}: HTTP ${response.status.toString()}`,
+    );
+  const matches = await response.json();
+  if (!Array.isArray(matches))
+    throw new Error(`Kupo answered ${url} with something other than a list`);
+  for (const match of matches) {
+    if (typeof match !== "object" || match === null || !("datum" in match))
+      throw new Error(
+        `Kupo did not resolve datums for ${url}; run Kupo v2.10.0 or later, which honours ?resolve_hashes`,
+      );
+    const datum: unknown = match.datum;
+    if (typeof datum !== "string") continue;
+    try {
+      const attestation = Data.from(datum, SDK.DaAttestationDatum);
+      if (
+        attestation.header_hash === input.headerHash &&
+        SDK.daAvailabilityCommitmentHash(
+          attestation.availability_commitment,
+        ) === input.commitmentHash
+      )
+        return attestation.availability_commitment;
+    } catch {
+      // Not a DA attestation datum: it cannot be the commitment's source.
+    }
+  }
+  throw new Error(
+    `No indexed DA attestation output for header ${input.headerHash} holds a commitment hashing to ${input.commitmentHash}; opening needs a Kupo index that keeps spent outputs`,
+  );
+};
+
+/** The deployment facts the command builder reads beyond the SDK deployment. */
+export type AvailabilityCommandBuildContext = Readonly<{
+  daChallengeWindowMs: bigint;
+  /** Absent when the manifest records no DA attestation policy. */
+  daAttestationPolicyId: string | undefined;
+  /** The Kupo index Open reads the commitment preimage from. */
+  kupoUrl: string;
+}>;
+
+const availabilityCommandBuildContext = (
+  manifest: DeploymentManifest,
+  kupoUrl: string,
+): AvailabilityCommandBuildContext => ({
+  daChallengeWindowMs: BigInt(
+    manifest.deploymentProfile.timing.da_challenge_window_ms,
+  ),
+  daAttestationPolicyId: manifest.contracts.daAttestationMint?.scriptHash,
+  kupoUrl,
+});
+
+/**
+ * Builds one availability action from the canonical snapshot: Open from the
+ * queue node and the indexed commitment, Timeout from the challenge record,
+ * the terminal accumulator and the DA bond pool.
+ */
+export const buildAvailabilityCommandTransaction = async (
   lucid: LucidEvolution,
   deployment: SDK.DaAvailabilityDeployment,
+  context: AvailabilityCommandBuildContext,
   snapshot: SDK.DaAvailabilityChallengeSnapshot,
   action: SDK.DaAvailabilityTransactionAction,
-  options: AvailabilityCommandOptions,
+  options: Pick<
+    AvailabilityCommandOptions,
+    | "headerHash"
+    | "collateralOutRef"
+    | "fundingOutRef"
+    | "payloadFile"
+    | "trancheIndex"
+  >,
   actor: string,
   reservedOutRefs: ReadonlySet<string>,
 ): Promise<SDK.BuiltDaAvailabilityTransaction> => {
@@ -412,6 +576,16 @@ const buildAvailabilityCommandTransaction = async (
     options.collateralOutRef,
     "--collateral-out-ref",
   );
+  const protocol = required(
+    lucid.config().protocolParameters,
+    "live protocol parameters",
+  );
+  if (action === "timeout")
+    assertAvailabilityTimeoutCollateral({
+      parameters: p,
+      collateralPercentage: protocol.collateralPercentage,
+      collateral,
+    });
   const liveQueue =
     action === "open" ||
     action === "timeout" ||
@@ -440,10 +614,6 @@ const buildAvailabilityCommandTransaction = async (
       throw new Error(
         "Availability capital check cannot find the current challenged queue header",
       );
-    const protocol = required(
-      lucid.config().protocolParameters,
-      "live protocol parameters",
-    );
     const walletAddress = await lucid.wallet().address();
     assertAvailabilityCommandRemovalCapital({
       action,
@@ -464,11 +634,7 @@ const buildAvailabilityCommandTransaction = async (
       reservedOutRefs,
     });
   }
-  const bondDatum = snapshot.bondDatum;
-  const challenged =
-    bondDatum && "ChallengedBond" in bondDatum
-      ? bondDatum.ChallengedBond
-      : undefined;
+  const record = snapshot.recordDatum;
   const now = Date.now();
   const expiredSettlement =
     action === "settle" &&
@@ -478,43 +644,54 @@ const buildAvailabilityCommandTransaction = async (
         datum.Active.descriptor.tranche_index ===
           snapshot.terminalDatum?.next_tranche_index,
     );
-  if (
-    expiredSettlement &&
-    challenged &&
-    BigInt(now) <= challenged.response_deadline
-  )
+  if (expiredSettlement && record && BigInt(now) <= record.response_deadline)
     throw new Error(
       "Active availability tranches cannot settle before the strict response deadline",
     );
   const protocolLower =
-    (action === "timeout" || expiredSettlement) && challenged
-      ? challenged.response_deadline + 1n
+    (action === "timeout" || expiredSettlement) && record
+      ? record.response_deadline + 1n
       : 0n;
   const backedOff = BigInt(Math.max(0, now - 60_000));
   const validFrom = protocolLower > backedOff ? protocolLower : backedOff;
   let validTo = validFrom + 120_000n;
-  if (
-    action === "publish" &&
-    challenged &&
-    validTo > challenged.response_deadline + 1n
-  )
-    validTo = challenged.response_deadline + 1n;
-  const resources = {
-    collateralInputs: [collateral],
-    feeLovelace,
-    validFrom,
-    validTo,
-  };
+  if (action === "publish" && record && validTo > record.response_deadline + 1n)
+    validTo = record.response_deadline + 1n;
   const queue = () =>
     required(snapshot.queue, "the authenticated queue header").utxo;
-  const bond = () => required(snapshot.bond, "the authenticated retained bond");
+  const challengeRecord = () =>
+    required(snapshot.record, "the authenticated challenge record");
   const terminal = () =>
     required(snapshot.terminal, "the terminal accumulator");
-  if (action === "open")
+  if (action === "open") {
+    const node = Data.castFrom(
+      required(snapshot.queue, "the authenticated queue header").datum.data,
+      SDK.StateQueueNode,
+    );
+    const status = node.da_attestation;
+    if (typeof status !== "object" || !("Attested" in status))
+      throw new Error("Availability open requires an Attested queue node");
+    const { daChallengeWindowMs, kupoUrl } = context;
+    // The validator requires the inclusive upper bound, validTo - 1, to fall
+    // before the window's end.
+    const windowEnd = node.header.endTime + daChallengeWindowMs;
+    if (validTo > windowEnd) validTo = windowEnd;
+    const commitment = await recoverAvailabilityOpenCommitment({
+      kupoUrl,
+      daAttestationPolicyId: required(
+        context.daAttestationPolicyId,
+        "the deployment's DA attestation policy",
+      ),
+      headerHash: options.headerHash,
+      commitmentHash: status.Attested.commitment_hash,
+    });
     return Effect.runPromise(
       SDK.buildOpenDaAvailabilityChallengeTxProgram(lucid, deployment, {
-        ...resources,
-        bond: bond(),
+        collateralInputs: [collateral],
+        feeLovelace,
+        validFrom,
+        validTo,
+        commitment,
         queue: queue(),
         challengerFunding: await liveOutRef(
           lucid,
@@ -522,26 +699,33 @@ const buildAvailabilityCommandTransaction = async (
           "--funding-out-ref",
         ),
         challenger: actor,
+        daChallengeWindowMs,
       }),
     );
+  }
+  const resources = {
+    collateralInputs: [collateral],
+    feeLovelace,
+    validFrom,
+    validTo,
+  };
   if (action === "publish") {
-    const activeBond = required(challenged, "an opened challenge");
+    const active = required(record, "an opened challenge record");
     const path = required(
       options.payloadFile,
       "--payload-file with the exact retained envelope bytes",
     );
     if (
-      BigInt((await stat(path)).size) !==
-      activeBond.commitment.payload_byte_length
+      BigInt((await stat(path)).size) !== active.commitment.payload_byte_length
     )
       throw new Error(
         "Availability payload file length differs from the frozen commitment",
       );
     const payload = await readFile(path);
     const plans = SDK.planDaAvailabilityPublications({
-      commitment: activeBond.commitment,
+      commitment: active.commitment,
       payload,
-      challengeAssetName: activeBond.challenge_asset_name,
+      challengeAssetName: active.challenge_asset_name,
     });
     const tranche = required(
       snapshot.tranches.find(
@@ -555,14 +739,14 @@ const buildAvailabilityCommandTransaction = async (
     );
     if (!("Active" in tranche.datum))
       throw new Error("Availability response tranche is already terminal");
-    const active = tranche.datum.Active;
+    const thread = tranche.datum.Active;
     const publication = required(
       plans
         .find(
           (plan) =>
-            plan.descriptor.tranche_index === active.descriptor.tranche_index,
+            plan.descriptor.tranche_index === thread.descriptor.tranche_index,
         )
-        ?.publications.find((item) => item.chunk_offset === active.next_offset),
+        ?.publications.find((item) => item.chunk_offset === thread.next_offset),
       "the next committed chunk",
     );
     return Effect.runPromise(
@@ -586,7 +770,7 @@ const buildAvailabilityCommandTransaction = async (
     return Effect.runPromise(
       SDK.buildSettleDaAvailabilityTrancheTxProgram(lucid, deployment, {
         ...resources,
-        bond: bond(),
+        record: challengeRecord(),
         terminal: terminal(),
         thread: tranche.utxo,
         carrier: tranche.carrier,
@@ -597,7 +781,7 @@ const buildAvailabilityCommandTransaction = async (
     return Effect.runPromise(
       SDK.buildCloseDaAvailabilityChallengeTxProgram(lucid, deployment, {
         ...resources,
-        bond: bond(),
+        record: challengeRecord(),
         terminal: terminal(),
         queue: queue(),
       }),
@@ -615,40 +799,52 @@ const buildAvailabilityCommandTransaction = async (
           .challenge_asset_name
       : undefined;
   const removal = {
-    ...resources,
+    collateralInputs: resources.collateralInputs,
+    validFrom,
+    validTo,
     queue: queue(),
     confirmedState: snapshot.confirmedState.utxo,
     descendant: snapshot.descendant?.utxo,
     correctionLock: snapshot.correctionLock,
     challengeAssetName: required(
-      challenged?.challenge_asset_name ?? lockChallenge,
+      record?.challenge_asset_name ?? lockChallenge,
       "the authenticated removal challenge identity",
     ),
     headerHash: options.headerHash,
+  };
+  if (action === "timeout")
+    // Exact fee, paid by the pool's slash and the challenger reserve: no
+    // wallet input and no change output. The wallet backs collateral only.
+    return Effect.runPromise(
+      SDK.buildTimeoutDaAvailabilityChallengeTxProgram(lucid, deployment, {
+        ...removal,
+        rentRefundAddress: availabilityTimeoutRentRefundAddress(
+          required(lucid.config().network, "the Lucid network"),
+          actor,
+        ),
+        fundingQueueTailRefInput: liveQueue?.at(-1)?.utxo,
+        record: challengeRecord(),
+        terminal: terminal(),
+        pool: required(snapshot.pool, "the authenticated DA bond pool"),
+      }),
+    );
+  const followUp = {
+    ...removal,
+    feeLovelace,
     rentRefundAddress: await lucid.wallet().address(),
     feeFunding: options.fundingOutRef
       ? await liveOutRef(lucid, options.fundingOutRef, "--funding-out-ref")
       : undefined,
-    fundingQueueTailRefInput:
-      action === "timeout" ? liveQueue?.at(-1)?.utxo : undefined,
   };
-  if (action === "timeout")
-    return Effect.runPromise(
-      SDK.buildTimeoutDaAvailabilityChallengeTxProgram(lucid, deployment, {
-        ...removal,
-        bond: bond(),
-        terminal: terminal(),
-      }),
-    );
   if (action === "prune")
     return Effect.runPromise(
       SDK.buildPruneDaUnavailableBlockDescendantTxProgram(
         lucid,
         deployment,
-        removal,
+        followUp,
       ),
     );
   return Effect.runPromise(
-    SDK.buildRemoveDaUnavailableHeadTxProgram(lucid, deployment, removal),
+    SDK.buildRemoveDaUnavailableHeadTxProgram(lucid, deployment, followUp),
   );
 };

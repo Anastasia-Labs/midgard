@@ -2,11 +2,18 @@ import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
+import {
+  isRecoverableL1Race,
+  OnChainLifecycleCoordinator,
+} from "../src/coordinator/on-chain.js";
 import {
   planDaAttestationLifecycle,
   usableCandidatesFor,
 } from "../src/coordinator/planner.js";
+import {
+  DA_BOND_POOL_APPLY_BACKOFF_REASONS,
+  DaBondPoolApplyBackoffError,
+} from "../src/coordinator/pool-backoff.js";
 import {
   isSignerBitSet,
   packSortedSignatureWitnesses,
@@ -704,6 +711,118 @@ describe("single-key attest-loop notice", () => {
   });
 });
 
+describe("pooled DA bond apply backoff and pool churn", () => {
+  /**
+   * A coordinator whose only planned action is apply, with every apply
+   * outcome taken from `outcomes` in order.
+   */
+  const applyOnlyCoordinator = (outcomes: (Error | "ok")[]) => {
+    const applyCalls: string[] = [];
+    const coordinator = new OnChainLifecycleCoordinator({
+      threshold: 2,
+      raceRecoveryRetryCount: 2,
+      raceRecoveryRetryDelayMs: 0,
+      chainReader: {
+        fetchDaAttestationCandidates: async () => [
+          candidateRecord({
+            attestationCount: 2,
+            status: "threshold",
+            bitmap: "c0" + "00".repeat(31),
+          }),
+        ],
+      },
+      submitter: {
+        initAttestation: async () => {
+          throw new Error("unexpected init");
+        },
+        addSignatures: async () => {
+          throw new Error("unexpected add-signatures");
+        },
+        applyAttestation: async ({ candidate }) => {
+          applyCalls.push(candidate.outRef);
+          const outcome = outcomes.shift();
+          if (outcome === undefined) {
+            throw new Error("no apply outcome left");
+          }
+          if (outcome instanceof Error) {
+            throw outcome;
+          }
+          return submitted("applyTx");
+        },
+      },
+    });
+    return { coordinator, applyCalls };
+  };
+
+  it.each(DA_BOND_POOL_APPLY_BACKOFF_REASONS)(
+    "reports a %s backoff as not posted without a race retry, and the next reconcile tries again",
+    async (reason) => {
+      const backoff = new DaBondPoolApplyBackoffError(reason, "pool detail");
+      const { coordinator, applyCalls } = applyOnlyCoordinator([backoff, "ok"]);
+
+      await expect(
+        coordinator.publishSignature(signatureRecord()),
+      ).resolves.toBe("post_failed");
+      expect(applyCalls).toHaveLength(1);
+      expect(
+        coordinator.lastPublishError({ headerHash: "01".repeat(28) }),
+      ).toBe(backoff.message);
+
+      // The node keeps running: the next reconcile builds again.
+      await expect(
+        coordinator.publishSignature(signatureRecord()),
+      ).resolves.toBe("posted");
+      expect(applyCalls).toHaveLength(2);
+      expect(
+        coordinator.lastPublishError({ headerHash: "01".repeat(28) }),
+      ).toBeUndefined();
+    },
+  );
+
+  it("classifies a backoff before the race patterns, even when its message chain reads like a race", async () => {
+    // An unavailable pool whose provider said the pool "was spent" or "not
+    // found": the message chain matches the race patterns, and the backoff
+    // must still win.
+    const backoff = new DaBondPoolApplyBackoffError(
+      "pool-unavailable",
+      "utxo not found: pool input was spent",
+    );
+    Object.defineProperty(backoff, "cause", {
+      value: new Error("utxo not found: pool input was spent"),
+    });
+    expect(isRecoverableL1Race(backoff)).toBe(true);
+    const { coordinator, applyCalls } = applyOnlyCoordinator([
+      backoff,
+      "ok",
+      "ok",
+    ]);
+
+    await expect(coordinator.publishSignature(signatureRecord())).resolves.toBe(
+      "post_failed",
+    );
+    expect(applyCalls).toHaveLength(1);
+  });
+
+  it("retries pool outref churn (a spent pool reference input) as a bounded race", async () => {
+    const churn = () =>
+      new Error(
+        "Failed to submit DA attestation apply: reference input 00#0 was already spent",
+      );
+    const recovered = applyOnlyCoordinator([churn(), "ok"]);
+    await expect(
+      recovered.coordinator.publishSignature(signatureRecord()),
+    ).resolves.toBe("posted");
+    expect(recovered.applyCalls).toHaveLength(2);
+
+    const exhausted = applyOnlyCoordinator([churn(), churn(), churn(), "ok"]);
+    await expect(
+      exhausted.coordinator.publishSignature(signatureRecord()),
+    ).resolves.toBe("post_failed");
+    // One attempt plus raceRecoveryRetryCount (2) retries, then it stops.
+    expect(exhausted.applyCalls).toHaveLength(3);
+  });
+});
+
 const submitted = (txHash: string) => ({
   status: "submitted" as const,
   txHash,
@@ -737,7 +856,6 @@ const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitment(
     deploymentIdentity: "99".repeat(28),
     headerHash: "01".repeat(28),
     payload: Buffer.from("public retained DA"),
-    bondOwner: "76".repeat(28),
     responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 14_020,
       trancheByteLength: 4 * 1_024 * 1_024,

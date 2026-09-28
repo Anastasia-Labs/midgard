@@ -154,20 +154,54 @@ Availability actuation requires an independent payment key and a durable journal
 ```
 
 The funding amount is an operator-selected floor, not a protocol constant. Supply
-the deployed challenger bond, fees and separate plain-ADA collateral. The actor
-prepares the exact bond-plus-open-fee denomination when necessary. Every process
-using this payment key must share the same journal. The watcher checks removal
-capital while an unanswered challenge is live and rechecks the complete live
-queue before timeout takes the correction lock. The timeout references that
-queue's tail, so a concurrent append invalidates the quoted removal budget.
+the deployed challenger bond, fees and separate plain-ADA collateral. Open spends
+one exact coin of challenger bond plus challenge-record lovelace plus the Open fee
+ceiling; that coin's out-ref derives the challenge identity, and the actor
+prepares it when necessary. A Timeout pays the committee's slash penalty out of
+the pooled DA bond as part of its fee, so collateral must cover the protocol
+collateral percentage of penalty plus the Timeout fee ceiling, in at most three
+plain-ADA coins. Every process using this payment key must share the same
+journal. Before every Open, and before preparing its coin, the watcher requires
+the bond plus one queue-bounded removal reserve and one Timeout collateral set,
+held once per wallet however many challenges are live: removals are serialized
+by the correction lock, and each Timeout removes its head and prunes every
+descendant. It rechecks the complete live queue before timeout takes the
+correction lock.
+The timeout references that queue's tail, so a concurrent append invalidates the
+quoted removal budget.
 
 Public retrieval failure for an attested header schedules an availability
-challenge before fault classification. The actor settles answered or expired
-tranches, closes complete responses, and prunes descendants before removing an
-unavailable head. Pending availability is not a healthy or faulty classification.
-After close, canonical L1 publication history supplies the committed envelope if
-the original peers still withhold it. Startup reconciles signed intents before
-new actions; rollback revokes actuation immediately. A rollback through finalized
+challenge before fault classification. The commitment an Open needs is read from
+the DA attestation that the header's Apply consumed and must hash to the queue
+node's `commitment_hash`. An Open is only attempted before the header's Open
+deadline (`end_time` plus the challenge window); a withheld header past it
+merges unchallenged and is reported under `missedOpenDeadlines`. Each header's
+next step is selected independently and due Opens run first, earliest deadline
+first, including a withheld descendant of a header already Challenged. The
+availability journal keeps one workflow per header, so a live challenge never
+holds back another header's Open in the same deployment; it refuses every step
+for a different deployment while any challenge is live. An Open the wallet cannot
+fund is skipped and reported under `openRefused` (header, required and available
+lovelace), and the watcher takes the next step in the same reconciliation, so a
+live challenge's settle, close or Timeout is never starved. A Timeout reads the
+pool at the source tip; when no authentic pool is found there it is skipped for
+that reconciliation and reported under `timeoutsDeferred`, and the next step
+runs. A step the journal refuses is reported under `workflowRefused` with the
+journal's reason, which names the deployment and header of the live workflow
+that blocks it. A terminal step landed by someone else (the committee's Close,
+another watcher's Timeout, a prune or removal of the header) releases this
+actor's workflow for that header, in any deployment, once a finalized, verified
+transaction burns the header's queue node or closes its challenge; the release
+is reported under `workflowReleased`, and a failed release check keeps the row
+and is reported under `workflowReleaseDeferred`. Our own Timeout keeps the
+wallet reserved while descendants remain to be pruned. The actor settles answered or expired tranches, closes complete responses, and
+prunes descendants before removing an unavailable head. A missing, withdrawing
+or under-backed DA bond pool is reported as `poolAlert`. None of `poolAlert`,
+`openRefused`, `timeoutsDeferred`, `workflowRefused`, `workflowReleased` or
+`workflowReleaseDeferred` blocks actuation or readiness. Pending availability is not a healthy or faulty classification. After
+close, canonical L1 publication history supplies the committed envelope if the
+original peers still withhold it. Startup reconciles signed intents before new
+actions; rollback revokes actuation immediately. A rollback through finalized
 availability state halts the journal and requires authenticated recovery.
 
 The nested wire parser accepts both `local_node` and `external_providers`.

@@ -273,7 +273,6 @@ const canonicalManifestIdentity = (): MutableRecord => {
       maxSettlementFeeLovelace: 500_000,
       maxCloseFeeLovelace: 1_000_000,
       maxTimeoutFeeLovelace: 1_200_000,
-      bondOwnerCredential: "77".repeat(28),
     },
   };
 };

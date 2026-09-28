@@ -28,7 +28,7 @@ before proposing deletion.
   may be integrity checks; they do not independently prove fresh measurement.
 - [DA conflict evidence](../../demo/da-committee-node/tests/conflict-evidence.test.ts)
   intentionally uses the same header with different availability commitments
-  and bond owners. Signatures authenticate those commitments. Replacing one
+  under different deployment identities. Signatures authenticate those commitments. Replacing one
   header merely to make the hashes distinct would change the intended case.
 - [The PlutusData corpus](../../demo/midgard-core/tests/plutus-data-wellformed.test.ts)
   combines fixed vectors with 6,000 generated entries. Its greater-than-6,000

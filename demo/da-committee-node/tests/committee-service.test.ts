@@ -102,7 +102,6 @@ const commitmentAuthority = (
   config: CommitmentConfig,
 ): DaAvailabilityCommitmentAuthority => ({
   deploymentIdentity: config.hubOraclePolicyId,
-  bondOwnerCredential: config.availabilityChallenge.bondOwnerCredential,
   responseGeometry: config.availabilityChallenge.responseGeometry,
 });
 
@@ -135,7 +134,7 @@ const runAnchorAheadOfObservations = async (
 };
 
 const attestedDaStatus = (): SDK.DaAvailabilityStateQueueStatus => ({
-  Attested: { da_bond_asset_name: "aa".repeat(32) },
+  Attested: { commitment_hash: "aa".repeat(32) },
 });
 
 const rootSummaryFromHeader = (header: Header): DaStoredPayloadRootSet => ({
@@ -238,7 +237,7 @@ describe("CommitteeService", () => {
     });
   });
 
-  it("is not ready while the L1 submitter's plain ADA cannot cover the next bond", async () => {
+  it("is not ready while the L1 submitter's plain ADA cannot fund the next attestation round", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
@@ -261,25 +260,25 @@ describe("CommitteeService", () => {
     await service.tick();
     const check = {
       checkedAt: "2026-09-26T00:00:00.000Z",
-      plainAdaLovelace: 12_049_999_999n,
-      requiredLovelace: 12_050_000_000n,
+      plainAdaLovelace: 79_999_999n,
+      requiredLovelace: 80_000_000n,
     };
 
     await expect(
       service.readinessSnapshot({
-        l1SubmitterBondFunding: { ...check, sufficient: false },
+        l1SubmitterFunding: { ...check, sufficient: false },
       }),
     ).resolves.toMatchObject({
       ready: false,
       reasons: [
-        "l1_submitter_bond_funding_short: plainAdaLovelace=12049999999, requiredLovelace=12050000000, checkedAt=2026-09-26T00:00:00.000Z",
+        "l1_submitter_fee_funding_short: plainAdaLovelace=79999999, requiredLovelace=80000000, checkedAt=2026-09-26T00:00:00.000Z",
       ],
     });
     await expect(
       service.readinessSnapshot({
-        l1SubmitterBondFunding: {
+        l1SubmitterFunding: {
           ...check,
-          plainAdaLovelace: 12_050_000_000n,
+          plainAdaLovelace: 80_000_000n,
           sufficient: true,
         },
       }),
@@ -1400,7 +1399,7 @@ describe("CommitteeService", () => {
             header: variant,
             headerHash: hashBlockHeader(variant),
             daAttestation: {
-              Attested: { da_bond_asset_name: "33".repeat(32) },
+              Attested: { commitment_hash: "33".repeat(32) },
             },
           };
         },
@@ -2715,7 +2714,7 @@ describe("CommitteeService", () => {
                 ? {
                     ...node,
                     daAttestation: {
-                      Attested: { da_bond_asset_name: "44".repeat(32) },
+                      Attested: { commitment_hash: "44".repeat(32) },
                     },
                   }
                 : node,

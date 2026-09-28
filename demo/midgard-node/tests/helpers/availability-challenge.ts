@@ -29,7 +29,6 @@ export const TEST_AVAILABILITY_CHALLENGE = Object.freeze({
   maxSettlementFeeLovelace: 2_000_000,
   maxCloseFeeLovelace: 2_000_000,
   maxTimeoutFeeLovelace: 3_000_000,
-  bondOwnerCredential: "77".repeat(28),
 }) satisfies DeploymentManifestAvailabilityChallenge;
 
 export const TEST_AVAILABILITY_PARAMETERS = SDK.daAvailabilityParameters({

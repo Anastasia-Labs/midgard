@@ -1,10 +1,8 @@
-import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
   mintingPolicyToId,
   type UTxO,
   validatorToAddress,
-  validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -34,9 +32,6 @@ const REFERENCE_SCRIPT_ROLE_CONTRACTS: Readonly<
     (deployment: MidgardNodeDeployment) => MidgardDeploymentContract
   >
 > = {
-  availabilityChallengeMinting: (d) => d.availabilityChallenge.mint,
-  availabilityChallengeBondWithdrawal: (d) =>
-    d.availabilityChallengeYields.bond,
   daAttestationMinting: (d) => d.daAttestation.mint,
   daAttestationSpending: (d) => d.daAttestation.spend,
   stateQueueMinting: (d) => d.stateQueue.mint,
@@ -78,10 +73,10 @@ describe("DA attestation reference script resolver", () => {
       expect(validatorToScriptHash(utxo.scriptRef!)).toBe(contract.scriptHash);
       outRefKeys.add(`${utxo.txHash}#${utxo.outputIndex.toString()}`);
     }
-    // Six distinct reference UTxOs: a resolver that returned one UTxO under
+    // Four distinct reference UTxOs: a resolver that returned one UTxO under
     // several roles would collapse this set. (Script hashes are NOT distinct
     // here — the DA attestation mint and spend purposes share one script.)
-    expect(outRefKeys.size).toBe(6);
+    expect(outRefKeys.size).toBe(4);
   });
 
   it("refuses a deployment whose reference UTxO is absent from the chain", async () => {
@@ -114,12 +109,13 @@ describe("DA attestation reference script resolver", () => {
     expect(Object.keys(validators).sort()).toEqual([
       "availabilityChallenge",
       "daAttestation",
+      "daBondPool",
       "daParamsGovernor",
       "hubOracle",
       "stateQueue",
     ]);
     expect(Object.keys(validators.availabilityChallenge.yields).sort()).toEqual(
-      ["bond", "close", "open", "settle", "timeout"],
+      ["close", "open", "settle", "timeout"],
     );
     expect(Object.keys(validators.stateQueue.yields).sort()).toEqual([
       "commit",
@@ -137,6 +133,7 @@ describe("DA attestation reference script resolver", () => {
       hubOracle: validators.hubOracle,
       availabilityChallenge: validators.availabilityChallenge,
       daAttestation: validators.daAttestation,
+      daBondPool: validators.daBondPool,
       daParamsGovernor: validators.daParamsGovernor,
       stateQueue: validators.stateQueue,
     };
@@ -176,12 +173,12 @@ describe("DA attestation reference script resolver", () => {
         cbor: withdrawal.withdrawalScript.script,
       });
     }
-    // The ten yield scripts are ten different validators; a table that wired
-    // two names to the same deployed script would be caught here.
+    // The nine yield scripts are nine different validators; a table that
+    // wired two names to the same deployed script would be caught here.
     expect(
       new Set(Object.values(withdrawals).map((w) => w.withdrawalScriptHash))
         .size,
-    ).toBe(10);
+    ).toBe(9);
   });
 
   it("wires the DA-facing roles to the deployment entries that carry their names", async () => {
@@ -196,6 +193,7 @@ describe("DA attestation reference script resolver", () => {
       hubOracle: deployment.hubOracle,
       availabilityChallenge: deployment.availabilityChallenge,
       daAttestation: deployment.daAttestation,
+      daBondPool: deployment.daBondPool,
       daParamsGovernor: deployment.daParamsGovernor,
       stateQueue: deployment.stateQueue,
     };
@@ -213,6 +211,7 @@ describe("DA attestation reference script resolver", () => {
       hubOracle: validators.hubOracle,
       availabilityChallenge: validators.availabilityChallenge,
       daAttestation: validators.daAttestation,
+      daBondPool: validators.daBondPool,
       daParamsGovernor: validators.daParamsGovernor,
       stateQueue: validators.stateQueue,
     })) {
@@ -233,61 +232,22 @@ describe("DA attestation reference script resolver", () => {
     }
   });
 
-  it("refuses a bond reference without its exact deployment role NFT", async () => {
+  it("resolves from reference UTxOs alone, with no reward-account or network read", async () => {
     const deployment = await loadDaDeploymentFixture("Preprod");
-    await expect(
-      fetchDaAttestationReferenceScripts(
-        lucidWithReferenceScripts(
-          withReplacedUtxo(
-            referenceScriptUtxos(deployment),
-            deployment.availabilityChallengeYields.bond.refScriptOutRef!,
-            (utxo) => ({ ...utxo, assets: { lovelace: 4_000_000n } }),
-          ),
-        ),
-        deployment,
-      ),
-    ).rejects.toThrow(/exact authentication role NFT/u);
-  });
-
-  it("refuses a bond role NFT that is present in the wrong quantity", async () => {
-    const deployment = await loadDaDeploymentFixture("Preprod");
-    const roleUnit = referenceScriptAuthUnit(
-      deployment.referenceScriptAuthPolicyId,
-      "availability-challenge bond withdrawal",
+    const reads: string[] = [];
+    const lucid = lucidWithReferenceScripts(referenceScriptUtxos(deployment));
+    await fetchDaAttestationReferenceScripts(
+      new Proxy(lucid, {
+        get: (target, property, receiver) => {
+          reads.push(String(property));
+          return Reflect.get(target, property, receiver) as unknown;
+        },
+      }),
+      deployment,
     );
-    await expect(
-      fetchDaAttestationReferenceScripts(
-        lucidWithReferenceScripts(
-          withReplacedUtxo(
-            referenceScriptUtxos(deployment),
-            deployment.availabilityChallengeYields.bond.refScriptOutRef!,
-            (utxo) => ({
-              ...utxo,
-              assets: { ...utxo.assets, [roleUnit]: 2n },
-            }),
-          ),
-        ),
-        deployment,
-      ),
-    ).rejects.toThrow(/exact authentication role NFT/u);
-  });
-
-  it("refuses initialization when the bond reward account is unregistered", async () => {
-    const deployment = await loadDaDeploymentFixture("Preprod");
-    // The address in the refusal is recomputed here from the bond script, so
-    // the test pins which account was consulted, not merely that one was.
-    const rewardAddress = validatorToRewardAddress(
-      "Preprod",
-      deployment.availabilityChallengeYields.bond.script,
-    );
-    await expect(
-      fetchDaAttestationReferenceScripts(
-        lucidWithReferenceScripts(referenceScriptUtxos(deployment), false),
-        deployment,
-      ),
-    ).rejects.toThrow(
-      `availability challenge bond withdrawal reward account is not registered: ${rewardAddress}`,
-    );
+    // The round no longer withdraws from a bond script, so nothing checks a
+    // reward registration; the pooled bond is read at apply, not here.
+    expect(reads).toEqual(["utxosByOutRef"]);
   });
 
   it("fails closed when a resolved UTxO has the wrong scriptRef", async () => {
@@ -314,21 +274,9 @@ describe("DA attestation reference script resolver", () => {
 });
 
 const referenceScriptUtxos = (deployment: MidgardNodeDeployment): UTxO[] =>
-  Object.entries(REFERENCE_SCRIPT_ROLE_CONTRACTS).map(([role, contractOf]) => {
+  Object.values(REFERENCE_SCRIPT_ROLE_CONTRACTS).map((contractOf) => {
     const contract = contractOf(deployment);
-    const base = referenceScriptUtxo(contract.refScriptOutRef, contract.script);
-    return role === "availabilityChallengeBondWithdrawal"
-      ? {
-          ...base,
-          assets: {
-            ...base.assets,
-            [referenceScriptAuthUnit(
-              deployment.referenceScriptAuthPolicyId,
-              "availability-challenge bond withdrawal",
-            )]: 1n,
-          },
-        }
-      : base;
+    return referenceScriptUtxo(contract.refScriptOutRef, contract.script);
   });
 
 const withReplacedUtxo = (
@@ -365,11 +313,7 @@ const referenceScriptUtxo = (
 
 const lucidWithReferenceScripts = (
   utxos: readonly UTxO[],
-  registered = true,
-): Pick<LucidEvolution, "utxosByOutRef" | "rewardAccountAt" | "config"> => ({
-  config: () =>
-    ({ network: "Preprod" }) as ReturnType<LucidEvolution["config"]>,
-  rewardAccountAt: async () => ({ registered, rewards: 0n, poolId: null }),
+): Pick<LucidEvolution, "utxosByOutRef"> => ({
   utxosByOutRef: async (outRefs) =>
     outRefs.flatMap((outRef) =>
       utxos.filter(

@@ -14,7 +14,7 @@ import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../s
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
-it("registers all five real availability credentials with exact deposits and resumes idempotently", async () => {
+it("registers all four real availability credentials (open, settle, close and timeout) with exact deposits and resumes idempotently", async () => {
   const wallet = generateEmulatorAccount({ lovelace: 100_000_000n });
   const emulator = new Emulator([wallet], {
     ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -40,8 +40,15 @@ it("registers all five real availability credentials with exact deposits and res
       contracts,
     ),
   );
-  expect(first).toHaveLength(5);
-  expect(new Set(first.map(({ scriptHash }) => scriptHash)).size).toBe(5);
+  expect(first).toHaveLength(4);
+  // The per-header bond yield is retired: the pooled bond needs no credential.
+  expect(first.map(({ action }) => action).sort()).toEqual([
+    "close",
+    "open",
+    "settle",
+    "timeout",
+  ]);
+  expect(new Set(first.map(({ scriptHash }) => scriptHash)).size).toBe(4);
   expect(first.every(({ txHash }) => txHash !== null)).toBe(true);
   expect(
     await Promise.all(
@@ -50,8 +57,8 @@ it("registers all five real availability credentials with exact deposits and res
           (await lucid.rewardAccountAt(rewardAddress)).registered,
       ),
     ),
-  ).toEqual(Array(5).fill(true));
-  expect(submitted).toHaveLength(5);
+  ).toEqual(Array(4).fill(true));
+  expect(submitted).toHaveLength(4);
   for (const [index, cbor] of submitted.entries()) {
     expect(cbor.length / 2).toBeLessThanOrEqual(16_384);
     const tx = CML.Transaction.from_cbor_hex(cbor);
@@ -75,7 +82,7 @@ it("registers all five real availability credentials with exact deposits and res
     0n,
   );
   expect(100_000_000n - remaining).toBe(
-    5n * PROTOCOL_PARAMETERS_DEFAULT.keyDeposit + fees,
+    4n * PROTOCOL_PARAMETERS_DEFAULT.keyDeposit + fees,
   );
   const second = await Effect.runPromise(
     ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
@@ -91,8 +98,8 @@ it("registers all five real availability credentials with exact deposits and res
           (await lucid.rewardAccountAt(rewardAddress)).registered,
       ),
     ),
-  ).toEqual(Array(5).fill(true));
-  expect(submitted).toHaveLength(5);
+  ).toEqual(Array(4).fill(true));
+  expect(submitted).toHaveLength(4);
 });
 
 it("registers history observers within the size limit without spending reserved nonces in a fragmented wallet", async () => {

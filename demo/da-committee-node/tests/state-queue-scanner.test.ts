@@ -154,7 +154,7 @@ describe("state queue scanner", () => {
         makeObservedNode({
           header,
           headerHash,
-          daAttestation: { Attested: { da_bond_asset_name: "33".repeat(32) } },
+          daAttestation: { Attested: { commitment_hash: "33".repeat(32) } },
         }),
         makeObservedNode({
           header,
@@ -164,7 +164,7 @@ describe("state queue scanner", () => {
         makeObservedNode({
           header,
           headerHash,
-          daAttestation: { Attested: { da_bond_asset_name: "55".repeat(32) } },
+          daAttestation: { Attested: { commitment_hash: "55".repeat(32) } },
         }),
       ],
     };
@@ -234,7 +234,7 @@ describe("state queue scanner", () => {
           header,
           headerHash: hashBlockHeader(header),
           daAttestation: {
-            Attested: { da_bond_asset_name: "33".repeat(32) },
+            Attested: { commitment_hash: "33".repeat(32) },
           },
         };
       });

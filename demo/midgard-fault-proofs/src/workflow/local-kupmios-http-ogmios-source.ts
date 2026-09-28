@@ -1,3 +1,4 @@
+import { transactionConsumesOutRef } from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 
@@ -1685,15 +1686,33 @@ export const readAdmittedLocalKupmiosAddressUtxosAtPoint = async ({
 };
 
 /**
+ * An exact outref Kupo reports spent at or below the read point, kept only
+ * when its raw consuming transaction passes {@link transactionConsumesOutRef}.
+ */
+export type LocalKupmiosVerifiedSpend = Readonly<{
+  outRef: string;
+  spendingTxHash: string;
+  spendPoint: FraudProofRawL1Point;
+}>;
+
+export type LocalKupmiosOutRefsAtPoint = Readonly<{
+  /** The requested outrefs still unspent at the point. */
+  outputs: readonly FraudProofRawL1Utxo[];
+  /** The requested outrefs spent at or below the point, verified. */
+  spends: readonly LocalKupmiosVerifiedSpend[];
+}>;
+
+/**
  * Exact resolved transaction read from the same concrete loopback source as
  * the admitted raw-block path. Both provider claims and every resolved input
- * are re-admitted before the result crosses the package boundary.
+ * are re-admitted before the result crosses the package boundary. An outref
+ * reported in neither list is missing with no verified spend.
  */
 export const readAdmittedLocalKupmiosUtxosByOutRefAtPoint = async (input: {
   readonly source: LocalKupmiosFraudProofRawSource;
   readonly point: FraudProofRawL1Point;
   readonly outRefs: readonly string[];
-}): Promise<readonly FraudProofRawL1Utxo[]> => {
+}): Promise<LocalKupmiosOutRefsAtPoint> => {
   if (
     !admittedHttpOgmiosSources.has(input.source) ||
     input.source.readOutRefsAtPoint === undefined
@@ -1712,22 +1731,60 @@ export const readAdmittedLocalKupmiosUtxosByOutRefAtPoint = async (input: {
     input.outRefs.some((ref) => !/^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u.test(ref))
   )
     throw new Error("Invalid exact outref request");
-  const value = await input.source.readOutRefsAtPoint({
-    point,
-    outRefs: input.outRefs,
-  });
-  if (!Array.isArray(value) || value.length > input.outRefs.length)
-    throw new Error("Exact outref source returned an invalid set");
-  const outputs = value.map((output, index) =>
-    admitFraudProofRawL1Utxo(output, `exact outref ${index}`),
+  const value = exactKeys(
+    await input.source.readOutRefsAtPoint({
+      point,
+      outRefs: input.outRefs,
+    }),
+    ["outputs", "spends"],
+    [],
+    "exact outref read",
   );
   if (
-    new Set(outputs.map(({ outRef }) => outRef)).size !== outputs.length ||
-    outputs.some(({ outRef }) => !input.outRefs.includes(outRef))
+    !Array.isArray(value.outputs) ||
+    !Array.isArray(value.spends) ||
+    value.outputs.length + value.spends.length > input.outRefs.length
+  )
+    throw new Error("Exact outref source returned an invalid set");
+  const outputs = value.outputs.map((output, index) =>
+    admitFraudProofRawL1Utxo(output, `exact outref ${index}`),
+  );
+  const spends = value.spends.map((entry, index): LocalKupmiosVerifiedSpend => {
+    const spend = exactKeys(
+      entry,
+      ["outRef", "spendingTxHash", "spendPoint"],
+      [],
+      `exact outref spend ${index}`,
+    );
+    const spendPoint = admitFraudProofRawL1Point(
+      spend.spendPoint,
+      `exact outref spend ${index} point`,
+    );
+    if (
+      typeof spend.outRef !== "string" ||
+      typeof spend.spendingTxHash !== "string" ||
+      !/^[0-9a-f]{64}$/u.test(spend.spendingTxHash) ||
+      BigInt(spendPoint.slot) > BigInt(point.slot) ||
+      BigInt(spendPoint.blockNo) > BigInt(point.blockNo)
+    )
+      throw new Error("Exact outref source returned an invalid spend");
+    return Object.freeze({
+      outRef: spend.outRef,
+      spendingTxHash: spend.spendingTxHash,
+      spendPoint,
+    });
+  });
+  const reported = [...outputs, ...spends].map(({ outRef }) => outRef);
+  if (
+    new Set(reported).size !== reported.length ||
+    reported.some((outRef) => !input.outRefs.includes(outRef))
   ) {
     throw new Error("Exact outref source substituted the requested set");
   }
-  return Object.freeze(outputs);
+  return Object.freeze({
+    outputs: Object.freeze(outputs),
+    spends: Object.freeze(spends),
+  });
 };
 
 export const pinAdmittedLocalKupmiosBoundaryAtPoint = async (input: {
@@ -2903,6 +2960,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
     readOutRefsAtPoint: async ({ point, outRefs }) => {
       assertBoundary(point);
       const result: FraudProofRawL1Utxo[] = [];
+      const spends: LocalKupmiosVerifiedSpend[] = [];
       for (const outRef of outRefs) {
         const [txHash, index] = outRef.split("#");
         const matches = await fetchMatches(`${index}@${txHash}`);
@@ -2938,11 +2996,39 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
               "Output spend forks at pinned point",
             );
           }
+          // A spend is reported only with its consuming transaction verified;
+          // a claim the raw block does not bear out reads as missing.
+          let spending: OgmiosRawTransactionAtPoint;
+          try {
+            spending = await readRawTransaction({
+              txHash: match.spentAt.txHash,
+              point: match.spentAt,
+            });
+          } catch (cause) {
+            if (
+              cause instanceof LocalKupmiosCheckpointChangedError ||
+              cause instanceof LocalKupmiosExactPointNotCanonicalError
+            )
+              throw cause;
+            continue;
+          }
+          if (
+            transactionConsumesOutRef({
+              transactionCbor: spending.transactionCbor,
+              transactionId: match.spentAt.txHash,
+              outRef,
+            })
+          )
+            spends.push({
+              outRef,
+              spendingTxHash: match.spentAt.txHash,
+              spendPoint: spending.point,
+            });
           continue;
         }
         result.push(await utxoFromMatch(match));
       }
-      return result;
+      return { outputs: result, spends };
     },
     pinBoundaryAtPoint: async ({ point }) => {
       pinnedKupoResponseHead = undefined;
@@ -3330,19 +3416,12 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
           txHash: match.spentAt.txHash,
           point: match.spentAt,
         });
-        const spendingTransaction = CML.Transaction.from_cbor_hex(
-          spending.transactionCbor,
-        );
-        const spent = spendingTransaction.body().inputs();
         if (
-          !spendingTransaction.is_valid() ||
-          !Array.from({ length: spent.len() }, (_, index) =>
-            spent.get(index),
-          ).some(
-            (entry) =>
-              `${entry.transaction_id().to_hex()}#${entry.index().toString()}` ===
-              outRef,
-          )
+          !transactionConsumesOutRef({
+            transactionCbor: spending.transactionCbor,
+            transactionId: match.spentAt.txHash,
+            outRef,
+          })
         )
           throw new Error(
             "Kupo input spend lacks its exact canonical consuming transaction",

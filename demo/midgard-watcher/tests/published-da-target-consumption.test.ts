@@ -458,7 +458,7 @@ it("waits for exact retained DA reconciliation before constructing replacement w
     unit === stateQueueUnit
       ? [
           attested
-            ? nodeOutput({ Attested: { da_bond_asset_name: "ee".repeat(32) } })
+            ? nodeOutput({ Attested: { commitment_hash: "ee".repeat(32) } })
             : nodeOutput(),
         ]
       : [{ ...nodeOutput(), assets: { lovelace: 2_000_000n } }],

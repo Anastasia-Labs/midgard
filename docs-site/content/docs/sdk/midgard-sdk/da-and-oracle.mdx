@@ -16,9 +16,18 @@ codecs are separate APIs.
   [`da-attestation` validator](/docs/onchain/da-validators).
 - **`da-payload`**: encode/decode retained payloads and validation witnesses;
   this is payload data, not an L1 transaction builder.
-- **`availability-challenge`**: typed availability commitments, status, bond and
-  challenge schemas used by the attestation lifecycle. Deployment acceptance is
-  separate from the presence of these SDK types.
+- **`availability-challenge`**: typed availability commitments, the state-queue
+  availability status, and the challenge-record schemas used by the attestation
+  and challenge lifecycle. Deployment acceptance is separate from the presence
+  of these SDK types.
+- **`da-bond-pool`**: the committee's pooled DA bond. Exports `DaBondPoolDatum`
+  (`Bonded` or `Withdrawing`), `fetchDaBondPool`, `daBondPoolBacking`, and the
+  builders `buildTopUpDaBondPoolTxProgram`,
+  `buildBeginDaBondPoolWithdrawTxProgram`,
+  `buildCancelDaBondPoolWithdrawTxProgram` and
+  `buildCompleteDaBondPoolWithdrawTxProgram`. Protocol initialization creates
+  and funds the pool. Enforced on L1 by the
+  [`da-bond-pool` validator](/docs/onchain/da-validators).
 
 ## Hub oracle and bootstrap
 

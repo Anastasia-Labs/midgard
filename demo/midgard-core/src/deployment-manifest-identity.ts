@@ -44,6 +44,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "hubOracleMint",
   "daParamsGovernorSpend",
   "daParamsGovernorMint",
+  "daBondPoolSpend",
+  "daBondPoolMint",
   "daAttestationSpend",
   "daAttestationMint",
   "stateQueueSpend",
@@ -819,6 +821,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "hub-oracle minting": "hubOracleMint",
     "da-params-governor spending": "daParamsGovernorSpend",
     "da-params-governor minting": "daParamsGovernorMint",
+    "da-bond-pool spending": "daBondPoolSpend",
+    "da-bond-pool minting": "daBondPoolMint",
     "da-attestation spending": "daAttestationSpend",
     "da-attestation minting": "daAttestationMint",
     "state-queue spending": "stateQueueSpend",
@@ -1989,9 +1993,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "hub-oracle minting": "HubOracleMint",
   "da-params-governor spending": "DaParamsGovernorSpend",
   "da-params-governor minting": "DaParamsGovernorMint",
-  // The pooled DA bond's auth-token roles, mirroring the SDK vocabulary. The
-  // pool's contract entries and published reference scripts join the manifest
-  // (contract names and role-to-contract map) with its deployment wiring.
   "da-bond-pool spending": "DaBondPoolSpend",
   "da-bond-pool minting": "DaBondPoolMint",
   "da-attestation spending": "DaAttestationSpend",
@@ -2631,8 +2632,6 @@ export type DeploymentManifestAvailabilityChallenge = Readonly<{
   daBondMinTopUpLovelace: number;
   daBondPoolFloorLovelace: number;
   challengeRecordLovelace: number;
-  /** Exact enterprise vkey credential that owns the retained per-header bond. */
-  bondOwnerCredential: string;
 }>;
 
 /** Applied payload bounds for a fabricated-event family. Strings preserve the
@@ -3070,7 +3069,6 @@ export const parseDeploymentManifestAvailabilityChallenge = (
     "daBondMinTopUpLovelace",
     "daBondPoolFloorLovelace",
     "challengeRecordLovelace",
-    "bondOwnerCredential",
   ] as const;
   if (
     Object.keys(candidate).length !== required.length ||
@@ -3215,15 +3213,6 @@ export const parseDeploymentManifestAvailabilityChallenge = (
       );
     }
   }
-  const bondOwnerCredential = candidate.bondOwnerCredential;
-  if (
-    typeof bondOwnerCredential !== "string" ||
-    !/^[0-9a-f]{56}$/u.test(bondOwnerCredential)
-  ) {
-    throw new Error(
-      "Deployment manifest availabilityChallenge.bondOwnerCredential must be exactly 28 lowercase hex bytes",
-    );
-  }
   let publicationCount = 0;
   for (
     let offset = 0;
@@ -3265,7 +3254,6 @@ export const parseDeploymentManifestAvailabilityChallenge = (
     daBondMinTopUpLovelace,
     daBondPoolFloorLovelace,
     challengeRecordLovelace,
-    bondOwnerCredential,
   });
 };
 

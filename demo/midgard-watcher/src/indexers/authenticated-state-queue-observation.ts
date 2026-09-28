@@ -1063,6 +1063,7 @@ const correctionLockWitness = ({
   hubOraclePolicyId,
   fraudProofPolicyId,
   fraudProofAddress,
+  availabilityChallengePolicyId,
 }: {
   raw: FraudProofRawL1Transaction;
   body: CML.TransactionBody;
@@ -1073,6 +1074,7 @@ const correctionLockWitness = ({
   hubOraclePolicyId: string;
   fraudProofPolicyId: string;
   fraudProofAddress: string;
+  availabilityChallengePolicyId: string;
 }): SDK.StateQueueCorrectionLockWitness => {
   const spentRefs = outputReferences(body.inputs());
   const referenceRefs = outputReferences(body.reference_inputs());
@@ -1218,10 +1220,70 @@ const correctionLockWitness = ({
       nextDatum: locksOut[0]!.datum,
     };
   }
+  if (
+    typeof decoded === "object" &&
+    decoded !== null &&
+    "RemoveUnavailableBlockAfterTimeout" in decoded
+  ) {
+    if (
+      locksIn.length !== 1 ||
+      locksReferenced.length !== 0 ||
+      locksOut.length !== 1
+    ) {
+      throw new Error(
+        "availability timeout has invalid CorrectionLock topology",
+      );
+    }
+    const timeout = decoded.RemoveUnavailableBlockAfterTimeout;
+    const identity: SDK.CorrectionIdentity = {
+      AvailabilityChallenge: {
+        challenge_asset_name: timeout.challenge_asset_name,
+      },
+    };
+    const previousDatum = locksIn[0]!.datum;
+    if (previousDatum === "Idle") {
+      // The step that takes the lock is the Timeout itself: it must burn the
+      // exact challenge token the redeemer names, so the identity carried by
+      // the lock is the settled-and-timed-out challenge, not a label.
+      const mint = body.mint();
+      const burned = mint
+        ?.get_assets(CML.ScriptHash.from_hex(availabilityChallengePolicyId))
+        ?.get(CML.AssetName.from_hex(timeout.challenge_asset_name));
+      if (burned !== -1n)
+        throw new Error(
+          "availability timeout does not burn the challenge it names",
+        );
+    } else {
+      const locked = previousDatum.Locked;
+      const lockedIdentity = locked.correction_identity;
+      if (
+        locked.target_header_hash !== timeout.unavailable_header_hash ||
+        typeof lockedIdentity !== "object" ||
+        lockedIdentity === null ||
+        !("AvailabilityChallenge" in lockedIdentity) ||
+        lockedIdentity.AvailabilityChallenge.challenge_asset_name !==
+          timeout.challenge_asset_name
+      )
+        throw new Error(
+          "availability timeout continues a CorrectionLock held by another correction",
+        );
+    }
+    return {
+      kind: "correction_transition",
+      consumedOutRef: locksIn[0]!.outRef,
+      continuedOutRef: locksOut[0]!.outRef,
+      targetHeaderHash: timeout.unavailable_header_hash,
+      correctionIdentity: identity,
+      previousDatum,
+      nextDatum: locksOut[0]!.datum,
+    };
+  }
   throw new Error(
     "state-queue mint redeemer has no admitted CorrectionLock topology",
   );
 };
+
+export const unsafeCorrectionLockWitnessForTest = correctionLockWitness;
 
 const sameQueue = (
   left: readonly QueueNode[],
@@ -1460,6 +1522,8 @@ const deriveObservation = ({
       hubOraclePolicyId,
       fraudProofPolicyId,
       fraudProofAddress,
+      availabilityChallengePolicyId:
+        authority.protocolScriptHashes.availabilityChallengeMint,
     });
     const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
       deploymentIdentityDigest: authority.deploymentFingerprint,
@@ -2732,6 +2796,8 @@ const restorePersistedObservationChain = async ({
         hubOraclePolicyId,
         fraudProofPolicyId: authority.protocolScriptHashes.fraudProofMint,
         fraudProofAddress,
+        availabilityChallengePolicyId:
+          authority.protocolScriptHashes.availabilityChallengeMint,
       });
       const rederived = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
         deploymentIdentityDigest: authority.deploymentFingerprint,

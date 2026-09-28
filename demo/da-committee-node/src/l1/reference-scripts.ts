@@ -1,8 +1,6 @@
-import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
   type UTxO,
-  validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
@@ -12,9 +10,14 @@ import type {
   MidgardNodeDeployment,
 } from "./deployment.js";
 
+/**
+ * The reference scripts the attestation round reads: the DA attestation mint
+ * (init, apply burn) and spend (add-signatures, apply), and the state-queue
+ * mint and spend that apply runs. Apply reads the pooled DA bond as a plain
+ * reference input and never runs the pool's scripts, and nothing in the round
+ * mints under the availability policy, so neither is here.
+ */
 export type DaAttestationReferenceScripts = {
-  readonly availabilityChallengeMinting: UTxO;
-  readonly availabilityChallengeBondWithdrawal: UTxO;
   readonly daAttestationMinting: UTxO;
   readonly daAttestationSpending: UTxO;
   readonly stateQueueMinting: UTxO;
@@ -22,18 +25,10 @@ export type DaAttestationReferenceScripts = {
 };
 
 export const fetchDaAttestationReferenceScripts = async (
-  lucid: Pick<LucidEvolution, "utxosByOutRef" | "rewardAccountAt" | "config">,
+  lucid: Pick<LucidEvolution, "utxosByOutRef">,
   deployment: MidgardNodeDeployment,
 ): Promise<DaAttestationReferenceScripts> => {
   const targets = [
-    {
-      name: "availability challenge minting",
-      contract: deployment.availabilityChallenge.mint,
-    },
-    {
-      name: "availability challenge bond withdrawal",
-      contract: deployment.availabilityChallengeYields.bond,
-    },
     {
       name: "DA attestation minting",
       contract: deployment.daAttestation.mint,
@@ -60,38 +55,11 @@ export const fetchDaAttestationReferenceScripts = async (
   const resolved = targets.map((target) =>
     requireReferenceScript(target.name, target.contract, byOutRef),
   );
-  const bondReference = resolved[1]!;
-  const bondRoleUnit = referenceScriptAuthUnit(
-    deployment.referenceScriptAuthPolicyId,
-    "availability-challenge bond withdrawal",
-  );
-  if (bondReference.assets[bondRoleUnit] !== 1n) {
-    throw new Error(
-      "availability challenge bond withdrawal reference script lacks its exact authentication role NFT",
-    );
-  }
-  const network = lucid.config().network;
-  if (network === undefined) {
-    throw new Error(
-      "availability challenge bond withdrawal readiness requires a configured network",
-    );
-  }
-  const rewardAddress = validatorToRewardAddress(
-    network,
-    deployment.availabilityChallengeYields.bond.script,
-  );
-  if (!(await lucid.rewardAccountAt(rewardAddress)).registered) {
-    throw new Error(
-      `availability challenge bond withdrawal reward account is not registered: ${rewardAddress}`,
-    );
-  }
   return {
-    availabilityChallengeMinting: resolved[0]!,
-    availabilityChallengeBondWithdrawal: resolved[1]!,
-    daAttestationMinting: resolved[2]!,
-    daAttestationSpending: resolved[3]!,
-    stateQueueMinting: resolved[4]!,
-    stateQueueSpending: resolved[5]!,
+    daAttestationMinting: resolved[0]!,
+    daAttestationSpending: resolved[1]!,
+    stateQueueMinting: resolved[2]!,
+    stateQueueSpending: resolved[3]!,
   };
 };
 

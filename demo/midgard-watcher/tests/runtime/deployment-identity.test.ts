@@ -269,7 +269,6 @@ const canonicalIdentity = (): MutableRecord => {
       maxSettlementFeeLovelace: 500_000,
       maxCloseFeeLovelace: 1_000_000,
       maxTimeoutFeeLovelace: 1_200_000,
-      bondOwnerCredential: "77".repeat(28),
     },
   };
 };
@@ -523,8 +522,9 @@ describe("watcher deployment identity", () => {
           fixture.policy.appliedScriptHashes.availabilityChallengeSpend,
         availabilityChallengeMint:
           fixture.policy.appliedScriptHashes.availabilityChallengeMint,
-        availabilityChallengeBondWithdraw:
-          fixture.policy.appliedScriptHashes.availabilityChallengeBondWithdraw,
+        daBondPoolSpend: fixture.policy.appliedScriptHashes.daBondPoolSpend,
+        daBondPoolMint: fixture.policy.appliedScriptHashes.daBondPoolMint,
+        daAttestationMint: fixture.policy.appliedScriptHashes.daAttestationMint,
         availabilityChallengeOpenWithdraw:
           fixture.policy.appliedScriptHashes.availabilityChallengeOpenWithdraw,
         availabilityChallengeSettleWithdraw:

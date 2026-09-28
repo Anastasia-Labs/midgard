@@ -16,4 +16,6 @@
 # 450000 on the testing profiles), or it is refused at startup.
 # DA_RETENTION_ALERT_THRESHOLD_MS: "60000"
 # Existing deployment/provider/database settings can also be specified here.
+# The Ogmios behind the kupmios provider must run with --include-transaction-cbor:
+# the availability responder verifies a rival spend of its inputs from raw bytes.
 # Remove {} when uncommenting settings. Do not paste real seeds into this example.

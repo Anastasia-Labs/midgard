@@ -8,6 +8,7 @@ import type {
 import type { DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import type { AttestationCoordinator } from "./coordinator.js";
 import { planDaAttestationLifecycle } from "./planner.js";
+import { DaBondPoolApplyBackoffError } from "./pool-backoff.js";
 import { parseSignatureWitness } from "./witnesses.js";
 
 export type DaAttestationContext = Pick<
@@ -220,7 +221,14 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
         await this.reconcileOnce(args);
         return;
       } catch (error) {
-        if (!isRecoverableL1Race(error) || attempt === retryCount) {
+        // A pooled-bond backoff is classified before any race pattern: the
+        // pool will not change within a retry delay, so it is reported as not
+        // posted at once and the next reconcile tries again.
+        if (
+          error instanceof DaBondPoolApplyBackoffError ||
+          !isRecoverableL1Race(error) ||
+          attempt === retryCount
+        ) {
           throw error;
         }
         await sleep(retryDelayMs);
@@ -612,7 +620,7 @@ const recoverableL1RacePatterns = [
   /\bspent\b/i,
 ];
 
-const isRecoverableL1Race = (error: unknown): boolean => {
+export const isRecoverableL1Race = (error: unknown): boolean => {
   const message = errorMessageWithCause(error);
   return recoverableL1RacePatterns.some((pattern) => pattern.test(message));
 };

@@ -281,10 +281,6 @@ for (const [name, value] of [
     "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
     TEST_AVAILABILITY_CHALLENGE.maxTimeoutFeeLovelace,
   ],
-  [
-    "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL",
-    TEST_AVAILABILITY_CHALLENGE.bondOwnerCredential,
-  ],
 ] as const) {
   process.env[name] = String(value);
 }
@@ -544,6 +540,7 @@ export const publishDepositFlowReferenceScripts = async ({
       activeOperatorsMinting: requireRef("active-operators minting"),
       retiredOperatorsMinting: requireRef("retired-operators minting"),
       fraudProofCatalogueMinting: requireRef("fraud-proof-catalogue minting"),
+      daBondPoolMinting: requireRef("da-bond-pool minting"),
     },
     deposit: {
       depositMinting: requireRef("deposit minting"),
@@ -2417,16 +2414,17 @@ export const expectDaCommitteeAcceptsPersistedPayload = async ({
   );
 };
 
-export const retainAndAttestSubmittedHeader = async ({
+/**
+ * Waits for the submitted commit and stores the header's canonical DA payload
+ * from its pending finalization journal, the retention step the node's
+ * attestation path requires before it attests.
+ */
+export const retainSubmittedHeaderPayload = async ({
   fixture,
-  lucidService,
-  globals,
   headerHash,
   submittedTxHash,
 }: {
   readonly fixture: EmulatorFixture;
-  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
-  readonly globals: Globals;
   readonly headerHash: string;
   readonly submittedTxHash: string;
 }) => {
@@ -2456,6 +2454,22 @@ export const retainAndAttestSubmittedHeader = async ({
       yield* DaPayloadsDB.upsertAvailable(payload);
     }),
   );
+};
+
+export const retainAndAttestSubmittedHeader = async ({
+  fixture,
+  lucidService,
+  globals,
+  headerHash,
+  submittedTxHash,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly globals: Globals;
+  readonly headerHash: string;
+  readonly submittedTxHash: string;
+}) => {
+  await retainSubmittedHeaderPayload({ fixture, headerHash, submittedTxHash });
   await attestQueuedStateQueueHeader({
     fixture,
     lucidService,

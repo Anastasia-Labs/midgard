@@ -11,7 +11,7 @@ import { expect, it, vi } from "vitest";
 import { verifyPublishedDaAttestationReceipt } from "./support/published-da-attestation-receipt.js";
 
 const headerHash = "11".repeat(28);
-const bondAssetName = "22".repeat(32);
+const commitmentHash = "22".repeat(32);
 const stateQueueAddress = credentialToAddress("Preprod", {
   type: "Script",
   hash: "33".repeat(28),
@@ -49,7 +49,7 @@ const header: SDK.Header = {
 };
 const transaction = (
   attestation: SDK.StateQueueNode["da_attestation"] = {
-    Attested: { da_bond_asset_name: bondAssetName },
+    Attested: { commitment_hash: commitmentHash },
   },
   copies = 1,
 ) => {
@@ -92,7 +92,7 @@ const fixture = (included = transaction()) => ({
   stateQueueAddress,
   stateQueueUnit,
   headerHash,
-  bondAssetName,
+  commitmentHash,
 });
 
 it("accepts the exact included DA apply after a proof consumes its live header", async () => {
@@ -114,7 +114,7 @@ it("preserves strict live-output verification without a native receipt reader", 
     "did not attach",
   );
   input.readLiveAttestation.mockResolvedValue({
-    Attested: { da_bond_asset_name: bondAssetName },
+    Attested: { commitment_hash: commitmentHash },
   });
   await expect(
     verifyPublishedDaAttestationReceipt(input),
@@ -162,7 +162,7 @@ it("rejects an unattested output, changed bond, or unrelated header identity", a
   await expect(
     verifyPublishedDaAttestationReceipt({
       ...fixture(),
-      bondAssetName: "99".repeat(32),
+      commitmentHash: "99".repeat(32),
     }),
   ).rejects.toThrow("expected attestation");
   await expect(

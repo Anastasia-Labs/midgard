@@ -35,9 +35,10 @@ As implemented in this repository:
 - Per block, the DA attestation policy mints a `DAAT || header_hash` token into an attestation UTxO.
 - The attestation datum carries `header_hash`, `availability_commitment`, `da_threshold`, `committee_signers_hash`, `rescue_beneficiary`, a 256-bit MSB-first signer bitmap, and `attestation_count`.
 - `AddSignatures` accepts a packed byte string of `1-byte signer index || 64-byte Ed25519 signature` chunks. Indexes must be strictly ascending, and each signature is verified against the key at that index in the current DA params committee.
-- `ApplyToStateQueue` requires the frozen committee hash and threshold to equal current governed parameters and a sufficient attestation count. It burns the attestation token, requires the availability policy's `MintBondFromAttestation` redeemer, and attaches the derived DA bond identity to the state queue.
-- State-queue DA state is `Unattested`, `Attested { da_bond_asset_name }`, `Challenged { da_bond_asset_name, challenge_asset_name }`, or `Published { terminal_commitment }`. Merge permits `Attested` and `Published`; this is not a bare policy-id marker.
-- `RescueStrandedAttestation` refunds the fixed rescue beneficiary when committee or threshold changes strand an attestation. It is separate from the availability commitment's bond owner.
+- The DA committee as a whole is backed by one DA bond pool: a single UTxO holding the `MIDGARD_DA_BOND_POOL` NFT, with a `Bonded` or `Withdrawing { unlock_at }` datum. Its backing is its lovelace above the fixed `da_bond_pool_floor_lovelace`. Anyone may top it up; only the DA governance owner quorum can withdraw, in two steps. Starting and signing an attestation need no bond, and the attestation output locks only its own min-ADA.
+- `ApplyToStateQueue` requires the frozen committee hash and threshold to equal current governed parameters and a sufficient attestation count. It reads the DA bond pool as a reference input and applies only while the pool is `Bonded` and its backing is at least one DA bond (`da_bond_lovelace`). It burns the attestation token, binds the header to the hash of the commitment the committee signed, and returns the attestation's value to the rescue beneficiary.
+- State-queue DA state is `Unattested`, `Attested { commitment_hash }`, `Challenged { commitment_hash, challenge_asset_name }`, or `Published { terminal_commitment }`. Merge permits `Attested` and `Published`; this is not a bare policy-id marker. A challenge that times out takes up to one DA bond from the pool (a DA slash).
+- `RescueStrandedAttestation` refunds the fixed rescue beneficiary when committee or threshold changes strand an attestation.
 - The contracts do not verify payload bytes, libp2p retrieval readiness, retention windows, deployment manifests, peer broadcasts, or the retention promise below (available until the block is past the challengeability horizon or its header is removed from the state queue). Those are requirements of the `threshold-mirror-v1` committee profile defined here.
 
 Protocol initialization resolves an explicitly configured packed committee or locally held signer keys. Without another configured key, it permits a one-key operator committee with threshold `1` and emits a warning. Two-key committees are the standing configuration; the initializer validates governed threshold floors.
@@ -100,7 +101,7 @@ blake2b_256("MidgardDaAvailabilityAttestationV1" || canonical_plutus_data_cbor(c
 
 `daAvailabilityAttestationMessage` in `demo/midgard-sdk/src/availability-challenge.ts`
 and the Aiken availability module define this message. The commitment binds the
-header, retained payload framing, bond owner, and response geometry. The signed
+deployment identity, header, retained payload framing, and response geometry. The signed
 message is not the retired domain-plus-header preimage.
 
 The committee's profile obligation remains to serve payloads and proof-critical
@@ -320,7 +321,7 @@ Coordinator responsibilities:
 - Create the initial DA attestation UTxO for an unattested state-queue header.
 - Collect `AddSignatures` witnesses from committee nodes.
 - Submit one or more `AddSignatures` transactions until the datum's `attestation_count` reaches the threshold.
-- Submit `ApplyToStateQueue` together with the availability bond minting path to burn `DAAT || header_hash` and set the state-queue `Attested` bond identity.
+- Submit `ApplyToStateQueue`, reading the DA bond pool (re-fetched for every build) as a reference input, to burn `DAAT || header_hash` and set the state-queue `Attested` commitment hash. While the pool is under-backed, withdrawing, or unreadable, the coordinator backs off: it logs `da_bond_pool_apply_backoff` with the reason, reports the header as not posted, keeps running, and tries again on the next reconcile. A pool outref spent by a top-up or slash between the fetch and submission is a recoverable race and is retried with a fresh build, within the bounded race-recovery retries.
 - Gossip the final attestation transaction references through the DA libp2p network.
 
 The coordinator is not trusted for data availability.
@@ -486,7 +487,7 @@ DA nodes may also request missing payloads from peer committee nodes after seein
 For every queued block, a watcher should:
 
 1. Observe the state-queue header on Cardano L1.
-2. Decode the typed `da_attestation` state and authenticate its bond/challenge or published commitment against deployment-bound L1 evidence. Do not equate a state marker alone with payload verification.
+2. Decode the typed `da_attestation` state and authenticate its attested commitment hash, challenge record, or published commitment against deployment-bound L1 evidence. Do not equate a state marker alone with payload verification.
 3. Load the DA committee peer ids and multiaddrs from the signed deployment manifest.
 4. Fetch `metadata` from committee peers with `metadata-by-header`.
 5. Recover threshold signature evidence from the DA attestation lifecycle transactions where available, especially if checking before attachment or auditing a deployment after the attestation UTxO has been burned.
@@ -636,5 +637,5 @@ Production work remains for committee accountability and operations:
 ## Open Protocol Decisions
 
 - How committee nodes discover coordinator peers.
-- Whether committee members are bonded and slashable for false availability claims.
+- Per-member accountability. The committee is backed by one pooled DA bond that a lost availability challenge slashes; no individual member is bonded or slashed, and deterrence rests on whoever funds the pool and on governance's power to rotate the committee.
 - Any future change to payload-write admission policy. Current writes remain manifest-authorized; the separate public retained-DA listener is read-only.

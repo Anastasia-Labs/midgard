@@ -107,32 +107,25 @@ const historyFixture = (
     deploymentIdentity: deployment,
     headerHash,
     payload: bytes,
-    bondOwner: "19".repeat(28),
     responseGeometry: parameters.response_geometry,
   });
-  const bondAsset = SDK.daAvailabilityBondAssetName({
-    transactionId: "20".repeat(32),
-    outputIndex: 0n,
-  });
-  const available: SDK.DaAvailabilityBondDatum = {
-    Available: {
-      commitment,
-      da_bond_asset_name: bondAsset,
-      committee_signers_hash: "21".repeat(32),
-      attested_signers: "80" + "00".repeat(31),
-    },
+  // The challenger's plain funding coin; OpenChallenge derives the DACH
+  // identity from its outref.
+  const funding: UTxO = {
+    txHash: "20".repeat(32),
+    outputIndex: 0,
+    address: credentialToAddress("Preprod", {
+      type: "Key",
+      hash: "19".repeat(28),
+    }),
+    assets: { lovelace: parameters.challenger_bond_lovelace },
   };
-  const bond = out(
-    0,
-    { lovelace: parameters.da_bond_lovelace, [policy + bondAsset]: 1n },
-    SDK.encodeDaAvailabilityBondDatum(available),
-  );
   // The open lands in block 1: its inclusive upper validity bound, the ttl
   // slot's start less one millisecond, anchors the response window.
   const openedAt = (2_000n + 1n) * 1_000n - 1n;
   const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
-    availableBond: available,
-    bondInputOutRef: SDK.outputReferenceFromUTxO(bond),
+    commitment,
+    challengerFundingOutRef: SDK.outputReferenceFromUTxO(funding),
     challenger: "22".repeat(28),
     openedAt,
     parameters,
@@ -144,12 +137,15 @@ const historyFixture = (
       trancheIndex: 0,
     });
   const open = transaction(
-    [bond],
+    [funding],
     [
       out(
         0,
-        { ...bond.assets, [policy + plan.challengeAssetName]: 1n },
-        SDK.encodeDaAvailabilityBondDatum(plan.challengedBond),
+        {
+          lovelace: plan.recordLovelace,
+          [policy + plan.challengeAssetName]: 1n,
+        },
+        SDK.encodeDaAvailabilityChallengeRecord(plan.record, parameters),
       ),
       out(
         1,
@@ -226,7 +222,7 @@ const historyFixture = (
     readHistory: async (requested: string) =>
       requested.startsWith(queuePolicy) ? [open.raw] : [...history].reverse(),
   };
-  return { input, bytes, history, open, unit, plan };
+  return { input, bytes, history, open, unit, plan, funding, parameters };
 };
 
 describe("watcher public L1 payload reconstruction", () => {
@@ -297,5 +293,38 @@ describe("watcher public L1 payload reconstruction", () => {
             : [...fixture.history, fixture.history[1]!],
       }),
     ).rejects.toThrow("missing or conflicting canonical successor");
+  });
+
+  it("requires the Open's challenger funding input to derive the record's DACH identity", async () => {
+    const fixture = historyFixture();
+    const unrelated = {
+      ...fixture.open.raw,
+      resolvedInputs: fixture.open.raw.resolvedInputs.map((raw) => ({
+        ...raw,
+        outRef: `${"21".repeat(32)}#0`,
+      })),
+    };
+    await expect(
+      reconstructWatcherAvailabilityPublishedPayload({
+        ...fixture.input,
+        readHistory: async (requested) =>
+          requested.startsWith(queuePolicy)
+            ? [unrelated]
+            : [...fixture.history].reverse(),
+      }),
+    ).rejects.toThrow(
+      "no unique challenger funding input for its DACH identity",
+    );
+  });
+
+  it("refuses a header whose canonical history carries no challenge record", async () => {
+    const fixture = historyFixture();
+    await expect(
+      reconstructWatcherAvailabilityPublishedPayload({
+        ...fixture.input,
+        readHistory: async (requested) =>
+          requested.startsWith(queuePolicy) ? [] : [...fixture.history],
+      }),
+    ).rejects.toThrow("no canonical challenge-record history");
   });
 });

@@ -19,7 +19,7 @@ import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contract
 const EXPECTED_ROLES = [
   "availability-challenge spending",
   "availability-challenge minting",
-  ...["bond", "open", "settle", "close", "timeout"].map(
+  ...["open", "settle", "close", "timeout"].map(
     (action) => `availability-challenge ${action} withdrawal`,
   ),
 ];
@@ -47,7 +47,7 @@ describe("availability-challenge publication admission", () => {
     expect(targets.map(({ name }) => name)).toEqual(EXPECTED_ROLES);
     expect(
       new Set(targets.map(({ script }) => validatorToScriptHash(script))).size,
-    ).toBe(6);
+    ).toBe(5);
     expect(() =>
       SDK.assertReferenceScriptRawBodiesFitL1Envelope(targets),
     ).not.toThrow();
@@ -97,7 +97,7 @@ describe("availability-challenge publication admission", () => {
         contracts,
       ),
     );
-    expect(registrations).toHaveLength(5);
+    expect(registrations).toHaveLength(4);
     for (const registration of registrations) {
       expect(registration.txHash).not.toBeNull();
       expect(

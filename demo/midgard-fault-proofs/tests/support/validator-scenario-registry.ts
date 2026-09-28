@@ -77,6 +77,30 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  // Each lifecycle test runs the honest transaction and, beside it, one the
+  // pool refuses; the test asserts the refusal came from the pool spend.
+  "da_bond_pool.da_bond_pool": {
+    passing: [
+      {
+        file: "demo/midgard-node/tests/da-bond-pool-lifecycle.test.ts",
+        test: "runs the real InitPool, then a non-owner top-up at exactly the minimum; a top-up one lovelace below it is refused by the pool spend",
+      },
+      {
+        file: "demo/midgard-node/tests/da-bond-pool-lifecycle.test.ts",
+        test: "withdraws through Begin, Cancel, Begin and Complete at unlock_at; Complete one slot before unlock_at is refused by the pool spend",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-node/tests/da-bond-pool-lifecycle.test.ts",
+        test: "runs the real InitPool, then a non-owner top-up at exactly the minimum; a top-up one lovelace below it is refused by the pool spend",
+      },
+      {
+        file: "demo/midgard-node/tests/da-bond-pool-lifecycle.test.ts",
+        test: "withdraws through Begin, Cancel, Begin and Complete at unlock_at; Complete one slot before unlock_at is refused by the pool spend",
+      },
+    ],
+  },
   "state_queue_yields.remove_unattested": {
     passing: [
       {
@@ -1426,7 +1450,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "protocol validator with no emulator scenario pair mapped yet. Happy paths for several exist (deposit, payout, scheduler and state-queue flows in midgard-node), but none was mapped to a refusal this validator performs.",
     validators: [
       "availability_challenge.availability_challenge",
-      "availability_challenge_yields.bond",
       "availability_challenge_yields.close",
       "availability_challenge_yields.open",
       "availability_challenge_yields.settle",
@@ -1434,7 +1457,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "computation_thread.mint",
       "correction_lock.spend",
       "da_attestation.da_attestation",
-      "da_bond_pool.da_bond_pool",
       "da_params_governor.da_params_governor",
       "field_preimage_certificate.field_preimage_certificate",
       "fraud_proof.mint",
@@ -1499,6 +1521,6 @@ export const UNMAPPED_FAMILIES: readonly Readonly<{
 ];
 
 /** Only ever lowered. */
-export const UNMAPPED_VALIDATOR_COUNT = 566;
+export const UNMAPPED_VALIDATOR_COUNT = 564;
 /** Only ever lowered. */
 export const UNMAPPED_FAMILY_COUNT = 9;

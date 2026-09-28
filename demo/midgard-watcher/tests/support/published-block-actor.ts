@@ -17,6 +17,7 @@ import {
 } from "midgard-node/da/local-signers";
 import { availabilityParametersFromManifest } from "midgard-node/services/midgard-contracts";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
+import { daAttestationInitOutputLovelace } from "midgard-node/transactions/da-attestation";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
@@ -739,7 +740,6 @@ export const createPublishedWatcherBlockActor = async ({
       deploymentIdentity: contracts.hubOracle.policyId,
       headerHash: block.headerHash,
       payload: block.payloadEnvelopeCbor,
-      bondOwner: paymentCredentialOf(address).hash,
       responseGeometry: availabilityParameters.response_geometry,
     });
     const referenceScripts: SDK.DaAttestationReferenceScripts = {
@@ -747,11 +747,10 @@ export const createPublishedWatcherBlockActor = async ({
       daAttestationSpending: reference("daAttestationSpend"),
       stateQueueMinting: reference("stateQueueMint"),
       stateQueueSpending: reference("stateQueueSpend"),
-      availabilityChallengeMinting: reference("availabilityChallengeMint"),
-      availabilityChallengeBondWithdrawal: reference(
-        "availabilityChallengeBondWithdraw",
-      ),
     };
+    const rescueBeneficiary = await Effect.runPromise(
+      SDK.addressDataFromBech32(address),
+    );
     const existingAttestations = await lucid.utxosAtWithUnit(
       contracts.daAttestation.spendingScriptAddress,
       attestationUnit,
@@ -767,10 +766,20 @@ export const createPublishedWatcherBlockActor = async ({
             daParamsDatum,
             target: initTarget,
             referenceScripts,
-            attestationOutputLovelace: availabilityParameters.da_bond_lovelace,
-            rescueBeneficiary: await Effect.runPromise(
-              SDK.addressDataFromBech32(address),
+            // The attestation carries no bond (spec #685): only its min-UTxO,
+            // which Apply refunds to the rescue beneficiary.
+            attestationOutputLovelace: await Effect.runPromise(
+              daAttestationInitOutputLovelace(lucid, {
+                attestationAddress:
+                  contracts.daAttestation.spendingScriptAddress,
+                attestationUnit,
+                headerHash: block.headerHash,
+                availabilityCommitment,
+                daParamsDatum,
+                rescueBeneficiary,
+              }),
             ),
+            rescueBeneficiary,
             availabilityCommitment,
           }),
         ),
@@ -845,21 +854,13 @@ export const createPublishedWatcherBlockActor = async ({
                 lucid,
                 contracts,
                 {
-                  hubOracleRefInput: (
-                    await Effect.runPromise(
-                      SDK.fetchHubOracleUTxOProgram(lucid, {
-                        hubOracleAddress:
-                          contracts.hubOracle.spendingScriptAddress,
-                        hubOraclePolicyId: contracts.hubOracle.policyId,
-                      }),
-                    )
-                  ).utxo,
                   daParamsUtxo,
                   daParamsDatum,
                   target,
                   attestation,
                   referenceScripts,
                   validityRange,
+                  availabilityParameters,
                 },
               ),
             ),
@@ -887,9 +888,7 @@ export const createPublishedWatcherBlockActor = async ({
       stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
       stateQueueUnit,
       headerHash: block.headerHash,
-      bondAssetName: SDK.daAvailabilityBondAssetName(
-        SDK.outputReferenceFromUTxO(attestation.utxo),
-      ),
+      commitmentHash: SDK.daAvailabilityCommitmentHash(availabilityCommitment),
     });
     return { kind: "attested", txHash: applied.txHash };
   };

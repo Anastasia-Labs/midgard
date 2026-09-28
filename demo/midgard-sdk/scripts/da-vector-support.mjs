@@ -189,7 +189,7 @@ export const trancheDescriptorV1Data = (descriptor) =>
     requireBytes("terminalAccumulator", descriptor.terminalAccumulator, 32),
   ]);
 
-/** `CommitmentV1` (post-#688: no `bond_owner`). */
+/** `CommitmentV1` (post-#688: no bond-owner credential). */
 export const commitmentV1Data = (commitment) =>
   constr(0, [
     requireInt("version", commitment.version),

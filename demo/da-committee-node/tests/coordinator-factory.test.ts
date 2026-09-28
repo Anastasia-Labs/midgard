@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE } from "../src/config.js";
 import { onChainCoordinatorFromConfig } from "../src/coordinator/factory.js";
 import type { LucidDaAttestationSubmitter } from "../src/coordinator/lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
@@ -32,6 +33,7 @@ describe("onChainCoordinatorFromConfig", () => {
         availabilityChallenge: fakeDeployment("ee".repeat(28)),
         fraudProof: fakeDeployment("dd".repeat(28)),
         daAttestation: fakeDeployment("aa".repeat(28)),
+        daBondPool: fakeDeployment("ab".repeat(28)),
         daParamsGovernor: fakeDeployment("bb".repeat(28)),
         stateQueue: fakeDeployment("cc".repeat(28)),
         availabilityChallengeYields: minimalAvailabilityChallengeYields(),
@@ -263,7 +265,7 @@ describe("onChainCoordinatorFromConfig", () => {
     ).resolves.toBeInstanceOf(OnChainLifecycleCoordinator);
   });
 
-  it("hands the bond funding hook to the submitter, which reports each check to it", async () => {
+  it("hands the submitter funding hook to the submitter, which reports each check to it", async () => {
     const config = l1ReadyConfig();
     const walletUtxo = {
       txHash: "44".repeat(32),
@@ -313,8 +315,8 @@ describe("onChainCoordinatorFromConfig", () => {
       {
         checkedAt: expect.any(String),
         plainAdaLovelace: 7_000_000n,
-        requiredLovelace:
-          BigInt(config.availabilityChallenge.daBondLovelace) + 50_000_000n,
+        // Fee headroom plus attestation min-ADA; no DA bond.
+        requiredLovelace: DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE,
         sufficient: false,
       },
     ]);
@@ -356,6 +358,7 @@ const l1ReadyConfig = () => ({
     availabilityChallenge: fakeDeployment("ee".repeat(28)),
     fraudProof: fakeDeployment("dd".repeat(28)),
     daAttestation: fakeDeployment("aa".repeat(28)),
+    daBondPool: fakeDeployment("ab".repeat(28)),
     daParamsGovernor: fakeDeployment("bb".repeat(28)),
     stateQueue: fakeDeployment("cc".repeat(28)),
     availabilityChallengeYields: minimalAvailabilityChallengeYields(),
@@ -409,8 +412,6 @@ const fakeReferenceUtxo = {
 } as UTxO;
 
 const fakeReferenceScripts = {
-  availabilityChallengeMinting: fakeReferenceUtxo,
-  availabilityChallengeBondWithdrawal: fakeReferenceUtxo,
   daAttestationMinting: fakeReferenceUtxo,
   daAttestationSpending: fakeReferenceUtxo,
   stateQueueMinting: fakeReferenceUtxo,

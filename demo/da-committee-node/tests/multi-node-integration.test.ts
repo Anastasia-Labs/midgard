@@ -104,8 +104,6 @@ describe("multi-node DA committee integration", () => {
     const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
       authority: {
         deploymentIdentity: peerConfig.hubOraclePolicyId,
-        bondOwnerCredential:
-          peerConfig.availabilityChallenge.bondOwnerCredential,
         responseGeometry: peerConfig.availabilityChallenge.responseGeometry,
       },
       headerHash,

@@ -103,10 +103,6 @@ export const createWatcherAvailabilityDeployment = async (
       hashes.availabilityChallengeMint,
     )),
     yields: {
-      bond: await withdrawal(
-        "availability-challenge bond withdrawal",
-        hashes.availabilityChallengeBondWithdraw,
-      ),
       open: await withdrawal(
         "availability-challenge open withdrawal",
         hashes.availabilityChallengeOpenWithdraw,
@@ -144,11 +140,22 @@ export const createWatcherAvailabilityDeployment = async (
     "correction-lock spending",
     hashes.correctionLockSpend,
   );
+  // The pooled committee DA bond. A Timeout spends the pool UTxO (identified
+  // by the pool NFT under the minting policy) at the spending address.
+  const daBondPool = {
+    ...(await spending("da-bond-pool spending", hashes.daBondPoolSpend)),
+    ...(await minting("da-bond-pool minting", hashes.daBondPoolMint)),
+  };
   const hubOracleRefInput = await lucid.utxoByUnit(
     hashes.hubOracleMint + SDK.HUB_ORACLE_ASSET_NAME,
   );
   return {
-    contracts: { availabilityChallenge, stateQueue, correctionLock },
+    contracts: {
+      availabilityChallenge,
+      stateQueue,
+      correctionLock,
+      daBondPool,
+    },
     hubOraclePolicyId: hashes.hubOracleMint,
     referenceScriptAuthPolicyId: hashes.referenceScriptAuthMint,
     referenceScripts: Object.freeze(references),

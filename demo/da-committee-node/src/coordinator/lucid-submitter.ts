@@ -7,7 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { daL1SubmitterMinPlainAdaLovelace } from "../config.js";
+import { DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE } from "../config.js";
 import type { DaAttestationCandidateRecord } from "../domain.js";
 import { classifyDaAttestationMarker } from "../l1/attestation-marker.js";
 import type { DaAttestationValidatorSet } from "../l1/deployment.js";
@@ -21,6 +21,7 @@ import type {
   AttestationSubmissionResult,
   OnChainAttestationSubmitter,
 } from "./on-chain.js";
+import { DaBondPoolApplyBackoffError } from "./pool-backoff.js";
 import {
   buildAddSignaturesTx,
   buildApplyAttestationTx,
@@ -30,11 +31,12 @@ import {
 } from "./tx-builders.js";
 
 /**
- * The submitter's spendable plain ADA against what the next init needs
- * (`daL1SubmitterMinPlainAdaLovelace`), checked at every funding refresh and
- * again once an init has locked its bond.
+ * The submitter's spendable plain ADA against what the next attestation round
+ * needs (`DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE`: fees plus the min-ADA the
+ * init locks until apply refunds it), checked at every funding refresh and
+ * again once an init has landed.
  */
-export type DaBondFundingCheck = {
+export type DaSubmitterFundingCheck = {
   readonly checkedAt: string;
   readonly plainAdaLovelace: bigint;
   readonly requiredLovelace: bigint;
@@ -50,9 +52,12 @@ export type LucidDaAttestationSubmitterDeps = {
   readonly refreshFundingUtxos?: () => Promise<
     L1SubmitterReadinessSummary | undefined
   >;
-  /** Receives every bond funding check; readiness reports a short one. */
-  readonly recordBondFunding?: (check: DaBondFundingCheck) => void;
-  /** Where bond funding warnings go. Defaults to stderr. */
+  /** Receives every submitter funding check; readiness reports a short one. */
+  readonly recordSubmitterFunding?: (check: DaSubmitterFundingCheck) => void;
+  /**
+   * Where submitter funding warnings and pooled-bond apply backoffs go.
+   * Defaults to stderr.
+   */
   readonly log?: (line: string) => void;
   readonly postSubmitVerificationRetryCount?: number;
   readonly postSubmitVerificationDelayMs?: number;
@@ -115,17 +120,15 @@ export class LucidDaAttestationSubmitter
       availabilityCommitment: SDK.parseDaAvailabilityCommitmentCbor(
         record.availabilityCommitmentCbor,
       ),
-      attestationOutputLovelace:
-        this.deps.availabilityParameters.da_bond_lovelace,
     });
     const txHash = await this.deps.signSubmit(tx);
-    // The bond just left the wallet, so whether it covers the next init is
-    // known now, not only when the next header's init starts. The init itself
-    // has landed, so a failed check must not fail it.
+    // The init's min-ADA just left the wallet, so whether it covers the next
+    // round is known now, not only when the next header's init starts. The
+    // init itself has landed, so a failed check must not fail it.
     await this.refreshFunding().catch((error: unknown) => {
       this.log(
         `${JSON.stringify({
-          event: "l1_submitter_bond_funding_check_failed",
+          event: "l1_submitter_fee_funding_check_failed",
           error: error instanceof Error ? error.message : String(error),
         })}\n`,
       );
@@ -180,13 +183,12 @@ export class LucidDaAttestationSubmitter
     });
     const attestation = await this.fetchCandidateUtxo(candidate);
     const daParams = await this.fetchDaParamsUtxo();
-    const hubOracleRefInput = await Effect.runPromise(
-      SDK.fetchHubOracleUTxOProgram(this.deps.lucid, {
-        hubOracleAddress: this.deps.contracts.hubOracle.spendingScriptAddress,
-        hubOraclePolicyId: this.deps.contracts.hubOracle.policyId,
-      }),
-    );
     await this.refreshFunding();
+    // The builder re-reads the pooled DA bond right before assembling. A pool
+    // outref spent between that read and submission (a top-up) fails as a
+    // spent reference input, which the coordinator retries as a race; a pool
+    // that cannot back the attestation is a backoff, reported here and not
+    // retried until the next reconcile.
     const tx = await buildApplyAttestationTx({
       lucid: this.deps.lucid,
       contracts: this.deps.contracts,
@@ -196,8 +198,21 @@ export class LucidDaAttestationSubmitter
       daParamsUtxo: daParams.utxo,
       daParamsDatum: daParams.datum,
       referenceScripts: this.deps.referenceScripts,
-      hubOracleRefInput: hubOracleRefInput.utxo,
       validityRange,
+      availabilityParameters: this.deps.availabilityParameters,
+    }).catch((error: unknown) => {
+      if (error instanceof DaBondPoolApplyBackoffError) {
+        this.log(
+          `${JSON.stringify({
+            event: "da_bond_pool_apply_backoff",
+            headerHash: record.headerHash,
+            reason: error.reason,
+            message: error.message,
+            detail: error.detail,
+          })}\n`,
+        );
+      }
+      throw error;
     });
     const txHash = await this.deps.signSubmit(tx);
     await this.waitForApplied(record.headerHash);
@@ -205,31 +220,29 @@ export class LucidDaAttestationSubmitter
   }
 
   /**
-   * Refreshes the wallet view and checks it against the next init. Each init
-   * locks one bond for good, so a wallet that cannot cover the next one is
-   * reported loudly on stderr and to readiness, and a topped-up one clears at
-   * the next refresh. Nothing is blocked: the headroom is conservative, and a
-   * build fails on its own when the wallet really is short.
+   * Refreshes the wallet view and checks it against the next attestation
+   * round. A wallet that cannot cover one is reported loudly on stderr and to
+   * readiness, and a topped-up one clears at the next refresh. Nothing is
+   * blocked: the headroom is conservative, and a build fails on its own when
+   * the wallet really is short.
    */
   private async refreshFunding(): Promise<void> {
     const funding = await this.deps.refreshFundingUtxos();
     if (funding === undefined) {
       return;
     }
-    const requiredLovelace = daL1SubmitterMinPlainAdaLovelace(
-      this.deps.availabilityParameters.da_bond_lovelace,
-    );
-    const check: DaBondFundingCheck = {
+    const requiredLovelace = DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE;
+    const check: DaSubmitterFundingCheck = {
       checkedAt: new Date().toISOString(),
       plainAdaLovelace: funding.plainAdaLovelace,
       requiredLovelace,
       sufficient: funding.plainAdaLovelace >= requiredLovelace,
     };
-    this.deps.recordBondFunding?.(check);
+    this.deps.recordSubmitterFunding?.(check);
     if (!check.sufficient) {
       this.log(
         `${JSON.stringify({
-          event: "l1_submitter_bond_funding_short",
+          event: "l1_submitter_fee_funding_short",
           address: funding.address,
           plainAdaLovelace: check.plainAdaLovelace.toString(),
           requiredLovelace: requiredLovelace.toString(),

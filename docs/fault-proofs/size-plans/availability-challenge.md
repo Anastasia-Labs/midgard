@@ -1,7 +1,7 @@
 # Availability-challenge publication plan
 
 Status: The publication and registered contract-emulator slice passes on the
-2026-09-08 tree. The [operational implementation](../availability-challenge-operations.md)
+2026-09-28 tree, with the pooled DA committee bond. The [operational implementation](../availability-challenge-operations.md)
 also supplies shared builders, independent actors and durable recovery. Live
 release acceptance remains open.
 
@@ -14,7 +14,7 @@ timeout construction is exercised by the emulator harness. Reusable operational
 builders, commands, watcher/indexer integration and actor recovery were delivered
 in the subsequent operational implementation; its plan records separate evidence.
 The lifecycle fixture starts with declared hub/queue/DA-parameter genesis state
-and then executes real attestation, bond and challenge transactions. Existing
+and then executes real attestation, DA bond pool and challenge transactions. Existing
 initialization scenarios separately verify the applied deployment dependencies.
 All availability publication evidence uses signed transactions with a 512-byte
 size reserve.
@@ -30,13 +30,15 @@ measured execution charge. The lifecycle tests exercise real committee signature
 The snapshot comes from the [mainnet ledger parameters](https://api.koios.rest/api/v1/epoch_params?_epoch_no=654);
 [Intersect documents the cost-model and protocol-11 activation](https://intersectmbo.org/news/cardano-upgrade-van-rossem-hard-fork).
 
-The explicit acceptance fixture uses matching 12-billion-lovelace bonds, fee
+The explicit acceptance fixture uses a 12-billion-lovelace challenger bond, fee
 ceilings of 2 million for open/publication/settlement/close and 3 million for
 timeout. The original 500,000-lovelace publication ceiling was below the base
-fee of a maximum chunk. The larger bond covers all 4,800 maximum-fee chunk
+fee of a maximum chunk. The challenger bond covers all 4,800 maximum-fee chunk
 publications plus live carrier min-Ada and settlement working capital across
 16 tranches. These are explicit fixture/deployment parameters, not implicit
-production defaults.
+production defaults. The pooled DA committee bond (#685) replaced the per-block
+DA bond; its amounts (bond, slash penalty, minimum top-up, pool floor and
+challenge record lovelace) come from the deployment profile.
 
 The realistic multi-tranche scenario also found an SDK encoding mismatch:
 Aiken's tranche asset-name suffix is a two-byte little-endian index. SDK indices
@@ -54,16 +56,20 @@ using a size projection as implementation evidence.
 
 Retain a mint/spend dispatcher with `AdvanceTranche`, `ConsumeCarrier`, and
 `Coordinate` inline. Move each mint arm into a separate authenticated
-zero-withdrawal validator. Preserve bond, tranche, publication, terminal and
-state-queue semantics; this work changes physical verification boundaries.
+zero-withdrawal validator. Preserve challenge-record, tranche, publication,
+terminal and state-queue semantics; this work changes physical verification
+boundaries.
 
-| Mint arm                   | Role token                         | Manifest contract key                  |
-| -------------------------- | ---------------------------------- | -------------------------------------- |
-| Mint bond from attestation | `AvailabilityChallengeBondYield`   | `availabilityChallengeBondWithdraw`    |
-| Open                       | `AvailabilityChallengeOpenYield`   | `availabilityChallengeOpenWithdraw`    |
-| Settle                     | `AvailabilityChallengeSettleYield` | `availabilityChallengeSettleWithdraw`  |
-| Close                      | `AvailabilityChallengeCloseYield`  | `availabilityChallengeCloseWithdraw`   |
-| Timeout                    | `AvailabilityChallengeExpiryYield` | `availabilityChallengeTimeoutWithdraw` |
+| Mint arm | Role token                         | Manifest contract key                  |
+| -------- | ---------------------------------- | -------------------------------------- |
+| Open     | `AvailabilityChallengeOpenYield`   | `availabilityChallengeOpenWithdraw`    |
+| Settle   | `AvailabilityChallengeSettleYield` | `availabilityChallengeSettleWithdraw`  |
+| Close    | `AvailabilityChallengeCloseYield`  | `availabilityChallengeCloseWithdraw`   |
+| Timeout  | `AvailabilityChallengeExpiryYield` | `availabilityChallengeTimeoutWithdraw` |
+
+The split originally had a fifth arm that minted a per-block bond at DA
+attestation. The pooled DA committee bond (#685) removed it: Apply checks the
+one pool instead, and a Timeout slashes the pool.
 
 The existing `AvailabilityChallengeSpend` and `AvailabilityChallengeMint` roles
 remain on the dispatcher. Match role bytes between Aiken, SDK and core tables;
@@ -83,7 +89,7 @@ changes. Pairing mint arms reduces deployed roles but increases referenced bytes
 per action and obscures one-role-per-arm authentication. Chaining mint arms adds
 response-window transactions without addressing the original code-size cause.
 
-The split adds five reference-script UTxOs and reward-account registrations.
+The split adds four reference-script UTxOs and reward-account registrations.
 Budget their min-Ada, registration deposits and publication fees separately from
 challenger action funding. Include aggregate referenced bytes and reference-script
 fees, not only the signed transaction size.
@@ -113,7 +119,7 @@ operator/challenger depends on that action.
 
 ## Implementation work
 
-1. Factor mint-arm functions into the availability library, add the five yields,
+1. Factor mint-arm functions into the availability library, add the four yields,
    and preserve all existing spending predicates. Remove unreachable helper code
    only where it is actually dead; retain per-tranche timeout semantics.
 2. Update SDK schemas, contract types/application, role tables, manifest entries,
@@ -121,8 +127,8 @@ operator/challenger depends on that action.
    state-queue and its unavailable-removal yield, DA-attestation and hub identities
    from the resulting blueprint. Every affected parameter application needs real
    happy-path and refusal emulator scenarios.
-3. Extend the existing DA-attestation apply builder with the bond yield and mirror
-   the change in node and committee coordinator consumers. Implement open, chunk
+3. Keep the DA-attestation apply builder's pooled-bond check in step with the
+   node and committee coordinator consumers. Implement open, chunk
    publication, settlement, close and timeout transaction builders. Timeout must
    compose with correction-lock acquisition and unavailable-block removal.
 4. Publish all roles in the appropriate runtime/DA scopes and register reward
@@ -132,7 +138,7 @@ operator/challenger depends on that action.
    publication from authenticated retained payloads. Replace hardcoded missing
    capability reports only after deployed manifest and live references authenticate
    the capability.
-6. Add rollback-safe bond/tranche/carrier/terminal indexing and a watcher adapter
+6. Add rollback-safe challenge-record/tranche/carrier/terminal indexing and a watcher adapter
    that opens after post-attestation retrieval failure, then settles, closes or
    times out. Accountable DA signers publish response chunks; the challenger
    adapter must not depend on operator-local data.
@@ -157,10 +163,10 @@ skipped publication scenario, or arity-only test can establish completion.
 
 Exercise complete registered scenarios for:
 
-- attestation to bonded available status;
+- attestation to `Attested{commitment_hash}` status under a backed DA bond pool;
 - open through ordered chunk/carrier publication, per-tranche settlement,
   terminal accumulation and close;
-- no-response timeout with exact slash/refund and queue removal;
+- no-response timeout with the exact pool slash, refund and queue removal;
 - partial-response timeout and maximum-tranche settlement;
 - invalid/cross-arm/omitted-role/reference substitutions and honest refusal;
 - restart, repeated requests, already-submitted intent, rollback and concurrent
@@ -182,81 +188,82 @@ remains the completion authority.
 
 ## Verified publication and emulator results
 
-The normal testnet blueprint was built with the exact CI-pinned compiler
-`aiken v1.1.23+5adf783` (binary MD5 `ea9b39054f166e94771f838a662712f7`).
-The [measurement summary](availability-challenge-fit.json) records its SHA-256,
-mainnet profile source, applied publication identities, fees, reference-script
-bytes, and per-scenario maxima. Signed publications are submitted and their live
-role NFTs and script references checked; reward registration is ledger-queried
-and repeat registration submits no transaction.
+These measurements were taken on 2026-09-28 against the pooled DA committee
+bond (#685), under the `preprod-testing` profile. The pinned testing blueprint
+was built with the exact CI-pinned compiler `aiken v1.1.23+5adf783` (binary MD5
+`ea9b39054f166e94771f838a662712f7`); its SHA-256 is
+`3ddd74900b586e3b471e2c668a70dc46e1e864566e3fc5f620d98b274bf5f463`.
+The [measurement summary](availability-challenge-fit.json) records that digest,
+the mainnet profile source, applied publication identities, fees,
+reference-script bytes, and per-scenario maxima. Signed publications are
+submitted and their live role NFTs and script references checked; reward
+registration is ledger-queried and repeat registration submits no transaction.
 
 | Availability reference role | Applied script bytes | Signed publication bytes |
 | --------------------------- | -------------------: | -----------------------: |
-| Spending dispatcher         |                8,135 |                    8,642 |
-| Minting dispatcher          |                8,135 |                    8,640 |
-| Bond yield                  |                5,966 |                    6,481 |
-| Open yield                  |                7,893 |                    8,408 |
-| Settle yield                |                7,186 |                    7,705 |
-| Close yield                 |                6,540 |                    7,057 |
-| Timeout yield               |                6,024 |                    6,543 |
+| Spending dispatcher         |                7,921 |                    8,463 |
+| Minting dispatcher          |                7,921 |                    8,461 |
+| Open yield                  |                8,011 |                    8,561 |
+| Settle yield                |                6,773 |                    7,327 |
+| Close yield                 |                6,472 |                    7,024 |
+| Timeout yield               |                7,434 |                    7,988 |
+| DA bond pool (spending)     |                4,364 |                    4,882 |
+| DA bond pool (minting)      |                4,364 |                    4,880 |
 
-All seven fit the 15,872-byte signed publication target. The restored broader
-roster gate separately signed and submitted all 513 node-runtime targets under
-16,384 bytes; its largest unrelated target is 16,032 bytes. The 512-byte reserve
-claim above applies to the availability reference scripts.
+The DA bond pool is one applied multivalidator published under its spending and
+minting roles. All eight publications fit the 15,872-byte signed publication
+target. The broader roster gate separately signed and submitted all 528
+node-runtime targets under 16,384 bytes; its largest unrelated target is 16,132
+bytes. The 512-byte reserve claim above applies to the availability and pool
+reference scripts.
 
-The results below were measured on 2026-09-08, before the response window was
-anchored at the open's inclusive upper validity bound and before the testing
-windows were widened. They predate the lifecycle narrowing described in
-[Current scope under testing windows](#current-scope-under-testing-windows), and
-the testing and testnet environments no longer reproduce the complete-response
-and 300-chunk maximum claims.
+Three real lifecycle scenarios passed under the testing windows, with 88
+signed/submitted transactions including fixture publication and registration,
+plus ten confirmed on-chain refusals. The largest lifecycle transaction was
+15,890 bytes (494 bytes below the limit). Across all scenarios, peak aggregate
+memory was 4,902,699 units and peak CPU was 2,015,954,521 units, leaving
+margins of 11,597,301 memory and 7,984,045,479 CPU units below the ledger
+limits. Every transaction is checked against both the ledger limits and a 20%
+execution reserve; budgets are summed across all script purposes in the
+transaction.
 
-Four real lifecycle scenarios passed, with 704 signed/submitted transactions
-including fixture publication and registration, plus nine on-chain refusal
-attempts. The largest lifecycle transaction was 15,949 bytes (435 bytes below
-the limit). Across all scenarios, peak aggregate memory was 4,156,825 units and
-peak CPU was 1,726,095,109 units. Every transaction is checked against both the
-ledger limits and a 20% execution reserve; budgets are summed across all script
-purposes in the transaction.
+- The small happy path verifies two real committee signatures, Apply against a
+  Bonded pool reference input, challenge opening with its record output,
+  ordered publication with carrier consumption, settlement, the exact challenger
+  refund including the record lovelace, the Published terminal commitment, and
+  complete challenge-token cleanup. The pool is untouched.
+- The maximum-first-chunk case opens all 16 tranches with exactly 19 authored
+  outputs, publishes one maximum chunk of the first tranche with the
+  full-tranche proof and the second tranche's partial response, settles all 16,
+  then times out and removes the unavailable queue head. It does not claim full
+  64 MiB publication.
+- The no-response case refuses settlement one slot before an upper-anchored
+  deadline, then performs timeout with a full pool slash, correction-lock
+  validation and queue removal after the deadline. The pool gives up one bond;
+  the slash penalty is the whole fee and the rest merges into the one
+  challenger output with the record lovelace.
+- Refusals cover an Apply whose commitment is not the attested preimage, an
+  Open whose commitment does not hash to the node's `commitment_hash`, absent
+  challenger signature, omitted/wrong-action yield, incorrect chunk
+  authentication, omitted predecessor carrier, premature settlement, redirected
+  close refund and redirected slash payout. The assertions require a Scalus CEK
+  execution failure of the expected script and purpose, not a planner, balance
+  or missing-witness error.
 
-- The small happy path verifies two real committee signatures, retained bond
-  minting, challenge opening, ordered publication with carrier consumption,
-  settlement, exact refunds, the Published terminal commitment, and complete
-  challenge-token cleanup.
-- The complete response case publishes and reassembles all 301 chunks of a
-  4 MiB + 1 byte payload across two tranches, settles both, and closes.
-- The maximum-commitment case opens all 16 tranches with exactly 19 authored
-  outputs, fully publishes the first 300-chunk tranche, partially publishes the
-  second, settles all 16, then times out and removes the unavailable queue head.
-  It does not claim full 64 MiB publication.
-- The no-response case refuses early settlement, then performs timeout, exact
-  slash/refund, correction-lock validation and queue removal after the deadline.
-- Refusals cover substituted bond ownership, absent challenger signature,
-  omitted/wrong-action yield, incorrect chunk authentication, omitted predecessor
-  carrier, premature settlement, redirected close refund and redirected slash.
-  The assertions require a Scalus CEK execution failure with spent-budget evidence,
-  not a planner, balance or missing-witness error.
+The maximum timeout references 48,735 script bytes across nine reference inputs
+(40,814 unique script bytes after shared dispatcher deduplication). Its fee is
+the 100,000,000-lovelace slash penalty taken from the pool, with no challenger
+fee share. Registration deposits, publication fees and reference UTxO min-Ada
+are separately funded. Atomic initialization registers the four yields and
+funds the pool to its floor plus one bond. Startup, node DA apply and committee
+DA apply also check reward-account readiness on the ledger.
 
-The maximum timeout references 41,084 script bytes across eight reference inputs
-(32,949 unique script bytes after shared dispatcher deduplication), and pays the
-explicit 3-million-lovelace fixture ceiling. Registration deposits, publication
-fees and reference UTxO min-Ada are separately funded. Atomic initialization now
-registers the five yields; startup, node DA apply and committee DA apply also
-check reward-account readiness on the ledger.
-
-Verification completed:
-
-- 96 focused Aiken tests: 43 availability predicates/conjunctions, 16 DA
-  attestation, 25 queue-removal, 11 correction-lock, and one cross-language
-  tranche-index vector test. Exact selectors used `run-focused-check.mjs` and
-  required nonzero collection.
-- 70 node tests across publication, mainnet cost-model consumption, readiness,
-  full runtime roster, contract application/deployment identity, role parity,
-  atomic initialization, operator activation, and the four availability lifecycles.
-- SDK schema/planner/attestation/reference-role tests, core manifest identity
-  tests, committee deployment/resolver/coordinator/transaction tests, package
-  typechecks and scoped formatting/lint checks.
+Verification completed on 2026-09-28 (node, `NODE_ENV=emulator`, fresh
+`preprod-testing` blueprint): the four availability lifecycles
+(`availability-challenge-lifecycle`, `-pool-slash-lifecycle`,
+`-responder-lifecycle`, `-sdk-lifecycle`), publication admission and the
+full-roster publication fit, 20 tests passed and the complete-response scenario
+skipped.
 
 ## Current scope under testing windows
 
@@ -272,9 +279,9 @@ emulator lands one transaction per 20 s block. Under those windows:
   then publishes one maximum chunk of tranche 0 with the full-tranche proof and
   the tranche-1 partial, settles all 16 and times out with queue removal. It no
   longer publishes the whole 300-chunk tranche. Its fit report key is
-  `maximum-first-chunk`; the committed
-  [measurement summary](availability-challenge-fit.json) predates this and its
-  `maximum` and `full-response` entries describe the earlier scenarios.
+  `maximum-first-chunk`, and the committed
+  [measurement summary](availability-challenge-fit.json) records it under that
+  name. The summary has no `full-response` entry.
 
 Under this document's Acceptance rule, a skipped publication scenario does not
 establish completion. The complete-response fit, and with it the settlement of

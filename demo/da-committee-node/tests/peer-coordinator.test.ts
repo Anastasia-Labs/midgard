@@ -38,7 +38,6 @@ import { makePayloadFixture, tempDir } from "./helpers.js";
 
 const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority = {
   deploymentIdentity: "99".repeat(28),
-  bondOwnerCredential: "44".repeat(28),
   responseGeometry: {
     chunkByteLength: 4_096,
     trancheByteLength: 4 * 1_024 * 1_024,

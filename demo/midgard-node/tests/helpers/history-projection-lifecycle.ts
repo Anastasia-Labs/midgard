@@ -118,6 +118,7 @@ export const openHistoryProjectionLifecycle = async () => {
         activeOperatorsMinting: reference("activeOperatorsMint"),
         retiredOperatorsMinting: reference("retiredOperatorsMint"),
         fraudProofCatalogueMinting: reference("fraudProofCatalogueMint"),
+        daBondPoolMinting: reference("daBondPoolMint"),
       },
     },
   };

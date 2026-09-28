@@ -11,6 +11,7 @@ import {
   runDaAvailabilityOperation,
 } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -288,6 +289,211 @@ describe("availability operation signed recovery", () => {
           f.context.actor,
         ),
       ).toHaveLength(0);
+    } finally {
+      f.context.journal.close();
+    }
+  });
+
+  // Anyone may TopUp the shared DA bond pool, and every Timeout spends it, so a
+  // signed intent can lose one input to a transaction not in this journal.
+  it("expires an intent whose input was spent elsewhere while another stays unspent, and only past its validity", async () => {
+    const f = await fixture();
+    try {
+      // Split the one wallet coin so the intent can spend two.
+      const split = await f.lucid
+        .newTx()
+        .pay.ToAddress(await f.lucid.wallet().address(), {
+          lovelace: 20_000_000n,
+        })
+        .complete();
+      await (await split.sign.withWallet().complete()).submit();
+      f.emulator.awaitBlock();
+      const inputs = (await f.lucid.wallet().getUtxos()).slice(0, 2);
+      expect(inputs).toHaveLength(2);
+      await runDaAvailabilityOperation(f.context, {
+        ...f.operation,
+        build: async () =>
+          f.lucid
+            .newTx()
+            .collectFrom(inputs)
+            .pay.ToAddress(await f.lucid.wallet().address(), {
+              lovelace: 10_000_000n,
+            })
+            .validFrom(f.emulator.now() - 60_000)
+            .validTo(f.emulator.now() + 60_000)
+            .complete({ coinSelection: false }),
+      });
+      const intent = f.context.journal.pending(
+        f.context.deploymentIdentity,
+        f.context.actor,
+      )[0]!.intent;
+      expect(intent.spentOutRefs).toHaveLength(2);
+      const reconcileWith = async (
+        missingOutRefs: readonly string[],
+        slotPastExpiry: number,
+      ) =>
+        (
+          await reconcileDaAvailabilityOperations({
+            ...f.context,
+            observe: async (observed) => ({
+              status: "inputs_missing",
+              currentSlot: observed.validUntilSlot + slotPastExpiry,
+              missingOutRefs,
+            }),
+          })
+        )[0]?.status;
+
+      // Every normal input gone may be this very transaction, not yet indexed.
+      expect(await reconcileWith(intent.spentOutRefs, 1_000)).toBe("waiting");
+      // Still inside its validity it could yet land once the input returns.
+      expect(await reconcileWith([intent.spentOutRefs[0]!], -1)).toBe(
+        "waiting",
+      );
+      expect(await reconcileWith([intent.spentOutRefs[0]!], 0)).toBe("expired");
+      expect(
+        f.context.journal.pending(
+          f.context.deploymentIdentity,
+          f.context.actor,
+        ),
+      ).toHaveLength(0);
+    } finally {
+      f.context.journal.close();
+    }
+  });
+
+  // Another watcher's Timeout on the same header spends every normal input of
+  // ours, so nothing stays unspent to prove this intent is out of the chain.
+  it("expires an intent whose every normal input was finally spent by another transaction, and only then", async () => {
+    const f = await fixture();
+    try {
+      // Split the one wallet coin so one can serve as collateral.
+      const split = await f.lucid
+        .newTx()
+        .pay.ToAddress(await f.lucid.wallet().address(), {
+          lovelace: 20_000_000n,
+        })
+        .complete();
+      await (await split.sign.withWallet().complete()).submit();
+      f.emulator.awaitBlock();
+      const [spent, collateral] = await f.lucid.wallet().getUtxos();
+      await runDaAvailabilityOperation(f.context, {
+        ...f.operation,
+        build: async () => {
+          const built = (
+            await f.lucid
+              .newTx()
+              .collectFrom([spent!])
+              .pay.ToAddress(await f.lucid.wallet().address(), {
+                lovelace: 10_000_000n,
+              })
+              .validFrom(f.emulator.now() - 60_000)
+              .validTo(f.emulator.now() + 60_000)
+              .complete({ coinSelection: false })
+          ).toTransaction();
+          const body = built.body();
+          const collateralInputs = CML.TransactionInputList.new();
+          collateralInputs.add(
+            CML.TransactionInput.new(
+              CML.TransactionHash.from_hex(collateral!.txHash),
+              BigInt(collateral!.outputIndex),
+            ),
+          );
+          body.set_collateral_inputs(collateralInputs);
+          return f.lucid.fromTx(
+            CML.Transaction.new(
+              body,
+              built.witness_set(),
+              true,
+              built.auxiliary_data(),
+            ).to_cbor_hex(),
+          );
+        },
+      });
+      const intent = f.context.journal.pending(
+        f.context.deploymentIdentity,
+        f.context.actor,
+      )[0]!.intent;
+      const [normal] = intent.spentOutRefs;
+      expect(intent.spentOutRefs).toHaveLength(1);
+      expect(intent.collateralOutRefs).toHaveLength(1);
+      const missingOutRefs = [
+        ...intent.spentOutRefs,
+        ...intent.collateralOutRefs,
+      ];
+      const foreign = (outRef: string, confirmationDepth = 30) => ({
+        outRef,
+        spendingTxHash: "ee".repeat(32),
+        spendPoint: "900:" + "ff".repeat(32),
+        confirmationDepth,
+      });
+      const reconcileWith = async (
+        foreignSpends: unknown,
+        slotPastExpiry = 0,
+        missing: readonly string[] = missingOutRefs,
+      ) =>
+        (
+          await reconcileDaAvailabilityOperations({
+            ...f.context,
+            observe: async (observed) =>
+              ({
+                status: "inputs_missing",
+                currentSlot: observed.validUntilSlot + slotPastExpiry,
+                missingOutRefs: missing,
+                ...(foreignSpends === undefined ? {} : { foreignSpends }),
+              }) as never,
+          })
+        )[0]?.status;
+
+      // Absence alone is never proof.
+      expect(await reconcileWith(undefined)).toBe("waiting");
+      expect(await reconcileWith([])).toBe("waiting");
+      // Inside its validity the spend could still roll back and ours land.
+      expect(await reconcileWith([foreign(normal!)], -1)).toBe("waiting");
+      // Short of finality the spend itself may roll back.
+      expect(await reconcileWith([foreign(normal!, 29)])).toBe("waiting");
+      // Collateral is consumed only by a failing script, never by our spend.
+      expect(await reconcileWith([foreign(intent.collateralOutRefs[0]!)])).toBe(
+        "waiting",
+      );
+      // Our own transaction spending the input is inclusion, not a foreign spend.
+      await expect(
+        reconcileWith([{ ...foreign(normal!), spendingTxHash: intent.txHash }]),
+      ).rejects.toThrow("Invalid canonical missing-input observation");
+      // Evidence must be about a ref the observation reports missing.
+      await expect(
+        reconcileWith([foreign(normal!)], 0, intent.collateralOutRefs),
+      ).rejects.toThrow("Invalid canonical missing-input observation");
+      await expect(
+        reconcileWith([{ ...foreign(normal!), confirmationDepth: -1 }]),
+      ).rejects.toThrow("Invalid canonical missing-input observation");
+      await expect(
+        reconcileWith([{ ...foreign(normal!), spendingTxHash: "ee" }]),
+      ).rejects.toThrow("Invalid canonical missing-input observation");
+      expect(f.context.journal.reservedOutRefs(f.context.actor)).toEqual(
+        expect.arrayContaining(missingOutRefs),
+      );
+
+      expect(await reconcileWith([foreign(normal!)])).toBe("expired");
+      expect(f.context.journal.get(intent.id)?.detail).toBe(
+        "Expired with a normal input finally spent by another transaction",
+      );
+      expect(f.context.journal.reservedOutRefs(f.context.actor)).toEqual([]);
+      // The wallet is free again: the next header's work builds.
+      const next = vi.fn(async () =>
+        buildDaAvailabilityFundingPreparationTx(f.lucid, {
+          fundingInput: spent!,
+          outputLovelace: 5_000_000n,
+          feeLovelace: 1_000_000n,
+          validFrom: BigInt(f.emulator.now() - 60_000),
+          validTo: BigInt(f.emulator.now() + 60_000),
+        }),
+      );
+      await runDaAvailabilityOperation(f.context, {
+        ...f.operation,
+        headerHash: "dd".repeat(28),
+        build: next,
+      });
+      expect(next).toHaveBeenCalledTimes(1);
     } finally {
       f.context.journal.close();
     }

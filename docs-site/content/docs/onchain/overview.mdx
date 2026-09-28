@@ -93,7 +93,8 @@ datum/redeemer intent.
 | `user_events/tx_order_v1`                 | Forced-inclusion transaction orders.                                                       | [User events](/docs/onchain/user-events)                   |
 | `user_events/witness`                     | Per-event parameterized staking script used as an inclusion witness.                       | [User events](/docs/onchain/user-events)                   |
 | `da_attestation`                          | DA committee attestation control plane (threshold signatures).                             | [DA validators](/docs/onchain/da-validators)               |
-| `availability_challenge`                  | Binds DA bonds, challenges, response publication, and timeout outcomes.                    | [DA validators](/docs/onchain/da-validators)               |
+| `availability_challenge`                  | Opens, settles and closes availability challenges, and slashes the pool on timeout.        | [DA validators](/docs/onchain/da-validators)               |
+| `da_bond_pool`                            | The committee's pooled DA bond: top-up, two-step withdrawal, and the timeout slash.        | [DA validators](/docs/onchain/da-validators)               |
 | `da_params_governor`                      | Governance of the DA committee parameters.                                                 | [DA validators](/docs/onchain/da-validators)               |
 | `fraud_proof`                             | Mints the permanent fraud-proof token when a computation thread succeeds.                  | [Fraud-proof machines](/docs/onchain/fraud-proof-machines) |
 | `fraud_proof_catalogue`                   | Publishes the Merkle root of admissible fraud categories.                                  | [Fraud-proof machines](/docs/onchain/fraud-proof-machines) |

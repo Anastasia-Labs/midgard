@@ -13,7 +13,8 @@ export const verifyPublishedDaAttestationReceipt = async (input: {
   stateQueueAddress: string;
   stateQueueUnit: string;
   headerHash: string;
-  bondAssetName: string;
+  /** The `commitment_hash` the attested node must carry (spec #685). */
+  commitmentHash: string;
 }): Promise<void> => {
   if (input.readConfirmedTransaction === undefined) {
     if ((await input.readLiveAttestation()) === SDK.NO_DA_ATTESTATION)
@@ -56,7 +57,7 @@ export const verifyPublishedDaAttestationReceipt = async (input: {
     datum.key.Key.key !== input.headerHash ||
     typeof node.da_attestation !== "object" ||
     !("Attested" in node.da_attestation) ||
-    node.da_attestation.Attested.da_bond_asset_name !== input.bondAssetName
+    node.da_attestation.Attested.commitment_hash !== input.commitmentHash
   )
     throw new Error("DA apply receipt did not attach the expected attestation");
 };

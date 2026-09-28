@@ -371,7 +371,6 @@ const DEPLOYMENT_FINGERPRINT = "f".repeat(64);
 // Matches the availability authority `minimalConfig` gives a service.
 const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority = {
   deploymentIdentity: "99".repeat(28),
-  bondOwnerCredential: "76".repeat(28),
   responseGeometry: {
     chunkByteLength: 14_020,
     trancheByteLength: 4 * 1024 * 1024,

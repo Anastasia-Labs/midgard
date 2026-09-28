@@ -533,10 +533,7 @@ describe("openCommitteeStore", () => {
   it("serializes concurrent decisions and makes L1 quarantine terminal", async () => {
     const store = await openJsonCommitteeStore(await tempDir());
     const firstSignature = daSignatureRecord();
-    const secondCommitment = availabilityCommitment(
-      "23".repeat(28),
-      "44".repeat(28),
-    );
+    const secondCommitment = availabilityCommitment("23".repeat(28));
     const secondSignature: DaSignatureRecordV1 = {
       ...firstSignature,
       headerHash: "23".repeat(28),
@@ -740,12 +737,11 @@ const daPayloadRecord = (): DaPayloadRecord => ({
   validationStatus: "fetched",
 });
 
-const availabilityCommitment = (headerHash: string, bondOwner: string) => {
+const availabilityCommitment = (headerHash: string) => {
   const commitment = SDK.buildDaAvailabilityCommitment({
     deploymentIdentity: "99".repeat(28),
     headerHash,
     payload: Buffer.from("public retained DA"),
-    bondOwner,
     responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 4_096,
       trancheByteLength: 4 * 1_024 * 1_024,
@@ -760,10 +756,7 @@ const availabilityCommitment = (headerHash: string, bondOwner: string) => {
   };
 };
 
-const signatureCommitment = availabilityCommitment(
-  "22".repeat(28),
-  "44".repeat(28),
-);
+const signatureCommitment = availabilityCommitment("22".repeat(28));
 
 const daSignatureRecord = (): DaSignatureRecordV1 => ({
   deploymentFingerprint: "11".repeat(32),
@@ -820,8 +813,8 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
 });
 
 const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
-  const lower = availabilityCommitment("11".repeat(28), "44".repeat(28));
-  const upper = availabilityCommitment("22".repeat(28), "55".repeat(28));
+  const lower = availabilityCommitment("11".repeat(28));
+  const upper = availabilityCommitment("22".repeat(28));
   const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceCbor({
     signerIndex: 0,
     daVkey: Buffer.alloc(32, 0x44),

@@ -4,9 +4,88 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
+  fetchKupoSpend,
+  type FetchLike,
   readOgmiosBlockTransaction,
+  type WebSocketFactory,
 } from "../l1-tx-order-carriage.js";
 import { readLocalOgmiosTip } from "../services/state-queue-correction-observer.js";
+
+type CanonicalBoundary = Readonly<{
+  pointId: string;
+  slot: number;
+  blockNo: number;
+  blockHash: string;
+}>;
+
+/**
+ * The node's readers for the SDK's verified foreign-spend check: Kupo's exact
+ * `spent_at` and ancestor checkpoint, and the consuming transaction read by
+ * chain-sync to its exact block.
+ */
+export const availabilityForeignSpendResolver =
+  (input: {
+    readonly kupoUrl: string;
+    readonly ogmiosUrl: string;
+    readonly readBoundary: () => Promise<CanonicalBoundary>;
+    readonly fetchImpl?: FetchLike;
+    readonly webSocketFactory?: WebSocketFactory;
+  }) =>
+  (outRef: string): Promise<SDK.DaAvailabilityForeignSpend | undefined> =>
+    SDK.resolveDaAvailabilityForeignSpend({
+      outRef,
+      readBoundary: input.readBoundary,
+      fetchSpend: async (ref) => {
+        const spend = await fetchKupoSpend({
+          kupoUrl: input.kupoUrl,
+          outRef: ref,
+          ...(input.fetchImpl === undefined
+            ? {}
+            : { fetchImpl: input.fetchImpl }),
+        });
+        return spend === null
+          ? undefined
+          : {
+              transactionId: spend.transactionId,
+              point: {
+                slot: spend.point.slot,
+                blockHash: spend.point.headerHash,
+              },
+            };
+      },
+      fetchAncestor: async (slot) => {
+        const ancestor = await fetchKupoAncestorPoint({
+          kupoUrl: input.kupoUrl,
+          slot,
+          ...(input.fetchImpl === undefined
+            ? {}
+            : { fetchImpl: input.fetchImpl }),
+        });
+        return { slot: ancestor.slot, blockHash: ancestor.headerHash };
+      },
+      readTransaction: async ({ ancestor, point, txHash }) => {
+        const transaction = await readOgmiosBlockTransaction({
+          ogmiosUrl: input.ogmiosUrl,
+          intersection: { slot: ancestor.slot, headerHash: ancestor.blockHash },
+          blockPoint: { slot: point.slot, headerHash: point.blockHash },
+          txHash,
+          ...(input.webSocketFactory === undefined
+            ? {}
+            : { webSocketFactory: input.webSocketFactory }),
+        });
+        return {
+          txHash: transaction.txHash,
+          point: {
+            slot: transaction.blockPoint.slot,
+            blockHash: transaction.blockPoint.headerHash,
+            blockNo: transaction.blockPoint.blockNo,
+          },
+          ...(transaction.transactionCbor === undefined
+            ? {}
+            : { cbor: transaction.transactionCbor }),
+        };
+      },
+    });
 
 export const availabilityCommandCanonicalSource = (input: {
   readonly lucid: LucidEvolution;
@@ -107,6 +186,11 @@ export const availabilityCommandCanonicalSource = (input: {
           depth: after.blockNo - transaction.blockPoint.blockNo,
         };
       },
+      resolveForeignSpend: availabilityForeignSpendResolver({
+        kupoUrl: input.kupoUrl,
+        ogmiosUrl: input.ogmiosUrl,
+        readBoundary,
+      }),
     }),
   };
 };

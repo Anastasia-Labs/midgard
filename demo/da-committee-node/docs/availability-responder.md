@@ -2,10 +2,18 @@
 
 When `DA_L1_SUBMISSION_ENABLED=true`, the committee process also runs the
 availability responder after each authenticated watcher scan. It discovers live
-challenged bonds, verifies retained envelope bytes against the frozen signed
-commitment, publishes the next ordered chunk, settles published tranches and
-closes fully answered challenges through the shared SDK builders and durable
-operation executor.
+availability challenge records by their `DACH` tokens, authenticates each
+against its `Challenged` state-queue node, verifies retained envelope bytes
+against the frozen signed commitment, publishes the next ordered chunk, settles
+published tranches and closes fully answered challenges through the shared SDK
+builders and durable operation executor.
+
+Each record is judged on its own. A record whose state-queue node is gone or is
+not `Challenged` by it is stranded: a Timeout or fraud removal pruned its block
+while it was challenged, and nothing can spend it again. The responder skips it
+and writes one `availability_responder_skipped_record` line to stderr. A record
+that fails authentication is skipped and reported the same way. Neither stops
+discovery of the other challenges.
 
 Set both responder variables explicitly:
 
@@ -22,13 +30,12 @@ the responder's resource reservations.
 
 Actuation requires the configured `local_node` chain-sync authority and an
 aligned Kupmios query provider. Startup verifies deployed reference role NFTs,
-script hashes, all five availability withdrawal registrations and sufficient
+script hashes, all four availability withdrawal registrations and sufficient
 plain ADA collateral in the responder wallet. Publication, settlement and close
 fees come from the challenger's protected on-chain fee shares. The responder
 does not automatically fund itself from the operator wallet.
 
-Withdrawal registrations, for both the responder and the attestation submitter,
-are read from the local node ledger rather than from Ogmios, which omits
+The responder's withdrawal registrations are read from the local node ledger rather than from Ogmios, which omits
 registered reward accounts that have no stake-pool delegation. With a `kupmios:`
 provider, set all three of these absolute paths, or none:
 
@@ -50,9 +57,18 @@ chunk to proceed while the journal keeps reservations until finality. Restart
 reconciles the exact persisted signed transaction before constructing new work;
 uncertain inclusion or a changed canonical boundary pauses actuation.
 
-Publication is permissionless. The live challenge retains the original signer
-bitmap, committee hash and bond owner. A later committee configuration does not
-replace those values or redirect refunds. The responder uses retained bytes
+Publication, settlement and close spend only protocol outputs, so another member,
+a watcher or anyone copying the transaction can land the same step first. Once
+past its validity, the responder's own intent expires when a valid transaction
+that lists one of its inputs has spent it at finality depth, verified from that
+transaction's raw bytes; the responder then selects its next step from live
+state. Ogmios must therefore run with `--include-transaction-cbor`. Without it
+the responder stops with an error naming that flag and releases nothing.
+
+Publication is permissionless. The live challenge record retains the attested
+commitment the committee signed. A later committee configuration does not
+replace it or redirect refunds; a challenge that times out slashes the DA bond
+pool, not any individual member. The responder uses retained bytes
 even when public retrieval is unavailable. Missing or corrupt retained data is
 reported without submitting a response; timeout remains available through the
 independent challenger workflow.

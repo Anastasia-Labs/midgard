@@ -147,7 +147,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     const payload = Buffer.from("public retained DA");
     const payloadHash = computeDaSha256Hash(payload).toString("hex");
     const headerHash = LOWER_HEADER_HASH;
-    const expected = availabilityCommitment(headerHash, "44".repeat(28));
+    const expected = availabilityCommitment(headerHash, "99".repeat(28));
     const conflicting = availabilityCommitment(headerHash, "55".repeat(28));
     const store = await JsonFileCommitteeStore.open(await tempDir());
     await store.saveDaPayload({
@@ -177,7 +177,6 @@ describe("DA conflict evidence V1 lifecycle", () => {
       committeeValidation,
       availabilityCommitmentAuthority: {
         deploymentIdentity: "99".repeat(28),
-        bondOwnerCredential: "44".repeat(28),
         responseGeometry: {
           chunkByteLength: 4_096,
           trancheByteLength: 4 * 1_024 * 1_024,
@@ -222,7 +221,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
 
   it("refuses a local second signature for a different commitment identity", async () => {
     const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
-    const first = availabilityCommitment(LOWER_HEADER_HASH, "44".repeat(28));
+    const first = availabilityCommitment(LOWER_HEADER_HASH, "99".repeat(28));
     const second = availabilityCommitment(LOWER_HEADER_HASH, "55".repeat(28));
     const prior = signatureRecord({
       signer,
@@ -258,7 +257,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     const directory = await tempDir();
     const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
     const variants = [
-      availabilityCommitment(LOWER_HEADER_HASH, "44".repeat(28)),
+      availabilityCommitment(LOWER_HEADER_HASH, "99".repeat(28)),
       availabilityCommitment(LOWER_HEADER_HASH, "55".repeat(28)),
     ].map((commitment) =>
       signatureRecord({
@@ -299,7 +298,7 @@ const conflictFixture = async () => {
   const config = libp2pConfig(signer.publicKeyHex);
   const registry = DaPeerRegistry.fromConfig(config);
   const commitments = [
-    availabilityCommitment(LOWER_HEADER_HASH, "44".repeat(28)),
+    availabilityCommitment(LOWER_HEADER_HASH, "99".repeat(28)),
     availabilityCommitment(UPPER_HEADER_HASH, "55".repeat(28)),
   ].sort((left, right) => left.digest.localeCompare(right.digest));
   const lower = commitments[0]!;
@@ -357,12 +356,16 @@ const conflictFixture = async () => {
   };
 };
 
-const availabilityCommitment = (headerHash: string, bondOwner: string) => {
+// A commitment under `deploymentIdentity`: the authority's is "99" * 28, so
+// any other identity is a conflicting commitment to the same payload.
+const availabilityCommitment = (
+  headerHash: string,
+  deploymentIdentity: string,
+) => {
   const commitment = SDK.buildDaAvailabilityCommitment({
-    deploymentIdentity: "99".repeat(28),
+    deploymentIdentity,
     headerHash,
     payload: Buffer.from("public retained DA"),
-    bondOwner,
     responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 4_096,
       trancheByteLength: 4 * 1_024 * 1_024,

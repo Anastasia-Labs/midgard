@@ -3957,7 +3957,6 @@ const daSignatureRecordAt = ({
       deploymentIdentity: "99".repeat(28),
       headerHash,
       payload: Buffer.from("public retained DA"),
-      bondOwner: "76".repeat(28),
       responseGeometry: SDK.availabilityResponseGeometry({
         chunkByteLength: 14_020,
         trancheByteLength: 4 * 1_024 * 1_024,

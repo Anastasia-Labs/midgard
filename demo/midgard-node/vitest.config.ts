@@ -34,6 +34,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
  *   tests/l1-event-history-signed-intent-continuation-emulator.test.ts
  *   tests/database.test.ts
+ *   tests/da-bond-pool-bootstrap-emulator.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
  *   tests/deposit-flow-emulator-confirmation-journal.test.ts
  *   tests/deposit-flow-emulator-merge-payout.test.ts
@@ -46,6 +47,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/pipeline-status-route.test.ts
  *   tests/retention-enforcement.test.ts
  *   tests/state-queue-correction-ledger-restore.test.ts
+ *   tests/state-queue-node-floor-challenge-emulator.test.ts
  *   tests/state-reconciliation-emulator.test.ts
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts

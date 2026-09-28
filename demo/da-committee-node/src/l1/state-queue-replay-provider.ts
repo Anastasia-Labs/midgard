@@ -25,6 +25,8 @@ type Transaction = Readonly<{
   redeemers: readonly SDK.StateQueueTransitionRedeemer[];
   spentInputOutRefs: readonly string[];
   referenceInputOutRefs: readonly string[];
+  /** The raw transaction, when Ogmios serves it; the replay ignores it. */
+  cbor?: string;
 }>;
 type HistoricalOutput = Readonly<{
   node: SDK.StateQueueTransitionNode;
@@ -136,7 +138,7 @@ const point = (value: unknown, label: string): Point => {
   return { slot: candidate.slot_no, blockHash: candidate.header_hash };
 };
 
-const fetchSpend = async (
+export const fetchSpend = async (
   kupoUrl: string,
   reference: string,
   fetchImpl: StateQueueReplayFetch,
@@ -186,7 +188,7 @@ const fetchSpend = async (
   };
 };
 
-const fetchAncestor = async (
+export const fetchAncestor = async (
   kupoUrl: string,
   slot: number,
   fetchImpl: StateQueueReplayFetch,
@@ -301,6 +303,7 @@ const parseTransaction = (
 ): Transaction => {
   const tx = value as {
     id?: unknown;
+    cbor?: unknown;
     inputs?: unknown;
     references?: unknown;
     mint?: unknown;
@@ -381,10 +384,11 @@ const parseTransaction = (
     redeemers: parsedRedeemers,
     spentInputOutRefs,
     referenceInputOutRefs,
+    ...(typeof tx.cbor === "string" ? { cbor: tx.cbor } : {}),
   };
 };
 
-const readTransaction = async (
+export const readTransaction = async (
   ogmiosUrl: string,
   ancestor: Point,
   spend: Spend,

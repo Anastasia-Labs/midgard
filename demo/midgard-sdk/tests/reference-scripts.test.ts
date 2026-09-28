@@ -106,29 +106,54 @@ describe("reference-script SDK boundary", () => {
     }
   });
 
-  it("has no role for the deleted per-block bond yield", () => {
-    expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES).not.toHaveProperty(
-      "availability-challenge bond withdrawal",
-    );
-    expect(Object.values(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).not.toContain(
-      "AvailabilityChallengeBondYield",
-    );
+  it("publishes exactly the availability spend, mint and four arm yields", () => {
+    // The availability contract has no other withdrawal role: the pooled DA
+    // bond replaced the per-header bond and its yield.
+    const expectedRoles = [
+      "availability-challenge spending",
+      "availability-challenge minting",
+      "availability-challenge open withdrawal",
+      "availability-challenge settle withdrawal",
+      "availability-challenge close withdrawal",
+      "availability-challenge timeout withdrawal",
+    ];
+    for (const roles of [
+      Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES),
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+    ]) {
+      expect(
+        roles.filter((role) => role.startsWith("availability-challenge")),
+      ).toEqual(expectedRoles);
+    }
+    expect(
+      Object.values(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES).filter((token) =>
+        token.startsWith("AvailabilityChallenge"),
+      ),
+    ).toEqual([
+      "AvailabilityChallengeSpend",
+      "AvailabilityChallengeMint",
+      "AvailabilityChallengeOpenYield",
+      "AvailabilityChallengeSettleYield",
+      "AvailabilityChallengeCloseYield",
+      "AvailabilityChallengeExpiryYield",
+    ]);
   });
 
   it("authenticates the pooled DA bond's spend and mint with unique <=32-byte tokens", () => {
-    // SDK side only: the midgard-core manifest mirror gains these roles with
-    // the manifest entries themselves.
-    const poolRoles = {
-      "da-bond-pool spending": "DaBondPoolSpend",
-      "da-bond-pool minting": "DaBondPoolMint",
-    } as const;
+    const poolRoles = [
+      ["da-bond-pool spending", "DaBondPoolSpend", "daBondPoolSpend"],
+      ["da-bond-pool minting", "DaBondPoolMint", "daBondPoolMint"],
+    ] as const;
     const allTokenNames = Object.values(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES);
-    for (const [role, tokenName] of Object.entries(poolRoles)) {
-      expect(
-        REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[
-          role as keyof typeof REFERENCE_SCRIPT_AUTH_TOKEN_NAMES
-        ],
-      ).toBe(tokenName);
+    for (const [role, tokenName, contractName] of poolRoles) {
+      expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[role]).toBe(tokenName);
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
+        tokenName,
+      );
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
+        contractName,
+      );
       expect(Buffer.byteLength(tokenName)).toBeLessThanOrEqual(32);
       expect(allTokenNames.filter((name) => name === tokenName)).toHaveLength(
         1,

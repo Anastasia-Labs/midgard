@@ -497,7 +497,7 @@ describe("production fault decision bridge", () => {
             return {
               ...header,
               daAvailability: {
-                Attested: { da_bond_asset_name: "ee".repeat(32) },
+                Attested: { commitment_hash: "ee".repeat(32) },
               },
             };
           return header;
@@ -879,7 +879,7 @@ describe("production fault decision bridge", () => {
       finalizedHeaders: [
         {
           ...first,
-          daAvailability: { Attested: { da_bond_asset_name: "44".repeat(32) } },
+          daAvailability: { Attested: { commitment_hash: "44".repeat(32) } },
         },
       ],
     };
@@ -917,7 +917,7 @@ describe("production fault decision bridge", () => {
       finalizedHeaders: [
         {
           ...header,
-          daAvailability: { Attested: { da_bond_asset_name: "44".repeat(32) } },
+          daAvailability: { Attested: { commitment_hash: "44".repeat(32) } },
         },
       ],
     };
@@ -988,7 +988,7 @@ describe("production fault decision bridge", () => {
           {
             ...header,
             daAvailability: {
-              Attested: { da_bond_asset_name: "44".repeat(32) },
+              Attested: { commitment_hash: "44".repeat(32) },
             },
           },
         ],
@@ -1051,7 +1051,7 @@ describe("production fault decision bridge", () => {
             ...(change === "availability_state"
               ? {
                   daAvailability: {
-                    Attested: { da_bond_asset_name: "55".repeat(32) },
+                    Attested: { commitment_hash: "55".repeat(32) },
                   },
                 }
               : {}),
@@ -1083,7 +1083,7 @@ describe("production fault decision bridge", () => {
       ...initial,
       finalizedHeaders: initial.finalizedHeaders.map((row) => ({
         ...row,
-        daAvailability: { Attested: { da_bond_asset_name: "44".repeat(32) } },
+        daAvailability: { Attested: { commitment_hash: "44".repeat(32) } },
       })),
     };
     let pending = new Set<string>();

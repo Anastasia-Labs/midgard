@@ -217,11 +217,11 @@ describe("DA committee apply against an L1 tip that trails the submitter's clock
         target: f.target,
         attestationUtxo: attestation.utxo,
         attestationDatum: attestation.datum,
-        hubOracleRefInput: f.hubOracleRefInput,
         daParamsUtxo: f.daParamsUtxo,
         daParamsDatum: f.daParamsDatum,
         referenceScripts: f.daReferences,
         validityRange: { validFrom: mutantFrom, validTo: mutantFrom + 60_000n },
+        availabilityParameters: TEST_AVAILABILITY_PARAMETERS,
       })
     ).sign
       .withWallet()

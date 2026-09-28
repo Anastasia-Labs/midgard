@@ -36,8 +36,6 @@ const ROLE_BY_CONTRACT = new Map(
 // order of `contract-deployment-info.json` (and so its digest), and the
 // publication order decides which reference scripts share a publication batch.
 // Script bytes are pinned by the bundle digests in `midgard-contracts.test.ts`.
-const PRE_HISTORY_MANIFEST_CONTRACT_ORDER_DIGEST =
-  "43d52375d2b77f0587bfcd6553bc6a77366b507828e903e23efe73342ee0666f";
 const PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST =
   "c460b989ef9dd6547f1000710fcecf5ceced42ca7b35c6042467ea0965a2f811";
 const PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST =
@@ -49,20 +47,40 @@ const PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
 const PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
   "3dc67cab67e108538859e783c53623c1a38c199dfad3f75b1d13b3980d7b7783";
 
-// New pins are derived only after projecting out exactly these six entries
-// reproduces every original order digest and the original 528/521 counts.
-const MANIFEST_CONTRACT_ORDER_DIGEST =
-  "73d8db770d72ccb908c3e0cc2758fc33f77e3bd0e7f692336d0091aed615f909";
-const MANIFEST_ROLE_ORDER_DIGEST =
+// The history pins were derived only after projecting out exactly these six
+// entries reproduced every original order digest and the original 528/521
+// counts; they are in turn the orders before the two DA bond pool entries.
+// Both older generations still listed the per-header bond yield the pooled
+// bond retired, so each projection restores that one role (see
+// `withRetiredBondRole`). The retired contract's name is not restored, so
+// the older contract-name pins are dropped: the older role pins still fix
+// every published entry, and the current contract-name pin fixes the rest.
+const PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST =
   "a2e24084e3de768007b27ed80abab4251a853f878bb991e08053776467c32014";
-const REAL_PUBLICATION_ORDER_DIGEST =
+const PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST =
   "14a252bc64c1f79cd33583c7dd277d0a0ded120f6a799f1e470049fea7ba6c8d";
-const REAL_COMMAND_ORDER_DIGEST =
+const PRE_POOL_REAL_COMMAND_ORDER_DIGEST =
   "67860e5e44507dbaff6bc705ceb6992ff11e993b74c28d1eeee4325f98231fd0";
-const PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
+const PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
   "4983f9529c62525d4ec65b3e5c718d458d47c3d076f60ef9be46811e1c375a65";
-const PLACEHOLDER_COMMAND_ORDER_DIGEST =
+const PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST =
   "0dc4a59b6bb9b94cfb1487d65c5baba836c2a3e328ee106d78abc7183698dafe";
+
+// New pins are derived only after projecting out exactly the two pool entries
+// (with the retired bond yield restored) reproduces every pre-pool published
+// order digest and the pre-pool 534/527 counts.
+const MANIFEST_CONTRACT_ORDER_DIGEST =
+  "c0149c2cdccdbbeb77abd5f75e5b6734aba32a8f9c780d9a45481d657e19f653";
+const MANIFEST_ROLE_ORDER_DIGEST =
+  "403dbeb29e206d5f4dfe156ed62c86d3db8203adaafb0a130db2b3a7c1c0f8f6";
+const REAL_PUBLICATION_ORDER_DIGEST =
+  "eb32654b4a7fa1359dc5ac41cc4161c59add601ced82dfa380075053af8cff5e";
+const REAL_COMMAND_ORDER_DIGEST =
+  "68c83ce121d95d3fdf92fe894644fdaf1a08ef377926d450caba70248c15fa36";
+const PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
+  "ea31285345259f89fbe4cde8d95d6eba05c54932fe36abcacabbc2e85b60da8b";
+const PLACEHOLDER_COMMAND_ORDER_DIGEST =
+  "31eee684c04a2d6ed5ac1cc0f777b56977f1e774b0cb3b62ba637b9607d61146";
 
 const HISTORY_CATALOGUE_ADDITIONS = [
   {
@@ -103,12 +121,53 @@ const HISTORY_CATALOGUE_ADDITIONS = [
   },
 ] as const;
 
+// The pooled DA committee bond: its spend and its one-shot mint, which the
+// atomic protocol init runs to create the pool.
+const POOL_CATALOGUE_ADDITIONS = [
+  {
+    contract: "daBondPoolSpend",
+    role: "da-bond-pool spending",
+    purpose: "spend",
+    commands: ["da"],
+  },
+  {
+    contract: "daBondPoolMint",
+    role: "da-bond-pool minting",
+    purpose: "mint",
+    commands: ["protocol-init", "da"],
+  },
+] as const;
+
+const poolContracts = new Set<string>(
+  POOL_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+const poolRoles = new Set<string>(
+  POOL_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);
+
 const historyContracts = new Set<string>(
   HISTORY_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
 );
 const historyRoles = new Set<string>(
   HISTORY_CATALOGUE_ADDITIONS.map(({ role }) => role),
 );
+
+// The per-header bond yield sat right after the availability mint in every
+// order and in the one command (`da`) that published the mint.
+const RETIRED_BOND_ROLE = "availability-challenge bond withdrawal";
+
+const withRetiredBondRole = <T extends string | null>(
+  names: readonly T[],
+): readonly (T | string)[] => {
+  const mint = names.indexOf("availability-challenge minting" as T);
+  if (mint < 0) return names;
+  expect(names).not.toContain(RETIRED_BOND_ROLE);
+  return [
+    ...names.slice(0, mint + 1),
+    RETIRED_BOND_ROLE,
+    ...names.slice(mint + 1),
+  ];
+};
 
 const commandOrder = (contracts: SDK.MidgardValidators) => {
   const byCommand = referenceScriptTargetsByCommand(contracts);
@@ -150,7 +209,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(534);
+      expect(manifest).toHaveLength(535);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -162,7 +221,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(527);
+    expect(realTargets).toHaveLength(528);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -186,23 +245,26 @@ describe("deployable-script catalogue", () => {
     );
   });
 
-  it("preserves every original order after excluding exactly the six history additions", () => {
+  it("preserves every original published order after excluding exactly the six history and two pool additions and restoring the retired bond yield", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts).filter(
-        ({ contract }) => !historyContracts.has(contract),
+        ({ contract }) =>
+          !historyContracts.has(contract) && !poolContracts.has(contract),
       );
-      expect(manifest).toHaveLength(528);
-      expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
-        PRE_HISTORY_MANIFEST_CONTRACT_ORDER_DIGEST,
+      const roles = withRetiredBondRole(
+        manifest.map(({ role }) => role ?? null),
       );
-      expect(orderDigest(manifest.map(({ role }) => role ?? null))).toEqual(
+      expect(roles).toHaveLength(528);
+      expect(orderDigest(roles)).toEqual(
         PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
       );
-      const targets = nodeRuntimeReferenceScriptTargets(contracts).filter(
-        ({ name }) => !historyRoles.has(name),
+      const targets = withRetiredBondRole(
+        nodeRuntimeReferenceScriptTargets(contracts)
+          .map(({ name }) => name)
+          .filter((name) => !historyRoles.has(name) && !poolRoles.has(name)),
       );
       expect(targets).toHaveLength(contracts === real ? 521 : 520);
-      expect(orderDigest(targets.map(({ name }) => name))).toEqual(
+      expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST
           : PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
@@ -212,9 +274,13 @@ describe("deployable-script catalogue", () => {
         orderDigest(
           REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
             commandName,
-            byCommand[commandName]
-              .map(({ name }) => name)
-              .filter((name) => !historyRoles.has(name)),
+            withRetiredBondRole(
+              byCommand[commandName]
+                .map(({ name }) => name)
+                .filter(
+                  (name) => !historyRoles.has(name) && !poolRoles.has(name),
+                ),
+            ),
           ]),
         ),
       ).toEqual(
@@ -222,6 +288,68 @@ describe("deployable-script catalogue", () => {
           ? PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST
           : PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
       );
+    }
+  });
+
+  it("preserves every pre-pool published order after excluding exactly the two pool additions and restoring the retired bond yield", () => {
+    for (const contracts of [real, placeholder]) {
+      const manifest = manifestDeployableScripts(contracts).filter(
+        ({ contract }) => !poolContracts.has(contract),
+      );
+      const roles = withRetiredBondRole(
+        manifest.map(({ role }) => role ?? null),
+      );
+      expect(roles).toHaveLength(534);
+      expect(orderDigest(roles)).toEqual(PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST);
+      const targets = withRetiredBondRole(
+        nodeRuntimeReferenceScriptTargets(contracts)
+          .map(({ name }) => name)
+          .filter((name) => !poolRoles.has(name)),
+      );
+      expect(targets).toHaveLength(contracts === real ? 527 : 526);
+      expect(orderDigest(targets)).toEqual(
+        contracts === real
+          ? PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST
+          : PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+      );
+      const byCommand = referenceScriptTargetsByCommand(contracts);
+      expect(
+        orderDigest(
+          REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
+            commandName,
+            withRetiredBondRole(
+              byCommand[commandName]
+                .map(({ name }) => name)
+                .filter((name) => !poolRoles.has(name)),
+            ),
+          ]),
+        ),
+      ).toEqual(
+        contracts === real
+          ? PRE_POOL_REAL_COMMAND_ORDER_DIGEST
+          : PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      );
+    }
+  });
+
+  it("places the DA bond pool right after the DA params governor, in both orders", () => {
+    for (const contracts of [real, placeholder]) {
+      const manifestContracts = manifestDeployableScripts(contracts).map(
+        ({ contract }) => contract,
+      );
+      const governorMint = manifestContracts.indexOf("daParamsGovernorMint");
+      expect(
+        manifestContracts.slice(governorMint + 1, governorMint + 3),
+      ).toEqual(["daBondPoolSpend", "daBondPoolMint"]);
+      const targetNames = nodeRuntimeReferenceScriptTargets(contracts).map(
+        ({ name }) => name,
+      );
+      const governorMintRole = targetNames.indexOf(
+        "da-params-governor minting",
+      );
+      expect(
+        targetNames.slice(governorMintRole + 1, governorMintRole + 3),
+      ).toEqual(["da-bond-pool spending", "da-bond-pool minting"]);
     }
   });
 
@@ -243,6 +371,43 @@ describe("deployable-script catalogue", () => {
       const targets = nodeRuntimeReferenceScriptTargets(contracts);
       const byCommand = referenceScriptTargetsByCommand(contracts);
       for (const addition of HISTORY_CATALOGUE_ADDITIONS) {
+        const matching = targets.filter(({ name }) => name === addition.role);
+        expect(matching).toHaveLength(1);
+        expect(CONTRACT_BY_ROLE[addition.role]).toBe(addition.contract);
+        expect(matching[0]!.script).toEqual(
+          manifest.find(({ contract }) => contract === addition.contract)!
+            .script,
+        );
+        for (const commandName of REFERENCE_SCRIPT_COMMAND_NAMES) {
+          expect(
+            byCommand[commandName].filter(({ name }) => name === addition.role),
+          ).toHaveLength(
+            commandName === "node-runtime" ||
+              (addition.commands as readonly string[]).includes(commandName)
+              ? 1
+              : 0,
+          );
+        }
+      }
+    }
+  });
+
+  it("publishes both pool additions with their exact roles, purposes and command coverage", () => {
+    for (const contracts of [real, placeholder]) {
+      const manifest = manifestDeployableScripts(contracts);
+      expect(
+        manifest
+          .filter(({ contract }) => poolContracts.has(contract))
+          .map(({ contract, role, purpose, commands }) => ({
+            contract,
+            role,
+            purpose,
+            commands,
+          })),
+      ).toEqual(POOL_CATALOGUE_ADDITIONS);
+      const targets = nodeRuntimeReferenceScriptTargets(contracts);
+      const byCommand = referenceScriptTargetsByCommand(contracts);
+      for (const addition of POOL_CATALOGUE_ADDITIONS) {
         const matching = targets.filter(({ name }) => name === addition.role);
         expect(matching).toHaveLength(1);
         expect(CONTRACT_BY_ROLE[addition.role]).toBe(addition.contract);

@@ -12,7 +12,6 @@ export const assertAvailabilityChallengeRewardAccountsRegisteredProgram = (
   lucid: Pick<LucidEvolution, "config" | "rewardAccountAt">,
   contracts: Pick<SDK.MidgardValidators, "availabilityChallenge">,
   actions: readonly (keyof SDK.AvailabilityChallengeYieldValidators)[] = [
-    "bond",
     "open",
     "settle",
     "close",

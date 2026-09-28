@@ -19,6 +19,7 @@ const io = vi.hoisted(() => ({
 vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
   openAvailabilityOperationJournal: () => ({
     assertRunning() {},
+    workflows: () => [],
     close() {},
     halt() {},
   }),
@@ -277,20 +278,20 @@ it("projects pending availability onto current inclusion without changing finali
     finalizedHeaders: [
       {
         headerHash: "known",
-        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+        daAvailability: { Attested: { commitment_hash: "bond" } },
       },
       {
         headerHash: "published",
         daAvailability: {
           Challenged: {
-            da_bond_asset_name: "bond",
+            commitment_hash: "bond",
             challenge_asset_name: "challenge",
           },
         },
       },
       {
         headerHash: "removed",
-        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+        daAvailability: { Attested: { commitment_hash: "bond" } },
       },
     ],
   } as unknown as WatcherAuthenticatedStateQueueObservation;
@@ -300,7 +301,7 @@ it("projects pending availability onto current inclusion without changing finali
     finalizedHeaders: [
       {
         headerHash: "known",
-        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+        daAvailability: { Attested: { commitment_hash: "bond" } },
       },
       {
         headerHash: "published",
@@ -310,14 +311,14 @@ it("projects pending availability onto current inclusion without changing finali
         headerHash: "new-challenge",
         daAvailability: {
           Challenged: {
-            da_bond_asset_name: "bond",
+            commitment_hash: "bond",
             challenge_asset_name: "challenge",
           },
         },
       },
       {
         headerHash: "new-attested",
-        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+        daAvailability: { Attested: { commitment_hash: "bond" } },
       },
       { headerHash: "unattested", daAvailability: "Unattested" },
     ],
@@ -358,7 +359,7 @@ const includedAttestation = () =>
     finalizedHeaders: [
       {
         headerHash: "new",
-        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+        daAvailability: { Attested: { commitment_hash: "bond" } },
       },
     ],
   }) as unknown as WatcherAuthenticatedStateQueueObservation;

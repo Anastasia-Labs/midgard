@@ -20,7 +20,6 @@ const availabilityCommitment = (headerHash: string) =>
     deploymentIdentity: "11".repeat(28),
     headerHash,
     payload: Uint8Array.from([1, 2, 3, 4]),
-    bondOwner: "22".repeat(28),
     responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4095,
       trancheByteLength: 4 * 1024 * 1024,
@@ -52,7 +51,7 @@ describe("DA signer", () => {
       availabilityCommitment: commitment,
     });
     expect(witness).toBe(
-      "00c6d7424f81c0efa71e9b0cfa501c1f7e712b56d8bc264c6f1222a6376dc7d7b3d5a74f2cb20fbd2b47dcfb65c6bc61bcd908bd9db6ca055b1c5a4c021bc16500",
+      "00577a709e42cd9b826188027531a3d6f238e1d840869dc71dbf84d6fd35ecedbd70883e6a731886216633dd85e8364e4c4044cb38af76f9b41ab5718f92517000",
     );
     expect(
       verifyDaSignatureWitness({

@@ -17,7 +17,6 @@ const payload = Uint8Array.from([1, 2, 3, 4]);
 const commitment = SDK.buildDaAvailabilityCommitment({
   deploymentIdentity,
   headerHash: "33".repeat(28),
-  bondOwner: "44".repeat(28),
   payload,
   responseGeometry: SDK.availabilityResponseGeometry({
     chunkByteLength: 4096,
@@ -39,7 +38,6 @@ const challengeFixture = (
   const frozen = SDK.buildDaAvailabilityCommitment({
     deploymentIdentity,
     headerHash: commitment.header_hash,
-    bondOwner: commitment.bond_owner,
     payload: bytes,
     responseGeometry: commitment.response_geometry,
   });
@@ -54,27 +52,18 @@ const challengeFixture = (
     maxTimeoutFeeLovelace: 1_200_000n,
   });
   const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
-    availableBond: {
-      Available: {
-        commitment: frozen,
-        da_bond_asset_name: SDK.daAvailabilityBondAssetName({
-          transactionId: "77".repeat(32),
-          outputIndex: 0n,
-        }),
-        committee_signers_hash: "88".repeat(32),
-        attested_signers: "80" + "00".repeat(31),
-      },
+    commitment: frozen,
+    challengerFundingOutRef: {
+      transactionId: "99".repeat(32),
+      outputIndex: 0n,
     },
-    bondInputOutRef: { transactionId: "99".repeat(32), outputIndex: 0n },
     challenger: "aa".repeat(28),
     openedAt: 1_000n,
     parameters,
   });
-  if (!("ChallengedBond" in plan.challengedBond))
-    throw new Error("Expected challenged fixture bond");
   return {
     challenge: {
-      bond: { utxo: utxo(0), datum: plan.challengedBond },
+      record: { utxo: utxo(0), datum: plan.record },
       terminal: { utxo: utxo(1), datum: plan.terminalAccumulator },
       queue: utxo(2),
       tranches: plan.trancheThreads.map((datum, index) => ({
@@ -224,9 +213,7 @@ describe("availability responder lifecycle", () => {
 
   it("publishes until the response deadline and never attempts one at or after it", async () => {
     const fixture = challengeFixture();
-    const deadline = Number(
-      fixture.challenge.bond.datum.ChallengedBond.response_deadline,
-    );
+    const deadline = Number(fixture.challenge.record.datum.response_deadline);
     const tickAt = async (now: number) => {
       const execute = vi.fn(async () => "confirmed" as const);
       const report = await new AvailabilityResponder({
@@ -273,7 +260,7 @@ const retained = (stored: DaPayloadRecord | undefined) =>
   });
 
 describe("retained availability responses", () => {
-  it("publishes exact committed stored bytes without a current committee or bond-owner key", async () => {
+  it("publishes exact committed stored bytes without a current committee key", async () => {
     expect(await retained(record)).toEqual(Buffer.from(payload));
   });
 

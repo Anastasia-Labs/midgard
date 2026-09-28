@@ -45,7 +45,7 @@ const record = (
     withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   },
   computedHeaderHash: headerHash,
-  daAttestation: { Attested: { da_bond_asset_name: h32("c") } },
+  daAttestation: { Attested: { commitment_hash: h32("c") } },
   observedChainPoint: point(1, 1),
   finalized: false,
   status: "attested",

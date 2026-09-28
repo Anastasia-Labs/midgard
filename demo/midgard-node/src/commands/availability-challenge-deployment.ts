@@ -102,10 +102,6 @@ export const availabilityDeploymentFromManifest = async (
       "availability-challenge minting",
     )),
     yields: {
-      bond: await withdrawal(
-        "availabilityChallengeBondWithdraw",
-        "availability-challenge bond withdrawal",
-      ),
       open: await withdrawal(
         "availabilityChallengeOpenWithdraw",
         "availability-challenge open withdrawal",
@@ -154,12 +150,21 @@ export const availabilityDeploymentFromManifest = async (
     "correctionLockSpend",
     "correction-lock spending",
   );
+  const daBondPool: SDK.AuthenticatedValidator = {
+    ...(await spend("daBondPoolSpend", "da-bond-pool spending")),
+    ...(await mint("daBondPoolMint", "da-bond-pool minting")),
+  };
   const hubOraclePolicyId = manifest.contracts.hubOracleMint?.scriptHash;
   if (hubOraclePolicyId === undefined)
     throw new Error("Deployment omits hub oracle policy");
   const p = manifest.availabilityChallenge;
   return {
-    contracts: { availabilityChallenge, stateQueue, correctionLock },
+    contracts: {
+      availabilityChallenge,
+      stateQueue,
+      correctionLock,
+      daBondPool,
+    },
     hubOraclePolicyId,
     referenceScriptAuthPolicyId: authPolicy,
     referenceScripts: references,

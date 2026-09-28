@@ -63,7 +63,6 @@ describe("Scalus DA add-signatures evaluation", () => {
       deploymentIdentity: deployment.hubOraclePolicyId,
       headerHash,
       payload: Buffer.from("public retained DA"),
-      bondOwner: "76".repeat(28),
       responseGeometry: SDK.availabilityResponseGeometry({
         chunkByteLength: 14_020,
         trancheByteLength: 4 * 1_024 * 1_024,
@@ -156,16 +155,6 @@ const referenceScriptUtxos = (
   deployment: MidgardNodeDeployment,
   address: string,
 ): DaAttestationReferenceScripts => ({
-  availabilityChallengeBondWithdrawal: referenceScriptUtxo(
-    "25",
-    address,
-    deployment.availabilityChallengeYields.bond.script,
-  ),
-  availabilityChallengeMinting: referenceScriptUtxo(
-    "24",
-    address,
-    deployment.availabilityChallenge.mint.script,
-  ),
   daAttestationMinting: referenceScriptUtxo(
     "20",
     address,

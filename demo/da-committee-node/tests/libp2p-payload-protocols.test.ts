@@ -59,7 +59,6 @@ const payloadSubmitProtocolId = daRequestResponseProtocolId(
 );
 const availabilityCommitmentAuthority = {
   deploymentIdentity: "99".repeat(28),
-  bondOwnerCredential: "44".repeat(28),
   responseGeometry: {
     chunkByteLength: 4_096,
     trancheByteLength: 4 * 1_024 * 1_024,

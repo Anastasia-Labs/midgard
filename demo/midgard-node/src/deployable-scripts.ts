@@ -750,6 +750,12 @@ const DEPLOYABLE_SCRIPT_CATALOGUE = {
       commands: ["protocol-init", "da"],
     }),
   ),
+  daBondPool: entries(
+    spend("daBondPoolSpend", (c) => c.daBondPool, { commands: ["da"] }),
+    mint("daBondPoolMint", (c) => c.daBondPool, {
+      commands: ["protocol-init", "da"],
+    }),
+  ),
   daAttestation: entries(
     spend("daAttestationSpend", (c) => c.daAttestation, { commands: ["da"] }),
     mint("daAttestationMint", (c) => c.daAttestation, {
@@ -1143,6 +1149,7 @@ export const PUBLICATION_ORDER: readonly PublicationStep[] = [
   "referenceScriptAuth",
   "hubOracle",
   "daParamsGovernor",
+  "daBondPool",
   "daAttestation",
   "scheduler",
   "stateQueue",

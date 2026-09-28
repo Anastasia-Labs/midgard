@@ -135,7 +135,6 @@ const identityInput = () => ({
     maxSettlementFeeLovelace: 500_000,
     maxCloseFeeLovelace: 1_000_000,
     maxTimeoutFeeLovelace: 1_200_000,
-    bondOwnerCredential: "77".repeat(28),
   },
 });
 
@@ -381,6 +380,22 @@ describe("finalized deployment manifest", () => {
       /scriptHash mismatch/,
     ],
     [
+      "missing DA bond pool contract",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        delete manifest.contracts.daBondPoolMint;
+      },
+      /contracts\.daBondPoolMint is required/,
+    ],
+    [
+      "availability contract outside the four arms",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.contracts.availabilityChallengeExtraWithdraw = {
+          ...manifest.contracts.availabilityChallengeTimeoutWithdraw!,
+        };
+      },
+      /contracts\.availabilityChallengeExtraWithdraw is unexpected/,
+    ],
+    [
       "reference publication",
       (manifest: ReturnType<typeof finalizedManifest>) => {
         manifest.referenceScripts["hub-oracle minting"].status = "pending";
@@ -488,16 +503,10 @@ describe("DeploymentManifestV1 shared identity", () => {
       "settlementSpend",
     ]);
     // Token-only roles: the CEK direct resolver is referenced by its auth
-    // token and never applied as its own reference script. The DA bond pool's
-    // two roles are token-only until the manifest records the pool's contract
-    // entries and publishes its reference scripts.
+    // token and never applied as its own reference script.
     expect(
       Object.keys(tokenNameByRole).filter((role) => !(role in contractByRole)),
-    ).toEqual([
-      "da-bond-pool spending",
-      "da-bond-pool minting",
-      "V1 validation-trace CEK direct resolver",
-    ]);
+    ).toEqual(["V1 validation-trace CEK direct resolver"]);
     expect(
       DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof min-ada step-02 tx yield"
@@ -657,6 +666,54 @@ describe("DeploymentManifestV1 shared identity", () => {
         ],
       ).toBe(contractName);
     });
+  });
+
+  it("records the DA bond pool after the DA params governor, with no per-header bond yield", () => {
+    // The pool is parameterised by the DA params policy and every later DA
+    // contract by the pool policy, so its entries follow the governor's.
+    const governorMint = DEPLOYMENT_MANIFEST_CONTRACT_NAMES.indexOf(
+      "daParamsGovernorMint",
+    );
+    expect(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.slice(
+        governorMint + 1,
+        governorMint + 3,
+      ),
+    ).toEqual(["daBondPoolSpend", "daBondPoolMint"]);
+    for (const [role, contractName, tokenName] of [
+      ["da-bond-pool spending", "daBondPoolSpend", "DaBondPoolSpend"],
+      ["da-bond-pool minting", "daBondPoolMint", "DaBondPoolMint"],
+    ] as const) {
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
+        contractName,
+      );
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
+        tokenName,
+      );
+    }
+    // The availability family is its spend, its mint and the four arm
+    // withdrawals: nothing else, so no per-header bond script survives.
+    const availabilityArms = ["Open", "Settle", "Close", "Timeout"] as const;
+    expect(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.filter((name) =>
+        name.startsWith("availabilityChallenge"),
+      ),
+    ).toEqual([
+      "availabilityChallengeSpend",
+      "availabilityChallengeMint",
+      ...availabilityArms.map((arm) => `availabilityChallenge${arm}Withdraw`),
+    ]);
+    expect(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES).filter(
+        (role) => role.startsWith("availability-challenge"),
+      ),
+    ).toEqual([
+      "availability-challenge spending",
+      "availability-challenge minting",
+      ...availabilityArms.map(
+        (arm) => `availability-challenge ${arm.toLowerCase()} withdrawal`,
+      ),
+    ]);
   });
 
   it("names the network-id auxiliary forced door and forced scan", () => {
@@ -1033,6 +1090,40 @@ describe("DeploymentManifestV1 shared identity", () => {
         challengerBondLovelace: smallReserve,
       }),
     ).toThrow(/challenger bond must cover every maximum-size publication/u);
+  });
+
+  it("admits exactly the pooled-bond availability fields", () => {
+    // The per-header bond and its owner credential are gone: the section is
+    // the response shape, the profile's pool amounts, the deploy-time
+    // challenger bond and the fee ceilings, and nothing else.
+    const expectedKeys = [
+      "responseClasses",
+      "responseGeometry",
+      "daBondLovelace",
+      "challengerBondLovelace",
+      "maxOpenFeeLovelace",
+      "maxPublicationFeeLovelace",
+      "maxSettlementFeeLovelace",
+      "maxCloseFeeLovelace",
+      "maxTimeoutFeeLovelace",
+      "daSlashPenaltyLovelace",
+      "daBondMinTopUpLovelace",
+      "daBondPoolFloorLovelace",
+      "challengeRecordLovelace",
+    ].sort();
+    const availability = identityInput().availabilityChallenge;
+    expect(Object.keys(availability).sort()).toEqual(expectedKeys);
+    expect(
+      Object.keys(
+        parseDeploymentManifestAvailabilityChallenge(availability),
+      ).sort(),
+    ).toEqual(expectedKeys);
+    expect(() =>
+      parseDeploymentManifestAvailabilityChallenge({
+        ...availability,
+        ownerCredential: "77".repeat(28),
+      }),
+    ).toThrow(/availabilityChallenge must contain exactly/u);
   });
 
   it("DA amounts must equal the selected profile", () => {

@@ -32,16 +32,22 @@ blake2b256(
 ```
 
 The commitment binds the deployment identity, header hash, payload length,
-response geometry, tranche descriptors, and bond owner. Use
+response geometry, and tranche descriptors. Use
 `daAvailabilityAttestationMessage` from `@al-ft/midgard-sdk`; the older
 `encodeDaAttestationPreimage(headerHash)` transport helper is not this contract's
 signing message.
 
 `ApplyToStateQueue` checks quorum against the current governed committee and
-threshold, burns the attestation token, and cross-binds the availability policy's
-`MintBondFromAttestation` action. Queue availability is a typed lifecycle:
-`Unattested`, `Attested`, `Challenged`, or `Published`, with the corresponding
-bond/challenge identifiers or terminal commitment. It is not a policy-id marker.
+threshold, reads the DA bond pool as a reference input, and burns the
+attestation token. One pooled DA bond backs the whole committee: an attestation
+applies only while the pool is not being withdrawn and backs at least one DA
+bond above its floor, and a lost availability challenge slashes the pool.
+Starting and signing an attestation need no bond. While the pool cannot back an
+attestation, the coordinator logs `da_bond_pool_apply_backoff` and retries on
+its next reconcile. Queue availability is a typed lifecycle: `Unattested`,
+`Attested`, `Challenged`, or `Published`, with the attested commitment hash,
+the challenge identifier, or the terminal commitment. It is not a policy-id
+marker.
 Committee rotation invalidates a stale certificate; the rescue branch returns
 its value to the certificate's pinned rescue beneficiary.
 

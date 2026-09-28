@@ -15,7 +15,7 @@ import {
   l1SubmitterWalletPreflightFromConfig,
   onChainCoordinatorFromConfig,
 } from "./coordinator/factory.js";
-import type { DaBondFundingCheck } from "./coordinator/lucid-submitter.js";
+import type { DaSubmitterFundingCheck } from "./coordinator/lucid-submitter.js";
 import { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import {
   createDaLibp2pAttestationGossipHandlers,
@@ -33,6 +33,7 @@ import { providerFromConfig } from "./l1/provider.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
 import { PeerSignatureCoordinator } from "./peer/coordinator.js";
 import { PeerSignaturePoller } from "./peer/poller.js";
+import { daAvailabilityCommitmentAuthorityFromConfig } from "./peer/signatures.js";
 import { resolveRemoteDaAttestationTargets } from "./peer/targets.js";
 import {
   loadDaSigner,
@@ -109,15 +110,13 @@ const main = async (): Promise<void> => {
   const daIdentity = await loadDaLibp2pIdentity(config.libp2pPrivateKeySource);
   const daPeerRegistry = DaPeerRegistry.fromConfig(config.daTransport);
   daPeerRegistry.requireKnownPeer(daIdentity.peerId);
+  const availabilityCommitmentAuthority =
+    daAvailabilityCommitmentAuthorityFromConfig(config);
   const daAttestationProtocol = new StoreBackedDaAttestationProtocol({
     deploymentFingerprint: config.deploymentFingerprint,
     localPeerId: daIdentity.peerId,
     committeeValidation,
-    availabilityCommitmentAuthority: {
-      deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
-      bondOwnerCredential: config.availabilityChallenge.bondOwnerCredential,
-      responseGeometry: config.availabilityChallenge.responseGeometry,
-    },
+    availabilityCommitmentAuthority,
     store,
   });
   const requestHandlers = new Map([
@@ -183,8 +182,8 @@ const main = async (): Promise<void> => {
     store,
     requestTimeoutMs: config.peerRequestTimeoutMs,
   });
-  // The latest check of the submitter's plain ADA against the next bond.
-  let l1SubmitterBondFunding: DaBondFundingCheck | undefined;
+  // The latest check of the submitter's plain ADA against the next round.
+  let l1SubmitterFunding: DaSubmitterFundingCheck | undefined;
   const onChainCoordinator = config.l1SubmissionEnabled
     ? await onChainCoordinatorFromConfig(
         config,
@@ -192,7 +191,7 @@ const main = async (): Promise<void> => {
         store,
         undefined,
         (check) => {
-          l1SubmitterBondFunding = check;
+          l1SubmitterFunding = check;
         },
       )
     : undefined;
@@ -204,12 +203,7 @@ const main = async (): Promise<void> => {
           localPeerId: daIdentity.peerId,
           attestationExchange,
           signerValidation: committeeValidation,
-          availabilityCommitmentAuthority: {
-            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
-            bondOwnerCredential:
-              config.availabilityChallenge.bondOwnerCredential,
-            responseGeometry: config.availabilityChallenge.responseGeometry,
-          },
+          availabilityCommitmentAuthority,
           store,
           requestTimeoutMs: config.peerRequestTimeoutMs,
         })
@@ -223,12 +217,7 @@ const main = async (): Promise<void> => {
           store,
           coordinator: onChainCoordinator,
           peerPoller,
-          availabilityCommitmentAuthority: {
-            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
-            bondOwnerCredential:
-              config.availabilityChallenge.bondOwnerCredential,
-            responseGeometry: config.availabilityChallenge.responseGeometry,
-          },
+          availabilityCommitmentAuthority,
           submitterId: config.l1SubmitterId,
         });
   const l1SubmitterPreflight = config.l1SubmissionEnabled
@@ -254,12 +243,7 @@ const main = async (): Promise<void> => {
           signer,
           signerIndex: config.signerIndex,
           signerValidation,
-          availabilityCommitmentAuthority: {
-            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
-            bondOwnerCredential:
-              config.availabilityChallenge.bondOwnerCredential,
-            responseGeometry: config.availabilityChallenge.responseGeometry,
-          },
+          availabilityCommitmentAuthority,
           store,
           attestationExchange,
           requestTimeoutMs: config.peerRequestTimeoutMs,
@@ -408,7 +392,7 @@ const main = async (): Promise<void> => {
       service.readinessSnapshot({
         localPeerId: daIdentity.peerId,
         l1SubmitterPreflight,
-        l1SubmitterBondFunding,
+        l1SubmitterFunding,
         retention: retentionReadiness,
       }),
     manifest: config.deploymentManifest,

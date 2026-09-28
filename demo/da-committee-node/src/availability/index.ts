@@ -1,5 +1,6 @@
 export {
   availabilityResponderFromConfig,
+  type AvailabilityResponderSkippedRecord,
   buildAvailabilityResponderTransaction,
   discoverAvailabilityResponderChallenges,
 } from "./factory.js";

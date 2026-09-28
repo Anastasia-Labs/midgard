@@ -384,6 +384,8 @@ export const availabilityRedeemerScript = (
 };
 
 let registeredScriptNames: Readonly<Record<string, string>> = {};
+/** Refusals `assertAvailabilityRefusal` confirmed so far; the fit report counts them. */
+let confirmedRefusalCount = 0;
 
 /**
  * H9: asserts `attempt` is refused by local evaluation, and that the failing
@@ -429,6 +431,7 @@ export const assertAvailabilityRefusal = async (
   const refusal = { ...located, scriptHash, message: failure.diagnosis };
   if ("trace" in expected) {
     expect(`${failure.diagnosis}\n${failure.message}`).toMatch(expected.trace);
+    confirmedRefusalCount += 1;
     return refusal;
   }
   const expectedHash = names[expected.script] ?? expected.script;
@@ -441,6 +444,7 @@ export const assertAvailabilityRefusal = async (
     `refusal must come from the expected check; evaluator said: ${failure.diagnosis}`,
   ).toEqual({ purpose: expected.purpose, script: label(expectedHash) });
   if (expected.index !== undefined) expect(located.index).toBe(expected.index);
+  confirmedRefusalCount += 1;
   return refusal;
 };
 
@@ -487,7 +491,13 @@ export const reportAvailabilityScenario = (
     writeFileSync(
       join(reportDirectory, `${name}.json`),
       JSON.stringify(
-        { summary, measurements: fixture.measurements },
+        {
+          summary,
+          // On-chain refusals confirmed while this fixture was live.
+          onchainRefusalCount:
+            confirmedRefusalCount - fixture.refusalsAtCreation,
+          measurements: fixture.measurements,
+        },
         bigintJson,
         2,
       ) + "\n",
@@ -831,6 +841,7 @@ export const createAvailabilityFixture = async (
   lucid.selectWallet.fromPrivateKey(responder.privateKey);
   publishingLucid.selectWallet.fromPrivateKey(publisher.privateKey);
   const measurements: AvailabilityMeasurement[] = [];
+  const refusalsAtCreation = confirmedRefusalCount;
   const submit = async (
     name: string,
     builder: TxBuilder,
@@ -1224,6 +1235,7 @@ export const createAvailabilityFixture = async (
     completePoolWithdraw,
     advanceToMs,
     collateralInputs,
+    refusalsAtCreation,
   };
 };
 

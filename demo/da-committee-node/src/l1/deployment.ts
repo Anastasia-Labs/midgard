@@ -80,6 +80,12 @@ export type MidgardNodeDeployment = {
   >;
   readonly fraudProof: MidgardAuthenticatedDeployment;
   readonly daAttestation: MidgardAuthenticatedDeployment;
+  /**
+   * The pooled DA committee bond: one pool UTxO at the pool's spending script
+   * holding the pool NFT. Apply reads it as a reference input and requires it
+   * to back at least one `da_bond_lovelace` above its floor.
+   */
+  readonly daBondPool: MidgardAuthenticatedDeployment;
   readonly daParamsGovernor: MidgardAuthenticatedDeployment;
   readonly stateQueue: MidgardAuthenticatedDeployment;
   /**
@@ -97,6 +103,7 @@ export type DaAttestationValidatorSet = {
   readonly hubOracle: AuthenticatedValidator;
   readonly availabilityChallenge: AvailabilityChallengeValidator;
   readonly daAttestation: AuthenticatedValidator;
+  readonly daBondPool: AuthenticatedValidator;
   readonly daParamsGovernor: AuthenticatedValidator;
   readonly stateQueue: StateQueueValidator;
 };
@@ -108,9 +115,6 @@ export const daAttestationValidatorsFromDeployment = (
   availabilityChallenge: {
     ...authenticatedValidatorFromDeployment(deployment.availabilityChallenge),
     yields: {
-      bond: withdrawalValidatorFromDeployment(
-        deployment.availabilityChallengeYields.bond,
-      ),
       open: withdrawalValidatorFromDeployment(
         deployment.availabilityChallengeYields.open,
       ),
@@ -126,6 +130,7 @@ export const daAttestationValidatorsFromDeployment = (
     },
   },
   daAttestation: authenticatedValidatorFromDeployment(deployment.daAttestation),
+  daBondPool: authenticatedValidatorFromDeployment(deployment.daBondPool),
   daParamsGovernor: authenticatedValidatorFromDeployment(
     deployment.daParamsGovernor,
   ),
@@ -211,6 +216,12 @@ export const parseMidgardNodeDeploymentInfo = (
       "DA attestation",
       lucidNetwork,
     ),
+    daBondPool: authenticatedDeployment(
+      deploymentInfo,
+      "daBondPool",
+      "DA bond pool",
+      lucidNetwork,
+    ),
     daParamsGovernor: authenticatedDeployment(
       deploymentInfo,
       "daParamsGovernor",
@@ -224,11 +235,6 @@ export const parseMidgardNodeDeploymentInfo = (
       lucidNetwork,
     ),
     availabilityChallengeYields: {
-      bond: withdrawDeploymentContract(
-        deploymentInfo,
-        "availabilityChallengeBondWithdraw",
-        "availability challenge bond withdraw",
-      ),
       open: withdrawDeploymentContract(
         deploymentInfo,
         "availabilityChallengeOpenWithdraw",
@@ -300,6 +306,7 @@ const authenticatedDeployment = (
     | "hubOracle"
     | "availabilityChallenge"
     | "daAttestation"
+    | "daBondPool"
     | "daParamsGovernor"
     | "stateQueue"
     | "fraudProof",

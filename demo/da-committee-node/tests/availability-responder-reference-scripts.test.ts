@@ -7,7 +7,7 @@ import type { MidgardDeploymentContract } from "../src/l1/deployment.js";
 import { loadDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
 /**
- * The nine responder roles, written out rather than derived from the module
+ * The eight responder roles, written out rather than derived from the module
  * under test: the readiness gate's whole job is to bind each of these names to
  * exactly one deployed, authenticated reference script, so the name list is the
  * contract and must not be re-read from the production role table.
@@ -15,7 +15,6 @@ import { loadDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 const EXPECTED_ROLES = [
   "availability-challenge minting",
   "availability-challenge spending",
-  "availability-challenge bond withdrawal",
   "availability-challenge open withdrawal",
   "availability-challenge settle withdrawal",
   "availability-challenge close withdrawal",
@@ -75,7 +74,7 @@ describe("availability responder reference readiness", () => {
       deployment,
     );
 
-    // Exactly these nine names, no extras and no duplicates collapsing two
+    // Exactly these eight names, no extras and no duplicates collapsing two
     // roles onto one key.
     expect(Object.keys(resolved).sort()).toEqual([...EXPECTED_ROLES].sort());
     for (const role of EXPECTED_ROLES) {
@@ -108,7 +107,7 @@ describe("availability responder reference readiness", () => {
     const { deployment, reader, utxos } = await fixture();
     await expect(
       availabilityResponderReferenceScripts(reader(false), deployment),
-    ).rejects.toThrow(/Unregistered availability-challenge bond withdrawal/);
+    ).rejects.toThrow(/Unregistered availability-challenge open withdrawal/);
     utxos[0] = { ...utxos[0]!, assets: { lovelace: 4_000_000n } };
     await expect(
       availabilityResponderReferenceScripts(reader(), deployment),
@@ -128,12 +127,12 @@ describe("availability responder reference readiness", () => {
       deployment.referenceScriptAuthPolicyId,
       "state-queue spending",
     );
-    utxos[7] = {
-      ...utxos[7]!,
+    utxos[6] = {
+      ...utxos[6]!,
       assets: { lovelace: 4_000_000n, [spendUnit]: 1n },
     };
-    utxos[8] = {
-      ...utxos[8]!,
+    utxos[7] = {
+      ...utxos[7]!,
       assets: { lovelace: 4_000_000n, [mintUnit]: 1n },
     };
 

@@ -1,5 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
-
+import { availabilityParametersFromConfig } from "../availability/factory.js";
 import type { CommitteeConfig } from "../config.js";
 import { type DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import { daAttestationValidatorsFromDeployment } from "../l1/deployment.js";
@@ -15,7 +14,7 @@ import {
 import type { CommitteeStore } from "../store.js";
 import { normalizeHex } from "../utils/hex.js";
 import {
-  type DaBondFundingCheck,
+  type DaSubmitterFundingCheck,
   LucidDaAttestationSubmitter,
 } from "./lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "./on-chain.js";
@@ -44,7 +43,7 @@ export const onChainCoordinatorFromConfig = async (
     "saveDaAttestationCandidate" | "saveL1Submission" | "listDaSignatures"
   >,
   deps: OnChainCoordinatorFactoryDeps = defaultDeps,
-  recordBondFunding?: (check: DaBondFundingCheck) => void,
+  recordSubmitterFunding?: (check: DaSubmitterFundingCheck) => void,
 ): Promise<OnChainLifecycleCoordinator> => {
   if (config.l1SubmitterKeySource === undefined) {
     throw new Error("L1_SUBMITTER_KEY_SOURCE is required for L1 submission");
@@ -89,43 +88,8 @@ export const onChainCoordinatorFromConfig = async (
     lucid,
     contracts,
     referenceScripts,
-    ...(recordBondFunding === undefined ? {} : { recordBondFunding }),
-    availabilityParameters: SDK.daAvailabilityParameters({
-      responseGeometry: SDK.availabilityResponseGeometry(
-        config.availabilityChallenge.responseGeometry,
-      ),
-      daBondLovelace: BigInt(config.availabilityChallenge.daBondLovelace),
-      daSlashPenaltyLovelace: BigInt(
-        config.availabilityChallenge.daSlashPenaltyLovelace,
-      ),
-      daBondMinTopUpLovelace: BigInt(
-        config.availabilityChallenge.daBondMinTopUpLovelace,
-      ),
-      daBondPoolFloorLovelace: BigInt(
-        config.availabilityChallenge.daBondPoolFloorLovelace,
-      ),
-      challengeRecordLovelace: BigInt(
-        config.availabilityChallenge.challengeRecordLovelace,
-      ),
-      challengerBondLovelace: BigInt(
-        config.availabilityChallenge.challengerBondLovelace,
-      ),
-      maxOpenFeeLovelace: BigInt(
-        config.availabilityChallenge.maxOpenFeeLovelace,
-      ),
-      maxPublicationFeeLovelace: BigInt(
-        config.availabilityChallenge.maxPublicationFeeLovelace,
-      ),
-      maxSettlementFeeLovelace: BigInt(
-        config.availabilityChallenge.maxSettlementFeeLovelace,
-      ),
-      maxCloseFeeLovelace: BigInt(
-        config.availabilityChallenge.maxCloseFeeLovelace,
-      ),
-      maxTimeoutFeeLovelace: BigInt(
-        config.availabilityChallenge.maxTimeoutFeeLovelace,
-      ),
-    }),
+    ...(recordSubmitterFunding === undefined ? {} : { recordSubmitterFunding }),
+    availabilityParameters: availabilityParametersFromConfig(config),
   });
   return new OnChainLifecycleCoordinator({
     chainReader,

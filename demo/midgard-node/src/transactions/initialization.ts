@@ -241,6 +241,10 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
     publications,
     "fraud-proof-catalogue minting",
   ),
+  daBondPoolMinting: requireReferenceScriptPublication(
+    publications,
+    "da-bond-pool minting",
+  ),
 });
 
 /**
@@ -652,6 +656,28 @@ export const isDaParamsInitialized = (
   });
 
 /**
+ * Returns whether the DA bond pool NFT is already present at the pool address.
+ */
+export const isDaBondPoolInitialized = (
+  lucid: LucidEvolution,
+  daBondPool: SDK.AuthenticatedValidator,
+): Effect.Effect<boolean, SDK.LucidError> =>
+  Effect.tryPromise({
+    try: async () =>
+      (
+        await lucid.utxosAtWithUnit(
+          daBondPool.spendingScriptAddress,
+          SDK.daBondPoolUnit(daBondPool.policyId),
+        )
+      ).length > 0,
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to query DA bond pool initialization state",
+        cause,
+      }),
+  });
+
+/**
  * Resolves the configured one-shot hub-oracle nonce UTxO from the operator
  * wallet.
  */
@@ -792,6 +818,7 @@ export type ProtocolDeploymentStatus = {
   readonly depositHistoryInitialized: boolean;
   readonly withdrawalHistoryInitialized: boolean;
   readonly daParamsInitialized: boolean;
+  readonly daBondPoolInitialized: boolean;
   readonly schedulerInitialized: boolean;
   readonly registeredOperatorsInitialized: boolean;
   readonly activeOperatorsInitialized: boolean;
@@ -858,6 +885,10 @@ export const fetchProtocolDeploymentStatus = (
       lucid,
       contracts.daParamsGovernor,
     );
+    const daBondPoolInitialized = yield* isDaBondPoolInitialized(
+      lucid,
+      contracts.daBondPool,
+    );
     const schedulerInitialized = yield* isSchedulerInitialized(
       lucid,
       contracts.scheduler,
@@ -905,6 +936,7 @@ export const fetchProtocolDeploymentStatus = (
       ...(!activeOperatorsInitialized ? ["active-operators"] : []),
       ...(!retiredOperatorsInitialized ? ["retired-operators"] : []),
       ...(!fraudProofCatalogueInitialized ? ["fraud-proof-catalogue"] : []),
+      ...(!daBondPoolInitialized ? ["da-bond-pool"] : []),
     ] as const;
     const complete =
       depositHistory.initialized &&
@@ -918,7 +950,8 @@ export const fetchProtocolDeploymentStatus = (
       registeredOperatorsInitialized &&
       activeOperatorsInitialized &&
       retiredOperatorsInitialized &&
-      fraudProofCatalogueInitialized;
+      fraudProofCatalogueInitialized &&
+      daBondPoolInitialized;
     const empty =
       depositHistory.empty &&
       withdrawalHistory.empty &&
@@ -930,7 +963,8 @@ export const fetchProtocolDeploymentStatus = (
       !registeredOperatorsInitialized &&
       !activeOperatorsInitialized &&
       !retiredOperatorsInitialized &&
-      !fraudProofCatalogueInitialized;
+      !fraudProofCatalogueInitialized &&
+      !daBondPoolInitialized;
 
     return {
       depositHistoryInitialized: depositHistory.initialized,
@@ -939,6 +973,7 @@ export const fetchProtocolDeploymentStatus = (
       correctionLockWitness,
       stateQueueTopology,
       daParamsInitialized,
+      daBondPoolInitialized,
       schedulerInitialized,
       registeredOperatorsInitialized,
       activeOperatorsInitialized,

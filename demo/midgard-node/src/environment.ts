@@ -15,8 +15,8 @@ import {
  * several near-copies of the same parse: two copies of the ten-variable
  * DA-availability block (with the same validation under two different error
  * strings), three of the deployment-manifest path, two of the blueprint path
- * override, two of the bond-owner credential, and a third copy of the
- * economics-profile check that `config.ts` already performs.
+ * override, and a third copy of the economics-profile check that `config.ts`
+ * already performs.
  *
  * This module holds one definition of each. Every function here reads
  * `process.env` and validates; nothing here caches, so a test that mutates the
@@ -57,18 +57,6 @@ export const requiredPositiveIntegerEnvironmentValue = (
   return parsed;
 };
 
-/** Exactly 28 lowercase hex bytes — the on-chain credential encoding. */
-export const daAvailabilityBondOwnerCredential = (): string => {
-  const value =
-    process.env.MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL?.trim();
-  if (value === undefined || !/^[0-9a-f]{56}$/u.test(value)) {
-    throw new Error(
-      "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL must be exactly 28 lowercase hex bytes",
-    );
-  }
-  return value;
-};
-
 const DA_AVAILABILITY_RESPONSE_CLASSES = {
   smallPayloadMaxBytes: 65_536,
   smallResponseWindowMs:
@@ -79,7 +67,7 @@ const DA_AVAILABILITY_RESPONSE_CLASSES = {
 } as const;
 
 /**
- * The ten `MIDGARD_DA_AVAILABILITY_*` variables, parsed into the shape
+ * The nine `MIDGARD_DA_AVAILABILITY_*` variables, parsed into the shape
  * `parseDeploymentManifestAvailabilityChallenge` accepts, with the pooled DA
  * bond amounts taken from the selected deployment profile: the manifest parser
  * refuses any other value, so they are not configurable.
@@ -119,7 +107,6 @@ export const daAvailabilityChallengeEnvironmentInput = (
     maxTimeoutFeeLovelace: integer(
       "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
     ),
-    bondOwnerCredential: daAvailabilityBondOwnerCredential(),
   };
 };
 

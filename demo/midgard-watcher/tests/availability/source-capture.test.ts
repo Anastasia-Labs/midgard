@@ -1,5 +1,11 @@
-import type { AvailabilityOperationIntent } from "@al-ft/midgard-core/availability-operation-journal";
-import type { LocalKupmiosFraudProofRawSource } from "@al-ft/midgard-fault-proofs";
+import type {
+  AvailabilityOperationIntent,
+  AvailabilityOperationRecord,
+} from "@al-ft/midgard-core/availability-operation-journal";
+import {
+  computeFraudProofRawL1PointId,
+  type LocalKupmiosFraudProofRawSource,
+} from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +25,8 @@ const io = vi.hoisted(() => ({
   outrefs: vi.fn(),
   history: vi.fn(),
   transaction: vi.fn(),
+  predecessor: vi.fn(),
+  release: vi.fn(),
 }));
 vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
   ...(await original<typeof import("@al-ft/midgard-fault-proofs")>()),
@@ -35,6 +43,7 @@ vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
   readAdmittedLocalKupmiosUtxosByOutRefAtPoint: io.outrefs,
   readAdmittedLocalKupmiosUnitHistoryAtPoint: io.history,
   readAdmittedLocalKupmiosRawTransaction: io.transaction,
+  readAdmittedLocalKupmiosPredecessorPoint: io.predecessor,
 }));
 vi.mock("@al-ft/midgard-sdk", async (original) => ({
   ...(await original<typeof import("@al-ft/midgard-sdk")>()),
@@ -42,6 +51,9 @@ vi.mock("@al-ft/midgard-sdk", async (original) => ({
     _deployment: unknown,
     headerHash: string,
   ) => ({ headerHash }),
+  // The walk itself is the SDK's (its own suite); here it hands back the
+  // readers the watcher wired, so each can be driven directly.
+  resolveDaAvailabilityWorkflowRelease: io.release,
 }));
 // Admission and decoding have separate fixture suites. Keep the real shared
 // capture lock and sibling-drain helper here, controlling only the I/O edges.
@@ -76,6 +88,10 @@ const deployment = {
       policyId: "55".repeat(28),
     },
     correctionLock: { spendingScriptAddress: "lock" },
+    daBondPool: {
+      spendingScriptAddress: "pool",
+      policyId: "99".repeat(28),
+    },
   },
 } as SDK.DaAvailabilityDeployment;
 const observation = (slot: number) =>
@@ -124,7 +140,7 @@ beforeEach(() => {
   io.pin.mockResolvedValue(undefined);
   io.address.mockResolvedValue([]);
   io.inclusion.mockResolvedValue(null);
-  io.outrefs.mockResolvedValue([]);
+  io.outrefs.mockResolvedValue({ outputs: [], spends: [] });
 });
 
 describe("availability captures sharing a local source", () => {
@@ -188,7 +204,7 @@ describe("availability captures sharing a local source", () => {
     await started.promise;
     const second = intake.operation(observation(11), intent());
     await nextTurn();
-    expect(io.address).toHaveBeenCalledTimes(3);
+    expect(io.address).toHaveBeenCalledTimes(4);
     expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
       "10",
     ]);
@@ -204,6 +220,48 @@ describe("availability captures sharing a local source", () => {
       "11",
     ]);
     expect(io.outrefs.mock.calls[0]![0].point.slot).toBe("11");
+  });
+
+  it("reports a verified foreign spend with its depth below the finalized tip", async () => {
+    const { intake } = fixture();
+    const spent = `${"aa".repeat(32)}#0`;
+    const collateral = `${"bb".repeat(32)}#1`;
+    io.outrefs.mockResolvedValue({
+      outputs: [],
+      spends: [
+        {
+          outRef: spent,
+          spendingTxHash: "cc".repeat(32),
+          spendPoint: {
+            slot: "5",
+            blockNo: "5",
+            blockHash: "dd".repeat(32),
+            pointId: "spend-point",
+          },
+        },
+      ],
+    });
+    await expect(
+      intake.operation(observation(11), {
+        ...intent(),
+        spentOutRefs: [spent],
+        collateralOutRefs: [collateral],
+      }),
+    ).resolves.toEqual({
+      status: "inputs_missing",
+      currentSlot: 11,
+      missingOutRefs: [spent, collateral],
+      // Six blocks above the spend to the observed point, which is itself
+      // thirty deep.
+      foreignSpends: [
+        {
+          outRef: spent,
+          spendingTxHash: "cc".repeat(32),
+          spendPoint: "spend-point",
+          confirmationDepth: 36,
+        },
+      ],
+    });
   });
 
   it("drains a failed snapshot's siblings before releasing a queued capture", async () => {
@@ -287,5 +345,164 @@ describe("availability captures sharing a local source", () => {
       "10",
       "11",
     ]);
+  });
+
+  describe("workflow release readers (P20)", () => {
+    const released = {
+      reason: "challenge-closed",
+      txHash: "ce".repeat(32),
+      spendPoint: "9:ab",
+      confirmationDepth: 32,
+    };
+    const spendPoint = (slot: number) => ({
+      slot: slot.toString(),
+      blockNo: slot.toString(),
+      blockHash: "77".repeat(32),
+      pointId: computeFraudProofRawL1PointId({
+        slot: slot.toString(),
+        blockNo: slot.toString(),
+        blockHash: "77".repeat(32),
+      }),
+    });
+    const captured = async (slot = 11) => {
+      const { intake } = fixture();
+      let readers!: SDK.DaAvailabilityForeignSpendReaders;
+      io.release.mockImplementation(async (given) => {
+        readers = given;
+        return released;
+      });
+      const open = {
+        intent: { id: "open" },
+        state: "confirmed",
+      } as unknown as AvailabilityOperationRecord;
+      await expect(
+        intake.workflowRelease(observation(slot), open, "88".repeat(28)),
+      ).resolves.toBe(released);
+      expect(io.release).toHaveBeenCalledWith(
+        expect.anything(),
+        open,
+        "88".repeat(28),
+        30,
+      );
+      expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
+        slot.toString(),
+      ]);
+      return readers;
+    };
+
+    it("counts the boundary finalityDepth above the finalized point", async () => {
+      const readers = await captured(11);
+      await expect(readers.readBoundary()).resolves.toStrictEqual({
+        pointId: computeFraudProofRawL1PointId({
+          slot: "11",
+          blockNo: "11",
+          blockHash: "66".repeat(32),
+        }),
+        blockNo: 41,
+      });
+    });
+
+    it("reads a spend only as the verified exact-outref read at the finalized point reports it", async () => {
+      const readers = await captured(11);
+      const outRef = `${"aa".repeat(32)}#1`;
+      io.outrefs.mockResolvedValueOnce({
+        outputs: [],
+        spends: [
+          {
+            outRef,
+            spendingTxHash: "bb".repeat(32),
+            spendPoint: spendPoint(9),
+          },
+        ],
+      });
+      await expect(
+        readers.fetchSpend({ txHash: "aa".repeat(32), outputIndex: 1 }),
+      ).resolves.toStrictEqual({
+        transactionId: "bb".repeat(32),
+        point: { slot: 9, blockHash: "77".repeat(32) },
+      });
+      expect(io.outrefs).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          outRefs: [outRef],
+          point: expect.objectContaining({ slot: "11", blockNo: "11" }),
+        }),
+      );
+      io.predecessor.mockResolvedValueOnce({
+        predecessorPoint: spendPoint(8),
+      });
+      await expect(readers.fetchAncestor(9)).resolves.toStrictEqual({
+        slot: 8,
+        blockHash: "77".repeat(32),
+      });
+      // Unspent, or a spend the raw bytes did not bear out: no spend.
+      io.outrefs.mockResolvedValueOnce({
+        outputs: [{ outRef }],
+        spends: [],
+      });
+      await expect(
+        readers.fetchSpend({ txHash: "aa".repeat(32), outputIndex: 1 }),
+      ).resolves.toBeUndefined();
+      io.outrefs.mockResolvedValueOnce({ outputs: [], spends: [] });
+      await expect(
+        readers.fetchSpend({ txHash: "aa".repeat(32), outputIndex: 1 }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("reads the spender's raw transaction at its exact block, never above the finalized point", async () => {
+      const readers = await captured(11);
+      const body = CML.TransactionBody.new(
+        CML.TransactionInputList.new(),
+        CML.TransactionOutputList.new(),
+        7n,
+      );
+      const txHash = CML.hash_transaction(body).to_hex();
+      const cbor = CML.Transaction.new(
+        body,
+        CML.TransactionWitnessSet.new(),
+        true,
+      ).to_cbor_hex();
+      const ancestor = { slot: 8, blockHash: "77".repeat(32) };
+      const at = { slot: 9, blockHash: "77".repeat(32) };
+      io.inclusion.mockResolvedValueOnce(spendPoint(9));
+      io.transaction.mockResolvedValueOnce({
+        txHash,
+        bodyCbor: body.to_cbor_hex(),
+        witnessSetCbor: CML.TransactionWitnessSet.new().to_cbor_hex(),
+        isValid: true,
+      });
+      await expect(
+        readers.readTransaction({ ancestor, point: at, txHash }),
+      ).resolves.toStrictEqual({
+        txHash,
+        point: { ...at, blockNo: 9 },
+        cbor,
+      });
+      expect(io.transaction).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          txHash,
+          expectedInclusionPoint: spendPoint(9),
+          minimumConfirmationDepth: 30,
+        }),
+      );
+      // Included elsewhere, or not at all: not this spend.
+      io.inclusion.mockResolvedValueOnce(spendPoint(10));
+      await expect(
+        readers.readTransaction({ ancestor, point: at, txHash }),
+      ).resolves.toBeUndefined();
+      io.inclusion.mockResolvedValueOnce(null);
+      await expect(
+        readers.readTransaction({ ancestor, point: at, txHash }),
+      ).resolves.toBeUndefined();
+      io.inclusion.mockResolvedValueOnce(spendPoint(12));
+      await expect(
+        readers.readTransaction({
+          ancestor,
+          point: { slot: 12, blockHash: "77".repeat(32) },
+          txHash,
+        }),
+      ).rejects.toThrow(
+        "Availability input spend lies above the canonical boundary",
+      );
+    });
   });
 });

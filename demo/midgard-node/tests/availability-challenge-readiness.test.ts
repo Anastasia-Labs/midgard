@@ -27,6 +27,14 @@ describe("availability challenge reward-account readiness", () => {
     const contracts = await loadRealMidgardContractsForTest(
       (await lucid.wallet().getUtxos())[0]!,
     );
+    // The pooled DA bond replaced the per-block bond yield: the default
+    // readiness set is exactly the four challenge yields the deployment has.
+    expect(Object.keys(contracts.availabilityChallenge.yields).sort()).toEqual([
+      "close",
+      "open",
+      "settle",
+      "timeout",
+    ]);
     const readiness = () =>
       Effect.runPromise(
         assertAvailabilityChallengeRewardAccountsRegisteredProgram(
@@ -35,34 +43,34 @@ describe("availability challenge reward-account readiness", () => {
         ),
       );
     await expect(readiness()).rejects.toThrow(
-      /availability challenge bond reward account is not registered/iu,
+      /availability challenge open reward account is not registered/iu,
     );
 
-    const bondAddress = validatorToRewardAddress(
+    const openAddress = validatorToRewardAddress(
       "Preprod",
-      contracts.availabilityChallenge.yields.bond.withdrawalScript,
+      contracts.availabilityChallenge.yields.open.withdrawalScript,
     );
-    const bondRegistration = await lucid
+    const openRegistration = await lucid
       .newTx()
-      .register.Stake(bondAddress)
+      .register.Stake(openAddress)
       .complete({ localUPLCEval: true });
-    const bondSigned = await bondRegistration.sign.withWallet().complete();
-    await lucid.awaitTx(await bondSigned.submit());
+    const openSigned = await openRegistration.sign.withWallet().complete();
+    await lucid.awaitTx(await openSigned.submit());
     await expect(
       Effect.runPromise(
         assertAvailabilityChallengeRewardAccountsRegisteredProgram(
           lucid,
           contracts,
-          ["bond"],
+          ["open"],
         ),
       ),
     ).resolves.toBeUndefined();
     await expect(readiness()).rejects.toThrow(
-      /availability challenge open reward account is not registered/iu,
+      /availability challenge settle reward account is not registered/iu,
     );
 
     let remainingRegistrations = lucid.newTx();
-    for (const action of ["open", "settle", "close", "timeout"] as const) {
+    for (const action of ["settle", "close", "timeout"] as const) {
       remainingRegistrations = remainingRegistrations.register.Stake(
         validatorToRewardAddress(
           "Preprod",

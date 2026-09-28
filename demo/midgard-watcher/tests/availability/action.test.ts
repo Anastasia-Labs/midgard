@@ -1,188 +1,210 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { selectWatcherAvailabilityAction } from "../../src/availability/action.js";
-import { selectWatcherAvailabilityFunding } from "../../src/availability/runtime.js";
+import {
+  orderWatcherAvailabilityActions,
+  selectWatcherAvailabilityAction,
+  selectWatcherAvailabilityActions,
+  watcherAvailabilityOpenDeadlineMissed,
+  type WatcherAvailabilityOpenWindow,
+} from "../../src/availability/action.js";
+import {
+  selectWatcherAvailabilityFunding,
+  watcherAvailabilityPoolAlert,
+  watcherAvailabilityTimeoutCollateralLovelace,
+} from "../../src/availability/runtime.js";
+import {
+  fixture,
+  HEADER_END_TIME,
+  parametersFixture,
+  utxo,
+} from "../support/availability-challenge-fixture.js";
 
-const address = credentialToAddress("Preprod", {
-  type: "Key",
-  hash: "11".repeat(28),
-});
-const utxo = (index: number, lovelace = 10_000_000n): UTxO => ({
-  txHash: "22".repeat(32),
-  outputIndex: index,
-  address,
-  assets: { lovelace },
-});
-const fixture = () => {
-  const parameters = SDK.daAvailabilityParameters({
-    responseGeometry: SDK.availabilityResponseGeometry(
-      SDK.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
-    ),
-    ...SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
-    challengerBondLovelace: 10_000_000_000n,
-    maxOpenFeeLovelace: 500_000n,
-    maxPublicationFeeLovelace: 500_000n,
-    maxSettlementFeeLovelace: 500_000n,
-    maxCloseFeeLovelace: 1_000_000n,
-    maxTimeoutFeeLovelace: 1_200_000n,
-  });
-  const bytes = new Uint8Array(16_000).fill(7);
-  const commitment = SDK.buildDaAvailabilityCommitment({
-    deploymentIdentity: "33".repeat(28),
-    headerHash: "44".repeat(28),
-    payload: bytes,
-    bondOwner: "55".repeat(28),
-    responseGeometry: parameters.response_geometry,
-  });
-  const bondInput = { transactionId: "66".repeat(32), outputIndex: 0n };
-  const available: SDK.DaAvailabilityBondDatum = {
-    Available: {
-      commitment,
-      da_bond_asset_name: SDK.daAvailabilityBondAssetName(bondInput),
-      committee_signers_hash: "77".repeat(32),
-      attested_signers: "80" + "00".repeat(31),
-    },
-  };
-  const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
-    availableBond: available,
-    bondInputOutRef: bondInput,
-    challenger: "11".repeat(28),
-    openedAt: 1_000n,
-    parameters,
-  });
-  const queue: SDK.StateQueueUTxO = {
-    utxo: utxo(3),
-    datum: { key: "Empty", next: "Empty", data: "" },
-    assetName: "",
-  };
-  const snapshot: SDK.DaAvailabilityChallengeSnapshot = {
-    headerHash: commitment.header_hash,
-    bond: utxo(0),
-    bondDatum: plan.challengedBond,
-    queue,
-    confirmedState: {
-      ...queue,
-      datum: { ...queue.datum, next: { Key: { key: commitment.header_hash } } },
-    },
-    correctionLock: {
-      ...utxo(4),
-      datum: Data.to("Idle", SDK.CorrectionLockDatum),
-    },
-    terminal: utxo(1),
-    terminalDatum: plan.terminalAccumulator,
-    tranches: [{ utxo: utxo(2), datum: plan.trancheThreads[0]! }],
-  };
-  return { parameters, bytes, available, plan, snapshot };
-};
+/** Open window used throughout: the header ends at 10_000, the window is 1_000. */
+const WINDOW_MS = 1_000n;
+const openWindow = (inclusiveValidityUpper: bigint) =>
+  ({
+    inclusiveValidityUpper,
+    daChallengeWindowMs: WINDOW_MS,
+  }) satisfies WatcherAvailabilityOpenWindow;
+const BEFORE_DEADLINE = openWindow(HEADER_END_TIME + WINDOW_MS - 1n);
+const AT_DEADLINE = openWindow(HEADER_END_TIME + WINDOW_MS);
 
 describe("watcher availability lifecycle action selection", () => {
   it("opens for post-attestation public withholding and leaves available bytes unchallenged", () => {
-    const { available, snapshot } = fixture();
-    const attested = { ...snapshot, bondDatum: available };
-    expect(selectWatcherAvailabilityAction(attested, false, 2_000n)).toEqual({
-      action: "open",
-    });
-    expect(selectWatcherAvailabilityAction(attested, true, 2_000n)).toBeNull();
+    const { attested } = fixture();
+    expect(
+      selectWatcherAvailabilityAction(attested, false, 2_000n, BEFORE_DEADLINE),
+    ).toEqual({ action: "open" });
+    expect(
+      selectWatcherAvailabilityAction(attested, true, 2_000n, BEFORE_DEADLINE),
+    ).toBeNull();
+  });
+
+  it("never opens once the header's Open deadline has passed, and reports it", () => {
+    const { attested } = fixture();
+    expect(
+      selectWatcherAvailabilityAction(attested, false, 2_000n, AT_DEADLINE),
+    ).toBeNull();
+    expect(
+      watcherAvailabilityOpenDeadlineMissed(attested, false, AT_DEADLINE),
+    ).toBe(true);
+    expect(
+      watcherAvailabilityOpenDeadlineMissed(attested, false, BEFORE_DEADLINE),
+    ).toBe(false);
+    expect(
+      watcherAvailabilityOpenDeadlineMissed(attested, true, AT_DEADLINE),
+    ).toBe(false);
+  });
+
+  it("refuses an Attested header that already carries a challenge record", () => {
+    const { attested, challenged } = fixture();
+    expect(() =>
+      selectWatcherAvailabilityAction(
+        { ...attested, record: challenged.record },
+        false,
+        2_000n,
+        BEFORE_DEADLINE,
+      ),
+    ).toThrow("Attested availability header has a challenge record");
+  });
+
+  it("refuses a challenge record that differs from the queue node's Challenged status", () => {
+    const { challenged, plan } = fixture();
+    const other = fixture("45");
+    // Each half on its own: the same challenge over another commitment, and
+    // the same commitment under another challenge name.
+    for (const recordDatum of [
+      { ...plan.record, commitment: other.plan.record.commitment },
+      {
+        ...plan.record,
+        challenge_asset_name: other.plan.record.challenge_asset_name,
+      },
+    ]) {
+      expect(() =>
+        selectWatcherAvailabilityAction(
+          { ...challenged, recordDatum },
+          false,
+          2_000n,
+          BEFORE_DEADLINE,
+        ),
+      ).toThrow(
+        "Challenge record differs from the queue node's Challenged status",
+      );
+    }
+    expect(() =>
+      selectWatcherAvailabilityAction(
+        { ...challenged, record: undefined, recordDatum: undefined },
+        false,
+        2_000n,
+        BEFORE_DEADLINE,
+      ),
+    ).toThrow("Challenged availability header has no challenge record");
   });
 
   it("preserves a partial response until the deadline, then settles the timed-out tranche", () => {
-    const { snapshot, plan, bytes, parameters } = fixture();
-    if (!("ChallengedBond" in plan.challengedBond))
-      throw new Error("fixture did not open a challenge");
-    const challenged = plan.challengedBond.ChallengedBond;
+    const { challenged, plan, bytes, parameters } = fixture();
+    const record = plan.record;
     const publications = SDK.planDaAvailabilityPublications({
-      commitment: challenged.commitment,
+      commitment: record.commitment,
       payload: bytes,
-      challengeAssetName: challenged.challenge_asset_name,
+      challengeAssetName: record.challenge_asset_name,
     });
     const partial = SDK.advanceDaAvailabilityTranche({
-      active: snapshot.tranches[0]!.datum,
+      active: challenged.tranches[0]!.datum,
       publication: publications[0]!.publications[0]!,
       responseGeometry: parameters.response_geometry,
       inclusiveValidityUpper: 2_000n,
       carrierOutputIndex: 1n,
     });
     const continued = {
-      ...snapshot,
+      ...challenged,
       tranches: [{ utxo: utxo(5), datum: partial, carrier: utxo(1) }],
     };
     expect(
       selectWatcherAvailabilityAction(
         continued,
         false,
-        challenged.response_deadline - 1n,
+        record.response_deadline - 1n,
+        AT_DEADLINE,
       ),
     ).toBeNull();
     expect(
       selectWatcherAvailabilityAction(
         continued,
         false,
-        challenged.response_deadline,
-      )?.action,
-    ).toBe("settle");
+        record.response_deadline,
+        AT_DEADLINE,
+      ),
+    ).toMatchObject({
+      action: "settle",
+      challengeAssetName: record.challenge_asset_name,
+    });
   });
 
   it("chooses terminal timeout or answered close only after every tranche was settled", () => {
-    const { snapshot } = fixture();
-    const terminal = { ...snapshot.terminalDatum!, next_tranche_index: 1n };
+    const { challenged } = fixture();
+    const terminal = { ...challenged.terminalDatum!, next_tranche_index: 1n };
     expect(
       selectWatcherAvailabilityAction(
         {
-          ...snapshot,
+          ...challenged,
           terminalDatum: { ...terminal, has_timed_out_tranche: true },
         },
         false,
         9_000_000n,
+        AT_DEADLINE,
       )?.action,
     ).toBe("timeout");
     expect(
       selectWatcherAvailabilityAction(
         {
-          ...snapshot,
+          ...challenged,
           terminalDatum: { ...terminal, has_timed_out_tranche: false },
         },
         false,
         9_000_000n,
+        AT_DEADLINE,
       )?.action,
     ).toBe("close");
     expect(() =>
       selectWatcherAvailabilityAction(
-        { ...snapshot, tranches: [] },
+        { ...challenged, tranches: [] },
         false,
         9_000_000n,
+        AT_DEADLINE,
       ),
     ).toThrow("next unsettled tranche");
   });
 
   it("waits for earlier queue headers before starting timeout removal", () => {
-    const { snapshot } = fixture();
+    const { challenged } = fixture();
     const later = {
-      ...snapshot,
+      ...challenged,
       confirmedState: {
-        ...snapshot.confirmedState,
+        ...challenged.confirmedState,
         datum: {
-          ...snapshot.confirmedState.datum,
+          ...challenged.confirmedState.datum,
           next: { Key: { key: "aa".repeat(28) } },
         },
       },
       terminalDatum: {
-        ...snapshot.terminalDatum!,
+        ...challenged.terminalDatum!,
         next_tranche_index: 1n,
         has_timed_out_tranche: true,
       },
     };
     expect(
-      selectWatcherAvailabilityAction(later, false, 9_000_000n),
+      selectWatcherAvailabilityAction(later, false, 9_000_000n, AT_DEADLINE),
     ).toBeNull();
   });
 
-  it("resumes descendant pruning after timeout burned the bond and finally removes the head", () => {
-    const { snapshot, plan } = fixture();
+  it("resumes descendant pruning after Timeout spent the record and finally removes the head", () => {
+    const { challenged, plan } = fixture();
     const lock: SDK.CorrectionLockDatum = {
       Locked: {
-        target_header_hash: snapshot.headerHash,
+        target_header_hash: challenged.headerHash,
         correction_identity: {
           AvailabilityChallenge: {
             challenge_asset_name: plan.challengeAssetName,
@@ -191,9 +213,9 @@ describe("watcher availability lifecycle action selection", () => {
       },
     };
     const timedOut = {
-      ...snapshot,
-      bond: undefined,
-      bondDatum: undefined,
+      ...challenged,
+      record: undefined,
+      recordDatum: undefined,
       correctionLock: {
         ...utxo(4),
         datum: Data.to(lock, SDK.CorrectionLockDatum),
@@ -201,21 +223,96 @@ describe("watcher availability lifecycle action selection", () => {
     };
     expect(
       selectWatcherAvailabilityAction(
-        { ...timedOut, descendant: snapshot.queue },
+        { ...timedOut, descendant: challenged.queue },
         false,
         9_000_000n,
-      )?.action,
-    ).toBe("prune");
+        AT_DEADLINE,
+      ),
+    ).toEqual({
+      action: "prune",
+      challengeAssetName: plan.challengeAssetName,
+    });
     expect(
-      selectWatcherAvailabilityAction(timedOut, false, 9_000_000n)?.action,
+      selectWatcherAvailabilityAction(timedOut, false, 9_000_000n, AT_DEADLINE)
+        ?.action,
     ).toBe("remove");
     expect(() =>
       selectWatcherAvailabilityAction(
-        { ...timedOut, bond: utxo(0) },
+        { ...timedOut, record: utxo(0) },
         false,
         9_000_000n,
+        AT_DEADLINE,
       ),
-    ).toThrow("live DA bond");
+    ).toThrow("live challenge record");
+    // Another header's removal lock stops every availability step here.
+    const elsewhere = fixture("46");
+    expect(
+      selectWatcherAvailabilityAction(
+        { ...elsewhere.attested, correctionLock: timedOut.correctionLock },
+        false,
+        9_000_000n,
+        BEFORE_DEADLINE,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("watcher availability concurrency (spec #685 E3)", () => {
+  it("opens a withheld descendant while its Challenged ancestor's challenge is live", () => {
+    const first = fixture("44", HEADER_END_TIME);
+    const second = fixture("45", HEADER_END_TIME + 100n);
+    // The second header follows the first in the queue. Its Open is never
+    // deferred to the ancestor's Timeout: if the ancestor settles, the
+    // descendant would merge unchallenged (DECISIONS P9(5)).
+    const descendant: SDK.DaAvailabilityChallengeSnapshot = {
+      ...second.attested,
+      confirmedState: first.challenged.confirmedState,
+    };
+    // The first header's challenge is mid-response: nothing to do for it yet.
+    const selected = selectWatcherAvailabilityActions(
+      [
+        { snapshot: first.challenged, publiclyAvailable: false },
+        { snapshot: descendant, publiclyAvailable: false },
+      ],
+      2_000n,
+      BEFORE_DEADLINE,
+    );
+    expect(
+      selected.map(({ snapshot, action }) => [snapshot.headerHash, action]),
+    ).toEqual([[second.attested.headerHash, { action: "open" }]]);
+  });
+
+  it("puts every due Open ahead of other steps, earliest Open deadline first", () => {
+    const first = fixture("44", HEADER_END_TIME);
+    const second = fixture("45", HEADER_END_TIME - 100n);
+    const third = fixture("46", HEADER_END_TIME + 100n);
+    const settleReady = {
+      ...first.challenged,
+      terminalDatum: {
+        ...first.challenged.terminalDatum!,
+        next_tranche_index: 1n,
+        has_timed_out_tranche: false,
+      },
+    };
+    const selected = selectWatcherAvailabilityActions(
+      [
+        { snapshot: settleReady, publiclyAvailable: false },
+        { snapshot: third.attested, publiclyAvailable: false },
+        { snapshot: second.attested, publiclyAvailable: false },
+      ],
+      2_000n,
+      openWindow(HEADER_END_TIME - 100n),
+    );
+    expect(
+      orderWatcherAvailabilityActions(selected).map(({ snapshot, action }) => [
+        snapshot.headerHash,
+        action.action,
+      ]),
+    ).toEqual([
+      [second.attested.headerHash, "open"],
+      [third.attested.headerHash, "open"],
+      [settleReady.headerHash, "close"],
+    ]);
   });
 });
 
@@ -227,7 +324,9 @@ describe("watcher availability funding", () => {
       openingLovelace: 100n,
       requiredWorkingLovelace: 130n,
     });
-    expect(selection.collateral.outputIndex).toBe(0);
+    expect(selection.collateral.map(({ outputIndex }) => outputIndex)).toEqual([
+      0,
+    ]);
     expect(selection.exactOpening?.outputIndex).toBe(1);
     expect(() =>
       selectWatcherAvailabilityFunding({
@@ -262,7 +361,9 @@ describe("watcher availability funding", () => {
       ]),
     };
     const selection = selectWatcherAvailabilityFunding(args);
-    expect(selection.collateral.outputIndex).toBe(0);
+    expect(selection.collateral.map(({ outputIndex }) => outputIndex)).toEqual([
+      0,
+    ]);
     expect(selection.funding.outputIndex).toBe(2);
     expect(selection.exactOpening).toBeUndefined();
     expect(() =>
@@ -271,5 +372,115 @@ describe("watcher availability funding", () => {
         requiredWorkingLovelace: 31n,
       }),
     ).toThrow("timeout removal path");
+  });
+});
+
+describe("watcher Timeout collateral (spec #685 G9)", () => {
+  it("sizes collateral for a full slash plus the maximum Timeout fee", () => {
+    const parameters = parametersFixture();
+    expect(
+      watcherAvailabilityTimeoutCollateralLovelace({
+        parameters,
+        collateralPercentage: 150,
+        minimumReturnLovelace: 1_000_000n,
+      }),
+    ).toBe(
+      ((parameters.da_slash_penalty_lovelace +
+        parameters.max_timeout_fee_lovelace) *
+        150n +
+        99n) /
+        100n +
+        1_000_000n,
+    );
+    // Rounds a fractional requirement up, never down.
+    expect(
+      watcherAvailabilityTimeoutCollateralLovelace({
+        parameters: {
+          da_slash_penalty_lovelace: 1n,
+          max_timeout_fee_lovelace: 0n,
+        },
+        collateralPercentage: 150,
+        minimumReturnLovelace: 0n,
+      }),
+    ).toBe(2n);
+  });
+
+  it("combines up to three coins, largest first, and refuses when three cannot cover it", () => {
+    const coins = [utxo(0, 40n), utxo(1, 50n), utxo(2, 60n), utxo(3, 70n)];
+    const selection = selectWatcherAvailabilityFunding({
+      utxos: [...coins, utxo(4, 1_000n)],
+      collateralLovelace: 1_100n,
+      openingLovelace: 999n,
+      requiredWorkingLovelace: 40n,
+    });
+    expect(selection.collateral.map(({ outputIndex }) => outputIndex)).toEqual([
+      4, 3, 2,
+    ]);
+    // 70 + 60 + 50 = 180 < 181: a fourth coin could cover it, but the ledger
+    // admits at most three collateral inputs, so the watcher fails closed.
+    expect(() =>
+      selectWatcherAvailabilityFunding({
+        utxos: coins,
+        collateralLovelace: 181n,
+        openingLovelace: 999n,
+        requiredWorkingLovelace: 0n,
+      }),
+    ).toThrow(
+      "Availability wallet needs separate plain-ADA collateral of at least 181 lovelace in at most 3 coins",
+    );
+  });
+});
+
+describe("watcher pool alert (spec #685 E5)", () => {
+  const parameters = parametersFixture();
+  const snapshotWithPool = (
+    lovelace: bigint,
+    poolDatum: SDK.DaBondPoolDatum = "Bonded",
+  ): SDK.DaAvailabilityChallengeSnapshot => ({
+    ...fixture("44", HEADER_END_TIME).attested,
+    pool: { ...utxo(9, lovelace), address: "pool" },
+    poolDatum,
+  });
+  const backed =
+    parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace;
+
+  it("reports nothing for a Bonded pool backing a full bond", () => {
+    expect(
+      watcherAvailabilityPoolAlert([snapshotWithPool(backed)], parameters),
+    ).toBeUndefined();
+    expect(watcherAvailabilityPoolAlert([], parameters)).toBeUndefined();
+  });
+
+  it("classifies an under-backed, withdrawing or missing pool", () => {
+    expect(
+      watcherAvailabilityPoolAlert([snapshotWithPool(backed - 1n)], parameters),
+    ).toBe("under_backed");
+    expect(
+      watcherAvailabilityPoolAlert(
+        [snapshotWithPool(backed, { Withdrawing: { unlock_at: 1n } })],
+        parameters,
+      ),
+    ).toBe("withdrawing");
+    expect(
+      watcherAvailabilityPoolAlert(
+        [fixture("44", HEADER_END_TIME).attested],
+        parameters,
+      ),
+    ).toBe("missing");
+  });
+
+  it("never changes the selected action: alerts are reported, not blocking", () => {
+    const withdrawn = fixture("44", HEADER_END_TIME).attested;
+    expect(watcherAvailabilityPoolAlert([withdrawn], parameters)).toBe(
+      "missing",
+    );
+    expect(
+      selectWatcherAvailabilityAction(
+        withdrawn,
+        false,
+        2_000n,
+        BEFORE_DEADLINE,
+      ),
+    ).toEqual({ action: "open" });
   });
 });

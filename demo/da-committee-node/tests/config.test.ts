@@ -1158,7 +1158,7 @@ describe("loadCommitteeConfig", () => {
       // `daAttestationMint`; a literal rather than a re-read of
       // `expectedDeployment` so the config path is proved to carry the
       // document's own value rather than agreeing with itself.
-      txHash: "6".padStart(64, "0"),
+      txHash: "8".padStart(64, "0"),
       outputIndex: 0,
     });
     expect(config.midgardNodeDeployment?.stateQueue.spend.scriptHash).toBe(
@@ -1275,8 +1275,9 @@ describe("loadCommitteeConfig", () => {
       l1SubmitterKeySource: "private-key:ed25519_sk_test",
       l1SubmitterPreflight: {
         enabled: true,
-        // The selected profile's 500 ADA DA bond plus 50 ADA of fees.
-        minPlainAdaLovelace: 550_000_000n,
+        // 50 ADA of fee headroom plus 30 ADA for the attestation output; the
+        // pooled DA bond is funded by the committee, not per block.
+        minPlainAdaLovelace: 80_000_000n,
         minCollateralLovelace:
           DEFAULT_L1_SUBMITTER_PREFLIGHT.minCollateralLovelace,
         minSpendableUtxoCount:
@@ -1362,11 +1363,19 @@ describe("loadCommitteeConfig", () => {
     await expect(
       loadCommitteeConfig({
         ...baseEnv,
-        DA_L1_MIN_PLAIN_ADA_LOVELACE: "549999999",
+        DA_L1_MIN_PLAIN_ADA_LOVELACE: "79999999",
       }),
     ).rejects.toThrow(
-      /DA_L1_MIN_PLAIN_ADA_LOVELACE must be at least 550000000 \(the deployment's daBondLovelace 500000000 \+ 50000000 fee headroom\)/u,
+      /DA_L1_MIN_PLAIN_ADA_LOVELACE must be at least 80000000 \(50000000 fee headroom \+ 30000000 attestation min-ADA\)/u,
     );
+    await expect(
+      loadCommitteeConfig({
+        ...baseEnv,
+        DA_L1_MIN_PLAIN_ADA_LOVELACE: "80000000",
+      }),
+    ).resolves.toMatchObject({
+      l1SubmitterPreflight: { minPlainAdaLovelace: 80_000_000n },
+    });
     await expect(
       loadCommitteeConfig({
         ...baseEnv,

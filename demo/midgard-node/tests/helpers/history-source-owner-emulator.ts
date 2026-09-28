@@ -255,6 +255,7 @@ export const openHistorySourceOwnerLifecycle = async (
         activeOperatorsMinting: reference("activeOperatorsMint"),
         retiredOperatorsMinting: reference("retiredOperatorsMint"),
         fraudProofCatalogueMinting: reference("fraudProofCatalogueMint"),
+        daBondPoolMinting: reference("daBondPoolMint"),
       },
     },
   };

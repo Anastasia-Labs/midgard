@@ -11,7 +11,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import { type CommitteeConfig, l1SourceAuthorityDigest } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
-import type { DaBondFundingCheck } from "./coordinator/lucid-submitter.js";
+import type { DaSubmitterFundingCheck } from "./coordinator/lucid-submitter.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import type {
   DaGossipMessageHandler,
@@ -481,7 +481,7 @@ export class CommitteeService {
     args: {
       readonly localPeerId?: string;
       readonly l1SubmitterPreflight?: CommitteeL1SubmitterPreflightSnapshot;
-      readonly l1SubmitterBondFunding?: DaBondFundingCheck;
+      readonly l1SubmitterFunding?: DaSubmitterFundingCheck;
       readonly retention?: CommitteeRetentionReadinessSnapshot;
     } = {},
   ): Promise<CommitteeReadinessSnapshot> {
@@ -621,9 +621,9 @@ export class CommitteeService {
     ) {
       reasons.push("L1 submitter preflight failed");
     }
-    if (args.l1SubmitterBondFunding?.sufficient === false) {
+    if (args.l1SubmitterFunding?.sufficient === false) {
       reasons.push(
-        `l1_submitter_bond_funding_short: plainAdaLovelace=${args.l1SubmitterBondFunding.plainAdaLovelace.toString()}, requiredLovelace=${args.l1SubmitterBondFunding.requiredLovelace.toString()}, checkedAt=${args.l1SubmitterBondFunding.checkedAt}`,
+        `l1_submitter_fee_funding_short: plainAdaLovelace=${args.l1SubmitterFunding.plainAdaLovelace.toString()}, requiredLovelace=${args.l1SubmitterFunding.requiredLovelace.toString()}, checkedAt=${args.l1SubmitterFunding.checkedAt}`,
       );
     }
     if (args.retention?.status === "not_checked") {
@@ -920,8 +920,6 @@ export class CommitteeService {
           ? deriveExpectedDaAvailabilityCommitment({
               authority: {
                 deploymentIdentity: this.deps.config.hubOraclePolicyId,
-                bondOwnerCredential:
-                  this.deps.config.availabilityChallenge.bondOwnerCredential,
                 responseGeometry:
                   this.deps.config.availabilityChallenge.responseGeometry,
               },
@@ -1349,8 +1347,6 @@ export class CommitteeService {
     const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
       authority: {
         deploymentIdentity: this.deps.config.hubOraclePolicyId,
-        bondOwnerCredential:
-          this.deps.config.availabilityChallenge.bondOwnerCredential,
         responseGeometry:
           this.deps.config.availabilityChallenge.responseGeometry,
       },

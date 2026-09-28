@@ -77,14 +77,14 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
   );
   const address = input.availabilityAddress;
   const policy = input.availabilityPolicyId;
-  let challenged:
+  // OpenChallenge creates exactly one ChallengeRecordV1 output (the DACH
+  // token plus the record datum) naming this header. Later transactions in
+  // the node's history re-output the node, never a second record.
+  let opened:
     | {
         transaction: FraudProofRawL1Transaction;
         output: UTxO;
-        datum: Extract<
-          SDK.DaAvailabilityBondDatum,
-          { ChallengedBond: unknown }
-        >;
+        record: SDK.DaAvailabilityChallengeRecord;
       }
     | undefined;
   for (const transaction of history) {
@@ -99,64 +99,68 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
         )
       )
         continue;
-      const datum = SDK.parseDaAvailabilityBondDatumCbor(
+      const record = SDK.parseDaAvailabilityChallengeRecordCbor(
         output.datum,
         input.parameters,
       );
-      if (
-        !("ChallengedBond" in datum) ||
-        datum.ChallengedBond.commitment.header_hash !== input.headerHash
-      )
-        continue;
-      if (challenged !== undefined)
-        throw new Error("Canonical history repeats challenged bond creation");
-      challenged = { transaction, output, datum };
+      if (record.commitment.header_hash !== input.headerHash) continue;
+      if (output.assets[policy + record.challenge_asset_name] !== 1n)
+        throw new Error(
+          "Challenge record output does not carry its own DACH identity",
+        );
+      if (opened !== undefined)
+        throw new Error("Canonical history repeats challenge record creation");
+      opened = { transaction, output, record };
     }
   }
-  if (challenged === undefined)
+  if (opened === undefined)
     throw new Error(
-      "Published header has no canonical challenged-bond history",
+      "Published header has no canonical challenge-record history",
     );
-  const bond = challenged.datum.ChallengedBond;
+  const record = opened.record;
   if (
-    bond.commitment.deployment_identity !== input.deploymentIdentity ||
-    SDK.daAvailabilityPublishedTerminalCommitment(bond.commitment) !==
+    record.commitment.deployment_identity !== input.deploymentIdentity ||
+    SDK.daAvailabilityPublishedTerminalCommitment(record.commitment) !==
       input.terminalCommitment
   ) {
     throw new Error(
       "Published queue commitment differs from canonical challenge history",
     );
   }
-  const bondInputs = challenged.transaction.resolvedInputs.filter((raw) => {
-    const output = coreToTxOutput(
-      CML.TransactionOutput.from_cbor_hex(raw.outputCbor),
-    );
+  // The DACH identity derives from the challenger funding input OpenChallenge
+  // consumed; exactly one spent input may derive it.
+  const fundingInputs = opened.transaction.resolvedInputs.filter((raw) => {
+    const [transactionId, outputIndex] = raw.outRef.split("#");
     return (
-      output.address === address &&
-      output.assets[policy + bond.da_bond_asset_name] === 1n
+      SDK.daAvailabilityChallengeAssetName({
+        transactionId: transactionId!,
+        outputIndex: BigInt(outputIndex!),
+      }) === record.challenge_asset_name
     );
   });
-  if (bondInputs.length !== 1)
-    throw new Error("Challenge history has no unique available-bond input");
-  const [transactionId, outputIndex] = bondInputs[0]!.outRef.split("#");
-  const challengedBond: SDK.DaAvailabilityChallengedBondEvidence = {
-    datumCborHex: challenged.output.datum!,
-    bondInputOutRef: {
+  if (fundingInputs.length !== 1)
+    throw new Error(
+      "Challenge history has no unique challenger funding input for its DACH identity",
+    );
+  const [transactionId, outputIndex] = fundingInputs[0]!.outRef.split("#");
+  const challengeRecord: SDK.DaAvailabilityChallengeRecordEvidence = {
+    datumCborHex: opened.output.datum!,
+    challengerFundingOutRef: {
       transactionId: transactionId!,
       outputIndex: BigInt(outputIndex!),
     },
-    challengedBondOutputOutRef: SDK.outputReferenceFromUTxO(challenged.output),
+    recordOutputOutRef: SDK.outputReferenceFromUTxO(opened.output),
   };
   const tranches: SDK.DaAvailabilityTrancheEvidence[] = [];
-  for (const descriptor of bond.commitment.tranche_descriptors) {
+  for (const descriptor of record.commitment.tranche_descriptors) {
     const unit =
       policy +
       SDK.daAvailabilityTrancheAssetName({
-        challengeAssetName: bond.challenge_asset_name,
+        challengeAssetName: record.challenge_asset_name,
         trancheIndex: Number(descriptor.tranche_index),
       });
     const transactions = await input.readHistory(unit);
-    const initial = outputs(challenged.transaction).filter(
+    const initial = outputs(opened.transaction).filter(
       (output) => output.address === address && output.assets[unit] === 1n,
     );
     if (initial.length !== 1)
@@ -212,7 +216,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
       publications.push({
         publication: SDK.parseDaAvailabilityPublicationDatumCbor(
           carrier.datum,
-          bond.commitment.response_geometry,
+          record.commitment.response_geometry,
           descriptor,
         ),
         carrierOutputIndex: carrierIndex,
@@ -226,7 +230,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
   }
   return Buffer.from(
     SDK.reconstructDaAvailabilityPayload({
-      challengedBond,
+      challengeRecord,
       parameters: input.parameters,
       tranches,
     }),

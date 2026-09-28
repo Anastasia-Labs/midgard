@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import type { CommitteeConfig } from "../config.js";
 import { parseSignatureWitness } from "../coordinator/witnesses.js";
 import type {
   DaPayloadRecord,
@@ -28,15 +29,30 @@ export type SignatureRecordValidationArgs = {
   readonly expectedAvailabilityCommitmentDigest?: string;
 };
 
+/**
+ * What fixes the signed availability commitment besides the block itself: the
+ * deployment identity and the response geometry. The committee's bond is the
+ * pooled DA bond, so the commitment names no bond owner.
+ */
 export type DaAvailabilityCommitmentAuthority = Readonly<{
   deploymentIdentity: string;
-  bondOwnerCredential: string;
   responseGeometry: Readonly<{
     chunkByteLength: number;
     trancheByteLength: number;
     maxTrancheCount: number;
   }>;
 }>;
+
+/** The commitment authority of the configured deployment. */
+export const daAvailabilityCommitmentAuthorityFromConfig = (
+  config: Pick<
+    CommitteeConfig,
+    "midgardNodeDeployment" | "availabilityChallenge"
+  >,
+): DaAvailabilityCommitmentAuthority => ({
+  deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+  responseGeometry: config.availabilityChallenge.responseGeometry,
+});
 
 export const classifyDaLocalSigningCommitment = (args: {
   readonly records: readonly DaSignatureRecord[];
@@ -78,7 +94,6 @@ export const deriveExpectedDaAvailabilityCommitment = (args: {
     deploymentIdentity: args.authority.deploymentIdentity,
     headerHash: args.headerHash,
     payload: Buffer.from(args.payloadCborHex, "hex"),
-    bondOwner: args.authority.bondOwnerCredential,
     responseGeometry: SDK.availabilityResponseGeometry(
       args.authority.responseGeometry,
     ),

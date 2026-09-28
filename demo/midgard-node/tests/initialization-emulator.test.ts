@@ -303,14 +303,16 @@ describe("initialization emulator", () => {
       ).toBe(true);
       expect(outputAssets[3]?.lovelace).toBe(SDK.STATE_QUEUE_NODE_MIN_LOVELACE);
       // Nine protocol outputs, the two history roots, then the DA bond pool,
-      // which the init appends last and funds at the profile floor.
+      // which the init appends last and funds to one bond above the profile
+      // floor, so it backs the first attestation.
       expect(outputAssets).toHaveLength(12);
       expect(
         outputAssets.slice(9, 11).every((assets) => assets.lovelace > 0n),
       ).toBe(true);
       expect(outputAssets[11]).toEqual({
         lovelace:
-          SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace,
+          SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace +
+          SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace,
         [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
       });
       const hubOracleUnit = toUnit(
@@ -333,6 +335,29 @@ describe("initialization emulator", () => {
         Data.to("Init", SDK.SchedulerMintRedeemer),
       );
       expect(wallet).not.toHaveBeenCalled();
+
+      // An explicit pool amount is admitted down to the floor, never below.
+      const { daBondPoolFloorLovelace } =
+        SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS;
+      const withPoolLovelace = (daBondPoolLovelace: bigint) => {
+        outputAssets.length = 0;
+        return Effect.runPromise(
+          SDK.incompleteInitializationTxProgram(fakeLucid, {
+            midgardValidators: contracts,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+            daParams: TEST_DA_PARAMS,
+            oneShotNonceUTxO: nonceUtxo,
+            validityRange: { validFrom, validTo },
+            daBondPoolLovelace,
+          }),
+        );
+      };
+      await withPoolLovelace(daBondPoolFloorLovelace);
+      expect(outputAssets.at(-1)?.lovelace).toBe(daBondPoolFloorLovelace);
+      await expect(
+        withPoolLovelace(daBondPoolFloorLovelace - 1n),
+      ).rejects.toThrow(/below the pool floor/u);
     } finally {
       dateNowSpy.mockRestore();
     }
@@ -380,6 +405,21 @@ describe("initialization emulator", () => {
     const validFrom = body.validity_interval_start()!;
     expect(validFrom).toBeLessThanOrEqual(BigInt(lucid.currentSlot() - 60));
     expect(body.ttl()! - validFrom).toBe(7n * 60n);
+    // The pool mint rides the atomic init through its published reference
+    // script, and the signed init still fits the ledger's transaction bound.
+    const initTxBytes = signed.toCBOR().length / 2;
+    console.info(
+      `atomic protocol init size: ${initTxBytes.toString()} of ${EMULATOR_PROTOCOL_PARAMETERS.maxTxSize.toString()} bytes`,
+    );
+    expect(initTxBytes).toBeLessThanOrEqual(
+      EMULATOR_PROTOCOL_PARAMETERS.maxTxSize,
+    );
+    expect(
+      CML.Transaction.from_cbor_hex(signed.toCBOR())
+        .witness_set()
+        .plutus_v3_scripts()
+        ?.len() ?? 0,
+    ).toBe(0);
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
 
@@ -416,6 +456,24 @@ describe("initialization emulator", () => {
     expect(hubOracleWitness).not.toBeNull();
     expect(schedulerInitialized).toBe(true);
     expect(schedulerDatum).toEqual("NoActiveOperators");
+    // The init leaves the pool Bonded with one full bond of backing above the
+    // floor, before any attestation exists.
+    const pool = await SDK.fetchDaBondPool(lucid, {
+      policyId: contracts.daBondPool.policyId,
+      address: contracts.daBondPool.spendingScriptAddress,
+    });
+    const { daBondPoolFloorLovelace, daBondLovelace } =
+      SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS;
+    expect(pool.utxo.txHash).toBe(txHash);
+    expect(pool.datum).toBe("Bonded");
+    expect(pool.utxo.assets).toEqual({
+      lovelace: daBondPoolFloorLovelace + daBondLovelace,
+      [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+    });
+    expect(runtimeReferenceScriptNames).toEqual(
+      expect.arrayContaining(["da-bond-pool spending", "da-bond-pool minting"]),
+    );
+    expect(status.daBondPoolInitialized).toBe(true);
     expect(status.complete).toBe(true);
     expect(status.depositHistoryInitialized).toBe(true);
     expect(status.withdrawalHistoryInitialized).toBe(true);
@@ -622,6 +680,8 @@ describe("initialization emulator", () => {
     expect(status.complete).toBe(false);
     expect(status.missingComponents).toContain("scheduler");
     expect(status.missingComponents).toContain("state-queue");
+    expect(status.daBondPoolInitialized).toBe(false);
+    expect(status.missingComponents).toContain("da-bond-pool");
   });
 
   it("initializes state_queue when all real protocol roots are minted atomically", async () => {

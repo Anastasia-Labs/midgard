@@ -777,7 +777,9 @@ export type WatcherDeploymentProtocolScriptAuthority = Readonly<{
     referenceScriptAuthMint: string;
     availabilityChallengeSpend: string;
     availabilityChallengeMint: string;
-    availabilityChallengeBondWithdraw: string;
+    daBondPoolSpend: string;
+    daBondPoolMint: string;
+    daAttestationMint: string;
     availabilityChallengeOpenWithdraw: string;
     availabilityChallengeSettleWithdraw: string;
     availabilityChallengeCloseWithdraw: string;
@@ -1369,8 +1371,9 @@ export const verifyWatcherDeploymentIdentity = (input: {
       policy.appliedScriptHashes.availabilityChallengeSpend!,
     availabilityChallengeMint:
       policy.appliedScriptHashes.availabilityChallengeMint!,
-    availabilityChallengeBondWithdraw:
-      policy.appliedScriptHashes.availabilityChallengeBondWithdraw!,
+    daBondPoolSpend: policy.appliedScriptHashes.daBondPoolSpend!,
+    daBondPoolMint: policy.appliedScriptHashes.daBondPoolMint!,
+    daAttestationMint: policy.appliedScriptHashes.daAttestationMint!,
     availabilityChallengeOpenWithdraw:
       policy.appliedScriptHashes.availabilityChallengeOpenWithdraw!,
     availabilityChallengeSettleWithdraw:

@@ -1828,7 +1828,10 @@ describe("production local Kupmios raw source V1", () => {
           point: boundary.kupoCheckpoint,
           outRefs: [`${txHash}#0`],
         }),
-      ).resolves.toMatchObject([{ outRef: `${txHash}#0` }]);
+      ).resolves.toMatchObject({
+        outputs: [{ outRef: `${txHash}#0` }],
+        spends: [],
+      });
       const spent = sourceFixture({
         blockTransactions: [{ id: txHash, cbor: transactionCbor }],
         kupoMatches: [
@@ -1859,7 +1862,7 @@ describe("production local Kupmios raw source V1", () => {
           point: boundary.kupoCheckpoint,
           outRefs: [`${txHash}#0`],
         }),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual({ outputs: [], spends: [] });
       await expect(
         readAdmittedLocalKupmiosTransactionInclusion({
           source: { ...fixture.source },
@@ -1914,6 +1917,116 @@ describe("production local Kupmios raw source V1", () => {
       ).rejects.toThrow(/below release finality/u);
     },
   );
+
+  describe("reports an exact outref's spend only with its consuming transaction verified", () => {
+    const address = credentialToAddress(
+      "Preview",
+      scriptHashToCredential("31".repeat(28)),
+    );
+    const output = () => {
+      const outputs = CML.TransactionOutputList.new();
+      outputs.add(
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(address),
+          CML.Value.from_coin(3_000_000n),
+        ),
+      );
+      return outputs;
+    };
+    const creating = CML.TransactionBody.new(
+      CML.TransactionInputList.new(),
+      output(),
+      200_000n,
+    );
+    const createdHash = CML.hash_transaction(creating).to_hex();
+    const outRef = `${createdHash}#0`;
+    const consuming = (spent: string, isValid = true) => {
+      const inputs = CML.TransactionInputList.new();
+      inputs.add(
+        CML.TransactionInput.new(CML.TransactionHash.from_hex(spent), 0n),
+      );
+      const body = CML.TransactionBody.new(inputs, output(), 180_000n);
+      return {
+        id: CML.hash_transaction(body).to_hex(),
+        cbor: `84${body.to_canonical_cbor_hex()}a0${isValid ? "f5" : "f4"}f6`,
+      };
+    };
+    const read = async (
+      spender: { readonly id: string; readonly cbor: string },
+      spentSlot = 400,
+    ) => {
+      const fixture = sourceFixture({
+        blockTransactions: [
+          {
+            id: createdHash,
+            cbor: `84${creating.to_canonical_cbor_hex()}a0f5f6`,
+          },
+          spender,
+        ],
+        kupoMatches: [
+          {
+            transaction_index: 0,
+            transaction_id: createdHash,
+            output_index: 0,
+            address,
+            value: { coins: "3000000", assets: {} },
+            datum_hash: null,
+            script_hash: null,
+            created_at: { slot_no: 400, header_hash: TARGET },
+            spent_at: {
+              transaction_id: spender.id,
+              input_index: 0,
+              slot_no: spentSlot,
+              header_hash: TARGET,
+            },
+            datum: null,
+            script: null,
+          },
+        ],
+      });
+      const boundary = (await fixture.source.readBoundary()) as {
+        readonly kupoCheckpoint: FraudProofRawL1Point;
+      };
+      await pinAdmittedLocalKupmiosBoundaryAtPoint({
+        source: fixture.source,
+        point: boundary.kupoCheckpoint,
+      });
+      return {
+        point: boundary.kupoCheckpoint,
+        read: await readAdmittedLocalKupmiosUtxosByOutRefAtPoint({
+          source: fixture.source,
+          point: boundary.kupoCheckpoint,
+          outRefs: [outRef],
+        }),
+      };
+    };
+
+    it("yields a verified spend when a valid consuming transaction lists the outref", async () => {
+      const spender = consuming(createdHash);
+      const { point, read: observed } = await read(spender);
+      expect(observed).toEqual({
+        outputs: [],
+        spends: [{ outRef, spendingTxHash: spender.id, spendPoint: point }],
+      });
+    });
+
+    it.each([
+      ["does not list the outref", () => consuming("77".repeat(32))],
+      ["is phase-2 invalid", () => consuming(createdHash, false)],
+    ])(
+      "yields no spend when the consuming transaction %s",
+      async (_, spender) => {
+        await expect(read(spender())).resolves.toMatchObject({
+          read: { outputs: [], spends: [] },
+        });
+      },
+    );
+
+    it("does not report a spend above the read point: the outref reads as unspent", async () => {
+      const { read: observed } = await read(consuming(createdHash), 401);
+      expect(observed).toMatchObject({ outputs: [{ outRef }], spends: [] });
+    });
+  });
 
   it("keeps raw transaction CBOR enabled in every checked-in Ogmios launch path", async () => {
     const repository = resolve(process.cwd(), "../..");

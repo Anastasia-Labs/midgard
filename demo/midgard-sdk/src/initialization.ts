@@ -98,10 +98,11 @@ export type InitializationParams = {
   };
   referenceScripts?: AtomicProtocolInitReferenceScripts;
   /**
-   * The DA bond pool's initial lovelace. Defaults to the pool floor,
-   * `da_bond_pool_floor_lovelace` of the selected deployment profile, which
-   * the pool's compiled `ParametersV1` must equal. The first funding to one
-   * bond happens after init, before the first attestation.
+   * The DA bond pool's initial lovelace, at least the pool floor. Defaults to
+   * the floor plus one bond (`da_bond_pool_floor_lovelace +
+   * da_bond_lovelace` of the selected deployment profile, which the pool's
+   * compiled `ParametersV1` must equal), so the pool backs the first
+   * attestation straight after init.
    */
   daBondPoolLovelace?: bigint;
 };
@@ -400,12 +401,15 @@ export const incompleteInitializationTxProgram = (
     });
 
     // The pool's init_ref is the hub one-shot this transaction already spends.
-    const daBondPoolFloorLovelace =
-      DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace;
+    // Its first funding is one bond above the floor, so the pool backs the
+    // first attestation without a separate top-up.
+    const { daBondPoolFloorLovelace, daBondLovelace } =
+      DA_AVAILABILITY_PROFILE_BOND_AMOUNTS;
     appendDaBondPoolInitialization(tx, {
       poolValidator: midgardValidators.daBondPool,
       floorLovelace: daBondPoolFloorLovelace,
-      lovelace: params.daBondPoolLovelace ?? daBondPoolFloorLovelace,
+      lovelace:
+        params.daBondPoolLovelace ?? daBondPoolFloorLovelace + daBondLovelace,
       referenceScript: params.referenceScripts?.daBondPoolMinting,
     });
 

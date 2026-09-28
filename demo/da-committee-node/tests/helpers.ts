@@ -405,7 +405,6 @@ export const minimalAvailabilityChallengeYields =
     Object.fromEntries(
       (
         [
-          ["bond", "availabilityChallengeBondWithdraw", "c1"],
           ["open", "availabilityChallengeOpenWithdraw", "c2"],
           ["settle", "availabilityChallengeSettleWithdraw", "c3"],
           ["close", "availabilityChallengeCloseWithdraw", "c4"],
@@ -466,7 +465,6 @@ export const minimalConfig = ({
     maxSettlementFeeLovelace: 500_000,
     maxCloseFeeLovelace: 1_000_000,
     maxTimeoutFeeLovelace: 1_200_000,
-    bondOwnerCredential: "76".repeat(28),
   },
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   midgardNodeDeployment: {
@@ -496,6 +494,12 @@ export const minimalConfig = ({
       policyId: "33".repeat(28),
       spendingScriptHash: "66".repeat(28),
       spendingScriptAddress: "addr_test1daattestation",
+    }),
+    daBondPool: minimalAuthenticatedDeployment({
+      prefix: "daBondPool",
+      policyId: "5b".repeat(28),
+      spendingScriptHash: "5c".repeat(28),
+      spendingScriptAddress: "addr_test1dabondpool",
     }),
     daParamsGovernor: minimalAuthenticatedDeployment({
       prefix: "daParamsGovernor",

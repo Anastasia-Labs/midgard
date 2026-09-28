@@ -4,6 +4,7 @@ import type {
   AvailabilityOperationIntent,
   AvailabilityOperationJournal,
   AvailabilityOperationLease,
+  AvailabilityOperationRecord,
 } from "@al-ft/midgard-core/availability-operation-journal";
 import {
   calculateMinLovelaceFromUTxO,
@@ -14,7 +15,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { DaAvailabilityParameters } from "./availability-challenge.js";
+import {
+  type DaAvailabilityChallengeRecord,
+  type DaAvailabilityParameters,
+  parseDaAvailabilityChallengeRecordCbor,
+} from "./availability-challenge.js";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "./linked-list.js";
 
 export type DaAvailabilityOperationObservation =
@@ -29,9 +34,24 @@ export type DaAvailabilityOperationObservation =
       status: "inputs_missing";
       currentSlot: number;
       missingOutRefs: readonly string[];
+      /**
+       * Missing refs whose consuming transaction the observer verified from
+       * its raw bytes (exact hash, phase-2 valid, lists the ref). Absent when
+       * the observer gathers no such evidence.
+       */
+      foreignSpends?: readonly DaAvailabilityForeignSpend[];
     }>
   | Readonly<{ status: "unknown"; reason: string }>
   | Readonly<{ status: "conflicting_spend"; reason: string }>;
+
+/** A canonical, verified spend of one of an intent's missing refs. */
+export type DaAvailabilityForeignSpend = Readonly<{
+  outRef: string;
+  spendingTxHash: string;
+  spendPoint: string;
+  /** Blocks on top of the spending block at the observation point. */
+  confirmationDepth: number;
+}>;
 
 export type DaAvailabilityOperationResult = Readonly<{
   status:
@@ -535,6 +555,7 @@ const reconcile = async (
       );
       return result("conflict");
     case "inputs_missing": {
+      const foreignSpends = observation.foreignSpends ?? [];
       if (
         !Number.isSafeInteger(observation.currentSlot) ||
         observation.currentSlot < 0 ||
@@ -543,6 +564,21 @@ const reconcile = async (
           (ref) =>
             !intent.spentOutRefs.includes(ref) &&
             !intent.collateralOutRefs.includes(ref),
+        ) ||
+        !Array.isArray(foreignSpends) ||
+        foreignSpends.some(
+          (spend) =>
+            !observation.missingOutRefs.includes(spend.outRef) ||
+            typeof spend.spendingTxHash !== "string" ||
+            !/^[0-9a-f]{64}$/u.test(spend.spendingTxHash) ||
+            typeof spend.spendPoint !== "string" ||
+            spend.spendPoint.length === 0 ||
+            !Number.isSafeInteger(spend.confirmationDepth) ||
+            spend.confirmationDepth < 0 ||
+            // Our own transaction spending a normal input is inclusion the
+            // source failed to report: it contradicts itself.
+            (intent.spentOutRefs.includes(spend.outRef) &&
+              spend.spendingTxHash === intent.txHash),
         )
       ) {
         throw new Error("Invalid canonical missing-input observation");
@@ -564,6 +600,52 @@ const reconcile = async (
           "expired",
           null,
           "Expired child of canonically expired parent",
+          now(),
+        );
+        return result("expired");
+      }
+      // A transaction spends all of its normal inputs or none of them, so one
+      // missing while another is still unspent at the same point proves the
+      // intent is not included there; past its validity it never can be. This
+      // is how a shared input spent by someone else (a pool TopUp, another
+      // header's Timeout) releases the intent instead of waiting forever.
+      const missingNormal = intent.spentOutRefs.filter((ref) =>
+        observation.missingOutRefs.includes(ref),
+      );
+      if (
+        observation.currentSlot >= intent.validUntilSlot &&
+        missingNormal.length > 0 &&
+        missingNormal.length < intent.spentOutRefs.length
+      ) {
+        context.journal.transition(
+          lease,
+          intent.id,
+          "expired",
+          null,
+          "Expired with a normal input spent elsewhere and another still unspent",
+          now(),
+        );
+        return result("expired");
+      }
+      // Every normal input may be gone, as when another watcher's Timeout on
+      // the same header landed first. Absence never proves anything, but one
+      // normal input consumed by another valid canonical transaction at
+      // finality does: a ledger input is spent once, so ours can never land.
+      if (
+        observation.currentSlot >= intent.validUntilSlot &&
+        foreignSpends.some(
+          (spend) =>
+            intent.spentOutRefs.includes(spend.outRef) &&
+            spend.spendingTxHash !== intent.txHash &&
+            spend.confirmationDepth >= context.minimumConfirmationDepth,
+        )
+      ) {
+        context.journal.transition(
+          lease,
+          intent.id,
+          "expired",
+          null,
+          "Expired with a normal input finally spent by another transaction",
           now(),
         );
         return result("expired");
@@ -732,6 +814,335 @@ export type DaAvailabilityCanonicalBoundary = Readonly<{
 }>;
 
 /**
+ * Positive evidence that `outRef` was consumed by the canonical transaction
+ * `transactionId`, read from its raw bytes: they hash to that id, the
+ * transaction is phase-2 valid (it spent its inputs, not its collateral), and
+ * its inputs list the outRef. A Kupo `spent_at` claim is trusted only through
+ * this check.
+ */
+export const transactionConsumesOutRef = ({
+  transactionCbor,
+  transactionId,
+  outRef,
+}: {
+  readonly transactionCbor: string;
+  readonly transactionId: string;
+  readonly outRef: string;
+}): boolean => {
+  let transaction: CML.Transaction;
+  try {
+    transaction = CML.Transaction.from_cbor_hex(transactionCbor);
+  } catch {
+    return false;
+  }
+  const body = transaction.body();
+  if (
+    CML.hash_transaction(body).to_hex() !== transactionId ||
+    !transaction.is_valid()
+  )
+    return false;
+  const inputs = body.inputs();
+  return Array.from({ length: inputs.len() }, (_, index) =>
+    inputs.get(index),
+  ).some(
+    (entry) =>
+      `${entry.transaction_id().to_hex()}#${entry.index().toString()}` ===
+      outRef,
+  );
+};
+
+/** A chain point as the foreign-spend readers name it. */
+export type DaAvailabilityChainPoint = Readonly<{
+  slot: number;
+  blockHash: string;
+}>;
+
+/**
+ * The L1 readers the verified foreign-spend check runs on. Each caller
+ * injects its own Kupo and Ogmios transport; none has a default.
+ */
+export type DaAvailabilityForeignSpendReaders = Readonly<{
+  /** The canonical boundary, with the block height of its point. */
+  readBoundary: () => Promise<Readonly<{ pointId: string; blockNo: number }>>;
+  /** Kupo's exact-match `spent_at`, or undefined when it reports no spend. */
+  fetchSpend: (
+    outRef: Readonly<{ txHash: string; outputIndex: number }>,
+  ) => Promise<
+    | Readonly<{ transactionId: string; point: DaAvailabilityChainPoint }>
+    | undefined
+  >;
+  /** A Kupo checkpoint strictly before `slot`, to intersect chain-sync at. */
+  fetchAncestor: (slot: number) => Promise<DaAvailabilityChainPoint>;
+  /**
+   * The transaction `txHash`, read by chain-sync from `ancestor` forward to
+   * the exact block `point`, with that block's height and, when Ogmios serves
+   * it, the raw transaction. Undefined when the block does not carry it.
+   */
+  readTransaction: (
+    input: Readonly<{
+      ancestor: DaAvailabilityChainPoint;
+      point: DaAvailabilityChainPoint;
+      txHash: string;
+    }>,
+  ) => Promise<
+    | Readonly<{
+        txHash: string;
+        point: DaAvailabilityChainPoint & Readonly<{ blockNo: number }>;
+        cbor?: string;
+      }>
+    | undefined
+  >;
+}>;
+
+/** A verified spend, with the consuming transaction's checked bytes. */
+export type DaAvailabilityVerifiedForeignSpend = DaAvailabilityForeignSpend &
+  Readonly<{
+    /** The raw transaction {@link transactionConsumesOutRef} accepted. */
+    spendingTransactionCbor: string;
+  }>;
+
+/**
+ * The canonical spend of `outRef`, verified from the consuming transaction's
+ * own bytes through {@link transactionConsumesOutRef}. Kupo's `spent_at`
+ * alone is never trusted, so a spend that fails verification reads as none.
+ * The whole read sits inside one canonical boundary; a moved boundary, a
+ * spend above it, or a spend Ogmios serves without its raw bytes throws.
+ */
+export const resolveDaAvailabilityForeignSpend = async (
+  input: DaAvailabilityForeignSpendReaders & Readonly<{ outRef: string }>,
+): Promise<DaAvailabilityVerifiedForeignSpend | undefined> => {
+  const [txHash, outputIndex] = input.outRef.split("#");
+  const before = await input.readBoundary();
+  const spend = await input.fetchSpend({
+    txHash: txHash!,
+    outputIndex: Number(outputIndex),
+  });
+  if (spend === undefined) return undefined;
+  const ancestor = await input.fetchAncestor(spend.point.slot);
+  const transaction = await input.readTransaction({
+    ancestor,
+    point: spend.point,
+    txHash: spend.transactionId,
+  });
+  const after = await input.readBoundary();
+  if (before.pointId !== after.pointId)
+    throw new Error(
+      "Availability input spend changed during its canonical read",
+    );
+  if (transaction !== undefined && transaction.point.blockNo > after.blockNo)
+    throw new Error(
+      "Availability input spend lies above the canonical boundary",
+    );
+  if (transaction === undefined || transaction.txHash !== spend.transactionId)
+    return undefined;
+  if (transaction.cbor === undefined)
+    throw new Error(
+      "Ogmios must run with --include-transaction-cbor to verify a rival spend",
+    );
+  if (
+    !transactionConsumesOutRef({
+      transactionCbor: transaction.cbor,
+      transactionId: spend.transactionId,
+      outRef: input.outRef,
+    })
+  )
+    return undefined;
+  return {
+    outRef: input.outRef,
+    spendingTxHash: spend.transactionId,
+    spendPoint: `${transaction.point.slot}:${transaction.point.blockHash}`,
+    confirmationDepth: after.blockNo - transaction.point.blockNo,
+    spendingTransactionCbor: transaction.cbor,
+  };
+};
+
+/** Why a stranded challenge workflow row may be released (P20). */
+export type DaAvailabilityWorkflowRelease = Readonly<{
+  /**
+   * `header-node-burned`: a transaction burned the header's queue node.
+   * `challenge-closed`: a transaction spent the challenge record and minted
+   * nothing under the queue policy, which is a Close by anyone.
+   */
+  reason: "header-node-burned" | "challenge-closed";
+  txHash: string;
+  spendPoint: string;
+  confirmationDepth: number;
+}>;
+
+/** The most node-chain hops one release check walks. */
+export const DA_AVAILABILITY_WORKFLOW_RELEASE_MAX_HOPS = 256;
+
+/**
+ * The header's node chain is longer than one release check walks. The row is
+ * kept and the check runs again on the next reconciliation.
+ */
+export class DaAvailabilityWorkflowReleaseHopCapError extends Error {
+  constructor(headerHash: string) {
+    super(
+      `Availability workflow release walk for header ${headerHash} reached ${DA_AVAILABILITY_WORKFLOW_RELEASE_MAX_HOPS.toString()} hops without a terminal transaction`,
+    );
+    this.name = "DaAvailabilityWorkflowReleaseHopCapError";
+  }
+}
+
+const transactionOutputs = (
+  body: CML.TransactionBody,
+): ReturnType<typeof coreToTxOutput>[] =>
+  Array.from({ length: body.outputs().len() }, (_, index) =>
+    coreToTxOutput(body.outputs().get(index)),
+  );
+
+const transactionInputRefs = (body: CML.TransactionBody): string[] => {
+  const inputs = body.inputs();
+  return Array.from({ length: inputs.len() }, (_, index) => {
+    const entry = inputs.get(index);
+    return `${entry.transaction_id().to_hex()}#${entry.index().toString()}`;
+  });
+};
+
+/** Indices of the outputs holding any quantity of `unit`. */
+const outputsCarrying = (
+  outputs: readonly ReturnType<typeof coreToTxOutput>[],
+  unit: string,
+): number[] =>
+  outputs.flatMap((output, index) =>
+    (output.assets[unit] ?? 0n) === 0n ? [] : [index],
+  );
+
+const mintOf = (
+  mint: CML.Mint | undefined,
+  policy: string,
+  assetName: string,
+): bigint | undefined =>
+  mint?.get(CML.ScriptHash.from_hex(policy), CML.AssetName.from_hex(assetName));
+
+const mintsUnderPolicy = (
+  mint: CML.Mint | undefined,
+  policy: string,
+): boolean => {
+  const assets = mint?.get_assets(CML.ScriptHash.from_hex(policy));
+  return assets !== undefined && assets.len() > 0;
+};
+
+/**
+ * Evidence that this actor's challenge workflow for `headerHash` ended in a
+ * terminal step someone else landed, or undefined when there is none yet
+ * (P20). From the confirmed Open's signed bytes it derives, by asset and never
+ * by index, the queue policy (the one policy under which an Open output holds
+ * the header's node NFT), that node output Q0 and the challenge record output
+ * R0 (the output holding the challenge asset the Open minted, whose datum
+ * decodes as the header's record). It then walks the header's node chain from
+ * Q0, one verified spend per hop, until a transaction either burns the node
+ * (`header-node-burned`) or spends R0 while minting nothing under the queue
+ * policy (`challenge-closed`). Any other hop continues from the one output
+ * holding the node NFT.
+ *
+ * Only positive, verified, finalized evidence counts: every hop's spend comes
+ * from {@link resolveDaAvailabilityForeignSpend} and must be at least
+ * `minimumConfirmationDepth` deep. A missing or ambiguous derivation, a
+ * missing spend, a shallow spend or a failed verification returns undefined;
+ * a reader error or a spend above the boundary throws. Consuming the record
+ * alone never releases: a Timeout with a descendant spends R0 and burns the
+ * descendant's node, while the header's node continues.
+ */
+export const resolveDaAvailabilityWorkflowRelease = async (
+  readers: DaAvailabilityForeignSpendReaders,
+  openIntent: Pick<AvailabilityOperationRecord, "intent" | "state">,
+  headerHash: string,
+  minimumConfirmationDepth: number,
+): Promise<DaAvailabilityWorkflowRelease | undefined> => {
+  if (
+    !Number.isSafeInteger(minimumConfirmationDepth) ||
+    minimumConfirmationDepth <= 0
+  )
+    throw new Error("Invalid availability workflow release finality depth");
+  const { intent } = openIntent;
+  if (
+    openIntent.state !== "confirmed" ||
+    intent.action !== "open" ||
+    intent.headerHash !== headerHash
+  )
+    return undefined;
+  let open: CML.Transaction;
+  try {
+    open = CML.Transaction.from_cbor_hex(intent.signedCbor);
+  } catch {
+    return undefined;
+  }
+  const openBody = open.body();
+  if (CML.hash_transaction(openBody).to_hex() !== intent.txHash)
+    return undefined;
+  const nodeAssetName = STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
+  const openOutputs = transactionOutputs(openBody);
+  const nodeHolders = openOutputs.flatMap((output, index) =>
+    Object.entries(output.assets).flatMap(([unit, quantity]) =>
+      unit.length === 56 + nodeAssetName.length &&
+      unit.slice(56) === nodeAssetName &&
+      quantity !== 0n
+        ? [{ policy: unit.slice(0, 56), index, quantity }]
+        : [],
+    ),
+  );
+  if (nodeHolders.length !== 1 || nodeHolders[0]!.quantity !== 1n)
+    return undefined;
+  const queuePolicy = nodeHolders[0]!.policy;
+  const nodeUnit = queuePolicy + nodeAssetName;
+  const openMint = openBody.mint();
+  const records = openOutputs.flatMap((output, index) => {
+    if (typeof output.datum !== "string") return [];
+    let record: DaAvailabilityChallengeRecord;
+    try {
+      record = parseDaAvailabilityChallengeRecordCbor(output.datum);
+    } catch {
+      return [];
+    }
+    if (record.commitment.header_hash !== headerHash) return [];
+    const minted = Object.entries(output.assets).filter(
+      ([unit, quantity]) =>
+        unit.length === 56 + record.challenge_asset_name.length &&
+        unit.slice(56) === record.challenge_asset_name &&
+        quantity === 1n &&
+        mintOf(openMint, unit.slice(0, 56), record.challenge_asset_name) === 1n,
+    );
+    return minted.length === 1 ? [index] : [];
+  });
+  if (records.length !== 1) return undefined;
+  const recordOutRef = `${intent.txHash}#${records[0]!.toString()}`;
+  let anchor = `${intent.txHash}#${nodeHolders[0]!.index.toString()}`;
+  for (let hop = 0; hop < DA_AVAILABILITY_WORKFLOW_RELEASE_MAX_HOPS; hop++) {
+    const spend = await resolveDaAvailabilityForeignSpend({
+      ...readers,
+      outRef: anchor,
+    });
+    if (
+      spend === undefined ||
+      spend.confirmationDepth < minimumConfirmationDepth
+    )
+      return undefined;
+    const body = CML.Transaction.from_cbor_hex(
+      spend.spendingTransactionCbor,
+    ).body();
+    const mint = body.mint();
+    const evidence = {
+      txHash: spend.spendingTxHash,
+      spendPoint: spend.spendPoint,
+      confirmationDepth: spend.confirmationDepth,
+    };
+    if (mintOf(mint, queuePolicy, nodeAssetName) === -1n)
+      return { reason: "header-node-burned", ...evidence };
+    if (
+      transactionInputRefs(body).includes(recordOutRef) &&
+      !mintsUnderPolicy(mint, queuePolicy)
+    )
+      return { reason: "challenge-closed", ...evidence };
+    const next = outputsCarrying(transactionOutputs(body), nodeUnit);
+    if (next.length !== 1) return undefined;
+    anchor = `${spend.spendingTxHash}#${next[0]!.toString()}`;
+  }
+  throw new DaAvailabilityWorkflowReleaseHopCapError(headerHash);
+};
+
+/**
  * Provider adapter for a configured local canonical source. Boundary reads must
  * prove that the UTxO index and node share the same chain point. Inclusion depth
  * counts blocks, never elapsed slots. Source failures produce no mutation.
@@ -747,6 +1158,14 @@ export const createDaAvailabilityOperationObserver =
       ) => Promise<
         Readonly<{ slot?: number; blockHash?: string; depth?: number }>
       >;
+      /**
+       * The verified canonical spend of a missing normal input, or undefined
+       * when there is none or it fails verification. Without it the observer
+       * reports no `foreignSpends`.
+       */
+      resolveForeignSpend?: (
+        outRef: string,
+      ) => Promise<Omit<DaAvailabilityForeignSpend, "outRef"> | undefined>;
     }>,
   ): DaAvailabilityOperationContext["observe"] =>
   async (intent) => {
@@ -826,13 +1245,29 @@ export const createDaAvailabilityOperationObserver =
       const keys = new Set(
         available.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`),
       );
-      observation = refs.every((ref) => keys.has(ref))
-        ? { status: "unspent", currentSlot: before.slot }
-        : {
-            status: "inputs_missing",
-            currentSlot: before.slot,
-            missingOutRefs: refs.filter((ref) => !keys.has(ref)),
-          };
+      const missingOutRefs = refs.filter((ref) => !keys.has(ref));
+      const foreignSpends: DaAvailabilityForeignSpend[] = [];
+      if (input.resolveForeignSpend)
+        for (const ref of intent.spentOutRefs) {
+          if (keys.has(ref)) continue;
+          const spend = await input.resolveForeignSpend(ref);
+          if (spend)
+            foreignSpends.push({
+              outRef: ref,
+              spendingTxHash: spend.spendingTxHash,
+              spendPoint: spend.spendPoint,
+              confirmationDepth: spend.confirmationDepth,
+            });
+        }
+      observation =
+        missingOutRefs.length === 0
+          ? { status: "unspent", currentSlot: before.slot }
+          : {
+              status: "inputs_missing",
+              currentSlot: before.slot,
+              missingOutRefs,
+              ...(foreignSpends.length === 0 ? {} : { foreignSpends }),
+            };
     }
     const after = await input.readBoundary();
     if (before.pointId !== after.pointId || before.slot !== after.slot) {

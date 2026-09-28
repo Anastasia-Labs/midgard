@@ -272,23 +272,32 @@ export type L1SubmitterPreflightConfig = {
 type Env = Record<string, string | undefined>;
 
 /**
- * What one DA attestation round spends beyond its bond: the init,
- * add-signatures and apply fees, the separate collateral UTxO and the change
- * output's minimum. Before the floor was tied to the bond, this was the whole
- * wallet floor.
+ * What one DA attestation round spends in fees: the init, add-signatures and
+ * apply fees, the separate collateral UTxO and the change output's minimum.
  */
-const DA_L1_SUBMITTER_FEE_HEADROOM_LOVELACE = 50_000_000n;
+export const DA_L1_SUBMITTER_FEE_HEADROOM_LOVELACE = 50_000_000n;
 
 /**
- * The least plain ADA that funds the next init: one `da_bond_lovelace`, which
- * the init locks for good, plus the round's fees. The startup preflight
- * refuses a wallet below it, and the check around each init reports one to
- * readiness. One bond, not more: the startup refusal is fatal, so it must not
- * stop a member whose wallet can still attest the next header.
+ * The most lovelace one DA attestation output locks between init and apply:
+ * the min-UTxO of the widest canonical attestation (a 64-tranche commitment,
+ * a base-address rescue beneficiary and a signer count at its widest CBOR
+ * form) at the ledger's `coinsPerUtxoByte`, rounded up to a whole ADA. Apply
+ * and rescue return it to the rescue beneficiary, which is the submitter
+ * wallet. `tests/tx-builders.test.ts` measures the widest attestation against
+ * it.
  */
-export const daL1SubmitterMinPlainAdaLovelace = (
-  daBondLovelace: bigint,
-): bigint => daBondLovelace + DA_L1_SUBMITTER_FEE_HEADROOM_LOVELACE;
+export const DA_ATTESTATION_OUTPUT_LOVELACE_ALLOWANCE = 30_000_000n;
+
+/**
+ * The least plain ADA that funds the next attestation round: the round's fees
+ * plus the min-ADA the init locks until apply refunds it. The committee's
+ * bond is the pooled DA bond, not the submitter wallet's, so no bond is part
+ * of it. The startup preflight refuses a wallet below it, and the check
+ * around each init reports one to readiness.
+ */
+export const DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE =
+  DA_L1_SUBMITTER_FEE_HEADROOM_LOVELACE +
+  DA_ATTESTATION_OUTPUT_LOVELACE_ALLOWANCE;
 
 export const DEFAULT_L1_SUBMITTER_PREFLIGHT = {
   minCollateralLovelace: 5_000_000n,
@@ -442,7 +451,6 @@ export const loadCommitteeConfig = async (
     env,
     l1SubmissionEnabled,
     l1SubmitterKeySource,
-    daBondLovelace: BigInt(manifestAvailabilityChallenge.daBondLovelace),
   });
   const maybeSigner = optionalSignerConfig(env);
   const daParams = daParamsConfig(env, runtimeManifest, daCommitteeMembers);
@@ -1194,12 +1202,10 @@ const l1SubmitterPreflightConfig = ({
   env,
   l1SubmissionEnabled,
   l1SubmitterKeySource,
-  daBondLovelace,
 }: {
   readonly env: Env;
   readonly l1SubmissionEnabled: boolean;
   readonly l1SubmitterKeySource?: string;
-  readonly daBondLovelace: bigint;
 }): L1SubmitterPreflightConfig => {
   const autoFundKeySource = optionalKeySource(
     env.DA_L1_AUTO_FUND_KEY_SOURCE,
@@ -1214,17 +1220,16 @@ const l1SubmitterPreflightConfig = ({
       "DA_L1_AUTO_FUND_KEY_SOURCE must not equal L1_SUBMITTER_KEY_SOURCE",
     );
   }
-  const bondFloorLovelace = daL1SubmitterMinPlainAdaLovelace(daBondLovelace);
   const minPlainAdaLovelace =
     env.DA_L1_MIN_PLAIN_ADA_LOVELACE === undefined
-      ? bondFloorLovelace
+      ? DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE
       : positiveLovelace(
           env.DA_L1_MIN_PLAIN_ADA_LOVELACE,
           "DA_L1_MIN_PLAIN_ADA_LOVELACE",
         );
-  if (minPlainAdaLovelace < bondFloorLovelace) {
+  if (minPlainAdaLovelace < DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE) {
     throw new Error(
-      `DA_L1_MIN_PLAIN_ADA_LOVELACE must be at least ${bondFloorLovelace.toString()} (the deployment's daBondLovelace ${daBondLovelace.toString()} + ${DA_L1_SUBMITTER_FEE_HEADROOM_LOVELACE.toString()} fee headroom)`,
+      `DA_L1_MIN_PLAIN_ADA_LOVELACE must be at least ${DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE.toString()} (${DA_L1_SUBMITTER_FEE_HEADROOM_LOVELACE.toString()} fee headroom + ${DA_ATTESTATION_OUTPUT_LOVELACE_ALLOWANCE.toString()} attestation min-ADA)`,
     );
   }
   return {
