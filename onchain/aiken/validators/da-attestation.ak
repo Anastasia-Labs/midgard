@@ -1980,6 +1980,32 @@ test da_attestation_apply_rejects_node_value_change() fail {
   )
 }
 
+/// Control: `da_attestation_apply_control_exact_pool_backing_and_exact_refund`.
+/// Refused by `expect element_output_has_no_reference_script(output)` in the
+/// state-queue DA core `da_availability_status_transition` (reached through
+/// `validate_da_attestation_attachment`): the attested node output carries a
+/// reference script, which would keep `validate_completed_fraud_record` from
+/// ever marking that node.
+test da_attestation_apply_rejects_node_output_reference_script() fail {
+  let node = test_state_queue_node_output(
+    availability.Attested {
+      commitment_hash: availability.commitment_hash_v1(
+        test_availability_commitment(),
+      ),
+    },
+  )
+  test_apply_mint(
+    test_apply_tx_with_node_output(
+      Output {
+        ..node,
+        reference_script: Some(
+          #"f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3",
+        ),
+      },
+    ),
+  )
+}
+
 // ---------------------------------------------------------------------------
 // ## Init: any lovelace plus exactly the DAAT
 // ---------------------------------------------------------------------------

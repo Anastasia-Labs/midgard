@@ -507,6 +507,15 @@ fn merge_idle_correction_lock() -> Input {
 fn run_merge_with_head_status(
   da_attestation: availability.StateQueueStatusV1,
 ) -> Bool {
+  run_merge_with_root_continuation(da_attestation, fn(output) { output })
+}
+
+/// `run_merge_with_head_status`, with the continued confirmed-state root passed
+/// through `rewrite_root`.
+fn run_merge_with_root_continuation(
+  da_attestation: availability.StateQueueStatusV1,
+  rewrite_root: fn(Output) -> Output,
+) -> Bool {
   let header = empty_material_header()
   let head_key = merge_head_key()
   let confirmed_state = merge_confirmed_state()
@@ -521,16 +530,18 @@ fn run_merge_with_head_status(
       merge_head_input(da_attestation),
     ],
     outputs: [
-      merge_root_output(
-        ledger_state.ConfirmedState {
-          header_hash: head_key,
-          prev_header_hash: confirmed_state.header_hash,
-          utxo_root: header.utxos_root,
-          start_time: confirmed_state.start_time,
-          end_time: header.end_time,
-          protocol_version: header.protocol_version,
-        },
-        None,
+      rewrite_root(
+        merge_root_output(
+          ledger_state.ConfirmedState {
+            header_hash: head_key,
+            prev_header_hash: confirmed_state.header_hash,
+            utxo_root: header.utxos_root,
+            start_time: confirmed_state.start_time,
+            end_time: header.end_time,
+            protocol_version: header.protocol_version,
+          },
+          None,
+        ),
       ),
     ],
     reference_inputs: [merge_idle_correction_lock()],
@@ -594,4 +605,21 @@ test merge_da_gate_rejects_challenged_head() fail {
 /// Refused by the merge DA gate: an unattested block never merges.
 test merge_da_gate_rejects_unattested_head() fail {
   run_merge_with_head_status(availability.Unattested)
+}
+
+const merge_probe_reference_script =
+  #"f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3"
+
+/// Control: `merge_da_gate_accepts_attested_head` (the same fixture with the
+/// root continuation unchanged). Refused by
+/// `expect element_output_has_no_reference_script(continued_confirmed_state_output)`
+/// in `merge_to_confirmed_state`: the continued confirmed-state root is a
+/// state-queue element and must carry no reference script.
+test merge_rejects_continued_root_reference_script() fail {
+  run_merge_with_root_continuation(
+    availability.Attested { commitment_hash: merge_commitment_hash },
+    fn(output) {
+      Output { ..output, reference_script: Some(merge_probe_reference_script) }
+    },
+  )
 }

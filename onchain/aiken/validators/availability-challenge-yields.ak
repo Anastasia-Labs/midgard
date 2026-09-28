@@ -130,6 +130,7 @@ validator close(
 validator timeout(
   availability_policy_id: PolicyId,
   hub_oracle_policy_id: PolicyId,
+  da_bond_pool_policy_id: PolicyId,
   parameters: availability.ParametersV1,
 ) {
   withdraw(
@@ -143,12 +144,15 @@ validator timeout(
           record_input_index,
           terminal_accumulator_input_index,
           state_queue_mint_redeemer_index,
+          pool_input_index,
+          pool_output_index,
           challenger_refund_output_index,
           ..
         }: availability.MintRedeemerV1
       = utils.get_unique_mint_redeemer(tx.redeemers, availability_policy_id)
     validation.validate_timeout_challenge(
       hub_oracle_policy_id,
+      da_bond_pool_policy_id,
       parameters,
       availability_policy_id,
       tx,
@@ -156,6 +160,8 @@ validator timeout(
       record_input_index,
       terminal_accumulator_input_index,
       state_queue_mint_redeemer_index,
+      pool_input_index,
+      pool_output_index,
       challenger_refund_output_index,
     )
   }

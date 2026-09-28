@@ -61,6 +61,7 @@ import {
 import {
   encodeStateQueueYieldRedeemer,
   getConfirmedStateFromStateQueueDatum,
+  STATE_QUEUE_NODE_MIN_LOVELACE,
   StateQueueError,
   type StateQueueFetchConfig,
   StateQueueRedeemer,
@@ -80,7 +81,6 @@ import {
 import { dedupeAndSortUtxos } from "./tx-out-ref-order.js";
 import { outputDatumCborMatches } from "./tx-output-utils.js";
 
-const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = BigInt(
   MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
 );
@@ -638,7 +638,7 @@ export const buildCommitBlockHeaderTxProgram = ({
   validFrom,
   validTo,
   witness,
-  headerNodeLovelace = STATE_QUEUE_HEADER_NODE_LOVELACE,
+  headerNodeLovelace = STATE_QUEUE_NODE_MIN_LOVELACE,
   activeOperatorMaturityDurationMs = ACTIVE_OPERATOR_MATURITY_DURATION_MS,
 }: CommitBlockHeaderParams): Effect.Effect<
   CommitBlockHeaderResult,

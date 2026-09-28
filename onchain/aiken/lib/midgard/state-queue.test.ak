@@ -1,5 +1,11 @@
 use aiken/interval.{Finite, Interval, IntervalBound, between}
+use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
+use cardano/address
+use cardano/assets
+use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
 use env
+use midgard/availability_challenge as availability
 use midgard/common/utils
 use midgard/ledger_state
 use midgard/state_queue
@@ -499,4 +505,181 @@ test state_queue_commit_end_time_maximum_accepted_keeps_queue_and_merge_live() {
     ),
     ledger_state.block_maturity_duration_v1 == 604_800_000,
   }
+}
+
+// ## State-queue element invariant: the DA core pins `reference_script`
+//
+// `da_availability_status_transition` is the one node-continuation core behind
+// Apply (`validate_da_attestation_attachment`), Open
+// (`validate_da_challenge_open_transition_v1`) and Close
+// (`validate_da_availability_status_transition`). It requires
+// `element_output_has_no_reference_script` of the node output, because
+// `validate_completed_fraud_record` can only mark a node without one.
+
+const da_core_policy =
+  #"c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+
+const da_core_commitment_hash =
+  #"c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8"
+
+const da_core_challenge_asset_name =
+  #"44414348c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9"
+
+const da_core_terminal_commitment =
+  #"cacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacaca"
+
+const da_core_probe_reference_script =
+  #"f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3"
+
+/// The node for `empty_header()` at the state-queue address, carrying `status`.
+fn da_core_node(status: availability.StateQueueStatusV1) -> Output {
+  let header = empty_header()
+  let datum: state_queue.Datum = linked_list.Element {
+    data: linked_list.Node(
+      state_queue.StateQueueNode {
+        header,
+        da_attestation: status,
+        proven_fraud: None,
+      },
+    ),
+    link: None,
+  }
+  Output {
+    address: address.from_script(da_core_policy),
+    value: assets.from_lovelace(2_000_000)
+      |> assets.add(
+          da_core_policy,
+          bytearray.concat(
+            state_queue.block_asset_name_prefix,
+            header_hash(header),
+          ),
+          1,
+        ),
+    datum: InlineDatum(datum),
+    reference_script: None,
+  }
+}
+
+fn da_core_inputs(status: availability.StateQueueStatusV1) -> List<Input> {
+  [
+    Input {
+      output_reference: OutputReference {
+        transaction_id: #"0303030303030303030303030303030303030303030303030303030303030303",
+        output_index: 0,
+      },
+      output: da_core_node(status),
+    },
+  ]
+}
+
+fn with_probe_reference_script(output: Output) -> Output {
+  Output { ..output, reference_script: Some(da_core_probe_reference_script) }
+}
+
+fn da_core_close(rewrite: fn(Output) -> Output) -> Bool {
+  let challenged = availability.Challenged {
+    commitment_hash: da_core_commitment_hash,
+    challenge_asset_name: da_core_challenge_asset_name,
+  }
+  let published = availability.Published {
+    terminal_commitment: da_core_terminal_commitment,
+  }
+  state_queue.validate_da_availability_status_transition(
+    da_core_inputs(challenged),
+    [rewrite(da_core_node(published))],
+    da_core_policy,
+    0,
+    0,
+    header_hash(empty_header()),
+    challenged,
+    published,
+  )
+}
+
+fn da_core_open(rewrite: fn(Output) -> Output) -> Int {
+  state_queue.validate_da_challenge_open_transition_v1(
+    da_core_inputs(
+      availability.Attested { commitment_hash: da_core_commitment_hash },
+    ),
+    [
+      rewrite(
+        da_core_node(
+          availability.Challenged {
+            commitment_hash: da_core_commitment_hash,
+            challenge_asset_name: da_core_challenge_asset_name,
+          },
+        ),
+      ),
+    ],
+    da_core_policy,
+    0,
+    0,
+    header_hash(empty_header()),
+    da_core_commitment_hash,
+    da_core_challenge_asset_name,
+  )
+}
+
+fn da_core_apply(rewrite: fn(Output) -> Output) -> Bool {
+  let end_time = empty_header().end_time
+  state_queue.validate_da_attestation_attachment(
+    da_core_inputs(state_queue.no_da_attestation),
+    [
+      rewrite(
+        da_core_node(
+          availability.Attested { commitment_hash: da_core_commitment_hash },
+        ),
+      ),
+    ],
+    da_core_policy,
+    0,
+    0,
+    header_hash(empty_header()),
+    da_core_commitment_hash,
+    between(end_time, end_time + 1_000),
+  )
+}
+
+test state_queue_element_reference_script_predicate_is_exact() {
+  let node = da_core_node(state_queue.no_da_attestation)
+  and {
+    state_queue.element_output_has_no_reference_script(node),
+    !state_queue.element_output_has_no_reference_script(
+      with_probe_reference_script(node),
+    ),
+  }
+}
+
+/// Controls for the three DA core users: each accepts the honest continuation,
+/// whose node output carries no reference script.
+test da_core_controls_accept_node_output_without_reference_script() {
+  and {
+    da_core_apply(fn(output) { output }),
+    da_core_open(fn(output) { output }) == empty_header().end_time,
+    da_core_close(fn(output) { output }),
+  }
+}
+
+/// Control: `da_core_controls_accept_node_output_without_reference_script`.
+/// Refused by `expect element_output_has_no_reference_script(output)` in
+/// `da_availability_status_transition`, reached through
+/// `validate_da_attestation_attachment` (Apply).
+test da_core_apply_rejects_node_output_reference_script() fail {
+  da_core_apply(with_probe_reference_script)
+}
+
+/// Control: `da_core_controls_accept_node_output_without_reference_script`.
+/// Refused by `expect element_output_has_no_reference_script(output)` in
+/// `da_availability_status_transition`, reached through
+/// `validate_da_challenge_open_transition_v1` (Open).
+test da_core_open_rejects_node_output_reference_script() fail {
+  da_core_open(with_probe_reference_script) == empty_header().end_time
+}
+
+/// Control: `da_core_controls_accept_node_output_without_reference_script`.
+/// Refused by `expect element_output_has_no_reference_script(output)` in
+/// `da_availability_status_transition`, reached through
+/// `validate_da_availability_status_transition` (Close).
+test da_core_close_rejects_node_output_reference_script() fail {
+  da_core_close(with_probe_reference_script)
 }

@@ -89,6 +89,24 @@ pub fn get_authentic_pool(
   (datum, assets.lovelace_of(value))
 }
 
+/// The authentic pool spent as an input: the input at `pool_input_index` sits
+/// at `Script(pool_policy_id)`, holds the pool NFT once and carries an inline
+/// datum. Returns its output. The datum is not decoded and either state
+/// passes: a `Withdrawing` pool stays slashable, and the pool's own spend
+/// validator decodes the datum in the same transaction.
+pub fn get_authentic_pool_input(
+  inputs: List<Input>,
+  pool_policy_id: PolicyId,
+  pool_input_index: Int,
+) -> Output {
+  expect Some(Input { output, .. }) = inputs |> list.at(pool_input_index)
+  expect Output { address, value, datum: InlineDatum(_), .. } = output
+  expect Script(pool_script_hash) = address.payment_credential
+  expect pool_script_hash == pool_policy_id
+  expect assets.quantity_of(value, pool_policy_id, da_bond_pool_asset_name) == 1
+  output
+}
+
 /// The state-queue policy, hub datum field 4, read from the authentic hub
 /// oracle reference input without decoding the rest of the datum.
 /// `da-bond-pool.test.ak` pins it against the full `hub_oracle.get_datum` read.

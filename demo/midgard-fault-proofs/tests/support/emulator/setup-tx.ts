@@ -45,6 +45,7 @@ import {
   SchedulerSpendRedeemer,
   scriptRewardAddress,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  STATE_QUEUE_NODE_MIN_LOVELACE,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
   utxoToStateQueueUTxO,
@@ -283,7 +284,8 @@ const submitInitialMintTx = async ({
           data: Data.castTo(confirmedState, ConfirmedState),
         }),
       },
-      { [units.stateQueueRoot]: 1n },
+      // Covers the linked root, so the first commit need not top the root up.
+      { [units.stateQueueRoot]: 1n, lovelace: STATE_QUEUE_NODE_MIN_LOVELACE },
     )
     .mintAssets(
       { [units.activeOperatorsRoot]: 1n },

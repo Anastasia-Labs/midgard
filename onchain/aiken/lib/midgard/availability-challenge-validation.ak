@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/math
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script, from_script, from_verification_key}
@@ -10,6 +11,7 @@ use cardano/transaction.{
 }
 use midgard/availability_challenge as availability
 use midgard/common/utils
+use midgard/da_bond_pool as pool
 use midgard/hub_oracle as hub
 use midgard/state_queue
 
@@ -783,14 +785,28 @@ fn timeout_node_status_matches(
   node.da_attestation == expected_status
 }
 
-/// Interim timeout (until the pooled-bond slash lands): the expired record is
-/// burned with its terminal accumulator and the challenger recovers the
-/// record's lovelace with the unspent bond. Nothing here reads the pool or
-/// pins a slash output, and `da_slash_output_index` is not read. The pool's
-/// `Slash` arm can still co-run with this timeout, and nothing pins where its
-/// taken lovelace goes; #693 binds it (decisions D1-D3).
+/// Expired challenge (spec #685 §5): the record burns with its terminal
+/// accumulator, the state queue removes the challenged block, and the pooled
+/// committee bond is slashed in the same transaction.
+///
+/// - The pool input at `pool_input_index` is mandatory, even at zero backing,
+///   and may be `Bonded` or `Withdrawing` (a committee cannot make itself
+///   unslashable by beginning a withdrawal).
+/// - `taken = min(da_bond, backing)` with the clamped backing
+///   `max(0, lovelace - floor)`; `fee_part = min(penalty, taken)` is burned as
+///   fee; `payout = taken - fee_part` goes to the challenger.
+/// - The pool continues at `pool_output_index` at its address, with its datum
+///   byte for byte, no reference script, and exactly `taken` fewer lovelace
+///   beside its NFT.
+/// - `tx.fee = fee_part + c`, where `c`, the challenger's own fee
+///   contribution, satisfies `0 <= c <= max_timeout_fee_lovelace` and comes
+///   out of the remaining challenger reserve.
+/// - The one challenger output carries
+///   `remaining - c + challenge_record_lovelace + payout` (refund and payout
+///   merged, so a payout below min-UTxO never makes the timeout unbuildable).
 pub fn validate_timeout_challenge(
   hub_oracle_policy_id: PolicyId,
+  da_bond_pool_policy_id: PolicyId,
   parameters: availability.ParametersV1,
   own_policy_id: PolicyId,
   tx: Transaction,
@@ -798,6 +814,8 @@ pub fn validate_timeout_challenge(
   record_input_index: Int,
   terminal_accumulator_input_index: Int,
   state_queue_mint_redeemer_index: Int,
+  pool_input_index: Int,
+  pool_output_index: Int,
   challenger_refund_output_index: Int,
 ) -> Bool {
   let hub_datum = hub.get_datum(
@@ -838,15 +856,40 @@ pub fn validate_timeout_challenge(
         fn(output) { output.address == from_verification_key(challenger) },
       )
     |> list.length
+  let pool_input = pool.get_authentic_pool_input(
+    tx.inputs,
+    da_bond_pool_policy_id,
+    pool_input_index,
+  )
+  let pool_input_lovelace = assets.lovelace_of(pool_input.value)
+  let taken = math.min(
+    parameters.da_bond_lovelace,
+    pool.lovelace_backing(pool_input_lovelace, parameters),
+  )
+  let fee_part = math.min(parameters.da_slash_penalty_lovelace, taken)
+  let payout = taken - fee_part
+  let challenger_fee = tx.fee - fee_part
+  let pool_output = output_at(tx.outputs, pool_output_index)
   and {
     availability.commitment_is_canonical_v1(commitment, parameters),
     commitment.deployment_identity == hub_oracle_policy_id,
     bytearray.length(challenge_asset_name) == 32,
     tx.fee > 0,
-    tx.fee <= parameters.max_timeout_fee_lovelace,
+    challenger_fee >= 0,
+    challenger_fee <= parameters.max_timeout_fee_lovelace,
     inclusive_lower_bound >= response_deadline,
     record_input_index != terminal_accumulator_input_index,
+    pool_input_index != record_input_index,
+    pool_input_index != terminal_accumulator_input_index,
     challenger_refund_output_index >= 0,
+    pool_output_index != challenger_refund_output_index,
+    pool_output.address == pool_input.address,
+    pool_output.datum == pool_input.datum,
+    pool_output.reference_script == None,
+    pool_output.value == (
+      assets.from_lovelace(pool_input_lovelace - taken)
+        |> assets.add(da_bond_pool_policy_id, pool.da_bond_pool_asset_name, 1)
+    ),
     terminal_input.output.address == from_script(own_policy_id),
     terminal_input.output.value == (
       assets.from_lovelace(terminal_datum.remaining_challenger_lovelace)
@@ -882,9 +925,9 @@ pub fn validate_timeout_challenge(
     exact_enterprise_ada_output(
       output_at(tx.outputs, challenger_refund_output_index),
       challenger,
-      terminal_datum.remaining_challenger_lovelace - tx.fee + parameters.challenge_record_lovelace,
+      terminal_datum.remaining_challenger_lovelace - challenger_fee + parameters.challenge_record_lovelace + payout,
     ),
-    terminal_datum.remaining_challenger_lovelace > tx.fee,
+    terminal_datum.remaining_challenger_lovelace >= challenger_fee,
     challenger_output_count == 1,
   }
 }

@@ -655,7 +655,9 @@ describe("initialization emulator", () => {
         toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)
       ],
     ).toEqual(1n);
-    expect(latest.utxo.assets.lovelace ?? 0n).toBeGreaterThan(0n);
+    // Init funds the root for its linked shape rather than at Lucid's
+    // minimum, so the first commit need not top the root up.
+    expect(latest.utxo.assets.lovelace).toBe(SDK.STATE_QUEUE_NODE_MIN_LOVELACE);
   });
 
   it("rejects re-initialization when the hub_oracle one-shot nonce is already consumed", async () => {

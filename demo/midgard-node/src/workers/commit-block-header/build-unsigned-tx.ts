@@ -41,7 +41,6 @@ import {
   updateLatestBlocksDatumAndGetTheNewHeaderLocal,
 } from "./state-queue.js";
 
-const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 
 export type BuiltCommitTx = {
@@ -300,7 +299,7 @@ export const buildUnsignedCommitTx = (
         validFrom: txValidFromMs,
         validTo: txValidToMs,
         witness: witnessContext,
-        headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+        headerNodeLovelace: SDK.STATE_QUEUE_NODE_MIN_LOVELACE,
       });
 
       const txSize = txBuilder.toCBOR().length / 2;

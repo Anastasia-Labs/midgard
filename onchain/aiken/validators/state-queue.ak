@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/address.{
   Address, from_script, from_verification_key, with_delegation_key,
@@ -39,8 +40,10 @@ use midgard/state_queue.{
   SlashActiveOperator, SlashRetiredOperator, SlashingApproach, SpendRedeemer,
   StateQueueNode, UnattestedTimeoutRemovalApproach,
   commit_bound_header_time_is_valid, confirmed_state_asset_name,
-  da_attestation_timeout_v1, decode_header_view, finalize_linked_list,
+  da_attestation_timeout_v1, decode_header_view,
+  element_output_has_no_reference_script, finalize_linked_list,
   get_confirmed_state_root, get_state_queue_node, no_da_attestation,
+  state_queue_node_min_lovelace_v1,
 }
 use midgard/state_queue_yield
 
@@ -50,6 +53,33 @@ pub fn commit_block_header_output_is_valid_v1(header: HeaderV1) -> Bool {
   and {
     header.start_time < header.end_time,
     header_v1_is_valid(header),
+  }
+}
+
+/// Exclusive upper bound (2^64) on the committed header's `block_slot`,
+/// `min_fee_a` and `min_fee_b`. No honest header reaches it: a Cardano slot
+/// number is a 64-bit word, and the ledger fee coefficients are 64-bit coin
+/// amounts. Below it a non-negative Int's CBOR encoding is at most 9 bytes.
+pub const commit_header_int_exclusive_bound_v1: Int = 18_446_744_073_709_551_616
+
+/// Commit-time width bound on every header field that nothing else bounds, so
+/// that a largest admissible state-queue node exists and
+/// `state_queue_node_min_lovelace_v1` can cover it. `header_v1_is_valid` bounds
+/// the count-tied roots to 32 bytes (or the empty root), the counts to their
+/// V1 maxima, `expected_network_id` to 0 or 1 and `protocol_version` to V1, but
+/// not `utxos_root` and only the lower end of the three Ints below. The rest of
+/// the header is bounded by carry-over or equality in the commit arm:
+/// `prev_utxos_root`, `prev_header_hash` and `start_time` equal fields of the
+/// anchor (itself bounded by this rule or by genesis), `end_time` is the
+/// ledger-validated validity upper bound, and `operator_vkey` is a required
+/// signer (a 28-byte key hash). This lives here, not in `header_v1_is_valid`,
+/// so the TypeScript twin and the fraud-proof goldens do not move.
+pub fn commit_block_header_width_is_bounded_v1(header: HeaderV1) -> Bool {
+  and {
+    bytearray.length(header.utxos_root) == 32,
+    header.block_slot < commit_header_int_exclusive_bound_v1,
+    header.min_fee_a < commit_header_int_exclusive_bound_v1,
+    header.min_fee_b < commit_header_int_exclusive_bound_v1,
   }
 }
 
@@ -394,6 +424,8 @@ fn merge_to_confirmed_state(
   let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } = self
   expect Some(continued_confirmed_state_output) = outputs
     |> list.at(confirmed_state_output_index)
+  expect
+    element_output_has_no_reference_script(continued_confirmed_state_output)
 
   {
     let
@@ -636,10 +668,11 @@ pub fn remove_fraudulent_blocks_link_v1(
 ) -> Bool {
   expect Some(fraudulent_node_output) = outputs
     |> list.at(fraudulent_node_output_index)
+  expect element_output_has_no_reference_script(fraudulent_node_output)
   {
     let
         _fraudulent_header_input,
-        _fraudulent_header_lovelace_change,
+        fraudulent_header_lovelace_change,
         m_fraudulent_header_hash,
         _fraudulent_header_data,
         _removed_block_input,
@@ -654,6 +687,9 @@ pub fn remove_fraudulent_blocks_link_v1(
       tx_mint: mint,
     )
     expect Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
+    // The state-queue node lovelace floor: the continued node never loses
+    // lovelace. It may gain the removed node's, which the SDK builder folds in.
+    expect fraudulent_header_lovelace_change >= 0
     expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode = removed_node_header_data
     expect
       decode_header_view(removed_node_header).protocol_version == protocol_version_v1
@@ -679,10 +715,11 @@ pub fn remove_last_fraudulent_block_v1(
 ) -> Bool {
   expect Some(anchor_element_output) = outputs
     |> list.at(anchor_element_output_index)
+  expect element_output_has_no_reference_script(anchor_element_output)
   {
     let
         _anchor_input,
-        _anchor_lovelace_change,
+        anchor_lovelace_change,
         _m_anchor_key,
         _anchor_data,
         _removed_node_input,
@@ -697,6 +734,9 @@ pub fn remove_last_fraudulent_block_v1(
       tx_mint: mint,
     )
     expect fraudulent_blocks_header_hash == removed_node_header_hash
+    // The state-queue node lovelace floor: the continued anchor never loses
+    // lovelace. It may gain the removed node's, which the SDK builder folds in.
+    expect anchor_lovelace_change >= 0
     expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode = removed_node_header_data
     let removed_header_view = decode_header_view(removed_node_header)
     expect removed_header_view.operator_vkey == fraudulent_operator
@@ -789,10 +829,11 @@ pub fn prune_unattested_block_descendant_v1(
 
   expect Some(timed_out_node_output) = outputs
     |> list.at(timed_out_node_output_index)
+  expect element_output_has_no_reference_script(timed_out_node_output)
   {
     let
         _timed_out_node_input,
-        _timed_out_node_lovelace_change,
+        timed_out_node_lovelace_change,
         m_timed_out_node_header_hash,
         timed_out_node_data,
         _removed_descendant_input,
@@ -807,6 +848,9 @@ pub fn prune_unattested_block_descendant_v1(
       tx_mint: mint,
     )
     expect Some(authenticated_header_hash) = m_timed_out_node_header_hash
+    // The state-queue node lovelace floor: the continued node keeps its
+    // lovelace exactly.
+    expect timed_out_node_lovelace_change == 0
     expect timed_out_node: StateQueueNode = timed_out_node_data
     expect
       unattested_block_timeout_elapsed_v1(
@@ -838,6 +882,7 @@ pub fn remove_last_unattested_block_v1(
 ) -> Bool {
   expect Some(predecessor_output) = outputs
     |> list.at(predecessor_output_index)
+  expect element_output_has_no_reference_script(predecessor_output)
   {
     let
         _predecessor_input,
@@ -922,10 +967,11 @@ pub fn prune_unavailable_block_descendant_v1(
 
   expect Some(unavailable_node_output) = outputs
     |> list.at(unavailable_node_output_index)
+  expect element_output_has_no_reference_script(unavailable_node_output)
   {
     let
         _anchor_input,
-        _anchor_lovelace_change,
+        anchor_lovelace_change,
         m_anchor_header_hash,
         anchor_node_data,
         _removed_input,
@@ -940,6 +986,9 @@ pub fn prune_unavailable_block_descendant_v1(
       tx_mint: mint,
     )
     expect Some(authenticated_header_hash) = m_anchor_header_hash
+    // The state-queue node lovelace floor: the continued node keeps its
+    // lovelace exactly.
+    expect anchor_lovelace_change == 0
     expect anchor_node: StateQueueNode = anchor_node_data
     expect
       unavailable_target_matches_v1(
@@ -966,6 +1015,7 @@ pub fn remove_unavailable_head_v1(
 ) -> Bool {
   expect Some(confirmed_state_output) = outputs
     |> list.at(confirmed_state_output_index)
+  expect element_output_has_no_reference_script(confirmed_state_output)
   {
     let
         _root_input,
@@ -1042,16 +1092,21 @@ pub fn validate_commit_block_header_v1(
     |> list.at(continued_latest_block_output_index)
   expect Some(new_block_output) = outputs
     |> list.at(new_block_output_index)
+  // Neither the continued anchor (root or tail) nor the new node may carry a
+  // reference script: the state-queue element invariant, which
+  // `validate_completed_fraud_record` relies on to mark a fraudulent node.
+  expect element_output_has_no_reference_script(continued_anchor_element_output)
+  expect element_output_has_no_reference_script(new_block_output)
 
   // 3. Indicated outputs must properly adhere to unordered linked list
   //    append requirements.
   {
     let
         _anchor_input,
-        _anchor_lovelace_change,
+        anchor_lovelace_change,
         m_anchor_key,
         anchor_data,
-        _output_header_lovelace,
+        output_header_lovelace,
         output_header_key,
         output_node_data
       <- linked_list.append_unordered(
@@ -1060,6 +1115,22 @@ pub fn validate_commit_block_header_v1(
       inputs: inputs,
       tx_mint: mint,
     )
+
+    // The state-queue node lovelace floor
+    // (`state_queue_node_min_lovelace_v1`): the new node starts at or above
+    // it, and a continued node anchor keeps its lovelace exactly, so a queued
+    // node can never be drained below it by a later append. A root anchor
+    // (`m_anchor_key == None`) may only gain lovelace: linking the root grows
+    // its datum and so its ledger minimum, and merge and
+    // `remove_unavailable_head_v1` leave the root's lovelace free, so an
+    // exact pin here would let whoever empties the queue leave the root below
+    // the minimum of its linked shape and refuse every later commit.
+    expect output_header_lovelace >= state_queue_node_min_lovelace_v1
+    expect
+      when m_anchor_key is {
+        None -> anchor_lovelace_change >= 0
+        Some(_) -> anchor_lovelace_change == 0
+      }
 
     expect
       correction_lock.references_idle(
@@ -1089,6 +1160,7 @@ pub fn validate_commit_block_header_v1(
     let output_header = decode_header_view(output_header_data)
     let output_operator_vkey = output_header.operator_vkey
     expect commit_block_header_output_is_valid_v1(output_header)
+    expect commit_block_header_width_is_bounded_v1(output_header)
     expect
       commit_bound_header_time_is_valid(
         output_header.start_time,
@@ -1647,6 +1719,9 @@ validator mint(
         let Transaction { outputs, mint, validity_range, .. } = self
 
         expect Some(root_output) = outputs |> list.at(output_index)
+        // The genesis root starts the state-queue element invariant: no
+        // element output carries a reference script.
+        expect element_output_has_no_reference_script(root_output)
         let correction_lock_output = correction_lock.unique_output(
           outputs,
           hub_oracle_script_hash,

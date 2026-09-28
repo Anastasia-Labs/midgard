@@ -90,6 +90,16 @@ export const CompletedFraudWitness = asDataType<CompletedFraudWitness>(
 
 export const STATE_QUEUE_ROOT_ASSET_NAME = fromText("MIDGARD_CONFIRMED_STATE");
 
+/**
+ * The state-queue node lovelace floor, the twin of Aiken's
+ * `state_queue_node_min_lovelace_v1`. The commit arm refuses a new block node
+ * holding less, and no later arm lets a queued node's lovelace fall. The
+ * floor covers the ledger minimum of the largest node the commit arm admits,
+ * so a node can always take the `Challenged` status at an availability Open,
+ * which carries the node value exactly. Every commit builder pays it.
+ */
+export const STATE_QUEUE_NODE_MIN_LOVELACE = 5_000_000n;
+
 type ActiveOperatorSpendTxRedeemer =
   | "ListStateTransition"
   | BuildTxWithRedeemer;
@@ -391,7 +401,10 @@ export type StateQueueFetchConfig = {
 export type EmulatorStateQueueCommitBlockHeaderParams = {
   anchorUTxO: StateQueueUTxO;
   newHeader: Header;
-  /** Reserve ADA for later availability datum transitions, which preserve value. */
+  /**
+   * The new node's lovelace; defaults to `STATE_QUEUE_NODE_MIN_LOVELACE`, the
+   * on-chain floor. A value below the floor is refused by the commit arm.
+   */
   headerNodeLovelace?: bigint;
   additionalInputs?: readonly UTxO[];
   validFrom?: bigint;
@@ -1254,9 +1267,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
         { kind: "inline", value: newBlockDatumCbor },
         {
           ...newBlockAssets,
-          ...(params.headerNodeLovelace === undefined
-            ? {}
-            : { lovelace: params.headerNodeLovelace }),
+          lovelace: params.headerNodeLovelace ?? STATE_QUEUE_NODE_MIN_LOVELACE,
         },
       )
       .pay.ToContract(

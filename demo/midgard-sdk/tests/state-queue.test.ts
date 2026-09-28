@@ -86,6 +86,7 @@ import {
   scriptRewardAddress,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  STATE_QUEUE_NODE_MIN_LOVELACE,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
   StateQueueSpendRedeemer,
@@ -853,7 +854,8 @@ const submitSetupTx = async ({
         kind: "inline",
         value: rootNodeDatum(Data.castTo(confirmedState, ConfirmedState)),
       },
-      stateQueueAssets,
+      // Covers the linked root, so a commit need not top the root up.
+      { ...stateQueueAssets, lovelace: STATE_QUEUE_NODE_MIN_LOVELACE },
     )
     .mintAssets(activeOperatorsAssets, Data.void())
     .pay.ToContract(
@@ -1354,13 +1356,34 @@ describe("state-queue emulator builders", () => {
     const stateQueueRoot = await Effect.runPromise(
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
+    const commitArgs = {
+      emulator,
+      lucid,
+      contracts,
+      anchor: stateQueueRoot,
+      header,
+      operator,
+      scheduler: setup.scheduler,
+      hubOracle: setup.hubOracle,
+      correctionLock: setup.correctionLock,
+      commitYield: setup.commitYield,
+      activeOperatorInput: setup.activeOperatorInput,
+    };
+    // The real state-queue validator refuses a new node one lovelace below
+    // the on-chain floor; the honest commit below pays exactly the floor.
+    await expect(
+      submitCommitHeaderTx({
+        ...commitArgs,
+        headerNodeLovelace: STATE_QUEUE_NODE_MIN_LOVELACE - 1n,
+      }),
+    ).rejects.toThrow(/failed script execution Withdraw\[0\]/);
     const commit = await submitCommitHeaderTx({
       emulator,
       lucid,
       contracts,
       anchor: stateQueueRoot,
       header,
-      headerNodeLovelace: 5_000_000n,
+      headerNodeLovelace: STATE_QUEUE_NODE_MIN_LOVELACE,
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
@@ -1387,7 +1410,9 @@ describe("state-queue emulator builders", () => {
       );
     }
     const committedBlock = commit.block;
-    expect(committedBlock.utxo.assets.lovelace).toBe(5_000_000n);
+    expect(committedBlock.utxo.assets.lovelace).toBe(
+      STATE_QUEUE_NODE_MIN_LOVELACE,
+    );
     const continuedRoot = await Effect.runPromise(
       utxoToStateQueueUTxO(continuedRootUtxo, contracts.stateQueue.policyId),
     );

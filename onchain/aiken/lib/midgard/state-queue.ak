@@ -2,7 +2,7 @@ use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
-use cardano/assets.{AssetName, PolicyId}
+use cardano/assets.{AssetName, Lovelace, PolicyId}
 use cardano/transaction.{
   Input, Output, OutputReference, Transaction, ValidityRange,
 }
@@ -76,6 +76,38 @@ pub fn commit_bound_header_time_is_valid(
 
 pub type Datum =
   linked_list.Element<ConfirmedState, StateQueueNode>
+
+/// Inductive invariant: no state-queue element output (a block node or the
+/// confirmed-state root) carries a reference script. Every arm that creates
+/// an element and every arm that continues one requires this of its output,
+/// so an element input never carries one either. The linked-list library does
+/// not look at reference scripts, so each arm pins it here.
+/// `validate_completed_fraud_record` requires `None` on both sides of the
+/// fraud node; without this invariant a node carrying a reference script
+/// could never be marked, and fraud in it would be unprovable.
+pub fn element_output_has_no_reference_script(output: Output) -> Bool {
+  output.reference_script == None
+}
+
+/// Inductive invariant: every state-queue block node holds at least this much
+/// lovelace from its commit until it leaves the queue. The commit arm requires
+/// it of the new node and keeps the continued anchor's lovelace unchanged;
+/// every other arm that continues a node keeps its lovelace unchanged or lets
+/// it only grow, and the DA status transitions carry the node value exactly.
+///
+/// The Attested -> Challenged Open cannot add lovelace to the node (its value
+/// is carried exactly and the challenger's input is fixed), so the node must
+/// already cover the ledger minimum of its largest admissible shape: a header
+/// at every width bound the commit arm enforces
+/// (`commit_block_header_width_is_bounded_v1`), `Challenged` with two 32-byte
+/// fields, a 32-byte `proven_fraud`, a link, the node NFT and a base address.
+/// Without it, an attested block whose node cannot hold `Challenged` could
+/// never be challenged, and it would merge unslashed. The value is
+/// ledger-derived and network-independent; a `coins_per_utxo_byte` rise past
+/// it needs a redeploy. The off-chain twin is the SDK's
+/// `STATE_QUEUE_NODE_MIN_LOVELACE`, and an SDK codec test measures the
+/// headroom against the ledger minimum.
+pub const state_queue_node_min_lovelace_v1: Lovelace = 5_000_000
 
 pub type SpendRedeemer {
   LinkedListMutation
@@ -466,7 +498,9 @@ pub fn validate_da_availability_status_transition(
 
 /// The one decode of both node sides. Only the status may change: the node's
 /// full value, address, link, header and fraud marker are carried exactly
-/// (HAZ-13). The continuation receives the input header's end time.
+/// (HAZ-13), and the output carries no reference script (the state-queue
+/// element invariant, `element_output_has_no_reference_script`). The
+/// continuation receives the input header's end time.
 fn da_availability_status_transition(
   inputs: List<Input>,
   outputs: List<Output>,
@@ -485,6 +519,7 @@ fn da_availability_status_transition(
   let Output { address: output_address, value: output_value, .. } = output
   expect input_address == output_address
   expect output_value == input_value
+  expect element_output_has_no_reference_script(output)
 
   let _input_lovelace, input_header_hash, input_block, input_link <- get_node_info(
     input_output,

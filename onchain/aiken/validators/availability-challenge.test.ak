@@ -16,6 +16,7 @@ use env
 use midgard/availability_challenge as availability
 use midgard/availability_challenge_yield as yielding
 use midgard/da_attestation_types as da_attestation
+use midgard/da_bond_pool as pool
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{ConfirmedState, HeaderV1, protocol_version_v1}
 use midgard/state_queue
@@ -31,6 +32,9 @@ const availability_policy =
 
 const da_policy = #"34343434343434343434343434343434343434343434343434343434"
 
+const da_bond_pool_policy =
+  #"35353535353535353535353535353535353535353535353535353535"
+
 const miscellaneous_policy =
   #"44444444444444444444444444444444444444444444444444444444"
 
@@ -44,6 +48,11 @@ const terminal =
 
 const empty_root =
   #"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
+
+/// A 28-byte script hash no fixture uses, attached as a state-queue node
+/// output's reference script by the DA-core reference-script negatives.
+const node_reference_script_probe =
+  #"f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3"
 
 const close_fee = 100
 
@@ -1588,7 +1597,8 @@ fn with_yield_index(
       record_input_index,
       terminal_accumulator_input_index,
       state_queue_mint_redeemer_index,
-      da_slash_output_index,
+      pool_input_index,
+      pool_output_index,
       challenger_refund_output_index,
       ..
     } ->
@@ -1598,7 +1608,8 @@ fn with_yield_index(
         record_input_index,
         terminal_accumulator_input_index,
         state_queue_mint_redeemer_index,
-        da_slash_output_index,
+        pool_input_index,
+        pool_output_index,
         challenger_refund_output_index,
       }
   }
@@ -1649,6 +1660,7 @@ fn invokes_availability_yield(
       availability_yields.timeout.withdraw(
         availability_policy,
         hub_policy,
+        da_bond_pool_policy,
         parameters(),
         availability.Yield,
         address.Script(da_policy),
@@ -1751,7 +1763,8 @@ fn validates_coordinate_inputs(
 
 fn timeout_redeemer(
   state_queue_mint_redeemer_index: Int,
-  da_slash_output_index: Int,
+  pool_input_index: Int,
+  pool_output_index: Int,
   challenger_refund_output_index: Int,
 ) -> availability.MintRedeemerV1 {
   availability.TimeoutChallenge {
@@ -1760,7 +1773,8 @@ fn timeout_redeemer(
     record_input_index: 0,
     terminal_accumulator_input_index: 1,
     state_queue_mint_redeemer_index,
-    da_slash_output_index,
+    pool_input_index,
+    pool_output_index,
     challenger_refund_output_index,
   }
 }
@@ -1788,23 +1802,81 @@ fn timeout_state_queue_redeemer(
   }
 }
 
-/// Interim timeout: the expired record, its terminal accumulator and the
-/// challenged node are spent; the challenger alone is paid, the unspent bond
-/// plus the record's lovelace. The pooled-bond slash output is not built here.
+/// The challenger reserve the timeout fixtures leave on the terminal
+/// accumulator.
+const timeout_remaining_lovelace = 10_000_000_000
+
+/// A pool holding exactly one bond above the floor: `backing == da_bond`.
+const full_pool_lovelace = 10_005_000_000
+
+fn bonded_pool_datum() -> Data {
+  let datum: Data = pool.Bonded
+  datum
+}
+
+fn withdrawing_pool_datum(unlock_at: Int) -> Data {
+  let datum: Data = pool.Withdrawing { unlock_at }
+  datum
+}
+
+fn pool_value(lovelace: Int) -> assets.Value {
+  assets.from_lovelace(lovelace)
+    |> assets.add(da_bond_pool_policy, pool.da_bond_pool_asset_name, 1)
+}
+
+/// The pool UTxO as the pool validator keeps it: `Script(pool policy)` with no
+/// stake credential, lovelace plus the NFT, inline datum, no reference script.
+fn pool_output(datum: Data, lovelace: Int) -> Output {
+  Output {
+    address: address.from_script(da_bond_pool_policy),
+    value: pool_value(lovelace),
+    datum: InlineDatum(datum),
+    reference_script: None,
+  }
+}
+
+fn pool_input(datum: Data, lovelace: Int) -> Input {
+  Input { output_reference: outref(6), output: pool_output(datum, lovelace) }
+}
+
+/// The slash split, computed here independently of the validator:
+/// `(taken, fee_part, payout)` with `taken = min(da_bond, max(0, lovelace -
+/// floor))`, `fee_part = min(penalty, taken)` and `payout = taken - fee_part`.
+fn slash_split(pool_lovelace: Int) -> (Int, Int, Int) {
+  let params = parameters()
+  let backing = if pool_lovelace > params.da_bond_pool_floor_lovelace {
+    pool_lovelace - params.da_bond_pool_floor_lovelace
+  } else {
+    0
+  }
+  let taken = if backing < params.da_bond_lovelace {
+    backing
+  } else {
+    params.da_bond_lovelace
+  }
+  let fee_part = if taken < params.da_slash_penalty_lovelace {
+    taken
+  } else {
+    params.da_slash_penalty_lovelace
+  }
+  (taken, fee_part, taken - fee_part)
+}
+
+/// An honest Timeout: the expired record, its terminal accumulator, the
+/// challenged node and the pool are spent. Inputs are the record (0), the
+/// terminal accumulator (1), the node (2) and the pool (3); outputs are the
+/// one merged challenger output (0) and the slashed pool (1), as
+/// `timeout_redeemer(0, 3, 1, 0)` names them. `challenger_fee` is `c`: the
+/// fee is `fee_part + c` and the challenger output
+/// `remaining - c + challenge_record_lovelace + payout`.
 fn timeout_transaction(
   bound_challenge_asset_name: ByteArray,
-  fee: Int,
-  da_slash_output_index: Int,
-  challenger_refund_output_index: Int,
+  pool_datum: Data,
+  pool_lovelace: Int,
+  challenger_fee: Int,
 ) -> Transaction {
-  let receipt_lovelace = 6_000_000_000
-  let carrier_lovelace = 4_000_000_000
-  let redeemer = timeout_redeemer(
-    0,
-    da_slash_output_index,
-    challenger_refund_output_index,
-  )
-  let redeemer_data: Data = redeemer
+  let (taken, fee_part, payout) = slash_split(pool_lovelace)
+  let redeemer_data: Data = timeout_redeemer(0, 3, 1, 0)
   let state_queue_redeemer_data: Data = timeout_state_queue_redeemer(
     bound_challenge_asset_name,
   )
@@ -1816,17 +1888,19 @@ fn timeout_transaction(
         commitment(),
         1,
         True,
-        receipt_lovelace + carrier_lovelace,
+        timeout_remaining_lovelace,
         availability.small_response_window_ms_v1,
         3,
       ),
       timed_out_node_input(commitment()),
+      pool_input(pool_datum, pool_lovelace),
     ],
     outputs: [
       enterprise_output(
         challenger,
-        receipt_lovelace + carrier_lovelace - fee + parameters().challenge_record_lovelace,
+        timeout_remaining_lovelace - challenger_fee + parameters().challenge_record_lovelace + payout,
       ),
+      pool_output(pool_datum, pool_lovelace - taken),
     ],
     reference_inputs: [hub_reference_input()],
     mint: assets.from_asset(availability_policy, challenge_asset_name(), -1)
@@ -1835,7 +1909,7 @@ fn timeout_transaction(
       Pair(Mint(state_queue_policy), state_queue_redeemer_data),
       Pair(Mint(availability_policy), redeemer_data),
     ],
-    fee,
+    fee: fee_part + challenger_fee,
     validity_range: between(
       availability.small_response_window_ms_v1,
       availability.small_response_window_ms_v1 + 1_000,
@@ -1844,9 +1918,11 @@ fn timeout_transaction(
 }
 
 fn maximum_timeout_redeemer() -> availability.MintRedeemerV1 {
-  timeout_redeemer(0, 0, 0)
+  timeout_redeemer(0, 3, 1, 0)
 }
 
+/// The 16-tranche Timeout with a full `Bonded` pool: the penalty pays the
+/// whole fee (`c = 0`) and the challenger output carries the payout.
 fn maximum_timeout_transaction() -> Transaction {
   let redeemer = maximum_timeout_redeemer()
   let redeemer_data: Data = redeemer
@@ -1854,6 +1930,7 @@ fn maximum_timeout_transaction() -> Transaction {
     challenge_asset_name(),
   )
   let remaining = maximum_challenger_component_lovelace()
+  let (taken, fee_part, payout) = slash_split(full_pool_lovelace)
   Transaction {
     ..transaction.placeholder,
     inputs: [
@@ -1867,12 +1944,14 @@ fn maximum_timeout_transaction() -> Transaction {
         40,
       ),
       timed_out_node_input(maximum_commitment()),
+      pool_input(bonded_pool_datum(), full_pool_lovelace),
     ],
     outputs: [
       enterprise_output(
         challenger,
-        remaining - close_fee + parameters().challenge_record_lovelace,
+        remaining + parameters().challenge_record_lovelace + payout,
       ),
+      pool_output(bonded_pool_datum(), full_pool_lovelace - taken),
     ],
     reference_inputs: [hub_reference_input()],
     mint: assets.from_asset(availability_policy, challenge_asset_name(), -1)
@@ -1881,7 +1960,7 @@ fn maximum_timeout_transaction() -> Transaction {
       Pair(Mint(state_queue_policy), state_queue_redeemer_data),
       Pair(Mint(availability_policy), redeemer_data),
     ],
-    fee: close_fee,
+    fee: fee_part,
     validity_range: between(
       availability.full_response_window_ms_v1,
       availability.full_response_window_ms_v1 + 1_000,
@@ -2218,15 +2297,18 @@ test q58_maximum_publication_first_leaf_cross_language_vector_matches() {
   ) == #"2b89672abc40b0ba8c2d4db8cd236b2ca6bda31ab8db93517f88e88dff114675"
 }
 
-/// Positive control for the interim timeout: the expired record and terminal
-/// accumulator burn, the challenged node matches the record on both fields,
-/// and the challenger's single output returns the unspent bond plus the
-/// record's lovelace.
-test q58_timeout_accepts_interim_record_refund_to_challenger() {
-  let redeemer = timeout_redeemer(0, 0, 0)
-  let tx = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
+/// Positive control: a full `Bonded` pool (`backing == da_bond`). The
+/// penalty pays the whole fee (`c = 0`), the challenger output carries the
+/// reserve, the record's lovelace and `da_bond - penalty`, and the pool keeps
+/// its floor. The record and terminal accumulator Coordinate spends accept.
+test q58_timeout_accepts_full_pool_slash_with_the_penalty_as_the_fee() {
+  let tx = honest_timeout()
+  expect [challenger_output, slashed_pool] = tx.outputs
   and {
-    validates_close(tx, redeemer),
+    tx.fee == 2_500_000_000,
+    assets.lovelace_of(challenger_output.value) == 10_000_000_000 + 27_000_000 + 7_500_000_000,
+    slashed_pool.value == pool_value(5_000_000),
+    validates_honest_timeout_redeemer(tx),
     validates_coordinate_inputs(tx, [0, 1], 1),
   }
 }
@@ -2241,28 +2323,19 @@ test q58_coordinate_rejects_undeclared_availability_input() fail {
   validates_coordinate_input(tx, 3, 0)
 }
 
-test q58_timeout_rejects_excessive_fee() fail {
-  let fee = parameters().max_timeout_fee_lovelace + 1
-  let redeemer = timeout_redeemer(0, 0, 0)
-  validates_close(
-    timeout_transaction(challenge_asset_name(), fee, 0, 0),
-    redeemer,
-  )
-}
-
 test q58_timeout_rejects_premature_validity() fail {
-  let redeemer = timeout_redeemer(0, 0, 0)
-  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
+  let base = honest_timeout()
   let tx = Transaction {
     ..base,
     validity_range: between(0, availability.small_response_window_ms_v1 - 1),
   }
-  validates_close(tx, redeemer)
+  validates_honest_timeout_redeemer(tx)
 }
 
 test q58_timeout_rejects_wrong_state_queue_challenge_identity() fail {
-  let redeemer = timeout_redeemer(0, 0, 0)
-  validates_close(timeout_transaction(terminal, close_fee, 0, 0), redeemer)
+  validates_honest_timeout_redeemer(
+    timeout_transaction(terminal, bonded_pool_datum(), full_pool_lovelace, 0),
+  )
 }
 
 /// The record and terminal accumulator indices name one input. The index
@@ -2276,36 +2349,38 @@ test q58_timeout_rejects_aliased_record_and_terminal_input_index() fail {
     record_input_index: 0,
     terminal_accumulator_input_index: 0,
     state_queue_mint_redeemer_index: 0,
-    da_slash_output_index: 0,
+    pool_input_index: 3,
+    pool_output_index: 1,
     challenger_refund_output_index: 0,
   }
-  validates_close(
-    timeout_transaction(challenge_asset_name(), close_fee, 0, 0),
-    redeemer,
-  )
+  validates_close(honest_timeout(), redeemer)
 }
 
 /// G6: the node the removal spends must carry the record's commitment hash
-/// as well as its challenge name.
+/// as well as its challenge name. Refused by the node status match
+/// `Challenged{commitment_hash_v1(record.commitment), record.challenge_asset_name}`.
 test q58_timeout_rejects_node_challenged_under_another_commitment() fail {
-  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
-  expect [record, terminal_input, _] = base.inputs
+  let base = honest_timeout()
+  expect [record, terminal_input, _, pool_in] = base.inputs
   let foreign_node = timed_out_node_input(maximum_commitment())
-  validates_close(
-    Transaction { ..base, inputs: [record, terminal_input, foreign_node] },
-    timeout_redeemer(0, 0, 0),
+  validates_honest_timeout_redeemer(
+    Transaction {
+      ..base,
+      inputs: [record, terminal_input, foreign_node, pool_in],
+    },
   )
 }
 
+/// A one-lovelace second output to the challenger. Refused by the challenger
+/// output count (`challenger_output_count == 1`).
 test q58_timeout_rejects_second_challenger_output() fail {
-  let redeemer = timeout_redeemer(0, 0, 0)
-  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
-  let extended_outputs = list.concat(
-    base.outputs,
-    [enterprise_output(challenger, 1)],
+  let base = honest_timeout()
+  validates_honest_timeout_redeemer(
+    Transaction {
+      ..base,
+      outputs: list.concat(base.outputs, [enterprise_output(challenger, 1)]),
+    },
   )
-  let tx = Transaction { ..base, outputs: extended_outputs }
-  validates_close(tx, redeemer)
 }
 
 test q58_maximum_16_tranche_final_close_applied_topology_fits() {
@@ -2325,7 +2400,7 @@ test q58_maximum_16_tranche_final_close_mint_policy_measurement() {
 test q58_maximum_16_tranche_final_timeout_applied_topology_fits() {
   let tx = maximum_timeout_transaction()
   and {
-    list.length(tx.inputs) == 3,
+    list.length(tx.inputs) == 4,
     validates_close(tx, maximum_timeout_redeemer()),
     validates_coordinate_inputs(tx, [0, 1], 1),
   }
@@ -2713,6 +2788,28 @@ test availability_open_rejects_record_with_reference_script() fail {
   )
 }
 
+/// Control: `q58_open_accepts_exact_distinct_inputs_outputs_and_signer`. The
+/// only change is a reference script on the challenged node output
+/// (`state_queue_output_index` 1). Refused by
+/// `expect element_output_has_no_reference_script(output)` in the state-queue
+/// DA core `da_availability_status_transition`, reached through
+/// `validate_da_challenge_open_transition_v1`. A node carrying a reference
+/// script could never be marked by `validate_completed_fraud_record`.
+test availability_open_rejects_state_queue_output_with_reference_script() fail {
+  let base = honest_open()
+  expect [record, node, ..rest] = base.outputs
+  validates_open(
+    Transaction {
+      ..base,
+      outputs: [
+        record,
+        Output { ..node, reference_script: Some(node_reference_script_probe) },
+        ..rest
+      ],
+    },
+  )
+}
+
 /// The record's datum by hash only. Refused by the inline-datum read of the
 /// record: the open takes the commitment preimage from the inline datum.
 test availability_open_rejects_record_datum_by_hash() fail {
@@ -2924,32 +3021,557 @@ test q58_close_rejects_second_challenger_output() fail {
   )
 }
 
-/// The transaction of the honest interim Timeout control
-/// `q58_timeout_accepts_interim_record_refund_to_challenger`.
+/// Control: `q58_close_accepts_exact_distinct_terminal_outputs`. The only
+/// change is a reference script on the published node output
+/// (`state_queue_output_index` 0). Refused by
+/// `expect element_output_has_no_reference_script(output)` in the state-queue
+/// DA core `da_availability_status_transition`, reached through
+/// `validate_da_availability_status_transition`. A node carrying a reference
+/// script could never be marked by `validate_completed_fraud_record`.
+test q58_close_rejects_state_queue_output_with_reference_script() fail {
+  let base = honest_close()
+  expect [node, refund] = base.outputs
+  validates_honest_close_redeemer(
+    Transaction {
+      ..base,
+      outputs: [
+        Output { ..node, reference_script: Some(node_reference_script_probe) },
+        refund,
+      ],
+    },
+  )
+}
+
+// -- #693 Timeout slashes the DA bond pool ---------------------------------
+//
+// Test parameters: da_bond 10,000,000,000, penalty 2,500,000,000, floor
+// 5,000,000, max_timeout_fee 1,200,000, challenge record 27,000,000; the
+// challenger reserve on the terminal accumulator is 10,000,000,000.
+
+/// The transaction of the honest Timeout control
+/// `q58_timeout_accepts_full_pool_slash_with_the_penalty_as_the_fee`: a full
+/// `Bonded` pool and `c = 0`.
 fn honest_timeout() -> Transaction {
-  timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
+  timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    full_pool_lovelace,
+    0,
+  )
 }
 
 fn validates_honest_timeout_redeemer(tx: Transaction) -> Bool {
-  validates_close(tx, timeout_redeemer(0, 0, 0))
+  validates_close(tx, timeout_redeemer(0, 3, 1, 0))
+}
+
+/// An honest Timeout accepted by the timeout yield and by the record and
+/// terminal accumulator Coordinate spends.
+fn timeout_is_accepted(tx: Transaction) -> Bool {
+  and {
+    validates_honest_timeout_redeemer(tx),
+    validates_coordinate_inputs(tx, [0, 1], 1),
+  }
 }
 
 fn timeout_with_record(record: Input) -> Transaction {
   let base = honest_timeout()
-  expect [_, terminal_input, node] = base.inputs
-  Transaction { ..base, inputs: [record, terminal_input, node] }
+  expect [_, terminal_input, node, pool_in] = base.inputs
+  Transaction { ..base, inputs: [record, terminal_input, node, pool_in] }
+}
+
+fn timeout_with_pool_input(tx: Transaction, pool_in: Input) -> Transaction {
+  expect [record, terminal_input, node, _] = tx.inputs
+  Transaction { ..tx, inputs: [record, terminal_input, node, pool_in] }
+}
+
+fn timeout_with_pool_output(tx: Transaction, pool_out: Output) -> Transaction {
+  expect [challenger_output, _] = tx.outputs
+  Transaction { ..tx, outputs: [challenger_output, pool_out] }
 }
 
 fn timeout_with_refund_delta(delta: Int) -> Transaction {
   let base = honest_timeout()
-  expect [refund] = base.outputs
+  expect [refund, slashed_pool] = base.outputs
   Transaction {
     ..base,
     outputs: [
       Output { ..refund, value: assets.add(refund.value, "", "", delta) },
+      slashed_pool,
     ],
   }
 }
+
+/// The honest full-pool Timeout with its fee lowered by `delta` and the same
+/// lovelace moved into the merged challenger output: the transaction still
+/// balances, and the challenger keeps part of the penalty share.
+fn timeout_with_fee_moved_to_challenger(
+  base: Transaction,
+  delta: Int,
+) -> Transaction {
+  expect [refund, slashed_pool] = base.outputs
+  Transaction {
+    ..base,
+    fee: base.fee - delta,
+    outputs: [
+      Output { ..refund, value: assets.add(refund.value, "", "", delta) },
+      slashed_pool,
+    ],
+  }
+}
+
+fn honest_pool_output() -> Output {
+  expect [_, slashed_pool] = honest_timeout().outputs
+  slashed_pool
+}
+
+// -- Accepted: the exact split ----------------------------------------------
+
+/// Backing above one bond: the pool gives up exactly `da_bond` and keeps the
+/// rest. fee = penalty (c = 0), challenger = reserve + record + 7,500,000,000.
+test q58_timeout_accepts_pool_above_one_bond_taking_exactly_the_bond() {
+  let tx = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    13_005_000_000,
+    0,
+  )
+  expect [challenger_output, slashed_pool] = tx.outputs
+  and {
+    tx.fee == 2_500_000_000,
+    assets.lovelace_of(challenger_output.value) == 10_000_000_000 + 27_000_000 + 7_500_000_000,
+    slashed_pool.value == pool_value(3_005_000_000),
+    timeout_is_accepted(tx),
+  }
+}
+
+/// Partial pool (penalty < backing < da_bond): taken = 6,000,000,000, the
+/// penalty is burned in full, payout = 3,500,000,000, the pool is left at its
+/// floor. Here the challenger also adds c = 150,000 to the fee.
+test q58_timeout_accepts_partial_pool_penalty_first_split() {
+  let tx = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    6_005_000_000,
+    150_000,
+  )
+  expect [challenger_output, slashed_pool] = tx.outputs
+  and {
+    tx.fee == 2_500_000_000 + 150_000,
+    assets.lovelace_of(challenger_output.value) == 10_000_000_000 - 150_000 + 27_000_000 + 3_500_000_000,
+    slashed_pool.value == pool_value(5_000_000),
+    timeout_is_accepted(tx),
+  }
+}
+
+/// Backing below the penalty: everything taken goes to the fee, payout 0,
+/// with c = 0 and with c = 100.
+test q58_timeout_accepts_pool_below_the_penalty_all_taken_to_the_fee() {
+  let no_contribution = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    1_005_000_000,
+    0,
+  )
+  let contribution = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    1_005_000_000,
+    100,
+  )
+  expect [challenger_output, slashed_pool] = contribution.outputs
+  and {
+    no_contribution.fee == 1_000_000_000,
+    contribution.fee == 1_000_000_100,
+    assets.lovelace_of(challenger_output.value) == 10_000_000_000 - 100 + 27_000_000,
+    slashed_pool.value == pool_value(5_000_000),
+    timeout_is_accepted(no_contribution),
+    timeout_is_accepted(contribution),
+  }
+}
+
+/// Empty pool, at the floor and below it (backing clamps to 0): the pool is
+/// still spent and passes through unchanged, and c pays the whole fee.
+test q58_timeout_accepts_empty_pool_passing_through_with_c_as_the_fee() {
+  let at_floor = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    5_000_000,
+    close_fee,
+  )
+  let below_floor = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    2_000_000,
+    close_fee,
+  )
+  expect [challenger_output, slashed_pool] = at_floor.outputs
+  expect [_, below_floor_pool] = below_floor.outputs
+  and {
+    at_floor.fee == close_fee,
+    below_floor.fee == close_fee,
+    assets.lovelace_of(challenger_output.value) == 10_000_000_000 - close_fee + 27_000_000,
+    slashed_pool.value == pool_value(5_000_000),
+    below_floor_pool.value == pool_value(2_000_000),
+    timeout_is_accepted(at_floor),
+    timeout_is_accepted(below_floor),
+  }
+}
+
+/// Dust payout (backing = penalty + 1): the merged challenger output carries
+/// the one lovelace of payout, so the Timeout stays buildable (D3).
+test q58_timeout_accepts_dust_payout_in_the_merged_challenger_output() {
+  let tx = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    2_505_000_001,
+    0,
+  )
+  expect [challenger_output, slashed_pool] = tx.outputs
+  and {
+    tx.fee == 2_500_000_000,
+    assets.lovelace_of(challenger_output.value) == 10_000_000_000 + 27_000_000 + 1,
+    slashed_pool.value == pool_value(5_000_000),
+    timeout_is_accepted(tx),
+  }
+}
+
+/// G2: a `Withdrawing` pool is slashed like a `Bonded` one and keeps its
+/// `unlock_at`.
+test q58_timeout_accepts_withdrawing_pool_and_keeps_unlock_at() {
+  let tx = timeout_transaction(
+    challenge_asset_name(),
+    withdrawing_pool_datum(123_456),
+    full_pool_lovelace,
+    0,
+  )
+  expect [_, slashed_pool] = tx.outputs
+  and {
+    slashed_pool.datum == InlineDatum(withdrawing_pool_datum(123_456)),
+    slashed_pool.value == pool_value(5_000_000),
+    timeout_is_accepted(tx),
+  }
+}
+
+/// Control for the fee cap: c at exactly `max_timeout_fee_lovelace` on top of
+/// the full penalty. The cap binds c, not the whole fee.
+test q58_timeout_accepts_challenger_fee_at_the_cap_on_top_of_the_penalty() {
+  let tx = timeout_transaction(
+    challenge_asset_name(),
+    bonded_pool_datum(),
+    full_pool_lovelace,
+    1_200_000,
+  )
+  and {
+    tx.fee == 2_500_000_000 + 1_200_000,
+    timeout_is_accepted(tx),
+  }
+}
+
+/// Control for the fee cap on an empty pool: c = the cap pays the whole fee.
+test q58_timeout_accepts_challenger_fee_at_the_cap_on_an_empty_pool() {
+  timeout_is_accepted(
+    timeout_transaction(
+      challenge_asset_name(),
+      bonded_pool_datum(),
+      5_000_000,
+      1_200_000,
+    ),
+  )
+}
+
+// -- Refused: the pool input ------------------------------------------------
+
+/// `pool_input_index` names the challenged node instead of the pool. Refused
+/// by `get_authentic_pool_input`'s credential pin
+/// (`Script(da_bond_pool_policy_id)`); its NFT pin would refuse it next.
+test q58_timeout_rejects_pool_index_naming_a_non_pool_input() fail {
+  validates_close(honest_timeout(), timeout_redeemer(0, 2, 1, 0))
+}
+
+/// The pool left out altogether, in the shape a committee that challenged its
+/// own withheld block would want: no pool input or output, c pays the fee and
+/// the challenger gets back only the reserve and the record's lovelace.
+/// Refused by `get_authentic_pool_input`: there is no input at
+/// `pool_input_index`.
+test q58_timeout_rejects_without_pool_input() fail {
+  let base = honest_timeout()
+  expect [record, terminal_input, node, _] = base.inputs
+  timeout_is_accepted(
+    Transaction {
+      ..base,
+      inputs: [record, terminal_input, node],
+      outputs: [
+        enterprise_output(
+          challenger,
+          timeout_remaining_lovelace - close_fee + parameters().challenge_record_lovelace,
+        ),
+      ],
+      fee: close_fee,
+    },
+  )
+}
+
+/// A counterfeit pool at the pool address without the NFT. Refused by
+/// `get_authentic_pool_input`'s NFT quantity pin.
+test q58_timeout_rejects_counterfeit_pool_without_nft() fail {
+  let counterfeit = Input {
+    output_reference: outref(6),
+    output: Output {
+      ..pool_output(bonded_pool_datum(), full_pool_lovelace),
+      value: assets.from_lovelace(full_pool_lovelace),
+    },
+  }
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_input(honest_timeout(), counterfeit),
+  )
+}
+
+/// The NFT at another script credential, spent and continued there, so the
+/// continuation's address still equals the input's. Refused by
+/// `get_authentic_pool_input`'s credential pin
+/// (`Script(da_bond_pool_policy_id)`).
+test q58_timeout_rejects_pool_nft_at_another_credential() fail {
+  let elsewhere = address.from_script(miscellaneous_policy)
+  let pool_in = pool_input(bonded_pool_datum(), full_pool_lovelace)
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      timeout_with_pool_input(
+        honest_timeout(),
+        Input {
+          ..pool_in,
+          output: Output { ..pool_in.output, address: elsewhere },
+        },
+      ),
+      Output { ..honest_pool_output(), address: elsewhere },
+    ),
+  )
+}
+
+// -- Refused: the fee -------------------------------------------------------
+
+/// fee = fee_part - 1 + c with c = 0, the lovelace moved into the challenger
+/// output: the penalty share is not burned in full. Refused by
+/// `challenger_fee >= 0` (`c = tx.fee - fee_part`).
+test q58_timeout_rejects_fee_one_lovelace_below_the_penalty_share() fail {
+  timeout_is_accepted(timeout_with_fee_moved_to_challenger(honest_timeout(), 1))
+}
+
+/// c < 0 on a pool below the penalty (fee_part = taken): the fee is 1,000
+/// lovelace short of what the pool gives up, moved to the challenger. Refused
+/// by `challenger_fee >= 0`.
+test q58_timeout_rejects_negative_challenger_fee_on_a_short_pool() fail {
+  timeout_is_accepted(
+    timeout_with_fee_moved_to_challenger(
+      timeout_transaction(
+        challenge_asset_name(),
+        bonded_pool_datum(),
+        1_005_000_000,
+        0,
+      ),
+      1_000,
+    ),
+  )
+}
+
+/// c = max_timeout_fee + 1 on top of the full penalty. Refused by
+/// `challenger_fee <= max_timeout_fee_lovelace`.
+test q58_timeout_rejects_challenger_fee_one_above_the_cap() fail {
+  timeout_is_accepted(
+    timeout_transaction(
+      challenge_asset_name(),
+      bonded_pool_datum(),
+      full_pool_lovelace,
+      1_200_001,
+    ),
+  )
+}
+
+/// c = max_timeout_fee + 1 paying the whole fee of an empty pool. Refused by
+/// `challenger_fee <= max_timeout_fee_lovelace`.
+test q58_timeout_rejects_challenger_fee_one_above_the_cap_on_an_empty_pool() fail {
+  timeout_is_accepted(
+    timeout_transaction(
+      challenge_asset_name(),
+      bonded_pool_datum(),
+      5_000_000,
+      1_200_001,
+    ),
+  )
+}
+
+/// A zero fee on an empty pool. Refused by `tx.fee > 0`.
+test q58_timeout_rejects_zero_fee_on_an_empty_pool() fail {
+  timeout_is_accepted(
+    timeout_transaction(
+      challenge_asset_name(),
+      bonded_pool_datum(),
+      5_000_000,
+      0,
+    ),
+  )
+}
+
+// -- Refused: the challenger output -----------------------------------------
+
+/// Refused by the merged challenger output amount
+/// (`remaining - c + challenge_record_lovelace + payout`).
+test q58_timeout_rejects_merged_challenger_output_one_lovelace_short() fail {
+  validates_honest_timeout_redeemer(timeout_with_refund_delta(-1))
+}
+
+/// Refused by the merged challenger output amount
+/// (`remaining - c + challenge_record_lovelace + payout`).
+test q58_timeout_rejects_merged_challenger_output_one_lovelace_over() fail {
+  validates_honest_timeout_redeemer(timeout_with_refund_delta(1))
+}
+
+/// The refund and the payout split across two challenger outputs, together
+/// exactly the merged amount. Refused by the merged amount at
+/// `challenger_refund_output_index` and by the challenger output count
+/// (`challenger_output_count == 1`).
+test q58_timeout_rejects_refund_and_payout_split_across_two_outputs() fail {
+  let base = honest_timeout()
+  expect [merged, slashed_pool] = base.outputs
+  let payout = 7_500_000_000
+  validates_honest_timeout_redeemer(
+    Transaction {
+      ..base,
+      outputs: [
+        Output { ..merged, value: assets.add(merged.value, "", "", -payout) },
+        slashed_pool,
+        enterprise_output(challenger, payout),
+      ],
+    },
+  )
+}
+
+// -- Refused: the pool output -----------------------------------------------
+
+/// The pool gives up one lovelace more than `taken`. Refused by the pool
+/// output value (`pool_in - taken` lovelace plus the NFT, exactly).
+test q58_timeout_rejects_pool_output_one_lovelace_short() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      honest_timeout(),
+      pool_output(bonded_pool_datum(), 4_999_999),
+    ),
+  )
+}
+
+/// The pool gives up one lovelace less than `taken`. Refused by the pool
+/// output value.
+test q58_timeout_rejects_pool_output_one_lovelace_over() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      honest_timeout(),
+      pool_output(bonded_pool_datum(), 5_000_001),
+    ),
+  )
+}
+
+/// The pool output without its NFT. Refused by the pool output value.
+test q58_timeout_rejects_pool_output_without_nft() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      honest_timeout(),
+      Output { ..honest_pool_output(), value: assets.from_lovelace(5_000_000) },
+    ),
+  )
+}
+
+/// The pool output with an extra token. Refused by the pool output value.
+test q58_timeout_rejects_pool_output_with_extra_token() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      honest_timeout(),
+      Output {
+        ..honest_pool_output(),
+        value: pool_value(5_000_000)
+          |> assets.add(miscellaneous_policy, "extra", 1),
+      },
+    ),
+  )
+}
+
+/// `Bonded` continued as `Withdrawing`. Refused by the pool output datum
+/// (`pool_output.datum == pool_input.datum`).
+test q58_timeout_rejects_pool_output_bonded_to_withdrawing() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      honest_timeout(),
+      pool_output(withdrawing_pool_datum(0), 5_000_000),
+    ),
+  )
+}
+
+/// `Withdrawing` continued as `Bonded`. Refused by the pool output datum.
+test q58_timeout_rejects_pool_output_withdrawing_to_bonded() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      timeout_transaction(
+        challenge_asset_name(),
+        withdrawing_pool_datum(123_456),
+        full_pool_lovelace,
+        0,
+      ),
+      pool_output(bonded_pool_datum(), 5_000_000),
+    ),
+  )
+}
+
+/// `Withdrawing` continued with an earlier `unlock_at`. Refused by the pool
+/// output datum.
+test q58_timeout_rejects_pool_output_with_another_unlock_at() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      timeout_transaction(
+        challenge_asset_name(),
+        withdrawing_pool_datum(123_456),
+        full_pool_lovelace,
+        0,
+      ),
+      pool_output(withdrawing_pool_datum(0), 5_000_000),
+    ),
+  )
+}
+
+/// The pool output with a stake credential attached. Refused by the pool
+/// output address (`pool_output.address == pool_input.address`).
+test q58_timeout_rejects_pool_output_with_changed_stake_credential() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      honest_timeout(),
+      Output {
+        ..honest_pool_output(),
+        address: address.from_script(da_bond_pool_policy)
+          |> address.with_delegation_key(operator),
+      },
+    ),
+  )
+}
+
+/// The pool output with a reference script. Refused by
+/// `pool_output.reference_script == None`.
+test q58_timeout_rejects_pool_output_with_reference_script() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_pool_output(
+      honest_timeout(),
+      Output {
+        ..honest_pool_output(),
+        reference_script: Some(miscellaneous_policy),
+      },
+    ),
+  )
+}
+
+/// The pool output index names the challenger output. Refused by
+/// `pool_output_index != challenger_refund_output_index` (the pool address pin
+/// would refuse it next).
+test q58_timeout_rejects_pool_output_index_aliased_with_challenger_output() fail {
+  validates_close(honest_timeout(), timeout_redeemer(0, 3, 0, 0))
+}
+
+// -- Refused: the record and the node ---------------------------------------
 
 /// Refused by the record authentication's address pin.
 test q58_timeout_rejects_record_at_foreign_address() fail {
@@ -2977,7 +3599,7 @@ test q58_timeout_rejects_record_with_extra_lovelace() fail {
 /// `Challenged{commitment_hash_v1(record.commitment), record.challenge_asset_name}`.
 test q58_timeout_rejects_node_challenged_under_another_challenge() fail {
   let base = honest_timeout()
-  expect [record, terminal_input, _] = base.inputs
+  expect [record, terminal_input, _, pool_in] = base.inputs
   let node = Input {
     output_reference: outref(4),
     output: node_output(
@@ -2988,20 +3610,8 @@ test q58_timeout_rejects_node_challenged_under_another_challenge() fail {
     ),
   }
   validates_honest_timeout_redeemer(
-    Transaction { ..base, inputs: [record, terminal_input, node] },
+    Transaction { ..base, inputs: [record, terminal_input, node, pool_in] },
   )
-}
-
-/// Refused by the challenger refund amount
-/// (`remaining - fee + challenge_record_lovelace`).
-test q58_timeout_rejects_challenger_refund_one_lovelace_short() fail {
-  validates_honest_timeout_redeemer(timeout_with_refund_delta(-1))
-}
-
-/// Refused by the challenger refund amount
-/// (`remaining - fee + challenge_record_lovelace`).
-test q58_timeout_rejects_challenger_refund_one_lovelace_over() fail {
-  validates_honest_timeout_redeemer(timeout_with_refund_delta(1))
 }
 
 /// The Close control's coordinate spend of the record, with the mint
@@ -3030,7 +3640,7 @@ test q58_coordinate_rejects_undeclared_input_under_timeout() fail {
   }
   validates_coordinate_input(
     Transaction { ..base, inputs: list.concat(base.inputs, [unrelated]) },
-    3,
+    4,
     1,
   )
 }

@@ -7,8 +7,8 @@ and the SDK availability builders.
 Status, recurrence and line conventions are as in
 [invariants-state-queue.md](invariants-state-queue.md). This file is shallower
 than the state-queue and fraud-proof files: it covers the governor, the
-attestation apply and rescue paths, the pooled committee bond at apply, and
-the commitment binding a challenge record carries.
+attestation apply and rescue paths, the pooled committee bond at apply and at
+timeout, and the commitment binding a challenge record carries.
 
 ## DA1. Governed thresholds never drop below two thirds
 
@@ -77,16 +77,22 @@ Status: PARTIAL (the settle and timeout caps are tested; the open and close
 caps were read but no refusing test was checked).
 
 Rule: every availability-challenge transition pays a positive fee no larger
-than its governed cap.
+than its governed cap. At timeout the cap bounds only the challenger's share
+`c = tx.fee - fee_part`; the slashed penalty share is burned on top of it
+(DA8).
 
-Enforced: `lib/midgard/availability-challenge-validation.ak:290-291` (open),
-`:559-560` (settle), `:636-637` (close), `:843-844` (timeout)
+Enforced: `lib/midgard/availability-challenge-validation.ak:292-293` (open),
+`:561-562` (settle), `:638-639` (close), `:877-879` (timeout: `tx.fee > 0`,
+`0 <= c <= max_timeout_fee_lovelace`)
 `[aiken-test: availability-challenge.test/]`
-(`q58_settle_rejects_excessive_fee` `:2140`,
-`q58_settle_rejects_batched_second_tranche_fee_charge` `:2160`,
-`q58_timeout_rejects_excessive_fee` `:2236`; all fail).
+(`q58_settle_rejects_excessive_fee` `:2227`,
+`q58_settle_rejects_batched_second_tranche_fee_charge` `:2247`,
+`q58_timeout_rejects_challenger_fee_one_above_the_cap` `:3378`,
+`..._on_an_empty_pool` `:3391`, `q58_timeout_rejects_zero_fee_on_an_empty_pool`
+`:3403`; all fail).
 
-Provenance: `3e3090aa1` (2026-08-31, the availability-challenge wave).
+Provenance: `3e3090aa1` (2026-08-31, the availability-challenge wave); #693
+moved the timeout cap onto `c` (decision D4).
 
 ## DA5. An attestation applies only while the pooled bond backs it, and its value returns to its beneficiary
 
@@ -125,25 +131,36 @@ be `Attested{commitment_hash_v1(record.commitment)}`; close and the correction
 lock's timeout path compare the node against both
 `Challenged{commitment_hash_v1(record.commitment), record.challenge_asset_name}`.
 Only the status may change across these transitions: the node's value,
-address, link, header and fraud marker are carried exactly.
+address, link, header and fraud marker are carried exactly, and the node
+output carries no reference script (SQ10 in
+[invariants-state-queue.md](invariants-state-queue.md)).
 
-Enforced: `commitment_hash_v1` (`lib/midgard/availability-challenge.ak:219`,
+Enforced: `commitment_hash_v1` (`lib/midgard/availability-challenge.ak:226`,
 the one copy); the shared node core `da_availability_status_transition`
-(`lib/midgard/state-queue.ak:470`, value equality `:487`); the timeout node
-match `timeout_node_status_matches`
-(`lib/midgard/availability-challenge-validation.ak:763`)
+(`lib/midgard/state-queue.ak:504`, value equality `:521`, reference-script pin
+`:522`); the timeout node match `timeout_node_status_matches`
+(`lib/midgard/availability-challenge-validation.ak:765`)
 `[aiken-test: availability-challenge.test/]`
 (`da_attestation_apply_rejects_node_attested_to_another_commitment`
 `validators/da-attestation.ak:1930`;
-`availability_open_rejects_record_preimage_of_another_attested_hash` `:2538`,
-`q58_close_rejects_node_challenged_under_another_commitment` `:2866` and
-`..._under_another_challenge` `:2880`,
-`q58_timeout_rejects_node_challenged_under_another_commitment` `:2278` and
-`..._under_another_challenge` `:2966`; all fail).
-Blind spot: the node output's `reference_script` is not pinned by this core
-`[review]`.
+`availability_open_rejects_record_preimage_of_another_attested_hash` `:2625`,
+`q58_close_rejects_node_challenged_under_another_commitment` `:2975` and
+`..._under_another_challenge` `:2989`,
+`q58_timeout_rejects_node_challenged_under_another_commitment` `:2362` and
+`..._under_another_challenge` `:3600`; all fail). The reference-script pin is
+refused through each user: Apply
+(`da_attestation_apply_rejects_node_output_reference_script`
+`validators/da-attestation.ak:1989`, control `:1656`), Open
+(`availability_open_rejects_state_queue_output_with_reference_script`
+`:2798`, control `q58_open_accepts_exact_distinct_inputs_outputs_and_signer`
+`:1996`), Close (`q58_close_rejects_state_queue_output_with_reference_script`
+`:3031`, control `q58_close_accepts_exact_distinct_terminal_outputs` `:1973`),
+and at the core (`da_core_apply_rejects_node_output_reference_script`,
+`da_core_open_...` and `da_core_close_...` at
+`lib/midgard/state-queue.test.ak:667-683`, control `:655`); all fail.
 
-Provenance: #688 (decisions C1, C4, C5, G6).
+Provenance: #688 (decisions C1, C4, C5, G6); #693 (ruling P2) added the
+reference-script pin.
 
 ## DA7. A challenge record is authentic only at the availability address holding its token
 
@@ -158,47 +175,117 @@ close and timeout accept a record only through `authenticated_challenge_record`
 the one availability-address input holding the DACH. An open lands strictly
 before `header.end_time + da_challenge_window_ms_v1`.
 
-Enforced: `lib/midgard/availability-challenge-validation.ak:71` (reader),
-`:314` (window), `:329` (record datum); `validators/correction-lock.ak`
+Enforced: `lib/midgard/availability-challenge-validation.ak:73` (reader),
+`:316` (window), `:331` (record datum); `validators/correction-lock.ak`
 Idle acquire `[aiken-test: availability-challenge.test/]`
-(`availability_open_accepts_last_millisecond_of_challenge_window` `:1936`,
-`availability_open_rejects_upper_bound_at_challenge_window_end` `:1945`,
-`availability_open_rejects_record_at_foreign_script_address` `:2582`,
-`q58_settle_rejects_record_at_foreign_address` `:2783`,
-`q58_close_rejects_record_without_challenge_token` `:2850`)
+(`availability_open_accepts_last_millisecond_of_challenge_window` `:2019`,
+`availability_open_rejects_upper_bound_at_challenge_window_end` `:2028`,
+`availability_open_rejects_record_at_foreign_script_address` `:2669`,
+`q58_settle_rejects_record_at_foreign_address` `:2892`,
+`q58_close_rejects_record_without_challenge_token` `:2959`)
 `[aiken-test: correction-lock/]`
 (`correction_lock_handler_rejects_availability_acquire_with_record_at_foreign_address`
 `:784`, `..._with_record_without_challenge_token` `:803`; all fail).
 
 The index-distinctness checks of open (`challenger_input_index` and
-`record_output_index` against the state-queue indices, `:292-293`), close
-(`:640-643`) and timeout (`:846`) are implied by the address, value and token
-shapes each role must have, and none can fail alone: with any one removed,
-every test stays green, including the `q58_*_aliased_*` tests, whose
-refusals are overdetermined. They are defence in depth, as in DA5.
+`record_output_index` against the state-queue indices, `:294-295`), close
+(`:642-645`) and timeout (`:881-883`, `:885`: record against terminal input,
+pool input against record and terminal inputs, pool output against challenger
+output) are implied by the address, value and token shapes each role must
+have, and none can fail alone: with any one removed, every test stays green,
+including the `q58_*_aliased_*` tests, whose refusals are overdetermined. They are defence in depth, as in DA5.
 
 Provenance: #688 (decisions C4, C6, G6).
 
-## Known gap: the interim timeout does not bind the pool slash
+## DA8. A lost challenge charges the pool, up to one bond, in the timeout transaction
 
-Status: PARTIAL (gap recorded; closed by #693).
+Status: PARTIAL (tests and mutation runs read on the #693 worktree, not yet
+committed; no provenance commit to cite).
 
-The per-block DA bond, its mint arm and its yield are deleted (#688); the
-pooled committee bond (#687) has its own quorum withdrawal. Until #693, a
-timeout burns the record and refunds the challenger
-(`q58_timeout_accepts_interim_record_refund_to_challenger`
-`validators/availability-challenge.test.ak:2217`), and
-`validate_timeout_challenge` neither reads the pool nor pays a slash;
-`TimeoutChallenge.da_slash_output_index` is unread.
+Rule: `TimeoutChallenge` spends the authentic DA bond pool at
+`pool_input_index` (payment credential `Script(da_bond_pool_policy_id)`, NFT
+quantity 1, inline datum). The pool input is mandatory even at zero backing,
+and a `Withdrawing` pool is slashable. With the clamped backing
+`max(0, lovelace - floor)`:
 
-The pool is still exposed. The pool's `Slash` arm
-(`validators/da-bond-pool.ak:182-222`) checks only that the state-queue mint
-redeemer is constructor 5 and that the correction lock is `Idle`, then that
-the pool keeps `pool_in - min(da_bond, backing)`. It does not pin where the
-taken lovelace goes. An interim timeout transaction meets both conditions, so
-whoever submits it can also spend the pool through `Slash` and send up to one
-bond to any address. The loss is capped at one bond per expired challenge.
-#693 closes it: the timeout yield requires the pool input, pins the pool
-output, and pays `taken` to the fee (`fee_part`) and the one challenger output
-(`payout`) (decisions D1-D3). A change in this area must say whether it
-closes, keeps or widens that gap.
+- `taken = min(da_bond, backing)`, `fee_part = min(penalty, taken)`,
+  `payout = taken - fee_part`;
+- the pool output at `pool_output_index` keeps the input's address and datum
+  exactly, carries no reference script, and holds `pool_in - taken` lovelace
+  plus the NFT and no other token;
+- `tx.fee == fee_part + c` with `0 <= c <= max_timeout_fee_lovelace`, and `c`
+  comes out of the challenger's remaining reserve;
+- exactly one output pays the challenger, carrying
+  `remaining - c + challenge_record_lovelace + payout` (refund and payout
+  merged, D3, so a payout below min-UTxO never makes the timeout unbuildable);
+- the pool input differs from the record and terminal inputs, and the pool
+  output from the challenger output. These index checks are defence in depth
+  (DA7): none can fail alone, because the pool input and output must carry the
+  pool NFT at the pool script and the challenger output must be an exact
+  enterprise ADA output.
+
+The pool's `Slash` arm runs only beside this rule (B4, G4). It requires the
+state-queue mint redeemer to be constructor 5
+(`RemoveUnavailableBlockAfterTimeout`) and the correction lock to be `Idle`.
+At an Idle lock that redeemer forces a DACH burn of -1
+(`validators/state-queue.ak:1373-1374`; a `Locked` resume step mints 0 at
+`:1375-1378`), and only `TimeoutChallenge` can make it there. Open mints and
+takes two inputs (`lib/midgard/availability-challenge-validation.ak:290`,
+`:324`), Settle burns only a tranche token (`:583`), and Close takes exactly
+three inputs and two outputs (`:640-641`) and continues the node to
+`Published` (`:661`). The pool NFT is unique, so Slash and the yield read the
+same pool output; TopUp and the three withdraw arms each contradict the
+yield's value or datum equality.
+
+Enforced: `validate_timeout_challenge`
+(`lib/midgard/availability-challenge-validation.ak:807`; split `:859-871`,
+fee `:877-879`, indices `:882-885` (defence in depth), pool output
+`:886-892`, challenger output `:925-931`) with the pool reader
+`get_authentic_pool_input`
+(`lib/midgard/da-bond-pool.ak:97`); the pool `Slash` arm
+(`validators/da-bond-pool.ak:182-220`, constructor 5 at `:198-199`, Idle lock
+at `:201-205`) `[aiken-test: availability-challenge.test/]`. Accepted with
+exact amounts: `q58_timeout_accepts_full_pool_slash_with_the_penalty_as_the_fee`
+`:2304` and `q58_timeout_accepts_*` at `:3131-3271` (above one bond, partial,
+below the penalty, empty pool, dust payout, `Withdrawing` keeping
+`unlock_at`, `c` at the cap). Refused, all fail:
+`q58_timeout_rejects_without_pool_input` `:3296`,
+`..._pool_index_naming_a_non_pool_input` `:3287`,
+`..._counterfeit_pool_without_nft` `:3316`,
+`..._pool_nft_at_another_credential` `:3333`,
+`..._fee_one_lovelace_below_the_penalty_share` `:3355`,
+`..._negative_challenger_fee_on_a_short_pool` `:3362`,
+`..._challenger_fee_one_above_the_cap` `:3378`,
+`..._merged_challenger_output_one_lovelace_short` `:3418` and `_over` `:3424`,
+`..._second_challenger_output` `:2376`,
+`..._refund_and_payout_split_across_two_outputs` `:3432`, the
+`q58_timeout_rejects_pool_output_*` family at `:3452-3555` (lovelace ±1, no
+NFT, extra token, datum changed either way or to another `unlock_at`, stake
+credential, reference script), and
+`..._pool_output_index_aliased_with_challenger_output` `:3570`, which the
+address and value shapes refuse, not `:885` alone (with `:882`, `:883` and
+`:885` deleted it still fails; no test aliases the pool input with the record
+or terminal input). The reader:
+`da_bond_pool_input_reader_*` at `lib/midgard/da-bond-pool.test.ak:201-241`
+`[aiken-test: midgard/da-bond-pool.test/]`. The Slash arm alone:
+`da_bond_pool_slash_rejects_without_state_queue_redeemer` `:773`,
+`..._other_state_queue_redeemer` `:797` and
+`..._resume_step_locked_correction_lock` `:824`, control
+`da_bond_pool_slash_accepts_honest_bonded` `:730`
+`[aiken-test: da-bond-pool.test/]`. The whole transaction (pool Slash,
+availability mint, timeout yield, state-queue removal, correction lock) runs
+every script in `[aiken-test: da-bond-pool-timeout.test/]`: accepted
+`pool_timeout_e2e_*_pool_prune` and `_head` at `:1208-1314`; refused, each
+with an every-other-script-accepts control,
+`pool_timeout_e2e_resume_step_*_pool_refuses_slash` `:1364-1368`,
+`..._close_swap_*_close_yield_refuses` `:1421-1425`,
+`..._optimised_close_*_close_yield_refuses` `:1434-1438` and
+`..._without_pool_*_timeout_yield_refuses` `:1467-1471` (prune and head
+each), and `..._top_up_in_place_of_slash_pool_refuses` `:1498`.
+
+Provenance: #693 (decisions D1-D4, G2, G3, G4, B4). The interim rule it
+replaces, from #688, refunded the challenger and took nothing from the pool.
+Blind spot: Slash never reads the availability mint redeemer; against a
+Close in its place it relies on Close's input and output counts and its node
+transition, so relaxing Close (for example, batching it) reopens a drain
+`[review]`.

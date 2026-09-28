@@ -440,9 +440,8 @@ export const createPublishedWatcherBlockActor = async ({
             SDK.utxoToStateQueueUTxO(anchor, contracts.stateQueue.policyId),
           ),
           newHeader: block.header,
-          // Match the node's commit reserve: attaching availability status
-          // enlarges this datum while the availability policy preserves value.
-          headerNodeLovelace: 5_000_000n,
+          // The on-chain node lovelace floor, which the node's commit pays.
+          headerNodeLovelace: SDK.STATE_QUEUE_NODE_MIN_LOVELACE,
           additionalInputs: [await plain()],
           validFrom: BigInt(chain.now() - 60_000),
           validTo: block.header.endTime + 1n,

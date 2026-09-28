@@ -1,6 +1,7 @@
 //// Unit coverage for `lib/midgard/da-bond-pool.ak`: the backing clamp, the
-//// authenticated pool reader #688's Apply uses, and the two cross-module
-//// facts the pool's Slash arm reads cheaply instead of decoding in full.
+//// authenticated pool readers (the reference input #688's Apply reads, the
+//// spent input #693's Timeout slashes), and the two cross-module facts the
+//// pool's Slash arm reads cheaply instead of decoding in full.
 ////
 //// GUARD -> TEST MAP
 ////
@@ -16,6 +17,18 @@
 ////     -> da_bond_pool_reader_rejects_missing_nft
 ////   inline datum
 ////     -> da_bond_pool_reader_rejects_datum_hash
+////
+//// get_authentic_pool_input
+////   honest, both states
+////     -> da_bond_pool_input_reader_accepts_authentic_pool_in_both_states
+////   payment credential `Script(pool_policy_id)`
+////     -> da_bond_pool_input_reader_rejects_other_credential
+////   NFT quantity 1
+////     -> da_bond_pool_input_reader_rejects_missing_nft
+////   inline datum
+////     -> da_bond_pool_input_reader_rejects_datum_hash
+////   input present at the index
+////     -> da_bond_pool_input_reader_rejects_missing_input
 ////
 //// remove_unavailable_block_after_timeout_constructor_index (hazard T3)
 ////   -> da_bond_pool_pins_remove_unavailable_constructor_index
@@ -160,6 +173,73 @@ test da_bond_pool_reader_rejects_datum_hash() fail {
       ),
     },
   ).2nd > 0
+}
+
+// ---------------------------------------------------------------------------
+// Authenticated spent pool (the Timeout yield's pool input)
+// ---------------------------------------------------------------------------
+
+fn spent_pool(output: Output) -> Output {
+  pool.get_authentic_pool_input(
+    [
+      Input {
+        output_reference: outref(0),
+        output: Output {
+          ..output,
+          address: address.from_script(other_policy),
+          value: assets.from_lovelace(2_000_000),
+        },
+      },
+      Input { output_reference: outref(1), output },
+    ],
+    pool_policy,
+    1,
+  )
+}
+
+/// Either datum state passes and the output comes back unchanged.
+test da_bond_pool_input_reader_accepts_authentic_pool_in_both_states() {
+  let withdrawing = pool_output(505_000_000)
+  let bonded_datum: Data = pool.Bonded
+  let bonded = Output { ..withdrawing, datum: InlineDatum(bonded_datum) }
+  and {
+    spent_pool(withdrawing) == withdrawing,
+    spent_pool(bonded) == bonded,
+  }
+}
+
+/// Refused by the credential pin (`Script(pool_policy_id)`). The body is True
+/// whenever the reader returns, so only the pin's refusal keeps it green.
+test da_bond_pool_input_reader_rejects_other_credential() fail {
+  let honest = pool_output(505_000_000)
+  let mutated = Output { ..honest, address: address.from_script(other_policy) }
+  spent_pool(mutated) == mutated
+}
+
+/// Refused by the NFT quantity pin. The body is True whenever the reader
+/// returns, so only the pin's refusal keeps it green.
+test da_bond_pool_input_reader_rejects_missing_nft() fail {
+  let honest = pool_output(505_000_000)
+  let mutated = Output { ..honest, value: assets.from_lovelace(505_000_000) }
+  spent_pool(mutated) == mutated
+}
+
+/// Refused by the inline-datum pin. The body is True whenever the reader
+/// returns, so only the pin's refusal keeps it green.
+test da_bond_pool_input_reader_rejects_datum_hash() fail {
+  let honest = pool_output(505_000_000)
+  let mutated = Output {
+    ..honest,
+    datum: DatumHash(
+      #"abababababababababababababababababababababababababababababababab",
+    ),
+  }
+  spent_pool(mutated) == mutated
+}
+
+/// Refused: no input at the index.
+test da_bond_pool_input_reader_rejects_missing_input() fail {
+  pool.get_authentic_pool_input([], pool_policy, 0) == pool_output(505_000_000)
 }
 
 // ---------------------------------------------------------------------------

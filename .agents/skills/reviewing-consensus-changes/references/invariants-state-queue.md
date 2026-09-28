@@ -220,6 +220,116 @@ Provenance: `67b1b4d86` (2026-05-06) and `4e42e3f5e` (2026-06-05), both
 
 Recurrence: 2.
 
+## SQ10. Every state-queue element output carries no reference script
+
+Status: PARTIAL (tests and mutation runs read on the #693 worktree, not yet
+committed; no provenance commit to cite).
+
+Rule: every block node and the confirmed-state root is created with
+`reference_script == None`, and every arm that continues one pins `None`
+again, so by induction no element ever carries a script. It matters because
+`validate_completed_fraud_record` requires `None` on the fraud node, before
+and after: a node carrying a script made fraud unprovable, and the fraudulent
+block would merge.
+
+Enforced: one predicate, `element_output_has_no_reference_script`
+(`lib/midgard/state-queue.ak:88`). Creation: the `InitV1` genesis root
+(`validators/state-queue.ak:1724`) and the commit arm's new node (`:1099`).
+Continuation: the commit arm's anchor (`:1098`), the merge root (`:428`),
+the fraud link and last removals (`:671`, `:718`), the unattested prune and
+last removals (`:832`, `:885`), the unavailable prune and head removals
+(`:970`, `:1018`), and the DA core used by Apply, Open and Close
+(`da_availability_status_transition`, `lib/midgard/state-queue.ak:522`).
+`validate_completed_fraud_record` pins `None` itself (`:583-584`). Refused,
+each beside its honest control, all fail:
+
+- commit `[aiken-test: state-queue-commit.test/]`:
+  `state_queue_commit_rejects_new_node_reference_script_on_root_anchor` `:860`,
+  `..._on_node_anchor` `:872`,
+  `state_queue_commit_rejects_continued_root_anchor_reference_script` `:884`,
+  `..._continued_tail_anchor_reference_script` `:897`,
+  `state_queue_init_rejects_root_reference_script` `:1273`;
+- merge `[aiken-test: state-queue-merge.test/]`:
+  `merge_rejects_continued_root_reference_script` `:618`;
+- removals `[aiken-test: state-queue-removal.test/]`: the six
+  `*_rejects_continued_anchor_reference_script` tests (fraud link `:1726`,
+  fraud last `:1764`, unattested prune `:1808`, unattested last `:1844`,
+  unavailable prune `:1888`, unavailable head `:1924`);
+- the DA core `[aiken-test: midgard/state-queue.test/]`:
+  `da_core_apply_rejects_node_output_reference_script` `:667`,
+  `da_core_open_...` `:675`, `da_core_close_...` `:683`, and through each
+  user (Apply, Open, Close) as listed under DA6 in
+  [invariants-da.md](invariants-da.md).
+
+Provenance: #693, orchestrator ruling P2. The hole was pre-existing since
+`090436fc3`, which added the `None` requirement to the fraud record while the
+commit arm and the DA core left the script free. Review action: a new arm
+that creates or continues an element must call the predicate `[review]`.
+
+## SQ11. Every queued node holds the lovelace floor, and a committed header has a bounded width
+
+Status: PARTIAL (tests and mutation runs read on the #693 worktree, not yet
+committed; no provenance commit to cite).
+
+Rule: every state-queue node, from creation until it leaves the queue, holds
+at least `state_queue_node_min_lovelace_v1` (5 ADA), and that floor covers the
+ledger minimum of the largest admissible node (`Challenged` status, a
+proven-fraud mark, a link, a header at every width bound). It is inductive: a
+node is created at or above the floor, a continued node never loses lovelace,
+and the DA status transitions keep the node's value exactly. It matters
+because Open grows a node's datum (`Attested` to `Challenged`) and must keep
+its value exactly: a node below the minimum of its `Challenged` shape cannot
+be opened, and an unavailable attested block would merge unslashed. The floor
+only has a largest shape to cover if the committed header's width is bounded,
+so the commit arm bounds every header field it does not pin by carry-over.
+The confirmed-state root carries no DA status and is outside the floor, but a
+commit on the root links it, which grows its datum, so the commit arm lets a
+root anchor gain lovelace: merge and the unavailable-head removal leave the
+root's lovelace free, and an exact pin there would let whoever empties the
+queue leave the root too poor to relink and halt every later commit.
+
+Enforced: the constant (`lib/midgard/state-queue.ak:110`). Creation: the
+commit arm's new node `output_header_lovelace >=
+state_queue_node_min_lovelace_v1` (`validators/state-queue.ak:1128`).
+Continuation, per arm that continues an element:
+
+- commit anchor (`:1129-1133`): a node anchor `== 0`, a root anchor `>= 0`;
+- fraud link and last removals: `>= 0` (`:692`, `:739`), because their
+  builders fold the removed node's lovelace into the continued anchor;
+- unattested prune and last removal: `== 0` (`:853`, `:904`);
+- unavailable prune: `== 0` (`:991`);
+- merge root and unavailable-head removal: free (`_confirmed_state_lovelace_change`
+  `:433`, `_root_lovelace_change` `:1022`); both continue the root only;
+- the DA core used by Apply, Open and Close: value equality
+  (`lib/midgard/state-queue.ak:521`, DA6 in [invariants-da.md](invariants-da.md)).
+
+Width: `commit_block_header_width_is_bounded_v1` (`validators/state-queue.ak:77`,
+called at `:1163`) requires a 32-byte `utxos_root` and `block_slot`,
+`min_fee_a`, `min_fee_b` below `commit_header_int_exclusive_bound_v1` (2^64,
+`:63`). Tests `[aiken-test: state-queue-commit.test/]`: the constant pinned at
+5 ADA `:969` and the bound at 2^64 `:974`; fixtures at exactly the floor
+`:980`; above the floor accepted `:999`; floor − 1 refused on a root anchor
+`:1012` and a node anchor `:1025`; a root anchor losing one lovelace `:1038`,
+a node anchor losing one `:1052` and a tail anchor gaining one `:1066`, all
+refused; a root anchor topped up after a drain accepted `:1083`; every bounded
+Int at 2^64 − 1 accepted `:1109`; a 33- and a 31-byte `utxos_root` `:1127`,
+`:1140` and `block_slot`, `min_fee_a`, `min_fee_b` at the bound `:1153`,
+`:1169`, `:1185`, all refused. Removals `[aiken-test: state-queue-removal.test/]`:
+fraud link and last gains accepted and losses refused (`:1955-1974`),
+unattested and unavailable prune loss and gain refused (`:1981-2002`). The
+SDK codec test `demo/midgard-sdk/tests/state-queue-node-min-lovelace.test.ts`
+measures the largest admissible node against the floor with CML min-UTxO and
+pins the SDK constant at `5_000_000n`.
+
+Provenance: #693, orchestrator ruling P3 (T688R4P0N1); the root-anchor
+allowance is the #693 review fix for a permanent commit halt (T693R1consensus1).
+The gap was pre-existing (base `59b633d1d`): the commit arm and the fraud
+removal discarded both lovelace values. Review action: a new arm that creates
+a node must require the floor; a new arm that continues a node must pin its
+lovelace change to `== 0` or `>= 0`; a new arm that continues the root must
+not forbid the gain a relink needs; a new header field needs a width bound in
+the commit arm `[review]`.
+
 ## Miss patterns in this subtree
 
 - A check present in one arm and missing from its sibling (SQ5, SQ9).

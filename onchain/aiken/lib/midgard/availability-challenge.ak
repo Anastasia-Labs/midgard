@@ -114,13 +114,20 @@ pub type MintRedeemerV1 {
     state_queue_output_index: Int,
     challenger_refund_output_index: Int,
   }
+  /// Expired challenge: burns the record and its terminal accumulator and
+  /// slashes the pooled committee bond. `pool_input_index` names the pool
+  /// input (identified by the pool NFT under `da_bond_pool_policy_id`,
+  /// mandatory even at zero backing) and `pool_output_index` its continuing
+  /// output. `challenger_refund_output_index` names the one challenger output
+  /// that carries both the refund and the slash payout.
   TimeoutChallenge {
     yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
     record_input_index: Int,
     terminal_accumulator_input_index: Int,
     state_queue_mint_redeemer_index: Int,
-    da_slash_output_index: Int,
+    pool_input_index: Int,
+    pool_output_index: Int,
     challenger_refund_output_index: Int,
   }
 }

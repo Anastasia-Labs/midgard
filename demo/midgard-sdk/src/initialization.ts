@@ -63,6 +63,7 @@ import {
   SchedulerMintRedeemer,
 } from "./scheduler.js";
 import {
+  STATE_QUEUE_NODE_MIN_LOVELACE,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
 } from "./state-queue.js";
@@ -251,7 +252,12 @@ export const incompleteInitializationTxProgram = (
             ) as LinkedListNodeView["data"],
           ),
         },
-        stateQueueAssets,
+        // Fund the root at the floor, which covers the ledger minimum of its
+        // linked shape, larger than this unlinked genesis datum. Lucid's
+        // automatic minimum would fund only the unlinked datum, and the first
+        // commit would then have to top the root up (the commit arm lets a
+        // root anchor gain lovelace, never lose it).
+        { ...stateQueueAssets, lovelace: STATE_QUEUE_NODE_MIN_LOVELACE },
       )
       .mintAssets(
         registeredOperatorsAssets,

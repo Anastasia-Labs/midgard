@@ -106,7 +106,8 @@ test availability_status_spend_rejects_timeout_removal_arm() {
     record_input_index: 1,
     terminal_accumulator_input_index: 2,
     state_queue_mint_redeemer_index: 0,
-    da_slash_output_index: 0,
+    pool_input_index: 3,
+    pool_output_index: 0,
     challenger_refund_output_index: 1,
   }
   !state_queue_validator.availability_status_update_is_authorized_v1(
@@ -1667,4 +1668,337 @@ test completed_fraud_da_update_cannot_clear_marker() fail {
     state_queue.no_da_attestation,
     attested,
   )
+}
+
+// ---------------------------------------------------------------------------
+// State-queue element invariant: no continued anchor carries a reference
+// script. `validate_completed_fraud_record` requires the fraud node to carry
+// none, so every arm that continues an element pins
+// `element_output_has_no_reference_script` on its output. Each arm below runs
+// the same fixture as its existing control, with the continued anchor passed
+// through `rewrite`; the paired control passes it through unchanged.
+// ---------------------------------------------------------------------------
+
+const probe_reference_script =
+  #"f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3"
+
+fn unchanged(output: Output) -> Output {
+  output
+}
+
+fn with_probe_reference_script(output: Output) -> Output {
+  Output { ..output, reference_script: Some(probe_reference_script) }
+}
+
+/// `state_queue_removal_prunes_transitive_descendant_from_rotated_operator`,
+/// with the continued fraud-proved anchor passed through `rewrite`.
+fn fraud_link_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let fraudulent_anchor = node_input(
+    0,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    Some(descendant_header_hash),
+  )
+  let transitive_descendant = node_input(
+    1,
+    descendant_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    None,
+  )
+  state_queue_validator.remove_fraudulent_blocks_link_v1(
+    state_queue_policy,
+    inputs: [fraudulent_anchor, transitive_descendant],
+    outputs: [rewrite(continue_node(fraudulent_anchor, None))],
+    mint: burn_node(descendant_header_hash),
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    fraudulent_node_input_outref: fraudulent_anchor.output_reference,
+    fraudulent_node_output_index: 0,
+  )
+}
+
+test fraud_link_removal_reference_script_control() {
+  fraud_link_removal(unchanged)
+}
+
+/// Control: `fraud_link_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(fraudulent_node_output)` in
+/// `remove_fraudulent_blocks_link_v1`.
+test fraud_link_removal_rejects_continued_anchor_reference_script() fail {
+  fraud_link_removal(with_probe_reference_script)
+}
+
+/// `state_queue_removal_removes_terminal_fraud_proved_block`, with the
+/// continued parent passed through `rewrite`.
+fn fraud_last_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let parent = node_input(
+    0,
+    parent_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    Some(faulty_header_hash),
+  )
+  let fraudulent_tail = node_input(
+    1,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    None,
+  )
+  state_queue_validator.remove_last_fraudulent_block_v1(
+    state_queue_policy,
+    inputs: [parent, fraudulent_tail],
+    outputs: [rewrite(continue_node(parent, None))],
+    mint: burn_node(faulty_header_hash),
+    fraudulent_operator: faulty_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    anchor_element_input_outref: parent.output_reference,
+    anchor_element_output_index: 0,
+  )
+}
+
+test fraud_last_removal_reference_script_control() {
+  fraud_last_removal(unchanged)
+}
+
+/// Control: `fraud_last_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(anchor_element_output)` in
+/// `remove_last_fraudulent_block_v1`.
+test fraud_last_removal_rejects_continued_anchor_reference_script() fail {
+  fraud_last_removal(with_probe_reference_script)
+}
+
+/// `attestation_timeout_prunes_descendant_of_current_head`, with the continued
+/// timed-out head passed through `rewrite`.
+fn unattested_prune(rewrite: fn(Output) -> Output) -> Bool {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    2,
+    descendant_header_hash,
+    header(rotated_operator, timed_out_header_hash),
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.prune_unattested_block_descendant_v1(
+    state_queue_policy,
+    inputs: [timed_out_head, descendant],
+    outputs: [rewrite(continue_node(timed_out_head, None))],
+    reference_inputs: [root],
+    mint: burn_node(descendant_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_ref_input_index: 0,
+    timed_out_node_input_outref: timed_out_head.output_reference,
+    timed_out_node_output_index: 0,
+  )
+}
+
+test unattested_prune_reference_script_control() {
+  unattested_prune(unchanged)
+}
+
+/// Control: `unattested_prune_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(timed_out_node_output)` in
+/// `prune_unattested_block_descendant_v1`.
+test unattested_prune_rejects_continued_anchor_reference_script() fail {
+  unattested_prune(with_probe_reference_script)
+}
+
+/// `attestation_timeout_removes_terminal_unattested_head_at_boundary`, with the
+/// continued confirmed-state root passed through `rewrite`.
+fn unattested_last_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.remove_last_unattested_block_v1(
+    state_queue_policy,
+    inputs: [root, timed_out_head],
+    outputs: [rewrite(continue_node(root, None))],
+    mint: burn_node(timed_out_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_input_outref: root.output_reference,
+    predecessor_output_index: 0,
+  )
+}
+
+test unattested_last_removal_reference_script_control() {
+  unattested_last_removal(unchanged)
+}
+
+/// Control: `unattested_last_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(predecessor_output)` in
+/// `remove_last_unattested_block_v1`.
+test unattested_last_removal_rejects_continued_anchor_reference_script() fail {
+  unattested_last_removal(with_probe_reference_script)
+}
+
+/// `availability_timeout_prunes_descendant_from_exact_challenged_head`, with
+/// the continued challenged head passed through `rewrite`.
+fn unavailable_prune(rewrite: fn(Output) -> Output) -> Bool {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Challenged { commitment_hash, challenge_asset_name },
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    2,
+    descendant_header_hash,
+    header(rotated_operator, unavailable_header_hash),
+    None,
+  )
+  state_queue_validator.prune_unavailable_block_descendant_v1(
+    state_queue_policy,
+    inputs: [unavailable_head, descendant],
+    outputs: [rewrite(continue_node(unavailable_head, None))],
+    reference_inputs: [root],
+    mint: burn_node(descendant_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_ref_input_index: 0,
+    unavailable_node_input_outref: unavailable_head.output_reference,
+    unavailable_node_output_index: 0,
+  )
+}
+
+test unavailable_prune_reference_script_control() {
+  unavailable_prune(unchanged)
+}
+
+/// Control: `unavailable_prune_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(unavailable_node_output)` in
+/// `prune_unavailable_block_descendant_v1`.
+test unavailable_prune_rejects_continued_anchor_reference_script() fail {
+  unavailable_prune(with_probe_reference_script)
+}
+
+/// `availability_timeout_removes_terminal_exact_challenged_head`, with the
+/// continued confirmed-state root passed through `rewrite`.
+fn unavailable_head_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Challenged { commitment_hash, challenge_asset_name },
+    None,
+  )
+  state_queue_validator.remove_unavailable_head_v1(
+    state_queue_policy,
+    inputs: [root, unavailable_head],
+    outputs: [rewrite(continue_node(root, None))],
+    mint: burn_node(unavailable_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_input_outref: root.output_reference,
+    confirmed_state_output_index: 0,
+  )
+}
+
+test unavailable_head_removal_reference_script_control() {
+  unavailable_head_removal(unchanged)
+}
+
+/// Control: `unavailable_head_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(confirmed_state_output)` in
+/// `remove_unavailable_head_v1`.
+test unavailable_head_removal_rejects_continued_anchor_reference_script() fail {
+  unavailable_head_removal(with_probe_reference_script)
+}
+
+// ---------------------------------------------------------------------------
+// State-queue node lovelace floor: an arm that continues a queued node never
+// lets its lovelace fall, so no node can be drained below
+// `state_queue_node_min_lovelace_v1` after its commit. The prune arms keep the
+// continued node's lovelace exactly; the fraud-removal arms let it only grow,
+// because the SDK builders fold the removed node's lovelace into it. Each case
+// reuses the arm's fixture above with the continued node passed through
+// `with_lovelace_delta`; the paired controls are the `*_reference_script_control`
+// tests, which pass it through unchanged.
+// ---------------------------------------------------------------------------
+
+fn with_lovelace_delta(delta: Int) -> fn(Output) -> Output {
+  fn(output) {
+    Output {
+      ..output,
+      value: assets.add(
+        output.value,
+        assets.ada_policy_id,
+        assets.ada_asset_name,
+        delta,
+      ),
+    }
+  }
+}
+
+/// The honest SDK shape: the continued fraud-proved node gains the removed
+/// descendant's lovelace.
+test fraud_link_removal_accepts_anchor_gaining_removed_node_lovelace() {
+  fraud_link_removal(with_lovelace_delta(2_000_000))
+}
+
+/// Control: `fraud_link_removal_reference_script_control`. Refused by
+/// `expect fraudulent_header_lovelace_change >= 0` in
+/// `remove_fraudulent_blocks_link_v1`.
+test fraud_link_removal_rejects_anchor_losing_lovelace() fail {
+  fraud_link_removal(with_lovelace_delta(-1))
+}
+
+/// The honest SDK shape: the continued anchor gains the removed fraudulent
+/// block's lovelace.
+test fraud_last_removal_accepts_anchor_gaining_removed_node_lovelace() {
+  fraud_last_removal(with_lovelace_delta(2_000_000))
+}
+
+/// Control: `fraud_last_removal_reference_script_control`. Refused by
+/// `expect anchor_lovelace_change >= 0` in `remove_last_fraudulent_block_v1`.
+test fraud_last_removal_rejects_anchor_losing_lovelace() fail {
+  fraud_last_removal(with_lovelace_delta(-1))
+}
+
+/// Control: `unattested_prune_reference_script_control`. Refused by
+/// `expect timed_out_node_lovelace_change == 0` in
+/// `prune_unattested_block_descendant_v1`.
+test unattested_prune_rejects_anchor_losing_lovelace() fail {
+  unattested_prune(with_lovelace_delta(-1))
+}
+
+/// Control: `unattested_prune_reference_script_control`. Refused by
+/// `expect timed_out_node_lovelace_change == 0` in
+/// `prune_unattested_block_descendant_v1`: the pin is exact.
+test unattested_prune_rejects_anchor_gaining_lovelace() fail {
+  unattested_prune(with_lovelace_delta(1))
+}
+
+/// Control: `unavailable_prune_reference_script_control`. Refused by
+/// `expect anchor_lovelace_change == 0` in
+/// `prune_unavailable_block_descendant_v1`.
+test unavailable_prune_rejects_anchor_losing_lovelace() fail {
+  unavailable_prune(with_lovelace_delta(-1))
+}
+
+/// Control: `unavailable_prune_reference_script_control`. Refused by
+/// `expect anchor_lovelace_change == 0` in
+/// `prune_unavailable_block_descendant_v1`: the pin is exact.
+test unavailable_prune_rejects_anchor_gaining_lovelace() fail {
+  unavailable_prune(with_lovelace_delta(1))
 }
