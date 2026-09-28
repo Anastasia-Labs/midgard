@@ -1,6 +1,6 @@
 ---
 name: local-test-environment
-description: Get a Midgard checkout ready to run its test suites, and read what is wrong when it is not. Covers the shared test Postgres on 127.0.0.1:5433 (scripts/start-test-postgres.sh, synchronous_commit on), the per-worktree test-database prefix (MIDGARD_TEST_DATABASE_PREFIX), which suites need a built dist and why, the blueprint staleness guard (MIDGARD_BLUEPRINT_STAMP, deployment:build), the pinned Aiken and the hooks, and each linked worktree's own operator compose project and host ports. Use before running a Postgres-backed or blueprint-reading suite in a fresh checkout or worktree; when vitest reports "No test files found", ECONNREFUSED 127.0.0.1:5433, a "[blueprint-stamp]" refusal, a missing dist/ file, or rows a test did not write; when two checkouts run suites or the operator stack at once; or when `node scripts/doctor.mjs` fails.
+description: Get a Midgard checkout ready to run its test suites, and read what is wrong when it is not. Covers the shared test Postgres on 127.0.0.1:5433 (scripts/start-test-postgres.sh, synchronous_commit on), the per-worktree test-database prefix (MIDGARD_TEST_DATABASE_PREFIX), which suites need a built dist and why, the blueprint staleness guard (MIDGARD_BLUEPRINT_STAMP, deployment:build), the pinned Aiken and the hooks, and each linked worktree's own operator compose project and host ports. Use before running a Postgres-backed or blueprint-reading suite in a fresh checkout or worktree; when vitest reports "No test files found", ECONNREFUSED 127.0.0.1:5433, a "[blueprint-stamp]" refusal, a missing dist/ file, or rows a test did not write; when two checkouts run suites or the operator stack at once; before running one file of a package, a gate over several suites or anything longer than one Bash call; when reusing another worktree's blueprint; or when `node scripts/doctor.mjs` fails.
 ---
 
 # Local test environment
@@ -91,6 +91,8 @@ anything a suite runs outside vitest needs dist built first.
   source edit, run `pnpm --dir demo/midgard-node run pretest` (or the
   node-tools one) before a focused run, or the children run old code. Nothing
   compares dist with src at test time. [review]
+- **Build dist in each checkout; never copy it from another.** Nothing checks a
+  copied dist against this checkout's sources. [review]
 
 ## The blueprint stamp
 
@@ -100,11 +102,24 @@ The suites of `midgard-node`, `midgard-sdk`, `midgard-validation`,
 (`demo/midgard-test-support/blueprint-stamp-setup.js`) refuses the run with a
 `[blueprint-stamp]` error when the blueprint was built from other sources or
 by another compiler; an absent one is left to the suites that read it. Rebuild
-with `pnpm --dir demo deployment:build preprod-testing`.
+with `pnpm --dir demo deployment:build preprod-testing`, or copy another
+checkout's with `node scripts/sync-blueprint-from.mjs <checkout>`, which copies
+only a fresh blueprint whose stamped inputs and deployment profile match this
+tree and otherwise exits 1 naming the first difference.
 
 - **`MIDGARD_BLUEPRINT_STAMP=warn` is for a deliberate run against a stale
   build only**; never report such a run as a result for the current tree.
   CI never sets it, and nothing stops a local run from setting it. [review]
+
+## One file, and gate runs
+
+Read [references/running-suites.md](references/running-suites.md) before
+passing a file to a package `test` script, before a gate run over several
+suites, and before a run longer than one tool call.
+
+- **Put test files before every flag.** vitest's kebab-case booleans such as
+  `--disable-console-intercept` swallow the next argument and drop the file
+  filter; package scripts use camelCase. [review]
 
 ## Parallel operator stacks
 

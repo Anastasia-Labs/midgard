@@ -1093,6 +1093,10 @@
       "why": "Writes secrets/acceptance.env under the devnet run directory (MIDGARD_PHASE4_RUN_DIR); nothing it writes is committed."
     },
     {
+      "path": "scripts/sync-blueprint-from.mjs",
+      "why": "Copies the untracked onchain/aiken/plutus.json and its gitignored build record from another checkout; nothing it writes is committed."
+    },
+    {
       "packageScript": "demo/midgard-node-tools:stress-corpus-generate",
       "why": "Writes a stress corpus to a caller-chosen path at run time; nothing is committed."
     }

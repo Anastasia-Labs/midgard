@@ -101,7 +101,12 @@ fi
 update_prefix "../../config/deployments/env.ak.template" "$default_prefix"
 node ../../demo/scripts/deployment-profiles.mjs generate "${1:-preprod-testing}"
 
-echo "🎨 Formatting Aiken sources..."
-aiken fmt >/dev/null
+# Format only the files this script writes. A bare `aiken fmt` formats the
+# whole project, which rewrites about 250 unrelated .ak files even on a clean
+# tree (measured 2026-09-28 at 2b310bfa6) and mixes them into uncommitted work.
+# CI checks only env/default.ak and env/testnet.ak after this script, and runs
+# the whole-project format check as its own step.
+echo "🎨 Formatting generated Aiken environments..."
+aiken fmt env/*.ak >/dev/null
 
 echo "✅ User-events witness script prefix generated."

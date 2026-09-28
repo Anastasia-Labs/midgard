@@ -1,6 +1,6 @@
 ---
 name: fixing-flaky-tests
-description: Measures, root-causes and fixes an intermittent Midgard test, then proves the fix with a rerun count sized to the measured failure rate. Use when a vitest suite, emulator scenario, Postgres-backed node test or CI step fails only sometimes, passes on rerun, times out under load, or fails in CI but not locally; before raising a timeout, adding a retry, skipping or deleting a test to get green; and when someone claims a flake is fixed.
+description: Measures, root-causes and fixes an intermittent Midgard test, then proves the fix with a rerun count sized to the measured failure rate. Use when a vitest suite, emulator scenario, Postgres-backed node test or CI step fails only sometimes, passes on rerun, times out under load, or fails in CI but not locally; before raising a timeout, adding a retry, skipping or deleting a test to get green; when someone claims a flake is fixed; and when a gate run's failures must be diffed against a program's accepted-failures list.
 ---
 
 # Fixing flaky tests
@@ -131,3 +131,20 @@ Not checked:   <what you did not run, e.g. CI, other packages>
 
 Report "cause not found" or "not reproduced" plainly when that is the
 result. A wrong cause costs more than none. `[review]`
+
+## Known failures in a gate run
+
+Diff each run against the accepted list (format: the script's header), with the `<env>` and `<flags>` the package's `test` script sets ([per package](../local-test-environment/references/running-suites.md#gate-runs-over-several-suites)):
+
+```sh
+rm -f <report.json>   # a killed run leaves the previous report in place
+<env> pnpm --dir demo/<package> exec vitest run <files> <flags> --reporter=default --reporter=json --outputFile=<report.json> 2>&1 | tee <run.log>
+node .agents/skills/fixing-flaky-tests/scripts/diff-test-reds.mjs --accepted <list.json> --suite <package> --log <run.log> <report.json>
+```
+
+`--suite` takes the same `<package>`. It exits 1 on a failure the list does
+not name, on an unfinished run or on more errors outside any test than the
+suite's `"(run)"` entry records (both only in the `--log`), and 2 on bad input
+`[script: .agents/skills/fixing-flaky-tests/scripts/diff-test-reds.mjs]`. A
+`"*"` entry hides new failures in its file. Never add an entry without a
+measured rate from step 1. [review]

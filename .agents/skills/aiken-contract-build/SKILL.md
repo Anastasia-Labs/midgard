@@ -99,12 +99,15 @@ for a single test-name filter, and did not print at all with output piped. A
 gate that checks only the exit status passes while running nothing. Full
 selector rules: [references/cli-traps.md](references/cli-traps.md).
 
-`onchain/aiken/scripts/guard-focused-selector.mjs` takes bare module selectors on purpose and
-is safe with them, because it fails closed on a zero collected total — a
-stronger check than the selector shape. Prefer it, or
-`scripts/run-focused-check.mjs`, over hand-rolled `aiken check -m` lines.
-For the whole suite, `guard-focused-selector.mjs --all` runs `aiken check`
-under the same rules and prints the collected count.
+`onchain/aiken/scripts/guard-focused-selector.mjs <module-selector>` and
+`scripts/run-focused-check.mjs <module> <test>...` both fail closed on a zero
+collected total. The guard takes bare module selectors on purpose and is safe
+with them. For the whole suite, `guard-focused-selector.mjs --all` runs
+`aiken check` under the same rules and prints the collected count.
+
+**Never gate or report on a hand-rolled `aiken check -m`**; run the selector
+through one of those two scripts. Blind spot: nothing stops a hand-typed
+`aiken check -m` from being run or quoted as evidence. [review]
 
 A CI workflow step never runs `aiken check` directly; it goes through one of
 the two guards. Blind spot: the lint reads `run:` text, so a script that CI

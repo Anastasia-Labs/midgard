@@ -45,12 +45,12 @@ const listFiles = (directory, found) => {
 };
 
 /**
- * sha256 over every compiler input, each framed by its project-relative path
- * and length so that moving bytes between files changes the hash.
+ * Every compiler input the stamp covers, as `{ path, name }` with `name`
+ * relative to `onchain/aiken`, in the order the hash reads them.
  */
-export const blueprintSourceHash = (root = repositoryRoot) => {
+export const blueprintSourceFiles = (root = repositoryRoot) => {
   const project = resolve(root, "onchain/aiken");
-  const files = [
+  return [
     ...sourceDirectories.flatMap((directory) =>
       listFiles(resolve(project, directory), []),
     ),
@@ -60,8 +60,15 @@ export const blueprintSourceHash = (root = repositoryRoot) => {
     .sort((left, right) =>
       left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
     );
+};
+
+/**
+ * sha256 over every compiler input, each framed by its project-relative path
+ * and length so that moving bytes between files changes the hash.
+ */
+export const blueprintSourceHash = (root = repositoryRoot) => {
   const hash = createHash("sha256");
-  for (const { path, name } of files) {
+  for (const { path, name } of blueprintSourceFiles(root)) {
     const contents = readFileSync(path);
     hash.update(`${name}\0${String(contents.length)}\0`);
     hash.update(contents);

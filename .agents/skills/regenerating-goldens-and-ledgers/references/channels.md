@@ -106,6 +106,12 @@ Blind spots:
   `deployment:check` yourself [review].
 - The witness-prefix step only runs for pushes to `main` and for pull requests
   that target `main` (`aiken-ci.yml:146`). On any other base it does not run.
+- The witness-prefix generator formats only `onchain/aiken/env/*.ak`, the
+  files it writes (`scripts/generate-user-events-witness-script-prefix.test.mjs`).
+  A bare `aiken fmt` rewrites about 250 files under `onchain/aiken/lib` and
+  `validators` even on a clean tree (measured 2026-09-28 at `2b310bfa6`), so
+  never add one to a generator; the whole-project format check is its own CI
+  step. [review]
 - `deployment:generate <profile>` rewrites the `SELECTED_DEPLOYMENT_PROFILE`
   line (`demo/scripts/deployment-profiles.mjs:218`). The committed selection is
   `preprod-testing`. Generating another profile leaves a diff that looks like a
