@@ -8,8 +8,8 @@ use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Transaction,
-  placeholder, resolve_input,
+  Datum, DatumHash, InlineDatum, Input, Mint, NoDatum, Output, OutputReference,
+  Transaction, placeholder, resolve_input,
 }
 use midgard/availability_challenge as availability
 use midgard/common/utils
@@ -22,6 +22,7 @@ use midgard/da_attestation_types.{
   signature_witness_byte_count, state_queue_mint_reference_script_asset_name,
   verification_key_byte_count,
 }
+use midgard/da_bond_pool
 use midgard/da_params.{get_da_params}
 use midgard/ledger_state.{HeaderHash}
 use midgard/state_queue
@@ -137,11 +138,14 @@ fn validate_init_output(
   expect datum.attested_signers == empty_attested_signer_bitmap
   expect datum.attestation_count == 0
 
+  // Any lovelace: the attestation carries no bond. Its value returns to
+  // `rescue_beneficiary` on apply and on rescue.
   let asset_name = attestation_asset_name(datum.header_hash)
   expect
-    value == (
-      assets.from_lovelace(availability_parameters.da_bond_lovelace)
-        |> assets.add(own_policy_id, asset_name, 1)
+    assets.without_lovelace(value) == assets.from_asset(
+      own_policy_id,
+      asset_name,
+      1,
     )
 
   asset_name
@@ -377,7 +381,8 @@ pub fn validate_add_signatures(
 validator da_attestation(
   da_params_policy_id: PolicyId,
   reference_script_auth_policy_id: PolicyId,
-  availability_policy_id: PolicyId,
+  hub_oracle_policy_id: PolicyId,
+  da_bond_pool_policy_id: PolicyId,
   availability_parameters: availability.ParametersV1,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, tx: Transaction) {
@@ -433,9 +438,10 @@ validator da_attestation(
         state_queue_input_index,
         state_queue_output_index,
         state_queue_mint_ref_script_input_index,
-        availability_mint_redeemer_index,
+        pool_ref_input_index,
+        refund_output_index,
       } -> {
-        let (attestation_datum, _attestation_value) = get_attestation_input_datum(
+        let (attestation_datum, attestation_value) = get_attestation_input_datum(
           tx.inputs,
           da_attestation_input_index,
           own_policy_id,
@@ -469,28 +475,44 @@ validator da_attestation(
         )
         expect expect_sole_burn(tx, own_policy_id, attestation_asset)
 
-        expect Some(Input { output_reference: attestation_input_outref, .. }) = tx.inputs
-          |> list.at(da_attestation_input_index)
-        let da_bond_asset_name = availability.da_bond_asset_name_v1(
-          attestation_input_outref,
+        expect da_attestation_input_index != state_queue_input_index
+        expect refund_output_index != state_queue_output_index
+
+        // The pooled committee bond backs every attestation: the authentic
+        // pool must be `Bonded` and hold at least one `da_bond_lovelace` above
+        // its floor when the attestation lands.
+        let (pool_datum, pool_lovelace) = da_bond_pool.get_authentic_pool(
+          tx.reference_inputs,
+          da_bond_pool_policy_id,
+          pool_ref_input_index,
         )
-        let availability_mint_redeemer_data = tx.redeemers
-          |> utils.get_redeemer_at(
-              Mint(availability_policy_id),
-              availability_mint_redeemer_index,
-            )
+        expect pool_datum == da_bond_pool.Bonded
         expect
-            availability.MintBondFromAttestation {
-              da_attestation_input_index: availability_attestation_input_index,
-              state_queue_input_index: availability_state_queue_input_index,
-              state_queue_output_index: availability_state_queue_output_index,
-              ..
-            }: availability.MintRedeemerV1
-          = availability_mint_redeemer_data
+          da_bond_pool.lovelace_backing(pool_lovelace, availability_parameters) >= availability_parameters.da_bond_lovelace
+
+        // The burned commitment is the one the node will bind. A challenge
+        // later presents this exact preimage, so it must be canonical for this
+        // deployment and name this header.
+        let commitment = attestation_datum.availability_commitment
         expect
-          availability_attestation_input_index == da_attestation_input_index
-        expect availability_state_queue_input_index == state_queue_input_index
-        expect availability_state_queue_output_index == state_queue_output_index
+          availability.commitment_is_canonical_v1(
+            commitment,
+            availability_parameters,
+          )
+        expect commitment.deployment_identity == hub_oracle_policy_id
+        expect commitment.header_hash == attestation_datum.header_hash
+
+        // Apply is permissionless in who submits it, so the attestation's
+        // value is bound to its beneficiary exactly as the rescue binds it.
+        expect
+          validate_rescue_refund(
+            tx.outputs,
+            refund_output_index,
+            attestation_value,
+            own_policy_id,
+            attestation_asset,
+            attestation_datum.rescue_beneficiary,
+          )
 
         let state_queue_policy_id = get_authenticated_state_queue_policy_id(
           tx.reference_inputs,
@@ -505,7 +527,7 @@ validator da_attestation(
           state_queue_input_index,
           state_queue_output_index,
           attestation_datum.header_hash,
-          da_bond_asset_name,
+          availability.commitment_hash_v1(commitment),
           tx.validity_range,
         )
       }
@@ -617,8 +639,17 @@ validator da_attestation(
 const test_da_policy: PolicyId =
   #"da11da11da11da11da11da11da11da11da11da11da11da11da11da11"
 
-const test_availability_policy: PolicyId =
+const test_hub_oracle_policy: PolicyId =
   #"ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11"
+
+const test_pool_policy: PolicyId =
+  #"b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+
+const test_pool_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"6666666666666666666666666666666666666666666666666666666666666666",
+    output_index: 0,
+  }
 
 const test_da_params_policy: PolicyId =
   #"cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22"
@@ -656,7 +687,7 @@ fn test_availability_parameters() -> availability.ParametersV1 {
 fn test_availability_commitment() -> availability.CommitmentV1 {
   availability.CommitmentV1 {
     version: availability.commitment_version_v1,
-    deployment_identity: test_parent_header_hash,
+    deployment_identity: test_hub_oracle_policy,
     header_hash: test_header_hash(),
     payload_byte_length: 1,
     response_geometry: test_availability_parameters().response_geometry,
@@ -666,11 +697,10 @@ fn test_availability_commitment() -> availability.CommitmentV1 {
         start_offset: 0,
         byte_length: 1,
         chunk_count: 1,
-        chunk_commitment: #"acacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+        chunk_commitment: #"acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
         terminal_accumulator: #"abababababababababababababababababababababababababababababababab",
       },
     ],
-    bond_owner: test_refund_key_hash,
   }
 }
 
@@ -789,9 +819,26 @@ fn test_attestation_datum(
   da_threshold: Int,
   attestation_count: Int,
 ) -> DaAttestationDatum {
+  test_attestation_datum_for(
+    test_availability_commitment(),
+    committee_signers_hash,
+    da_threshold,
+    attestation_count,
+  )
+}
+
+/// An attestation datum over an arbitrary commitment. Init refuses a
+/// non-canonical commitment, so a fixture that needs one at Apply builds the
+/// DAAT input directly, as a forged or pre-upgrade UTxO would present it.
+fn test_attestation_datum_for(
+  commitment: availability.CommitmentV1,
+  committee_signers_hash: ByteArray,
+  da_threshold: Int,
+  attestation_count: Int,
+) -> DaAttestationDatum {
   DaAttestationDatum {
     header_hash: test_header_hash(),
-    availability_commitment: test_availability_commitment(),
+    availability_commitment: commitment,
     da_threshold,
     committee_signers_hash,
     rescue_beneficiary: address.from_verification_key(test_refund_key_hash),
@@ -804,21 +851,31 @@ fn test_attestation_asset() -> AssetName {
   attestation_asset_name(test_header_hash())
 }
 
-fn test_attestation_value() -> Value {
-  assets.from_lovelace(test_attestation_lovelace)
-    |> assets.add(test_da_policy, test_attestation_asset(), 1)
-}
-
 fn test_attestation_input(
   output_reference: OutputReference,
   datum: DaAttestationDatum,
+) -> Input {
+  test_attestation_input_holding(
+    output_reference,
+    datum,
+    test_attestation_lovelace,
+  )
+}
+
+/// A DAAT UTxO holding an arbitrary lovelace amount. Init accepts any amount,
+/// and apply and rescue refund whatever the UTxO holds.
+fn test_attestation_input_holding(
+  output_reference: OutputReference,
+  datum: DaAttestationDatum,
+  lovelace: Int,
 ) -> Input {
   let datum_data: Data = datum
   Input {
     output_reference,
     output: Output {
       address: address.from_script(test_da_policy),
-      value: test_attestation_value(),
+      value: assets.from_lovelace(lovelace)
+        |> assets.add(test_da_policy, test_attestation_asset(), 1),
       datum: InlineDatum(datum_data),
       reference_script: None,
     },
@@ -938,7 +995,8 @@ fn test_rescue_mint(tx: Transaction) -> Bool {
   da_attestation.mint(
     test_da_params_policy,
     test_ref_script_auth_policy,
-    test_availability_policy,
+    test_hub_oracle_policy,
+    test_pool_policy,
     test_availability_parameters(),
     test_rescue_mint_redeemer(),
     test_da_policy,
@@ -952,7 +1010,8 @@ fn test_apply_burn_spend(tx: Transaction, redeemer: SpendRedeemer) -> Bool {
   da_attestation.spend(
     test_da_params_policy,
     test_ref_script_auth_policy,
-    test_availability_policy,
+    test_hub_oracle_policy,
+    test_pool_policy,
     test_availability_parameters(),
     None,
     redeemer,
@@ -965,7 +1024,8 @@ fn test_rescue_spend(tx: Transaction, own_ref: OutputReference) -> Bool {
   da_attestation.spend(
     test_da_params_policy,
     test_ref_script_auth_policy,
-    test_availability_policy,
+    test_hub_oracle_policy,
+    test_pool_policy,
     test_availability_parameters(),
     None,
     BurnForRescue { mint_redeemer_index: 0 },
@@ -1108,10 +1168,11 @@ test da_attestation_rescue_control_threshold_change_refunds_quorum_attestation()
 // would be caught by the controls above, but a one-sided regression — dropping
 // either guard alone — would leave every other test in this module green while
 // letting one burn redeemer be authorised by the other's mint. That matters:
-// `ApplyToStateQueue` imposes no refund binding at all, so a `BurnForRescue`
-// satisfied by an apply redeemer would release an attestation's value with
-// nothing constraining where it went. Both directions are therefore pinned
-// individually.
+// the two mint arms authorize different things (apply needs a live quorum and
+// a bonded pool; rescue needs a rotated committee), so a `BurnForRescue`
+// satisfied by an apply redeemer, or the reverse, would retire an attestation
+// under an authorization that was never checked for it. Both directions are
+// therefore pinned individually.
 
 /// Cross-binding control: `BurnForStateQueue` against the apply transaction's
 /// own mint redeemer is accepted, so the two rejections below are not a helper
@@ -1276,26 +1337,62 @@ fn test_state_queue_ref_script_input() -> Input {
 }
 
 fn test_apply_mint_redeemer() -> MintRedeemer {
+  test_apply_mint_redeemer_at(0, 2, 1)
+}
+
+/// The control's apply redeemer with the three indexes the negatives move.
+fn test_apply_mint_redeemer_at(
+  da_attestation_input_index: Int,
+  pool_ref_input_index: Int,
+  refund_output_index: Int,
+) -> MintRedeemer {
   ApplyToStateQueue {
-    da_attestation_input_index: 0,
+    da_attestation_input_index,
     da_params_ref_input_index: 0,
     state_queue_input_index: 1,
     state_queue_output_index: 0,
     state_queue_mint_ref_script_input_index: 1,
-    availability_mint_redeemer_index: 1,
+    pool_ref_input_index,
+    refund_output_index,
   }
 }
 
-fn test_availability_mint_redeemer() -> availability.MintRedeemerV1 {
-  availability.MintBondFromAttestation {
-    yield_to_ref_input_index: 0,
-    hub_oracle_ref_input_index: 2,
-    da_attestation_input_index: 0,
-    da_attestation_mint_redeemer_index: 0,
-    bond_output_index: 1,
-    state_queue_input_index: 1,
-    state_queue_output_index: 0,
+/// The DA bond pool reference input, authenticated by its NFT at the pool
+/// credential.
+fn test_pool_reference_input(
+  datum: da_bond_pool.DaBondPoolDatum,
+  lovelace: Int,
+) -> Input {
+  let datum_data: Data = datum
+  test_pool_utxo(
+    address.from_script(test_pool_policy),
+    test_pool_value(lovelace),
+    InlineDatum(datum_data),
+  )
+}
+
+/// The pool's value: its lovelace and exactly one pool NFT.
+fn test_pool_value(lovelace: Int) -> Value {
+  assets.from_lovelace(lovelace)
+    |> assets.add(test_pool_policy, da_bond_pool.da_bond_pool_asset_name, 1)
+}
+
+/// A reference input at the pool slot with every authenticity piece exposed,
+/// so a negative can move exactly one of them.
+fn test_pool_utxo(address: Address, value: Value, datum: Datum) -> Input {
+  Input {
+    output_reference: test_pool_ref,
+    output: Output { address, value, datum, reference_script: None },
   }
+}
+
+/// A `Bonded` pool whose backing above its floor is exactly one DA bond.
+fn test_exactly_bonded_pool() -> Input {
+  let parameters = test_availability_parameters()
+  test_pool_reference_input(
+    da_bond_pool.Bonded,
+    parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace,
+  )
 }
 
 /// The apply transaction under test. Only the attestation datum and the DA
@@ -1307,9 +1404,8 @@ fn test_apply_tx(
   params_reference_input: Input,
 ) -> Transaction {
   let redeemer_data: Data = test_apply_mint_redeemer()
-  let availability_redeemer_data: Data = test_availability_mint_redeemer()
-  let da_bond_asset_name = availability.da_bond_asset_name_v1(
-    test_attestation_ref,
+  let commitment_hash = availability.commitment_hash_v1(
+    attestation_datum.availability_commitment,
   )
   let attestation_deadline = test_header().end_time + state_queue.da_attestation_timeout_v1
   Transaction {
@@ -1324,16 +1420,19 @@ fn test_apply_tx(
     reference_inputs: [
       params_reference_input,
       test_state_queue_ref_script_input(),
+      test_exactly_bonded_pool(),
     ],
     outputs: [
-      test_state_queue_node_output(availability.Attested { da_bond_asset_name }),
+      test_state_queue_node_output(availability.Attested { commitment_hash }),
+      Output {
+        address: attestation_datum.rescue_beneficiary,
+        value: assets.from_lovelace(test_attestation_lovelace),
+        datum: NoDatum,
+        reference_script: None,
+      },
     ],
-    mint: assets.from_asset(test_da_policy, test_attestation_asset(), -1)
-      |> assets.add(test_availability_policy, da_bond_asset_name, 1),
-    redeemers: [
-      Pair(Mint(test_da_policy), redeemer_data),
-      Pair(Mint(test_availability_policy), availability_redeemer_data),
-    ],
+    mint: assets.from_asset(test_da_policy, test_attestation_asset(), -1),
+    redeemers: [Pair(Mint(test_da_policy), redeemer_data)],
     validity_range: between(attestation_deadline - 60_000, attestation_deadline),
   }
 }
@@ -1342,7 +1441,8 @@ fn test_apply_mint(tx: Transaction) -> Bool {
   da_attestation.mint(
     test_da_params_policy,
     test_ref_script_auth_policy,
-    test_availability_policy,
+    test_hub_oracle_policy,
+    test_pool_policy,
     test_availability_parameters(),
     test_apply_mint_redeemer(),
     test_da_policy,
@@ -1447,4 +1547,548 @@ test da_attestation_apply_rejects_old_committee_quorum() fail {
       test_params_reference_input(test_da_params(test_committee_b(), 1)),
     ),
   )
+}
+
+// ---------------------------------------------------------------------------
+// ## Bondless apply against the pooled committee bond (#688, register C3)
+//
+// Every negative below is one mutation of `test_honest_apply_tx()`, the
+// transaction `da_attestation_apply_control_exact_pool_backing_and_exact_refund`
+// accepts, and its doc comment names the check that refuses it. Because the
+// control accepts the unmutated transaction, the named check is the only one
+// left that can refuse the mutation.
+// ---------------------------------------------------------------------------
+
+const test_foreign_policy: PolicyId =
+  #"f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0"
+
+const test_decoy_pool_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"7777777777777777777777777777777777777777777777777777777777777777",
+    output_index: 0,
+  }
+
+/// A lovelace amount unrelated to every parameter, for the "whatever the
+/// attestation holds" controls.
+const test_odd_attestation_lovelace: Int = 7_654_321
+
+fn test_apply_mint_with(redeemer: MintRedeemer, tx: Transaction) -> Bool {
+  let redeemer_data: Data = redeemer
+  da_attestation.mint(
+    test_da_params_policy,
+    test_ref_script_auth_policy,
+    test_hub_oracle_policy,
+    test_pool_policy,
+    test_availability_parameters(),
+    redeemer,
+    test_da_policy,
+    Transaction { ..tx, redeemers: [Pair(Mint(test_da_policy), redeemer_data)] },
+  )
+}
+
+/// The honest apply the whole matrix mutates: a quorum under the governed
+/// committee, an exactly bonded pool, an exact refund and the node attested
+/// with the hash of the burned commitment.
+fn test_honest_apply_tx() -> Transaction {
+  test_apply_tx(
+    test_quorum_attestation(),
+    test_params_reference_input(test_da_params(test_committee_a(), 2)),
+  )
+}
+
+fn test_apply_tx_with_pool(pool: Input) -> Transaction {
+  let base = test_honest_apply_tx()
+  expect [params, script, _] = base.reference_inputs
+  Transaction { ..base, reference_inputs: [params, script, pool] }
+}
+
+fn test_honest_refund() -> Output {
+  expect [_, refund] = test_honest_apply_tx().outputs
+  refund
+}
+
+fn test_apply_tx_with_refund(refund: Output) -> Transaction {
+  let base = test_honest_apply_tx()
+  expect [node, _] = base.outputs
+  Transaction { ..base, outputs: [node, refund] }
+}
+
+fn test_apply_tx_with_node_output(node: Output) -> Transaction {
+  let base = test_honest_apply_tx()
+  expect [_, refund] = base.outputs
+  Transaction { ..base, outputs: [node, refund] }
+}
+
+/// The honest commitment with one field moved, for the commitment negatives.
+fn test_commitment_with_identity(
+  deployment_identity: PolicyId,
+) -> availability.CommitmentV1 {
+  availability.CommitmentV1 {
+    ..test_availability_commitment(),
+    deployment_identity,
+  }
+}
+
+fn test_commitment_with_chunk_commitment(
+  chunk_commitment: ByteArray,
+) -> availability.CommitmentV1 {
+  let honest = test_availability_commitment()
+  expect [descriptor] = honest.tranche_descriptors
+  availability.CommitmentV1 {
+    ..honest,
+    tranche_descriptors: [
+      availability.TrancheDescriptorV1 { ..descriptor, chunk_commitment },
+    ],
+  }
+}
+
+fn test_quorum_attestation_for(
+  commitment: availability.CommitmentV1,
+) -> DaAttestationDatum {
+  test_attestation_datum_for(commitment, blake2b_256(test_committee_a()), 2, 2)
+}
+
+/// Apply control for the pooled bond: the authentic `Bonded` pool backs exactly
+/// one `da_bond_lovelace` above its floor, the refund returns exactly the
+/// attestation's lovelace to its beneficiary, and the node is attested with
+/// the hash of exactly the burned commitment. Both halves of the apply (mint
+/// and the attestation's burn-side spend) accept it.
+test da_attestation_apply_control_exact_pool_backing_and_exact_refund() {
+  let tx = test_honest_apply_tx()
+  and {
+    test_apply_mint(tx),
+    test_apply_burn_spend(tx, BurnForStateQueue { mint_redeemer_index: 0 }),
+  }
+}
+
+/// Apply control, refund amount: Init accepts any lovelace, so apply must
+/// return whatever the DAAT UTxO holds, not a parameter. The attestation holds
+/// an unrelated amount and the refund carries exactly that amount.
+test da_attestation_apply_control_refunds_whatever_the_attestation_holds() {
+  let base = test_honest_apply_tx()
+  expect [_, sq_input] = base.inputs
+  let tx = Transaction {
+    ..test_apply_tx_with_refund(
+      Output {
+        ..test_honest_refund(),
+        value: assets.from_lovelace(test_odd_attestation_lovelace),
+      },
+    ),
+    inputs: [
+      test_attestation_input_holding(
+        test_attestation_ref,
+        test_quorum_attestation(),
+        test_odd_attestation_lovelace,
+      ),
+      sq_input,
+    ],
+  }
+  and {
+    test_apply_mint(tx),
+    test_apply_burn_spend(tx, BurnForStateQueue { mint_redeemer_index: 0 }),
+  }
+}
+
+// ### Pool authenticity, state and backing
+
+/// Refused by the backing check `lovelace_backing(pool) >= da_bond_lovelace`:
+/// the pool backs one lovelace less than a DA bond above its floor (the
+/// control's exactly-one-bond pool passes). It also pins that the floor is
+/// excluded from backing: this pool's total lovelace equals `da_bond_lovelace`
+/// exactly (the fixture floor is 1), so a reader that counted the floor as
+/// backing would accept it.
+test da_attestation_apply_rejects_pool_backing_below_one_bond() fail {
+  let parameters = test_availability_parameters()
+  test_apply_mint(
+    test_apply_tx_with_pool(
+      test_pool_reference_input(
+        da_bond_pool.Bonded,
+        parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace - 1,
+      ),
+    ),
+  )
+}
+
+/// Refused by `pool_datum == Bonded`: a pool that has begun withdrawing backs
+/// no new attestation, even with the control's exact backing.
+test da_attestation_apply_rejects_withdrawing_pool() fail {
+  let parameters = test_availability_parameters()
+  test_apply_mint(
+    test_apply_tx_with_pool(
+      test_pool_reference_input(
+        da_bond_pool.Withdrawing { unlock_at: 0 },
+        parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace,
+      ),
+    ),
+  )
+}
+
+/// Refused by the pool NFT check (`quantity_of(pool NFT) == 1` in
+/// `get_authentic_pool`): anyone can pay to the pool script address with a
+/// `Bonded` inline datum; without the NFT that UTxO is not the pool.
+test da_attestation_apply_rejects_pool_without_nft() fail {
+  let parameters = test_availability_parameters()
+  let bonded: Data = da_bond_pool.Bonded
+  test_apply_mint(
+    test_apply_tx_with_pool(
+      test_pool_utxo(
+        address.from_script(test_pool_policy),
+        assets.from_lovelace(
+          parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace,
+        ),
+        InlineDatum(bonded),
+      ),
+    ),
+  )
+}
+
+/// Refused by the pool credential check (`payment_credential ==
+/// Script(da_bond_pool_policy_id)` in `get_authentic_pool`): the right NFT and
+/// datum at another script's address.
+test da_attestation_apply_rejects_pool_nft_at_foreign_credential() fail {
+  let parameters = test_availability_parameters()
+  let bonded: Data = da_bond_pool.Bonded
+  test_apply_mint(
+    test_apply_tx_with_pool(
+      test_pool_utxo(
+        address.from_script(test_foreign_policy),
+        test_pool_value(
+          parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace,
+        ),
+        InlineDatum(bonded),
+      ),
+    ),
+  )
+}
+
+/// Refused by the inline-datum requirement in `get_authentic_pool`: the
+/// authentic pool UTxO shape with its `Bonded` datum carried by hash.
+test da_attestation_apply_rejects_pool_datum_hash() fail {
+  let parameters = test_availability_parameters()
+  let bonded: Data = da_bond_pool.Bonded
+  test_apply_mint(
+    test_apply_tx_with_pool(
+      test_pool_utxo(
+        address.from_script(test_pool_policy),
+        test_pool_value(
+          parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace,
+        ),
+        DatumHash(utils.serialise_and_hash_32(bonded)),
+      ),
+    ),
+  )
+}
+
+/// Refused by the pool read itself (`list.at(pool_ref_input_index)` is
+/// `None`): the pool reference input is missing.
+test da_attestation_apply_rejects_missing_pool_reference_input() fail {
+  let base = test_honest_apply_tx()
+  expect [params, script, _] = base.reference_inputs
+  test_apply_mint(Transaction { ..base, reference_inputs: [params, script] })
+}
+
+/// Refused by the pool NFT check: the authentic pool is present, but
+/// `pool_ref_input_index` points at another reference input, a decoy at the
+/// pool address with a `Bonded` inline datum and ample lovelace but no NFT.
+test da_attestation_apply_rejects_pool_index_at_decoy_reference_input() fail {
+  let parameters = test_availability_parameters()
+  let bonded: Data = da_bond_pool.Bonded
+  let base = test_honest_apply_tx()
+  let decoy = Input {
+    output_reference: test_decoy_pool_ref,
+    output: Output {
+      address: address.from_script(test_pool_policy),
+      value: assets.from_lovelace(100 * parameters.da_bond_lovelace),
+      datum: InlineDatum(bonded),
+      reference_script: None,
+    },
+  }
+  test_apply_mint_with(
+    test_apply_mint_redeemer_at(0, 3, 1),
+    Transaction {
+      ..base,
+      reference_inputs: list.concat(base.reference_inputs, [decoy]),
+    },
+  )
+}
+
+// ### Refund
+
+/// Refused by `refund_address == rescue_beneficiary` in
+/// `validate_rescue_refund`: the submitter redirects the refund to its own key.
+test da_attestation_apply_rejects_refund_to_foreign_address() fail {
+  test_apply_mint(
+    test_apply_tx_with_refund(
+      Output {
+        ..test_honest_refund(),
+        address: address.from_verification_key(test_owner_hash(0x8)),
+      },
+    ),
+  )
+}
+
+/// Refused by the exact refund value in `validate_rescue_refund`: one
+/// lovelace short.
+test da_attestation_apply_rejects_short_refund() fail {
+  test_apply_mint(
+    test_apply_tx_with_refund(
+      Output {
+        ..test_honest_refund(),
+        value: assets.from_lovelace(test_attestation_lovelace - 1),
+      },
+    ),
+  )
+}
+
+/// Refused by the exact refund value in `validate_rescue_refund`: one
+/// lovelace over.
+test da_attestation_apply_rejects_refund_over_by_one() fail {
+  test_apply_mint(
+    test_apply_tx_with_refund(
+      Output {
+        ..test_honest_refund(),
+        value: assets.from_lovelace(test_attestation_lovelace + 1),
+      },
+    ),
+  )
+}
+
+/// Refused by the exact refund value in `validate_rescue_refund`: the refund
+/// carries a token besides the attestation's lovelace.
+test da_attestation_apply_rejects_refund_with_extra_token() fail {
+  test_apply_mint(
+    test_apply_tx_with_refund(
+      Output {
+        ..test_honest_refund(),
+        value: assets.from_lovelace(test_attestation_lovelace)
+          |> assets.add(test_foreign_policy, "extra", 1),
+      },
+    ),
+  )
+}
+
+/// Refused first by `refund_output_index != state_queue_output_index`: the
+/// redeemer names the node continuation as the refund. The check is defence in
+/// depth, not the sole guard: the refund's address and exact lovelace-only
+/// value also refuse it (the node sits at the state-queue script and carries
+/// its block NFT), so no output can satisfy both roles.
+test da_attestation_apply_rejects_refund_index_aliasing_state_queue_output() fail {
+  test_apply_mint_with(
+    test_apply_mint_redeemer_at(0, 2, 0),
+    test_honest_apply_tx(),
+  )
+}
+
+/// The redeemer names the node input as the attestation. The attestation read
+/// refuses it first (the node is not at the DA script);
+/// `da_attestation_input_index != state_queue_input_index` is defence in depth,
+/// since no input can hold both a DAAT-only value and the node's block NFT.
+test da_attestation_apply_rejects_attestation_index_aliasing_state_queue_input() fail {
+  test_apply_mint_with(
+    test_apply_mint_redeemer_at(1, 2, 1),
+    test_honest_apply_tx(),
+  )
+}
+
+// ### Commitment, hash binding and node value
+
+/// Refused by `commitment.deployment_identity == hub_oracle_policy_id`
+/// (HAZ-5): a quorum over a commitment naming another deployment. Open would
+/// refuse its preimage, so an Apply would leave the block unchallengeable.
+/// The node is attested with that commitment's own hash, so only the identity
+/// differs from the control.
+test da_attestation_apply_rejects_foreign_deployment_identity() fail {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation_for(
+        test_commitment_with_identity(test_foreign_policy),
+      ),
+      test_params_reference_input(test_da_params(test_committee_a(), 2)),
+    ),
+  )
+}
+
+/// Refused by `commitment_is_canonical_v1`: the DAAT input is built directly
+/// (bypassing Init, which also refuses it) with a 30-byte `chunk_commitment`.
+test da_attestation_apply_rejects_non_canonical_commitment() fail {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation_for(
+        test_commitment_with_chunk_commitment(
+          #"acacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+        ),
+      ),
+      test_params_reference_input(test_da_params(test_committee_a(), 2)),
+    ),
+  )
+}
+
+/// Refused by the hash binding (the node output status must be
+/// `Attested{commitment_hash_v1(burned commitment)}`): the node is attested
+/// with the hash of a different canonical commitment, one whose chunk
+/// commitment differs.
+test da_attestation_apply_rejects_node_attested_to_another_commitment() fail {
+  let other = test_commitment_with_chunk_commitment(
+    #"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  )
+  test_apply_mint(
+    test_apply_tx_with_node_output(
+      test_state_queue_node_output(
+        availability.Attested {
+          commitment_hash: availability.commitment_hash_v1(other),
+        },
+      ),
+    ),
+  )
+}
+
+/// Pins the premise of the hash-binding negative: the other commitment is
+/// canonical and hashes differently, so that negative moves only the hash.
+test da_attestation_apply_other_commitment_is_canonical_and_distinct() {
+  let other = test_commitment_with_chunk_commitment(
+    #"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  )
+  and {
+    availability.commitment_is_canonical_v1(
+      other,
+      test_availability_parameters(),
+    ),
+    availability.commitment_hash_v1(other) != availability.commitment_hash_v1(
+      test_availability_commitment(),
+    ),
+  }
+}
+
+/// Refused by exact node-value equality in the state-queue attachment
+/// (HAZ-13): the node continuation gains one lovelace.
+test da_attestation_apply_rejects_node_value_change() fail {
+  let node = test_state_queue_node_output(
+    availability.Attested {
+      commitment_hash: availability.commitment_hash_v1(
+        test_availability_commitment(),
+      ),
+    },
+  )
+  test_apply_mint(
+    test_apply_tx_with_node_output(
+      Output {
+        ..node,
+        value: node.value
+          |> assets.add(assets.ada_policy_id, assets.ada_asset_name, 1),
+      },
+    ),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ## Init: any lovelace plus exactly the DAAT
+// ---------------------------------------------------------------------------
+
+fn test_init_redeemer() -> MintRedeemer {
+  Init {
+    output_index: 0,
+    da_params_ref_input_index: 0,
+    state_queue_ref_input_index: 2,
+    state_queue_mint_ref_script_input_index: 1,
+  }
+}
+
+/// An Init of a fresh attestation for the unattested node, whose output holds
+/// `output_value`.
+fn test_init_tx(output_value: Value) -> Transaction {
+  let redeemer_data: Data = test_init_redeemer()
+  let datum_data: Data = test_attestation_datum(
+    blake2b_256(test_committee_a()),
+    2,
+    0,
+  )
+  Transaction {
+    ..placeholder,
+    reference_inputs: [
+      test_params_reference_input(test_da_params(test_committee_a(), 2)),
+      test_state_queue_ref_script_input(),
+      Input {
+        output_reference: test_state_queue_ref,
+        output: test_state_queue_node_output(state_queue.no_da_attestation),
+      },
+    ],
+    outputs: [
+      Output {
+        address: address.from_script(test_da_policy),
+        value: output_value,
+        datum: InlineDatum(datum_data),
+        reference_script: None,
+      },
+    ],
+    mint: assets.from_asset(test_da_policy, test_attestation_asset(), 1),
+    redeemers: [Pair(Mint(test_da_policy), redeemer_data)],
+  }
+}
+
+fn test_init_value(lovelace: Int) -> Value {
+  assets.from_lovelace(lovelace)
+    |> assets.add(test_da_policy, test_attestation_asset(), 1)
+}
+
+fn test_init_mint(tx: Transaction) -> Bool {
+  da_attestation.mint(
+    test_da_params_policy,
+    test_ref_script_auth_policy,
+    test_hub_oracle_policy,
+    test_pool_policy,
+    test_availability_parameters(),
+    test_init_redeemer(),
+    test_da_policy,
+    tx,
+  )
+}
+
+/// Init control: the attestation carries no bond, so two unrelated lovelace
+/// amounts both initialise it.
+test da_attestation_init_control_accepts_any_lovelace() {
+  and {
+    test_init_mint(test_init_tx(test_init_value(test_attestation_lovelace))),
+    test_init_mint(test_init_tx(test_init_value(test_odd_attestation_lovelace))),
+  }
+}
+
+/// Refused by the Init value check (`without_lovelace(value) == DAAT`): the
+/// output carries a token besides the DAAT.
+test da_attestation_init_rejects_extra_token() fail {
+  test_init_mint(
+    test_init_tx(
+      test_init_value(test_attestation_lovelace)
+        |> assets.add(test_foreign_policy, "extra", 1),
+    ),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ## Rescue refunds whatever the DAAT holds
+// ---------------------------------------------------------------------------
+
+/// Rescue control, refund amount: a stranded attestation holding an amount
+/// unrelated to every parameter is refunded exactly that amount (mint and the
+/// burn-side spend).
+test da_attestation_rescue_control_refunds_whatever_the_attestation_holds() {
+  let tx = Transaction {
+    ..test_rescue_tx(
+      test_stranded_attestation(),
+      test_rotated_params(),
+      -1,
+      test_odd_attestation_lovelace,
+      False,
+    ),
+    inputs: [
+      test_attestation_input_holding(
+        test_attestation_ref,
+        test_stranded_attestation(),
+        test_odd_attestation_lovelace,
+      ),
+    ],
+  }
+  and {
+    test_rescue_mint(tx),
+    test_rescue_spend(tx, test_attestation_ref),
+  }
 }

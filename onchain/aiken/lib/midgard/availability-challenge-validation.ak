@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script, from_script, from_verification_key}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of}
 use cardano/transaction.{
@@ -9,7 +10,6 @@ use cardano/transaction.{
 }
 use midgard/availability_challenge as availability
 use midgard/common/utils
-use midgard/da_attestation_types as da_attestation
 use midgard/hub_oracle as hub
 use midgard/state_queue
 
@@ -64,135 +64,23 @@ fn index_outside_contiguous_range(index: Int, first: Int, count: Int) -> Bool {
   }
 }
 
-fn da_attestation_asset_name(header_hash: ByteArray) -> AssetName {
-  expect bytearray.length(header_hash) == 28
-  da_attestation.attestation_asset_name_prefix
-    |> bytearray.concat(header_hash)
-}
-
-fn validate_state_queue_status_transition(
-  tx: Transaction,
-  state_queue_policy_id: PolicyId,
-  state_queue_input_index: Int,
-  state_queue_output_index: Int,
-  header_hash: ByteArray,
-  previous_status: availability.StateQueueStatusV1,
-  next_status: availability.StateQueueStatusV1,
-) -> Bool {
-  let state_queue_input = input_at(tx.inputs, state_queue_input_index)
-  let state_queue_output = output_at(tx.outputs, state_queue_output_index)
-  and {
-    state_queue_input.output.value == state_queue_output.value,
-    state_queue.validate_da_availability_status_transition(
-      tx.inputs,
-      tx.outputs,
-      state_queue_policy_id,
-      state_queue_input_index,
-      state_queue_output_index,
-      header_hash,
-      previous_status,
-      next_status,
-    ),
-  }
-}
-
-fn validate_da_apply_binding(
-  tx: Transaction,
-  da_policy_id: PolicyId,
-  da_mint_redeemer_index: Int,
-  da_attestation_input_index: Int,
-  state_queue_input_index: Int,
-  state_queue_output_index: Int,
-) -> Bool {
-  let redeemer_data = tx.redeemers
-    |> utils.get_redeemer_at(Mint(da_policy_id), da_mint_redeemer_index)
-  expect
-      da_attestation.ApplyToStateQueue {
-        da_attestation_input_index: bound_attestation_input_index,
-        state_queue_input_index: bound_state_queue_input_index,
-        state_queue_output_index: bound_state_queue_output_index,
-        ..
-      }: da_attestation.MintRedeemer
-    = redeemer_data
-  and {
-    bound_attestation_input_index == da_attestation_input_index,
-    bound_state_queue_input_index == state_queue_input_index,
-    bound_state_queue_output_index == state_queue_output_index,
-  }
-}
-
-pub fn validate_mint_bond_from_attestation(
-  hub_oracle_policy_id: PolicyId,
-  parameters: availability.ParametersV1,
+/// A challenge record authenticated by its challenge token under the
+/// availability policy at the availability address. The record's lovelace is
+/// exactly `challenge_record_lovelace` and it holds nothing else, so the name
+/// in its datum is the token it holds.
+fn authenticated_challenge_record(
+  output: Output,
   own_policy_id: PolicyId,
-  tx: Transaction,
-  hub_oracle_ref_input_index: Int,
-  da_attestation_input_index: Int,
-  da_attestation_mint_redeemer_index: Int,
-  bond_output_index: Int,
-  state_queue_input_index: Int,
-  state_queue_output_index: Int,
-) -> Bool {
-  let hub_datum = hub.get_datum(
-    tx.reference_inputs,
-    hub_oracle_policy_id,
-    hub_oracle_ref_input_index,
-  )
-  let attestation_input = input_at(tx.inputs, da_attestation_input_index)
-  let da_policy_id = script_hash(attestation_input.output.address)
-  expect attestation_datum: da_attestation.DaAttestationDatum = inline_datum(
-    attestation_input.output,
-  )
-  let commitment = attestation_datum.availability_commitment
-  let da_asset_name = da_attestation_asset_name(attestation_datum.header_hash)
-  let bond_asset_name = availability.da_bond_asset_name_v1(
-    attestation_input.output_reference,
-  )
-  let bond_output = output_at(tx.outputs, bond_output_index)
-  let expected_bond_datum: availability.BondDatumV1 = availability.Available {
-    commitment,
-    da_bond_asset_name: bond_asset_name,
-    committee_signers_hash: attestation_datum.committee_signers_hash,
-    attested_signers: attestation_datum.attested_signers,
-  }
-  let expected_bond_datum_data: Data = expected_bond_datum
-  and {
-    da_attestation_input_index != state_queue_input_index,
-    bond_output_index != state_queue_output_index,
-    availability.parameters_are_canonical_v1(parameters),
-    availability.commitment_is_canonical_v1(commitment, parameters),
-    commitment.deployment_identity == hub_oracle_policy_id,
-    commitment.header_hash == attestation_datum.header_hash,
-    attestation_input.output.value == (
-      assets.from_lovelace(parameters.da_bond_lovelace)
-        |> assets.add(da_policy_id, da_asset_name, 1)
-    ),
-    mint_pairs(tx.mint, own_policy_id) == [Pair(bond_asset_name, 1)],
-    exact_script_output(
-      bond_output,
-      from_script(own_policy_id),
-      assets.from_lovelace(parameters.da_bond_lovelace)
-        |> assets.add(own_policy_id, bond_asset_name, 1),
-    ),
-    inline_datum(bond_output) == expected_bond_datum_data,
-    validate_da_apply_binding(
-      tx,
-      da_policy_id,
-      da_attestation_mint_redeemer_index,
-      da_attestation_input_index,
-      state_queue_input_index,
-      state_queue_output_index,
-    ),
-    validate_state_queue_status_transition(
-      tx,
-      hub_datum.state_queue,
-      state_queue_input_index,
-      state_queue_output_index,
-      commitment.header_hash,
-      availability.Unattested,
-      availability.Attested { da_bond_asset_name: bond_asset_name },
-    ),
-  }
+  parameters: availability.ParametersV1,
+) -> availability.ChallengeRecordV1 {
+  expect record: availability.ChallengeRecordV1 = inline_datum(output)
+  expect output.address == from_script(own_policy_id)
+  expect
+    output.value == (
+      assets.from_lovelace(parameters.challenge_record_lovelace)
+        |> assets.add(own_policy_id, record.challenge_asset_name, 1)
+    )
+  record
 }
 
 fn expected_tranche_mint_pairs(
@@ -324,8 +212,7 @@ pub fn validate_open_challenge(
   own_policy_id: PolicyId,
   tx: Transaction,
   hub_oracle_ref_input_index: Int,
-  bond_input_index: Int,
-  bond_output_index: Int,
+  record_output_index: Int,
   challenger_input_index: Int,
   state_queue_input_index: Int,
   state_queue_output_index: Int,
@@ -338,20 +225,16 @@ pub fn validate_open_challenge(
     hub_oracle_policy_id,
     hub_oracle_ref_input_index,
   )
-  let bond_input = input_at(tx.inputs, bond_input_index)
-  expect
-      availability.Available {
-        commitment,
-        da_bond_asset_name,
-        committee_signers_hash,
-        attested_signers,
-      }: availability.BondDatumV1
-    = inline_datum(bond_input.output)
-  let challenge_asset_name = availability.challenge_asset_name_v1(
-    bond_input.output_reference,
-  )
   let challenger_input = input_at(tx.inputs, challenger_input_index)
-  let bond_output = output_at(tx.outputs, bond_output_index)
+  let challenge_asset_name = availability.challenge_asset_name_v1(
+    challenger_input.output_reference,
+  )
+  let record_output = output_at(tx.outputs, record_output_index)
+  // The commitment preimage travels in the record output. The node input's
+  // `Attested{h}` binds it: the status transition below requires
+  // `commitment_hash_v1(commitment) == h`.
+  expect record: availability.ChallengeRecordV1 = inline_datum(record_output)
+  let commitment = record.commitment
   // The response window opens at the inclusive upper validity bound. The
   // ledger admits the open only at or before that instant, so the committee
   // always has at least the full window after the open lands. The challenger
@@ -366,17 +249,24 @@ pub fn validate_open_challenge(
     commitment.payload_byte_length,
     inclusive_upper_bound,
   )
-  let expected_bond_datum: availability.BondDatumV1 = availability.ChallengedBond {
+  let expected_record: availability.ChallengeRecordV1 = availability.ChallengeRecordV1 {
     commitment,
-    da_bond_asset_name,
-    committee_signers_hash,
-    attested_signers,
     challenge_asset_name,
     challenger,
     opened_at: inclusive_upper_bound,
     response_deadline,
   }
-  let expected_bond_datum_data: Data = expected_bond_datum
+  let expected_record_data: Data = expected_record
+  let node_end_time = state_queue.validate_da_challenge_open_transition_v1(
+    tx.inputs,
+    tx.outputs,
+    hub_datum.state_queue,
+    state_queue_input_index,
+    state_queue_output_index,
+    commitment.header_hash,
+    availability.commitment_hash_v1(commitment),
+    challenge_asset_name,
+  )
   let descriptors = commitment.tranche_descriptors
   expect Some(initial_tranche_lovelaces) = availability.tranche_initial_lovelaces_v1(
     commitment,
@@ -395,16 +285,14 @@ pub fn validate_open_challenge(
   ]
   let descriptor_count = list.length(descriptors)
   and {
-    list.length(tx.inputs) == 3,
+    list.length(tx.inputs) == 2,
     list.length(tx.outputs) == 3 + descriptor_count,
     tx.fee > 0,
     tx.fee <= parameters.max_open_fee_lovelace,
-    bond_input_index != challenger_input_index,
-    bond_input_index != state_queue_input_index,
     challenger_input_index != state_queue_input_index,
-    bond_output_index != state_queue_output_index,
+    record_output_index != state_queue_output_index,
     index_outside_contiguous_range(
-      bond_output_index,
+      record_output_index,
       first_tranche_output_index,
       descriptor_count,
     ),
@@ -413,7 +301,7 @@ pub fn validate_open_challenge(
       first_tranche_output_index,
       descriptor_count,
     ),
-    terminal_accumulator_output_index != bond_output_index,
+    terminal_accumulator_output_index != record_output_index,
     terminal_accumulator_output_index != state_queue_output_index,
     index_outside_contiguous_range(
       terminal_accumulator_output_index,
@@ -421,37 +309,24 @@ pub fn validate_open_challenge(
       descriptor_count,
     ),
     first_tranche_output_index + descriptor_count <= list.length(tx.outputs),
+    availability.commitment_is_canonical_v1(commitment, parameters),
     commitment.deployment_identity == hub_oracle_policy_id,
+    inclusive_upper_bound < node_end_time + availability.da_challenge_window_ms_v1,
     utils.has_signed(challenger, tx.extra_signatories),
-    bond_input.output.address == from_script(own_policy_id),
-    bond_input.output.value == (
-      assets.from_lovelace(parameters.da_bond_lovelace)
-        |> assets.add(own_policy_id, da_bond_asset_name, 1)
-    ),
     challenger_input.output.address == from_verification_key(challenger),
     challenger_input.output.value == assets.from_lovelace(
-      parameters.challenger_bond_lovelace + tx.fee,
+      parameters.challenger_bond_lovelace + parameters.challenge_record_lovelace + tx.fee,
     ),
     challenger_input.output.datum == NoDatum,
     challenger_input.output.reference_script == None,
     mint_pairs(tx.mint, own_policy_id) == expected_mint_pairs,
     exact_script_output(
-      bond_output,
+      record_output,
       from_script(own_policy_id),
-      assets.from_lovelace(parameters.da_bond_lovelace)
-        |> assets.add(own_policy_id, da_bond_asset_name, 1)
+      assets.from_lovelace(parameters.challenge_record_lovelace)
         |> assets.add(own_policy_id, challenge_asset_name, 1),
     ),
-    inline_datum(bond_output) == expected_bond_datum_data,
-    validate_state_queue_status_transition(
-      tx,
-      hub_datum.state_queue,
-      state_queue_input_index,
-      state_queue_output_index,
-      commitment.header_hash,
-      availability.Attested { da_bond_asset_name },
-      availability.Challenged { da_bond_asset_name, challenge_asset_name },
-    ),
+    inline_datum(record_output) == expected_record_data,
     validate_initial_tranche_outputs(
       tx.outputs,
       own_policy_id,
@@ -598,23 +473,26 @@ pub fn validate_settle_tranche(
   parameters: availability.ParametersV1,
   own_policy_id: PolicyId,
   tx: Transaction,
-  bond_ref_input_index: Int,
+  record_ref_input_index: Int,
   terminal_accumulator_input_index: Int,
   terminal_accumulator_output_index: Int,
   tranche_input_index: Int,
   carrier_input_index: Option<Int>,
 ) -> Bool {
-  let bond_ref_input = input_at(tx.reference_inputs, bond_ref_input_index)
-  expect
-      availability.ChallengedBond {
+  let record_ref_input = input_at(tx.reference_inputs, record_ref_input_index)
+  let
+      availability.ChallengeRecordV1 {
         commitment,
-        da_bond_asset_name,
         challenge_asset_name,
         challenger,
         response_deadline,
         ..
-      }: availability.BondDatumV1
-    = inline_datum(bond_ref_input.output)
+      }
+    = authenticated_challenge_record(
+    record_ref_input.output,
+    own_policy_id,
+    parameters,
+  )
   let terminal_input = input_at(tx.inputs, terminal_accumulator_input_index)
   expect terminal_datum: availability.TerminalAccumulatorDatumV1 = inline_datum(
     terminal_input.output,
@@ -681,12 +559,6 @@ pub fn validate_settle_tranche(
     tx.fee > 0,
     tx.fee <= parameters.max_settlement_fee_lovelace,
     output_lovelace > 0,
-    bond_ref_input.output.address == from_script(own_policy_id),
-    bond_ref_input.output.value == (
-      assets.from_lovelace(parameters.da_bond_lovelace)
-        |> assets.add(own_policy_id, da_bond_asset_name, 1)
-        |> assets.add(own_policy_id, challenge_asset_name, 1)
-    ),
     terminal_input.output.address == from_script(own_policy_id),
     terminal_input.output.reference_script == None,
     terminal_input.output.value == (
@@ -723,11 +595,10 @@ pub fn validate_close_challenge(
   own_policy_id: PolicyId,
   tx: Transaction,
   hub_oracle_ref_input_index: Int,
-  bond_input_index: Int,
+  record_input_index: Int,
   terminal_accumulator_input_index: Int,
   state_queue_input_index: Int,
   state_queue_output_index: Int,
-  da_refund_output_index: Int,
   challenger_refund_output_index: Int,
 ) -> Bool {
   let hub_datum = hub.get_datum(
@@ -735,16 +606,19 @@ pub fn validate_close_challenge(
     hub_oracle_policy_id,
     hub_oracle_ref_input_index,
   )
-  let bond_input = input_at(tx.inputs, bond_input_index)
-  expect
-      availability.ChallengedBond {
+  let record_input = input_at(tx.inputs, record_input_index)
+  let
+      availability.ChallengeRecordV1 {
         commitment,
-        da_bond_asset_name,
         challenge_asset_name,
         challenger,
         ..
-      }: availability.BondDatumV1
-    = inline_datum(bond_input.output)
+      }
+    = authenticated_challenge_record(
+    record_input.output,
+    own_policy_id,
+    parameters,
+  )
   let terminal_input = input_at(tx.inputs, terminal_accumulator_input_index)
   expect terminal_datum: availability.TerminalAccumulatorDatumV1 = inline_datum(
     terminal_input.output,
@@ -753,7 +627,6 @@ pub fn validate_close_challenge(
     challenge_asset_name,
   )
   let expected_burn_pairs = [
-    Pair(da_bond_asset_name, -1),
     Pair(challenge_asset_name, -1),
     Pair(terminal_asset_name, -1),
   ]
@@ -763,19 +636,11 @@ pub fn validate_close_challenge(
     tx.fee > 0,
     tx.fee <= parameters.max_close_fee_lovelace,
     list.length(tx.inputs) == 3,
-    list.length(tx.outputs) == 3,
-    bond_input_index != state_queue_input_index,
-    bond_input_index != terminal_accumulator_input_index,
+    list.length(tx.outputs) == 2,
+    record_input_index != state_queue_input_index,
+    record_input_index != terminal_accumulator_input_index,
     state_queue_input_index != terminal_accumulator_input_index,
-    da_refund_output_index != challenger_refund_output_index,
-    da_refund_output_index != state_queue_output_index,
     challenger_refund_output_index != state_queue_output_index,
-    bond_input.output.address == from_script(own_policy_id),
-    bond_input.output.value == (
-      assets.from_lovelace(parameters.da_bond_lovelace)
-        |> assets.add(own_policy_id, da_bond_asset_name, 1)
-        |> assets.add(own_policy_id, challenge_asset_name, 1)
-    ),
     terminal_input.output.address == from_script(own_policy_id),
     terminal_input.output.value == (
       assets.from_lovelace(terminal_datum.remaining_challenger_lovelace)
@@ -791,28 +656,29 @@ pub fn validate_close_challenge(
     terminal_datum.has_timed_out_tranche == False,
     terminal_datum.challenger == challenger,
     mint_pairs(tx.mint, own_policy_id) == expected_burn_pairs,
-    validate_state_queue_status_transition(
-      tx,
+    state_queue.validate_da_availability_status_transition(
+      tx.inputs,
+      tx.outputs,
       hub_datum.state_queue,
       state_queue_input_index,
       state_queue_output_index,
       commitment.header_hash,
-      availability.Challenged { da_bond_asset_name, challenge_asset_name },
+      availability.Challenged {
+        commitment_hash: availability.commitment_hash_v1(commitment),
+        challenge_asset_name,
+      },
       availability.Published {
         terminal_commitment: availability.published_terminal_commitment_v1(
           commitment,
         ),
       },
     ),
-    exact_enterprise_ada_output(
-      output_at(tx.outputs, da_refund_output_index),
-      commitment.bond_owner,
-      parameters.da_bond_lovelace,
-    ),
+    // The challenger recovers the unspent bond and the record's lovelace in
+    // one output. The committee holds no per-block bond to refund.
     exact_enterprise_ada_output(
       output_at(tx.outputs, challenger_refund_output_index),
       challenger,
-      terminal_datum.remaining_challenger_lovelace - tx.fee,
+      terminal_datum.remaining_challenger_lovelace - tx.fee + parameters.challenge_record_lovelace,
     ),
     terminal_datum.remaining_challenger_lovelace > tx.fee,
   }
@@ -891,16 +757,47 @@ fn validate_state_queue_timeout_binding(
   }
 }
 
+/// The node the removal consumes, located by its block token under the state
+/// queue policy, must still carry exactly the challenged status the record
+/// implies: both the commitment hash and the challenge name.
+fn timeout_node_status_matches(
+  inputs: List<Input>,
+  state_queue_policy_id: PolicyId,
+  header_hash: ByteArray,
+  expected_status: availability.StateQueueStatusV1,
+) -> Bool {
+  let node_asset_name = state_queue.block_asset_name_prefix
+    |> bytearray.concat(header_hash)
+  expect [node_input] = inputs
+    |> list.filter(
+        fn(input) {
+          quantity_of(
+            input.output.value,
+            state_queue_policy_id,
+            node_asset_name,
+          ) == 1
+        },
+      )
+  expect node_datum: state_queue.Datum = inline_datum(node_input.output)
+  expect linked_list.Node { data: node } = node_datum.data
+  node.da_attestation == expected_status
+}
+
+/// Interim timeout (until the pooled-bond slash lands): the expired record is
+/// burned with its terminal accumulator and the challenger recovers the
+/// record's lovelace with the unspent bond. Nothing here reads the pool or
+/// pins a slash output, and `da_slash_output_index` is not read. The pool's
+/// `Slash` arm can still co-run with this timeout, and nothing pins where its
+/// taken lovelace goes; #693 binds it (decisions D1-D3).
 pub fn validate_timeout_challenge(
   hub_oracle_policy_id: PolicyId,
   parameters: availability.ParametersV1,
   own_policy_id: PolicyId,
   tx: Transaction,
   hub_oracle_ref_input_index: Int,
-  bond_input_index: Int,
+  record_input_index: Int,
   terminal_accumulator_input_index: Int,
   state_queue_mint_redeemer_index: Int,
-  da_slash_output_index: Int,
   challenger_refund_output_index: Int,
 ) -> Bool {
   let hub_datum = hub.get_datum(
@@ -908,17 +805,20 @@ pub fn validate_timeout_challenge(
     hub_oracle_policy_id,
     hub_oracle_ref_input_index,
   )
-  let bond_input = input_at(tx.inputs, bond_input_index)
-  expect
-      availability.ChallengedBond {
+  let record_input = input_at(tx.inputs, record_input_index)
+  let
+      availability.ChallengeRecordV1 {
         commitment,
-        da_bond_asset_name,
         challenge_asset_name,
         challenger,
         response_deadline,
         ..
-      }: availability.BondDatumV1
-    = inline_datum(bond_input.output)
+      }
+    = authenticated_challenge_record(
+    record_input.output,
+    own_policy_id,
+    parameters,
+  )
   let terminal_input = input_at(tx.inputs, terminal_accumulator_input_index)
   expect terminal_datum: availability.TerminalAccumulatorDatumV1 = inline_datum(
     terminal_input.output,
@@ -927,7 +827,6 @@ pub fn validate_timeout_challenge(
     challenge_asset_name,
   )
   let expected_burn_pairs = [
-    Pair(da_bond_asset_name, -1),
     Pair(challenge_asset_name, -1),
     Pair(terminal_asset_name, -1),
   ]
@@ -946,16 +845,8 @@ pub fn validate_timeout_challenge(
     tx.fee > 0,
     tx.fee <= parameters.max_timeout_fee_lovelace,
     inclusive_lower_bound >= response_deadline,
-    bond_input_index != terminal_accumulator_input_index,
-    da_slash_output_index >= 0,
+    record_input_index != terminal_accumulator_input_index,
     challenger_refund_output_index >= 0,
-    da_slash_output_index != challenger_refund_output_index,
-    bond_input.output.address == from_script(own_policy_id),
-    bond_input.output.value == (
-      assets.from_lovelace(parameters.da_bond_lovelace)
-        |> assets.add(own_policy_id, da_bond_asset_name, 1)
-        |> assets.add(own_policy_id, challenge_asset_name, 1)
-    ),
     terminal_input.output.address == from_script(own_policy_id),
     terminal_input.output.value == (
       assets.from_lovelace(terminal_datum.remaining_challenger_lovelace)
@@ -979,18 +870,22 @@ pub fn validate_timeout_challenge(
       commitment.header_hash,
       challenge_asset_name,
     ),
-    exact_enterprise_ada_output(
-      output_at(tx.outputs, da_slash_output_index),
-      challenger,
-      parameters.da_bond_lovelace,
+    timeout_node_status_matches(
+      tx.inputs,
+      hub_datum.state_queue,
+      commitment.header_hash,
+      availability.Challenged {
+        commitment_hash: availability.commitment_hash_v1(commitment),
+        challenge_asset_name,
+      },
     ),
     exact_enterprise_ada_output(
       output_at(tx.outputs, challenger_refund_output_index),
       challenger,
-      terminal_datum.remaining_challenger_lovelace - tx.fee,
+      terminal_datum.remaining_challenger_lovelace - tx.fee + parameters.challenge_record_lovelace,
     ),
     terminal_datum.remaining_challenger_lovelace > tx.fee,
-    challenger_output_count == 2,
+    challenger_output_count == 1,
   }
 }
 
@@ -1142,8 +1037,8 @@ pub fn validate_coordinate_spend(
     |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
   expect redeemer: availability.MintRedeemerV1 = redeemer_data
   when redeemer is {
-    availability.OpenChallenge { bond_input_index, .. } ->
-      input_at(tx.inputs, bond_input_index).output_reference == own_ref
+    // An open spends nothing at the availability address.
+    availability.OpenChallenge { .. } -> fail
     availability.SettleTranche {
       terminal_accumulator_input_index,
       tranche_input_index,
@@ -1158,21 +1053,20 @@ pub fn validate_coordinate_spend(
         },
       }
     availability.CloseChallenge {
-      bond_input_index,
+      record_input_index,
       terminal_accumulator_input_index,
       ..
     } -> or {
-        input_at(tx.inputs, bond_input_index).output_reference == own_ref,
+        input_at(tx.inputs, record_input_index).output_reference == own_ref,
         input_at(tx.inputs, terminal_accumulator_input_index).output_reference == own_ref,
       }
     availability.TimeoutChallenge {
-      bond_input_index,
+      record_input_index,
       terminal_accumulator_input_index,
       ..
     } -> or {
-        input_at(tx.inputs, bond_input_index).output_reference == own_ref,
+        input_at(tx.inputs, record_input_index).output_reference == own_ref,
         input_at(tx.inputs, terminal_accumulator_input_index).output_reference == own_ref,
       }
-    availability.MintBondFromAttestation { .. } -> fail
   }
 }

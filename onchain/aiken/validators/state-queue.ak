@@ -578,8 +578,9 @@ validator spend(
 /// Cross-policy authorization seam for the state-queue spending validator.
 /// The availability mint policy owns the semantic status transition; this
 /// helper proves that its selected redeemer names the exact queue input and
-/// continuation being spent here. Only the three status-preserving arms are
-/// admitted. Timeout removes queue structure and is therefore excluded.
+/// continuation being spent here. Only the two status-updating arms (open and
+/// close) are admitted. Timeout removes queue structure and is therefore
+/// excluded; attestation is applied by the DA attestation policy.
 pub fn availability_status_update_is_authorized_v1(
   redeemers: List<Pair<ScriptPurpose, Data>>,
   availability_policy_id: PolicyId,
@@ -594,14 +595,6 @@ pub fn availability_status_update_is_authorized_v1(
       )
   expect availability_redeemer: availability.MintRedeemerV1 = redeemer_data
   when availability_redeemer is {
-    availability.MintBondFromAttestation {
-      state_queue_input_index: bound_input,
-      state_queue_output_index: bound_output,
-      ..
-    } -> and {
-        bound_input == state_queue_input_index,
-        bound_output == state_queue_output_index,
-      }
     availability.OpenChallenge {
       state_queue_input_index: bound_input,
       state_queue_output_index: bound_output,
@@ -888,12 +881,13 @@ fn unavailable_target_matches_v1(
     authenticated_header_hash == crypto.blake2b_224(
       builtin.serialise_data(node.header),
     ),
-    node.da_attestation == availability.Challenged {
-      da_bond_asset_name: when node.da_attestation is {
-        availability.Challenged { da_bond_asset_name, .. } -> da_bond_asset_name
-        _ -> fail
-      },
-      challenge_asset_name,
+    // The challenge name is minted once, by the open that wrote this status
+    // together with the record holding the commitment behind its hash, so the
+    // name alone identifies the challenge.
+    when node.da_attestation is {
+      availability.Challenged { challenge_asset_name: challenged_name, .. } ->
+        challenged_name == challenge_asset_name
+      _ -> False
     },
     header_v1_is_valid(decode_header_view(node.header)),
   }

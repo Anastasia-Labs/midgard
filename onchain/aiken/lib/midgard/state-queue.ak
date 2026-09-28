@@ -213,9 +213,9 @@ pub type MintRedeemer {
     removal_approach: UnattestedTimeoutRemovalApproach,
   }
   /// Deterministic DA-availability correction. The dedicated availability
-  /// validator authenticates the expired challenged bond and exact slash on
-  /// the first transaction; the CorrectionLock singleton then carries the
-  /// same DACH identity across permissionless descendant pruning.
+  /// validator authenticates the expired challenge record and burns its
+  /// challenge on the first transaction; the CorrectionLock singleton then
+  /// carries the same DACH identity across permissionless descendant pruning.
   RemoveUnavailableBlockAfterTimeout {
     yield_to_ref_input_index: Int,
     unavailable_header_hash: HeaderHash,
@@ -381,6 +381,9 @@ fn get_node_info(
       )
 }
 
+/// Unattested→Attested: the DA policy attaches the hash of the burned,
+/// authenticated commitment before the attestation deadline measured from the
+/// node's own header end time.
 pub fn validate_da_attestation_attachment(
   inputs: List<Input>,
   outputs: List<Output>,
@@ -388,35 +391,56 @@ pub fn validate_da_attestation_attachment(
   state_queue_input_index: Int,
   state_queue_output_index: Int,
   expected_header_hash: HeaderHash,
-  da_bond_asset_name: AssetName,
+  commitment_hash: ByteArray,
   validity_range: ValidityRange,
 ) -> Bool {
-  expect
-    validate_da_availability_status_transition(
-      inputs,
-      outputs,
-      state_queue_policy,
-      state_queue_input_index,
-      state_queue_output_index,
-      expected_header_hash,
-      no_da_attestation,
-      availability.Attested { da_bond_asset_name },
-    )
-  expect Some(Input { output: input_output, .. }) = inputs
-    |> list.at(state_queue_input_index)
-  let _, _, input_block, _ <- get_node_info(input_output, state_queue_policy)
+  let end_time <- da_availability_status_transition(
+    inputs,
+    outputs,
+    state_queue_policy,
+    state_queue_input_index,
+    state_queue_output_index,
+    expected_header_hash,
+    no_da_attestation,
+    availability.Attested { commitment_hash },
+  )
   let (_, inclusive_tx_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
     validity_range,
   )
-  expect
-    inclusive_tx_upper_bound <= input_block.header.end_time + da_attestation_timeout_v1
-  True
+  inclusive_tx_upper_bound <= end_time + da_attestation_timeout_v1
+}
+
+/// Attested→Challenged for the availability open: the node keeps its
+/// commitment hash and gains the challenge name. Returns the node's
+/// commit-bound header end time, from which the open measures its challenge
+/// window.
+pub fn validate_da_challenge_open_transition_v1(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  state_queue_policy: PolicyId,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+  expected_header_hash: HeaderHash,
+  commitment_hash: ByteArray,
+  challenge_asset_name: AssetName,
+) -> Int {
+  let end_time <- da_availability_status_transition(
+    inputs,
+    outputs,
+    state_queue_policy,
+    state_queue_input_index,
+    state_queue_output_index,
+    expected_header_hash,
+    availability.Attested { commitment_hash },
+    availability.Challenged { commitment_hash, challenge_asset_name },
+  )
+  end_time
 }
 
 /// Exact in-place availability status transition for one authenticated linked-
-/// list node. The availability policy uses this for Attested→Challenged and
-/// Challenged→Published; the DA policy uses the wrapper above for the
-/// deadline-bound Unattested→Attested transition.
+/// list node. The availability policy uses this for Challenged→Published; the
+/// helpers above cover the deadline-bound Unattested→Attested and
+/// Attested→Challenged transitions.
 pub fn validate_da_availability_status_transition(
   inputs: List<Input>,
   outputs: List<Output>,
@@ -427,18 +451,46 @@ pub fn validate_da_availability_status_transition(
   expected_input_status: availability.StateQueueStatusV1,
   expected_output_status: availability.StateQueueStatusV1,
 ) -> Bool {
+  let _end_time <- da_availability_status_transition(
+    inputs,
+    outputs,
+    state_queue_policy,
+    state_queue_input_index,
+    state_queue_output_index,
+    expected_header_hash,
+    expected_input_status,
+    expected_output_status,
+  )
+  True
+}
+
+/// The one decode of both node sides. Only the status may change: the node's
+/// full value, address, link, header and fraud marker are carried exactly
+/// (HAZ-13). The continuation receives the input header's end time.
+fn da_availability_status_transition(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  state_queue_policy: PolicyId,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+  expected_header_hash: HeaderHash,
+  expected_input_status: availability.StateQueueStatusV1,
+  expected_output_status: availability.StateQueueStatusV1,
+  return: fn(Int) -> result,
+) -> result {
   expect Some(Input { output: input_output, .. }) = inputs
     |> list.at(state_queue_input_index)
   expect Some(output) = outputs |> list.at(state_queue_output_index)
-  let Output { address: input_address, .. } = input_output
-  let Output { address: output_address, .. } = output
+  let Output { address: input_address, value: input_value, .. } = input_output
+  let Output { address: output_address, value: output_value, .. } = output
   expect input_address == output_address
+  expect output_value == input_value
 
-  let input_lovelace, input_header_hash, input_block, input_link <- get_node_info(
+  let _input_lovelace, input_header_hash, input_block, input_link <- get_node_info(
     input_output,
     state_queue_policy,
   )
-  let output_lovelace, output_header_hash, output_block, output_link <- get_node_info(
+  let _output_lovelace, output_header_hash, output_block, output_link <- get_node_info(
     output,
     state_queue_policy,
   )
@@ -447,13 +499,12 @@ pub fn validate_da_availability_status_transition(
   expect output_header_hash == expected_header_hash
   let input_header_data: Data = input_block.header
   expect input_header_hash == utils.serialise_and_hash_28(input_header_data)
-  expect output_lovelace >= input_lovelace
   expect output_link == input_link
   expect input_block.da_attestation == expected_input_status
   expect output_block.header == input_block.header
   expect output_block.da_attestation == expected_output_status
   expect output_block.proven_fraud == input_block.proven_fraud
-  True
+  return(input_block.header.end_time)
 }
 
 /// Consume the challenged node in the terminal proof transaction. A prepared

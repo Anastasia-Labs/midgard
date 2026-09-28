@@ -23,8 +23,6 @@ validator availability_challenge(
     tx: Transaction,
   ) {
     let Pair(role, yield_to_ref_input_index) = when redeemer is {
-      availability.MintBondFromAttestation { yield_to_ref_input_index, .. } ->
-        Pair(yielding.bond_role, yield_to_ref_input_index)
       availability.OpenChallenge { yield_to_ref_input_index, .. } ->
         Pair(yielding.open_role, yield_to_ref_input_index)
       availability.SettleTranche { yield_to_ref_input_index, .. } ->

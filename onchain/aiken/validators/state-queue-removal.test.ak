@@ -37,8 +37,8 @@ const rotated_operator =
 const da_attestation_policy =
   #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
-const da_bond_asset_name =
-  #"4441424edddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+const commitment_hash =
+  #"c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
 
 const challenge_asset_name =
   #"44414348eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
@@ -49,15 +49,17 @@ const other_challenge_asset_name =
 const availability_policy =
   #"abababababababababababababababababababababababababababab"
 
-fn availability_status_mint_bond_redeemer() -> availability.MintRedeemerV1 {
-  availability.MintBondFromAttestation {
+fn availability_status_open_redeemer() -> availability.MintRedeemerV1 {
+  availability.OpenChallenge {
     yield_to_ref_input_index: 0,
     hub_oracle_ref_input_index: 0,
-    da_attestation_input_index: 1,
-    da_attestation_mint_redeemer_index: 0,
-    bond_output_index: 1,
+    record_output_index: 1,
+    challenger_input_index: 1,
     state_queue_input_index: 2,
     state_queue_output_index: 3,
+    first_tranche_output_index: 4,
+    terminal_accumulator_output_index: 5,
+    challenger: faulty_operator,
   }
 }
 
@@ -68,9 +70,9 @@ fn availability_status_redeemers(
   [Pair(Mint(availability_policy), data)]
 }
 
-test availability_status_spend_accepts_exact_mint_bond_binding() {
+test availability_status_spend_accepts_exact_open_binding() {
   state_queue_validator.availability_status_update_is_authorized_v1(
-    availability_status_redeemers(availability_status_mint_bond_redeemer()),
+    availability_status_redeemers(availability_status_open_redeemer()),
     availability_policy,
     0,
     2,
@@ -81,14 +83,14 @@ test availability_status_spend_accepts_exact_mint_bond_binding() {
 test availability_status_spend_rejects_wrong_input_or_output_index() {
   and {
     !state_queue_validator.availability_status_update_is_authorized_v1(
-      availability_status_redeemers(availability_status_mint_bond_redeemer()),
+      availability_status_redeemers(availability_status_open_redeemer()),
       availability_policy,
       0,
       1,
       3,
     ),
     !state_queue_validator.availability_status_update_is_authorized_v1(
-      availability_status_redeemers(availability_status_mint_bond_redeemer()),
+      availability_status_redeemers(availability_status_open_redeemer()),
       availability_policy,
       0,
       2,
@@ -101,7 +103,7 @@ test availability_status_spend_rejects_timeout_removal_arm() {
   let timeout = availability.TimeoutChallenge {
     yield_to_ref_input_index: 0,
     hub_oracle_ref_input_index: 0,
-    bond_input_index: 1,
+    record_input_index: 1,
     terminal_accumulator_input_index: 2,
     state_queue_mint_redeemer_index: 0,
     da_slash_output_index: 0,
@@ -116,9 +118,70 @@ test availability_status_spend_rejects_timeout_removal_arm() {
   )
 }
 
+fn availability_status_close_redeemer() -> availability.MintRedeemerV1 {
+  availability.CloseChallenge {
+    yield_to_ref_input_index: 0,
+    hub_oracle_ref_input_index: 0,
+    record_input_index: 0,
+    terminal_accumulator_input_index: 1,
+    state_queue_input_index: 2,
+    state_queue_output_index: 3,
+    challenger_refund_output_index: 0,
+  }
+}
+
+test availability_status_spend_accepts_exact_close_binding() {
+  state_queue_validator.availability_status_update_is_authorized_v1(
+    availability_status_redeemers(availability_status_close_redeemer()),
+    availability_policy,
+    0,
+    2,
+    3,
+  )
+}
+
+test availability_status_spend_rejects_close_with_wrong_input_or_output_index() {
+  and {
+    !state_queue_validator.availability_status_update_is_authorized_v1(
+      availability_status_redeemers(availability_status_close_redeemer()),
+      availability_policy,
+      0,
+      1,
+      3,
+    ),
+    !state_queue_validator.availability_status_update_is_authorized_v1(
+      availability_status_redeemers(availability_status_close_redeemer()),
+      availability_policy,
+      0,
+      2,
+      4,
+    ),
+  }
+}
+
+/// A settle spends only tranche threads and the terminal accumulator; it must
+/// not authorize a state-queue status update even at matching indices.
+test availability_status_spend_rejects_settle_arm() {
+  let settle = availability.SettleTranche {
+    yield_to_ref_input_index: 0,
+    record_ref_input_index: 0,
+    terminal_accumulator_input_index: 2,
+    terminal_accumulator_output_index: 3,
+    tranche_input_index: 2,
+    carrier_input_index: None,
+  }
+  !state_queue_validator.availability_status_update_is_authorized_v1(
+    availability_status_redeemers(settle),
+    availability_policy,
+    0,
+    2,
+    3,
+  )
+}
+
 test availability_status_spend_rejects_wrong_policy() fail {
   state_queue_validator.availability_status_update_is_authorized_v1(
-    availability_status_redeemers(availability_status_mint_bond_redeemer()),
+    availability_status_redeemers(availability_status_open_redeemer()),
     #"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
     0,
     2,
@@ -256,7 +319,7 @@ fn continue_node(input: Input, link: Option<ByteArray>) -> Output {
   Output { ..input.output, datum: InlineDatum(continued_datum) }
 }
 
-fn attach_da_bond(input: Input, bond_asset_name: ByteArray) -> Output {
+fn attach_da_attestation(input: Input, attested_hash: ByteArray) -> Output {
   expect InlineDatum(input_datum_data) = input.output.datum
   expect
       linked_list.Element { data: linked_list.Node { data: input_node }, link }: state_queue.Datum
@@ -265,9 +328,7 @@ fn attach_da_bond(input: Input, bond_asset_name: ByteArray) -> Output {
     data: linked_list.Node(
       state_queue.StateQueueNode {
         ..input_node,
-        da_attestation: availability.Attested {
-          da_bond_asset_name: bond_asset_name,
-        },
+        da_attestation: availability.Attested { commitment_hash: attested_hash },
       },
     ),
     link,
@@ -545,7 +606,7 @@ test attestation_timeout_rejects_attested_head_after_race() fail {
     1,
     timed_out_header_hash,
     timed_out_header,
-    availability.Attested { da_bond_asset_name },
+    availability.Attested { commitment_hash },
     None,
   )
   let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
@@ -637,7 +698,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
       state_queue.StateQueueNode {
         proven_fraud: None,
         header: head_header,
-        da_attestation: availability.Attested { da_bond_asset_name },
+        da_attestation: availability.Attested { commitment_hash },
       },
       da_attestation_policy,
       between(boundary, boundary + 1_000),
@@ -647,14 +708,61 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
         proven_fraud: None,
         header: head_header,
         da_attestation: availability.Challenged {
-          da_bond_asset_name,
-          challenge_asset_name: da_bond_asset_name,
+          commitment_hash,
+          challenge_asset_name,
         },
       },
       da_attestation_policy,
       between(boundary - 1_000, boundary - 1),
     ),
   }
+}
+
+fn append_head_with_status(
+  da_attestation: availability.StateQueueStatusV1,
+) -> state_queue.StateQueueNode {
+  state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: header(faulty_operator, parent_header_hash),
+    da_attestation,
+  }
+}
+
+/// One append window, early enough that even an unattested head is still
+/// appendable, so any refusal below comes from the head's DA status.
+fn append_window() -> transaction.ValidityRange {
+  let boundary = header(faulty_operator, parent_header_hash).end_time + state_queue.da_attestation_timeout_v1
+  between(boundary - 1_000, boundary - 1)
+}
+
+test append_fence_accepts_attested_head() {
+  state_queue_validator.state_queue_head_allows_append_v1(
+    append_head_with_status(availability.Attested { commitment_hash }),
+    da_attestation_policy,
+    append_window(),
+  )
+}
+
+test append_fence_accepts_published_head() {
+  state_queue_validator.state_queue_head_allows_append_v1(
+    append_head_with_status(
+      availability.Published { terminal_commitment: commitment_hash },
+    ),
+    da_attestation_policy,
+    append_window(),
+  )
+}
+
+/// Refused by the `Challenged { .. } -> False` arm of the append fence: a
+/// challenged queue head halts appends until close or timeout resolves it.
+test append_fence_refuses_challenged_head() {
+  !state_queue_validator.state_queue_head_allows_append_v1(
+    append_head_with_status(
+      availability.Challenged { commitment_hash, challenge_asset_name },
+    ),
+    da_attestation_policy,
+    append_window(),
+  )
 }
 
 /// The append fence resolves the singleton root's head both when the consumed
@@ -730,12 +838,12 @@ test da_attestation_apply_accepts_window_ending_at_timeout_boundary() {
   let boundary = head_header.end_time + state_queue.da_attestation_timeout_v1
   state_queue.validate_da_attestation_attachment(
     [unattested_head],
-    [attach_da_bond(unattested_head, da_bond_asset_name)],
+    [attach_da_attestation(unattested_head, commitment_hash)],
     state_queue_policy,
     0,
     0,
     head_header_hash,
-    da_bond_asset_name,
+    commitment_hash,
     between(boundary - 1_000, boundary),
   )
 }
@@ -749,12 +857,12 @@ test da_attestation_apply_rejects_window_ending_after_timeout() fail {
   let boundary = head_header.end_time + state_queue.da_attestation_timeout_v1
   state_queue.validate_da_attestation_attachment(
     [unattested_head],
-    [attach_da_bond(unattested_head, da_bond_asset_name)],
+    [attach_da_attestation(unattested_head, commitment_hash)],
     state_queue_policy,
     0,
     0,
     head_header_hash,
-    da_bond_asset_name,
+    commitment_hash,
     between(boundary - 999, boundary + 1),
   )
 }
@@ -771,7 +879,7 @@ test availability_timeout_prunes_descendant_from_exact_challenged_head() {
     1,
     unavailable_header_hash,
     unavailable_header,
-    availability.Challenged { da_bond_asset_name, challenge_asset_name },
+    availability.Challenged { commitment_hash, challenge_asset_name },
     Some(descendant_header_hash),
   )
   let descendant = node_input(
@@ -802,7 +910,7 @@ test availability_timeout_removes_terminal_exact_challenged_head() {
     1,
     unavailable_header_hash,
     unavailable_header,
-    availability.Challenged { da_bond_asset_name, challenge_asset_name },
+    availability.Challenged { commitment_hash, challenge_asset_name },
     None,
   )
   state_queue_validator.remove_unavailable_head_v1(
@@ -825,7 +933,7 @@ test availability_timeout_rejects_substituted_challenge_identity() fail {
     1,
     unavailable_header_hash,
     unavailable_header,
-    availability.Challenged { da_bond_asset_name, challenge_asset_name },
+    availability.Challenged { commitment_hash, challenge_asset_name },
     None,
   )
   state_queue_validator.remove_unavailable_head_v1(
@@ -848,7 +956,7 @@ test availability_timeout_rejects_attested_but_unchallenged_head() fail {
     1,
     unavailable_header_hash,
     unavailable_header,
-    availability.Attested { da_bond_asset_name },
+    availability.Attested { commitment_hash },
     None,
   )
   state_queue_validator.remove_unavailable_head_v1(
@@ -860,6 +968,64 @@ test availability_timeout_rejects_attested_but_unchallenged_head() fail {
     challenge_asset_name: challenge_asset_name,
     confirmed_state_input_outref: root.output_reference,
     confirmed_state_output_index: 0,
+  )
+}
+
+/// Removes the challenged head with the redeemer naming `challenge_asset_name`,
+/// the head carrying `da_attestation`.
+fn remove_unavailable_head_with_status(
+  da_attestation: availability.StateQueueStatusV1,
+) -> Bool {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    da_attestation,
+    None,
+  )
+  state_queue_validator.remove_unavailable_head_v1(
+    state_queue_policy,
+    inputs: [root, unavailable_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(unavailable_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_input_outref: root.output_reference,
+    confirmed_state_output_index: 0,
+  )
+}
+
+/// The removal binds the challenge by its name only: the availability timeout
+/// checks the commitment hash against the record, so the state queue accepts
+/// `Challenged` under any commitment hash.
+test availability_timeout_accepts_challenged_head_under_any_commitment_hash() {
+  remove_unavailable_head_with_status(
+    availability.Challenged {
+      commitment_hash: #"0101010101010101010101010101010101010101010101010101010101010101",
+      challenge_asset_name,
+    },
+  )
+}
+
+/// Refused by the challenge-name match in `unavailable_target_matches_v1`:
+/// the node is challenged under another name than the redeemer's.
+test availability_timeout_rejects_head_challenged_under_other_name() fail {
+  remove_unavailable_head_with_status(
+    availability.Challenged {
+      commitment_hash,
+      challenge_asset_name: other_challenge_asset_name,
+    },
+  )
+}
+
+/// Refused by the `Challenged` pattern in `unavailable_target_matches_v1`: a
+/// published block has answered its challenge.
+test availability_timeout_rejects_published_head() fail {
+  remove_unavailable_head_with_status(
+    availability.Published { terminal_commitment: commitment_hash },
   )
 }
 
@@ -895,7 +1061,7 @@ fn timeout_suffix_fixture(with_descendant: Bool) -> TimeoutSuffixFixture {
       0,
       predecessor_hash,
       predecessor_header,
-      availability.Attested { da_bond_asset_name },
+      availability.Attested { commitment_hash },
       Some(target_hash),
     ),
     target: node_input(
@@ -1043,7 +1209,7 @@ test unattested_timeout_rejects_attested_interior_target_after_race() fail {
     target: Input {
       ..fixture.target,
       output_reference: out_ref(4),
-      output: attach_da_bond(fixture.target, da_bond_asset_name),
+      output: attach_da_attestation(fixture.target, commitment_hash),
     },
   }
   prune_timeout_suffix_child(attested, [fixture.predecessor])
@@ -1340,7 +1506,7 @@ test completed_fraud_marked_head_cannot_append() {
   !state_queue_validator.state_queue_head_allows_append_v1(
     state_queue.StateQueueNode {
       header: header(faulty_operator, parent_header_hash),
-      da_attestation: availability.Attested { da_bond_asset_name },
+      da_attestation: availability.Attested { commitment_hash },
       proven_fraud: Some(completed_fraud_asset()),
     },
     da_attestation_policy,
@@ -1459,7 +1625,7 @@ test completed_fraud_da_update_preserves_marker() {
   expect InlineDatum(data) = marked.datum
   expect element: state_queue.Datum = data
   expect linked_list.Node(node) = element.data
-  let attested = availability.Attested { da_bond_asset_name }
+  let attested = availability.Attested { commitment_hash }
   let continued: state_queue.Datum = linked_list.Element {
     ..element,
     data: linked_list.Node(
@@ -1482,7 +1648,7 @@ test completed_fraud_da_update_cannot_clear_marker() fail {
   let tx = completed_fraud_tx()
   expect [input] = tx.inputs
   expect [marked] = tx.outputs
-  let attested = availability.Attested { da_bond_asset_name }
+  let attested = availability.Attested { commitment_hash }
   let block = header(faulty_operator, parent_header_hash)
   let unmarked = node_input_with_attestation(
     0,

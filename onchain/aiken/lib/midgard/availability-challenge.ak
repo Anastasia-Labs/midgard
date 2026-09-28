@@ -21,6 +21,10 @@ pub const small_response_window_ms_v1: Int = env.small_response_window_ms_v1
 
 pub const full_response_window_ms_v1: Int = env.full_response_window_ms_v1
 
+/// An open must land before `header.end_time + da_challenge_window_ms_v1` of
+/// the node it challenges.
+pub const da_challenge_window_ms_v1: Int = env.da_challenge_window_ms_v1
+
 /// Hard safety ceilings only. Activated geometry remains signed release data.
 pub const max_response_chunk_safety_bytes_v1: Int = 15_148
 
@@ -63,37 +67,29 @@ pub type CommitmentV1 {
   payload_byte_length: Int,
   response_geometry: ResponseGeometryV1,
   tranche_descriptors: List<TrancheDescriptorV1>,
-  bond_owner: VerificationKeyHash,
 }
 
-/// Exact DA lifecycle carried by every state-queue node. Asset names are
-/// additionally bound to the deployment's availability policy by each
-/// transition validator.
+/// Exact DA lifecycle carried by every state-queue node. An attested node
+/// carries the hash of the commitment its committee signed
+/// (`commitment_hash_v1`); a challenged node additionally carries the name of
+/// the challenge token whose record holds that commitment. Challenge names
+/// are bound to the deployment's availability policy by each transition
+/// validator.
 pub type StateQueueStatusV1 {
   Unattested
-  Attested { da_bond_asset_name: ByteArray }
-  Challenged { da_bond_asset_name: ByteArray, challenge_asset_name: ByteArray }
+  Attested { commitment_hash: ByteArray }
+  Challenged { commitment_hash: ByteArray, challenge_asset_name: ByteArray }
   Published { terminal_commitment: ByteArray }
 }
 
-/// The availability policy also owns the dedicated bond, challenge and
-/// tranche script. Every minting constructor is cross-bound to the
-/// corresponding state transition.
+/// The availability policy owns the challenge record, challenge and tranche
+/// script. Every minting constructor is cross-bound to the corresponding
+/// state transition.
 pub type MintRedeemerV1 {
-  MintBondFromAttestation {
-    yield_to_ref_input_index: Int,
-    hub_oracle_ref_input_index: Int,
-    da_attestation_input_index: Int,
-    da_attestation_mint_redeemer_index: Int,
-    bond_output_index: Int,
-    state_queue_input_index: Int,
-    state_queue_output_index: Int,
-  }
   OpenChallenge {
     yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
-    bond_input_index: Int,
-    bond_output_index: Int,
+    record_output_index: Int,
     challenger_input_index: Int,
     state_queue_input_index: Int,
     state_queue_output_index: Int,
@@ -103,7 +99,7 @@ pub type MintRedeemerV1 {
   }
   SettleTranche {
     yield_to_ref_input_index: Int,
-    bond_ref_input_index: Int,
+    record_ref_input_index: Int,
     terminal_accumulator_input_index: Int,
     terminal_accumulator_output_index: Int,
     tranche_input_index: Int,
@@ -112,17 +108,16 @@ pub type MintRedeemerV1 {
   CloseChallenge {
     yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
-    bond_input_index: Int,
+    record_input_index: Int,
     terminal_accumulator_input_index: Int,
     state_queue_input_index: Int,
     state_queue_output_index: Int,
-    da_refund_output_index: Int,
     challenger_refund_output_index: Int,
   }
   TimeoutChallenge {
     yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
-    bond_input_index: Int,
+    record_input_index: Int,
     terminal_accumulator_input_index: Int,
     state_queue_mint_redeemer_index: Int,
     da_slash_output_index: Int,
@@ -145,23 +140,16 @@ pub type SpendRedeemerV1 {
   Coordinate { mint_redeemer_index: Int }
 }
 
-pub type BondDatumV1 {
-  Available {
-    commitment: CommitmentV1,
-    da_bond_asset_name: ByteArray,
-    committee_signers_hash: ByteArray,
-    attested_signers: ByteArray,
-  }
-  ChallengedBond {
-    commitment: CommitmentV1,
-    da_bond_asset_name: ByteArray,
-    committee_signers_hash: ByteArray,
-    attested_signers: ByteArray,
-    challenge_asset_name: ByteArray,
-    challenger: VerificationKeyHash,
-    opened_at: Int,
-    response_deadline: Int,
-  }
+/// The record an opened challenge leaves at the availability address, holding
+/// exactly `challenge_record_lovelace` and its challenge token. It carries the
+/// full attested commitment, whose `commitment_hash_v1` the challenged node's
+/// status binds.
+pub type ChallengeRecordV1 {
+  commitment: CommitmentV1,
+  challenge_asset_name: ByteArray,
+  challenger: VerificationKeyHash,
+  opened_at: Int,
+  response_deadline: Int,
 }
 
 pub type TrancheDatumV1 {
@@ -220,24 +208,25 @@ pub type TerminalAccumulatorDatumV1 {
   remaining_challenger_lovelace: Int,
 }
 
-pub const da_bond_asset_name_prefix_v1: AssetName = "DABN"
-
 pub const challenge_asset_name_prefix_v1: AssetName = "DACH"
 
 pub const tranche_asset_name_prefix_v1: AssetName = "DT"
 
 pub const terminal_accumulator_asset_name_prefix_v1: AssetName = "DACT"
 
-pub fn da_bond_asset_name_v1(
-  attestation_input_outref: OutputReference,
-) -> AssetName {
-  let outref_data: Data = attestation_input_outref
-  da_bond_asset_name_prefix_v1
-    |> bytearray.concat(utils.serialise_and_hash_28(outref_data))
+/// The hash an attested state-queue node carries for the commitment its
+/// committee signed: `blake2b_256(serialise_data(commitment))`, untagged.
+pub fn commitment_hash_v1(commitment: CommitmentV1) -> ByteArray {
+  let commitment_data: Data = commitment
+  utils.serialise_and_hash_32(commitment_data)
 }
 
-pub fn challenge_asset_name_v1(bond_input_outref: OutputReference) -> AssetName {
-  let outref_data: Data = bond_input_outref
+/// Named from the challenger input's outref, which the open consumes, so every
+/// challenge name is spent exactly once.
+pub fn challenge_asset_name_v1(
+  challenger_input_outref: OutputReference,
+) -> AssetName {
+  let outref_data: Data = challenger_input_outref
   challenge_asset_name_prefix_v1
     |> bytearray.concat(utils.serialise_and_hash_28(outref_data))
 }
@@ -433,7 +422,6 @@ pub fn commitment_is_canonical_v1(
     commitment.version == commitment_version_v1,
     bytearray.length(commitment.deployment_identity) == 28,
     bytearray.length(commitment.header_hash) == 28,
-    bytearray.length(commitment.bond_owner) == 28,
     response_window_ms_v1(commitment.payload_byte_length) != None,
     parameters_are_canonical_v1(authenticated_parameters),
     commitment.response_geometry == authenticated_parameters.response_geometry,

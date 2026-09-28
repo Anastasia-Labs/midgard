@@ -34,7 +34,8 @@ const da_policy = #"34343434343434343434343434343434343434343434343434343434"
 const miscellaneous_policy =
   #"44444444444444444444444444444444444444444444444444444444"
 
-const bond_owner = #"55555555555555555555555555555555555555555555555555555555"
+/// The block operator, and the non-challenger key the negatives use.
+const operator = #"55555555555555555555555555555555555555555555555555555555"
 
 const challenger = #"66666666666666666666666666666666666666666666666666666666"
 
@@ -43,12 +44,6 @@ const terminal =
 
 const empty_root =
   #"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
-
-const da_bond_asset_name =
-  #"4441424e88888888888888888888888888888888888888888888888888888888"
-
-const committee_hash =
-  #"9999999999999999999999999999999999999999999999999999999999999999"
 
 const close_fee = 100
 
@@ -109,7 +104,7 @@ fn header() -> HeaderV1 {
     min_fee_a: 0,
     min_fee_b: 0,
     prev_header_hash: miscellaneous_policy,
-    operator_vkey: bond_owner,
+    operator_vkey: operator,
     protocol_version: protocol_version_v1,
   }
 }
@@ -141,10 +136,7 @@ fn descriptor() -> availability.TrancheDescriptorV1 {
   }
 }
 
-fn commitment_for(
-  deployment_identity: ByteArray,
-  owner: ByteArray,
-) -> availability.CommitmentV1 {
+fn commitment_for(deployment_identity: ByteArray) -> availability.CommitmentV1 {
   availability.CommitmentV1 {
     version: availability.commitment_version_v1,
     deployment_identity,
@@ -152,12 +144,11 @@ fn commitment_for(
     payload_byte_length: 1,
     response_geometry: parameters().response_geometry,
     tranche_descriptors: [descriptor()],
-    bond_owner: owner,
   }
 }
 
-fn commitment(owner: ByteArray) -> availability.CommitmentV1 {
-  commitment_for(hub_policy, owner)
+fn commitment() -> availability.CommitmentV1 {
+  commitment_for(hub_policy)
 }
 
 fn maximum_descriptor(index: Int) -> availability.TrancheDescriptorV1 {
@@ -178,7 +169,7 @@ fn maximum_descriptors() -> List<availability.TrancheDescriptorV1> {
   list.map(list.range(0, 15), maximum_descriptor)
 }
 
-fn maximum_commitment(owner: ByteArray) -> availability.CommitmentV1 {
+fn maximum_commitment() -> availability.CommitmentV1 {
   availability.CommitmentV1 {
     version: availability.commitment_version_v1,
     deployment_identity: hub_policy,
@@ -186,12 +177,16 @@ fn maximum_commitment(owner: ByteArray) -> availability.CommitmentV1 {
     payload_byte_length: availability.full_payload_max_bytes_v1,
     response_geometry: parameters().response_geometry,
     tranche_descriptors: maximum_descriptors(),
-    bond_owner: owner,
   }
 }
 
+/// The challenger input the open consumes; its outref names the challenge.
+fn challenger_input_outref() -> OutputReference {
+  outref(2)
+}
+
 fn challenge_asset_name() -> ByteArray {
-  availability.challenge_asset_name_v1(outref(0))
+  availability.challenge_asset_name_v1(challenger_input_outref())
 }
 
 fn tranche_asset_name() -> ByteArray {
@@ -227,16 +222,34 @@ fn node_output(status: availability.StateQueueStatusV1) -> Output {
   }
 }
 
-fn state_queue_input() -> Input {
+/// A challenged node for `committed`, whose status binds the commitment hash
+/// and the challenge name.
+fn challenged_status(
+  committed: availability.CommitmentV1,
+) -> availability.StateQueueStatusV1 {
+  availability.Challenged {
+    commitment_hash: availability.commitment_hash_v1(committed),
+    challenge_asset_name: challenge_asset_name(),
+  }
+}
+
+fn attested_status(
+  committed: availability.CommitmentV1,
+) -> availability.StateQueueStatusV1 {
+  availability.Attested {
+    commitment_hash: availability.commitment_hash_v1(committed),
+  }
+}
+
+fn state_queue_input_for(committed: availability.CommitmentV1) -> Input {
   Input {
     output_reference: outref(1),
-    output: node_output(
-      availability.Challenged {
-        da_bond_asset_name,
-        challenge_asset_name: challenge_asset_name(),
-      },
-    ),
+    output: node_output(challenged_status(committed)),
   }
+}
+
+fn state_queue_input() -> Input {
+  state_queue_input_for(commitment())
 }
 
 fn state_queue_input_with_status(
@@ -245,77 +258,62 @@ fn state_queue_input_with_status(
   Input { output_reference: outref(1), output: node_output(status) }
 }
 
-fn bond_input(owner: ByteArray, claimant: ByteArray) -> Input {
-  let datum: availability.BondDatumV1 = availability.ChallengedBond {
-    commitment: commitment(owner),
-    da_bond_asset_name,
-    committee_signers_hash: committee_hash,
-    attested_signers: #"",
-    challenge_asset_name: challenge_asset_name(),
-    challenger: claimant,
-    opened_at: 0,
-    response_deadline: availability.small_response_window_ms_v1,
-  }
-  Input {
-    output_reference: outref(0),
-    output: Output {
-      address: address.from_script(availability_policy),
-      value: assets.from_lovelace(parameters().da_bond_lovelace)
-        |> assets.add(availability_policy, da_bond_asset_name, 1)
-        |> assets.add(availability_policy, challenge_asset_name(), 1),
-      datum: InlineDatum(datum),
-      reference_script: None,
-    },
-  }
-}
-
-fn available_bond_input(owner: ByteArray) -> Input {
-  let datum: availability.BondDatumV1 = availability.Available {
-    commitment: commitment(owner),
-    da_bond_asset_name,
-    committee_signers_hash: committee_hash,
-    attested_signers: #"",
-  }
-  Input {
-    output_reference: outref(0),
-    output: Output {
-      address: address.from_script(availability_policy),
-      value: assets.from_lovelace(parameters().da_bond_lovelace)
-        |> assets.add(availability_policy, da_bond_asset_name, 1),
-      datum: InlineDatum(datum),
-      reference_script: None,
-    },
-  }
-}
-
-fn challenged_bond_output(
-  owner: ByteArray,
+/// The challenge record as the open writes it: availability address, exactly
+/// `challenge_record_lovelace` and the one challenge token, inline datum.
+fn challenge_record_output(
+  committed: availability.CommitmentV1,
   claimant: ByteArray,
   opened_at: Int,
+  response_deadline: Int,
 ) -> Output {
-  let datum: availability.BondDatumV1 = availability.ChallengedBond {
-    commitment: commitment(owner),
-    da_bond_asset_name,
-    committee_signers_hash: committee_hash,
-    attested_signers: #"",
+  let datum: availability.ChallengeRecordV1 = availability.ChallengeRecordV1 {
+    commitment: committed,
     challenge_asset_name: challenge_asset_name(),
     challenger: claimant,
     opened_at,
-    response_deadline: opened_at + availability.small_response_window_ms_v1,
+    response_deadline,
   }
   Output {
     address: address.from_script(availability_policy),
-    value: assets.from_lovelace(parameters().da_bond_lovelace)
-      |> assets.add(availability_policy, da_bond_asset_name, 1)
+    value: assets.from_lovelace(parameters().challenge_record_lovelace)
       |> assets.add(availability_policy, challenge_asset_name(), 1),
     datum: InlineDatum(datum),
     reference_script: None,
   }
 }
 
+/// The small-commitment record an open at `opened_at` writes.
+fn record_output(claimant: ByteArray, opened_at: Int) -> Output {
+  challenge_record_output(
+    commitment(),
+    claimant,
+    opened_at,
+    opened_at + availability.small_response_window_ms_v1,
+  )
+}
+
+/// The small-commitment record, opened at 0, as a later transaction spends or
+/// references it.
+fn record_input(claimant: ByteArray) -> Input {
+  Input { output_reference: outref(0), output: record_output(claimant, 0) }
+}
+
+/// The maximum-commitment record, opened at 0.
+fn maximum_record_input(claimant: ByteArray) -> Input {
+  Input {
+    output_reference: outref(0),
+    output: challenge_record_output(
+      maximum_commitment(),
+      claimant,
+      0,
+      availability.full_response_window_ms_v1,
+    ),
+  }
+}
+
 fn initial_tranche_output(claimant: ByteArray, opened_at: Int) -> Output {
   expect Some(lovelace) = availability.tranche_initial_lovelace_v1(
-    commitment(bond_owner),
+    commitment(),
     parameters(),
     0,
   )
@@ -348,7 +346,7 @@ fn initial_terminal_accumulator_output(
   opened_at: Int,
 ) -> Output {
   expect Some(lovelace) = availability.terminal_accumulator_initial_lovelace_v1(
-    commitment(bond_owner),
+    commitment(),
     parameters(),
   )
   let datum: availability.TerminalAccumulatorDatumV1 = availability.TerminalAccumulatorDatumV1 {
@@ -357,7 +355,7 @@ fn initial_terminal_accumulator_output(
     challenge_asset_name: challenge_asset_name(),
     next_tranche_index: 0,
     folded_terminal_accumulator: availability.terminal_accumulator_start_v1(
-      commitment(bond_owner),
+      commitment(),
       challenge_asset_name(),
     ),
     has_timed_out_tranche: False,
@@ -374,13 +372,14 @@ fn initial_terminal_accumulator_output(
   }
 }
 
+/// Funds exactly the challenger bond, the record's lovelace and the open fee.
 fn challenger_input(claimant: ByteArray) -> Input {
   Input {
-    output_reference: outref(2),
+    output_reference: challenger_input_outref(),
     output: Output {
       address: address.from_verification_key(claimant),
       value: assets.from_lovelace(
-        parameters().challenger_bond_lovelace + close_fee,
+        parameters().challenger_bond_lovelace + parameters().challenge_record_lovelace + close_fee,
       ),
       datum: NoDatum,
       reference_script: None,
@@ -389,17 +388,16 @@ fn challenger_input(claimant: ByteArray) -> Input {
 }
 
 fn open_redeemer(
-  bond_output_index: Int,
+  record_output_index: Int,
   state_queue_output_index: Int,
   claimant: ByteArray,
 ) -> availability.MintRedeemerV1 {
   availability.OpenChallenge {
     yield_to_ref_input_index: 0,
     hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
-    bond_output_index,
-    challenger_input_index: 2,
-    state_queue_input_index: 1,
+    record_output_index,
+    challenger_input_index: 1,
+    state_queue_input_index: 0,
     state_queue_output_index,
     first_tranche_output_index: 2,
     terminal_accumulator_output_index: 3,
@@ -408,13 +406,13 @@ fn open_redeemer(
 }
 
 fn open_transaction(
-  bond_output_index: Int,
+  record_output_index: Int,
   state_queue_output_index: Int,
   claimant: ByteArray,
   signatory: ByteArray,
 ) -> Transaction {
   open_transaction_anchored(
-    bond_output_index,
+    record_output_index,
     state_queue_output_index,
     claimant,
     signatory,
@@ -426,7 +424,7 @@ fn open_transaction(
 /// An open whose outputs carry `opened_at` and the response deadlines derived
 /// from it, under the given validity range.
 fn open_transaction_anchored(
-  bond_output_index: Int,
+  record_output_index: Int,
   state_queue_output_index: Int,
   claimant: ByteArray,
   signatory: ByteArray,
@@ -434,7 +432,7 @@ fn open_transaction_anchored(
   opened_at: Int,
 ) -> Transaction {
   let redeemer = open_redeemer(
-    bond_output_index,
+    record_output_index,
     state_queue_output_index,
     claimant,
   )
@@ -442,20 +440,12 @@ fn open_transaction_anchored(
   Transaction {
     ..transaction.placeholder,
     inputs: [
-      available_bond_input(bond_owner),
-      state_queue_input_with_status(
-        availability.Attested { da_bond_asset_name },
-      ),
+      state_queue_input_with_status(attested_status(commitment())),
       challenger_input(claimant),
     ],
     outputs: [
-      challenged_bond_output(bond_owner, claimant, opened_at),
-      node_output(
-        availability.Challenged {
-          da_bond_asset_name,
-          challenge_asset_name: challenge_asset_name(),
-        },
-      ),
+      record_output(claimant, opened_at),
+      node_output(challenged_status(commitment())),
       initial_tranche_output(claimant, opened_at),
       initial_terminal_accumulator_output(claimant, opened_at),
     ],
@@ -467,109 +457,6 @@ fn open_transaction_anchored(
     extra_signatories: [signatory],
     fee: close_fee,
     validity_range,
-  }
-}
-
-fn da_attestation_asset_name() -> ByteArray {
-  da_attestation.attestation_asset_name_prefix
-    |> bytearray.concat(header_hash())
-}
-
-fn attestation_input(owner: ByteArray, deployment_identity: ByteArray) -> Input {
-  let datum: da_attestation.DaAttestationDatum = da_attestation.DaAttestationDatum {
-    header_hash: header_hash(),
-    availability_commitment: commitment_for(deployment_identity, owner),
-    da_threshold: 1,
-    committee_signers_hash: committee_hash,
-    rescue_beneficiary: address.from_verification_key(owner),
-    attested_signers: #"80",
-    attestation_count: 1,
-  }
-  Input {
-    output_reference: outref(0),
-    output: Output {
-      address: address.from_script(da_policy),
-      value: assets.from_lovelace(parameters().da_bond_lovelace)
-        |> assets.add(da_policy, da_attestation_asset_name(), 1),
-      datum: InlineDatum(datum),
-      reference_script: None,
-    },
-  }
-}
-
-fn minted_bond_output(
-  owner: ByteArray,
-  deployment_identity: ByteArray,
-) -> Output {
-  let bond_asset_name = availability.da_bond_asset_name_v1(outref(0))
-  let datum: availability.BondDatumV1 = availability.Available {
-    commitment: commitment_for(deployment_identity, owner),
-    da_bond_asset_name: bond_asset_name,
-    committee_signers_hash: committee_hash,
-    attested_signers: #"80",
-  }
-  Output {
-    address: address.from_script(availability_policy),
-    value: assets.from_lovelace(parameters().da_bond_lovelace)
-      |> assets.add(availability_policy, bond_asset_name, 1),
-    datum: InlineDatum(datum),
-    reference_script: None,
-  }
-}
-
-fn mint_bond_redeemer(
-  bond_output_index: Int,
-  state_queue_output_index: Int,
-) -> availability.MintRedeemerV1 {
-  availability.MintBondFromAttestation {
-    yield_to_ref_input_index: 0,
-    hub_oracle_ref_input_index: 0,
-    da_attestation_input_index: 0,
-    da_attestation_mint_redeemer_index: 0,
-    bond_output_index,
-    state_queue_input_index: 1,
-    state_queue_output_index,
-  }
-}
-
-fn mint_bond_transaction(
-  owner: ByteArray,
-  deployment_identity: ByteArray,
-  bond_output_index: Int,
-  state_queue_output_index: Int,
-) -> Transaction {
-  let availability_redeemer = mint_bond_redeemer(
-    bond_output_index,
-    state_queue_output_index,
-  )
-  let availability_redeemer_data: Data = availability_redeemer
-  let da_redeemer: da_attestation.MintRedeemer = da_attestation.ApplyToStateQueue {
-    da_attestation_input_index: 0,
-    da_params_ref_input_index: 0,
-    state_queue_input_index: 1,
-    state_queue_output_index,
-    state_queue_mint_ref_script_input_index: 0,
-    availability_mint_redeemer_index: 0,
-  }
-  let da_redeemer_data: Data = da_redeemer
-  let bond_asset_name = availability.da_bond_asset_name_v1(outref(0))
-  Transaction {
-    ..transaction.placeholder,
-    inputs: [
-      attestation_input(owner, deployment_identity),
-      state_queue_input_with_status(availability.Unattested),
-    ],
-    outputs: [
-      minted_bond_output(owner, deployment_identity),
-      node_output(availability.Attested { da_bond_asset_name: bond_asset_name }),
-    ],
-    reference_inputs: [hub_reference_input()],
-    mint: assets.from_asset(availability_policy, bond_asset_name, 1)
-      |> assets.add(da_policy, da_attestation_asset_name(), -1),
-    redeemers: [
-      Pair(Mint(da_policy), da_redeemer_data),
-      Pair(Mint(availability_policy), availability_redeemer_data),
-    ],
   }
 }
 
@@ -716,7 +603,7 @@ fn settlement_redeemer(
 ) -> availability.MintRedeemerV1 {
   availability.SettleTranche {
     yield_to_ref_input_index: 0,
-    bond_ref_input_index: 0,
+    record_ref_input_index: 0,
     terminal_accumulator_input_index: 0,
     terminal_accumulator_output_index: 0,
     tranche_input_index: 1,
@@ -726,12 +613,12 @@ fn settlement_redeemer(
 
 fn receipt_settlement_transaction(fee: Int) -> Transaction {
   expect Some(thread_lovelace) = availability.tranche_initial_lovelace_v1(
-    commitment(bond_owner),
+    commitment(),
     parameters(),
     0,
   )
   expect Some(terminal_lovelace) = availability.terminal_accumulator_initial_lovelace_v1(
-    commitment(bond_owner),
+    commitment(),
     parameters(),
   )
   let carrier_lovelace = 2_000_000
@@ -748,7 +635,7 @@ fn receipt_settlement_transaction(fee: Int) -> Transaction {
     ..transaction.placeholder,
     inputs: [
       terminal_accumulator_input(
-        commitment(bond_owner),
+        commitment(),
         0,
         False,
         terminal_lovelace,
@@ -760,7 +647,7 @@ fn receipt_settlement_transaction(fee: Int) -> Transaction {
     ],
     outputs: [
       terminal_accumulator_output(
-        commitment(bond_owner),
+        commitment(),
         1,
         next_fold,
         False,
@@ -768,7 +655,7 @@ fn receipt_settlement_transaction(fee: Int) -> Transaction {
         availability.small_response_window_ms_v1,
       ),
     ],
-    reference_inputs: [bond_input(bond_owner, challenger)],
+    reference_inputs: [record_input(challenger)],
     mint: assets.from_asset(availability_policy, tranche_asset_name(), -1),
     redeemers: [Pair(Mint(availability_policy), redeemer_data)],
     fee,
@@ -781,12 +668,12 @@ fn active_timeout_settlement_transaction(
   validity_lower_bound: Int,
 ) -> Transaction {
   expect Some(thread_lovelace) = availability.tranche_initial_lovelace_v1(
-    commitment(bond_owner),
+    commitment(),
     parameters(),
     0,
   )
   expect Some(terminal_lovelace) = availability.terminal_accumulator_initial_lovelace_v1(
-    commitment(bond_owner),
+    commitment(),
     parameters(),
   )
   let start = availability.tranche_start_accumulator_v1(
@@ -806,7 +693,7 @@ fn active_timeout_settlement_transaction(
     ..transaction.placeholder,
     inputs: [
       terminal_accumulator_input(
-        commitment(bond_owner),
+        commitment(),
         0,
         False,
         terminal_lovelace,
@@ -817,7 +704,7 @@ fn active_timeout_settlement_transaction(
     ],
     outputs: [
       terminal_accumulator_output(
-        commitment(bond_owner),
+        commitment(),
         1,
         next_fold,
         True,
@@ -825,7 +712,7 @@ fn active_timeout_settlement_transaction(
         availability.small_response_window_ms_v1,
       ),
     ],
-    reference_inputs: [bond_input(bond_owner, challenger)],
+    reference_inputs: [record_input(challenger)],
     mint: assets.from_asset(availability_policy, tranche_asset_name(), -1),
     redeemers: [Pair(Mint(availability_policy), redeemer_data)],
     fee,
@@ -833,70 +720,13 @@ fn active_timeout_settlement_transaction(
   }
 }
 
-fn maximum_bond_input(owner: ByteArray, claimant: ByteArray) -> Input {
-  let datum: availability.BondDatumV1 = availability.ChallengedBond {
-    commitment: maximum_commitment(owner),
-    da_bond_asset_name,
-    committee_signers_hash: committee_hash,
-    attested_signers: #"",
-    challenge_asset_name: challenge_asset_name(),
-    challenger: claimant,
-    opened_at: 0,
-    response_deadline: availability.full_response_window_ms_v1,
-  }
-  Input {
-    output_reference: outref(0),
-    output: Output {
-      address: address.from_script(availability_policy),
-      value: assets.from_lovelace(parameters().da_bond_lovelace)
-        |> assets.add(availability_policy, da_bond_asset_name, 1)
-        |> assets.add(availability_policy, challenge_asset_name(), 1),
-      datum: InlineDatum(datum),
-      reference_script: None,
-    },
-  }
-}
-
-fn maximum_available_bond_input(commitment: availability.CommitmentV1) -> Input {
-  let datum: availability.BondDatumV1 = availability.Available {
-    commitment,
-    da_bond_asset_name,
-    committee_signers_hash: committee_hash,
-    attested_signers: #"",
-  }
-  Input {
-    output_reference: outref(0),
-    output: Output {
-      address: address.from_script(availability_policy),
-      value: assets.from_lovelace(parameters().da_bond_lovelace)
-        |> assets.add(availability_policy, da_bond_asset_name, 1),
-      datum: InlineDatum(datum),
-      reference_script: None,
-    },
-  }
-}
-
-fn maximum_challenged_bond_output(
-  commitment: availability.CommitmentV1,
-) -> Output {
-  let datum: availability.BondDatumV1 = availability.ChallengedBond {
-    commitment,
-    da_bond_asset_name,
-    committee_signers_hash: committee_hash,
-    attested_signers: #"",
-    challenge_asset_name: challenge_asset_name(),
+fn maximum_record_output(committed: availability.CommitmentV1) -> Output {
+  challenge_record_output(
+    committed,
     challenger,
-    opened_at: open_inclusive_upper,
-    response_deadline: open_inclusive_upper + availability.full_response_window_ms_v1,
-  }
-  Output {
-    address: address.from_script(availability_policy),
-    value: assets.from_lovelace(parameters().da_bond_lovelace)
-      |> assets.add(availability_policy, da_bond_asset_name, 1)
-      |> assets.add(availability_policy, challenge_asset_name(), 1),
-    datum: InlineDatum(datum),
-    reference_script: None,
-  }
+    open_inclusive_upper,
+    open_inclusive_upper + availability.full_response_window_ms_v1,
+  )
 }
 
 fn maximum_initial_tranche_output(
@@ -997,10 +827,9 @@ fn maximum_open_redeemer() -> availability.MintRedeemerV1 {
   availability.OpenChallenge {
     yield_to_ref_input_index: 0,
     hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
-    bond_output_index: 0,
-    challenger_input_index: 2,
-    state_queue_input_index: 1,
+    record_output_index: 0,
+    challenger_input_index: 1,
+    state_queue_input_index: 0,
     state_queue_output_index: 1,
     first_tranche_output_index: 2,
     terminal_accumulator_output_index: 18,
@@ -1011,7 +840,7 @@ fn maximum_open_redeemer() -> availability.MintRedeemerV1 {
 fn maximum_open_transaction() -> Transaction {
   let redeemer = maximum_open_redeemer()
   let redeemer_data: Data = redeemer
-  let commitment = maximum_commitment(bond_owner)
+  let commitment = maximum_commitment()
   expect Some(initial_lovelaces) = availability.tranche_initial_lovelaces_v1(
     commitment,
     parameters(),
@@ -1019,20 +848,12 @@ fn maximum_open_transaction() -> Transaction {
   Transaction {
     ..transaction.placeholder,
     inputs: [
-      maximum_available_bond_input(commitment),
-      state_queue_input_with_status(
-        availability.Attested { da_bond_asset_name },
-      ),
+      state_queue_input_with_status(attested_status(commitment)),
       challenger_input(challenger),
     ],
     outputs: [
-      maximum_challenged_bond_output(commitment),
-      node_output(
-        availability.Challenged {
-          da_bond_asset_name,
-          challenge_asset_name: challenge_asset_name(),
-        },
-      ),
+      maximum_record_output(commitment),
+      node_output(challenged_status(commitment)),
       ..list.concat(
         maximum_initial_tranche_outputs(
           commitment,
@@ -1150,7 +971,7 @@ fn maximum_carrier_inputs(first_input_index: Int, lovelace: Int) -> List<Input> 
 
 fn maximum_last_tranche_lovelace() -> Int {
   expect Some(lovelace) = availability.tranche_initial_lovelace_v1(
-    maximum_commitment(bond_owner),
+    maximum_commitment(),
     parameters(),
     15,
   )
@@ -1179,7 +1000,7 @@ fn maximum_receipt_settlement_transaction() -> Transaction {
     ..transaction.placeholder,
     inputs: [
       terminal_accumulator_input(
-        maximum_commitment(bond_owner),
+        maximum_commitment(),
         15,
         False,
         terminal_lovelace,
@@ -1191,7 +1012,7 @@ fn maximum_receipt_settlement_transaction() -> Transaction {
     ],
     outputs: [
       terminal_accumulator_output(
-        maximum_commitment(bond_owner),
+        maximum_commitment(),
         16,
         next_fold,
         False,
@@ -1199,7 +1020,7 @@ fn maximum_receipt_settlement_transaction() -> Transaction {
         availability.full_response_window_ms_v1,
       ),
     ],
-    reference_inputs: [maximum_bond_input(bond_owner, challenger)],
+    reference_inputs: [maximum_record_input(challenger)],
     mint: assets.from_asset(
       availability_policy,
       availability.tranche_asset_name_v1(challenge_asset_name(), 15),
@@ -1318,7 +1139,7 @@ fn maximum_partial_timeout_settlement_transaction() -> Transaction {
     ..transaction.placeholder,
     inputs: [
       terminal_accumulator_input(
-        maximum_commitment(bond_owner),
+        maximum_commitment(),
         15,
         False,
         terminal_lovelace,
@@ -1330,7 +1151,7 @@ fn maximum_partial_timeout_settlement_transaction() -> Transaction {
     ],
     outputs: [
       terminal_accumulator_output(
-        maximum_commitment(bond_owner),
+        maximum_commitment(),
         16,
         next_fold,
         True,
@@ -1338,7 +1159,7 @@ fn maximum_partial_timeout_settlement_transaction() -> Transaction {
         availability.full_response_window_ms_v1,
       ),
     ],
-    reference_inputs: [maximum_bond_input(bond_owner, challenger)],
+    reference_inputs: [maximum_record_input(challenger)],
     mint: assets.from_asset(
       availability_policy,
       availability.tranche_asset_name_v1(challenge_asset_name(), 15),
@@ -1418,7 +1239,6 @@ fn maximum_publication_commitment() -> availability.CommitmentV1 {
     payload_byte_length: descriptor.byte_length,
     response_geometry: maximum_publication_parameters().response_geometry,
     tranche_descriptors: [descriptor],
-    bond_owner,
   }
 }
 
@@ -1543,25 +1363,6 @@ fn validates_maximum_publication(tx: Transaction) -> Bool {
   )
 }
 
-fn maximum_burn_value() -> assets.Value {
-  list.range(0, 15)
-    |> list.foldl(
-        assets.from_asset(availability_policy, da_bond_asset_name, -1)
-          |> assets.add(availability_policy, challenge_asset_name(), -1),
-        fn(index, value) {
-          value
-            |> assets.add(
-                availability_policy,
-                availability.tranche_asset_name_v1(
-                  challenge_asset_name(),
-                  index,
-                ),
-                -1,
-              )
-        },
-      )
-}
-
 const maximum_thread_lovelace = 10_000_000
 
 const maximum_carrier_lovelace = 2_000_000
@@ -1621,114 +1422,104 @@ fn enterprise_output(owner: ByteArray, lovelace: Int) -> Output {
   }
 }
 
-fn close_transaction(
-  owner: ByteArray,
-  claimant: ByteArray,
-  receipt_lovelace: Int,
-  carrier_lovelace: Int,
-  da_refund_output_index: Int,
+fn close_redeemer(
   challenger_refund_output_index: Int,
-) -> Transaction {
-  let challenger_component = receipt_lovelace + carrier_lovelace
-  let redeemer: availability.MintRedeemerV1 = availability.CloseChallenge {
-    yield_to_ref_input_index: 0,
-    hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
-    terminal_accumulator_input_index: 2,
-    state_queue_input_index: 1,
-    state_queue_output_index: 0,
-    da_refund_output_index,
-    challenger_refund_output_index,
-  }
-  let redeemer_data: Data = redeemer
-  Transaction {
-    ..transaction.placeholder,
-    inputs: [
-      bond_input(owner, claimant),
-      state_queue_input(),
-      terminal_accumulator_input(
-        commitment(owner),
-        1,
-        False,
-        challenger_component,
-        availability.small_response_window_ms_v1,
-        3,
-      ),
-    ],
-    outputs: [
-      node_output(
-        availability.Published {
-          terminal_commitment: availability.published_terminal_commitment_v1(
-            commitment(owner),
-          ),
-        },
-      ),
-      enterprise_output(owner, parameters().da_bond_lovelace),
-      enterprise_output(claimant, challenger_component - close_fee),
-    ],
-    reference_inputs: [hub_reference_input()],
-    mint: assets.from_asset(availability_policy, da_bond_asset_name, -1)
-      |> assets.add(availability_policy, challenge_asset_name(), -1)
-      |> assets.add(availability_policy, terminal_accumulator_asset_name(), -1),
-    redeemers: [Pair(Mint(availability_policy), redeemer_data)],
-    fee: close_fee,
-    validity_range: between(0, 1_000),
-  }
-}
-
-fn maximum_close_redeemer() -> availability.MintRedeemerV1 {
+) -> availability.MintRedeemerV1 {
   availability.CloseChallenge {
     yield_to_ref_input_index: 0,
     hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
+    record_input_index: 0,
     terminal_accumulator_input_index: 2,
     state_queue_input_index: 1,
     state_queue_output_index: 0,
-    da_refund_output_index: 1,
-    challenger_refund_output_index: 2,
+    challenger_refund_output_index,
   }
 }
 
-fn maximum_close_transaction() -> Transaction {
-  let redeemer = maximum_close_redeemer()
+/// The close burns the record's challenge token and the terminal accumulator
+/// token, publishes the node, and returns the unspent bond plus the record's
+/// lovelace to the challenger in one output.
+fn close_transaction_for(
+  committed: availability.CommitmentV1,
+  record: Input,
+  claimant: ByteArray,
+  remaining: Int,
+  terminal_next_tranche_index: Int,
+  terminal_response_deadline: Int,
+  terminal_output_reference_index: Int,
+  challenger_refund_output_index: Int,
+) -> Transaction {
+  let redeemer = close_redeemer(challenger_refund_output_index)
   let redeemer_data: Data = redeemer
-  let remaining = maximum_challenger_component_lovelace()
   Transaction {
     ..transaction.placeholder,
     inputs: [
-      maximum_bond_input(bond_owner, challenger),
-      state_queue_input(),
+      record,
+      state_queue_input_for(committed),
       terminal_accumulator_input(
-        maximum_commitment(bond_owner),
-        16,
+        committed,
+        terminal_next_tranche_index,
         False,
         remaining,
-        availability.full_response_window_ms_v1,
-        40,
+        terminal_response_deadline,
+        terminal_output_reference_index,
       ),
     ],
     outputs: [
       node_output(
         availability.Published {
           terminal_commitment: availability.published_terminal_commitment_v1(
-            maximum_commitment(bond_owner),
+            committed,
           ),
         },
       ),
-      enterprise_output(bond_owner, parameters().da_bond_lovelace),
       enterprise_output(
-        challenger,
-        maximum_challenger_component_lovelace() - close_fee,
+        claimant,
+        remaining - close_fee + parameters().challenge_record_lovelace,
       ),
     ],
     reference_inputs: [hub_reference_input()],
-    mint: assets.from_asset(availability_policy, da_bond_asset_name, -1)
-      |> assets.add(availability_policy, challenge_asset_name(), -1)
+    mint: assets.from_asset(availability_policy, challenge_asset_name(), -1)
       |> assets.add(availability_policy, terminal_accumulator_asset_name(), -1),
     redeemers: [Pair(Mint(availability_policy), redeemer_data)],
     fee: close_fee,
     validity_range: between(0, 1_000),
   }
+}
+
+fn close_transaction(
+  claimant: ByteArray,
+  receipt_lovelace: Int,
+  carrier_lovelace: Int,
+  challenger_refund_output_index: Int,
+) -> Transaction {
+  close_transaction_for(
+    commitment(),
+    record_input(claimant),
+    claimant,
+    receipt_lovelace + carrier_lovelace,
+    1,
+    availability.small_response_window_ms_v1,
+    3,
+    challenger_refund_output_index,
+  )
+}
+
+fn maximum_close_redeemer() -> availability.MintRedeemerV1 {
+  close_redeemer(1)
+}
+
+fn maximum_close_transaction() -> Transaction {
+  close_transaction_for(
+    maximum_commitment(),
+    maximum_record_input(challenger),
+    challenger,
+    maximum_challenger_component_lovelace(),
+    16,
+    availability.full_response_window_ms_v1,
+    40,
+    1,
+  )
 }
 
 fn with_yield_index(
@@ -1736,28 +1527,9 @@ fn with_yield_index(
   yield_to_ref_input_index: Int,
 ) -> availability.MintRedeemerV1 {
   when redeemer is {
-    availability.MintBondFromAttestation {
-      hub_oracle_ref_input_index,
-      da_attestation_input_index,
-      da_attestation_mint_redeemer_index,
-      bond_output_index,
-      state_queue_input_index,
-      state_queue_output_index,
-      ..
-    } ->
-      availability.MintBondFromAttestation {
-        yield_to_ref_input_index,
-        hub_oracle_ref_input_index,
-        da_attestation_input_index,
-        da_attestation_mint_redeemer_index,
-        bond_output_index,
-        state_queue_input_index,
-        state_queue_output_index,
-      }
     availability.OpenChallenge {
       hub_oracle_ref_input_index,
-      bond_input_index,
-      bond_output_index,
+      record_output_index,
       challenger_input_index,
       state_queue_input_index,
       state_queue_output_index,
@@ -1769,8 +1541,7 @@ fn with_yield_index(
       availability.OpenChallenge {
         yield_to_ref_input_index,
         hub_oracle_ref_input_index,
-        bond_input_index,
-        bond_output_index,
+        record_output_index,
         challenger_input_index,
         state_queue_input_index,
         state_queue_output_index,
@@ -1779,7 +1550,7 @@ fn with_yield_index(
         challenger,
       }
     availability.SettleTranche {
-      bond_ref_input_index,
+      record_ref_input_index,
       terminal_accumulator_input_index,
       terminal_accumulator_output_index,
       tranche_input_index,
@@ -1788,7 +1559,7 @@ fn with_yield_index(
     } ->
       availability.SettleTranche {
         yield_to_ref_input_index,
-        bond_ref_input_index,
+        record_ref_input_index,
         terminal_accumulator_input_index,
         terminal_accumulator_output_index,
         tranche_input_index,
@@ -1796,27 +1567,25 @@ fn with_yield_index(
       }
     availability.CloseChallenge {
       hub_oracle_ref_input_index,
-      bond_input_index,
+      record_input_index,
       terminal_accumulator_input_index,
       state_queue_input_index,
       state_queue_output_index,
-      da_refund_output_index,
       challenger_refund_output_index,
       ..
     } ->
       availability.CloseChallenge {
         yield_to_ref_input_index,
         hub_oracle_ref_input_index,
-        bond_input_index,
+        record_input_index,
         terminal_accumulator_input_index,
         state_queue_input_index,
         state_queue_output_index,
-        da_refund_output_index,
         challenger_refund_output_index,
       }
     availability.TimeoutChallenge {
       hub_oracle_ref_input_index,
-      bond_input_index,
+      record_input_index,
       terminal_accumulator_input_index,
       state_queue_mint_redeemer_index,
       da_slash_output_index,
@@ -1826,7 +1595,7 @@ fn with_yield_index(
       availability.TimeoutChallenge {
         yield_to_ref_input_index,
         hub_oracle_ref_input_index,
-        bond_input_index,
+        record_input_index,
         terminal_accumulator_input_index,
         state_queue_mint_redeemer_index,
         da_slash_output_index,
@@ -1837,7 +1606,6 @@ fn with_yield_index(
 
 fn yield_role(redeemer: availability.MintRedeemerV1) -> assets.AssetName {
   when redeemer is {
-    availability.MintBondFromAttestation { .. } -> yielding.bond_role
     availability.OpenChallenge { .. } -> yielding.open_role
     availability.SettleTranche { .. } -> yielding.settle_role
     availability.CloseChallenge { .. } -> yielding.close_role
@@ -1850,15 +1618,6 @@ fn invokes_availability_yield(
   redeemer: availability.MintRedeemerV1,
 ) -> Bool {
   when redeemer is {
-    availability.MintBondFromAttestation { .. } ->
-      availability_yields.bond.withdraw(
-        availability_policy,
-        hub_policy,
-        parameters(),
-        availability.Yield,
-        address.Script(da_policy),
-        tx,
-      )
     availability.OpenChallenge { .. } ->
       availability_yields.open.withdraw(
         availability_policy,
@@ -1990,22 +1749,6 @@ fn validates_coordinate_inputs(
   }
 }
 
-fn close_redeemer(
-  da_refund_output_index: Int,
-  challenger_refund_output_index: Int,
-) -> availability.MintRedeemerV1 {
-  availability.CloseChallenge {
-    yield_to_ref_input_index: 0,
-    hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
-    terminal_accumulator_input_index: 2,
-    state_queue_input_index: 1,
-    state_queue_output_index: 0,
-    da_refund_output_index,
-    challenger_refund_output_index,
-  }
-}
-
 fn timeout_redeemer(
   state_queue_mint_redeemer_index: Int,
   da_slash_output_index: Int,
@@ -2014,11 +1757,19 @@ fn timeout_redeemer(
   availability.TimeoutChallenge {
     yield_to_ref_input_index: 0,
     hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
+    record_input_index: 0,
     terminal_accumulator_input_index: 1,
     state_queue_mint_redeemer_index,
     da_slash_output_index,
     challenger_refund_output_index,
+  }
+}
+
+/// The unavailable node the state-queue removal spends, still challenged.
+fn timed_out_node_input(committed: availability.CommitmentV1) -> Input {
+  Input {
+    output_reference: outref(4),
+    output: node_output(challenged_status(committed)),
   }
 }
 
@@ -2037,6 +1788,9 @@ fn timeout_state_queue_redeemer(
   }
 }
 
+/// Interim timeout: the expired record, its terminal accumulator and the
+/// challenged node are spent; the challenger alone is paid, the unspent bond
+/// plus the record's lovelace. The pooled-bond slash output is not built here.
 fn timeout_transaction(
   bound_challenge_asset_name: ByteArray,
   fee: Int,
@@ -2057,23 +1811,25 @@ fn timeout_transaction(
   Transaction {
     ..transaction.placeholder,
     inputs: [
-      bond_input(bond_owner, challenger),
+      record_input(challenger),
       terminal_accumulator_input(
-        commitment(bond_owner),
+        commitment(),
         1,
         True,
         receipt_lovelace + carrier_lovelace,
         availability.small_response_window_ms_v1,
         3,
       ),
+      timed_out_node_input(commitment()),
     ],
     outputs: [
-      enterprise_output(challenger, parameters().da_bond_lovelace),
-      enterprise_output(challenger, receipt_lovelace + carrier_lovelace - fee),
+      enterprise_output(
+        challenger,
+        receipt_lovelace + carrier_lovelace - fee + parameters().challenge_record_lovelace,
+      ),
     ],
     reference_inputs: [hub_reference_input()],
-    mint: assets.from_asset(availability_policy, da_bond_asset_name, -1)
-      |> assets.add(availability_policy, challenge_asset_name(), -1)
+    mint: assets.from_asset(availability_policy, challenge_asset_name(), -1)
       |> assets.add(availability_policy, terminal_accumulator_asset_name(), -1),
     redeemers: [
       Pair(Mint(state_queue_policy), state_queue_redeemer_data),
@@ -2088,15 +1844,7 @@ fn timeout_transaction(
 }
 
 fn maximum_timeout_redeemer() -> availability.MintRedeemerV1 {
-  availability.TimeoutChallenge {
-    yield_to_ref_input_index: 0,
-    hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
-    terminal_accumulator_input_index: 1,
-    state_queue_mint_redeemer_index: 0,
-    da_slash_output_index: 0,
-    challenger_refund_output_index: 1,
-  }
+  timeout_redeemer(0, 0, 0)
 }
 
 fn maximum_timeout_transaction() -> Transaction {
@@ -2109,26 +1857,25 @@ fn maximum_timeout_transaction() -> Transaction {
   Transaction {
     ..transaction.placeholder,
     inputs: [
-      maximum_bond_input(bond_owner, challenger),
+      maximum_record_input(challenger),
       terminal_accumulator_input(
-        maximum_commitment(bond_owner),
+        maximum_commitment(),
         16,
         True,
         remaining,
         availability.full_response_window_ms_v1,
         40,
       ),
+      timed_out_node_input(maximum_commitment()),
     ],
     outputs: [
-      enterprise_output(challenger, parameters().da_bond_lovelace),
       enterprise_output(
         challenger,
-        maximum_challenger_component_lovelace() - close_fee,
+        remaining - close_fee + parameters().challenge_record_lovelace,
       ),
     ],
     reference_inputs: [hub_reference_input()],
-    mint: assets.from_asset(availability_policy, da_bond_asset_name, -1)
-      |> assets.add(availability_policy, challenge_asset_name(), -1)
+    mint: assets.from_asset(availability_policy, challenge_asset_name(), -1)
       |> assets.add(availability_policy, terminal_accumulator_asset_name(), -1),
     redeemers: [
       Pair(Mint(state_queue_policy), state_queue_redeemer_data),
@@ -2142,53 +1889,108 @@ fn maximum_timeout_transaction() -> Transaction {
   }
 }
 
+/// Positive control: the close spends the record, publishes the node and pays
+/// the challenger the unspent bond plus the record's lovelace.
 test q58_close_accepts_exact_distinct_terminal_outputs() {
-  let tx = close_transaction(
-    bond_owner,
-    challenger,
-    6_000_000_000,
-    4_000_000_000,
-    1,
-    2,
-  )
+  let tx = close_transaction(challenger, 6_000_000_000, 4_000_000_000, 1)
   and {
-    validates_close(tx, close_redeemer(1, 2)),
+    validates_close(tx, close_redeemer(1)),
     validates_coordinate_inputs(tx, [0, 2], 0),
   }
 }
 
-test q58_close_rejects_aliased_da_and_challenger_refunds() fail {
-  // Make the two expected amounts and credentials coincide. Without the
-  // explicit index inequality, output 1 satisfies both named refunds while
-  // output 2 can redirect the remaining value.
+/// The refund index names the published node output. Refused first by
+/// `challenger_refund_output_index != state_queue_output_index`, but that check
+/// is defence in depth, not the sole guard: the refund must be an exact
+/// enterprise ADA output to the challenger, and the node output sits at the
+/// state-queue script with its block NFT, so no output can fill both roles.
+/// With the index check removed the transaction is still refused.
+test q58_close_rejects_challenger_refund_aliased_with_state_queue_output() fail {
   validates_close(
-    close_transaction(
-      bond_owner,
-      bond_owner,
-      6_000_000_000,
-      4_000_000_100,
-      1,
-      1,
-    ),
-    close_redeemer(1, 1),
+    close_transaction(challenger, 6_000_000_000, 4_000_000_000, 0),
+    close_redeemer(0),
   )
 }
 
+/// Positive control: the open writes the record and moves the node from
+/// attested to challenged under the same commitment hash.
 test q58_open_accepts_exact_distinct_inputs_outputs_and_signer() {
   let redeemer = open_redeemer(0, 1, challenger)
-  let tx = open_transaction(0, 1, challenger, challenger)
-  and {
-    validates_close(tx, redeemer),
-    validates_coordinate_inputs(tx, [0], 0),
-  }
+  validates_close(open_transaction(0, 1, challenger, challenger), redeemer)
 }
 
 test q58_open_rejects_missing_challenger_signature() fail {
   let redeemer = open_redeemer(0, 1, challenger)
-  validates_close(open_transaction(0, 1, challenger, bond_owner), redeemer)
+  validates_close(open_transaction(0, 1, challenger, operator), redeemer)
 }
 
-test q58_open_rejects_aliased_bond_and_state_queue_outputs() fail {
+/// The open must land strictly before the node's challenge window closes:
+/// the last accepted inclusive upper bound is `end_time + window - 1`.
+fn open_at_window_edge(inclusive_upper: Int) -> Transaction {
+  open_transaction_anchored(
+    0,
+    1,
+    challenger,
+    challenger,
+    between(inclusive_upper - 1_000, inclusive_upper),
+    inclusive_upper,
+  )
+}
+
+test availability_open_accepts_last_millisecond_of_challenge_window() {
+  validates_close(
+    open_at_window_edge(
+      header().end_time + availability.da_challenge_window_ms_v1 - 1,
+    ),
+    open_redeemer(0, 1, challenger),
+  )
+}
+
+test availability_open_rejects_upper_bound_at_challenge_window_end() fail {
+  validates_close(
+    open_at_window_edge(
+      header().end_time + availability.da_challenge_window_ms_v1,
+    ),
+    open_redeemer(0, 1, challenger),
+  )
+}
+
+/// HAZ-13: only the status changes; a node output that gains lovelace is
+/// refused.
+test availability_open_rejects_node_value_change() fail {
+  let redeemer = open_redeemer(0, 1, challenger)
+  let base = open_transaction(0, 1, challenger, challenger)
+  expect [record, node, ..rest] = base.outputs
+  let grown = Output { ..node, value: assets.add(node.value, "", "", 1) }
+  validates_close(
+    Transaction { ..base, outputs: [record, grown, ..rest] },
+    redeemer,
+  )
+}
+
+/// Only the node input changes: it attests another commitment while the
+/// continuation still carries the record's. Refused by the node input-status
+/// match `Attested{commitment_hash_v1(record.commitment)}`. The preimage
+/// binding with a consistent node pair is pinned by
+/// `availability_open_rejects_record_preimage_of_another_attested_hash`.
+test availability_open_rejects_record_commitment_not_attested_by_node() fail {
+  let redeemer = open_redeemer(0, 1, challenger)
+  let base = open_transaction(0, 1, challenger, challenger)
+  expect [_, challenger_funds] = base.inputs
+  let foreign_node = state_queue_input_with_status(
+    attested_status(maximum_commitment()),
+  )
+  validates_close(
+    Transaction { ..base, inputs: [foreign_node, challenger_funds] },
+    redeemer,
+  )
+}
+
+/// The record output index names the node output. The index inequality
+/// refuses it first, as defence in depth: the record must sit at the
+/// availability address holding the minted DACH, and the node output at the
+/// state-queue script with its block NFT, so the alias is refused without it.
+test q58_open_rejects_aliased_record_and_state_queue_outputs() fail {
   let redeemer = open_redeemer(0, 0, challenger)
   validates_close(open_transaction(0, 0, challenger, challenger), redeemer)
 }
@@ -2285,6 +2087,8 @@ test availability_open_rejects_validity_range_longer_than_maximum() fail {
   )
 }
 
+/// Positive control: the settlement authenticates the challenge record it
+/// references and advances the terminal accumulator by one published tranche.
 test q58_settle_published_tranche_accepts_exact_thread_and_carrier() {
   let tx = receipt_settlement_transaction(close_fee)
   and {
@@ -2315,6 +2119,24 @@ test q58_settle_rejects_substituted_terminal_carrier_outref() fail {
   validates_close(tx, settlement_redeemer(Some(2)))
 }
 
+/// A record is authenticated by its challenge token: an identical datum at
+/// the availability address without the token is refused.
+test q58_settle_rejects_record_without_challenge_token() fail {
+  let base = receipt_settlement_transaction(close_fee)
+  let genuine = record_input(challenger)
+  let forged = Input {
+    ..genuine,
+    output: Output {
+      ..genuine.output,
+      value: assets.from_lovelace(parameters().challenge_record_lovelace),
+    },
+  }
+  validates_close(
+    Transaction { ..base, reference_inputs: [forged] },
+    settlement_redeemer(Some(2)),
+  )
+}
+
 test q58_settle_rejects_premature_active_timeout() fail {
   let tx = active_timeout_settlement_transaction(
     close_fee,
@@ -2334,7 +2156,7 @@ test q58_settle_rejects_excessive_fee() fail {
 test q58_settle_rejects_aliased_terminal_and_tranche_roles() fail {
   let redeemer: availability.MintRedeemerV1 = availability.SettleTranche {
     yield_to_ref_input_index: 0,
-    bond_ref_input_index: 0,
+    record_ref_input_index: 0,
     terminal_accumulator_input_index: 0,
     terminal_accumulator_output_index: 0,
     tranche_input_index: 0,
@@ -2378,7 +2200,6 @@ test q58_maximum_16_tranche_open_applied_topology_fits() {
   and {
     list.length(tx.outputs) == 19,
     validates_close(tx, maximum_open_redeemer()),
-    validates_coordinate_inputs(tx, [0], 0),
   }
 }
 
@@ -2397,40 +2218,13 @@ test q58_maximum_publication_first_leaf_cross_language_vector_matches() {
   ) == #"2b89672abc40b0ba8c2d4db8cd236b2ca6bda31ab8db93517f88e88dff114675"
 }
 
-test q58_mint_bond_accepts_exact_attestation_and_queue_transition() {
-  let redeemer = mint_bond_redeemer(0, 1)
-  validates_close(mint_bond_transaction(bond_owner, hub_policy, 0, 1), redeemer)
-}
-
-test q58_mint_bond_accepts_wallet_fee_input_and_change_output() {
-  let redeemer = mint_bond_redeemer(0, 1)
-  let tx = mint_bond_transaction(bond_owner, hub_policy, 0, 1)
-  validates_close(
-    Transaction {
-      ..tx,
-      inputs: list.concat(tx.inputs, [challenger_input(bond_owner)]),
-      outputs: list.concat(tx.outputs, [challenger_input(bond_owner).output]),
-    },
-    redeemer,
-  )
-}
-
-test q58_mint_bond_rejects_substituted_deployment_identity() fail {
-  let redeemer = mint_bond_redeemer(0, 1)
-  validates_close(
-    mint_bond_transaction(bond_owner, miscellaneous_policy, 0, 1),
-    redeemer,
-  )
-}
-
-test q58_mint_bond_rejects_aliased_bond_and_queue_outputs() fail {
-  let redeemer = mint_bond_redeemer(0, 0)
-  validates_close(mint_bond_transaction(bond_owner, hub_policy, 0, 0), redeemer)
-}
-
-test q58_timeout_accepts_exact_challenger_slash_and_unused_bond_refund() {
-  let redeemer = timeout_redeemer(0, 0, 1)
-  let tx = timeout_transaction(challenge_asset_name(), close_fee, 0, 1)
+/// Positive control for the interim timeout: the expired record and terminal
+/// accumulator burn, the challenged node matches the record on both fields,
+/// and the challenger's single output returns the unspent bond plus the
+/// record's lovelace.
+test q58_timeout_accepts_interim_record_refund_to_challenger() {
+  let redeemer = timeout_redeemer(0, 0, 0)
+  let tx = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
   and {
     validates_close(tx, redeemer),
     validates_coordinate_inputs(tx, [0, 1], 1),
@@ -2438,14 +2232,7 @@ test q58_timeout_accepts_exact_challenger_slash_and_unused_bond_refund() {
 }
 
 test q58_coordinate_rejects_undeclared_availability_input() fail {
-  let base = close_transaction(
-    bond_owner,
-    challenger,
-    6_000_000_000,
-    4_000_000_000,
-    1,
-    2,
-  )
+  let base = close_transaction(challenger, 6_000_000_000, 4_000_000_000, 1)
   let unrelated = Input {
     ..receipt_input(challenger, 2_000_000),
     output_reference: outref(8),
@@ -2454,26 +2241,18 @@ test q58_coordinate_rejects_undeclared_availability_input() fail {
   validates_coordinate_input(tx, 3, 0)
 }
 
-test q58_timeout_rejects_aliased_challenger_outputs() fail {
-  let redeemer = timeout_redeemer(0, 0, 0)
-  validates_close(
-    timeout_transaction(challenge_asset_name(), close_fee, 0, 0),
-    redeemer,
-  )
-}
-
 test q58_timeout_rejects_excessive_fee() fail {
   let fee = parameters().max_timeout_fee_lovelace + 1
-  let redeemer = timeout_redeemer(0, 0, 1)
+  let redeemer = timeout_redeemer(0, 0, 0)
   validates_close(
-    timeout_transaction(challenge_asset_name(), fee, 0, 1),
+    timeout_transaction(challenge_asset_name(), fee, 0, 0),
     redeemer,
   )
 }
 
 test q58_timeout_rejects_premature_validity() fail {
-  let redeemer = timeout_redeemer(0, 0, 1)
-  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 1)
+  let redeemer = timeout_redeemer(0, 0, 0)
+  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
   let tx = Transaction {
     ..base,
     validity_range: between(0, availability.small_response_window_ms_v1 - 1),
@@ -2482,29 +2261,45 @@ test q58_timeout_rejects_premature_validity() fail {
 }
 
 test q58_timeout_rejects_wrong_state_queue_challenge_identity() fail {
-  let redeemer = timeout_redeemer(0, 0, 1)
-  validates_close(timeout_transaction(terminal, close_fee, 0, 1), redeemer)
+  let redeemer = timeout_redeemer(0, 0, 0)
+  validates_close(timeout_transaction(terminal, close_fee, 0, 0), redeemer)
 }
 
-test q58_timeout_rejects_aliased_bond_and_terminal_input_index() fail {
+/// The record and terminal accumulator indices name one input. The index
+/// inequality refuses it first, as defence in depth: each role is
+/// authenticated by an exact value holding its own token (the DACH, the
+/// terminal token), so no input can fill both.
+test q58_timeout_rejects_aliased_record_and_terminal_input_index() fail {
   let redeemer: availability.MintRedeemerV1 = availability.TimeoutChallenge {
     yield_to_ref_input_index: 0,
     hub_oracle_ref_input_index: 0,
-    bond_input_index: 0,
+    record_input_index: 0,
     terminal_accumulator_input_index: 0,
     state_queue_mint_redeemer_index: 0,
     da_slash_output_index: 0,
-    challenger_refund_output_index: 1,
+    challenger_refund_output_index: 0,
   }
   validates_close(
-    timeout_transaction(challenge_asset_name(), close_fee, 0, 1),
+    timeout_transaction(challenge_asset_name(), close_fee, 0, 0),
     redeemer,
   )
 }
 
-test q58_timeout_rejects_third_challenger_output() fail {
-  let redeemer = timeout_redeemer(0, 0, 1)
-  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 1)
+/// G6: the node the removal spends must carry the record's commitment hash
+/// as well as its challenge name.
+test q58_timeout_rejects_node_challenged_under_another_commitment() fail {
+  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
+  expect [record, terminal_input, _] = base.inputs
+  let foreign_node = timed_out_node_input(maximum_commitment())
+  validates_close(
+    Transaction { ..base, inputs: [record, terminal_input, foreign_node] },
+    timeout_redeemer(0, 0, 0),
+  )
+}
+
+test q58_timeout_rejects_second_challenger_output() fail {
+  let redeemer = timeout_redeemer(0, 0, 0)
+  let base = timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
   let extended_outputs = list.concat(
     base.outputs,
     [enterprise_output(challenger, 1)],
@@ -2530,7 +2325,7 @@ test q58_maximum_16_tranche_final_close_mint_policy_measurement() {
 test q58_maximum_16_tranche_final_timeout_applied_topology_fits() {
   let tx = maximum_timeout_transaction()
   and {
-    list.length(tx.inputs) == 2,
+    list.length(tx.inputs) == 3,
     validates_close(tx, maximum_timeout_redeemer()),
     validates_coordinate_inputs(tx, [0, 1], 1),
   }
@@ -2621,7 +2416,7 @@ test availability_yield_rejects_cross_arm_reference_role() fail {
           output: Output {
             ..input.output,
             value: assets.from_lovelace(2_000_000)
-              |> assets.add(miscellaneous_policy, yielding.bond_role, 1),
+              |> assets.add(miscellaneous_policy, yielding.settle_role, 1),
           },
         }
       } else {
@@ -2669,12 +2464,573 @@ test availability_yield_rejects_out_of_range_reference_index() fail {
 
 test availability_yield_rejects_wrong_mint_constructor() fail {
   let Pair(tx, _) = open_yield_fixture()
-  availability_yields.bond.withdraw(
+  availability_yields.settle.withdraw(
     availability_policy,
     hub_policy,
     parameters(),
     availability.Yield,
     address.Script(da_policy),
     tx,
+  )
+}
+
+// -- #688 negative matrix: Open, Settle, Close, Timeout, Coordinate ---------
+//
+// Every negative below is one mutation of a named honest control, and its
+// comment names the check that refuses it.
+
+fn validates_open(tx: Transaction) -> Bool {
+  validates_close(tx, open_redeemer(0, 1, challenger))
+}
+
+/// The transaction of the honest Open control
+/// `q58_open_accepts_exact_distinct_inputs_outputs_and_signer`.
+fn honest_open() -> Transaction {
+  open_transaction(0, 1, challenger, challenger)
+}
+
+/// The record datum the honest open writes.
+fn honest_open_record() -> availability.ChallengeRecordV1 {
+  availability.ChallengeRecordV1 {
+    commitment: commitment(),
+    challenge_asset_name: challenge_asset_name(),
+    challenger,
+    opened_at: open_inclusive_upper,
+    response_deadline: open_inclusive_upper + availability.small_response_window_ms_v1,
+  }
+}
+
+/// The record output the honest open writes.
+fn honest_open_record_output() -> Output {
+  record_output(challenger, open_inclusive_upper)
+}
+
+fn open_with_record_output(record: Output) -> Transaction {
+  let base = honest_open()
+  expect [_, ..rest] = base.outputs
+  Transaction { ..base, outputs: [record, ..rest] }
+}
+
+fn open_with_record_datum(record: availability.ChallengeRecordV1) -> Transaction {
+  open_with_record_output(
+    Output { ..honest_open_record_output(), datum: InlineDatum(record) },
+  )
+}
+
+fn honest_challenger_input_lovelace() -> Int {
+  parameters().challenger_bond_lovelace + parameters().challenge_record_lovelace + close_fee
+}
+
+fn open_with_challenger_input_lovelace(lovelace: Int) -> Transaction {
+  let base = honest_open()
+  expect [node, funds] = base.inputs
+  let adjusted = Input {
+    ..funds,
+    output: Output { ..funds.output, value: assets.from_lovelace(lovelace) },
+  }
+  Transaction { ..base, inputs: [node, adjusted] }
+}
+
+/// Positive control for the Open matrix helpers: rebuilding the record output
+/// from the honest datum and the challenger input from the honest amount
+/// reproduces an accepted open.
+test availability_open_matrix_helpers_rebuild_the_honest_open() {
+  and {
+    validates_open(open_with_record_datum(honest_open_record())),
+    validates_open(
+      open_with_challenger_input_lovelace(honest_challenger_input_lovelace()),
+    ),
+  }
+}
+
+/// HAZ-6. The node attests `maximum_commitment()` and keeps that hash when
+/// challenged, while the record, and every output derived from it, carries
+/// `commitment()`. Refused by the open's node input-status match
+/// `Attested{commitment_hash_v1(record.commitment)}`.
+test availability_open_rejects_record_preimage_of_another_attested_hash() fail {
+  let base = honest_open()
+  expect [_, funds] = base.inputs
+  expect [record, _, ..rest] = base.outputs
+  let attested = maximum_commitment()
+  validates_open(
+    Transaction {
+      ..base,
+      inputs: [state_queue_input_with_status(attested_status(attested)), funds],
+      outputs: [record, node_output(challenged_status(attested)), ..rest],
+    },
+  )
+}
+
+/// Refused by the challenger input value check
+/// (`challenger_bond + challenge_record_lovelace + fee`).
+test availability_open_rejects_challenger_input_one_lovelace_short() fail {
+  validates_open(
+    open_with_challenger_input_lovelace(honest_challenger_input_lovelace() - 1),
+  )
+}
+
+/// Refused by the challenger input value check
+/// (`challenger_bond + challenge_record_lovelace + fee`).
+test availability_open_rejects_challenger_input_one_lovelace_over() fail {
+  validates_open(
+    open_with_challenger_input_lovelace(honest_challenger_input_lovelace() + 1),
+  )
+}
+
+/// A wallet input next to the node and the challenger input. Refused by the
+/// input count (`list.length(tx.inputs) == 2`).
+test availability_open_rejects_third_input() fail {
+  let base = honest_open()
+  let extra = Input {
+    output_reference: outref(5),
+    output: enterprise_output(challenger, 2_000_000),
+  }
+  validates_open(
+    Transaction { ..base, inputs: list.concat(base.inputs, [extra]) },
+  )
+}
+
+/// Refused by the record output's address pin (the availability script).
+test availability_open_rejects_record_at_foreign_script_address() fail {
+  validates_open(
+    open_with_record_output(
+      Output {
+        ..honest_open_record_output(),
+        address: address.from_script(miscellaneous_policy),
+      },
+    ),
+  )
+}
+
+/// The availability payment credential with a stake credential attached.
+/// Refused by the record output's address pin (no stake credential).
+test availability_open_rejects_record_at_staked_availability_address() fail {
+  validates_open(
+    open_with_record_output(
+      Output {
+        ..honest_open_record_output(),
+        address: address.from_script(availability_policy)
+          |> address.with_delegation_key(operator),
+      },
+    ),
+  )
+}
+
+/// Refused by the record output's value pin (`challenge_record_lovelace` plus
+/// exactly the minted challenge token).
+test availability_open_rejects_record_with_extra_token() fail {
+  let honest = honest_open_record_output()
+  validates_open(
+    open_with_record_output(
+      Output {
+        ..honest,
+        value: assets.add(honest.value, miscellaneous_policy, "extra", 1),
+      },
+    ),
+  )
+}
+
+/// Refused by the record output's value pin (`challenge_record_lovelace`).
+test availability_open_rejects_record_one_lovelace_short() fail {
+  let honest = honest_open_record_output()
+  validates_open(
+    open_with_record_output(
+      Output { ..honest, value: assets.add(honest.value, "", "", -1) },
+    ),
+  )
+}
+
+/// Refused by the record output's value pin (`challenge_record_lovelace`).
+test availability_open_rejects_record_one_lovelace_over() fail {
+  let honest = honest_open_record_output()
+  validates_open(
+    open_with_record_output(
+      Output { ..honest, value: assets.add(honest.value, "", "", 1) },
+    ),
+  )
+}
+
+/// The datum names the challenge the node outref would derive. Refused by
+/// the record datum pin (`challenge_asset_name` = the minted name).
+test availability_open_rejects_record_naming_another_challenge() fail {
+  validates_open(
+    open_with_record_datum(
+      availability.ChallengeRecordV1 {
+        ..honest_open_record(),
+        challenge_asset_name: availability.challenge_asset_name_v1(outref(1)),
+      },
+    ),
+  )
+}
+
+/// Refused by the record datum pin (`challenger` = the redeemer's signing
+/// challenger).
+test availability_open_rejects_record_naming_another_challenger() fail {
+  validates_open(
+    open_with_record_datum(
+      availability.ChallengeRecordV1 {
+        ..honest_open_record(),
+        challenger: operator,
+      },
+    ),
+  )
+}
+
+/// Refused by the record datum pin (`opened_at` = the inclusive upper bound).
+test availability_open_rejects_record_with_earlier_opened_at() fail {
+  validates_open(
+    open_with_record_datum(
+      availability.ChallengeRecordV1 {
+        ..honest_open_record(),
+        opened_at: open_inclusive_upper - 1,
+      },
+    ),
+  )
+}
+
+/// Refused by the record datum pin
+/// (`response_deadline = opened_at + response window`).
+test availability_open_rejects_record_with_later_response_deadline() fail {
+  validates_open(
+    open_with_record_datum(
+      availability.ChallengeRecordV1 {
+        ..honest_open_record(),
+        response_deadline: open_inclusive_upper + availability.small_response_window_ms_v1 + 1,
+      },
+    ),
+  )
+}
+
+/// Refused by the record output's reference-script pin (`None`).
+test availability_open_rejects_record_with_reference_script() fail {
+  validates_open(
+    open_with_record_output(
+      Output {
+        ..honest_open_record_output(),
+        reference_script: Some(miscellaneous_policy),
+      },
+    ),
+  )
+}
+
+/// The record's datum by hash only. Refused by the inline-datum read of the
+/// record: the open takes the commitment preimage from the inline datum.
+test availability_open_rejects_record_datum_by_hash() fail {
+  let record_data: Data = honest_open_record()
+  validates_open(
+    open_with_record_output(
+      Output {
+        ..honest_open_record_output(),
+        datum: transaction.DatumHash(
+          crypto.blake2b_256(builtin.serialise_data(record_data)),
+        ),
+      },
+    ),
+  )
+}
+
+/// HAZ-8. The node and the challenger input swap outrefs, so every name in
+/// the transaction derives from the node's outref. Refused by the challenge
+/// name derivation from the challenger input's outref.
+test availability_open_rejects_challenge_name_derived_from_node_outref() fail {
+  let base = honest_open()
+  expect [node, funds] = base.inputs
+  validates_open(
+    Transaction {
+      ..base,
+      inputs: [
+        Input { ..node, output_reference: challenger_input_outref() },
+        Input { ..funds, output_reference: outref(1) },
+      ],
+    },
+  )
+}
+
+/// A genuine record moved to another script address, token included.
+fn record_at_foreign_address() -> Input {
+  let genuine = record_input(challenger)
+  Input {
+    ..genuine,
+    output: Output {
+      ..genuine.output,
+      address: address.from_script(miscellaneous_policy),
+    },
+  }
+}
+
+/// A genuine record's datum at the availability address without the token.
+fn record_without_challenge_token() -> Input {
+  let genuine = record_input(challenger)
+  Input {
+    ..genuine,
+    output: Output {
+      ..genuine.output,
+      value: assets.from_lovelace(parameters().challenge_record_lovelace),
+    },
+  }
+}
+
+/// A genuine record holding one lovelace more than `challenge_record_lovelace`.
+fn record_with_extra_lovelace() -> Input {
+  let genuine = record_input(challenger)
+  Input {
+    ..genuine,
+    output: Output {
+      ..genuine.output,
+      value: assets.add(genuine.output.value, "", "", 1),
+    },
+  }
+}
+
+/// Mutations of the honest Settle control
+/// `q58_settle_published_tranche_accepts_exact_thread_and_carrier`.
+fn settle_with_record(record: Input) -> Transaction {
+  Transaction {
+    ..receipt_settlement_transaction(close_fee),
+    reference_inputs: [record],
+  }
+}
+
+/// Refused by the record authentication's address pin.
+test q58_settle_rejects_record_at_foreign_address() fail {
+  validates_close(
+    settle_with_record(record_at_foreign_address()),
+    settlement_redeemer(Some(2)),
+  )
+}
+
+/// Refused by the record authentication's value pin.
+test q58_settle_rejects_record_with_extra_lovelace() fail {
+  validates_close(
+    settle_with_record(record_with_extra_lovelace()),
+    settlement_redeemer(Some(2)),
+  )
+}
+
+/// The transaction of the honest Close control
+/// `q58_close_accepts_exact_distinct_terminal_outputs`.
+fn honest_close() -> Transaction {
+  close_transaction(challenger, 6_000_000_000, 4_000_000_000, 1)
+}
+
+fn validates_honest_close_redeemer(tx: Transaction) -> Bool {
+  validates_close(tx, close_redeemer(1))
+}
+
+fn close_with_record(record: Input) -> Transaction {
+  let base = honest_close()
+  expect [_, node, terminal_input] = base.inputs
+  Transaction { ..base, inputs: [record, node, terminal_input] }
+}
+
+fn close_with_node_status(
+  status: availability.StateQueueStatusV1,
+) -> Transaction {
+  let base = honest_close()
+  expect [record, _, terminal_input] = base.inputs
+  Transaction {
+    ..base,
+    inputs: [record, state_queue_input_with_status(status), terminal_input],
+  }
+}
+
+fn close_with_refund_delta(delta: Int) -> Transaction {
+  let base = honest_close()
+  expect [node, refund] = base.outputs
+  Transaction {
+    ..base,
+    outputs: [
+      node,
+      Output { ..refund, value: assets.add(refund.value, "", "", delta) },
+    ],
+  }
+}
+
+/// Another challenge's name, as the node outref would derive it.
+fn other_challenge_asset_name() -> ByteArray {
+  availability.challenge_asset_name_v1(outref(7))
+}
+
+/// Refused by the record authentication's address pin.
+test q58_close_rejects_record_at_foreign_address() fail {
+  validates_honest_close_redeemer(
+    close_with_record(record_at_foreign_address()),
+  )
+}
+
+/// Refused by the record authentication's value pin (no challenge token).
+test q58_close_rejects_record_without_challenge_token() fail {
+  validates_honest_close_redeemer(
+    close_with_record(record_without_challenge_token()),
+  )
+}
+
+/// Refused by the record authentication's value pin.
+test q58_close_rejects_record_with_extra_lovelace() fail {
+  validates_honest_close_redeemer(
+    close_with_record(record_with_extra_lovelace()),
+  )
+}
+
+/// G6. The node is challenged under the record's name but another
+/// commitment's hash. Refused by the exact input status
+/// `Challenged{commitment_hash_v1(record.commitment), record.challenge_asset_name}`.
+test q58_close_rejects_node_challenged_under_another_commitment() fail {
+  validates_honest_close_redeemer(
+    close_with_node_status(
+      availability.Challenged {
+        commitment_hash: availability.commitment_hash_v1(maximum_commitment()),
+        challenge_asset_name: challenge_asset_name(),
+      },
+    ),
+  )
+}
+
+/// G6. The node carries the record's commitment hash but another challenge's
+/// name. Refused by the exact input status
+/// `Challenged{commitment_hash_v1(record.commitment), record.challenge_asset_name}`.
+test q58_close_rejects_node_challenged_under_another_challenge() fail {
+  validates_honest_close_redeemer(
+    close_with_node_status(
+      availability.Challenged {
+        commitment_hash: availability.commitment_hash_v1(commitment()),
+        challenge_asset_name: other_challenge_asset_name(),
+      },
+    ),
+  )
+}
+
+/// Refused by the challenger refund amount
+/// (`remaining - fee + challenge_record_lovelace`).
+test q58_close_rejects_challenger_refund_one_lovelace_short() fail {
+  validates_honest_close_redeemer(close_with_refund_delta(-1))
+}
+
+/// Refused by the challenger refund amount
+/// (`remaining - fee + challenge_record_lovelace`).
+test q58_close_rejects_challenger_refund_one_lovelace_over() fail {
+  validates_honest_close_redeemer(close_with_refund_delta(1))
+}
+
+/// A second output to the challenger. Refused by the output count
+/// (`list.length(tx.outputs) == 2`: the node and the one refund).
+test q58_close_rejects_second_challenger_output() fail {
+  let base = honest_close()
+  validates_honest_close_redeemer(
+    Transaction {
+      ..base,
+      outputs: list.concat(base.outputs, [enterprise_output(challenger, 1)]),
+    },
+  )
+}
+
+/// The transaction of the honest interim Timeout control
+/// `q58_timeout_accepts_interim_record_refund_to_challenger`.
+fn honest_timeout() -> Transaction {
+  timeout_transaction(challenge_asset_name(), close_fee, 0, 0)
+}
+
+fn validates_honest_timeout_redeemer(tx: Transaction) -> Bool {
+  validates_close(tx, timeout_redeemer(0, 0, 0))
+}
+
+fn timeout_with_record(record: Input) -> Transaction {
+  let base = honest_timeout()
+  expect [_, terminal_input, node] = base.inputs
+  Transaction { ..base, inputs: [record, terminal_input, node] }
+}
+
+fn timeout_with_refund_delta(delta: Int) -> Transaction {
+  let base = honest_timeout()
+  expect [refund] = base.outputs
+  Transaction {
+    ..base,
+    outputs: [
+      Output { ..refund, value: assets.add(refund.value, "", "", delta) },
+    ],
+  }
+}
+
+/// Refused by the record authentication's address pin.
+test q58_timeout_rejects_record_at_foreign_address() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_record(record_at_foreign_address()),
+  )
+}
+
+/// Refused by the record authentication's value pin (no challenge token).
+test q58_timeout_rejects_record_without_challenge_token() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_record(record_without_challenge_token()),
+  )
+}
+
+/// Refused by the record authentication's value pin.
+test q58_timeout_rejects_record_with_extra_lovelace() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_record(record_with_extra_lovelace()),
+  )
+}
+
+/// G6. The removed node carries the record's commitment hash but another
+/// challenge's name. Refused by the node status match
+/// `Challenged{commitment_hash_v1(record.commitment), record.challenge_asset_name}`.
+test q58_timeout_rejects_node_challenged_under_another_challenge() fail {
+  let base = honest_timeout()
+  expect [record, terminal_input, _] = base.inputs
+  let node = Input {
+    output_reference: outref(4),
+    output: node_output(
+      availability.Challenged {
+        commitment_hash: availability.commitment_hash_v1(commitment()),
+        challenge_asset_name: other_challenge_asset_name(),
+      },
+    ),
+  }
+  validates_honest_timeout_redeemer(
+    Transaction { ..base, inputs: [record, terminal_input, node] },
+  )
+}
+
+/// Refused by the challenger refund amount
+/// (`remaining - fee + challenge_record_lovelace`).
+test q58_timeout_rejects_challenger_refund_one_lovelace_short() fail {
+  validates_honest_timeout_redeemer(timeout_with_refund_delta(-1))
+}
+
+/// Refused by the challenger refund amount
+/// (`remaining - fee + challenge_record_lovelace`).
+test q58_timeout_rejects_challenger_refund_one_lovelace_over() fail {
+  validates_honest_timeout_redeemer(timeout_with_refund_delta(1))
+}
+
+/// The Close control's coordinate spend of the record, with the mint
+/// redeemer swapped for an open. Refused by the Coordinate spend's
+/// `OpenChallenge` arm: an open spends nothing at the availability address.
+test q58_coordinate_rejects_record_spend_under_open_challenge() fail {
+  let open_data: Data = open_redeemer(0, 1, challenger)
+  validates_coordinate_input(
+    Transaction {
+      ..honest_close(),
+      redeemers: [Pair(Mint(availability_policy), open_data)],
+    },
+    0,
+    0,
+  )
+}
+
+/// The Timeout control with an unrelated availability UTxO spent under the
+/// same coordinate. Refused by the Coordinate spend's `TimeoutChallenge` arm,
+/// which admits only the record and the terminal accumulator.
+test q58_coordinate_rejects_undeclared_input_under_timeout() fail {
+  let base = honest_timeout()
+  let unrelated = Input {
+    ..receipt_input(challenger, 2_000_000),
+    output_reference: outref(8),
+  }
+  validates_coordinate_input(
+    Transaction { ..base, inputs: list.concat(base.inputs, [unrelated]) },
+    3,
+    1,
   )
 }

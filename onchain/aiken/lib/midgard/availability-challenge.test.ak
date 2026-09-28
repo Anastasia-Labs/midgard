@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/crypto
 use aiken/primitive/bytearray
@@ -122,7 +123,6 @@ fn small_commitment() -> availability.CommitmentV1 {
     payload_byte_length: 1024,
     response_geometry: candidate_geometry(),
     tranche_descriptors: [descriptor(0, 0, 1024)],
-    bond_owner: owner,
   }
 }
 
@@ -706,4 +706,83 @@ test q58_wrong_middle_chunk_rejects_before_state_advance() {
     chunk: wrong_chunk,
   }
   availability.publication_advances_active_tranche_v1(active, wrong, 1, 1) == None
+}
+
+/// C1: the commitment hash is `blake2b_256(serialise_data(commitment))`,
+/// untagged, the formula the SDK twin and the attested node status share.
+test commitment_hash_v1_is_blake2b_256_of_the_serialised_commitment() {
+  let commitment_data: Data = small_commitment()
+  availability.commitment_hash_v1(small_commitment()) == crypto.blake2b_256(
+    builtin.serialise_data(commitment_data),
+  )
+}
+
+/// A hash that ignored a field would let an open's record carry a commitment
+/// the committee never signed. Each test below changes one field of
+/// `small_commitment()` and requires a different hash.
+fn commitment_hash_differs_from_small(
+  changed: availability.CommitmentV1,
+) -> Bool {
+  availability.commitment_hash_v1(changed) != availability.commitment_hash_v1(
+    small_commitment(),
+  )
+}
+
+test commitment_hash_v1_binds_version() {
+  commitment_hash_differs_from_small(
+    availability.CommitmentV1 {
+      ..small_commitment(),
+      version: availability.commitment_version_v1 + 1,
+    },
+  )
+}
+
+test commitment_hash_v1_binds_deployment_identity() {
+  commitment_hash_differs_from_small(
+    availability.CommitmentV1 {
+      ..small_commitment(),
+      deployment_identity: other_deployment,
+    },
+  )
+}
+
+test commitment_hash_v1_binds_header_hash() {
+  commitment_hash_differs_from_small(
+    availability.CommitmentV1 {
+      ..small_commitment(),
+      header_hash: other_header,
+    },
+  )
+}
+
+test commitment_hash_v1_binds_payload_byte_length() {
+  commitment_hash_differs_from_small(
+    availability.CommitmentV1 {
+      ..small_commitment(),
+      payload_byte_length: 1025,
+    },
+  )
+}
+
+test commitment_hash_v1_binds_response_geometry() {
+  commitment_hash_differs_from_small(
+    availability.CommitmentV1 {
+      ..small_commitment(),
+      response_geometry: alternate_geometry(),
+    },
+  )
+}
+
+test commitment_hash_v1_binds_tranche_descriptors() {
+  commitment_hash_differs_from_small(
+    availability.CommitmentV1 {
+      ..small_commitment(),
+      tranche_descriptors: [
+        availability.TrancheDescriptorV1 {
+          ..descriptor(0, 0, 1024),
+          chunk_commitment: challenge,
+        },
+      ],
+    },
+  )
 }

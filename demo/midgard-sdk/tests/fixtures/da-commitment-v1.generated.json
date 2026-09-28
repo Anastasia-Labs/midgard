@@ -1,0 +1,762 @@
+{
+  "schema": "midgard-da-commitment-v1-goldens",
+  "generator": "demo/midgard-sdk/scripts/generate-da-commitment-v1-goldens.mjs",
+  "aikenModule": "onchain/aiken/lib/midgard/availability-challenge-commitment-v1-golden.test.ak",
+  "attestationMessageDomain": "MidgardDaAvailabilityAttestationV1",
+  "challengeAssetNamePrefixHex": "44414348",
+  "vectors": [
+    {
+      "label": "tranches_1",
+      "note": "small payload: one short tranche in the deployed geometry",
+      "trancheCount": 1,
+      "commitment": {
+        "version": 1,
+        "deploymentIdentity": "807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d",
+        "headerHash": "fbd84cece7df662397cc3483910ed2db4f4a75705b6969cfd04e67f9",
+        "payloadByteLength": 40000,
+        "responseGeometry": {
+          "chunkByteLength": 14020,
+          "trancheByteLength": 4194304,
+          "maxTrancheCount": 16
+        },
+        "trancheDescriptors": [
+          {
+            "trancheIndex": 0,
+            "startOffset": 0,
+            "byteLength": 40000,
+            "chunkCount": 3,
+            "chunkCommitment": "8c670ab0102d67ca9e9d90e108d90a834c23ff9ad4529a6a60b977b3bc2cdfcd",
+            "terminalAccumulator": "891993bddb3fb9315e236f08d6533219d8ea3ce55cb6d6b581d0ce85981c437a"
+          }
+        ]
+      },
+      "commitmentCborHex": "d8799f01581c807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d581cfbd84cece7df662397cc3483910ed2db4f4a75705b6969cfd04e67f9199c40d8799f1936c41a0040000010ff9fd8799f0000199c400358208c670ab0102d67ca9e9d90e108d90a834c23ff9ad4529a6a60b977b3bc2cdfcd5820891993bddb3fb9315e236f08d6533219d8ea3ce55cb6d6b581d0ce85981c437affffff",
+      "commitmentCborByteLength": 161,
+      "commitmentHashHex": "8f09d652e455cc4a25a5bf2f029ffc53534fbaaa433036efdaf68bb98095039a",
+      "attestationMessageHex": "4b6192038a69ee3883acaae77a3c92afd950e5b123ab8f69cb3df543bd4fbfe6",
+      "challengeRecord": {
+        "challengeAssetName": "44414348f8c9ecd2600c8482ee8c974cab0c2dcf1811dabc2ad9a50c06afa8e3",
+        "challenger": "a7923e1005bb315c11da56f4f72a302d62d1a0ad9a25e5b5caa62ef1",
+        "openedAt": 1790000000000,
+        "responseDeadline": 1790000720000
+      },
+      "challengeRecordCborHex": "d8799fd8799f01581c807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d581cfbd84cece7df662397cc3483910ed2db4f4a75705b6969cfd04e67f9199c40d8799f1936c41a0040000010ff9fd8799f0000199c400358208c670ab0102d67ca9e9d90e108d90a834c23ff9ad4529a6a60b977b3bc2cdfcd5820891993bddb3fb9315e236f08d6533219d8ea3ce55cb6d6b581d0ce85981c437affffff582044414348f8c9ecd2600c8482ee8c974cab0c2dcf1811dabc2ad9a50c06afa8e3581ca7923e1005bb315c11da56f4f72a302d62d1a0ad9a25e5b5caa62ef11b000001a0c4506c001b000001a0c45b6880ff",
+      "challengeRecordCborByteLength": 247,
+      "outputReference": {
+        "transactionId": "9e958a90ac267e73de43fae9135b202992dac43917259a9fe5bf7f46ef1ca9ee",
+        "outputIndex": 0
+      },
+      "challengeAssetNameHex": "44414348f8c9ecd2600c8482ee8c974cab0c2dcf1811dabc2ad9a50c06afa8e3"
+    },
+    {
+      "label": "tranches_16",
+      "note": "64 MiB payload in the deployed 4 MiB tranches",
+      "trancheCount": 16,
+      "commitment": {
+        "version": 1,
+        "deploymentIdentity": "807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d",
+        "headerHash": "4e2c8be37af278f211ff8da940d196f17237f6345077bb20d3ab5c49",
+        "payloadByteLength": 67108864,
+        "responseGeometry": {
+          "chunkByteLength": 14020,
+          "trancheByteLength": 4194304,
+          "maxTrancheCount": 16
+        },
+        "trancheDescriptors": [
+          {
+            "trancheIndex": 0,
+            "startOffset": 0,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "f0ed479efc66b4e8a3146b49f990e2c5aa66adf6cfe3824035e7a9c233ae04d4",
+            "terminalAccumulator": "fff653b5671a43d056912a4d5f03e1c92ce600a3bc14aceece715521fb0dfff4"
+          },
+          {
+            "trancheIndex": 1,
+            "startOffset": 4194304,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "0829d3a8ca6a9c705f9724980a2e441edeb03be870584cb991b2a3458424d07f",
+            "terminalAccumulator": "3c066c084298078c7a5ce83a1694a641a15a79563191a497a190645fac351c08"
+          },
+          {
+            "trancheIndex": 2,
+            "startOffset": 8388608,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "9ece9ae0fcbd65e9816de3b4f53077d4e2cb2fd89b33b6dd6d85088630b891af",
+            "terminalAccumulator": "b2fc6888d8495bda5c3bbb666081f0bd60890760e8fe79bf09c4e95da7aaeba0"
+          },
+          {
+            "trancheIndex": 3,
+            "startOffset": 12582912,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "5b1cc1d2eaeff77811223167af8b507bbca3413085c1245c9453ebad2c5062b9",
+            "terminalAccumulator": "64b7eb9915410dc0251b7066ba86aefe46c2b818aa595acf712f367788a38e09"
+          },
+          {
+            "trancheIndex": 4,
+            "startOffset": 16777216,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "132d364811e69cb9ef466db034ca0a0524155b3d1f16d9faad47404d821841cb",
+            "terminalAccumulator": "0e7ab6ede77bb1dc5ef1de85c63b8680e2cf75aa4855889c961d632d6d707874"
+          },
+          {
+            "trancheIndex": 5,
+            "startOffset": 20971520,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "18ac331008301f950ce37cf973389a3c9b908be0dfca616b22a1c2accdd4caad",
+            "terminalAccumulator": "122da4edf86f3333e203cf627181247dd7b80e17d124aba5b47f7cb88a1c3748"
+          },
+          {
+            "trancheIndex": 6,
+            "startOffset": 25165824,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "826b9514c0ce5027a4da6012844274d337c668661dbc26217a4e8083c5bb8438",
+            "terminalAccumulator": "58d49c6c0bab6563d651a441b18b58ca8f785de1062822b8109706e0390c0334"
+          },
+          {
+            "trancheIndex": 7,
+            "startOffset": 29360128,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "fc072f454f79384077468c96cee8ea68fb07946833fb11c3f75b6798e066f340",
+            "terminalAccumulator": "92529a3f902ccc551461fe7167369044aff34b23855c0a43f8992a4d1cd6a82d"
+          },
+          {
+            "trancheIndex": 8,
+            "startOffset": 33554432,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "61ba93c185edb954e53044157d0eb6a73feabbb310d88f593ef88b43dc059bb0",
+            "terminalAccumulator": "ba2189c1aa8f6f726a457ee5c630424241a546dac2a7fdef32b62afc22a4d873"
+          },
+          {
+            "trancheIndex": 9,
+            "startOffset": 37748736,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "078f25dd00e4b430a42f6a7ffabd519cb48817457015cb76802ccaaf454c47f6",
+            "terminalAccumulator": "bb01a8d57f57ef4f785e4d2d1c99132d03a4150572b4c08d68915a85b25cfe21"
+          },
+          {
+            "trancheIndex": 10,
+            "startOffset": 41943040,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "6e65be1974fb57e1315efdcd480e1fedda268563e7963510bbf61ee0c77cf814",
+            "terminalAccumulator": "14c668c89d62b7b91075b505761181b337e65c95a47dd9d839147e2727002ac6"
+          },
+          {
+            "trancheIndex": 11,
+            "startOffset": 46137344,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "db6cc8a6e58c07fb49fa05dee013e709ba2bbdd5faab138633433bd570fe3c50",
+            "terminalAccumulator": "3f847abb050f7679f7ffa10c44da668b00d4f00d4aca47f0d6550994cc581c96"
+          },
+          {
+            "trancheIndex": 12,
+            "startOffset": 50331648,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "5655be146a4f4cce6b21d1ba582c775b9ef18b8916ccea4016b941d9d3ff05e3",
+            "terminalAccumulator": "3f6814ce58347829ed20a6abc5e79d795a712f0917cd9f01e5a20d2ffaf7342e"
+          },
+          {
+            "trancheIndex": 13,
+            "startOffset": 54525952,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "c2a8a423af9a644a1e42c918da2b0f42094ed4c95f4232c2cc3498a9db8728f9",
+            "terminalAccumulator": "7c8e5f1334f7459cd7353b42a97a42a2412ae3b2f7620b01ca86f5b92123f622"
+          },
+          {
+            "trancheIndex": 14,
+            "startOffset": 58720256,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "bce7c1e158c0c8a8536a0d06288017d3172b8b4c704710213ce8e06fba4a1b7d",
+            "terminalAccumulator": "c9aabddbd7b133e86ea165ef9c3179d5545f66a9d4a20e21ca8405d6e499de2c"
+          },
+          {
+            "trancheIndex": 15,
+            "startOffset": 62914560,
+            "byteLength": 4194304,
+            "chunkCount": 300,
+            "chunkCommitment": "94e9504f021bc642825535821da5467b538a8222f912ca8519cd179591da00e3",
+            "terminalAccumulator": "cfb531392e39c13ba1f3f9f27b055ebfb4e8ab6a2861c0d98ad8bee389f5c01e"
+          }
+        ]
+      },
+      "commitmentCborHex": "d8799f01581c807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d581c4e2c8be37af278f211ff8da940d196f17237f6345077bb20d3ab5c491a04000000d8799f1936c41a0040000010ff9fd8799f00001a0040000019012c5820f0ed479efc66b4e8a3146b49f990e2c5aa66adf6cfe3824035e7a9c233ae04d45820fff653b5671a43d056912a4d5f03e1c92ce600a3bc14aceece715521fb0dfff4ffd8799f011a004000001a0040000019012c58200829d3a8ca6a9c705f9724980a2e441edeb03be870584cb991b2a3458424d07f58203c066c084298078c7a5ce83a1694a641a15a79563191a497a190645fac351c08ffd8799f021a008000001a0040000019012c58209ece9ae0fcbd65e9816de3b4f53077d4e2cb2fd89b33b6dd6d85088630b891af5820b2fc6888d8495bda5c3bbb666081f0bd60890760e8fe79bf09c4e95da7aaeba0ffd8799f031a00c000001a0040000019012c58205b1cc1d2eaeff77811223167af8b507bbca3413085c1245c9453ebad2c5062b9582064b7eb9915410dc0251b7066ba86aefe46c2b818aa595acf712f367788a38e09ffd8799f041a010000001a0040000019012c5820132d364811e69cb9ef466db034ca0a0524155b3d1f16d9faad47404d821841cb58200e7ab6ede77bb1dc5ef1de85c63b8680e2cf75aa4855889c961d632d6d707874ffd8799f051a014000001a0040000019012c582018ac331008301f950ce37cf973389a3c9b908be0dfca616b22a1c2accdd4caad5820122da4edf86f3333e203cf627181247dd7b80e17d124aba5b47f7cb88a1c3748ffd8799f061a018000001a0040000019012c5820826b9514c0ce5027a4da6012844274d337c668661dbc26217a4e8083c5bb8438582058d49c6c0bab6563d651a441b18b58ca8f785de1062822b8109706e0390c0334ffd8799f071a01c000001a0040000019012c5820fc072f454f79384077468c96cee8ea68fb07946833fb11c3f75b6798e066f340582092529a3f902ccc551461fe7167369044aff34b23855c0a43f8992a4d1cd6a82dffd8799f081a020000001a0040000019012c582061ba93c185edb954e53044157d0eb6a73feabbb310d88f593ef88b43dc059bb05820ba2189c1aa8f6f726a457ee5c630424241a546dac2a7fdef32b62afc22a4d873ffd8799f091a024000001a0040000019012c5820078f25dd00e4b430a42f6a7ffabd519cb48817457015cb76802ccaaf454c47f65820bb01a8d57f57ef4f785e4d2d1c99132d03a4150572b4c08d68915a85b25cfe21ffd8799f0a1a028000001a0040000019012c58206e65be1974fb57e1315efdcd480e1fedda268563e7963510bbf61ee0c77cf814582014c668c89d62b7b91075b505761181b337e65c95a47dd9d839147e2727002ac6ffd8799f0b1a02c000001a0040000019012c5820db6cc8a6e58c07fb49fa05dee013e709ba2bbdd5faab138633433bd570fe3c5058203f847abb050f7679f7ffa10c44da668b00d4f00d4aca47f0d6550994cc581c96ffd8799f0c1a030000001a0040000019012c58205655be146a4f4cce6b21d1ba582c775b9ef18b8916ccea4016b941d9d3ff05e358203f6814ce58347829ed20a6abc5e79d795a712f0917cd9f01e5a20d2ffaf7342effd8799f0d1a034000001a0040000019012c5820c2a8a423af9a644a1e42c918da2b0f42094ed4c95f4232c2cc3498a9db8728f958207c8e5f1334f7459cd7353b42a97a42a2412ae3b2f7620b01ca86f5b92123f622ffd8799f0e1a038000001a0040000019012c5820bce7c1e158c0c8a8536a0d06288017d3172b8b4c704710213ce8e06fba4a1b7d5820c9aabddbd7b133e86ea165ef9c3179d5545f66a9d4a20e21ca8405d6e499de2cffd8799f0f1a03c000001a0040000019012c582094e9504f021bc642825535821da5467b538a8222f912ca8519cd179591da00e35820cfb531392e39c13ba1f3f9f27b055ebfb4e8ab6a2861c0d98ad8bee389f5c01effffff",
+      "commitmentCborByteLength": 1457,
+      "commitmentHashHex": "06c473db811146699913737429d8cce4e71cc0a207b0840a1adc02d25c0399b1",
+      "attestationMessageHex": "7c858c4d10dccae4f5c22e47a7ed2dcf25c1858291b242cd8e3fd335e45351a4",
+      "challengeRecord": {
+        "challengeAssetName": "44414348d4d42f6da526c7aeda098878e3513f413eb645b06dfeea1f3c28cd49",
+        "challenger": "51b1f857cde5cef7b14c6bc9af6e6203077052c3d4a43232918a157e",
+        "openedAt": 1790000600000,
+        "responseDeadline": 1790001440000
+      },
+      "challengeRecordCborHex": "d8799fd8799f01581c807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d581c4e2c8be37af278f211ff8da940d196f17237f6345077bb20d3ab5c491a04000000d8799f1936c41a0040000010ff9fd8799f00001a0040000019012c5820f0ed479efc66b4e8a3146b49f990e2c5aa66adf6cfe3824035e7a9c233ae04d45820fff653b5671a43d056912a4d5f03e1c92ce600a3bc14aceece715521fb0dfff4ffd8799f011a004000001a0040000019012c58200829d3a8ca6a9c705f9724980a2e441edeb03be870584cb991b2a3458424d07f58203c066c084298078c7a5ce83a1694a641a15a79563191a497a190645fac351c08ffd8799f021a008000001a0040000019012c58209ece9ae0fcbd65e9816de3b4f53077d4e2cb2fd89b33b6dd6d85088630b891af5820b2fc6888d8495bda5c3bbb666081f0bd60890760e8fe79bf09c4e95da7aaeba0ffd8799f031a00c000001a0040000019012c58205b1cc1d2eaeff77811223167af8b507bbca3413085c1245c9453ebad2c5062b9582064b7eb9915410dc0251b7066ba86aefe46c2b818aa595acf712f367788a38e09ffd8799f041a010000001a0040000019012c5820132d364811e69cb9ef466db034ca0a0524155b3d1f16d9faad47404d821841cb58200e7ab6ede77bb1dc5ef1de85c63b8680e2cf75aa4855889c961d632d6d707874ffd8799f051a014000001a0040000019012c582018ac331008301f950ce37cf973389a3c9b908be0dfca616b22a1c2accdd4caad5820122da4edf86f3333e203cf627181247dd7b80e17d124aba5b47f7cb88a1c3748ffd8799f061a018000001a0040000019012c5820826b9514c0ce5027a4da6012844274d337c668661dbc26217a4e8083c5bb8438582058d49c6c0bab6563d651a441b18b58ca8f785de1062822b8109706e0390c0334ffd8799f071a01c000001a0040000019012c5820fc072f454f79384077468c96cee8ea68fb07946833fb11c3f75b6798e066f340582092529a3f902ccc551461fe7167369044aff34b23855c0a43f8992a4d1cd6a82dffd8799f081a020000001a0040000019012c582061ba93c185edb954e53044157d0eb6a73feabbb310d88f593ef88b43dc059bb05820ba2189c1aa8f6f726a457ee5c630424241a546dac2a7fdef32b62afc22a4d873ffd8799f091a024000001a0040000019012c5820078f25dd00e4b430a42f6a7ffabd519cb48817457015cb76802ccaaf454c47f65820bb01a8d57f57ef4f785e4d2d1c99132d03a4150572b4c08d68915a85b25cfe21ffd8799f0a1a028000001a0040000019012c58206e65be1974fb57e1315efdcd480e1fedda268563e7963510bbf61ee0c77cf814582014c668c89d62b7b91075b505761181b337e65c95a47dd9d839147e2727002ac6ffd8799f0b1a02c000001a0040000019012c5820db6cc8a6e58c07fb49fa05dee013e709ba2bbdd5faab138633433bd570fe3c5058203f847abb050f7679f7ffa10c44da668b00d4f00d4aca47f0d6550994cc581c96ffd8799f0c1a030000001a0040000019012c58205655be146a4f4cce6b21d1ba582c775b9ef18b8916ccea4016b941d9d3ff05e358203f6814ce58347829ed20a6abc5e79d795a712f0917cd9f01e5a20d2ffaf7342effd8799f0d1a034000001a0040000019012c5820c2a8a423af9a644a1e42c918da2b0f42094ed4c95f4232c2cc3498a9db8728f958207c8e5f1334f7459cd7353b42a97a42a2412ae3b2f7620b01ca86f5b92123f622ffd8799f0e1a038000001a0040000019012c5820bce7c1e158c0c8a8536a0d06288017d3172b8b4c704710213ce8e06fba4a1b7d5820c9aabddbd7b133e86ea165ef9c3179d5545f66a9d4a20e21ca8405d6e499de2cffd8799f0f1a03c000001a0040000019012c582094e9504f021bc642825535821da5467b538a8222f912ca8519cd179591da00e35820cfb531392e39c13ba1f3f9f27b055ebfb4e8ab6a2861c0d98ad8bee389f5c01effffff582044414348d4d42f6da526c7aeda098878e3513f413eb645b06dfeea1f3c28cd49581c51b1f857cde5cef7b14c6bc9af6e6203077052c3d4a43232918a157e1b000001a0c45993c01b000001a0c4666500ff",
+      "challengeRecordCborByteLength": 1543,
+      "outputReference": {
+        "transactionId": "20cf64b4e21a13f075e3dacbfb9f3e9ae456cca49b4f0f4e5a7419f08b3a193e",
+        "outputIndex": 24
+      },
+      "challengeAssetNameHex": "44414348d4d42f6da526c7aeda098878e3513f413eb645b06dfeea1f3c28cd49"
+    },
+    {
+      "label": "tranches_64",
+      "note": "worst-case widths: 64 MiB payload, 1 MiB tranches, 16-byte chunks; the challenge_record_lovelace measurement shape",
+      "trancheCount": 64,
+      "commitment": {
+        "version": 1,
+        "deploymentIdentity": "807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d",
+        "headerHash": "7aed0072e2a878380a90bc5e3d89aa5c2da063e3c660dd576755c3f2",
+        "payloadByteLength": 67108864,
+        "responseGeometry": {
+          "chunkByteLength": 16,
+          "trancheByteLength": 1048576,
+          "maxTrancheCount": 64
+        },
+        "trancheDescriptors": [
+          {
+            "trancheIndex": 0,
+            "startOffset": 0,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "8cb5b6f884f41760caed282f3d5043f2ce6eb9514191e976569e863e26ce7708",
+            "terminalAccumulator": "95e5df88e651688aa88964d2f26eed0d7ddefc499187954f0c419d599f4637ce"
+          },
+          {
+            "trancheIndex": 1,
+            "startOffset": 1048576,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "27689ea501ec8642acda148ad2a356a85a761962a201459fa81a1a3026e09881",
+            "terminalAccumulator": "34a705d840eba698c6d9a46b3b80abe8ab2efc88e2f60a894d4297e42a57b3b1"
+          },
+          {
+            "trancheIndex": 2,
+            "startOffset": 2097152,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "5bec9c431b153c89b5ee7b652d27a6dcbaa6fe084f2106c54959e87555bece92",
+            "terminalAccumulator": "0b6a5037cb1bac5fa702a48bf4a2758d286ac91bdef74cb1b29d47c3f7048650"
+          },
+          {
+            "trancheIndex": 3,
+            "startOffset": 3145728,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "5997b4496c5a2356fd9047022961c7d473e8072ff596c77d24d7fae5451b28e6",
+            "terminalAccumulator": "48248c2a6e7b40c30ef05247f1f76a8b88dca33a03f2fda566957e5fabdc63bc"
+          },
+          {
+            "trancheIndex": 4,
+            "startOffset": 4194304,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "7b99d12a92a13d8adaca9c526e7357078da68b7f6e6de2e0a9734f95e5bc32cc",
+            "terminalAccumulator": "3960e4ccd814f6d77378430a9aa41b1ed7976d30c4772c1fc59c5b6438aa0eb7"
+          },
+          {
+            "trancheIndex": 5,
+            "startOffset": 5242880,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "ddac24d6e2b7ee9515f6384c347d8878923db54be3cb1c30e12ed499cf159f69",
+            "terminalAccumulator": "1085a55094e0827009051d5405c6243409e4c8284ea07beac80b5917ad837e3e"
+          },
+          {
+            "trancheIndex": 6,
+            "startOffset": 6291456,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "415e3202bfbf097b0ab79cfd3271f477e90be98725c0811ef745e97313078c39",
+            "terminalAccumulator": "bbcb2237abe7dd23f1dcb419c40303897ac9631fe40215cda682f3a363320826"
+          },
+          {
+            "trancheIndex": 7,
+            "startOffset": 7340032,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "945d320faca138d9c1ea84c9fbc007d930640c18f630339ceb6c5ec7711228cb",
+            "terminalAccumulator": "687ace39292ac3e68390e19babdf7d2720a04777c1cb3f664ff321ed04e80934"
+          },
+          {
+            "trancheIndex": 8,
+            "startOffset": 8388608,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "efdde4ad6a973e40925b1827c8936bd1462018ed1d394eefd6d299086024ba5c",
+            "terminalAccumulator": "51ea597eb583ab53003d7fdd290038c8052f9f0b12f042a3323b9802f0791d37"
+          },
+          {
+            "trancheIndex": 9,
+            "startOffset": 9437184,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "b0e93c8403704bce7a3541eb362e632192c1bb07b03c418068e59dda0281bcb7",
+            "terminalAccumulator": "aa9a927805e9f7b042a882eafdd01c14b7abb42d19ac4061474fd66aad49274c"
+          },
+          {
+            "trancheIndex": 10,
+            "startOffset": 10485760,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "a7d0762a86e01f71f6e53608d544c8032c853300657bbace0622cc9a20ac91ab",
+            "terminalAccumulator": "3bf1cde8d5bb5bc78e42b2680892319e8af699ecc40dc0f1205afcb129e45211"
+          },
+          {
+            "trancheIndex": 11,
+            "startOffset": 11534336,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "f40a16d33dfa69cc22ed4a7167b6a40c8b5964a0c5d0eac61b3e1dee93655f45",
+            "terminalAccumulator": "4104ac4f1294db39614f5339aceaf847a50bcbad319c9751b439855b2ec96a55"
+          },
+          {
+            "trancheIndex": 12,
+            "startOffset": 12582912,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "9768a2df767c78197539edf5628c457a56691e15e58b4110ab9721975b6346e8",
+            "terminalAccumulator": "299b4e7734f807e5ef28c8b46080e448d6d2b743726d09f9d700b0b6c16194d5"
+          },
+          {
+            "trancheIndex": 13,
+            "startOffset": 13631488,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "a9909bdab2d003877f09076d08fc75141ff0af6fa9e944ec1dcf9089587ede71",
+            "terminalAccumulator": "eb8ee1430a247cd3c4aba0df4a086c0cf3cd8e78e0c2b0ac71ccc42e9620c9c3"
+          },
+          {
+            "trancheIndex": 14,
+            "startOffset": 14680064,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "f6d2c5979bfe955086a5b7a26d97f922c7f0b8dfe28ac8696ab989b71f41ab0e",
+            "terminalAccumulator": "30f28d902f63d1c829c244790f8617de630afddacbe8c9dd2e5afef0b16cda3f"
+          },
+          {
+            "trancheIndex": 15,
+            "startOffset": 15728640,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "3daa0ee5250ca97a95fe32c79c1fe34cedb26dbcc9640bd02b6d71a791371765",
+            "terminalAccumulator": "0afcf8c9d3c33897372c71fd56c76ac2e35ec6799051368edc0cc018404abfab"
+          },
+          {
+            "trancheIndex": 16,
+            "startOffset": 16777216,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "9033feb50c937c832e5eeccc2a660c3d74dcb9ca4da14dd185b4777e88b1f6ff",
+            "terminalAccumulator": "51d2d59040fab5c6995d15a1211664fdb9b3b01f16d4c5a0ea72730c2544c41a"
+          },
+          {
+            "trancheIndex": 17,
+            "startOffset": 17825792,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "13b8ac0df4d46e5ca9086195d3f01ed299da7f368b2a640d389ffa92582d2989",
+            "terminalAccumulator": "409fb82442b6174921b8d0c7613fe2b751b6225367ad0199ad539ff7a4bb2cac"
+          },
+          {
+            "trancheIndex": 18,
+            "startOffset": 18874368,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "d497caa034838bb00c1b1373635049086f9b7b46befa56d68dada16b2e636479",
+            "terminalAccumulator": "d9f07824a9f6f9c0644ea4c60f6b0959e918cd100a1a68df1eb3f9e8edc95a53"
+          },
+          {
+            "trancheIndex": 19,
+            "startOffset": 19922944,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "d38f15e893eca9afcdc9675bcbb8a0ce6fe9b26827c345f245e87f9c931c464a",
+            "terminalAccumulator": "140c22bd464d77e2cddc02a0588798a2f4f1302c7c6ebb0df8b5876395645559"
+          },
+          {
+            "trancheIndex": 20,
+            "startOffset": 20971520,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "e7285817097305681839a260af652536abc5b7cb318eafb65f933d59c498e25f",
+            "terminalAccumulator": "d7128a5b51d4062182224b984fb70cd7a6018cc94fe6c3d0ea61e506d1c61039"
+          },
+          {
+            "trancheIndex": 21,
+            "startOffset": 22020096,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "b38ffae2d7cb31536338e32787ead4ec182268ae10a73665e07dc0d90fde5eeb",
+            "terminalAccumulator": "46c05048183f1cd956ab5b808f3f54ae3cbdd2c1064d454bee5dced85136c82e"
+          },
+          {
+            "trancheIndex": 22,
+            "startOffset": 23068672,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "b4c2648662114e22bd553ab14baf9ddf60f67f2189083505500e41b52a1204d5",
+            "terminalAccumulator": "72a8582ce57944629c352528543a4932d3b58f0100ef3135dd140752b746e6b7"
+          },
+          {
+            "trancheIndex": 23,
+            "startOffset": 24117248,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "81faefec63a204cb37ce9a544a20db24d60e2bbbeebdaec3434cb6f5de25be98",
+            "terminalAccumulator": "1eea41cc3495ec4b5502c563fad49a64ce72a43968770b7ff21a2f8fe136fc8a"
+          },
+          {
+            "trancheIndex": 24,
+            "startOffset": 25165824,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "ce1ca1c02d076deabb28d57a9729812318444b8b85835e8bcc540034f65055b9",
+            "terminalAccumulator": "249536dd3a394fe70ed5273bffad79f9b08c13cb698595f47e54c7720bf3349f"
+          },
+          {
+            "trancheIndex": 25,
+            "startOffset": 26214400,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "bd10777cba250b3804d14dd25e9117c0f5f3cef4a00beb269a482b0b0869b48e",
+            "terminalAccumulator": "d4737adbbf2f70ba2a1e284403d70c17b868de6e7f010baceea46fab60af5ece"
+          },
+          {
+            "trancheIndex": 26,
+            "startOffset": 27262976,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "11849967a9b3fed50342e33dd83caa52339bc4b48f0ed153549bc581d22ddfd7",
+            "terminalAccumulator": "1cded141656efe713145b03d9726143931c0ae09777bac4cd9c38617aeb7c321"
+          },
+          {
+            "trancheIndex": 27,
+            "startOffset": 28311552,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "2337626c5af003217af0d58f814d05892f6df768ecb844056b6bda563306d6bf",
+            "terminalAccumulator": "ce194b9983e5c012807638634721a83fe42860fbb5ae64baa7f43f3422ca5b0c"
+          },
+          {
+            "trancheIndex": 28,
+            "startOffset": 29360128,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "011a498cee97fc8fe71fd7a289f5fdf2aa542b9343c591915ac0b3cf086e9148",
+            "terminalAccumulator": "51933cba2d348cd630143c07b3ab2d1ff64c356bd319590d7858e158237ac1a3"
+          },
+          {
+            "trancheIndex": 29,
+            "startOffset": 30408704,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "52934f03616425751a0da3b7eb307c7451083bcc97705979990e2ad366688eea",
+            "terminalAccumulator": "306d4acd44cc18a3e9e7dce0ffe692db3ef00249c013c58d43f6333d1285771e"
+          },
+          {
+            "trancheIndex": 30,
+            "startOffset": 31457280,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "657d6a41da6f026021dd221b15ca2385422bd4bb21451efc55dd8c57215cf4b0",
+            "terminalAccumulator": "93b17af5aa277a1fae8fa91bde4e3e98f7b704edae92511b4eeca35480157aef"
+          },
+          {
+            "trancheIndex": 31,
+            "startOffset": 32505856,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "21a71010ec31f6097942803978f6ba8b2f012ec33510e34a0ad6d482fbd886aa",
+            "terminalAccumulator": "34d91390fc468012d02d988e0af37716870b9d12ffba2d54dd570087160358ff"
+          },
+          {
+            "trancheIndex": 32,
+            "startOffset": 33554432,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "ed29f85dae20cf9a6199d4b6c6e818d72093cb50413eaaf06df1eeddfa2e7719",
+            "terminalAccumulator": "7ec18d8b64f53a1797ec44fa04322e1b3477cd1671603824bcd800edddfda4a7"
+          },
+          {
+            "trancheIndex": 33,
+            "startOffset": 34603008,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "bd573e84ae9d1ed1941449e3bd0b3ce23dc05395537a948207ff9177b4bbcf95",
+            "terminalAccumulator": "f0d477e0d6cc279153af8bcb9f3adf81098156c4db99adc66156479c2c79a8f4"
+          },
+          {
+            "trancheIndex": 34,
+            "startOffset": 35651584,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "6679b0f871f349b56cd4a6cdecf8cf5d2a297a5dc0956c056801640a6378a230",
+            "terminalAccumulator": "3ab891b6ccdbba05226301dda0f7d84b0cfd4bc8034503b5c70a3e24c8271ebf"
+          },
+          {
+            "trancheIndex": 35,
+            "startOffset": 36700160,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "0b8cde11a8b452a89cf6a0ee815fa051354252a34804da883c97c532aae6d86c",
+            "terminalAccumulator": "73a11e9a77f3af0f49e4cb7ec51fdcb06818b783260faced948de10ca0dcf00f"
+          },
+          {
+            "trancheIndex": 36,
+            "startOffset": 37748736,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "d4aa8054fd243b94a79b6f4f1cff9c3fe1e5be0bc56852e077a202c3de255efb",
+            "terminalAccumulator": "401228831074035ab2d225aed119a6a35241f13f81dc1f363a25223780e39af8"
+          },
+          {
+            "trancheIndex": 37,
+            "startOffset": 38797312,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "a7e97c31087005f6f2c9bb9b704114b3c64a9c2b8aa46e0244b9f2685207f48d",
+            "terminalAccumulator": "be5232e9006c3e8904c3aa7230b93c43c777f8957d571e3f2e92c7dc45c97350"
+          },
+          {
+            "trancheIndex": 38,
+            "startOffset": 39845888,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "07442d4407b87f9e8a772833b3595a5897f45a96aaf2125d09f1653b608ce639",
+            "terminalAccumulator": "cd397bd6b444edad0a2589c9387d1ff1f7dbf947c58541fe39a7ed1ac59fa97a"
+          },
+          {
+            "trancheIndex": 39,
+            "startOffset": 40894464,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "9a6d6028da4e9a2fb1c2abd7ee28e4482ce605c76946eeb11c78cf3f7961c63f",
+            "terminalAccumulator": "d7ab41cf15a5cf2940dc6aabf40b7a08092ffb497686e499acdfaaca4ce5fd88"
+          },
+          {
+            "trancheIndex": 40,
+            "startOffset": 41943040,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "27007418acda886683efc085fcd62643d8f3f19acc3d989edff76a50dd431075",
+            "terminalAccumulator": "9f6b351bdac4ce6b3a859fc2f30dabf466009995ddf9b24e3a3901d33070bb56"
+          },
+          {
+            "trancheIndex": 41,
+            "startOffset": 42991616,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "8fa2fc34abbaa97c9d580341c56f18bae354334047fdbb3881183652764254f5",
+            "terminalAccumulator": "daeddcb4637664537eccbc7b09f89cffa5191aa2c4f658a646a0cfe49de92535"
+          },
+          {
+            "trancheIndex": 42,
+            "startOffset": 44040192,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "c6881c017c06e24d35992348f83a6646787da98e0576a3f107960afc500eba2d",
+            "terminalAccumulator": "422b666bc99b1227346eac516aee915f9058acb37fb6ead4bfe1c604fc60be6f"
+          },
+          {
+            "trancheIndex": 43,
+            "startOffset": 45088768,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "1295ae849b6eaf4312dc692b1daddb485288e9c2fcf1d3e2057ab1c1cd8e4089",
+            "terminalAccumulator": "9277da9506a627a66310ef00e10c3d040545ad0ad3df5a29b845167aa5a5f535"
+          },
+          {
+            "trancheIndex": 44,
+            "startOffset": 46137344,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "7234f0cb8f1d8ceef8a1693232e62b334745bb5d0bcad93a118b8807f3178aa0",
+            "terminalAccumulator": "96147df279238162ef9c8963a392ec48e84746d2f23efb901ba058780335196a"
+          },
+          {
+            "trancheIndex": 45,
+            "startOffset": 47185920,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "c5bb5e633aa5f4fdd105d1a0fad7e357c0e568e27bba43c25dc9a9bf11df0bac",
+            "terminalAccumulator": "ab1303268714abf3ff497f501981f86551585a45e656bff5ff8961c2dc117f8f"
+          },
+          {
+            "trancheIndex": 46,
+            "startOffset": 48234496,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "6df90331b1a02478312d9d411064f10dac8c92a4d4f469e7f8acd37821ae52c4",
+            "terminalAccumulator": "9e3035aae487708c16c83ca6010a5a4d0a224ed6614edfeba66429de38baa944"
+          },
+          {
+            "trancheIndex": 47,
+            "startOffset": 49283072,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "47e99c499e3549034b90ac211ffce6979c55da2795fb09f3181717d7336f6d54",
+            "terminalAccumulator": "503f6b46b4c1429f2d20bd57d5c748fdcdf0f21a6045e1034c6b3155a94bcbd1"
+          },
+          {
+            "trancheIndex": 48,
+            "startOffset": 50331648,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "de8a4018daba52c95221838e069e496bbc940f1b7f890c720e500b43c15dd763",
+            "terminalAccumulator": "f35c48be3fdd9683cdfb2200066dedc22e8b443d152c3d20c43656778468809d"
+          },
+          {
+            "trancheIndex": 49,
+            "startOffset": 51380224,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "deeecba6b0482681e79b3dab8e779231c23b5d8a789d1f4f1364d5dba2d6618d",
+            "terminalAccumulator": "f426f7ea09858cf5d6076fd8d621d1c78a7df5aa504df1af4ec2bba0647a0793"
+          },
+          {
+            "trancheIndex": 50,
+            "startOffset": 52428800,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "f68e1bd368f529c886d06a177a8eda6132f682b7de9d74ca4c48c8404a1f7b1c",
+            "terminalAccumulator": "ecfcef668bcff10773b5b443febb21bc26714425d9a6591d488346d3b139e8c3"
+          },
+          {
+            "trancheIndex": 51,
+            "startOffset": 53477376,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "76eb146925ad6de10dfc7cc7b8f6809686608c1fd2bc8a44264d5d9bbfcd3ad8",
+            "terminalAccumulator": "9250c21c4be2225221d402e36961202fa54a422c60570250d6ba42b0aad9c82b"
+          },
+          {
+            "trancheIndex": 52,
+            "startOffset": 54525952,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "9f816153fba36996f6009fc5bae6128e6e92cb53462aec109c1f1ec94213ac44",
+            "terminalAccumulator": "ea418cf42ab066128c50df3c90e17dae4127756b36cbbfc48c5a7f980aaee88f"
+          },
+          {
+            "trancheIndex": 53,
+            "startOffset": 55574528,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "bca0f045a0d034a15ae8c637770042e5032cc0dc4ff1ce9b3bf387348047edff",
+            "terminalAccumulator": "22403c03e82f53056af96e5e956d84bf4ec212ee02ccce1b7d843b690d229568"
+          },
+          {
+            "trancheIndex": 54,
+            "startOffset": 56623104,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "e826cfa538020298139f3181214e42da47dd19e3d9961cf311c197f5f32b7a6f",
+            "terminalAccumulator": "ae841f76b99445d5f4073d2890fbfcf74e7baaf02c2cb3150da33bb2e0a74a15"
+          },
+          {
+            "trancheIndex": 55,
+            "startOffset": 57671680,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "58e5654153604c9bc06b20b317a142da63a8059437f8c993cca94d3dc13fd227",
+            "terminalAccumulator": "7f2bb640eaf8d085a3827c9c06828dec9592d6aece8c20b5cd69221d8f70d583"
+          },
+          {
+            "trancheIndex": 56,
+            "startOffset": 58720256,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "8defbce48c2fc586d2ce9ff62228ce3a005c167a463aaaf3b018674b322c32d4",
+            "terminalAccumulator": "2117194a199ff192a74fc23a414192b3cc48ff4d81c95bf1a5b6e35b2aad43ce"
+          },
+          {
+            "trancheIndex": 57,
+            "startOffset": 59768832,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "9827e40a47e2175868684f49cf9f20775ad4392de0dd6daa45e51685eb041610",
+            "terminalAccumulator": "50a3ca07c9d1b584de78151d5d9866fa3bea53615a2171a4def05e31302de241"
+          },
+          {
+            "trancheIndex": 58,
+            "startOffset": 60817408,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "90161d40d3f3d2f05ee5c7d5ac1879ab58d21901aeb78f5613a26546d8c7aded",
+            "terminalAccumulator": "7719c9252e7ea1e16558a55fbe5e75750bdb175fa76844c06c25478b4a808d92"
+          },
+          {
+            "trancheIndex": 59,
+            "startOffset": 61865984,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "cb2236c54776ce5afc259e8e47d7c574d399ad353be8945b413aa4fdc1ad741e",
+            "terminalAccumulator": "9149fd615a0204f29613c51e424fb124cc5544ce10a3d98e1e362c2b9bfd3ed8"
+          },
+          {
+            "trancheIndex": 60,
+            "startOffset": 62914560,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "a6cdf32068a36d43297267442d8106c989671dd080922f490f5f4bdd967ad260",
+            "terminalAccumulator": "101dbd7d075b7a9f88a4fc2dc7851ac834caa963c0b081930b7aa7d6b1eb4900"
+          },
+          {
+            "trancheIndex": 61,
+            "startOffset": 63963136,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "b6b83fec4368a4ff3059658527c33d5ee42302f02879ad594d3753df2f9e62ce",
+            "terminalAccumulator": "21f896880ce7f6a400780723286eb04c96c0208b70b778090381a404675e03f5"
+          },
+          {
+            "trancheIndex": 62,
+            "startOffset": 65011712,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "811f2eceb63127e0775c3fdaa6662e9c79451c829910001b9f1ccdbdde46476f",
+            "terminalAccumulator": "92c1392405bfa9ee14a5c374e96d1b622f17789fe8472c1f2ae740bfe9f04893"
+          },
+          {
+            "trancheIndex": 63,
+            "startOffset": 66060288,
+            "byteLength": 1048576,
+            "chunkCount": 65536,
+            "chunkCommitment": "da8daaeb77e9e7835c9a81ff8225056de54cad9e699bccd04048ca23cbea90ad",
+            "terminalAccumulator": "f44b34cc509e28a1f9735e7e45bdea813d25471455b408c5b1ab833babcd62ea"
+          }
+        ]
+      },
+      "commitmentCborHex": "d8799f01581c807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d581c7aed0072e2a878380a90bc5e3d89aa5c2da063e3c660dd576755c3f21a04000000d8799f101a001000001840ff9fd8799f00001a001000001a0001000058208cb5b6f884f41760caed282f3d5043f2ce6eb9514191e976569e863e26ce7708582095e5df88e651688aa88964d2f26eed0d7ddefc499187954f0c419d599f4637ceffd8799f011a001000001a001000001a00010000582027689ea501ec8642acda148ad2a356a85a761962a201459fa81a1a3026e09881582034a705d840eba698c6d9a46b3b80abe8ab2efc88e2f60a894d4297e42a57b3b1ffd8799f021a002000001a001000001a0001000058205bec9c431b153c89b5ee7b652d27a6dcbaa6fe084f2106c54959e87555bece9258200b6a5037cb1bac5fa702a48bf4a2758d286ac91bdef74cb1b29d47c3f7048650ffd8799f031a003000001a001000001a0001000058205997b4496c5a2356fd9047022961c7d473e8072ff596c77d24d7fae5451b28e6582048248c2a6e7b40c30ef05247f1f76a8b88dca33a03f2fda566957e5fabdc63bcffd8799f041a004000001a001000001a0001000058207b99d12a92a13d8adaca9c526e7357078da68b7f6e6de2e0a9734f95e5bc32cc58203960e4ccd814f6d77378430a9aa41b1ed7976d30c4772c1fc59c5b6438aa0eb7ffd8799f051a005000001a001000001a000100005820ddac24d6e2b7ee9515f6384c347d8878923db54be3cb1c30e12ed499cf159f6958201085a55094e0827009051d5405c6243409e4c8284ea07beac80b5917ad837e3effd8799f061a006000001a001000001a000100005820415e3202bfbf097b0ab79cfd3271f477e90be98725c0811ef745e97313078c395820bbcb2237abe7dd23f1dcb419c40303897ac9631fe40215cda682f3a363320826ffd8799f071a007000001a001000001a000100005820945d320faca138d9c1ea84c9fbc007d930640c18f630339ceb6c5ec7711228cb5820687ace39292ac3e68390e19babdf7d2720a04777c1cb3f664ff321ed04e80934ffd8799f081a008000001a001000001a000100005820efdde4ad6a973e40925b1827c8936bd1462018ed1d394eefd6d299086024ba5c582051ea597eb583ab53003d7fdd290038c8052f9f0b12f042a3323b9802f0791d37ffd8799f091a009000001a001000001a000100005820b0e93c8403704bce7a3541eb362e632192c1bb07b03c418068e59dda0281bcb75820aa9a927805e9f7b042a882eafdd01c14b7abb42d19ac4061474fd66aad49274cffd8799f0a1a00a000001a001000001a000100005820a7d0762a86e01f71f6e53608d544c8032c853300657bbace0622cc9a20ac91ab58203bf1cde8d5bb5bc78e42b2680892319e8af699ecc40dc0f1205afcb129e45211ffd8799f0b1a00b000001a001000001a000100005820f40a16d33dfa69cc22ed4a7167b6a40c8b5964a0c5d0eac61b3e1dee93655f4558204104ac4f1294db39614f5339aceaf847a50bcbad319c9751b439855b2ec96a55ffd8799f0c1a00c000001a001000001a0001000058209768a2df767c78197539edf5628c457a56691e15e58b4110ab9721975b6346e85820299b4e7734f807e5ef28c8b46080e448d6d2b743726d09f9d700b0b6c16194d5ffd8799f0d1a00d000001a001000001a000100005820a9909bdab2d003877f09076d08fc75141ff0af6fa9e944ec1dcf9089587ede715820eb8ee1430a247cd3c4aba0df4a086c0cf3cd8e78e0c2b0ac71ccc42e9620c9c3ffd8799f0e1a00e000001a001000001a000100005820f6d2c5979bfe955086a5b7a26d97f922c7f0b8dfe28ac8696ab989b71f41ab0e582030f28d902f63d1c829c244790f8617de630afddacbe8c9dd2e5afef0b16cda3fffd8799f0f1a00f000001a001000001a0001000058203daa0ee5250ca97a95fe32c79c1fe34cedb26dbcc9640bd02b6d71a79137176558200afcf8c9d3c33897372c71fd56c76ac2e35ec6799051368edc0cc018404abfabffd8799f101a010000001a001000001a0001000058209033feb50c937c832e5eeccc2a660c3d74dcb9ca4da14dd185b4777e88b1f6ff582051d2d59040fab5c6995d15a1211664fdb9b3b01f16d4c5a0ea72730c2544c41affd8799f111a011000001a001000001a00010000582013b8ac0df4d46e5ca9086195d3f01ed299da7f368b2a640d389ffa92582d29895820409fb82442b6174921b8d0c7613fe2b751b6225367ad0199ad539ff7a4bb2cacffd8799f121a012000001a001000001a000100005820d497caa034838bb00c1b1373635049086f9b7b46befa56d68dada16b2e6364795820d9f07824a9f6f9c0644ea4c60f6b0959e918cd100a1a68df1eb3f9e8edc95a53ffd8799f131a013000001a001000001a000100005820d38f15e893eca9afcdc9675bcbb8a0ce6fe9b26827c345f245e87f9c931c464a5820140c22bd464d77e2cddc02a0588798a2f4f1302c7c6ebb0df8b5876395645559ffd8799f141a014000001a001000001a000100005820e7285817097305681839a260af652536abc5b7cb318eafb65f933d59c498e25f5820d7128a5b51d4062182224b984fb70cd7a6018cc94fe6c3d0ea61e506d1c61039ffd8799f151a015000001a001000001a000100005820b38ffae2d7cb31536338e32787ead4ec182268ae10a73665e07dc0d90fde5eeb582046c05048183f1cd956ab5b808f3f54ae3cbdd2c1064d454bee5dced85136c82effd8799f161a016000001a001000001a000100005820b4c2648662114e22bd553ab14baf9ddf60f67f2189083505500e41b52a1204d5582072a8582ce57944629c352528543a4932d3b58f0100ef3135dd140752b746e6b7ffd8799f171a017000001a001000001a00010000582081faefec63a204cb37ce9a544a20db24d60e2bbbeebdaec3434cb6f5de25be9858201eea41cc3495ec4b5502c563fad49a64ce72a43968770b7ff21a2f8fe136fc8affd8799f18181a018000001a001000001a000100005820ce1ca1c02d076deabb28d57a9729812318444b8b85835e8bcc540034f65055b95820249536dd3a394fe70ed5273bffad79f9b08c13cb698595f47e54c7720bf3349fffd8799f18191a019000001a001000001a000100005820bd10777cba250b3804d14dd25e9117c0f5f3cef4a00beb269a482b0b0869b48e5820d4737adbbf2f70ba2a1e284403d70c17b868de6e7f010baceea46fab60af5eceffd8799f181a1a01a000001a001000001a00010000582011849967a9b3fed50342e33dd83caa52339bc4b48f0ed153549bc581d22ddfd758201cded141656efe713145b03d9726143931c0ae09777bac4cd9c38617aeb7c321ffd8799f181b1a01b000001a001000001a0001000058202337626c5af003217af0d58f814d05892f6df768ecb844056b6bda563306d6bf5820ce194b9983e5c012807638634721a83fe42860fbb5ae64baa7f43f3422ca5b0cffd8799f181c1a01c000001a001000001a000100005820011a498cee97fc8fe71fd7a289f5fdf2aa542b9343c591915ac0b3cf086e9148582051933cba2d348cd630143c07b3ab2d1ff64c356bd319590d7858e158237ac1a3ffd8799f181d1a01d000001a001000001a00010000582052934f03616425751a0da3b7eb307c7451083bcc97705979990e2ad366688eea5820306d4acd44cc18a3e9e7dce0ffe692db3ef00249c013c58d43f6333d1285771effd8799f181e1a01e000001a001000001a000100005820657d6a41da6f026021dd221b15ca2385422bd4bb21451efc55dd8c57215cf4b0582093b17af5aa277a1fae8fa91bde4e3e98f7b704edae92511b4eeca35480157aefffd8799f181f1a01f000001a001000001a00010000582021a71010ec31f6097942803978f6ba8b2f012ec33510e34a0ad6d482fbd886aa582034d91390fc468012d02d988e0af37716870b9d12ffba2d54dd570087160358ffffd8799f18201a020000001a001000001a000100005820ed29f85dae20cf9a6199d4b6c6e818d72093cb50413eaaf06df1eeddfa2e771958207ec18d8b64f53a1797ec44fa04322e1b3477cd1671603824bcd800edddfda4a7ffd8799f18211a021000001a001000001a000100005820bd573e84ae9d1ed1941449e3bd0b3ce23dc05395537a948207ff9177b4bbcf955820f0d477e0d6cc279153af8bcb9f3adf81098156c4db99adc66156479c2c79a8f4ffd8799f18221a022000001a001000001a0001000058206679b0f871f349b56cd4a6cdecf8cf5d2a297a5dc0956c056801640a6378a23058203ab891b6ccdbba05226301dda0f7d84b0cfd4bc8034503b5c70a3e24c8271ebfffd8799f18231a023000001a001000001a0001000058200b8cde11a8b452a89cf6a0ee815fa051354252a34804da883c97c532aae6d86c582073a11e9a77f3af0f49e4cb7ec51fdcb06818b783260faced948de10ca0dcf00fffd8799f18241a024000001a001000001a000100005820d4aa8054fd243b94a79b6f4f1cff9c3fe1e5be0bc56852e077a202c3de255efb5820401228831074035ab2d225aed119a6a35241f13f81dc1f363a25223780e39af8ffd8799f18251a025000001a001000001a000100005820a7e97c31087005f6f2c9bb9b704114b3c64a9c2b8aa46e0244b9f2685207f48d5820be5232e9006c3e8904c3aa7230b93c43c777f8957d571e3f2e92c7dc45c97350ffd8799f18261a026000001a001000001a00010000582007442d4407b87f9e8a772833b3595a5897f45a96aaf2125d09f1653b608ce6395820cd397bd6b444edad0a2589c9387d1ff1f7dbf947c58541fe39a7ed1ac59fa97affd8799f18271a027000001a001000001a0001000058209a6d6028da4e9a2fb1c2abd7ee28e4482ce605c76946eeb11c78cf3f7961c63f5820d7ab41cf15a5cf2940dc6aabf40b7a08092ffb497686e499acdfaaca4ce5fd88ffd8799f18281a028000001a001000001a00010000582027007418acda886683efc085fcd62643d8f3f19acc3d989edff76a50dd43107558209f6b351bdac4ce6b3a859fc2f30dabf466009995ddf9b24e3a3901d33070bb56ffd8799f18291a029000001a001000001a0001000058208fa2fc34abbaa97c9d580341c56f18bae354334047fdbb3881183652764254f55820daeddcb4637664537eccbc7b09f89cffa5191aa2c4f658a646a0cfe49de92535ffd8799f182a1a02a000001a001000001a000100005820c6881c017c06e24d35992348f83a6646787da98e0576a3f107960afc500eba2d5820422b666bc99b1227346eac516aee915f9058acb37fb6ead4bfe1c604fc60be6fffd8799f182b1a02b000001a001000001a0001000058201295ae849b6eaf4312dc692b1daddb485288e9c2fcf1d3e2057ab1c1cd8e408958209277da9506a627a66310ef00e10c3d040545ad0ad3df5a29b845167aa5a5f535ffd8799f182c1a02c000001a001000001a0001000058207234f0cb8f1d8ceef8a1693232e62b334745bb5d0bcad93a118b8807f3178aa0582096147df279238162ef9c8963a392ec48e84746d2f23efb901ba058780335196affd8799f182d1a02d000001a001000001a000100005820c5bb5e633aa5f4fdd105d1a0fad7e357c0e568e27bba43c25dc9a9bf11df0bac5820ab1303268714abf3ff497f501981f86551585a45e656bff5ff8961c2dc117f8fffd8799f182e1a02e000001a001000001a0001000058206df90331b1a02478312d9d411064f10dac8c92a4d4f469e7f8acd37821ae52c458209e3035aae487708c16c83ca6010a5a4d0a224ed6614edfeba66429de38baa944ffd8799f182f1a02f000001a001000001a00010000582047e99c499e3549034b90ac211ffce6979c55da2795fb09f3181717d7336f6d545820503f6b46b4c1429f2d20bd57d5c748fdcdf0f21a6045e1034c6b3155a94bcbd1ffd8799f18301a030000001a001000001a000100005820de8a4018daba52c95221838e069e496bbc940f1b7f890c720e500b43c15dd7635820f35c48be3fdd9683cdfb2200066dedc22e8b443d152c3d20c43656778468809dffd8799f18311a031000001a001000001a000100005820deeecba6b0482681e79b3dab8e779231c23b5d8a789d1f4f1364d5dba2d6618d5820f426f7ea09858cf5d6076fd8d621d1c78a7df5aa504df1af4ec2bba0647a0793ffd8799f18321a032000001a001000001a000100005820f68e1bd368f529c886d06a177a8eda6132f682b7de9d74ca4c48c8404a1f7b1c5820ecfcef668bcff10773b5b443febb21bc26714425d9a6591d488346d3b139e8c3ffd8799f18331a033000001a001000001a00010000582076eb146925ad6de10dfc7cc7b8f6809686608c1fd2bc8a44264d5d9bbfcd3ad858209250c21c4be2225221d402e36961202fa54a422c60570250d6ba42b0aad9c82bffd8799f18341a034000001a001000001a0001000058209f816153fba36996f6009fc5bae6128e6e92cb53462aec109c1f1ec94213ac445820ea418cf42ab066128c50df3c90e17dae4127756b36cbbfc48c5a7f980aaee88fffd8799f18351a035000001a001000001a000100005820bca0f045a0d034a15ae8c637770042e5032cc0dc4ff1ce9b3bf387348047edff582022403c03e82f53056af96e5e956d84bf4ec212ee02ccce1b7d843b690d229568ffd8799f18361a036000001a001000001a000100005820e826cfa538020298139f3181214e42da47dd19e3d9961cf311c197f5f32b7a6f5820ae841f76b99445d5f4073d2890fbfcf74e7baaf02c2cb3150da33bb2e0a74a15ffd8799f18371a037000001a001000001a00010000582058e5654153604c9bc06b20b317a142da63a8059437f8c993cca94d3dc13fd22758207f2bb640eaf8d085a3827c9c06828dec9592d6aece8c20b5cd69221d8f70d583ffd8799f18381a038000001a001000001a0001000058208defbce48c2fc586d2ce9ff62228ce3a005c167a463aaaf3b018674b322c32d458202117194a199ff192a74fc23a414192b3cc48ff4d81c95bf1a5b6e35b2aad43ceffd8799f18391a039000001a001000001a0001000058209827e40a47e2175868684f49cf9f20775ad4392de0dd6daa45e51685eb041610582050a3ca07c9d1b584de78151d5d9866fa3bea53615a2171a4def05e31302de241ffd8799f183a1a03a000001a001000001a00010000582090161d40d3f3d2f05ee5c7d5ac1879ab58d21901aeb78f5613a26546d8c7aded58207719c9252e7ea1e16558a55fbe5e75750bdb175fa76844c06c25478b4a808d92ffd8799f183b1a03b000001a001000001a000100005820cb2236c54776ce5afc259e8e47d7c574d399ad353be8945b413aa4fdc1ad741e58209149fd615a0204f29613c51e424fb124cc5544ce10a3d98e1e362c2b9bfd3ed8ffd8799f183c1a03c000001a001000001a000100005820a6cdf32068a36d43297267442d8106c989671dd080922f490f5f4bdd967ad2605820101dbd7d075b7a9f88a4fc2dc7851ac834caa963c0b081930b7aa7d6b1eb4900ffd8799f183d1a03d000001a001000001a000100005820b6b83fec4368a4ff3059658527c33d5ee42302f02879ad594d3753df2f9e62ce582021f896880ce7f6a400780723286eb04c96c0208b70b778090381a404675e03f5ffd8799f183e1a03e000001a001000001a000100005820811f2eceb63127e0775c3fdaa6662e9c79451c829910001b9f1ccdbdde46476f582092c1392405bfa9ee14a5c374e96d1b622f17789fe8472c1f2ae740bfe9f04893ffd8799f183f1a03f000001a001000001a000100005820da8daaeb77e9e7835c9a81ff8225056de54cad9e699bccd04048ca23cbea90ad5820f44b34cc509e28a1f9735e7e45bdea813d25471455b408c5b1ab833babcd62eaffffff",
+      "commitmentCborByteLength": 5752,
+      "commitmentHashHex": "44d58a2c210c822ea06c01af70b5533423327025ae50df2f5feed9bef67a0a74",
+      "attestationMessageHex": "7a8b0814345cc483fc1b244404c84f152b831436669b76fcc9cf3063d822bdea",
+      "challengeRecord": {
+        "challengeAssetName": "4441434873a4e9324017b5ae78007d2fd6b93f46ae3a00d2800c4b97b85302d7",
+        "challenger": "3a9d75b5d3e17530aa1fe04c36f1adf458766451fc1ba7660c44f2e6",
+        "openedAt": 1790001200000,
+        "responseDeadline": 1790260400000
+      },
+      "challengeRecordCborHex": "d8799fd8799f01581c807c3a716b77575a1aa9073760ab582ed3d5a917cc3b0c32da73804d581c7aed0072e2a878380a90bc5e3d89aa5c2da063e3c660dd576755c3f21a04000000d8799f101a001000001840ff9fd8799f00001a001000001a0001000058208cb5b6f884f41760caed282f3d5043f2ce6eb9514191e976569e863e26ce7708582095e5df88e651688aa88964d2f26eed0d7ddefc499187954f0c419d599f4637ceffd8799f011a001000001a001000001a00010000582027689ea501ec8642acda148ad2a356a85a761962a201459fa81a1a3026e09881582034a705d840eba698c6d9a46b3b80abe8ab2efc88e2f60a894d4297e42a57b3b1ffd8799f021a002000001a001000001a0001000058205bec9c431b153c89b5ee7b652d27a6dcbaa6fe084f2106c54959e87555bece9258200b6a5037cb1bac5fa702a48bf4a2758d286ac91bdef74cb1b29d47c3f7048650ffd8799f031a003000001a001000001a0001000058205997b4496c5a2356fd9047022961c7d473e8072ff596c77d24d7fae5451b28e6582048248c2a6e7b40c30ef05247f1f76a8b88dca33a03f2fda566957e5fabdc63bcffd8799f041a004000001a001000001a0001000058207b99d12a92a13d8adaca9c526e7357078da68b7f6e6de2e0a9734f95e5bc32cc58203960e4ccd814f6d77378430a9aa41b1ed7976d30c4772c1fc59c5b6438aa0eb7ffd8799f051a005000001a001000001a000100005820ddac24d6e2b7ee9515f6384c347d8878923db54be3cb1c30e12ed499cf159f6958201085a55094e0827009051d5405c6243409e4c8284ea07beac80b5917ad837e3effd8799f061a006000001a001000001a000100005820415e3202bfbf097b0ab79cfd3271f477e90be98725c0811ef745e97313078c395820bbcb2237abe7dd23f1dcb419c40303897ac9631fe40215cda682f3a363320826ffd8799f071a007000001a001000001a000100005820945d320faca138d9c1ea84c9fbc007d930640c18f630339ceb6c5ec7711228cb5820687ace39292ac3e68390e19babdf7d2720a04777c1cb3f664ff321ed04e80934ffd8799f081a008000001a001000001a000100005820efdde4ad6a973e40925b1827c8936bd1462018ed1d394eefd6d299086024ba5c582051ea597eb583ab53003d7fdd290038c8052f9f0b12f042a3323b9802f0791d37ffd8799f091a009000001a001000001a000100005820b0e93c8403704bce7a3541eb362e632192c1bb07b03c418068e59dda0281bcb75820aa9a927805e9f7b042a882eafdd01c14b7abb42d19ac4061474fd66aad49274cffd8799f0a1a00a000001a001000001a000100005820a7d0762a86e01f71f6e53608d544c8032c853300657bbace0622cc9a20ac91ab58203bf1cde8d5bb5bc78e42b2680892319e8af699ecc40dc0f1205afcb129e45211ffd8799f0b1a00b000001a001000001a000100005820f40a16d33dfa69cc22ed4a7167b6a40c8b5964a0c5d0eac61b3e1dee93655f4558204104ac4f1294db39614f5339aceaf847a50bcbad319c9751b439855b2ec96a55ffd8799f0c1a00c000001a001000001a0001000058209768a2df767c78197539edf5628c457a56691e15e58b4110ab9721975b6346e85820299b4e7734f807e5ef28c8b46080e448d6d2b743726d09f9d700b0b6c16194d5ffd8799f0d1a00d000001a001000001a000100005820a9909bdab2d003877f09076d08fc75141ff0af6fa9e944ec1dcf9089587ede715820eb8ee1430a247cd3c4aba0df4a086c0cf3cd8e78e0c2b0ac71ccc42e9620c9c3ffd8799f0e1a00e000001a001000001a000100005820f6d2c5979bfe955086a5b7a26d97f922c7f0b8dfe28ac8696ab989b71f41ab0e582030f28d902f63d1c829c244790f8617de630afddacbe8c9dd2e5afef0b16cda3fffd8799f0f1a00f000001a001000001a0001000058203daa0ee5250ca97a95fe32c79c1fe34cedb26dbcc9640bd02b6d71a79137176558200afcf8c9d3c33897372c71fd56c76ac2e35ec6799051368edc0cc018404abfabffd8799f101a010000001a001000001a0001000058209033feb50c937c832e5eeccc2a660c3d74dcb9ca4da14dd185b4777e88b1f6ff582051d2d59040fab5c6995d15a1211664fdb9b3b01f16d4c5a0ea72730c2544c41affd8799f111a011000001a001000001a00010000582013b8ac0df4d46e5ca9086195d3f01ed299da7f368b2a640d389ffa92582d29895820409fb82442b6174921b8d0c7613fe2b751b6225367ad0199ad539ff7a4bb2cacffd8799f121a012000001a001000001a000100005820d497caa034838bb00c1b1373635049086f9b7b46befa56d68dada16b2e6364795820d9f07824a9f6f9c0644ea4c60f6b0959e918cd100a1a68df1eb3f9e8edc95a53ffd8799f131a013000001a001000001a000100005820d38f15e893eca9afcdc9675bcbb8a0ce6fe9b26827c345f245e87f9c931c464a5820140c22bd464d77e2cddc02a0588798a2f4f1302c7c6ebb0df8b5876395645559ffd8799f141a014000001a001000001a000100005820e7285817097305681839a260af652536abc5b7cb318eafb65f933d59c498e25f5820d7128a5b51d4062182224b984fb70cd7a6018cc94fe6c3d0ea61e506d1c61039ffd8799f151a015000001a001000001a000100005820b38ffae2d7cb31536338e32787ead4ec182268ae10a73665e07dc0d90fde5eeb582046c05048183f1cd956ab5b808f3f54ae3cbdd2c1064d454bee5dced85136c82effd8799f161a016000001a001000001a000100005820b4c2648662114e22bd553ab14baf9ddf60f67f2189083505500e41b52a1204d5582072a8582ce57944629c352528543a4932d3b58f0100ef3135dd140752b746e6b7ffd8799f171a017000001a001000001a00010000582081faefec63a204cb37ce9a544a20db24d60e2bbbeebdaec3434cb6f5de25be9858201eea41cc3495ec4b5502c563fad49a64ce72a43968770b7ff21a2f8fe136fc8affd8799f18181a018000001a001000001a000100005820ce1ca1c02d076deabb28d57a9729812318444b8b85835e8bcc540034f65055b95820249536dd3a394fe70ed5273bffad79f9b08c13cb698595f47e54c7720bf3349fffd8799f18191a019000001a001000001a000100005820bd10777cba250b3804d14dd25e9117c0f5f3cef4a00beb269a482b0b0869b48e5820d4737adbbf2f70ba2a1e284403d70c17b868de6e7f010baceea46fab60af5eceffd8799f181a1a01a000001a001000001a00010000582011849967a9b3fed50342e33dd83caa52339bc4b48f0ed153549bc581d22ddfd758201cded141656efe713145b03d9726143931c0ae09777bac4cd9c38617aeb7c321ffd8799f181b1a01b000001a001000001a0001000058202337626c5af003217af0d58f814d05892f6df768ecb844056b6bda563306d6bf5820ce194b9983e5c012807638634721a83fe42860fbb5ae64baa7f43f3422ca5b0cffd8799f181c1a01c000001a001000001a000100005820011a498cee97fc8fe71fd7a289f5fdf2aa542b9343c591915ac0b3cf086e9148582051933cba2d348cd630143c07b3ab2d1ff64c356bd319590d7858e158237ac1a3ffd8799f181d1a01d000001a001000001a00010000582052934f03616425751a0da3b7eb307c7451083bcc97705979990e2ad366688eea5820306d4acd44cc18a3e9e7dce0ffe692db3ef00249c013c58d43f6333d1285771effd8799f181e1a01e000001a001000001a000100005820657d6a41da6f026021dd221b15ca2385422bd4bb21451efc55dd8c57215cf4b0582093b17af5aa277a1fae8fa91bde4e3e98f7b704edae92511b4eeca35480157aefffd8799f181f1a01f000001a001000001a00010000582021a71010ec31f6097942803978f6ba8b2f012ec33510e34a0ad6d482fbd886aa582034d91390fc468012d02d988e0af37716870b9d12ffba2d54dd570087160358ffffd8799f18201a020000001a001000001a000100005820ed29f85dae20cf9a6199d4b6c6e818d72093cb50413eaaf06df1eeddfa2e771958207ec18d8b64f53a1797ec44fa04322e1b3477cd1671603824bcd800edddfda4a7ffd8799f18211a021000001a001000001a000100005820bd573e84ae9d1ed1941449e3bd0b3ce23dc05395537a948207ff9177b4bbcf955820f0d477e0d6cc279153af8bcb9f3adf81098156c4db99adc66156479c2c79a8f4ffd8799f18221a022000001a001000001a0001000058206679b0f871f349b56cd4a6cdecf8cf5d2a297a5dc0956c056801640a6378a23058203ab891b6ccdbba05226301dda0f7d84b0cfd4bc8034503b5c70a3e24c8271ebfffd8799f18231a023000001a001000001a0001000058200b8cde11a8b452a89cf6a0ee815fa051354252a34804da883c97c532aae6d86c582073a11e9a77f3af0f49e4cb7ec51fdcb06818b783260faced948de10ca0dcf00fffd8799f18241a024000001a001000001a000100005820d4aa8054fd243b94a79b6f4f1cff9c3fe1e5be0bc56852e077a202c3de255efb5820401228831074035ab2d225aed119a6a35241f13f81dc1f363a25223780e39af8ffd8799f18251a025000001a001000001a000100005820a7e97c31087005f6f2c9bb9b704114b3c64a9c2b8aa46e0244b9f2685207f48d5820be5232e9006c3e8904c3aa7230b93c43c777f8957d571e3f2e92c7dc45c97350ffd8799f18261a026000001a001000001a00010000582007442d4407b87f9e8a772833b3595a5897f45a96aaf2125d09f1653b608ce6395820cd397bd6b444edad0a2589c9387d1ff1f7dbf947c58541fe39a7ed1ac59fa97affd8799f18271a027000001a001000001a0001000058209a6d6028da4e9a2fb1c2abd7ee28e4482ce605c76946eeb11c78cf3f7961c63f5820d7ab41cf15a5cf2940dc6aabf40b7a08092ffb497686e499acdfaaca4ce5fd88ffd8799f18281a028000001a001000001a00010000582027007418acda886683efc085fcd62643d8f3f19acc3d989edff76a50dd43107558209f6b351bdac4ce6b3a859fc2f30dabf466009995ddf9b24e3a3901d33070bb56ffd8799f18291a029000001a001000001a0001000058208fa2fc34abbaa97c9d580341c56f18bae354334047fdbb3881183652764254f55820daeddcb4637664537eccbc7b09f89cffa5191aa2c4f658a646a0cfe49de92535ffd8799f182a1a02a000001a001000001a000100005820c6881c017c06e24d35992348f83a6646787da98e0576a3f107960afc500eba2d5820422b666bc99b1227346eac516aee915f9058acb37fb6ead4bfe1c604fc60be6fffd8799f182b1a02b000001a001000001a0001000058201295ae849b6eaf4312dc692b1daddb485288e9c2fcf1d3e2057ab1c1cd8e408958209277da9506a627a66310ef00e10c3d040545ad0ad3df5a29b845167aa5a5f535ffd8799f182c1a02c000001a001000001a0001000058207234f0cb8f1d8ceef8a1693232e62b334745bb5d0bcad93a118b8807f3178aa0582096147df279238162ef9c8963a392ec48e84746d2f23efb901ba058780335196affd8799f182d1a02d000001a001000001a000100005820c5bb5e633aa5f4fdd105d1a0fad7e357c0e568e27bba43c25dc9a9bf11df0bac5820ab1303268714abf3ff497f501981f86551585a45e656bff5ff8961c2dc117f8fffd8799f182e1a02e000001a001000001a0001000058206df90331b1a02478312d9d411064f10dac8c92a4d4f469e7f8acd37821ae52c458209e3035aae487708c16c83ca6010a5a4d0a224ed6614edfeba66429de38baa944ffd8799f182f1a02f000001a001000001a00010000582047e99c499e3549034b90ac211ffce6979c55da2795fb09f3181717d7336f6d545820503f6b46b4c1429f2d20bd57d5c748fdcdf0f21a6045e1034c6b3155a94bcbd1ffd8799f18301a030000001a001000001a000100005820de8a4018daba52c95221838e069e496bbc940f1b7f890c720e500b43c15dd7635820f35c48be3fdd9683cdfb2200066dedc22e8b443d152c3d20c43656778468809dffd8799f18311a031000001a001000001a000100005820deeecba6b0482681e79b3dab8e779231c23b5d8a789d1f4f1364d5dba2d6618d5820f426f7ea09858cf5d6076fd8d621d1c78a7df5aa504df1af4ec2bba0647a0793ffd8799f18321a032000001a001000001a000100005820f68e1bd368f529c886d06a177a8eda6132f682b7de9d74ca4c48c8404a1f7b1c5820ecfcef668bcff10773b5b443febb21bc26714425d9a6591d488346d3b139e8c3ffd8799f18331a033000001a001000001a00010000582076eb146925ad6de10dfc7cc7b8f6809686608c1fd2bc8a44264d5d9bbfcd3ad858209250c21c4be2225221d402e36961202fa54a422c60570250d6ba42b0aad9c82bffd8799f18341a034000001a001000001a0001000058209f816153fba36996f6009fc5bae6128e6e92cb53462aec109c1f1ec94213ac445820ea418cf42ab066128c50df3c90e17dae4127756b36cbbfc48c5a7f980aaee88fffd8799f18351a035000001a001000001a000100005820bca0f045a0d034a15ae8c637770042e5032cc0dc4ff1ce9b3bf387348047edff582022403c03e82f53056af96e5e956d84bf4ec212ee02ccce1b7d843b690d229568ffd8799f18361a036000001a001000001a000100005820e826cfa538020298139f3181214e42da47dd19e3d9961cf311c197f5f32b7a6f5820ae841f76b99445d5f4073d2890fbfcf74e7baaf02c2cb3150da33bb2e0a74a15ffd8799f18371a037000001a001000001a00010000582058e5654153604c9bc06b20b317a142da63a8059437f8c993cca94d3dc13fd22758207f2bb640eaf8d085a3827c9c06828dec9592d6aece8c20b5cd69221d8f70d583ffd8799f18381a038000001a001000001a0001000058208defbce48c2fc586d2ce9ff62228ce3a005c167a463aaaf3b018674b322c32d458202117194a199ff192a74fc23a414192b3cc48ff4d81c95bf1a5b6e35b2aad43ceffd8799f18391a039000001a001000001a0001000058209827e40a47e2175868684f49cf9f20775ad4392de0dd6daa45e51685eb041610582050a3ca07c9d1b584de78151d5d9866fa3bea53615a2171a4def05e31302de241ffd8799f183a1a03a000001a001000001a00010000582090161d40d3f3d2f05ee5c7d5ac1879ab58d21901aeb78f5613a26546d8c7aded58207719c9252e7ea1e16558a55fbe5e75750bdb175fa76844c06c25478b4a808d92ffd8799f183b1a03b000001a001000001a000100005820cb2236c54776ce5afc259e8e47d7c574d399ad353be8945b413aa4fdc1ad741e58209149fd615a0204f29613c51e424fb124cc5544ce10a3d98e1e362c2b9bfd3ed8ffd8799f183c1a03c000001a001000001a000100005820a6cdf32068a36d43297267442d8106c989671dd080922f490f5f4bdd967ad2605820101dbd7d075b7a9f88a4fc2dc7851ac834caa963c0b081930b7aa7d6b1eb4900ffd8799f183d1a03d000001a001000001a000100005820b6b83fec4368a4ff3059658527c33d5ee42302f02879ad594d3753df2f9e62ce582021f896880ce7f6a400780723286eb04c96c0208b70b778090381a404675e03f5ffd8799f183e1a03e000001a001000001a000100005820811f2eceb63127e0775c3fdaa6662e9c79451c829910001b9f1ccdbdde46476f582092c1392405bfa9ee14a5c374e96d1b622f17789fe8472c1f2ae740bfe9f04893ffd8799f183f1a03f000001a001000001a000100005820da8daaeb77e9e7835c9a81ff8225056de54cad9e699bccd04048ca23cbea90ad5820f44b34cc509e28a1f9735e7e45bdea813d25471455b408c5b1ab833babcd62eaffffff58204441434873a4e9324017b5ae78007d2fd6b93f46ae3a00d2800c4b97b85302d7581c3a9d75b5d3e17530aa1fe04c36f1adf458766451fc1ba7660c44f2e61b000001a0c462bb801b000001a0d3d5cf80ff",
+      "challengeRecordCborByteLength": 5838,
+      "outputReference": {
+        "transactionId": "1994301aba10c2f4a4cf6c59cf40c4bf62294147d2a03156fa307493b658fb89",
+        "outputIndex": 300
+      },
+      "challengeAssetNameHex": "4441434873a4e9324017b5ae78007d2fd6b93f46ae3a00d2800c4b97b85302d7"
+    }
+  ]
+}

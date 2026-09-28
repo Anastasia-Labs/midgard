@@ -1,7 +1,5 @@
 use cardano/assets.{AssetName}
 
-pub const bond_role: AssetName = "AvailabilityChallengeBondYield"
-
 pub const open_role: AssetName = "AvailabilityChallengeOpenYield"
 
 pub const settle_role: AssetName = "AvailabilityChallengeSettleYield"

@@ -29,10 +29,10 @@ pub const empty_attested_signer_bitmap: ByteArray =
 
 pub type DaAttestationDatum {
   header_hash: HeaderHash,
-  /// Signer-authenticated retained-DA framing, bond owner and release
-  /// geometry. This is deliberately distinct from `rescue_beneficiary`:
-  /// committee rotation refunds the latter, while an availability response or
-  /// slash follows the former.
+  /// Signer-authenticated retained-DA framing and release geometry. Apply
+  /// writes its `commitment_hash_v1` into the state-queue node; a challenge
+  /// carries the preimage in its record. The attestation's own value always
+  /// returns to `rescue_beneficiary`.
   availability_commitment: availability.CommitmentV1,
   da_threshold: Int,
   /// Hash of the immutable sorted committee verification keys.
@@ -77,7 +77,12 @@ pub type MintRedeemer {
     state_queue_input_index: Int,
     state_queue_output_index: Int,
     state_queue_mint_ref_script_input_index: Int,
-    availability_mint_redeemer_index: Int,
+    /// Authentic DA bond pool reference input; it must be `Bonded` and back at
+    /// least one `da_bond_lovelace`.
+    pool_ref_input_index: Int,
+    /// Receives exactly the burned attestation's value at
+    /// `rescue_beneficiary`.
+    refund_output_index: Int,
   }
   /// Refunds an attestation that a mid-flight committee rotation stranded
   /// (decision row D-DA5 clause c). Authorization is a *state condition*, not a

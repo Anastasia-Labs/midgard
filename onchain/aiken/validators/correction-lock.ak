@@ -129,22 +129,17 @@ fn correction_transition(
               challenge_input.output.address == address.from_script(
                 availability_policy_id,
               )
+            // The challenge record: the one availability-address input
+            // holding this challenge token.
             expect InlineDatum(challenge_datum_data) = challenge_input.output.datum
             expect
-                availability.ChallengedBond {
+                availability.ChallengeRecordV1 {
                   commitment,
-                  da_bond_asset_name,
                   challenge_asset_name: authenticated_challenge_asset_name,
                   response_deadline,
                   ..
-                }: availability.BondDatumV1
+                }: availability.ChallengeRecordV1
               = challenge_datum_data
-            expect
-              quantity_of(
-                challenge_input.output.value,
-                availability_policy_id,
-                da_bond_asset_name,
-              ) == 1
             and {
               authenticated_challenge_asset_name == challenge_asset_name,
               commitment.header_hash == unavailable_header_hash,
@@ -271,6 +266,9 @@ const test_proof_asset_name: ByteArray =
 
 const test_other_proof_asset_name: ByteArray =
   #"00000002aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const test_foreign_script: ByteArray =
+  #"77777777777777777777777777777777777777777777777777777777"
 
 const test_operator: ByteArray =
   #"66666666666666666666666666666666666666666666666666666666"
@@ -440,7 +438,11 @@ fn test_availability_redeemer(
   }
 }
 
-fn test_availability_challenge_input(asset_name: ByteArray) -> Input {
+const test_response_deadline: Int = 100
+
+fn test_challenge_record(
+  asset_name: ByteArray,
+) -> availability.ChallengeRecordV1 {
   let commitment: availability.CommitmentV1 = availability.CommitmentV1 {
     version: availability.commitment_version_v1,
     deployment_identity: test_hub_policy,
@@ -452,43 +454,59 @@ fn test_availability_challenge_input(asset_name: ByteArray) -> Input {
       max_tranche_count: 16,
     },
     tranche_descriptors: [],
-    bond_owner: test_operator,
   }
-  let da_bond_asset_name = #"4441424e88888888888888888888888888888888888888888888888888888888"
-  let datum: availability.BondDatumV1 = availability.ChallengedBond {
+  availability.ChallengeRecordV1 {
     commitment,
-    da_bond_asset_name,
-    committee_signers_hash: #"9999999999999999999999999999999999999999999999999999999999999999",
-    attested_signers: #"",
     challenge_asset_name: asset_name,
     challenger: test_operator,
     opened_at: 0,
-    response_deadline: 100,
+    response_deadline: test_response_deadline,
   }
+}
+
+/// A challenge-record input: `record` as the inline datum at `record_address`,
+/// holding 2 ADA plus, when `challenge_token` is `Some(name)`, one availability
+/// token of that name.
+fn test_challenge_record_input(
+  record: availability.ChallengeRecordV1,
+  record_address: address.Address,
+  challenge_token: Option<ByteArray>,
+) -> Input {
+  let lovelace = assets.from_lovelace(2_000_000)
   Input {
     output_reference: test_outref(#"08", 0),
     output: Output {
-      address: address.from_script(test_misc_policy),
-      value: assets.from_lovelace(2_000_000)
-        |> assets.merge(
-            assets.from_asset(test_misc_policy, da_bond_asset_name, 1),
-          )
-        |> assets.merge(assets.from_asset(test_misc_policy, asset_name, 1)),
-      datum: InlineDatum(datum),
+      address: record_address,
+      value: when challenge_token is {
+        Some(name) ->
+          lovelace
+            |> assets.merge(assets.from_asset(test_misc_policy, name, 1))
+        None -> lovelace
+      },
+      datum: InlineDatum(record),
       reference_script: None,
     },
   }
 }
 
-fn test_availability_acquire_tx(asset_name: ByteArray) -> Transaction {
+fn test_availability_challenge_input(asset_name: ByteArray) -> Input {
+  test_challenge_record_input(
+    test_challenge_record(asset_name),
+    address.from_script(test_misc_policy),
+    Some(asset_name),
+  )
+}
+
+fn test_availability_acquire_tx_with(
+  asset_name: ByteArray,
+  record_input: Input,
+  validity_range: transaction.ValidityRange,
+) -> Transaction {
   let state_queue_redeemer = test_availability_redeemer(asset_name, False)
   let state_queue_redeemer_data: Redeemer = state_queue_redeemer
   Transaction {
     ..transaction.placeholder,
-    inputs: [
-      test_lock_input(correction_lock.Idle),
-      test_availability_challenge_input(asset_name),
-    ],
+    inputs: [test_lock_input(correction_lock.Idle), record_input],
     outputs: [test_lock_output(test_availability_locked(asset_name))],
     reference_inputs: [
       test_hub_ref_input(test_hub_policy, test_state_queue_policy),
@@ -496,8 +514,19 @@ fn test_availability_acquire_tx(asset_name: ByteArray) -> Transaction {
     mint: assets.from_asset(test_state_queue_policy, "MBLC", -1)
       |> assets.merge(assets.from_asset(test_misc_policy, asset_name, -1)),
     redeemers: [Pair(Mint(test_state_queue_policy), state_queue_redeemer_data)],
-    validity_range: between(100, 101),
+    validity_range,
   }
+}
+
+/// The honest Idle acquire: the record at the availability address holding
+/// the redeemer's challenge token, for the redeemer's header, in a window
+/// whose inclusive lower bound is exactly the record's response deadline.
+fn test_availability_acquire_tx(asset_name: ByteArray) -> Transaction {
+  test_availability_acquire_tx_with(
+    asset_name,
+    test_availability_challenge_input(asset_name),
+    between(test_response_deadline, test_response_deadline + 1),
+  )
 }
 
 fn test_fraud_proof_ref_input(asset_name: ByteArray) -> Input {
@@ -726,7 +755,21 @@ test correction_lock_handler_rejects_other_availability_identity_resume() fail {
   )
 }
 
-test correction_lock_handler_rejects_availability_acquire_without_challenged_bond() fail {
+/// Acquire control for the pooled-bond design: an Idle lock acquires the
+/// availability identity from the challenge record alone (the availability
+/// address input holding the DACH, with no per-block bond token), for the
+/// record's header, with the window's lower bound exactly at the record's
+/// response deadline. Each `..._acquire_*` negative below changes one thing.
+test correction_lock_handler_accepts_availability_acquire_with_challenge_record() {
+  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  run_test_correction(
+    correction_lock.Idle,
+    test_availability_acquire_tx(challenge_asset_name),
+  )
+}
+
+/// Refused by the unique DACH-holding input lookup: no input holds the token.
+test correction_lock_handler_rejects_availability_acquire_without_challenge_record() fail {
   let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
   let base = test_availability_acquire_tx(challenge_asset_name)
   let tx = Transaction {
@@ -734,6 +777,104 @@ test correction_lock_handler_rejects_availability_acquire_without_challenged_bon
     inputs: [test_lock_input(correction_lock.Idle)],
   }
   run_test_correction(correction_lock.Idle, tx)
+}
+
+/// Forged record, right datum and token, wrong place: refused by the
+/// availability-address check on the DACH-holding input.
+test correction_lock_handler_rejects_availability_acquire_with_record_at_foreign_address() fail {
+  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  run_test_correction(
+    correction_lock.Idle,
+    test_availability_acquire_tx_with(
+      challenge_asset_name,
+      test_challenge_record_input(
+        test_challenge_record(challenge_asset_name),
+        address.from_script(test_foreign_script),
+        Some(challenge_asset_name),
+      ),
+      between(test_response_deadline, test_response_deadline + 1),
+    ),
+  )
+}
+
+/// Forged record, right datum at the availability address but without the
+/// challenge token: refused by the unique DACH-holding input lookup, which
+/// authenticates the record by the token and not by its address alone.
+test correction_lock_handler_rejects_availability_acquire_with_record_without_challenge_token() fail {
+  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  run_test_correction(
+    correction_lock.Idle,
+    test_availability_acquire_tx_with(
+      challenge_asset_name,
+      test_challenge_record_input(
+        test_challenge_record(challenge_asset_name),
+        address.from_script(test_misc_policy),
+        None,
+      ),
+      between(test_response_deadline, test_response_deadline + 1),
+    ),
+  )
+}
+
+/// The authentic token-holding record names another challenge: refused by the
+/// record's `challenge_asset_name` equality with the redeemer's.
+test correction_lock_handler_rejects_availability_acquire_with_record_for_other_challenge() fail {
+  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  let other = #"4441434899999999999999999999999999999999999999999999999999999999"
+  run_test_correction(
+    correction_lock.Idle,
+    test_availability_acquire_tx_with(
+      challenge_asset_name,
+      test_challenge_record_input(
+        availability.ChallengeRecordV1 {
+          ..test_challenge_record(challenge_asset_name),
+          challenge_asset_name: other,
+        },
+        address.from_script(test_misc_policy),
+        Some(challenge_asset_name),
+      ),
+      between(test_response_deadline, test_response_deadline + 1),
+    ),
+  )
+}
+
+/// The authentic record commits to another block: refused by
+/// `commitment.header_hash == unavailable_header_hash`.
+test correction_lock_handler_rejects_availability_acquire_with_record_for_other_header() fail {
+  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  let record = test_challenge_record(challenge_asset_name)
+  run_test_correction(
+    correction_lock.Idle,
+    test_availability_acquire_tx_with(
+      challenge_asset_name,
+      test_challenge_record_input(
+        availability.ChallengeRecordV1 {
+          ..record,
+          commitment: availability.CommitmentV1 {
+            ..record.commitment,
+            header_hash: test_other_target,
+          },
+        },
+        address.from_script(test_misc_policy),
+        Some(challenge_asset_name),
+      ),
+      between(test_response_deadline, test_response_deadline + 1),
+    ),
+  )
+}
+
+/// One millisecond before the response deadline: refused by
+/// `lower >= response_deadline` (the control sits exactly on the deadline).
+test correction_lock_handler_rejects_availability_acquire_before_response_deadline() fail {
+  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  run_test_correction(
+    correction_lock.Idle,
+    test_availability_acquire_tx_with(
+      challenge_asset_name,
+      test_availability_challenge_input(challenge_asset_name),
+      between(test_response_deadline - 1, test_response_deadline + 1),
+    ),
+  )
 }
 
 test correction_lock_handler_accepts_single_step_timeout_without_retained_lock() {

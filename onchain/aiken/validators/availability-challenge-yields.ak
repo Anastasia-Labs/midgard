@@ -5,46 +5,6 @@ use midgard/availability_challenge as availability
 use midgard/availability_challenge_validation as validation
 use midgard/common/utils
 
-validator bond(
-  availability_policy_id: PolicyId,
-  hub_oracle_policy_id: PolicyId,
-  parameters: availability.ParametersV1,
-) {
-  withdraw(
-    _yield_redeemer: availability.YieldRedeemerV1,
-    _credential: Credential,
-    tx: Transaction,
-  ) {
-    expect
-        availability.MintBondFromAttestation {
-          hub_oracle_ref_input_index,
-          da_attestation_input_index,
-          da_attestation_mint_redeemer_index,
-          bond_output_index,
-          state_queue_input_index,
-          state_queue_output_index,
-          ..
-        }: availability.MintRedeemerV1
-      = utils.get_unique_mint_redeemer(tx.redeemers, availability_policy_id)
-    validation.validate_mint_bond_from_attestation(
-      hub_oracle_policy_id,
-      parameters,
-      availability_policy_id,
-      tx,
-      hub_oracle_ref_input_index,
-      da_attestation_input_index,
-      da_attestation_mint_redeemer_index,
-      bond_output_index,
-      state_queue_input_index,
-      state_queue_output_index,
-    )
-  }
-
-  else(_) {
-    fail
-  }
-}
-
 validator open(
   availability_policy_id: PolicyId,
   hub_oracle_policy_id: PolicyId,
@@ -58,8 +18,7 @@ validator open(
     expect
         availability.OpenChallenge {
           hub_oracle_ref_input_index,
-          bond_input_index,
-          bond_output_index,
+          record_output_index,
           challenger_input_index,
           state_queue_input_index,
           state_queue_output_index,
@@ -75,8 +34,7 @@ validator open(
       availability_policy_id,
       tx,
       hub_oracle_ref_input_index,
-      bond_input_index,
-      bond_output_index,
+      record_output_index,
       challenger_input_index,
       state_queue_input_index,
       state_queue_output_index,
@@ -103,7 +61,7 @@ validator settle(
   ) {
     expect
         availability.SettleTranche {
-          bond_ref_input_index,
+          record_ref_input_index,
           terminal_accumulator_input_index,
           terminal_accumulator_output_index,
           tranche_input_index,
@@ -116,7 +74,7 @@ validator settle(
       parameters,
       availability_policy_id,
       tx,
-      bond_ref_input_index,
+      record_ref_input_index,
       terminal_accumulator_input_index,
       terminal_accumulator_output_index,
       tranche_input_index,
@@ -142,11 +100,10 @@ validator close(
     expect
         availability.CloseChallenge {
           hub_oracle_ref_input_index,
-          bond_input_index,
+          record_input_index,
           terminal_accumulator_input_index,
           state_queue_input_index,
           state_queue_output_index,
-          da_refund_output_index,
           challenger_refund_output_index,
           ..
         }: availability.MintRedeemerV1
@@ -157,11 +114,10 @@ validator close(
       availability_policy_id,
       tx,
       hub_oracle_ref_input_index,
-      bond_input_index,
+      record_input_index,
       terminal_accumulator_input_index,
       state_queue_input_index,
       state_queue_output_index,
-      da_refund_output_index,
       challenger_refund_output_index,
     )
   }
@@ -184,10 +140,9 @@ validator timeout(
     expect
         availability.TimeoutChallenge {
           hub_oracle_ref_input_index,
-          bond_input_index,
+          record_input_index,
           terminal_accumulator_input_index,
           state_queue_mint_redeemer_index,
-          da_slash_output_index,
           challenger_refund_output_index,
           ..
         }: availability.MintRedeemerV1
@@ -198,10 +153,9 @@ validator timeout(
       availability_policy_id,
       tx,
       hub_oracle_ref_input_index,
-      bond_input_index,
+      record_input_index,
       terminal_accumulator_input_index,
       state_queue_mint_redeemer_index,
-      da_slash_output_index,
       challenger_refund_output_index,
     )
   }

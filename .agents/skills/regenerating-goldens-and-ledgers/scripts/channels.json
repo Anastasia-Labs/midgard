@@ -204,6 +204,64 @@
       }
     },
     {
+      "id": "da-commitment-v1",
+      "kind": "golden",
+      "summary": "DA CommitmentV1 / commitment_hash_v1 / attestation_message_v1 / ChallengeRecordV1 / challenge_asset_name_v1 vectors at 1, 16 and 64 tranches: JSON fixture plus a whole generated Aiken module.",
+      "generators": [
+        "demo/midgard-sdk/scripts/generate-da-commitment-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-sdk:fixtures:da-commitment-v1:sync",
+        "demo/midgard-sdk:fixtures:da-commitment-v1:check"
+      ],
+      "producers": [],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-sdk/scripts/da-vector-support.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-sdk/tests/fixtures/da-commitment-v1.generated.json",
+        "onchain/aiken/lib/midgard/availability-challenge-commitment-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-sdk run fixtures:da-commitment-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-sdk run fixtures:da-commitment-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check DA commitment golden vectors"
+      }
+    },
+    {
+      "id": "da-attestation-capacity-v1",
+      "kind": "golden",
+      "summary": "The signed commitment block (commitment fixture, 256 packed Ed25519 keys and witnesses, pinned attestation message) between the BEGIN/END GENERATED markers of the hand-written da_attestation_capacity.test.ak.",
+      "generators": [
+        "demo/midgard-sdk/scripts/generate-da-attestation-capacity-v1-fixture.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-sdk:fixtures:da-attestation-capacity-v1:sync",
+        "demo/midgard-sdk:fixtures:da-attestation-capacity-v1:check"
+      ],
+      "producers": [],
+      "inputs": ["demo/midgard-sdk/scripts/da-vector-support.mjs"],
+      "outputs": ["onchain/aiken/validators/da_attestation_capacity.test.ak"],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-sdk run fixtures:da-attestation-capacity-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-sdk run fixtures:da-attestation-capacity-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check DA attestation capacity signatures"
+      }
+    },
+    {
       "id": "ordered-collection-boundary-aiken",
       "kind": "golden",
       "summary": "Boundary maxima found by eight vitest suites, rebound by name into five hand-written Aiken modules (one of them a validator).",
