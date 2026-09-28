@@ -487,11 +487,17 @@ describe("DeploymentManifestV1 shared identity", () => {
       "txOrderMint",
       "settlementSpend",
     ]);
-    // One role is token-only: the CEK direct resolver is referenced by its
-    // auth token and never applied as its own reference script.
+    // Token-only roles: the CEK direct resolver is referenced by its auth
+    // token and never applied as its own reference script. The DA bond pool's
+    // two roles are token-only until the manifest records the pool's contract
+    // entries and publishes its reference scripts.
     expect(
       Object.keys(tokenNameByRole).filter((role) => !(role in contractByRole)),
-    ).toEqual(["V1 validation-trace CEK direct resolver"]);
+    ).toEqual([
+      "da-bond-pool spending",
+      "da-bond-pool minting",
+      "V1 validation-trace CEK direct resolver",
+    ]);
     expect(
       DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof min-ada step-02 tx yield"

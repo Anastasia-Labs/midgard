@@ -58,7 +58,7 @@ const block = (
       proven_fraud: null,
       header: { ...header, endTime },
       da_attestation: attested
-        ? { Attested: { da_bond_asset_name: tx("ab") } }
+        ? { Attested: { commitment_hash: tx("ab") } }
         : SDK.NO_DA_ATTESTATION,
     }) as SDK.LinkedListNodeView["data"],
   },
@@ -66,7 +66,7 @@ const block = (
     txHash: tx(byte),
     outputIndex: 0,
     address,
-    assets: { lovelace: 2_000_000n },
+    assets: { lovelace: 5_000_000n },
   },
 });
 const queue = (...nodes: SDK.StateQueueUTxO[]) => {

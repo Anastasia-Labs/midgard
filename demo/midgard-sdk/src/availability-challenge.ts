@@ -164,10 +164,6 @@ const TERMINAL_ACCUMULATOR_STEP_DOMAIN = Buffer.from(
   "ascii",
 );
 
-export const DA_AVAILABILITY_BOND_ASSET_NAME_PREFIX = Buffer.from(
-  "DABN",
-  "ascii",
-).toString("hex");
 export const DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX = Buffer.from(
   "DACH",
   "ascii",
@@ -182,10 +178,6 @@ const CHALLENGE_ASSET_NAME = new RegExp(
   `^${DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX}[0-9a-f]{56}$`,
   "u",
 );
-const BOND_ASSET_NAME = new RegExp(
-  `^${DA_AVAILABILITY_BOND_ASSET_NAME_PREFIX}[0-9a-f]{56}$`,
-  "u",
-);
 
 const outRefIdentity28 = (outRef: OutputReference): string =>
   toHex(
@@ -194,15 +186,16 @@ const outRefIdentity28 = (outRef: OutputReference): string =>
     }),
   );
 
-export const daAvailabilityBondAssetName = (
-  attestationInputOutRef: OutputReference,
-): string =>
-  `${DA_AVAILABILITY_BOND_ASSET_NAME_PREFIX}${outRefIdentity28(attestationInputOutRef)}`;
-
+/**
+ * The challenge identity: "DACH" ++ blake2b_224(serialise(outref)) of the
+ * challenger's funding input consumed by `OpenChallenge` (the twin of Aiken
+ * `challenge_asset_name_v1`). A spent outref can never be consumed again, so
+ * the identity is unique per challenge.
+ */
 export const daAvailabilityChallengeAssetName = (
-  bondInputOutRef: OutputReference,
+  challengerFundingOutRef: OutputReference,
 ): string =>
-  `${DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX}${outRefIdentity28(bondInputOutRef)}`;
+  `${DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX}${outRefIdentity28(challengerFundingOutRef)}`;
 
 export const daAvailabilityTrancheAssetName = (input: {
   readonly challengeAssetName: string;
@@ -314,7 +307,6 @@ export const DaAvailabilityCommitmentSchema = Data.Object({
   payload_byte_length: Data.Integer(),
   response_geometry: DaAvailabilityResponseGeometrySchema,
   tranche_descriptors: Data.Array(DaAvailabilityTrancheDescriptorSchema),
-  bond_owner: Data.Bytes({ minLength: 28, maxLength: 28 }),
 });
 export type DaAvailabilityCommitment = Data.Static<
   typeof DaAvailabilityCommitmentSchema
@@ -359,34 +351,26 @@ const DaAvailabilityChunkLeafSchema = Data.Object({
   chunk_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
 });
 
-export const DaAvailabilityBondDatumSchema = Data.Enum([
-  Data.Object({
-    Available: Data.Object({
-      commitment: DaAvailabilityCommitmentSchema,
-      da_bond_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      committee_signers_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      attested_signers: Data.Bytes({ minLength: 32, maxLength: 32 }),
-    }),
-  }),
-  Data.Object({
-    ChallengedBond: Data.Object({
-      commitment: DaAvailabilityCommitmentSchema,
-      da_bond_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      committee_signers_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      attested_signers: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      challenger: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      opened_at: Data.Integer(),
-      response_deadline: Data.Integer(),
-    }),
-  }),
-]);
-export type DaAvailabilityBondDatum = Data.Static<
-  typeof DaAvailabilityBondDatumSchema
+/**
+ * The per-challenge record output (Aiken `ChallengeRecordV1`), minted with the
+ * DACH token at `OpenChallenge` and holding exactly the deployment's
+ * `challenge_record_lovelace`. The commitment is the full signed commitment
+ * whose `commitment_hash` the challenged state-queue node carries.
+ */
+export const DaAvailabilityChallengeRecordSchema = Data.Object({
+  commitment: DaAvailabilityCommitmentSchema,
+  challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
+  challenger: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  opened_at: Data.Integer(),
+  response_deadline: Data.Integer(),
+});
+export type DaAvailabilityChallengeRecord = Data.Static<
+  typeof DaAvailabilityChallengeRecordSchema
 >;
-export const DaAvailabilityBondDatum = asDataType<DaAvailabilityBondDatum>(
-  DaAvailabilityBondDatumSchema,
-);
+export const DaAvailabilityChallengeRecord =
+  asDataType<DaAvailabilityChallengeRecord>(
+    DaAvailabilityChallengeRecordSchema,
+  );
 
 export const DaAvailabilityTrancheDatumSchema = Data.Enum([
   Data.Object({
@@ -490,25 +474,19 @@ export const DaAvailabilityPublicationDatum =
     DaAvailabilityPublicationDatumSchema,
   );
 
-/** Exact minting-policy ABI for the retained DA bond/challenge lifecycle. */
+/**
+ * Exact minting-policy ABI for the challenge lifecycle (Aiken
+ * `MintRedeemerV1`, constructor order 0 Open, 1 Settle, 2 Close, 3 Timeout).
+ * `TimeoutChallenge` names the pooled committee bond input and its continuing
+ * output; `challenger_refund_output_index` is the one challenger output that
+ * carries both the refund and any slash payout.
+ */
 export const DaAvailabilityMintRedeemerSchema = Data.Enum([
-  Data.Object({
-    MintBondFromAttestation: Data.Object({
-      yield_to_ref_input_index: Data.Integer(),
-      hub_oracle_ref_input_index: Data.Integer(),
-      da_attestation_input_index: Data.Integer(),
-      da_attestation_mint_redeemer_index: Data.Integer(),
-      bond_output_index: Data.Integer(),
-      state_queue_input_index: Data.Integer(),
-      state_queue_output_index: Data.Integer(),
-    }),
-  }),
   Data.Object({
     OpenChallenge: Data.Object({
       yield_to_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
-      bond_input_index: Data.Integer(),
-      bond_output_index: Data.Integer(),
+      record_output_index: Data.Integer(),
       challenger_input_index: Data.Integer(),
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
@@ -520,7 +498,7 @@ export const DaAvailabilityMintRedeemerSchema = Data.Enum([
   Data.Object({
     SettleTranche: Data.Object({
       yield_to_ref_input_index: Data.Integer(),
-      bond_ref_input_index: Data.Integer(),
+      record_ref_input_index: Data.Integer(),
       terminal_accumulator_input_index: Data.Integer(),
       terminal_accumulator_output_index: Data.Integer(),
       tranche_input_index: Data.Integer(),
@@ -531,11 +509,10 @@ export const DaAvailabilityMintRedeemerSchema = Data.Enum([
     CloseChallenge: Data.Object({
       yield_to_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
-      bond_input_index: Data.Integer(),
+      record_input_index: Data.Integer(),
       terminal_accumulator_input_index: Data.Integer(),
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
-      da_refund_output_index: Data.Integer(),
       challenger_refund_output_index: Data.Integer(),
     }),
   }),
@@ -543,10 +520,11 @@ export const DaAvailabilityMintRedeemerSchema = Data.Enum([
     TimeoutChallenge: Data.Object({
       yield_to_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
-      bond_input_index: Data.Integer(),
+      record_input_index: Data.Integer(),
       terminal_accumulator_input_index: Data.Integer(),
       state_queue_mint_redeemer_index: Data.Integer(),
-      da_slash_output_index: Data.Integer(),
+      pool_input_index: Data.Integer(),
+      pool_output_index: Data.Integer(),
       challenger_refund_output_index: Data.Integer(),
     }),
   }),
@@ -557,7 +535,10 @@ export type DaAvailabilityMintRedeemer = Data.Static<
 export const DaAvailabilityMintRedeemer =
   asDataType<DaAvailabilityMintRedeemer>(DaAvailabilityMintRedeemerSchema);
 
-/** Exact spending-validator ABI for bond, tranche and carrier UTxOs. */
+/**
+ * Exact spending-validator ABI (Aiken `SpendRedeemerV1`) for the challenge
+ * record, tranche and carrier UTxOs.
+ */
 export const DaAvailabilitySpendRedeemerSchema = Data.Enum([
   Data.Object({
     AdvanceTranche: Data.Object({
@@ -1109,12 +1090,10 @@ export const buildDaAvailabilityCommitment = (input: {
   readonly deploymentIdentity: string;
   readonly headerHash: string;
   readonly payload: Uint8Array;
-  readonly bondOwner: string;
   readonly responseGeometry: DaAvailabilityResponseGeometry;
 }): DaAvailabilityCommitment => {
   requireHash(input.deploymentIdentity, 28, "deploymentIdentity");
   requireHash(input.headerHash, 28, "headerHash");
-  requireHash(input.bondOwner, 28, "bondOwner");
   assertCanonicalDaAvailabilityResponseGeometry(input.responseGeometry);
   const chunkByteLength = Number(input.responseGeometry.chunk_byte_length);
   const layout = deriveDaAvailabilityTrancheLayout(
@@ -1154,7 +1133,6 @@ export const buildDaAvailabilityCommitment = (input: {
     payload_byte_length: BigInt(input.payload.length),
     response_geometry: input.responseGeometry,
     tranche_descriptors: trancheDescriptors,
-    bond_owner: input.bondOwner,
   };
 };
 
@@ -1169,7 +1147,6 @@ export const assertCanonicalDaAvailabilityCommitment = (
   }
   requireHash(commitment.deployment_identity, 28, "deployment_identity");
   requireHash(commitment.header_hash, 28, "header_hash");
-  requireHash(commitment.bond_owner, 28, "bond_owner");
   const payloadByteLength = Number(commitment.payload_byte_length);
   requireSafePositiveInteger(payloadByteLength, "payload_byte_length");
   if (BigInt(payloadByteLength) !== commitment.payload_byte_length) {
@@ -1241,6 +1218,22 @@ export const encodeDaAvailabilityCommitment = (
   return Data.to(commitment as never, DaAvailabilityCommitmentSchema as never);
 };
 
+/**
+ * The `commitment_hash` a state-queue node carries once attested: the untagged
+ * blake2b-256 of the commitment's Plutus Data serialisation (the twin of Aiken
+ * `commitment_hash_v1`, which is `serialise_and_hash_32` with no domain). The
+ * commitment must be canonical; hashing a malformed one would yield an
+ * identity no on-chain status can ever carry.
+ */
+export const daAvailabilityCommitmentHash = (
+  commitment: DaAvailabilityCommitment,
+): string =>
+  toHex(
+    blake2b(fromHex(encodeDaAvailabilityCommitment(commitment)), {
+      dkLen: 32,
+    }),
+  );
+
 /** Strict signed-commitment codec for restart and cross-service handoff. */
 export const parseDaAvailabilityCommitmentCbor = (
   cborHex: string,
@@ -1293,70 +1286,66 @@ const assertCanonicalDaAvailabilityTrancheDescriptor = (
   );
 };
 
-export const assertCanonicalDaAvailabilityBondDatum = (
-  datum: DaAvailabilityBondDatum,
+/**
+ * A challenge record is canonical when its commitment is canonical (under the
+ * authenticated response geometry, when given), its identities have their
+ * exact widths and prefix, and its deadline is exactly the one the payload
+ * size class derives from `opened_at`, as `OpenChallenge` enforces on-chain.
+ */
+export const assertCanonicalDaAvailabilityChallengeRecord = (
+  record: DaAvailabilityChallengeRecord,
   expectedParameters?: DaAvailabilityParameters,
 ): void => {
   if (expectedParameters !== undefined) {
     assertCanonicalDaAvailabilityParameters(expectedParameters);
   }
-  const fields = "Available" in datum ? datum.Available : datum.ChallengedBond;
   assertCanonicalDaAvailabilityCommitment(
-    fields.commitment,
+    record.commitment,
     expectedParameters?.response_geometry,
   );
-  if (!BOND_ASSET_NAME.test(fields.da_bond_asset_name)) {
+  if (!CHALLENGE_ASSET_NAME.test(record.challenge_asset_name)) {
     throw new DaAvailabilityCommitmentError(
-      "da_bond_asset_name must be the canonical 32-byte DABN identity",
+      "challenge_asset_name must be the canonical 32-byte DACH identity",
     );
   }
-  requireHash(fields.committee_signers_hash, 32, "committee_signers_hash");
-  requireHash(fields.attested_signers, 32, "attested_signers");
-  if ("ChallengedBond" in datum) {
-    const challenged = datum.ChallengedBond;
-    if (!CHALLENGE_ASSET_NAME.test(challenged.challenge_asset_name)) {
-      throw new DaAvailabilityCommitmentError(
-        "challenge_asset_name must be the canonical 32-byte DACH identity",
-      );
-    }
-    requireHash(challenged.challenger, 28, "challenger");
-    if (
-      challenged.opened_at < 0n ||
-      challenged.response_deadline !==
-        daAvailabilityResponseDeadline({
-          payloadByteLength: Number(challenged.commitment.payload_byte_length),
-          openedAt: challenged.opened_at,
-        })
-    ) {
-      throw new DaAvailabilityCommitmentError(
-        "challenged bond must carry the exact canonical response deadline",
-      );
-    }
+  requireHash(record.challenger, 28, "challenger");
+  if (
+    record.opened_at < 0n ||
+    record.response_deadline !==
+      daAvailabilityResponseDeadline({
+        payloadByteLength: Number(record.commitment.payload_byte_length),
+        openedAt: record.opened_at,
+      })
+  ) {
+    throw new DaAvailabilityCommitmentError(
+      "challenge record must carry the exact canonical response deadline",
+    );
   }
 };
 
-export const encodeDaAvailabilityBondDatum = (
-  datum: DaAvailabilityBondDatum,
+export const encodeDaAvailabilityChallengeRecord = (
+  record: DaAvailabilityChallengeRecord,
   expectedParameters?: DaAvailabilityParameters,
 ): string => {
-  assertCanonicalDaAvailabilityBondDatum(datum, expectedParameters);
-  return Data.to(datum as never, DaAvailabilityBondDatumSchema as never);
+  assertCanonicalDaAvailabilityChallengeRecord(record, expectedParameters);
+  return Data.to(record as never, DaAvailabilityChallengeRecordSchema as never);
 };
 
-export const parseDaAvailabilityBondDatumCbor = (
+/** Strict challenge-record codec: canonical CBOR and a canonical record. */
+export const parseDaAvailabilityChallengeRecordCbor = (
   cborHex: string,
   expectedParameters?: DaAvailabilityParameters,
-): DaAvailabilityBondDatum => {
-  const datum = parseCanonicalDataCbor<
-    typeof DaAvailabilityBondDatumSchema,
-    DaAvailabilityBondDatum
+): DaAvailabilityChallengeRecord => {
+  const record = parseCanonicalDataCbor<
+    typeof DaAvailabilityChallengeRecordSchema,
+    DaAvailabilityChallengeRecord
   >({
     cborHex,
-    schema: DaAvailabilityBondDatumSchema,
-    name: "availability bond datum",
+    schema: DaAvailabilityChallengeRecordSchema,
+    name: "availability challenge record",
   });
-  assertCanonicalDaAvailabilityBondDatum(datum, expectedParameters);
-  return datum;
+  assertCanonicalDaAvailabilityChallengeRecord(record, expectedParameters);
+  return record;
 };
 
 export const assertCanonicalDaAvailabilityTrancheDatum = (
@@ -1475,7 +1464,10 @@ export const parseDaAvailabilityTerminalAccumulatorDatumCbor = (
 export type DaAvailabilityChallengeDatumPlan = Readonly<{
   challengeAssetName: string;
   responseDeadline: bigint;
-  challengedBond: DaAvailabilityBondDatum;
+  /** The challenge record datum `OpenChallenge` mints alongside the DACH token. */
+  record: DaAvailabilityChallengeRecord;
+  /** Exactly `parameters.challenge_record_lovelace`; the record holds no more. */
+  recordLovelace: bigint;
   trancheThreads: readonly DaAvailabilityTrancheDatum[];
   trancheFunding: readonly DaAvailabilityTrancheFunding[];
   terminalAccumulator: DaAvailabilityTerminalAccumulatorDatum;
@@ -1556,54 +1548,54 @@ export const planDaAvailabilityTrancheFunding = (input: {
 
 /**
  * Datum/value-topology plan for the approved split challenger fee bond. It
- * fixes identity, deadline and the initial per-tranche shares, while the
- * measured fee ceiling and each exact transaction fee remain separate.
- * `openedAt` must be the open transaction's inclusive upper validity bound
- * (`validTo - 1`); the validator refuses any other anchor.
+ * fixes identity, deadline, the challenge record and the initial per-tranche
+ * shares, while the measured fee ceiling and each exact transaction fee remain
+ * separate. `commitment` is the full signed commitment whose
+ * `daAvailabilityCommitmentHash` the Attested state-queue node carries.
+ * `challengerFundingOutRef` is the challenger input `OpenChallenge` consumes;
+ * it derives the DACH identity. `openedAt` must be the open transaction's
+ * inclusive upper validity bound (`validTo - 1`); the validator refuses any
+ * other anchor.
  */
 export const buildDaAvailabilityChallengeDatumPlan = (input: {
-  readonly availableBond: DaAvailabilityBondDatum;
-  readonly bondInputOutRef: OutputReference;
+  readonly commitment: DaAvailabilityCommitment;
+  readonly challengerFundingOutRef: OutputReference;
   readonly challenger: string;
   readonly openedAt: bigint;
   readonly parameters: DaAvailabilityParameters;
 }): DaAvailabilityChallengeDatumPlan => {
   assertCanonicalDaAvailabilityParameters(input.parameters);
-  assertCanonicalDaAvailabilityBondDatum(input.availableBond, input.parameters);
-  if (!("Available" in input.availableBond)) {
-    throw new DaAvailabilityCommitmentError(
-      "only an available retained DA bond may open a challenge",
-    );
-  }
+  assertCanonicalDaAvailabilityCommitment(
+    input.commitment,
+    input.parameters.response_geometry,
+  );
   requireHash(input.challenger, 28, "challenger");
-  const available = input.availableBond.Available;
+  const commitment = input.commitment;
   const challengeAssetName = daAvailabilityChallengeAssetName(
-    input.bondInputOutRef,
+    input.challengerFundingOutRef,
   );
   const responseDeadline = daAvailabilityResponseDeadline({
-    payloadByteLength: Number(available.commitment.payload_byte_length),
+    payloadByteLength: Number(commitment.payload_byte_length),
     openedAt: input.openedAt,
   });
-  const challengedBond: DaAvailabilityBondDatum = {
-    ChallengedBond: {
-      ...available,
-      challenge_asset_name: challengeAssetName,
-      challenger: input.challenger,
-      opened_at: input.openedAt,
-      response_deadline: responseDeadline,
-    },
+  const record: DaAvailabilityChallengeRecord = {
+    commitment,
+    challenge_asset_name: challengeAssetName,
+    challenger: input.challenger,
+    opened_at: input.openedAt,
+    response_deadline: responseDeadline,
   };
-  const trancheThreads = available.commitment.tranche_descriptors.map(
+  const trancheThreads = commitment.tranche_descriptors.map(
     (descriptor): DaAvailabilityTrancheDatum => ({
       Active: {
-        deployment_identity: available.commitment.deployment_identity,
-        header_hash: available.commitment.header_hash,
+        deployment_identity: commitment.deployment_identity,
+        header_hash: commitment.header_hash,
         challenge_asset_name: challengeAssetName,
         descriptor,
         next_offset: descriptor.start_offset,
         accumulator: daAvailabilityTrancheStartAccumulator({
-          deploymentIdentity: available.commitment.deployment_identity,
-          headerHash: available.commitment.header_hash,
+          deploymentIdentity: commitment.deployment_identity,
+          headerHash: commitment.header_hash,
           trancheIndex: Number(descriptor.tranche_index),
           startOffset: Number(descriptor.start_offset),
           byteLength: Number(descriptor.byte_length),
@@ -1614,10 +1606,10 @@ export const buildDaAvailabilityChallengeDatumPlan = (input: {
       },
     }),
   );
-  assertCanonicalDaAvailabilityBondDatum(challengedBond, input.parameters);
+  assertCanonicalDaAvailabilityChallengeRecord(record, input.parameters);
   trancheThreads.forEach(assertCanonicalDaAvailabilityTrancheDatum);
   const trancheFunding = planDaAvailabilityTrancheFunding({
-    commitment: available.commitment,
+    commitment,
     parameters: input.parameters,
   });
   const terminalAccumulatorFundingLovelace =
@@ -1626,13 +1618,13 @@ export const buildDaAvailabilityChallengeDatumPlan = (input: {
       ? input.parameters.max_close_fee_lovelace
       : input.parameters.max_timeout_fee_lovelace;
   const terminalAccumulator: DaAvailabilityTerminalAccumulatorDatum = {
-    deployment_identity: available.commitment.deployment_identity,
-    header_hash: available.commitment.header_hash,
+    deployment_identity: commitment.deployment_identity,
+    header_hash: commitment.header_hash,
     challenge_asset_name: challengeAssetName,
     next_tranche_index: 0n,
     folded_terminal_accumulator: daAvailabilityTerminalAccumulatorStart({
-      deploymentIdentity: available.commitment.deployment_identity,
-      headerHash: available.commitment.header_hash,
+      deploymentIdentity: commitment.deployment_identity,
+      headerHash: commitment.header_hash,
       challengeAssetName,
     }),
     has_timed_out_tranche: false,
@@ -1644,7 +1636,8 @@ export const buildDaAvailabilityChallengeDatumPlan = (input: {
   return {
     challengeAssetName,
     responseDeadline,
-    challengedBond,
+    record,
+    recordLovelace: input.parameters.challenge_record_lovelace,
     trancheThreads,
     trancheFunding,
     terminalAccumulator,
@@ -2121,7 +2114,6 @@ export const verifyDaAvailabilityPayloadCommitment = (input: {
     deploymentIdentity: input.commitment.deployment_identity,
     headerHash: input.commitment.header_hash,
     payload: input.payload,
-    bondOwner: input.commitment.bond_owner,
     responseGeometry: input.commitment.response_geometry,
   });
   return (
@@ -2454,19 +2446,18 @@ export type DaAvailabilityTrancheEvidence = Readonly<{
   publications: readonly DaAvailabilityPublicationObservation[];
 }>;
 
-export type DaAvailabilityChallengedBondEvidence = Readonly<{
-  /** Exact inline datum read from the challenged retained-bond output. */
+/**
+ * Authenticated challenge-record evidence, read from the admitted raw-L1
+ * `OpenChallenge` transaction.
+ */
+export type DaAvailabilityChallengeRecordEvidence = Readonly<{
+  /** Exact inline datum read from the challenge record output. */
   datumCborHex: string;
-  /** Available-bond input consumed by the challenge transaction; derives DACH. */
-  bondInputOutRef: OutputReference;
-  /** Challenged-bond output carrying the datum and retained DABN identity. */
-  challengedBondOutputOutRef: OutputReference;
+  /** Challenger funding input consumed by `OpenChallenge`; derives DACH. */
+  challengerFundingOutRef: OutputReference;
+  /** Challenge record output carrying the datum and the DACH token. */
+  recordOutputOutRef: OutputReference;
 }>;
-
-type DaAvailabilityChallengedBondFields = Extract<
-  DaAvailabilityBondDatum,
-  { ChallengedBond: unknown }
->["ChallengedBond"];
 
 const assertCanonicalDaAvailabilityEvidenceOutRef = (
   outRef: OutputReference,
@@ -2489,10 +2480,10 @@ const assertCanonicalDaAvailabilityEvidenceOutRef = (
   }
 };
 
-const challengedBondFieldsFromEvidence = (
-  evidence: DaAvailabilityChallengedBondEvidence,
+const challengeRecordFromEvidence = (
+  evidence: DaAvailabilityChallengeRecordEvidence,
   parameters: DaAvailabilityParameters,
-): DaAvailabilityChallengedBondFields => {
+): DaAvailabilityChallengeRecord => {
   assertCanonicalDaAvailabilityParameters(parameters);
   if (
     typeof evidence !== "object" ||
@@ -2500,70 +2491,64 @@ const challengedBondFieldsFromEvidence = (
     Object.getPrototypeOf(evidence) !== Object.prototype ||
     Reflect.ownKeys(evidence).length !== 3 ||
     !Reflect.has(evidence, "datumCborHex") ||
-    !Reflect.has(evidence, "bondInputOutRef") ||
-    !Reflect.has(evidence, "challengedBondOutputOutRef")
+    !Reflect.has(evidence, "challengerFundingOutRef") ||
+    !Reflect.has(evidence, "recordOutputOutRef")
   ) {
     throw new DaAvailabilityCommitmentError(
-      "challengedBond evidence must contain exactly datum and input/output identities",
+      "challengeRecord evidence must contain exactly datum and input/output identities",
     );
   }
   assertCanonicalDaAvailabilityEvidenceOutRef(
-    evidence.bondInputOutRef,
-    "challengedBond.bondInputOutRef",
+    evidence.challengerFundingOutRef,
+    "challengeRecord.challengerFundingOutRef",
   );
   assertCanonicalDaAvailabilityEvidenceOutRef(
-    evidence.challengedBondOutputOutRef,
-    "challengedBond.challengedBondOutputOutRef",
+    evidence.recordOutputOutRef,
+    "challengeRecord.recordOutputOutRef",
   );
   if (
-    evidence.bondInputOutRef.transactionId ===
-      evidence.challengedBondOutputOutRef.transactionId &&
-    evidence.bondInputOutRef.outputIndex ===
-      evidence.challengedBondOutputOutRef.outputIndex
+    evidence.challengerFundingOutRef.transactionId ===
+      evidence.recordOutputOutRef.transactionId &&
+    evidence.challengerFundingOutRef.outputIndex ===
+      evidence.recordOutputOutRef.outputIndex
   ) {
     throw new DaAvailabilityCommitmentError(
-      "challenged bond output cannot equal its consumed available-bond input",
+      "challenge record output cannot equal its consumed challenger funding input",
     );
   }
-  const bondDatum = parseDaAvailabilityBondDatumCbor(
+  const record = parseDaAvailabilityChallengeRecordCbor(
     evidence.datumCborHex,
     parameters,
   );
-  if (!("ChallengedBond" in bondDatum)) {
-    throw new DaAvailabilityCommitmentError(
-      "public evidence reconstruction requires the authenticated challenged-bond datum",
-    );
-  }
-  const challenged = bondDatum.ChallengedBond;
   const expectedChallengeAssetName = daAvailabilityChallengeAssetName(
-    evidence.bondInputOutRef,
+    evidence.challengerFundingOutRef,
   );
-  if (challenged.challenge_asset_name !== expectedChallengeAssetName) {
+  if (record.challenge_asset_name !== expectedChallengeAssetName) {
     throw new DaAvailabilityCommitmentError(
-      "challenged-bond datum does not carry the DACH identity derived from its consumed bond input",
+      "challenge record does not carry the DACH identity derived from its consumed challenger funding input",
     );
   }
-  return challenged;
+  return record;
 };
 
 /**
  * Response planner whose identity, commitment and deadline originate in the
- * exact challenged-bond datum. Production callers must obtain the evidence
- * from the admitted raw-L1 challenge transaction.
+ * exact challenge-record datum. Production callers must obtain the evidence
+ * from the admitted raw-L1 `OpenChallenge` transaction.
  */
-export const planDaAvailabilityPublicationsFromChallengedBond = (input: {
-  readonly challengedBond: DaAvailabilityChallengedBondEvidence;
+export const planDaAvailabilityPublicationsFromChallengeRecord = (input: {
+  readonly challengeRecord: DaAvailabilityChallengeRecordEvidence;
   readonly parameters: DaAvailabilityParameters;
   readonly payload: Uint8Array;
 }): readonly DaAvailabilityTranchePublicationPlan[] => {
-  const challenged = challengedBondFieldsFromEvidence(
-    input.challengedBond,
+  const record = challengeRecordFromEvidence(
+    input.challengeRecord,
     input.parameters,
   );
   return planDaAvailabilityPublications({
-    commitment: challenged.commitment,
+    commitment: record.commitment,
     payload: input.payload,
-    challengeAssetName: challenged.challenge_asset_name,
+    challengeAssetName: record.challenge_asset_name,
   });
 };
 
@@ -2573,12 +2558,12 @@ export const planDaAvailabilityPublicationsFromChallengedBond = (input: {
  * repairs them, so a missing/reordered/replayed chunk fails closed.
  */
 export const reconstructDaAvailabilityPayload = (input: {
-  readonly challengedBond: DaAvailabilityChallengedBondEvidence;
+  readonly challengeRecord: DaAvailabilityChallengeRecordEvidence;
   readonly parameters: DaAvailabilityParameters;
   readonly tranches: readonly DaAvailabilityTrancheEvidence[];
 }): Uint8Array => {
-  const challenged = challengedBondFieldsFromEvidence(
-    input.challengedBond,
+  const challenged = challengeRecordFromEvidence(
+    input.challengeRecord,
     input.parameters,
   );
   const commitment = challenged.commitment;

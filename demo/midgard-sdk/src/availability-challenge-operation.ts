@@ -69,7 +69,19 @@ export type DaAvailabilityOperationLimits = Readonly<{
   maxTxExMem: bigint;
   maxTxExSteps: bigint;
   coinsPerUtxoByte: bigint;
+  /**
+   * Per-action fee ceilings. For `timeout` the ceiling caps only the
+   * challenger's contribution `c = fee - feePart`; the slashed penalty share
+   * `feePart = min(penalty, taken)` is fee by protocol and outside every cap.
+   */
   feeCeilings: Readonly<Record<string, bigint>>;
+  /**
+   * The largest slashed fee part a timeout can carry, `da_slash_penalty`.
+   * Bounds a journaled timeout whose exact fee part is no longer known (the
+   * rebroadcast path): `fee <= timeoutFeePartCeiling + feeCeilings.timeout`.
+   * Absent means `0`, which admits only timeouts whose whole fee fits the cap.
+   */
+  timeoutFeePartCeiling?: bigint;
 }>;
 
 export const daAvailabilityOperationLimits = (
@@ -94,12 +106,19 @@ export const daAvailabilityOperationLimits = (
       prune: parameters.max_timeout_fee_lovelace,
       remove: parameters.max_timeout_fee_lovelace,
     },
+    // feePart = min(penalty, taken) and taken <= da_bond > penalty.
+    timeoutFeePartCeiling: parameters.da_slash_penalty_lovelace,
   };
 };
 
-const assertSignedLimits = (
-  intent: AvailabilityOperationIntent,
+/**
+ * `timeoutFeePart` is the builder's exact slashed fee part when known (at sign
+ * time); a timeout without it is held to the aggregate bound.
+ */
+export const assertDaAvailabilitySignedLimits = (
+  intent: Pick<AvailabilityOperationIntent, "action" | "signedCbor" | "txHash">,
   limits: DaAvailabilityOperationLimits,
+  timeoutFeePart?: bigint,
 ): void => {
   const transaction = CML.Transaction.from_cbor_hex(intent.signedCbor);
   const body = transaction.body();
@@ -112,6 +131,19 @@ const assertSignedLimits = (
     steps += units.steps();
   }
   const ceiling = limits.feeCeilings[intent.action];
+  const fee = body.fee();
+  const partCeiling = limits.timeoutFeePartCeiling ?? 0n;
+  // Timeout: the ceiling caps c = fee - feePart only.
+  const capped =
+    intent.action !== "timeout"
+      ? ceiling !== undefined && fee <= ceiling
+      : ceiling !== undefined &&
+        (timeoutFeePart === undefined
+          ? partCeiling >= 0n && fee <= partCeiling + ceiling
+          : timeoutFeePart >= 0n &&
+            timeoutFeePart <= partCeiling &&
+            fee >= timeoutFeePart &&
+            fee - timeoutFeePart <= ceiling);
   if (
     !Number.isSafeInteger(limits.maxTxSize) ||
     limits.maxTxSize <= 0 ||
@@ -120,9 +152,8 @@ const assertSignedLimits = (
     intent.signedCbor.length / 2 > limits.maxTxSize ||
     memory * 5n > limits.maxTxExMem * 4n ||
     steps * 5n > limits.maxTxExSteps * 4n ||
-    ceiling === undefined ||
-    body.fee() > ceiling ||
-    body.fee() <= 0n ||
+    !capped ||
+    fee <= 0n ||
     (intent.action !== "prepare" && (memory === 0n || steps === 0n))
   ) {
     throw new Error(
@@ -254,7 +285,10 @@ export const inspectDaAvailabilitySignedIntent = (input: {
   });
 };
 
-/** The deployed Open predicate requires an exact bond-plus-fee input. */
+/**
+ * The deployed Open predicate requires an exact
+ * `challenger_bond_lovelace + challenge_record_lovelace + fee` input.
+ */
 export const buildDaAvailabilityFundingPreparationTx = async (
   lucid: LucidEvolution,
   input: Readonly<{
@@ -574,7 +608,7 @@ const reconcile = async (
         "Rebroadcasting canonically unspent intent",
         now(),
       );
-      assertSignedLimits(intent, context.transactionLimits);
+      assertDaAvailabilitySignedLimits(intent, context.transactionLimits);
       await assertCurrent();
       // A crash or timeout here is recovered by observing or re-broadcasting the
       // exact same transaction. Never replace signed bytes after an error.
@@ -810,6 +844,12 @@ export const createDaAvailabilityOperationObserver =
     return observation;
   };
 
+export type DaAvailabilityOperationBuild = Readonly<{
+  tx: TxSignBuilder;
+  /** Timeout only: `min(penalty, taken)`, the slashed share of the fee. */
+  timeoutFeePartLovelace?: bigint;
+}>;
+
 /** Reconciles existing actor intent before constructing any new transaction. */
 export const runDaAvailabilityOperation = (
   context: DaAvailabilityOperationContext,
@@ -818,7 +858,12 @@ export const runDaAvailabilityOperation = (
     action: AvailabilityOperationIntent["action"];
     /** Timeout is terminal only when it removes the challenged head itself. */
     completesWorkflow?: boolean;
-    build: () => Promise<TxSignBuilder>;
+    /**
+     * The unsigned transaction, or a built one carrying its slashed fee part
+     * (a `BuiltDaAvailabilityTransaction` qualifies). A timeout must return
+     * its fee part: its fee ceiling caps only `fee - feePart`.
+     */
+    build: () => Promise<TxSignBuilder | DaAvailabilityOperationBuild>;
   }>,
 ): Promise<DaAvailabilityOperationResult> =>
   withLease(context, async (lease, assertCurrent) => {
@@ -847,7 +892,15 @@ export const runDaAvailabilityOperation = (
       operation.action,
       (context.nowMs ?? Date.now)(),
     );
-    const tx = await operation.build();
+    const built = await operation.build();
+    const { tx, timeoutFeePartLovelace } =
+      "toTransaction" in built
+        ? { tx: built, timeoutFeePartLovelace: undefined }
+        : built;
+    if (operation.action === "timeout" && timeoutFeePartLovelace === undefined)
+      throw new Error(
+        "A timeout operation must report its slashed fee part to be signed",
+      );
     await assertCurrent();
     const unsignedHash = CML.hash_transaction(
       tx.toTransaction().body(),
@@ -865,7 +918,11 @@ export const runDaAvailabilityOperation = (
     if (intent.txHash !== unsignedHash)
       throw new Error("Signing changed the availability transaction body");
     assertTerminalIntent(context, intent);
-    assertSignedLimits(intent, context.transactionLimits);
+    assertDaAvailabilitySignedLimits(
+      intent,
+      context.transactionLimits,
+      timeoutFeePartLovelace,
+    );
     const existing = context.journal.get(intent.id);
     if (existing?.state === "included" || existing?.state === "confirmed")
       return reconcile(context, lease, intent, assertCurrent);

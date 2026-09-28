@@ -87,7 +87,6 @@ describe("reference-script SDK boundary", () => {
 
   it("authenticates all availability mint arms with distinct deployment roles", () => {
     const arms = [
-      ["bond", "Bond", "Bond"],
       ["open", "Open", "Open"],
       ["settle", "Settle", "Settle"],
       ["close", "Close", "Close"],
@@ -104,6 +103,36 @@ describe("reference-script SDK boundary", () => {
         `availabilityChallenge${contract}Withdraw`,
       );
       expect(Buffer.byteLength(tokenName)).toBeLessThanOrEqual(32);
+    }
+  });
+
+  it("has no role for the deleted per-block bond yield", () => {
+    expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES).not.toHaveProperty(
+      "availability-challenge bond withdrawal",
+    );
+    expect(Object.values(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).not.toContain(
+      "AvailabilityChallengeBondYield",
+    );
+  });
+
+  it("authenticates the pooled DA bond's spend and mint with unique <=32-byte tokens", () => {
+    // SDK side only: the midgard-core manifest mirror gains these roles with
+    // the manifest entries themselves.
+    const poolRoles = {
+      "da-bond-pool spending": "DaBondPoolSpend",
+      "da-bond-pool minting": "DaBondPoolMint",
+    } as const;
+    const allTokenNames = Object.values(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES);
+    for (const [role, tokenName] of Object.entries(poolRoles)) {
+      expect(
+        REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[
+          role as keyof typeof REFERENCE_SCRIPT_AUTH_TOKEN_NAMES
+        ],
+      ).toBe(tokenName);
+      expect(Buffer.byteLength(tokenName)).toBeLessThanOrEqual(32);
+      expect(allTokenNames.filter((name) => name === tokenName)).toHaveLength(
+        1,
+      );
     }
   });
 

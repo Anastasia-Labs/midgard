@@ -49,7 +49,6 @@ export const DA_ATTESTATION_SCRIPT_TITLES = {
 export const AVAILABILITY_CHALLENGE_SCRIPT_TITLES = {
   mint: "availability_challenge.availability_challenge.mint",
   spend: "availability_challenge.availability_challenge.spend",
-  bondYield: "availability_challenge_yields.bond.withdraw",
   openYield: "availability_challenge_yields.open.withdraw",
   settleYield: "availability_challenge_yields.settle.withdraw",
   closeYield: "availability_challenge_yields.close.withdraw",
@@ -168,6 +167,13 @@ export const buildFraudProofSharedWithdrawalValidators = (
   };
 };
 
+// Build order for the DA contracts, fixed by their parameters:
+// DA params governor (init_ref only) -> DA bond pool (hub, DA params policy)
+// -> availability challenge (hub, reference-script auth; its timeout yield
+// takes the pool policy) -> correction lock (availability policy) -> DA
+// attestation (DA params, hub and pool policies). None of them depends on a
+// contract later in the chain, so there is no parameter cycle.
+
 export const buildDaParamsGovernorValidator = (
   blueprint: FaultProofBlueprint,
   network: Network,
@@ -219,43 +225,49 @@ export const buildDaBondPoolValidator = (
   );
 };
 
+/**
+ * Bondless DA attestation. Apply checks the commitment's deployment identity
+ * against the hub policy and reads the pool (by its policy) as a reference
+ * input; the attestation no longer depends on the availability policy.
+ */
 export const buildDaAttestationValidator = (
   blueprint: FaultProofBlueprint,
   network: Network,
   contracts: {
-    readonly availabilityChallenge: { readonly policyId: string };
     readonly daParamsGovernor: { readonly policyId: string };
+    readonly hubOracle: { readonly policyId: string };
+    readonly daBondPool: { readonly policyId: string };
   },
   referenceScriptAuthPolicyId: string,
   availabilityParameters: DaAvailabilityParameters,
 ): AuthenticatedValidator => {
-  const encodedParameters = Data.from(
-    encodeDaAvailabilityParameters(availabilityParameters),
-  );
+  const attestationParameters = [
+    contracts.daParamsGovernor.policyId,
+    referenceScriptAuthPolicyId,
+    contracts.hubOracle.policyId,
+    contracts.daBondPool.policyId,
+    Data.from(encodeDaAvailabilityParameters(availabilityParameters)),
+  ];
   return buildAuthenticatedBlueprintValidator(
     blueprint,
     network,
     DA_ATTESTATION_SCRIPT_TITLES,
-    [
-      contracts.daParamsGovernor.policyId,
-      referenceScriptAuthPolicyId,
-      contracts.availabilityChallenge.policyId,
-      encodedParameters,
-    ],
-    () => [
-      contracts.daParamsGovernor.policyId,
-      referenceScriptAuthPolicyId,
-      contracts.availabilityChallenge.policyId,
-      encodedParameters,
-    ],
+    attestationParameters,
+    () => attestationParameters,
   );
 };
 
+/**
+ * The availability-challenge dispatcher and its yields. Only the timeout yield
+ * slashes the pool, so only it takes the pool policy; the dispatcher and the
+ * open, settle and close yields stay independent of it.
+ */
 export const buildAvailabilityChallengeValidator = (
   blueprint: FaultProofBlueprint,
   network: Network,
   hubOraclePolicyId: string,
   referenceScriptAuthPolicyId: string,
+  daBondPoolPolicyId: string,
   parameters: DaAvailabilityParameters,
 ): AvailabilityChallengeValidator => {
   const encodedParameters = Data.from(
@@ -273,23 +285,39 @@ export const buildAvailabilityChallengeValidator = (
     dispatcherParameters,
     () => dispatcherParameters,
   );
-  const buildYield = (arm: string): WithdrawalValidator => {
-    const validator = `availability_challenge_yields.${arm}.withdraw`;
-    const compiledCode = applyBlueprintParams(blueprint, validator, [
-      dispatcher.policyId,
-      hubOraclePolicyId,
-      encodedParameters,
-    ]);
-    return makeWithdrawalValidator(compiledCode);
-  };
+  const buildYield = (
+    title: string,
+    yieldParameters: readonly Data[],
+  ): WithdrawalValidator =>
+    makeWithdrawalValidator(
+      applyBlueprintParams(blueprint, title, yieldParameters),
+    );
+  const coordinateParameters = [
+    dispatcher.policyId,
+    hubOraclePolicyId,
+    encodedParameters,
+  ];
   return {
     ...dispatcher,
     yields: {
-      bond: buildYield("bond"),
-      open: buildYield("open"),
-      settle: buildYield("settle"),
-      close: buildYield("close"),
-      timeout: buildYield("timeout"),
+      open: buildYield(
+        AVAILABILITY_CHALLENGE_SCRIPT_TITLES.openYield,
+        coordinateParameters,
+      ),
+      settle: buildYield(
+        AVAILABILITY_CHALLENGE_SCRIPT_TITLES.settleYield,
+        coordinateParameters,
+      ),
+      close: buildYield(
+        AVAILABILITY_CHALLENGE_SCRIPT_TITLES.closeYield,
+        coordinateParameters,
+      ),
+      timeout: buildYield(AVAILABILITY_CHALLENGE_SCRIPT_TITLES.timeoutYield, [
+        dispatcher.policyId,
+        hubOraclePolicyId,
+        daBondPoolPolicyId,
+        encodedParameters,
+      ]),
     },
   };
 };

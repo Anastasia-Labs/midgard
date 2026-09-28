@@ -31,8 +31,10 @@
  * Two artifacts:
  *
  *   * `demo/midgard-sdk/tests/fixtures/da-commitment-v1.generated.json`, the
- *     one place an SDK test is to read the vectors from. None reads it yet,
- *     so today the channel pins this generator's encoder, not the SDK codec;
+ *     one place an SDK test is to read the vectors from. The SDK side is
+ *     `demo/midgard-sdk/tests/da-golden-vectors.test.ts` (run by the SDK test
+ *     step), which reproduces every hex with the SDK codecs; `--check` compares
+ *     only this fixture with this generator's encoder and the Aiken module;
  *     and
  *   * `onchain/aiken/lib/midgard/availability-challenge-commitment-v1-golden.test.ak`,
  *     which rebuilds each value as an Aiken literal and asserts every byte

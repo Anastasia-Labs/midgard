@@ -177,7 +177,7 @@ describe("HeaderV1", () => {
       proven_fraud: null,
       header: header(),
       da_attestation: {
-        Attested: { da_bond_asset_name: "aa".repeat(32) },
+        Attested: { commitment_hash: "aa".repeat(32) },
       },
     } as const;
 

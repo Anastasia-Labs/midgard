@@ -1014,8 +1014,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofDistinctAssetAccumulationLimitStep06",
     "availability-challenge spending": "availabilityChallengeSpend",
     "availability-challenge minting": "availabilityChallengeMint",
-    "availability-challenge bond withdrawal":
-      "availabilityChallengeBondWithdraw",
     "availability-challenge open withdrawal":
       "availabilityChallengeOpenWithdraw",
     "availability-challenge settle withdrawal":

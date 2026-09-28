@@ -210,7 +210,7 @@ const setup = async (previouslyMarked = false) => {
       proven_fraud: fault === "clear-marker" ? null : proofName,
       da_attestation:
         fault === "change-status"
-          ? { Attested: { da_bond_asset_name: "ab".repeat(32) } }
+          ? { Attested: { commitment_hash: "ab".repeat(32) } }
           : node.da_attestation,
     };
     const continuedDatum = SDK.encodeLinkedListNodeView({

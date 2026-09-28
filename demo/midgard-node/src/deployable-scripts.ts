@@ -1109,11 +1109,6 @@ const DEPLOYABLE_SCRIPT_CATALOGUE = {
       commands: ["da"],
     }),
     withdraw(
-      "availabilityChallengeBondWithdraw",
-      (c) => c.availabilityChallenge.yields.bond,
-      { commands: ["da"] },
-    ),
-    withdraw(
       "availabilityChallengeOpenWithdraw",
       (c) => c.availabilityChallenge.yields.open,
     ),

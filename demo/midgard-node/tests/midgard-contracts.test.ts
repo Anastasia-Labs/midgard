@@ -156,7 +156,10 @@ describe("midgard contracts registry", () => {
       // Applied recipes include the completed-fraud queue marker and explicit
       // history bounds/retention metadata, both authenticated timing yields, and
       // the paired list/retention/retirement deployment recipes;
-      // normalize bigint parameters as decimal strings.
+      // normalize bigint parameters as decimal strings. Re-pinned by #689:
+      // the pooled DA bond validator was added, the per-block availability
+      // bond yield removed, and the availability-challenge and DA-attestation
+      // parameters changed (pool policy, commitment-bound challenges).
       expect(
         createHash("sha256")
           .update(
@@ -164,10 +167,13 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "d6bdec6222b0259200dc9b4f7ffeb2849adbacd9d5ed02fcbaeb854b66e73503",
+        "8f35f6587ff06f21fc93a24850778ec7d7d5fb6ce6b967fc6d7a2bcb06947ff0",
       );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
+      // Re-pinned by #689: the state queue and correction lock are applied over
+      // the availability-challenge policy, whose parameters now include the
+      // pooled DA bond policy.
       expect(
         createHash("sha256")
           .update(
@@ -178,7 +184,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "ba5cfd0525b4ad2a07fde25c93fdf9d707c1be1c9a1544ec254f8793a41ff9f9",
+        "0aa26d5c3918993e2ad4e230b6ecd1679f6d5e57c2cdda5407bff2cee32d5744",
       );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

@@ -194,7 +194,7 @@ describe("merge builder maturity preflight", () => {
       // `DaAvailabilityStateQueueStatus` enum, not a raw policy-id string;
       // `Attested` is one of the two merge-permitting kinds, so the maturity
       // window (not availability) is what this default exercises.
-      daAttestation: { Attested: { da_bond_asset_name: "22".repeat(32) } },
+      daAttestation: { Attested: { commitment_hash: "22".repeat(32) } },
       endTime: 500_000n,
     });
     fetchFirstBlockTxsMock.mockImplementation(() =>

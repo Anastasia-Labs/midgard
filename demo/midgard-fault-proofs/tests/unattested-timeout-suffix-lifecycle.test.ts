@@ -171,7 +171,7 @@ const setup = async (
                 header: entry,
                 da_attestation:
                   index === 0 || (index === 1 && attestedTarget)
-                    ? { Attested: { da_bond_asset_name: "da".repeat(32) } }
+                    ? { Attested: { commitment_hash: "da".repeat(32) } }
                     : "Unattested",
               },
               SDK.StateQueueNode,

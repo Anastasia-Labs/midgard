@@ -1,36 +1,37 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  type Assets,
   type BuildTxWithRedeemer,
+  type Credential,
+  credentialToAddress,
   Data,
   fromText,
   type LucidEvolution,
+  type Network,
   toUnit,
   type TxBuilder,
   type UTxO,
-  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
 import {
   assertCanonicalDaAvailabilityCommitment,
-  daAvailabilityBondAssetName,
   type DaAvailabilityCommitment,
+  daAvailabilityCommitmentHash,
   DaAvailabilityCommitmentSchema,
-  type DaAvailabilityMintRedeemer,
-  DaAvailabilityMintRedeemerSchema,
-  encodeDaAvailabilityBondDatum,
+  type DaAvailabilityParameters,
 } from "./availability-challenge.js";
-import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   type AddressData,
   addressDataFromBech32,
   AddressSchema,
   type AuthenticatedValidator,
+  type CredentialD,
   type GenericErrorFields,
   type MidgardValidators,
-  outputReferenceFromUTxO,
 } from "./common.js";
+import { fetchDaBondPool } from "./da-bond-pool.js";
 import {
   castStateQueueNodeToData,
   type HeaderHash,
@@ -227,7 +228,17 @@ export const DaAttestationMintRedeemerSchema = Data.Enum([
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
       state_queue_mint_ref_script_input_index: Data.Integer(),
-      availability_mint_redeemer_index: Data.Integer(),
+      /**
+       * The authentic DA bond pool reference input, indexed over the ledger's
+       * sorted reference-input set. It must be `Bonded` and back at least one
+       * `da_bond_lovelace` above its floor.
+       */
+      pool_ref_input_index: Data.Integer(),
+      /**
+       * Receives exactly the burned attestation's value (less its DAAT) at
+       * `rescue_beneficiary`.
+       */
+      refund_output_index: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -350,10 +361,12 @@ export type DaAttestationBuildFailureReason =
   | "invalid_signature_hex"
   | "invalid_signer_index"
   | "invalid_validity_range"
-  | "missing_bond_yield_reference_script"
   | "missing_network"
   | "params_committee_hash_mismatch"
   | "params_threshold_mismatch"
+  | "pool-under-backed"
+  | "pool-unavailable"
+  | "pool-withdrawing"
   | "rescue_refund_address_undecodable"
   | "rescue_refund_beneficiary_mismatch"
   | "rescue_refund_to_attestation_script"
@@ -367,11 +380,17 @@ export class DaAttestationBuildError extends EffectData.TaggedError(
   "DaAttestationBuildError",
 )<GenericErrorFields & { readonly reason: DaAttestationBuildFailureReason }> {}
 
+/**
+ * The reference scripts the attestation builders read. Apply needs all four:
+ * the DA attestation mint (DAAT burn) and spend (`BurnForStateQueue`), the
+ * state-queue mint (authenticated through the reference-script auth policy,
+ * `state_queue_mint_ref_script_input_index`) and the state-queue spend
+ * (`AttachDaAttestation`). Apply mints nothing under the availability policy,
+ * so no availability-challenge script is read.
+ */
 export type DaAttestationReferenceScripts = {
   readonly daAttestationMinting: UTxO;
   readonly daAttestationSpending: UTxO;
-  readonly availabilityChallengeMinting: UTxO;
-  readonly availabilityChallengeBondWithdrawal: UTxO;
   readonly stateQueueMinting: UTxO;
   readonly stateQueueSpending: UTxO;
 };
@@ -595,6 +614,11 @@ export const incompleteInitDaAttestationTxProgram = (
       DaAttestationReferenceScripts,
       "daAttestationMinting" | "stateQueueMinting"
     >;
+    /**
+     * Any amount at or above the output's min-UTxO: the attestation carries no
+     * bond, and Apply or Rescue returns its whole value to
+     * `rescueBeneficiary`.
+     */
     readonly attestationOutputLovelace: bigint;
     readonly rescueBeneficiary: AddressData;
     readonly availabilityCommitment: DaAvailabilityCommitment;
@@ -825,14 +849,101 @@ export const daAttestationApplyValidityRangeProgram = ({
     };
   });
 
+/**
+ * Output positions of the apply transaction. Lucid keeps explicit outputs in
+ * the order they are paid and appends change after them, so the state-queue
+ * continuation is output 0 and the beneficiary refund is output 1. The
+ * redeemer names both positionally (a value lookup could collide with a change
+ * output at the beneficiary's own address) and each position is checked
+ * against the final outputs before the index is written.
+ */
+const DA_ATTESTATION_APPLY_STATE_QUEUE_OUTPUT_INDEX = 0;
+const DA_ATTESTATION_APPLY_REFUND_OUTPUT_INDEX = 1;
+
+const credentialFromData = (credential: CredentialD): Credential =>
+  "PublicKeyCredential" in credential
+    ? { type: "Key", hash: credential.PublicKeyCredential[0] }
+    : { type: "Script", hash: credential.ScriptCredential[0] };
+
+/**
+ * The bech32 form of the attestation's frozen `rescue_beneficiary`, checked to
+ * decode back to exactly the same Plutus address data: the validator compares
+ * the refund output's address to the datum field by equality.
+ */
+const rescueBeneficiaryBech32 = (
+  network: Network,
+  beneficiary: AddressData,
+): Effect.Effect<string, DaAttestationBuildError> =>
+  Effect.gen(function* () {
+    const stake = beneficiary.stakeCredential;
+    if (stake !== null && !("Inline" in stake)) {
+      return yield* failBuild(
+        "rescue_refund_address_undecodable",
+        "DA attestation rescue beneficiary uses a pointer stake credential, which cannot be paid as a bech32 address",
+        JSON.stringify(stake, (_key, value: unknown) =>
+          typeof value === "bigint" ? value.toString() : value,
+        ),
+      );
+    }
+    const address =
+      stake === null
+        ? credentialToAddress(
+            network,
+            credentialFromData(beneficiary.paymentCredential),
+          )
+        : credentialToAddress(
+            network,
+            credentialFromData(beneficiary.paymentCredential),
+            credentialFromData(stake.Inline[0]),
+          );
+    const roundTrip = yield* addressDataFromBech32(address).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DaAttestationBuildError({
+            reason: "rescue_refund_address_undecodable",
+            message: "Failed to decode the DA attestation apply refund address",
+            cause,
+          }),
+      ),
+    );
+    if (
+      Data.to(roundTrip as never, AddressSchema as never) !==
+      Data.to(beneficiary as never, AddressSchema as never)
+    ) {
+      return yield* failBuild(
+        "rescue_refund_beneficiary_mismatch",
+        "DA attestation apply refund address does not round-trip to the frozen beneficiary",
+        address,
+      );
+    }
+    return address;
+  });
+
+/**
+ * Builds `ApplyToStateQueue`: burns the threshold-signed DAAT, moves the
+ * state-queue node from `Unattested` to `Attested{commitment_hash}`, refunds
+ * the attestation's value to its `rescue_beneficiary`, and reads the pooled
+ * committee bond as a reference input. Nothing is minted under the
+ * availability policy.
+ *
+ * The pool is fetched here, immediately before the transaction is assembled,
+ * and never taken from the caller: any top-up, slash or withdrawal step spends
+ * the pool UTxO, so a pool outref captured earlier can already be consumed
+ * (hazard H8). A caller that loses the race resubmits by calling this again.
+ *
+ * Before building, the pool is checked the way the validator checks it:
+ * a `Withdrawing` pool refuses with `pool-withdrawing`, and a pool whose
+ * backing above its floor is below `da_bond_lovelace` refuses with
+ * `pool-under-backed`. A pool that cannot be fetched and authenticated refuses
+ * with `pool-unavailable`.
+ */
 export const incompleteApplyDaAttestationToStateQueueTxProgram = (
   lucid: LucidEvolution,
   contracts: Pick<
     MidgardValidators,
-    "availabilityChallenge" | "daAttestation" | "stateQueue"
+    "daAttestation" | "daBondPool" | "stateQueue"
   >,
   config: {
-    readonly hubOracleRefInput: UTxO;
     readonly daParamsUtxo: UTxO;
     readonly daParamsDatum: DaParamsDatum;
     readonly target: DaAttestationStateQueueTarget;
@@ -842,6 +953,20 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       readonly validFrom: bigint;
       readonly validTo: bigint;
     };
+    /**
+     * The deployment's `ParametersV1`, the same value compiled into the DA
+     * attestation validator. The pool pre-check reads `da_bond_lovelace` and
+     * `da_bond_pool_floor_lovelace` from it.
+     */
+    readonly availabilityParameters: DaAvailabilityParameters;
+    /**
+     * TEST-ONLY. Skips the `pool-withdrawing` and `pool-under-backed`
+     * pre-build refusals (the pool is still fetched and referenced) so an
+     * emulator negative can reach the validator's own refusal. Production
+     * callers never set it: the build refusal is the legible form of a
+     * transaction the chain would reject.
+     */
+    readonly skipPoolPrecheck?: true;
   },
 ): Effect.Effect<TxBuilder, DaAttestationBuildError> =>
   Effect.gen(function* () {
@@ -911,41 +1036,110 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         `attestation_count=${config.attestation.datum.attestation_count.toString()},threshold=${config.attestation.datum.da_threshold.toString()}`,
       );
     }
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* failBuild(
+        "missing_network",
+        "DA attestation apply requires a configured network",
+        "lucid.config().network is undefined",
+      );
+    }
+    const refundAddress = yield* rescueBeneficiaryBech32(
+      network,
+      config.attestation.datum.rescue_beneficiary,
+    );
     const attestationUnit = daAttestationUnit(
       contracts.daAttestation,
       config.target.headerHash,
     );
-    const bondAssetName = daAvailabilityBondAssetName(
-      outputReferenceFromUTxO(config.attestation.utxo),
+    const refundAssets: Assets = Object.fromEntries(
+      Object.entries(config.attestation.utxo.assets).filter(
+        ([unit]) => unit !== attestationUnit,
+      ),
     );
-    const bondUnit = toUnit(
-      contracts.availabilityChallenge.policyId,
-      bondAssetName,
-    );
-    const encodedBondDatum = encodeDaAvailabilityBondDatum({
-      Available: {
-        commitment: config.attestation.datum.availability_commitment,
-        da_bond_asset_name: bondAssetName,
-        committee_signers_hash: config.attestation.datum.committee_signers_hash,
-        attested_signers: config.attestation.datum.attested_signers,
-      },
-    });
     const updatedStateQueueDatum = encodeLinkedListNodeView({
       ...config.target.stateQueueUtxo.datum,
       data: castStateQueueNodeToData({
         proven_fraud: config.target.stateQueueNode.proven_fraud,
         header: config.target.stateQueueNode.header,
         da_attestation: {
-          Attested: { da_bond_asset_name: bondAssetName },
+          Attested: {
+            commitment_hash: daAvailabilityCommitmentHash(
+              config.attestation.datum.availability_commitment,
+            ),
+          },
         },
       }) as LinkedListNodeView["data"],
     });
+
+    // Hazard H8: the pool is re-read as late as possible, right before the
+    // transaction is assembled.
+    const pool = yield* Effect.tryPromise({
+      try: () =>
+        fetchDaBondPool(lucid, {
+          policyId: contracts.daBondPool.policyId,
+          address: contracts.daBondPool.spendingScriptAddress,
+          parameters: config.availabilityParameters,
+        }),
+      catch: (cause) =>
+        new DaAttestationBuildError({
+          reason: "pool-unavailable",
+          message:
+            "DA attestation apply could not fetch the authentic DA bond pool",
+          cause,
+        }),
+    });
+    if (config.skipPoolPrecheck !== true) {
+      if (pool.datum !== "Bonded") {
+        return yield* failBuild(
+          "pool-withdrawing",
+          "The DA bond pool is withdrawing and backs no new attestation until the withdrawal is cancelled",
+          `unlock_at=${pool.datum.Withdrawing.unlock_at.toString()}`,
+        );
+      }
+      const backing = pool.backing ?? 0n;
+      if (backing < config.availabilityParameters.da_bond_lovelace) {
+        return yield* failBuild(
+          "pool-under-backed",
+          "The DA bond pool backs less than one DA bond above its floor; top it up before applying",
+          `backing=${backing.toString()},da_bond=${config.availabilityParameters.da_bond_lovelace.toString()}`,
+        );
+      }
+    }
+
     const daMintRedeemer = ((ctx) => {
       requireOwnMintPurpose(
         ctx,
         contracts.daAttestation.policyId,
         "DA attestation apply mint",
       );
+      const stateQueueOutput =
+        ctx.outputs[DA_ATTESTATION_APPLY_STATE_QUEUE_OUTPUT_INDEX];
+      if (
+        stateQueueOutput === undefined ||
+        stateQueueOutput.address !==
+          contracts.stateQueue.spendingScriptAddress ||
+        !outputDatumCborMatches(stateQueueOutput, updatedStateQueueDatum) ||
+        !assetsEqual(
+          stateQueueOutput.assets,
+          config.target.stateQueueUtxo.utxo.assets,
+        )
+      ) {
+        throw new Error(
+          `DA attestation apply state queue output is not at position ${DA_ATTESTATION_APPLY_STATE_QUEUE_OUTPUT_INDEX.toString()}`,
+        );
+      }
+      const refundOutput =
+        ctx.outputs[DA_ATTESTATION_APPLY_REFUND_OUTPUT_INDEX];
+      if (
+        refundOutput === undefined ||
+        refundOutput.address !== refundAddress ||
+        !assetsEqual(refundOutput.assets, refundAssets)
+      ) {
+        throw new Error(
+          `DA attestation apply beneficiary refund is not at position ${DA_ATTESTATION_APPLY_REFUND_OUTPUT_INDEX.toString()}`,
+        );
+      }
       return Data.to(
         {
           ApplyToStateQueue: {
@@ -964,26 +1158,22 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
               config.target.stateQueueUtxo.utxo,
               "DA attestation apply state queue",
             ),
-            state_queue_output_index: requireUniqueOutputIndex(
-              ctx.outputs,
-              (output) =>
-                output.address === contracts.stateQueue.spendingScriptAddress &&
-                outputDatumCborMatches(output, updatedStateQueueDatum) &&
-                assetsEqual(
-                  output.assets,
-                  config.target.stateQueueUtxo.utxo.assets,
-                ),
-              "DA attestation apply state queue",
+            state_queue_output_index: BigInt(
+              DA_ATTESTATION_APPLY_STATE_QUEUE_OUTPUT_INDEX,
             ),
             state_queue_mint_ref_script_input_index: requireReferenceInputIndex(
               ctx,
               config.referenceScripts.stateQueueMinting,
               "DA attestation apply state_queue mint reference script",
             ),
-            availability_mint_redeemer_index: requireMintRedeemerIndex(
+            // Indexed over the ledger's sorted reference-input set.
+            pool_ref_input_index: requireReferenceInputIndex(
               ctx,
-              contracts.availabilityChallenge.policyId,
-              "DA attestation apply availability bond mint",
+              pool.utxo,
+              "DA attestation apply DA bond pool",
+            ),
+            refund_output_index: BigInt(
+              DA_ATTESTATION_APPLY_REFUND_OUTPUT_INDEX,
             ),
           },
         } satisfies DaAttestationMintRedeemer as never,
@@ -1003,88 +1193,6 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         } satisfies DaAttestationSpendRedeemer as never,
         DaAttestationSpendRedeemer as never,
       )) satisfies BuildTxWithRedeemer;
-    const bondYieldScript =
-      config.referenceScripts.availabilityChallengeBondWithdrawal.scriptRef;
-    if (
-      bondYieldScript == null ||
-      validatorToScriptHash(bondYieldScript) !==
-        contracts.availabilityChallenge.yields.bond.withdrawalScriptHash
-    ) {
-      return yield* failBuild(
-        "missing_bond_yield_reference_script",
-        "DA attestation apply requires the deployed bond yield reference script",
-        "missing or mismatched bond yield script reference",
-      );
-    }
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* failBuild(
-        "missing_network",
-        "DA attestation apply requires a configured network",
-        "lucid.config().network is undefined",
-      );
-    }
-    const availabilityMintRedeemer = ((ctx) => {
-      requireOwnMintPurpose(
-        ctx,
-        contracts.availabilityChallenge.policyId,
-        "DA attestation apply availability bond mint",
-      );
-      return Data.to(
-        {
-          MintBondFromAttestation: {
-            yield_to_ref_input_index: requireReferenceInputIndex(
-              ctx,
-              config.referenceScripts.availabilityChallengeBondWithdrawal,
-              "DA attestation apply bond yield reference script",
-            ),
-            hub_oracle_ref_input_index: requireReferenceInputIndex(
-              ctx,
-              config.hubOracleRefInput,
-              "DA attestation apply hub oracle",
-            ),
-            da_attestation_input_index: requireInputIndex(
-              ctx,
-              config.attestation.utxo,
-              "DA attestation apply DA attestation",
-            ),
-            da_attestation_mint_redeemer_index: requireMintRedeemerIndex(
-              ctx,
-              contracts.daAttestation.policyId,
-              "DA attestation apply DA attestation mint",
-            ),
-            bond_output_index: requireUniqueOutputIndex(
-              ctx.outputs,
-              (output) =>
-                output.address ===
-                  contracts.availabilityChallenge.spendingScriptAddress &&
-                outputDatumCborMatches(output, encodedBondDatum) &&
-                (output.assets.lovelace ?? 0n) ===
-                  (config.attestation.utxo.assets.lovelace ?? 0n) &&
-                (output.assets[bondUnit] ?? 0n) === 1n,
-              "DA attestation apply availability bond",
-            ),
-            state_queue_input_index: requireInputIndex(
-              ctx,
-              config.target.stateQueueUtxo.utxo,
-              "DA attestation apply state queue",
-            ),
-            state_queue_output_index: requireUniqueOutputIndex(
-              ctx.outputs,
-              (output) =>
-                output.address === contracts.stateQueue.spendingScriptAddress &&
-                outputDatumCborMatches(output, updatedStateQueueDatum) &&
-                assetsEqual(
-                  output.assets,
-                  config.target.stateQueueUtxo.utxo.assets,
-                ),
-              "DA attestation apply state queue",
-            ),
-          },
-        } satisfies DaAvailabilityMintRedeemer as never,
-        DaAvailabilityMintRedeemerSchema as never,
-      );
-    }) satisfies BuildTxWithRedeemer;
     const stateQueueSpendRedeemer = ((ctx) =>
       Data.to(
         {
@@ -1104,15 +1212,14 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         StateQueueSpendRedeemer as never,
       )) satisfies BuildTxWithRedeemer;
 
+    // Output order is load-bearing: see the position constants above.
     return lucid
       .newTx()
       .validFrom(Number(config.validityRange.validFrom))
       .validTo(Number(config.validityRange.validTo))
       .readFrom([
-        config.hubOracleRefInput,
         config.daParamsUtxo,
-        config.referenceScripts.availabilityChallengeMinting,
-        config.referenceScripts.availabilityChallengeBondWithdrawal,
+        pool.utxo,
         config.referenceScripts.daAttestationMinting,
         config.referenceScripts.daAttestationSpending,
         config.referenceScripts.stateQueueMinting,
@@ -1125,24 +1232,8 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         { kind: "inline", value: updatedStateQueueDatum },
         config.target.stateQueueUtxo.utxo.assets,
       )
-      .pay.ToContract(
-        contracts.availabilityChallenge.spendingScriptAddress,
-        { kind: "inline", value: encodedBondDatum },
-        {
-          lovelace: config.attestation.utxo.assets.lovelace ?? 0n,
-          [bondUnit]: 1n,
-        },
-      )
-      .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer)
-      .mintAssets({ [bondUnit]: 1n }, availabilityMintRedeemer)
-      .withdraw(
-        scriptRewardAddress(
-          network,
-          contracts.availabilityChallenge.yields.bond.withdrawalScript,
-        ),
-        0n,
-        Data.void(),
-      );
+      .pay.ToAddress(refundAddress, refundAssets)
+      .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer);
   });
 
 /**

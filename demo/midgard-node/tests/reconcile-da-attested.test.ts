@@ -31,7 +31,7 @@ const DA_ATTESTATION_POLICY_ID = "22".repeat(28);
 // it for the same reason the real contract set does.
 const AVAILABILITY_CHALLENGE_POLICY_ID = "33".repeat(28);
 const ATTESTED = {
-  Attested: { da_bond_asset_name: "44".repeat(32) },
+  Attested: { commitment_hash: "44".repeat(32) },
 } satisfies SDK.DaAvailabilityStateQueueStatus;
 
 const observation = (
@@ -100,7 +100,7 @@ describe("DA-attested reconciliation", () => {
           observation({
             daAvailability: {
               Challenged: {
-                da_bond_asset_name: "44".repeat(32),
+                commitment_hash: "44".repeat(32),
                 challenge_asset_name: "55".repeat(32),
               },
             },

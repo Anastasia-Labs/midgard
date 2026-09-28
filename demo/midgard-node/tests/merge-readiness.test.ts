@@ -5,11 +5,11 @@ const PUBLISHED = {
   Published: { terminal_commitment: "22".repeat(32) },
 } satisfies SDK.DaAvailabilityStateQueueStatus;
 const ATTESTED = {
-  Attested: { da_bond_asset_name: "33".repeat(32) },
+  Attested: { commitment_hash: "33".repeat(32) },
 } satisfies SDK.DaAvailabilityStateQueueStatus;
 const CHALLENGED = {
   Challenged: {
-    da_bond_asset_name: "33".repeat(32),
+    commitment_hash: "33".repeat(32),
     challenge_asset_name: "44".repeat(32),
   },
 } satisfies SDK.DaAvailabilityStateQueueStatus;

@@ -33,6 +33,12 @@ const FULL_RESPONSE_WINDOW_MS =
 const MAX_VALIDITY_RANGE_MS = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.timing.max_validity_range_ms,
 );
+const P = TEST_AVAILABILITY_PARAMETERS;
+/** Timeout slash of a pool holding at least `da_bond` of backing (c = 0). */
+const FULL_SLASH_PAYOUT = P.da_bond_lovelace - P.da_slash_penalty_lovelace;
+
+const txFee = (f: AvailabilityFixture, name: string) =>
+  f.measurements.find((m) => m.name === name)?.fee;
 
 // The full-response scenario lands 301 publications and one settlement between
 // the two tranches, one block each, after the open; every one must land before
@@ -60,16 +66,41 @@ const widestBackdatedOpenValidity = (f: AvailabilityFixture) => {
 };
 
 describe("availability challenge real ledger lifecycle under Van Rossem limits", () => {
-  it("attests, bonds, opens, publishes ordered carriers, settles and closes with exact refunds", async () => {
+  it("attests against the pooled bond, opens, publishes ordered carriers, settles and closes with exact refunds", async () => {
     const f = await createAvailabilityFixture();
-    const bonded = await attestAvailability(f, {
-      refuseBondSubstitution: true,
+    const poolBefore = await f.getPool();
+    const attested = await attestAvailability(f, {
+      refuseCommitmentPreimageMismatch: true,
     });
-    const open = await openAvailability(f, bonded);
-    await assertAvailabilityRefusal(open.build({ omitSigner: true }));
-    await assertAvailabilityRefusal(open.build({ omitYield: true }));
-    await assertAvailabilityRefusal(open.build({ wrongYield: true }));
+    const open = await openAvailability(f, attested);
+    await assertAvailabilityRefusal(open.build({ omitSigner: true }), {
+      purpose: "withdraw",
+      script: "availability-challenge open withdrawal",
+    });
+    await assertAvailabilityRefusal(open.build({ omitYield: true }), {
+      purpose: "mint",
+      script: "availability-challenge minting",
+    });
+    await assertAvailabilityRefusal(open.build({ wrongYield: true }), {
+      purpose: "mint",
+      script: "availability-challenge minting",
+    });
+    // A commitment other than the preimage of the node's commitment_hash.
+    const [first, ...rest] = f.commitment.tranche_descriptors;
+    await assertAvailabilityRefusal(
+      open.build({
+        commitment: {
+          ...f.commitment,
+          tranche_descriptors: [
+            { ...first!, chunk_commitment: "00".repeat(32) },
+            ...rest,
+          ],
+        },
+      }),
+      { purpose: "withdraw", script: "availability-challenge open withdrawal" },
+    );
     const state = await open.submit();
+    expect(state.record.assets.lovelace).toBe(P.challenge_record_lovelace);
     f.lucid.selectWallet.fromPrivateKey(f.responder.privateKey);
     const [tranche] = SDK.planDaAvailabilityPublications({
       commitment: f.commitment,
@@ -87,11 +118,13 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
         undefined,
         { badChunk: true },
       ),
+      { purpose: "spend", script: "availability-challenge spending" },
     );
     for (const publication of tranche!.publications) {
       if (carrier)
         await assertAvailabilityRefusal(
           buildAvailabilityPublication(f, thread, publication),
+          { purpose: "spend", script: "availability-challenge spending" },
         );
       const outputs = await f.submit(
         `publish chunk ${publication.chunk_index}`,
@@ -109,32 +142,40 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
       buildAvailabilitySettlement(
         f,
         open,
-        state.bond,
+        state.record,
         state.terminal,
         thread,
         carrier,
       ),
     );
     await assertAvailabilityRefusal(
-      buildAvailabilityClose(f, open, state.bond, state.queue, terminal!, {
+      buildAvailabilityClose(f, open, state.record, state.queue, terminal!, {
         redirectRefund: true,
       }),
+      {
+        purpose: "withdraw",
+        script: "availability-challenge close withdrawal",
+      },
     );
     const outputs = await f.submit(
       "close published challenge",
-      buildAvailabilityClose(f, open, state.bond, state.queue, terminal!),
+      buildAvailabilityClose(f, open, state.record, state.queue, terminal!),
     );
-    expect(outputs[1]!.address).toBe(f.responder.address);
+    expect(outputs).toHaveLength(2);
+    // The one challenger refund returns the reserve less every fee, and the
+    // burned record's lovelace.
+    expect(outputs[1]!.address).toBe(f.challenger.address);
     expect(outputs[1]!.assets.lovelace).toBe(
-      TEST_AVAILABILITY_PARAMETERS.da_bond_lovelace,
+      P.challenger_bond_lovelace -
+        2n * P.max_publication_fee_lovelace -
+        P.max_settlement_fee_lovelace -
+        P.max_close_fee_lovelace +
+        P.challenge_record_lovelace,
     );
-    expect(outputs[2]!.address).toBe(f.challenger.address);
-    expect(outputs[2]!.assets.lovelace).toBe(
-      TEST_AVAILABILITY_PARAMETERS.challenger_bond_lovelace -
-        2n * TEST_AVAILABILITY_PARAMETERS.max_publication_fee_lovelace -
-        TEST_AVAILABILITY_PARAMETERS.max_settlement_fee_lovelace -
-        TEST_AVAILABILITY_PARAMETERS.max_close_fee_lovelace,
-    );
+    // A close never touches the pooled bond.
+    const poolAfter = await f.getPool();
+    expect(poolAfter.assets).toEqual(poolBefore.assets);
+    expect(poolAfter.datum).toBe(poolBefore.datum);
     expect(
       await f.lucid.utxosAt(
         f.contracts.availabilityChallenge.spendingScriptAddress,
@@ -160,9 +201,9 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
 
   it("refuses settlement one slot before a backdated open's upper-anchored deadline, then times out a nonresponding attestation with queue removal", async () => {
     const f = await createAvailabilityFixture(1);
-    const bonded = await attestAvailability(f);
+    const attested = await attestAvailability(f);
     const { validFrom, validTo } = widestBackdatedOpenValidity(f);
-    const open = await openAvailability(f, bonded, { validFrom, validTo });
+    const open = await openAvailability(f, attested, { validFrom, validTo });
     const state = await open.submit();
     expect(open.plan.responseDeadline).toBe(
       validTo - 1n + SMALL_RESPONSE_WINDOW_MS,
@@ -181,12 +222,16 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
       buildAvailabilitySettlement(
         f,
         open,
-        state.bond,
+        state.record,
         state.terminal,
         state.threads[0]!,
         undefined,
         { bypassDeadlinePlanner: true },
       ),
+      {
+        purpose: "withdraw",
+        script: "availability-challenge settle withdrawal",
+      },
     );
     advanceAvailabilityDeadline(f, open);
     const [terminal] = await f.submit(
@@ -194,19 +239,38 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
       buildAvailabilitySettlement(
         f,
         open,
-        state.bond,
+        state.record,
         state.terminal,
         state.threads[0]!,
       ),
     );
+    const poolBefore = await f.getPool();
     await assertAvailabilityRefusal(
-      buildAvailabilityTimeout(f, open, state.bond, state.queue, terminal!, {
-        redirectSlash: true,
-      }),
+      (
+        await buildAvailabilityTimeout(
+          f,
+          open,
+          state.record,
+          state.queue,
+          terminal!,
+          { redirectPayout: true },
+        )
+      ).tx,
+      {
+        purpose: "withdraw",
+        script: "availability-challenge timeout withdrawal",
+      },
+    );
+    const timeout = await buildAvailabilityTimeout(
+      f,
+      open,
+      state.record,
+      state.queue,
+      terminal!,
     );
     const outputs = await f.submit(
       "timeout and unavailable head removal",
-      buildAvailabilityTimeout(f, open, state.bond, state.queue, terminal!),
+      timeout.tx,
     );
     expect(
       await f.lucid.utxosAtWithUnit(
@@ -215,16 +279,31 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
       ),
     ).toHaveLength(0);
     expect(Data.from(outputs[1]!.datum!, SDK.CorrectionLockDatum)).toBe("Idle");
+    // Full slash: the pool gives up da_bond; the penalty share is the whole
+    // fee (c = 0), the rest merges into the one challenger output.
+    expect(txFee(f, "timeout and unavailable head removal")).toBe(
+      P.da_slash_penalty_lovelace,
+    );
     expect(outputs[2]!.address).toBe(f.challenger.address);
     expect(outputs[2]!.assets.lovelace).toBe(
-      TEST_AVAILABILITY_PARAMETERS.da_bond_lovelace,
+      P.challenger_bond_lovelace -
+        P.max_settlement_fee_lovelace +
+        P.challenge_record_lovelace +
+        FULL_SLASH_PAYOUT,
     );
-    expect(outputs[3]!.address).toBe(f.challenger.address);
-    expect(outputs[3]!.assets.lovelace).toBe(
-      TEST_AVAILABILITY_PARAMETERS.challenger_bond_lovelace -
-        TEST_AVAILABILITY_PARAMETERS.max_settlement_fee_lovelace -
-        TEST_AVAILABILITY_PARAMETERS.max_timeout_fee_lovelace,
-    );
+    expect(outputs[3]!.address).toBe(poolBefore.address);
+    expect(outputs[3]!.assets).toEqual({
+      ...poolBefore.assets,
+      lovelace: poolBefore.assets.lovelace - P.da_bond_lovelace,
+    });
+    expect(outputs[3]!.datum).toBe(poolBefore.datum);
+    expect(outputs[4]!.address).toBe(f.responder.address);
+    expect(outputs[4]!.assets.lovelace).toBe(state.queue.assets.lovelace);
+    expect(timeout.plan).toMatchObject({
+      taken: P.da_bond_lovelace,
+      feePart: P.da_slash_penalty_lovelace,
+      feeLovelace: P.da_slash_penalty_lovelace,
+    });
     expect(
       await f.lucid.utxosAt(
         f.contracts.availabilityChallenge.spendingScriptAddress,
@@ -235,26 +314,26 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
 
   it("anchors a backdated open at its upper bound, so the honest response lands after the lower-anchored deadline and early settlement is refused", async () => {
     const f = await createAvailabilityFixture();
-    const bonded = await attestAvailability(f);
+    const attested = await attestAvailability(f);
     const { validFrom, validTo } = widestBackdatedOpenValidity(f);
-    const open = await openAvailability(f, bonded, { validFrom, validTo });
+    const open = await openAvailability(f, attested, { validFrom, validTo });
     // Differential pair: the same open with its window anchored at the
     // backdated lower bound is refused by the validator.
-    await assertAvailabilityRefusal(open.build({ anchorAt: validFrom }));
+    await assertAvailabilityRefusal(open.build({ anchorAt: validFrom }), {
+      purpose: "withdraw",
+      script: "availability-challenge open withdrawal",
+    });
     // The open lands in the current slot, strictly before its upper bound.
     const landedAt = BigInt(f.emulator.now());
     expect(landedAt).toBeLessThan(validTo);
     const state = await open.submit();
     const deadline = validTo - 1n + SMALL_RESPONSE_WINDOW_MS;
-    const challenged = Data.from(
-      state.bond.datum!,
-      SDK.DaAvailabilityBondDatum,
+    const record = SDK.parseDaAvailabilityChallengeRecordCbor(
+      state.record.datum!,
     );
-    expect(challenged).toHaveProperty("ChallengedBond");
-    if (!("ChallengedBond" in challenged))
-      throw new Error("Bond not challenged");
-    expect(challenged.ChallengedBond.opened_at).toBe(validTo - 1n);
-    expect(challenged.ChallengedBond.response_deadline).toBe(deadline);
+    expect(record.opened_at).toBe(validTo - 1n);
+    expect(record.response_deadline).toBe(deadline);
+    expect(record.commitment).toEqual(f.commitment);
     // The committee keeps at least the whole window after the open lands.
     expect(deadline - landedAt).toBeGreaterThanOrEqual(
       SMALL_RESPONSE_WINDOW_MS,
@@ -269,12 +348,16 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
       buildAvailabilitySettlement(
         f,
         open,
-        state.bond,
+        state.record,
         state.terminal,
         state.threads[0]!,
         undefined,
         { bypassDeadlinePlanner: true },
       ),
+      {
+        purpose: "withdraw",
+        script: "availability-challenge settle withdrawal",
+      },
     );
     f.lucid.selectWallet.fromPrivateKey(f.responder.privateKey);
     const [tranche] = SDK.planDaAvailabilityPublications({
@@ -301,7 +384,7 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
       buildAvailabilitySettlement(
         f,
         open,
-        state.bond,
+        state.record,
         state.terminal,
         thread,
         carrier,
@@ -309,11 +392,13 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
     );
     const outputs = await f.submit(
       "close backdated published challenge",
-      buildAvailabilityClose(f, open, state.bond, state.queue, terminal!),
+      buildAvailabilityClose(f, open, state.record, state.queue, terminal!),
     );
-    expect(outputs[1]!.address).toBe(f.responder.address);
+    expect(outputs[1]!.address).toBe(f.challenger.address);
     expect(outputs[1]!.assets.lovelace).toBe(
-      TEST_AVAILABILITY_PARAMETERS.da_bond_lovelace,
+      terminal!.assets.lovelace -
+        P.max_close_fee_lovelace +
+        P.challenge_record_lovelace,
     );
   }, 180_000);
 
@@ -359,7 +444,7 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
         buildAvailabilitySettlement(
           f,
           open,
-          state.bond,
+          state.record,
           terminal,
           i === 0 ? firstThread! : i === 1 ? partialThread! : state.threads[i]!,
           i === 0 ? carrier : i === 1 ? partialCarrier : undefined,
@@ -374,7 +459,15 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
     expect(terminalDatum.has_timed_out_tranche).toBe(true);
     await f.submit(
       "maximum commitment timeout and queue correction",
-      buildAvailabilityTimeout(f, open, state.bond, state.queue, terminal!),
+      (
+        await buildAvailabilityTimeout(
+          f,
+          open,
+          state.record,
+          state.queue,
+          terminal!,
+        )
+      ).tx,
     );
     expect(
       await f.lucid.utxosAt(
@@ -427,7 +520,7 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
           buildAvailabilitySettlement(
             f,
             open,
-            state.bond,
+            state.record,
             terminal!,
             thread,
             carrier,
@@ -440,13 +533,14 @@ describe("availability challenge real ledger lifecycle under Van Rossem limits",
       ).toEqual(Buffer.from(f.payload));
       const outputs = await f.submit(
         "two tranche complete close",
-        buildAvailabilityClose(f, open, state.bond, state.queue, terminal!),
+        buildAvailabilityClose(f, open, state.record, state.queue, terminal!),
       );
-      expect(outputs[2]!.assets.lovelace).toBe(
-        TEST_AVAILABILITY_PARAMETERS.challenger_bond_lovelace -
-          301n * TEST_AVAILABILITY_PARAMETERS.max_publication_fee_lovelace -
-          2n * TEST_AVAILABILITY_PARAMETERS.max_settlement_fee_lovelace -
-          TEST_AVAILABILITY_PARAMETERS.max_close_fee_lovelace,
+      expect(outputs[1]!.assets.lovelace).toBe(
+        P.challenger_bond_lovelace -
+          301n * P.max_publication_fee_lovelace -
+          2n * P.max_settlement_fee_lovelace -
+          P.max_close_fee_lovelace +
+          P.challenge_record_lovelace,
       );
       expect(
         await f.lucid.utxosAt(

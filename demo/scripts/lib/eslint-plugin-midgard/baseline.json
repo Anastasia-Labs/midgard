@@ -693,10 +693,6 @@
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": ["items.sort((a, b) => a.key.localeCompare(b.key));"]
     },
-    "midgard-node/tests/helpers/availability-challenge-emulator.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": ["].sort((a, b) => a.hash.localeCompare(b.hash)),"]
-    },
     "midgard-node/tests/helpers/history-owner-rollback-journey.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [

@@ -214,7 +214,6 @@ export type WithdrawalValidator = {
 export type AuthenticatedValidator = SpendingValidator & MintingValidator;
 
 export type AvailabilityChallengeYieldValidators = {
-  readonly bond: WithdrawalValidator;
   readonly open: WithdrawalValidator;
   readonly settle: WithdrawalValidator;
   readonly close: WithdrawalValidator;
@@ -368,7 +367,13 @@ export type MidgardValidators = {
   hubOracle: AuthenticatedValidator;
   daParamsGovernor: AuthenticatedValidator;
   daAttestation: AuthenticatedValidator;
-  /** Per-header retained DA bond, challenge, tranche and carrier authority. */
+  /**
+   * The pooled DA committee bond (the return type of
+   * `buildDaBondPoolValidator`): one mint + spend script holding the pool NFT.
+   * Apply reads it as a reference input; Timeout slashes it.
+   */
+  daBondPool: AuthenticatedValidator;
+  /** Commitment-bound availability challenge, tranche and carrier authority. */
   availabilityChallenge: AvailabilityChallengeValidator;
   /** Deployment-bound singleton which serializes state correction. */
   correctionLock: SpendingValidator;

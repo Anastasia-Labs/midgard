@@ -18,6 +18,7 @@ import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
 } from "./active-operators.js";
+import { DA_AVAILABILITY_PROFILE_BOND_AMOUNTS } from "./availability-challenge.js";
 import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   Bech32DeserializationError,
@@ -33,6 +34,7 @@ import {
   type DaParamsDatum as DaParamsDatumType,
   daParamsUnit,
 } from "./da-attestation.js";
+import { appendDaBondPoolInitialization } from "./da-bond-pool-transactions.js";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofCatalogueDatum,
@@ -80,6 +82,8 @@ export type AtomicProtocolInitReferenceScripts = {
   readonly activeOperatorsMinting: UTxO;
   readonly retiredOperatorsMinting: UTxO;
   readonly fraudProofCatalogueMinting: UTxO;
+  /** Without it the pool minting script is attached inline. */
+  readonly daBondPoolMinting?: UTxO;
 };
 
 export type InitializationParams = {
@@ -93,6 +97,13 @@ export type InitializationParams = {
     readonly validTo: bigint;
   };
   referenceScripts?: AtomicProtocolInitReferenceScripts;
+  /**
+   * The DA bond pool's initial lovelace. Defaults to the pool floor,
+   * `da_bond_pool_floor_lovelace` of the selected deployment profile, which
+   * the pool's compiled `ParametersV1` must equal. The first funding to one
+   * bond happens after init, before the first attestation.
+   */
+  daBondPoolLovelace?: bigint;
 };
 
 const encodeLinkedListRootDatum = (
@@ -106,6 +117,8 @@ const encodeLinkedListRootDatum = (
 
 // Atomic initialization appends protocol root outputs in a fixed order before
 // wallet change, and each Init validator independently verifies its output.
+// The DA bond pool output comes last, after the event-history roots, so no
+// fixed index above moves; its InitPool redeemer reads its own final position.
 const encodeInitOutputRedeemer = <T>(outputIndex: bigint, schema: T): string =>
   Data.to({ Init: { output_index: outputIndex } } as never, schema as never);
 
@@ -384,6 +397,16 @@ export const incompleteInitializationTxProgram = (
               withdrawal: params.referenceScripts.withdrawalHistory,
             },
           }),
+    });
+
+    // The pool's init_ref is the hub one-shot this transaction already spends.
+    const daBondPoolFloorLovelace =
+      DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace;
+    appendDaBondPoolInitialization(tx, {
+      poolValidator: midgardValidators.daBondPool,
+      floorLovelace: daBondPoolFloorLovelace,
+      lovelace: params.daBondPoolLovelace ?? daBondPoolFloorLovelace,
+      referenceScript: params.referenceScripts?.daBondPoolMinting,
     });
 
     if (params.referenceScripts !== undefined) {

@@ -1,10 +1,13 @@
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
   type Assets,
+  Constr,
+  credentialToAddress,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
+  type TxOutput,
   type UTxO,
-  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -17,15 +20,21 @@ import {
   type DaAttestationBuildError,
   type DaAttestationBuildFailureReason,
   DaAttestationDatum,
+  DaAttestationMintRedeemer,
   type DaAttestationReferenceScripts,
   DaAttestationSpendRedeemer,
   type DaAttestationStateQueueTarget,
   daAttestationUnit,
   type DaAttestationUtxo,
+  daAvailabilityCommitmentHash,
+  type DaAvailabilityParameters,
+  type DaBondPoolDatum,
+  daBondPoolUnit,
   type DaParamsDatum,
   EMPTY_ATTESTED_SIGNER_BITMAP,
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   encodeDaAttestationSignatureWitnesses,
+  encodeDaBondPoolDatum,
   encodeLinkedListNodeView,
   incompleteAddDaAttestationSignaturesTxProgram,
   incompleteApplyDaAttestationToStateQueueTxProgram,
@@ -46,7 +55,6 @@ const availabilityCommitment = (headerHash: string) =>
     deploymentIdentity: h28(0x71),
     headerHash,
     payload: Uint8Array.of(1),
-    bondOwner: h28(0x72),
     responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4096,
       trancheByteLength: 4 * 1024 * 1024,
@@ -56,7 +64,8 @@ const availabilityCommitment = (headerHash: string) =>
 
 type RecordedPayment = {
   readonly address: string;
-  readonly datum: { readonly kind: "inline"; readonly value: string };
+  /** Absent for `pay.ToAddress`. */
+  readonly datum?: { readonly kind: "inline"; readonly value: string };
   readonly assets: Assets;
 };
 
@@ -75,9 +84,17 @@ type Recording = {
     readonly validFrom: number;
     readonly validTo: number;
   }[];
+  /** Every `utxosAtWithUnit` query, in order: the apply's pool fetches. */
+  readonly unitQueries: { readonly address: string; readonly unit: string }[];
 };
 
-const makeRecordingLucid = (): {
+/**
+ * `chain` is what `utxosAtWithUnit` answers from, and a test may swap its
+ * contents between builds: the apply builder must query it on every build.
+ */
+const makeRecordingLucid = (
+  chain: { utxos: readonly UTxO[] } = { utxos: [] },
+): {
   readonly lucid: LucidEvolution;
   readonly record: Recording;
 } => {
@@ -89,9 +106,16 @@ const makeRecordingLucid = (): {
     payments: [],
     signerKeys: [],
     validityRanges: [],
+    unitQueries: [],
   };
   const lucid = {
     config: () => ({ network: "Custom" }),
+    utxosAtWithUnit: async (address: string, unit: string) => {
+      record.unitQueries.push({ address, unit });
+      return chain.utxos.filter(
+        (utxo) => utxo.address === address && (utxo.assets[unit] ?? 0n) > 0n,
+      );
+    },
     newTx: () => {
       const tx = {
         validFrom: (validFrom: number) => {
@@ -131,6 +155,10 @@ const makeRecordingLucid = (): {
             assets: Assets,
           ) => {
             record.payments.push({ address, datum, assets });
+            return tx;
+          },
+          ToAddress: (address: string, assets: Assets) => {
+            record.payments.push({ address, assets });
             return tx;
           },
         },
@@ -174,29 +202,8 @@ const makeFixture = () => {
   const contracts = {
     daAttestation: validator(0xaa, "addr_da_attestation"),
     stateQueue: validator(0xbb, "addr_state_queue"),
-    availabilityChallenge: {
-      ...validator(0xcc, "addr_availability_challenge"),
-      yields: Object.fromEntries(
-        ["bond", "open", "settle", "close", "timeout"].map((arm) => [
-          arm,
-          {
-            withdrawalScript: {
-              type: "PlutusV3",
-              script: "49480100002221200101",
-            },
-            withdrawalScriptCBOR: "49480100002221200101",
-            withdrawalScriptHash: validatorToScriptHash({
-              type: "PlutusV3",
-              script: "49480100002221200101",
-            }),
-          },
-        ]),
-      ),
-    },
-  } as Pick<
-    MidgardValidators,
-    "availabilityChallenge" | "daAttestation" | "stateQueue"
-  >;
+    daBondPool: validator(0xdd, "addr_da_bond_pool"),
+  } as Pick<MidgardValidators, "daAttestation" | "daBondPool" | "stateQueue">;
   const headerHash = h28(0x10);
   const stateQueueNode: StateQueueNode = {
     proven_fraud: null,
@@ -281,11 +288,6 @@ const makeFixture = () => {
     datum: attestationDatum,
   };
   const referenceScripts: DaAttestationReferenceScripts = {
-    availabilityChallengeMinting: makeUtxo(8),
-    availabilityChallengeBondWithdrawal: {
-      ...makeUtxo(9),
-      scriptRef: contracts.availabilityChallenge.yields.bond.withdrawalScript,
-    },
     daAttestationMinting: makeUtxo(4),
     daAttestationSpending: makeUtxo(5),
     stateQueueMinting: makeUtxo(6),
@@ -300,10 +302,52 @@ const makeFixture = () => {
     attestation,
     attestationUnit,
     referenceScripts,
-    hubOracleRefInput: makeUtxo(9),
+    availabilityParameters: AVAILABILITY_PARAMETERS,
     applyValidityRange: { validFrom: 1_000n, validTo: 2_000n },
+    // Output index 0 of the all-zero tx hash: it sorts before every other
+    // reference input although the builder reads it second, so a pool index
+    // taken from the `readFrom` order instead of the ledger's sorted order is
+    // off by one.
+    pool: (datum: DaBondPoolDatum, lovelace: bigint): UTxO =>
+      makeUtxo(
+        0,
+        {
+          lovelace,
+          [daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+        },
+        encodeDaBondPoolDatum(datum),
+        contracts.daBondPool.spendingScriptAddress,
+      ),
   };
 };
+
+/**
+ * Only `da_bond_lovelace` and `da_bond_pool_floor_lovelace` matter to the
+ * apply pre-check; the rest is a well-formed filler.
+ */
+const AVAILABILITY_PARAMETERS: DaAvailabilityParameters = {
+  response_geometry: availabilityResponseGeometry({
+    chunkByteLength: 4096,
+    trancheByteLength: 4 * 1024 * 1024,
+    maxTrancheCount: 16,
+  }),
+  da_bond_lovelace: 100_000_000n,
+  challenger_bond_lovelace: 50_000_000n,
+  max_open_fee_lovelace: 1_000_000n,
+  max_publication_fee_lovelace: 1_000_000n,
+  max_settlement_fee_lovelace: 1_000_000n,
+  max_close_fee_lovelace: 1_000_000n,
+  max_timeout_fee_lovelace: 1_000_000n,
+  da_slash_penalty_lovelace: 10_000_000n,
+  da_bond_min_top_up_lovelace: 10_000_000n,
+  da_bond_pool_floor_lovelace: 5_000_000n,
+  challenge_record_lovelace: 27_000_000n,
+};
+
+/** A pool backing exactly one DA bond above its floor: the apply boundary. */
+const EXACTLY_BONDED_POOL_LOVELACE =
+  AVAILABILITY_PARAMETERS.da_bond_pool_floor_lovelace +
+  AVAILABILITY_PARAMETERS.da_bond_lovelace;
 
 const outRefKey = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
@@ -453,7 +497,7 @@ describe("DA attestation SDK builders", () => {
       [fixture.attestationUnit]: 1n,
     });
     const datum = Data.from(
-      record.payments[0]!.datum.value,
+      record.payments[0]!.datum!.value,
       DaAttestationDatum,
     );
     expect(datum).toMatchObject({
@@ -492,7 +536,7 @@ describe("DA attestation SDK builders", () => {
     );
     expect(record.payments[0]?.assets).toEqual(fixture.attestation.utxo.assets);
     const datum = Data.from(
-      record.payments[0]!.datum.value,
+      record.payments[0]!.datum!.value,
       DaAttestationDatum,
     );
     expect(datum.attested_signers).toBe(`c0${"00".repeat(31)}`);
@@ -502,7 +546,7 @@ describe("DA attestation SDK builders", () => {
         outputs: record.payments.map((payment) => ({
           address: payment.address,
           assets: payment.assets,
-          datum: payment.datum.value,
+          datum: payment.datum?.value,
         })),
         referenceInputs: record.reads[0],
       }),
@@ -535,40 +579,33 @@ describe("DA attestation SDK builders", () => {
     );
   });
 
-  it("assembles apply with DA burn and state-queue datum update", async () => {
+  it("assembles apply with DA burn, beneficiary refund, pool reference and state-queue datum update", async () => {
     const fixture = makeFixture();
-    const { lucid, record } = makeRecordingLucid();
-    const thresholdAttestation: DaAttestationUtxo = {
-      ...fixture.attestation,
-      datum: {
-        ...fixture.attestation.datum,
-        attested_signers: `c0${"00".repeat(31)}`,
-        attestation_count: 2n,
-      },
-    };
+    const pool = fixture.pool("Bonded", EXACTLY_BONDED_POOL_LOVELACE);
+    const { lucid, record } = makeRecordingLucid({ utxos: [pool] });
 
     await run(
       incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         fixture.contracts,
-        {
-          hubOracleRefInput: fixture.hubOracleRefInput,
-          daParamsUtxo: fixture.daParamsUtxo,
-          daParamsDatum: fixture.daParamsDatum,
-          target: fixture.target,
-          attestation: thresholdAttestation,
-          referenceScripts: fixture.referenceScripts,
-          validityRange: fixture.applyValidityRange,
-        },
+        applyConfig(fixture),
       ),
     );
 
+    // The pool is fetched by the builder itself, at the pool script address
+    // under its NFT unit.
+    expect(record.unitQueries).toEqual([
+      {
+        address: fixture.contracts.daBondPool.spendingScriptAddress,
+        unit: daBondPoolUnit(fixture.contracts.daBondPool.policyId),
+      },
+    ]);
+    // Exactly the governed params, the pool and the four scripts apply runs:
+    // no hub oracle and no availability-challenge script any more.
     expect(referenceSet(record)).toEqual(
       expectedSet([
-        fixture.hubOracleRefInput,
         fixture.daParamsUtxo,
-        fixture.referenceScripts.availabilityChallengeMinting,
-        fixture.referenceScripts.availabilityChallengeBondWithdrawal,
+        pool,
         fixture.referenceScripts.daAttestationMinting,
         fixture.referenceScripts.daAttestationSpending,
         fixture.referenceScripts.stateQueueMinting,
@@ -576,34 +613,37 @@ describe("DA attestation SDK builders", () => {
       ]),
     );
     // The apply spends the attestation and the state-queue node and nothing
-    // else — the reference-only UTxOs must stay out of the input set.
+    // else — the reference-only UTxOs (the pool included) stay out of the
+    // input set.
     expect(collectedSet(record)).toEqual(
       expectedSet([
-        thresholdAttestation.utxo,
+        thresholdAttestation(fixture).utxo,
         fixture.target.stateQueueUtxo.utxo,
       ]),
     );
-    expect(record.mints[0]?.assets).toEqual({
-      [fixture.attestationUnit]: -1n,
-    });
-    expect(record.withdrawals).toEqual([
-      {
-        address: expect.stringMatching(/^stake_test/u),
-        amount: 0n,
-        redeemer: Data.void(),
-      },
+    // Only the DAAT burn: no bond mint and no availability-policy mint.
+    expect(record.mints.map(({ assets }) => assets)).toEqual([
+      { [fixture.attestationUnit]: -1n },
     ]);
+    expect(record.withdrawals).toEqual([]);
     expect(record.validityRanges).toEqual([
       { validFrom: 1_000, validTo: 2_000 },
     ]);
+    expect(record.payments).toHaveLength(2);
     expect(record.payments[0]?.address).toBe(
       fixture.contracts.stateQueue.spendingScriptAddress,
     );
     expect(record.payments[0]?.assets).toEqual(
       fixture.target.stateQueueUtxo.utxo.assets,
     );
+    // The refund: the attestation's whole value less the burned DAAT, to the
+    // frozen beneficiary.
+    expect(record.payments[1]).toEqual({
+      address: beneficiaryAddress,
+      assets: { lovelace: 5_000_000n },
+    });
     const linkedListDatum = Data.from(
-      record.payments[0]!.datum.value,
+      record.payments[0]!.datum!.value,
       LinkedListDatum,
     );
     expect("Node" in linkedListDatum.data).toBe(true);
@@ -615,62 +655,204 @@ describe("DA attestation SDK builders", () => {
       expect(stateQueueNode.header).toEqual(
         fixture.target.stateQueueNode.header,
       );
-      expect(stateQueueNode.da_attestation).toMatchObject({
+      expect(stateQueueNode.da_attestation).toEqual({
         Attested: {
-          da_bond_asset_name: expect.stringMatching(/^[0-9a-f]{64}$/u),
+          commitment_hash: daAvailabilityCommitmentHash(
+            fixture.attestation.datum.availability_commitment,
+          ),
         },
       });
     }
   });
 
-  it("refuses an apply with a substituted bond yield script", async () => {
+  it("encodes the apply redeemer with the pool index over the sorted reference inputs and positional outputs", async () => {
     const fixture = makeFixture();
-    const { lucid } = makeRecordingLucid();
-    await expectBuildRefusal(
+    const pool = fixture.pool("Bonded", EXACTLY_BONDED_POOL_LOVELACE);
+    const { lucid, record } = makeRecordingLucid({ utxos: [pool] });
+    await run(
       incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         fixture.contracts,
-        {
-          hubOracleRefInput: fixture.hubOracleRefInput,
-          daParamsUtxo: fixture.daParamsUtxo,
-          daParamsDatum: fixture.daParamsDatum,
-          target: fixture.target,
-          attestation: {
-            ...fixture.attestation,
-            datum: {
-              ...fixture.attestation.datum,
-              attested_signers: `c0${"00".repeat(31)}`,
-              attestation_count: 2n,
-            },
-          },
-          referenceScripts: {
-            ...fixture.referenceScripts,
-            availabilityChallengeBondWithdrawal: makeUtxo(9),
-          },
-          validityRange: fixture.applyValidityRange,
-        },
+        applyConfig(fixture),
       ),
-      "missing_bond_yield_reference_script",
+    );
+
+    // A change output identical to the refund (same address, same lovelace)
+    // follows the explicit outputs: a value lookup could not tell the two
+    // apart, the positional index can.
+    const outputs: TxOutput[] = [
+      ...recordedOutputs(record),
+      { address: beneficiaryAddress, assets: { lovelace: 5_000_000n } },
+    ];
+    const redeemerCbor = applyMintRedeemer(record)(
+      applyMintContext(fixture, record, outputs),
+    );
+    // Sorted inputs: the node (tx 01) then the attestation (tx 03). Sorted
+    // reference inputs: pool (tx 00), params (02), DAAT mint (04), DAAT spend
+    // (05), queue mint (06), queue spend (07). The pool is read second but
+    // sits first on the ledger.
+    expect(Data.from(redeemerCbor, DaAttestationMintRedeemer)).toEqual({
+      ApplyToStateQueue: {
+        da_attestation_input_index: 1n,
+        da_params_ref_input_index: 1n,
+        state_queue_input_index: 0n,
+        state_queue_output_index: 0n,
+        state_queue_mint_ref_script_input_index: 4n,
+        pool_ref_input_index: 0n,
+        refund_output_index: 1n,
+      },
+    });
+    // Byte-level: constructor 1, fields in the Aiken declaration order.
+    expect(redeemerCbor).toBe(
+      Data.to(new Constr(1, [1n, 1n, 0n, 0n, 4n, 0n, 1n])),
     );
   });
 
-  it("preflights apply header and threshold requirements", async () => {
+  it("refuses to write a refund index that does not point at the refund", async () => {
     const fixture = makeFixture();
-    const { lucid } = makeRecordingLucid();
+    const pool = fixture.pool("Bonded", EXACTLY_BONDED_POOL_LOVELACE);
+    const { lucid, record } = makeRecordingLucid({ utxos: [pool] });
+    await run(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        applyConfig(fixture),
+      ),
+    );
+    const [node, refund] = recordedOutputs(record);
+    const change: TxOutput = {
+      address: beneficiaryAddress,
+      assets: { lovelace: 1_234_567n },
+    };
+
+    expect(() =>
+      applyMintRedeemer(record)(
+        applyMintContext(fixture, record, [node!, change, refund!]),
+      ),
+    ).toThrow(/beneficiary refund is not at position 1/u);
+  });
+
+  it("refuses to apply against a withdrawing pool", async () => {
+    const fixture = makeFixture();
+    const { lucid } = makeRecordingLucid({
+      utxos: [
+        fixture.pool(
+          { Withdrawing: { unlock_at: 9_999n } },
+          EXACTLY_BONDED_POOL_LOVELACE,
+        ),
+      ],
+    });
 
     await expectBuildRefusal(
       incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         fixture.contracts,
-        {
-          hubOracleRefInput: fixture.hubOracleRefInput,
-          daParamsUtxo: fixture.daParamsUtxo,
-          daParamsDatum: fixture.daParamsDatum,
-          target: fixture.target,
-          attestation: fixture.attestation,
-          referenceScripts: fixture.referenceScripts,
-          validityRange: fixture.applyValidityRange,
-        },
+        applyConfig(fixture),
+      ),
+      "pool-withdrawing",
+    );
+  });
+
+  it("refuses to apply against a pool backing one lovelace less than a DA bond", async () => {
+    const fixture = makeFixture();
+    const { lucid } = makeRecordingLucid({
+      utxos: [fixture.pool("Bonded", EXACTLY_BONDED_POOL_LOVELACE - 1n)],
+    });
+
+    // The pool's total lovelace still exceeds `da_bond_lovelace`; only the
+    // floor-excluded backing is short.
+    await expectBuildRefusal(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        applyConfig(fixture),
+      ),
+      "pool-under-backed",
+    );
+  });
+
+  it("refuses to apply when no authentic pool can be fetched", async () => {
+    const fixture = makeFixture();
+    const { lucid } = makeRecordingLucid({ utxos: [] });
+
+    await expectBuildRefusal(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        applyConfig(fixture),
+      ),
+      "pool-unavailable",
+    );
+  });
+
+  it("skipPoolPrecheck (test-only) builds against a withdrawing or short pool and still references it", async () => {
+    const fixture = makeFixture();
+    for (const pool of [
+      fixture.pool(
+        { Withdrawing: { unlock_at: 9_999n } },
+        EXACTLY_BONDED_POOL_LOVELACE,
+      ),
+      fixture.pool("Bonded", EXACTLY_BONDED_POOL_LOVELACE - 1n),
+    ]) {
+      const { lucid, record } = makeRecordingLucid({ utxos: [pool] });
+      await run(
+        incompleteApplyDaAttestationToStateQueueTxProgram(
+          lucid,
+          fixture.contracts,
+          { ...applyConfig(fixture), skipPoolPrecheck: true },
+        ),
+      );
+      expect(referenceSet(record)).toContain(outRefKey(pool));
+    }
+  });
+
+  it("re-fetches the pool on every build instead of reusing an earlier outref", async () => {
+    const fixture = makeFixture();
+    const firstPool = fixture.pool("Bonded", EXACTLY_BONDED_POOL_LOVELACE);
+    const chain = { utxos: [firstPool] as readonly UTxO[] };
+    const { lucid, record } = makeRecordingLucid(chain);
+
+    await run(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        applyConfig(fixture),
+      ),
+    );
+    // A top-up spends the pool and recreates it at a new outref.
+    const toppedUpPool: UTxO = {
+      ...firstPool,
+      txHash: "ee".repeat(32),
+      assets: {
+        ...firstPool.assets,
+        lovelace: EXACTLY_BONDED_POOL_LOVELACE + 10_000_000n,
+      },
+    };
+    chain.utxos = [toppedUpPool];
+    await run(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        applyConfig(fixture),
+      ),
+    );
+
+    expect(record.unitQueries).toHaveLength(2);
+    expect(record.reads[1]?.map(outRefKey)).toContain(outRefKey(toppedUpPool));
+    expect(record.reads[1]?.map(outRefKey)).not.toContain(outRefKey(firstPool));
+  });
+
+  it("preflights apply header and threshold requirements before touching the pool", async () => {
+    const fixture = makeFixture();
+    const { lucid, record } = makeRecordingLucid({
+      utxos: [fixture.pool("Bonded", EXACTLY_BONDED_POOL_LOVELACE)],
+    });
+
+    await expectBuildRefusal(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        { ...applyConfig(fixture), attestation: fixture.attestation },
       ),
       "threshold_not_reached",
     );
@@ -679,26 +861,104 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
-          hubOracleRefInput: fixture.hubOracleRefInput,
-          daParamsUtxo: fixture.daParamsUtxo,
-          daParamsDatum: fixture.daParamsDatum,
-          target: fixture.target,
+          ...applyConfig(fixture),
           attestation: {
             ...fixture.attestation,
             // Threshold is satisfied, so the header-hash mismatch is the only
             // reason this must be refused.
             datum: {
-              ...fixture.attestation.datum,
+              ...thresholdAttestation(fixture).datum,
               header_hash: h28(0x99),
-              attested_signers: `c0${"00".repeat(31)}`,
-              attestation_count: 2n,
             },
           },
-          referenceScripts: fixture.referenceScripts,
-          validityRange: fixture.applyValidityRange,
         },
       ),
       "attestation_header_mismatch",
     );
+    expect(record.unitQueries).toEqual([]);
   });
 });
+
+const beneficiaryAddress = credentialToAddress("Custom", {
+  type: "Key",
+  hash: h28(0x66),
+});
+
+const thresholdAttestation = (
+  fixture: ReturnType<typeof makeFixture>,
+): DaAttestationUtxo => ({
+  ...fixture.attestation,
+  datum: {
+    ...fixture.attestation.datum,
+    attested_signers: `c0${"00".repeat(31)}`,
+    attestation_count: 2n,
+  },
+});
+
+const applyConfig = (fixture: ReturnType<typeof makeFixture>) => ({
+  daParamsUtxo: fixture.daParamsUtxo,
+  daParamsDatum: fixture.daParamsDatum,
+  target: fixture.target,
+  attestation: thresholdAttestation(fixture),
+  referenceScripts: fixture.referenceScripts,
+  validityRange: fixture.applyValidityRange,
+  availabilityParameters: fixture.availabilityParameters,
+});
+
+const recordedOutputs = (record: Recording): TxOutput[] =>
+  record.payments.map((payment) => ({
+    address: payment.address,
+    assets: payment.assets,
+    datum: payment.datum?.value ?? null,
+  }));
+
+const applyMintRedeemer = (
+  record: Recording,
+): ((ctx: RedeemerContext) => string) => {
+  const redeemer = record.mints[0]?.redeemer;
+  if (typeof redeemer !== "function") {
+    throw new Error("apply mint redeemer is not a context builder");
+  }
+  return redeemer as (ctx: RedeemerContext) => string;
+};
+
+/**
+ * The script-context projection the ledger would hand the apply mint: spent
+ * inputs in canonical (tx hash, index) order, reference inputs exactly as the
+ * builder read them (the helper under test must sort them itself), and the
+ * given final outputs.
+ */
+const applyMintContext = (
+  fixture: ReturnType<typeof makeFixture>,
+  record: Recording,
+  outputs: readonly TxOutput[],
+): RedeemerContext => {
+  const inputs = record.collects
+    .flatMap(({ inputs: collected }) => collected)
+    .sort((left, right) => {
+      const l = outRefKey(left),
+        r = outRefKey(right);
+      return l < r ? -1 : l > r ? 1 : 0;
+    });
+  const ownPurpose = {
+    tag: "mint",
+    index: 0n,
+    policyId: fixture.contracts.daAttestation.policyId,
+    redeemerListIndex: 0n,
+  } as const;
+  return {
+    inputs,
+    referenceInputs: record.reads.flat(),
+    outputs,
+    redeemers: [ownPurpose],
+    ownPurpose,
+    inputIndex: (input: Pick<UTxO, "txHash" | "outputIndex">) => {
+      const index = inputs.findIndex(
+        (candidate) =>
+          candidate.txHash === input.txHash &&
+          candidate.outputIndex === input.outputIndex,
+      );
+      return index < 0 ? undefined : BigInt(index);
+    },
+  } as unknown as RedeemerContext;
+};

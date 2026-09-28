@@ -2,9 +2,13 @@ import {
   type Assets,
   type BuildTxWithRedeemer,
   calculateMinLovelaceFromUTxO,
+  CML,
+  coreToTxOutput,
   credentialToAddress,
   Data,
+  getAddressDetails,
   type LucidEvolution,
+  type ProtocolParameters,
   type RedeemerContext,
   type Script,
   type TxBuilder,
@@ -22,6 +26,17 @@ import {
   CorrectionLockRedeemer,
   correctionLockUnit,
 } from "./correction-lock.js";
+import {
+  DA_ATTESTATION_ASSET_NAME_PREFIX,
+  DaAttestationDatum,
+} from "./da-attestation.js";
+import {
+  assertCanonicalDaBondPoolDatum,
+  DaBondPoolDatum,
+  DaBondPoolSpendRedeemer,
+  daBondPoolUnit,
+  planDaBondPoolSlash,
+} from "./da-bond-pool.js";
 import { HUB_ORACLE_ASSET_NAME } from "./hub-oracle.js";
 import { castStateQueueNodeToData, StateQueueNode } from "./ledger-state.js";
 import {
@@ -45,7 +60,6 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireSpendRedeemerIndex,
-  requireUniqueOutputIndex,
 } from "./tx-context-redeemer.js";
 import {
   isPlainPositiveAdaOnlyUtxo,
@@ -60,10 +74,16 @@ export type DaAvailabilityTransactionAction =
   | "timeout"
   | "prune"
   | "remove";
+/**
+ * Everything a challenge builder authenticates against. The pooled DA bond is
+ * part of the deployment: `contracts.daBondPool` is its spending validator and
+ * NFT policy, and `referenceScripts["da-bond-pool spending"]` is the
+ * authenticated reference script `TimeoutChallenge` spends it with.
+ */
 export type DaAvailabilityDeployment = {
   readonly contracts: Pick<
     MidgardValidators,
-    "availabilityChallenge" | "stateQueue" | "correctionLock"
+    "availabilityChallenge" | "stateQueue" | "correctionLock" | "daBondPool"
   >;
   readonly hubOraclePolicyId: string;
   readonly referenceScriptAuthPolicyId: string;
@@ -72,6 +92,11 @@ export type DaAvailabilityDeployment = {
   readonly hubOracleRefInput: UTxO;
 };
 export type DaAvailabilityTransactionResources = {
+  /**
+   * Plain-ADA wallet coins offered as collateral. The builder picks at most
+   * three of them, largest first, covering the ledger's collateral percentage
+   * of the exact fee.
+   */
   readonly collateralInputs: readonly UTxO[];
   readonly feeLovelace: bigint;
   readonly validFrom: bigint;
@@ -98,11 +123,18 @@ export type BuiltDaAvailabilityTransaction = {
   readonly collateralOutRefs: readonly UTxO[];
   readonly expectedOutputs: readonly DaAvailabilityExpectedOutput[];
   readonly feeLovelace: bigint;
+  /**
+   * Timeout only: the slashed penalty share of the fee, `min(penalty, taken)`.
+   * The challenger's own contribution is `feeLovelace - timeoutFeePartLovelace`.
+   */
+  readonly timeoutFeePartLovelace?: bigint;
 };
 export type DaAvailabilityChallengeSnapshot = {
   readonly headerHash: string;
-  readonly bond?: UTxO;
-  readonly bondDatum?: Availability.DaAvailabilityBondDatum;
+  readonly record?: UTxO;
+  readonly recordDatum?: Availability.DaAvailabilityChallengeRecord;
+  readonly pool?: UTxO;
+  readonly poolDatum?: DaBondPoolDatum;
   readonly queue?: StateQueueUTxO;
   readonly confirmedState: StateQueueUTxO;
   readonly descendant?: StateQueueUTxO;
@@ -117,10 +149,21 @@ export type DaAvailabilityChallengeSnapshot = {
 };
 export type OpenDaAvailabilityChallengeParams =
   DaAvailabilityTransactionResources & {
-    readonly bond: UTxO;
+    /**
+     * The full signed commitment. Its hash must equal the queue node's
+     * `Attested{commitment_hash}`; recover it from the Apply transaction with
+     * `recoverDaAvailabilityCommitmentFromApplyTx` when it is not at hand.
+     */
+    readonly commitment: Availability.DaAvailabilityCommitment;
     readonly queue: UTxO;
+    /** Exactly `challenger_bond_lovelace + challenge_record_lovelace + fee`. */
     readonly challengerFunding: UTxO;
     readonly challenger: string;
+    /**
+     * The deployment profile's `timing.da_challenge_window_ms` (compiled into
+     * the validator as `da_challenge_window_ms_v1`).
+     */
+    readonly daChallengeWindowMs: bigint;
   };
 export type PublishDaAvailabilityChunkParams =
   DaAvailabilityTransactionResources & {
@@ -130,14 +173,15 @@ export type PublishDaAvailabilityChunkParams =
   };
 export type SettleDaAvailabilityTrancheParams =
   DaAvailabilityTransactionResources & {
-    readonly bond: UTxO;
+    /** The challenge record, read as a reference input. */
+    readonly record: UTxO;
     readonly terminal: UTxO;
     readonly thread: UTxO;
     readonly carrier?: UTxO;
   };
 export type CloseDaAvailabilityChallengeParams =
   DaAvailabilityTransactionResources & {
-    readonly bond: UTxO;
+    readonly record: UTxO;
     readonly terminal: UTxO;
     readonly queue: UTxO;
   };
@@ -152,17 +196,57 @@ export type DaAvailabilityRemovalParams = DaAvailabilityTransactionResources & {
   readonly feeFunding?: UTxO;
   readonly fundingQueueTailRefInput?: UTxO;
 };
-export type TimeoutDaAvailabilityChallengeParams =
-  DaAvailabilityRemovalParams & {
-    readonly bond: UTxO;
-    readonly terminal: UTxO;
-  };
+/**
+ * The timeout derives its own exact fee, `min(penalty, taken) + c`, so it takes
+ * no `feeLovelace` and no fee funding: the removed record, terminal and pool
+ * pay it.
+ */
+export type TimeoutDaAvailabilityChallengeParams = Omit<
+  DaAvailabilityRemovalParams,
+  "feeLovelace" | "feeFunding"
+> & {
+  readonly record: UTxO;
+  readonly terminal: UTxO;
+  /** The one pooled DA bond UTxO, slashed whatever its backing. */
+  readonly pool: UTxO;
+  /**
+   * Pins the challenger's fee contribution `c`. When absent the builder
+   * measures the smallest `c` the ledger accepts (see
+   * `buildTimeoutDaAvailabilityChallengeTxProgram`).
+   */
+  readonly challengerFeeLovelace?: bigint;
+};
+
+export type DaAvailabilityTransactionErrorReason =
+  /** The commitment does not hash to the node's `Attested{commitment_hash}`. */
+  | "commitment-hash-mismatch"
+  /** The record's live min-UTxO exceeds `challenge_record_lovelace`. */
+  | "record-min-ada"
+  /** The open's upper bound is at or past `end_time + da_challenge_window_ms`. */
+  | "challenge-window-closed"
+  /** The timeout needs a challenger fee contribution above `max_timeout_fee`. */
+  | "timeout-challenger-fee-cap"
+  /** No three wallet coins cover the ledger collateral for the exact fee. */
+  | "collateral-insufficient"
+  /** Lucid could not complete the transaction at the pinned exact fee. */
+  | "completion-failed"
+  /** The Apply transaction does not yield the attested commitment. */
+  | "apply-commitment-unrecoverable";
 
 export class DaAvailabilityTransactionError extends Error {
   readonly name = "DaAvailabilityTransactionError";
+  constructor(
+    message: string,
+    readonly reason?: DaAvailabilityTransactionErrorReason,
+  ) {
+    super(message);
+  }
 }
-const fail = (message: string): never => {
-  throw new DaAvailabilityTransactionError(message);
+const fail = (
+  message: string,
+  reason?: DaAvailabilityTransactionErrorReason,
+): never => {
+  throw new DaAvailabilityTransactionError(message, reason);
 };
 const effect = <A>(
   body: () => Promise<A>,
@@ -183,9 +267,12 @@ const datum = (u: UTxO): string =>
   u.datum ?? fail(`Missing inline datum on ${refKey(u)}`);
 // Providers may return a ledger-normalized CBOR representation. Validate the
 // typed Plutus Data value; wire canonicality belongs to signed payload codecs.
-const bondDatum = (u: UTxO) => {
-  const value = Data.from(datum(u), Availability.DaAvailabilityBondDatum);
-  Availability.assertCanonicalDaAvailabilityBondDatum(value);
+const recordDatum = (u: UTxO, d: DaAvailabilityDeployment) => {
+  const value = Data.from(datum(u), Availability.DaAvailabilityChallengeRecord);
+  Availability.assertCanonicalDaAvailabilityChallengeRecord(
+    value,
+    d.parameters,
+  );
   return value;
 };
 const trancheDatum = (u: UTxO) => {
@@ -232,21 +319,29 @@ const auth = (u: UTxO, address: string, units: readonly string[]) => {
     fail(`Unauthentic protocol input ${refKey(u)}`);
   datum(u);
 };
-const outputIndex = (
+/**
+ * The redeemer index of an output the builder placed itself. Lucid keeps the
+ * pay order and these builders add no change output, so each protected output
+ * sits at the position the builder chose; this proves it before encoding it.
+ */
+const at = (
   ctx: RedeemerContext,
+  index: number,
   o: DaAvailabilityExpectedOutput,
   label: string,
-) =>
-  requireUniqueOutputIndex(
-    ctx.outputs,
-    (actual) =>
-      actual.address === o.address &&
-      sameAssets(actual.assets, o.assets) &&
-      (o.datum === undefined
-        ? actual.datum === undefined
-        : outputDatumCborMatches(actual, o.datum)),
-    label,
-  );
+): bigint => {
+  const actual = ctx.outputs[index];
+  if (
+    actual === undefined ||
+    actual.address !== o.address ||
+    !sameAssets(actual.assets, o.assets) ||
+    (o.datum === undefined
+      ? actual.datum != null
+      : !outputDatumCborMatches(actual, o.datum))
+  )
+    fail(`${label} output is not at its reserved position ${index}`);
+  return BigInt(index);
+};
 const spend =
   (
     u: UTxO,
@@ -280,6 +375,7 @@ const queueUpdate =
     u: UTxO,
     policy: string,
     output: DaAvailabilityExpectedOutput,
+    outputIndex: number,
   ): BuildTxWithRedeemer =>
   (ctx) => {
     requireOwnSpendPurpose(ctx, u, "availability queue");
@@ -287,7 +383,7 @@ const queueUpdate =
       {
         AvailabilityStatusUpdate: {
           state_queue_input_index: requireInputIndex(ctx, u, "queue"),
-          state_queue_output_index: outputIndex(ctx, output, "queue"),
+          state_queue_output_index: at(ctx, outputIndex, output, "queue"),
           availability_mint_redeemer_index: requireMintRedeemerIndex(
             ctx,
             policy,
@@ -368,12 +464,256 @@ const pay = (tx: TxBuilder, outputs: readonly DaAvailabilityExpectedOutput[]) =>
         : next.pay.ToContract(o.address, inline(o.datum), o.assets),
     tx,
   );
+const protocolParameters = (lucid: LucidEvolution): ProtocolParameters =>
+  lucid.config().protocolParameters ?? fail("Missing live protocol parameters");
 const minAda = (lucid: LucidEvolution, o: DaAvailabilityExpectedOutput) =>
-  calculateMinLovelaceFromUTxO(
-    lucid.config().protocolParameters?.coinsPerUtxoByte ??
-      fail("Missing live protocol parameters"),
-    { ...o, txHash: "00".repeat(32), outputIndex: 0 },
+  calculateMinLovelaceFromUTxO(protocolParameters(lucid).coinsPerUtxoByte, {
+    ...o,
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+  });
+
+/**
+ * Refuses a record output whose live min-UTxO exceeds the exact
+ * `challenge_record_lovelace` it must hold. `OpenChallenge` fixes the record's
+ * value, so Lucid cannot top it up: a larger floor would only surface as a
+ * ledger rejection. Same floor computation Lucid applies (the
+ * `withSettledLovelace` pattern), asserted instead of raised.
+ */
+export const assertDaAvailabilityChallengeRecordMinAda = (input: {
+  readonly coinsPerUtxoByte: bigint;
+  readonly record: DaAvailabilityExpectedOutput;
+  readonly challengeRecordLovelace: bigint;
+}): void => {
+  if (input.record.assets.lovelace !== input.challengeRecordLovelace)
+    fail("Challenge record must hold exactly challenge_record_lovelace");
+  const floor = calculateMinLovelaceFromUTxO(input.coinsPerUtxoByte, {
+    ...input.record,
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+  });
+  if (floor > input.challengeRecordLovelace)
+    fail(
+      `Challenge record needs ${floor} lovelace at live coinsPerUtxoByte, above challenge_record_lovelace ${input.challengeRecordLovelace}`,
+      "record-min-ada",
+    );
+};
+
+/**
+ * The Open's commitment binding: the commitment names this deployment and the
+ * queue node's block, and hashes to the node's `Attested{commitment_hash}`.
+ * Returns that hash.
+ */
+export const assertDaAvailabilityOpenCommitment = (input: {
+  readonly commitment: Availability.DaAvailabilityCommitment;
+  readonly deploymentIdentity: string;
+  readonly queueAssetName: string;
+  readonly status: StateQueueNode["da_attestation"];
+  readonly parameters: Availability.DaAvailabilityParameters;
+}): string => {
+  Availability.assertCanonicalDaAvailabilityCommitment(
+    input.commitment,
+    input.parameters.response_geometry,
   );
+  if (input.commitment.deployment_identity !== input.deploymentIdentity)
+    fail("Commitment names another deployment");
+  if (
+    input.queueAssetName !==
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX + input.commitment.header_hash
+  )
+    fail("Queue node is not the commitment's block");
+  if (typeof input.status !== "object" || !("Attested" in input.status))
+    fail("Challenge opening requires an Attested queue node");
+  const hash = Availability.daAvailabilityCommitmentHash(input.commitment);
+  const attested = (
+    input.status as Extract<
+      StateQueueNode["da_attestation"],
+      { Attested: unknown }
+    >
+  ).Attested.commitment_hash;
+  if (hash !== attested)
+    fail(
+      `Commitment hash ${hash} does not match the node's Attested commitment_hash ${attested}`,
+      "commitment-hash-mismatch",
+    );
+  return hash;
+};
+
+/**
+ * `OpenChallenge` requires `inclusive_upper < end_time + da_challenge_window`.
+ * The inclusive upper bound is `validTo - 1`.
+ */
+export const assertDaAvailabilityOpenWithinChallengeWindow = (input: {
+  readonly validTo: bigint;
+  readonly nodeEndTime: bigint;
+  readonly daChallengeWindowMs: bigint;
+}): void => {
+  if (input.daChallengeWindowMs <= 0n)
+    fail("da_challenge_window_ms must be positive");
+  if (input.validTo - 1n >= input.nodeEndTime + input.daChallengeWindowMs)
+    fail(
+      `Challenge window closed: inclusive upper ${input.validTo - 1n} is not before ${input.nodeEndTime + input.daChallengeWindowMs}`,
+      "challenge-window-closed",
+    );
+};
+
+export type DaAvailabilityTimeoutPlan = Readonly<{
+  /** `min(da_bond, backing)`: what leaves the pool. */
+  taken: bigint;
+  /** `min(penalty, taken)`: burned as fee. */
+  feePart: bigint;
+  /** `taken - feePart`: merged into the challenger output. */
+  payout: bigint;
+  /** `pool_in - taken`, beside the pool NFT. */
+  poolOutputLovelace: bigint;
+  /** `c`, the challenger's own fee contribution. */
+  challengerFeeLovelace: bigint;
+  /** `feePart + c`: the transaction's exact fee. */
+  feeLovelace: bigint;
+  /** `remaining - c + challenge_record_lovelace + payout`. */
+  challengerOutputLovelace: bigint;
+}>;
+
+/**
+ * Timeout value arithmetic (twin of `validate_timeout_challenge`): the pool
+ * gives up `taken`, the penalty share of it is fee, and the one challenger
+ * output merges the remaining reserve (less `c`), the record's lovelace and
+ * the payout.
+ */
+export const planDaAvailabilityTimeout = (input: {
+  readonly poolLovelace: bigint;
+  readonly remainingChallengerLovelace: bigint;
+  readonly challengerFeeLovelace: bigint;
+  readonly parameters: Availability.DaAvailabilityParameters;
+}): DaAvailabilityTimeoutPlan => {
+  const slash = planDaBondPoolSlash({
+    poolLovelace: input.poolLovelace,
+    parameters: input.parameters,
+  });
+  const c = input.challengerFeeLovelace;
+  if (c < 0n || c > input.parameters.max_timeout_fee_lovelace)
+    fail(
+      `Timeout challenger fee ${c} is outside [0, max_timeout_fee_lovelace ${input.parameters.max_timeout_fee_lovelace}]`,
+      "timeout-challenger-fee-cap",
+    );
+  if (c > input.remainingChallengerLovelace)
+    fail("Timeout challenger fee exceeds the remaining challenger reserve");
+  const feeLovelace = slash.feePart + c;
+  if (feeLovelace <= 0n) fail("Timeout fee must be positive");
+  return {
+    taken: slash.taken,
+    feePart: slash.feePart,
+    payout: slash.payout,
+    poolOutputLovelace: slash.poolOutputLovelace,
+    challengerFeeLovelace: c,
+    feeLovelace,
+    challengerOutputLovelace:
+      input.remainingChallengerLovelace -
+      c +
+      input.parameters.challenge_record_lovelace +
+      slash.payout,
+  };
+};
+
+/**
+ * The smallest challenger contribution `c` that lifts the fee to the ledger
+ * minimum: `max(0, requiredFee - feePart)`, refused above the cap.
+ */
+export const daAvailabilityTimeoutChallengerFee = (input: {
+  readonly feePartLovelace: bigint;
+  readonly requiredFeeLovelace: bigint;
+  readonly parameters: Availability.DaAvailabilityParameters;
+}): bigint => {
+  const c =
+    input.requiredFeeLovelace > input.feePartLovelace
+      ? input.requiredFeeLovelace - input.feePartLovelace
+      : 0n;
+  if (c > input.parameters.max_timeout_fee_lovelace)
+    fail(
+      `Timeout needs a challenger fee of ${c}, above max_timeout_fee_lovelace ${input.parameters.max_timeout_fee_lovelace}`,
+      "timeout-challenger-fee-cap",
+    );
+  return c;
+};
+
+/** Ledger limit on collateral inputs. */
+const MAX_COLLATERAL_INPUTS = 3;
+
+/**
+ * Picks at most three plain-ADA coins, largest first, whose total covers
+ * `requiredLovelace` and leaves either nothing or at least
+ * `minimumReturnLovelace` as collateral return.
+ */
+export const selectDaAvailabilityCollateral = (input: {
+  readonly candidates: readonly UTxO[];
+  readonly requiredLovelace: bigint;
+  readonly minimumReturnLovelace: bigint;
+}): readonly UTxO[] => {
+  const sorted = [...input.candidates].sort((a, b) => {
+    const x = a.assets.lovelace ?? 0n,
+      y = b.assets.lovelace ?? 0n;
+    if (x !== y) return x > y ? -1 : 1;
+    // Ties break in code-unit order of the out-ref, independent of locale.
+    const ka = refKey(a),
+      kb = refKey(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  const selected: UTxO[] = [];
+  let total = 0n;
+  for (const u of sorted) {
+    if (selected.length === MAX_COLLATERAL_INPUTS) break;
+    selected.push(u);
+    total += u.assets.lovelace ?? 0n;
+    const change = total - input.requiredLovelace;
+    if (change === 0n || change >= input.minimumReturnLovelace) return selected;
+  }
+  return fail(
+    `No ${MAX_COLLATERAL_INPUTS} collateral coins cover ${input.requiredLovelace} lovelace with a valid collateral return`,
+    "collateral-insufficient",
+  );
+};
+
+/**
+ * The ledger's minimum fee for a completed, still unsigned transaction: CML's
+ * `min_fee` over the body, redeemer budgets and reference scripts, plus one
+ * vkey witness per distinct signing key and a small allowance for the
+ * witness-set header and for coin-width changes when `c` is lowered. The
+ * reference-script size is the provider's script CBOR, which is at least the
+ * ledger's count, so the estimate errs high.
+ */
+export const daAvailabilityLedgerMinFee = (input: {
+  readonly unsignedCbor: string;
+  readonly protocolParameters: ProtocolParameters;
+  readonly referenceScriptBytes: bigint;
+  readonly vkeyWitnessCount: number;
+}): bigint => {
+  const p = input.protocolParameters;
+  const tx = CML.Transaction.from_cbor_hex(input.unsignedCbor);
+  const linear = CML.LinearFee.new(
+    BigInt(p.minFeeA),
+    BigInt(p.minFeeB),
+    BigInt(p.minFeeRefScriptCostPerByte),
+  );
+  const mem = CML.SubCoin.new(BigInt(Math.round(p.priceMem * 1e8)), 100000000n);
+  const step = CML.SubCoin.new(
+    BigInt(Math.round(p.priceStep * 1e8)),
+    100000000n,
+  );
+  const prices = CML.ExUnitPrices.new(mem, step);
+  try {
+    const base = CML.min_fee(tx, linear, prices, input.referenceScriptBytes);
+    // A vkey witness is [bytes32, bytes64]: 101 bytes. The allowance covers the
+    // witness-set key, the (tagged) set header and fee/coin width changes.
+    const extraBytes = 101n * BigInt(input.vkeyWitnessCount) + 24n;
+    return base + extraBytes * BigInt(p.minFeeA);
+  } finally {
+    prices.free();
+    step.free();
+    mem.free();
+    linear.free();
+    tx.free();
+  }
+};
 
 const alignResources = <P extends DaAvailabilityTransactionResources>(
   lucid: LucidEvolution,
@@ -403,6 +743,8 @@ const complete = async (
     inputs: readonly UTxO[];
     refs: readonly UTxO[];
     outputs: readonly DaAvailabilityExpectedOutput[];
+    /** Timeout only: the slashed share of the fee, exempt from the cap. */
+    timeoutFeePart?: bigint;
   },
 ): Promise<BuiltDaAvailabilityTransaction> => {
   Availability.assertCanonicalDaAvailabilityParameters(d.parameters);
@@ -416,9 +758,15 @@ const complete = async (
           : meta.action === "close"
             ? d.parameters.max_close_fee_lovelace
             : d.parameters.max_timeout_fee_lovelace;
+  if ((meta.action === "timeout") !== (meta.timeoutFeePart !== undefined))
+    fail("Only a timeout carries a slashed fee part");
+  // The timeout caps only the challenger's contribution c = fee - feePart; the
+  // slashed penalty share is fee by protocol and outside every cap.
+  const capped = p.feeLovelace - (meta.timeoutFeePart ?? 0n);
   if (
     p.feeLovelace <= 0n ||
-    p.feeLovelace > cap ||
+    capped < 0n ||
+    capped > cap ||
     p.validFrom < 0n ||
     p.validTo <= p.validFrom ||
     p.validTo - p.validFrom > 120_000n ||
@@ -443,13 +791,24 @@ const complete = async (
     meta.inputs.some((u) => refs.has(refKey(u)))
   )
     fail("Transaction resources overlap");
+  const protocol = protocolParameters(lucid);
+  const collateral =
+    (p.feeLovelace * BigInt(protocol.collateralPercentage) + 99n) / 100n;
+  const collateralInputs = selectDaAvailabilityCollateral({
+    candidates: p.collateralInputs,
+    requiredLovelace: collateral,
+    minimumReturnLovelace: minAda(lucid, {
+      address: walletAddress,
+      assets: { lovelace: collateral },
+    }),
+  });
   const available = await lucid.utxosByOutRef([
     ...meta.inputs,
     ...meta.refs,
-    ...p.collateralInputs,
+    ...collateralInputs,
   ]);
   const observed = new Map(available.map((u) => [refKey(u), u]));
-  for (const u of [...meta.inputs, ...meta.refs, ...p.collateralInputs]) {
+  for (const u of [...meta.inputs, ...meta.refs, ...collateralInputs]) {
     const live = observed.get(refKey(u));
     if (
       !live ||
@@ -466,29 +825,36 @@ const complete = async (
   for (const o of meta.outputs)
     if ((o.assets.lovelace ?? 0n) < minAda(lucid, o))
       fail("Protected output is below live ledger minimum ADA");
-  const protocol =
-    lucid.config().protocolParameters ??
-    fail("Missing live protocol parameters");
-  const collateral =
-    (p.feeLovelace * BigInt(protocol.collateralPercentage) + 99n) / 100n;
-  const completed = await tx
-    .setMinFee(p.feeLovelace)
-    .validFrom(Number(p.validFrom))
-    .validTo(Number(p.validTo))
-    .complete({
-      ...completeOptionsWithLocalEval({
-        coinSelection: false,
-        presetWalletInputs: p.collateralInputs,
-      }),
-      setCollateral: collateral,
-    });
+  let completed: TxSignBuilder;
+  try {
+    completed = await tx
+      .setMinFee(p.feeLovelace)
+      .validFrom(Number(p.validFrom))
+      .validTo(Number(p.validTo))
+      .complete({
+        ...completeOptionsWithLocalEval({
+          coinSelection: false,
+          presetWalletInputs: collateralInputs,
+        }),
+        setCollateral: collateral,
+      });
+  } catch (cause) {
+    if (cause instanceof DaAvailabilityTransactionError) throw cause;
+    return fail(
+      `Transaction does not complete at the exact fee ${p.feeLovelace}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      "completion-failed",
+    );
+  }
   const body = completed.toTransaction().body();
   if (
     body.fee() !== p.feeLovelace ||
     body.inputs().len() !== meta.inputs.length ||
     body.outputs().len() !== meta.outputs.length
   )
-    fail("Completed transaction changed protected fee, inputs, or outputs");
+    fail(
+      "Completed transaction changed protected fee, inputs, or outputs",
+      "completion-failed",
+    );
   for (let i = 0; i < body.inputs().len(); i++) {
     const u = body.inputs().get(i);
     if (!spent.has(`${u.transaction_id().to_hex()}#${u.index()}`))
@@ -498,14 +864,19 @@ const complete = async (
   const collateralBody = body.collateral_inputs();
   if (!collateralBody || collateralBody.len() === 0)
     fail("Completed transaction lacks collateral");
+  if (collateralBody!.len() > MAX_COLLATERAL_INPUTS)
+    fail("Completed transaction exceeds the collateral input limit");
   for (let i = 0; i < collateralBody!.len(); i++) {
     const c = collateralBody!.get(i);
-    const u = p.collateralInputs.find(
+    const u = collateralInputs.find(
       (u) => refKey(u) === `${c.transaction_id().to_hex()}#${c.index()}`,
     );
     if (!u) fail("Completed transaction selected unreserved collateral");
     actualCollateral.push(u!);
   }
+  const totalCollateral = body.total_collateral();
+  if (totalCollateral !== undefined && totalCollateral < collateral)
+    fail("Completed transaction collateral is below the ledger percentage");
   return {
     tx: completed,
     unsignedCbor: completed.toCBOR(),
@@ -519,6 +890,9 @@ const complete = async (
     collateralOutRefs: actualCollateral,
     expectedOutputs: meta.outputs,
     feeLovelace: p.feeLovelace,
+    ...(meta.timeoutFeePart === undefined
+      ? {}
+      : { timeoutFeePartLovelace: meta.timeoutFeePart }),
   };
 };
 
@@ -528,9 +902,7 @@ export const assertDaAvailabilityOpeningWorkingCapital = (
   d: DaAvailabilityDeployment,
   plan: Availability.DaAvailabilityChallengeDatumPlan,
 ): void => {
-  const protocol =
-    lucid.config().protocolParameters ??
-    fail("Missing live protocol parameters");
+  const protocol = protocolParameters(lucid);
   // No accepted carrier can be larger than its entire transaction. Encoding this
   // bound as a bytes datum also covers the datum-envelope overhead conservatively.
   const carrierFloor = minAda(lucid, {
@@ -575,11 +947,18 @@ export const assertDaAvailabilityOpeningWorkingCapital = (
       carrierFloor + threadFloor
     )
       fail(
-        "Challenger bond cannot fund all publication fees and live carrier/thread working capital",
+        "challenger_bond_lovelace cannot fund all publication fees and live carrier/thread working capital",
       );
   }
 };
 
+/**
+ * Opens a challenge (spec #685 E1). Inputs: the challenger's exact funding
+ * coin and the Attested queue node. Outputs, in this order: the challenge
+ * record (0), the queue node now `Challenged` (1), one thread per tranche
+ * (2..), the terminal accumulator (last). The DACH identity derives from the
+ * funding coin's out-reference and `opened_at` is `validTo - 1`.
+ */
 export const buildOpenDaAvailabilityChallengeTxProgram = (
   lucid: LucidEvolution,
   d: DaAvailabilityDeployment,
@@ -587,39 +966,36 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
 ) =>
   effect(async () => {
     p = alignResources(lucid, p);
-    const b = bondDatum(p.bond);
-    Availability.assertCanonicalDaAvailabilityBondDatum(b, d.parameters);
-    if (!("Available" in b))
-      fail("Challenge opening requires an available bond");
     const policy = d.contracts.availabilityChallenge.policyId,
       address = d.contracts.availabilityChallenge.spendingScriptAddress;
-    const value = (
-      b as Extract<Availability.DaAvailabilityBondDatum, { Available: unknown }>
-    ).Available;
-    auth(p.bond, address, [policy + value.da_bond_asset_name]);
-    if (p.bond.assets.lovelace !== d.parameters.da_bond_lovelace)
-      fail("Incorrect DA bond value");
+    const q = await state(p.queue, d);
+    const node = Data.castFrom(q.datum.data, StateQueueNode);
+    const commitmentHash = assertDaAvailabilityOpenCommitment({
+      commitment: p.commitment,
+      deploymentIdentity: d.hubOraclePolicyId,
+      queueAssetName: q.assetName,
+      status: node.da_attestation,
+      parameters: d.parameters,
+    });
+    assertDaAvailabilityOpenWithinChallengeWindow({
+      validTo: p.validTo,
+      nodeEndTime: node.header.endTime,
+      daChallengeWindowMs: p.daChallengeWindowMs,
+    });
     if (
       !isPlainPositiveAdaOnlyUtxo(p.challengerFunding) ||
       p.challengerFunding.address !== keyAddress(lucid, p.challenger) ||
       p.challengerFunding.assets.lovelace !==
-        d.parameters.challenger_bond_lovelace + p.feeLovelace
+        d.parameters.challenger_bond_lovelace +
+          d.parameters.challenge_record_lovelace +
+          p.feeLovelace
     )
-      fail("Opening requires an exact isolated challenger bond plus fee input");
-    const q = await state(p.queue, d);
-    const node = Data.castFrom(q.datum.data, StateQueueNode);
-    if (
-      typeof node.da_attestation !== "object" ||
-      !("Attested" in node.da_attestation) ||
-      node.da_attestation.Attested.da_bond_asset_name !==
-        value.da_bond_asset_name ||
-      q.assetName !==
-        STATE_QUEUE_NODE_ASSET_NAME_PREFIX + value.commitment.header_hash
-    )
-      fail("Queue does not authenticate the available bond");
+      fail(
+        "Opening requires an exact isolated challenger_bond_lovelace + challenge_record_lovelace + fee input",
+      );
     const plan = Availability.buildDaAvailabilityChallengeDatumPlan({
-      availableBond: b,
-      bondInputOutRef: outputReferenceFromUTxO(p.bond),
+      commitment: p.commitment,
+      challengerFundingOutRef: outputReferenceFromUTxO(p.challengerFunding),
       challenger: p.challenger,
       // The validator anchors the response window at the inclusive upper
       // validity bound; the ledger's upper end is exclusive.
@@ -627,12 +1003,24 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
       parameters: d.parameters,
     });
     assertDaAvailabilityOpeningWorkingCapital(lucid, d, plan);
-    const outputs: DaAvailabilityExpectedOutput[] = [
-      {
-        address,
-        assets: { ...p.bond.assets, [policy + plan.challengeAssetName]: 1n },
-        datum: Availability.encodeDaAvailabilityBondDatum(plan.challengedBond),
+    const record: DaAvailabilityExpectedOutput = {
+      address,
+      assets: {
+        lovelace: plan.recordLovelace,
+        [policy + plan.challengeAssetName]: 1n,
       },
+      datum: Availability.encodeDaAvailabilityChallengeRecord(
+        plan.record,
+        d.parameters,
+      ),
+    };
+    assertDaAvailabilityChallengeRecordMinAda({
+      coinsPerUtxoByte: protocolParameters(lucid).coinsPerUtxoByte,
+      record,
+      challengeRecordLovelace: d.parameters.challenge_record_lovelace,
+    });
+    const outputs: DaAvailabilityExpectedOutput[] = [
+      record,
       {
         address: p.queue.address,
         assets: p.queue.assets,
@@ -642,7 +1030,7 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
             ...node,
             da_attestation: {
               Challenged: {
-                da_bond_asset_name: value.da_bond_asset_name,
+                commitment_hash: commitmentHash,
                 challenge_asset_name: plan.challengeAssetName,
               },
             },
@@ -686,6 +1074,7 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
         plan.terminalAccumulator,
       ),
     });
+    const terminalIndex = outputs.length - 1;
     const refs = [
       ...mintRefs(d, "open"),
       hub(d),
@@ -694,20 +1083,14 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
     const yieldRef = refs[2]!;
     let tx = lucid
       .newTx()
-      .collectFrom([p.bond], coordinate(p.bond, policy))
       .collectFrom([p.challengerFunding])
-      .collectFrom([p.queue], queueUpdate(p.queue, policy, outputs[1]!))
+      .collectFrom([p.queue], queueUpdate(p.queue, policy, outputs[1]!, 1))
       .readFrom(refs)
       .mintAssets(
         minted,
         mint(policy, (ctx) => {
-          const first = outputIndex(ctx, outputs[2]!, "first tranche");
           for (let i = 0; i < plan.trancheThreads.length; i++)
-            if (
-              outputIndex(ctx, outputs[2 + i]!, "tranche") !==
-              first + BigInt(i)
-            )
-              fail("Tranche outputs are not contiguous");
+            at(ctx, 2 + i, outputs[2 + i]!, "tranche");
           return {
             OpenChallenge: {
               yield_to_ref_input_index: requireReferenceInputIndex(
@@ -720,19 +1103,19 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
                 d.hubOracleRefInput,
                 "hub",
               ),
-              bond_input_index: requireInputIndex(ctx, p.bond, "bond"),
-              bond_output_index: outputIndex(ctx, outputs[0]!, "bond"),
+              record_output_index: at(ctx, 0, record, "record"),
               challenger_input_index: requireInputIndex(
                 ctx,
                 p.challengerFunding,
                 "challenger",
               ),
               state_queue_input_index: requireInputIndex(ctx, p.queue, "queue"),
-              state_queue_output_index: outputIndex(ctx, outputs[1]!, "queue"),
-              first_tranche_output_index: first,
-              terminal_accumulator_output_index: outputIndex(
+              state_queue_output_index: at(ctx, 1, outputs[1]!, "queue"),
+              first_tranche_output_index: 2n,
+              terminal_accumulator_output_index: at(
                 ctx,
-                outputs.at(-1)!,
+                terminalIndex,
+                outputs[terminalIndex]!,
                 "terminal",
               ),
               challenger: p.challenger,
@@ -744,9 +1127,9 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
     tx = withYield(lucid, d, pay(tx, outputs), "open");
     return complete(lucid, d, p, tx, {
       action: "open",
-      headerHash: value.commitment.header_hash,
+      headerHash: p.commitment.header_hash,
       challengeAssetName: plan.challengeAssetName,
-      inputs: [p.bond, p.challengerFunding, p.queue],
+      inputs: [p.challengerFunding, p.queue],
       refs,
       outputs,
     });
@@ -867,19 +1250,15 @@ export const buildPublishDaAvailabilityChunkTxProgram = (
       .readFrom(refs)
       .collectFrom(
         [p.thread],
-        spend(p.thread, (ctx) => {
-          const carrierIndex = outputIndex(ctx, carrier, "carrier");
-          if (carrierIndex !== 1n) fail("Carrier output position changed");
-          return {
-            AdvanceTranche: {
-              thread_output_index: outputIndex(ctx, output, "thread"),
-              carrier_output_index: carrierIndex,
-              m_previous_carrier_input_index: p.previousCarrier
-                ? requireInputIndex(ctx, p.previousCarrier, "previous carrier")
-                : null,
-            },
-          };
-        }),
+        spend(p.thread, (ctx) => ({
+          AdvanceTranche: {
+            thread_output_index: at(ctx, 0, output, "thread"),
+            carrier_output_index: at(ctx, 1, carrier, "carrier"),
+            m_previous_carrier_input_index: p.previousCarrier
+              ? requireInputIndex(ctx, p.previousCarrier, "previous carrier")
+              : null,
+          },
+        })),
       );
     if (p.previousCarrier)
       tx = tx.collectFrom(
@@ -906,47 +1285,63 @@ export const buildPublishDaAvailabilityChunkTxProgram = (
     });
   });
 
+/**
+ * Authenticates a challenge record (the DACH token and exactly
+ * `challenge_record_lovelace` at the availability address, with a canonical
+ * record datum for this deployment) and, when given, the terminal accumulator
+ * it binds.
+ */
 const challenged = (
   d: DaAvailabilityDeployment,
-  bond: UTxO,
+  record: UTxO,
   terminal?: UTxO,
 ) => {
-  const b = bondDatum(bond);
-  Availability.assertCanonicalDaAvailabilityBondDatum(b, d.parameters);
-  if (!("ChallengedBond" in b)) fail("Expected a challenged bond");
-  const v = (
-    b as Extract<
-      Availability.DaAvailabilityBondDatum,
-      { ChallengedBond: unknown }
-    >
-  ).ChallengedBond;
-  if (v.commitment.deployment_identity !== d.hubOraclePolicyId)
-    fail("Bond deployment identity mismatch");
-  auth(bond, d.contracts.availabilityChallenge.spendingScriptAddress, [
-    d.contracts.availabilityChallenge.policyId + v.da_bond_asset_name,
-    d.contracts.availabilityChallenge.policyId + v.challenge_asset_name,
+  const r = recordDatum(record, d);
+  if (r.commitment.deployment_identity !== d.hubOraclePolicyId)
+    fail("Challenge record deployment identity mismatch");
+  auth(record, d.contracts.availabilityChallenge.spendingScriptAddress, [
+    d.contracts.availabilityChallenge.policyId + r.challenge_asset_name,
   ]);
-  if (bond.assets.lovelace !== d.parameters.da_bond_lovelace)
-    fail("Incorrect DA bond value");
+  if (record.assets.lovelace !== d.parameters.challenge_record_lovelace)
+    fail("Challenge record must hold exactly challenge_record_lovelace");
   if (terminal) {
     const t = terminalDatum(terminal);
-    auth(terminal, bond.address, [
+    auth(terminal, record.address, [
       d.contracts.availabilityChallenge.policyId +
         Availability.daAvailabilityTerminalAccumulatorAssetName(
-          v.challenge_asset_name,
+          r.challenge_asset_name,
         ),
     ]);
     if (
-      t.challenge_asset_name !== v.challenge_asset_name ||
-      t.header_hash !== v.commitment.header_hash ||
-      t.deployment_identity !== v.commitment.deployment_identity ||
-      t.challenger !== v.challenger ||
-      t.response_deadline !== v.response_deadline ||
+      t.challenge_asset_name !== r.challenge_asset_name ||
+      t.header_hash !== r.commitment.header_hash ||
+      t.deployment_identity !== r.commitment.deployment_identity ||
+      t.challenger !== r.challenger ||
+      t.response_deadline !== r.response_deadline ||
       t.remaining_challenger_lovelace !== terminal.assets.lovelace
     )
-      fail("Terminal accumulator does not authenticate challenged bond");
+      fail("Terminal accumulator does not authenticate the challenge record");
   }
-  return v;
+  return r;
+};
+/** The queue node's status is exactly the `Challenged` the record implies. */
+const assertChallengedNode = (
+  q: StateQueueUTxO,
+  r: Availability.DaAvailabilityChallengeRecord,
+) => {
+  const node = Data.castFrom(q.datum.data, StateQueueNode);
+  const status = node.da_attestation;
+  if (
+    q.assetName !==
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX + r.commitment.header_hash ||
+    typeof status !== "object" ||
+    !("Challenged" in status) ||
+    status.Challenged.challenge_asset_name !== r.challenge_asset_name ||
+    status.Challenged.commitment_hash !==
+      Availability.daAvailabilityCommitmentHash(r.commitment)
+  )
+    fail("Queue does not authenticate the challenge");
+  return node;
 };
 export const buildSettleDaAvailabilityTrancheTxProgram = (
   lucid: LucidEvolution,
@@ -955,12 +1350,12 @@ export const buildSettleDaAvailabilityTrancheTxProgram = (
 ) =>
   effect(async () => {
     p = alignResources(lucid, p);
-    const b = challenged(d, p.bond, p.terminal),
+    const r = challenged(d, p.record, p.terminal),
       t = trancheDatum(p.thread);
     authenticateCarrier(d, p.thread, t, p.carrier);
     const term = terminalDatum(p.terminal);
     const plan = Availability.planDaAvailabilitySettlement({
-      commitment: b.commitment,
+      commitment: r.commitment,
       terminalAccumulator: term,
       tranche: t,
       threadLovelace: p.thread.assets.lovelace,
@@ -977,7 +1372,7 @@ export const buildSettleDaAvailabilityTrancheTxProgram = (
         plan.nextTerminalAccumulator,
       ),
     };
-    const refs = [...mintRefs(d, "settle"), p.bond];
+    const refs = [...mintRefs(d, "settle"), p.record];
     const inputs = [p.terminal, p.thread, ...(p.carrier ? [p.carrier] : [])];
     let tx = lucid.newTx().readFrom(refs);
     for (const u of inputs) tx = tx.collectFrom([u], coordinate(u, policy));
@@ -985,7 +1380,7 @@ export const buildSettleDaAvailabilityTrancheTxProgram = (
       {
         [policy +
         Availability.daAvailabilityTrancheAssetName({
-          challengeAssetName: b.challenge_asset_name,
+          challengeAssetName: r.challenge_asset_name,
           trancheIndex: Number(term.next_tranche_index),
         })]: -1n,
       },
@@ -996,17 +1391,17 @@ export const buildSettleDaAvailabilityTrancheTxProgram = (
             refs[2]!,
             "settle yield",
           ),
-          bond_ref_input_index: requireReferenceInputIndex(ctx, p.bond, "bond"),
+          record_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            p.record,
+            "record",
+          ),
           terminal_accumulator_input_index: requireInputIndex(
             ctx,
             p.terminal,
             "terminal",
           ),
-          terminal_accumulator_output_index: outputIndex(
-            ctx,
-            output,
-            "terminal",
-          ),
+          terminal_accumulator_output_index: at(ctx, 0, output, "terminal"),
           tranche_input_index: requireInputIndex(ctx, p.thread, "thread"),
           carrier_input_index: p.carrier
             ? requireInputIndex(ctx, p.carrier, "carrier")
@@ -1021,14 +1416,20 @@ export const buildSettleDaAvailabilityTrancheTxProgram = (
       withYield(lucid, d, pay(tx, [output]), "settle"),
       {
         action: "settle",
-        headerHash: b.commitment.header_hash,
-        challengeAssetName: b.challenge_asset_name,
+        headerHash: r.commitment.header_hash,
+        challengeAssetName: r.challenge_asset_name,
         inputs,
         refs,
         outputs: [output],
       },
     );
   });
+/**
+ * Closes a fully published challenge. Inputs: record, terminal, queue node.
+ * Outputs: the queue node now `Published` (0) and the challenger's refund of
+ * `remaining - fee + challenge_record_lovelace` (1). The committee's pooled
+ * bond is not touched.
+ */
 export const buildCloseDaAvailabilityChallengeTxProgram = (
   lucid: LucidEvolution,
   d: DaAvailabilityDeployment,
@@ -1036,25 +1437,18 @@ export const buildCloseDaAvailabilityChallengeTxProgram = (
 ) =>
   effect(async () => {
     p = alignResources(lucid, p);
-    const b = challenged(d, p.bond, p.terminal),
+    const r = challenged(d, p.record, p.terminal),
       term = terminalDatum(p.terminal);
     if (
       term.has_timed_out_tranche ||
       term.next_tranche_index !==
-        BigInt(b.commitment.tranche_descriptors.length)
+        BigInt(r.commitment.tranche_descriptors.length)
     )
       fail("Challenge is not completely published and settled");
+    if (term.remaining_challenger_lovelace <= p.feeLovelace)
+      fail("Close fee must leave challenger reserve");
     const q = await state(p.queue, d);
-    const node = Data.castFrom(q.datum.data, StateQueueNode);
-    if (
-      q.assetName !==
-        STATE_QUEUE_NODE_ASSET_NAME_PREFIX + b.commitment.header_hash ||
-      typeof node.da_attestation !== "object" ||
-      !("Challenged" in node.da_attestation) ||
-      node.da_attestation.Challenged.challenge_asset_name !==
-        b.challenge_asset_name
-    )
-      fail("Queue does not authenticate the challenge");
+    const node = assertChallengedNode(q, r);
     const outputs: DaAvailabilityExpectedOutput[] = [
       {
         address: p.queue.address,
@@ -1067,7 +1461,7 @@ export const buildCloseDaAvailabilityChallengeTxProgram = (
               Published: {
                 terminal_commitment:
                   Availability.daAvailabilityPublishedTerminalCommitment(
-                    b.commitment,
+                    r.commitment,
                   ),
               },
             },
@@ -1075,13 +1469,12 @@ export const buildCloseDaAvailabilityChallengeTxProgram = (
         }),
       },
       {
-        address: keyAddress(lucid, b.commitment.bond_owner),
-        assets: { lovelace: d.parameters.da_bond_lovelace },
-      },
-      {
-        address: keyAddress(lucid, b.challenger),
+        address: keyAddress(lucid, r.challenger),
         assets: {
-          lovelace: term.remaining_challenger_lovelace - p.feeLovelace,
+          lovelace:
+            term.remaining_challenger_lovelace -
+            p.feeLovelace +
+            d.parameters.challenge_record_lovelace,
         },
       },
     ];
@@ -1093,17 +1486,16 @@ export const buildCloseDaAvailabilityChallengeTxProgram = (
       ];
     const tx = lucid
       .newTx()
-      .collectFrom([p.bond], coordinate(p.bond, policy))
+      .collectFrom([p.record], coordinate(p.record, policy))
       .collectFrom([p.terminal], coordinate(p.terminal, policy))
-      .collectFrom([p.queue], queueUpdate(p.queue, policy, outputs[0]!))
+      .collectFrom([p.queue], queueUpdate(p.queue, policy, outputs[0]!, 0))
       .readFrom(refs)
       .mintAssets(
         {
-          [policy + b.da_bond_asset_name]: -1n,
-          [policy + b.challenge_asset_name]: -1n,
+          [policy + r.challenge_asset_name]: -1n,
           [policy +
           Availability.daAvailabilityTerminalAccumulatorAssetName(
-            b.challenge_asset_name,
+            r.challenge_asset_name,
           )]: -1n,
         },
         mint(policy, (ctx) => ({
@@ -1118,18 +1510,18 @@ export const buildCloseDaAvailabilityChallengeTxProgram = (
               d.hubOracleRefInput,
               "hub",
             ),
-            bond_input_index: requireInputIndex(ctx, p.bond, "bond"),
+            record_input_index: requireInputIndex(ctx, p.record, "record"),
             terminal_accumulator_input_index: requireInputIndex(
               ctx,
               p.terminal,
               "terminal",
             ),
             state_queue_input_index: requireInputIndex(ctx, p.queue, "queue"),
-            state_queue_output_index: outputIndex(ctx, outputs[0]!, "queue"),
-            da_refund_output_index: outputIndex(ctx, outputs[1]!, "DA refund"),
-            challenger_refund_output_index: outputIndex(
+            state_queue_output_index: at(ctx, 0, outputs[0]!, "queue"),
+            challenger_refund_output_index: at(
               ctx,
-              outputs[2]!,
+              1,
+              outputs[1]!,
               "challenger refund",
             ),
           },
@@ -1142,20 +1534,51 @@ export const buildCloseDaAvailabilityChallengeTxProgram = (
       withYield(lucid, d, pay(tx, outputs), "close"),
       {
         action: "close",
-        headerHash: b.commitment.header_hash,
-        challengeAssetName: b.challenge_asset_name,
-        inputs: [p.bond, p.terminal, p.queue],
+        headerHash: r.commitment.header_hash,
+        challengeAssetName: r.challenge_asset_name,
+        inputs: [p.record, p.terminal, p.queue],
         refs,
         outputs,
       },
     );
   });
 
+/**
+ * The pooled DA bond input: the pool NFT exactly once beside lovelace, at a
+ * script address whose payment credential is the pool policy (as
+ * `get_authentic_pool_input` requires), with a canonical inline pool datum.
+ */
+const authenticPool = (d: DaAvailabilityDeployment, u: UTxO) => {
+  const policy = d.contracts.daBondPool.policyId;
+  const unit = daBondPoolUnit(policy);
+  const credential = getAddressDetails(u.address).paymentCredential;
+  if (
+    u.address !== d.contracts.daBondPool.spendingScriptAddress ||
+    credential?.type !== "Script" ||
+    credential.hash !== policy ||
+    u.scriptRef != null ||
+    u.datumHash != null ||
+    u.assets[unit] !== 1n ||
+    Object.keys(u.assets).some((k) => k !== "lovelace" && k !== unit)
+  )
+    fail(`Unauthentic DA bond pool input ${refKey(u)}`);
+  const value = Data.from(datum(u), DaBondPoolDatum);
+  assertCanonicalDaBondPoolDatum(value);
+  return value;
+};
+
+type TimeoutLeg = {
+  readonly record: UTxO;
+  readonly terminal: UTxO;
+  readonly pool: UTxO;
+  readonly feePart: bigint;
+};
+
 const removal = async (
   lucid: LucidEvolution,
   d: DaAvailabilityDeployment,
   p: DaAvailabilityRemovalParams,
-  initial?: { bond: UTxO; terminal: UTxO },
+  initial?: TimeoutLeg,
 ): Promise<BuiltDaAvailabilityTransaction> => {
   p = alignResources(lucid, p);
   const q = await state(p.queue, d),
@@ -1196,6 +1619,8 @@ const removal = async (
         },
       },
     };
+  // The timeout (and so the pool's Slash) runs only on an Idle lock; the
+  // resume steps run on the Locked lock the timeout left behind.
   if (
     initial
       ? lock !== "Idle"
@@ -1272,48 +1697,89 @@ const removal = async (
       );
     }) satisfies BuildTxWithRedeemer);
   if (initial) {
-    const b = challenged(d, initial.bond, initial.terminal),
+    const r = challenged(d, initial.record, initial.terminal),
       terminal = terminalDatum(initial.terminal);
     if (
-      b.challenge_asset_name !== p.challengeAssetName ||
-      b.commitment.header_hash !== p.headerHash ||
+      r.challenge_asset_name !== p.challengeAssetName ||
+      r.commitment.header_hash !== p.headerHash ||
       !terminal.has_timed_out_tranche ||
       terminal.next_tranche_index !==
-        BigInt(b.commitment.tranche_descriptors.length) ||
-      p.validFrom < b.response_deadline
+        BigInt(r.commitment.tranche_descriptors.length) ||
+      p.validFrom < r.response_deadline
     )
       fail(
         "Timeout requires all tranches settled and at least one expired active tranche",
       );
-    const challenger = keyAddress(lucid, b.challenger);
+    assertChallengedNode(q, r);
+    authenticPool(d, initial.pool);
+    const plan = planDaAvailabilityTimeout({
+      poolLovelace: initial.pool.assets.lovelace ?? 0n,
+      remainingChallengerLovelace: terminal.remaining_challenger_lovelace,
+      challengerFeeLovelace: p.feeLovelace - initial.feePart,
+      parameters: d.parameters,
+    });
+    if (plan.feePart !== initial.feePart)
+      fail("Timeout fee part does not match the pool's slash");
+    const challenger = keyAddress(lucid, r.challenger);
     if (p.rentRefundAddress === challenger)
       fail(
-        "Queue rent output must be distinct from the two protected challenger payouts",
+        "Queue rent output must be distinct from the one protected challenger output",
       );
-    outputs.push(
-      {
-        address: challenger,
-        assets: { lovelace: d.parameters.da_bond_lovelace },
+    const challengerIndex = outputs.length;
+    outputs.push({
+      address: challenger,
+      assets: { lovelace: plan.challengerOutputLovelace },
+    });
+    const poolIndex = outputs.length;
+    const poolOutput: DaAvailabilityExpectedOutput = {
+      address: initial.pool.address,
+      assets: {
+        lovelace: plan.poolOutputLovelace,
+        [daBondPoolUnit(d.contracts.daBondPool.policyId)]: 1n,
       },
-      {
-        address: challenger,
-        assets: {
-          lovelace: terminal.remaining_challenger_lovelace - p.feeLovelace,
-        },
-      },
+      datum: datum(initial.pool),
+    };
+    outputs.push(poolOutput);
+    refs.push(
+      ...mintRefs(d, "timeout"),
+      role(d, "da-bond-pool spending", d.contracts.daBondPool.spendingScript),
     );
-    refs.push(...mintRefs(d, "timeout"));
-    inputs.push(initial.bond, initial.terminal);
+    inputs.push(initial.record, initial.terminal, initial.pool);
     tx = tx
-      .collectFrom([initial.bond], coordinate(initial.bond, ap))
+      .collectFrom([initial.record], coordinate(initial.record, ap))
       .collectFrom([initial.terminal], coordinate(initial.terminal, ap))
+      .collectFrom([initial.pool], ((ctx) => {
+        requireOwnSpendPurpose(ctx, initial.pool, "DA bond pool");
+        return Data.to(
+          {
+            Slash: {
+              hub_oracle_ref_input_index: requireReferenceInputIndex(
+                ctx,
+                d.hubOracleRefInput,
+                "hub",
+              ),
+              state_queue_mint_redeemer_index: requireMintRedeemerIndex(
+                ctx,
+                qp,
+                "queue",
+              ),
+              correction_lock_input_index: requireInputIndex(
+                ctx,
+                p.correctionLock,
+                "correction lock",
+              ),
+              output_index: at(ctx, poolIndex, poolOutput, "DA bond pool"),
+            },
+          },
+          DaBondPoolSpendRedeemer,
+        );
+      }) satisfies BuildTxWithRedeemer)
       .mintAssets(
         {
-          [ap + b.da_bond_asset_name]: -1n,
-          [ap + b.challenge_asset_name]: -1n,
+          [ap + r.challenge_asset_name]: -1n,
           [ap +
           Availability.daAvailabilityTerminalAccumulatorAssetName(
-            b.challenge_asset_name,
+            r.challenge_asset_name,
           )]: -1n,
         },
         mint(ap, (ctx) => ({
@@ -1328,7 +1794,11 @@ const removal = async (
               d.hubOracleRefInput,
               "hub",
             ),
-            bond_input_index: requireInputIndex(ctx, initial.bond, "bond"),
+            record_input_index: requireInputIndex(
+              ctx,
+              initial.record,
+              "record",
+            ),
             terminal_accumulator_input_index: requireInputIndex(
               ctx,
               initial.terminal,
@@ -1339,10 +1809,16 @@ const removal = async (
               qp,
               "queue",
             ),
-            da_slash_output_index: outputIndex(ctx, outputs[2]!, "DA slash"),
-            challenger_refund_output_index: outputIndex(
+            pool_input_index: requireInputIndex(
               ctx,
-              outputs[3]!,
+              initial.pool,
+              "DA bond pool",
+            ),
+            pool_output_index: at(ctx, poolIndex, poolOutput, "DA bond pool"),
+            challenger_refund_output_index: at(
+              ctx,
+              challengerIndex,
+              outputs[challengerIndex]!,
               "challenger refund",
             ),
           },
@@ -1367,6 +1843,7 @@ const removal = async (
         assets: { lovelace: funding.assets.lovelace - p.feeLovelace },
       });
   }
+  const continuedIndex = 0;
   outputs.push({
     address: p.rentRefundAddress,
     assets: { lovelace: removed.utxo.assets.lovelace },
@@ -1396,9 +1873,10 @@ const removal = async (
                     timed_out_node_input_outref: outputReferenceFromUTxO(
                       q.utxo,
                     ),
-                    timed_out_node_output_index: outputIndex(
+                    timed_out_node_output_index: at(
                       ctx,
-                      outputs[0]!,
+                      continuedIndex,
+                      outputs[continuedIndex]!,
                       "continued unavailable head",
                     ),
                   },
@@ -1408,9 +1886,10 @@ const removal = async (
                     confirmed_state_input_outref: outputReferenceFromUTxO(
                       root.utxo,
                     ),
-                    confirmed_state_output_index: outputIndex(
+                    confirmed_state_output_index: at(
                       ctx,
-                      outputs[0]!,
+                      continuedIndex,
+                      outputs[continuedIndex]!,
                       "continued root",
                     ),
                   },
@@ -1435,13 +1914,118 @@ const removal = async (
     inputs,
     refs,
     outputs,
+    ...(initial ? { timeoutFeePart: initial.feePart } : {}),
   });
 };
+
+const isCompletionFailure = (cause: unknown) =>
+  cause instanceof DaAvailabilityTransactionError &&
+  cause.reason === "completion-failed";
+
+/** Distinct key hashes that must sign: key-address inputs, collateral, required signers. */
+const vkeyWitnessCount = (built: BuiltDaAvailabilityTransaction): number => {
+  const keys = new Set<string>();
+  for (const u of [...built.spentOutRefs, ...built.collateralOutRefs]) {
+    const credential = getAddressDetails(u.address).paymentCredential;
+    if (credential?.type === "Key") keys.add(credential.hash);
+  }
+  const signers = built.tx.toTransaction().body().required_signers();
+  for (let i = 0; i < (signers?.len() ?? 0); i++)
+    keys.add(signers!.get(i).to_hex());
+  return keys.size;
+};
+
+/**
+ * Times out an expired challenge (spec #685 E2): burns the record and terminal
+ * accumulator, removes the challenged block (the head, or its immediate
+ * descendant first) under an Idle correction lock, and slashes the pooled DA
+ * bond in the same transaction.
+ *
+ * Outputs, in order: the continued queue node (0), the correction lock (1),
+ * the ONE challenger output `remaining - c + challenge_record_lovelace +
+ * payout` (2), the pool continuing with `pool_in - taken` beside its NFT and
+ * its datum unchanged (3), the removed node's rent (4). The inputs pay the
+ * outputs and the fee exactly, so no wallet coin is spent; the wallet only
+ * backs collateral.
+ *
+ * The fee is exactly `feePart + c`, `feePart = min(penalty, taken)`. `c` is
+ * the least the ledger needs:
+ * 1. with a slashed penalty (`feePart > 0`), `c = 0` is tried first; a full
+ *    pool's penalty covers any timeout's fee;
+ * 2. otherwise the transaction is built at `c = max_timeout_fee`, which also
+ *    proves the cap suffices, and its ledger minimum fee is measured
+ *    (`daAvailabilityLedgerMinFee`);
+ * 3. `c = max(0, measured - feePart)` is rebuilt; should Lucid still refuse
+ *    that fee, the capped build stands.
+ * A `c` above the cap is refused (`timeout-challenger-fee-cap`).
+ */
 export const buildTimeoutDaAvailabilityChallengeTxProgram = (
   lucid: LucidEvolution,
   d: DaAvailabilityDeployment,
   p: TimeoutDaAvailabilityChallengeParams,
-) => effect(() => removal(lucid, d, p, { bond: p.bond, terminal: p.terminal }));
+) =>
+  effect(async () => {
+    Availability.assertCanonicalDaAvailabilityParameters(d.parameters);
+    authenticPool(d, p.pool);
+    const { feePart } = planDaBondPoolSlash({
+      poolLovelace: p.pool.assets.lovelace ?? 0n,
+      parameters: d.parameters,
+    });
+    const { record, terminal, pool, challengerFeeLovelace, ...rest } = p;
+    const attempt = (c: bigint) =>
+      removal(
+        lucid,
+        d,
+        { ...rest, feeLovelace: feePart + c },
+        { record, terminal, pool, feePart },
+      );
+    if (challengerFeeLovelace !== undefined)
+      return attempt(challengerFeeLovelace);
+    if (feePart > 0n) {
+      try {
+        return await attempt(0n);
+      } catch (cause) {
+        if (!isCompletionFailure(cause)) throw cause;
+      }
+    }
+    const cap = d.parameters.max_timeout_fee_lovelace;
+    let capped: BuiltDaAvailabilityTransaction;
+    try {
+      capped = await attempt(cap);
+    } catch (cause) {
+      if (!isCompletionFailure(cause)) throw cause;
+      return fail(
+        `Timeout does not complete even at c = max_timeout_fee_lovelace ${cap}: ${(cause as Error).message}`,
+        "timeout-challenger-fee-cap",
+      );
+    }
+    const referenceScriptBytes = [
+      ...capped.referenceOutRefs,
+      ...capped.spentOutRefs,
+    ].reduce(
+      (total, u) =>
+        total + (u.scriptRef ? BigInt(u.scriptRef.script.length / 2) : 0n),
+      0n,
+    );
+    const measured = daAvailabilityLedgerMinFee({
+      unsignedCbor: capped.unsignedCbor,
+      protocolParameters: protocolParameters(lucid),
+      referenceScriptBytes,
+      vkeyWitnessCount: vkeyWitnessCount(capped),
+    });
+    const c = daAvailabilityTimeoutChallengerFee({
+      feePartLovelace: feePart,
+      requiredFeeLovelace: measured,
+      parameters: d.parameters,
+    });
+    if (c >= cap) return capped;
+    try {
+      return await attempt(c);
+    } catch (cause) {
+      if (!isCompletionFailure(cause)) throw cause;
+      return capped;
+    }
+  });
 export const buildPruneDaUnavailableBlockDescendantTxProgram = (
   lucid: LucidEvolution,
   d: DaAvailabilityDeployment,
@@ -1462,10 +2046,213 @@ export const buildRemoveDaUnavailableHeadTxProgram = (
   });
 export const assertDaAvailabilityReferenceScript = role;
 
+export type RecoverDaAvailabilityCommitmentParams = {
+  readonly applyTxHash: string;
+  /** The DA attestation policy whose DAAT token the Apply transaction burns. */
+  readonly daAttestationPolicyId: string;
+  /**
+   * A transaction's CBOR by id, or `undefined` when unknown. Called for the
+   * Apply transaction and for the transactions that produced its inputs. Lucid
+   * providers expose no transaction fetch, so the caller wires one (Blockfrost
+   * `/txs/{hash}/cbor`, an Ogmios/chain-sync archive, or the CBOR it submitted
+   * itself).
+   */
+  readonly fetchTransactionCbor: (
+    txHash: string,
+  ) => Promise<string | undefined>;
+  /** When given, the recovered commitment must hash to it. */
+  readonly expectedCommitmentHash?: string;
+};
+export type RecoveredDaAvailabilityCommitment = {
+  readonly commitment: Availability.DaAvailabilityCommitment;
+  readonly commitmentHash: string;
+  readonly headerHash: string;
+  /** The spent DAAT UTxO the commitment was read from. */
+  readonly attestationOutRef: {
+    readonly txHash: string;
+    readonly outputIndex: number;
+  };
+  /**
+   * `inline-datum`: the DAAT output's inline datum in its producing
+   * transaction (the normal case: attestations carry inline datums).
+   * `witness-datum`: a hashed DAAT datum resolved from the Apply transaction's
+   * witness datums. `provider-datum`: a hashed DAAT datum the provider's datum
+   * table resolves.
+   */
+  readonly source: "inline-datum" | "witness-datum" | "provider-datum";
+};
+
+const plutusDataHash = (cbor: string) => {
+  const data = CML.PlutusData.from_cbor_hex(cbor);
+  try {
+    return CML.hash_plutus_data(data).to_hex();
+  } finally {
+    data.free();
+  }
+};
+
+const cborTransaction = async (
+  fetch: RecoverDaAvailabilityCommitmentParams["fetchTransactionCbor"],
+  txHash: string,
+) => {
+  const cbor = await fetch(txHash);
+  if (cbor === undefined) return undefined;
+  const tx = CML.Transaction.from_cbor_hex(cbor);
+  if (CML.hash_transaction(tx.body()).to_hex() !== txHash) {
+    tx.free();
+    return fail(
+      `Fetched transaction does not hash to ${txHash}`,
+      "apply-commitment-unrecoverable",
+    );
+  }
+  return tx;
+};
+
+/**
+ * Recovers the full attested commitment an Open needs from the Apply
+ * transaction that set the node's `Attested{commitment_hash}`: finds the
+ * input holding the DAAT token that Apply burns, reads that output from its
+ * producing transaction, and parses `DaAttestationDatum.availability_commitment`.
+ * A hashed datum falls back to the Apply transaction's witness datums, then
+ * to the provider's datum lookup.
+ *
+ * The spent DAAT UTxO is gone from every UTxO view once Apply lands, so the
+ * producing transaction is the primary source. In the Lucid emulator (which
+ * deletes spent UTxOs at each block and keeps no transaction bodies) only this
+ * path works, and only when `fetchTransactionCbor` serves the CBOR the harness
+ * submitted; its datum table holds hashed datums alone, so the provider
+ * fallback never sees an inline DAAT datum.
+ */
+export const recoverDaAvailabilityCommitmentFromApplyTx = async (
+  lucid: Pick<LucidEvolution, "config">,
+  params: RecoverDaAvailabilityCommitmentParams,
+): Promise<RecoveredDaAvailabilityCommitment> => {
+  const apply =
+    (await cborTransaction(params.fetchTransactionCbor, params.applyTxHash)) ??
+    fail(
+      `Apply transaction ${params.applyTxHash} is unknown`,
+      "apply-commitment-unrecoverable",
+    );
+  try {
+    const body = apply.body();
+    const burned: string[] = [];
+    const policyTokens = body
+      .mint()
+      ?.get_assets(CML.ScriptHash.from_hex(params.daAttestationPolicyId));
+    const names = policyTokens?.keys();
+    for (let i = 0; i < (names?.len() ?? 0); i++) {
+      const name = names!.get(i);
+      const hex = Buffer.from(name.to_raw_bytes()).toString("hex");
+      if (
+        hex.startsWith(DA_ATTESTATION_ASSET_NAME_PREFIX) &&
+        policyTokens!.get(name) === -1n
+      )
+        burned.push(hex);
+    }
+    if (burned.length !== 1)
+      fail(
+        "Apply transaction must burn exactly one DAAT token",
+        "apply-commitment-unrecoverable",
+      );
+    const unit = params.daAttestationPolicyId + burned[0]!;
+    const headerHash = burned[0]!.slice(
+      DA_ATTESTATION_ASSET_NAME_PREFIX.length,
+    );
+    const inputs = body.inputs();
+    for (let i = 0; i < inputs.len(); i++) {
+      const input = inputs.get(i);
+      const outRef = {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex: Number(input.index()),
+      };
+      const producer = await cborTransaction(
+        params.fetchTransactionCbor,
+        outRef.txHash,
+      );
+      if (producer === undefined) continue;
+      let output: ReturnType<typeof coreToTxOutput> | undefined;
+      try {
+        const outputs = producer.body().outputs();
+        if (outRef.outputIndex < outputs.len())
+          output = coreToTxOutput(outputs.get(outRef.outputIndex));
+      } finally {
+        producer.free();
+      }
+      if (output === undefined || output.assets[unit] !== 1n) continue;
+      let datumCbor = output.datum ?? undefined;
+      let source: RecoveredDaAvailabilityCommitment["source"] = "inline-datum";
+      if (datumCbor == null && output.datumHash != null) {
+        const witnessDatums = apply.witness_set().plutus_datums();
+        for (let j = 0; j < (witnessDatums?.len() ?? 0); j++) {
+          const candidate = witnessDatums!.get(j);
+          if (CML.hash_plutus_data(candidate).to_hex() === output.datumHash) {
+            datumCbor = candidate.to_cbor_hex();
+            source = "witness-datum";
+          }
+        }
+      }
+      if (datumCbor == null && output.datumHash != null) {
+        const provider = lucid.config().provider;
+        const resolved = provider
+          ? await provider.getDatum(output.datumHash).catch(() => undefined)
+          : undefined;
+        if (
+          resolved !== undefined &&
+          plutusDataHash(resolved) === output.datumHash
+        ) {
+          datumCbor = resolved;
+          source = "provider-datum";
+        }
+      }
+      if (datumCbor == null)
+        return fail(
+          "Spent DAAT output carries no resolvable datum",
+          "apply-commitment-unrecoverable",
+        );
+      const attestation = Data.from(datumCbor, DaAttestationDatum);
+      const commitment = attestation.availability_commitment;
+      Availability.assertCanonicalDaAvailabilityCommitment(commitment);
+      if (
+        attestation.header_hash !== headerHash ||
+        commitment.header_hash !== headerHash
+      )
+        fail(
+          "DAAT datum does not name the burned token's block",
+          "apply-commitment-unrecoverable",
+        );
+      const commitmentHash =
+        Availability.daAvailabilityCommitmentHash(commitment);
+      if (
+        params.expectedCommitmentHash !== undefined &&
+        commitmentHash !== params.expectedCommitmentHash
+      )
+        fail(
+          `Recovered commitment hash ${commitmentHash} does not match ${params.expectedCommitmentHash}`,
+          "commitment-hash-mismatch",
+        );
+      return {
+        commitment,
+        commitmentHash,
+        headerHash,
+        attestationOutRef: outRef,
+        source,
+      };
+    }
+    return fail(
+      "No producing transaction of the Apply inputs yields the DAAT output",
+      "apply-commitment-unrecoverable",
+    );
+  } finally {
+    apply.free();
+  }
+};
+
 export type DaAvailabilitySnapshotUtxos = {
   readonly availabilityUtxos: readonly UTxO[];
   readonly stateQueueUtxos: readonly UTxO[];
   readonly correctionLockUtxos: readonly UTxO[];
+  /** UTxOs at the DA bond pool address; the pool is omitted when absent. */
+  readonly poolUtxos?: readonly UTxO[];
   readonly carrierUtxos?: readonly UTxO[];
 };
 export const daAvailabilityChallengeSnapshotFromUtxos = async (
@@ -1473,8 +2260,7 @@ export const daAvailabilityChallengeSnapshotFromUtxos = async (
   headerHash: string,
   utxos: DaAvailabilitySnapshotUtxos,
 ): Promise<DaAvailabilityChallengeSnapshot> => {
-  const policy = d.contracts.availabilityChallenge.policyId,
-    address = d.contracts.availabilityChallenge.spendingScriptAddress;
+  const policy = d.contracts.availabilityChallenge.policyId;
   const byUnit = (
     list: readonly UTxO[],
     unit: string,
@@ -1513,6 +2299,14 @@ export const daAvailabilityChallengeSnapshotFromUtxos = async (
     correctionLockUnit(d.hubOraclePolicyId),
   ]);
   Data.from(datum(correctionLock), CorrectionLockDatum);
+  const pool =
+    utxos.poolUtxos === undefined
+      ? undefined
+      : byUnit(
+          utxos.poolUtxos,
+          daBondPoolUnit(d.contracts.daBondPool.policyId),
+        );
+  const poolDatum = pool ? authenticPool(d, pool) : undefined;
   let descendant: StateQueueUTxO | undefined;
   if (queue && queue.datum.next !== "Empty") {
     const u = byUnit(
@@ -1524,122 +2318,100 @@ export const daAvailabilityChallengeSnapshotFromUtxos = async (
     )!;
     descendant = await state(u, d);
   }
-  let bond: UTxO | undefined,
-    b: Availability.DaAvailabilityBondDatum | undefined,
+  let record: UTxO | undefined,
+    r: Availability.DaAvailabilityChallengeRecord | undefined,
     terminal: UTxO | undefined,
     td: Availability.DaAvailabilityTerminalAccumulatorDatum | undefined;
   const tranches: DaAvailabilityChallengeSnapshot["tranches"][number][] = [];
   if (queue) {
     const node = Data.castFrom(queue.datum.data, StateQueueNode),
       status = node.da_attestation;
-    if (
-      typeof status === "object" &&
-      ("Attested" in status || "Challenged" in status)
-    ) {
-      const v = "Attested" in status ? status.Attested : status.Challenged;
-      bond = byUnit(utxos.availabilityUtxos, policy + v.da_bond_asset_name);
-      // A locked removal legitimately outlives the burned bond.
-      if (!bond) {
+    // Only a Challenged node has a record; an Attested one has nothing to read.
+    if (typeof status === "object" && "Challenged" in status) {
+      const name = status.Challenged.challenge_asset_name;
+      record = byUnit(utxos.availabilityUtxos, policy + name);
+      // A locked removal legitimately outlives the burned record.
+      if (!record) {
         const lock = Data.from(datum(correctionLock), CorrectionLockDatum);
         if (
           typeof lock !== "object" ||
           lock.Locked.target_header_hash !== headerHash ||
           typeof lock.Locked.correction_identity !== "object" ||
           !("AvailabilityChallenge" in lock.Locked.correction_identity) ||
-          !("Challenged" in status) ||
           lock.Locked.correction_identity.AvailabilityChallenge
-            .challenge_asset_name !== status.Challenged.challenge_asset_name
+            .challenge_asset_name !== name
         )
-          fail("Authenticated queue bond is missing");
+          fail("Authenticated challenge record is missing");
       } else {
-        b = bondDatum(bond);
-        Availability.assertCanonicalDaAvailabilityBondDatum(b, d.parameters);
-        const bv = "Available" in b ? b.Available : b.ChallengedBond;
+        terminal = byUnit(
+          utxos.availabilityUtxos,
+          policy +
+            Availability.daAvailabilityTerminalAccumulatorAssetName(name),
+          true,
+        )!;
+        r = challenged(d, record, terminal);
+        if (r.commitment.header_hash !== headerHash)
+          fail("Challenge record deployment/header mismatch");
+        assertChallengedNode(queue, r);
+        td = terminalDatum(terminal);
         if (
-          bv.commitment.header_hash !== headerHash ||
-          bv.commitment.deployment_identity !== d.hubOraclePolicyId
+          td.next_tranche_index >
+          BigInt(r.commitment.tranche_descriptors.length)
         )
-          fail("Bond deployment/header mismatch");
-        if ("Available" in b) {
-          auth(bond, address, [policy + bv.da_bond_asset_name]);
-          if (!("Attested" in status)) fail("Queue/bond state mismatch");
-        } else {
-          if (
-            !("Challenged" in status) ||
-            status.Challenged.challenge_asset_name !==
-              b.ChallengedBond.challenge_asset_name
-          )
-            fail("Queue/bond challenge mismatch");
-          terminal = byUnit(
+          fail("Terminal tranche cursor exceeds commitment");
+        for (
+          let i = Number(td.next_tranche_index);
+          i < r.commitment.tranche_descriptors.length;
+          i++
+        ) {
+          const u = byUnit(
             utxos.availabilityUtxos,
             policy +
-              Availability.daAvailabilityTerminalAccumulatorAssetName(
-                b.ChallengedBond.challenge_asset_name,
-              ),
+              Availability.daAvailabilityTrancheAssetName({
+                challengeAssetName: name,
+                trancheIndex: i,
+              }),
             true,
           )!;
-          challenged(d, bond, terminal);
-          td = terminalDatum(terminal);
+          const t = trancheDatum(u),
+            tv = "Active" in t ? t.Active : t.Receipt;
           if (
-            td.next_tranche_index >
-            BigInt(bv.commitment.tranche_descriptors.length)
-          )
-            fail("Terminal tranche cursor exceeds commitment");
-          for (
-            let i = Number(td.next_tranche_index);
-            i < bv.commitment.tranche_descriptors.length;
-            i++
-          ) {
-            const u = byUnit(
-              utxos.availabilityUtxos,
-              policy +
-                Availability.daAvailabilityTrancheAssetName({
-                  challengeAssetName: b.ChallengedBond.challenge_asset_name,
-                  trancheIndex: i,
-                }),
-              true,
-            )!;
-            const t = trancheDatum(u),
-              tv = "Active" in t ? t.Active : t.Receipt;
-            if (
-              tv.header_hash !== headerHash ||
-              tv.deployment_identity !== d.hubOraclePolicyId ||
-              tv.descriptor.tranche_index !== BigInt(i) ||
-              tv.challenger !== b.ChallengedBond.challenger ||
-              ("Active" in t &&
-                t.Active.response_deadline !==
-                  b.ChallengedBond.response_deadline) ||
+            tv.header_hash !== headerHash ||
+            tv.deployment_identity !== d.hubOraclePolicyId ||
+            tv.descriptor.tranche_index !== BigInt(i) ||
+            tv.challenger !== r.challenger ||
+            ("Active" in t &&
+              t.Active.response_deadline !== r.response_deadline) ||
+            Data.to(
+              tv.descriptor,
+              Availability.DaAvailabilityTrancheDescriptor,
+            ) !==
               Data.to(
-                tv.descriptor,
+                r.commitment.tranche_descriptors[i]!,
                 Availability.DaAvailabilityTrancheDescriptor,
-              ) !==
-                Data.to(
-                  bv.commitment.tranche_descriptors[i]!,
-                  Availability.DaAvailabilityTrancheDescriptor,
-                )
-            )
-              fail("Tranche commitment mismatch");
-            const index =
-              "Active" in t
-                ? t.Active.latest_carrier_output_index
-                : t.Receipt.terminal_carrier_output_index;
-            const carrier =
-              index === null
-                ? undefined
-                : [
-                    ...utxos.availabilityUtxos,
-                    ...(utxos.carrierUtxos ?? []),
-                  ].find(
-                    (c) =>
-                      c.txHash === u.txHash && BigInt(c.outputIndex) === index,
-                  );
-            authenticateCarrier(d, u, t, carrier);
-            tranches.push({
-              utxo: u,
-              datum: t,
-              ...(carrier ? { carrier } : {}),
-            });
-          }
+              )
+          )
+            fail("Tranche commitment mismatch");
+          const index =
+            "Active" in t
+              ? t.Active.latest_carrier_output_index
+              : t.Receipt.terminal_carrier_output_index;
+          const carrier =
+            index === null
+              ? undefined
+              : [
+                  ...utxos.availabilityUtxos,
+                  ...(utxos.carrierUtxos ?? []),
+                ].find(
+                  (c) =>
+                    c.txHash === u.txHash && BigInt(c.outputIndex) === index,
+                );
+          authenticateCarrier(d, u, t, carrier);
+          tranches.push({
+            utxo: u,
+            datum: t,
+            ...(carrier ? { carrier } : {}),
+          });
         }
       }
     }
@@ -1651,8 +2423,10 @@ export const daAvailabilityChallengeSnapshotFromUtxos = async (
     tranches,
     ...(queue ? { queue } : {}),
     ...(descendant ? { descendant } : {}),
-    ...(bond ? { bond } : {}),
-    ...(b ? { bondDatum: b } : {}),
+    ...(record ? { record } : {}),
+    ...(r ? { recordDatum: r } : {}),
+    ...(pool ? { pool } : {}),
+    ...(poolDatum ? { poolDatum } : {}),
     ...(terminal ? { terminal } : {}),
     ...(td ? { terminalDatum: td } : {}),
   };
@@ -1662,16 +2436,18 @@ export const fetchDaAvailabilityChallengeSnapshot = async (
   d: DaAvailabilityDeployment,
   headerHash: string,
 ): Promise<DaAvailabilityChallengeSnapshot> => {
-  const [availabilityUtxos, stateQueueUtxos, correctionLockUtxos] =
+  const [availabilityUtxos, stateQueueUtxos, correctionLockUtxos, poolUtxos] =
     await Promise.all([
       lucid.utxosAt(d.contracts.availabilityChallenge.spendingScriptAddress),
       lucid.utxosAt(d.contracts.stateQueue.spendingScriptAddress),
       lucid.utxosAt(d.contracts.correctionLock.spendingScriptAddress),
+      lucid.utxosAt(d.contracts.daBondPool.spendingScriptAddress),
     ]);
   return daAvailabilityChallengeSnapshotFromUtxos(d, headerHash, {
     availabilityUtxos,
     stateQueueUtxos,
     correctionLockUtxos,
+    poolUtxos,
   });
 };
 export const fetchDaAvailabilityChallengeSnapshotProgram = (

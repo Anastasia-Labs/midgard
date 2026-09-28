@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
   type Assets,
+  type Constr,
   credentialToAddress,
   Data,
   type LucidEvolution,
@@ -71,6 +72,48 @@ const aikenConstructorOrder = (typeName: string): readonly string[] => {
   );
 };
 
+/**
+ * Field names of one constructor of an Aiken sum type, in declaration order,
+ * read from the same source as {@link aikenConstructorOrder}. Doc comments
+ * between fields are skipped.
+ */
+const aikenConstructorFields = (
+  typeName: string,
+  constructorName: string,
+): readonly string[] => {
+  const source = readRepositoryFile(
+    "onchain/aiken/lib/midgard/da-attestation-types.ak",
+  );
+  const opening = new RegExp(`^pub type ${typeName} \\{$`, "mu").exec(source);
+  if (opening?.index === undefined) {
+    throw new Error(`${typeName} is no longer declared`);
+  }
+  const typeBody = source.slice(opening.index + opening[0].length);
+  const lines = typeBody.slice(0, typeBody.indexOf("\n}")).split("\n");
+  const header = `  ${constructorName} {`;
+  const start = lines.findIndex((line) => line.startsWith(header));
+  if (start === -1) {
+    throw new Error(`${typeName} has no constructor ${constructorName}`);
+  }
+  const rest = lines[start]!.slice(header.length);
+  if (rest.includes("}")) {
+    return [...rest.matchAll(/([a-z_][a-z0-9_]*):/gu)].map(
+      (match) => match[1] as string,
+    );
+  }
+  const fields: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line === "  }") {
+      return fields;
+    }
+    const match = /^ {4}([a-z_][a-z0-9_]*):/u.exec(line);
+    if (match !== null) {
+      fields.push(match[1] as string);
+    }
+  }
+  throw new Error(`${constructorName} has no closing brace`);
+};
+
 /** Plutus constructor tag for index `i` (i < 7): 121 + i, CBOR tag `d879 + i`. */
 const constructorTagPrefix = (index: number): string =>
   `d8${(0x79 + index).toString(16)}`;
@@ -80,7 +123,6 @@ const availabilityCommitment = (headerHash: string) =>
     deploymentIdentity: h28(0x71),
     headerHash,
     payload: Uint8Array.of(1),
-    bondOwner: h28(0x72),
     responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4096,
       trancheByteLength: 4 * 1024 * 1024,
@@ -274,7 +316,8 @@ describe("Q62 DA redeemer constructor ABI", () => {
             state_queue_input_index: 2n,
             state_queue_output_index: 3n,
             state_queue_mint_ref_script_input_index: 4n,
-            availability_mint_redeemer_index: 5n,
+            pool_ref_input_index: 5n,
+            refund_output_index: 6n,
           },
         } satisfies DaAttestationMintRedeemer as never,
         DaAttestationMintRedeemer as never,
@@ -346,11 +389,19 @@ describe("Q62 DA redeemer constructor ABI", () => {
     // The field D-DA4 adds. Without it the apply handler has no way to reach
     // the current DA params, which is precisely how rotation stayed
     // non-retroactive.
-    const source = readRepositoryFile(
-      "onchain/aiken/lib/midgard/da-attestation-types.ak",
+    // The pooled-bond apply (#688 register C3) appends the pool reference and
+    // the beneficiary refund and no longer names an availability-policy mint.
+    expect(aikenConstructorFields("MintRedeemer", "ApplyToStateQueue")).toEqual(
+      [
+        "da_attestation_input_index",
+        "da_params_ref_input_index",
+        "state_queue_input_index",
+        "state_queue_output_index",
+        "state_queue_mint_ref_script_input_index",
+        "pool_ref_input_index",
+        "refund_output_index",
+      ],
     );
-    const applyBody = /ApplyToStateQueue \{([^}]*)\}/su.exec(source)?.[1] ?? "";
-    expect(applyBody).toContain("da_params_ref_input_index: Int");
 
     const encoded = Data.to(
       {
@@ -360,7 +411,8 @@ describe("Q62 DA redeemer constructor ABI", () => {
           state_queue_input_index: 0n,
           state_queue_output_index: 0n,
           state_queue_mint_ref_script_input_index: 0n,
-          availability_mint_redeemer_index: 0n,
+          pool_ref_input_index: 0n,
+          refund_output_index: 0n,
         },
       } satisfies DaAttestationMintRedeemer as never,
       DaAttestationMintRedeemer as never,
@@ -375,6 +427,44 @@ describe("Q62 DA redeemer constructor ABI", () => {
       expect(decoded.ApplyToStateQueue.da_attestation_input_index).toBe(7n);
     }
   });
+});
+
+describe("DA redeemer field ABI", () => {
+  // Plutus encodes a constructor's fields by position, so a TypeScript schema
+  // whose field order drifts from the Aiken declaration still encodes and
+  // decodes against itself while the validator reads every index from the
+  // wrong slot. Each field below is set to its Aiken position: the raw
+  // constructor reads 0, 1, 2, ... only when the TypeScript schema encodes the
+  // same fields, in the same order, with none missing or extra.
+  const cases = [
+    ["MintRedeemer", "Init", 0, DaAttestationMintRedeemer],
+    ["MintRedeemer", "ApplyToStateQueue", 1, DaAttestationMintRedeemer],
+    ["MintRedeemer", "RescueStrandedAttestation", 2, DaAttestationMintRedeemer],
+    ["SpendRedeemer", "AddSignatures", 0, DaAttestationSpendRedeemer],
+    ["SpendRedeemer", "BurnForStateQueue", 1, DaAttestationSpendRedeemer],
+    ["SpendRedeemer", "BurnForRescue", 2, DaAttestationSpendRedeemer],
+  ] as const;
+
+  it.each(cases)(
+    "%s constructor '%s' (tag %i) encodes its fields in the Aiken order",
+    (typeName, constructorName, tag, schema) => {
+      const fields = aikenConstructorFields(typeName, constructorName);
+      expect(fields.length).toBeGreaterThan(0);
+      const fieldValue = (name: string, index: number): bigint | string =>
+        name === "signatures" ? "ab" : BigInt(index);
+      const cbor = Data.to(
+        {
+          [constructorName]: Object.fromEntries(
+            fields.map((name, index) => [name, fieldValue(name, index)]),
+          ),
+        } as never,
+        schema as never,
+      );
+      const raw = Data.from(cbor) as Constr<Data>;
+      expect(raw.index).toBe(tag);
+      expect(raw.fields).toEqual(fields.map(fieldValue));
+    },
+  );
 });
 
 describe("Q62 rotation predicate", () => {

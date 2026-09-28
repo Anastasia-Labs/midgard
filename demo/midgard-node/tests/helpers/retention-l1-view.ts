@@ -103,7 +103,7 @@ export const makeRetentionL1Queue = async ({
           header: value,
           da_attestation:
             index === headers.length - 1
-              ? { Attested: { da_bond_asset_name: "33".repeat(32) } }
+              ? { Attested: { commitment_hash: "33".repeat(32) } }
               : SDK.NO_DA_ATTESTATION,
         }) as SDK.LinkedListNodeView["data"],
       },

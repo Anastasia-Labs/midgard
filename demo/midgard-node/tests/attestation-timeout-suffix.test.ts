@@ -46,7 +46,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
     txHash: byte.repeat(32),
     outputIndex: 0,
     address,
-    assets: { lovelace: 3_000_000n, [toUnit(policyId, assetName)]: 1n },
+    assets: { lovelace: 5_000_000n, [toUnit(policyId, assetName)]: 1n },
     datum: SDK.encodeLinkedListNodeView(datum),
   });
   const root = node(
@@ -74,7 +74,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
         proven_fraud: null,
         header: header(1000n),
         da_attestation: headApplied
-          ? { Attested: { da_bond_asset_name: "11".repeat(32) } }
+          ? { Attested: { commitment_hash: "11".repeat(32) } }
           : SDK.NO_DA_ATTESTATION,
       }) as SDK.LinkedListNodeView["data"],
     },
@@ -89,7 +89,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
         proven_fraud: null,
         header: header(2000n),
         da_attestation: tailApplied
-          ? { Attested: { da_bond_asset_name: "22".repeat(32) } }
+          ? { Attested: { commitment_hash: "22".repeat(32) } }
           : SDK.NO_DA_ATTESTATION,
       }) as SDK.LinkedListNodeView["data"],
     },

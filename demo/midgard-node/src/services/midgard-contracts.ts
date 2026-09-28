@@ -1599,7 +1599,7 @@ export const midgardContractsFromDeploymentManifest = (
   };
   const fraudProofs = SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
 
-  return {
+  const contracts: Omit<SDK.MidgardValidators, "daBondPool"> = {
     referenceScriptAuth,
     hubOracle,
     daParamsGovernor: authenticatedValidatorFromManifest(
@@ -1625,11 +1625,6 @@ export const midgardContractsFromDeploymentManifest = (
         "availabilityChallengeMint",
       ),
       yields: {
-        bond: withdrawalValidatorFromManifest(
-          manifest,
-          sourcePath,
-          "availabilityChallengeBondWithdraw",
-        ),
         open: withdrawalValidatorFromManifest(
           manifest,
           sourcePath,
@@ -1794,6 +1789,47 @@ export const midgardContractsFromDeploymentManifest = (
     fraudProofContracts,
     fraudProofs,
   };
+  return Object.defineProperty(
+    contracts,
+    "daBondPool",
+    manifestDaBondPool(network, manifest, sourcePath),
+  ) as SDK.MidgardValidators;
+};
+
+/**
+ * The DA bond pool restored from its manifest entries. A manifest that records
+ * no pool (every manifest written before the pooled DA bond) yields an
+ * accessor that fails closed on read, so no pool-dependent path can run
+ * against a script the deployment never published.
+ */
+const manifestDaBondPool = (
+  network: Network,
+  manifest: DeploymentManifest,
+  sourcePath: string,
+): PropertyDescriptor => {
+  const recorded =
+    manifest.contracts?.daBondPoolSpend !== undefined ||
+    manifest.contracts?.daBondPoolMint !== undefined;
+  if (recorded) {
+    return {
+      enumerable: true,
+      value: authenticatedValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "daBondPoolSpend",
+        "daBondPoolMint",
+      ),
+    };
+  }
+  return {
+    enumerable: true,
+    get: () => {
+      throw new Error(
+        `Deployment manifest at "${sourcePath}" does not record the DA bond pool (contracts.daBondPoolSpend / contracts.daBondPoolMint); a manifest-sourced contract bundle cannot provide it`,
+      );
+    },
+  };
 };
 
 /**
@@ -1809,6 +1845,8 @@ export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES =
 
 export const REAL_DA_ATTESTATION_SCRIPT_TITLES =
   SDK.DA_ATTESTATION_SCRIPT_TITLES;
+
+export const REAL_DA_BOND_POOL_SCRIPT_TITLES = SDK.DA_BOND_POOL_SCRIPT_TITLES;
 
 export const REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES =
   SDK.AVAILABILITY_CHALLENGE_SCRIPT_TITLES;
@@ -2047,10 +2085,35 @@ const buildRealDaAttestationValidator = (
     });
   });
 
+const buildRealDaBondPoolValidator = (
+  network: Network,
+  initOutRef: HubOracleOneShotOutRef,
+  hubOraclePolicyId: string,
+  daParamsPolicyId: string,
+  parameters: SDK.DaAvailabilityParameters,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildDaBondPoolValidator(
+          blueprint,
+          network,
+          initOutRef,
+          hubOraclePolicyId,
+          daParamsPolicyId,
+          parameters,
+        ),
+      catch: (cause) =>
+        new Error("Failed to build DaBondPoolValidator", { cause }),
+    });
+  });
+
 const buildRealAvailabilityChallengeValidator = (
   network: Network,
   hubOraclePolicyId: string,
   referenceScriptAuthPolicyId: string,
+  daBondPoolPolicyId: string,
   parameters: SDK.DaAvailabilityParameters,
 ): Effect.Effect<SDK.AvailabilityChallengeValidator, Error> =>
   Effect.gen(function* () {
@@ -2062,6 +2125,7 @@ const buildRealAvailabilityChallengeValidator = (
           network,
           hubOraclePolicyId,
           referenceScriptAuthPolicyId,
+          daBondPoolPolicyId,
           parameters,
         ),
       catch: (cause) =>
@@ -2643,13 +2707,33 @@ export const withRealStateQueueAndOperatorContracts = (
       baseContracts.hubOracle,
       normalizedOneShotOutRef,
     );
-    // The availability-challenge policy id is a `correction_lock.spend`
-    // parameter, so it has to exist before the correction lock is applied.
+    // Build order: DA params governor -> DA bond pool -> availability
+    // challenge -> correction lock -> (later) DA attestation. Each of these
+    // takes parameters only from contracts built before it: the pool reads the
+    // DA params policy, the availability timeout yield reads the pool policy,
+    // `correction_lock.spend` reads the availability policy, and the
+    // attestation reads the governor, hub and pool policies.
+    const realDaParamsGovernor = yield* buildRealDaParamsGovernorValidator(
+      network,
+      daParamsGovernorInitOutRef,
+      daParamsMaxCommitteeSize,
+      daParamsMaxOwnerCount,
+    );
+    // The pool is a one-shot on the hub nonce, which the atomic protocol init
+    // spends while it mints the pool NFT.
+    const realDaBondPool = yield* buildRealDaBondPoolValidator(
+      network,
+      normalizedOneShotOutRef,
+      realHubOracle.policyId,
+      realDaParamsGovernor.policyId,
+      deploymentParameters.availabilityChallengeParameters,
+    );
     const realAvailabilityChallenge =
       yield* buildRealAvailabilityChallengeValidator(
         network,
         realHubOracle.policyId,
         deploymentParameters.referenceScriptAuth.policyId,
+        realDaBondPool.policyId,
         deploymentParameters.availabilityChallengeParameters,
       );
     const realCorrectionLock = yield* buildRealCorrectionLockValidator(
@@ -2661,6 +2745,8 @@ export const withRealStateQueueAndOperatorContracts = (
       ...baseContracts,
       referenceScriptAuth: deploymentParameters.referenceScriptAuth,
       hubOracle: realHubOracle,
+      daParamsGovernor: realDaParamsGovernor,
+      daBondPool: realDaBondPool,
       correctionLock: realCorrectionLock,
       availabilityChallenge: realAvailabilityChallenge,
     };
@@ -2782,25 +2868,14 @@ export const withRealStateQueueAndOperatorContracts = (
       settlement: realSettlement,
     };
 
-    const realDaParamsGovernor = yield* buildRealDaParamsGovernorValidator(
-      network,
-      daParamsGovernorInitOutRef,
-      daParamsMaxCommitteeSize,
-      daParamsMaxOwnerCount,
-    );
-    const withRealDaParamsGovernor: SDK.MidgardValidators = {
-      ...withRealSettlement,
-      daParamsGovernor: realDaParamsGovernor,
-    };
-
     const realDaAttestation = yield* buildRealDaAttestationValidator(
       network,
-      withRealDaParamsGovernor,
+      withRealSettlement,
       deploymentParameters.referenceScriptAuth.policyId,
       deploymentParameters.availabilityChallengeParameters,
     );
     const withRealDaAttestation: SDK.MidgardValidators = {
-      ...withRealDaParamsGovernor,
+      ...withRealSettlement,
       daAttestation: realDaAttestation,
     };
 
@@ -2964,7 +3039,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.all_registered_chains=real",
+    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, da_bond_pool=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.all_registered_chains=real",
   );
   const runtime: MidgardContractRuntimeValue = {
     contracts: resolvedContracts,

@@ -42,7 +42,7 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
         header: { endTime: 1n },
         da_attestation:
           datum.data === "attested"
-            ? { Attested: { da_bond_asset_name: "aa".repeat(32) } }
+            ? { Attested: { commitment_hash: "aa".repeat(32) } }
             : SDK.NO_DA_ATTESTATION,
       }),
     incompletePruneUnattestedBlockDescendantTxProgram: (...args: unknown[]) =>

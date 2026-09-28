@@ -237,6 +237,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "hub-oracle minting": "HubOracleMint",
   "da-params-governor spending": "DaParamsGovernorSpend",
   "da-params-governor minting": "DaParamsGovernorMint",
+  "da-bond-pool spending": "DaBondPoolSpend",
+  "da-bond-pool minting": "DaBondPoolMint",
   "da-attestation spending": "DaAttestationSpend",
   "da-attestation minting": "DaAttestationMint",
   "scheduler spending": "SchedulerSpend",
@@ -783,7 +785,6 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   // absent from the other makes every manifest unverifiable by one of the two.
   "availability-challenge spending": "AvailabilityChallengeSpend",
   "availability-challenge minting": "AvailabilityChallengeMint",
-  "availability-challenge bond withdrawal": "AvailabilityChallengeBondYield",
   "availability-challenge open withdrawal": "AvailabilityChallengeOpenYield",
   "availability-challenge settle withdrawal":
     "AvailabilityChallengeSettleYield",

@@ -520,12 +520,10 @@ export const makeAlwaysSucceedsContracts = (
     },
     daParamsGovernor: alwaysAuthenticated(blueprint, "state_queue"),
     daAttestation: alwaysAuthenticated(blueprint, "state_queue"),
+    daBondPool: alwaysAuthenticated(blueprint, "state_queue"),
     availabilityChallenge: {
       ...alwaysAuthenticated(blueprint, "state_queue"),
       yields: {
-        bond: makeWithdrawalValidator(
-          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
-        ),
         open: makeWithdrawalValidator(
           alwaysScript(blueprint, "midgard", "state_queue", "mint"),
         ),

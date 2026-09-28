@@ -6,7 +6,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { TEST_AVAILABILITY_PARAMETERS } from "./helpers/availability-challenge.js";
-import { createAvailabilityFixture } from "./helpers/availability-challenge-emulator.js";
+import {
+  AVAILABILITY_ATTESTATION_OUTPUT_LOVELACE,
+  createAvailabilityFixture,
+} from "./helpers/availability-challenge-emulator.js";
 
 const thresholdAttestation = async (
   f: Awaited<ReturnType<typeof createAvailabilityFixture>>,
@@ -18,7 +21,7 @@ const thresholdAttestation = async (
       daParamsDatum: f.daParamsDatum,
       target: f.target,
       referenceScripts: f.daReferences,
-      attestationOutputLovelace: TEST_AVAILABILITY_PARAMETERS.da_bond_lovelace,
+      attestationOutputLovelace: AVAILABILITY_ATTESTATION_OUTPUT_LOVELACE,
       rescueBeneficiary: await Effect.runPromise(
         SDK.addressDataFromBech32(f.responder.address),
       ),
@@ -97,8 +100,8 @@ describe("DA apply validity at production cadence", () => {
         attestation,
         target: f.target,
         referenceScripts: f.daReferences,
-        hubOracleRefInput: f.hubOracleRefInput,
         validityRange,
+        availabilityParameters: TEST_AVAILABILITY_PARAMETERS,
       };
       // The planner does not relax either existing SDK boundary.
       for (const [range, reason] of [

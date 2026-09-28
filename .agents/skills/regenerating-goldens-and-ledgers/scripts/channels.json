@@ -236,6 +236,40 @@
       }
     },
     {
+      "id": "da-bond-pool-v1",
+      "kind": "golden",
+      "summary": "Pooled DA bond vectors: DaBondPoolDatum (Bonded, Withdrawing at 0 / small / POSIX ms / 2^63-1), the InitPool mint redeemer and all five pool spend redeemers, StateQueueStatusV1 in all four arms, and ParametersV1 at max_tranche_count 1, 16 and 64 with the preprod-testing da_bond amounts: JSON fixture plus a whole generated Aiken module. demo/midgard-sdk/tests/da-golden-vectors.test.ts reproduces this fixture and the da-commitment-v1 one with the SDK codecs.",
+      "generators": [
+        "demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-sdk:fixtures:da-bond-pool-v1:sync",
+        "demo/midgard-sdk:fixtures:da-bond-pool-v1:check"
+      ],
+      "producers": [],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-sdk/scripts/da-vector-support.mjs",
+        "demo/scripts/deployment-profiles.mjs",
+        "config/deployments/preprod-testing.yaml"
+      ],
+      "outputs": [
+        "demo/midgard-sdk/tests/fixtures/da-bond-pool-v1.generated.json",
+        "onchain/aiken/lib/midgard/da-bond-pool-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-sdk run fixtures:da-bond-pool-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-sdk run fixtures:da-bond-pool-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check DA bond pool golden vectors"
+      }
+    },
+    {
       "id": "da-attestation-capacity-v1",
       "kind": "golden",
       "summary": "The signed commitment block (commitment fixture, 256 packed Ed25519 keys and witnesses, pinned attestation message) between the BEGIN/END GENERATED markers of the hand-written da_attestation_capacity.test.ak.",

@@ -12,37 +12,12 @@ import { describe, expect, it, vi } from "vitest";
 import { TEST_AVAILABILITY_PARAMETERS as parameters } from "./helpers/availability-challenge.js";
 import {
   attestAvailability,
+  availabilityDeployment,
   type AvailabilityFixture,
   createAvailabilityFixture,
 } from "./helpers/availability-challenge-emulator.js";
 
-const deployment = (f: AvailabilityFixture): SDK.DaAvailabilityDeployment => {
-  const names = [
-    "availability-challenge spending",
-    "availability-challenge minting",
-    ...(["open", "settle", "close", "timeout"] as const).map(
-      (arm) => `availability-challenge ${arm} withdrawal`,
-    ),
-    "state-queue spending",
-    "state-queue minting",
-    "state-queue unavailable-timeout withdrawal",
-    "correction-lock spending",
-  ];
-  const referenceScripts = Object.fromEntries(
-    names.map((name) => [name, f.reference(name)]),
-  );
-  const unit = Object.keys(referenceScripts[names[0]!]!.assets).find(
-    (unit) => unit !== "lovelace",
-  )!;
-  return {
-    contracts: f.contracts,
-    hubOraclePolicyId: f.contracts.hubOracle.policyId,
-    referenceScriptAuthPolicyId: unit.slice(0, 56),
-    parameters,
-    referenceScripts,
-    hubOracleRefInput: f.hubOracleRefInput,
-  };
-};
+const deployment = availabilityDeployment;
 const submit = async (
   f: AvailabilityFixture,
   built: SDK.BuiltDaAvailabilityTransaction,
@@ -63,7 +38,15 @@ const submit = async (
   expect(memory).toBeGreaterThan(0n);
   expect(memory).toBeLessThanOrEqual(13_200_000n);
   expect(steps).toBeLessThanOrEqual(8_000_000_000n);
-  expect(built.collateralOutRefs).toHaveLength(1);
+  // G9/H1: plain-ADA collateral in at most three inputs, covering the ledger
+  // collateral percentage of the exact fee.
+  expect(built.collateralOutRefs.length).toBeGreaterThanOrEqual(1);
+  expect(built.collateralOutRefs.length).toBeLessThanOrEqual(3);
+  expect(
+    built.collateralOutRefs.reduce((t, u) => t + u.assets.lovelace, 0n),
+  ).toBeGreaterThanOrEqual((built.feeLovelace * 150n + 99n) / 100n);
+  for (const c of built.collateralOutRefs)
+    expect(Object.keys(c.assets)).toEqual(["lovelace"]);
 
   const id = await signed.submit();
   f.emulator.awaitBlock(1);
@@ -80,9 +63,7 @@ const resources = async (
   /** A publication's range must close by the challenge's response deadline. */
   responseDeadline?: bigint,
 ): Promise<SDK.DaAvailabilityTransactionResources> => {
-  const collateralInputs = (await f.lucid.wallet().getUtxos())
-    .filter((u) => u.assets.lovelace === 10_000_000n && !u.datum)
-    .slice(0, 1);
+  const collateralInputs = await f.collateralInputs();
   const validFrom = BigInt(f.emulator.now());
   const validTo =
     responseDeadline !== undefined &&
@@ -91,39 +72,46 @@ const resources = async (
       : validFrom + 60_000n;
   return { collateralInputs, feeLovelace, validFrom, validTo };
 };
+/** The timeout derives its own exact fee: resources without one. */
+const timeoutResources = async (f: AvailabilityFixture) => {
+  const { feeLovelace: _fee, ...rest } = await resources(f, 1n);
+  return rest;
+};
+const OPEN_FUNDING_LOVELACE =
+  parameters.challenger_bond_lovelace +
+  parameters.challenge_record_lovelace +
+  parameters.max_open_fee_lovelace;
+const fundChallenger = async (f: AvailabilityFixture, name: string) => {
+  f.lucid.selectWallet.fromPrivateKey(f.challenger.privateKey);
+  const funding = await f.submit(
+    name,
+    f.lucid.newTx().pay.ToAddress(f.challenger.address, {
+      lovelace: OPEN_FUNDING_LOVELACE,
+    }),
+    true,
+  );
+  return funding.find((u) => u.assets.lovelace === OPEN_FUNDING_LOVELACE)!;
+};
+const recordOf = (s: SDK.DaAvailabilityChallengeSnapshot) => {
+  if (!s.recordDatum) throw new Error("Expected a challenge record");
+  return s.recordDatum;
+};
 const open = async (
   f: AvailabilityFixture,
   d: SDK.DaAvailabilityDeployment,
 ) => {
-  const bonded = await attestAvailability(f);
-  f.lucid.selectWallet.fromPrivateKey(f.challenger.privateKey);
-  const funding = await f.submit(
+  const attested = await attestAvailability(f);
+  const challengerFunding = await fundChallenger(
+    f,
     "prepare challenger resources",
-    f.lucid
-      .newTx()
-      .pay.ToAddress(f.challenger.address, {
-        lovelace:
-          parameters.challenger_bond_lovelace +
-          parameters.max_open_fee_lovelace,
-      })
-      .pay.ToAddress(f.challenger.address, { lovelace: 10_000_000n }),
-    true,
   );
   const p = {
     ...(await resources(f, parameters.max_open_fee_lovelace)),
-    bond: {
-      ...bonded.bond,
-      datum: SDK.encodeDaAvailabilityBondDatum(
-        Data.from(bonded.bond.datum!, SDK.DaAvailabilityBondDatum),
-      ),
-    },
-    queue: bonded.queue,
-    challengerFunding: funding.find(
-      (u) =>
-        u.assets.lovelace ===
-        parameters.challenger_bond_lovelace + parameters.max_open_fee_lovelace,
-    )!,
+    commitment: attested.commitment,
+    queue: attested.queue,
+    challengerFunding,
     challenger: f.challengerKey,
+    daChallengeWindowMs: f.timing.daChallengeWindowMs,
   };
   await expect(
     Effect.runPromise(
@@ -152,11 +140,14 @@ const open = async (
       ),
     ),
   ).rejects.toThrow(/Unauthentic reference script/);
-  await submit(
+  const outputs = await submit(
     f,
     await Effect.runPromise(
       SDK.buildOpenDaAvailabilityChallengeTxProgram(f.lucid, d, p),
     ),
+  );
+  expect(outputs[0]!.assets.lovelace).toBe(
+    parameters.challenge_record_lovelace,
   );
   return SDK.fetchDaAvailabilityChallengeSnapshot(
     f.lucid,
@@ -174,19 +165,10 @@ describe("production SDK availability builders", () => {
     try {
       const f = await createAvailabilityFixture(64 * 1024 * 1024);
       const d = deployment(f);
-      const bonded = await attestAvailability(f);
-      f.lucid.selectWallet.fromPrivateKey(f.challenger.privateKey);
-      const funding = await f.submit(
+      const attested = await attestAvailability(f);
+      const challengerFunding = await fundChallenger(
+        f,
         "prepare maximum challenger resources",
-        f.lucid
-          .newTx()
-          .pay.ToAddress(f.challenger.address, {
-            lovelace:
-              parameters.challenger_bond_lovelace +
-              parameters.max_open_fee_lovelace,
-          })
-          .pay.ToAddress(f.challenger.address, { lovelace: 10_000_000n }),
-        true,
       );
       const submissions: { action: string; txHash: string; cbor: string }[] =
         [];
@@ -265,15 +247,11 @@ describe("production SDK availability builders", () => {
             await Effect.runPromise(
               SDK.buildOpenDaAvailabilityChallengeTxProgram(f.lucid, d, {
                 ...(await resources(f, parameters.max_open_fee_lovelace)),
-                bond: bonded.bond,
-                queue: bonded.queue,
+                commitment: attested.commitment,
+                queue: attested.queue,
                 challenger: f.challengerKey,
-                challengerFunding: funding.find(
-                  (input) =>
-                    input.assets.lovelace ===
-                    parameters.challenger_bond_lovelace +
-                      parameters.max_open_fee_lovelace,
-                )!,
+                challengerFunding,
+                daChallengeWindowMs: f.timing.daChallengeWindowMs,
               }),
             )
           ).tx,
@@ -292,13 +270,11 @@ describe("production SDK availability builders", () => {
         f.target.headerHash,
       );
       expect(snapshot.tranches).toHaveLength(16);
-      const bond = snapshot.bondDatum!;
-      if (!("ChallengedBond" in bond))
-        throw new Error("Expected maximum challenged bond");
+      const record = recordOf(snapshot);
       const [tranche] = SDK.planDaAvailabilityPublications({
-        commitment: bond.ChallengedBond.commitment,
+        commitment: record.commitment,
         payload: f.payload,
-        challengeAssetName: bond.ChallengedBond.challenge_asset_name,
+        challengeAssetName: record.challenge_asset_name,
       });
       expect(tranche!.publications[0]!.chunk_byte_length).toBe(14_020n);
       expect(
@@ -319,7 +295,7 @@ describe("production SDK availability builders", () => {
                     ...(await resources(
                       f,
                       parameters.max_publication_fee_lovelace,
-                      bond.ChallengedBond.response_deadline,
+                      record.response_deadline,
                     )),
                     thread: current.utxo,
                     previousCarrier: current.carrier,
@@ -396,13 +372,13 @@ describe("production SDK availability builders", () => {
   it("builds authenticated opening, exact carriers, ordered settlement and close with live local evaluation", async () => {
     const f = await createAvailabilityFixture();
     const d = deployment(f);
+    const poolBefore = await f.getPool();
     let snapshot = await open(f, d);
-    const b = snapshot.bondDatum!;
-    if (!("ChallengedBond" in b)) throw new Error("Expected challenged bond");
+    const b = recordOf(snapshot);
     const publications = SDK.planDaAvailabilityPublications({
-      commitment: b.ChallengedBond.commitment,
+      commitment: b.commitment,
       payload: f.payload,
-      challengeAssetName: b.ChallengedBond.challenge_asset_name,
+      challengeAssetName: b.challenge_asset_name,
     })[0]!.publications;
     let thread = snapshot.tranches[0]!.utxo;
     let carrier: UTxO | undefined;
@@ -411,7 +387,7 @@ describe("production SDK availability builders", () => {
         ...(await resources(
           f,
           parameters.max_publication_fee_lovelace,
-          b.ChallengedBond.response_deadline,
+          b.response_deadline,
         )),
         thread,
         previousCarrier: carrier,
@@ -458,7 +434,7 @@ describe("production SDK availability builders", () => {
       await Effect.runPromise(
         SDK.buildSettleDaAvailabilityTrancheTxProgram(f.lucid, d, {
           ...(await resources(f, parameters.max_settlement_fee_lovelace)),
-          bond: snapshot.bond!,
+          record: snapshot.record!,
           terminal: snapshot.terminal!,
           thread,
           carrier,
@@ -470,25 +446,28 @@ describe("production SDK availability builders", () => {
       await Effect.runPromise(
         SDK.buildCloseDaAvailabilityChallengeTxProgram(f.lucid, d, {
           ...(await resources(f, parameters.max_close_fee_lovelace)),
-          bond: snapshot.bond!,
+          record: snapshot.record!,
           terminal: terminal!,
           queue: snapshot.queue!.utxo,
         }),
       ),
     );
-    expect(outputs[1]!.assets.lovelace).toBe(parameters.da_bond_lovelace);
-    expect(outputs[2]!.assets.lovelace).toBe(
+    expect(outputs).toHaveLength(2);
+    expect(outputs[1]!.address).toBe(f.challenger.address);
+    expect(outputs[1]!.assets.lovelace).toBe(
       parameters.challenger_bond_lovelace -
         2n * parameters.max_publication_fee_lovelace -
         parameters.max_settlement_fee_lovelace -
-        parameters.max_close_fee_lovelace,
+        parameters.max_close_fee_lovelace +
+        parameters.challenge_record_lovelace,
     );
+    expect((await f.getPool()).assets).toEqual(poolBefore.assets);
     const closed = await SDK.fetchDaAvailabilityChallengeSnapshot(
       f.lucid,
       d,
       f.target.headerHash,
     );
-    expect(closed.bond).toBeUndefined();
+    expect(closed.record).toBeUndefined();
     expect(closed.tranches).toHaveLength(0);
   }, 180_000);
   it("settles expired state and atomically removes the unavailable head", async () => {
@@ -500,47 +479,59 @@ describe("production SDK availability builders", () => {
       Effect.runPromise(
         SDK.buildSettleDaAvailabilityTrancheTxProgram(f.lucid, d, {
           ...(await resources(f, parameters.max_settlement_fee_lovelace)),
-          bond: s.bond!,
+          record: s.record!,
           terminal: s.terminal!,
           thread: t.utxo,
         }),
       ),
     ).rejects.toThrow(/deadline/);
-    const b = s.bondDatum!;
-    if (!("ChallengedBond" in b)) throw new Error("Expected challenged bond");
-    f.emulator.awaitSlot(
-      Math.ceil(
-        (Number(b.ChallengedBond.response_deadline) - f.emulator.now()) / 1000,
-      ) + 1,
-    );
+    const b = recordOf(s);
+    f.advanceToMs(b.response_deadline + 1_000n);
     const [terminal] = await submit(
       f,
       await Effect.runPromise(
         SDK.buildSettleDaAvailabilityTrancheTxProgram(f.lucid, d, {
           ...(await resources(f, parameters.max_settlement_fee_lovelace)),
-          bond: s.bond!,
+          record: s.record!,
           terminal: s.terminal!,
           thread: t.utxo,
         }),
       ),
     );
-    const outputs = await submit(
-      f,
-      await Effect.runPromise(
-        SDK.buildTimeoutDaAvailabilityChallengeTxProgram(f.lucid, d, {
-          ...(await resources(f, parameters.max_timeout_fee_lovelace)),
-          bond: s.bond!,
-          terminal: terminal!,
-          queue: s.queue!.utxo,
-          confirmedState: s.confirmedState.utxo,
-          correctionLock: s.correctionLock,
-          headerHash: f.target.headerHash,
-          challengeAssetName: b.ChallengedBond.challenge_asset_name,
-          rentRefundAddress: f.responder.address,
-        }),
-      ),
+    const pool = await f.getPool();
+    const built = await Effect.runPromise(
+      SDK.buildTimeoutDaAvailabilityChallengeTxProgram(f.lucid, d, {
+        ...(await timeoutResources(f)),
+        record: s.record!,
+        terminal: terminal!,
+        pool,
+        queue: s.queue!.utxo,
+        confirmedState: s.confirmedState.utxo,
+        correctionLock: s.correctionLock,
+        headerHash: f.target.headerHash,
+        challengeAssetName: b.challenge_asset_name,
+        rentRefundAddress: f.responder.address,
+      }),
     );
-    expect(outputs[2]!.assets.lovelace).toBe(parameters.da_bond_lovelace);
+    // A fully backed pool's penalty pays the whole fee: c = 0.
+    expect(built.feeLovelace).toBe(parameters.da_slash_penalty_lovelace);
+    expect(built.timeoutFeePartLovelace).toBe(
+      parameters.da_slash_penalty_lovelace,
+    );
+    const outputs = await submit(f, built);
+    expect(outputs[2]!.address).toBe(f.challenger.address);
+    expect(outputs[2]!.assets.lovelace).toBe(
+      parameters.challenger_bond_lovelace -
+        parameters.max_settlement_fee_lovelace +
+        parameters.challenge_record_lovelace +
+        parameters.da_bond_lovelace -
+        parameters.da_slash_penalty_lovelace,
+    );
+    expect(outputs[3]!.assets).toEqual({
+      ...pool.assets,
+      lovelace: pool.assets.lovelace - parameters.da_bond_lovelace,
+    });
+    expect(outputs[3]!.datum).toBe(pool.datum);
     const removed = await SDK.fetchDaAvailabilityChallengeSnapshot(
       f.lucid,
       d,
@@ -552,19 +543,14 @@ describe("production SDK availability builders", () => {
     const f = await createAvailabilityFixture(1, 2),
       d = deployment(f);
     let s = await open(f, d);
-    const b = s.bondDatum!;
-    if (!("ChallengedBond" in b)) throw new Error("Expected challenge");
-    f.emulator.awaitSlot(
-      Math.ceil(
-        (Number(b.ChallengedBond.response_deadline) - f.emulator.now()) / 1000,
-      ) + 1,
-    );
+    const b = recordOf(s);
+    f.advanceToMs(b.response_deadline + 1_000n);
     const [terminal] = await submit(
       f,
       await Effect.runPromise(
         SDK.buildSettleDaAvailabilityTrancheTxProgram(f.lucid, d, {
           ...(await resources(f, parameters.max_settlement_fee_lovelace)),
-          bond: s.bond!,
+          record: s.record!,
           terminal: s.terminal!,
           thread: s.tranches[0]!.utxo,
         }),
@@ -574,15 +560,16 @@ describe("production SDK availability builders", () => {
       f,
       await Effect.runPromise(
         SDK.buildTimeoutDaAvailabilityChallengeTxProgram(f.lucid, d, {
-          ...(await resources(f, parameters.max_timeout_fee_lovelace)),
-          bond: s.bond!,
+          ...(await timeoutResources(f)),
+          record: s.record!,
           terminal: terminal!,
+          pool: await f.getPool(),
           queue: s.queue!.utxo,
           confirmedState: s.confirmedState.utxo,
           descendant: s.descendant!.utxo,
           correctionLock: s.correctionLock,
           headerHash: f.target.headerHash,
-          challengeAssetName: b.ChallengedBond.challenge_asset_name,
+          challengeAssetName: b.challenge_asset_name,
           rentRefundAddress: f.responder.address,
         }),
       ),
@@ -592,7 +579,7 @@ describe("production SDK availability builders", () => {
       d,
       f.target.headerHash,
     );
-    expect(s.bond).toBeUndefined();
+    expect(s.record).toBeUndefined();
     expect(s.descendant).toBeDefined();
     const step = async (prune: boolean) => {
       const r = await resources(f, parameters.max_timeout_fee_lovelace);
@@ -611,7 +598,7 @@ describe("production SDK availability builders", () => {
         descendant: s.descendant?.utxo,
         correctionLock: s.correctionLock,
         headerHash: f.target.headerHash,
-        challengeAssetName: b.ChallengedBond.challenge_asset_name,
+        challengeAssetName: b.challenge_asset_name,
         rentRefundAddress: f.responder.address,
         feeFunding: funding,
       };
@@ -640,12 +627,11 @@ describe("production SDK availability builders", () => {
     const f = await createAvailabilityFixture(),
       d = deployment(f);
     const s = await open(f, d);
-    const b = s.bondDatum!;
-    if (!("ChallengedBond" in b)) throw new Error("Expected challenge");
+    const b = recordOf(s);
     const publication = SDK.planDaAvailabilityPublications({
-      commitment: b.ChallengedBond.commitment,
+      commitment: b.commitment,
       payload: f.payload,
-      challengeAssetName: b.ChallengedBond.challenge_asset_name,
+      challengeAssetName: b.challenge_asset_name,
     })[0]!.publications[0]!;
     const [thread, carrier] = await submit(
       f,
@@ -654,21 +640,17 @@ describe("production SDK availability builders", () => {
           ...(await resources(
             f,
             parameters.max_publication_fee_lovelace,
-            b.ChallengedBond.response_deadline,
+            b.response_deadline,
           )),
           thread: s.tranches[0]!.utxo,
           publication,
         }),
       ),
     );
-    f.emulator.awaitSlot(
-      Math.ceil(
-        (Number(b.ChallengedBond.response_deadline) - f.emulator.now()) / 1000,
-      ) + 1,
-    );
+    f.advanceToMs(b.response_deadline + 1_000n);
     const settlement = {
       ...(await resources(f, parameters.max_settlement_fee_lovelace)),
-      bond: s.bond!,
+      record: s.record!,
       terminal: s.terminal!,
       thread: thread!,
       carrier: carrier!,
@@ -691,14 +673,15 @@ describe("production SDK availability builders", () => {
       f,
       await Effect.runPromise(
         SDK.buildTimeoutDaAvailabilityChallengeTxProgram(f.lucid, d, {
-          ...(await resources(f, parameters.max_timeout_fee_lovelace)),
-          bond: s.bond!,
+          ...(await timeoutResources(f)),
+          record: s.record!,
           terminal: terminal!,
+          pool: await f.getPool(),
           queue: s.queue!.utxo,
           confirmedState: s.confirmedState.utxo,
           correctionLock: s.correctionLock,
           headerHash: f.target.headerHash,
-          challengeAssetName: b.ChallengedBond.challenge_asset_name,
+          challengeAssetName: b.challenge_asset_name,
           rentRefundAddress: f.responder.address,
         }),
       ),

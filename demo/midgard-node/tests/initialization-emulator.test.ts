@@ -294,13 +294,25 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
+      // Output 3, the state-queue root, is funded at the node floor; the
+      // other protocol outputs take Lucid's automatic minimum.
       expect(
-        outputAssets.slice(0, 9).every((assets) => !("lovelace" in assets)),
+        outputAssets
+          .slice(0, 9)
+          .every((assets, index) => index === 3 || !("lovelace" in assets)),
       ).toBe(true);
-      expect(outputAssets).toHaveLength(11);
+      expect(outputAssets[3]?.lovelace).toBe(SDK.STATE_QUEUE_NODE_MIN_LOVELACE);
+      // Nine protocol outputs, the two history roots, then the DA bond pool,
+      // which the init appends last and funds at the profile floor.
+      expect(outputAssets).toHaveLength(12);
       expect(
-        outputAssets.slice(9).every((assets) => assets.lovelace > 0n),
+        outputAssets.slice(9, 11).every((assets) => assets.lovelace > 0n),
       ).toBe(true);
+      expect(outputAssets[11]).toEqual({
+        lovelace:
+          SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace,
+        [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+      });
       const hubOracleUnit = toUnit(
         contracts.hubOracle.policyId,
         SDK.HUB_ORACLE_ASSET_NAME,

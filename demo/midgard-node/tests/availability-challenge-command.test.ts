@@ -12,24 +12,16 @@ import { TEST_AVAILABILITY_PARAMETERS as parameters } from "./helpers/availabili
 
 const hash = "11".repeat(28);
 const challenge = SDK.buildDaAvailabilityChallengeDatumPlan({
-  availableBond: {
-    Available: {
-      commitment: SDK.buildDaAvailabilityCommitment({
-        deploymentIdentity: "22".repeat(28),
-        headerHash: hash,
-        payload: Uint8Array.of(1),
-        bondOwner: "33".repeat(28),
-        responseGeometry: parameters.response_geometry,
-      }),
-      da_bond_asset_name: SDK.daAvailabilityBondAssetName({
-        transactionId: "44".repeat(32),
-        outputIndex: 0n,
-      }),
-      committee_signers_hash: "55".repeat(32),
-      attested_signers: "80" + "00".repeat(31),
-    },
+  commitment: SDK.buildDaAvailabilityCommitment({
+    deploymentIdentity: "22".repeat(28),
+    headerHash: hash,
+    payload: Uint8Array.of(1),
+    responseGeometry: parameters.response_geometry,
+  }),
+  challengerFundingOutRef: {
+    transactionId: "66".repeat(32),
+    outputIndex: 0n,
   },
-  bondInputOutRef: { transactionId: "66".repeat(32), outputIndex: 0n },
   challenger: "77".repeat(28),
   openedAt: 1_000n,
   parameters,
@@ -43,20 +35,24 @@ const lock = (datum: SDK.CorrectionLockDatum): UTxO => ({
 });
 const snapshot = {
   headerHash: hash,
-  bondDatum: challenge.challengedBond,
+  recordDatum: challenge.record,
   terminalDatum: challenge.terminalAccumulator,
   correctionLock: lock("Idle"),
 };
 
 describe("operational availability commands", () => {
-  it("requires the opening bond plus the full current descendant removal reserve", () => {
+  it("requires the challenger bond, the challenge record and the full current descendant removal reserve", () => {
     const collateral = {
       ...lock("Idle"),
       address: "actor",
       assets: { lovelace: 100_000_000n },
     };
+    // Open spends one challenger coin holding exactly the challenger bond, the
+    // challenge record lovelace and the fee.
     const opening =
-      parameters.challenger_bond_lovelace + parameters.max_open_fee_lovelace;
+      parameters.challenger_bond_lovelace +
+      parameters.challenge_record_lovelace +
+      parameters.max_open_fee_lovelace;
     const available = {
       ...collateral,
       txHash: "99".repeat(32),
@@ -82,6 +78,19 @@ describe("operational availability commands", () => {
       assertAvailabilityCommandRemovalCapital({
         ...funding,
         remainingRemovalSteps: 3,
+      }),
+    ).toThrow(/remaining descendant removal path/);
+    expect(() =>
+      assertAvailabilityCommandRemovalCapital({
+        ...funding,
+        walletUtxos: [
+          {
+            ...available,
+            datum: undefined,
+            assets: { lovelace: available.assets.lovelace - 1n },
+          },
+          collateral,
+        ],
       }),
     ).toThrow(/remaining descendant removal path/);
     expect(() =>

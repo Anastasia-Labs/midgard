@@ -594,7 +594,6 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofDistinctAssetAccumulationLimitStep06",
   "availabilityChallengeSpend",
   "availabilityChallengeMint",
-  "availabilityChallengeBondWithdraw",
   "availabilityChallengeOpenWithdraw",
   "availabilityChallengeSettleWithdraw",
   "availabilityChallengeCloseWithdraw",
@@ -1768,8 +1767,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofDistinctAssetAccumulationLimitStep06",
     "availability-challenge spending": "availabilityChallengeSpend",
     "availability-challenge minting": "availabilityChallengeMint",
-    "availability-challenge bond withdrawal":
-      "availabilityChallengeBondWithdraw",
     "availability-challenge open withdrawal":
       "availabilityChallengeOpenWithdraw",
     "availability-challenge settle withdrawal":
@@ -1992,6 +1989,11 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "hub-oracle minting": "HubOracleMint",
   "da-params-governor spending": "DaParamsGovernorSpend",
   "da-params-governor minting": "DaParamsGovernorMint",
+  // The pooled DA bond's auth-token roles, mirroring the SDK vocabulary. The
+  // pool's contract entries and published reference scripts join the manifest
+  // (contract names and role-to-contract map) with its deployment wiring.
+  "da-bond-pool spending": "DaBondPoolSpend",
+  "da-bond-pool minting": "DaBondPoolMint",
   "da-attestation spending": "DaAttestationSpend",
   "da-attestation minting": "DaAttestationMint",
   "state-queue spending": "StateQueueSpend",
@@ -2533,7 +2535,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpDistinctAssetLimitS06",
   "availability-challenge spending": "AvailabilityChallengeSpend",
   "availability-challenge minting": "AvailabilityChallengeMint",
-  "availability-challenge bond withdrawal": "AvailabilityChallengeBondYield",
   "availability-challenge open withdrawal": "AvailabilityChallengeOpenYield",
   "availability-challenge settle withdrawal":
     "AvailabilityChallengeSettleYield",

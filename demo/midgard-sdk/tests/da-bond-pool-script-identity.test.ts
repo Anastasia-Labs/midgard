@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyBlueprintParams,
   availabilityResponseGeometry,
+  buildAvailabilityChallengeValidator,
+  buildDaAttestationValidator,
   buildDaBondPoolValidator,
   buildDaParamsGovernorValidator,
   DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
@@ -81,6 +83,38 @@ const pool = (
     overrides.hubOraclePolicyId ?? HUB_ORACLE_POLICY_ID,
     overrides.daParamsPolicyId ?? DA_PARAMS_POLICY_ID,
     overrides.parameters ?? PARAMETERS,
+  );
+
+const REFERENCE_SCRIPT_AUTH_POLICY_ID = "44".repeat(28);
+
+const availabilityChallenge = (daBondPoolPolicyId: string) =>
+  buildAvailabilityChallengeValidator(
+    blueprint,
+    NETWORK,
+    HUB_ORACLE_POLICY_ID,
+    REFERENCE_SCRIPT_AUTH_POLICY_ID,
+    daBondPoolPolicyId,
+    PARAMETERS,
+  );
+
+const daAttestation = (
+  contracts: {
+    readonly hubOraclePolicyId?: string;
+    readonly daBondPoolPolicyId?: string;
+  } = {},
+) =>
+  buildDaAttestationValidator(
+    blueprint,
+    NETWORK,
+    {
+      daParamsGovernor: { policyId: DA_PARAMS_POLICY_ID },
+      hubOracle: {
+        policyId: contracts.hubOraclePolicyId ?? HUB_ORACLE_POLICY_ID,
+      },
+      daBondPool: { policyId: contracts.daBondPoolPolicyId ?? pool().policyId },
+    },
+    REFERENCE_SCRIPT_AUTH_POLICY_ID,
+    PARAMETERS,
   );
 
 describe("DA bond pool script identity", () => {
@@ -169,4 +203,34 @@ describe("DA bond pool script identity", () => {
   ] as const)("changes its policy id when %s changes", (_field, override) => {
     expect(pool(override).policyId).not.toBe(pool().policyId);
   });
+
+  it("binds only the timeout yield to the pool policy id", () => {
+    const first = availabilityChallenge(pool().policyId);
+    const second = availabilityChallenge("88".repeat(28));
+
+    expect(second.yields.timeout.withdrawalScriptHash).not.toBe(
+      first.yields.timeout.withdrawalScriptHash,
+    );
+    // The dispatcher and the other yields take no pool parameter (C8).
+    expect(second.policyId).toBe(first.policyId);
+    expect(second.spendingScriptHash).toBe(first.spendingScriptHash);
+    for (const arm of ["open", "settle", "close"] as const) {
+      expect(second.yields[arm].withdrawalScriptHash, arm).toBe(
+        first.yields[arm].withdrawalScriptHash,
+      );
+    }
+  });
+
+  it.each([
+    ["hub_oracle_policy_id", { hubOraclePolicyId: "99".repeat(28) }],
+    ["da_bond_pool_policy_id", { daBondPoolPolicyId: "aa".repeat(28) }],
+  ] as const)(
+    "changes the DA attestation policy id when %s changes",
+    (_field, override) => {
+      const moved = daAttestation(override);
+      const base = daAttestation();
+      expect(moved.policyId).not.toBe(base.policyId);
+      expect(moved.spendingScriptHash).not.toBe(base.spendingScriptHash);
+    },
+  );
 });

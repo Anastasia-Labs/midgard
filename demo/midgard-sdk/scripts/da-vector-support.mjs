@@ -1,13 +1,15 @@
 /**
- * Shared support for the two DA vector generators:
+ * Shared support for the three DA vector generators:
  *
  *   * `generate-da-attestation-capacity-v1-fixture.mjs`, the signed commitment
- *     block of `onchain/aiken/validators/da_attestation_capacity.test.ak`; and
+ *     block of `onchain/aiken/validators/da_attestation_capacity.test.ak`;
  *   * `generate-da-commitment-v1-goldens.mjs`, the `CommitmentV1` /
- *     `ChallengeRecordV1` cross-language goldens.
+ *     `ChallengeRecordV1` cross-language goldens; and
+ *   * `generate-da-bond-pool-v1-goldens.mjs`, the pooled DA bond datum and
+ *     redeemers, `StateQueueStatusV1` and `ParametersV1` goldens.
  *
- * Both need the bytes Aiken's `builtin.serialise_data` produces for the DA
- * types, so both use the one encoder below. It is deliberately small and
+ * All three need the bytes Aiken's `builtin.serialise_data` produces for the DA
+ * types, so all three use the one encoder below. It is deliberately small and
  * refuses every shape it has not been proved on against the Aiken builtin
  * (integers outside the signed 64-bit range, byte strings longer than 64 bytes,
  * constructor indices above 6, maps). A vector that needs one of those has to
@@ -207,6 +209,100 @@ export const challengeRecordV1Data = (record) =>
     requireInt("openedAt", record.openedAt),
     requireInt("responseDeadline", record.responseDeadline),
   ]);
+
+/** `StateQueueStatusV1`, keyed by `kind` in constructor order. */
+export const stateQueueStatusV1Data = (status) => {
+  switch (status.kind) {
+    case "Unattested":
+      return constr(0, []);
+    case "Attested":
+      return constr(1, [
+        requireBytes("commitmentHash", status.commitmentHash, 32),
+      ]);
+    case "Challenged":
+      return constr(2, [
+        requireBytes("commitmentHash", status.commitmentHash, 32),
+        requireBytes("challengeAssetName", status.challengeAssetName, 32),
+      ]);
+    case "Published":
+      return constr(3, [
+        requireBytes("terminalCommitment", status.terminalCommitment, 32),
+      ]);
+    default:
+      throw new Error(`unknown StateQueueStatusV1 arm ${String(status.kind)}`);
+  }
+};
+
+/** `ParametersV1`, in its constructor field order. */
+export const parametersV1Data = (parameters) =>
+  constr(0, [
+    responseGeometryV1Data(parameters.responseGeometry),
+    ...[
+      "daBondLovelace",
+      "challengerBondLovelace",
+      "maxOpenFeeLovelace",
+      "maxPublicationFeeLovelace",
+      "maxSettlementFeeLovelace",
+      "maxCloseFeeLovelace",
+      "maxTimeoutFeeLovelace",
+      "daSlashPenaltyLovelace",
+      "daBondMinTopUpLovelace",
+      "daBondPoolFloorLovelace",
+      "challengeRecordLovelace",
+    ].map((key) => requireInt(key, parameters[key])),
+  ]);
+
+// ---------------------------------------------------------------------------
+// The pooled DA bond types (`lib/midgard/da-bond-pool.ak`)
+// ---------------------------------------------------------------------------
+
+/** `DaBondPoolDatum`: `Bonded` or `Withdrawing { unlock_at }`. */
+export const daBondPoolDatumData = (datum) => {
+  switch (datum.kind) {
+    case "Bonded":
+      return constr(0, []);
+    case "Withdrawing":
+      return constr(1, [requireInt("unlockAt", datum.unlockAt)]);
+    default:
+      throw new Error(`unknown DaBondPoolDatum arm ${String(datum.kind)}`);
+  }
+};
+
+/** The pool `MintRedeemer`: its one constructor `InitPool { output_index }`. */
+export const daBondPoolMintRedeemerData = (redeemer) =>
+  constr(0, [requireInt("outputIndex", redeemer.outputIndex)]);
+
+/** Field names of each pool `SpendRedeemer` arm, in constructor order. */
+export const DA_BOND_POOL_SPEND_REDEEMER_ARMS = Object.freeze([
+  ["TopUp", ["outputIndex"]],
+  [
+    "Slash",
+    [
+      "hubOracleRefInputIndex",
+      "stateQueueMintRedeemerIndex",
+      "correctionLockInputIndex",
+      "outputIndex",
+    ],
+  ],
+  ["BeginWithdraw", ["daParamsRefInputIndex", "outputIndex"]],
+  ["CancelWithdraw", ["daParamsRefInputIndex", "outputIndex"]],
+  ["CompleteWithdraw", ["amount", "daParamsRefInputIndex", "outputIndex"]],
+]);
+
+/** The pool `SpendRedeemer`, keyed by `kind`. */
+export const daBondPoolSpendRedeemerData = (redeemer) => {
+  const index = DA_BOND_POOL_SPEND_REDEEMER_ARMS.findIndex(
+    ([kind]) => kind === redeemer.kind,
+  );
+  if (index < 0) {
+    throw new Error(`unknown pool SpendRedeemer arm ${String(redeemer.kind)}`);
+  }
+  const [, fields] = DA_BOND_POOL_SPEND_REDEEMER_ARMS[index];
+  return constr(
+    index,
+    fields.map((field) => requireInt(field, redeemer[field])),
+  );
+};
 
 /** `cardano/transaction.OutputReference`. */
 export const outputReferenceData = (outputReference) =>

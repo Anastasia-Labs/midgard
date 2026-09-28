@@ -8,6 +8,8 @@ export * from "./common.js";
 export * from "./correction-lock.js";
 export * from "./da-attestation.js";
 export * from "./da-availability-state.js";
+export * from "./da-bond-pool.js";
+export * from "./da-bond-pool-transactions.js";
 export * from "./da-payload.js";
 export * from "./escape-hatch.js";
 export * from "./fraud-proof/index.js";

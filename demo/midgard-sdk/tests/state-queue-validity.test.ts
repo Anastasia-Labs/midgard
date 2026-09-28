@@ -230,7 +230,7 @@ describe("production commit validity binding", () => {
           {
             ...head(),
             da_attestation: {
-              Attested: { da_bond_asset_name: "11".repeat(32) },
+              Attested: { commitment_hash: "11".repeat(32) },
             },
           },
           deadline + 1,
@@ -279,7 +279,7 @@ describe("production commit validity binding", () => {
                     data: castStateQueueNodeToData({
                       ...head(),
                       da_attestation: {
-                        Attested: { da_bond_asset_name: "11".repeat(32) },
+                        Attested: { commitment_hash: "11".repeat(32) },
                       },
                     }) as LinkedListNodeView["data"],
                   },

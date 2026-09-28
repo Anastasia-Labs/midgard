@@ -61,15 +61,12 @@ const largestHeader = (): StateQueueNode["header"] => {
   };
 };
 
-// The TS status field names lag the on-chain `commitment_hash` rename; the
-// constructor indices and the 32-byte field widths, which are all the encoding
-// carries, are identical.
 const STATUSES: Record<string, DaAvailabilityStateQueueStatus> = {
   Unattested: "Unattested",
-  Attested: { Attested: { da_bond_asset_name: h32(0x0c) } },
+  Attested: { Attested: { commitment_hash: h32(0x0c) } },
   Challenged: {
     Challenged: {
-      da_bond_asset_name: h32(0x0c),
+      commitment_hash: h32(0x0c),
       challenge_asset_name: h32(0x0d),
     },
   },

@@ -240,10 +240,10 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const correctionLock = stateQueue;
     const daParamsGovernor = stateQueue;
     const daAttestation = stateQueue;
+    const daBondPool = stateQueue;
     const availabilityChallenge: SDK.AvailabilityChallengeValidator = {
       ...stateQueueAuthenticated,
       yields: {
-        bond: stateQueueYield,
         open: stateQueueYield,
         settle: stateQueueYield,
         close: stateQueueYield,
@@ -691,6 +691,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       hubOracle,
       daParamsGovernor,
       daAttestation,
+      daBondPool,
       availabilityChallenge,
       correctionLock,
       stateQueue,
