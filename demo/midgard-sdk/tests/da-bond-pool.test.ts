@@ -24,9 +24,9 @@ import {
   DaBondPoolSpendRedeemer,
   daBondPoolUnit,
   daBondPoolUnlockAt,
+  decodeDaBondPoolDatum,
   encodeDaBondPoolDatum,
   fetchDaBondPool,
-  parseDaBondPoolDatumCbor,
   planDaBondPoolSlash,
 } from "../src/da-bond-pool.js";
 import * as Sdk from "../src/index.js";
@@ -75,34 +75,77 @@ describe("DA bond pool codecs", () => {
     const withdrawingCbor = encodeDaBondPoolDatum(withdrawing);
     expect(bondedCbor).toBe(Data.to(new Constr(0, [])));
     expect(withdrawingCbor).toBe(Data.to(new Constr(1, [1_790_000_000_000n])));
-    expect(parseDaBondPoolDatumCbor(bondedCbor)).toEqual(bonded);
-    expect(parseDaBondPoolDatumCbor(withdrawingCbor)).toEqual(withdrawing);
+    expect(decodeDaBondPoolDatum(bondedCbor)).toEqual(bonded);
+    expect(decodeDaBondPoolDatum(withdrawingCbor)).toEqual(withdrawing);
     expect(Data.from(withdrawingCbor, DaBondPoolDatum)).toEqual(withdrawing);
   });
 
-  it("refuses non-canonical and malformed pool datums", () => {
+  it("refuses malformed pool datums and non-canonical values", () => {
     const withdrawingCbor = Data.to(new Constr(1, [5n]));
-    expect(() =>
-      parseDaBondPoolDatumCbor(withdrawingCbor.toUpperCase()),
-    ).toThrow("lowercase CBOR hex");
-    expect(() => parseDaBondPoolDatumCbor("")).toThrow("lowercase CBOR hex");
-    expect(() => parseDaBondPoolDatumCbor(`${withdrawingCbor}00`)).toThrow();
-    // Definite-length field list: same value, not the canonical encoding.
-    expect(() => parseDaBondPoolDatumCbor("d87a8105")).toThrow(
-      "canonical Plutus Data encoding",
+    expect(decodeDaBondPoolDatum(withdrawingCbor)).toEqual({
+      Withdrawing: { unlock_at: 5n },
+    });
+    expect(() => decodeDaBondPoolDatum(withdrawingCbor.toUpperCase())).toThrow(
+      "lowercase CBOR hex",
     );
-    expect(() => parseDaBondPoolDatumCbor(Data.to(new Constr(2, [])))).toThrow(
+    expect(() => decodeDaBondPoolDatum("")).toThrow("lowercase CBOR hex");
+    expect(() => decodeDaBondPoolDatum(`${withdrawingCbor}00`)).toThrow(
       "not valid Plutus Data",
     );
-    expect(() =>
-      parseDaBondPoolDatumCbor(Data.to(new Constr(1, [-1n]))),
-    ).toThrow("non-negative unlock_at");
+    // Truncated: the field list promises one item and carries none.
+    expect(() => decodeDaBondPoolDatum("d87a81")).toThrow(
+      "not valid Plutus Data",
+    );
+    expect(() => decodeDaBondPoolDatum(Data.to(new Constr(2, [])))).toThrow(
+      "not valid Plutus Data",
+    );
+    expect(() => decodeDaBondPoolDatum(Data.to(new Constr(1, [-1n])))).toThrow(
+      "non-negative unlock_at",
+    );
     expect(() =>
       assertCanonicalDaBondPoolDatum({ Withdrawing: { unlock_at: -1n } }),
     ).toThrow("non-negative unlock_at");
     expect(() =>
       encodeDaBondPoolDatum({ Withdrawing: { unlock_at: -1n } }),
     ).toThrow("non-negative unlock_at");
+  });
+
+  it("reads a chain pool datum by value, in any Plutus Data encoding", () => {
+    const withdrawing: DaBondPoolDatum = {
+      Withdrawing: { unlock_at: 1_900_000_000_000n },
+    };
+    // The validator compares datums as Data values, so these reach the chain.
+    expect(decodeDaBondPoolDatum("d87980")).toBe("Bonded");
+    expect(decodeDaBondPoolDatum("d8799fff")).toBe("Bonded");
+    expect(decodeDaBondPoolDatum(encodeDaBondPoolDatum(withdrawing))).toEqual(
+      withdrawing,
+    );
+    expect(decodeDaBondPoolDatum("d87a811b000001ba60d33800")).toEqual(
+      withdrawing,
+    );
+    // The general constructor form (tag 102), and non-minimal integers.
+    expect(decodeDaBondPoolDatum("d866820080")).toBe("Bonded");
+    expect(decodeDaBondPoolDatum("d86682009fff")).toBe("Bonded");
+    expect(decodeDaBondPoolDatum("d86682018105")).toEqual({
+      Withdrawing: { unlock_at: 5n },
+    });
+    expect(decodeDaBondPoolDatum("d87a811b0000000000000005")).toEqual({
+      Withdrawing: { unlock_at: 5n },
+    });
+    expect(decodeDaBondPoolDatum("d87a81c24105")).toEqual({
+      Withdrawing: { unlock_at: 5n },
+    });
+    // Still one well-formed canonical datum, nothing after it.
+    expect(() => decodeDaBondPoolDatum("d8798000")).toThrow(
+      "not valid Plutus Data",
+    );
+    expect(() => decodeDaBondPoolDatum("D87980")).toThrow("lowercase CBOR hex");
+    expect(() => decodeDaBondPoolDatum(Data.to(new Constr(2, [])))).toThrow(
+      "not valid Plutus Data",
+    );
+    expect(() => decodeDaBondPoolDatum("d87a8120")).toThrow(
+      "non-negative unlock_at",
+    );
   });
 
   it("keeps the Aiken MintRedeemer and SpendRedeemer constructor layout", () => {
@@ -332,7 +375,56 @@ describe("fetchDaBondPool", () => {
   });
 
   it.each([
+    // The pool validator compares datums as Data values (TopUp keeps the
+    // input datum by value), so anyone may store the same datum this way.
+    ["an indefinite-length Bonded datum", "d8799fff", "Bonded"],
+    ["a tag-102 Bonded datum", "d866820080", "Bonded"],
+    [
+      "a definite-length Withdrawing datum",
+      "d87a811b000001ba60d33800",
+      { Withdrawing: { unlock_at: 1_900_000_000_000n } },
+    ],
+    [
+      "a tag-102 Withdrawing datum",
+      "d86682018105",
+      { Withdrawing: { unlock_at: 5n } },
+    ],
+    [
+      "a non-minimal unlock_at",
+      "d87a9f1b0000000000000005ff",
+      { Withdrawing: { unlock_at: 5n } },
+    ],
+  ] as const)("reads a pool storing %s", async (_label, datum, expected) => {
+    const utxo = poolUtxo({ datum });
+    const pool = await fetchDaBondPool(lucidWith([utxo]).lucid, {
+      policyId: POLICY_ID,
+      address: POOL_ADDRESS,
+    });
+    expect(pool).toEqual({ utxo, datum: expected });
+  });
+
+  it.each([
     ["no pool", [], "exactly one DA bond pool UTxO"],
+    [
+      "an output without the pool NFT",
+      [poolUtxo({ assets: { lovelace: 305n * ADA } })],
+      "hold the pool NFT exactly once",
+    ],
+    [
+      "trailing bytes after the datum",
+      [poolUtxo({ datum: `${encodeDaBondPoolDatum("Bonded")}00` })],
+      "not valid Plutus Data",
+    ],
+    [
+      "malformed CBOR",
+      [poolUtxo({ datum: "d87a81" })],
+      "not valid Plutus Data",
+    ],
+    [
+      "a negative unlock_at",
+      [poolUtxo({ datum: Data.to(new Constr(1, [-1n])) })],
+      "non-negative unlock_at",
+    ],
     ["two pools", [poolUtxo(), poolUtxo({ outputIndex: 1 })], "exactly one"],
     [
       "a doubled NFT",

@@ -18,6 +18,7 @@ import { DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE } from "../src/config.js";
 import {
   type DaSubmitterFundingCheck,
   LucidDaAttestationSubmitter,
+  type LucidDaAttestationSubmitterDeps,
 } from "../src/coordinator/lucid-submitter.js";
 import { DaBondPoolApplyBackoffError } from "../src/coordinator/pool-backoff.js";
 import {
@@ -1214,3 +1215,205 @@ const initRecord = () => {
     availabilityCommitmentDigest: commitmentDigest,
   };
 };
+
+/**
+ * A lucid stand-in whose unit query returns `pool()` unfiltered, so a UTxO a
+ * provider wrongly returns reaches the authenticity checks. Records each query.
+ */
+const poolLucid = (pool: () => readonly UTxO[]) => {
+  const queries: { readonly address: string; readonly unit: string }[] = [];
+  const lucid = {
+    utxosAtWithUnit: async (address: string, unit: string) => {
+      queries.push({ address, unit });
+      return pool();
+    },
+  } as unknown as LucidEvolution;
+  return { lucid, queries };
+};
+
+const poolUnit = () => SDK.daBondPoolUnit(contracts.daBondPool.policyId);
+
+const poolUtxo = (
+  lovelace: bigint,
+  datum: SDK.DaBondPoolDatum,
+  extra: Partial<UTxO> = {},
+): UTxO =>
+  utxo(
+    "5a",
+    0,
+    { lovelace, [poolUnit()]: 1n },
+    {
+      address: contracts.daBondPool.spendingScriptAddress,
+      datum: SDK.encodeDaBondPoolDatum(datum),
+      ...extra,
+    },
+  );
+
+const BONDED_POOL_LOVELACE =
+  availabilityParameters.da_bond_pool_floor_lovelace +
+  availabilityParameters.da_bond_lovelace;
+
+const poolSubmitter = (
+  lucid: LucidEvolution,
+  extra: Partial<LucidDaAttestationSubmitterDeps> = {},
+) => {
+  const checks: unknown[] = [];
+  const failures: unknown[] = [];
+  const submitter = new LucidDaAttestationSubmitter({
+    lucid,
+    contracts,
+    referenceScripts: {} as never,
+    availabilityParameters,
+    currentTime: () => 1_000_000n,
+    log: () => undefined,
+    ...extra,
+    recordDaBondPool: (check) => checks.push(check),
+    recordDaBondPoolReadFailure: (error) => failures.push(error),
+  });
+  return { submitter, checks, failures };
+};
+
+describe("pooled DA bond check", () => {
+  it.each([
+    [
+      "a Bonded pool backing exactly one DA bond",
+      BONDED_POOL_LOVELACE,
+      "Bonded" as SDK.DaBondPoolDatum,
+      {
+        state: "bonded",
+        backing: availabilityParameters.da_bond_lovelace,
+        short: false,
+      },
+    ],
+    [
+      "a Bonded pool one lovelace short of a DA bond",
+      BONDED_POOL_LOVELACE - 1n,
+      "Bonded" as SDK.DaBondPoolDatum,
+      {
+        state: "bonded",
+        backing: availabilityParameters.da_bond_lovelace - 1n,
+        short: true,
+      },
+    ],
+    [
+      "a Withdrawing pool",
+      BONDED_POOL_LOVELACE,
+      { Withdrawing: { unlock_at: 1_234n } } as SDK.DaBondPoolDatum,
+      {
+        state: "withdrawing",
+        backing: availabilityParameters.da_bond_lovelace,
+        short: false,
+        unlockAt: 1_234n,
+      },
+    ],
+  ])("reads and classifies %s", async (_, lovelace, datum, expected) => {
+    const { lucid, queries } = poolLucid(() => [poolUtxo(lovelace, datum)]);
+    const { submitter, checks, failures } = poolSubmitter(lucid);
+
+    const check = await submitter.checkDaBondPool();
+
+    expect(check).toEqual({
+      checkedAt: expect.any(String),
+      lovelace,
+      requiredBacking: availabilityParameters.da_bond_lovelace,
+      ...expected,
+    });
+    expect(checks).toEqual([check]);
+    expect(failures).toEqual([]);
+    expect(queries).toEqual([
+      {
+        address: contracts.daBondPool.spendingScriptAddress,
+        unit: poolUnit(),
+      },
+    ]);
+  });
+
+  it.each([
+    [
+      "a pool NFT UTxO away from the pool address",
+      poolUtxo(BONDED_POOL_LOVELACE, "Bonded", { address: "addr_test1other" }),
+      /must sit at the pool address/u,
+    ],
+    [
+      "a pool UTxO whose datum is a hash",
+      poolUtxo(BONDED_POOL_LOVELACE, "Bonded", {
+        datum: undefined,
+        datumHash: "cd".repeat(32),
+      }),
+      /inline datum/u,
+    ],
+  ])(
+    "refuses %s and records the read failure, not a check",
+    async (_, candidate, refusal) => {
+      const { lucid } = poolLucid(() => [candidate]);
+      const { submitter, checks, failures } = poolSubmitter(lucid);
+
+      await expect(submitter.checkDaBondPool()).rejects.toThrow(refusal);
+      expect(checks).toEqual([]);
+      expect(failures).toHaveLength(1);
+      expect((failures[0] as Error).message).toMatch(refusal);
+    },
+  );
+
+  it("reads the pool before building apply, so readiness sees the pool that blocked it", async () => {
+    const { lucid } = poolLucid(() => [
+      poolUtxo(BONDED_POOL_LOVELACE - 1n, "Bonded"),
+    ]);
+    const { submitter, checks } = poolSubmitter(lucid);
+    const probe = submitter as unknown as SubmitterProbe;
+    probe.findStateQueueHeader = async () => ({
+      stateQueueNode: {
+        da_attestation: SDK.NO_DA_ATTESTATION,
+        header: { endTime: 1_000_000n },
+      },
+    });
+    probe.fetchCandidateUtxo = async () => ({ utxo: {}, datum: {} });
+    probe.fetchDaParamsUtxo = async () => ({ utxo: {}, datum: {} });
+    let checksAtBuild: number | undefined;
+    const backoff = new DaBondPoolApplyBackoffError("pool-under-backed", "");
+    vi.mocked(buildApplyAttestationTx).mockImplementationOnce(async () => {
+      checksAtBuild = checks.length;
+      throw backoff;
+    });
+
+    await expect(
+      submitter.applyAttestation({
+        record: { headerHash: "01".repeat(28) } as never,
+        candidate: {} as never,
+      }),
+    ).rejects.toBe(backoff);
+    expect(checksAtBuild).toBe(1);
+    expect(checks).toEqual([expect.objectContaining({ short: true })]);
+  });
+
+  it("does not fail apply when the readiness pool read fails", async () => {
+    const { lucid } = poolLucid(() => {
+      throw new Error("kupo unavailable");
+    });
+    const { submitter, failures } = poolSubmitter(lucid, {
+      signSubmit: async () => "applytx",
+      postSubmitVerificationRetryCount: 0,
+    });
+    const probe = submitter as unknown as SubmitterProbe;
+    const states = [SDK.NO_DA_ATTESTATION, attestedStatus()];
+    probe.findStateQueueHeader = async () => ({
+      stateQueueNode: {
+        da_attestation: states.shift() ?? attestedStatus(),
+        header: { endTime: 1_000_000n },
+      },
+    });
+    probe.fetchCandidateUtxo = async () => ({ utxo: {}, datum: {} });
+    probe.fetchDaParamsUtxo = async () => ({ utxo: {}, datum: {} });
+    vi.mocked(buildApplyAttestationTx).mockResolvedValueOnce(
+      {} as TxSignBuilder,
+    );
+
+    await expect(
+      submitter.applyAttestation({
+        record: { headerHash: "01".repeat(28) } as never,
+        candidate: {} as never,
+      }),
+    ).resolves.toEqual({ status: "submitted", txHash: "applytx" });
+    expect(failures).toHaveLength(1);
+  });
+});

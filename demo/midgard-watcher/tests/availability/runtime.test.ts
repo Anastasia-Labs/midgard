@@ -56,16 +56,23 @@ vi.mock("../../src/storage/retained-da-runtime.js", () => ({
   }),
   bindWatcherL1AvailabilityPayloadSource: () => ({ close() {} }),
 }));
-vi.mock("../../src/availability/deployment.js", () => ({
-  createWatcherAvailabilityDeployment: async () => ({
-    contracts: { stateQueue: { policyId: "policy" } },
-    parameters: {},
-  }),
-}));
+vi.mock("../../src/availability/deployment.js", async () => {
+  const support = await import("../support/availability-challenge-fixture.js");
+  return {
+    createWatcherAvailabilityDeployment: async () => ({
+      contracts: {
+        stateQueue: { policyId: "policy" },
+        daBondPool: { policyId: support.DA_BOND_POOL_POLICY_ID },
+      },
+      parameters: support.parametersFixture(),
+    }),
+  };
+});
 // The intake carries the verified source's release depth; a sentinel distinct
 // from every profile depth proves the runtime forwards it and substitutes none.
 vi.mock("../../src/availability/observation.js", () => ({
   createWatcherAvailabilityObservation: () => ({
+    pool: async () => undefined,
     snapshot: io.snapshot,
     confirmationDepth: 17,
   }),
@@ -120,6 +127,8 @@ const fixture = (
           },
         }),
     proverWalletAddress: "prover",
+    onDaBondPool: () => undefined,
+    onDaBondPoolReadFailure: () => undefined,
     ...(onStatusTransition === undefined ? {} : { onStatusTransition }),
   });
 

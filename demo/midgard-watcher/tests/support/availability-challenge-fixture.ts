@@ -81,6 +81,23 @@ export const parametersFixture = () =>
     maxTimeoutFeeLovelace: 1_200_000n,
   });
 
+/** The pooled DA bond: its policy, address and one pool UTxO. */
+export const DA_BOND_POOL_POLICY_ID = "9a".repeat(28);
+export const DA_BOND_POOL_ADDRESS = credentialToAddress("Preprod", {
+  type: "Script",
+  hash: DA_BOND_POOL_POLICY_ID,
+});
+export const daBondPoolUtxo = (
+  lovelace: bigint,
+  datum: SDK.DaBondPoolDatum = "Bonded",
+): UTxO => ({
+  txHash: "77".repeat(32),
+  outputIndex: 0,
+  address: DA_BOND_POOL_ADDRESS,
+  assets: { lovelace, [SDK.daBondPoolUnit(DA_BOND_POOL_POLICY_ID)]: 1n },
+  datum: SDK.encodeDaBondPoolDatum(datum),
+});
+
 export const idleLock = () => ({
   ...utxo(4),
   datum: Data.to("Idle", SDK.CorrectionLockDatum),

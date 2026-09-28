@@ -63,6 +63,7 @@ const sumL1UtxoAssets = (utxos: readonly L1Utxo[]): Readonly<Assets> => {
 
 /**
  * Validates and normalizes local Kupmios connection settings for the command.
+ * The network goes through the CLI network parser, which refuses `Custom`.
  */
 export const resolveKupmiosConfig = (input?: {
   readonly kupoUrl?: string;
@@ -71,9 +72,23 @@ export const resolveKupmiosConfig = (input?: {
   readonly env?: NodeJS.ProcessEnv;
 }): KupmiosConfig => {
   const env = input?.env ?? process.env;
+  const network = resolveNetwork({ network: input?.network, env });
+  return { ...resolveKupmiosUrls({ ...input, env }), network };
+};
+
+/**
+ * Validates and normalizes the local Kupo and Ogmios URLs alone, for a
+ * command that takes its network from a verified deployment manifest rather
+ * than from the CLI network parser (`da-bond`).
+ */
+export const resolveKupmiosUrls = (input?: {
+  readonly kupoUrl?: string;
+  readonly ogmiosUrl?: string;
+  readonly env?: NodeJS.ProcessEnv;
+}): Omit<KupmiosConfig, "network"> => {
+  const env = input?.env ?? process.env;
   const kupoUrl = input?.kupoUrl?.trim() ?? env.L1_KUPO_KEY?.trim() ?? "";
   const ogmiosUrl = input?.ogmiosUrl?.trim() ?? env.L1_OGMIOS_KEY?.trim() ?? "";
-  const network = resolveNetwork({ network: input?.network, env });
 
   if (kupoUrl.length === 0) {
     throw new Error(
@@ -88,7 +103,6 @@ export const resolveKupmiosConfig = (input?: {
   return {
     kupoUrl: new URL(kupoUrl).toString().replace(/\/+$/, ""),
     ogmiosUrl: new URL(ogmiosUrl).toString().replace(/\/+$/, ""),
-    network,
   };
 };
 

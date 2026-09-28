@@ -4,9 +4,16 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
+import { availabilityParametersFromConfig } from "../src/availability/factory.js";
 import { CommitteeService } from "../src/committee-service.js";
 import type { CommitteeConfig } from "../src/config.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
+import {
+  createDaBondPoolMonitor,
+  createDaBondPoolWiring,
+  daBondPoolCheckFromStatus,
+  type DaBondPoolEvent,
+} from "../src/coordinator/pool-monitor.js";
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { daPayloadSha256 } from "../src/da/payload.js";
@@ -283,6 +290,190 @@ describe("CommitteeService", () => {
         },
       }),
     ).resolves.toMatchObject({ ready: true, reasons: [] });
+  });
+
+  it("is not ready while the pooled DA bond is short or Withdrawing, and ready again after a top-up or cancel", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const service = new CommitteeService({
+      config,
+      store: await openJsonCommitteeStore(dir),
+      stateQueueProvider: withFinalSnapshot({
+        fetchStateQueueNodes: async () => [],
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    const parameters = availabilityParametersFromConfig(config);
+    const bonded =
+      parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace;
+    const monitor = createDaBondPoolMonitor({ writeEvent: () => undefined });
+    const readiness = async (
+      lovelace: bigint,
+      datum: SDK.DaBondPoolDatum,
+      checkedAt: string,
+    ) => {
+      monitor.record(
+        daBondPoolCheckFromStatus(
+          SDK.daBondPoolStatus({ lovelace, datum, parameters }),
+          checkedAt,
+        ),
+      );
+      return service.readinessSnapshot({ daBondPool: monitor.latest() });
+    };
+
+    await expect(readiness(bonded, "Bonded", "t0")).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+    });
+    await expect(readiness(bonded - 1n, "Bonded", "t1")).resolves.toMatchObject(
+      {
+        ready: false,
+        reasons: [
+          `da_bond_pool_backing_short: backing=${(parameters.da_bond_lovelace - 1n).toString()}, required=${parameters.da_bond_lovelace.toString()}, checkedAt=t1`,
+        ],
+      },
+    );
+    // A read failure keeps the last good check's reason.
+    monitor.recordReadFailure(new Error("kupo unavailable"));
+    await expect(
+      service.readinessSnapshot({ daBondPool: monitor.latest() }),
+    ).resolves.toMatchObject({ ready: false, reasons: [expect.any(String)] });
+    await expect(readiness(bonded, "Bonded", "t2")).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+    });
+    await expect(
+      readiness(bonded, { Withdrawing: { unlock_at: 42n } }, "t3"),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: ["da_bond_pool_withdrawing: unlockAt=42, checkedAt=t3"],
+    });
+    await expect(readiness(bonded, "Bonded", "t4")).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+    });
+  });
+
+  it("carries a drained pool read from the submitter hooks, through the tick runner, to one event and a not-ready snapshot", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const service = new CommitteeService({
+      config,
+      store: await openJsonCommitteeStore(dir),
+      stateQueueProvider: withFinalSnapshot({
+        fetchStateQueueNodes: async () => [],
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    const parameters = availabilityParametersFromConfig(config);
+    const events: DaBondPoolEvent[] = [];
+    const wiring = createDaBondPoolWiring({
+      writeEvent: (event) => events.push(event),
+    });
+    // The submitter reports each pool read through the factory hooks.
+    let lovelace = parameters.da_bond_pool_floor_lovelace;
+    let reads = 0;
+    let readFails = false;
+    const coordinator = {
+      checkDaBondPool: async () => {
+        reads += 1;
+        if (readFails) {
+          // As the submitter does: report the failure, then rethrow.
+          const error = new Error("kupo unavailable");
+          wiring.coordinatorHooks.recordDaBondPoolReadFailure(error);
+          throw error;
+        }
+        const check = daBondPoolCheckFromStatus(
+          SDK.daBondPoolStatus({ lovelace, datum: "Bonded", parameters }),
+          `t${reads.toString()}`,
+        );
+        wiring.coordinatorHooks.recordDaBondPool(check);
+        return check;
+      },
+    };
+    const runner = createCommitteeTickRunner({
+      tick: async () => service.tick(),
+      runAvailabilityResponse: async () => undefined,
+      ...wiring.tickRunnerDeps(coordinator),
+      runRetention: async () => undefined,
+      latestL1View: () => service.latestL1View(),
+      latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
+      setRetentionReadiness: () => undefined,
+      l1ViewFatalMs: 60_000,
+      startedAtMs: Date.now(),
+      nowMs: () => Date.now(),
+      write: () => undefined,
+      shutdown: async () => undefined,
+      exit: () => undefined,
+      shutdownGraceMs: 10,
+    });
+    expect(wiring.tickRunnerDeps(undefined)).toEqual({});
+
+    await runner.runTick();
+    expect(reads).toBe(1);
+    await expect(
+      service.readinessSnapshot(wiring.readiness()),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [
+        `da_bond_pool_backing_short: backing=0, required=${parameters.da_bond_lovelace.toString()}, checkedAt=t1`,
+      ],
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        event: "da_bond_pool_backing_short",
+        backing: "0",
+      }),
+    ]);
+
+    // A failed read reaches the monitor through the failure hook: one event,
+    // and the last good check's reason stays.
+    readFails = true;
+    await runner.runTick();
+    expect(reads).toBe(2);
+    await expect(
+      service.readinessSnapshot(wiring.readiness()),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [expect.stringContaining("da_bond_pool_backing_short: ")],
+    });
+    expect(events.slice(1)).toEqual([
+      expect.objectContaining({
+        event: "da_bond_pool_read_failed",
+        error: "kupo unavailable",
+      }),
+    ]);
+
+    readFails = false;
+    lovelace += parameters.da_bond_lovelace;
+    await runner.runTick();
+    await expect(
+      service.readinessSnapshot(wiring.readiness()),
+    ).resolves.toMatchObject({ ready: true, reasons: [] });
+    expect(events.map(({ event }) => event)).toEqual([
+      "da_bond_pool_backing_short",
+      "da_bond_pool_read_failed",
+      "da_bond_pool_backing_restored",
+    ]);
   });
 
   it("keeps a tick whose local chain-sync is still moving toward the tip clear of the L1-view deadline", async () => {

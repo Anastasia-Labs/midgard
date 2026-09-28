@@ -58,8 +58,10 @@ Add the following flags to the common arguments for each mutation:
 | `timeout` | `--collateral-out-ref <txHash#index>`, plus `--funding-out-ref <txHash#index>` when descendant pruning or head removal needs actor fee funding. Advances one required step: expired tranche settlement, unavailable timeout, descendant pruning or final head removal.                                 |
 
 Collateral is explicit plain ADA owned by the dedicated actor; it must not
-overlap spending inputs. The unavailable timeout slashes the DA bond pool. Its
-exact fee is the slashed penalty plus the challenger's share, at most
+overlap spending inputs. The unavailable timeout slashes the DA bond pool: it
+takes one DA bond, or the whole backing when less is left, pays the penalty
+share as fee and the rest to the challenger. Its exact fee is that penalty
+share plus the challenger's own fee contribution, which is at most
 `maxTimeoutFeeLovelace`. The pool and the challenger reserve pay it; the actor
 wallet adds no input and receives no change. Its collateral must hold at least
 the ledger collateral percentage (150% on Cardano) of `daSlashPenaltyLovelace +
@@ -84,7 +86,8 @@ reported without constructing a replacement transaction.
 
 `status` reports the canonical point, the challenge record, response deadline,
 DA bond pool state and backing, ordered tranche progress, queue availability and
-unfinalized operation metadata.
+unfinalized operation metadata. To read, top up or withdraw from the pool
+itself, use the [DA bond pool commands](da-bond-commands.md).
 It does not submit transactions or disclose stored signed CBOR. Canonical-source
 disagreement or rollback interrupts mutation and requires recovery against the
 current authenticated chain.

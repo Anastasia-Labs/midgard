@@ -8,7 +8,7 @@ import {
 } from "@al-ft/midgard-core/availability-operation-journal";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import type { LocalKupmiosFraudProofRawSource } from "@al-ft/midgard-fault-proofs";
-import type * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   assertDaAvailabilityOpenWithinChallengeWindow,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
@@ -16,14 +16,23 @@ import {
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { WatcherDaBondPoolObservation } from "../../src/availability/pool-observation.js";
 import {
   createWatcherAvailabilityRuntime,
   watcherAvailabilityTimeoutCollateralLovelace,
 } from "../../src/availability/runtime.js";
+import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
+import {
+  createWatcherOperationsObservability,
+  watcherDaBondPoolReadFailureReporter,
+  watcherDaBondPoolReporter,
+} from "../../src/runtime/operations-observability.js";
 import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
 import {
+  DA_BOND_POOL_POLICY_ID,
+  daBondPoolUtxo,
   fixture,
   parametersFixture,
   utxo,
@@ -37,12 +46,18 @@ import {
 // transaction bytes) routes `run` and `reconcile` to the real functions.
 const io = vi.hoisted(() => ({
   utxos: [] as UTxO[],
+  pool: vi.fn(),
   snapshot: vi.fn(),
   attestedCommitment: vi.fn(),
   run: vi.fn(),
   opens: [] as { validTo: bigint }[],
   timeouts: [] as { pool: UTxO }[],
   tipPool: undefined as UTxO | undefined,
+  /**
+   * `sdk` reads `tipPool` through the SDK's own `fetchDaBondPool` (its pool
+   * authentication and datum decoder); `stub` hands it back as a Bonded pool.
+   */
+  tipPoolRead: "stub" as "stub" | "sdk",
   workflowRelease: vi.fn(),
   reconcile: vi.fn(),
   operation: vi.fn(),
@@ -61,8 +76,9 @@ type TimeoutInput = Readonly<{
 }>;
 vi.mock("@al-ft/midgard-sdk", async (original) => {
   const { Effect } = await import("effect");
+  const actual = await original<typeof import("@al-ft/midgard-sdk")>();
   return {
-    ...(await original<typeof import("@al-ft/midgard-sdk")>()),
+    ...actual,
     daAvailabilityOperationLimits: () => io.limits ?? {},
     reconcileDaAvailabilityOperations: io.reconcile,
     runDaAvailabilityOperation: io.run,
@@ -92,8 +108,16 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
       _lucid: unknown,
       input: { policyId: string; address: string },
     ) => {
-      if (input.policyId !== "pool-policy" || input.address !== "pool")
+      if (input.policyId !== DA_BOND_POOL_POLICY_ID || input.address !== "pool")
         throw new Error("DA bond pool read at the wrong identity");
+      if (io.tipPoolRead === "sdk")
+        return actual.fetchDaBondPool(
+          {
+            utxosAtWithUnit: async () =>
+              io.tipPool === undefined ? [] : [io.tipPool],
+          } as unknown as Parameters<typeof actual.fetchDaBondPool>[0],
+          input,
+        );
       if (io.tipPool === undefined) throw new Error("no DA bond pool at tip");
       return { utxo: io.tipPool, datum: "Bonded" };
     },
@@ -150,7 +174,7 @@ vi.mock("../../src/availability/deployment.js", async () => {
           spendingScriptAddress: "queue",
         },
         daBondPool: {
-          policyId: "pool-policy",
+          policyId: support.DA_BOND_POOL_POLICY_ID,
           spendingScriptAddress: "pool",
         },
       },
@@ -160,6 +184,7 @@ vi.mock("../../src/availability/deployment.js", async () => {
 });
 vi.mock("../../src/availability/observation.js", () => ({
   createWatcherAvailabilityObservation: () => ({
+    pool: io.pool,
     snapshot: io.snapshot,
     attestedCommitment: io.attestedCommitment,
     workflowRelease: io.workflowRelease,
@@ -191,12 +216,14 @@ let journalPath: string;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "watcher-concurrent-challenges-"));
   journalPath = join(directory, "journal.sqlite");
+  io.pool.mockReset().mockResolvedValue(undefined);
   io.snapshot.mockReset();
   io.attestedCommitment.mockReset();
   io.utxos = [];
   io.opens = [];
   io.timeouts = [];
   io.tipPool = undefined;
+  io.tipPoolRead = "stub";
   io.workflowRelease.mockReset().mockResolvedValue(undefined);
   io.run.mockReset().mockImplementation(stubRunner);
   io.reconcile.mockReset().mockResolvedValue([]);
@@ -321,8 +348,18 @@ const workflowRows = () =>
       ]),
   );
 
-const runtime = (manifestId = DEPLOYMENT) =>
+const runtime = (
+  manifestId = DEPLOYMENT,
+  extra: Pick<
+    Parameters<typeof createWatcherAvailabilityRuntime>[0],
+    "onDaBondPool" | "onDaBondPoolReadFailure"
+  > = {
+    onDaBondPool: () => undefined,
+    onDaBondPoolReadFailure: () => undefined,
+  },
+) =>
   createWatcherAvailabilityRuntime({
+    ...extra,
     config: {
       watcherConfig: {
         l1: {
@@ -840,6 +877,82 @@ const inputsOf = (cbor: string) => {
 };
 const TIMED_OUT_HEADER = "44".repeat(28);
 
+describe("a Timeout against a pool whose datum another spend re-encoded (P14(5))", () => {
+  // TopUp keeps the pool datum by Data value only, so anyone paying the
+  // minimum may re-store it in another encoding. The Timeout's tip read goes
+  // through the SDK's value-level decoder, so a withholding committee cannot
+  // block its own slash this way.
+  const tipPool = (datum: string): UTxO => ({
+    ...daBondPoolUtxo(100_005n * ADA),
+    address: "pool",
+    datum,
+  });
+  const expiredAtHead = () => {
+    const expired = fixture("44", BigInt(Date.now()));
+    openLanded(expired.challenged.headerHash);
+    io.utxos = [utxo(0, TIMEOUT_COLLATERAL, "c1"), utxo(1, 10n * ADA, "c2")];
+    io.tipPoolRead = "sdk";
+    return expired;
+  };
+
+  it.each([
+    ["the indefinite-length form", "d8799fff"],
+    ["the tag-102 constructor form", "d866820080"],
+    ["the tag-102 form with an indefinite field list", "d86682009fff"],
+  ])(
+    "builds the Timeout against a Bonded pool stored in %s",
+    async (_label, datum) => {
+      const expired = expiredAtHead();
+      io.tipPool = tipPool(datum);
+      const watcher = await runtime();
+      try {
+        await watcher.reconcile(
+          observation([timedOut(expired.challenged)]),
+          true,
+        );
+        expect(watcher.status()).toMatchObject({
+          phase: "waiting",
+          action: "timeout",
+        });
+        expect(watcher.status().timeoutsDeferred ?? []).toEqual([]);
+      } finally {
+        await watcher.close();
+      }
+      expect(actions()).toEqual([[expired.challenged.headerHash, "timeout"]]);
+      expect(io.timeouts.map(({ pool }) => pool)).toEqual([io.tipPool]);
+    },
+  );
+
+  it.each([
+    ["trailing bytes after the datum", "d8798000", "not valid Plutus Data"],
+    ["a foreign constructor", "d87b80", "not valid Plutus Data"],
+    ["a negative unlock_at", "d87a8120", "non-negative unlock_at"],
+  ])(
+    "defers the Timeout when the tip pool stores %s",
+    async (_label, datum, detail) => {
+      const expired = expiredAtHead();
+      io.tipPool = tipPool(datum);
+      const watcher = await runtime();
+      try {
+        await watcher.reconcile(
+          observation([timedOut(expired.challenged)]),
+          true,
+        );
+        expect(watcher.status().timeoutsDeferred).toEqual([
+          expect.objectContaining({
+            headerHash: expired.challenged.headerHash,
+            reason: "tip-pool-unavailable",
+            detail: expect.stringContaining(detail),
+          }),
+        ]);
+      } finally {
+        await watcher.close();
+      }
+      expect(io.timeouts).toEqual([]);
+    },
+  );
+});
+
 describe("a Timeout whose pool moved after it was built (P13(4)(b))", () => {
   it("expires the stranded Timeout through the partial-missing arm, then rebuilds it against the new tip pool and lands it", async () => {
     // The SDK's own runner and reconciliation, on real signed bytes.
@@ -960,35 +1073,195 @@ describe("a Timeout whose pool moved after it was built (P13(4)(b))", () => {
   });
 });
 
-describe("pool alerts never block the availability runtime (spec #685 E5)", () => {
+describe("the DA bond pool is read every reconciliation and never blocks (spec #685 E5, #691)", () => {
   const backed =
     PARAMETERS.da_bond_pool_floor_lovelace + PARAMETERS.da_bond_lovelace;
-  const withPool = (
-    snapshot: SDK.DaAvailabilityChallengeSnapshot,
-    lovelace: bigint,
-    poolDatum: SDK.DaBondPoolDatum,
-  ): SDK.DaAvailabilityChallengeSnapshot => ({
-    ...snapshot,
-    pool: { ...utxo(8, lovelace, "d9"), address: "pool" },
-    poolDatum,
+  const withdrawing: SDK.DaBondPoolDatum = {
+    Withdrawing: { unlock_at: 1_900_000_000_000n },
+  };
+  /** A 64-hex deployment id, as the operations sink requires. */
+  const MANIFEST = "ab".repeat(32);
+  /** The watcher's operations status with every other readiness input healthy. */
+  const operationsFixture = () => {
+    const operations = createWatcherOperationsObservability({
+      deploymentFingerprint: MANIFEST,
+      supervisor: {
+        status: () => ({
+          phase: "accepting",
+          recovered: true,
+          unfinishedObjectiveCount: 0,
+          queuedJobCount: 0,
+          activeJob: null,
+          blockedJob: null,
+          deadlineHealth: "safe",
+          earliestDeadlineJob: null,
+          remainingSafeStartMs: null,
+        }),
+      } as unknown as WatcherFaultProofSupervisor,
+      launchScopeStatus: () => ({
+        installedCategoryCount: 1,
+        requiredCategoryCount: 1,
+      }),
+      durableProofQueueStatus: () => ({
+        queuedJobCount: 0,
+        oldestQueuedAtMs: null,
+      }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
+    });
+    operations.sink.recordL1Source({
+      sourceIdentityDigest: "22".repeat(32),
+      sourceMode: "local_node",
+      status: "consistent",
+      blockHash: "33".repeat(32),
+      blockNo: "1",
+      slot: "1",
+      observedAtMs: Date.now().toString(),
+    });
+    return operations;
+  };
+  /**
+   * The runtime wired to the operations sink through the reporter the watcher
+   * runtime passes as its `onDaBondPool` and `onDaBondPoolReadFailure`.
+   */
+  const wired = async () => {
+    const operations = operationsFixture();
+    const readouts: WatcherDaBondPoolObservation[] = [];
+    const report = watcherDaBondPoolReporter(operations.sink, MANIFEST);
+    const watcher = await runtime(DEPLOYMENT, {
+      onDaBondPool: (pool) => {
+        readouts.push(pool);
+        report(pool);
+      },
+      onDaBondPoolReadFailure: watcherDaBondPoolReadFailureReporter(
+        operations.sink,
+      ),
+    });
+    return { operations, readouts, watcher };
+  };
+  const poolCodes = (operations: ReturnType<typeof operationsFixture>) =>
+    operations.api
+      .status()
+      .activeAlerts.map(({ code }) => code)
+      .filter((code) => code.startsWith("da_bond_pool_"));
+
+  it("reports the pool on a reconciliation with no pending header", async () => {
+    io.pool.mockResolvedValue(daBondPoolUtxo(backed));
+    const { operations, readouts, watcher } = await wired();
+    try {
+      await watcher.reconcile(observation([]), false);
+      expect(io.pool).toHaveBeenCalledTimes(1);
+      expect(watcher.status()).toMatchObject({
+        phase: "ready",
+        pendingHeaders: [],
+        pool: {
+          state: "bonded",
+          backing: PARAMETERS.da_bond_lovelace.toString(),
+          alerts: { underBacked: false, withdrawing: false },
+        },
+      });
+      expect(readouts).toHaveLength(1);
+      expect(operations.api.status()).toMatchObject({
+        readiness: "ready",
+        daBondPool: { state: "bonded", belowBond: false },
+      });
+    } finally {
+      await watcher.close();
+    }
+    expect(io.snapshot).not.toHaveBeenCalled();
+  });
+
+  it("fires under-backed on a slash-drained pool and clears it after a top-up, never touching phase or readiness", async () => {
+    const drained = SDK.planDaBondPoolSlash({
+      poolLovelace: backed,
+      parameters: PARAMETERS,
+    }).poolOutputLovelace;
+    const { operations, readouts, watcher } = await wired();
+    try {
+      io.pool.mockResolvedValue(daBondPoolUtxo(backed));
+      await watcher.reconcile(observation([]), false);
+      expect(poolCodes(operations)).toEqual([]);
+      io.pool.mockResolvedValue(daBondPoolUtxo(drained));
+      await watcher.reconcile(observation([]), false);
+      expect(watcher.status()).toMatchObject({
+        phase: "ready",
+        pool: { belowBond: true, alerts: { underBacked: true } },
+      });
+      expect(poolCodes(operations)).toEqual(["da_bond_pool_under_backed"]);
+      expect(operations.api.status()).toMatchObject({
+        readiness: "ready",
+        readinessReasons: [],
+      });
+      io.pool.mockResolvedValue(daBondPoolUtxo(backed));
+      await watcher.reconcile(observation([]), false);
+      expect(watcher.status()).toMatchObject({
+        phase: "ready",
+        pool: { belowBond: false, alerts: { underBacked: false } },
+      });
+      expect(poolCodes(operations)).toEqual([]);
+    } finally {
+      await watcher.close();
+    }
+    expect(readouts.map(({ alerts }) => alerts.underBacked)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+  });
+
+  it("fires withdrawing on BeginWithdraw and clears it after a cancel, never touching phase or readiness", async () => {
+    const { operations, readouts, watcher } = await wired();
+    try {
+      io.pool.mockResolvedValue(daBondPoolUtxo(backed, withdrawing));
+      await watcher.reconcile(observation([]), false);
+      expect(watcher.status()).toMatchObject({
+        phase: "ready",
+        pool: {
+          state: "withdrawing",
+          unlockAt: "1900000000000",
+          alerts: { withdrawing: true, underBacked: false },
+        },
+      });
+      expect(poolCodes(operations)).toEqual(["da_bond_pool_withdrawing"]);
+      expect(operations.api.status().readiness).toBe("ready");
+      io.pool.mockResolvedValue(daBondPoolUtxo(backed, "Bonded"));
+      await watcher.reconcile(observation([]), false);
+      expect(watcher.status()).toMatchObject({
+        phase: "ready",
+        pool: { state: "bonded", alerts: { withdrawing: false } },
+      });
+      expect(poolCodes(operations)).toEqual([]);
+    } finally {
+      await watcher.close();
+    }
+    expect(readouts.map(({ state }) => state)).toEqual([
+      "withdrawing",
+      "bonded",
+    ]);
   });
 
   it.each([
-    ["missing", (snapshot: SDK.DaAvailabilityChallengeSnapshot) => snapshot],
+    ["missing", (): UTxO | undefined => undefined],
+    ["withdrawing", () => daBondPoolUtxo(backed, withdrawing)],
+    ["under-backed", () => daBondPoolUtxo(backed - 1n)],
+    // The local Kupmios source re-encodes outputs canonically, so lucid's
+    // indefinite-length Withdrawing datum comes back definite-length.
     [
-      "withdrawing",
-      (snapshot: SDK.DaAvailabilityChallengeSnapshot) =>
-        withPool(snapshot, backed, { Withdrawing: { unlock_at: 1n } }),
+      "canonically re-encoded withdrawing",
+      () => ({
+        ...daBondPoolUtxo(backed, withdrawing),
+        datum: "d87a811b000001ba60d33800",
+      }),
     ],
+    // TopUp pins the datum by Data value, so anyone may re-store it this way.
     [
-      "under_backed",
-      (snapshot: SDK.DaAvailabilityChallengeSnapshot) =>
-        withPool(snapshot, backed - 1n, "Bonded"),
+      "re-encoded under-backed",
+      () => ({ ...daBondPoolUtxo(backed - 1n), datum: "d8799fff" }),
     ],
   ] as const)(
     "reports a %s pool while staying ready and still Opening a withheld header",
-    async (alert, poolOf) => {
+    async (_label, poolOf) => {
       const header = withheld("46");
+      io.pool.mockResolvedValue(poolOf());
       io.utxos = [
         utxo(0, TIMEOUT_COLLATERAL, "d1"),
         utxo(1, OPENING, "d2"),
@@ -996,18 +1269,17 @@ describe("pool alerts never block the availability runtime (spec #685 E5)", () =
       ];
       const watcher = await runtime();
       try {
-        const state = observation([poolOf(header.attested)]);
+        const state = observation([header.attested]);
         // Readiness is `phase !== "blocked"` (watcher-runtime status).
         await watcher.reconcile(state, false);
-        expect(watcher.status()).toMatchObject({
-          phase: "ready",
-          poolAlert: alert,
-        });
+        expect(watcher.status().phase).toBe("ready");
+        expect(Object.values(watcher.status().pool!.alerts).some(Boolean)).toBe(
+          true,
+        );
         await watcher.reconcile(state, true);
         expect(watcher.status()).toMatchObject({
           phase: "waiting",
           action: "open",
-          poolAlert: alert,
         });
       } finally {
         await watcher.close();
@@ -1016,18 +1288,74 @@ describe("pool alerts never block the availability runtime (spec #685 E5)", () =
     },
   );
 
-  it("reports no alert for a Bonded pool backing a full DA bond", async () => {
-    const header = withheld("46");
+  it("reports a failed pool read without blocking, still Opening a withheld header", async () => {
+    const header = withheld("48");
+    io.pool.mockRejectedValue(new Error("pool read failed"));
+    io.utxos = [
+      utxo(0, TIMEOUT_COLLATERAL, "d1"),
+      utxo(1, OPENING, "d2"),
+      utxo(2, 100n * ADA, "d2"),
+    ];
     const watcher = await runtime();
     try {
-      await watcher.reconcile(
-        observation([withPool(header.attested, backed, "Bonded")]),
-        false,
-      );
-      expect(watcher.status().phase).toBe("ready");
-      expect(watcher.status().poolAlert).toBeUndefined();
+      const state = observation([header.attested]);
+      await watcher.reconcile(state, false);
+      expect(watcher.status()).toMatchObject({
+        phase: "ready",
+        poolReadFailure: "pool read failed",
+      });
+      expect(watcher.status().pool).toBeUndefined();
+      await watcher.reconcile(state, true);
+      expect(watcher.status()).toMatchObject({
+        phase: "waiting",
+        action: "open",
+      });
     } finally {
       await watcher.close();
     }
+    expect(actions()).toEqual([[header.attested.headerHash, "open"]]);
+  });
+
+  it("keeps the last good readout when a later reconciliation fails", async () => {
+    const { operations, readouts, watcher } = await wired();
+    try {
+      io.pool.mockResolvedValue(daBondPoolUtxo(backed, withdrawing));
+      await watcher.reconcile(observation([]), false);
+      const good = watcher.status().pool;
+      expect(good?.state).toBe("withdrawing");
+      io.pool.mockRejectedValue(new Error("pool read failed"));
+      await watcher.reconcile(observation([]), false);
+      expect(watcher.status()).toMatchObject({
+        phase: "ready",
+        poolReadFailure: "pool read failed",
+      });
+      expect(watcher.status().pool).toEqual(good);
+      // The failure is served on /v1/status next to the last good readout,
+      // and the watcher stays ready.
+      expect(operations.api.status()).toMatchObject({
+        readiness: "ready",
+        daBondPool: { state: "withdrawing" },
+        daBondPoolReadFailure: { error: "pool read failed" },
+      });
+      // A failure after a good pool read keeps that read too.
+      const pendingHeader = observation([withheld("47").attested]);
+      io.pool.mockResolvedValue(daBondPoolUtxo(backed));
+      io.snapshot.mockRejectedValue(new Error("snapshot failed"));
+      await watcher.reconcile(pendingHeader, false);
+      expect(watcher.status()).toMatchObject({
+        phase: "blocked",
+        detail: "snapshot failed",
+        pool: { state: "bonded" },
+      });
+      // The good read cleared the earlier read failure.
+      expect(watcher.status().poolReadFailure).toBeUndefined();
+      expect(operations.api.status().daBondPoolReadFailure).toBeNull();
+    } finally {
+      await watcher.close();
+    }
+    expect(readouts.map(({ state }) => state)).toEqual([
+      "withdrawing",
+      "bonded",
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  CML,
   Data,
   fromText,
   type LucidEvolution,
@@ -124,8 +125,16 @@ export const encodeDaBondPoolDatum = (datum: DaBondPoolDatum): string => {
   return Data.to(datum as never, DaBondPoolDatumSchema as never);
 };
 
-/** Strict pool-datum codec: canonical CBOR and a canonical datum. */
-export const parseDaBondPoolDatumCbor = (cborHex: string): DaBondPoolDatum => {
+/**
+ * A pool datum read off the chain, checked by value as the pool validator
+ * checks it: any Plutus Data encoding of a canonical datum. The validator
+ * compares datums as Data values, so a permissionless `TopUp` may store the
+ * same datum in another encoding, and a source that re-encodes outputs (the
+ * watcher's local Kupmios reader) hands back definite-length CBOR where
+ * lucid wrote indefinite-length. A reader that required lucid's bytes would
+ * refuse a pool the validator accepts.
+ */
+export const decodeDaBondPoolDatum = (cborHex: string): DaBondPoolDatum => {
   if (!CANONICAL_CBOR_HEX.test(cborHex)) {
     throw new DaAvailabilityCommitmentError(
       "DA bond pool datum must be non-empty lowercase CBOR hex",
@@ -133,6 +142,12 @@ export const parseDaBondPoolDatumCbor = (cborHex: string): DaBondPoolDatum => {
   }
   let datum: DaBondPoolDatum;
   try {
+    // CML keeps the original encoding, so this round trip fails only on
+    // malformed CBOR or trailing bytes (lucid's decoder ignores both).
+    const data = CML.PlutusData.from_cbor_hex(cborHex);
+    const exact = data.to_cbor_hex() === cborHex;
+    data.free();
+    if (!exact) throw new Error("trailing bytes after the datum");
     datum = Data.from(
       cborHex,
       DaBondPoolDatumSchema as never,
@@ -140,11 +155,6 @@ export const parseDaBondPoolDatumCbor = (cborHex: string): DaBondPoolDatum => {
   } catch (error) {
     throw new DaAvailabilityCommitmentError(
       `DA bond pool datum is not valid Plutus Data: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  if (Data.to(datum as never, DaBondPoolDatumSchema as never) !== cborHex) {
-    throw new DaAvailabilityCommitmentError(
-      "DA bond pool datum must use the canonical Plutus Data encoding",
     );
   }
   assertCanonicalDaBondPoolDatum(datum);
@@ -166,6 +176,51 @@ export const daBondPoolBacking = (input: {
 }): bigint => {
   const backing = input.lovelace - input.parameters.da_bond_pool_floor_lovelace;
   return backing > 0n ? backing : 0n;
+};
+
+/**
+ * What an operator, the watcher and the committee node read off the pool.
+ * `state` and `belowBond` are independent: a `Withdrawing` pool can also be
+ * short, and a `Bonded` pool drained by a slash is short until topped up.
+ */
+export type DaBondPoolStatus = Readonly<{
+  state: "bonded" | "withdrawing";
+  /** The pool UTxO's whole lovelace, floor included. */
+  lovelace: bigint;
+  /** `daBondPoolBacking`: lovelace above the floor, clamped at 0. */
+  backing: bigint;
+  /** `da_bond_lovelace`: the backing one attestation needs. */
+  requiredBacking: bigint;
+  /** `backing < da_bond_lovelace`. */
+  belowBond: boolean;
+  /** Present iff `state` is `withdrawing`. */
+  unlockAt?: bigint;
+}>;
+
+/** The pool's status readout, from its lovelace and datum. */
+export const daBondPoolStatus = (input: {
+  readonly lovelace: bigint;
+  readonly datum: DaBondPoolDatum;
+  readonly parameters: DaAvailabilityParameters;
+}): DaBondPoolStatus => {
+  const backing = daBondPoolBacking({
+    lovelace: input.lovelace,
+    parameters: input.parameters,
+  });
+  const requiredBacking = input.parameters.da_bond_lovelace;
+  const common = {
+    lovelace: input.lovelace,
+    backing,
+    requiredBacking,
+    belowBond: backing < requiredBacking,
+  };
+  return input.datum === "Bonded"
+    ? { state: "bonded", ...common }
+    : {
+        state: "withdrawing",
+        ...common,
+        unlockAt: input.datum.Withdrawing.unlock_at,
+      };
 };
 
 /**
@@ -265,7 +320,7 @@ export const fetchDaBondPool = async (
       "DA bond pool UTxO must carry an inline datum",
     );
   }
-  const datum = parseDaBondPoolDatumCbor(utxo.datum);
+  const datum = decodeDaBondPoolDatum(utxo.datum);
   if (input.parameters === undefined) {
     return { utxo, datum };
   }

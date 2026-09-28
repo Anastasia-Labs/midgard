@@ -44,7 +44,29 @@ applies only while the pool is not being withdrawn and backs at least one DA
 bond above its floor, and a lost availability challenge slashes the pool.
 Starting and signing an attestation need no bond. While the pool cannot back an
 attestation, the coordinator logs `da_bond_pool_apply_backoff` and retries on
-its next reconcile. Queue availability is a typed lifecycle: `Unattested`,
+its next reconcile.
+
+With L1 submission enabled (`DA_L1_SUBMISSION_ENABLED=true`), the node reads the
+pool after every tick and before every Apply. A short or withdrawing pool is a
+readiness reason, so `/readyz` returns 503 until a top-up or a cancelled
+withdrawal clears it:
+
+```text
+da_bond_pool_backing_short: backing=<lovelace>, required=<da_bond_lovelace>, checkedAt=<iso>
+da_bond_pool_withdrawing: unlockAt=<posix ms>, checkedAt=<iso>
+```
+
+Each change is one JSON event on stderr: `da_bond_pool_backing_short` and
+`da_bond_pool_backing_restored` when the backing falls below, or returns to, one
+DA bond (after a slash, a withdrawal or a top-up), and `da_bond_pool_withdrawing`
+and `da_bond_pool_bonded` when the pool enters or leaves `Withdrawing`. Their
+fields are `backing`, `required`, `unlockAt` (while withdrawing) and `checkedAt`.
+A failed read emits `da_bond_pool_read_failed` once per run of failures and keeps
+the last good read's reasons. `--once` does not read the pool. Funding, top-up
+and the owner-quorum withdrawal are operator `da-bond` commands; see the
+[CLI Reference](/docs/operators/node/cli-reference).
+
+Queue availability is a typed lifecycle: `Unattested`,
 `Attested`, `Challenged`, or `Published`, with the attested commitment hash,
 the challenge identifier, or the terminal commitment. It is not a policy-id
 marker.

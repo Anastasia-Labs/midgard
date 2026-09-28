@@ -31,6 +31,13 @@ export class L1ViewUnavailableError extends Error {
 export type CommitteeTickRunnerDeps = {
   readonly tick: () => Promise<CommitteeTickResult>;
   readonly runAvailabilityResponse: () => Promise<void>;
+  /**
+   * One read of the pooled DA bond after the tick, so pool alerts and the
+   * readiness reason follow the pool even when no apply is pending. The
+   * reader reports its own read failures; anything it throws is logged and
+   * fails nothing else.
+   */
+  readonly readDaBondPool?: () => Promise<void>;
   /** One retention pass against a fresh L1 view. */
   readonly runRetention: (view: RetentionL1View) => Promise<void>;
   readonly latestL1View: () => CommitteeL1View | undefined;
@@ -251,6 +258,15 @@ export const createCommitteeTickRunner = (deps: CommitteeTickRunnerDeps) => {
         );
       }
       if (exiting) return;
+      if (deps.readDaBondPool !== undefined) {
+        try {
+          await deps.readDaBondPool();
+        } catch (error) {
+          deps.write("stderr", `${errorText(error)}\n`);
+        }
+        endPhase("daBondPoolMs");
+        if (exiting) return;
+      }
       await runRetentionStep(tickStartedAtMs, l1Error);
       endPhase("retentionMs");
     } catch (error) {

@@ -12,6 +12,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type CommitteeConfig, l1SourceAuthorityDigest } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
 import type { DaSubmitterFundingCheck } from "./coordinator/lucid-submitter.js";
+import {
+  type DaBondPoolCheck,
+  daBondPoolReadinessReasons,
+} from "./coordinator/pool-monitor.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import type {
   DaGossipMessageHandler,
@@ -482,6 +486,11 @@ export class CommitteeService {
       readonly localPeerId?: string;
       readonly l1SubmitterPreflight?: CommitteeL1SubmitterPreflightSnapshot;
       readonly l1SubmitterFunding?: DaSubmitterFundingCheck;
+      /**
+       * The last successful pooled DA bond read. A short or Withdrawing pool
+       * cannot back an attestation, so this node is not ready.
+       */
+      readonly daBondPool?: DaBondPoolCheck;
       readonly retention?: CommitteeRetentionReadinessSnapshot;
     } = {},
   ): Promise<CommitteeReadinessSnapshot> {
@@ -625,6 +634,9 @@ export class CommitteeService {
       reasons.push(
         `l1_submitter_fee_funding_short: plainAdaLovelace=${args.l1SubmitterFunding.plainAdaLovelace.toString()}, requiredLovelace=${args.l1SubmitterFunding.requiredLovelace.toString()}, checkedAt=${args.l1SubmitterFunding.checkedAt}`,
       );
+    }
+    if (args.daBondPool !== undefined) {
+      reasons.push(...daBondPoolReadinessReasons(args.daBondPool));
     }
     if (args.retention?.status === "not_checked") {
       reasons.push("retention check has not completed");

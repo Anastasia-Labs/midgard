@@ -7,13 +7,20 @@ import {
   type LocalKupmiosFraudProofRawSource,
 } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, utxoToCore } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherAvailabilityObservation } from "../../src/availability/observation.js";
+import { deriveWatcherDaBondPoolObservation } from "../../src/availability/pool-observation.js";
 import { createWatcherL1AvailabilityPayloadSource } from "../../src/availability/published-payload.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
+import {
+  DA_BOND_POOL_ADDRESS,
+  DA_BOND_POOL_POLICY_ID,
+  daBondPoolUtxo,
+  parametersFixture,
+} from "../support/availability-challenge-fixture.js";
 
 const sourcePolicy = vi.hoisted(() => ({
   observationDepth: "release_finality" as "release_finality" | "inclusion",
@@ -89,8 +96,8 @@ const deployment = {
     },
     correctionLock: { spendingScriptAddress: "lock" },
     daBondPool: {
-      spendingScriptAddress: "pool",
-      policyId: "99".repeat(28),
+      spendingScriptAddress: DA_BOND_POOL_ADDRESS,
+      policyId: DA_BOND_POOL_POLICY_ID,
     },
   },
 } as SDK.DaAvailabilityDeployment;
@@ -504,5 +511,85 @@ describe("availability captures sharing a local source", () => {
         "Availability input spend lies above the canonical boundary",
       );
     });
+  });
+});
+
+describe("DA bond pool read (spec #685 E5, #691)", () => {
+  const raw = (utxo: ReturnType<typeof daBondPoolUtxo>) => ({
+    outRef: `${utxo.txHash}#${utxo.outputIndex}`,
+    outputCbor: utxoToCore(utxo).output().to_cbor_hex(),
+  });
+
+  it("reads the pool address at the pinned finalized point, with or without pending headers", async () => {
+    const { intake } = fixture();
+    const pool = daBondPoolUtxo(5_000_000_000n);
+    io.address.mockResolvedValue([raw(pool)]);
+    await expect(intake.pool(observation(12))).resolves.toMatchObject({
+      txHash: pool.txHash,
+      outputIndex: pool.outputIndex,
+      assets: pool.assets,
+      datum: pool.datum,
+    });
+    expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
+      "12",
+    ]);
+    expect(io.address).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: DA_BOND_POOL_ADDRESS,
+        point: expect.objectContaining({ slot: "12" }),
+      }),
+    );
+  });
+
+  it("reads a Withdrawing pool the local source re-encodes canonically", async () => {
+    const { intake } = fixture();
+    const pool = daBondPoolUtxo(5_000_000_000n, {
+      Withdrawing: { unlock_at: 1_900_000_000_000n },
+    });
+    const output = utxoToCore(pool).output();
+    // The local Kupmios source serves `to_canonical_cbor_hex` of each output
+    // (rawUtxoFromOutput), which turns lucid's indefinite-length datum list
+    // definite-length.
+    const outputCbor = output.to_canonical_cbor_hex();
+    expect(outputCbor).not.toBe(output.to_cbor_hex());
+    io.address.mockResolvedValue([
+      { outRef: `${pool.txHash}#${pool.outputIndex}`, outputCbor },
+    ]);
+    const read = await intake.pool(observation(12));
+    expect(read?.datum).not.toBe(pool.datum);
+    expect(
+      deriveWatcherDaBondPoolObservation({
+        pool: read,
+        policyId: DA_BOND_POOL_POLICY_ID,
+        parameters: parametersFixture(),
+        nowMs: 0n,
+      }),
+    ).toMatchObject({
+      state: "withdrawing",
+      unlockAt: "1900000000000",
+      alerts: { withdrawing: true },
+    });
+  });
+
+  it("reads no pool NFT as missing and fails closed on a duplicated pool", async () => {
+    const { intake } = fixture();
+    io.address.mockResolvedValue([]);
+    await expect(intake.pool(observation(12))).resolves.toBeUndefined();
+    const pool = daBondPoolUtxo(5_000_000_000n);
+    io.address.mockResolvedValue([raw(pool), raw({ ...pool, outputIndex: 1 })]);
+    await expect(intake.pool(observation(13))).rejects.toThrow(
+      "more than one output",
+    );
+  });
+
+  it("refuses a pool read below the deployment's finality depth", async () => {
+    const { intake } = fixture();
+    await expect(
+      intake.pool({
+        ...observation(12),
+        nativePoint: { ...observation(12).nativePoint, finalityDepth: "1" },
+      } as unknown as WatcherAuthenticatedStateQueueObservation),
+    ).rejects.toThrow("exact finalized deployment observation");
+    expect(io.address).not.toHaveBeenCalled();
   });
 });

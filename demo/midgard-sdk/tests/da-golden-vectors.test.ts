@@ -40,8 +40,8 @@ import {
   type DaBondPoolDatum,
   DaBondPoolMintRedeemer,
   DaBondPoolSpendRedeemer,
+  decodeDaBondPoolDatum,
   encodeDaBondPoolDatum,
-  parseDaBondPoolDatumCbor,
 } from "../src/da-bond-pool.js";
 
 const readFixture = <T>(name: string): T =>
@@ -311,7 +311,7 @@ describe("da-bond-pool-v1 goldens through the SDK codecs", () => {
     const datum = enumValueOf(vector.datum, integerField) as DaBondPoolDatum;
     it("encodeDaBondPoolDatum reproduces the hex and parses it back", () => {
       expect(encodeDaBondPoolDatum(datum)).toBe(vector.cborHex);
-      expect(parseDaBondPoolDatumCbor(vector.cborHex)).toEqual(datum);
+      expect(decodeDaBondPoolDatum(vector.cborHex)).toEqual(datum);
     });
   });
 

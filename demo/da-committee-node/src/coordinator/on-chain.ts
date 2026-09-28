@@ -9,6 +9,7 @@ import type { DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import type { AttestationCoordinator } from "./coordinator.js";
 import { planDaAttestationLifecycle } from "./planner.js";
 import { DaBondPoolApplyBackoffError } from "./pool-backoff.js";
+import type { DaBondPoolCheck } from "./pool-monitor.js";
 import { parseSignatureWitness } from "./witnesses.js";
 
 export type DaAttestationContext = Pick<
@@ -62,6 +63,8 @@ export interface OnChainAttestationSubmitter {
     readonly record: DaAttestationContext;
     readonly candidate: DaAttestationCandidateRecord;
   }): Promise<AttestationSubmissionResult>;
+  /** Reads and classifies the pooled DA bond, when the submitter can. */
+  checkDaBondPool?(): Promise<DaBondPoolCheck>;
 }
 
 export type OnChainLifecycleCoordinatorDeps = {
@@ -166,6 +169,15 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
     (this.deps.log ?? ((message: string) => console.warn(message)))(
       SINGLE_KEY_ATTEST_NOTICE,
     );
+  }
+
+  /**
+   * Reads the pooled DA bond through the submitter, which reports the check
+   * or the read failure to its record hooks. Resolves `undefined` for a
+   * submitter that cannot read the pool.
+   */
+  async checkDaBondPool(): Promise<DaBondPoolCheck | undefined> {
+    return this.deps.submitter.checkDaBondPool?.();
   }
 
   async publishSignature(

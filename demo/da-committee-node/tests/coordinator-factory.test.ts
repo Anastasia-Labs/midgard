@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { availabilityParametersFromConfig } from "../src/availability/factory.js";
 import { DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE } from "../src/config.js";
 import { onChainCoordinatorFromConfig } from "../src/coordinator/factory.js";
 import type { LucidDaAttestationSubmitter } from "../src/coordinator/lucid-submitter.js";
@@ -289,7 +290,7 @@ describe("onChainCoordinatorFromConfig", () => {
         ...passingDeps(),
         lucidFromProviderUrl: async () => ({ lucid, providerSource: "test" }),
       },
-      (check) => checks.push(check),
+      { recordSubmitterFunding: (check) => checks.push(check) },
     );
     const submitter = (
       coordinator as unknown as {
@@ -320,6 +321,72 @@ describe("onChainCoordinatorFromConfig", () => {
         sufficient: false,
       },
     ]);
+  });
+
+  it("hands the pooled DA bond hooks to the submitter, which reports each read and each read failure", async () => {
+    const config = l1ReadyConfig();
+    const parameters = availabilityParametersFromConfig(config);
+    const pool = config.midgardNodeDeployment.daBondPool;
+    const poolUnit = SDK.daBondPoolUnit(pool.policyId);
+    const chain: { utxos: UTxO[] } = {
+      utxos: [
+        {
+          txHash: "55".repeat(32),
+          outputIndex: 0,
+          address: pool.spendingScriptAddress,
+          assets: {
+            lovelace: parameters.da_bond_pool_floor_lovelace,
+            [poolUnit]: 1n,
+          },
+          datum: SDK.encodeDaBondPoolDatum("Bonded"),
+        } as UTxO,
+      ],
+    };
+    const lucid = {
+      utxosAtWithUnit: async (address: string, unit: string) =>
+        chain.utxos.filter(
+          (utxo) => utxo.address === address && utxo.assets[unit] === 1n,
+        ),
+    } as unknown as LucidEvolution;
+    const checks: unknown[] = [];
+    const failures: unknown[] = [];
+    const coordinator = await onChainCoordinatorFromConfig(
+      config,
+      fakeChainReader,
+      undefined,
+      {
+        ...passingDeps(),
+        lucidFromProviderUrl: async () => ({ lucid, providerSource: "test" }),
+      },
+      {
+        recordDaBondPool: (check) => checks.push(check),
+        recordDaBondPoolReadFailure: (error) => failures.push(error),
+      },
+    );
+
+    // A pool at its floor backs nothing.
+    await expect(coordinator.checkDaBondPool()).resolves.toMatchObject({
+      state: "bonded",
+      backing: 0n,
+      requiredBacking: parameters.da_bond_lovelace,
+      short: true,
+    });
+    chain.utxos = [];
+    await expect(coordinator.checkDaBondPool()).rejects.toThrow(
+      /expected exactly one DA bond pool UTxO at the pool address, found 0/u,
+    );
+    expect(checks).toEqual([
+      {
+        checkedAt: expect.any(String),
+        state: "bonded",
+        lovelace: parameters.da_bond_pool_floor_lovelace,
+        backing: 0n,
+        requiredBacking: parameters.da_bond_lovelace,
+        short: true,
+      },
+    ]);
+    expect(failures).toHaveLength(1);
+    expect((failures[0] as Error).message).toMatch(/found 0/u);
   });
 
   it("does not construct an unproven fallback chain reader", async () => {

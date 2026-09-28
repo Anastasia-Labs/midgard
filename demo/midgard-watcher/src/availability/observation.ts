@@ -37,6 +37,7 @@ import {
   recoverWatcherAttestedCommitment,
   watcherRawTransactionCbor,
 } from "./commitment-source.js";
+import { authenticWatcherDaBondPool } from "./pool-observation.js";
 
 const outRef = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
@@ -122,6 +123,24 @@ export const createWatcherAvailabilityObservation = (input: {
   };
   return {
     confirmationDepth,
+    /**
+     * The pooled DA bond at the finalized point, read on its own so that it is
+     * reported whether or not any header is pending. `undefined` means no
+     * output holds the pool NFT; a malformed pool fails closed.
+     */
+    async pool(
+      observation: WatcherAuthenticatedStateQueueObservation,
+    ): Promise<UTxO | undefined> {
+      return await capture(observation, async () => {
+        const { policyId, spendingScriptAddress } =
+          input.deployment.contracts.daBondPool;
+        return authenticWatcherDaBondPool({
+          utxos: await readAddress(observation, spendingScriptAddress),
+          policyId,
+          address: spendingScriptAddress,
+        });
+      });
+    },
     async snapshot(
       observation: WatcherAuthenticatedStateQueueObservation,
       headerHash: string,

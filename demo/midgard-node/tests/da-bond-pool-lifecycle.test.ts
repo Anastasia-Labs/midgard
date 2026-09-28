@@ -91,7 +91,7 @@ const assertPoolSpendRefusal = async (
 
 /** Pool datum, lovelace and the full asset set. */
 const poolView = (pool: UTxO) => ({
-  datum: SDK.parseDaBondPoolDatumCbor(pool.datum!),
+  datum: SDK.decodeDaBondPoolDatum(pool.datum!),
   lovelace: pool.assets.lovelace,
   units: Object.keys(pool.assets).sort(),
 });

@@ -18,6 +18,7 @@ import {
   LucidDaAttestationSubmitter,
 } from "./lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "./on-chain.js";
+import type { DaBondPoolCheck } from "./pool-monitor.js";
 
 type OnChainCoordinatorFactoryDeps = {
   readonly lucidFromProviderUrl: typeof lucidFromProviderUrl;
@@ -35,6 +36,13 @@ const defaultDeps: OnChainCoordinatorFactoryDeps = {
   fetchDaAttestationReferenceScripts,
 };
 
+/** Where the submitter reports its funding and pooled DA bond reads. */
+export type OnChainCoordinatorHooks = {
+  readonly recordSubmitterFunding?: (check: DaSubmitterFundingCheck) => void;
+  readonly recordDaBondPool?: (check: DaBondPoolCheck) => void;
+  readonly recordDaBondPoolReadFailure?: (error: unknown) => void;
+};
+
 export const onChainCoordinatorFromConfig = async (
   config: CommitteeConfig,
   chainReader?: DaAttestationChainReader,
@@ -43,7 +51,7 @@ export const onChainCoordinatorFromConfig = async (
     "saveDaAttestationCandidate" | "saveL1Submission" | "listDaSignatures"
   >,
   deps: OnChainCoordinatorFactoryDeps = defaultDeps,
-  recordSubmitterFunding?: (check: DaSubmitterFundingCheck) => void,
+  hooks: OnChainCoordinatorHooks = {},
 ): Promise<OnChainLifecycleCoordinator> => {
   if (config.l1SubmitterKeySource === undefined) {
     throw new Error("L1_SUBMITTER_KEY_SOURCE is required for L1 submission");
@@ -88,7 +96,7 @@ export const onChainCoordinatorFromConfig = async (
     lucid,
     contracts,
     referenceScripts,
-    ...(recordSubmitterFunding === undefined ? {} : { recordSubmitterFunding }),
+    ...hooks,
     availabilityParameters: availabilityParametersFromConfig(config),
   });
   return new OnChainLifecycleCoordinator({

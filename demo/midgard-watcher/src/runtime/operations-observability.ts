@@ -1,3 +1,4 @@
+import type { WatcherDaBondPoolObservation } from "../availability/pool-observation.js";
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
 
@@ -19,9 +20,33 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "deployment_fingerprint_mismatch",
   "proof_family_coverage_gap",
   "l1_source_stale",
+  "da_bond_pool_under_backed",
+  "da_bond_pool_withdrawing",
 ] as const);
 
 export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
+
+/**
+ * Alerts that tell the operator about the deployment, not about this watcher's
+ * health. They are listed in `activeAlerts` but never make the watcher
+ * `not_ready` (spec #685 E5): a short or withdrawing DA bond pool pauses
+ * attestations, while the watcher keeps verifying and challenging.
+ */
+export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
+  new Set<WatcherAlertCode>([
+    "da_bond_pool_under_backed",
+    "da_bond_pool_withdrawing",
+  ]);
+
+/** The last pooled DA bond readout, as `/v1/status` serves it. */
+export type WatcherOperationsDaBondPool = WatcherDaBondPoolObservation &
+  Readonly<{ observedAtMs: string }>;
+
+/** The latest failed pool read since the last good one, as `/v1/status` serves it. */
+export type WatcherOperationsDaBondPoolReadFailure = Readonly<{
+  error: string;
+  failedAtMs: string;
+}>;
 
 export type WatcherOperationsDiagnosticKind =
   | "verification"
@@ -162,6 +187,14 @@ export type WatcherOperationsStatus = Readonly<{
     subjectDigest: string;
     observedAtMs: string;
   }>[];
+  /** The pooled DA bond as last read, or `null` before the first read. */
+  daBondPool: WatcherOperationsDaBondPool | null;
+  /**
+   * The latest failed pool read, or `null` once a read succeeds. Reported
+   * only: it never adds a readiness reason (spec #685 E5), and `daBondPool`
+   * keeps the last good readout, whose `observedAtMs` shows its age.
+   */
+  daBondPoolReadFailure: WatcherOperationsDaBondPoolReadFailure | null;
 }>;
 
 export type WatcherOperationsMetrics = Readonly<{
@@ -239,6 +272,22 @@ export type WatcherOperationsSink = Readonly<{
     value: Omit<WatcherL1SourceDiagnostic, "kind" | "sequence">,
   ): void;
   setAlert(value: Omit<WatcherAlertDiagnostic, "kind" | "sequence">): void;
+  /**
+   * Keeps `readout` as the served pool readout and sets both pool alerts from
+   * it, so they fire on a drain or `BeginWithdraw` and clear after a top-up or
+   * cancel. An alert diagnostic is appended only when an alert's state
+   * changes, so a steady pool does not flood the bounded diagnostics.
+   */
+  recordDaBondPool(
+    readout: WatcherDaBondPoolObservation,
+    subjectDigest: string,
+    observedAtMs: string,
+  ): void;
+  /**
+   * Serves a failed pool read until the next `recordDaBondPool`. The pool
+   * readout and both pool alerts keep their last good values.
+   */
+  recordDaBondPoolReadFailure(error: string, failedAtMs: string): void;
 }>;
 
 export type WatcherOperationsObservability = Readonly<{
@@ -273,6 +322,33 @@ const percentile = (
   );
   return ordered[rank]!.toString();
 };
+
+/**
+ * The availability runtime's `onDaBondPool` hook as the watcher runtime wires
+ * it: each reconciliation's pool readout becomes the served `daBondPool` and
+ * sets or clears the two pool alerts for this deployment (spec #685 E5).
+ */
+export const watcherDaBondPoolReporter =
+  (
+    sink: Pick<WatcherOperationsSink, "recordDaBondPool">,
+    deploymentIdentity: string,
+    nowMs: () => number = Date.now,
+  ) =>
+  (pool: WatcherDaBondPoolObservation): void =>
+    sink.recordDaBondPool(pool, deploymentIdentity, BigInt(nowMs()).toString());
+
+/**
+ * The availability runtime's `onDaBondPoolReadFailure` hook as the watcher
+ * runtime wires it: a failed pool read becomes the served
+ * `daBondPoolReadFailure`.
+ */
+export const watcherDaBondPoolReadFailureReporter =
+  (
+    sink: Pick<WatcherOperationsSink, "recordDaBondPoolReadFailure">,
+    nowMs: () => number = Date.now,
+  ) =>
+  (error: string): void =>
+    sink.recordDaBondPoolReadFailure(error, BigInt(nowMs()).toString());
 
 export const createWatcherOperationsObservability = (input: {
   readonly deploymentFingerprint: string;
@@ -325,6 +401,9 @@ export const createWatcherOperationsObservability = (input: {
   const latestEvents = new Map<string, WatcherEventDiagnostic>();
   const latestL1Sources = new Map<string, WatcherL1SourceDiagnostic>();
   const latestAlerts = new Map<string, WatcherAlertDiagnostic>();
+  let latestDaBondPool: WatcherOperationsDaBondPool | null = null;
+  let latestDaBondPoolReadFailure: WatcherOperationsDaBondPoolReadFailure | null =
+    null;
   type AgeAnchor = Readonly<{
     origin: string;
     receivedAt: bigint;
@@ -369,6 +448,19 @@ export const createWatcherOperationsObservability = (input: {
   const boundedSample = (values: bigint[], value: bigint): void => {
     values.push(value);
     if (values.length > maximumRetainedDiagnostics) values.shift();
+  };
+
+  const setAlert: WatcherOperationsSink["setAlert"] = (value) => {
+    if (!WATCHER_ALERT_CODES.includes(value.code)) {
+      throw new Error("operational alert code is invalid");
+    }
+    hash32(value.subjectDigest, "operational alert subject digest");
+    natural(value.observedAtMs, "operational alert observation time");
+    const record = append<WatcherAlertDiagnostic>({
+      kind: "alert",
+      ...value,
+    });
+    latestAlerts.set(`${value.code}:${value.subjectDigest}`, record);
   };
 
   const sink: WatcherOperationsSink = Object.freeze({
@@ -440,17 +532,34 @@ export const createWatcherOperationsObservability = (input: {
       latestL1Sources.set(value.sourceIdentityDigest, record);
       sourceAges.set(value.sourceIdentityDigest, anchorAge(value.observedAtMs));
     },
-    setAlert: (value) => {
-      if (!WATCHER_ALERT_CODES.includes(value.code)) {
-        throw new Error("operational alert code is invalid");
-      }
-      hash32(value.subjectDigest, "operational alert subject digest");
-      natural(value.observedAtMs, "operational alert observation time");
-      const record = append<WatcherAlertDiagnostic>({
-        kind: "alert",
-        ...value,
+    setAlert,
+    recordDaBondPool: (readout, subjectDigest, observedAtMs) => {
+      hash32(subjectDigest, "DA bond pool subject digest");
+      natural(observedAtMs, "DA bond pool observation time");
+      latestDaBondPool = Object.freeze({
+        ...readout,
+        alerts: Object.freeze({ ...readout.alerts }),
+        observedAtMs,
       });
-      latestAlerts.set(`${value.code}:${value.subjectDigest}`, record);
+      latestDaBondPoolReadFailure = null;
+      for (const [code, active] of [
+        ["da_bond_pool_under_backed", readout.alerts.underBacked],
+        ["da_bond_pool_withdrawing", readout.alerts.withdrawing],
+      ] as const) {
+        if (latestAlerts.get(`${code}:${subjectDigest}`)?.active === active)
+          continue;
+        setAlert({ code, subjectDigest, active, observedAtMs });
+      }
+    },
+    recordDaBondPoolReadFailure: (error, failedAtMs) => {
+      natural(failedAtMs, "DA bond pool read failure time");
+      latestDaBondPoolReadFailure = Object.freeze({
+        // A concise cause, never an embedded transaction payload.
+        error: error
+          .replace(/[a-fA-F0-9]{128,}/g, "[hex omitted]")
+          .slice(0, 2048),
+        failedAtMs,
+      });
     },
   });
 
@@ -537,7 +646,8 @@ export const createWatcherOperationsObservability = (input: {
     const retainedDaTransport = input.retainedDaTransportStatus();
     if (retainedDaTransport.state === "failed")
       reasons.push("retained_da_transport_failed");
-    if (alerts.length > 0) reasons.push("active_alert");
+    if (alerts.some(({ code }) => !WATCHER_INFORMATIONAL_ALERT_CODES.has(code)))
+      reasons.push("active_alert");
     const liveness =
       supervisor.phase === "closed"
         ? "stopped"
@@ -557,6 +667,8 @@ export const createWatcherOperationsObservability = (input: {
       launchScope: scope,
       supervisor,
       activeAlerts: alerts,
+      daBondPool: latestDaBondPool,
+      daBondPoolReadFailure: latestDaBondPoolReadFailure,
     });
   };
 

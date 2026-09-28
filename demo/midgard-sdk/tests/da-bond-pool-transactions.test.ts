@@ -43,8 +43,8 @@ import type { AuthenticatedValidator } from "../src/common.js";
 import { DaParamsDatum } from "../src/da-attestation.js";
 import {
   daBondPoolUnit,
+  decodeDaBondPoolDatum,
   encodeDaBondPoolDatum,
-  parseDaBondPoolDatumCbor,
 } from "../src/da-bond-pool.js";
 import {
   appendDaBondPoolInitialization,
@@ -491,6 +491,46 @@ describe("DA bond pool builders: refusals before assembly", () => {
     await expectRefusal(topUp(-1n, true), "invalid_amount");
   });
 
+  it("tops up a pool whose datum another spend stored under a different encoding", async () => {
+    const scene = await setupScene();
+    // TopUp pins the datum by Data value only, so the chain admits these:
+    // indefinite and definite field lists, the tag-102 constructor form and
+    // non-minimal integers.
+    for (const datum of [
+      "d8799fff",
+      "d866820080",
+      "d87a811b000001ba60d33800",
+      "d86682018105",
+      "d87a9f1b0000000000000005ff",
+    ]) {
+      await expectBuilds(
+        buildTopUpDaBondPoolTxProgram(scene.lucid, {
+          poolValidator: scene.pool,
+          parameters,
+          pool: { utxo: { ...syntheticPool(scene, "Bonded", FLOOR), datum } },
+          amount: MIN_TOP_UP,
+        }),
+      );
+    }
+    // Still one well-formed pool datum with a canonical value.
+    for (const datum of [
+      `${encodeDaBondPoolDatum("Bonded")}00`,
+      "d87a81",
+      Data.to(new Constr(2, [])),
+      Data.to(new Constr(1, [-1n])),
+    ]) {
+      await expectRefusal(
+        buildTopUpDaBondPoolTxProgram(scene.lucid, {
+          poolValidator: scene.pool,
+          parameters,
+          pool: { utxo: { ...syntheticPool(scene, "Bonded", FLOOR), datum } },
+          amount: MIN_TOP_UP,
+        }),
+        "invalid_pool",
+      );
+    }
+  });
+
   it("bounds CompleteWithdraw to 0 < amount <= backing, at or after unlock_at", async () => {
     const scene = await setupScene();
     const now = BigInt(scene.emulator.now());
@@ -722,7 +762,7 @@ describe("DA bond pool builders: the transaction Lucid assembles", () => {
       );
       expect(ledgerValidTo).toBeLessThan(now + 300_537n);
       const unlockAt = ledgerValidTo - 1n + WITHDRAW_DELAY_MS;
-      expect(parseDaBondPoolDatumCbor(next.datum!)).toEqual({
+      expect(decodeDaBondPoolDatum(next.datum!)).toEqual({
         Withdrawing: { unlock_at: unlockAt },
       });
       expect(next.assets).toEqual(utxo.assets);

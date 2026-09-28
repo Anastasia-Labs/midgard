@@ -1,4 +1,9 @@
 export {
+  authenticWatcherDaBondPool,
+  deriveWatcherDaBondPoolObservation,
+  type WatcherDaBondPoolObservation,
+} from "./availability/pool-observation.js";
+export {
   createWatcherFaultDecisionBridge,
   unsafeCreateWatcherFaultDecisionBridgeForTest,
   WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION,
@@ -408,6 +413,7 @@ export {
 export {
   createWatcherOperationsObservability,
   WATCHER_ALERT_CODES,
+  WATCHER_INFORMATIONAL_ALERT_CODES,
   WATCHER_OPERATIONS_OBSERVABILITY,
   WATCHER_PROOF_STAGE_KINDS,
   type WatcherAlertCode,
@@ -416,6 +422,8 @@ export {
   type WatcherEventDiagnostic,
   type WatcherL1SourceDiagnostic,
   type WatcherOperationsApi,
+  type WatcherOperationsDaBondPool,
+  type WatcherOperationsDaBondPoolReadFailure,
   type WatcherOperationsDiagnostic,
   type WatcherOperationsDiagnosticKind,
   type WatcherOperationsMetrics,

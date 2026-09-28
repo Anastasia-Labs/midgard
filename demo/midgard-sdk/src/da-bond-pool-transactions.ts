@@ -20,8 +20,8 @@ import {
   DaBondPoolSpendRedeemer,
   daBondPoolUnit,
   daBondPoolUnlockAt,
+  decodeDaBondPoolDatum,
   encodeDaBondPoolDatum,
-  parseDaBondPoolDatumCbor,
 } from "./da-bond-pool.js";
 import type { GenericErrorFields } from "./errors.js";
 import { MAX_VALIDITY_RANGE_LENGTH_MS } from "./protocol-parameters.js";
@@ -65,6 +65,8 @@ export type DaBondPoolBuildFailureReason =
   | "invalid_pool"
   | "invalid_pool_address"
   | "invalid_validity_range"
+  | "invalid_witness"
+  | "missing_witness"
   | "pool_not_bonded"
   | "pool_not_withdrawing"
   | "reference_script_mismatch"
@@ -360,9 +362,13 @@ const resolvePool = (
   }
   let datum: DaBondPoolDatum;
   try {
-    datum = parseDaBondPoolDatumCbor(utxo.datum);
+    datum = decodeDaBondPoolDatum(utxo.datum);
   } catch (error) {
-    throw refusal("invalid_pool", "DA bond pool datum is not canonical", error);
+    throw refusal(
+      "invalid_pool",
+      "DA bond pool datum is not a pool datum",
+      error,
+    );
   }
   return {
     utxo,

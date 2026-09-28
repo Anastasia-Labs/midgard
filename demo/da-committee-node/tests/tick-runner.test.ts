@@ -30,6 +30,7 @@ const harness = (
     /** Never settle, without reading L1. */
     readonly hangBeforeView?: boolean;
     readonly shutdown?: () => Promise<void>;
+    readonly readDaBondPool?: () => Promise<void>;
   } = {},
 ) => {
   let now = START;
@@ -63,6 +64,9 @@ const harness = (
       return emptyTick();
     },
     runAvailabilityResponse: async () => undefined,
+    ...(options.readDaBondPool === undefined
+      ? {}
+      : { readDaBondPool: options.readDaBondPool }),
     runRetention: async () => {
       retentionRuns.push(now);
       readiness = {
@@ -319,5 +323,34 @@ describe("slow committee tick log", () => {
         retentionMs: 7,
       },
     ]);
+  });
+});
+
+describe("committee tick runner pooled DA bond read", () => {
+  it("reads the pool once per tick, including a tick that could not read the state queue", async () => {
+    let reads = 0;
+    const h = harness({
+      readDaBondPool: async () => {
+        reads += 1;
+      },
+    });
+    await h.runner.runTick();
+    expect(reads).toBe(1);
+    h.setL1Readable(false);
+    await h.runner.runTick();
+    expect(reads).toBe(2);
+  });
+
+  it("logs a failing pool read and fails nothing else: retention still runs against the tick's view", async () => {
+    const h = harness({
+      readDaBondPool: async () => {
+        throw new Error("pool reader broke");
+      },
+    });
+    await h.runner.runTick();
+    expect(h.lines).toEqual(["pool reader broke\n"]);
+    expect(h.retentionRuns).toEqual([START]);
+    expect(h.readiness()?.status).toBe("ok");
+    expect(h.exits).toEqual([]);
   });
 });

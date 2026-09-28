@@ -16,6 +16,7 @@ import {
   onChainCoordinatorFromConfig,
 } from "./coordinator/factory.js";
 import type { DaSubmitterFundingCheck } from "./coordinator/lucid-submitter.js";
+import { createDaBondPoolWiring } from "./coordinator/pool-monitor.js";
 import { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import {
   createDaLibp2pAttestationGossipHandlers,
@@ -184,14 +185,23 @@ const main = async (): Promise<void> => {
   });
   // The latest check of the submitter's plain ADA against the next round.
   let l1SubmitterFunding: DaSubmitterFundingCheck | undefined;
+  // The pooled DA bond as last read; transitions are JSON events on stderr.
+  const daBondPool = createDaBondPoolWiring({
+    writeEvent: (event) => {
+      process.stderr.write(`${JSON.stringify(event)}\n`);
+    },
+  });
   const onChainCoordinator = config.l1SubmissionEnabled
     ? await onChainCoordinatorFromConfig(
         config,
         daChainReader,
         store,
         undefined,
-        (check) => {
-          l1SubmitterFunding = check;
+        {
+          recordSubmitterFunding: (check) => {
+            l1SubmitterFunding = check;
+          },
+          ...daBondPool.coordinatorHooks,
         },
       )
     : undefined;
@@ -353,6 +363,7 @@ const main = async (): Promise<void> => {
   const tickRunner = createCommitteeTickRunner({
     tick: () => service.tick(),
     runAvailabilityResponse,
+    ...daBondPool.tickRunnerDeps(onChainCoordinator),
     runRetention,
     latestL1View: () => service.latestL1View(),
     latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
@@ -393,6 +404,7 @@ const main = async (): Promise<void> => {
         localPeerId: daIdentity.peerId,
         l1SubmitterPreflight,
         l1SubmitterFunding,
+        ...daBondPool.readiness(),
         retention: retentionReadiness,
       }),
     manifest: config.deploymentManifest,

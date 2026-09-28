@@ -77,6 +77,8 @@ import {
 } from "./operations-http.js";
 import {
   createWatcherOperationsObservability,
+  watcherDaBondPoolReadFailureReporter,
+  watcherDaBondPoolReporter,
   type WatcherOperationsObservability,
   type WatcherOperationsSink,
 } from "./operations-observability.js";
@@ -761,6 +763,15 @@ export const createWatcherRuntime = async (input: {
       },
       proverWalletAddress,
       onStatusTransition: input.onAvailabilityStatusTransition,
+      // E5: the pool readout and its alerts reach /v1/status; they never make
+      // the watcher not_ready.
+      onDaBondPool: watcherDaBondPoolReporter(
+        operations.sink,
+        deploymentIdentity.manifestId,
+      ),
+      onDaBondPoolReadFailure: watcherDaBondPoolReadFailureReporter(
+        operations.sink,
+      ),
     });
     await startup("availability_reconciliation", () =>
       availability!.reconcile(stateQueueRuntime.current(), false),

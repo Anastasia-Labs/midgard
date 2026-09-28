@@ -1121,7 +1121,7 @@ export const createAvailabilityFixture = async (
           quorum.extraSigners,
         ),
       );
-      const datum = SDK.parseDaBondPoolDatumCbor(pool.datum!);
+      const datum = SDK.decodeDaBondPoolDatum(pool.datum!);
       if (datum === "Bonded") throw new Error("BeginWithdraw left pool Bonded");
       return { pool, unlockAt: datum.Withdrawing.unlock_at };
     });

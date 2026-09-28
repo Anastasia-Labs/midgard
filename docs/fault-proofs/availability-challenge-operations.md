@@ -80,6 +80,13 @@ describes dedicated responder keys and durable storage. The watcher drives its
 independent actor from public retrieval failure and finalized native observations.
 It can recover publication bytes from authenticated L1 history.
 
+A lost challenge slashes the pooled DA bond, which backs every attestation of
+the committee. The [DA bond pool guide](../../demo/midgard-node/docs/da-bond-commands.md)
+covers how `init` first funds the pool, the permissionless top-up, the owner
+quorum's two-step withdrawal through the offline multi-signer flow, and the
+watcher alerts and committee readiness reasons raised while the pool is short
+or withdrawing.
+
 The journal distinguishes canonical inclusion from finality so response chains
 can advance without waiting the finality depth after every chunk. It preserves
 resources until finality, shares collateral only between the same actor's

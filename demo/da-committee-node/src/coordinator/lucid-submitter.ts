@@ -23,6 +23,10 @@ import type {
 } from "./on-chain.js";
 import { DaBondPoolApplyBackoffError } from "./pool-backoff.js";
 import {
+  type DaBondPoolCheck,
+  daBondPoolCheckFromStatus,
+} from "./pool-monitor.js";
+import {
   buildAddSignaturesTx,
   buildApplyAttestationTx,
   buildInitDaAttestationTx,
@@ -54,6 +58,10 @@ export type LucidDaAttestationSubmitterDeps = {
   >;
   /** Receives every submitter funding check; readiness reports a short one. */
   readonly recordSubmitterFunding?: (check: DaSubmitterFundingCheck) => void;
+  /** Receives every successful pooled DA bond read; readiness reports it. */
+  readonly recordDaBondPool?: (check: DaBondPoolCheck) => void;
+  /** Receives every failed pooled DA bond read. */
+  readonly recordDaBondPoolReadFailure?: (error: unknown) => void;
   /**
    * Where submitter funding warnings and pooled-bond apply backoffs go.
    * Defaults to stderr.
@@ -184,6 +192,9 @@ export class LucidDaAttestationSubmitter
     const attestation = await this.fetchCandidateUtxo(candidate);
     const daParams = await this.fetchDaParamsUtxo();
     await this.refreshFunding();
+    // Reports the pool to readiness; a failed read is recorded there and is
+    // not an apply failure. The builder does its own pool check.
+    await this.checkDaBondPool().catch(() => undefined);
     // The builder re-reads the pooled DA bond right before assembling. A pool
     // outref spent between that read and submission (a top-up) fails as a
     // spent reference input, which the coordinator retries as a race; a pool
@@ -217,6 +228,35 @@ export class LucidDaAttestationSubmitter
     const txHash = await this.deps.signSubmit(tx);
     await this.waitForApplied(record.headerHash);
     return { status: "submitted", txHash };
+  }
+
+  /**
+   * Reads the authentic pooled DA bond (the one UTxO at the pool address
+   * holding the pool NFT, with an inline pool datum) and classifies it against
+   * the deployment's bond and floor. The check, or the read failure, goes to
+   * the record hooks; a failure is also rethrown.
+   */
+  async checkDaBondPool(): Promise<DaBondPoolCheck> {
+    let check: DaBondPoolCheck;
+    try {
+      const pool = await SDK.fetchDaBondPool(this.deps.lucid, {
+        policyId: this.deps.contracts.daBondPool.policyId,
+        address: this.deps.contracts.daBondPool.spendingScriptAddress,
+      });
+      check = daBondPoolCheckFromStatus(
+        SDK.daBondPoolStatus({
+          lovelace: pool.utxo.assets.lovelace ?? 0n,
+          datum: pool.datum,
+          parameters: this.deps.availabilityParameters,
+        }),
+        new Date().toISOString(),
+      );
+    } catch (error) {
+      this.deps.recordDaBondPoolReadFailure?.(error);
+      throw error;
+    }
+    this.deps.recordDaBondPool?.(check);
+    return check;
   }
 
   /**

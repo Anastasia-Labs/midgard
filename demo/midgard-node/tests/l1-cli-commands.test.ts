@@ -11,6 +11,7 @@ import {
   fetchKupmiosAddressUtxos,
   lucidUtxoToL1Utxo,
   resolveKupmiosConfig,
+  resolveKupmiosUrls,
 } from "../src/commands/l1-utxos.js";
 
 const VALID_ADDRESS =
@@ -45,6 +46,28 @@ describe("l1-utxos command helpers", () => {
       ogmiosUrl: "http://127.0.0.1:1337",
       network: "Preprod",
     });
+  });
+
+  it("keeps refusing Custom for the commands that resolve their network here (l1-utxos, availability-challenge)", () => {
+    // Neither builds a Custom slot mapping; only `da-bond` admits Custom,
+    // taking its network from the verified manifest instead (P25(4)).
+    const urls = {
+      kupoUrl: "http://127.0.0.1:1442",
+      ogmiosUrl: "ws://127.0.0.1:1337",
+    };
+    expect(() => resolveKupmiosConfig({ ...urls, network: "Custom" })).toThrow(
+      'Unsupported network "Custom"',
+    );
+    expect(() =>
+      resolveKupmiosConfig({
+        env: {
+          L1_KUPO_KEY: urls.kupoUrl,
+          L1_OGMIOS_KEY: urls.ogmiosUrl,
+          NETWORK: "Custom",
+        },
+      }),
+    ).toThrow('Unsupported network "Custom"');
+    expect(resolveKupmiosUrls(urls)).toEqual(urls);
   });
 
   it("maps Lucid UTxOs into deterministic bigint-backed output", () => {

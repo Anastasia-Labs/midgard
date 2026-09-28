@@ -66,6 +66,14 @@ that funds publication.
 `init` initializes the hub oracle, the state queue, the registered, active, and retired
 operator lists, and the scheduler roots on L1.
 
+The same atomic transaction creates the pooled DA bond and funds it with the pool floor
+plus one DA bond (`da_bond_pool_floor_lovelace + da_bond_lovelace` from the deployment
+profile), paid by the wallet that runs `init`: 505 ADA on the testing profiles and
+100,005 ADA on the public ones, on top of the other init costs. The pool therefore backs
+the first attestation without a separate top-up. After a slash or a withdrawal leaves it
+with less than one DA bond of backing, attestations pause until anyone tops it up with
+`da-bond top-up`; see the [CLI Reference](/docs/operators/node/cli-reference).
+
 ```sh
 node dist/index.js init \
   --contract-deployment-info-output deploymentInfo/contract-deployment-info.json

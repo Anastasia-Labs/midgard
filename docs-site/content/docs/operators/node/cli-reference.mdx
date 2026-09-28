@@ -8,7 +8,7 @@ owns wallet generation, stress workloads and E2E orchestration. From either
 package directory, `node dist/index.js --help` lists that binary's commands.
 Build the relevant package first. Use a command's `--help` for required options.
 
-The 60 commands explicitly registered in the operator entry point are joined by
+The 67 commands explicitly registered in the operator entry point are joined by
 generated reference-script publication commands. The groups below distinguish
 operator commands, nested reconciliation commands, and separate tooling.
 
@@ -44,11 +44,38 @@ and [Server HTTP API](/docs/operators/node/server-http-api).
 - `audit-blocks-immutable` · `mpf-audit` · `mpf-replay`
 - `da-libp2p-preflight` · `da-libp2p-generate-manifest`
 - `availability-challenge`: open, respond, settle, close, time out, inspect or recover a DA challenge using an isolated actor wallet.
+- `da-bond`: read, top up or withdraw from the pooled DA committee bond; see [DA bond pool](#da-bond-pool).
 
 `commit-explicit-block-header` is a separately acknowledged drill command for
 caller-supplied roots, not the ordinary mempool commitment command.
 `attest-state-queue-once` uses locally held committee keys; it does not replace
 independent committee acceptance. Ordinary operation uses the background fibers.
+
+## DA bond pool
+
+`da-bond` operates the one pooled bond that backs every DA committee attestation.
+An attestation applies only while the pool is `Bonded` and holds at least
+`da_bond_lovelace` above its floor.
+
+- `da-bond status`: the pool's state (`bonded` or `withdrawing`), its backing
+  above the floor against `da_bond_lovelace`, and `unlock_at` while a withdrawal
+  is pending.
+- `da-bond top-up --amount <lovelace> --wallet-seed-env <ENV>`: anyone adds at
+  least `da_bond_min_top_up_lovelace`; signs and submits.
+- `da-bond withdraw begin|cancel|complete --fee-address <bech32> --signers <keyhash,...> --build-unsigned <file>`:
+  builds one owner-quorum withdrawal step and writes it unsigned; nothing is
+  submitted. `begin` takes `--valid-for-ms <ms>`; `complete` requires
+  `--amount <lovelace> --to <bech32>`.
+- `da-bond witness --key-env <ENV> <unsigned-file> [--out <file>]`: offline; one
+  owner's (or the fee payer's) witness, made on that key holder's machine.
+- `da-bond assemble <unsigned-file> <witness-files...>`: refuses below the DA
+  params `update_threshold` and submits nothing; at the threshold it submits.
+
+Every `da-bond` command except `witness` takes `--manifest <path>` and the
+optional `--kupo-url` and `--ogmios-url`. A withdrawal is BeginWithdraw, then the
+withdraw delay, then CompleteWithdraw, or CancelWithdraw while it is pending. The
+operator guide, `demo/midgard-node/docs/da-bond-commands.md` in the repository,
+covers funding, the multi-signer flow, every refusal and the pool alerts.
 
 ## Operator reconciliation
 

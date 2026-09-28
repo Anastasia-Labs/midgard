@@ -46,16 +46,11 @@ import {
 } from "./action.js";
 import { createWatcherAvailabilityDeployment } from "./deployment.js";
 import { createWatcherAvailabilityObservation } from "./observation.js";
+import {
+  deriveWatcherDaBondPoolObservation,
+  type WatcherDaBondPoolObservation,
+} from "./pool-observation.js";
 import { createWatcherL1AvailabilityPayloadSource } from "./published-payload.js";
-
-/**
- * A pooled DA bond condition worth an operator's attention. It never changes
- * the availability phase, so it never blocks watcher readiness (spec #685 E5).
- */
-export type WatcherAvailabilityPoolAlert =
-  | "missing"
-  | "withdrawing"
-  | "under_backed";
 
 /**
  * A due Open (or the preparation of its challenger coin) the wallet could not
@@ -130,7 +125,18 @@ export type WatcherAvailabilityStatus = Readonly<{
   action?: string;
   txHash?: string;
   detail?: string;
-  poolAlert?: WatcherAvailabilityPoolAlert;
+  /**
+   * The pooled DA bond from the last successful pool read, taken on every
+   * reconciliation whether or not a header is pending, and kept when a later
+   * reconciliation fails. It never changes `phase` (spec #685 E5).
+   */
+  pool?: WatcherDaBondPoolObservation;
+  /**
+   * Why the last reconciliation's pool read failed, absent once a read
+   * succeeds. Reported only: a failed pool read never changes `phase` or
+   * blocks an action (spec #685 E5).
+   */
+  poolReadFailure?: string;
   /** Withheld Attested headers whose Open deadline passed unchallenged. */
   missedOpenDeadlines?: readonly string[];
   /** Due Opens refused for lack of wallet capital in the last reconciliation. */
@@ -152,26 +158,6 @@ export type WatcherAvailabilityStatus = Readonly<{
 const DA_CHALLENGE_WINDOW_MS = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.timing.da_challenge_window_ms,
 );
-
-/** The pool's condition as read in any authenticated snapshot, if notable. */
-export const watcherAvailabilityPoolAlert = (
-  snapshots: readonly SDK.DaAvailabilityChallengeSnapshot[],
-  parameters: SDK.DaAvailabilityParameters,
-): WatcherAvailabilityPoolAlert | undefined => {
-  if (snapshots.length === 0) return undefined;
-  const withPool = snapshots.find(
-    (snapshot) =>
-      snapshot.pool !== undefined && snapshot.poolDatum !== undefined,
-  );
-  if (withPool === undefined) return "missing";
-  if (withPool.poolDatum !== "Bonded") return "withdrawing";
-  return SDK.daBondPoolBacking({
-    lovelace: withPool.pool!.assets.lovelace ?? 0n,
-    parameters,
-  }) < parameters.da_bond_lovelace
-    ? "under_backed"
-    : undefined;
-};
 
 export type WatcherAvailabilityStatusTransition = Readonly<{
   status: WatcherAvailabilityStatus;
@@ -553,6 +539,20 @@ export const createWatcherAvailabilityRuntime = async (input: {
   }>;
   proverWalletAddress: string;
   onStatusTransition?: (event: WatcherAvailabilityStatusTransition) => void;
+  /**
+   * Called with the pool readout after each successful pool read, once per
+   * reconciliation. An error it throws propagates from `reconcile` and never
+   * becomes an availability failure. Required, so a composition root cannot
+   * drop the pool readout silently; production passes
+   * `watcherDaBondPoolReporter`.
+   */
+  onDaBondPool: (pool: WatcherDaBondPoolObservation) => void;
+  /**
+   * Called with the cause after each failed pool read, once per
+   * reconciliation, in place of `onDaBondPool`. Required for the same reason;
+   * production passes `watcherDaBondPoolReadFailureReporter`.
+   */
+  onDaBondPoolReadFailure: (error: string) => void;
 }): Promise<WatcherAvailabilityRuntime> => {
   const source = input.config.watcherConfig.l1.source;
   if (source.sourceMode !== "local_node")
@@ -635,6 +635,8 @@ export const createWatcherAvailabilityRuntime = async (input: {
     phase: "waiting",
     pendingHeaders: [],
   };
+  let lastPool: WatcherDaBondPoolObservation | undefined;
+  let lastPoolReadFailure: string | undefined;
   let serial: Promise<void> = Promise.resolve();
   let lastBlockedStatus: string | undefined;
   const reportTransition = (
@@ -1004,8 +1006,29 @@ export const createWatcherAvailabilityRuntime = async (input: {
           .map(({ headerHash }) => headerHash),
       );
       report = { phase: "waiting", pendingHeaders: [...pending] };
+      let poolRead: WatcherDaBondPoolObservation | undefined;
+      let poolReadFailure: string | undefined;
       try {
         assertCurrent(epoch);
+        // E5: the pool is read on every reconciliation, pending headers or
+        // not, and only reported: neither its state nor a failed read changes
+        // the phase or holds back an Open, Settle, Close, Timeout or prune.
+        try {
+          const read = deriveWatcherDaBondPoolObservation({
+            pool: await intake.pool(observation),
+            policyId: deployment.contracts.daBondPool.policyId,
+            parameters: deployment.parameters,
+            nowMs: BigInt(Date.now()),
+          });
+          assertCurrent(epoch);
+          lastPool = poolRead = read;
+          lastPoolReadFailure = undefined;
+        } catch (cause) {
+          // A revoked generation still aborts the whole reconciliation.
+          assertCurrent(epoch);
+          lastPoolReadFailure = poolReadFailure =
+            cause instanceof Error ? cause.message : String(cause);
+        }
         const context: SDK.DaAvailabilityOperationContext = {
           deploymentIdentity: input.identity.manifestId,
           actor,
@@ -1095,16 +1118,11 @@ export const createWatcherAvailabilityRuntime = async (input: {
             openWindow,
           ),
         );
-        const poolAlert = watcherAvailabilityPoolAlert(
-          snapshots,
-          deployment.parameters,
-        );
-        // E5: pool, missed-deadline, refused-Open, deferred-Timeout,
+        // E5: missed-deadline, refused-Open, deferred-Timeout,
         // refused-workflow and workflow-release alerts are reported, never
         // blocking.
         let alerts: Pick<
           WatcherAvailabilityStatus,
-          | "poolAlert"
           | "missedOpenDeadlines"
           | "openRefused"
           | "timeoutsDeferred"
@@ -1124,7 +1142,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
                   ...workflowRelease.deferred,
                 ]),
               }),
-          ...(poolAlert === undefined ? {} : { poolAlert }),
           ...(missedOpenDeadlines.length === 0
             ? {}
             : { missedOpenDeadlines: Object.freeze(missedOpenDeadlines) }),
@@ -1204,8 +1221,15 @@ export const createWatcherAvailabilityRuntime = async (input: {
       } finally {
         // Diagnostics describe the completed reconciliation, not its temporary
         // waiting state. A revoked observation cannot emit a recovery signal.
-        if (epoch === generation && !closed)
-          reportTransition(observation, startedAt);
+        if (epoch === generation && !closed) {
+          try {
+            if (poolRead !== undefined) input.onDaBondPool(poolRead);
+            else if (poolReadFailure !== undefined)
+              input.onDaBondPoolReadFailure(poolReadFailure);
+          } finally {
+            reportTransition(observation, startedAt);
+          }
+        }
       }
     });
     serial = work.catch(() => undefined);
@@ -1297,7 +1321,13 @@ export const createWatcherAvailabilityRuntime = async (input: {
       generation += 1;
       closed = true;
     },
-    status: () => report,
+    status: () => ({
+      ...report,
+      ...(lastPool === undefined ? {} : { pool: lastPool }),
+      ...(lastPoolReadFailure === undefined
+        ? {}
+        : { poolReadFailure: lastPoolReadFailure }),
+    }),
     close: async () => {
       generation += 1;
       closed = true;

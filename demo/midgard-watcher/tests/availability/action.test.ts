@@ -11,7 +11,6 @@ import {
 } from "../../src/availability/action.js";
 import {
   selectWatcherAvailabilityFunding,
-  watcherAvailabilityPoolAlert,
   watcherAvailabilityTimeoutCollateralLovelace,
 } from "../../src/availability/runtime.js";
 import {
@@ -428,59 +427,5 @@ describe("watcher Timeout collateral (spec #685 G9)", () => {
     ).toThrow(
       "Availability wallet needs separate plain-ADA collateral of at least 181 lovelace in at most 3 coins",
     );
-  });
-});
-
-describe("watcher pool alert (spec #685 E5)", () => {
-  const parameters = parametersFixture();
-  const snapshotWithPool = (
-    lovelace: bigint,
-    poolDatum: SDK.DaBondPoolDatum = "Bonded",
-  ): SDK.DaAvailabilityChallengeSnapshot => ({
-    ...fixture("44", HEADER_END_TIME).attested,
-    pool: { ...utxo(9, lovelace), address: "pool" },
-    poolDatum,
-  });
-  const backed =
-    parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace;
-
-  it("reports nothing for a Bonded pool backing a full bond", () => {
-    expect(
-      watcherAvailabilityPoolAlert([snapshotWithPool(backed)], parameters),
-    ).toBeUndefined();
-    expect(watcherAvailabilityPoolAlert([], parameters)).toBeUndefined();
-  });
-
-  it("classifies an under-backed, withdrawing or missing pool", () => {
-    expect(
-      watcherAvailabilityPoolAlert([snapshotWithPool(backed - 1n)], parameters),
-    ).toBe("under_backed");
-    expect(
-      watcherAvailabilityPoolAlert(
-        [snapshotWithPool(backed, { Withdrawing: { unlock_at: 1n } })],
-        parameters,
-      ),
-    ).toBe("withdrawing");
-    expect(
-      watcherAvailabilityPoolAlert(
-        [fixture("44", HEADER_END_TIME).attested],
-        parameters,
-      ),
-    ).toBe("missing");
-  });
-
-  it("never changes the selected action: alerts are reported, not blocking", () => {
-    const withdrawn = fixture("44", HEADER_END_TIME).attested;
-    expect(watcherAvailabilityPoolAlert([withdrawn], parameters)).toBe(
-      "missing",
-    );
-    expect(
-      selectWatcherAvailabilityAction(
-        withdrawn,
-        false,
-        2_000n,
-        BEFORE_DEADLINE,
-      ),
-    ).toEqual({ action: "open" });
   });
 });

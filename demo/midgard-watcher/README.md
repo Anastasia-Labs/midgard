@@ -48,7 +48,8 @@ registry roster; it reads no secret, acquires no lease and opens no retained-DA
 transport, so it is safe to run repeatedly and proves only that the deployment
 is bound and the scripts exist. Operations status (`readiness`,
 `readinessReasons`) is the live signal: it reports the supervisor phase,
-recovery, launch scope, proof deadlines, L1 source freshness, active alerts,
+recovery, launch scope, proof deadlines, L1 source freshness, active alerts
+(except the informational DA bond pool alerts below),
 and the shared retained-DA transport, which starts on the first fault
 classification and is reported as `retained_da_transport_failed` if that start
 fails. Starting builds the local libp2p node without contacting a peer, so a
@@ -195,14 +196,36 @@ transaction burns the header's queue node or closes its challenge; the release
 is reported under `workflowReleased`, and a failed release check keeps the row
 and is reported under `workflowReleaseDeferred`. Our own Timeout keeps the
 wallet reserved while descendants remain to be pruned. The actor settles answered or expired tranches, closes complete responses, and
-prunes descendants before removing an unavailable head. A missing, withdrawing
-or under-backed DA bond pool is reported as `poolAlert`. None of `poolAlert`,
-`openRefused`, `timeoutsDeferred`, `workflowRefused`, `workflowReleased` or
+prunes descendants before removing an unavailable head. None of `openRefused`,
+`timeoutsDeferred`, `workflowRefused`, `workflowReleased` or
 `workflowReleaseDeferred` blocks actuation or readiness. Pending availability is not a healthy or faulty classification. After
 close, canonical L1 publication history supplies the committed envelope if the
 original peers still withhold it. Startup reconciles signed intents before new
 actions; rollback revokes actuation immediately. A rollback through finalized
 availability state halts the journal and requires authenticated recovery.
+
+The watcher also reads the pooled DA bond on every availability reconcile, in a
+read of its own bound to the same finalized point as its availability
+snapshots, whether or not a header is pending. `GET /v1/status` serves the latest readout as `daBondPool`:
+`state` (`missing`, `bonded` or `withdrawing`), `lovelace` and `backing` (lovelace
+above the pool floor), `requiredBacking` (`da_bond_lovelace`), `belowBond`,
+`unlockAt` and `unlockable` while withdrawing, `alerts: {underBacked, withdrawing}`
+and `observedAtMs`, with amounts as decimal lovelace strings; it is `null` before
+the first read. Two alert codes follow it, with the deployment manifest id as
+subject: `da_bond_pool_under_backed` fires when the backing is below one DA bond
+(after a slash or a withdrawal; a missing pool counts) and clears after a top-up,
+and `da_bond_pool_withdrawing` fires on BeginWithdraw and clears on cancel or
+completion. Both appear in `activeAlerts` and count in `/v1/metrics`
+`activeAlertCount`, but they are informational: they never add a readiness reason,
+never make the watcher not ready, and never stop it from opening a challenge. An
+alert diagnostic is recorded only when an alert changes. A failed pool read (a
+transport error, or a pool output that fails authentication) is reported only:
+it never changes the availability phase or the watcher's readiness, and it never
+holds back a challenge action. `daBondPool` keeps the last good readout, whose
+`observedAtMs` shows its age, and `GET /v1/status` serves the failure as
+`daBondPoolReadFailure: {error, failedAtMs}` (the latest failure) until the next
+good read sets it back to `null`. Funding, top-up and the owner-quorum withdrawal are operator commands; see
+[DA bond pool commands](../midgard-node/docs/da-bond-commands.md).
 
 The nested wire parser accepts both `local_node` and `external_providers`.
 External-provider mode requires independent provider identities. The installed
