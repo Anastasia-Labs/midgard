@@ -11,6 +11,22 @@ export type DeploymentProfileName = keyof typeof DEPLOYMENT_PROFILES;
 export type DeploymentProfile =
   (typeof DEPLOYMENT_PROFILES)[DeploymentProfileName];
 
+/**
+ * The closed set of profiles whose fraud-provability rests on non-interactive
+ * proofs alone: their maturity is shorter than one interactive dispute, so the
+ * on-chain `can_open_before_maturity` guard refuses every interactive opening.
+ * Twin: `nonInteractiveTesting` in demo/scripts/deployment-profiles.mjs, which
+ * holds the same two names. Keep both lists closed and identical; never derive
+ * membership from a name suffix, the network or the economics profile.
+ */
+const NON_INTERACTIVE_TESTING_PROFILE_NAMES: ReadonlySet<string> = new Set([
+  "preprod-testing",
+  "local-devnet-testing",
+]);
+
+export const isNonInteractiveTestingProfile = (name: string): boolean =>
+  NON_INTERACTIVE_TESTING_PROFILE_NAMES.has(name);
+
 export const requireSelectedDeploymentProfile = (name: string | undefined) => {
   if (name !== SELECTED_DEPLOYMENT_PROFILE.name) {
     throw new Error(

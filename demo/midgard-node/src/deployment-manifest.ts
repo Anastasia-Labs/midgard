@@ -29,7 +29,10 @@ import {
   verifyFinalizedDeploymentManifest,
   verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  isNonInteractiveTestingProfile,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   hashHexWithBlake2b,
@@ -1779,6 +1782,27 @@ const validateDaIdentity = (candidate: Record<string, unknown>): void => {
   }
 };
 
+/**
+ * Whether a profile's block maturity fits its dispute model. A non-interactive
+ * testing profile must make interactive opening impossible on chain (maturity
+ * shorter than the whole bisection schedule); every other profile must leave
+ * room for the full interactive dispute (the canonical floor).
+ */
+export const validationDisputeMaturityFitsProfile = (
+  profileName: string,
+  maturityMs: number,
+  limits: Readonly<{
+    maxValidationBisectionRounds: number;
+    validationDisputeResponseWindowMs: number;
+    minValidationDisputeMaturityMs: number;
+  }>,
+): boolean =>
+  isNonInteractiveTestingProfile(profileName)
+    ? maturityMs <
+      (2 * limits.maxValidationBisectionRounds + 2) *
+        limits.validationDisputeResponseWindowMs
+    : maturityMs >= limits.minValidationDisputeMaturityMs;
+
 const validateValidationDispute = (
   candidate: Record<string, unknown>,
 ): void => {
@@ -1801,9 +1825,11 @@ const validateValidationDispute = (
   }
   if (
     candidate.maturityMs !== MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs ||
-    (SELECTED_DEPLOYMENT_PROFILE.name !== "preprod-testing" &&
-      (candidate.maturityMs as number) <
-        MIDGARD_CONSENSUS_PROFILE.limits.minValidationDisputeMaturityMs)
+    !validationDisputeMaturityFitsProfile(
+      SELECTED_DEPLOYMENT_PROFILE.name,
+      candidate.maturityMs as number,
+      MIDGARD_CONSENSUS_PROFILE.limits,
+    )
   ) {
     throw new Error(
       "Deployment manifest validationDispute.maturityMs must equal the canonical V1 maturity and satisfy the selected profile's dispute schedule requirements",
