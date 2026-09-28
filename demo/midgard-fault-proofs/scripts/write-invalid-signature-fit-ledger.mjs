@@ -7,11 +7,15 @@ import {
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.ts";
 
+const usage =
+  "Usage: MIDGARD_WRITE_FIT_LEDGER=1 node scripts/write-invalid-signature-fit-ledger.mjs LOG BLUEPRINT";
 const [logPath, blueprintPath] = process.argv.slice(2);
 if (!logPath || !blueprintPath) {
-  throw new Error(
-    "Usage: node scripts/write-invalid-signature-fit-ledger.mjs LOG BLUEPRINT",
-  );
+  throw new Error(usage);
+}
+// writeVanRossemFitLedger refuses without the flag; fail before any work.
+if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") {
+  throw new Error(`This script rewrites a checked-in fit ledger. ${usage}`);
 }
 const log = await readFile(logPath, "utf8");
 const blueprint = await readFile(blueprintPath);

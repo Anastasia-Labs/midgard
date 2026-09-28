@@ -42,9 +42,7 @@ import {
 } from "../src/index.js";
 import {
   buildVanRossemFitLedger,
-  type VanRossemFitLedger,
   type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
@@ -55,6 +53,10 @@ import {
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
+import {
+  readBlueprintIdentity,
+  writeOrVerifyPinnedFitLedger,
+} from "./support/pinned-fit-ledger.js";
 import {
   expectStateQueueHeaderOrder,
   sortedDaEntries,
@@ -105,10 +107,7 @@ afterAll(async () => {
   expect(forcedWindowCases.size).toBe(2);
   const ledger = buildVanRossemFitLedger({
     category: "transitionTrace",
-    blueprintSha256: createHash("sha256")
-      .update(await readFile(realBlueprintPath))
-      .digest("hex"),
-    compilerVersion: "aiken v1.1.23+5adf783",
+    ...(await readBlueprintIdentity(realBlueprintPath)),
     measurements: forcedWindowMeasurements,
   });
   const ledgerPath = fileURLToPath(
@@ -117,33 +116,8 @@ afterAll(async () => {
       import.meta.url,
     ),
   );
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-    await writeVanRossemFitLedger(ledgerPath, ledger);
-    return;
-  }
-  const pinned = JSON.parse(
-    await readFile(ledgerPath, "utf8"),
-  ) as VanRossemFitLedger;
-  expect(pinned).toEqual(
-    buildVanRossemFitLedger({
-      category: ledger.category,
-      blueprintSha256: ledger.blueprintSha256,
-      compilerVersion: ledger.compilerVersion,
-      measurements: pinned.entries.map((entry) => ({
-        ...entry,
-        memoryUnits: BigInt(entry.memoryUnits),
-        cpuUnits: BigInt(entry.cpuUnits),
-      })),
-    }),
-  );
-  // Fresh execution budgets may differ; scenario and row coverage must not.
-  const roster = (candidate: VanRossemFitLedger) =>
-    candidate.entries.map(({ name, kind, maximumShape }) => ({
-      name,
-      kind,
-      maximumShape,
-    }));
-  expect(roster(ledger)).toEqual(roster(pinned));
+  // Fresh execution budgets may differ; identity and row coverage must not.
+  await writeOrVerifyPinnedFitLedger(ledgerPath, ledger);
 });
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;

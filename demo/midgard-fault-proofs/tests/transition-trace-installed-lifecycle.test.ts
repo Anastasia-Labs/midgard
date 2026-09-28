@@ -59,7 +59,6 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   captureTransitionTraceL1Events,
@@ -107,6 +106,10 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import {
+  readBlueprintIdentity,
+  writeOrVerifyPinnedFitLedger,
+} from "./support/pinned-fit-ledger.js";
 import {
   transitionTraceAcceptedRetainedFixture,
   transitionTraceDepositRetainedFixture,
@@ -229,21 +232,21 @@ afterAll(async () => {
   expect([...completedCases].sort()).toEqual(
     installedCases.map(({ name }) => name).sort(),
   );
-  await writeVanRossemFitLedger(
+  // Building the ledger checks every fresh row's Van Rossem margins on every
+  // run; the checked-in copy is rewritten only under MIDGARD_WRITE_FIT_LEDGER=1.
+  const ledger = buildVanRossemFitLedger({
+    category: "transitionTrace",
+    ...(await readBlueprintIdentity(realBlueprintPath)),
+    measurements,
+  });
+  await writeOrVerifyPinnedFitLedger(
     fileURLToPath(
       new URL(
         "../../../docs/fault-proofs/size-plans/transition-trace-workflow-fit-ledger.json",
         import.meta.url,
       ),
     ),
-    buildVanRossemFitLedger({
-      category: "transitionTrace",
-      blueprintSha256: createHash("sha256")
-        .update(await readFile(realBlueprintPath))
-        .digest("hex"),
-      compilerVersion: "aiken v1.1.23+5adf783",
-      measurements,
-    }),
+    ledger,
   );
 });
 

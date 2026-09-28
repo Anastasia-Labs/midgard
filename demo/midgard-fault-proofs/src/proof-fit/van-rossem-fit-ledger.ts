@@ -152,10 +152,36 @@ export const buildVanRossemFitLedger = ({
   });
 };
 
+/** Thrown when a fit ledger write is attempted without the opt-in flag. */
+export class FitLedgerWriteRefusedError extends Error {
+  readonly path: string;
+
+  constructor(path: string) {
+    super(
+      `refused to write fit ledger ${path}: fit ledgers are written only under MIDGARD_WRITE_FIT_LEDGER=1; rerun the owning test or script with that flag to regenerate it (docs/fault-proofs/size-plans/README.md)`,
+    );
+    this.name = "FitLedgerWriteRefusedError";
+    this.path = path;
+  }
+}
+
+/**
+ * Checked-in ledgers are evidence, so an ordinary test run must never rewrite
+ * one: a write needs `MIDGARD_WRITE_FIT_LEDGER=1`. The one exception is
+ * `namedByCaller`, for a path the person running the test supplied through the
+ * test's own output variable (`MIN_ADA_FIT_LEDGER_PATH`,
+ * `TRANSITION_TRACE_FIT_LEDGER_PATH`): setting that variable is the opt-in,
+ * and requiring the global flag too would also rewrite every checked-in ledger
+ * owned by another file in the same run.
+ */
 export const writeVanRossemFitLedger = async (
   path: string,
   ledger: VanRossemFitLedger,
+  { namedByCaller = false }: { readonly namedByCaller?: boolean } = {},
 ): Promise<void> => {
+  if (!namedByCaller && process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") {
+    throw new FitLedgerWriteRefusedError(path);
+  }
   const { ledgerSha256: suppliedDigest, ...body } = ledger;
   const serializedBody = canonicalBody(body);
   const actualDigest = createHash("sha256")

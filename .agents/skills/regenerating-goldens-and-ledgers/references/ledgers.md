@@ -108,16 +108,21 @@ is the authority. Its rules:
   the current build. `verifyMeasuredFitLedger`
   (`demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts:85`) would,
   but as of 2026-09-25 it has no caller.
-- One ledger is still held to the current build:
-  `transition-trace-forced-window-fit-ledger.json`. The transition subvariants
-  suite requires its recorded `blueprintSha256` to equal the SHA-256 of the
-  current blueprint, and its scenario and row roster to equal a fresh run's;
-  the budgets themselves may differ
-  (`demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts:100-143`)
+- Two ledgers are still held to the current build:
+  `transition-trace-forced-window-fit-ledger.json` (transition subvariants
+  suite) and `transition-trace-workflow-fit-ledger.json` (installed
+  transition-trace lifecycle suite). Each suite requires the recorded
+  `blueprintSha256` to equal the SHA-256 of the current blueprint, and the
+  scenario and row roster to equal a fresh run's; the budgets themselves may
+  differ (`demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts`)
   [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]. Any
-  change that moves blueprint bytes makes it stale.
+  change that moves blueprint bytes makes both stale.
 - Regenerate by running the owning lifecycle suite with
-  `MIDGARD_WRITE_FIT_LEDGER=1` against a freshly built blueprint. The fragment
+  `MIDGARD_WRITE_FIT_LEDGER=1` against a freshly built blueprint. Without the
+  flag the writer throws `FitLedgerWriteRefusedError` for every checked-in
+  ledger, so no ledger changes; only the caller-named outputs
+  (`MIN_ADA_FIT_LEDGER_PATH`, `TRANSITION_TRACE_FIT_LEDGER_PATH`) write without
+  it [runtime: writeVanRossemFitLedger]. The fragment
   recorder also needs `MIDGARD_FIT_FRAGMENT_DIR` and a fresh
   `MIDGARD_FIT_MEASUREMENT_RUN` (`measured-fit-ledger.ts:28-35`).
 - Never replace a blueprint digest without re-measuring the transactions. A

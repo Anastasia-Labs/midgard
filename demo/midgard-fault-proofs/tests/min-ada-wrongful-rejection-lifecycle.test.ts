@@ -94,6 +94,7 @@ afterAll(async () => {
         compilerVersion: "aiken v1.1.23+5adf783",
         measurements: rows,
       }),
+      { namedByCaller: true },
     );
 });
 const setup = async ({

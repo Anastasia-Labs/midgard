@@ -935,14 +935,15 @@
     {
       "id": "forced-window-fit-ledger",
       "kind": "fit-ledger",
-      "summary": "The one fit ledger a test still holds to the current build: its blueprintSha256 must equal the SHA-256 of the freshly built onchain/aiken/plutus.json, and its scenario and row coverage must match.",
+      "summary": "A fit ledger a test holds to the current build: its blueprintSha256 must equal the SHA-256 of the freshly built onchain/aiken/plutus.json, and its scenario and row coverage must match.",
       "generators": [
         "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts"
       ],
       "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
       "inputs": [
         "@blueprint",
-        "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts"
+        "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts",
+        "demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts"
       ],
       "exclude": ["@blueprint-exclude"],
       "outputs": [
@@ -958,6 +959,35 @@
         "workflow": ".github/workflows/midgard-node-ci.yml",
         "step": "Build, typecheck, and test fault-proof tooling",
         "via": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts"
+      }
+    },
+    {
+      "id": "workflow-fit-ledger",
+      "kind": "fit-ledger",
+      "summary": "The installed transition-trace workflow fit ledger, held to the current build like the forced-window ledger: its blueprintSha256 must equal the SHA-256 of the freshly built onchain/aiken/plutus.json, and its scenario and row coverage must match. About a tenth of its row budgets differ between runs of one blueprint, so a rewrite without a blueprint change is noise.",
+      "generators": [
+        "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
+      "inputs": [
+        "@blueprint",
+        "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts",
+        "demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts"
+      ],
+      "exclude": ["@blueprint-exclude"],
+      "outputs": [
+        "docs/fault-proofs/size-plans/transition-trace-workflow-fit-ledger.json"
+      ],
+      "sync": {
+        "run": "MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/transition-trace-installed-lifecycle.test.ts"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/transition-trace-installed-lifecycle.test.ts"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test fault-proof tooling",
+        "via": "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts"
       }
     },
     {

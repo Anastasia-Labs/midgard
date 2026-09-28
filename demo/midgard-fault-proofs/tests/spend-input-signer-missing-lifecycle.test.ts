@@ -4,7 +4,8 @@ import {
   createPublicKey,
   sign,
 } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
@@ -63,6 +64,7 @@ import { submitLinearFaultContinue } from "../src/linear-fault-submit.js";
 import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { planSpendInputSignerWitnessOpening } from "../src/spend-input-signer-missing/field-plans.js";
@@ -1620,13 +1622,14 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       `[spend-input-signer-missing-fit-ledger] ${JSON.stringify(ledger)}`,
     );
     if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1")
-      await writeFile(
-        new URL(
-          "../../../docs/fault-proofs/size-plans/spend-input-signer-missing-v1-fit-ledger.json",
-          import.meta.url,
+      await writeVanRossemFitLedger(
+        fileURLToPath(
+          new URL(
+            "../../../docs/fault-proofs/size-plans/spend-input-signer-missing-v1-fit-ledger.json",
+            import.meta.url,
+          ),
         ),
-        `${JSON.stringify(ledger, null, 2)}\n`,
-        "utf8",
+        ledger,
       );
   });
 });

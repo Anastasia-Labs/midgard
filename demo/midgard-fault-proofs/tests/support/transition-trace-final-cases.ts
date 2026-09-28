@@ -143,6 +143,7 @@ export const registerTransitionTraceFinalCases = (
           compilerVersion: "aiken v1.1.23+5adf783",
           measurements: fitRows,
         }),
+        { namedByCaller: true },
       );
   });
   describe("fault-proof emulator integration", () => {

@@ -135,6 +135,7 @@ differs from goldens, so they have their own page: [ledgers.md](ledgers.md).
 | `exec-ledger-native-script-scan`            | [review]: no CI step                                                                                        |
 | `exec-ledger-transition-trace-descriptor`   | [review]: no CI step; needs `MIDGARD_AIKEN_ENV=testnet`                                                     |
 | `forced-window-fit-ledger`                  | the transition-trace subvariants suite [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling] |
+| `workflow-fit-ledger`                       | the transition-trace installed suite [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]   |
 | `fault-proof-fit-ledgers`                   | [review]: nothing compares them with the current build                                                      |
 
 ## Blueprint-bound fixtures
