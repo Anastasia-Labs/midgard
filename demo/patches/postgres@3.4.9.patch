@@ -1,0 +1,76 @@
+diff --git a/cjs/src/connection.js b/cjs/src/connection.js
+index 07f6716702ac888215c86ad6e0071aaf55ae519c..1c5978b06c8c45646b4221ee2e2cbaa3c1a633fc 100644
+--- a/cjs/src/connection.js
++++ b/cjs/src/connection.js
+@@ -451,6 +451,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+       return reconnect()
+ 
+     !hadError && (query || sent.length) && error(Errors.connection('CONNECTION_CLOSED', options, socket))
++    query = results = errorResponse = null
+     closedTime = performance.now()
+     hadError && options.shared.retries++
+     delay = (typeof backoff === 'function' ? backoff(options.shared.retries) : backoff) * 1000
+diff --git a/cjs/src/index.js b/cjs/src/index.js
+index f09c61c7e998f411560b95c9a8e1ed6a97972c11..9a1d90d07fc444df86ae7a3810d5012174d560a8 100644
+--- a/cjs/src/index.js
++++ b/cjs/src/index.js
+@@ -205,9 +205,10 @@ function Postgres(a, b) {
+     const c = open.length
+       ? open.shift()
+       : await new Promise((resolve, reject) => {
+-        const query = { reserve: resolve, reject }
+-        queries.push(query)
+-        closed.length && connect(closed.shift(), query)
++        const query = { reserve: resolve, reject: e => (queries.remove(query), reject(e)) }
++        closed.length
++          ? connect(closed.shift(), query)
++          : queries.push(query)
+       })
+ 
+     move(c, reserved)
+@@ -389,6 +390,7 @@ function Postgres(a, b) {
+   }
+ 
+   function connect(c, query) {
++    query.reserve && queries.push(query)
+     move(c, connecting)
+     c.connect(query)
+     return c
+diff --git a/src/connection.js b/src/connection.js
+index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..3adb2a5c42b93744c252e5cd3a71161fdd90069b 100644
+--- a/src/connection.js
++++ b/src/connection.js
+@@ -451,6 +451,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+       return reconnect()
+ 
+     !hadError && (query || sent.length) && error(Errors.connection('CONNECTION_CLOSED', options, socket))
++    query = results = errorResponse = null
+     closedTime = performance.now()
+     hadError && options.shared.retries++
+     delay = (typeof backoff === 'function' ? backoff(options.shared.retries) : backoff) * 1000
+diff --git a/src/index.js b/src/index.js
+index c7fba3dace20173f4cb13f3f138bb6d213b43683..8b62a7f775d180ff3d27dfb307659ffe37afbf9b 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -205,9 +205,10 @@ function Postgres(a, b) {
+     const c = open.length
+       ? open.shift()
+       : await new Promise((resolve, reject) => {
+-        const query = { reserve: resolve, reject }
+-        queries.push(query)
+-        closed.length && connect(closed.shift(), query)
++        const query = { reserve: resolve, reject: e => (queries.remove(query), reject(e)) }
++        closed.length
++          ? connect(closed.shift(), query)
++          : queries.push(query)
+       })
+ 
+     move(c, reserved)
+@@ -389,6 +390,7 @@ function Postgres(a, b) {
+   }
+ 
+   function connect(c, query) {
++    query.reserve && queries.push(query)
+     move(c, connecting)
+     c.connect(query)
+     return c

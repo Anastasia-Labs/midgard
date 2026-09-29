@@ -5,9 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@lucid-evolution/uplc@0.2.23': file:vendor/uplc-0.2.23-midgard.1.tgz
   '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1': 6.2.0-2
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1': 6.2.0-2
+  '@lucid-evolution/uplc@0.2.23': file:vendor/uplc-0.2.23-midgard.1.tgz
 
 patchedDependencies:
   '@lucid-evolution/core-types@0.3.0':
@@ -25,6 +25,9 @@ patchedDependencies:
   blake2b@2.1.4:
     hash: amsgm2cgjjoucvcdg3i4tuosl4
     path: patches/blake2b@2.1.4.patch
+  postgres@3.4.9:
+    hash: 4lh2kyg2qjbjmt3uavn46jspjm
+    path: patches/postgres@3.4.9.patch
 
 importers:
 
@@ -4416,7 +4419,7 @@ snapshots:
       '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)
       '@opentelemetry/semantic-conventions': 1.30.0
       effect: 3.21.2
-      postgres: 3.4.9
+      postgres: 3.4.9(patch_hash=4lh2kyg2qjbjmt3uavn46jspjm)
 
   '@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)':
     dependencies:
@@ -7123,7 +7126,7 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.9: {}
+  postgres@3.4.9(patch_hash=4lh2kyg2qjbjmt3uavn46jspjm): {}
 
   prelude-ls@1.2.1: {}
 

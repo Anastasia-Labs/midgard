@@ -70,3 +70,13 @@ CommonJS builds are patched. The reclaim builder test in
 `midgard-fault-proofs/tests/submit-init-emulator-history-reclaim-builders.test.ts`
 verifies deposit and withdrawal reclamation through reference-only native owner
 authorization, including mismatched script and reference refusals.
+
+`postgres@3.4.9.patch` applies the unreleased upstream fix for a reserved
+connection waiter that never settles (porsager/postgres#1195, fixed by the open
+pull request porsager/postgres#1229). When a pooled connection closes while
+`reserve()` waiters are queued, the unpatched pool hands the next waiter to the
+reconnect and then drops it at ReadyForQuery, so an `@effect/sql-pg`
+transaction waits forever. The patch keeps every reserve waiter in the queue,
+removes a rejected waiter from it, and clears per-query state when a connection
+closes. The ESM and CommonJS builds are patched; the unused `cf` build is not.
+Drop the patch once a released `postgres` version contains the fix.
