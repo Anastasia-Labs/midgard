@@ -26,7 +26,7 @@ import {
   parseE2EL2StressSummary,
   runE2EL2StressThroughput,
   type StressSubmitTransfer,
-} from "../src/commands/e2e-stress-l2-throughput.js";
+} from "../src/commands/e2e-stress-l2-throughput/index.js";
 import {
   type OpenLoopCorpusRow,
   parseOpenLoopCorpusNdjson,

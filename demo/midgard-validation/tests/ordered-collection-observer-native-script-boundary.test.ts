@@ -18,7 +18,7 @@ import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundar
 
 // The exact genuine signed-Cardano field-3 boundary. Every value below is also
 // pinned byte-for-byte by
-// `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`
+// `onchain/aiken/lib/midgard/validation-machine-tests/`
 // (`cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree`
 // and `maximum_observer_field_terminal_fixture_v1`), so this object is the
 // TypeScript half of the cross-language agreement for C20-3.

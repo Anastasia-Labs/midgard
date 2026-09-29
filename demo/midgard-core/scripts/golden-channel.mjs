@@ -192,7 +192,10 @@ export const rebindAikenConstants = ({ source, constants }) => {
     }
     const literal =
       typeof value === "number" ? String(value) : aikenBytes(hex(value));
-    const declaration = `const ${name} =`;
+    const visibility = new RegExp(String.raw`^pub const ${name} =`, "mu").test(rebound)
+      ? "pub "
+      : "";
+    const declaration = `${visibility}const ${name} =`;
     // The integer alternative accepts Aiken's digit separators (`5_000_000`).
     // Matching bare `\d+` would consume only the leading group and leave the
     // rest of the old number behind as garbage after the new literal — a

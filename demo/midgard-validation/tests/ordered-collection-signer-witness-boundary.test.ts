@@ -209,7 +209,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
     }).toEqual(maximumRequiredSignerTerminalFoldVector);
     // This suite is the producer for the C20-7 constant family in
     // `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak` (and for the
-    // signer-field terminal fixture in `validation-machine-v1.test.ak`). Publishing
+    // signer-field terminal fixture in `validation-machine-tests/`). Publishing
     // the vector here — after every assertion above has already checked it — is
     // what lets `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind
     // those constants instead of a human retyping them (#588).
@@ -232,7 +232,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
       fieldPreimageLengthsCborHex:
         witnessField.terminalFoldVector.fieldPreimageLengthsCborHex,
       signerFieldTerminalFoldVector: signerField.terminalFoldVector,
-      // #592: the field-4 terminal fixture in `validation-machine-v1.test.ak`
+      // #592: the field-4 terminal fixture in `validation-machine-tests/`
       // carries §8's tier-1 carriage now, which is the field's whole §5.1
       // preimage rather than a per-item opening. Published from the same
       // measurement the pinned expectations above already checked.

@@ -16,7 +16,7 @@
 //// kinds' honest steps and that the prepare refuses the retired group
 //// cardinality. The semantic partition itself -- every wrapper against every
 //// kind -- is proven at the library level in
-//// `lib/midgard/validation-machine-v1.test.ak` (`cek_kinds_partition_the_cek_step_space`);
+//// `lib/midgard/validation-machine-tests/tests-parity.test.ak` (`cek_kinds_partition_the_cek_step_space`);
 //// what these add is that the deployed validators reach those wrappers with
 //// the right arguments, commit to the right evidence hash, and route the
 //// material through the `cek_execution_selection_yields` validators.

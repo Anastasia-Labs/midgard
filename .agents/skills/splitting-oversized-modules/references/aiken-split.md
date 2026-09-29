@@ -106,8 +106,8 @@ the blueprint at all.
 
 ## Test modules
 
-The largest Aiken file, `lib/midgard/validation-machine-v1.test.ak`, is a test
-module. Moving tests keeps the blueprint identical, so the comparison proves
+The validation machine suite, `lib/midgard/validation-machine-tests/`, contains test
+modules. Moving tests keeps the blueprint identical, so the comparison proves
 nothing about them. Instead:
 
 - Compare the collected test total of `aiken check` before and after; nothing
@@ -118,13 +118,13 @@ nothing about them. Instead:
   `"module": "midgard/native-tx-carriage-v1.test"`) and CI's
   `Pin the … execution ledger` steps in `aiken-ci.yml` verify them.
 - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
-  rebinds named constants inside `validation-machine-v1.test.ak` by path.
-  Keep those constants in that file, or re-point the generator in the same
+  rebinds named constants inside `onchain/aiken/lib/midgard/validation-machine-tests/constants.ak` by path.
+  Keep those constants in that fixture module, or re-point the generator in the same
   commit and prove it with
   `pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check`.
   The [regenerating-goldens-and-ledgers](../../regenerating-goldens-and-ledgers/SKILL.md)
   skill covers generators and their check modes.
-- `lib/midgard/cek-core-step-v1-golden.test.ak` is generated
+- `lib/midgard/cek-core-step-goldens/*.test.ak` is generated
   (`generate-cek-core-step-v1-goldens.mjs`, "Do not edit"). Split the
   generator's output, if at all, by changing the generator.
 

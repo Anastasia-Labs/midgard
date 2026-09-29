@@ -239,15 +239,36 @@ export const probePackageDist = ({ root, directory, name }) => {
   );
 };
 
-export const probeNodeModules = ({ root }) =>
-  existsSync(resolve(root, "demo/node_modules/.modules.yaml"))
-    ? result("node-modules", "available", "demo/node_modules is installed")
+export const probeNodeModules = ({
+  root,
+  directory = "demo",
+  name = "node-modules",
+}) =>
+  existsSync(resolve(root, directory, "node_modules/.modules.yaml"))
+    ? result(name, "available", `${directory}/node_modules is installed`)
     : result(
-        "node-modules",
+        name,
         "missing",
-        "demo/node_modules is not installed",
-        "pnpm --dir demo install --frozen-lockfile",
+        `${directory}/node_modules is not installed`,
+        `pnpm --dir ${directory} install --frozen-lockfile`,
       );
+
+export const probeNix = ({ root, run = spawnSync }) => {
+  const probe = run("nix", ["--version"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 5_000,
+  });
+  if (probe.error || probe.status !== 0) {
+    return result(
+      "nix",
+      probe.error?.code === "ENOENT" ? "missing" : "unknown",
+      `could not run nix --version: ${probe.error?.message ?? (probe.stderr?.trim() || `exit ${probe.status}`)}`,
+      "Install Nix with flakes enabled, then run make spec",
+    );
+  }
+  return result("nix", "available", probe.stdout.trim());
+};
 
 // Suites derive their database names from MIDGARD_TEST_DATABASE_PREFIX; two
 // worktrees on the default prefix drop each other's shards.
@@ -327,6 +348,13 @@ export const createProbeSet = ({ root, env = process.env, overrides = {} }) => {
     blueprint: () => probeBlueprintStamp({ root }),
     "core-dist": () => probeCoreDist({ root }),
     "node-modules": () => probeNodeModules({ root }),
+    "docs-site-node-modules": () =>
+      probeNodeModules({
+        root,
+        directory: "docs-site",
+        name: "docs-site-node-modules",
+      }),
+    nix: () => probeNix({ root }),
     "db-prefix": () => probeDbPrefix({ root, env }),
     "git-merge-tree": () => probeMergeTree({ root }),
     ...overrides,

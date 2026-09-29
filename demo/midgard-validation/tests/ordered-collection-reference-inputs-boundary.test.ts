@@ -20,7 +20,7 @@ import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundar
 
 // The exact genuine signed-Cardano field-1 boundary. Every value below is also
 // pinned byte-for-byte by
-// `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`
+// `onchain/aiken/lib/midgard/validation-machine-tests/`
 // (`maximum_reference_input_field_terminal_fixture_v1`), so this object is the
 // TypeScript half of the cross-language agreement for C20-1.
 const MAXIMUM_REFERENCE_INPUT_ACCEPTED_COUNT = 433;
@@ -313,7 +313,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
     // #590 scope item 0: the write channel this suite did not have.
     //
     // The `reference-inputs-boundary-v1` fixture in
-    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` mirrors this
+    // `onchain/aiken/lib/midgard/validation-machine-tests/` mirrors this
     // boundary's terminal fold, and until now nothing carried the bytes across —
     // so that fixture still pinned the *counted* field roots this package stopped
     // emitting at #585, and stayed green only because the id it pinned was the id

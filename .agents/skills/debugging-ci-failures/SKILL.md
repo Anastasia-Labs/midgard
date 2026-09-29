@@ -69,10 +69,12 @@ undetermined or not triggered, and for every non-pass you can state why
 
 ## 2. Find the first red step and count what it hid
 
-Each of the three workflows is a single job of sequential steps with no
-`continue-on-error` and no `if: always()`. The first failing step skips every
-later step, and a skipped step measured nothing. `ci-status.mjs` prints "N later steps were skipped and measured
-nothing"; `gh run view <id> --json jobs` shows the same per step.
+Inspect every job in `gh run view <id> --json jobs`. A failing step can
+skip later steps in that job; a failed prerequisite can skip dependent jobs.
+Independent jobs can still provide evidence. The Node workflow splits its
+checks across jobs and collects their results in `Node CI gate`. Count the
+skipped checks separately from failures and passes; a skipped check measured
+nothing. `ci-status.mjs` reports failing and skipped steps per job. [review]
 
 Real case: node CI on `1b53eafd8` (2026-09-22) stopped at step 14, the 12th
 named step, `Check canonical V1 profile documentation`; 28 later steps were

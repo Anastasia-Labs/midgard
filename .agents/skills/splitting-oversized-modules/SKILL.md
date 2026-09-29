@@ -1,6 +1,6 @@
 ---
 name: splitting-oversized-modules
-description: Split an oversized Midgard TypeScript or Aiken module into smaller modules as a proven pure move, in a commit of its own. Use when a file is too big to work in or review, when asked to modularize, break up, decompose or extract from a god module (validation-dispute/submit.ts, user-event-indexer.ts, rollback-engine.ts, validation-machine-v1.test.ak and the other files over 5,000 lines), when moving declarations between files or packages, or when a change would be easier after first splitting the file it touches. Also use to check that an earlier split changed nothing (verify-pure-move.mjs, compare-blueprint-hashes.mjs).
+description: Split an oversized Midgard TypeScript or Aiken module into smaller modules as a proven pure move, in a commit of its own. Use when a file is too big to work in or review, when asked to modularize, break up, decompose or extract from a god module, when moving declarations between files or packages, or when a change would be easier after first splitting the file it touches. Also use to check that an earlier split changed nothing (verify-pure-move.mjs, compare-blueprint-hashes.mjs).
 ---
 
 # Splitting oversized modules
@@ -36,7 +36,7 @@ message.
   under someone else's edit turns their diff into a conflict against moved
   code.
 - **It is not generated.** A generated file (for example
-  `onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak`, "Do not edit")
+  `onchain/aiken/lib/midgard/cek-core-step-goldens/identity.test.ak`, "Do not edit")
   is split by changing its generator. Use
   [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md).
   [review]

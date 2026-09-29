@@ -42,7 +42,12 @@ export const EXIT_USAGE = 64;
 export const SOURCES = Object.freeze({
   sdkCatalogue: "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
   sdkBuild: "demo/midgard-sdk/src/fraud-proof/contracts/build.ts",
-  coreIdentity: "demo/midgard-core/src/deployment-manifest-identity.ts",
+  coreCatalogue:
+    "demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.ts",
+  coreReferenceContracts:
+    "demo/midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
+  coreReferenceTokens:
+    "demo/midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
   registry:
     "demo/midgard-fault-proofs/src/workflow/family-application-registry.ts",
   linearSpec: "demo/midgard-fault-proofs/src/workflow/linear-family-spec.ts",
@@ -262,51 +267,53 @@ export const checkFamily = (root, category) => {
     }
   }
 
-  const core = readSource(root, "coreIdentity");
+  const core = readSource(root, "coreCatalogue");
   const coreOrder = arrayStrings(
     extractLiteral(
       core,
       "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
-      SOURCES.coreIdentity,
+      SOURCES.coreCatalogue,
     ),
   );
   const coreIds = objectStringPairs(
     extractLiteral(
       core,
       "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS",
-      SOURCES.coreIdentity,
+      SOURCES.coreCatalogue,
     ),
   );
   const contractByCategory = objectStringPairs(
     extractLiteral(
       core,
       "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY",
-      SOURCES.coreIdentity,
+      SOURCES.coreCatalogue,
     ),
   );
   const contractNames = arrayStrings(
     extractLiteral(
       core,
       "DEPLOYMENT_MANIFEST_CONTRACT_NAMES",
-      SOURCES.coreIdentity,
+      SOURCES.coreCatalogue,
     ),
   );
   const contractByRole = objectStringPairs(
     extractLiteral(
-      core,
+      readSource(root, "coreReferenceContracts"),
       "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE",
-      SOURCES.coreIdentity,
+      SOURCES.coreReferenceContracts,
     ),
   );
   const tokenByRole = objectStringPairs(
     extractLiteral(
-      core,
+      readSource(root, "coreReferenceTokens"),
       "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES",
-      SOURCES.coreIdentity,
+      SOURCES.coreReferenceTokens,
     ),
   );
   if (contractNames.length === 0 || contractByRole.size === 0) {
-    throw new CannotLook(`${SOURCES.coreIdentity}: identity tables are empty`);
+    throw new CannotLook(
+      `${SOURCES.coreCatalogue} / ${SOURCES.coreReferenceContracts}: identity tables are empty`,
+    );
   }
 
   const firstContract = contractByCategory.get(category);
@@ -335,7 +342,7 @@ export const checkFamily = (root, category) => {
     coreProblems.length === 0 ? "ok" : "gap",
     coreProblems.length === 0
       ? `first-step contract ${firstContract}`
-      : `${coreProblems.join("; ")} (${SOURCES.coreIdentity})`,
+      : `${coreProblems.join("; ")} (${SOURCES.coreCatalogue})`,
   );
 
   if (firstContract !== undefined) {
@@ -382,7 +389,7 @@ export const checkFamily = (root, category) => {
       roleProblems.length === 0 ? "ok" : "gap",
       roleProblems.length === 0
         ? `${familyContracts.length} contract(s) named ${firstContract}*, ${roleCount} role(s), all with token names`
-        : `${roleProblems.join("; ")} (${SOURCES.coreIdentity})`,
+        : `${roleProblems.join("; ")} (${SOURCES.coreCatalogue}, ${SOURCES.coreReferenceContracts}, ${SOURCES.coreReferenceTokens})`,
     );
   } else {
     record("reference-scripts", "gap", "skipped: no first-step contract");

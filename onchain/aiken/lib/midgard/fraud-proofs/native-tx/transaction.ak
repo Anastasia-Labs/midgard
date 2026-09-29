@@ -487,7 +487,7 @@ fn retired_counted_field_commitment_v1(
 ///
 /// This survives only as evidence about the retired opening, so the suite is
 /// not silent about a format that still has a name: `native-tx-v1.test.ak` and
-/// `validation-machine-v1.test.ak` bind it to its exact proof source — `True`
+/// `validation-machine-tests/` bind it to its exact proof source — `True`
 /// on counted-root-declaring material, `False` on every mismatched proof
 /// (wrong field index, wrong item, wrong chunk, substituted source). Nothing
 /// may bind it — new surface uses `authenticated_field_view`

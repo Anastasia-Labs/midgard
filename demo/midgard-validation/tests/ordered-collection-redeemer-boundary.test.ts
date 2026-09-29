@@ -498,7 +498,7 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       // The whole terminal fold, beyond the flat fields the generator binds
       // today. `native-tx.max-redeemers.test.ak`'s second test and the
       // `maximum_*_field_terminal_fixture_v1` family in
-      // `validation-machine-v1.test.ak` still spell these proof structures out by
+      // `validation-machine-tests/` still spell these proof structures out by
       // hand — they are struct literals inside functions rather than named
       // constants, so the name-keyed rebinder cannot reach them. Publishing them
       // here means the follow-up that gives them a producer has nothing left to

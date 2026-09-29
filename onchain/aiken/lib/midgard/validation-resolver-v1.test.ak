@@ -27,7 +27,7 @@ use midgard/validation_semantic_v1
 use midgard/validation_trace_v1
 
 /// §8's door context for a tier-1 step. See the twin in
-/// `validation-machine-v1.test.ak`: every step here carries an `Inline`
+/// `validation-machine-tests/fixtures-phase-a.ak`: every step here carries an `Inline`
 /// carriage, so neither reference inputs (tier 2) nor the §8.6 certificate
 /// minting policy id (tier 3) is reachable or needed.
 fn inline_field_door() -> field_door.MachineFieldDoorV1 {

@@ -1,0 +1,38 @@
+import { type E2EL2StressMeasurementPolicy } from "./types.js";
+
+export const E2E_L2_STRESS_CONFIG_SCHEMA_VERSION =
+  "midgard-e2e-l2-stress-config-v1";
+export const E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION =
+  "midgard-e2e-l2-stress-summary-v1";
+
+export const DEFAULT_COUNT = 25;
+export const DEFAULT_CONCURRENCY = 1;
+export const DEFAULT_LOVELACE = 1_000_000n;
+export const DEFAULT_FEE_HEADROOM_LOVELACE = 500_000n;
+export const DEFAULT_POLL_INTERVAL_MS = 2_000;
+export const DEFAULT_POLL_INITIAL_INTERVAL_MS = 75;
+export const DEFAULT_POLL_MAX_INTERVAL_MS = 1_000;
+export const DEFAULT_POLL_BACKOFF_MULTIPLIER = 2;
+export const DEFAULT_SUBMIT_REQUEST_TIMEOUT_MS = 300_000;
+export const DEFAULT_ACCEPTANCE_TIMEOUT_MS = 600_000;
+export const DEFAULT_COMMIT_OBSERVATION_TIMEOUT_MS = 600_000;
+export const DEFAULT_FINALITY_OBSERVER_MAX_CONCURRENT_REQUESTS = 4;
+export const DEFAULT_MAX_SUBMISSION_FAILURES = 0;
+export const MAX_DEFAULT_COUNT = 500;
+export const MAX_DEFAULT_CONCURRENCY = 16;
+export const DEFAULT_OPEN_LOOP_TARGET_RATE_TPS = 100;
+export const DEFAULT_OPEN_LOOP_DURATION_MS = 10_000;
+export const DEFAULT_OPEN_LOOP_MAX_IN_FLIGHT = 256;
+export const DEFAULT_NO_OP_CALIBRATION_DURATION_MS = 5_000;
+export const DEFAULT_AGGREGATE_OBSERVER_INTERVAL_MS = 1_000;
+
+export const E2E_L2_STRESS_MEASUREMENT_POLICY: E2EL2StressMeasurementPolicy = {
+  loadModel: "closed-loop-smoke",
+  workloadProfile: "production-end-user",
+  syntheticVsProduction: "production_end_user_path",
+  advanceOn: "accepted",
+  primaryStageMetric: "metrics.l2Admission.perSecond",
+  finalityObservation: "post-submit-bounded",
+  submissionWindowExcludesCommitDrain: true,
+  fullFinalityRequiresDrainProof: true,
+};

@@ -70,6 +70,10 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `aiken`: the pinned Aiken fork (`AIKEN_FORK_VERSION` in the workflows), on
   `PATH` or in `MIDGARD_AIKEN_BIN`.
 - `node-modules`: `pnpm --dir demo install --frozen-lockfile` has run.
+- `docs-site-node-modules`: `pnpm --dir docs-site install --frozen-lockfile`
+  has run; this is separate from the demo workspace's dependencies.
+- `nix`: `nix --version` succeeds. The spec build also needs flakes enabled
+  and access to the dependencies declared in `technical-spec/flake.nix`.
 - `core-dist`: `demo/midgard-core/dist` matches its sources
   (`demo/scripts/assert-midgard-core-dist-current.mjs`).
 - `blueprint`: the blueprint stamp is fresh
@@ -110,6 +114,27 @@ Repository tooling self-tests (the checks that prove the other checks can fail).
   - `.githooks/**`
   - `.claude/settings.json`
 - Mode: runs in the pre-push hook
+
+### `demo-lint`
+
+Workspace ESLint rules and their reasoned baseline.
+
+- Command: `pnpm --dir demo run lint`
+- Runs on:
+  - `demo/**/*.{ts,tsx,js,mjs,cjs,json}`
+  - `.github/workflows/midgard-node-ci.yml`
+- Needs: `node-modules`
+
+### `demo-script-tests`
+
+Workspace helper and ESLint plugin self-tests.
+
+- Command: `node --test "demo/scripts/lib/*.test.mjs"`
+- Runs on:
+  - `demo/scripts/**`
+  - `demo/eslint.config.mjs`
+  - `.github/workflows/repo-tools-ci.yml`
+- Needs: `node-modules`
 
 ### `aiken-script-tests`
 
@@ -341,7 +366,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak`
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-inline-datum.test.ak`
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak`
-  - `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`
+  - `onchain/aiken/lib/midgard/validation-machine-tests/constants.ak`
   - `onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -400,7 +425,32 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/src/cek-executor.ts`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs`
-  - `onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/add-integer.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/apply-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/bls-final-verify.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-failure.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-type-failure.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-branch-missing.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-builtin.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-empty.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-lambda.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-scrutinee-invalid.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-value-invalid.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/explicit-error.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/force-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/force-delay.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/head-list-nested.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/identity.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/if-then-else.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip-empty.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip-narrow.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/nonconstant-halt.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/omega-budget-exceeded.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`
@@ -539,7 +589,6 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `onchain/aiken/env/preprod-testing.ak`
   - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/lib/midgard/da-bond-pool-v1-golden.test.ak`
-  - `onchain/aiken/plutus.json`
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
@@ -578,6 +627,69 @@ Blueprint rebuild into a temporary file (never the tracked plutus.json).
 - Runs on:
   - `onchain/aiken/**/*.ak`
 - Needs: `aiken`
+
+### `docs-site-links`
+
+Repository-local Markdown and MDX links resolve.
+
+- Command: `node docs-site/scripts/check-docs-links.mjs`
+- Runs on:
+  - `docs-site/**`
+  - `**/*.md`
+  - `**/*.mdx`
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `.github/workflows/docs-site-ci.yml`
+  - `.gitignore`
+- Mode: runs in the pre-push hook
+
+### `docs-site-build`
+
+Build the documentation site and its SDK examples.
+
+- Command: `pnpm --dir docs-site run build`
+- Runs on:
+  - `docs-site/**`
+  - `**/*.md`
+  - `**/*.mdx`
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `.github/workflows/docs-site-ci.yml`
+- Needs: `node-modules`, `docs-site-node-modules`
+
+### `docs-site-typecheck`
+
+Generate and typecheck the documentation site's types.
+
+- Command: `pnpm --dir docs-site run types:check`
+- Runs on:
+  - `docs-site/**`
+  - `**/*.md`
+  - `**/*.mdx`
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `.github/workflows/docs-site-ci.yml`
+- Needs: `node-modules`, `docs-site-node-modules`
+
+### `spec-build`
+
+Build the technical specification PDF with the repository's Nix environment.
+
+- Command: `make spec`
+- Runs on:
+  - `technical-spec/**`
+  - `Makefile`
+  - `.github/workflows/latex-ci.yml`
+- Needs: `nix`
+
+### `devnet-assets`
+
+Phase 4 devnet generator and shell asset tests (no running devnet).
+
+- Command: `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs`
+- Runs on:
+  - `demo/midgard-node-tools/devnet/phase4-process/**`
+- Needs: `node-modules`, `blueprint`
 
 ### `exec-ledger:canonical-decodability`
 

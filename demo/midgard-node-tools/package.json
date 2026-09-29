@@ -8,6 +8,12 @@
     "midgard-node-tools": "./dist/index.js"
   },
   "exports": {
+    "./commands/e2e-stress-l2-throughput": {
+      "midgard-source": "./src/commands/e2e-stress-l2-throughput/index.ts"
+    },
+    "./commands/stress-wallets": {
+      "midgard-source": "./src/commands/stress-wallets/index.ts"
+    },
     "./*": {
       "midgard-source": "./src/*.ts"
     }

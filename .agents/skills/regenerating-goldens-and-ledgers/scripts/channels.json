@@ -1,7 +1,9 @@
 {
   "about": "Every generated-artifact channel committed in this repository. Read by affected-channels.mjs; --verify-table fails when the tree has a generator, ledger or generated file that no channel claims. Commands run from the repository root.",
   "inputSets": {
-    "@golden-channel": ["demo/midgard-core/scripts/golden-channel.mjs"],
+    "@golden-channel": [
+      "demo/midgard-core/scripts/golden-channel.mjs"
+    ],
     "@compiler-pin": [
       "onchain/aiken/scripts/pinned-compiler.mjs",
       ".github/workflows/aiken-ci.yml",
@@ -15,7 +17,9 @@
       "onchain/aiken/aiken.lock",
       "@compiler-pin"
     ],
-    "@blueprint-exclude": ["onchain/aiken/**/*.test.ak"],
+    "@blueprint-exclude": [
+      "onchain/aiken/**/*.test.ak"
+    ],
     "@exec-ledger-harness": [
       "onchain/aiken/scripts/exec-ledger-measure-v1.mjs",
       "onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs",
@@ -38,8 +42,12 @@
         "demo/midgard-core:fixtures:native-tx-field-access-v1:sync",
         "demo/midgard-core:fixtures:native-tx-field-access-v1:check"
       ],
-      "producers": ["demo/midgard-core"],
-      "inputs": ["@golden-channel"],
+      "producers": [
+        "demo/midgard-core"
+      ],
+      "inputs": [
+        "@golden-channel"
+      ],
       "outputs": [
         "demo/midgard-core/tests/fixtures/native-tx-field-access-v1.generated.json",
         "onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak"
@@ -67,8 +75,12 @@
         "demo/midgard-core:fixtures:native-tx-field-items-v1:sync",
         "demo/midgard-core:fixtures:native-tx-field-items-v1:check"
       ],
-      "producers": ["demo/midgard-core"],
-      "inputs": ["@golden-channel"],
+      "producers": [
+        "demo/midgard-core"
+      ],
+      "inputs": [
+        "@golden-channel"
+      ],
       "outputs": [
         "demo/midgard-core/tests/fixtures/native-tx-field-items-v1.generated.json",
         "onchain/aiken/lib/midgard/native-tx-field-items-v1-golden.test.ak"
@@ -96,7 +108,9 @@
         "demo/midgard-core:fixtures:native-tx-vector-v1:sync",
         "demo/midgard-core:fixtures:native-tx-vector-v1:check"
       ],
-      "producers": ["demo/midgard-core"],
+      "producers": [
+        "demo/midgard-core"
+      ],
       "inputs": [
         "@golden-channel",
         "demo/midgard-core/tests/fixtures/native-tx-vector-v1.vectors.mjs"
@@ -127,8 +141,12 @@
         "demo/midgard-sdk:fixtures:native-tx-carriage-wire-v1:sync",
         "demo/midgard-sdk:fixtures:native-tx-carriage-wire-v1:check"
       ],
-      "producers": ["demo/midgard-sdk"],
-      "inputs": ["@golden-channel"],
+      "producers": [
+        "demo/midgard-sdk"
+      ],
+      "inputs": [
+        "@golden-channel"
+      ],
       "outputs": [
         "demo/midgard-sdk/tests/fixtures/native-tx-carriage-wire-v1.generated.json",
         "onchain/aiken/lib/midgard/native-tx-carriage-wire-v1-golden.test.ak"
@@ -156,8 +174,12 @@
         "demo/midgard-sdk:fixtures:canonical-decodability-v1:sync",
         "demo/midgard-sdk:fixtures:canonical-decodability-v1:check"
       ],
-      "producers": ["demo/midgard-sdk"],
-      "inputs": ["@golden-channel"],
+      "producers": [
+        "demo/midgard-sdk"
+      ],
+      "inputs": [
+        "@golden-channel"
+      ],
       "outputs": [
         "demo/midgard-sdk/tests/fixtures/canonical-decodability-v1.generated.json",
         "onchain/aiken/lib/midgard/fraud-proofs/canonical-decodability/rule-golden.test.ak"
@@ -185,8 +207,12 @@
         "demo/midgard-sdk:fixtures:committed-field-shape-v1:sync",
         "demo/midgard-sdk:fixtures:committed-field-shape-v1:check"
       ],
-      "producers": ["demo/midgard-sdk"],
-      "inputs": ["@golden-channel"],
+      "producers": [
+        "demo/midgard-sdk"
+      ],
+      "inputs": [
+        "@golden-channel"
+      ],
       "outputs": [
         "demo/midgard-sdk/tests/fixtures/committed-field-shape-v1.generated.json",
         "onchain/aiken/lib/midgard/fraud-proofs/committed-field-shape/rule-golden.test.ak"
@@ -281,8 +307,12 @@
         "demo/midgard-sdk:fixtures:da-attestation-capacity-v1:check"
       ],
       "producers": [],
-      "inputs": ["demo/midgard-sdk/scripts/da-vector-support.mjs"],
-      "outputs": ["onchain/aiken/validators/da_attestation_capacity.test.ak"],
+      "inputs": [
+        "demo/midgard-sdk/scripts/da-vector-support.mjs"
+      ],
+      "outputs": [
+        "onchain/aiken/validators/da_attestation_capacity.test.ak"
+      ],
       "aikenImportsOfOutputs": true,
       "sync": {
         "run": "pnpm --dir demo/midgard-sdk run fixtures:da-attestation-capacity-v1:sync"
@@ -302,12 +332,16 @@
       "generators": [
         "demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs"
       ],
-      "writerEnv": ["MIDGARD_WRITE_AIKEN_VECTOR"],
+      "writerEnv": [
+        "MIDGARD_WRITE_AIKEN_VECTOR"
+      ],
       "packageScripts": [
         "demo/midgard-validation:fixtures:ordered-collection-boundary-aiken:sync",
         "demo/midgard-validation:fixtures:ordered-collection-boundary-aiken:check"
       ],
-      "producers": ["demo/midgard-validation"],
+      "producers": [
+        "demo/midgard-validation"
+      ],
       "inputs": [
         "@golden-channel",
         "demo/midgard-validation/tests/ordered-collection-*boundary.test.ts",
@@ -319,7 +353,7 @@
         "onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak",
         "onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-inline-datum.test.ak",
         "onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak",
-        "onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
+        "onchain/aiken/lib/midgard/validation-machine-tests/constants.ak",
         "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak"
       ],
       "sync": {
@@ -340,12 +374,16 @@
       "generators": [
         "demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs"
       ],
-      "writerEnv": ["MIDGARD_WRITE_AIKEN_VECTOR"],
+      "writerEnv": [
+        "MIDGARD_WRITE_AIKEN_VECTOR"
+      ],
       "packageScripts": [
         "demo/midgard-validation:fixtures:nested-boundary-aiken:sync",
         "demo/midgard-validation:fixtures:nested-boundary-aiken:check"
       ],
-      "producers": ["demo/midgard-validation"],
+      "producers": [
+        "demo/midgard-validation"
+      ],
       "inputs": [
         "@golden-channel",
         "demo/midgard-validation/tests/nested-*-boundary.test.ts",
@@ -369,7 +407,7 @@
     {
       "id": "cek-core-step-v1",
       "kind": "golden",
-      "summary": "CEK core-step evidence for curated programs: JSON fixture plus a whole generated Aiken module.",
+      "summary": "CEK core-step evidence for curated programs: JSON fixture plus one generated Aiken module per program.",
       "generators": [
         "demo/midgard-validation/scripts/generate-cek-core-step-v1-goldens.mjs"
       ],
@@ -377,14 +415,16 @@
         "demo/midgard-validation:fixtures:cek-core-step-v1:sync",
         "demo/midgard-validation:fixtures:cek-core-step-v1:check"
       ],
-      "producers": ["demo/midgard-validation"],
+      "producers": [
+        "demo/midgard-validation"
+      ],
       "inputs": [
         "@golden-channel",
         "demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs"
       ],
       "outputs": [
         "demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json",
-        "onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak"
+        "onchain/aiken/lib/midgard/cek-core-step-goldens/*.test.ak"
       ],
       "aikenImportsOfOutputs": true,
       "sync": {
@@ -409,7 +449,9 @@
         "demo/midgard-validation:fixtures:validation-auxiliary-witness-v1:sync",
         "demo/midgard-validation:fixtures:validation-auxiliary-witness-v1:check"
       ],
-      "producers": ["demo/midgard-validation"],
+      "producers": [
+        "demo/midgard-validation"
+      ],
       "inputs": [
         "demo/midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts"
       ],
@@ -436,7 +478,9 @@
       "generators": [
         "demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs"
       ],
-      "producers": ["demo/midgard-validation"],
+      "producers": [
+        "demo/midgard-validation"
+      ],
       "inputs": [],
       "outputs": [
         "onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak"
@@ -459,8 +503,12 @@
       "generators": [
         "demo/midgard-validation/scripts/generate-resolver-proof-fit-sweep-v1.mjs"
       ],
-      "writerEnv": ["MIDGARD_REGENERATE_RESOLVER_SWEEP"],
-      "producers": ["demo/midgard-fault-proofs"],
+      "writerEnv": [
+        "MIDGARD_REGENERATE_RESOLVER_SWEEP"
+      ],
+      "producers": [
+        "demo/midgard-fault-proofs"
+      ],
       "inputs": [],
       "outputs": [
         "demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json"
@@ -486,8 +534,12 @@
         "demo/midgard-node:fixtures:transition-trace-abi",
         "demo/midgard-node:fixtures:transition-trace-abi:check"
       ],
-      "producers": ["demo/midgard-sdk"],
-      "inputs": ["demo/midgard-node/tests/sdk-abi-fixtures.test.ts"],
+      "producers": [
+        "demo/midgard-sdk"
+      ],
+      "inputs": [
+        "demo/midgard-node/tests/sdk-abi-fixtures.test.ts"
+      ],
       "outputs": [
         "demo/midgard-node/tests/fixtures/transition-trace-abi.json",
         "onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak"
@@ -517,7 +569,9 @@
         "demo:fixtures:transaction-root-v1",
         "demo:fixtures:transaction-root-v1:check"
       ],
-      "producers": ["demo/midgard-sdk"],
+      "producers": [
+        "demo/midgard-sdk"
+      ],
       "inputs": [
         "demo/midgard-node/src/workers/transaction-root.ts",
         "demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json"
@@ -546,13 +600,17 @@
         "demo/lucid-midgard/tests/native-size-balanced-fixture.test.ts",
         "demo/lucid-midgard/tests/native-ordinary-fixture.test.ts"
       ],
-      "writerEnv": ["MIDGARD_SYNC_FIXTURES"],
+      "writerEnv": [
+        "MIDGARD_SYNC_FIXTURES"
+      ],
       "packageScripts": [
         "demo/lucid-midgard:fixtures:native-high-cardinality:sync",
         "demo/lucid-midgard:fixtures:native-size-balanced:sync",
         "demo/lucid-midgard:fixtures:native-ordinary:sync"
       ],
-      "producers": ["demo/lucid-midgard"],
+      "producers": [
+        "demo/lucid-midgard"
+      ],
       "inputs": [],
       "outputs": [
         "demo/lucid-midgard/tests/fixtures/native-high-cardinality.json",
@@ -570,7 +628,9 @@
         "step": "Test lucid-midgard",
         "via": "demo/lucid-midgard/tests/native-ordinary-fixture.test.ts"
       },
-      "then": ["native-compact-aiken"]
+      "then": [
+        "native-compact-aiken"
+      ]
     },
     {
       "id": "native-compact-aiken",
@@ -583,7 +643,9 @@
         "demo/lucid-midgard:fixtures:native-compact",
         "demo/lucid-midgard:fixtures:native-compact:check"
       ],
-      "producers": ["demo/midgard-core"],
+      "producers": [
+        "demo/midgard-core"
+      ],
       "inputs": [
         "@golden-channel",
         "demo/lucid-midgard/tests/fixtures/native-high-cardinality.json",
@@ -618,9 +680,15 @@
         "demo/midgard-core:docs:consensus-profile-v1:sync",
         "demo/midgard-core:docs:consensus-profile-v1:check"
       ],
-      "producers": ["demo/midgard-core"],
-      "inputs": ["config/deployments/*.yaml"],
-      "outputs": ["docs/consensus-profile-v1.md"],
+      "producers": [
+        "demo/midgard-core"
+      ],
+      "inputs": [
+        "config/deployments/*.yaml"
+      ],
+      "outputs": [
+        "docs/consensus-profile-v1.md"
+      ],
       "sync": {
         "run": "pnpm --dir demo/midgard-core run docs:consensus-profile-v1:sync"
       },
@@ -636,10 +704,17 @@
       "id": "required-checks-doc",
       "kind": "doc",
       "summary": "docs/agents/required-checks.md, rendered from the preflight check registry.",
-      "generators": ["scripts/preflight.mjs"],
+      "generators": [
+        "scripts/preflight.mjs"
+      ],
       "producers": [],
-      "inputs": ["scripts/preflight.mjs", "scripts/preflight/*.mjs"],
-      "outputs": ["docs/agents/required-checks.md"],
+      "inputs": [
+        "scripts/preflight.mjs",
+        "scripts/preflight/*.mjs"
+      ],
+      "outputs": [
+        "docs/agents/required-checks.md"
+      ],
       "sync": {
         "run": "node scripts/preflight.mjs --write-docs"
       },
@@ -655,7 +730,9 @@
       "id": "deployment-profiles",
       "kind": "config",
       "summary": "Aiken environments and the typed off-chain profile module, generated from config/deployments/*.yaml and env.ak.template.",
-      "generators": ["demo/scripts/deployment-profiles.mjs"],
+      "generators": [
+        "demo/scripts/deployment-profiles.mjs"
+      ],
       "packageScripts": [
         "demo:deployment:generate",
         "demo:deployment:check",
@@ -684,9 +761,16 @@
       "id": "user-events-witness-prefix",
       "kind": "config",
       "summary": "The compiled user-events witness script prefix, written into env.ak.template and then into every generated environment.",
-      "generators": ["scripts/generate-user-events-witness-script-prefix.sh"],
-      "aikenClosure": ["onchain/aiken/validators/user-events/witness.ak"],
-      "inputs": ["onchain/aiken/aiken.toml", "onchain/aiken/aiken.lock"],
+      "generators": [
+        "scripts/generate-user-events-witness-script-prefix.sh"
+      ],
+      "aikenClosure": [
+        "onchain/aiken/validators/user-events/witness.ak"
+      ],
+      "inputs": [
+        "onchain/aiken/aiken.toml",
+        "onchain/aiken/aiken.lock"
+      ],
       "outputs": [
         "config/deployments/env.ak.template",
         "onchain/aiken/env/*.ak"
@@ -706,8 +790,12 @@
       "id": "aiken-lock",
       "kind": "lockfile",
       "summary": "onchain/aiken/aiken.lock, rewritten by the Aiken compiler from aiken.toml.",
-      "inputs": ["onchain/aiken/aiken.toml"],
-      "outputs": ["onchain/aiken/aiken.lock"],
+      "inputs": [
+        "onchain/aiken/aiken.toml"
+      ],
+      "outputs": [
+        "onchain/aiken/aiken.lock"
+      ],
       "sync": {
         "manual": "Any pinned-fork aiken build or aiken check in onchain/aiken rewrites it; commit it with the aiken.toml change."
       },
@@ -727,7 +815,9 @@
         "onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs"
       ],
       "ledger": "onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
       "outputs": [
         "onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json"
       ],
@@ -746,10 +836,16 @@
       "id": "exec-ledger-q1x",
       "kind": "exec-ledger",
       "summary": "Q1x family execution readings and the growth bands.",
-      "generators": ["onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs"],
+      "generators": [
+        "onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs"
+      ],
       "ledger": "onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
+      "outputs": [
+        "onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json"
+      ],
       "sync": {
         "run": "cd onchain/aiken && node scripts/verify-q1x-exec-ledger-v1.mjs --update"
       },
@@ -765,10 +861,16 @@
       "id": "exec-ledger-q31",
       "kind": "exec-ledger",
       "summary": "Q31 reference-input-no-idx within-basis readings.",
-      "generators": ["onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs"],
+      "generators": [
+        "onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs"
+      ],
       "ledger": "onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
+      "outputs": [
+        "onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json"
+      ],
       "sync": {
         "run": "cd onchain/aiken && node scripts/verify-q31-exec-ledger-v1.mjs --update"
       },
@@ -784,10 +886,16 @@
       "id": "exec-ledger-q21",
       "kind": "exec-ledger",
       "summary": "Q21 transition-trace within-basis readings.",
-      "generators": ["onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs"],
+      "generators": [
+        "onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs"
+      ],
       "ledger": "onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
+      "outputs": [
+        "onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json"
+      ],
       "sync": {
         "run": "cd onchain/aiken && node scripts/verify-q21-exec-ledger-v1.mjs --update"
       },
@@ -807,8 +915,12 @@
         "onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs"
       ],
       "ledger": "onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
+      "outputs": [
+        "onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json"
+      ],
       "sync": {
         "run": "cd onchain/aiken && node scripts/verify-tx-order-mint-exec-ledger-v1.mjs --update"
       },
@@ -828,7 +940,9 @@
         "onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs"
       ],
       "ledger": "onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
       "outputs": [
         "onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json"
       ],
@@ -851,7 +965,9 @@
         "onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs"
       ],
       "ledger": "onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
       "outputs": [
         "onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json"
       ],
@@ -874,7 +990,9 @@
         "onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs"
       ],
       "ledger": "onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
       "outputs": [
         "onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json"
       ],
@@ -896,7 +1014,9 @@
         "onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs"
       ],
       "ledger": "onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
       "outputs": [
         "onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json"
       ],
@@ -918,7 +1038,9 @@
         "onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs"
       ],
       "ledger": "onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
+      "inputs": [
+        "@exec-ledger-harness"
+      ],
       "outputs": [
         "onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json"
       ],
@@ -939,13 +1061,17 @@
       "generators": [
         "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts"
       ],
-      "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
+      "writerEnv": [
+        "MIDGARD_WRITE_FIT_LEDGER"
+      ],
       "inputs": [
         "@blueprint",
         "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts",
         "demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts"
       ],
-      "exclude": ["@blueprint-exclude"],
+      "exclude": [
+        "@blueprint-exclude"
+      ],
       "outputs": [
         "docs/fault-proofs/size-plans/transition-trace-forced-window-fit-ledger.json"
       ],
@@ -998,11 +1124,15 @@
         "demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts",
         "demo/midgard-fault-proofs/scripts/write-invalid-signature-fit-ledger.mjs"
       ],
-      "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
+      "writerEnv": [
+        "MIDGARD_WRITE_FIT_LEDGER"
+      ],
       "inputs": [
         "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts"
       ],
-      "outputs": ["docs/fault-proofs/size-plans/*-fit-ledger.json"],
+      "outputs": [
+        "docs/fault-proofs/size-plans/*-fit-ledger.json"
+      ],
       "sync": {
         "manual": "Per family: run the owning lifecycle suite with MIDGARD_WRITE_FIT_LEDGER=1, MIDGARD_FIT_FRAGMENT_DIR and a fresh MIDGARD_FIT_MEASUREMENT_RUN against a freshly built blueprint. Find the owner with rg --fixed-strings '<ledger filename>' demo/midgard-fault-proofs/tests; docs/fault-proofs/size-plans/README.md governs."
       },
@@ -1017,10 +1147,18 @@
       "id": "watcher-initialization-fixture",
       "kind": "fixture",
       "summary": "Accepted initialization transactions captured from the node initialization emulator for the watcher tests; records the blueprint SHA-256 it was captured against.",
-      "generators": ["demo/midgard-node/tests/initialization-emulator.test.ts"],
-      "writerEnv": ["MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE"],
-      "inputs": ["@blueprint"],
-      "exclude": ["@blueprint-exclude"],
+      "generators": [
+        "demo/midgard-node/tests/initialization-emulator.test.ts"
+      ],
+      "writerEnv": [
+        "MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE"
+      ],
+      "inputs": [
+        "@blueprint"
+      ],
+      "exclude": [
+        "@blueprint-exclude"
+      ],
       "outputs": [
         "demo/midgard-watcher/tests/fixtures/user-event-initialization.json"
       ],
@@ -1041,9 +1179,15 @@
       "generators": [
         "demo/midgard-node/tests/da-deployment-fixture-generation.test.ts"
       ],
-      "writerEnv": ["MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE"],
-      "inputs": ["@blueprint"],
-      "exclude": ["@blueprint-exclude"],
+      "writerEnv": [
+        "MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE"
+      ],
+      "inputs": [
+        "@blueprint"
+      ],
+      "exclude": [
+        "@blueprint-exclude"
+      ],
       "outputs": [
         "demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json"
       ],
@@ -1066,7 +1210,9 @@
       "generators": [
         "demo/midgard-node/tests/benchmarks/scripts/generate-validation-fixtures.mjs"
       ],
-      "packageScripts": ["demo/midgard-node:bench:fixtures:generate"],
+      "packageScripts": [
+        "demo/midgard-node:bench:fixtures:generate"
+      ],
       "inputs": [],
       "outputs": [
         "demo/midgard-node/tests/benchmarks/fixtures/initial-ledger-state.json",

@@ -21,7 +21,7 @@
  *     `tests/cek-core-step-goldens.test.ts`, which re-runs the builder on the
  *     same program definitions and asserts byte-equality, so a drifting
  *     builder or encoder fails on the TypeScript side; and
- *   * `onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak` — where
+ *   * `onchain/aiken/lib/midgard/cek-core-step-goldens/*.test.ak` — where
  *     each pinned CBOR is decoded into `cek_machine_v1.CoreStepEvidenceV1`
  *     and re-verified by the Aiken machine under the fork runner, so a
  *     divergence between the two machines fails on the Aiken side.
@@ -79,10 +79,9 @@ const generatedJsonPath = join(
   packageRoot,
   "tests/fixtures/cek-core-step-v1.generated.json",
 );
-const generatedAikenPath = join(
-  repositoryRoot,
-  "onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak",
-);
+const generatedAikenDirectory = "onchain/aiken/lib/midgard/cek-core-step-goldens";
+const aikenModuleForProgram = (program) =>
+  `${generatedAikenDirectory}/${program.label.replaceAll("_", "-")}.test.ak`;
 
 const { checkOnly } = parseGoldenChannelArguments(
   "usage: node scripts/generate-cek-core-step-v1-goldens.mjs [--check]",
@@ -240,7 +239,7 @@ const buildGolden = () => {
   return {
     generator:
       "demo/midgard-validation/scripts/generate-cek-core-step-v1-goldens.mjs",
-    aikenModule: "onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak",
+    aikenModules: CEK_CORE_STEP_PROGRAMS.map(aikenModuleForProgram),
     aikenStepsPerTest: AIKEN_STEPS_PER_TEST,
     witnessKindsCovered: CEK_CORE_STEP_WITNESS_KINDS.filter((kind) =>
       covered.has(kind),
@@ -409,14 +408,17 @@ const stripTrailingWhitespace = (source) => source.replace(/[ \t]+$/gmu, "");
 
 const golden = buildGolden();
 writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
-writeOrCheck(
-  generatedAikenPath,
-  stripTrailingWhitespace(
-    formatAikenSource({
-      source: renderAiken(golden),
-      fileName: "cek-core-step-v1-golden.test.ak",
-      repositoryRoot,
-      tmpPrefix: "midgard-cek-core-step-aiken-format-",
-    }),
-  ),
-);
+for (const program of golden.programs) {
+  const relativePath = aikenModuleForProgram(program);
+  writeOrCheck(
+    join(repositoryRoot, relativePath),
+    stripTrailingWhitespace(
+      formatAikenSource({
+        source: renderAiken({ ...golden, programs: [program] }),
+        fileName: `${program.label}.test.ak`,
+        repositoryRoot,
+        tmpPrefix: "midgard-cek-core-step-aiken-format-",
+      }),
+    ),
+  );
+}
