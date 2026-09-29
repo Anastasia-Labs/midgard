@@ -22,8 +22,12 @@ export const profileNames = [
   "preprod-public",
   "preprod-testing",
   "local-devnet-testing",
+  "preprod-emulator-testing",
 ];
-const networks = ["Mainnet", "Preprod", "Preprod", "Custom"];
+const networks = ["Mainnet", "Preprod", "Preprod", "Custom", "Preprod"];
+// Generated and compiled for the interactive Vitest projects only; never the
+// checkout's selected deployment, and never built as the default blueprint.
+export const emulatorOnlyProfileNames = ["preprod-emulator-testing"];
 const timingConstants = {
   block_maturity_ms: "block_maturity_duration_v1",
   dispute_response_window_ms: "response_window_milliseconds",
@@ -412,6 +416,10 @@ export const renderAiken = (profile, template) => {
 export const generateProfiles = async (selected, check = false) => {
   if (!profileNames.includes(selected))
     throw new Error(`Select one of: ${profileNames.join(", ")}`);
+  if (emulatorOnlyProfileNames.includes(selected))
+    throw new Error(
+      `${selected} is emulator-only; the interactive Vitest setup builds it separately`,
+    );
   const profiles = readProfiles();
   const economics = {};
   for (const profile of Object.values(profiles)) {

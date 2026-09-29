@@ -1,5 +1,8 @@
 import {
   blueprintStampGlobalSetup,
+  interactiveEmulatorBlueprint,
+  interactiveEmulatorPlugin,
+  interactiveEmulatorSetup,
   isolatedForksPool,
   midgardSourceSsr,
 } from "@al-ft/midgard-test-support/vitest";
@@ -37,12 +40,49 @@ const parseMaxForks = (raw: string | undefined): number => {
 
 const maxForks = parseMaxForks(process.env.MIDGARD_FAULT_PROOF_FORKS);
 
+// Interactive journeys need enough protocol time to finish. Their isolated
+// project uses a separately stamped blueprint; emulator clock jumps are instant.
+const interactiveTests = [
+  "./tests/*validation-dispute*.test.ts",
+  "./tests/validation-trace-dispute-installed-lifecycle.test.ts",
+  "./tests/cek-*-lifecycle.test.ts",
+  "./tests/value-and-mint-asset-yield-lifecycle.test.ts",
+  "./tests/ledger-output-value-permutation-lifecycle.test.ts",
+  "./tests/forced-submission-lifecycle.test.ts",
+  "./tests/submit-init-emulator-cek-value-and-mint.test.ts",
+  "./tests/submit-init-emulator-value-and-mint.test.ts",
+  "./tests/submit-init-emulator-min-ada.test.ts",
+  "./tests/submit-init-emulator-option-b-*.test.ts",
+  "./tests/submit-init-emulator-route-freedom-*.test.ts",
+  "./tests/submit-init-emulator-soundness*.test.ts",
+  "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
+];
+
 export default defineConfig({
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
-    globalSetup: [blueprintStampGlobalSetup],
+    workspace: [
+      {
+        extends: true,
+        test: {
+          name: "testing-profile",
+          include: ["./tests/**/*.test.{ts,tsx}"],
+          exclude: interactiveTests,
+          globalSetup: [blueprintStampGlobalSetup],
+        },
+      },
+      {
+        extends: true,
+        plugins: [interactiveEmulatorPlugin()],
+        test: {
+          name: "interactive-emulator",
+          include: interactiveTests,
+          globalSetup: [interactiveEmulatorSetup],
+          env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
+        },
+      },
+    ],
     reporters: "verbose",
-    include: ["./tests/**/*.test.{ts,tsx}"],
     sequence: { sequencer: EmulatorSequencer },
     // The one-process-per-file requirement, and why `isolate` must stay
     // `true`, are stated once in `isolatedForksPool`; 7c7162cb reverting

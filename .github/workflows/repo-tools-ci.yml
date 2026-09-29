@@ -51,6 +51,9 @@ jobs:
       - name: Run the repository tool tests
         if: ${{ !cancelled() }}
         run: node --test "scripts/**/*.test.mjs" "onchain/aiken/scripts/*.test.mjs" "demo/scripts/lib/*.test.mjs"
+      - name: Check deployment profiles and interactive emulator cache
+        if: ${{ !cancelled() }}
+        run: node --test demo/scripts/deployment-profiles.test.mjs demo/scripts/interactive-emulator.test.mjs
       - name: Validate the e2e acceptance runbook
         if: ${{ !cancelled() }}
         run: node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs

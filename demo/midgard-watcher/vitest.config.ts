@@ -2,6 +2,9 @@ import { availableParallelism } from "node:os";
 
 import {
   blueprintStampGlobalSetup,
+  interactiveEmulatorBlueprint,
+  interactiveEmulatorPlugin,
+  interactiveEmulatorSetup,
   midgardSourceSsr,
   rawSqlLoaderPlugin,
 } from "@al-ft/midgard-test-support/vitest";
@@ -37,9 +40,28 @@ export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
-    globalSetup: [blueprintStampGlobalSetup],
+    workspace: [
+      {
+        extends: true,
+        test: {
+          name: "testing-profile",
+          include: ["./tests/**/*.test.ts"],
+          exclude: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+          globalSetup: [blueprintStampGlobalSetup],
+        },
+      },
+      {
+        extends: true,
+        plugins: [interactiveEmulatorPlugin()],
+        test: {
+          name: "interactive-emulator",
+          include: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+          globalSetup: [interactiveEmulatorSetup],
+          env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
+        },
+      },
+    ],
     environment: "node",
-    include: ["./tests/**/*.test.ts"],
     restoreMocks: true,
     // Several files perform CPU-heavy replay and emulator evaluation. An
     // unbounded thread pool can starve Vitest's worker RPC long enough for

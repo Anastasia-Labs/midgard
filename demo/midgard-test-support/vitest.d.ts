@@ -33,3 +33,10 @@ export declare const rawSqlLoaderPlugin: () => {
 };
 
 export declare const blueprintStampGlobalSetup: string;
+
+export declare const interactiveEmulatorBlueprint: string;
+export declare const interactiveEmulatorSetup: string;
+export declare const interactiveEmulatorPlugin: () => {
+  name: string;
+  transform(code: string, id: string): { code: string; map: null } | null;
+};

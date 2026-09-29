@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   daBondWithdrawDelayFloorMs,
+  emulatorOnlyProfileNames,
+  generateProfiles,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
   profileDigest,
+  profileNames,
   readProfiles,
   renderAiken,
   specDaBondWithdrawDelayFloorMs,
@@ -38,7 +41,7 @@ test("confirmation policy is explicit, validated, and bound into profile identit
   assert.throws(() => validateProfile(profile, profile.name), /l1_finality/u);
 });
 
-test("all four profiles have explicit networks and independent deployment identities", () => {
+test("all profiles have explicit networks and independent deployment identities", () => {
   const profiles = readProfiles();
   assert.equal(
     profiles["preprod-public"].network,
@@ -48,7 +51,10 @@ test("all four profiles have explicit networks and independent deployment identi
     profiles["preprod-public"].economics.requiredBondLovelace,
     profiles["preprod-testing"].economics.requiredBondLovelace,
   );
-  assert.equal(new Set(Object.values(profiles).map(profileDigest)).size, 4);
+  assert.equal(
+    new Set(Object.values(profiles).map(profileDigest)).size,
+    Object.keys(profiles).length,
+  );
   for (const profile of Object.values(profiles)) {
     const rendered = renderAiken(profile, "");
     assert.ok(
@@ -61,6 +67,16 @@ test("all four profiles have explicit networks and independent deployment identi
         `pub const required_bond: Int = ${profile.economics.requiredBondLovelace.toLocaleString("en-US").replaceAll(",", "_")}`,
       ),
     );
+  }
+});
+
+test("emulator-only profiles cannot be selected for generation, checks or builds", async () => {
+  assert.deepEqual(emulatorOnlyProfileNames, ["preprod-emulator-testing"]);
+  for (const name of emulatorOnlyProfileNames) {
+    assert.ok(profileNames.includes(name));
+    // Check mode writes nothing, so a missing guard fails on the message
+    // instead of rewriting the checkout's selected profile.
+    await assert.rejects(generateProfiles(name, true), /emulator-only/u);
   }
 });
 
@@ -105,6 +121,7 @@ test("every DA response window covers the minimum response budget, and the bound
     "preprod-public": 1_440_000,
     "preprod-testing": 360_000,
     "local-devnet-testing": 360_000,
+    "preprod-emulator-testing": 360_000,
   };
   for (const [name, profile] of Object.entries(profiles)) {
     const budget = minimumDaResponseBudgetMs(profile);
@@ -385,7 +402,17 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
     da_bond_withdraw_delay_ms: "da_bond_withdraw_delay_ms_v1",
   };
   for (const [name, profile] of Object.entries(profiles)) {
-    const want = expected[publicProfiles.includes(name) ? "public" : "testing"];
+    const want =
+      name === "preprod-emulator-testing"
+        ? {
+            da_bond: expected.testing.da_bond,
+            timing: {
+              da_challenge_window_ms: 1_800_000,
+              da_slash_grace_ms: 300_000,
+              da_bond_withdraw_delay_ms: 15_180_000,
+            },
+          }
+        : expected[publicProfiles.includes(name) ? "public" : "testing"];
     assert.deepEqual(profile.da_bond, want.da_bond);
     const rendered = renderAiken(profile, "");
     for (const [key, value] of Object.entries({
@@ -444,7 +471,10 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     testing: { spec: 2_340_000, enforced: 2_340_000 },
   };
   for (const [name, original] of Object.entries(profiles)) {
-    const want = floors[publicProfiles.includes(name) ? "public" : "testing"];
+    const want =
+      name === "preprod-emulator-testing"
+        ? { spec: 3_420_000, enforced: 15_180_000 }
+        : floors[publicProfiles.includes(name) ? "public" : "testing"];
     const profile = structuredClone(original);
     assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), want.spec);
     assert.equal(daBondWithdrawDelayFloorMs(profile.timing), want.enforced);

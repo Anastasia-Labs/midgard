@@ -93,3 +93,9 @@ export const rawSqlLoaderPlugin = () => ({
 export const blueprintStampGlobalSetup = fileURLToPath(
   new URL("./blueprint-stamp-setup.js", import.meta.url),
 );
+
+export {
+  interactiveEmulatorBlueprint,
+  interactiveEmulatorSetup,
+  interactiveEmulatorPlugin,
+} from "./interactive-emulator.js";

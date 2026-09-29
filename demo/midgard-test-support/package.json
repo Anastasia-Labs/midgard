@@ -27,7 +27,8 @@
     "src",
     "vitest.js",
     "vitest.d.ts",
-    "blueprint-stamp-setup.js"
+    "blueprint-stamp-setup.js",
+    "interactive-emulator.js"
   ],
   "scripts": {
     "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",

@@ -240,7 +240,7 @@ jobs:
       - name: Check the DA bond relations under every deployment profile
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: |
-          for env in mainnet preprod_public preprod_testing local_devnet_testing; do
+          for env in mainnet preprod_public preprod_testing local_devnet_testing preprod_emulator_testing; do
             MIDGARD_AIKEN_ENV="$env" node scripts/guard-focused-selector.mjs midgard/da_bond_profile || exit 1
           done
       # THE EXECUTION LEDGERS. Every `scripts/*-exec-ledger-v1.json` has a

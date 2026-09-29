@@ -3,12 +3,13 @@
 Edit the YAML files here, then regenerate and rebuild. A Cardano network is not
 a deployment profile: both `preprod-public` and `preprod-testing` use `Preprod`.
 
-| Profile                | Cardano network | Economics schedule |
-| ---------------------- | --------------- | ------------------ |
-| `mainnet`              | `Mainnet`       | Public             |
-| `preprod-public`       | `Preprod`       | Public             |
-| `preprod-testing`      | `Preprod`       | Bounded testing    |
-| `local-devnet-testing` | `Custom`        | Bounded testing    |
+| Profile                    | Cardano network | Economics schedule             |
+| -------------------------- | --------------- | ------------------------------ |
+| `mainnet`                  | `Mainnet`       | Public                         |
+| `preprod-public`           | `Preprod`       | Public                         |
+| `preprod-testing`          | `Preprod`       | Bounded testing                |
+| `local-devnet-testing`     | `Custom`        | Bounded testing                |
+| `preprod-emulator-testing` | `Preprod`       | Bounded testing; emulator only |
 
 The public profiles retain the existing testnet timing values, including seven-day
 block maturity, a five-minute dispute response window, a one-hour operator shift,
@@ -28,7 +29,7 @@ upper bound) can still be struck.
 valid-to and its on-chain `inclusion_time`; no block may include the event
 earlier. The public profiles use the worst-case wall time for N Cardano blocks,
 3N/f slots at f = 0.05 and one-second slots: 36 hours on `mainnet` (N = k = 2160)
-and 30 minutes on `preprod-public` (N = 30). Both testing profiles use a fixed
+and 30 minutes on `preprod-public` (N = 30). Both live testing profiles use a fixed
 five minutes.
 Validation requires each public profile's event wait to be at least the maximum
 validity range plus confirmation-depth blocks at twice the 20-second mean block
@@ -36,14 +37,30 @@ time: 28 minutes for `mainnet` and `preprod-public`. Every event a block must
 include was on L1 at least that validity range less than the event wait before
 the commit became valid, so an honest block omits one only if L1 rolls back past
 that span. Under the 3N/f standard above, `preprod-public`'s 30 minutes leave 22
-blocks after the eight-minute validity range, not 30. The testing profiles are
+blocks after the eight-minute validity range, not 30. The live testing profiles are
 exempt: a short L1 fork there can make an honest block omit an event.
 The existing economics schedule identifiers are retained as manifest data, not
 runtime selectors. Profiles sharing a schedule identifier must have identical
 economics. Settle launch parameter choices before deploying; generation does not
 authorize deployment or alter an existing deployment.
 
-### Fast non-interactive testing
+### Interactive emulator tests
+
+`preprod-emulator-testing` is selected only by the interactive Vitest projects
+in `midgard-fault-proofs` and `midgard-watcher`. It uses four-hour block maturity,
+one-minute dispute responses and bounded testing economics. Its event wait,
+DA challenge window and bond withdrawal delay satisfy the full profile checks.
+Emulator tests advance the ledger clock directly; four hours of protocol time
+adds no four-hour wall-clock wait.
+
+The test setup verifies generated profiles and caches a separately stamped
+blueprint at `onchain/aiken/build/interactive-emulator/plutus.json`. Its Vite
+plugin selects the matching TypeScript profile only within that test project's
+module graph. The checked-in selected profile and default `plutus.json` remain
+`preprod-testing`; live testing and devnet timings stay unchanged. New interactive
+journey files belong in `interactiveTests` in the fault-proof Vitest config.
+
+### Live testing profiles
 
 `preprod-testing` and `local-devnet-testing` use fifteen-minute block maturity,
 a thirty-minute operator shift, 30-second registration, and the existing eight-minute
@@ -66,19 +83,24 @@ testing schedule. The node derives its retention defaults from the DA timeout:
 the retention poll runs every quarter timeout (150 seconds) and the L1 view
 deadline, `L1_VIEW_FATAL_MS`, is the timeout itself (ten minutes).
 
-`l1_finality.confirmation_depth` selects the L1 confirmation count. Both testing
+`l1_finality.confirmation_depth` selects the L1 confirmation count. All three testing
 profiles use 3; `mainnet` and `preprod-public` use 30. The count is included in
 the profile digest and finalized manifest, and runtime services must match it.
 Three confirmations are a testing policy, not a production security guarantee.
 
-These profiles are for **non-interactive fault-proof testing only**, not interactive
-fault proofs or production security. The 32-round interactive schedule retains a
+Fault proofs are **accepted as non-functional** on the two live testing
+profiles (owner ruling, 2026-09-27), and neither profile provides production
+security. Fifteen-minute maturity is shorter than the consensus profile's
+`minValidationDisputeMaturityMs` (7,920,000 ms, two hours twelve minutes) and
+than the transition-trace proof path. The 32-round interactive schedule retains a
 one-minute per-response timeout and cannot fit inside fifteen-minute maturity;
 the on-chain maturity guard therefore refuses interactive dispute opening.
-Validation explicitly requires this exclusion for both testing profiles; public
+Validation explicitly requires this exclusion for both live testing profiles; public
 profiles still require the complete interactive schedule to fit in half maturity.
-Non-interactive proofs must be submitted before maturity. L1 inclusion and node
-polling add latency, so finalization is not guaranteed at exactly fifteen minutes.
+Automated fault-proof coverage runs in the emulator on `preprod-emulator-testing`
+(see [Interactive emulator tests](#interactive-emulator-tests)). L1 inclusion and
+node polling add latency, so finalization is not guaranteed at exactly fifteen
+minutes.
 
 The local profile targets the real-stack deposit/transfer/withdrawal journey,
 two-member DA attestation and public retrieval, automatic merge and reserve payout,
@@ -103,16 +125,16 @@ configuration, while `deployment:build` also compiles and binds its blueprint.
 The committee backs every block it attests from one pooled bond. Each profile's
 `da_bond` section holds its amounts, and three `timing` keys hold its windows:
 
-| Key                                   | Public profiles         | Testing profiles   |
-| ------------------------------------- | ----------------------- | ------------------ |
-| `da_bond.da_bond_lovelace`            | 100,000 ADA             | 500 tADA           |
-| `da_bond.da_slash_penalty_lovelace`   | 25,000 ADA              | 100 tADA           |
-| `da_bond.da_bond_min_top_up_lovelace` | 1,000 ADA               | 5 tADA             |
-| `da_bond.da_bond_pool_floor_lovelace` | 5 ADA                   | 5 tADA             |
-| `da_bond.challenge_record_lovelace`   | 27 ADA                  | 27 tADA            |
-| `timing.da_challenge_window_ms`       | 259,200,000 (3 d)       | 720,000 (12 min)   |
-| `timing.da_slash_grace_ms`            | 172,800,000 (2 d)       | 300,000 (5 min)    |
-| `timing.da_bond_withdraw_delay_ms`    | 778,080,000 (9 d 8 min) | 2,340,000 (39 min) |
+| Key                                   | Public profiles         | Live testing profiles |
+| ------------------------------------- | ----------------------- | --------------------- |
+| `da_bond.da_bond_lovelace`            | 100,000 ADA             | 500 tADA              |
+| `da_bond.da_slash_penalty_lovelace`   | 25,000 ADA              | 100 tADA              |
+| `da_bond.da_bond_min_top_up_lovelace` | 1,000 ADA               | 5 tADA                |
+| `da_bond.da_bond_pool_floor_lovelace` | 5 ADA                   | 5 tADA                |
+| `da_bond.challenge_record_lovelace`   | 27 ADA                  | 27 tADA               |
+| `timing.da_challenge_window_ms`       | 259,200,000 (3 d)       | 720,000 (12 min)      |
+| `timing.da_slash_grace_ms`            | 172,800,000 (2 d)       | 300,000 (5 min)       |
+| `timing.da_bond_withdraw_delay_ms`    | 778,080,000 (9 d 8 min) | 2,340,000 (39 min)    |
 
 A slash burns the penalty as fee and pays the rest of one DA bond to the
 challenger. The pool floor stays in the pool UTxO for its minimum ADA and never
@@ -136,14 +158,14 @@ Validation requires:
   and block maturity, plus the slash grace. An unavailable block is removed
   only as the queue head, after its predecessors merge at maturity, so this is
   stronger than the challenge path alone;
-- on public profiles only, a challenge window that exceeds the attestation
+- on public and interactive emulator profiles, a challenge window that exceeds the attestation
   timeout by at least two maximum validity ranges plus the confirmation-depth
   budget (`confirmation_depth` blocks at twice the 20-second mean), 2,160,000 ms
   on public timing. A challenger must first see an Apply that landed at the
   attestation timeout at confirmation depth, then land an open whose validity
-  range may be a full maximum range wide. The testing profiles have two minutes
+  range may be a full maximum range wide. The live testing profiles have two minutes
   of slack and are exempt;
-- on public profiles only, the challenge window, the maximum validity range,
+- on public and interactive emulator profiles, the challenge window, the maximum validity range,
   the full response window and the dispute schedule fit before block maturity,
   so fraud stays provable after the latest DA response. This rule used to count
   from the attestation timeout.
@@ -196,7 +218,7 @@ node --test demo/scripts/deployment-profiles.test.mjs
 The checkout's generated off-chain selection is `preprod-testing`. Production
 builds must explicitly select their deployment. `env/default.ak` is generated
 from mainnet; `env/testnet.ak` remains a generated development alias for
-preprod-testing. The four named environments are generated too. Do not edit
+preprod-testing. The five named environments are generated too. Do not edit
 generated environments or `demo/midgard-core/src/generated-deployment-profiles.ts`.
 `env.ak.template` holds only constants that do not vary by deployment.
 

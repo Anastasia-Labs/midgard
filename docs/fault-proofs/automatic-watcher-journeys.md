@@ -1326,7 +1326,7 @@ network and derives its slot mapping from the local Ogmios, as the node does.
 The journey needs a freshly deployed run directory on the
 `local-devnet-testing` profile. The checkout compiles `preprod-testing`, so
 select the local profile first, as the
-[deployments README](../../config/deployments/README.md#fast-non-interactive-testing)
+[deployments README](../../config/deployments/README.md#live-testing-profiles)
 describes:
 
 1. Run `pnpm --dir demo deployment:build local-devnet-testing`, which compiles
