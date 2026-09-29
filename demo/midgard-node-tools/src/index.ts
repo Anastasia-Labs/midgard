@@ -55,7 +55,7 @@ import * as E2EFinalizeSummaryCommand from "./commands/e2e-finalize-summary.js";
 import { runPipelinedCommitProcessAcceptance } from "./commands/e2e-pipelined-commit-process-acceptance.js";
 import * as E2EProcessCleanupCommand from "./commands/e2e-process-cleanup.js";
 import * as E2EServiceCommand from "./commands/e2e-service.js";
-import * as E2EStressL2ThroughputCommand from "./commands/e2e-stress-l2-throughput.js";
+import * as E2EStressL2ThroughputCommand from "./commands/e2e-stress-l2-throughput/index.js";
 import * as Phase4GenesisLedgerCommand from "./commands/phase4-genesis-ledger.js";
 import * as Phase4T1RecoveryCommand from "./commands/phase4-t1-recovery.js";
 import * as StressCorpusCommand from "./commands/stress-corpus-generate.js";

@@ -14,7 +14,7 @@ import {
 import {
   E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
   type E2EL2StressSummary,
-} from "../src/commands/e2e-stress-l2-throughput.js";
+} from "../src/commands/e2e-stress-l2-throughput/index.js";
 import { buildStressMetrics } from "../src/commands/stress-stage-metrics.js";
 import {
   E2E_STEP_SCHEMA_VERSION,

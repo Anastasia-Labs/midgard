@@ -42,7 +42,7 @@ import {
   type E2EL2StressSummary,
   type E2EL2StressTransaction,
   parseE2EL2StressSummary,
-} from "./e2e-stress-l2-throughput.js";
+} from "./e2e-stress-l2-throughput/index.js";
 import type { StressMetricWindow } from "./stress-stage-metrics.js";
 
 export type FinalizeSummaryOptions = {
