@@ -62,7 +62,7 @@ import * as StressCorpusCommand from "./commands/stress-corpus-generate.js";
 import { collectGroundTruthMetricsFromSql } from "./commands/stress-db-metrics.js";
 import { collectEnvironmentFingerprint } from "./commands/stress-environment-fingerprint.js";
 import { collectStressStageMetricSourcesFromSql } from "./commands/stress-stage-metrics.js";
-import * as StressWalletsCommand from "./commands/stress-wallets.js";
+import * as StressWalletsCommand from "./commands/stress-wallets/index.js";
 import { runCommandStep } from "./e2e/runner.js";
 import {
   l1KupmiosEnvironment,

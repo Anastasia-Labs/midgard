@@ -30,7 +30,7 @@ import {
   parseStressCorpusVerifyConfig,
 } from "../src/commands/stress-corpus-generate.js";
 import { parseOpenLoopCorpusLine } from "../src/commands/stress-open-loop.js";
-import { STRESS_WALLET_RECORD_SCHEMA_VERSION } from "../src/commands/stress-wallets.js";
+import { STRESS_WALLET_RECORD_SCHEMA_VERSION } from "../src/commands/stress-wallets/index.js";
 
 const TEST_SEEDS = [
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart",

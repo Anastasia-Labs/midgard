@@ -42,7 +42,7 @@ import {
   runWithSharedFanoutContext,
   stressWalletFileName,
   terminalDrainStressWallets,
-} from "../src/commands/stress-wallets.js";
+} from "../src/commands/stress-wallets/index.js";
 
 class FanoutAcquisitionProbe extends Context.Tag("FanoutAcquisitionProbe")<
   FanoutAcquisitionProbe,

@@ -48,7 +48,7 @@ import {
   DEFAULT_STRESS_WALLET_DIR,
   parseStressWalletRecord,
   type StressWalletRecord,
-} from "./stress-wallets.js";
+} from "./stress-wallets/index.js";
 
 const execFileAsync = promisify(execFile);
 

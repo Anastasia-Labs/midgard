@@ -575,13 +575,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
-    "midgard-node-tools/src/commands/stress-wallets.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort(([a], [b]) => a.localeCompare(b))",
-        ".sort((a, b) => outRefKey(a).localeCompare(outRefKey(b)))"
-      ]
-    },
     "midgard-node-tools/src/e2e/pipelined-commit-process-harness.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
@@ -951,6 +944,13 @@
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
         ".sort((left, right) => left.txHash.localeCompare(right.txHash));"
+      ]
+    },
+    "midgard-node-tools/src/commands/stress-wallets/terminal-drain.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": [
+        ".sort(([a], [b]) => a.localeCompare(b))",
+        ".sort((a, b) => outRefKey(a).localeCompare(outRefKey(b)))"
       ]
     }
   },

@@ -12,7 +12,7 @@ import {
 import {
   parseStressWalletRecord,
   type StressWalletRecord,
-} from "../stress-wallets.js";
+} from "../stress-wallets/index.js";
 import type { CorpusIndexEntry } from "./assemble.js";
 import {
   buildCorpusChain,

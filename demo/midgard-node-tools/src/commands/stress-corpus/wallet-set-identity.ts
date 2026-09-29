@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { StressWalletRecord } from "../stress-wallets.js";
+import type { StressWalletRecord } from "../stress-wallets/index.js";
 
 export const STRESS_CORPUS_WALLET_SET_HASH_ALGORITHM =
   "sha256-wallet-id-l2-address-lines-v1";

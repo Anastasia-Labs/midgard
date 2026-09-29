@@ -8,6 +8,9 @@
     "midgard-node-tools": "./dist/index.js"
   },
   "exports": {
+    "./commands/stress-wallets": {
+      "midgard-source": "./src/commands/stress-wallets/index.ts"
+    },
     "./*": {
       "midgard-source": "./src/*.ts"
     }
