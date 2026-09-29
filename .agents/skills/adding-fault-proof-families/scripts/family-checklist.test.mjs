@@ -34,7 +34,7 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
   bazFooBar: "00000041",
 } as const;
 `,
-  [SOURCES.coreIdentity]: `
+  [SOURCES.coreCatalogue]: `
 export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofFooBar",
   "fraudProofFooBarStep02",
@@ -49,6 +49,8 @@ export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY =
   } as const);
 export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS =
   Object.freeze({ fooBar: "00000040", bazFooBar: "00000041" } as const);
+`,
+  [SOURCES.coreReferenceContracts]: `
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
   Object.freeze({
     "V1 fraud-proof foo-bar step-01": "fraudProofFooBar",
@@ -56,6 +58,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofFooBarStep02",
     "V1 fraud-proof baz-foo-bar step-01": "fraudProofBazFooBar",
   } as const);
+`,
+  [SOURCES.coreReferenceTokens]: `
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",
   "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",
@@ -218,7 +222,7 @@ describe("family-checklist", () => {
   it("fails when core and SDK disagree on the ID", () => {
     const tree = edit(
       completeTree(),
-      SOURCES.coreIdentity,
+      SOURCES.coreCatalogue,
       'Object.freeze({ fooBar: "00000040"',
       'Object.freeze({ fooBar: "00000042"',
     );
@@ -242,7 +246,7 @@ describe("family-checklist", () => {
   it("fails when a step contract has no reference-script token name", () => {
     const tree = edit(
       completeTree(),
-      SOURCES.coreIdentity,
+      SOURCES.coreReferenceTokens,
       '  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",\n',
       "",
     );
@@ -254,7 +258,7 @@ describe("family-checklist", () => {
   it("fails when a non-step contract of the family has no role", () => {
     const tree = edit(
       completeTree(),
-      SOURCES.coreIdentity,
+      SOURCES.coreCatalogue,
       '  "fraudProofBazFooBar",\n] as const);',
       '  "fraudProofBazFooBar",\n  "fraudProofFooBarStep02TxYield",\n] as const);',
     );
