@@ -12,6 +12,7 @@ import {
 import type { CommitteeConfig, LoadedCommitteeConfig } from "../config.js";
 import type { DaAttestationCandidateRecord } from "../domain.js";
 import { canonicalJson } from "./canonical-json.js";
+import { committeeLucidSlotOptions } from "./lucid-network.js";
 import {
   blockfrostCurrentChainPointResolver,
   type CanonicalChainPoint,
@@ -381,7 +382,11 @@ export const daAttestationReaderFromConfig = async (
       : undefined;
   const readers = await Promise.all(
     providerDescriptors.map(async ({ url, providerSource }) => {
-      const provider = await lucidFromProviderUrl(url, config.network);
+      const provider = await lucidFromProviderUrl(
+        url,
+        config.network,
+        config.cardanoL1Source.networkMagic,
+      );
       return new LucidDaAttestationChainReader({
         lucid: provider.lucid,
         config,
@@ -410,6 +415,7 @@ export const daAttestationReaderFromConfig = async (
 const lucidFromProviderUrl = async (
   url: string,
   network: string,
+  networkMagic: number,
 ): Promise<{
   readonly lucid: LucidEvolution;
   readonly inclusionPointResolver: (utxo: UTxO) => Promise<CanonicalChainPoint>;
@@ -417,9 +423,16 @@ const lucidFromProviderUrl = async (
 }> => {
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
+    const cardanoNetwork = normalizeNetwork(network);
+    const slotOptions = await committeeLucidSlotOptions({
+      network: cardanoNetwork,
+      route: { provider: "blockfrost", apiUrl },
+      networkMagic,
+    });
     const lucid = await Lucid(
       new Blockfrost(apiUrl, projectId),
-      normalizeNetwork(network),
+      cardanoNetwork,
+      slotOptions,
     );
     const providerSource = `blockfrost:${apiUrl}`;
     return {
@@ -438,9 +451,16 @@ const lucidFromProviderUrl = async (
   }
   if (url.startsWith("kupmios:")) {
     const { kupoUrl, ogmiosUrl } = parseKupmiosUrl(url);
+    const cardanoNetwork = normalizeNetwork(network);
+    const slotOptions = await committeeLucidSlotOptions({
+      network: cardanoNetwork,
+      route: { provider: "kupmios", ogmiosUrl },
+      networkMagic,
+    });
     const lucid = await Lucid(
       new Kupmios(kupoUrl, ogmiosUrl),
-      normalizeNetwork(network),
+      cardanoNetwork,
+      slotOptions,
     );
     const providerSource = `kupmios:${kupoUrl}|${ogmiosUrl}`;
     return {

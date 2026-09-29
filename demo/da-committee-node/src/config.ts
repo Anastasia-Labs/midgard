@@ -185,6 +185,15 @@ export type CommitteeConfig = {
   readonly retentionAlertThresholdMs?: number;
 };
 
+/**
+ * The configuration a committee L1 client factory reads: the committee
+ * configuration plus the configured network magic, which a `Custom` client's
+ * Ogmios must match before its slot mapping is read.
+ */
+export type CommitteeL1ClientConfig = CommitteeConfig & {
+  readonly cardanoL1Source: Pick<CardanoL1SourceConfig, "networkMagic">;
+};
+
 export type LoadedCommitteeConfig = CommitteeConfig & {
   readonly cardanoL1Source: CardanoL1SourceConfig;
 };

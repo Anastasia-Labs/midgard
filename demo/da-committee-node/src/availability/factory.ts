@@ -7,7 +7,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { type CommitteeConfig, l1SourceAuthorityDigest } from "../config.js";
+import {
+  type CommitteeConfig,
+  type CommitteeL1ClientConfig,
+  l1SourceAuthorityDigest,
+} from "../config.js";
 import {
   correctionLockValidatorFromDeploymentInfo,
   daAttestationValidatorsFromDeployment,
@@ -43,7 +47,7 @@ import {
 } from "./responder.js";
 
 export const availabilityResponderFromConfig = async (
-  config: CommitteeConfig,
+  config: CommitteeL1ClientConfig,
   store: CommitteeStore,
   chainProvider: StateQueueProvider,
   deps: { readonly lucidFromProviderUrl: typeof lucidFromProviderUrl } = {
@@ -87,6 +91,7 @@ export const availabilityResponderFromConfig = async (
     providerUrl,
     config.network,
     config.nativeLedger,
+    config.cardanoL1Source.networkMagic,
   );
   await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);
   const actor = paymentCredentialOf(await lucid.wallet().address());

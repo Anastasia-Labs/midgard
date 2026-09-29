@@ -13,6 +13,8 @@ import { lucidFromProviderUrl } from "../src/l1/lucid.js";
 import { tempDir } from "./helpers.js";
 
 const KUPMIOS_URL = "kupmios:http://127.0.0.1:1442|ws://127.0.0.1:1337";
+const PREPROD_MAGIC = 1;
+const PREVIEW_MAGIC = 2;
 const SCRIPT_HASH = "ab".repeat(28);
 const rewardAddress = credentialToRewardAddress("Preprod", {
   type: "Script",
@@ -82,6 +84,7 @@ describe("lucidFromProviderUrl", () => {
       KUPMIOS_URL,
       "Preprod",
       undefined,
+      PREPROD_MAGIC,
     );
     expect(lucid.config().provider).toBeInstanceOf(NativeLedgerKupmios);
     expect(providerSource).toBe(
@@ -94,6 +97,7 @@ describe("lucidFromProviderUrl", () => {
       KUPMIOS_URL,
       "Preprod",
       undefined,
+      PREPROD_MAGIC,
     );
     await expect(
       lucid.config().provider!.getRewardAccount!(rewardAddress),
@@ -109,6 +113,7 @@ describe("lucidFromProviderUrl", () => {
       KUPMIOS_URL,
       "Preprod",
       nativeLedger,
+      PREPROD_MAGIC,
     );
     await expect(lucid.rewardAccountAt(rewardAddress)).resolves.toEqual({
       registered: true,
@@ -127,10 +132,12 @@ describe("lucidFromProviderUrl", () => {
     const nativeLedger = await writeLocalLedger();
     const nodeConfig = nativeLedger.nodeConfigPath;
     const moved = `${nodeConfig}.absent`;
-    const { lucid } = await lucidFromProviderUrl(KUPMIOS_URL, "Preprod", {
-      ...nativeLedger,
-      nodeConfigPath: moved,
-    });
+    const { lucid } = await lucidFromProviderUrl(
+      KUPMIOS_URL,
+      "Preprod",
+      { ...nativeLedger, nodeConfigPath: moved },
+      PREPROD_MAGIC,
+    );
     await expect(lucid.rewardAccountAt(rewardAddress)).rejects.toThrow(
       /ENOENT/u,
     );
@@ -149,6 +156,7 @@ describe("lucidFromProviderUrl", () => {
       KUPMIOS_URL,
       "Preview",
       nativeLedger,
+      PREVIEW_MAGIC,
     );
     await expect(
       lucid.rewardAccountAt(

@@ -26,6 +26,10 @@ import type {
   ObservedStateQueueSnapshot,
 } from "../domain.js";
 import { canonicalJson } from "./canonical-json.js";
+import {
+  assertOgmiosNetworkMagic,
+  committeeLucidSlotOptions,
+} from "./lucid-network.js";
 import { L1SourceIntegrityError } from "./source-integrity.js";
 import {
   createLocalKupmiosStateQueueReplayProvider,
@@ -2062,13 +2066,20 @@ export const providerFromUrl = async (
       );
     }
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
+    const network = normalizeNetwork(config.network);
+    const slotOptions = await committeeLucidSlotOptions({
+      network,
+      route: { provider: "kupmios", ogmiosUrl },
+      networkMagic: config.cardanoL1Source.networkMagic,
+    });
     await assertOgmiosNetworkMagic(
       ogmiosUrl,
       config.cardanoL1Source.networkMagic,
     );
     const lucid = await Lucid(
       new Kupmios(kupoUrl, ogmiosUrl, headers),
-      normalizeNetwork(config.network),
+      network,
+      slotOptions,
     );
     return new LucidStateQueueProvider({
       lucid,
@@ -2160,6 +2171,8 @@ export const parseBlockfrostUrl = (
   };
 };
 
+export { assertOgmiosNetworkMagic } from "./lucid-network.js";
+
 export const parseKupmiosUrl = (
   value: string,
 ): {
@@ -2175,87 +2188,6 @@ export const parseKupmiosUrl = (
     );
   }
   return { kupoUrl, ogmiosUrl };
-};
-
-export const assertOgmiosNetworkMagic = async (
-  ogmiosUrl: string,
-  expectedNetworkMagic: number,
-  fetchFn: typeof fetch = fetch,
-): Promise<void> => {
-  const endpoint = ogmiosHttpEndpoint(ogmiosUrl);
-  let response: Response;
-  try {
-    response = await fetchFn(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "queryNetwork/genesisConfiguration",
-        params: { era: "shelley" },
-        id: "midgard-network-magic-preflight",
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    throw new Error("Ogmios network-magic preflight failed");
-  }
-  if (!response.ok) {
-    throw new Error("Ogmios network-magic preflight failed");
-  }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    throw new Error("Ogmios network-magic preflight returned invalid JSON");
-  }
-  const actualNetworkMagic = ogmiosNetworkMagic(body);
-  if (actualNetworkMagic !== expectedNetworkMagic) {
-    throw new Error(
-      "Ogmios network magic does not match configured Cardano network authority",
-    );
-  }
-};
-
-const ogmiosHttpEndpoint = (ogmiosUrl: string): string => {
-  let parsed: URL;
-  try {
-    parsed = new URL(ogmiosUrl);
-  } catch {
-    throw new Error("Kupmios Ogmios URL is invalid");
-  }
-  if (parsed.protocol === "ws:") {
-    parsed.protocol = "http:";
-  } else if (parsed.protocol === "wss:") {
-    parsed.protocol = "https:";
-  } else if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Kupmios Ogmios URL must use http, https, ws, or wss");
-  }
-  return parsed.toString();
-};
-
-const ogmiosNetworkMagic = (body: unknown): number => {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new Error(
-      "Ogmios genesis configuration is missing an unsigned network magic",
-    );
-  }
-  const result = (body as Record<string, unknown>).result;
-  if (typeof result !== "object" || result === null || Array.isArray(result)) {
-    throw new Error(
-      "Ogmios genesis configuration is missing an unsigned network magic",
-    );
-  }
-  const networkMagic = (result as Record<string, unknown>).networkMagic;
-  if (
-    !Number.isSafeInteger(networkMagic) ||
-    (networkMagic as number) < 0 ||
-    (networkMagic as number) > 4_294_967_295
-  ) {
-    throw new Error(
-      "Ogmios genesis configuration is missing an unsigned network magic",
-    );
-  }
-  return networkMagic as number;
 };
 
 const normalizeAuthorityEndpoint = (value: string): string => {

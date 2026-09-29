@@ -12,11 +12,11 @@ import {
   availabilityResponderCollateral,
   availabilityResponderFromConfig,
 } from "../src/availability/factory.js";
-import type { CommitteeConfig } from "../src/config.js";
+import type { CommitteeL1ClientConfig } from "../src/config.js";
 import { JsonFileCommitteeStore } from "../src/store.js";
 import { minimalConfig, tempDir } from "./helpers.js";
 
-const configFor = (dir: string): CommitteeConfig => ({
+const configFor = (dir: string): CommitteeL1ClientConfig => ({
   ...minimalConfig({
     dir,
     manifestPath: join(dir, "manifest.json"),
@@ -28,6 +28,7 @@ const configFor = (dir: string): CommitteeConfig => ({
   availabilityJournalPath: join(dir, "availability.sqlite"),
   availabilitySubmitterKeySource: "private-key:test-responder-key",
   l1SubmitterKeySource: "private-key:test-attestation-key",
+  cardanoL1Source: { networkMagic: 1 },
   cardanoProviderUrls: ["kupmios:http://kupo|http://ogmios"],
   l1Source: {
     sourceMode: "local_node",

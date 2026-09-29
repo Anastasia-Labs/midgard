@@ -6,8 +6,12 @@ import { Blockfrost, Lucid, type LucidEvolution } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
 import type { NativeLedgerConfig } from "../config.js";
+import {
+  type CommitteeLucidNetwork,
+  committeeLucidSlotOptions,
+} from "./lucid-network.js";
 
-type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
+type CardanoNetwork = CommitteeLucidNetwork;
 
 const lucidOptions = {
   evaluator: createScalusEvaluator(),
@@ -24,24 +28,35 @@ export const lucidFromProviderUrl = async (
   url: string,
   network: string,
   nativeLedger: NativeLedgerConfig | undefined,
+  networkMagic: number,
 ): Promise<{
   readonly lucid: LucidEvolution;
   readonly providerSource: string;
 }> => {
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
+    const cardanoNetwork = normalizeNetwork(network);
+    const slotOptions = await committeeLucidSlotOptions({
+      network: cardanoNetwork,
+      route: { provider: "blockfrost", apiUrl },
+      networkMagic,
+    });
     return {
-      lucid: await Lucid(
-        new Blockfrost(apiUrl, projectId),
-        normalizeNetwork(network),
-        lucidOptions,
-      ),
+      lucid: await Lucid(new Blockfrost(apiUrl, projectId), cardanoNetwork, {
+        ...lucidOptions,
+        ...slotOptions,
+      }),
       providerSource: `blockfrost:${apiUrl}`,
     };
   }
   if (url.startsWith("kupmios:")) {
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
     const cardanoNetwork = normalizeNetwork(network);
+    const slotOptions = await committeeLucidSlotOptions({
+      network: cardanoNetwork,
+      route: { provider: "kupmios", ogmiosUrl },
+      networkMagic,
+    });
     return {
       lucid: await Lucid(
         new NativeLedgerKupmios(
@@ -59,7 +74,7 @@ export const lucidFromProviderUrl = async (
           headers,
         ),
         cardanoNetwork,
-        lucidOptions,
+        { ...lucidOptions, ...slotOptions },
       ),
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
     };

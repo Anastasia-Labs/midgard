@@ -40,6 +40,7 @@ describe("onChainCoordinatorFromConfig", () => {
         availabilityChallengeYields: minimalAvailabilityChallengeYields(),
         stateQueueYields: minimalStateQueueYields(),
       },
+      cardanoL1Source: { networkMagic: 1 },
       cardanoProviderUrls: [
         "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
       ],
@@ -98,6 +99,7 @@ describe("onChainCoordinatorFromConfig", () => {
       providerUrl?: string;
       network?: string;
       nativeLedger?: unknown;
+      networkMagic?: number;
       selectLucid?: unknown;
       keySource?: unknown;
       preflightLucid?: unknown;
@@ -111,11 +113,17 @@ describe("onChainCoordinatorFromConfig", () => {
       fakeChainReader,
       undefined,
       {
-        lucidFromProviderUrl: async (providerUrl, network, nativeLedger) => {
+        lucidFromProviderUrl: async (
+          providerUrl,
+          network,
+          nativeLedger,
+          networkMagic,
+        ) => {
           calls.push("lucid");
           seen.providerUrl = providerUrl;
           seen.network = network;
           seen.nativeLedger = nativeLedger;
+          seen.networkMagic = networkMagic;
           return { lucid, providerSource: "test" };
         },
         selectL1SubmitterWallet: async (selectLucid, keySource) => {
@@ -169,12 +177,14 @@ describe("onChainCoordinatorFromConfig", () => {
       providerUrl: seen.providerUrl,
       network: seen.network,
       nativeLedger: seen.nativeLedger,
+      networkMagic: seen.networkMagic,
       keySource: seen.keySource,
       referenceDeployment: seen.referenceDeployment,
     }).toEqual({
       providerUrl: config.cardanoProviderUrls[0],
       network: config.network,
       nativeLedger: config.nativeLedger,
+      networkMagic: config.cardanoL1Source.networkMagic,
       keySource: config.l1SubmitterKeySource,
       referenceDeployment: config.midgardNodeDeployment,
     });
@@ -431,6 +441,7 @@ const l1ReadyConfig = () => ({
     availabilityChallengeYields: minimalAvailabilityChallengeYields(),
     stateQueueYields: minimalStateQueueYields(),
   },
+  cardanoL1Source: { networkMagic: 1 },
   cardanoProviderUrls: [
     "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
   ],

@@ -5,12 +5,10 @@
  */
 import { type LucidEvolution, type SlotConfig } from "@lucid-evolution/lucid";
 
-import {
-  type ShelleyGenesisSlotConfig,
-  SUBMIT_SLOT_VALIDITY_BUFFER,
-  type SubmitSlotSnapshot,
-} from "./local-ledger-slot.js";
-export type CustomSlotConfig = SlotConfig;
+export {
+  type CustomSlotConfig,
+  customSlotConfigFromShelleyGenesis,
+} from "@al-ft/midgard-core/ogmios-slot";
 
 const assertValidSlotConfig = (
   slotConfig: SlotConfig,
@@ -34,86 +32,6 @@ const assertValidSlotConfig = (
     zeroTime: slotConfig.zeroTime,
     zeroSlot: slotConfig.zeroSlot,
     slotLength: slotConfig.slotLength,
-  };
-};
-
-const assertValidSubmitSlotSnapshot = ({
-  currentSlot,
-  observedAtMs,
-  slotLengthMs,
-}: Pick<
-  SubmitSlotSnapshot,
-  "currentSlot" | "observedAtMs" | "slotLengthMs"
->) => {
-  if (!Number.isSafeInteger(currentSlot) || currentSlot < 0) {
-    throw new Error(
-      `Invalid Custom slot snapshot currentSlot=${String(currentSlot)}`,
-    );
-  }
-  if (!Number.isSafeInteger(observedAtMs) || observedAtMs < 0) {
-    throw new Error(
-      `Invalid Custom slot snapshot observedAtMs=${String(observedAtMs)}`,
-    );
-  }
-  if (!Number.isSafeInteger(slotLengthMs) || slotLengthMs <= 0) {
-    throw new Error(
-      `Invalid Custom slot snapshot slotLengthMs=${String(slotLengthMs)}`,
-    );
-  }
-};
-
-/**
- * Derives Lucid's Custom slot mapping from the authoritative Shelley genesis
- * epoch. The submit-slot snapshot remains a required health and clock-domain
- * check, but its wall-clock observation never defines a slot boundary.
- */
-export const customSlotConfigFromShelleyGenesis = (
-  genesis: ShelleyGenesisSlotConfig,
-  snapshot: Pick<
-    SubmitSlotSnapshot,
-    "currentSlot" | "observedAtMs" | "slotLengthMs"
-  >,
-): CustomSlotConfig => {
-  assertValidSubmitSlotSnapshot(snapshot);
-  if (!Number.isSafeInteger(genesis.startTimeMs) || genesis.startTimeMs < 0) {
-    throw new Error(
-      `Invalid Shelley genesis startTimeMs=${String(genesis.startTimeMs)}`,
-    );
-  }
-  if (
-    !Number.isSafeInteger(genesis.slotLengthMs) ||
-    genesis.slotLengthMs <= 0
-  ) {
-    throw new Error(
-      `Invalid Shelley genesis slotLengthMs=${String(genesis.slotLengthMs)}`,
-    );
-  }
-  if (snapshot.slotLengthMs !== genesis.slotLengthMs) {
-    throw new Error(
-      `Custom slot length disagreement: snapshot=${snapshot.slotLengthMs.toString()},genesis=${genesis.slotLengthMs.toString()}`,
-    );
-  }
-  if (snapshot.observedAtMs < genesis.startTimeMs) {
-    throw new Error(
-      "Custom submit-slot observation precedes the Shelley genesis start time",
-    );
-  }
-  const genesisSlotAtObservation = Math.floor(
-    (snapshot.observedAtMs - genesis.startTimeMs) / genesis.slotLengthMs,
-  );
-  if (
-    !Number.isSafeInteger(genesisSlotAtObservation) ||
-    Math.abs(snapshot.currentSlot - genesisSlotAtObservation) >
-      SUBMIT_SLOT_VALIDITY_BUFFER
-  ) {
-    throw new Error(
-      `Custom slot clock disagreement: snapshot=${snapshot.currentSlot.toString()},genesisAtObservation=${genesisSlotAtObservation.toString()}`,
-    );
-  }
-  return {
-    zeroTime: genesis.startTimeMs,
-    zeroSlot: 0,
-    slotLength: genesis.slotLengthMs,
   };
 };
 
