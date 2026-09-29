@@ -4,7 +4,7 @@
   "issue": "#628 — the descriptor repoint's carried sign-off item: 'the deposit arm's ExUnits are not unconditional (l2_datum is unbounded); both arms' frontiers get measured and recorded post-regeneration'. Carried to the #617 sign-off checklist.",
   "spec": "GOAL_SPEC §5.3 and §5.5.3: the LedgerOutputCommitmentV1 descriptor is the sole utxos_root trie value, so validate_valid_deposit_transition and apply_l2_outputs both pay for descriptor derivation, and §3.3 fixes the execution basis they are judged at.",
   "purpose": "Post-regeneration ExUnits frontier for the two arms #628 repointed onto LedgerOutputCommitmentV1 plus the isolated §5.3 descriptor derivation they both pay for. Unlike version 1 of this artifact this is a GATE: every row is re-measured by scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs, every crossing is a bracket between adjacent MEASURED rows rather than an interpolation, and every arm-cost claim is a difference against a fixture-only baseline that the verifier recomputes.",
-  "note": "2026-09-29 remeasurement with pinned v1.1.23+5adf783 under testnet. Raw Aiken test readings include fixture construction; arm cost claims use only the recomputed differences against matching fixture-only rows. No execution basis was changed. The measured whole-test descriptor crossing is now bracketed by 2,819 and 3,083 output CBOR bytes; the deposit crossing is between 66 and 134 serialised datum bytes. The original presence-only deposit crossing and the earlier descriptor brackets are retired. These are measured adjacent rungs, not interpolated limits or complete transaction-fit claims. The marginal descriptor row at 3,083 bytes still exceeds the basis, and the output-width policy question remains open.\n\nSource changes since the original recording include canonical empty-byte datum support (3e3090aa1) and authenticated transition continuations (13ff70d63). The compiler change from 2a78108 to 5adf783 moves none of these rows: at 89663a0db, 5adf783 reproduces the original readings exactly. The drop is 13ff70d63's rewrite of `ledger_output_summaries_v1` in `lib/midgard/script-context-v1.ak`, which summarises an output's value, datum and reference script once and reuses them for both encodings, instead of re-summarising the whole TxOut twice. That saves about 720K mem per descriptor derivation and about 1.0M per deposit-arm derivation. It removes no check: decoding, the materialisability check and `descriptor_is_well_formed` run unchanged, and `consolidated_ledger_output_summaries_match_the_separate_entry_points` and the golden descriptor vectors pin the same summaries. The deposit rows fall by less than that, because 89427ff46 later authenticates deposits from event-history evidence (+605K mem on `deposit_arm_datum_absent`). `historicalMeasurement` keeps the original figures. The empty-inline-datum control now asserts successful derivation. The proof.test no-op fixture additionally shares an identical output descriptor and independently builds its expected root in this remeasurement; its reduced whole-test cost is fixture work and is not a validator speedup. The separate frontier arm/baseline pair still measures validator marginal cost.\n\nEach module is measured in its own focused invocation, with nonzero selected test counts and all listed neutralisation controls required to pass.",
+  "note": "2026-09-29 remeasurement with pinned v1.1.23+5adf783 under testnet. Raw Aiken test readings include fixture construction; arm cost claims use only the recomputed differences against matching fixture-only rows. No execution basis was changed. The measured whole-test descriptor crossing is now bracketed by 2,819 and 3,083 output CBOR bytes; the deposit crossing is between 66 and 134 serialised datum bytes. The original presence-only deposit crossing and the earlier descriptor brackets are retired. These are measured adjacent rungs, not interpolated limits or complete transaction-fit claims. The marginal descriptor row at 3,083 bytes still exceeds the basis, and the output-width policy question remains open.\n\nSource changes since the original recording include canonical empty-byte datum support (3e3090aa1) and authenticated transition continuations (13ff70d63). The compiler change from 2a78108 to 5adf783 moves none of these rows: at 89663a0db, 5adf783 reproduces the original readings exactly. The drop is 13ff70d63's rewrite of `ledger_output_summaries_v1` in `lib/midgard/script-context-v1.ak`, which summarises an output's value, datum and reference script once and reuses them for both encodings, instead of re-summarising the whole TxOut twice. That saves about 720K mem per descriptor derivation and about 1.0M per deposit-arm derivation. It removes no check: decoding, the materialisability check and `descriptor_is_well_formed` run unchanged, and `consolidated_ledger_output_summaries_match_the_separate_entry_points` and the golden descriptor vectors pin the same summaries. The deposit rows fall by less than that, because 89427ff46 later authenticates deposits from event-history evidence (+605K mem on `deposit_arm_datum_absent`). `historicalMeasurement` keeps the original figures. The empty-inline-datum control now asserts successful derivation. The proof.test no-op fixture additionally shares an identical output descriptor and independently builds its expected root in this remeasurement; its reduced whole-test cost is fixture work and is not a validator speedup. The separate frontier arm/baseline pair still measures validator marginal cost.\n\nRe-taken the same day at 9993b316e, after `script_value_data` began re-sorting each policy's asset names by their bytes, the order the script context uses. The sort is paid wherever a descriptor is derived through the one-shot path, and its cost grows with the number of asset names: deriving the descriptor of an output with no native assets costs 666 mem more, the three-asset `builds_rich_multi_chunk_output_exactly` vector 27,850 mem more, each deposit-arm derivation 9,546 mem more, and the L2 no-op arm's marginal cost falls by 134 mem. No fit judgement and no crossing bracket moves.\n\nEach module is measured in its own focused invocation, with nonzero selected test counts and all listed neutralisation controls required to pass.",
   "readingKind": "Whole-test upper bounds. See `note`, paragraph one: no raw row on this lane is a validator cost, and the `marginal` block is the only place an arm cost is stated.",
   "compiler": {
     "binary": "/home/gumbo/.aiken/bin/aiken",
@@ -14,8 +14,8 @@
   },
   "measurement": {
     "date": "2026-09-29",
-    "baseCommit": "c8b62ed6ce1be2424dba7bbd15d02d1e35391b11",
-    "workingTreeChanges": "Profile and format changes, the no-op fixture simplification described in note, and the MPF fold fix in `lib/midgard/mpf-proof-fold-v1.ak` (the non-terminal excluding arm now reads the branch nibble at `next_cursor - 1`). None of the measured modules imports the fold, so no row here reaches that change.",
+    "baseCommit": "9993b316ecdb3f3a3f549f02e23042f59ff0d2ce",
+    "workingTreeChanges": "The asset-name sort that `script_value_data` in `lib/midgard/script-context-v1.ak` now applies to the one-shot output Value, with the test changes committed alongside it. See `note`, paragraph three.",
     "harness": "Every reading is taken through onchain/aiken/scripts/run-focused-check.mjs via exec-ledger-measure-v1.mjs, the repo's mandated reading path: it asserts the collected module is the one asked for and that every selected test passed, so a row for a test that did not run — or one that did not pass — cannot appear here. No reading was taken by spawning Aiken directly.",
     "environment": "MIDGARD_AIKEN_ENV=testnet",
     "reproductionFidelity": "Frontier arm/baseline builders remain paired. The standalone no-op proof test now shares identical descriptor material and independently builds its expected root, so its whole-test cost is not interchangeable with the frontier pair."
@@ -41,8 +41,8 @@
         "descriptor_575_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 575,
-          "mem": 6052117,
-          "cpu": 2445633186,
+          "mem": 6052783,
+          "cpu": 2445583315,
           "basisFit": "within"
         },
         "descriptor_575_bytes_fixture_only": {
@@ -55,8 +55,8 @@
         "descriptor_839_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 839,
-          "mem": 6833827,
-          "cpu": 2708048559,
+          "mem": 6834493,
+          "cpu": 2707998688,
           "basisFit": "within"
         },
         "descriptor_839_bytes_fixture_only": {
@@ -69,8 +69,8 @@
         "descriptor_1103_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 1103,
-          "mem": 7620169,
-          "cpu": 2971845980,
+          "mem": 7620835,
+          "cpu": 2971796109,
           "basisFit": "within"
         },
         "descriptor_1103_bytes_fixture_only": {
@@ -83,8 +83,8 @@
         "descriptor_1367_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 1367,
-          "mem": 8402137,
-          "cpu": 3234306515,
+          "mem": 8402803,
+          "cpu": 3234256644,
           "basisFit": "within"
         },
         "descriptor_1367_bytes_fixture_only": {
@@ -97,8 +97,8 @@
         "descriptor_1499_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 1499,
-          "mem": 8793370,
-          "cpu": 3365582107,
+          "mem": 8794036,
+          "cpu": 3365532236,
           "basisFit": "within"
         },
         "descriptor_1499_bytes_fixture_only": {
@@ -111,8 +111,8 @@
         "descriptor_1631_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 1631,
-          "mem": 9183827,
-          "cpu": 3496723420,
+          "mem": 9184493,
+          "cpu": 3496673549,
           "basisFit": "within"
         },
         "descriptor_1631_bytes_fixture_only": {
@@ -125,8 +125,8 @@
         "descriptor_1763_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 1763,
-          "mem": 9575126,
-          "cpu": 3628010560,
+          "mem": 9575792,
+          "cpu": 3627960689,
           "basisFit": "within"
         },
         "descriptor_1763_bytes_fixture_only": {
@@ -139,8 +139,8 @@
         "descriptor_1895_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 1895,
-          "mem": 9966049,
-          "cpu": 3759228425,
+          "mem": 9966715,
+          "cpu": 3759178554,
           "basisFit": "within"
         },
         "descriptor_1895_bytes_fixture_only": {
@@ -153,8 +153,8 @@
         "descriptor_2159_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 2159,
-          "mem": 10752501,
-          "cpu": 4023050132,
+          "mem": 10753167,
+          "cpu": 4023000261,
           "basisFit": "within"
         },
         "descriptor_2159_bytes_fixture_only": {
@@ -167,8 +167,8 @@
         "descriptor_2423_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 2423,
-          "mem": 11534983,
-          "cpu": 4285600645,
+          "mem": 11535649,
+          "cpu": 4285550774,
           "basisFit": "within"
         },
         "descriptor_2423_bytes_fixture_only": {
@@ -181,8 +181,8 @@
         "descriptor_2687_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 2687,
-          "mem": 12317185,
-          "cpu": 4548107182,
+          "mem": 12317851,
+          "cpu": 4548057311,
           "basisFit": "within"
         },
         "descriptor_2687_bytes_fixture_only": {
@@ -195,8 +195,8 @@
         "descriptor_2753_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 2753,
-          "mem": 12513165,
-          "cpu": 4613810340,
+          "mem": 12513831,
+          "cpu": 4613760469,
           "basisFit": "within"
         },
         "descriptor_2753_bytes_fixture_only": {
@@ -209,8 +209,8 @@
         "descriptor_2819_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 2819,
-          "mem": 12708741,
-          "cpu": 4679439303,
+          "mem": 12709407,
+          "cpu": 4679389432,
           "basisFit": "within"
         },
         "descriptor_2819_bytes_fixture_only": {
@@ -223,10 +223,10 @@
         "descriptor_3083_bytes_derives": {
           "kind": "arm",
           "sizeBytes": 3083,
-          "mem": 13491538,
-          "cpu": 4942044969,
+          "mem": 13492204,
+          "cpu": 4941995098,
           "basisFit": "exceeds",
-          "infeasibility": "The widest rung measured, 3,083 CBOR bytes, reads 13,491,538 mem whole-test and 13,362,691 net of its fixture-only twin: 102.2% and 101.2% of the basis. It is the first measured rung over the basis on both readings; 2,819 bytes fits on both. The ladder stops here because the curve is linear at about 2,965 mem per output byte and a wider rung adds evidence but no new fact.",
+          "infeasibility": "The widest rung measured, 3,083 CBOR bytes, reads 13,492,204 mem whole-test and 13,363,357 net of its fixture-only twin: 102.2% and 101.2% of the basis. It is the first measured rung over the basis on both readings; 2,819 bytes fits on both. The ladder stops here because the curve is linear at about 2,965 mem per output byte and a wider rung adds evidence but no new fact.",
           "ruling": "#628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs; see `openQuestions` (`maximum-serviceable-output-width`)."
         },
         "descriptor_3083_bytes_fixture_only": {
@@ -251,161 +251,161 @@
         "deposit_arm_datum_absent": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 11346180,
-          "cpu": 4974743370,
+          "mem": 11366072,
+          "cpu": 4980248884,
           "basisFit": "within"
         },
         "deposit_arm_datum_absent_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 0,
-          "mem": 5301868,
-          "cpu": 2336326760,
+          "mem": 5312214,
+          "cpu": 2339143517,
           "basisFit": "within"
         },
         "deposit_arm_datum_1_byte": {
           "kind": "arm",
           "sizeBytes": 2,
-          "mem": 12742580,
-          "cpu": 5492093573,
+          "mem": 12762472,
+          "cpu": 5497599087,
           "basisFit": "within"
         },
         "deposit_arm_datum_1_byte_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 2,
-          "mem": 5999781,
-          "cpu": 2592681531,
+          "mem": 6010127,
+          "cpu": 2595498288,
           "basisFit": "within"
         },
         "deposit_arm_datum_8_bytes": {
           "kind": "arm",
           "sizeBytes": 9,
-          "mem": 12774458,
-          "cpu": 5501119909,
+          "mem": 12794350,
+          "cpu": 5506625423,
           "basisFit": "within"
         },
         "deposit_arm_datum_8_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 9,
-          "mem": 6031650,
-          "cpu": 2601662555,
+          "mem": 6041996,
+          "cpu": 2604479312,
           "basisFit": "within"
         },
         "deposit_arm_datum_16_bytes": {
           "kind": "arm",
           "sizeBytes": 17,
-          "mem": 12785136,
-          "cpu": 5507010003,
+          "mem": 12805028,
+          "cpu": 5512515517,
           "basisFit": "within"
         },
         "deposit_arm_datum_16_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 17,
-          "mem": 6042296,
-          "cpu": 2605746855,
+          "mem": 6052642,
+          "cpu": 2608563612,
           "basisFit": "within"
         },
         "deposit_arm_datum_24_bytes": {
           "kind": "arm",
           "sizeBytes": 26,
-          "mem": 12889622,
-          "cpu": 5550559952,
+          "mem": 12909514,
+          "cpu": 5556065466,
           "basisFit": "within"
         },
         "deposit_arm_datum_24_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 26,
-          "mem": 6096940,
-          "cpu": 2627556059,
+          "mem": 6107286,
+          "cpu": 2630372816,
           "basisFit": "within"
         },
         "deposit_arm_datum_32_bytes": {
           "kind": "arm",
           "sizeBytes": 34,
-          "mem": 12899488,
-          "cpu": 5556317920,
+          "mem": 12919380,
+          "cpu": 5561823434,
           "basisFit": "within"
         },
         "deposit_arm_datum_32_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 34,
-          "mem": 6106778,
-          "cpu": 2631508950,
+          "mem": 6117124,
+          "cpu": 2634325707,
           "basisFit": "within"
         },
         "deposit_arm_datum_48_bytes": {
           "kind": "arm",
           "sizeBytes": 50,
-          "mem": 12900400,
-          "cpu": 5562264604,
+          "mem": 12920292,
+          "cpu": 5567770118,
           "basisFit": "within"
         },
         "deposit_arm_datum_48_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 50,
-          "mem": 6107634,
-          "cpu": 2633845480,
+          "mem": 6117980,
+          "cpu": 2636662237,
           "basisFit": "within"
         },
         "deposit_arm_datum_64_bytes": {
           "kind": "arm",
           "sizeBytes": 66,
-          "mem": 12910320,
-          "cpu": 5570930568,
+          "mem": 12930212,
+          "cpu": 5576436082,
           "basisFit": "within"
         },
         "deposit_arm_datum_64_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 66,
-          "mem": 6117498,
-          "cpu": 2638901290,
+          "mem": 6127844,
+          "cpu": 2641718047,
           "basisFit": "within"
         },
         "deposit_arm_datum_128_bytes": {
           "kind": "arm",
           "sizeBytes": 134,
-          "mem": 13457550,
-          "cpu": 5754561554,
+          "mem": 13477442,
+          "cpu": 5760067068,
           "basisFit": "exceeds",
-          "infeasibility": "Whole-test 13,457,550 mem against a 13,200,000 basis, 102.0%; marginal 7,059,537, 53.5%, within. The first chunked rung: two 64-byte chunks inside an indefinite byte string. The whole-test crossing sits between this rung and the 66-byte one, and it is fixture cost, because the fixture serialises the datum three times: into the deposit info under the deposits root, into the reference input's inline datum and into the projected output the descriptor is derived from.",
+          "infeasibility": "Whole-test 13,477,442 mem against a 13,200,000 basis, 102.1%; marginal 7,069,083, 53.6%, within. The first chunked rung: two 64-byte chunks inside an indefinite byte string. The whole-test crossing sits between this rung and the 66-byte one, and it is fixture cost, because the fixture serialises the datum three times: into the deposit info under the deposits root, into the reference input's inline datum and into the projected output the descriptor is derived from.",
           "ruling": "#628 sign-off item, #617 wave; see the `marginal` block."
         },
         "deposit_arm_datum_128_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 134,
-          "mem": 6398013,
-          "cpu": 2729654483,
+          "mem": 6408359,
+          "cpu": 2732471240,
           "basisFit": "within"
         },
         "deposit_arm_datum_256_bytes": {
           "kind": "arm",
           "sizeBytes": 266,
-          "mem": 14270730,
-          "cpu": 6050921706,
+          "mem": 14290622,
+          "cpu": 6056427220,
           "basisFit": "exceeds",
-          "infeasibility": "The widest rung measured: whole-test 14,270,730 mem against a 13,200,000 basis, 108.1%. Marginal 7,457,635, 56.5% of the basis and within. Across the one-byte to 266-byte rungs the marginal cost rises by 714,836 mem and the whole-test reading by 1,528,150, because fixture growth is charged to the row as well. The ledger does not extrapolate past this rung.",
+          "infeasibility": "The widest rung measured: whole-test 14,290,622 mem against a 13,200,000 basis, 108.3%. Marginal 7,467,181, 56.6% of the basis and within. Across the one-byte to 266-byte rungs the marginal cost rises by 714,836 mem and the whole-test reading by 1,528,150, because fixture growth is charged to the row as well. The ledger does not extrapolate past this rung.",
           "ruling": "#628 sign-off item, #617 wave. Whether §5.3 owes an explicit `l2_datum` width bound is the open question this ladder informs; see `openQuestions`."
         },
         "deposit_arm_datum_256_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 266,
-          "mem": 6813095,
-          "cpu": 2874215449,
+          "mem": 6823441,
+          "cpu": 2877032206,
           "basisFit": "within"
         },
         "l2_no_op_arm": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 13535977,
-          "cpu": 5944178233,
+          "mem": 13536775,
+          "cpu": 5943836620,
           "basisFit": "exceeds",
-          "infeasibility": "The L2 no-op transition arm — one spent and one produced Ada-only output, two descriptor derivations — reads 13,535,977 mem whole-test against a 13,200,000 basis, 102.5%. It is an upper bound on a test, not on `apply_l2_outputs`: the fixture-only twin reads 8,335,297, so the arm's marginal cost is 5,200,680 mem, 39.4% of the basis. #628 carried the original reading, 15,289,803, to the sign-off; see `historicalMeasurement`.",
+          "infeasibility": "The L2 no-op transition arm — one spent and one produced Ada-only output, two descriptor derivations — reads 13,536,775 mem whole-test against a 13,200,000 basis, 102.6%. It is an upper bound on a test, not on `apply_l2_outputs`: the fixture-only twin reads 8,336,229, so the arm's marginal cost is 5,200,546 mem, 39.4% of the basis. #628 carried the original reading, 15,289,803, to the sign-off; see `historicalMeasurement`.",
           "ruling": "#628 sign-off item, #617 wave. The marginal figure is within basis, so this row records a harness cost and not an infeasibility of the validator."
         },
         "l2_no_op_arm_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 0,
-          "mem": 8335297,
-          "cpu": 3747124246,
+          "mem": 8336229,
+          "cpu": 3746960504,
           "basisFit": "within"
         }
       }
@@ -423,45 +423,45 @@
         "builds_no_reference_output_exactly": {
           "kind": "arm",
           "sizeBytes": 37,
-          "mem": 3298619,
-          "cpu": 1426355789,
+          "mem": 3299285,
+          "cpu": 1426305918,
           "basisFit": "within"
         },
         "builds_small_datum_output_exactly": {
           "kind": "arm",
           "sizeBytes": 42,
-          "mem": 4016641,
-          "cpu": 1684641380,
+          "mem": 4017307,
+          "cpu": 1684591509,
           "basisFit": "within"
         },
         "builds_small_reference_output_exactly": {
           "kind": "arm",
           "sizeBytes": 44,
-          "mem": 3975913,
-          "cpu": 1678933492,
+          "mem": 3976579,
+          "cpu": 1678883621,
           "basisFit": "within"
         },
         "builds_native_reference_script_output_exactly": {
           "kind": "arm",
           "sizeBytes": 74,
-          "mem": 3985918,
-          "cpu": 1686024012,
+          "mem": 3986584,
+          "cpu": 1685974141,
           "basisFit": "within"
         },
         "builds_rich_multi_chunk_output_exactly": {
           "kind": "arm",
           "sizeBytes": 2355,
-          "mem": 15008834,
-          "cpu": 5713748960,
+          "mem": 15036684,
+          "cpu": 5722731167,
           "basisFit": "exceeds",
-          "infeasibility": "The richest pinned golden vector — two policies, three assets, a 56-byte base address, a ~2 KiB inline datum and a PlutusV3 reference script — reads 15,008,834 mem for 2,355 output bytes, 113.7% of the basis. The fixed-shape ladder in the frontier module reads 10,752,501 at 2,159 bytes and 11,534,983 at 2,423, so roughly 3.7M of it is SHAPE cost (assets, the wider address, the reference script), not size. Memory binds; CPU still fits at 71.4%.",
+          "infeasibility": "The richest pinned golden vector — two policies, three assets, a 56-byte base address, a ~2 KiB inline datum and a PlutusV3 reference script — reads 15,036,684 mem for 2,355 output bytes, 113.9% of the basis. The fixed-shape ladder in the frontier module reads 10,753,167 at 2,159 bytes and 11,535,649 at 2,423, so roughly 3.7M of it is SHAPE cost (assets, the wider address, the reference script), not size. Memory binds; CPU still fits at 71.5%.",
           "ruling": "#628 sign-off item, #617 wave. This vector has no fixture-only twin because it is a pinned cross-language golden vector rather than a swept rung; the marginal figure for a 2,355-byte output is read off the frontier module's ladder instead."
         },
         "the_output_index_is_bound_into_the_value": {
           "kind": "arm",
           "sizeBytes": 37,
-          "mem": 3299120,
-          "cpu": 1426511838,
+          "mem": 3299786,
+          "cpu": 1426461967,
           "basisFit": "within"
         }
       }
@@ -478,40 +478,40 @@
         "accepts_valid_deposit_transition_fault": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 11473297,
-          "cpu": 5014354483,
+          "mem": 11493189,
+          "cpu": 5019859997,
           "basisFit": "within"
         },
         "rejects_valid_deposit_transition_with_arbitrary_projected_output": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 6482359,
-          "cpu": 2887371067,
+          "mem": 6492305,
+          "cpu": 2890123824,
           "basisFit": "within"
         },
         "accepts_valid_l2_transaction_no_op_transition_fault": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 9736997,
-          "cpu": 4270888648,
+          "mem": 9737529,
+          "cpu": 4270660906,
           "basisFit": "within"
         },
         "l2_descriptor_dispute_over_a_descriptor_ledger_mints": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 13465790,
-          "cpu": 5921793825,
+          "mem": 13466588,
+          "cpu": 5921452212,
           "basisFit": "exceeds",
-          "infeasibility": "The honest half of #628's pair — a descriptor-valued dispute over a descriptor-built ledger mints — at 13,465,790 mem whole-test, 102.0% of the basis. No separate baseline was taken for it; the frontier module's `l2_no_op_arm` pair puts that arm's own cost at 5,200,680 mem net of its fixture.",
+          "infeasibility": "The honest half of #628's pair — a descriptor-valued dispute over a descriptor-built ledger mints — at 13,466,588 mem whole-test, 102.0% of the basis. No separate baseline was taken for it; the frontier module's `l2_no_op_arm` pair puts that arm's own cost at 5,200,546 mem net of its fixture.",
           "ruling": "#628 sign-off item, #617 wave; read against `l2_no_op_arm`'s marginal figure."
         },
         "rejects_l2_transaction_when_trace_matches_expected_post_root": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 13522563,
-          "cpu": 5939130519,
+          "mem": 13523361,
+          "cpu": 5938788906,
           "basisFit": "exceeds",
-          "infeasibility": "The arm's no-fault path at 13,522,563 mem whole-test, 102.4% of the basis. No separate baseline was taken for it; the frontier module's `l2_no_op_arm` pair puts that arm's own cost at 5,200,680 mem net of its fixture.",
+          "infeasibility": "The arm's no-fault path at 13,523,361 mem whole-test, 102.4% of the basis. No separate baseline was taken for it; the frontier module's `l2_no_op_arm` pair puts that arm's own cost at 5,200,546 mem net of its fixture.",
           "ruling": "#628 sign-off item, #617 wave; read against `l2_no_op_arm`'s marginal figure."
         },
         "accepts_omitted_due_deposit_fault": {
@@ -536,25 +536,25 @@
       "claim": "L2 no-op transition arm, net of its fixtures — the figure #628's sign-off quoted, then 5,759,035 mem (see `historicalMeasurement`)",
       "arm": "l2_no_op_arm",
       "baseline": "l2_no_op_arm_fixture_only",
-      "marginalMem": 5200680,
-      "marginalCpu": 2197053987,
+      "marginalMem": 5200546,
+      "marginalCpu": 2196876116,
       "netBasisFit": "within",
-      "interpretation": "39.4% of the memory basis and 27.5% of the cpu basis. The whole-test reading is 102.5% of the memory basis, so the over-basis figure is fixture cost: MPF root construction, canonical CBOR encoding, tx-id hashing and the two descriptor derivations the fixture itself needs. On chain the witness arrives already built."
+      "interpretation": "39.4% of the memory basis and 27.5% of the cpu basis. The whole-test reading is 102.6% of the memory basis, so the over-basis figure is fixture cost: MPF root construction, canonical CBOR encoding, tx-id hashing and the two descriptor derivations the fixture itself needs. On chain the witness arrives already built."
     },
     {
       "claim": "Deposit arm with no l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_absent",
       "baseline": "deposit_arm_datum_absent_fixture_only",
-      "marginalMem": 6044312,
-      "marginalCpu": 2638416610,
+      "marginalMem": 6053858,
+      "marginalCpu": 2641105367,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a one-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_1_byte",
       "baseline": "deposit_arm_datum_1_byte_fixture_only",
-      "marginalMem": 6742799,
-      "marginalCpu": 2899412042,
+      "marginalMem": 6752345,
+      "marginalCpu": 2902100799,
       "netBasisFit": "within",
       "interpretation": "Both the whole-test and paired marginal readings now fit. The historical presence-only crossing is retired."
     },
@@ -562,64 +562,64 @@
       "claim": "Deposit arm at an 8-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_8_bytes",
       "baseline": "deposit_arm_datum_8_bytes_fixture_only",
-      "marginalMem": 6742808,
-      "marginalCpu": 2899457354,
+      "marginalMem": 6752354,
+      "marginalCpu": 2902146111,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 16-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_16_bytes",
       "baseline": "deposit_arm_datum_16_bytes_fixture_only",
-      "marginalMem": 6742840,
-      "marginalCpu": 2901263148,
+      "marginalMem": 6752386,
+      "marginalCpu": 2903951905,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 24-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_24_bytes",
       "baseline": "deposit_arm_datum_24_bytes_fixture_only",
-      "marginalMem": 6792682,
-      "marginalCpu": 2923003893,
+      "marginalMem": 6802228,
+      "marginalCpu": 2925692650,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 32-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_32_bytes",
       "baseline": "deposit_arm_datum_32_bytes_fixture_only",
-      "marginalMem": 6792710,
-      "marginalCpu": 2924808970,
+      "marginalMem": 6802256,
+      "marginalCpu": 2927497727,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 48-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_48_bytes",
       "baseline": "deposit_arm_datum_48_bytes_fixture_only",
-      "marginalMem": 6792766,
-      "marginalCpu": 2928419124,
+      "marginalMem": 6802312,
+      "marginalCpu": 2931107881,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 64-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_64_bytes",
       "baseline": "deposit_arm_datum_64_bytes_fixture_only",
-      "marginalMem": 6792822,
-      "marginalCpu": 2932029278,
+      "marginalMem": 6802368,
+      "marginalCpu": 2934718035,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 128-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_128_bytes",
       "baseline": "deposit_arm_datum_128_bytes_fixture_only",
-      "marginalMem": 7059537,
-      "marginalCpu": 3024907071,
+      "marginalMem": 7069083,
+      "marginalCpu": 3027595828,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 256-byte l2_datum, net of its fixtures — the widest rung measured",
       "arm": "deposit_arm_datum_256_bytes",
       "baseline": "deposit_arm_datum_256_bytes_fixture_only",
-      "marginalMem": 7457635,
-      "marginalCpu": 3176706257,
+      "marginalMem": 7467181,
+      "marginalCpu": 3179395014,
       "netBasisFit": "within",
       "interpretation": "The widest measured deposit-datum rung still fits net of its fixture. The ledger does not extrapolate beyond this rung or establish complete transaction fit."
     },
@@ -627,8 +627,8 @@
       "claim": "Descriptor derivation at 575 output bytes, net of its fixture",
       "arm": "descriptor_575_bytes_derives",
       "baseline": "descriptor_575_bytes_fixture_only",
-      "marginalMem": 5936940,
-      "marginalCpu": 2393658774,
+      "marginalMem": 5937606,
+      "marginalCpu": 2393608903,
       "netBasisFit": "within",
       "interpretation": "The baseline constructs the same canonical CBOR as its arm. Subtraction excludes that fixture work from descriptor cost."
     },
@@ -636,48 +636,48 @@
       "claim": "Descriptor derivation at 839 output bytes, net of its fixture",
       "arm": "descriptor_839_bytes_derives",
       "baseline": "descriptor_839_bytes_fixture_only",
-      "marginalMem": 6718054,
-      "marginalCpu": 2649160327,
+      "marginalMem": 6718720,
+      "marginalCpu": 2649110456,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 1103 output bytes, net of its fixture",
       "arm": "descriptor_1103_bytes_derives",
       "baseline": "descriptor_1103_bytes_fixture_only",
-      "marginalMem": 7499296,
-      "marginalCpu": 2904684288,
+      "marginalMem": 7499962,
+      "marginalCpu": 2904634417,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 1367 output bytes, net of its fixture",
       "arm": "descriptor_1367_bytes_derives",
       "baseline": "descriptor_1367_bytes_fixture_only",
-      "marginalMem": 8280666,
-      "marginalCpu": 3160230657,
+      "marginalMem": 8281332,
+      "marginalCpu": 3160180786,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 1499 output bytes, net of its fixture",
       "arm": "descriptor_1499_bytes_derives",
       "baseline": "descriptor_1499_bytes_fixture_only",
-      "marginalMem": 8671399,
-      "marginalCpu": 3288016493,
+      "marginalMem": 8672065,
+      "marginalCpu": 3287966622,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 1631 output bytes, net of its fixture",
       "arm": "descriptor_1631_bytes_derives",
       "baseline": "descriptor_1631_bytes_fixture_only",
-      "marginalMem": 9062164,
-      "marginalCpu": 3415799434,
+      "marginalMem": 9062830,
+      "marginalCpu": 3415749563,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 1763 output bytes, net of its fixture",
       "arm": "descriptor_1763_bytes_derives",
       "baseline": "descriptor_1763_bytes_fixture_only",
-      "marginalMem": 9452961,
-      "marginalCpu": 3543596472,
+      "marginalMem": 9453627,
+      "marginalCpu": 3543546601,
       "netBasisFit": "within",
       "interpretation": "This measured rung fits. The original interpolation between golden vectors of different shapes is retired; use the measured fixed-shape crossing."
     },
@@ -685,40 +685,40 @@
       "claim": "Descriptor derivation at 1895 output bytes, net of its fixture",
       "arm": "descriptor_1895_bytes_derives",
       "baseline": "descriptor_1895_bytes_fixture_only",
-      "marginalMem": 9843790,
-      "marginalCpu": 3671390619,
+      "marginalMem": 9844456,
+      "marginalCpu": 3671340748,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 2159 output bytes, net of its fixture",
       "arm": "descriptor_2159_bytes_derives",
       "baseline": "descriptor_2159_bytes_fixture_only",
-      "marginalMem": 10625544,
-      "marginalCpu": 3927004212,
+      "marginalMem": 10626210,
+      "marginalCpu": 3926954341,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 2423 output bytes, net of its fixture",
       "arm": "descriptor_2423_bytes_derives",
       "baseline": "descriptor_2423_bytes_fixture_only",
-      "marginalMem": 11407426,
-      "marginalCpu": 4182640213,
+      "marginalMem": 11408092,
+      "marginalCpu": 4182590342,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 2687 output bytes, net of its fixture",
       "arm": "descriptor_2687_bytes_derives",
       "baseline": "descriptor_2687_bytes_fixture_only",
-      "marginalMem": 12189436,
-      "marginalCpu": 4438298622,
+      "marginalMem": 12190102,
+      "marginalCpu": 4438248751,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 2753 output bytes, net of its fixture",
       "arm": "descriptor_2753_bytes_derives",
       "baseline": "descriptor_2753_bytes_fixture_only",
-      "marginalMem": 12384958,
-      "marginalCpu": 4502223018,
+      "marginalMem": 12385624,
+      "marginalCpu": 4502173147,
       "netBasisFit": "within",
       "interpretation": "Both raw and marginal readings now fit. The old raw-over/marginal-under interpretation is retired."
     },
@@ -726,18 +726,18 @@
       "claim": "Descriptor derivation at 2819 output bytes, net of its fixture",
       "arm": "descriptor_2819_bytes_derives",
       "baseline": "descriptor_2819_bytes_fixture_only",
-      "marginalMem": 12580489,
-      "marginalCpu": 4566140468,
+      "marginalMem": 12581155,
+      "marginalCpu": 4566090597,
       "netBasisFit": "within"
     },
     {
       "claim": "Descriptor derivation at 3083 output bytes, net of its fixture",
       "arm": "descriptor_3083_bytes_derives",
       "baseline": "descriptor_3083_bytes_fixture_only",
-      "marginalMem": 13362691,
-      "marginalCpu": 4821832487,
+      "marginalMem": 13363357,
+      "marginalCpu": 4821782616,
       "netBasisFit": "exceeds",
-      "infeasibility": "Deriving the §5.3 descriptor for a single 3,083-byte canonical output costs 13,362,691 mem net of every fixture the test builds, 101.2% of the 13,200,000 basis. This is the narrowest measured output for which the derivation itself, not the harness around it, does not fit; 2,819 bytes fits at 12,580,489. The rest of a fraud-proof transaction can only reduce the headroom.",
+      "infeasibility": "Deriving the §5.3 descriptor for a single 3,083-byte canonical output costs 13,363,357 mem net of every fixture the test builds, 101.2% of the 13,200,000 basis. This is the narrowest measured output for which the derivation itself, not the harness around it, does not fit; 2,819 bytes fits at 12,581,155. The rest of a fraud-proof transaction can only reduce the headroom.",
       "ruling": "#628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling; see `openQuestions` (`maximum-serviceable-output-width`)."
     }
   ],
@@ -751,7 +751,7 @@
       "exceedsSizeBytes": 3083,
       "bracketWidthBytes": 264,
       "boundingConstraint": "memory",
-      "reading": "12,708,741 mem at 2,819 bytes against 13,491,538 at 3,083: the last measured fit and the first measured miss, adjacent on a ladder of one fixed output shape. Net of the fixture-only twins the same rungs straddle the basis (12,580,489 and 13,362,691). CPU never binds on this ladder: the widest rung reads 4,942,044,969 against an 8,000,000,000 basis. No interpolation is published.",
+      "reading": "12,709,407 mem at 2,819 bytes against 13,492,204 at 3,083: the last measured fit and the first measured miss, adjacent on a ladder of one fixed output shape. Net of the fixture-only twins the same rungs straddle the basis (12,581,155 and 13,363,357). CPU never binds on this ladder: the widest rung reads 4,941,995,098 against an 8,000,000,000 basis. No interpolation is published.",
       "supersedes": "The original recording (see `historicalMeasurement`) bracketed this crossing between 2,687 and 2,753 bytes whole-test and between 2,753 and 2,819 net of fixture; 13ff70d63 moved it. Version 1 of this artifact published ~1,680 output bytes, INTERPOLATED between a 74-byte and a 2,355-byte golden vector of different shape. That interpolation's ~5,558 mem-per-byte slope folded the richer vector's shape cost (assets, a 56-byte base address, a reference script) into its size cost; the fixed-shape slope is about 2,965 mem per output byte."
     },
     {
@@ -763,7 +763,7 @@
       "exceedsSizeBytes": 134,
       "bracketWidthBytes": 68,
       "boundingConstraint": "memory",
-      "reading": "12,910,320 mem at a 66-byte serialised datum against 13,457,550 at 134 bytes. The 66-byte rung is the widest definite-length datum before Aiken's serialiser starts chunking at 64 bytes. Net of the fixture-only twins every rung fits, 7,059,537 at 134 bytes, so this crossing bounds the harness rather than the validator."
+      "reading": "12,930,212 mem at a 66-byte serialised datum against 13,477,442 at 134 bytes. The 66-byte rung is the widest definite-length datum before Aiken's serialiser starts chunking at 64 bytes. Net of the fixture-only twins every rung fits, 7,069,083 at 134 bytes, so this crossing bounds the harness rather than the validator."
     }
   ],
   "derived": [],

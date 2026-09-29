@@ -57,10 +57,33 @@ fn output_value_data(output_data: Data) -> Option<Data> {
   }
 }
 
+fn compare_asset_names(
+  left: Pair<Data, Data>,
+  right: Pair<Data, Data>,
+) -> Ordering {
+  bytearray.compare(builtin.un_b_data(left.1st), builtin.un_b_data(right.1st))
+}
+
+/// The `Value` a script sees, from a canonically decoded output's value. The
+/// output's CBOR orders each policy's asset names length-first; the evaluated
+/// script context orders them by their bytes, and so do the TypeScript context
+/// commitment and the `ledger_output_value_v1` fold, so the names are
+/// re-sorted here. Policy ids are not: the canonical decode admits only
+/// 28-byte policies in ascending byte order, where the two orders agree.
 fn script_value_data(value_data: Data) -> Data {
   expect [lovelace_data, assets_data] = builtin.un_list_data(value_data)
   let lovelace = builtin.un_i_data(lovelace_data)
-  let assets = builtin.un_map_data(assets_data)
+  let assets = list.map(
+    builtin.un_map_data(assets_data),
+    fn(policy) {
+      Pair(
+        policy.1st,
+        builtin.map_data(
+          list.sort(builtin.un_map_data(policy.2nd), compare_asset_names),
+        ),
+      )
+    },
+  )
   if lovelace == 0 {
     builtin.map_data(assets)
   } else {
@@ -248,21 +271,6 @@ pub fn ledger_output_summaries_v1(
     cek_data_v1.DataSummaryV1,
   ),
 > {
-  ledger_output_summaries_with_value_v1(output_cbor, None)
-}
-
-/// A caller may substitute an independently authenticated exact Value summary.
-/// The output still supplies canonical address, datum and reference-script data.
-pub fn ledger_output_summaries_with_value_v1(
-  output_cbor: ByteArray,
-  value_summary: Option<cek_data_v1.DataSummaryV1>,
-) -> Option<
-  (
-    cek_data_v1.DataSummaryV1,
-    cek_data_v1.DataSummaryV1,
-    cek_data_v1.DataSummaryV1,
-  ),
-> {
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
@@ -277,13 +285,9 @@ pub fn ledger_output_summaries_with_value_v1(
                 Some(datum_field) -> {
                   // Both language views share these exact subtrees. Summarize
                   // them once; the address encoding is the only difference.
-                  let value = when value_summary is {
-                    Some(summary) -> summary
-                    None ->
-                      cek_data_v1.semantic_data_summary_v1(
-                        script_value_data(value_data),
-                      )
-                  }
+                  let value = cek_data_v1.semantic_data_summary_v1(
+                    script_value_data(value_data),
+                  )
                   Some(
                     ledger_output_summaries_of_authenticated_parts_v1(
                       output,
@@ -298,7 +302,13 @@ pub fn ledger_output_summaries_with_value_v1(
   }
 }
 
-/// The caller authenticates all three parts independently before composing them.
+/// The three summaries of `ledger_output_summaries_v1`, composed from parts the
+/// caller has already authenticated: the output's address and reference
+/// script, the exact script-context `Value` summary, and the `TxOut` datum
+/// field. It reads neither `output.value` nor `output.datum_cbor`. The staged
+/// transition-trace rules take the `Value` summary from the
+/// `ledger_output_value_v1` fold, which orders asset names as
+/// `script_value_data` does, so their summaries match the one-shot ones.
 pub fn ledger_output_summaries_of_authenticated_parts_v1(
   output: MidgardTxOutput,
   value: cek_data_v1.DataSummaryV1,

@@ -376,6 +376,33 @@ test mixed_width_permutation_folds_to_the_lexicographic_map() {
   )
 }
 
+test finalize_is_refused_while_assets_remain() {
+  // Skipping to the finalize stage early would commit a Value without the
+  // assets not yet folded.
+  let peaks = mixed_width_peaks()
+  let untouched = ledger_output_value_v1.initial_control_v1(2)
+  let partial = mixed_width_first_step()
+  and {
+    partial.asset_remaining == 1,
+    ledger_output_value_v1.step_v1(
+      untouched,
+      2,
+      peaks,
+      8000000,
+      ledger_output_value_v1.LedgerOutputValueNoWitness,
+    ) == None,
+    ledger_output_value_v1.step_v1(
+      partial,
+      2,
+      peaks,
+      8000000,
+      ledger_output_value_v1.LedgerOutputValueNoWitness,
+    ) == None,
+    ledger_output_value_v1.finalize_v1(untouched) == None,
+    ledger_output_value_v1.finalize_v1(partial) == None,
+  }
+}
+
 test duplicate_membership_index_is_refused() {
   // The second step claims the already-consumed frontier slot 0; the leaf at
   // that index is the first asset, so the membership clause refuses.
