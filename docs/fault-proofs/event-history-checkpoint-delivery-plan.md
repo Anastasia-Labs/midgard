@@ -337,6 +337,8 @@ Bounded preflight found runtime Preprod config injecting six synthetic genesis U
 
 ### Fresh campaign: genesis verification and DA bond budget
 
+Superseded: the per-block DA bond this campaign funded was replaced by one pooled committee bond (spec #685, [decision record](../midgard/decisions/da-committee-bond-pool.md)); the budget below is historical.
+
 Node typecheck/build pass after the empty-genesis correction. The integrated rerun passes103 tests (including all64 required node tx-preparation emulator cases) and fails one native startup/restart fixture with scheduler-window/end-time disagreement. Preserve the failed log and repair the bounded fixture only if its clocks are wrong; no assertion weakening. A read-only review confirms the existing reference publisher never finalizes a manifest and does not use genesis balances. First finalization must use canonical empty genesis digest `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`. Node YAML now pins the exact current campaign run-state path.
 
 The DA L1 submitter funds each12000ADA availability bond. Normal merge does not release an Available bond and the current responder has no unchallenged automatic close path. Four sequential D/A/B/W headers require48000ADA locked plus fees/collateral; idle polling does not create additional headers. Root prepared a40000ADA top-up from existing campaign operator22000, merge9000 and replacement signer9000 wallets, targeting about50181ADA in the submitter while preserving other role budgets and the reserved init nonce. Each top-up retains a signed intent before one submission and exact-output reconciliation. Funding is pending confirmation; this is not a new bond-release implementation or a claim that locked capital is reclaimed.

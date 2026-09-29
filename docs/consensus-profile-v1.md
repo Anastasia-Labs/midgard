@@ -371,6 +371,18 @@ carriage is defined by [MidgardTx §8](spec/midgard-tx.md#8-field-preimage-carri
 The profile's transaction-field chunk reservation and CEK blob chunk limit are
 not the field-carriage chunk size `K`.
 
+The pooled DA committee bond (spec #685) adds no field to this profile. Its
+economics and timing are deployment-profile and availability `ParametersV1`
+values: the DA bond, the slash penalty, the pool floor, the minimum top-up, the
+challenge record lovelace, the maximum timeout fee, the challenge window, the
+slash grace and the withdrawal delay. The
+[F04 decision record](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
+(§2.6) owns the pool amounts and timing; the maximum timeout fee stays a
+deploy-time value of the manifest's `availabilityChallenge` section. They bind a
+deployment through its validator hashes, deployment profile digest and
+manifest, so changing one is a redeploy, but Appendix A and its digest do not
+move.
+
 Aggregate fields and full ledger-output preimages can exceed one proof
 transaction's available witness budget. Their bounds therefore require
 incremental authentication and consumption, with real transaction framing

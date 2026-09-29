@@ -87,6 +87,18 @@ quorum's two-step withdrawal through the offline multi-signer flow, and the
 watcher alerts and committee readiness reasons raised while the pool is short
 or withdrawing.
 
+A withheld block can be timed out only once it is the queue head. Its Timeout
+slashes the pool once, removes that head and prunes every descendant without a
+further slash, so the committee's liability is one DA bond per withholding
+episode, not one per withheld block. Every Apply needs a full bond of backing,
+so no block applied before a slash meets the slashed pool; a Timeout meets a
+partly funded pool only when it lands late, after the owners' CompleteWithdraw.
+While the queue head is `Challenged`, the state queue refuses every Append, as
+it does while the head is `Unattested` past its attestation timeout. Block
+production therefore stalls until the head's challenge is closed or times out,
+which is why the responder answers promptly and the watcher times out
+unanswered challenges as soon as they are due.
+
 The journal distinguishes canonical inclusion from finality so response chains
 can advance without waiting the finality depth after every chunk. It preserves
 resources until finality, shares collateral only between the same actor's
@@ -126,6 +138,16 @@ queue's tail to prevent appends from invalidating the checked removal budget.
 Initial timeout keeps the wallet reserved while descendants remain to be pruned.
 Dedicated enterprise actor wallets provide exact opening inputs; responder fees
 use the protected on-chain challenge shares.
+
+A pending intent whose inputs another transaction consumed first, such as a
+Timeout another watcher landed on the same header, or a pool top-up that spent
+the pool input, expires once the intent's validity has passed. Reconciliation
+needs positive evidence: one normal input spent while another is still unspent
+at the same point, or a normal input consumed by another valid canonical
+transaction at confirmation depth, verified by reading that transaction back.
+The expiry releases the intent's reservations, so the actor proceeds to its next
+step instead of waiting on the lost intent. Missing inputs alone, or a spent
+collateral input, never expire an intent.
 
 Capability reports distinguish missing deployments from deployed but unobserved
 availability state. Neither classification authorizes payload deletion. Node and

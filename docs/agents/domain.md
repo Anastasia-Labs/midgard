@@ -14,3 +14,7 @@ rules in [component specifications](../spec/README.md).
 When a proposed change contradicts an accepted decision, identify the decision
 and explain why it should be superseded. Preserve its rationale and link it to
 the replacement rather than silently rewriting the historical decision.
+
+Superseded designs: [one pooled bond backs the whole DA committee](../midgard/decisions/da-committee-bond-pool.md)
+replaces the per-block DA bond, the time-based ReclaimBond plan and the
+release-at-terminal-binding plan.

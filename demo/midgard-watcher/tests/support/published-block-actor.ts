@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -195,7 +196,11 @@ export const createPublishedWatcherBlockActor = async ({
     contracts.stateQueue.policyId,
     SDK.STATE_QUEUE_ROOT_ASSET_NAME,
   );
-  const bond = SDK.getProtocolParameters("Preprod").required_bond;
+  // The SDK prices the bond from the compiled deployment profile and refuses
+  // any other network, so a local-devnet-testing build passes Custom here.
+  const bond = SDK.getProtocolParameters(
+    SELECTED_DEPLOYMENT_PROFILE.network,
+  ).required_bond;
   const publisher = deployment.publisherLucid;
   const publicationAddress = await publisher.wallet().address();
   const activeUnit = toUnit(

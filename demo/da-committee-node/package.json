@@ -38,6 +38,11 @@
       "types": "./dist/coordinator/lucid-submitter.d.ts",
       "import": "./dist/coordinator/lucid-submitter.js"
     },
+    "./coordinator/pool-monitor": {
+      "midgard-source": "./src/coordinator/pool-monitor.ts",
+      "types": "./dist/coordinator/pool-monitor.d.ts",
+      "import": "./dist/coordinator/pool-monitor.js"
+    },
     "./coordinator/tx-builders": {
       "midgard-source": "./src/coordinator/tx-builders.ts",
       "types": "./dist/coordinator/tx-builders.d.ts",
@@ -60,7 +65,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/store/postgres.ts src/store/public-retained-da.ts src/availability/index.ts src/coordinator/lucid-submitter.ts src/coordinator/tx-builders.ts src/da/libp2p/index.ts src/da/payload.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/store/postgres.ts src/store/public-retained-da.ts src/availability/index.ts src/coordinator/lucid-submitter.ts src/coordinator/pool-monitor.ts src/coordinator/tx-builders.ts src/da/libp2p/index.ts src/da/payload.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

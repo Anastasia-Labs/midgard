@@ -561,9 +561,12 @@ index them from `docs/agents/domain.md`. (M total)
   - order ADA is padding;
   - the reserve pays exactly `l2_value`;
   - the order carries an execution fee.
-- [ ] **W4.23** DA bond reclaim is time-based: a window starting at
-      `header.end_time`, and no state-queue changes. Mark the earlier
-      release-at-terminal-binding plan as superseded.
+- [x] **W4.23** The pooled DA committee bond (spec #685) landed in #686–#691,
+      recorded in
+      [da-committee-bond-pool.md](../midgard/decisions/da-committee-bond-pool.md)
+      and indexed from `docs/agents/domain.md`. It supersedes the per-block DA
+      bond, the time-based ReclaimBond plan and the earlier
+      release-at-terminal-binding plan; the record marks all three.
 - [ ] **W4.24** #633 rejection commitment: `OperatorVerdictV1` for forced
       leaves, the 47-arm `RejectionReasonV1`, one root per proof.
 - [ ] **W4.25** Option B: the evidence commitment covers content only.
@@ -678,7 +681,8 @@ index them from `docs/agents/domain.md`. (M total)
   - **Scope:**
     - state-queue linking and removal;
     - the fraud-proof challenge window;
-    - DA bond reclaim timing (W4.23);
+    - the DA bond pool's withdrawal delay against the challenge and slash
+      windows (W4.23; this replaces the superseded bond reclaim timing);
     - forced-inclusion verdict timing.
   - **Three kinds of test:**
     - safety properties that must always hold;

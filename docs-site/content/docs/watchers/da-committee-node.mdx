@@ -41,7 +41,10 @@ signing message.
 threshold, reads the DA bond pool as a reference input, and burns the
 attestation token. One pooled DA bond backs the whole committee: an attestation
 applies only while the pool is not being withdrawn and backs at least one DA
-bond above its floor, and a lost availability challenge slashes the pool.
+bond above its floor, and a lost availability challenge slashes the pool. A
+challenge can time out only once its block is the queue head, and the Timeout
+removes that head and prunes every descendant without a further slash, so the
+committee's liability is one DA bond per withholding episode.
 Starting and signing an attestation need no bond. While the pool cannot back an
 attestation, the coordinator logs `da_bond_pool_apply_backoff` and retries on
 its next reconcile.
@@ -69,7 +72,10 @@ and the owner-quorum withdrawal are operator `da-bond` commands; see the
 Queue availability is a typed lifecycle: `Unattested`,
 `Attested`, `Challenged`, or `Published`, with the attested commitment hash,
 the challenge identifier, or the terminal commitment. It is not a policy-id
-marker.
+marker. The state queue refuses every Append while its head is `Challenged`,
+and while its head is `Unattested` past its attestation timeout, so block
+production stalls until the head's challenge is closed or times out, or until
+the lapsed head is removed.
 Committee rotation invalidates a stale certificate; the rescue branch returns
 its value to the certificate's pinned rescue beneficiary.
 

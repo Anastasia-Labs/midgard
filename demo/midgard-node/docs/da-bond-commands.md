@@ -23,6 +23,15 @@ single UTxO at the pool address holding the pool NFT, with the datum `Bonded` or
   `da_slash_penalty_lovelace` of it is paid as the transaction fee and the rest
   goes to the challenger. A slash is
   valid in both states, so a `Withdrawing` pool stays slashable.
+- **Liability is one bond per withholding episode.** A withheld block can be
+  timed out only once it is the queue head. Its Timeout slashes the pool once,
+  removes that head and prunes every descendant without a further slash, so a
+  committee that withholds several queued blocks loses one DA bond per Timeout,
+  not one per block. Every Apply needs a full bond of backing, so no block
+  applied before a slash ever meets the slashed pool. A Timeout meets a partly
+  funded pool only when it lands late, after the owners' CompleteWithdraw drew
+  the backing below one bond: the withdraw delay puts `unlock_at` after the
+  latest timely Timeout.
 - **Anyone can top it up.** Contributors hold no share and no claim.
 - **Only the governance owner quorum can take backing out**, in two steps with
   a delay that outlasts every challenge the pool could still owe.
@@ -30,6 +39,14 @@ single UTxO at the pool address holding the pool NFT, with the datum `Bonded` or
 A pool with exactly one bond of backing is short again after one slash, and
 attestations pause until someone tops it up. Keeping more than one bond of
 backing lets attestations continue after a slash.
+
+A paused attestation must still land before its header's attestation timeout
+(`end_time + da_attestation_timeout_ms`, 10 minutes on the testing profiles and
+1 hour on the public ones). After that it lapses, and its block can be removed
+as unattested, with no DA slash. The state queue refuses every Append while its
+head is `Unattested` past the attestation timeout, and while its head is
+`Challenged`. Block production therefore stalls until the lapsed head is
+removed, or until a challenge on the head is closed or times out.
 
 The amounts come from the deployment profile
 (`config/deployments/<profile>.yaml`, `da_bond` and `timing`):
@@ -173,7 +190,7 @@ Or, at any time while `Withdrawing`, **CancelWithdraw** returns the pool to
 From the moment BeginWithdraw lands, the pool backs no attestation: Apply is
 refused until a CancelWithdraw or CompleteWithdraw returns it to `Bonded` with
 at least one bond of backing. An attestation that cannot apply within the DA
-attestation timeout lapses. Begin a withdrawal only when attestations may pause
+attestation timeout lapses, as described under [The pool](#the-pool). Begin a withdrawal only when attestations may pause
 for the whole delay, or cancel it to resume them. A `Withdrawing` pool still
 pays a slash, so a withdrawal cannot outrun a challenge the pool owes. A
 CompleteWithdraw that leaves less than one bond of backing leaves the pool

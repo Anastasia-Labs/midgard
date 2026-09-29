@@ -7,6 +7,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
 } from "../src/deployment-profile.js";
 import {
+  assertDaChallengeWindowWithinMaturity,
   assertRetentionDaysCoverWindow,
   assertRetentionWindowCoversDeployment,
   assertWorstCaseProofTimeWithinBound,
@@ -93,6 +94,55 @@ describe("MIDGARD_RETENTION_WINDOW_V1 derived arithmetic (F04)", () => {
       MIDGARD_RETENTION_WINDOW.maturityMs +
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
     );
+  });
+});
+
+describe("DA challenge window within block maturity", () => {
+  it("holds for every deployment profile", () => {
+    // Worked from the raw profile timing, not from the module under test.
+    for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
+      expect(profile.timing.da_challenge_window_ms).toBeLessThanOrEqual(
+        profile.timing.block_maturity_ms,
+      );
+      expect(() =>
+        assertDaChallengeWindowWithinMaturity(profile.name, profile.timing),
+      ).not.toThrow();
+    }
+  });
+
+  it("accepts a window equal to maturity and rejects one millisecond more", () => {
+    expect(() =>
+      assertDaChallengeWindowWithinMaturity("boundary", {
+        block_maturity_ms: 900_000,
+        da_challenge_window_ms: 900_000,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertDaChallengeWindowWithinMaturity("boundary", {
+        block_maturity_ms: 900_000,
+        da_challenge_window_ms: 900_001,
+      }),
+    ).toThrow(/must not exceed block_maturity_ms=900000/u);
+  });
+
+  it("rejects malformed or non-positive timing", () => {
+    for (const [maturity, window] of [
+      [0, 0],
+      [900_000, 0],
+      [-1, -2],
+      [900_000.5, 1],
+      [Number.NaN, 1],
+      ["900000", 1],
+      [900_000, undefined],
+      [Number.MAX_SAFE_INTEGER + 1, 1],
+    ] as const) {
+      expect(() =>
+        assertDaChallengeWindowWithinMaturity("malformed", {
+          block_maturity_ms: maturity,
+          da_challenge_window_ms: window,
+        }),
+      ).toThrow(/must be positive safe integers/u);
+    }
   });
 });
 

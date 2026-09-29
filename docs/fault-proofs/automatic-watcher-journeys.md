@@ -1225,6 +1225,252 @@ pending child. These publication results establish neither automatic watcher
 journeys nor workflow interruption recovery. Initialization, the authority-expiry
 wait and final deployment uniqueness verification remain distinct stages.
 
+## Pooled DA bond journey
+
+The pooled DA bond journey drives the committee's one shared bond pool through
+the six steps of spec #685 on the process devnet. The step logic lives in
+`devnet/watcher-journeys/da-bond-pool-journey.ts`. The live adapter is
+`da-bond-pool-live-port.ts` and the live test is
+`da-bond-pool-journey-live.test.ts`. The same driver also runs against the
+emulator, but that run is a dry run: its report says `emulator` and never counts
+as devnet evidence.
+
+| Step | What it shows                                                                                                                                             |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | B1 (withheld) is attested against a Bonded pool that backs one bond but not two; the Apply leaves the pool untouched.                                     |
+| 3    | B1 is opened, left unanswered past its response deadline, settled and timed out; the Timeout slashes the pool and removes B1.                             |
+| 4    | B2 is committed, and its Apply is refused `pool-under-backed`; the watcher and committee both flag the short pool.                                        |
+| 5    | A top-up restores the backing, the alerts clear, and B2's Apply lands within `da_attestation_timeout_ms` of its end time.                                 |
+| 2    | B3 (served) is attested, opened, answered from its payload, settled and closed; the pool is unchanged.                                                    |
+| 6    | A withdrawal begins, B4's Apply is refused `pool-withdrawing`, the withdrawal is cancelled and B4 attests; a second withdrawal completes after the delay. |
+
+The steps run in the order 1, 3, 4, 5, 2, 6 because each one sets up the pool
+for the next. Step 1 needs a pool that backs fewer than two bonds, so step 3's
+Timeout leaves it short for step 4. Step 5's top-up both answers step 4 and
+restores the backing that B3's attestation in step 2 needs. The report still has one section
+per spec step, in spec order.
+
+B1 is removed before B2 is committed because the state queue refuses an Append
+while its head is Challenged. B1 is the head from its Open until its Timeout
+removes it. The Timeout burns the head's node itself when the head has no
+descendant; otherwise the adapter follows it with the removal the challenge
+command plans. The journey therefore needs a state queue that holds only its
+root when it starts, so that B1 becomes the head; the adapter refuses anything
+else.
+
+For the Timeout, the adapter reads the fee and outputs from the landed
+transaction and checks that `fee = fee_part + c` with `c` at most
+`max_timeout_fee`, and that `fee = penalty` on a full pool. It also checks that
+the pool output keeps its datum and only the pool NFT. There must be exactly one
+output to the challenger, worth
+`remaining - c + challenge_record_lovelace + payout`.
+
+### Live status and process evidence
+
+The journey has not run on the process devnet. Live evidence needs a fresh
+`local-devnet-testing` deployment of the current tree; a run directory deployed
+from an earlier tree is not resumed and does not count.
+
+The live test runs the driver with `requireProcessEvidence: true`, so two kinds
+of process evidence are required, and a missing one fails its step:
+
+- Committee process evidence, at step 1, from step 3 on, and on the node's
+  restart before step 6: the verbatim `/readyz` answer of one real
+  `da-committee-node` process (its HTTP status and body; the pool reasons come
+  from the body) and the `da_bond_pool_*` events on that process's stderr,
+  each tied to its pid. The first answer after each start must carry no pool
+  reason and no event. At step 3 the same process's stderr must also carry an
+  `availability_responder` line that reports B1's challenge `unavailable`.
+  No responder line for B1, on stderr or stdout, may report anything else: an
+  action's report (on stdout) names it, and a `failed` line (on stderr) may be
+  a failed action.
+- A real `midgard-node da-bond` CLI chain for each pool transaction, from step 5
+  on: a `status` before; then either `top-up`, or
+  `withdraw <step> --build-unsigned`, one `witness` per key and `assemble`;
+  then a `status` after that reads the new pool output.
+
+The live adapter produces both. It runs the committee node from
+`demo/da-committee-node/dist/index.js` (see
+[No watcher or committee daemon](#no-watcher-or-committee-daemon)) and each
+`da-bond` command as a `node demo/midgard-node/dist/index.js da-bond` process.
+Before each observation it waits, within a bound, until the node has read the
+pool after the preceding action and its reasons agree with the adapter's own
+pool read. The bound is ten of the node's 2-second polls plus twice the ideal
+time for the release confirmation depth
+(`2 x depth x slotLength / activeSlotsCoeff`, read from the run's Shelley
+genesis and deployment manifest): 140 s on `local-devnet-testing`, whose depth
+is 3. A spawn, stop or read that fails fails its step; nothing falls back
+to an in-process composition. The `da-bond` CLI admits the devnet's `Custom`
+network and derives its slot mapping from the local Ogmios, as the node does.
+
+### Running it
+
+The journey needs a freshly deployed run directory on the
+`local-devnet-testing` profile. The checkout compiles `preprod-testing`, so
+select the local profile first, as the
+[deployments README](../../config/deployments/README.md#fast-non-interactive-testing)
+describes:
+
+1. Run `pnpm --dir demo deployment:build local-devnet-testing`, which compiles
+   and binds that profile's blueprint, then rebuild the off-chain packages with
+   `pnpm --dir demo build`.
+2. Generate the run directory with `devnet/watcher-journeys/scripts/generate.sh`
+   and start its services. Run `configuration.test.ts` and `deployment.test.ts`
+   as for the other journeys, with `MIDGARD_DEPLOYMENT_PROFILE=local-devnet-testing`
+   and `NETWORK=Custom` set for every step, including the journey below.
+3. Afterwards, restore the checkout's selection with
+   `pnpm --dir demo deployment:build preprod-testing` and rebuild again.
+
+The journey deployment writes no DA libp2p runtime for the committee node, so
+the adapter produces one before the journey's first transaction, through the
+same command an operator runs after init:
+
+- fresh libp2p keys under `secrets/` (mode 0600, never overwritten): one per
+  DA committee member of the deployment
+  (`da-bond-pool-libp2p-committee-<signer index>.key`), one producer key and
+  one public retained-DA key;
+- the committee-target runtime manifest at
+  `deploymentInfo/da-runtime-manifest.json`, written by
+  `node demo/midgard-node/dist/index.js da-libp2p-generate-manifest --target committee --profile host`
+  with the members' signer indexes, DA verification keys and threshold read
+  from `deploymentInfo/manifest.json`. The libp2p ports are the generator's
+  defaults plus this checkout's offset from `scripts/lib/worktree-identity.mjs`,
+  the offset `generate.sh` adds to the devnet's own ports.
+
+The node loads member 0's libp2p key and no DA signing key. The adapter records
+the generator's arguments (key sources, not key bytes), its exit code, the
+manifest's sha256 and the observer's peer id in `committee/runtime.json`. It
+then checks the node's environment with the node's own configuration loader and
+peer check. A key or manifest that already exists, a failed generator run, or
+a refused configuration stops the journey
+(`DaBondPoolCommitteeUnavailableError`). Because the keys are never
+overwritten, a second run on the same run directory is refused before any
+transaction; each run needs a freshly deployed run directory. A refused
+configuration comes after the challenger funding transaction may have landed.
+
+The node's database comes from the devnet Postgres settings that the
+generated `run.env` already holds (`MIDGARD_PHASE4_POSTGRES_*` and
+`MIDGARD_PHASE4_COMPOSE_PROJECT`); the adapter creates a fresh database there
+for the node.
+
+It also needs `demo/da-committee-node` and `demo/midgard-node` built, which
+step 1 does. The adapter creates the node's two submitter keys under
+`secrets/` (mode 0600) and funds them once from the availability account.
+
+Put the run directory at a real path with no symlink in it, short enough that
+the node socket path stays within 108 bytes: the native reward-account query
+refuses identity paths that traverse a symlink. Then, from
+`demo/midgard-node-tools`:
+
+```sh
+MIDGARD_DEPLOYMENT_PROFILE=local-devnet-testing NETWORK=Custom \
+MIDGARD_WATCHER_JOURNEY_RUN_DIR=/abs/run \
+MIDGARD_DA_BOND_JOURNEY_REPORT_PATH=/abs/report.md \
+pnpm exec vitest run --config vitest.watcher-journeys.config.ts \
+  devnet/watcher-journeys/da-bond-pool-journey-live.test.ts
+```
+
+The test is skipped when `MIDGARD_WATCHER_JOURNEY_RUN_DIR` is unset.
+`MIDGARD_DA_BOND_JOURNEY_REPORT_PATH` is optional. Expect about 90 minutes: the
+withdraw delay (39 minutes on the local-devnet profile) and B1's response
+window (12 minutes, the small-payload window) dominate. Each dependent step also waits for one block after inclusion
+(`JOURNEY_ACTION_DEPTH`), roughly 20 seconds on this devnet. The test's own
+timeout is three hours.
+
+Kupo must match `*`, because the Open recovers its commitment and the challenge
+snapshots read outputs at every address. The adapter refuses a narrower pattern.
+
+### No watcher or committee daemon
+
+Nothing else may act on the chain while the journey runs. A watcher would
+contest B1 and B3 itself, and a DA committee node that holds the payloads would
+answer the withheld B1. The adapter reads the process table, including each
+process's environment, and refuses any watcher CLI or committee node process
+that names a path inside the run directory in its arguments or environment.
+That includes the shared journey session's watcher, so stop that session first,
+or run this journey on its own run directory. The adapter fails closed if it
+cannot read the process table or a daemon's environment.
+
+The only daemon admitted is the adapter's own committee node, and it is
+admitted by pid, never by command line. The adapter checks the process table
+before it spawns the node, after each spawn, before each step and before each
+Open. That node:
+
+- runs from `dist/index.js`, unmodified, with L1 submission and its submitter
+  preflight on;
+- has no DA signer key (`DA_SIGNER_INDEX` and every `DA_SIGNER_KEY_SOURCE*` are
+  unset) and no auto-fund key, and never receives a journey payload, so it
+  cannot attest, answer B1 or Apply;
+- submits with two fresh keys, distinct from each other and from every
+  operational key. Their addresses must hold the same UTxOs before each start
+  and after each stop, which shows it spent nothing;
+- has its own availability journal, database and API port. The port is derived
+  from the worktree path, so two worktrees do not collide.
+
+The node starts before step 1. It stops before step 2's commit, because its
+payload-free settle and Close would otherwise race B3. It restarts before step
+6 and stops again at the end of step 6. Each stop must exit 0 on SIGTERM, leave
+no daemon behind and find both submitter addresses unchanged for one node poll
+plus the finality lag after the exit, so a last-tick submission cannot land
+unseen, or the step it ended fails. The live test also requires the node to be
+stopped when the journey passes. If the journey fails before that, the node gets SIGTERM, then
+SIGKILL after a bound.
+
+No operator keeps the scheduler alive during the long waits, and none needs to.
+`max_inactivity` and the scheduler shift act only through strike and advance
+transactions, and nothing in a journey devnet submits them. The state queue's
+commit checks only that the scheduler's operator is the committer.
+
+### Signers and the challenger wallet
+
+The journey signs with the run's own keys from `secrets/journey-accounts.json`:
+
+- the operator commits, and the operator and cosigner sign the DA attestation;
+- the availability account pays for the top-up, funds the challenger and pays
+  the withdrawal fees;
+- the withdrawal quorum is `update_threshold` of the DA params owners, which on
+  a journey deployment are the operator and the cosigner. If the run lacks a
+  seed phrase or an owner key, the adapter raises
+  `DaBondJourneySigningMaterialError`, which names each missing item.
+
+The challenger is a separate key, created on first use in
+`secrets/da-bond-pool-challenger.seed` (mode 0600) and reused afterwards. The
+adapter refuses it if it matches the operator, publisher, cosigner, availability
+or reference-script deployer key. The availability account funds it with:
+
+- one exact Open coin per challenge (two):
+  `challenger_bond + challenge_record_lovelace + max_open_fee`;
+- one collateral coin covering the Timeout collateral bound (G9): the ledger's
+  collateral percentage of `penalty + max_timeout_fee`, plus a 5 ADA margin;
+- one operating coin, 250 ADA by default, for the removal fee and the challenge
+  command's capital checks.
+
+The funding transaction and plan are recorded in `challenger.json`.
+
+### Where the results land
+
+Everything goes under `work/journeys/da-bond-pool/` in the run directory:
+
+- `da-bond-pool-journey.json`: the stage ledger, with every transaction id by
+  label, the observations and the assertion results. It is written before the
+  test passes or fails, so a failed run keeps its partial ledger.
+- `timings.ndjson`: stage and wait timings.
+- `availability-journal.sqlite`: the challenge operation journal.
+- One file per committed block, the Timeout evidence, the served payload and
+  `challenger.json`.
+- `cli/`: one `NNN-<label>.json` per da-bond CLI chain, with each process's
+  argument vector, exit code, stdout, stderr and redacted environment, and one
+  `<time>-<label>/` directory per withdrawal step holding its
+  `unsigned.json` and each owner's `witness-<role>.json`.
+- `committee/`: the committee node's `committee.json`, one `NNN-<kind>.json`
+  record per start, observation and stop, the node's
+  `committee-<pid>.stdout.log` and `committee-<pid>.stderr.log`, its
+  `availability-journal.sqlite` and its `chain-sync-cursor.json`.
+
+When `MIDGARD_DA_BOND_JOURNEY_REPORT_PATH` is set, the test also writes the
+rendered report there. Its adapter is `live-devnet`, and it names the run
+directory, the deployment manifest, the network magic and the git head.
+
 ## Recovery and maturity
 
 Exercise follower outages while the producer continues, then replay the retained

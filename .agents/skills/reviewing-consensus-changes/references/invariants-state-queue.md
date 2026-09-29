@@ -222,8 +222,8 @@ Recurrence: 2.
 
 ## SQ10. Every state-queue element output carries no reference script
 
-Status: PARTIAL (tests and mutation runs read on the #693 worktree, not yet
-committed; no provenance commit to cite).
+Status: VERIFIED (code and tests re-read at the cited lines in the
+restacked tree, base `77244f439`; provenance is #693, `dd830b918`).
 
 Rule: every block node and the confirmed-state root is created with
 `reference_script == None`, and every arm that continues one pins `None`
@@ -261,7 +261,8 @@ each beside its honest control, all fail:
   user (Apply, Open, Close) as listed under DA6 in
   [invariants-da.md](invariants-da.md).
 
-Provenance: #693, orchestrator ruling P2. The hole was pre-existing since
+Provenance: #693 (`dd830b918`), orchestrator ruling P2. The hole was
+pre-existing since
 `090436fc3`, which added the `None` requirement to the fraud record while the
 commit arm and the DA core left the script free. Review action: a new arm
 that creates or continues an element must call the predicate `[review]`.
@@ -330,6 +331,48 @@ lovelace change to `== 0` or `>= 0`; a new arm that continues the root must
 not forbid the gain a relink needs; a new header field needs a width bound in
 the commit arm `[review]`.
 
+## SQ12. Append is refused while the queue head is Challenged
+
+Status: VERIFIED (code and tests re-read at the cited lines in the
+restacked tree, base `77244f439`; a fence mutant with the `Challenged` arm
+returning `True` fails both refusals below and passes both controls).
+
+Rule: a commit appends only while the queue head, the oldest unmerged block,
+allows it. The head's header must be valid and carry no proven fraud, and its
+DA status decides the rest:
+
+- `Unattested`: the commit's inclusive upper bound must be strictly before
+  `header.end_time + da_attestation_timeout_v1`. Append is refused once the
+  head is past its attestation timeout.
+- `Attested` or `Published`: append is allowed.
+- `Challenged`: append is refused.
+
+A challenged head ends either published by Close or removed by a timeout that
+prunes every block after it, so a block appended behind it could be built on
+data nobody can check. An unattested head past its timeout is waiting to be
+removed, with the same result.
+
+Enforced: `state_queue_head_allows_append_v1`
+(`validators/state-queue.ak:137-157`), called from the commit arm
+(`:1223-1228`) on the head the root names. Refused:
+`state_queue_commit_rejects_node_anchor_behind_challenged_head`
+(`validators/state-queue-commit.test.ak:761`, fails at the fence)
+`[aiken-test: state-queue-commit.test/]`; `append_fence_refuses_challenged_head`
+(`validators/state-queue-removal.test.ak:759`), with the controls
+`append_fence_accepts_attested_head` `:739` and
+`append_fence_accepts_published_head` `:747`, and the timeout boundary and
+marker identity pinned by
+`attestation_timeout_append_fence_pins_boundary_and_marker_identity` `:676`
+`[aiken-test: state-queue-removal.test/]`.
+
+Provenance: `3e3090aa1` (2026-08-31, the Q61 starvation fence) added the fence
+with all four arms. #688 (`f8c91dae8`) kept the `Challenged` refusal when it
+replaced the status shapes (decision C7). #692 recorded this entry. Spec
+#685 §4.4 says append is allowed on `Challenged`; that wording is wrong, and
+the code is authoritative. Review
+action: a change to the DA status type must give every new status an explicit
+arm here `[review]`.
+
 ## Miss patterns in this subtree
 
 - A check present in one arm and missing from its sibling (SQ5, SQ9).
@@ -338,3 +381,5 @@ the commit arm `[review]`.
   (`668673e9f`; SQ5's two-sided equality that binds only a redeemer field).
 - Tests that collect nothing or leave a mutant alive (SQ1).
 - An on-chain invariant tested only off-chain (SQ4).
+- A spec sentence that contradicts the enforced code (SQ12: spec #685 §4.4
+  allows append on a `Challenged` head; the fence refuses it).

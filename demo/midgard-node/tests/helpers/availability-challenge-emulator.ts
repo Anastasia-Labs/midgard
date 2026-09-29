@@ -596,6 +596,20 @@ export type AvailabilityFixtureOptions = {
       };
 };
 
+/** Reference-script roles only a commit fixture publishes. */
+const availabilityCommitReferenceScriptTargets = (
+  contracts: SDK.MidgardValidators,
+): readonly SDK.ReferenceScriptTarget[] => [
+  {
+    name: "state-queue commit withdrawal",
+    script: contracts.stateQueue.yields.commit.withdrawalScript,
+  },
+  {
+    name: "active-operators spending",
+    script: contracts.activeOperators.spendingScript,
+  },
+];
+
 /**
  * The genesis fixture represents an already deployed protocol and committed
  * block. No attestation, challenge, tranche, carrier or terminal asset is
@@ -618,6 +632,34 @@ export const createAvailabilityFixture = async (
   headerEndTimeLeadMs = 0,
   options: AvailabilityFixtureOptions = {},
 ) => {
+  const { target, ...fixture } = await createFixture(
+    payloadBytes,
+    descendantCount,
+    headerEndTimeLeadMs,
+    options,
+    false,
+  );
+  if (target === undefined) throw new Error("Incomplete genesis fixture");
+  return { ...fixture, target };
+};
+
+/**
+ * The fixture body. With `emptyQueue`, no block is seeded (the root's `next`
+ * is `Empty`, so `target` is undefined and `payload`, `commitment` and
+ * `queueUnit` name no on-chain block), and the fixture also holds what a real
+ * `CommitBlockHeader` needs: the scheduler naming the responder, the
+ * responder's active-operator node, the commit reference scripts and the
+ * registered commit yield. Only `createAvailabilityCommitFixture` sets it.
+ */
+const createFixture = async (
+  payloadBytes: number,
+  descendantCount: number,
+  headerEndTimeLeadMs: number,
+  options: AvailabilityFixtureOptions,
+  emptyQueue: boolean,
+) => {
+  if (emptyQueue && descendantCount !== 0)
+    throw new Error("An empty-queue fixture seeds no descendants");
   const parameters = TEST_AVAILABILITY_PARAMETERS;
   const oneShotHolder = generateEmulatorAccountFromPrivateKey({
     lovelace: 2_000_000_000n,
@@ -736,7 +778,7 @@ export const createAvailabilityFixture = async (
     descendants[i]!.datum.next = { Key: { key: descendants[i + 1]!.hash } };
   const rootDatum: SDK.LinkedListNodeView = {
     key: "Empty",
-    next: { Key: { key: headerHash } },
+    next: emptyQueue ? "Empty" : { Key: { key: headerHash } },
     data: SDK.castConfirmedStateToData(
       SDK.makeGenesisConfirmedState(BigInt(now - 2_000)),
     ) as SDK.LinkedListNodeView["data"],
@@ -795,11 +837,15 @@ export const createAvailabilityFixture = async (
         { lovelace: 3_000_000n, [paramsUnit]: 1n },
         Data.to(daParamsDatum, SDK.DaParamsDatum),
       ),
-      genesis(
-        contracts.stateQueue.spendingScriptAddress,
-        { lovelace: AVAILABILITY_QUEUE_NODE_LOVELACE, [queueUnit]: 1n },
-        SDK.encodeLinkedListNodeView(queueDatum),
-      ),
+      ...(emptyQueue
+        ? []
+        : [
+            genesis(
+              contracts.stateQueue.spendingScriptAddress,
+              { lovelace: AVAILABILITY_QUEUE_NODE_LOVELACE, [queueUnit]: 1n },
+              SDK.encodeLinkedListNodeView(queueDatum),
+            ),
+          ]),
       genesis(
         contracts.stateQueue.spendingScriptAddress,
         { lovelace: AVAILABILITY_QUEUE_NODE_LOVELACE, [rootUnit]: 1n },
@@ -831,6 +877,45 @@ export const createAvailabilityFixture = async (
               SDK.encodeDaBondPoolDatum(seededPool.datum),
             ),
           ]),
+      ...(emptyQueue
+        ? [
+            // The scheduler names the responder as the active operator.
+            genesis(
+              contracts.scheduler.spendingScriptAddress,
+              {
+                lovelace: 3_000_000n,
+                [contracts.scheduler.policyId + SDK.SCHEDULER_ASSET_NAME]: 1n,
+              },
+              Data.to(
+                {
+                  ActiveOperator: {
+                    operator: responderKey,
+                    start_time: BigInt(now),
+                  },
+                },
+                SDK.SchedulerDatum,
+              ),
+            ),
+            // The responder's active-operator node, no bond hold yet.
+            genesis(
+              contracts.activeOperators.spendingScriptAddress,
+              {
+                lovelace: 5_000_000n,
+                [contracts.activeOperators.policyId +
+                SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
+                responderKey]: 1n,
+              },
+              SDK.encodeLinkedListNodeView({
+                key: { Key: { key: responderKey } },
+                next: "Empty",
+                data: SDK.castActiveOperatorDatumToData({
+                  bond_unlock_time: null,
+                  inactivity_strikes: 0n,
+                }) as SDK.LinkedListNodeView["data"],
+              }),
+            ),
+          ]
+        : []),
     ],
     AVAILABILITY_EMULATOR_PARAMETERS,
   );
@@ -889,7 +974,10 @@ export const createAvailabilityFixture = async (
     );
   };
   const references = new Map<string, UTxO>();
-  for (const target of availabilityReferenceScriptTargets(contracts)) {
+  for (const target of [
+    ...availabilityReferenceScriptTargets(contracts),
+    ...(emptyQueue ? availabilityCommitReferenceScriptTargets(contracts) : []),
+  ]) {
     const { tx, layout } = await Effect.runPromise(
       SDK.completeReferenceScriptPublicationTxProgram({
         lucid: publishingLucid,
@@ -930,6 +1018,7 @@ export const createAvailabilityFixture = async (
     ...Object.values(contracts.availabilityChallenge.yields),
     contracts.stateQueue.yields.unavailableTimeout,
     contracts.stateQueue.yields.merge,
+    ...(emptyQueue ? [contracts.stateQueue.yields.commit] : []),
   ].map(({ withdrawalScript }) =>
     SDK.scriptRewardAddress("Preprod", withdrawalScript),
   );
@@ -962,7 +1051,7 @@ export const createAvailabilityFixture = async (
   if (
     !hubOracleRefInput ||
     !daParamsUtxo ||
-    !queueUtxo ||
+    (!queueUtxo && !emptyQueue) ||
     !rootUtxo ||
     !correctionLockUtxo ||
     !hubOneShotUtxo
@@ -984,15 +1073,18 @@ export const createAvailabilityFixture = async (
       maxTrancheCount: Number(parameters.response_geometry.max_tranche_count),
     }),
   });
-  const target: SDK.DaAttestationStateQueueTarget = {
-    headerHash,
-    stateQueueNode,
-    stateQueueUtxo: {
-      utxo: queueUtxo,
-      datum: queueDatum,
-      assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
-    },
-  };
+  const target: SDK.DaAttestationStateQueueTarget | undefined =
+    queueUtxo === undefined
+      ? undefined
+      : {
+          headerHash,
+          stateQueueNode,
+          stateQueueUtxo: {
+            utxo: queueUtxo,
+            datum: queueDatum,
+            assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
+          },
+        };
   const daReferences: SDK.DaAttestationReferenceScripts = {
     daAttestationMinting: reference("da-attestation minting"),
     daAttestationSpending: reference("da-attestation spending"),
@@ -2094,6 +2186,334 @@ export const advanceAvailabilityDeadline = (
       1,
   );
   f.emulator.awaitSlot(slots);
+};
+
+// ---------------------------------------------------------------------------
+// Commit fixture: an empty queue that real `CommitBlockHeader`s fill
+// ---------------------------------------------------------------------------
+
+/**
+ * A fixture whose state queue starts empty. It has no `target`: every block
+ * is committed by `commitAvailabilityBlock`, which returns an
+ * `AvailabilityFixture` for that block, so the attestation, challenge and
+ * timeout helpers above run against it unchanged.
+ */
+export type AvailabilityCommitFixture = Omit<
+  AvailabilityFixture,
+  "target" | "payload" | "commitment" | "queueUnit"
+>;
+
+/**
+ * The genesis fixture with an empty state queue, plus what a real commit
+ * needs: the scheduler naming the responder as the active operator, the
+ * responder's active-operator node, the `state-queue commit withdrawal` and
+ * `active-operators spending` reference scripts, and the registered commit
+ * yield.
+ */
+export const createAvailabilityCommitFixture = async (
+  options: AvailabilityFixtureOptions = {},
+): Promise<AvailabilityCommitFixture> => {
+  const {
+    target: _target,
+    payload: _payload,
+    commitment: _commitment,
+    queueUnit: _queueUnit,
+    ...fixture
+  } = await createFixture(14_021, 0, 0, options, true);
+  return fixture;
+};
+
+/** One state-queue element, as the queue's linked list holds it. */
+type AvailabilityQueueElement = {
+  readonly utxo: UTxO;
+  readonly view: SDK.LinkedListNodeView;
+  readonly assetName: string;
+};
+
+const availabilityQueueElements = async (
+  f: AvailabilityCommitFixture,
+): Promise<AvailabilityQueueElement[]> => {
+  const policy = f.contracts.stateQueue.policyId;
+  const elements: AvailabilityQueueElement[] = [];
+  for (const utxo of await f.lucid.utxosAt(
+    f.contracts.stateQueue.spendingScriptAddress,
+  )) {
+    const unit = Object.keys(utxo.assets).find(
+      (candidate) => candidate !== "lovelace" && candidate.startsWith(policy),
+    );
+    if (unit === undefined) continue;
+    elements.push({
+      utxo,
+      view: await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
+      assetName: unit.slice(policy.length),
+    });
+  }
+  return elements;
+};
+
+/** The live root and correction lock. */
+const liveAvailabilityAnchors = async (f: AvailabilityCommitFixture) => {
+  const [rootUtxo] = await f.lucid.utxosAtWithUnit(
+    f.contracts.stateQueue.spendingScriptAddress,
+    f.rootUnit,
+  );
+  const [correctionLockUtxo] = await f.lucid.utxosAtWithUnit(
+    f.contracts.correctionLock.spendingScriptAddress,
+    SDK.correctionLockUnit(f.contracts.hubOracle.policyId),
+  );
+  if (!rootUtxo || !correctionLockUtxo)
+    throw new Error("The state-queue root or the correction lock is missing");
+  return {
+    rootUtxo,
+    rootDatum: await Effect.runPromise(
+      SDK.getLinkedListNodeViewFromUTxO(rootUtxo),
+    ),
+    correctionLockUtxo,
+  };
+};
+
+/** The block's live queue node as an attestation target, if still queued. */
+export const liveAvailabilityTarget = async (
+  f: AvailabilityFixture,
+): Promise<SDK.DaAttestationStateQueueTarget | undefined> => {
+  const [utxo] = await f.lucid.utxosAtWithUnit(
+    f.contracts.stateQueue.spendingScriptAddress,
+    f.queueUnit,
+  );
+  if (utxo === undefined) return undefined;
+  const datum = await Effect.runPromise(
+    SDK.getLinkedListNodeViewFromUTxO(utxo),
+  );
+  return {
+    headerHash: f.target.headerHash,
+    stateQueueNode: Data.castFrom(datum.data, SDK.StateQueueNode),
+    stateQueueUtxo: {
+      utxo,
+      datum,
+      assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + f.target.headerHash,
+    },
+  };
+};
+
+/**
+ * `f` with the live root, correction lock and block node, for a helper that
+ * spends them (`buildAvailabilityTimeout`) after other transactions moved
+ * them.
+ */
+export const withLiveAvailabilityQueue = async (
+  f: AvailabilityFixture,
+): Promise<AvailabilityFixture> => {
+  const target = await liveAvailabilityTarget(f);
+  if (target === undefined)
+    throw new Error(`Block ${f.target.headerHash} is no longer queued`);
+  return { ...f, ...(await liveAvailabilityAnchors(f)), target };
+};
+
+export type AvailabilityCommittedBlock = AvailabilityFixture & {
+  readonly commitTxHash: string;
+  /** The header's `end_time`: the commit's inclusive validity upper bound. */
+  readonly headerEndTime: bigint;
+};
+
+const hashHeader = (header: SDK.Header): Promise<string> =>
+  Effect.runPromise(SDK.hashBlockHeader(header));
+
+/**
+ * Commits one block with the real `CommitBlockHeader` (the SDK builder the
+ * node uses) after the queue's tail, signed by the responder as the
+ * scheduler's active operator. The header is empty (no events), valid for
+ * `validForMs` from now, with `end_time = validTo - 1`, and carries over from
+ * its anchor (the confirmed state for an empty queue, else the tail).
+ *
+ * Returns an `AvailabilityFixture` for the committed block: `target`,
+ * `payload`, `commitment` and `queueUnit` are the block's, and the root and
+ * correction lock are live as of the commit.
+ */
+export const commitAvailabilityBlock = async (
+  f: AvailabilityCommitFixture,
+  options: { payloadBytes?: number; validForMs?: number } = {},
+): Promise<AvailabilityCommittedBlock> => {
+  const { lucid, contracts } = f;
+  const payloadBytes = options.payloadBytes ?? 14_021;
+  const elements = await availabilityQueueElements(f);
+  const root = elements.find((element) => element.view.key === "Empty");
+  const tail = elements.find((element) => element.view.next === "Empty");
+  if (!root || !tail) throw new Error("The state queue has no root or tail");
+  const queueIsEmpty = tail === root;
+  const headKey = root.view.next;
+  const head =
+    headKey === "Empty"
+      ? undefined
+      : elements.find(
+          (element) =>
+            element.view.key !== "Empty" &&
+            element.view.key.Key.key === headKey.Key.key,
+        );
+  if (!queueIsEmpty && head === undefined)
+    throw new Error("The state queue's head node is missing");
+  let anchor: { headerHash: string; utxosRoot: string; endTime: bigint };
+  if (tail.view.key === "Empty") {
+    const confirmed = Data.castFrom(tail.view.data, SDK.ConfirmedState);
+    anchor = {
+      headerHash: confirmed.headerHash,
+      utxosRoot: confirmed.utxoRoot,
+      endTime: confirmed.endTime,
+    };
+  } else {
+    const node = Data.castFrom(tail.view.data, SDK.StateQueueNode);
+    anchor = {
+      headerHash: tail.view.key.Key.key,
+      utxosRoot: node.header.utxosRoot,
+      endTime: node.header.endTime,
+    };
+  }
+  const validFrom = f.emulator.now();
+  const validTo = validFrom + (options.validForMs ?? 60_000);
+  const header: SDK.Header = {
+    prevUtxosRoot: anchor.utxosRoot,
+    utxosRoot: anchor.utxosRoot,
+    withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
+    startTime: anchor.endTime,
+    endTime: BigInt(validTo - 1),
+    blockSlot: 0n,
+    expectedNetworkId: 0n,
+    minFeeA: 44n,
+    minFeeB: 155381n,
+    prevHeaderHash: anchor.headerHash,
+    operatorVkey: f.responderKey,
+    protocolVersion: 1n,
+  };
+  const [schedulerRefInput] = await lucid.utxosAtWithUnit(
+    contracts.scheduler.spendingScriptAddress,
+    contracts.scheduler.policyId + SDK.SCHEDULER_ASSET_NAME,
+  );
+  const [activeOperatorInput] = await lucid.utxosAtWithUnit(
+    contracts.activeOperators.spendingScriptAddress,
+    contracts.activeOperators.policyId +
+      SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
+      f.responderKey,
+  );
+  if (!schedulerRefInput || !activeOperatorInput?.datum)
+    throw new Error("Not a commit fixture: no scheduler or operator node");
+  const { correctionLockUtxo } = await liveAvailabilityAnchors(f);
+  lucid.selectWallet.fromPrivateKey(f.responder.privateKey);
+  // One funding coin, never the collateral coin.
+  const [funding] = (await lucid.wallet().getUtxos())
+    .filter(
+      (u) =>
+        u.assets.lovelace !== AVAILABILITY_COLLATERAL_COIN_LOVELACE &&
+        Object.keys(u.assets).length === 1 &&
+        !u.datum &&
+        !u.datumHash &&
+        !u.scriptRef,
+    )
+    .sort((a, b) => (a.assets.lovelace > b.assets.lovelace ? -1 : 1));
+  if (!funding) throw new Error("The responder holds no funding coin");
+  const { tx, newHeaderHash } = await Effect.runPromise(
+    SDK.buildCommitBlockHeaderTxProgram({
+      lucid,
+      contracts,
+      latestBlock: {
+        utxo: tail.utxo,
+        datum: tail.view,
+        assetName: tail.assetName,
+      },
+      updatedNodeDatum: {
+        ...tail.view,
+        next: { Key: { key: await hashHeader(header) } },
+      },
+      newHeader: header,
+      validFrom,
+      validTo,
+      witness: {
+        operatorKeyHash: f.responderKey,
+        schedulerRefInput,
+        hubOracleRefInput: f.hubOracleRefInput,
+        correctionLockRefInput: {
+          utxo: correctionLockUtxo,
+          datum: "Idle",
+          assetName: SDK.CORRECTION_LOCK_ASSET_NAME,
+        },
+        ...(queueIsEmpty
+          ? {}
+          : {
+              confirmedStateRefInput: root.utxo,
+              ...(head === undefined || head === tail
+                ? {}
+                : { headStateQueueNodeRefInput: head.utxo }),
+            }),
+        activeOperatorInput: {
+          ...activeOperatorInput,
+          datum: activeOperatorInput.datum,
+        },
+        activeOperatorsSpendingScript: contracts.activeOperators.spendingScript,
+        activeOperatorsSpendingScriptRef: f.reference(
+          "active-operators spending",
+        ),
+        stateQueueSpendingScriptRef: f.reference("state-queue spending"),
+        stateQueueMintingScriptRef: f.reference("state-queue minting"),
+        stateQueueCommitYieldScriptRef: f.reference(
+          "state-queue commit withdrawal",
+        ),
+        operatorWalletView: { knownUtxos: [funding], consumedOutRefs: [] },
+      },
+      activeOperatorMaturityDurationMs: BigInt(
+        AVAILABILITY_PROFILE.timing.block_maturity_ms,
+      ),
+    }),
+  );
+  const signed = await tx.sign.withWallet().complete();
+  const commitTxHash = await signed.submit();
+  f.emulator.awaitBlock(1);
+  const queueUnit =
+    contracts.stateQueue.policyId +
+    SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
+    newHeaderHash;
+  const [queueUtxo] = await lucid.utxosAtWithUnit(
+    contracts.stateQueue.spendingScriptAddress,
+    queueUnit,
+  );
+  if (!queueUtxo) throw new Error("The commit produced no queue node");
+  const datum = await Effect.runPromise(
+    SDK.getLinkedListNodeViewFromUTxO(queueUtxo),
+  );
+  const payload = Uint8Array.from(
+    { length: payloadBytes },
+    (_, i) => (i * 17 + 3) % 256,
+  );
+  const commitment = SDK.buildDaAvailabilityCommitment({
+    deploymentIdentity: contracts.hubOracle.policyId,
+    headerHash: newHeaderHash,
+    payload,
+    responseGeometry: SDK.availabilityResponseGeometry({
+      chunkByteLength: Number(f.parameters.response_geometry.chunk_byte_length),
+      trancheByteLength: Number(
+        f.parameters.response_geometry.tranche_byte_length,
+      ),
+      maxTrancheCount: Number(f.parameters.response_geometry.max_tranche_count),
+    }),
+  });
+  return {
+    ...f,
+    ...(await liveAvailabilityAnchors(f)),
+    target: {
+      headerHash: newHeaderHash,
+      stateQueueNode: Data.castFrom(datum.data, SDK.StateQueueNode),
+      stateQueueUtxo: {
+        utxo: queueUtxo,
+        datum,
+        assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash,
+      },
+    },
+    payload,
+    commitment,
+    queueUnit,
+    commitTxHash,
+    headerEndTime: header.endTime,
+  };
 };
 
 export { credentialToRewardAddress };

@@ -73,6 +73,14 @@ even when public retrieval is unavailable. Missing or corrupt retained data is
 reported without submitting a response; timeout remains available through the
 independent challenger workflow.
 
+Answering every challenge before its response deadline is what keeps the pool
+whole: an unanswered challenge on the queue head times out and takes one DA
+bond from the pool. The Timeout also prunes the head's descendants without a
+further slash, so liability is one bond per withholding episode. A challenge
+also stalls the whole chain while it lasts: the state queue refuses every
+Append while its head is `Challenged`, until the challenge is closed, which
+sets the head to `Published`, or times out.
+
 The native queue scanner collects retention evidence from finalized ordered
 transitions and their exact consumed queue outputs. Published outputs prove a
 closed challenge; final unavailable removal binds the original challenge through

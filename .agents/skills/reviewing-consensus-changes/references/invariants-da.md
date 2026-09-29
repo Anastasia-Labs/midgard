@@ -96,8 +96,8 @@ moved the timeout cap onto `c` (decision D4).
 
 ## DA5. An attestation applies only while the pooled bond backs it, and its value returns to its beneficiary
 
-Status: PARTIAL (tests and mutation runs read on the #688 branch, not yet
-committed; no provenance commit to cite).
+Status: VERIFIED (code and tests re-read at the cited lines in the
+restacked tree, base `77244f439`; provenance is #688, `f8c91dae8`).
 
 Rule: `ApplyToStateQueue` reads the authentic DA bond pool (payment credential
 `Script(da_bond_pool_policy_id)`, NFT quantity 1, inline datum) and requires
@@ -116,13 +116,14 @@ passes at exactly one bond; `..._rejects_pool_backing_below_one_bond`,
 The two index-distinctness checks are implied by the token and datum shapes
 and cannot fail alone; they are defence in depth.
 
-Provenance: #688 (spec #685, decision C3; the refund index is an amendment
-that closed the submitter taking the attestation's lovelace).
+Provenance: #688 (`f8c91dae8`; spec #685, decision C3; the refund index is
+an amendment that closed the submitter taking the attestation's lovelace).
 
 ## DA6. A node's DA status binds one commitment, and every challenge step presents its preimage
 
-Status: PARTIAL (tests and mutation runs read on the #688 branch, not yet
-committed).
+Status: VERIFIED (code and tests re-read at the cited lines in the
+restacked tree, base `77244f439`; provenance is #688, `f8c91dae8`, and #693,
+`dd830b918`).
 
 Rule: apply writes `Attested{commitment_hash_v1(burned commitment)}`, with the
 commitment canonical and naming this deployment and header. An open decodes
@@ -159,13 +160,13 @@ and at the core (`da_core_apply_rejects_node_output_reference_script`,
 `da_core_open_...` and `da_core_close_...` at
 `lib/midgard/state-queue.test.ak:667-683`, control `:655`); all fail.
 
-Provenance: #688 (decisions C1, C4, C5, G6); #693 (ruling P2) added the
-reference-script pin.
+Provenance: #688 (`f8c91dae8`; decisions C1, C4, C5, G6); #693
+(`dd830b918`; ruling P2) added the reference-script pin.
 
 ## DA7. A challenge record is authentic only at the availability address holding its token
 
-Status: PARTIAL (tests and mutation runs read on the #688 branch, not yet
-committed).
+Status: VERIFIED (code and tests re-read at the cited lines in the
+restacked tree, base `77244f439`; provenance is #688, `f8c91dae8`).
 
 Rule: open pins the record output exactly (availability address, no reference
 script, `challenge_record_lovelace` plus the one minted DACH, inline datum
@@ -195,12 +196,12 @@ output) are implied by the address, value and token shapes each role must
 have, and none can fail alone: with any one removed, every test stays green,
 including the `q58_*_aliased_*` tests, whose refusals are overdetermined. They are defence in depth, as in DA5.
 
-Provenance: #688 (decisions C4, C6, G6).
+Provenance: #688 (`f8c91dae8`; decisions C4, C6, G6).
 
 ## DA8. A lost challenge charges the pool, up to one bond, in the timeout transaction
 
-Status: PARTIAL (tests and mutation runs read on the #693 worktree, not yet
-committed; no provenance commit to cite).
+Status: VERIFIED (code and tests re-read at the cited lines in the
+restacked tree, base `77244f439`; provenance is #693, `dd830b918`).
 
 Rule: `TimeoutChallenge` spends the authentic DA bond pool at
 `pool_input_index` (payment credential `Script(da_bond_pool_policy_id)`, NFT
@@ -283,8 +284,27 @@ with an every-other-script-accepts control,
 `..._without_pool_*_timeout_yield_refuses` `:1467-1471` (prune and head
 each), and `..._top_up_in_place_of_slash_pool_refuses` `:1498`.
 
-Provenance: #693 (decisions D1-D4, G2, G3, G4, B4). The interim rule it
-replaces, from #688, refunded the challenger and took nothing from the pool.
+Liability is one bond per withholding episode, not one pool. A timeout needs
+the withheld block to be the queue head: `remove_unavailable_head_v1`
+(`validators/state-queue.ak:1006`) requires `removed_link == None` (`:1048`),
+and `prune_unavailable_block_descendant_v1` (`:941`) requires the head link to
+be the unavailable header's hash (`:964`). The slash runs only on the first,
+Idle-lock step; the blocks queued after the withheld one are pruned in
+`Locked` resume steps without a slash. Apply requires a `Bonded` pool with one
+full bond of backing (DA5). So no block applied while the pool was full
+survives a slash to face a smaller pool, and the pool is never slashed twice
+for blocks applied before the first slash. A pool below one bond (`taken =
+backing < da_bond`) is reachable only by a late timeout after the owners'
+`CompleteWithdraw`. The withdrawal delay puts `unlock_at` at or after the
+latest timely timeout (A6 in
+[the decision record](../../../../docs/midgard/decisions/da-committee-bond-pool.md)),
+so a timely challenger always meets a full bond `[review]`. Review action: a
+change that lets a timeout remove a non-head block, or lets Apply run against
+less than one bond, breaks this bound.
+
+Provenance: #693 (`dd830b918`; decisions D1-D4, G2, G3, G4, B4); the
+one-bond-per-episode bound is ruling P7. The interim rule it replaces, from
+#688 (`f8c91dae8`), refunded the challenger and took nothing from the pool.
 Blind spot: Slash never reads the availability mint redeemer; against a
 Close in its place it relies on Close's input and output counts and its node
 transition, so relaxing Close (for example, batching it) reopens a drain

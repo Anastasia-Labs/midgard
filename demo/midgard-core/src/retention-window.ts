@@ -18,6 +18,7 @@
 
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
 import { DA_TRANSPORT_LIMITS } from "./da-transport.js";
+import { DEPLOYMENT_PROFILES } from "./generated-deployment-profiles.js";
 
 /** Milliseconds in one calendar-independent 24h day. */
 export const RETENTION_MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -90,12 +91,22 @@ export const MIDGARD_RETENTION_WINDOW: RetentionWindow =
 // cover the still-challengeable horizon. If a future profile edit breaks this,
 // every importer fails at load rather than silently pruning live evidence.
 //
-// `requiredRetentionMs` is also the prune horizon of `daRetentionPruneDecision`.
-// When the time-based availability-challenge bond reclaim lands, a payload must
-// stay retained for as long as an availability challenge can be opened and
-// answered, so this assertion must then also check
-// `requiredRetentionMs >= daChallengeWindowMs + responseDeadlineMs`. That
-// plan's own relation (challenge window <= block maturity) already implies it.
+// `requiredRetentionMs` is also the prune horizon of `daRetentionPruneDecision`,
+// but that horizon alone does not keep a payload for as long as the pooled DA
+// bond can still be slashed over it: on the testing profiles the latest
+// response deadline (challenge window plus full response window after the
+// block's end time) lies past the horizon. Retention for an availability
+// challenge rests on the `live_in_queue` arm instead. A header is live in the
+// queue for as long as it can be challenged, provided that
+// `da_challenge_window_ms <= block_maturity_ms` in every profile:
+//   - an Open must land strictly before `end_time + da_challenge_window_ms`,
+//     and a merge no earlier than `end_time + block_maturity_ms`, so every Open
+//     lands while the header is still in the queue;
+//   - a `Challenged` header never merges, so it stays live until Close
+//     publishes the payload on L1 or a timeout removes the header and slashes
+//     the pool, after which there is nothing left to answer.
+// `assertDaChallengeWindowWithinMaturity` checks that relation for every
+// deployment profile at module load, below.
 if (
   !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW.deployedRetentionMs) ||
   !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW.requiredRetentionMs) ||
@@ -109,6 +120,49 @@ if (
       MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     )}`,
   );
+}
+
+/**
+ * Fail-closed check that a deployment profile's DA challenge window fits inside
+ * its block maturity, so every availability challenge opens while its header
+ * is still live in the state queue, where `daRetentionPruneDecision` retains it
+ * (see the note above the retention-window assertion). Rejects malformed or
+ * non-positive timing before comparing.
+ */
+export const assertDaChallengeWindowWithinMaturity = (
+  profileName: string,
+  timing: {
+    readonly block_maturity_ms: unknown;
+    readonly da_challenge_window_ms: unknown;
+  },
+): void => {
+  const maturityMs = timing.block_maturity_ms;
+  const challengeWindowMs = timing.da_challenge_window_ms;
+  if (
+    typeof maturityMs !== "number" ||
+    !Number.isSafeInteger(maturityMs) ||
+    maturityMs <= 0 ||
+    typeof challengeWindowMs !== "number" ||
+    !Number.isSafeInteger(challengeWindowMs) ||
+    challengeWindowMs <= 0
+  ) {
+    throw new Error(
+      `Deployment profile ${profileName}: block_maturity_ms and da_challenge_window_ms must be positive safe integers of ms`,
+    );
+  }
+  if (challengeWindowMs > maturityMs) {
+    throw new Error(
+      `Deployment profile ${profileName}: da_challenge_window_ms=${String(
+        challengeWindowMs,
+      )} must not exceed block_maturity_ms=${String(
+        maturityMs,
+      )}, or an availability challenge could open after its header merged and its payload was pruned`,
+    );
+  }
+};
+
+for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
+  assertDaChallengeWindowWithinMaturity(profile.name, profile.timing);
 }
 
 /**

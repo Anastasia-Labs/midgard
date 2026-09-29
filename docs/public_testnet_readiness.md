@@ -262,6 +262,17 @@ Previously implemented portions of a combined gate still need release verificati
       detection, init/steps/conclusion, permanent proof-token mint, fraudulent block
       removal, and operator/slashing effects. Prove valid blocks cannot be challenged.
       Cover size/budget bounds and maximum shapes, cancellation, retry, and resume.
+- [ ] Pooled DA committee bond ([decision record](midgard/decisions/da-committee-bond-pool.md),
+      spec #685): implemented in #686–#691. An attestation applies only while
+      one `Bonded` pool holds at least one DA bond of backing; an availability
+      timeout slashes the pool exactly (penalty as the fee, the rest to the
+      challenger in one output); permissionless top-up, the owner-quorum
+      two-step withdrawal and low-backing/`Withdrawing` alerts are in place.
+      Liability is one bond per withholding episode. Fault proofs remain
+      accepted as non-functional on the testing profiles. The public-profile
+      bond figures await owner confirmation in F04; the earlier 500 ADA ruling
+      was infeasible only while the DA bond had to equal the challenger bond.
+      Live devnet evidence: pending (wave 3).
 - [ ] Bind every append/header to verifiable L1-visible DA commitment/attestation
       covering full tx payloads, opened preimages, proof metadata, and member counts.
       Independent committee/storage nodes validate the exact header/payload relation,

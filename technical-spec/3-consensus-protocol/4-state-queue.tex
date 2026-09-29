@@ -10,6 +10,9 @@ An ordinary node stores \code{StateQueueNode\{header, da\_attestation\}}; its ke
 The root stores \code{ConfirmedState}.
 The schematic header-only datum below omits this availability status.
 Merge requires status \code{Attested} or \code{Published}, maturity, a valid versioned header, and exact commitment/count binding.
+Append reads the queue head, the oldest unmerged block, which must have a valid header and no proven fraud.
+Append is refused while the queue head is \code{Challenged}, and while the head is \code{Unattested} past its attestation timeout: the commit's inclusive upper bound must lie strictly before the head's end time plus the attestation timeout.
+A \code{Challenged} head either publishes or is removed together with every block after it, so nothing may be appended behind it.
 Spending also permits authenticated DA-attestation and availability-status updates through their coupled policies; only structural list mutations forward to the state-queue mint policy.
 The policy additionally supports attestation-timeout correction and correction-lock ordering, described after the schematic below.
 

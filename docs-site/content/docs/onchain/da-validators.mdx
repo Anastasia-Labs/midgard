@@ -22,8 +22,10 @@ Their Aiken/blueprint module identifiers include `da_attestation`,
   own.
 - **`da-bond-pool`**: the committee's one pooled DA bond, a single UTxO
   identified by a one-shot NFT that is never burned. Anyone may top it up. Only
-  an availability-challenge timeout slashes it, taking
-  `da_slash_penalty_lovelace` first. The DA params owner quorum withdraws from
+  an availability-challenge timeout slashes it: it takes one
+  `da_bond_lovelace`, or the whole backing when less is left, and fills
+  `da_slash_penalty_lovelace` (the transaction fee) first, paying the rest to
+  the challenger. The DA params owner quorum withdraws from
   it in two steps (`BeginWithdraw`, then `CompleteWithdraw` after
   `da_bond_withdraw_delay_ms`), and can cancel a pending withdrawal.
 - **`da-params-governor`**: governs the DA parameters (for example the committee
@@ -32,8 +34,13 @@ Their Aiken/blueprint module identifiers include `da_attestation`,
 - **`availability-challenge`**: governs retained-data challenges against an
   attested block: opening a challenge record funded by the challenger,
   publication tranches, closing on a complete response, and the timeout that
-  slashes the DA bond pool and removes the withheld block. Queue availability is
-  typed state rather than a policy-id marker. See the
+  slashes the DA bond pool and removes the withheld block. A timeout needs the
+  withheld block to be the queue head; it removes that head and prunes every
+  descendant without a further slash, so liability is one DA bond per
+  withholding episode. The state queue refuses every Append while its head is
+  `Challenged`, and while its head is `Unattested` past its attestation
+  timeout. Queue availability is typed state rather than a policy-id marker.
+  See the
   [committee contract boundary](/docs/watchers/da-committee-node#contract-boundary).
 
 <Callout type="info" title="Blueprint note">

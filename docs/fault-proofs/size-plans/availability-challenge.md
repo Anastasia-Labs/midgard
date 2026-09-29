@@ -71,6 +71,20 @@ The split originally had a fifth arm that minted a per-block bond at DA
 attestation. The pooled DA committee bond (#685) removed it: Apply checks the
 one pool instead, and a Timeout slashes the pool.
 
+The Timeout yield takes the pool as a mandatory input, even at zero backing,
+and checks the slash exactly. With `backing` the pool's lovelace above its
+floor, `taken = min(da_bond_lovelace, backing)`,
+`fee_part = min(da_slash_penalty_lovelace, taken)` and
+`payout = taken − fee_part`. The pool output keeps its address, datum and NFT
+and holds `taken` less lovelace. The transaction fee is exactly
+`fee_part + c`, where `c` is the challenger's own fee contribution,
+`0 ≤ c ≤ max_timeout_fee_lovelace`. The challenger receives one merged output
+of `remaining − c + challenge_record_lovelace + payout`: a separate reward
+output with `0 < payout <` min-UTxO would make the Timeout unbuildable, while
+the merged output always carries at least the record lovelace. The builder sets
+`c` to the part of the required ledger fee that `fee_part` does not cover, so
+with a full pool `c = 0` and the fee is exactly the penalty.
+
 The existing `AvailabilityChallengeSpend` and `AvailabilityChallengeMint` roles
 remain on the dispatcher. Match role bytes between Aiken, SDK and core tables;
 all asset names must fit 32 bytes.

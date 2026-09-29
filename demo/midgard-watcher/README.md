@@ -204,6 +204,28 @@ original peers still withhold it. Startup reconciles signed intents before new
 actions; rollback revokes actuation immediately. A rollback through finalized
 availability state halts the journal and requires authenticated recovery.
 
+A withheld header can be timed out only once it is the queue head. Its Timeout
+slashes the DA bond pool once, removes that head and prunes every descendant
+without a further slash, so the committee's liability is one DA bond per
+withholding episode, not one per withheld block. A descendant the watcher had
+also challenged is pruned with its challenge, which strands that challenge's
+record and challenger bond; the watcher still opens it, because if the
+ancestor's challenge is answered instead, the descendant would otherwise merge
+unchallenged. While the queue head is `Challenged`, the state queue refuses
+every Append, as it does while the head is `Unattested` past its attestation
+timeout, so block production stalls until the head's challenge is closed or
+times out.
+
+Timeout is permissionless, so several watchers can race the same header. When
+another transaction consumes a pending intent's inputs first, reconciliation
+expires the intent once its validity has passed, releases its reservations, and
+the watcher moves on to its next step. It expires the intent either when one
+normal input is spent while another is still unspent at the same point, or when
+a normal input was consumed by another valid canonical transaction at
+confirmation depth. That spend counts only after the consuming transaction is
+read back and shown to be valid and to list the input. Missing inputs alone
+never expire an intent.
+
 The watcher also reads the pooled DA bond on every availability reconcile, in a
 read of its own bound to the same finalized point as its availability
 snapshots, whether or not a header is pending. `GET /v1/status` serves the latest readout as `daBondPool`:

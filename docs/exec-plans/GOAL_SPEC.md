@@ -373,10 +373,27 @@ resolves them as follows so parallel tasks do not select incompatible designs:
    response from L1; a private endpoint or a fresh signature is insufficient.
    Successful exact publication closes only the availability challenge and
    does not excuse malformed or root-mismatched content. Timeout authorizes
-   deterministic header/descendant correction and slashing of the
-   deployment-bound DA accountability bond. Retention is at least maturity
+   deterministic header/descendant correction and a DA slash of the one DA
+   bond pool that backs the whole committee. Retention is at least maturity
    plus measured worst-case proof time and margin. An undocumented honesty
-   assumption is not an acceptable closure.
+   assumption is not an acceptable closure. The pool (spec #685) replaced the
+   per-block DA bond:
+   - One pool UTxO holds the `MIDGARD_DA_BOND_POOL` NFT, in state `Bonded` or
+     `Withdrawing{unlock_at}`. Its backing is `max(0, lovelace − floor)`.
+   - An attestation applies only while the pool is `Bonded` with backing of at
+     least `da_bond`. No bond is posted per block.
+   - Anyone may top up the pool, by at least the minimum top-up. BeginWithdraw,
+     CancelWithdraw and CompleteWithdraw need the DA params owner quorum.
+     `unlock_at` is the BeginWithdraw validity upper bound plus
+     `da_bond_withdraw_delay`, which outlasts the latest timely slash of any
+     block the pool backs.
+   - Timeout must spend the pool, even at zero backing:
+     `taken = min(da_bond, backing)`, `fee_part = min(penalty, taken)` and
+     `payout = taken − fee_part`. The pool keeps `pool − taken` with the same
+     datum and NFT, and `tx.fee = fee_part + c` with
+     `0 ≤ c ≤ max_timeout_fee`. The challenger receives one merged output: its
+     remaining reserve less `c`, plus the challenge record lovelace, plus
+     `payout`.
 6. **Proof selection is deterministic.** The final rule bundle contains a
    total, versioned violation-priority table. It selects the earliest invalid
    transition/event and then the table's stable family order. No provable fault
@@ -384,7 +401,9 @@ resolves them as follows so parallel tasks do not select incompatible designs:
 7. **Economics are nonzero and release-bound.** Bond, slash, inactivity
    penalty, prover reward, fee/collateral requirements, and deadline margins
    come from the approved F04 decision record and are included in the
-   deployment/release identity.
+   deployment/release identity. The pooled DA bond amounts and timing
+   (spec #685) are among them, as deployment-profile and availability
+   `ParametersV1` values.
 8. **Finality is depth- and chain-point-based.** Acceptance mode declares
    exactly one L1-source mode:
 
@@ -981,7 +1000,7 @@ still judged for the whole family.
 | Q55 | Violation-to-family coverage table | Q10–Q54, Q58          | Every enabled violation maps deterministically to exactly one primary proof route or an explicitly ordered equivalent; unknown/unprovable maps to `unprovable_gap`, never `verified`.                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Q56 | Emulator family sweep              | Q50–Q55, Q58–Q63      | Every launch-scope family completes its atomic lifecycle and every valid-block negative rejects.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Q57 | Target-testnet family sweep        | QG2, CG5, C81         | Every launch-scope family completes against the fresh final deployment; evidence binds tx hashes, chain points, blueprint, manifest, parameters, release digest, and final correction. One live execution per family is the intent: a single drill instance may generate the evidence for Q57, C83, and W45 simultaneously when it meets each claim's requirements (Q57 binding, C83 lifecycle completion, W45 autonomous watcher drive); each task claims that evidence once its own dependencies pass, and no family is rerun live solely because a different task ID also claims it. |
-| Q58 | Bond-backed availability challenge | Q01, Q03, Q44, Q53    | Timely challenge blocks merge; complete-item L1 inline-datum publication is preferred, with the fewest necessity-justified ordered multi-output/chunk receipts and an exact terminal accumulator when one publication cannot fit; wrong item/chunk, offset, length, hash, order, header, deployment, or deadline rejects; timeout enables deterministic correction and exact DA-bond slash.                                                                                                                                                                                             |
+| Q58 | Bond-backed availability challenge | Q01, Q03, Q44, Q53    | Timely challenge blocks merge; complete-item L1 inline-datum publication is preferred, with the fewest necessity-justified ordered multi-output/chunk receipts and an exact terminal accumulator when one publication cannot fit; wrong item/chunk, offset, length, hash, order, header, deployment, or deadline rejects; timeout enables deterministic correction and the exact DA slash of the pooled bond (#685).                                                                                                                                                                    |
 | Q59 | Availability tooling and lifecycle | Q51, Q54, Q58         | Public evidence builder, challenge/respond/timeout/correct commands, watcher adapter, emulator lifecycle, restart/reconcile tests, retention checks, and maturity-margin measurement; final target-testnet use is part of Q57.                                                                                                                                                                                                                                                                                                                                                          |
 | QG1 | Coverage gate                      | Q10–Q50, Q55, Q58–Q63 | No `PARTIAL`, documented-missing, required-undocumented, unreachable, stub, untooled, or untested fund-safety row remains. QG1 is the local-closure gate: it requires §9.1 `LOCAL_PASS`, never live evidence.                                                                                                                                                                                                                                                                                                                                                                           |
 | QG2 | Local state-correction gate        | Q51–Q56, Q58–Q63      | Every family and unavailable-data path completes locally/emulator from public evidence through deterministic correction, exact slash/reward, restart, and due-event preservation.                                                                                                                                                                                                                                                                                                                                                                                                       |

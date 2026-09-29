@@ -246,6 +246,11 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    Run `node dist/index.js deployment-status` to reconcile an existing identity
    before repeating any of these.
 
+   `init` also creates the pooled DA committee bond and funds it with the pool
+   floor plus one DA bond from the `init` wallet: 505 ADA on the testing
+   profiles and 100,005 ADA on the public ones, on top of the other init costs.
+   See [DA bond pool commands](docs/da-bond-commands.md).
+
 7. Run the full stack:
 
    ```sh
@@ -450,6 +455,16 @@ enabled by `OPERATOR_WATCHDOG_ENABLED` (default `true`) with
 automatically. See the operator lifecycle page in the docs site
 (`docs-site/content/docs/operators/node/operator-lifecycle.mdx`) for the
 vocabulary table, recovery paths, and the status report.
+
+## DA Bond Pool and Availability Challenges
+
+One pooled DA bond backs every attestation of the DA committee. The `da-bond`
+command group reads the pool, tops it up (anyone may) and runs the owner
+quorum's two-step withdrawal through an offline multi-signer flow; see
+[DA bond pool commands](docs/da-bond-commands.md). The `availability-challenge`
+command group opens, answers, settles, closes and times out availability
+challenges from an isolated actor wallet; see
+[availability challenge commands](docs/availability-challenge-commands.md).
 
 ## Testing
 

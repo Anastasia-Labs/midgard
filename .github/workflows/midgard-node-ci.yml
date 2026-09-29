@@ -657,6 +657,14 @@ jobs:
           pnpm --dir demo/midgard-node-tools run build
           node demo/midgard-node-tools/dist/index.js --help >/dev/null
           pnpm --dir demo/midgard-node-tools test
+      # The pooled DA bond journey's tests need no devnet; its live test
+      # skips without MIDGARD_WATCHER_JOURNEY_RUN_DIR and stays manual. The
+      # prefix filter keeps a new journey test from being left out.
+      - name: Test the pooled DA bond journey without a devnet
+        run: |
+          pnpm --dir demo/midgard-node-tools exec vitest run \
+            --config vitest.watcher-journeys.config.ts \
+            devnet/watcher-journeys/da-bond-pool-
 
   da-e2e:
     name: Canonical V1 retained multi-peer DA paths
