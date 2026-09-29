@@ -18,8 +18,8 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
-use midgard/event_history/horizon
 use midgard/computation_thread as ct
+use midgard/event_history/horizon
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01.{
   Args, Datum, SpendRedeemer, committed_withdrawal_content_hash_v1,
@@ -91,7 +91,9 @@ validator main(
           reference_inputs,
         )
 
-        let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(tx.validity_range)
+        let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+          tx.validity_range,
+        )
         expect horizon.capture_permitted(header.end_time, lower, upper)
 
         // 3. The challenged header must genuinely commit the withdrawal leaf

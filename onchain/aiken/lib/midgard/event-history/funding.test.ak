@@ -29,17 +29,40 @@ fn refund() -> Output {
 
 test admission_funds_future_pointer_and_timestamp_at_the_exact_floor() {
   let payload: Data = 42
-  let node = Link { position: Key(key), next: None, protected_until: 0, payload }
-  let worst: Data = Link { ..node, next: Some(key), protected_until: ordering.max_protection_time }
-  let floor = funding.minimum_output_lovelace(filler_value(), InlineDatum(worst), False)
+  let node = Link {
+    position: Key(key),
+    next: None,
+    protected_until: 0,
+    payload,
+  }
+  let worst: Data = Link {
+    ..node,
+    next: Some(key),
+    protected_until: ordering.max_protection_time,
+  }
+  let floor = funding.minimum_output_lovelace(
+    filler_value(),
+    InlineDatum(worst),
+    False,
+  )
   and {
-    funding.node_is_funded(assets.from_lovelace(floor) |> assets.add(policy, key, 1), node),
-    !funding.node_is_funded(assets.from_lovelace(floor - 1) |> assets.add(policy, key, 1), node),
+    funding.node_is_funded(
+      assets.from_lovelace(floor) |> assets.add(policy, key, 1),
+      node,
+    ),
+    !funding.node_is_funded(
+      assets.from_lovelace(floor - 1) |> assets.add(policy, key, 1),
+      node,
+    ),
   }
 }
 
 test deposit_structural_ada_cannot_subsidize_its_reserve_output() {
-  let floor = funding.minimum_output_lovelace(assets.from_lovelace(4_000_000), NoDatum, False)
+  let floor = funding.minimum_output_lovelace(
+    assets.from_lovelace(4_000_000),
+    NoDatum,
+    False,
+  )
   and {
     funding.deposit_is_funded(assets.from_lovelace(floor)),
     !funding.deposit_is_funded(assets.from_lovelace(floor - 1)),
@@ -59,13 +82,33 @@ fn withdrawal_body() -> WithdrawalBody {
 
 test withdrawal_funding_checks_initial_payout_refund_and_target() {
   let body = withdrawal_body()
-  let datum: Data = payout.Datum { l2_value: body.l2_value, l1_address: body.l1_address, l1_datum: body.l1_datum }
-  let floor = funding.minimum_output_lovelace(assets.from_lovelace(4_000_000), InlineDatum(datum), True)
+  let datum: Data = payout.Datum {
+    l2_value: body.l2_value,
+    l1_address: body.l1_address,
+    l1_datum: body.l1_datum,
+  }
+  let floor = funding.minimum_output_lovelace(
+    assets.from_lovelace(4_000_000),
+    InlineDatum(datum),
+    True,
+  )
   and {
     funding.withdrawal_is_funded(assets.from_lovelace(floor), body, NoDatum),
-    !funding.withdrawal_is_funded(assets.from_lovelace(floor - 1), body, NoDatum),
-    !funding.withdrawal_is_funded(assets.from_lovelace(20_000_001), body, NoDatum),
-    !funding.withdrawal_is_funded(assets.from_lovelace(1), WithdrawalBody { ..body, l2_value: [Pair(#"", [Pair(#"", 1)])] }, NoDatum),
+    !funding.withdrawal_is_funded(
+      assets.from_lovelace(floor - 1),
+      body,
+      NoDatum,
+    ),
+    !funding.withdrawal_is_funded(
+      assets.from_lovelace(20_000_001),
+      body,
+      NoDatum,
+    ),
+    !funding.withdrawal_is_funded(
+      assets.from_lovelace(1),
+      WithdrawalBody { ..body, l2_value: [Pair(#"", [Pair(#"", 1)])] },
+      NoDatum,
+    ),
   }
 }
 

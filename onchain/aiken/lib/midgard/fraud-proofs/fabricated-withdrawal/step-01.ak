@@ -68,9 +68,9 @@
 //// file.
 
 use aiken/builtin
-use aiken/interval
 use aiken/cbor
 use aiken/crypto.{ScriptHash}
+use aiken/interval
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use cardano/address

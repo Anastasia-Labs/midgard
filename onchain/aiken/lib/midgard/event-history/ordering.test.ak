@@ -42,8 +42,12 @@ test empty_root_covers_both_extreme_keys() {
 test protection_time_has_a_funded_maximum_encoding_width() {
   let root = link(Root, None)
   and {
-    ordering.valid_link(Link { ..root, protected_until: ordering.max_protection_time }),
-    !ordering.valid_link(Link { ..root, protected_until: ordering.max_protection_time + 1 }),
+    ordering.valid_link(
+      Link { ..root, protected_until: ordering.max_protection_time },
+    ),
+    !ordering.valid_link(
+      Link { ..root, protected_until: ordering.max_protection_time + 1 },
+    ),
   }
 }
 

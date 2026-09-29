@@ -8,8 +8,8 @@ use midgard/common/utils
 use midgard/event_history/actions.{Apply, Initialize, Observe}
 use midgard/event_history/admission
 use midgard/event_history/order_facts.{Deposit, Kind, Withdrawal}
-use midgard/event_history/output_claims
 use midgard/event_history/ordering
+use midgard/event_history/output_claims
 use midgard/event_history/retirement
 use midgard/hub_oracle as hub
 

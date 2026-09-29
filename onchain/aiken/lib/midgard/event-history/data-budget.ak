@@ -27,12 +27,8 @@ fn walk(work: List<Work>, remaining: Int) -> Bool {
             let Pair(_, fields) = builtin.un_constr_data(data)
             walk([Values(fields), ..tail], remaining - 1)
           },
-          {
-            walk([Entries(builtin.un_map_data(data)), ..tail], remaining - 1)
-          },
-          {
-            walk([Values(builtin.un_list_data(data)), ..tail], remaining - 1)
-          },
+          walk([Entries(builtin.un_map_data(data)), ..tail], remaining - 1),
+          walk([Values(builtin.un_list_data(data)), ..tail], remaining - 1),
           walk(tail, remaining - 1),
           walk(tail, remaining - 1),
         )

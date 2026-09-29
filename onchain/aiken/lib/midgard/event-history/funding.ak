@@ -21,10 +21,20 @@ use midgard/payout
 /// array/tag/bytes framing and datum-option framing. Plutus Value serialization
 /// upper-bounds the corresponding ledger Value. Reference scripts are forbidden.
 /// The existing compiled coins_per_utxo_byte pin is part of deployment identity.
-pub fn minimum_output_lovelace(value: Value, datum: Datum, added_nft: Bool) -> Int {
-  let nft_bytes = if added_nft { 80 } else { 0 }
+pub fn minimum_output_lovelace(
+  value: Value,
+  datum: Datum,
+  added_nft: Bool,
+) -> Int {
+  let nft_bytes = if added_nft {
+    80
+  } else {
+    0
+  }
   env.coins_per_utxo_byte * (
-    160 + 96 + bytearray.length(cbor.serialise(value)) + bytearray.length(cbor.serialise(datum)) + nft_bytes
+    160 + 96 + bytearray.length(cbor.serialise(value)) + bytearray.length(
+      cbor.serialise(datum),
+    ) + nft_bytes
   )
 }
 
@@ -33,14 +43,24 @@ pub fn minimum_output_lovelace(value: Value, datum: Datum, added_nft: Bool) -> I
 pub fn node_is_funded(value: Value, node: Link<Data>) -> Bool {
   let worst: Data = Link {
     ..node,
-    next: Some(#"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+    next: Some(
+      #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    ),
     protected_until: ordering.max_protection_time,
   }
-  assets.lovelace_of(value) >= minimum_output_lovelace(value, InlineDatum(worst), False)
+  assets.lovelace_of(value) >= minimum_output_lovelace(
+    value,
+    InlineDatum(worst),
+    False,
+  )
 }
 
 pub fn deposit_is_funded(original_assets: Value) -> Bool {
-  assets.lovelace_of(original_assets) >= minimum_output_lovelace(original_assets, NoDatum, False)
+  assets.lovelace_of(original_assets) >= minimum_output_lovelace(
+    original_assets,
+    NoDatum,
+    False,
+  )
 }
 
 /// The locked ADA starts the payout accumulator, so it must fit both possible
@@ -60,14 +80,25 @@ pub fn withdrawal_is_funded(
   let locked_ada = assets.lovelace_of(locked)
   let target_ada = assets.lovelace_of(target)
   and {
-    list.all(assets.flatten(target), fn(asset) {
-      let (_, _, quantity) = asset
-      quantity >= 0
-    }),
+    list.all(
+      assets.flatten(target),
+      fn(asset) {
+        let (_, _, quantity) = asset
+        quantity >= 0
+      },
+    ),
     locked_ada <= target_ada,
     locked_ada >= minimum_output_lovelace(locked, refund_datum, False),
-    locked_ada >= minimum_output_lovelace(locked, InlineDatum(payout_data), True),
-    target_ada >= minimum_output_lovelace(target, InlineDatum(payout_data), True),
+    locked_ada >= minimum_output_lovelace(
+      locked,
+      InlineDatum(payout_data),
+      True,
+    ),
+    target_ada >= minimum_output_lovelace(
+      target,
+      InlineDatum(payout_data),
+      True,
+    ),
   }
 }
 
