@@ -699,6 +699,36 @@ describe("Midgard MPF wrapper", () => {
     }),
   );
 
+  it.effect(
+    "verifies PHAS non-membership through a skipped non-terminal leaf",
+    () =>
+      Effect.gen(function* () {
+        // Paths 05cd…, 06f9… and 0660…: the absent key shares one nibble with
+        // the first entry and two with the second, so its proof opens with a
+        // leaf step of skip 1 that is not the last step.
+        const keys = [
+          Buffer.from("phas-leaf-skip-16"),
+          Buffer.from("phas-leaf-skip-42"),
+        ];
+        const values = [Buffer.from("a"), Buffer.from("c")];
+        const absent = Buffer.from("phas-leaf-skip-0");
+        const root = yield* keyValuePhasRoot(keys, values);
+        const proof = yield* keyValuePhasNonMembershipProof(
+          keys,
+          values,
+          absent,
+        );
+        expect(proof).toHaveLength(2);
+        expect(proof[0]).toMatchObject({ Leaf: { skip: 1n } });
+
+        yield* verifyKeyValuePhasNonMembershipProof({
+          root,
+          key: absent,
+          proof,
+        });
+      }),
+  );
+
   it.effect("rejects PHAS membership proofs with the wrong value", () =>
     Effect.gen(function* () {
       const root = yield* keyValuePhasRoot([key1], [value1]);

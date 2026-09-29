@@ -386,10 +386,7 @@ const traversePhasProof = (
     ) {
       throw new Error("Leaf proof neighbor is not under the expected prefix");
     }
-    const neighborNibble =
-      mode.kind === "including"
-        ? Number.parseInt(neighborPath[nextCursor - 1]!, 16)
-        : Number.parseInt(neighborPath[cursor]!, 16);
+    const neighborNibble = Number.parseInt(neighborPath[nextCursor - 1]!, 16);
     if (neighborNibble === thisNibble) {
       throw new Error("Leaf proof neighbor uses the proven path nibble");
     }
