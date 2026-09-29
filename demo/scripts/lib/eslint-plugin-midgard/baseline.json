@@ -883,7 +883,7 @@
         "left.providerId.localeCompare(right.providerId),"
       ]
     },
-    "midgard-watcher/src/l1/rollback-engine.ts": {
+    "midgard-watcher/src/l1/rollback-engine/state.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [
         "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
