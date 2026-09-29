@@ -295,3 +295,34 @@ test("building a blueprint cannot change generated preflight references", () => 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("workspace lint and its helper tests cover source, rules, and baseline moves", () => {
+  const baseline = "demo/scripts/lib/eslint-plugin-midgard/baseline.json";
+  for (const path of [
+    baseline,
+    "demo/eslint.config.mjs",
+    "demo/midgard-node-tools/src/commands/stress-wallets/terminal-drain.ts",
+  ]) {
+    assert.ok(
+      selectedIds([path]).includes("demo-lint"),
+      `${path} must select workspace lint`,
+    );
+  }
+  assert.ok(selectedIds([baseline]).includes("demo-script-tests"));
+  assert.deepEqual(selectChecks(registry, [baseline]).uncovered, []);
+  assert.ok(!selectedIds(["docs/agents/domain.md"]).includes("demo-lint"));
+  for (const [id, argv] of [
+    ["demo-lint", ["pnpm", "--dir", "demo", "run", "lint"]],
+    ["demo-script-tests", ["node", "--test", "demo/scripts/lib/*.test.mjs"]],
+  ]) {
+    assert.deepEqual(
+      byId
+        .get(id)
+        .plan({ full: true })
+        .map((s) => s.argv),
+      [argv],
+    );
+    assert.deepEqual(byId.get(id).capabilities, ["node-modules"]);
+    assert.equal(byId.get(id).warnOnly, false);
+  }
+});

@@ -19,6 +19,16 @@ rulings live in private agent memory, against about 123 KB of guidance in the
 repository. No Node CI run on this line of work has passed since at least
 2026-09-13.
 
+## Parallel contribution work, 2026-09-28
+
+The scoped work that can proceed alongside the pooled DA integration is tracked
+in [the parallel-work report](agent-contribution-parallel-work.md). It adds
+preflight coverage, splits independent stress tooling, and prepares a
+[contribution benchmark](agent-contribution-benchmark.md) and
+[required merge gates](agent-merge-gates.md). Preparation does not mark W1.1,
+W1.8 or W6.4 complete: current-head remote CI, live policy activation and blind
+reviewer measurements remain outstanding.
+
 ## How to use this list
 
 - Tasks are grouped into waves. A wave assumes the ones before it have landed,

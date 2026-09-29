@@ -115,6 +115,27 @@ Repository tooling self-tests (the checks that prove the other checks can fail).
   - `.claude/settings.json`
 - Mode: runs in the pre-push hook
 
+### `demo-lint`
+
+Workspace ESLint rules and their reasoned baseline.
+
+- Command: `pnpm --dir demo run lint`
+- Runs on:
+  - `demo/**/*.{ts,tsx,js,mjs,cjs,json}`
+  - `.github/workflows/midgard-node-ci.yml`
+- Needs: `node-modules`
+
+### `demo-script-tests`
+
+Workspace helper and ESLint plugin self-tests.
+
+- Command: `node --test "demo/scripts/lib/*.test.mjs"`
+- Runs on:
+  - `demo/scripts/**`
+  - `demo/eslint.config.mjs`
+  - `.github/workflows/repo-tools-ci.yml`
+- Needs: `node-modules`
+
 ### `aiken-script-tests`
 
 Self-tests of the Aiken helper scripts (pin, focused checks, ledgers).

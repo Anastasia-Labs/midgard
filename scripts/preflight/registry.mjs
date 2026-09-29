@@ -511,6 +511,29 @@ const toolingChecks = () => [
     plan: () => [step(["node", "--test", "scripts/**/*.test.mjs"])],
   },
   {
+    id: "demo-lint",
+    title: "Workspace ESLint rules and their reasoned baseline",
+    triggers: [
+      "demo/**/*.{ts,tsx,js,mjs,cjs,json}",
+      ".github/workflows/midgard-node-ci.yml",
+    ],
+    capabilities: ["node-modules"],
+    display: "pnpm --dir demo run lint",
+    plan: () => [step(["pnpm", "--dir", DEMO, "run", "lint"])],
+  },
+  {
+    id: "demo-script-tests",
+    title: "Workspace helper and ESLint plugin self-tests",
+    triggers: [
+      "demo/scripts/**",
+      "demo/eslint.config.mjs",
+      ".github/workflows/repo-tools-ci.yml",
+    ],
+    capabilities: ["node-modules"],
+    display: 'node --test "demo/scripts/lib/*.test.mjs"',
+    plan: () => [step(["node", "--test", "demo/scripts/lib/*.test.mjs"])],
+  },
+  {
     // Kept out of the pre-push slice: the focused-check tests drive a stub
     // compiler through many subprocesses and take minutes.
     id: "aiken-script-tests",
