@@ -284,7 +284,10 @@ const setup = async (
   return { replayer, classifierInput, classifyInput, transitionBinding };
 };
 
-describe("installed catalogue retained classification", () => {
+// These cases construct retained evidence and replay the complete catalogue.
+// The five-second unit budget timed out in 3/20 runs under concurrent load.
+const replayBudget = { timeout: 30_000 };
+describe("installed catalogue retained classification", replayBudget, () => {
   it("uses exactly all admitted catalogue members and derives healthy context inside classifyHeader", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture({
       verdict: "accepted",
@@ -792,7 +795,10 @@ describe("installed catalogue retained classification", () => {
       "normal",
     );
     const foreign = createTransitionTraceEventAuthority({
-      binding: { ...transitionBinding, deploymentFingerprint: "f1".repeat(32) },
+      binding: {
+        ...transitionBinding,
+        deploymentFingerprint: "f1".repeat(32),
+      },
       source: {} as never,
     });
     await expect(

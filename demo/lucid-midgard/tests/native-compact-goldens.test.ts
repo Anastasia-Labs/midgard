@@ -73,7 +73,9 @@ const copyGeneratorMirror = (root: string): string => {
   return path.join(root, generatorRelativePath);
 };
 
-describe("native compact golden generator", () => {
+// Both checks spawn a real generator; its process startup and fixture parsing
+// exceeded the five-second unit-test budget under concurrent suite load.
+describe("native compact golden generator", { timeout: 30_000 }, () => {
   it("checks checked-in goldens without writing", () => {
     expect(
       existsSync(path.join(repositoryRoot, "demo/midgard-core/dist/index.js")),

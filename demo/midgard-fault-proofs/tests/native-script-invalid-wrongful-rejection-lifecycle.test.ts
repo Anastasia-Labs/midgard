@@ -635,7 +635,7 @@ const run = async (
   ).toHaveLength(1);
 };
 
-describe("native script wrongful forced rejection", () => {
+describe("native script wrongful forced rejection", { timeout: 30_000 }, () => {
   it.each([
     { shape: "direct-28-signers", signerCount: 28 },
     { shape: "staged-29-signers", signerCount: 29 },

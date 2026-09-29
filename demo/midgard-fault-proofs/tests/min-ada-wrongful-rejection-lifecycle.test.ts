@@ -687,7 +687,7 @@ describe("minimum-Ada forced rejection", () => {
         unsafeSkipLocalViolationCheckForTest: true,
       }),
     ).rejects.toThrow();
-  });
+  }, 30_000);
   it("rejects authenticated unrelated reason and source/index/direction substitutions", async () => {
     const unrelated = await setup({ wrongReason: true });
     await expect(
@@ -732,7 +732,8 @@ describe("minimum-Ada forced rejection", () => {
       await expect(
         admitMinAdaForcedArtifact({ ...f.artifact, ...mutation }),
       ).rejects.toThrow();
-  });
+    // Two real emulator deployments plus transaction evaluation exceed 5 s under load.
+  }, 60_000);
   it("retains maximum post-UTxO descriptor and both 64-node proof carriages through removal", async () => {
     const h = await makeMinAdaEmulatorHarness();
     let seq = 0;

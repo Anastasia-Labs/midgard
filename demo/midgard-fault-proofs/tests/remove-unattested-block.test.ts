@@ -106,7 +106,7 @@ const journal = (
   return {
     version: 1,
     targetHeaderHash: h("11"),
-    targetDeadlineMs: "3600001",
+    targetDeadlineMs: (SDK.DA_ATTESTATION_TIMEOUT_MS + 1n).toString(),
     completed: false,
     steps: [
       {
@@ -220,11 +220,22 @@ describe("generalized attestation-timeout recovery", () => {
   it("keeps attested blocks out of selection and uses the exact deadline boundary", async () => {
     const nodes = queue(block("01", 1n, true), block("11"));
     expect(
-      (await selectTimeoutCorrectionTarget(nodes, 3_600_000n, "Idle"))
-        ?.deadline,
-    ).toBe(3_600_001n);
+      (
+        await selectTimeoutCorrectionTarget(
+          nodes,
+          SDK.DA_ATTESTATION_TIMEOUT_MS,
+          "Idle",
+        )
+      )?.deadline,
+    ).toBe(SDK.DA_ATTESTATION_TIMEOUT_MS + 1n);
     expect(
-      (await selectTimeoutCorrectionTarget(nodes, 3_600_001n, "Idle"))?.target,
+      (
+        await selectTimeoutCorrectionTarget(
+          nodes,
+          SDK.DA_ATTESTATION_TIMEOUT_MS + 1n,
+          "Idle",
+        )
+      )?.target,
     ).toBe(nodes[2]);
     expect(
       await selectTimeoutCorrectionTarget(

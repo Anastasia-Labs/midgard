@@ -179,6 +179,7 @@ afterAll(() => {
 });
 
 for (const kind of ["Deposit", "Withdrawal"] as const) {
+  // Applying real history policies took 6.4 seconds under concurrent load.
   it(`${kind}: prepares arbitrary nonexistent IDs without querying nonce UTxOs`, async () => {
     const h = await setupHistoryPair({ blueprint, records });
     const payloads = await promoteHistoryPair(h);
@@ -211,7 +212,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
     } finally {
       nonceLookup.mockRestore();
     }
-  });
+  }, 60_000);
 
   it(`${kind}: persists original Value and reopens after pointer churn without history access`, async () => {
     const h = await setupHistoryPair({ blueprint, records });

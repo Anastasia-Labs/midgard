@@ -460,4 +460,5 @@ it.each([false, true])(
       originalAssets,
     });
   },
+  60_000,
 );

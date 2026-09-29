@@ -145,7 +145,9 @@ describe("Wave 0 shared off-chain substrate", () => {
     expect(() =>
       assertNoPositiveFaultProofLimitEscapes(findings),
     ).not.toThrow();
-  });
+    // Parsing the entire source and test tree is a repository check; the measured
+    // concurrent run exceeded the unit-test default of five seconds.
+  }, 30_000);
 
   it("fails lifecycle coverage with one actionable list of every omission", () => {
     expect(() =>

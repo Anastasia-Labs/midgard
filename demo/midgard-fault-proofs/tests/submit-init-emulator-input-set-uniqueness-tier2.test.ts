@@ -208,7 +208,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
       step02.fraudProofUnit,
     );
     expect(fraudProofUtxos).toHaveLength(1);
-  });
+  }, 30_000);
 
   it("refuses a tampered predeployed preimage at the door's field_commitment re-hash, then convicts through the honest publication", async () => {
     const {
@@ -280,5 +280,5 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
       witnessReferenceScripts,
     });
     expect(step02.badTxId).toBe(fixture.nativeTxId);
-  });
+  }, 30_000);
 });

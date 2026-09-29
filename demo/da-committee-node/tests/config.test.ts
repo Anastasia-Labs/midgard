@@ -998,6 +998,8 @@ describe("loadCommitteeConfig", () => {
     });
   });
 
+  // Eleven separate on-disk manifest/load cycles exceeded five seconds in
+  // both full-suite runs under contention; each exact rejection stays checked.
   it("fails closed for invalid libp2p DA manifest security fields", async () => {
     const cases: readonly {
       readonly mutate: (manifest: Record<string, unknown>) => void;
@@ -1103,7 +1105,7 @@ describe("loadCommitteeConfig", () => {
         testCase.env,
       );
     }
-  });
+  }, 30_000);
 
   it("derives contracts from the Midgard node deployment-info format", async () => {
     const dir = await tempDir();
