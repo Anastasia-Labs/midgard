@@ -7,6 +7,7 @@ import { Data, Effect, Runtime } from "effect";
 import * as Authority from "../database/eventHistoryAuthority.js";
 import * as Journal from "../database/eventHistoryJournal.js";
 import * as ReplayReceipts from "../database/eventHistoryReplayReceipts.js";
+import { settlementRetentionHoldSlot } from "../database/settlement.js";
 import type { DatabaseError } from "../database/utils/common.js";
 import type { HistoryChainTip } from "../l1-event-history-chain.js";
 import {
@@ -603,7 +604,16 @@ export const makeEventHistoryOwner = <E, R>(input: {
         appended: Journal.Appended,
       ) => Effect.Effect<Journal.Checkpoint, E2, R2>,
     ) =>
-      signedHeaderRecoveryHoldSlot(input.binding.digest).pipe(
+      Effect.all([
+        signedHeaderRecoveryHoldSlot(input.binding.digest),
+        settlementRetentionHoldSlot(input.binding.manifestId),
+      ]).pipe(
+        Effect.map((slots) => {
+          const held = slots.filter(
+            (slot): slot is number => slot !== undefined,
+          );
+          return held.length === 0 ? undefined : Math.min(...held);
+        }),
         Effect.flatMap((holdSlot) =>
           Journal.append(input.binding, prepared, reconcile, {
             tipHeight,

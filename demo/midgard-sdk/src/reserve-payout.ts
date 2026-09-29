@@ -150,11 +150,13 @@ export type InitializePayoutConfig = CommonBuilderConfig & {
 };
 
 export type AddReserveFundsConfig = CommonBuilderConfig & {
+  readonly validTo?: number;
   readonly payoutInput: UTxO;
   readonly reserveInput: UTxO;
 };
 
 export type ConcludePayoutConfig = CommonBuilderConfig & {
+  readonly validTo?: number;
   readonly payoutInput: UTxO;
 };
 
@@ -1145,6 +1147,7 @@ export const buildAddReserveFundsToPayoutTxProgram = (
           reserveChangeAssets,
         );
       }
+      if (config.validTo !== undefined) tx = tx.validTo(config.validTo);
       return tx;
     };
     return yield* completeWithFinalLayoutProgram({
@@ -1319,6 +1322,7 @@ export const buildConcludePayoutTxProgram = (
         plutusConstrFieldCbor(config.payoutInput.datum!, [2]),
         l1Assets,
       );
+      if (config.validTo !== undefined) tx = tx.validTo(config.validTo);
       return tx;
     };
     return yield* completeWithFinalLayoutProgram({

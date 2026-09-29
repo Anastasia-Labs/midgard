@@ -24,6 +24,7 @@ import {
 } from "../transactions/reference-scripts.js";
 import {
   type ReservePayoutReferenceScripts,
+  ReservePayoutTransport,
   submitAbsorbConfirmedDepositToReserveProgram,
   submitAddReserveFundsToPayoutProgram,
   submitConcludePayoutProgram,
@@ -92,6 +93,12 @@ export const retryAfterRetirementProtection = <A, E, R>(
       (error) => protection(error) !== undefined,
       (error) =>
         Effect.gen(function* () {
+          // The automatic scheduler records a due time and releases its slot;
+          // it must not sleep behind an individual protected history entry.
+          if (
+            Option.isSome(yield* Effect.serviceOption(ReservePayoutTransport))
+          )
+            return yield* Effect.fail(error);
           const { protectedUntilMs, protectionDurationMs } = protection(error)!;
           const wakeAtMs = Number(protectedUntilMs) + SUBMIT_SLOT_LENGTH_MS;
           const waitMs = wakeAtMs - (yield* Clock.currentTimeMillis);
@@ -476,6 +483,9 @@ export const addReserveFundsToPayoutProgram = (
         payoutInput: payout,
         reserveInput: reserve,
         referenceScripts: refs,
+        ...(Option.isSome(yield* Effect.serviceOption(ReservePayoutTransport))
+          ? { validTo: Date.now() + 180_000 }
+          : {}),
       },
     );
     return {
@@ -525,6 +535,9 @@ export const concludePayoutProgram = (
       {
         payoutInput: payout,
         referenceScripts: refs,
+        ...(Option.isSome(yield* Effect.serviceOption(ReservePayoutTransport))
+          ? { validTo: Date.now() + 180_000 }
+          : {}),
       },
     );
     return {

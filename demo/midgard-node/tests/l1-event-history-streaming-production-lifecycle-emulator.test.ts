@@ -16,22 +16,18 @@ import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history
 import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/workers/utils/commit-end-time.js";
 import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
 import {
-  absorbConfirmedDepositToReserveProgram,
-  addReserveFundsToPayoutProgram,
   advanceEmulatorPastLatestBlockEndTime,
   advanceHistoryAdmissionClock,
   alignCommitSchedulerBeforeTestWorker,
   assetsToValue,
   CML,
   commitConfirmRecoverAndMerge,
-  concludePayoutProgram,
   Data,
   Database,
   Effect,
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
   fetchLatestCommittedBlock,
-  initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
   refreshWalletUtxosFromProvider,
@@ -41,6 +37,7 @@ import {
   utxosProgram,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
+import { openAutomaticSettlement } from "./helpers/automatic-settlement-lifecycle.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 
 /** Successful node classification and actual mature merge establish both
@@ -49,6 +46,7 @@ it("streams public raw events through production reconciliation, native commitme
   const h = await openHistoryProductionOwnerLifecycle({
     eventHistoryProtectionDurationMs: 120_000n,
   });
+  const automatic = await openAutomaticSettlement(h);
   const { fixture, lucidService, globals } = h;
   const context = { fixture, lucidService, globals, production: h.production };
   const lucid = fixture.operatorLucid;
@@ -306,12 +304,8 @@ it("streams public raw events through production reconciliation, native commitme
       depositBlock.settlementUtxo,
     );
     await ensureSeparateCollateralUtxo(lucid);
-    const absorbed = await command(
-      absorbConfirmedDepositToReserveProgram({ eventId: depositId }),
-    );
-    expect(absorbed.details.depositOutRef).toBe(
-      `${deposit.utxo.txHash}#${deposit.utxo.outputIndex}`,
-    );
+    const absorbed = await automatic.runPhase(depositId, "absorb");
+    expect(absorbed.event_id).toBe(depositId);
     expect(h.capture().history.deposits).toHaveLength(0);
     const reserve = (
       await lucid.utxosAt(fixture.contracts.reserve.spendingScriptAddress)
@@ -805,7 +799,7 @@ it("streams public raw events through production reconciliation, native commitme
     expect(emptyL2.utxoCount).toBe(0);
     const eventId = withdrawal.idCbor.toString("hex");
     diagnostic.stage = "initialize-payout";
-    await command(initializePayoutProgram({ eventId }));
+    await automatic.runPhase(eventId, "initialize");
     const payoutUnit = fixture.contracts.payout.policyId + withdrawal.assetName;
     const payout = (
       await lucid.utxosAt(fixture.contracts.payout.spendingScriptAddress)
@@ -819,10 +813,7 @@ it("streams public raw events through production reconciliation, native commitme
     diagnostic.initialPayout = payout;
     expect(h.capture().history.withdrawals).toHaveLength(0);
     await ensureSeparateCollateralUtxo(lucid);
-    const added = await command(addReserveFundsToPayoutProgram({ eventId }));
-    expect(added.details.reserveOutRef).toBe(
-      `${reserve!.txHash}#${reserve!.outputIndex}`,
-    );
+    await automatic.runPhase(eventId, "fund");
     expect((await command(payoutStatusProgram(eventId))).phase).toBe("funded");
     const fundedPayout = (
       await lucid.utxosAt(fixture.contracts.payout.spendingScriptAddress)
@@ -830,7 +821,7 @@ it("streams public raw events through production reconciliation, native commitme
     expect(fundedPayout?.datum).toBe(payout!.datum);
     diagnostic.fundedPayout = fundedPayout;
     diagnostic.stage = "conclude-payout";
-    await command(concludePayoutProgram({ eventId }));
+    await automatic.runPhase(eventId, "conclude");
     expect((await command(payoutStatusProgram(eventId))).phase).toBe(
       "concluded",
     );
@@ -979,6 +970,7 @@ it("streams public raw events through production reconciliation, native commitme
       }
     } finally {
       try {
+        automatic.close();
         await h.close();
       } finally {
         vi.useRealTimers();

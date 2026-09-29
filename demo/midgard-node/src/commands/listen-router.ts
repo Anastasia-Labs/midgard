@@ -1595,6 +1595,9 @@ const getReadinessHandler = Effect.gen(function* () {
     },
   });
   const reasons = [...baseReadiness.reasons];
+  const settlement = yield* Ref.get(globals.SETTLEMENT_HEALTH);
+  // Settlement health is reported separately: an L1 payout delay must not
+  // take healthy L2 admission out of service.
   // Informational: pending signed-header recovery holding history retention
   // more than the rollback horizon back grows the journal until it resolves.
   const historyOwner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
@@ -1665,6 +1668,7 @@ const getReadinessHandler = Effect.gen(function* () {
     unfinishedMutationJobs,
   });
   const readiness = {
+    settlement,
     ready: reasons.length === 0,
     reasons,
     durableAdmissionBacklog: durableAdmissionBacklog.toString(),

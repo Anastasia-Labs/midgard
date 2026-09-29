@@ -7,10 +7,10 @@ magic values and does not read the repository `.env`.
 
 ## Generate without starting services
 
-Create two private dotenv files first. `wallets.env` must define six distinct
+Create two private dotenv files first. `wallets.env` must define seven distinct
 funded roles: `L1_OPERATOR_SEED_PHRASE`,
 `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`,
-`L1_REFERENCE_SCRIPT_SEED_PHRASE`, `USER_SEED_PHRASE`, and the A/B
+`L1_REFERENCE_SCRIPT_SEED_PHRASE`, `L1_SETTLEMENT_SEED_PHRASE`, `USER_SEED_PHRASE`, and the A/B
 `TESTNET_GENESIS_WALLET_SEED_PHRASE_*` values. `node.env` contains the remaining
 Midgard configuration but must not select a public network or remote provider.
 The unrelated supplemental wallet C is not used or funded by this gate; the
@@ -140,7 +140,7 @@ devnet/phase4-process/scripts/bootstrap.sh
 devnet/phase4-process/scripts/capture-snapshot.sh
 ```
 
-Bootstrap funds the six test-only wallets from the genesis UTxO, publishes the
+Bootstrap funds the seven test-only wallets (each with a separate collateral output) from the genesis UTxO, publishes the
 node-runtime reference scripts, initializes the protocol, and registers the
 operator. It explicitly seeds the complete configured L2 genesis set into the
 otherwise-empty run-scoped `mempool_ledger`, byte-matching commit fallback, and

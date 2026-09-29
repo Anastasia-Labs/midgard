@@ -1,5 +1,6 @@
 import { sha256Hex } from "../../sha256.js";
 import initialSchemaSql from "./sql/0001_initial_schema.sql";
+import automaticSettlementSql from "./sql/0002_automatic_settlement.sql";
 
 export type Migration = {
   readonly version: number;
@@ -17,6 +18,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: initialSchemaSql,
     transactional: true,
   },
+  {
+    version: 2,
+    name: "automatic_settlement",
+    checksumSha256: sha256Hex(automaticSettlementSql),
+    sql: automaticSettlementSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -30,6 +38,9 @@ export const MIGRATION_MANIFEST_HASH = sha256Hex(
 );
 
 export const APPLICATION_TABLE_NAMES = [
+  "settlement_jobs",
+  "settlement_attempts",
+  "settlement_owners",
   "address_history",
   "blocks",
   "cek_program_material_admission_owners",
@@ -80,6 +91,11 @@ export const APPLICATION_TABLE_NAMES = [
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
+  "settlement_jobs_due",
+  "settlement_jobs_generation",
+  "settlement_one_pending",
+  "settlement_attempts_event",
+  "settlement_confirmed_fee_inputs",
   "idx_address_history_created_at",
   "idx_blocks_header_hash",
   "idx_blocks_tx_id",

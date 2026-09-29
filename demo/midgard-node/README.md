@@ -442,6 +442,43 @@ inspection, and operational control. See
 [`src/commands/listen-router.ts`](./src/commands/listen-router.ts) for the
 authoritative route graph.
 
+## Automatic L1 settlement
+
+`listen` starts and supervises settlement in its own worker thread. After a
+Deposit is committed and its settlement proof is available, the worker moves it
+into reserve. Valid finalized Withdrawals progress through payout initialization,
+reserve funding (as many inputs as needed), and payment to the recorded L1
+address and datum. History retirement protection and manifest confirmation depth
+still apply. Invalid withdrawals retain their existing refund flow.
+
+Run `db:migrate` when upgrading, and configure `L1_SETTLEMENT_SEED_PHRASE` with a
+funded wallet distinct from the commitment, merge and reference-script wallets.
+Keep both fee funds and a separate ADA-only collateral UTxO in it. Treat it as
+node-owned: do not use it in another process or manually spend its inputs.
+The phase 4 devnet funds this role along with the other wallets. No additional
+service or periodic operator command is required.
+
+The worker builds one transaction at a time, uses a two-connection database pool,
+and polls every five seconds. Event finalization enqueues work transactionally;
+idle polling uses indexes rather than scanning completed event history. UPLC
+execution and L1 confirmation waits stay outside L2 admission, commitment and
+merge workers. This isolates the main event loop and wallet inputs; the worker
+still consumes CPU, database and provider capacity on the same host.
+
+Signed bytes and fee inputs are persisted before submission. Restarts reconcile
+that exact transaction, including already-spent outputs, before creating another
+body. Rebuilding requires expiry and synchronized chain/indexer evidence;
+ambiguous submissions stay journaled. Pending work holds the history evidence it
+needs, and completed receipts are checked again after history recovery.
+
+`/readyz` includes `settlement` health separately from L2 readiness. The
+`settlement_jobs` table retains retry deadlines and last errors, and
+`settlement_attempts` retains submission/confirmation state. Fund the fee wallet
+when depleted; resolve an unhealthy provider or an ambiguous journal against the
+canonical chain rather than deleting journal rows. Previously completed manual
+settlements without a node receipt require reconciliation; missing UTxOs alone
+are never treated as proof of payment.
+
 ## Operator Lifecycle
 
 The node exposes the operator lifecycle as CLI verbs: `register-operator`,

@@ -331,6 +331,13 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Architecture G is the only component allowed to hold the ledger Level
     // lock. Workers receive opaque MessagePorts and never see this service or
     // its Level path directly.
+    const SETTLEMENT_HEALTH = yield* Ref.make<
+      import("./settlement.js").SettlementHealth
+    >({
+      observedAt: now,
+      state: "starting",
+      detail: "settlement worker starting",
+    });
     const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
       undefined,
     );
@@ -378,6 +385,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       COMMIT_WORKER_ACTIVE,
       COMMIT_PIPELINE_PHASE,
       L1_CONTROL_PLANE,
+      SETTLEMENT_HEALTH,
       L1_PROVIDER_DIRECT_PROBE,
       L1_PROVIDER_HEALTH,
       SPECULATIVE_COMMIT_STATE,

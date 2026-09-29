@@ -157,6 +157,8 @@ export type NodeConfigDep = {
   L1_HISTORY_GENESIS_LOSSLESS_SHA256: string;
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
+  /** Required by listen; optional for read-only and deployment commands. */
+  L1_SETTLEMENT_SEED_PHRASE?: string;
   L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
   L1_REFERENCE_SCRIPT_ADDRESS: string;
   L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: string;
@@ -358,6 +360,9 @@ const makeConfig = Effect.gen(function* () {
   const operatorSeedPhraseForMergeTx = yield* requiredSeedPhrase(
     "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
   );
+  const settlementSeedPhrase = yield* Config.string(
+    "L1_SETTLEMENT_SEED_PHRASE",
+  ).pipe(Config.withDefault(""));
   const network = yield* Config.literal(
     "Mainnet",
     "Preprod",
@@ -1265,6 +1270,7 @@ const makeConfig = Effect.gen(function* () {
     L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesis,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
+    L1_SETTLEMENT_SEED_PHRASE: settlementSeedPhrase,
     L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
     L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
     L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: referenceScriptDeployAddress,

@@ -68,7 +68,7 @@ const until = (condition: () => boolean) =>
   );
 const truncate = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger,
+  yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_l2_ledger_receipts, mempool_ledger,
     deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits,
     pending_block_finalization_withdrawals, event_history_cursor,
     event_history_block_applications, event_history_live_outputs,
@@ -497,7 +497,22 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
               holdSlot: pinned.slot,
               anchorHeight: pinned.height,
             });
+            // An interrupted settlement independently pins its confirmation
+            // evidence even after the signed-header recovery hold disappears.
+            const settlementDeployment = h.binding.manifestId;
+            yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
+              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb')`;
+            yield* sql`INSERT INTO settlement_attempts
+              (deployment_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status, hold_slot)
+              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb', ${"ac".repeat(32)}, 'test-retention-body', ARRAY[0], ARRAY['fee#0'], 'pending', ${pinned.slot})`;
             recoveryHold.slot = undefined;
+            latest = yield* extend;
+            yield* owner
+              .awaitReadyAt(latest)
+              .pipe(Effect.timeout("15 seconds"));
+            expect((yield* load).anchor).toEqual(pinned);
+            expect((yield* owner.retentionHold)?.holdSlot).toBe(pinned.slot);
+            yield* sql`UPDATE settlement_attempts SET status = 'confirmed' WHERE deployment_id = ${settlementDeployment}`;
             latest = yield* extend;
             yield* owner
               .awaitReadyAt(latest)

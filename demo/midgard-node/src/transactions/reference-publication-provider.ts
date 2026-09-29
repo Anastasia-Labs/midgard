@@ -23,10 +23,10 @@ const isTransientReadFailure = (error: unknown): boolean =>
   (error instanceof TypeError && error.message === "fetch failed");
 
 /** The barrier prevents Kupo lag from being mistaken for an expired transaction. */
-export const synchronizePublicationIndexer = async (
+export const synchronizePublicationIndexerPoint = async (
   ogmiosUrl: string,
   kupoUrl: string,
-): Promise<number> => {
+): Promise<{ slot: number; id: string }> => {
   const deadline = Date.now() + 60_000;
   const retryTransient = async <A>(read: () => Promise<A>): Promise<A> => {
     while (true) {
@@ -79,7 +79,7 @@ export const synchronizePublicationIndexer = async (
       )
     ) {
       const current = await readTip();
-      if (current.slot === tip.slot && current.id === tip.id) return tip.slot;
+      if (current.slot === tip.slot && current.id === tip.id) return tip;
       tip = current;
       continue;
     }
@@ -89,3 +89,9 @@ export const synchronizePublicationIndexer = async (
     tip = await readTip();
   }
 };
+
+export const synchronizePublicationIndexer = async (
+  ogmiosUrl: string,
+  kupoUrl: string,
+): Promise<number> =>
+  (await synchronizePublicationIndexerPoint(ogmiosUrl, kupoUrl)).slot;

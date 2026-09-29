@@ -56,6 +56,7 @@ import {
   txQueueProcessorFiber,
   userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
+import { settlementFiber } from "../fibers/settlement.js";
 import * as Genesis from "../genesis.js";
 import { isRetryableProviderError } from "../provider-retry.js";
 import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
@@ -80,6 +81,7 @@ import {
   initializeArchitectureGOwner,
   requirePinnedNativeOwnerBinary,
 } from "../services/native-mpf-startup.js";
+import { settlementWalletAddress } from "../services/settlement.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { buildListenRouter } from "./listen-router.js";
 import {
@@ -203,6 +205,16 @@ export const runNode = (
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const globals = yield* Globals;
+
+    yield* Effect.try({
+      try: () => settlementWalletAddress(nodeConfig),
+      catch: (cause) =>
+        new ConfigError({
+          message: "Automatic settlement wallet configuration is invalid",
+          cause,
+          fieldsAndValues: [],
+        }),
+    });
 
     yield* assertPhase1AcceptCrashCheckpointConfiguration;
     // The ledger MPF is always the Architecture G owner. Refuse to start before
@@ -428,6 +440,7 @@ export const runNode = (
           mkSchedule(nodeConfig.ADMISSION_BACKLOG_REFRESH_MS),
         ),
         historyOwner.awaitStopped,
+        settlementFiber,
         writeBehindFiber,
         appThread,
         retainedPayloadServerThread(retrieveRetainedDaPayload),

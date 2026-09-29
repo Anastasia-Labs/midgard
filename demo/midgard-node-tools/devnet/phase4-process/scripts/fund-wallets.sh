@@ -8,7 +8,7 @@ require_run_dir
 set -a
 . "$MIDGARD_PHASE4_RUN_DIR/secrets/wallets.env"
 set +a
-wallet_vars='L1_OPERATOR_SEED_PHRASE L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX L1_REFERENCE_SCRIPT_SEED_PHRASE USER_SEED_PHRASE TESTNET_GENESIS_WALLET_SEED_PHRASE_A TESTNET_GENESIS_WALLET_SEED_PHRASE_B'
+wallet_vars='L1_OPERATOR_SEED_PHRASE L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX L1_REFERENCE_SCRIPT_SEED_PHRASE L1_SETTLEMENT_SEED_PHRASE USER_SEED_PHRASE TESTNET_GENESIS_WALLET_SEED_PHRASE_A TESTNET_GENESIS_WALLET_SEED_PHRASE_B'
 for var in $wallet_vars; do eval "value=\${$var:-}"; [ -n "$value" ] || die "missing wallet secret $var"; done
 (
   cd "$node_root"
@@ -28,7 +28,7 @@ cli query utxo --socket-path /run/cardano/ipc/node.socket --testnet-magic "$MIDG
 tx_in=$(jq -r 'to_entries | max_by(.value.value.lovelace) | .key' "$MIDGARD_PHASE4_RUN_DIR/work/genesis-utxos.json")
 [ "$tx_in" != null ] || die "genesis UTxO not available"
 set --
-while IFS= read -r address; do set -- "$@" --tx-out "$address+10000000000"; done <<EOF
+while IFS= read -r address; do set -- "$@" --tx-out "$address+9990000000" --tx-out "$address+10000000"; done <<EOF
 $(jq -r '.[].address' "$MIDGARD_PHASE4_RUN_DIR/work/wallet-addresses.json")
 EOF
 cli transaction build --socket-path /run/cardano/ipc/node.socket --testnet-magic "$MIDGARD_PHASE4_NETWORK_MAGIC" --tx-in "$tx_in" "$@" --change-address "$genesis_address" --out-file /run/work/fund-wallets.txbody

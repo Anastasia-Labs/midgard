@@ -24,6 +24,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
  *   tests/event-history-submission-emulator.test.ts
  *   tests/event-history-submission-journal.test.ts
+ *   tests/settlement-journal.test.ts
  *   tests/event-history-authority.test.ts
  *   tests/event-history-journal.test.ts
  *   tests/event-history-ready-append.test.ts

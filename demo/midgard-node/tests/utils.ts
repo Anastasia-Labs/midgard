@@ -71,12 +71,20 @@ export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
  * contain (e.g. the `commit_build_calibration` singleton). A reset replays only
  * these, wherever they sit in the file, without re-running the migration's DDL.
  * A seed row must therefore be a plain `INSERT INTO ...;` statement: rows
- * seeded by `COPY` or inside a `DO` block would not be restored.
+ * seeded by `COPY` or inside a `DO` block would not be restored. Dollar-quoted
+ * bodies are skipped, so an INSERT inside a trigger or function body (which
+ * runs when the function does, not at migration time) is never replayed. A
+ * top-level `INSERT ... SELECT` from application tables is replayed against the
+ * emptied tables and adds nothing.
  */
 const MIGRATION_INSERT_STATEMENT = /^\s*INSERT\s+INTO\b[^;]*;/gim;
+const DOLLAR_QUOTED_BODY = /\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?\$\1\$/g;
 
 const migrationSeedRowsSql: readonly string[] = MIGRATIONS.flatMap(
-  (migration) => migration.sql.match(MIGRATION_INSERT_STATEMENT) ?? [],
+  (migration) =>
+    migration.sql
+      .replace(DOLLAR_QUOTED_BODY, "")
+      .match(MIGRATION_INSERT_STATEMENT) ?? [],
 );
 
 const truncateApplicationTablesSql = `TRUNCATE TABLE ${APPLICATION_TABLE_NAMES.map(
