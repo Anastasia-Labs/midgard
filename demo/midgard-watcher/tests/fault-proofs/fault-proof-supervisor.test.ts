@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,12 +15,17 @@ import { progressObservation } from "../support/fault-proof-progress-observation
 
 const directories: string[] = [];
 const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
+const latestSafeStartOffsetMs =
+  MIDGARD_RETENTION_WINDOW.maturityMs -
+  MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
 const deadline = (headerHash: string, headerEndTimeMs: number) =>
   Object.freeze({
     headerHash,
     headerEndTimeMs: headerEndTimeMs.toString(),
-    maturityAtMs: (headerEndTimeMs + 604_800_000).toString(),
-    latestSafeStartAtMs: (headerEndTimeMs + 302_400_000).toString(),
+    maturityAtMs: (
+      headerEndTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
+    ).toString(),
+    latestSafeStartAtMs: (headerEndTimeMs + latestSafeStartOffsetMs).toString(),
   });
 
 const directory = async (): Promise<string> => {
@@ -60,7 +66,8 @@ describe("production fault-proof supervisor", () => {
     const supervisor = createWatcherFaultProofSupervisor({
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      deadlineAlertHeadroomMs: 3_600_000,
+      deadlineAlertHeadroomMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: Uint8Array.from({ length: 32 }, () => 0xa5),
       execution: {
         verifyCompleted: async () => {
@@ -497,7 +504,7 @@ describe("production fault-proof supervisor", () => {
     });
     await waitUntil(() => supervisor.status().queuedJobCount === 1);
 
-    nowMs = 302_419_500;
+    nowMs = latestSafeStartOffsetMs + 19_500;
     expect(supervisor.status()).toMatchObject({
       deadlineHealth: "at_risk",
       earliestDeadlineJob: { headerHash: h28(0x85) },
@@ -515,7 +522,7 @@ describe("production fault-proof supervisor", () => {
     const gate = deferred<void>();
     const started = deferred<void>();
     const starts: string[] = [];
-    let nowMs = 302_399_500;
+    let nowMs = latestSafeStartOffsetMs - 500;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
@@ -543,7 +550,7 @@ describe("production fault-proof supervisor", () => {
       deadlineHealth: "at_risk",
       remainingSafeStartMs: "500",
     });
-    nowMs = 302_400_000;
+    nowMs = latestSafeStartOffsetMs;
     const unsafe = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
       category: "networkId",

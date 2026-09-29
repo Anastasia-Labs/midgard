@@ -683,6 +683,8 @@ describe("user-event pending native growth", () => {
     const open = historicalCapture.openWatcherLocalHistoricalCapture;
     let growBeforeSecondFirst = true;
     let activeCaptures = 0;
+    let gapProbeClosed = false;
+    let crossedLongGap = false;
     const first = await context.touchedBlock();
     const second = await context.touchedBlock();
     await context.fixture.setNativeTip(second.point);
@@ -697,6 +699,17 @@ describe("user-event pending native growth", () => {
           growBeforeSecondFirst = false;
           await context.fixture.growNativeTip();
         }
+        // Advance time between owned captures. Counting native query starts
+        // and sleeping can otherwise jump time during a still-live receipt.
+        if (
+          !crossedLongGap &&
+          input.point.blockHash === second.point.blockHash &&
+          runtime.read().headCursor?.blockHash === first.point.blockHash
+        ) {
+          elapsed += 130_000;
+          crossedLongGap = true;
+        }
+        const afterGap = crossedLongGap;
         const acquired = await open(input);
         activeCaptures += 1;
         let closed = false;
@@ -707,6 +720,7 @@ describe("user-event pending native growth", () => {
             if (!closed) {
               closed = true;
               activeCaptures -= 1;
+              if (afterGap) gapProbeClosed = true;
             }
           },
         };
@@ -726,10 +740,13 @@ describe("user-event pending native growth", () => {
         () => expect(runtime.read().headCursor).toEqual(first.point),
         { timeout: 20_000 },
       );
-      await waitForNativeQueries(context, second.point.blockHash, 4);
-      expect(activeCaptures).toBe(0);
-      elapsed += 130_000;
-      await delay(1_200);
+      await vi.waitFor(
+        () => {
+          expect(gapProbeClosed).toBe(true);
+          expect(activeCaptures).toBe(0);
+        },
+        { timeout: 20_000 },
+      );
       expect(settled).toBe(false);
       expect(runtime.read().status).toBe("ready");
       expect(runtime.read().headCursor).toEqual(first.point);

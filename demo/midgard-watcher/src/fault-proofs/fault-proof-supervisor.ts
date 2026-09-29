@@ -1207,7 +1207,9 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
   createSupervisor({
     journalRoot: input.journalRoot,
     deploymentFingerprint: input.deploymentFingerprint,
-    deadlineAlertHeadroomMs: input.deadlineAlertHeadroomMs ?? 3_600_000,
+    deadlineAlertHeadroomMs:
+      input.deadlineAlertHeadroomMs ??
+      Math.min(3_600_000, MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs),
     queueAuthenticationKey:
       input.unsafeQueueAuthenticationKeyForTest ??
       Uint8Array.from({ length: 32 }, () => 0xa5),

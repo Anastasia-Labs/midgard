@@ -27,6 +27,7 @@ describe("public DA negotiated stream lifecycle", () => {
       DaRequestResponseProtocol.capabilities,
     );
     const heartbeats = { client: 0, server: 0 };
+    let heartbeatFinished = () => {};
     const monitor = (
       node: Awaited<ReturnType<typeof createLibp2p>>,
       side: keyof typeof heartbeats,
@@ -35,13 +36,20 @@ describe("public DA negotiated stream lifecycle", () => {
         const newStream = connection.newStream.bind(connection);
         vi.spyOn(connection, "newStream").mockImplementation(
           async (protocols, options) => {
+            const stream = await newStream(protocols, options);
             if (
               (Array.isArray(protocols) ? protocols : [protocols]).includes(
                 PING_PROTOCOL,
               )
-            )
-              heartbeats[side] += 1;
-            return newStream(protocols, options);
+            ) {
+              const close = stream.close.bind(stream);
+              vi.spyOn(stream, "close").mockImplementation(async (options) => {
+                await close(options);
+                heartbeats[side] += 1;
+                heartbeatFinished();
+              });
+            }
+            return stream;
           },
         );
       });
@@ -88,8 +96,12 @@ describe("public DA negotiated stream lifecycle", () => {
         return node as Awaited<ReturnType<WatcherPublicDaLibp2pFactory>>;
       },
     });
-    await server.start();
+    // Drive real heartbeat exchanges one round at a time. A 30 ms wall-clock
+    // interval can start another ping before the previous one closes on a
+    // loaded runner, exhausting the ping protocol's stream limit.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     try {
+      await server.start();
       await transport.start();
       const port = server
         .getMultiaddrs()[0]!
@@ -110,7 +122,16 @@ describe("public DA negotiated stream lifecycle", () => {
         .catch((cause: unknown) => cause);
       await firstRequest;
       const connectionId = server.getConnections()[0]!.id;
-      await new Promise((resolve) => setTimeout(resolve, 180));
+      for (let round = 1; round <= 2; round += 1) {
+        const finished = new Promise<void>((resolve) => {
+          heartbeatFinished = () => {
+            if (heartbeats.client >= round && heartbeats.server >= round)
+              resolve();
+          };
+        });
+        await vi.advanceTimersByTimeAsync(30);
+        await finished;
+      }
       release();
       expect(await result).toEqual(Buffer.from("response"));
       expect(requests).toEqual([Buffer.from([0xa0])]);
@@ -128,6 +149,7 @@ describe("public DA negotiated stream lifecycle", () => {
       release();
       await transport.stop();
       await server.stop();
+      vi.useRealTimers();
     }
   }, 15_000);
 

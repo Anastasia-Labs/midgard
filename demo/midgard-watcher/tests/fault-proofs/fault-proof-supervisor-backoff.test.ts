@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { setTimeout as waitForDisk } from "node:timers/promises";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
@@ -80,7 +81,10 @@ describe("objective progress transport backoff", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const root = await mkdtemp("/var/tmp/midgard-objective-deadline-");
     paths.push(root);
-    let now = 302_399_500;
+    let now =
+      MIDGARD_RETENTION_WINDOW.maturityMs -
+      MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs -
+      500;
     const run = vi.fn(async () => retryable);
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,

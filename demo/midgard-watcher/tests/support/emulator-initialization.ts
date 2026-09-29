@@ -14,6 +14,7 @@ import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
 } from "midgard-node/transactions/initialization";
+import { configureReferencePublication } from "midgard-node/transactions/reference-publication";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "midgard-node/transactions/script-reward-registration";
 
 /** Signed and confirmed by the emulator using the current deployed script recipes. */
@@ -27,6 +28,13 @@ export const createEmulatorInitialization = async () => {
   );
   const lucid = await createMainnetEmulatorLucid(emulator, "Custom");
   const publisherLucid = await createMainnetEmulatorLucid(emulator, "Custom");
+  configureReferencePublication(publisherLucid, {
+    mode: "chained",
+    synchronize: async () => emulator.slot,
+    wait: async () => {
+      emulator.awaitBlock(1);
+    },
+  });
   lucid.selectWallet.fromSeed(operator.seedPhrase);
   publisherLucid.selectWallet.fromSeed(publisher.seedPhrase);
   const nonce = (await lucid.wallet().getUtxos())[0];

@@ -3,6 +3,15 @@ import { createInterface } from "node:readline";
 
 const mode = process.argv[2] ?? "honest";
 const reader = createInterface({ input: process.stdin, crlfDelay: Infinity });
+// Install shutdown handling before publishing readiness or query results: the
+// parent can close the helper as soon as it observes either message.
+const keepAlive = setInterval(() => undefined, 1_000);
+const stop = () => {
+  clearInterval(keepAlive);
+  process.exit(0);
+};
+process.once("SIGINT", stop);
+process.once("SIGTERM", stop);
 const [line] = await new Promise((resolve) =>
   reader.once("line", (value) => resolve([value])),
 );
@@ -132,11 +141,3 @@ if (
     tip,
   });
 }
-
-const keepAlive = setInterval(() => undefined, 1_000);
-const stop = () => {
-  clearInterval(keepAlive);
-  process.exit(0);
-};
-process.once("SIGINT", stop);
-process.once("SIGTERM", stop);

@@ -1,6 +1,7 @@
 import { readFile, rename, rmdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   admitFraudProofRawL1Snapshot,
   assertWorkflowActuationPermitIdentity,
@@ -173,14 +174,20 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
     throw new Error("raw fixture omitted completed correction");
   let capturedSnapshot = raw.snapshot;
   let beforeCapture = async (): Promise<void> => undefined;
+  const completionVerified = deferred();
+  const secondRunStarted = deferred();
   const verifyCompleted = vi.fn(
-    async (input: Parameters<typeof verifyCompletedFraudProofWorkflow>[0]) =>
-      verifyCompletedFraudProofWorkflow(input),
+    async (input: Parameters<typeof verifyCompletedFraudProofWorkflow>[0]) => {
+      const result = await verifyCompletedFraudProofWorkflow(input);
+      completionVerified.resolve();
+      return result;
+    },
   );
   let beforeRun = async (_input: WorkflowAdapterRunnerInput): Promise<void> =>
     undefined;
   let afterRun = async (result: unknown): Promise<unknown> => result;
   const runOrResume = vi.fn(async (invocation: WorkflowAdapterRunnerInput) => {
+    if (runOrResume.mock.calls.length === 2) secondRunStarted.resolve();
     await beforeRun(invocation);
     const bound = bindWorkflowFundingReservationJournal({
       journal: bindWorkflowActuationJournal({
@@ -229,7 +236,8 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
     const supervisor = createWatcherFaultProofSupervisor({
       journalRoot: fixture.journalRoot,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      deadlineAlertHeadroomMs: 3_600_000,
+      deadlineAlertHeadroomMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
       execution: createExecution(),
     });
@@ -305,12 +313,18 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
     });
   };
   const idle = async (supervisor: ReturnType<typeof createSupervisor>) =>
-    vi.waitFor(async () => {
-      if (supervisor.status().phase === "blocked") await supervisor.done;
-      expect(supervisor.status().phase).toBe("accepting");
-      expect(supervisor.status().activeJob).toBeNull();
-      expect(supervisor.status().queuedJobCount).toBe(0);
-    });
+    vi.waitFor(
+      async () => {
+        if (supervisor.status().phase === "blocked") await supervisor.done;
+        expect(supervisor.status().phase).toBe("accepting");
+        expect(supervisor.status().activeJob).toBeNull();
+        expect(supervisor.status().queuedJobCount).toBe(0);
+      },
+      // Real journal persistence exceeded the polling helper's 1 s default
+      // in 3/20 contended runs. Handover ordering uses explicit barriers;
+      // this budget only bounds how long an active invocation may drain.
+      { timeout: 10_000 },
+    );
   return {
     fixture,
     journal,
@@ -323,6 +337,8 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
     writeTerminal,
     runOrResume,
     verifyCompleted,
+    completionVerified: completionVerified.promise,
+    secondRunStarted: secondRunStarted.promise,
     getUtxos,
     getUtxosByOutRef,
     setBeforeRun: (callback: typeof beforeRun) => {
@@ -358,10 +374,7 @@ describe("proof objective progress with durable funding and journals", () => {
     await Promise.race([entered.promise, supervisor.done]);
     await test.request(supervisor, 2).accepted;
     release.resolve();
-    await vi.waitFor(async () => {
-      if (supervisor.status().phase === "blocked") await supervisor.done;
-      expect(test.verifyCompleted).toHaveBeenCalledTimes(1);
-    });
+    await Promise.race([test.completionVerified, supervisor.done]);
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledTimes(1);
     expect(test.verifyCompleted).toHaveBeenCalledTimes(1);
@@ -416,10 +429,7 @@ describe("proof objective progress with durable funding and journals", () => {
     await Promise.race([entered.promise, supervisor.done]);
     await test.request(supervisor, 2).accepted;
     release.resolve();
-    await vi.waitFor(async () => {
-      if (supervisor.status().phase === "blocked") await supervisor.done;
-      expect(test.verifyCompleted).toHaveBeenCalledTimes(1);
-    });
+    await Promise.race([test.completionVerified, supervisor.done]);
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledTimes(1);
     expect(test.getUtxos).not.toHaveBeenCalled();
@@ -445,6 +455,7 @@ describe("proof objective progress with durable funding and journals", () => {
     first.controller.revoke("native_chain_rollback");
     await test.request(supervisor, 2).accepted;
     release.resolve();
+    await Promise.race([test.secondRunStarted, supervisor.done]);
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledTimes(2);
     expect(test.runOrResume.mock.calls[1]![0].decisionDigest).toBe(
@@ -472,6 +483,7 @@ describe("proof objective progress with durable funding and journals", () => {
     await Promise.race([finishing.promise, supervisor.done]);
     await test.request(supervisor, 2).accepted;
     release.resolve();
+    await Promise.race([test.secondRunStarted, supervisor.done]);
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledTimes(2);
     expect(test.getUtxos).not.toHaveBeenCalled();

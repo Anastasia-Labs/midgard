@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -205,8 +206,11 @@ const recover = async (completed: boolean, rounds = 1) => {
             Object.freeze({
               headerHash: decision.headerHash,
               headerEndTimeMs: "0",
-              maturityAtMs: "604800000",
-              latestSafeStartAtMs: "302400000",
+              maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
+              latestSafeStartAtMs: (
+                MIDGARD_RETENTION_WINDOW.maturityMs -
+                MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs
+              ).toString(),
             }),
             "3",
           )
@@ -270,8 +274,11 @@ describe("fault-proof supervisor over a completed execution", () => {
         {
           headerHash: decision.headerHash,
           headerEndTimeMs: "0",
-          maturityAtMs: "604800000",
-          latestSafeStartAtMs: "302400000",
+          maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
+          latestSafeStartAtMs: (
+            MIDGARD_RETENTION_WINDOW.maturityMs -
+            MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs
+          ).toString(),
         },
         "3",
       );

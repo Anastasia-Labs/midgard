@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -229,8 +230,11 @@ describe("production fault decision journal", () => {
           deadline: Object.freeze({
             headerHash: persisted!.decision.headerHash,
             headerEndTimeMs: "0",
-            maturityAtMs: "604800000",
-            latestSafeStartAtMs: "302400000",
+            maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
+            latestSafeStartAtMs: (
+              MIDGARD_RETENTION_WINDOW.maturityMs -
+              MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs
+            ).toString(),
           }),
         },
       }),

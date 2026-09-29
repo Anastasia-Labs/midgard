@@ -1,3 +1,4 @@
+import { DA_ATTESTATION_TIMEOUT_MS } from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
@@ -81,21 +82,21 @@ describe("watcher attestation-timeout observation", () => {
     expect(
       deriveWatcherAttestationTimeoutObservation({
         snapshot: value,
-        nowMs: 3_000_000n,
+        nowMs: 2_000n + DA_ATTESTATION_TIMEOUT_MS - 120_001n,
         alertLeadMs: 120_000n,
       })?.status,
     ).toBe("waiting");
     expect(
       deriveWatcherAttestationTimeoutObservation({
         snapshot: value,
-        nowMs: 3_550_000n,
+        nowMs: 2_000n + DA_ATTESTATION_TIMEOUT_MS - 120_000n,
         alertLeadMs: 120_000n,
       })?.status,
     ).toBe("near_timeout");
     expect(
       deriveWatcherAttestationTimeoutObservation({
         snapshot: value,
-        nowMs: 3_602_000n,
+        nowMs: 2_000n + DA_ATTESTATION_TIMEOUT_MS,
         alertLeadMs: 120_000n,
       })?.status,
     ).toBe("timed_out");
@@ -119,7 +120,7 @@ describe("watcher attestation-timeout observation", () => {
           ...value,
           queue: [{ ...value.queue[0], endTime: "999999999" }],
         },
-        nowMs: 3_000_000n,
+        nowMs: 2_000n + DA_ATTESTATION_TIMEOUT_MS - 120_001n,
         alertLeadMs: 120_000n,
       }),
     ).toBeNull();
@@ -149,12 +150,12 @@ it("observes an expired unattested suffix behind an attested head", () => {
   expect(
     deriveWatcherAttestationTimeoutObservation({
       snapshot: extended,
-      nowMs: 3_603_000n,
+      nowMs: 3_000n + DA_ATTESTATION_TIMEOUT_MS,
       alertLeadMs: 120_000n,
     }),
   ).toMatchObject({
     status: "timed_out",
     headerHash: tail!.headerHash,
-    deadlineMs: "3603000",
+    deadlineMs: (3_000n + DA_ATTESTATION_TIMEOUT_MS).toString(),
   });
 });

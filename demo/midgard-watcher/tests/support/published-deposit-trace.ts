@@ -597,6 +597,12 @@ export const stagePublishedDepositTrace = async (
       head = anchor;
     }
     if (commits.length === 1) {
+      // The event wait can outlast an unattested head's append deadline.
+      // Authenticate the predecessor's DA before waiting for the deposit,
+      // then use the continued queue output produced by that attestation.
+      await attest(empty);
+      anchor = await one(contracts.stateQueue.spendingScriptAddress, headUnit!);
+      head = anchor;
       await chain.awaitLedgerTime(depositMetadata.inclusionTime);
       for (;;) {
         try {

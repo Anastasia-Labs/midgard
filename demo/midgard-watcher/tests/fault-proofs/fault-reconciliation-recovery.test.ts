@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   assertWorkflowJournalActuation,
@@ -167,7 +168,8 @@ describe("existing signed workflow recovery authority", () => {
     const supervisor = createWatcherFaultProofSupervisor({
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT,
-      deadlineAlertHeadroomMs: 3600000,
+      deadlineAlertHeadroomMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
       execution: {
         verifyCompleted: async () => {

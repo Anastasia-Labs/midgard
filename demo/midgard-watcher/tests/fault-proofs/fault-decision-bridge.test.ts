@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import {
   authenticatedStateQueueObservationDigest,
@@ -314,9 +315,11 @@ const harness = (input: {
         Object.freeze({
           headerHash: header.headerHash,
           headerEndTimeMs: "0",
-          maturityAtMs: "604800000",
+          maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
           latestSafeStartAtMs: (
-            302400000 + (input.deadlineOffset?.() ?? 0)
+            MIDGARD_RETENTION_WINDOW.maturityMs -
+            MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs +
+            (input.deadlineOffset?.() ?? 0)
           ).toString(),
         }),
       requestProgress: async (request) => {

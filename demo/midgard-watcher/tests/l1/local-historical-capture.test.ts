@@ -1492,7 +1492,9 @@ describe("owned reference bodies and current receipt pairing", () => {
         const outputs = body.outputs();
         const output = outputs.get(Number(index));
         try {
-          expect(reference.outputCbor).toBe(output.to_canonical_cbor_hex());
+          // Reference evidence preserves the creating output's bytes, including
+          // inline datum encodings whose hashes change on canonicalization.
+          expect(reference.outputCbor).toBe(output.to_cbor_hex());
         } finally {
           output.free();
           outputs.free();
@@ -1612,6 +1614,10 @@ describe("owned reference bodies and current receipt pairing", () => {
         .creatingTransactionBodies,
     ).toHaveLength(6);
     await capture.close();
+    await f.waitFor(
+      async () =>
+        (await f.logs()).filter(({ kind }) => kind === "stop").length === 3,
+    );
     const records = await f.logs();
     expect(records.filter(({ kind }) => kind === "start")).toHaveLength(3);
     expect(records.filter(({ kind }) => kind === "stop")).toHaveLength(3);

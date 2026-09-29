@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -51,8 +52,11 @@ const QUEUE_KEY = Uint8Array.from({ length: 32 }, () => 0x5a);
 const ROLLBACK_GENERATION = "3";
 const deadline = Object.freeze({
   headerEndTimeMs: "0",
-  maturityAtMs: "604800000",
-  latestSafeStartAtMs: "302400000",
+  maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
+  latestSafeStartAtMs: (
+    MIDGARD_RETENTION_WINDOW.maturityMs -
+    MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs
+  ).toString(),
 });
 
 const classifyDoubleSpend = async () => {

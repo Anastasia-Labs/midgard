@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import {
@@ -93,11 +96,11 @@ const config = (NODE_CONFIG_PATH: string, GENESIS_CONFIG_PATH: string) =>
       requestTimeoutMs: 10_000,
       maxConcurrency: 4,
       finality: Object.freeze({
-        depth: 30,
+        depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
         rollback: Object.freeze({
           beforeFinality: "rewind",
           afterFinality: "quarantine",
-          maxDepth: 30,
+          maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
         }),
       }),
     }),
@@ -213,7 +216,9 @@ beforeAll(async () => {
     deploymentIdentity: deployment.result,
     blueprintBytes,
   });
-}, 60_000);
+  // Setup publishes every reference script. The whole file runs in about 20 s
+  // on an idle machine; the limit leaves room for a fully contended battery.
+}, 120_000);
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
