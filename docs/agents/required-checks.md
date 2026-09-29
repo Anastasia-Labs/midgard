@@ -366,7 +366,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak`
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-inline-datum.test.ak`
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak`
-  - `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`
+  - `onchain/aiken/lib/midgard/validation-machine-tests/constants.ak`
   - `onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -425,7 +425,32 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/src/cek-executor.ts`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs`
-  - `onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/add-integer.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/apply-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/bls-final-verify.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-failure.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-type-failure.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-branch-missing.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-builtin.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-empty.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-lambda.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-scrutinee-invalid.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-value-invalid.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/explicit-error.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/force-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/force-delay.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/head-list-nested.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/identity.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/if-then-else.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip-empty.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip-narrow.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/nonconstant-halt.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/omega-budget-exceeded.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`

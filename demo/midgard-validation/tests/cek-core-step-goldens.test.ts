@@ -23,7 +23,7 @@ import * as vectors from "./fixtures/cek-core-step-v1.vectors.mjs";
  * Every value in the generated fixture is recomputed here from the `src/`
  * trace builder driven by the same program definitions the generator uses, so
  * a drifting builder, state hash or evidence encoder fails on this side. The
- * generated Aiken module (`onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak`)
+ * generated Aiken module (`onchain/aiken/lib/midgard/cek-core-step-goldens/*.test.ak`)
  * decodes the same CBOR into `CoreStepEvidenceV1` and re-verifies it with
  * `verify_core_step_v1` under the fork runner, so a divergence between the
  * two machines fails on that side. Regenerate both with
@@ -86,7 +86,7 @@ type GoldenProgram = {
 
 type Golden = {
   readonly generator: string;
-  readonly aikenModule: string;
+  readonly aikenModules: readonly string[];
   readonly aikenStepsPerTest: number;
   readonly witnessKindsCovered: readonly string[];
   readonly witnessKindsUncovered: readonly string[];
@@ -211,8 +211,11 @@ describe("V1 CEK core-step golden vectors", () => {
     expect(golden.generator).toBe(
       "demo/midgard-validation/scripts/generate-cek-core-step-v1-goldens.mjs",
     );
-    expect(golden.aikenModule).toBe(
-      "onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak",
+    expect(golden.aikenModules).toEqual(
+      vectors.CEK_CORE_STEP_PROGRAMS.map(
+        (program) =>
+          `onchain/aiken/lib/midgard/cek-core-step-goldens/${program.label.replace(/_/g, "-")}.test.ak`,
+      ),
     );
     expect(golden.programs.map((program) => program.label)).toEqual(
       vectors.CEK_CORE_STEP_PROGRAMS.map((program) => program.label),

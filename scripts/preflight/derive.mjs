@@ -91,7 +91,7 @@ const isTrackableFile = (path) =>
 // The repository files a script names in string literals or relative imports,
 // resolved the way the script resolves them: `./` and `../` against the
 // script's directory, anything else against the repository root and then the
-// script's package root. Referenced `.mjs` files are followed, so a shared
+// script's package root. Referenced `.mjs` helpers and `.json` artifact manifests are followed, so a shared
 // helper's own inputs count too. Returns repository-relative paths.
 export const referencedFiles = (rootPath, file) => {
   const root = resolve(rootPath);
@@ -130,7 +130,7 @@ export const referencedFiles = (rootPath, file) => {
         continue;
       }
       found.add(path);
-      if (hit.endsWith(".mjs")) {
+      if (hit.endsWith(".mjs") || hit.endsWith(".json")) {
         visit(hit);
       }
     }

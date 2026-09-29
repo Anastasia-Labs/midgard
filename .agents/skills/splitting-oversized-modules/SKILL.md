@@ -36,7 +36,7 @@ message.
   under someone else's edit turns their diff into a conflict against moved
   code.
 - **It is not generated.** A generated file (for example
-  `onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak`, "Do not edit")
+  `onchain/aiken/lib/midgard/cek-core-step-goldens/identity.test.ak`, "Do not edit")
   is split by changing its generator. Use
   [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md).
   [review]
