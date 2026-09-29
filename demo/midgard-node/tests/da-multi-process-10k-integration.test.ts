@@ -353,9 +353,9 @@ describe("real separate-process canonical V1 DA publication", () => {
       );
       expect(children.every((child) => child.exitCode === null)).toBe(true);
 
-      const metricsByPeer = await Promise.all(
-        committeeSeeds.map((_, index) => readPeerMetrics(temp, index)),
-      );
+      // Responses can arrive before the handlers' finally blocks finish
+      // appending metrics. Wait for both completed requests on every peer.
+      const metricsByPeer = await waitForPeerMetrics(temp, 2, 60_000);
       expect(metricsByPeer).toHaveLength(CHILD_COUNT);
       expect(
         new Set(metricsByPeer.map((metrics) => metrics[0]!.pid)).size,

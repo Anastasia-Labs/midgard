@@ -1851,8 +1851,29 @@ describe("bounded journal retention", () => {
     const { token, checkpoint: seeded } = await start();
     const last = Journal.RETENTION_BATCH + 12;
     let current = seeded;
-    for (let n = 2; n <= last; n++)
-      current = await forward(token, current, n, () => retainEverything);
+    // Reuse the database layer and renew ownership while constructing the
+    // range, as the producer does. Reopening pools for each block both hid
+    // the pruning cost and let the fixture's lease expire under contention.
+    await run(
+      Effect.gen(function* () {
+        for (let n = 2; n <= last; n++) {
+          yield* Authority.renew(token, 60_000);
+          const prepared = yield* Effect.promise(() => prepare(current, n));
+          const appended = yield* Authority.withRecovery(
+            token,
+            Journal.append(
+              binding,
+              prepared,
+              () => Journal.loadCurrent(binding),
+              retainEverything,
+            ),
+          );
+          if (!appended.applied || appended.result === null)
+            return yield* Effect.die("Retention fixture append did not apply");
+          current = appended.result;
+        }
+      }),
+    );
     expect(current.anchor).toEqual(seeded.anchor);
     const farTip = () => ({
       tipHeight: 1_000_000,

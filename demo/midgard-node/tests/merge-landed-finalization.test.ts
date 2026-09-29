@@ -1,7 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Deferred, Effect, Either, Fiber, Ref } from "effect";
@@ -14,7 +13,7 @@ import {
 } from "../src/database/index.js";
 import { Globals } from "../src/services/index.js";
 import { finalizeMergesLandedThrough } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
  * The landed-merge walk over real journals: which merges it finalizes, in
@@ -25,7 +24,7 @@ import { provideDatabaseLayers } from "./utils.js";
 
 const DURABLE_ROOT = "ab".repeat(32);
 
-/** Clears only the tables these tests write, then runs `effect` with an
+/** Restores the worker's empty application state, then runs `effect` with an
  * Architecture G native owner whose diagnostics `diagnostics` answers. */
 const isolatedDb = <A, E>(
   effect: Effect.Effect<A, E, any>,
@@ -36,9 +35,7 @@ const isolatedDb = <A, E>(
 ) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE TABLE local_mutation_jobs, pending_block_finalizations,
-        blocks, confirmed_ledger RESTART IDENTITY CASCADE`;
+      yield* resetApplicationTables;
       const globals = yield* Globals;
       yield* Ref.set(globals.NATIVE_MPF_OWNER, { diagnostics } as never);
       return yield* effect;

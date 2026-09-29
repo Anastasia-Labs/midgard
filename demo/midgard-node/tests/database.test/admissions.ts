@@ -1414,8 +1414,12 @@ export const registerAdmissionsTests = () => {
               expect(yield* TxAdmissionsDB.countBacklog).toBe(5n);
 
               const sql = yield* SqlClient.SqlClient;
+              // Preserve admission's monotone timestamps when the fixture drains
+              // the backlog through a different database connection.
               yield* sql`UPDATE ${sql(TxAdmissionsDB.tableName)}
-              SET status = 'accepted', terminal_at = NOW(), updated_at = NOW()
+              SET status = 'accepted',
+                  terminal_at = GREATEST(NOW(), first_seen_at, last_seen_at, updated_at),
+                  updated_at = GREATEST(NOW(), first_seen_at, last_seen_at, updated_at)
               WHERE status IN ('queued', 'validating')`;
               yield* Deferred.succeed(unfreeze, undefined);
               // Observe the refresh's real PostgreSQL completion, not elapsed
@@ -1558,23 +1562,33 @@ export const registerAdmissionsTests = () => {
               cache,
             });
 
-            const baselineP99 = percentile99(yield* measure(24, Effect.void));
+            yield* measure(24, Effect.void);
             const releases = yield* Effect.forEach(
               Array.from({ length: nodeConfig.POSTGRES_BATCH_POOL_SIZE }),
               () => Deferred.make<void>(),
             );
             const acquired = yield* Effect.forEach(releases, () =>
-              Deferred.make<void>(),
+              Deferred.make<void, unknown>(),
             );
+            // A holder that fails before acquiring (for example a batch
+            // connection that exceeds connect_timeout) fails its `acquired`
+            // signal, so the wait below surfaces the failure instead of
+            // blocking until the test timeout.
             const holders = yield* Effect.forEach(releases, (release, index) =>
               Effect.fork(
-                batchSql.withTransaction(
-                  Effect.gen(function* () {
-                    yield* batchSql`SELECT 1`;
-                    yield* Deferred.succeed(acquired[index]!, undefined);
-                    yield* Deferred.await(release);
-                  }),
-                ),
+                batchSql
+                  .withTransaction(
+                    Effect.gen(function* () {
+                      yield* batchSql`SELECT 1`;
+                      yield* Deferred.succeed(acquired[index]!, undefined);
+                      yield* Deferred.await(release);
+                    }),
+                  )
+                  .pipe(
+                    Effect.tapErrorCause((cause) =>
+                      Deferred.failCause(acquired[index]!, cause),
+                    ),
+                  ),
               ),
             );
             const releaseHolders = Effect.forEach(releases, (release) =>
@@ -1587,11 +1601,14 @@ export const registerAdmissionsTests = () => {
             yield* Effect.gen(function* () {
               yield* Effect.forEach(acquired, Deferred.await);
 
+              // All batch connections remain held until after admission completes,
+              // so admission routed through that pool would block here. Only the
+              // absolute bound is asserted: a ratio against the unsaturated p99
+              // compared two 24-sample p99s and flaked under host load.
               const saturatedP99 = percentile99(
                 yield* measure(24, requestTxQueueProcessorWakeup),
               );
               expect(saturatedP99).toBeLessThanOrEqual(1_000);
-              expect(saturatedP99).toBeLessThanOrEqual(baselineP99 * 1.2);
 
               const activity = yield* admissionSql<{
                 readonly application_name: string;

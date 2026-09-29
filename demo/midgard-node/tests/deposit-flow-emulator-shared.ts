@@ -11,6 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setImmediate as yieldToIo } from "node:timers/promises";
 import { inspect } from "node:util";
 
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
@@ -565,6 +566,17 @@ export const makeFixture = async (): Promise<EmulatorFixture> => {
     [operatorAccount, depositorAccount, referenceScriptsAccount],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  const submitTx = emulator.submitTx.bind(emulator);
+  emulator.submitTx = async (tx) => {
+    // Publishing hundreds of scripts through immediately resolved provider
+    // calls can starve worker IPC for over Vitest's 60s reporting deadline.
+    // Service I/O between transactions without advancing the protocol clock.
+    // Vitest 4 removed that deadline (vitest-dev/vitest#8297, first shipped in
+    // v4.0.0); delete this wrapper once the workspace is on Vitest 4 or later.
+    // Stable @effect/vitest supports only Vitest 3; later Vitest needs Effect 4.
+    await yieldToIo();
+    return submitTx(tx);
+  };
   const emulatorCreationTimeMs = emulator.now();
   const operatorLucid = await makeLucid(emulator, "Custom");
   const depositorLucid = await makeLucid(emulator, "Custom");

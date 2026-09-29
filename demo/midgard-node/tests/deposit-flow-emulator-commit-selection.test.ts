@@ -54,6 +54,7 @@ import {
   type QueuedTx,
   Ref,
   resetActiveRuntimePaths,
+  resolveCurrentOperatorSchedulerWindow,
   retainAndAttestSubmittedHeader,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
@@ -778,6 +779,17 @@ describe.sequential("deposit flow emulator", () => {
           projectToLedger: false,
         });
 
+        // Place both cases at the current shift's end explicitly. Skipping a
+        // refresh alone does not imply insufficient headroom on a longer shift.
+        const schedulerWindow = await Effect.runPromise(
+          resolveCurrentOperatorSchedulerWindow(
+            lucidService.api,
+            fixture.contracts,
+          ),
+        );
+        expect(schedulerWindow).toBeDefined();
+        await advanceEmulatorPastUnixTime(fixture, schedulerWindow!.endTimeMs);
+        vi.setSystemTime(new Date(fixture.emulator.now()));
         if (alignScheduler) {
           await alignCommitSchedulerBeforeTestWorker({
             fixture,
