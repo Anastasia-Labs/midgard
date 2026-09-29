@@ -1096,6 +1096,27 @@ describe("pooled DA bond journey driver", () => {
     );
   });
 
+  it("records a failed step's whole cause chain and rethrows the original error", async () => {
+    const { port } = fakePort();
+    const failure = new Error("Header submission e1bb is unresolved", {
+      cause: Object.assign(new Error("RejectTx"), {
+        data: { validationError: "ValueNotConserved" },
+      }),
+    });
+    const { record, error } = await tryRunDaBondPoolJourney({
+      ...port,
+      beforeStep: async () => {
+        throw failure;
+      },
+    });
+    expect(error).toBe(failure);
+    expect(record.failure?.step).toBe(1);
+    expect(record.failure?.message).toMatch(
+      /^Header submission e1bb is unresolved <- RejectTx .*ValueNotConserved/u,
+    );
+    expect(stage(record, 1).error).toBe(record.failure?.message);
+  });
+
   it("fails step 4 when Apply is not refused while the pool is short", async () => {
     const { record } = await tryRunDaBondPoolJourney(
       fakePort({ attestAppliesWhileShort: true }).port,
@@ -1793,6 +1814,99 @@ describe("pooled DA bond journey driver", () => {
     });
     expect(stage(failed, 6).status).toBe("failed");
     expect(failedAssertions(failed)).toEqual([]);
+  });
+
+  /**
+   * A fake chain as an earlier run left it after step 5: that run stopped at
+   * the start of step 2. Returns the fake and the B2 it committed.
+   */
+  const stoppedAfterStep5 = async (faults: Faults = {}) => {
+    const fake = fakePort(faults);
+    const earlier = await tryRunDaBondPoolJourney({
+      ...fake.port,
+      beforeStep: async (step) => {
+        if (step === 2) throw new Error("stopped before step 2");
+        await fake.port.beforeStep!(step);
+      },
+    });
+    expect(earlier.record.stages.map(({ step }) => step)).toEqual([
+      1, 3, 4, 5, 2,
+    ]);
+    expect(earlier.record.failure?.step).toBe(2);
+    const b2 = stage(earlier.record, 4).observations.find(
+      (observation) => observation.label === "B2 header hash",
+    );
+    if (b2?.kind !== "value" || typeof b2.value !== "string")
+      throw new Error("the earlier run recorded no B2 header hash");
+    return {
+      fake,
+      b2: { label: "B2", headerHash: b2.value, committedAt: 0 },
+    };
+  };
+
+  it("resumes after step 5: runs steps 2 and 6 only, keeps their checks, and reports a smoke", async () => {
+    const { fake, b2 } = await stoppedAfterStep5();
+    const calls: string[] = [];
+    const port: DaBondPoolJourneyPort = {
+      ...fake.port,
+      params: async () => {
+        calls.push("params");
+        return fake.port.params();
+      },
+      beforeStep: async (step) => {
+        calls.push(`before step ${step}`);
+        await fake.port.beforeStep!(step);
+      },
+      resumeBeforeStep: async (step) => {
+        calls.push(`resume before step ${step}`);
+      },
+      commitBlock: async (intent) => {
+        calls.push(`commit ${intent.label}`);
+        return fake.port.commitBlock(intent);
+      },
+    };
+    const record = await runDaBondPoolJourney(port, {
+      resume: { afterStep: 5, b2 },
+      requireProcessEvidence: true,
+    });
+    expect(record.status).toBe("passed");
+    expect(record.chronology).toEqual([2, 6]);
+    expect(record.stages.map(({ step }) => step)).toEqual([2, 6]);
+    expect(record.resumedAfterStep).toBe(5);
+    expect(record.params).toEqual(PARAMS);
+    // Parameters first, then the resume hook in place of step 2's.
+    expect(calls.slice(0, 3)).toEqual([
+      "params",
+      "resume before step 2",
+      "commit B3",
+    ]);
+    expect(calls).not.toContain("before step 2");
+    expect(calls).toContain("before step 6");
+    expect(stage(record, 2).assertions.length).toBeGreaterThan(0);
+    expect(failedAssertions(record)).toEqual([]);
+
+    const report = renderDaBondPoolJourneyReport(record, {
+      ...META,
+      adapter: "live-devnet",
+    });
+    expect(report).toContain(
+      "RESUMED after step 5 (smoke, not journey evidence)",
+    );
+    expect(report).not.toContain("Observed on the process devnet");
+    expect(report).toContain("| Run order | step 2 -> step 6 |");
+    expect(report.match(/Not run\./gu)).toHaveLength(4);
+  });
+
+  it("fails a resumed step 2 at the check its port breaks", async () => {
+    const { fake, b2 } = await stoppedAfterStep5({ noResponses: true });
+    const { record } = await tryRunDaBondPoolJourney(fake.port, {
+      resume: { afterStep: 5, b2 },
+    });
+    expect(record.status).toBe("failed");
+    expect(record.failure?.step).toBe(2);
+    expect(failedAssertions(record)).toEqual([
+      { step: 2, name: "the committee answered the challenge" },
+    ]);
   });
 
   it("times each stage and each long wait through the injected stage timer", async () => {

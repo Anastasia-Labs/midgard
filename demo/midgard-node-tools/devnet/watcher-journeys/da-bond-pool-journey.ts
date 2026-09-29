@@ -31,7 +31,7 @@
  * Process-level evidence (program rulings P16, P18 and P27): the committee's
  * pool readiness reasons and transition events must come from a real
  * `da-committee-node` process (the pool reasons of its `/readyz` body, and
- * the `da_bond_pool_*` lines of its stderr written by the pid that was read)
+ * the pool transition lines of its stderr written by the pid that was read)
  * at every committee observation, and every top-up and withdraw step must be
  * submitted by the real `midgard-node da-bond` CLI chain. An adapter that
  * composes these in process leaves those assertions `not-observable`; with
@@ -49,6 +49,7 @@ import {
   type DaBondPoolProcessRun,
   parseDaBondPoolReadyz,
 } from "./da-bond-pool-process-evidence.js";
+import { describeErrorChain } from "./error-chain.js";
 
 /** The spec's six journey steps. */
 export type DaBondPoolJourneyStep = 1 | 2 | 3 | 4 | 5 | 6;
@@ -140,7 +141,7 @@ export type DaBondPoolJourneyAlerts = Readonly<{
     /**
      * Present when the reasons are the pool reasons of a running
      * `da-committee-node` process's `GET /readyz` and the events are the
-     * `da_bond_pool_*` lines it wrote to stderr since the previous
+     * pool transition lines it wrote to stderr since the previous
      * observation (P16, ruling P27). Absent when the committee view is
      * composed in process.
      */
@@ -255,6 +256,13 @@ export type DaBondPoolJourneyPort = {
    * and checks that stop as it checks the one before step 2 (ruling P27).
    */
   afterStep?(step: DaBondPoolJourneyStep): Promise<void>;
+  /**
+   * Called in place of `beforeStep` at the start of the first step of a
+   * resumed run (`DaBondPoolJourneyOptions.resume`). The live adapter checks
+   * there that the state an earlier run left still holds, and that its
+   * committee node is stopped, as `beforeStep` would have left it.
+   */
+  resumeBeforeStep?(step: DaBondPoolJourneyStep): Promise<void>;
   params(): Promise<DaBondPoolJourneyParams>;
   /** POSIX ms on the chain's clock. */
   now(): Promise<number>;
@@ -310,6 +318,27 @@ export type DaBondPoolJourneyOptions = Readonly<{
    * counts only with the real processes. Default false.
    */
   requireProcessEvidence?: boolean;
+  /**
+   * Runs only the steps after `afterStep` in the chronology, on a chain an
+   * earlier run left there: a smoke of steps 2 and 6 on a kept devnet. Its
+   * ledger and report say so, and are never journey evidence. Every step
+   * that runs keeps all its checks.
+   */
+  resume?: DaBondPoolJourneyResume;
+}>;
+
+/** A block an earlier step committed. */
+export type DaBondPoolJourneyCommittedBlock = Readonly<{
+  label: string;
+  headerHash: string;
+  /** Its header's end time, POSIX ms. */
+  committedAt: number;
+}>;
+
+/** Where a resumed run starts: after step 5, with the B2 that run committed. */
+export type DaBondPoolJourneyResume = Readonly<{
+  afterStep: 5;
+  b2: DaBondPoolJourneyCommittedBlock;
 }>;
 
 export type DaBondPoolJourneyAssertion = {
@@ -355,6 +384,8 @@ export type DaBondPoolJourneyRecord = {
   finishedAt?: string;
   chronology: readonly DaBondPoolJourneyStep[];
   params?: DaBondPoolJourneyParams;
+  /** Set when the run resumed after this step: a smoke, not journey evidence. */
+  resumedAfterStep?: DaBondPoolJourneyResume["afterStep"];
   stages: DaBondPoolJourneyStepOutcome[];
   failure?: { step: DaBondPoolJourneyStep; message: string };
 };
@@ -364,7 +395,7 @@ export class DaBondPoolJourneyFailure extends Error {
   readonly record: DaBondPoolJourneyRecord;
   constructor(record: DaBondPoolJourneyRecord, cause: unknown) {
     super(
-      `DA bond pool journey failed at step ${record.failure?.step ?? "?"}: ${errorMessage(cause)}`,
+      `DA bond pool journey failed at step ${record.failure?.step ?? "?"}: ${describeErrorChain(cause)}`,
       { cause },
     );
     this.name = "DaBondPoolJourneyFailure";
@@ -443,11 +474,7 @@ class StageContext {
   }
 }
 
-type CommittedBlock = Readonly<{
-  label: string;
-  headerHash: string;
-  committedAt: number;
-}>;
+type CommittedBlock = DaBondPoolJourneyCommittedBlock;
 
 const describePool = (pool: DaBondPoolJourneySnapshot): string =>
   `state=${pool.state}, lovelace=${pool.lovelace}, backing=${pool.backing}` +
@@ -472,14 +499,24 @@ export const tryRunDaBondPoolJourney = async (
   const iso = () => wallClock().toISOString();
   const signals = DA_BOND_POOL_JOURNEY_COMMITTEE_SIGNALS;
 
+  const resume = options.resume;
   const record: DaBondPoolJourneyRecord = {
     status: "running",
     startedAt: iso(),
-    chronology: DA_BOND_POOL_JOURNEY_CHRONOLOGY,
+    chronology:
+      resume === undefined
+        ? DA_BOND_POOL_JOURNEY_CHRONOLOGY
+        : DA_BOND_POOL_JOURNEY_CHRONOLOGY.slice(
+            DA_BOND_POOL_JOURNEY_CHRONOLOGY.indexOf(resume.afterStep) + 1,
+          ),
+    ...(resume === undefined ? {} : { resumedAfterStep: resume.afterStep }),
     stages: [],
   };
+  // The first step of a resumed run calls `resumeBeforeStep`, not `beforeStep`.
+  let resuming = resume !== undefined;
 
-  // Set in step 1, read by every later step.
+  // Set in step 1 (or before a resumed run's first step), read by every
+  // later step.
   let params!: DaBondPoolJourneyParams;
 
   const runStage = async (
@@ -501,14 +538,19 @@ export const tryRunDaBondPoolJourney = async (
     const ctx = new StageContext(outcome);
     await timer(`da-bond-pool step ${step}: ${name}`, async () => {
       try {
-        await port.beforeStep?.(step);
+        if (resuming) {
+          resuming = false;
+          await port.resumeBeforeStep?.(step);
+        } else await port.beforeStep?.(step);
         await body(ctx);
         await port.afterStep?.(step);
         ctx.gate();
         outcome.status = "passed";
       } catch (error) {
         outcome.status = "failed";
-        outcome.error = errorMessage(error);
+        // The whole cause chain: a submission error names only its
+        // transaction, and the ledger's reason sits in its causes.
+        outcome.error = describeErrorChain(error);
         record.failure = { step, message: outcome.error };
         throw error;
       } finally {
@@ -919,6 +961,7 @@ export const tryRunDaBondPoolJourney = async (
   // Carried between steps.
   let b1!: CommittedBlock;
   let b2!: CommittedBlock;
+  if (resume !== undefined) b2 = resume.b2;
 
   const steps: Record<
     DaBondPoolJourneyStep,
@@ -1340,8 +1383,11 @@ export const tryRunDaBondPoolJourney = async (
   };
 
   try {
-    for (const step of DA_BOND_POOL_JOURNEY_CHRONOLOGY)
-      await runStage(step, steps[step]);
+    if (resume !== undefined) {
+      params = await port.params();
+      record.params = params;
+    }
+    for (const step of record.chronology) await runStage(step, steps[step]);
     record.status = "passed";
     record.finishedAt = iso();
     return { record };
@@ -1408,9 +1454,11 @@ export const renderDaBondPoolJourneyReport = (
 ): string => {
   const lines: string[] = [];
   const evidence =
-    meta.adapter === "live-devnet"
-      ? "Observed on the process devnet (adapter `live-devnet`)."
-      : "EMULATOR DRY RUN (adapter `emulator`): not devnet evidence.";
+    record.resumedAfterStep !== undefined
+      ? `RESUMED after step ${record.resumedAfterStep} (smoke, not journey evidence): steps ${record.chronology.join(" and ")} ran on the chain an earlier run left (adapter \`${meta.adapter}\`).`
+      : meta.adapter === "live-devnet"
+        ? "Observed on the process devnet (adapter `live-devnet`)."
+        : "EMULATOR DRY RUN (adapter `emulator`): not devnet evidence.";
   const result =
     record.status === "failed"
       ? `FAILED at step ${record.failure?.step ?? "?"}: ${record.failure?.message ?? "unknown error"}`
@@ -1443,7 +1491,10 @@ export const renderDaBondPoolJourneyReport = (
     lines.push(`## Step ${step}: ${DA_BOND_POOL_JOURNEY_STEP_NAMES[step]}`, "");
     const stage = record.stages.find((candidate) => candidate.step === step);
     if (stage === undefined) {
-      lines.push("Not reached.", "");
+      lines.push(
+        record.chronology.includes(step) ? "Not reached." : "Not run.",
+        "",
+      );
       continue;
     }
     lines.push(

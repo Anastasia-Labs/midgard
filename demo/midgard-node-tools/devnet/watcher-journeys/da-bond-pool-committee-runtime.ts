@@ -20,7 +20,7 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 import {
@@ -476,6 +476,71 @@ export const produceDaBondPoolCommitteeRuntime = async (input: {
     keys,
     ports: plan.ports,
   };
+};
+
+/**
+ * The runtime an earlier run of this run directory produced, for a resumed
+ * journey (a smoke on a kept devnet). Never runs the generator and never
+ * writes a key. Refuses unless the recorded evidence (`runtime.json`) names
+ * the plan's manifest, observer and keys, the manifest still hashes to the
+ * recorded digest and is the committee target for the observer, and every
+ * key file exists and is readable by its owner only.
+ */
+export const reuseDaBondPoolCommitteeRuntime = (input: {
+  readonly plan: DaBondPoolCommitteeRuntimePlan;
+  readonly recordedEvidencePath: string;
+}): DaBondPoolCommitteeRuntimeEvidence => {
+  const { plan, recordedEvidencePath } = input;
+  if (!existsSync(recordedEvidencePath))
+    throw new DaBondPoolCommitteeRuntimeError(
+      `a resumed journey needs the earlier run's ${recordedEvidencePath}`,
+    );
+  const evidence = JSON.parse(
+    readFileSync(recordedEvidencePath, "utf8"),
+  ) as DaBondPoolCommitteeRuntimeEvidence;
+  const expectedSources = plan.keyPaths.map((path) => `file:${path}`);
+  const recordedSources = evidence.keys.map((key) => key.source);
+  if (
+    evidence.outPath !== plan.outPath ||
+    evidence.observer.signerIndex !== plan.observer.signerIndex ||
+    evidence.observer.libp2pKeySource !== plan.observer.libp2pKeySource ||
+    JSON.stringify(recordedSources) !== JSON.stringify(expectedSources)
+  )
+    throw new DaBondPoolCommitteeRuntimeError(
+      `${recordedEvidencePath} records the runtime ${evidence.outPath} with observer ${evidence.observer.signerIndex.toString()} (${evidence.observer.libp2pKeySource}) and keys [${recordedSources.join(", ")}], not this plan's ${plan.outPath} with observer ${plan.observer.signerIndex.toString()} (${plan.observer.libp2pKeySource}) and keys [${expectedSources.join(", ")}]`,
+    );
+  if (!existsSync(plan.outPath))
+    throw new DaBondPoolCommitteeRuntimeError(
+      `the recorded runtime manifest ${plan.outPath} is missing`,
+    );
+  const raw = readFileSync(plan.outPath);
+  const sha256 = createHash("sha256").update(raw).digest("hex");
+  if (sha256 !== evidence.outputSha256)
+    throw new DaBondPoolCommitteeRuntimeError(
+      `the runtime manifest ${plan.outPath} hashes to ${sha256}, not the recorded ${evidence.outputSha256}`,
+    );
+  const written = JSON.parse(raw.toString("utf8")) as {
+    runtime_topology?: { target?: unknown; local_signer_index?: unknown };
+  };
+  if (
+    written.runtime_topology?.target !== "committee" ||
+    written.runtime_topology.local_signer_index !== plan.observer.signerIndex
+  )
+    throw new DaBondPoolCommitteeRuntimeError(
+      `the runtime manifest's topology ${JSON.stringify(written.runtime_topology)} is not the committee target with local signer index ${plan.observer.signerIndex.toString()}`,
+    );
+  for (const path of plan.keyPaths) {
+    if (!existsSync(path))
+      throw new DaBondPoolCommitteeRuntimeError(
+        `the recorded libp2p key ${path} is missing`,
+      );
+    const mode = statSync(path).mode & 0o777;
+    if ((mode & 0o077) !== 0)
+      throw new DaBondPoolCommitteeRuntimeError(
+        `the libp2p key ${path} is readable by others (mode ${mode.toString(8)}); it must be 0600`,
+      );
+  }
+  return evidence;
 };
 
 // ---------------------------------------------------------------------------

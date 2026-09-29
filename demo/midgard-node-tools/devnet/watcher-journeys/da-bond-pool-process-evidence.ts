@@ -25,6 +25,10 @@ export type DaBondPoolProcessRun = Readonly<{
   argv: readonly string[];
   /** `null` when the process was killed by a signal. */
   exitCode: number | null;
+  /** The signal that killed the process, when one did. */
+  signal?: string;
+  /** Set when the adapter killed the process after this many milliseconds. */
+  timedOutAfterMs?: number;
   stdout: string;
   stderr?: string;
   /**
@@ -447,6 +451,8 @@ export type DaBondPoolReadyz = Readonly<{
   poolReasons: readonly string[];
   /** `scanner.lastStartedAt`: when the node's last tick started, if any. */
   scannerLastStartedAt?: string;
+  /** `l1Source.status` and its `quarantineReason`, when the body has them. */
+  l1Source?: Readonly<{ status: string; quarantineReason?: string }>;
 }>;
 
 /**
@@ -476,6 +482,7 @@ export const parseDaBondPoolReadyz = (
   const lastStartedAt = isRecord(value.scanner)
     ? value.scanner.lastStartedAt
     : undefined;
+  const l1Source = isRecord(value.l1Source) ? value.l1Source : undefined;
   return {
     httpStatus,
     ready: value.ready,
@@ -483,6 +490,16 @@ export const parseDaBondPoolReadyz = (
     poolReasons: reasons.filter((reason) => reason.startsWith("da_bond_pool_")),
     ...(typeof lastStartedAt === "string"
       ? { scannerLastStartedAt: lastStartedAt }
+      : {}),
+    ...(typeof l1Source?.status === "string"
+      ? {
+          l1Source: {
+            status: l1Source.status,
+            ...(typeof l1Source.quarantineReason === "string"
+              ? { quarantineReason: l1Source.quarantineReason }
+              : {}),
+          },
+        }
       : {}),
   };
 };
@@ -496,15 +513,29 @@ export type DaBondPoolStderrEvent = Readonly<{
 
 const NEWLINE = 0x0a;
 
-/** A pool-monitor event name: `da_bond_pool_*`. */
+/**
+ * The pool-monitor transition events (pool-monitor.ts): the backing falling
+ * below or returning to one DA bond, and the pool entering or leaving
+ * `Withdrawing`. `da_bond_pool_read_failed` is not a transition: a failed read
+ * keeps the last good check and adds no readiness reason. Nor are the
+ * submitter's `*_backoff` lines.
+ */
+const DA_BOND_POOL_TRANSITION_EVENTS: ReadonlySet<string> = new Set([
+  "da_bond_pool_backing_short",
+  "da_bond_pool_backing_restored",
+  "da_bond_pool_withdrawing",
+  "da_bond_pool_bonded",
+]);
+
+/** A pool-monitor transition event. */
 export const isDaBondPoolEvent = (event: string): boolean =>
-  event.startsWith("da_bond_pool_");
+  DA_BOND_POOL_TRANSITION_EVENTS.has(event);
 
 /**
  * Collects the pool-monitor events one node process writes to stderr (P27).
  * The cursor belongs to one pid: each `take` gets that process's whole stderr
  * capture so far, and returns the JSON event lines whose `event` `matches`
- * (by default the `da_bond_pool_*` ones) between the byte offset it stopped
+ * (by default the pool-monitor transition events) between the byte offset it stopped
  * at last time and the capture's last newline, each tied to the pid. A
  * partial last line waits for its newline; every other line (logs, other
  * events) is skipped. A restarted node gets a new cursor, so an event can

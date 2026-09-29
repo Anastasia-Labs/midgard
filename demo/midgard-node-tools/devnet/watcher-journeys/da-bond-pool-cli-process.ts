@@ -56,12 +56,16 @@ export const spawnDaBondCliProcess =
       const stderr: Buffer[] = [];
       child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
       child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-      const timer = setTimeout(() => child.kill("SIGKILL"), options.timeoutMs);
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, options.timeoutMs);
       child.once("error", (error) => {
         clearTimeout(timer);
         reject(error);
       });
-      child.once("close", (code) => {
+      child.once("close", (code, signal) => {
         clearTimeout(timer);
         const recorded = Object.fromEntries(
           Object.entries(env).filter(
@@ -71,6 +75,8 @@ export const spawnDaBondCliProcess =
         resolveRun({
           argv: [...argv],
           exitCode: code,
+          ...(signal === null ? {} : { signal }),
+          ...(timedOut ? { timedOutAfterMs: options.timeoutMs } : {}),
           stdout: Buffer.concat(stdout).toString("utf8"),
           stderr: Buffer.concat(stderr).toString("utf8"),
           env: redactDaBondPoolEnv(recorded, SECRETS),
@@ -78,12 +84,18 @@ export const spawnDaBondCliProcess =
       });
     });
 
+/** How a recorded run ended: its exit code, or the signal that killed it. */
+const processEnding = (run: DaBondPoolProcessRun): string =>
+  run.signal === undefined
+    ? `exit ${String(run.exitCode)}`
+    : `killed by ${run.signal}${run.timedOutAfterMs === undefined ? "" : ` after the ${run.timedOutAfterMs.toString()} ms timeout`}`;
+
 export class DaBondCliProcessError extends Error {
   readonly runs: readonly DaBondPoolProcessRun[];
   constructor(message: string, runs: readonly DaBondPoolProcessRun[]) {
     const last = runs.at(-1);
     super(
-      `${message}${last === undefined ? "" : `: exit ${String(last.exitCode)} from ${last.argv.join(" ")}${last.stderr ? `; stderr: ${last.stderr.trim().split("\n").slice(-3).join(" | ")}` : ""}`}`,
+      `${message}${last === undefined ? "" : `: ${processEnding(last)} from ${last.argv.join(" ")}${last.stderr ? `; stderr: ${last.stderr.trim().split("\n").slice(-3).join(" | ")}` : ""}`}`,
     );
     this.name = "DaBondCliProcessError";
     this.runs = runs;

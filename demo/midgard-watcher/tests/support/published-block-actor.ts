@@ -10,7 +10,7 @@ import {
   type TxBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Cause, Effect, Runtime } from "effect";
 import {
   committeeSignerIndex,
   type DaLocalSignerConfig,
@@ -96,8 +96,39 @@ export class PublishedTransactionSubmissionError extends Error {
   }
 }
 
+/**
+ * Whether a submission failed without the node's answer: the provider's
+ * request timed out or its transport failed, so the transaction may already
+ * be in the mempool. A ledger or script refusal is an answer (an Ogmios
+ * JSON-RPC error) and never counts.
+ */
+export const isUnansweredSubmission = (error: unknown): boolean => {
+  const seen = new Set<unknown>();
+  const visit = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null || seen.has(value))
+      return false;
+    seen.add(value);
+    const link = value as { _tag?: unknown; kind?: unknown; cause?: unknown };
+    if (link._tag === "KupmiosError")
+      return link.kind === "transport" || link.kind === "timeout";
+    if (link._tag === "OgmiosJsonRpcError") return false;
+    if (Runtime.isFiberFailure(value)) {
+      const cause = value[Runtime.FiberFailureCauseId];
+      return [...Cause.failures(cause), ...Cause.defects(cause)].some(visit);
+    }
+    return visit(link.cause);
+  };
+  return visit(error);
+};
+
 /** Grace after a validity upper bound for the indexer to publish the last eligible block. */
 const EXPIRY_GRACE_MS = 60_000;
+/**
+ * A backdated validity lower bound (sixty seconds before the wall clock)
+ * holds only while the ledger tip is younger than that; wait for this fresh
+ * a tip before building one.
+ */
+const FRESH_TIP_MS = 30_000;
 /** Bound on an unbounded-validity DA transaction reaching the chain. */
 const DA_SUBMISSION_TIMEOUT_MS = 600_000;
 /** Bound on the indexer publishing the spend of a target it already reports absent. */
@@ -318,6 +349,11 @@ export const createPublishedWatcherBlockActor = async ({
         SDK.REGISTERED_OPERATORS_ROOT_ASSET_NAME,
       ),
     );
+    // The appointment's lower bound trails the wall clock by sixty seconds,
+    // and the ledger checks it against its tip. A reappointment runs after
+    // the previous attempt's validity and grace have passed, so it must not
+    // build on a stale tip.
+    await chain.awaitLedgerTime(chain.now() - FRESH_TIP_MS);
     const schedulerStart = BigInt(chain.now() + 39_999);
     const appointedDatum = Data.to(
       {
@@ -537,7 +573,13 @@ export const createPublishedWatcherBlockActor = async ({
     try {
       submittedHash = await signed.submit();
     } catch (cause) {
-      throw new PublishedTransactionSubmissionError(txHash, cause);
+      if (!isUnansweredSubmission(cause))
+        throw new PublishedTransactionSubmissionError(txHash, cause);
+      // The node may hold it; only its landing or expiry settles the attempt.
+      onStage(
+        `header commit ${block.headerHash} submission unanswered; awaiting ${txHash}`,
+      );
+      submittedHash = txHash;
     }
     if (submittedHash !== txHash)
       throw new Error(

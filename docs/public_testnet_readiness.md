@@ -272,7 +272,11 @@ Previously implemented portions of a combined gate still need release verificati
       accepted as non-functional on the testing profiles. The public-profile
       bond figures await owner confirmation in F04; the earlier 500 ADA ruling
       was infeasible only while the DA bond had to equal the challenger bond.
-      Live devnet evidence: pending (wave 3).
+      Live devnet evidence: the full journey (all six steps) passed on
+      2026-09-29 on a fresh `local-devnet-testing` process devnet. The run took
+      about 91 minutes and produced the real committee node's `/readyz` and
+      `da_bond_pool_*` evidence and the real `midgard-node da-bond` CLI
+      evidence.
 - [ ] Bind every append/header to verifiable L1-visible DA commitment/attestation
       covering full tx payloads, opened preimages, proof metadata, and member counts.
       Independent committee/storage nodes validate the exact header/payload relation,

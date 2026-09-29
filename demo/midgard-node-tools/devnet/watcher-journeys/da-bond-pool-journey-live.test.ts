@@ -21,6 +21,17 @@ import { measureJourneyStage } from "./stage-timing.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const reportPath = process.env.MIDGARD_DA_BOND_JOURNEY_REPORT_PATH;
+/**
+ * `5` resumes a run directory whose journey passed steps 1, 3, 4 and 5: a
+ * smoke of steps 2 and 6 on a kept devnet, never journey evidence (the live
+ * port's `resume`). No other value is accepted.
+ */
+const resumeAfter = process.env.MIDGARD_DA_BOND_JOURNEY_RESUME_AFTER;
+if (resumeAfter !== undefined && resumeAfter !== "" && resumeAfter !== "5")
+  throw new Error(
+    `MIDGARD_DA_BOND_JOURNEY_RESUME_AFTER must be 5 or unset, not ${JSON.stringify(resumeAfter)}`,
+  );
+const resume = resumeAfter === "5" ? ({ afterStep: 5 } as const) : undefined;
 
 const gitHead = (): string | undefined => {
   try {
@@ -62,7 +73,10 @@ it.skipIf(runDirectory === undefined)(
   "walks the pooled DA bond journey on the process devnet",
   async () => {
     const context = await loadJourneyContext(runDirectory!);
-    const port = await createLiveDaBondPoolJourneyPort(context);
+    const port = await createLiveDaBondPoolJourneyPort(
+      context,
+      resume === undefined ? {} : { resume },
+    );
     try {
       let record: DaBondPoolJourneyRecord;
       try {
@@ -72,6 +86,7 @@ it.skipIf(runDirectory === undefined)(
           // P16/P18: the devnet evidence counts only with the real
           // da-committee-node process and the real da-bond CLI.
           requireProcessEvidence: true,
+          ...(port.resume === undefined ? {} : { resume: port.resume }),
         });
       } catch (error) {
         if (error instanceof DaBondPoolJourneyFailure)
@@ -80,9 +95,11 @@ it.skipIf(runDirectory === undefined)(
       }
       await persist(port, record);
       expect(record.status).toBe("passed");
-      expect(record.stages.map((stage) => stage.step)).toEqual([
-        ...DA_BOND_POOL_JOURNEY_CHRONOLOGY,
-      ]);
+      expect(record.stages.map((stage) => stage.step)).toEqual(
+        port.resume === undefined
+          ? [...DA_BOND_POOL_JOURNEY_CHRONOLOGY]
+          : [2, 6],
+      );
       // P27(3): the checked stop at the end of step 6 ran; dispose's
       // teardown would stop the node without its exit and UTxO checks.
       expect(port.committeeRunning()).toBe(false);

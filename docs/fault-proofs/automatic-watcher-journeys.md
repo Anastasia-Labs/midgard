@@ -1267,9 +1267,27 @@ output to the challenger, worth
 
 ### Live status and process evidence
 
-The journey has not run on the process devnet. Live evidence needs a fresh
-`local-devnet-testing` deployment of the current tree; a run directory deployed
-from an earlier tree is not resumed and does not count.
+On 2026-09-29 the journey passed on the local process devnet. The run used a
+fresh `local-devnet-testing` deployment of the current tree and passed all six
+steps in about 91 minutes. Its committee evidence came from a real
+`da-committee-node` process's `/readyz` answers and `da_bond_pool_*` stderr
+events. Its pool-transaction evidence came from real `midgard-node da-bond`
+CLI runs.
+
+The passing run was the fifth attempt. Of the four before it, one run
+directory had been deployed from an earlier tree. That directory was
+superseded and not resumed. Each later attempt was a fresh deployment.
+
+- Two attempts failed on driver hazards: a rebroadcast refused because its
+  inputs were already spent, and a header commit that fell outside its
+  validity interval.
+- One attempt failed because the committee returned the agreed state-queue
+  nodes in header-hash order rather than linked-list order. The committee then
+  quarantined in step 6.
+
+These defects are fixed. Live evidence always needs a fresh deployment of the
+current tree. A run directory deployed from an earlier tree is never resumed
+and does not count.
 
 The live test runs the driver with `requireProcessEvidence: true`, so two kinds
 of process evidence are required, and a missing one fails its step:

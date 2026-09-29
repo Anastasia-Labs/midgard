@@ -28,6 +28,7 @@ import {
   type DaBondPoolReadyz,
   parseDaBondPoolReadyz,
 } from "./da-bond-pool-process-evidence.js";
+import { isTransientTransportError } from "./ledger-tip.js";
 
 // ---------------------------------------------------------------------------
 // The environment
@@ -301,6 +302,12 @@ export type DaBondPoolCommitteeSync = Readonly<{
  * `scanner.lastStartedAt` values S1 >= `since` and S2 > S1. Ticks never
  * overlap and the pool is read after the scanner in each tick, so S2 proves
  * the tick that started at S1 finished its pool read.
+ *
+ * A read that got no answer (`isTransientTransportError`) while the node is
+ * `alive` is polled past until the bound, and the last answer stands; with
+ * no answer at all by the bound, the last such error is rethrown. A status
+ * or body the node did answer is judged as it is. An answer whose L1 source
+ * is quarantined returns at once: the node never leaves that state.
  */
 export const awaitDaBondPoolCommitteeSync = async (deps: {
   readonly read: () => Promise<DaBondPoolReadyzRead>;
@@ -308,16 +315,31 @@ export const awaitDaBondPoolCommitteeSync = async (deps: {
   readonly since: number;
   readonly timeoutMs: number;
   readonly pollMs: number;
+  /** Default: always alive. */
+  readonly alive?: () => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<unknown>;
 }): Promise<DaBondPoolCommitteeSync> => {
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? pause;
+  const alive = deps.alive ?? (() => true);
   const deadline = now() + deps.timeoutMs;
   let firstFreshStart: number | undefined;
   let fresh = false;
+  let last: DaBondPoolCommitteeSync | undefined;
   for (let reads = 1; ; reads += 1) {
-    const read = await deps.read();
+    let read: DaBondPoolReadyzRead;
+    try {
+      read = await deps.read();
+    } catch (error) {
+      if (!isTransientTransportError(error) || !alive()) throw error;
+      if (now() >= deadline) {
+        if (last === undefined) throw error;
+        return { ...last, reads };
+      }
+      await sleep(deps.pollMs);
+      continue;
+    }
     const readyz = parseDaBondPoolReadyz(read.httpStatus, read.body);
     const started =
       readyz.scannerLastStartedAt === undefined
@@ -331,8 +353,13 @@ export const awaitDaBondPoolCommitteeSync = async (deps: {
       fresh = true;
     const synced =
       fresh && daBondPoolCommitteeViewAgrees(readyz.poolReasons, deps.expected);
-    if (synced || now() >= deadline)
-      return { read, readyz, fresh, synced, reads };
+    last = { read, readyz, fresh, synced, reads };
+    if (
+      synced ||
+      readyz.l1Source?.status === "quarantined" ||
+      now() >= deadline
+    )
+      return last;
     await sleep(deps.pollMs);
   }
 };
@@ -624,7 +651,9 @@ export class DaBondPoolCommitteeProcessError extends Error {
  * - `observe`: the node is alive, `/readyz` is polled until it agrees with
  *   the port's pool snapshot (or the bound passes), and the stderr pool
  *   events and the availability responder reports on stderr and stdout
- *   since the last observation are taken, tied to the pid.
+ *   since the last observation are taken, tied to the pid. An answer whose
+ *   L1 source is quarantined is recorded, then fails the observation: the
+ *   node reads no L1 again and exits once its L1 view goes stale.
  * - `stop`: SIGTERM, exit 0 required; the submitter UTxOs stay unchanged
  *   for `daBondPoolCommitteeStopSettleMs(nodeCadence)` after the exit.
  */
@@ -745,6 +774,7 @@ export const createDaBondPoolCommitteeObserver = (deps: {
       const expected = await deps.expectedView();
       const sync = await awaitDaBondPoolCommitteeSync({
         read: node.readyz,
+        alive: node.alive,
         expected,
         since,
         timeoutMs: deps.syncTimeoutMs,
@@ -787,6 +817,11 @@ export const createDaBondPoolCommitteeObserver = (deps: {
         fresh: sync.fresh,
         reads: sync.reads,
       });
+      const l1Source = sync.readyz.l1Source;
+      if (l1Source?.status === "quarantined")
+        throw new DaBondPoolCommitteeProcessError(
+          `The committee node (pid ${node.pid.toString()}) quarantined its L1 source: ${l1Source.quarantineReason ?? "no reason given"}; /readyz: ${sync.read.body}`,
+        );
       return observation;
     },
 

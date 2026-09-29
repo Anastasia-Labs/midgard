@@ -2,6 +2,8 @@ import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { inspect } from "node:util";
 
+import { errorChainTexts } from "./error-chain.js";
+
 /** Preserve duration and outcome even when a stage fails before HTTP diagnostics exist. */
 export const measureJourneyStage = async <T>(
   directory: string,
@@ -24,7 +26,11 @@ export const measureJourneyStage = async <T>(
         : {
             error:
               error instanceof Error
-                ? { message: error.message, stack: error.stack }
+                ? {
+                    message: error.message,
+                    stack: error.stack,
+                    chain: errorChainTexts(error),
+                  }
                 : inspect(error),
           }),
     };

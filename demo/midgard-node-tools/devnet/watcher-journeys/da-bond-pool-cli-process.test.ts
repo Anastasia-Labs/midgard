@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +10,7 @@ import {
   DA_BOND_JOURNEY_WALLET_ENV,
   DaBondCliProcessError,
   type DaBondCliProcessRunner,
+  spawnDaBondCliProcess,
 } from "./da-bond-pool-cli-process.js";
 import type { DaBondPoolProcessRun } from "./da-bond-pool-process-evidence.js";
 
@@ -187,6 +192,27 @@ describe("the da-bond CLI chain (P18, P27(6))", () => {
     expect((failure as DaBondCliProcessError).runs).toHaveLength(4);
     expect(runner.seen.map(({ argv }) => argv[3]).at(-1)).toBe("assemble");
     expect(recorded).toEqual(["withdraw cancel"]);
+  });
+
+  it("names the signal and the timeout of a process it killed", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "da-bond-cli-"));
+    try {
+      const run = await spawnDaBondCliProcess({
+        cwd,
+        timeoutMs: 200,
+        inheritedNames: new Set(),
+      })([process.execPath, "-e", "setTimeout(() => {}, 60000)"], {});
+      expect(run).toMatchObject({
+        exitCode: null,
+        signal: "SIGKILL",
+        timedOutAfterMs: 200,
+      });
+      expect(
+        new DaBondCliProcessError("da-bond top-up failed", [run]).message,
+      ).toMatch(/killed by SIGKILL after the 200 ms timeout from /u);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 
   it("fails a submit that prints no txHash", async () => {

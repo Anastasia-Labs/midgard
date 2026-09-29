@@ -31,18 +31,33 @@ const shortReason = (backing: bigint, at: number) =>
   `da_bond_pool_backing_short: backing=${backing}, required=100, checkedAt=${iso(at)}`;
 const withdrawingReason = (unlockAt: bigint, at: number) =>
   `da_bond_pool_withdrawing: unlockAt=${unlockAt}, checkedAt=${iso(at)}`;
-const body = (reasons: readonly string[], lastStartedAt?: number) =>
+type L1Source = { status: string; quarantineReason?: string };
+const body = (
+  reasons: readonly string[],
+  lastStartedAt?: number,
+  l1Source?: L1Source,
+) =>
   JSON.stringify({
     ready: reasons.length === 0,
     reasons,
     ...(lastStartedAt === undefined
       ? {}
       : { scanner: { lastStartedAt: iso(lastStartedAt) } }),
+    ...(l1Source === undefined ? {} : { l1Source }),
   });
-const answer = (reasons: readonly string[], lastStartedAt?: number) => ({
+const answer = (
+  reasons: readonly string[],
+  lastStartedAt?: number,
+  l1Source?: L1Source,
+) => ({
   httpStatus: reasons.length === 0 ? 200 : 503,
-  body: body(reasons, lastStartedAt),
+  body: body(reasons, lastStartedAt, l1Source),
 });
+const REPLAY_STUCK = "committee replay cannot advance its durable queue";
+const quarantined: L1Source = {
+  status: "quarantined",
+  quarantineReason: REPLAY_STUCK,
+};
 
 /** A clock that `sleep` advances. */
 const fakeClock = (start = T0) => {
@@ -263,6 +278,120 @@ describe("the committee node's view of the port's pool snapshot", () => {
     expect(sync).toMatchObject({ fresh: true, synced: true, reads: 4 });
   });
 
+  it("polls past a read that got no answer while the node lives", async () => {
+    const clock = fakeClock();
+    const since = clock.now();
+    let calls = 0;
+    const sync = await awaitDaBondPoolCommitteeSync({
+      read: async () => {
+        calls += 1;
+        if (calls === 1)
+          throw new TypeError("fetch failed", {
+            cause: new Error("ECONNRESET"),
+          });
+        return answer([shortReason(40n, since + 10)], since - 1);
+      },
+      alive: () => true,
+      expected: view({ state: "bonded", backing: 40n }),
+      since,
+      timeoutMs: 60_000,
+      pollMs: 500,
+      ...clock,
+    });
+    expect(sync).toMatchObject({ fresh: true, synced: true, reads: 2 });
+  });
+
+  it("keeps the last answer when later reads get none by the bound", async () => {
+    const clock = fakeClock();
+    const since = clock.now();
+    const stale = answer([shortReason(40n, since - 1)], since - 1);
+    let calls = 0;
+    const sync = await awaitDaBondPoolCommitteeSync({
+      read: async () => {
+        calls += 1;
+        if (calls === 1) return stale;
+        throw new DOMException("The operation timed out", "TimeoutError");
+      },
+      expected: view({ state: "bonded", backing: 140n }),
+      since,
+      timeoutMs: 2_000,
+      pollMs: 500,
+      ...clock,
+    });
+    expect(sync).toMatchObject({ fresh: false, synced: false, read: stale });
+    expect(sync.readyz.poolReasons).toEqual([shortReason(40n, since - 1)]);
+  });
+
+  it("rethrows a read failure with no answer, from a dead node, or that is not transport", async () => {
+    const clock = fakeClock();
+    const since = clock.now();
+    const base = {
+      expected: view({ state: "bonded", backing: 40n }),
+      since,
+      timeoutMs: 2_000,
+      pollMs: 500,
+      ...clock,
+    };
+    const lost = new TypeError("fetch failed");
+    await expect(
+      awaitDaBondPoolCommitteeSync({
+        ...base,
+        read: async () => {
+          throw lost;
+        },
+      }),
+    ).rejects.toBe(lost);
+    let deadCalls = 0;
+    await expect(
+      awaitDaBondPoolCommitteeSync({
+        ...base,
+        read: async () => {
+          deadCalls += 1;
+          throw lost;
+        },
+        alive: () => false,
+      }),
+    ).rejects.toBe(lost);
+    expect(deadCalls).toBe(1);
+    const malformed = new Error("readyz body is not JSON");
+    let malformedCalls = 0;
+    await expect(
+      awaitDaBondPoolCommitteeSync({
+        ...base,
+        read: async () => {
+          malformedCalls += 1;
+          throw malformed;
+        },
+      }),
+    ).rejects.toBe(malformed);
+    expect(malformedCalls).toBe(1);
+  });
+
+  it("returns at once when the node's L1 source is quarantined", async () => {
+    const clock = fakeClock();
+    const since = clock.now();
+    let reads = 0;
+    const sync = await awaitDaBondPoolCommitteeSync({
+      read: async () => {
+        reads += 1;
+        return answer(
+          [`L1 source is quarantined: ${REPLAY_STUCK}`],
+          since - 1,
+          quarantined,
+        );
+      },
+      expected: view({ state: "bonded", backing: 100n }),
+      since,
+      timeoutMs: 60_000,
+      pollMs: 500,
+      ...clock,
+    });
+    expect(sync).toMatchObject({ synced: false, reads: 1 });
+    expect(sync.readyz.l1Source).toEqual(quarantined);
+    expect(reads).toBe(1);
+    expect(clock.now()).toBe(since);
+  });
+
   it("takes a pool reason checked after the action as fresh", async () => {
     const clock = fakeClock();
     const since = clock.now();
@@ -435,6 +564,7 @@ describe("the committee node's lifecycle (P27(3))", () => {
     let onUtxoRead: ((read: number) => void) | undefined;
     let nextPid = 500;
     let reasons: string[] = [];
+    let l1Source: L1Source | undefined;
     const nodes: FakeNode[] = [];
     const spawn = async (): Promise<DaBondPoolCommitteeProcess> => {
       const pid = nextPid++;
@@ -448,7 +578,7 @@ describe("the committee node's lifecycle (P27(3))", () => {
         stdout: () => new Uint8Array(stdout),
         readyz: async () => {
           if (options.readyzFails) throw new Error("connection refused");
-          return answer(reasons, clock.now());
+          return answer(reasons, clock.now(), l1Source);
         },
         stop: async () => {
           alive = false;
@@ -516,6 +646,9 @@ describe("the committee node's lifecycle (P27(3))", () => {
       },
       setReasons: (next: string[]) => {
         reasons = next;
+      },
+      setL1Source: (next: L1Source | undefined) => {
+        l1Source = next;
       },
     };
   };
@@ -654,6 +787,32 @@ describe("the committee node's lifecycle (P27(3))", () => {
     await expect(late.observer.stop()).rejects.toThrow(
       /submitter addresses changed while it ran: spent \[fund#1\], created \[late-tx#0\]/u,
     );
+  });
+
+  it("records, then fails, an observation whose L1 source is quarantined", async () => {
+    const h = harness();
+    h.setL1Source({ status: "healthy" });
+    await h.observer.start();
+    await expect(h.observer.observe()).resolves.toMatchObject({
+      synced: true,
+    });
+    h.setReasons([`L1 source is quarantined: ${REPLAY_STUCK}`]);
+    h.setL1Source(quarantined);
+    await expect(h.observer.observe()).rejects.toThrow(
+      new RegExp(
+        `\\(pid 500\\) quarantined its L1 source: ${REPLAY_STUCK}`,
+        "u",
+      ),
+    );
+    expect(h.records.map(({ kind }) => kind)).toEqual([
+      "start",
+      "observe",
+      "observe",
+    ]);
+    expect(h.records.at(-1)).toMatchObject({
+      kind: "observe",
+      readyzHttpStatus: 503,
+    });
   });
 
   it("fails an observation of a node that exited, and a start whose /readyz never answers", async () => {

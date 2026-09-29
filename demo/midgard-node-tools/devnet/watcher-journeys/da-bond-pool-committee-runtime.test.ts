@@ -6,11 +6,13 @@
  */
 import { writeFileSync } from "node:fs";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
   rm,
   stat,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -40,6 +42,7 @@ import {
   planDaBondPoolCommitteeRuntime,
   produceDaBondPoolCommitteeRuntime,
   readWorktreePortOffset,
+  reuseDaBondPoolCommitteeRuntime,
   spawnDaBondPoolRuntimeProcess,
   verifyDaBondPoolCommitteeRuntime,
   writeFreshDaLibp2pKey,
@@ -327,6 +330,96 @@ describe("the generator process (P31(2))", () => {
     );
     for (const path of plan.keyPaths)
       await expect(stat(path)).rejects.toThrow(/ENOENT/u);
+  });
+});
+
+describe("reusing an earlier run's runtime (resumed journey)", () => {
+  /** A plan, its keys and manifest as a finished run left them, and runtime.json. */
+  const earlierRun = async () => {
+    const runDirectory = await freshDirectory("reuse");
+    await mkdir(join(runDirectory, "secrets"));
+    await mkdir(join(runDirectory, "deploymentInfo"));
+    const plan = planDaBondPoolCommitteeRuntime({
+      runDirectory,
+      deployment: deploymentOf(2),
+      portOffset: 0,
+    });
+    const evidence = await produceDaBondPoolCommitteeRuntime({
+      plan,
+      command: ["node", "cli.js"],
+      env: {},
+      cwd: "/",
+      run: () => {
+        writeFileSync(
+          plan.outPath,
+          JSON.stringify({
+            runtime_topology: { target: "committee", local_signer_index: 0 },
+          }),
+        );
+        return { exitCode: 0, signal: null, stdout: "", stderr: "" };
+      },
+    });
+    const recordedEvidencePath = join(runDirectory, "runtime.json");
+    await writeFile(recordedEvidencePath, JSON.stringify(evidence));
+    return { plan, evidence, recordedEvidencePath };
+  };
+
+  it("returns the recorded runtime without running the generator", async () => {
+    const { plan, evidence, recordedEvidencePath } = await earlierRun();
+    expect(
+      reuseDaBondPoolCommitteeRuntime({ plan, recordedEvidencePath }),
+    ).toEqual(evidence);
+    // The default path still refuses the existing manifest.
+    await expect(
+      produceDaBondPoolCommitteeRuntime({
+        plan,
+        command: ["node", "cli.js"],
+        env: {},
+        cwd: "/",
+        run: () => {
+          throw new Error("the generator must not run");
+        },
+      }),
+    ).rejects.toThrow(/already exists; the adapter never overwrites one/u);
+  });
+
+  it("refuses a changed manifest, a missing key and a key others can read", async () => {
+    const reuse = (run: Awaited<ReturnType<typeof earlierRun>>) => () =>
+      reuseDaBondPoolCommitteeRuntime(run);
+
+    const changed = await earlierRun();
+    const bytes = await readFile(changed.plan.outPath);
+    bytes[0] = bytes[0]! ^ 1;
+    await writeFile(changed.plan.outPath, bytes);
+    expect(reuse(changed)).toThrow(DaBondPoolCommitteeRuntimeError);
+    expect(reuse(changed)).toThrow(/hashes to [0-9a-f]{64}, not the recorded/u);
+
+    const missing = await earlierRun();
+    await unlink(missing.plan.keyPaths[1]!);
+    expect(reuse(missing)).toThrow(/the recorded libp2p key .* is missing/u);
+
+    const readable = await earlierRun();
+    await chmod(readable.plan.keyPaths[0]!, 0o644);
+    expect(reuse(readable)).toThrow(/is readable by others \(mode 644\)/u);
+  });
+
+  it("refuses evidence of another plan and a run that recorded none", async () => {
+    const run = await earlierRun();
+    const other = planDaBondPoolCommitteeRuntime({
+      runDirectory: await freshDirectory("reuse-other"),
+      deployment: deploymentOf(2),
+      portOffset: 0,
+    });
+    expect(() =>
+      reuseDaBondPoolCommitteeRuntime({
+        plan: other,
+        recordedEvidencePath: run.recordedEvidencePath,
+      }),
+    ).toThrow(/not this plan's/u);
+    await unlink(run.recordedEvidencePath);
+    expect(() => reuseDaBondPoolCommitteeRuntime(run)).toThrow(
+      /a resumed journey needs the earlier run's/u,
+    );
   });
 });
 

@@ -15,7 +15,7 @@ import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 import { WatcherLocalKupmios } from "midgard-watcher";
 
-import { readOgmiosTipSlot } from "./ledger-tip.js";
+import { postOgmiosQuery, readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
@@ -148,16 +148,10 @@ export const loadJourneyContext = async (runDirectory: string) => {
         readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
       }),
       blockHeight: async () => {
-        const response = await fetch(ogmiosUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "queryNetwork/blockHeight",
-            id: null,
-          }),
-        });
-        const { result } = (await response.json()) as { result?: unknown };
+        const result = await postOgmiosQuery(
+          ogmiosUrl,
+          "queryNetwork/blockHeight",
+        );
         if (typeof result !== "number" || !Number.isSafeInteger(result))
           throw new Error("Ogmios did not report a block height");
         return result;

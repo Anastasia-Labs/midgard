@@ -67,7 +67,10 @@
  *   and the challenge snapshots read;
  * - the state queue holds only its root. The journey appends B1 as the head
  *   (`root.next`), because only the head can be removed after its availability
- *   Timeout, so it needs a freshly deployed run directory;
+ *   Timeout, so it needs a freshly deployed run directory. A resumed run
+ *   (`resume`, a smoke of steps 2 and 6 on a kept devnet) needs instead the
+ *   root and the B2 its earlier run recorded, and reuses that run's committee
+ *   runtime, keys and database;
  * - the DA params owners the quorum needs are keys this run holds (the
  *   journey operator and cosigner); anything missing is named in a
  *   `DaBondJourneySigningMaterialError`.
@@ -137,13 +140,22 @@ import {
   daBondStatusCommand,
 } from "midgard-node/commands/da-bond";
 import { daLocalSigners } from "midgard-node/da/local-signers";
+import { fetchKupoSpend } from "midgard-node/l1-tx-order-carriage";
 import {
   authenticWatcherDaBondPool,
   deriveWatcherDaBondPoolObservation,
 } from "midgard-watcher";
-import { createPublishedWatcherBlockActor } from "midgard-watcher/tests/support/published-block-actor";
+import {
+  createPublishedWatcherBlockActor,
+  PublishedTransactionExpiredError,
+  PublishedTransactionSubmissionError,
+} from "midgard-watcher/tests/support/published-block-actor";
 
-import { writeJourneyArtifact, writeJourneyFile } from "./artifacts.js";
+import {
+  readJourneyArtifact,
+  writeJourneyArtifact,
+  writeJourneyFile,
+} from "./artifacts.js";
 import {
   createDaBondPoolCli,
   DaBondCliProcessError,
@@ -165,6 +177,7 @@ import {
   planDaBondPoolCommitteeRuntime,
   produceDaBondPoolCommitteeRuntime,
   readWorktreePortOffset,
+  reuseDaBondPoolCommitteeRuntime,
   spawnDaBondPoolRuntimeProcess,
   verifyDaBondPoolCommitteeRuntime,
 } from "./da-bond-pool-committee-runtime.js";
@@ -174,18 +187,30 @@ import type {
   DaBondPoolJourneyBlockStatus,
   DaBondPoolJourneyParams,
   DaBondPoolJourneyPort,
+  DaBondPoolJourneyResume,
   DaBondPoolJourneySnapshot,
   DaBondPoolJourneyStep,
   DaBondPoolJourneyTimeoutResult,
 } from "./da-bond-pool-journey.js";
+import {
+  describeErrorChain,
+  errorChainLinks,
+  errorChainTexts,
+} from "./error-chain.js";
 import { readJourneyCadence } from "./journey-timing.js";
-import { awaitLedgerTipSlot, readOgmiosTipSlot } from "./ledger-tip.js";
+import {
+  awaitLedgerTipSlot,
+  readOgmiosTipSlot,
+  retryOgmiosTransport,
+} from "./ledger-tip.js";
 import {
   JOURNEY_ACTION_DEPTH,
   type loadJourneyContext,
 } from "./live-context.js";
 
 export type LiveJourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
+
+export { errorChainTexts };
 
 /** Where the journey keeps its journal, payloads, withdraw files and record. */
 export const daBondPoolJourneyDirectory = (runDirectory: string): string =>
@@ -218,6 +243,18 @@ const MAX_TRANSIENT_RETRIES = 30;
 const MAX_RESPONSE_TRANSACTIONS = 64;
 const MAX_SETTLEMENTS = 32;
 const MAX_REMOVAL_STEPS = 4;
+/**
+ * Header commits and attestations a validity-interval refusal (or, for a
+ * commit, an unminted expiry) may rebuild.
+ */
+const COMMIT_VALIDITY_ATTEMPTS = 3;
+/**
+ * How recent the ledger tip must be before a header commit, an attestation or
+ * an availability action is built. Each opens its interval sixty seconds
+ * before the wall clock, and the ledger checks it against its tip, so a tip
+ * this fresh leaves room to build and submit.
+ */
+const COMMIT_FRESH_TIP_MS = 30_000;
 
 // ---------------------------------------------------------------------------
 // Pure pieces (unit tested in da-bond-pool-live-port.test.ts)
@@ -689,8 +726,10 @@ export const absentBlockStatus = (
 
 /**
  * A journey block's interval: it starts where its predecessor ended and ends
- * one minute from now (the commit's validity ends at `end_time + 1`), never
- * at or before its start.
+ * one minute from now, never at or before its start. The commit's validity
+ * ends at `end_time + 1`, and the ledger bounds validity in whole one-second
+ * slots, so `end_time` is always the last millisecond of a slot (the script
+ * requires it to equal the commit's inclusive upper bound).
  */
 export const nextJourneyBlockInterval = (input: {
   readonly predecessorEndTime: bigint;
@@ -700,7 +739,8 @@ export const nextJourneyBlockInterval = (input: {
   const proposed = BigInt(input.nowMs + 59_999);
   return {
     startTime,
-    endTime: proposed > startTime ? proposed : startTime + 1n,
+    endTime:
+      proposed > startTime ? proposed : (startTime / 1000n + 1n) * 1000n + 999n,
   };
 };
 
@@ -808,12 +848,571 @@ export const decodeJourneyTransaction = (
   return { fee: body.fee(), inputs, outputs };
 };
 
-/** Canonical-source errors that clear once Kupo catches up with Ogmios. */
+/**
+ * Canonical-source errors that clear once Kupo catches up with Ogmios, or once
+ * the block that landed during an inclusion or foreign-spend read is indexed.
+ */
 export const isTransientCanonicalError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
-  return /aligned at the same canonical tip|changed during canonical discovery|next stable point|could not read the canonical Kupo checkpoint/u.test(
+  return /aligned at the same canonical tip|changed during canonical discovery|next stable point|could not read the canonical Kupo checkpoint|(?:inclusion|input spend) changed during its canonical read/u.test(
     message,
   );
+};
+
+/**
+ * The ledger refused a rebroadcast because every input is already spent.
+ * Reconciliation rebroadcasts a journaled intent while the canonical view
+ * still shows its inputs unspent, so a transaction that is waiting in the
+ * mempool, or sits in a block the canonical view has not reached, is refused
+ * this way. The next reconciliation settles it: included, or expired when
+ * another transaction spent the inputs. The watcher and the committee node
+ * retry on their next tick in the same way.
+ */
+export const isSpentInputsRebroadcastRefusal = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  const data =
+    typeof error === "object" && error !== null && "data" in error
+      ? JSON.stringify((error as { data: unknown }).data)
+      : "";
+  return /All inputs are spent|BadInputsUTxO/u.test(`${message} ${data}`);
+};
+
+/** Ogmios's `submitTransaction` error for a slot outside the validity interval. */
+const OGMIOS_OUTSIDE_VALIDITY_INTERVAL = 3118;
+
+/**
+ * The ledger's refusal of a submission whose validity interval does not hold
+ * its current slot: `lower` when the ledger tip has not reached the interval's
+ * start, `upper` when it has passed its end. It is read from the structured
+ * Ogmios refusal (`data.validityInterval` and `data.currentSlot`) wherever it
+ * sits in the error chain; undefined for any other error. This is a phase-1
+ * time check that runs before any script, so it never stands for a script,
+ * value or state failure.
+ */
+export type LedgerValidityRefusal = Readonly<{
+  bound: "lower" | "upper";
+  /** The refusing link's message and data, for the log. */
+  text: string;
+}>;
+
+export const ledgerValidityRefusal = (
+  error: unknown,
+): LedgerValidityRefusal | undefined => {
+  for (const link of errorChainLinks(error)) {
+    if (typeof link !== "object" || link === null) continue;
+    const { code, data } = link as { code?: unknown; data?: unknown };
+    if (typeof code === "number" && code !== OGMIOS_OUTSIDE_VALIDITY_INTERVAL)
+      continue;
+    if (typeof data !== "object" || data === null) continue;
+    const { validityInterval, currentSlot } = data as {
+      validityInterval?: unknown;
+      currentSlot?: unknown;
+    };
+    if (
+      typeof currentSlot !== "number" ||
+      typeof validityInterval !== "object" ||
+      validityInterval === null
+    )
+      continue;
+    const { invalidBefore } = validityInterval as { invalidBefore?: unknown };
+    return {
+      bound:
+        typeof invalidBefore === "number" && currentSlot < invalidBefore
+          ? "lower"
+          : "upper",
+      text: errorChainTexts(link)[0] ?? "",
+    };
+  }
+  return undefined;
+};
+
+/**
+ * The text of the ledger's validity-interval refusal (see
+ * `ledgerValidityRefusal`); undefined for any other error.
+ */
+export const validityIntervalRefusal = (error: unknown): string | undefined =>
+  ledgerValidityRefusal(error)?.text;
+
+/**
+ * A reconciliation error that means only "not settled yet": the rebroadcast of
+ * a journaled intent was refused with spent inputs (see
+ * `isSpentInputsRebroadcastRefusal`) or outside its validity interval (the tip
+ * has not reached its start, or has passed its end and the canonical view will
+ * soon record the expiry), or the canonical view is catching up. Its kind is
+ * returned for the log; undefined for every other error, which stays fatal.
+ */
+export const unsettledReconciliationError = (
+  error: unknown,
+): string | undefined => {
+  if (isSpentInputsRebroadcastRefusal(error))
+    return "rebroadcast refused with spent inputs";
+  const validity = ledgerValidityRefusal(error);
+  if (validity !== undefined)
+    return validity.bound === "lower"
+      ? "rebroadcast refused before its validity interval's start"
+      : "rebroadcast refused past its validity interval's end";
+  if (isTransientCanonicalError(error))
+    return "the canonical view is catching up";
+  return undefined;
+};
+
+/**
+ * The journal's detail for an intent that reached no block before its
+ * validity ended while every normal input stayed canonically unspent
+ * (`reconcileDaAvailabilityOperations`): it never landed and nothing else
+ * spent its inputs, so a fresh plan is safe.
+ */
+const LAPSED_DETAIL = "Expired with every normal input canonically unspent";
+
+/**
+ * An availability transaction's validity ended before any block took it, and
+ * every input it spends is still canonically unspent. The CLI builder bounds
+ * each action about a minute past the wall clock, and the devnet can go that
+ * long without a block. Only this ending is re-planned (`landAvailability`).
+ */
+export class AvailabilityIntentLapsedError extends Error {
+  constructor(readonly txId: string) {
+    super(
+      `Availability transaction ${txId} ended expired: its validity ended before any block took it, with every input still unspent`,
+    );
+    this.name = "AvailabilityIntentLapsedError";
+  }
+}
+
+/** A journal record as the inclusion wait reads it. */
+export type AvailabilityJournalView = Readonly<{
+  state?: string;
+  detail?: string | null;
+}>;
+
+/**
+ * The error for an availability transaction that ended `expired` or
+ * `conflict`: `AvailabilityIntentLapsedError` only for an expiry the journal
+ * records with every normal input canonically unspent; a plain error, naming
+ * the journal's detail, for every other ending.
+ */
+export const availabilityEndingError = (
+  txId: string,
+  status: "expired" | "conflict",
+  record: AvailabilityJournalView | undefined,
+): Error =>
+  status === "expired" && record?.detail === LAPSED_DETAIL
+    ? new AvailabilityIntentLapsedError(txId)
+    : new Error(
+        `Availability transaction ${txId} ended ${status}${record?.detail ? ` (${record.detail})` : ""}`,
+      );
+
+/**
+ * Waits until the journal holds `txId` as included or confirmed. A
+ * reconciliation that met an `unsettledReconciliationError` (a rebroadcast
+ * refused with spent inputs or outside its validity interval, or a canonical
+ * view catching up) is retried until `timeoutMs`; every other error, an
+ * `expired` or `conflict` outcome (see `availabilityEndingError`), or the
+ * timeout fails the wait.
+ */
+export const awaitAvailabilityInclusion = async ({
+  txId,
+  reconcile,
+  journalRecord,
+  timeoutMs,
+  pollMs,
+  wait,
+  now = Date.now,
+  log,
+}: Readonly<{
+  txId: string;
+  reconcile: () => Promise<readonly SDK.DaAvailabilityOperationResult[]>;
+  journalRecord: (txId: string) => AvailabilityJournalView | undefined;
+  timeoutMs: number;
+  pollMs: number;
+  wait: (ms: number) => Promise<unknown>;
+  now?: () => number;
+  log: (line: string) => void;
+}>): Promise<void> => {
+  const deadline = now() + timeoutMs;
+  let refusals = 0;
+  let lastRefusal = "";
+  const logged = new Set<string>();
+  for (;;) {
+    let results: readonly SDK.DaAvailabilityOperationResult[] = [];
+    try {
+      results = await reconcile();
+    } catch (error) {
+      const unsettled = unsettledReconciliationError(error);
+      if (unsettled === undefined) throw error;
+      refusals += 1;
+      lastRefusal = describeErrorChain(error);
+      if (!logged.has(unsettled)) {
+        logged.add(unsettled);
+        log(
+          `availability ${txId}: ${unsettled}; reconciling until the canonical view settles it: ${lastRefusal}`,
+        );
+      }
+    }
+    const status =
+      results.find((result) => result.txHash === txId)?.status ??
+      journalRecord(txId)?.state;
+    if (status === "included" || status === "confirmed") return;
+    if (status === "expired" || status === "conflict")
+      throw availabilityEndingError(txId, status, journalRecord(txId));
+    if (now() > deadline)
+      throw new Error(
+        `Availability transaction ${txId} was not included in time (${status ?? "unknown"})` +
+          (refusals > 0
+            ? `; ${refusals} unsettled reconciliation(s), last: ${lastRefusal}`
+            : ""),
+      );
+    await wait(pollMs);
+  }
+};
+
+const JOURNAL_FINAL_STATES = new Set(["included", "confirmed", "expired"]);
+
+/**
+ * Reconciles the availability journal until every intent is final (included,
+ * confirmed or expired). A reconciliation that met an
+ * `unsettledReconciliationError` (a rebroadcast refused with spent inputs or
+ * outside its validity interval, or a canonical view catching up) is retried
+ * until `timeoutMs`, and then its error is rethrown; every other error, a
+ * conflicting intent, or an intent still open at the timeout fails the wait.
+ */
+export const awaitQuietJournal = async ({
+  reconcile,
+  timeoutMs,
+  pollMs,
+  wait,
+  now = Date.now,
+}: Readonly<{
+  reconcile: () => Promise<readonly SDK.DaAvailabilityOperationResult[]>;
+  timeoutMs: number;
+  pollMs: number;
+  wait: (ms: number) => Promise<unknown>;
+  now?: () => number;
+}>): Promise<void> => {
+  const deadline = now() + timeoutMs;
+  for (;;) {
+    let results: readonly SDK.DaAvailabilityOperationResult[];
+    try {
+      results = await reconcile();
+    } catch (error) {
+      // See unsettledReconciliationError: not settled yet.
+      if (unsettledReconciliationError(error) === undefined) throw error;
+      if (now() > deadline) throw error;
+      await wait(pollMs);
+      continue;
+    }
+    const open = results.filter(
+      (result) => !JOURNAL_FINAL_STATES.has(result.status),
+    );
+    if (open.length === 0) return;
+    if (open.some((result) => result.status === "conflict"))
+      throw new Error(
+        `Availability journal holds a conflicting intent: ${JSON.stringify(open)}`,
+      );
+    if (now() > deadline)
+      throw new Error(
+        `Availability journal did not settle: ${JSON.stringify(open)}`,
+      );
+    await wait(pollMs);
+  }
+};
+
+/**
+ * The built transaction to keep waiting on after the availability executor
+ * threw, or undefined to rethrow. The executor journals an intent as pending
+ * before its first broadcast, so a first broadcast the ledger refused outside
+ * its validity interval, or a canonical read that raced a block, leaves a
+ * journaled transaction whose own reconciliation settles it: included, or
+ * lapsed and re-planned. Re-planning over it instead could plan the next
+ * action while it is still in flight. Every other error, and any error before
+ * the intent was journaled, is rethrown.
+ */
+export const availabilitySubmissionToAwait = (
+  error: unknown,
+  builtTxId: string | undefined,
+  journalState: (txId: string) => string | undefined,
+): string | undefined =>
+  builtTxId !== undefined &&
+  journalState(builtTxId) === "pending" &&
+  (ledgerValidityRefusal(error) !== undefined ||
+    isTransientCanonicalError(error))
+    ? builtTxId
+    : undefined;
+
+/**
+ * Runs one availability action through the executor (`execute`) and waits
+ * until its transaction is included (`awaitIncluded`). When the executor built
+ * nothing, because it reconciled an earlier intent instead, its result is
+ * returned as `reconciled`. When it threw after journaling the built
+ * transaction as pending, on an error `availabilitySubmissionToAwait` names,
+ * that transaction is awaited; every other error is rethrown. An executor
+ * result for another transaction, and an `expired` or `conflict` result, fail
+ * the action (see `availabilityEndingError`).
+ */
+export const landAvailabilitySubmission = async ({
+  label,
+  execute,
+  builtTxId,
+  journalRecord,
+  awaitIncluded,
+  log,
+}: Readonly<{
+  label: string;
+  execute: () => Promise<SDK.DaAvailabilityOperationResult>;
+  builtTxId: () => string | undefined;
+  journalRecord: (txId: string) => AvailabilityJournalView | undefined;
+  awaitIncluded: (txId: string) => Promise<void>;
+  log: (line: string) => void;
+}>): Promise<
+  | Readonly<{ kind: "included"; txId: string }>
+  | Readonly<{ kind: "reconciled"; result: SDK.DaAvailabilityOperationResult }>
+> => {
+  let result: SDK.DaAvailabilityOperationResult | undefined;
+  try {
+    result = await execute();
+  } catch (error) {
+    const awaited = availabilitySubmissionToAwait(
+      error,
+      builtTxId(),
+      (id) => journalRecord(id)?.state,
+    );
+    if (awaited === undefined) throw error;
+    log(
+      `${label}: journaled ${awaited}, but its first broadcast failed (${describeErrorChain(error)}); awaiting it`,
+    );
+  }
+  const txId = builtTxId();
+  if (txId === undefined) {
+    if (result === undefined)
+      throw new Error(`${label}: the executor neither built nor returned`);
+    return { kind: "reconciled", result };
+  }
+  if (result !== undefined) {
+    if (result.txHash !== txId)
+      throw new Error(
+        `Availability executor returned ${result.txHash} for the transaction built as ${txId}`,
+      );
+    if (result.status === "expired" || result.status === "conflict")
+      throw availabilityEndingError(txId, result.status, journalRecord(txId));
+  }
+  log(`${label}: submitted ${txId}`);
+  await awaitIncluded(txId);
+  return { kind: "included", txId };
+};
+
+/**
+ * What an availability attempt does before it plans: settle the journal, wait
+ * for a ledger tip fresh enough for the CLI builder's interval (it opens
+ * sixty seconds before the wall clock, and the ledger checks it against its
+ * tip), then read the canonical boundary the action is planned against.
+ */
+export const prepareAvailabilityAttempt = async <B>({
+  quietJournal,
+  awaitFreshTip,
+  readBoundary,
+}: Readonly<{
+  quietJournal: () => Promise<void>;
+  awaitFreshTip: () => Promise<void>;
+  readBoundary: () => Promise<B>;
+}>): Promise<B> => {
+  await quietJournal();
+  await awaitFreshTip();
+  return readBoundary();
+};
+
+/** How many lapsed availability transactions one action may re-plan. */
+export const MAX_LAPSED_REPLANS = 3;
+
+/**
+ * What `landAvailability` does after an attempt failed: re-plan after a
+ * lapsed transaction (`AvailabilityIntentLapsedError`) while fewer than
+ * `MAX_LAPSED_REPLANS` have lapsed; retry the whole flow after a transient
+ * canonical error while nothing was journaled (a transaction that was never
+ * journaled was never broadcast) and fewer than `maxTransientAttempts`
+ * attempts ran; throw otherwise. A conflict, any other expiry, a script or
+ * validator refusal and an unexpected planned action always throw.
+ */
+export const availabilityAttemptRecovery = (
+  error: unknown,
+  state: Readonly<{
+    journaled: boolean;
+    lapses: number;
+    attempt: number;
+    maxTransientAttempts: number;
+  }>,
+): "replan" | "retry" | "throw" => {
+  if (error instanceof AvailabilityIntentLapsedError)
+    return state.lapses < MAX_LAPSED_REPLANS ? "replan" : "throw";
+  return !state.journaled &&
+    isTransientCanonicalError(error) &&
+    state.attempt < state.maxTransientAttempts
+    ? "retry"
+    : "throw";
+};
+
+/**
+ * What one read of an expired header commit decides, from reads bracketed by
+ * one canonical boundary (`stable` when the boundary did not move across
+ * them): `adopt` when the commit's own transaction spent its anchor, whoever
+ * holds the header output now (a DA Apply spends and recreates it); `absent`
+ * when the anchor is unspent and no output holds the header, so the commit
+ * never landed and never can; `reread` when the boundary moved, until `read`
+ * reaches `maxReads`, then `unsettled`; `conflict` for everything else (the
+ * anchor spent by another transaction, a header without its anchor spent, or
+ * more than one header output).
+ */
+export const settleExpiredCommitReads = ({
+  txId,
+  stable,
+  anchorSpentBy,
+  headerHolders,
+  read,
+  maxReads,
+}: Readonly<{
+  txId: string;
+  stable: boolean;
+  /** The transaction that spent the anchor; null while it is unspent. */
+  anchorSpentBy: string | null;
+  /** The transactions whose unspent outputs hold the header's unit. */
+  headerHolders: readonly string[];
+  read: number;
+  maxReads: number;
+}>): "adopt" | "absent" | "conflict" | "reread" | "unsettled" => {
+  if (!stable) return read >= maxReads ? "unsettled" : "reread";
+  if (anchorSpentBy === txId)
+    return headerHolders.length <= 1 ? "adopt" : "conflict";
+  return anchorSpentBy === null && headerHolders.length === 0
+    ? "absent"
+    : "conflict";
+};
+
+/**
+ * Commits a header through `submit`, and rebuilds it when the ledger refused
+ * the submission outside its validity interval, or when a submission the
+ * mempool took expired unminted. The block actor opens a commit's interval
+ * sixty seconds before the wall clock and closes it about a minute after, and
+ * the ledger checks it against its tip. So a block gap longer than that
+ * refuses the commit or lets it lapse, and the devnet makes a block only every
+ * twenty seconds on average. A refused submission never entered the mempool,
+ * so it cannot land, and a rebuild from the current queue is safe.
+ * `awaitFreshTip` runs before every attempt and `submit` gets the attempt
+ * number.
+ *
+ * An expired submission (`PublishedTransactionExpiredError`) goes to
+ * `settleExpired`, which returns the commit when it did land after all,
+ * undefined only when it provably never can (the tip is past its upper bound,
+ * the header is absent and its anchor unspent), and throws otherwise. An
+ * adopted commit runs `refreshWallet` first: the actor pins the wallet to its
+ * pre-commit view and refreshes it only when it sees the commit land, so the
+ * pinned view still lists the inputs the commit spent. Any other error fails
+ * the commit, and so do both conditions once `maxAttempts` is reached. A
+ * refused submission's reason is logged, since the actor's error names only
+ * its transaction.
+ */
+export const commitWithinLedgerValidity = async <T>({
+  label,
+  submit,
+  awaitFreshTip,
+  settleExpired,
+  refreshWallet,
+  maxAttempts,
+  log,
+}: Readonly<{
+  label: string;
+  submit: (attempt: number) => Promise<T>;
+  awaitFreshTip: () => Promise<void>;
+  settleExpired: (
+    error: PublishedTransactionExpiredError,
+  ) => Promise<T | undefined>;
+  refreshWallet: () => Promise<void>;
+  maxAttempts: number;
+  log: (line: string) => void;
+}>): Promise<T> => {
+  for (let attempt = 1; ; attempt += 1) {
+    await awaitFreshTip();
+    try {
+      return await submit(attempt);
+    } catch (error) {
+      if (error instanceof PublishedTransactionExpiredError) {
+        const landed = await settleExpired(error);
+        if (landed !== undefined) {
+          log(
+            `${label}: ${error.txHash} landed after its local expiry wait; adopting it`,
+          );
+          await refreshWallet();
+          return landed;
+        }
+        if (attempt >= maxAttempts) {
+          log(`${label}: ${error.txHash} expired unminted on the last attempt`);
+          throw error;
+        }
+        log(
+          `${label}: ${error.txHash} expired unminted past its validity bound; rebuilding on a fresh ledger tip`,
+        );
+        continue;
+      }
+      if (!(error instanceof PublishedTransactionSubmissionError)) throw error;
+      const refusal = validityIntervalRefusal(error.cause);
+      if (refusal === undefined || attempt >= maxAttempts) {
+        log(
+          `${label}: submission ${error.txHash} refused: ${describeErrorChain(error.cause)}`,
+        );
+        throw error;
+      }
+      log(
+        `${label}: submission ${error.txHash} refused outside its validity interval (${refusal}); rebuilding on a fresh ledger tip`,
+      );
+    }
+  }
+};
+
+/**
+ * Attests a block through `attest`, and runs it again when the ledger refused
+ * one of its transactions outside the validity interval. The Apply's interval
+ * opens sixty seconds before the wall clock, and the ledger checks it against
+ * its tip, so a long block gap refuses it. The actor resumes an attestation
+ * from its on-chain progress, and a refused transaction never entered the
+ * mempool. `awaitFreshTip` runs before every attempt, and `refreshWallet`
+ * before every attempt after the first. An error `refusal` maps (a pool
+ * refusal of the Apply) is returned as the result at once; every other error
+ * fails the attestation, and so does the validity refusal once `maxAttempts`
+ * is reached.
+ */
+export const attestWithinLedgerValidity = async <T, R>({
+  label,
+  attest,
+  refusal,
+  awaitFreshTip,
+  refreshWallet,
+  maxAttempts,
+  log,
+}: Readonly<{
+  label: string;
+  attest: () => Promise<T>;
+  refusal: (error: unknown) => R | undefined;
+  awaitFreshTip: () => Promise<void>;
+  refreshWallet: () => Promise<void>;
+  maxAttempts: number;
+  log: (line: string) => void;
+}>): Promise<T | R> => {
+  for (let attempt = 1; ; attempt += 1) {
+    await awaitFreshTip();
+    if (attempt > 1) await refreshWallet();
+    try {
+      return await attest();
+    } catch (error) {
+      const refused = refusal(error);
+      if (refused !== undefined) return refused;
+      const validity = validityIntervalRefusal(error);
+      if (validity === undefined || attempt >= maxAttempts) {
+        log(`${label}: failed: ${describeErrorChain(error)}`);
+        throw error;
+      }
+      log(
+        `${label}: refused outside its validity interval (${validity}); attesting again on a fresh ledger tip`,
+      );
+    }
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -829,6 +1428,13 @@ export type LiveDaBondPoolJourneyPortOptions = Readonly<{
   log?: (line: string) => void;
   /** Default `readLinuxProcesses`. */
   listProcesses?: () => readonly JourneyProcess[];
+  /**
+   * Resume a run that passed steps 1, 3, 4 and 5 in `artifactDirectory`: a
+   * smoke of steps 2 and 6 on a kept devnet, never journey evidence. The
+   * port reuses that run's committee runtime, keys, database and journals,
+   * and writes its own evidence under a fresh `resume-<time>` directory.
+   */
+  resume?: Readonly<{ afterStep: 5 }>;
 }>;
 
 /** The committee node's two submitter mnemonics, relative to the run directory. */
@@ -862,6 +1468,7 @@ export class DaBondPoolCommitteeUnavailableError extends Error {
 
 export type LiveDaBondPoolJourneyPort = DaBondPoolJourneyPort &
   Readonly<{
+    /** Where this run's evidence goes; a resumed run's own directory. */
     artifactDirectory: string;
     manifestId: string;
     networkMagic: number;
@@ -874,6 +1481,8 @@ export type LiveDaBondPoolJourneyPort = DaBondPoolJourneyPort &
     committeeRunning: () => boolean;
     /** Closes the availability journal; the port is unusable afterwards. */
     dispose: () => Promise<void>;
+    /** Where the driver resumes, when the port was created with `resume`. */
+    resume?: DaBondPoolJourneyResume;
   }>;
 
 /** The queue is not root-only: the journey needs its head to be B1. */
@@ -885,6 +1494,30 @@ export class DaBondPoolJourneyQueueNotEmptyError extends Error {
     this.name = "DaBondPoolJourneyQueueNotEmptyError";
   }
 }
+
+/** A resumed run's chain or files are not what its earlier run left. */
+export class DaBondPoolJourneyResumeMismatchError extends Error {
+  constructor(problem: string) {
+    super(
+      `The DA bond pool journey cannot resume after step 5: ${problem}. Resume only a run directory whose journey passed steps 1, 3, 4 and 5 and stopped before step 2 landed anything.`,
+    );
+    this.name = "DaBondPoolJourneyResumeMismatchError";
+  }
+}
+
+/**
+ * A resumed run's queue precondition: the queue behind its root (`headers`,
+ * in order) is exactly the B2 the earlier run recorded.
+ */
+export const requireResumableQueue = (
+  headers: readonly string[],
+  b2HeaderHash: string,
+): void => {
+  if (headers.length !== 1 || headers[0] !== b2HeaderHash)
+    throw new DaBondPoolJourneyResumeMismatchError(
+      `the state queue behind its root holds [${headers.join(", ")}], not only the recorded B2 ${b2HeaderHash}`,
+    );
+};
 
 const loadOrCreateSeed = (path: string): string => {
   if (existsSync(path)) {
@@ -932,6 +1565,17 @@ export const createLiveDaBondPoolJourneyPort = async (
     options.artifactDirectory ?? daBondPoolJourneyDirectory(runDirectory),
   );
   mkdirSync(artifactDirectory, { recursive: true });
+  // A resumed run keeps the earlier run's state (journals, committee
+  // database and cursor) and writes its evidence apart, so it never
+  // overwrites that run's records.
+  const evidenceDirectory =
+    options.resume === undefined
+      ? artifactDirectory
+      : join(
+          artifactDirectory,
+          `resume-${new Date().toISOString().replaceAll(":", "-")}`,
+        );
+  mkdirSync(evidenceDirectory, { recursive: true });
 
   // Preconditions that need no chain read.
   const endpoints = journeyEndpointsFromRunEnv(context.runEnv);
@@ -999,10 +1643,11 @@ export const createLiveDaBondPoolJourneyPort = async (
   if (blockHeight === undefined)
     throw new Error("The journey chain does not report its block height");
   const awaitActionDepth = async (): Promise<void> => {
-    const target = (await blockHeight()) + JOURNEY_ACTION_DEPTH;
+    const target =
+      (await retryOgmiosTransport(blockHeight)) + JOURNEY_ACTION_DEPTH;
     const deadline = Date.now() + ACTION_DEPTH_TIMEOUT_MS;
     for (;;) {
-      const height = await blockHeight();
+      const height = await retryOgmiosTransport(blockHeight);
       if (height >= target) return;
       if (Date.now() > deadline)
         throw new Error(
@@ -1019,8 +1664,24 @@ export const createLiveDaBondPoolJourneyPort = async (
       stateQueuePolicyId: contracts.stateQueue.policyId,
     });
   const initialQueue = await sortedQueue();
-  if (initialQueue.length !== 1)
-    throw new DaBondPoolJourneyQueueNotEmptyError(initialQueue.length - 1);
+  let resumedB2: JourneyBlock | undefined;
+  if (options.resume === undefined) {
+    if (initialQueue.length !== 1)
+      throw new DaBondPoolJourneyQueueNotEmptyError(initialQueue.length - 1);
+  } else {
+    const b2Path = join(artifactDirectory, "block-B2.json");
+    if (!existsSync(b2Path))
+      throw new DaBondPoolJourneyResumeMismatchError(`${b2Path} is missing`);
+    resumedB2 = await readJourneyArtifact<JourneyBlock>(b2Path);
+    requireResumableQueue(
+      initialQueue
+        .slice(1)
+        .map(({ datum }) =>
+          datum.key === "Empty" ? "Empty" : datum.key.Key.key,
+        ),
+      resumedB2.headerHash,
+    );
+  }
 
   // The da-bond command context, as loadDaBondContext builds it.
   const authPolicy = manifestReferenceScriptAuthPolicy(manifest);
@@ -1144,30 +1805,40 @@ export const createLiveDaBondPoolJourneyPort = async (
       portOffset: readWorktreePortOffset(REPOSITORY_ROOT),
     });
     mkdirSync(join(runDirectory, "secrets"), { recursive: true, mode: 0o700 });
-    committeeRuntime = await produceDaBondPoolCommitteeRuntime({
-      plan: runtimePlan,
-      command: [process.execPath, cliBin],
-      env: {
-        ...inheritedEnv,
-        MIDGARD_CONFIG_MODE: "disabled",
-        MIDGARD_DOTENV_MODE: "disabled",
-      },
-      cwd: committeeDirectory,
-      run: spawnDaBondPoolRuntimeProcess(120_000),
-    });
+    committeeRuntime =
+      options.resume === undefined
+        ? await produceDaBondPoolCommitteeRuntime({
+            plan: runtimePlan,
+            command: [process.execPath, cliBin],
+            env: {
+              ...inheritedEnv,
+              MIDGARD_CONFIG_MODE: "disabled",
+              MIDGARD_DOTENV_MODE: "disabled",
+            },
+            cwd: committeeDirectory,
+            run: spawnDaBondPoolRuntimeProcess(120_000),
+          })
+        : reuseDaBondPoolCommitteeRuntime({
+            plan: runtimePlan,
+            recordedEvidencePath: join(committeeDirectory, "runtime.json"),
+          });
   } catch (cause) {
     throw new DaBondPoolCommitteeUnavailableError(
       `its DA libp2p runtime could not be produced: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     );
   }
-  await writeJourneyArtifact(
-    join(committeeDirectory, "runtime.json"),
-    committeeRuntime,
-  );
+  if (options.resume === undefined)
+    await writeJourneyArtifact(
+      join(committeeDirectory, "runtime.json"),
+      committeeRuntime,
+    );
   log(
-    `generated the committee runtime manifest ${committeeRuntime.outPath} (sha256 ${committeeRuntime.outputSha256}); the observer is member ${committeeRuntime.observer.signerIndex.toString()} (${committeeRuntime.observer.peerId})`,
+    `${options.resume === undefined ? "generated" : "reused"} the committee runtime manifest ${committeeRuntime.outPath} (sha256 ${committeeRuntime.outputSha256}); the observer is member ${committeeRuntime.observer.signerIndex.toString()} (${committeeRuntime.observer.peerId})`,
   );
+  // The committee's evidence: its records, logs and settings.
+  const committeeEvidenceDirectory = join(evidenceDirectory, "committee");
+  mkdirSync(committeeEvidenceDirectory, { recursive: true });
   const runtimeManifestPath = committeeRuntime.outPath;
   const libp2pKeySource = committeeRuntime.observer.libp2pKeySource;
 
@@ -1220,7 +1891,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     const txHash = await signed.submit();
     await funder.awaitTx(txHash);
     await awaitActionDepth();
-    await writeJourneyArtifact(join(artifactDirectory, "challenger.json"), {
+    await writeJourneyArtifact(join(evidenceDirectory, "challenger.json"), {
       challengerAddress,
       challengerKeyHash: challengerKey,
       fundingTxId: txHash,
@@ -1272,7 +1943,25 @@ export const createLiveDaBondPoolJourneyPort = async (
     throw new DaBondPoolCommitteeUnavailableError(
       `run.env lacks the devnet Postgres ${postgresMissing.join(", ")}`,
     );
-  const committeeDatabase = `da_bond_pool_committee_${randomBytes(4).toString("hex")}`;
+  // A resumed run restarts the node on the database its earlier run left,
+  // as the normal run's restart before step 6 does.
+  const recordedCommittee =
+    options.resume === undefined
+      ? undefined
+      : await readJourneyArtifact<{ database?: unknown }>(
+          join(committeeDirectory, "committee.json"),
+        );
+  if (
+    recordedCommittee !== undefined &&
+    (typeof recordedCommittee.database !== "string" ||
+      !/^da_bond_pool_committee_[0-9a-f]{8}$/u.test(recordedCommittee.database))
+  )
+    throw new DaBondPoolJourneyResumeMismatchError(
+      `${join(committeeDirectory, "committee.json")} records no committee database`,
+    );
+  const committeeDatabase =
+    (recordedCommittee?.database as string | undefined) ??
+    `da_bond_pool_committee_${randomBytes(4).toString("hex")}`;
   const committeeDatabaseUrl = new URL(
     `postgres://127.0.0.1:${postgres.port!}/${committeeDatabase}`,
   );
@@ -1342,25 +2031,26 @@ export const createLiveDaBondPoolJourneyPort = async (
       { cause },
     );
   }
-  execFileSync(
-    "docker",
-    [
-      "exec",
-      "-i",
-      `${postgres.project!}-postgres-1`,
-      "psql",
-      "-U",
-      postgres.user!,
-      "-d",
-      postgres.database!,
-      "-v",
-      "ON_ERROR_STOP=1",
-    ],
-    {
-      input: `CREATE DATABASE ${committeeDatabase};`,
-      stdio: ["pipe", "pipe", "pipe"],
-    },
-  );
+  if (recordedCommittee === undefined)
+    execFileSync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        `${postgres.project!}-postgres-1`,
+        "psql",
+        "-U",
+        postgres.user!,
+        "-d",
+        postgres.database!,
+        "-v",
+        "ON_ERROR_STOP=1",
+      ],
+      {
+        input: `CREATE DATABASE ${committeeDatabase};`,
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
   // Fund each submitter for the node's preflight: the plain ADA of one round
   // and a collateral coin, from the availability account, once.
   const submitterFunding = [
@@ -1385,24 +2075,27 @@ export const createLiveDaBondPoolJourneyPort = async (
     await awaitActionDepth();
     log(`funded committee submitters ${unfunded.join(", ")}: ${txHash}`);
   }
-  await writeJourneyArtifact(join(committeeDirectory, "committee.json"), {
-    l1SubmitterAddress: l1Submitter.address,
-    availabilitySubmitterAddress: availabilitySubmitter.address,
-    database: committeeDatabase,
-    apiPort,
-    observerSignerIndex: committeeRuntime.observer.signerIndex,
-    observerPeerId: committeeRuntime.observer.peerId,
-    runtimeManifestSha256: committeeRuntime.outputSha256,
-    env: committee.recorded,
-  });
+  await writeJourneyArtifact(
+    join(committeeEvidenceDirectory, "committee.json"),
+    {
+      l1SubmitterAddress: l1Submitter.address,
+      availabilitySubmitterAddress: availabilitySubmitter.address,
+      database: committeeDatabase,
+      apiPort,
+      observerSignerIndex: committeeRuntime.observer.signerIndex,
+      observerPeerId: committeeRuntime.observer.peerId,
+      runtimeManifestSha256: committeeRuntime.outputSha256,
+      env: committee.recorded,
+    },
+  );
   let committeeRecords = 0;
   const committeeNode = createDaBondPoolCommitteeObserver({
     spawn: () =>
       spawnDaBondPoolCommitteeNode({
         argv: [process.execPath, committeeBin],
         env: committee.env,
-        cwd: committeeDirectory,
-        logDirectory: committeeDirectory,
+        cwd: committeeEvidenceDirectory,
+        logDirectory: committeeEvidenceDirectory,
         apiUrl: `http://127.0.0.1:${apiPort.toString()}`,
       }),
     checkDaemons,
@@ -1426,7 +2119,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       committeeRecords += 1;
       await writeJourneyArtifact(
         join(
-          committeeDirectory,
+          committeeEvidenceDirectory,
           `${committeeRecords.toString().padStart(3, "0")}-${entry.kind}.json`,
         ),
         entry,
@@ -1443,7 +2136,7 @@ export const createLiveDaBondPoolJourneyPort = async (
   let cliChains = 0;
   const cli = createDaBondPoolCli({
     run: spawnDaBondCliProcess({
-      cwd: artifactDirectory,
+      cwd: evidenceDirectory,
       timeoutMs: INCLUSION_TIMEOUT_MS,
       inheritedNames: new Set(DA_BOND_POOL_INHERITED_ENV),
     }),
@@ -1465,7 +2158,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     },
     workDirectory: (label) => {
       const directory = join(
-        artifactDirectory,
+        evidenceDirectory,
         "cli",
         `${new Date().toISOString().replaceAll(":", "-")}-${label.replaceAll(" ", "-")}`,
       );
@@ -1492,7 +2185,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       cliChains += 1;
       await writeJourneyArtifact(
         join(
-          artifactDirectory,
+          evidenceDirectory,
           "cli",
           `${cliChains.toString().padStart(3, "0")}-${label.replaceAll(" ", "-")}.json`,
         ),
@@ -1500,7 +2193,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       );
     },
   });
-  mkdirSync(join(artifactDirectory, "cli"), { recursive: true });
+  mkdirSync(join(evidenceDirectory, "cli"), { recursive: true });
 
   // The availability command flow, composed from the CLI's steps.
   const availabilityDeployment = await availabilityDeploymentFromManifest(
@@ -1567,43 +2260,23 @@ export const createLiveDaBondPoolJourneyPort = async (
     observe: source.observe,
     submit: (cbor) => provider.submitTx(cbor),
   };
-  const finalStates = new Set(["included", "confirmed", "expired"]);
-  const quietJournal = async (): Promise<void> => {
-    const deadline = Date.now() + JOURNAL_QUIET_TIMEOUT_MS;
-    for (;;) {
-      const results =
-        await SDK.reconcileDaAvailabilityOperations(operationContext);
-      const open = results.filter((result) => !finalStates.has(result.status));
-      if (open.length === 0) return;
-      if (open.some((result) => result.status === "conflict"))
-        throw new Error(
-          `Availability journal holds a conflicting intent: ${JSON.stringify(open)}`,
-        );
-      if (Date.now() > deadline)
-        throw new Error(
-          `Availability journal did not settle: ${JSON.stringify(open)}`,
-        );
-      await pause(POLL_MS);
-    }
-  };
-  const awaitIncluded = async (txId: string): Promise<void> => {
-    const deadline = Date.now() + INCLUSION_TIMEOUT_MS;
-    for (;;) {
-      const results =
-        await SDK.reconcileDaAvailabilityOperations(operationContext);
-      const status =
-        results.find((result) => result.txHash === txId)?.status ??
-        journal.findTransaction(txId)?.state;
-      if (status === "included" || status === "confirmed") return;
-      if (status === "expired" || status === "conflict")
-        throw new Error(`Availability transaction ${txId} ended ${status}`);
-      if (Date.now() > deadline)
-        throw new Error(
-          `Availability transaction ${txId} was not included in time (${status ?? "unknown"})`,
-        );
-      await pause(POLL_MS);
-    }
-  };
+  const quietJournal = (): Promise<void> =>
+    awaitQuietJournal({
+      reconcile: () => SDK.reconcileDaAvailabilityOperations(operationContext),
+      timeoutMs: JOURNAL_QUIET_TIMEOUT_MS,
+      pollMs: POLL_MS,
+      wait: pause,
+    });
+  const awaitIncluded = (txId: string): Promise<void> =>
+    awaitAvailabilityInclusion({
+      txId,
+      reconcile: () => SDK.reconcileDaAvailabilityOperations(operationContext),
+      journalRecord: (id) => journal.findTransaction(id) ?? undefined,
+      timeoutMs: INCLUSION_TIMEOUT_MS,
+      pollMs: POLL_MS,
+      wait: pause,
+      log,
+    });
   const canonicalSnapshot = (headerHash: string) =>
     retryTransient("availability snapshot", async () => {
       for (let attempt = 1; ; attempt += 1) {
@@ -1623,10 +2296,17 @@ export const createLiveDaBondPoolJourneyPort = async (
     });
 
   const payloadFiles = new Map<string, string>();
+  /** A ledger tip fresh enough for a sixty-second backdated lower bound. */
+  const awaitFreshTip = async (): Promise<void> => {
+    await chain.awaitLedgerTime(chain.now() - COMMIT_FRESH_TIP_MS);
+  };
   /**
-   * Lands one availability action through the journal: reconcile, snapshot,
-   * plan (it must be one of `expected`), build, sign, submit, wait for
-   * inclusion, then wait out the action depth.
+   * Lands one availability action through the journal: reconcile, wait for a
+   * fresh ledger tip, snapshot, plan (it must be one of `expected`), build,
+   * sign, submit, wait for inclusion, then wait out the action depth. A
+   * transaction that lapsed unminted is re-planned from a fresh snapshot
+   * (`availabilityAttemptRecovery`); a refused first broadcast of a journaled
+   * transaction is waited on, not re-planned (`availabilitySubmissionToAwait`).
    */
   const landAvailability = async (
     headerHash: string,
@@ -1644,10 +2324,15 @@ export const createLiveDaBondPoolJourneyPort = async (
     }>
   > => {
     let reconciledOthers = 0;
+    let lapses = 0;
     for (let attempt = 1; ; attempt += 1) {
+      let built: SDK.BuiltDaAvailabilityTransaction | undefined;
       try {
-        await quietJournal();
-        canonicalAnchor = await source.readBoundary();
+        canonicalAnchor = await prepareAvailabilityAttempt({
+          quietJournal,
+          awaitFreshTip,
+          readBoundary: () => source.readBoundary(),
+        });
         const snapshot = await canonicalSnapshot(headerHash);
         const operation = planAvailabilityCommandAction(
           requested,
@@ -1673,76 +2358,90 @@ export const createLiveDaBondPoolJourneyPort = async (
           return outRefOf(coin);
         };
         const payloadFile = payloadFiles.get(headerHash);
-        let built: SDK.BuiltDaAvailabilityTransaction | undefined;
-        const result = await SDK.runDaAvailabilityOperation(operationContext, {
-          headerHash,
-          action: operation,
-          completesWorkflow:
-            operation === "timeout"
-              ? snapshot.descendant === undefined
-              : undefined,
-          build: async () => {
-            built = await buildAvailabilityCommandTransaction(
-              challengerLucid,
-              availabilityDeployment,
-              buildContext,
-              snapshot,
-              operation,
-              {
-                headerHash,
-                collateralOutRef: need(coins.collateral, "collateral"),
-                ...(operation === "open"
-                  ? { fundingOutRef: need(coins.openFunding, "exact Open") }
-                  : operation === "remove" || operation === "prune"
-                    ? { fundingOutRef: need(coins.operating, "operating") }
-                    : {}),
-                ...(operation === "publish" && payloadFile !== undefined
-                  ? { payloadFile }
-                  : {}),
+        const submission = await landAvailabilitySubmission({
+          label: `${operation} ${headerHash}`,
+          execute: () =>
+            SDK.runDaAvailabilityOperation(operationContext, {
+              headerHash,
+              action: operation,
+              completesWorkflow:
+                operation === "timeout"
+                  ? snapshot.descendant === undefined
+                  : undefined,
+              build: async () => {
+                built = await buildAvailabilityCommandTransaction(
+                  challengerLucid,
+                  availabilityDeployment,
+                  buildContext,
+                  snapshot,
+                  operation,
+                  {
+                    headerHash,
+                    collateralOutRef: need(coins.collateral, "collateral"),
+                    ...(operation === "open"
+                      ? { fundingOutRef: need(coins.openFunding, "exact Open") }
+                      : operation === "remove" || operation === "prune"
+                        ? { fundingOutRef: need(coins.operating, "operating") }
+                        : {}),
+                    ...(operation === "publish" && payloadFile !== undefined
+                      ? { payloadFile }
+                      : {}),
+                  },
+                  challengerKey,
+                  reserved,
+                );
+                onBuilt?.(built, snapshot);
+                return built;
               },
-              challengerKey,
-              reserved,
-            );
-            onBuilt?.(built, snapshot);
-            return built;
-          },
+            }),
+          builtTxId: () =>
+            (built as SDK.BuiltDaAvailabilityTransaction | undefined)?.txId,
+          journalRecord: (id) => journal.findTransaction(id) ?? undefined,
+          awaitIncluded,
+          log,
         });
-        if (built === undefined) {
+        if (submission.kind === "reconciled") {
           // The executor reconciled an earlier intent (a finalized anchor
           // still short of its confirmation depth) instead of building.
           reconciledOthers += 1;
           if (reconciledOthers > 60)
             throw new Error(
-              `Availability ${requested} of ${headerHash} kept waiting on earlier intents: ${JSON.stringify(result)}`,
+              `Availability ${requested} of ${headerHash} kept waiting on earlier intents: ${JSON.stringify(submission.result)}`,
             );
           await pause(POLL_MS * 5);
           attempt -= 1;
           continue;
         }
-        const txId = (built as SDK.BuiltDaAvailabilityTransaction).txId;
-        if (result.txHash !== txId)
-          throw new Error(
-            `Availability executor returned ${result.txHash} for the transaction built as ${txId}`,
-          );
-        if (result.status === "expired" || result.status === "conflict")
-          throw new Error(`Availability ${operation} ${txId} ${result.status}`);
-        log(`${operation} ${headerHash}: submitted ${txId}`);
-        await awaitIncluded(txId);
+        const { txId } = submission;
         await awaitActionDepth();
         return { txId, operation, snapshot };
       } catch (error) {
-        if (
-          !isTransientCanonicalError(error) ||
-          attempt >= MAX_TRANSIENT_RETRIES
-        )
-          throw error;
-        log(`availability ${requested}: ${String(error)}; retrying`);
+        const builtTxId = (
+          built as SDK.BuiltDaAvailabilityTransaction | undefined
+        )?.txId;
+        const recovery = availabilityAttemptRecovery(error, {
+          journaled:
+            builtTxId !== undefined &&
+            journal.findTransaction(builtTxId) !== null,
+          lapses,
+          attempt,
+          maxTransientAttempts: MAX_TRANSIENT_RETRIES,
+        });
+        if (recovery === "throw") throw error;
+        if (recovery === "replan") {
+          lapses += 1;
+          log(
+            `availability ${requested}: ${describeErrorChain(error)}; planning again from a fresh snapshot (${lapses.toString()} of ${MAX_LAPSED_REPLANS.toString()})`,
+          );
+        } else log(`availability ${requested}: ${String(error)}; retrying`);
         await pause(POLL_MS);
       }
     }
   };
 
-  const blocks = new Map<string, JourneyBlock>();
+  const blocks = new Map<string, JourneyBlock>(
+    resumedB2 === undefined ? [] : [[resumedB2.headerHash, resumedB2]],
+  );
   let onboarded = false;
   const headerUnit = (headerHash: string) =>
     toUnit(
@@ -1808,8 +2507,21 @@ export const createLiveDaBondPoolJourneyPort = async (
     }
   };
 
+  const resume: DaBondPoolJourneyResume | undefined =
+    resumedB2 === undefined
+      ? undefined
+      : {
+          afterStep: 5,
+          b2: {
+            label: resumedB2.label,
+            headerHash: resumedB2.headerHash,
+            committedAt: Number(resumedB2.header.endTime),
+          },
+        };
+
   const port: LiveDaBondPoolJourneyPort = {
-    artifactDirectory,
+    artifactDirectory: evidenceDirectory,
+    ...(resume === undefined ? {} : { resume }),
     manifestId: manifest.manifestId,
     networkMagic: customNetwork.networkMagic,
     challengerAddress,
@@ -1835,6 +2547,30 @@ export const createLiveDaBondPoolJourneyPort = async (
       await committeeLifecycle("before", step);
     },
     afterStep: (step) => committeeLifecycle("after", step),
+    // A resumed run starts where the earlier run's checked stop before step
+    // 2 left it: the node stopped, B2 Attested, the pool Bonded and backing
+    // a bond.
+    resumeBeforeStep: async (step) => {
+      checkDaemons(committeeNode.admitted());
+      if (resume === undefined || step !== 2)
+        throw new Error(
+          `The DA bond pool journey port resumes only before step 2, not step ${step.toString()}`,
+        );
+      if (committeeNode.running())
+        throw new DaBondPoolJourneyResumeMismatchError(
+          "the committee node already runs before step 2",
+        );
+      const status = await port.blockStatus(resume.b2.headerHash);
+      if (status !== "Attested")
+        throw new DaBondPoolJourneyResumeMismatchError(
+          `B2 ${resume.b2.headerHash} is ${status}, not Attested`,
+        );
+      const pool = await port.poolSnapshot();
+      if (pool.state !== "bonded" || pool.backing < journeyParams.daBond)
+        throw new DaBondPoolJourneyResumeMismatchError(
+          `the pool is ${pool.state} with backing ${pool.backing.toString()}, not Bonded with a bond of ${journeyParams.daBond.toString()}`,
+        );
+    },
 
     params: async () => journeyParams,
 
@@ -1890,65 +2626,144 @@ export const createLiveDaBondPoolJourneyPort = async (
 
     commitBlock: async (intent) => {
       if (!onboarded || !(await actor.operatorActive())) {
+        // Activation can backdate its lower bound sixty seconds too.
+        await awaitFreshTip();
         await actor.onboardOperator();
         onboarded = true;
       }
-      const queue = await sortedQueue();
-      const root = queue[0];
-      const tail = queue.at(-1);
-      if (root === undefined || tail === undefined)
-        throw new Error("The state queue has no root");
-      let predecessor: {
-        headerHash: string;
-        utxosRoot: string;
-        endTime: bigint;
-      };
-      if (queue.length === 1) {
-        const genesis = (
-          await Effect.runPromise(
-            SDK.getConfirmedStateFromStateQueueDatum(root.datum),
-          )
-        ).data;
-        // Genesis closes a real interval; the first header must end after it.
-        await chain.awaitLedgerTime(Number(genesis.endTime) + 1);
-        predecessor = {
-          headerHash: genesis.headerHash,
-          utxosRoot: genesis.utxoRoot,
-          endTime: genesis.endTime,
-        };
-      } else {
-        const key = tail.datum.key;
-        if (key === "Empty") throw new Error("The queue tail has no key");
-        const header = await Effect.runPromise(
-          SDK.getHeaderFromStateQueueDatum(tail.datum),
-        );
-        predecessor = {
-          headerHash: key.Key.key,
-          utxosRoot: header.utxosRoot,
-          endTime: header.endTime,
-        };
-      }
-      const interval = nextJourneyBlockInterval({
-        predecessorEndTime: predecessor.endTime,
-        nowMs: chain.now(),
+      type CommitAttempt = Readonly<{
+        block: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
+        interval: ReturnType<typeof nextJourneyBlockInterval>;
+        txId: string;
+      }>;
+      // The attempt the actor last signed, to settle it if it expires.
+      let signed: (CommitAttempt & Readonly<{ anchor: UTxO }>) | undefined;
+      const { block, interval, txId } = await commitWithinLedgerValidity({
+        label: `commit ${intent.label}`,
+        awaitFreshTip,
+        maxAttempts: COMMIT_VALIDITY_ATTEMPTS,
+        log,
+        settleExpired: async (error) => {
+          if (signed === undefined || signed.txId !== error.txHash) throw error;
+          const attempt = signed;
+          // From its upper bound on the ledger refuses it, so once the tip is
+          // there and Kupo agrees, its absence is final.
+          await chain.awaitLedgerTime(error.expiryMs);
+          for (let read = 1; ; read += 1) {
+            const before = await retryTransient("expired commit", () =>
+              source.readBoundary(),
+            );
+            const headers = await readLucid.utxosAtWithUnit(
+              contracts.stateQueue.spendingScriptAddress,
+              headerUnit(attempt.block.headerHash),
+            );
+            // Kupo keeps spent matches, so this names the transaction that
+            // spent the anchor even after a later Apply re-spent the header.
+            const anchorSpend = await fetchKupoSpend({
+              kupoUrl: context.kupoUrl,
+              outRef: {
+                txHash: attempt.anchor.txHash,
+                outputIndex: attempt.anchor.outputIndex,
+              },
+            });
+            const after = await retryTransient("expired commit", () =>
+              source.readBoundary(),
+            );
+            const decision = settleExpiredCommitReads({
+              txId: attempt.txId,
+              stable: before.pointId === after.pointId,
+              anchorSpentBy: anchorSpend?.transactionId ?? null,
+              headerHolders: headers.map((utxo) => utxo.txHash),
+              read,
+              maxReads: MAX_TRANSIENT_RETRIES,
+            });
+            if (decision === "reread") continue;
+            if (decision === "adopt")
+              return {
+                block: attempt.block,
+                interval: attempt.interval,
+                txId: attempt.txId,
+              };
+            if (decision === "absent") return undefined;
+            // Anything else spent the anchor or holds the header: a conflict,
+            // not a lapse.
+            log(
+              `commit ${intent.label}: expired ${attempt.txId} ${decision}: anchor spent by ${anchorSpend?.transactionId ?? "nothing"}, header held by ${JSON.stringify(headers.map((utxo) => utxo.txHash))}`,
+            );
+            throw error;
+          }
+        },
+        // The actor pinned the wallet before the commit and never saw it
+        // land; drop the pin so the next build reads the live wallet.
+        refreshWallet: async () => {
+          deployment.operatorLucid.clearUTxOOverride();
+        },
+        submit: async (attempt) => {
+          // The refused attempt spent nothing; drop the pinned wallet view so
+          // this build reads the live wallet.
+          if (attempt > 1) deployment.operatorLucid.clearUTxOOverride();
+          const queue = await sortedQueue();
+          const root = queue[0];
+          const tail = queue.at(-1);
+          if (root === undefined || tail === undefined)
+            throw new Error("The state queue has no root");
+          let predecessor: {
+            headerHash: string;
+            utxosRoot: string;
+            endTime: bigint;
+          };
+          if (queue.length === 1) {
+            const genesis = (
+              await Effect.runPromise(
+                SDK.getConfirmedStateFromStateQueueDatum(root.datum),
+              )
+            ).data;
+            // Genesis closes a real interval; the first header must end after it.
+            await chain.awaitLedgerTime(Number(genesis.endTime) + 1);
+            predecessor = {
+              headerHash: genesis.headerHash,
+              utxosRoot: genesis.utxoRoot,
+              endTime: genesis.endTime,
+            };
+          } else {
+            const key = tail.datum.key;
+            if (key === "Empty") throw new Error("The queue tail has no key");
+            const header = await Effect.runPromise(
+              SDK.getHeaderFromStateQueueDatum(tail.datum),
+            );
+            predecessor = {
+              headerHash: key.Key.key,
+              utxosRoot: header.utxosRoot,
+              endTime: header.endTime,
+            };
+          }
+          const interval = nextJourneyBlockInterval({
+            predecessorEndTime: predecessor.endTime,
+            nowMs: chain.now(),
+          });
+          const block = await depositEventsRetainedBlock({
+            operatorVkey: actor.operatorVkey,
+            startTime: interval.startTime,
+            endTime: interval.endTime,
+            blockSlot: BigInt(
+              deployment.operatorLucid.unixTimeToSlot(Number(interval.endTime)),
+            ),
+            prevHeaderHash: predecessor.headerHash,
+            prevUtxosRoot: predecessor.utxosRoot,
+            priorLedger: [],
+            events: [],
+          });
+          const txId = await actor.commit(
+            block,
+            tail.utxo,
+            queue.length > 1 ? queue[1]!.utxo : undefined,
+            async ({ txHash }) => {
+              signed = { block, interval, txId: txHash, anchor: tail.utxo };
+            },
+          );
+          return { block, interval, txId };
+        },
       });
-      const block = await depositEventsRetainedBlock({
-        operatorVkey: actor.operatorVkey,
-        startTime: interval.startTime,
-        endTime: interval.endTime,
-        blockSlot: BigInt(
-          deployment.operatorLucid.unixTimeToSlot(Number(interval.endTime)),
-        ),
-        prevHeaderHash: predecessor.headerHash,
-        prevUtxosRoot: predecessor.utxosRoot,
-        priorLedger: [],
-        events: [],
-      });
-      const txId = await actor.commit(
-        block,
-        tail.utxo,
-        queue.length > 1 ? queue[1]!.utxo : undefined,
-      );
       const committed: JourneyBlock = {
         label: intent.label,
         header: block.header,
@@ -1957,7 +2772,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       };
       blocks.set(block.headerHash, committed);
       await writeJourneyArtifact(
-        join(artifactDirectory, `block-${intent.label}.json`),
+        join(evidenceDirectory, `block-${intent.label}.json`),
         { ...committed, responder: intent.responder, commitTxId: txId },
       );
       log(`commit ${intent.label} ${block.headerHash}: ${txId}`);
@@ -1973,15 +2788,25 @@ export const createLiveDaBondPoolJourneyPort = async (
       const block = blocks.get(headerHash);
       if (block === undefined)
         throw new Error(`Block ${headerHash} was not committed by this port`);
-      let outcome: Awaited<ReturnType<typeof actor.attest>>;
-      try {
-        outcome = await actor.attest(block);
-      } catch (error) {
-        const refused = attestRefusalResult(error);
-        if (refused === undefined) throw error;
-        log(`Apply ${block.label} refused: ${JSON.stringify(refused)}`);
-        return refused;
-      }
+      const outcome = await attestWithinLedgerValidity({
+        label: `attest ${block.label}`,
+        attest: () => actor.attest(block),
+        refusal: (error) => {
+          const refused = attestRefusalResult(error);
+          if (refused !== undefined)
+            log(`Apply ${block.label} refused: ${JSON.stringify(refused)}`);
+          return refused;
+        },
+        awaitFreshTip,
+        // A refused transaction spent nothing; drop the pinned wallet view
+        // so the next build reads the live wallet.
+        refreshWallet: async () => {
+          deployment.operatorLucid.clearUTxOOverride();
+        },
+        maxAttempts: COMMIT_VALIDITY_ATTEMPTS,
+        log,
+      });
+      if (outcome.kind === "refused") return outcome;
       if (outcome.kind !== "attested")
         throw new Error(
           `Block ${block.label} was corrected before its Apply landed`,
@@ -2005,7 +2830,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       const block = blocks.get(headerHash);
       if (block === undefined)
         throw new Error(`Block ${headerHash} was not committed by this port`);
-      const payloadFile = join(artifactDirectory, `payload-${headerHash}.cbor`);
+      const payloadFile = join(evidenceDirectory, `payload-${headerHash}.cbor`);
       await writeJourneyFile(payloadFile, block.payloadEnvelopeCbor);
       payloadFiles.set(headerHash, payloadFile);
       const txIds: string[] = [];
@@ -2116,7 +2941,7 @@ export const createLiveDaBondPoolJourneyPort = async (
             }),
       });
       await writeJourneyArtifact(
-        join(artifactDirectory, `timeout-${headerHash}.json`),
+        join(evidenceDirectory, `timeout-${headerHash}.json`),
         summary,
       );
       return summary;

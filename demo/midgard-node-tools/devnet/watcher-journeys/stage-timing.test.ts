@@ -43,3 +43,31 @@ it("records failed startup duration and preserves the original error before diag
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("records a failed stage's whole cause chain, Ogmios data included", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "journey-timing-"));
+  try {
+    const failure = new Error("Header submission x is unresolved", {
+      cause: {
+        message: "RejectTx",
+        data: { reason: "ValueNotConserved", n: 1n },
+      },
+    });
+    await expect(
+      measureJourneyStage(directory, "s", async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+    const [entry] = (await readFile(join(directory, "timings.ndjson"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(entry.error.message).toBe("Header submission x is unresolved");
+    expect(entry.error.chain).toEqual([
+      "Header submission x is unresolved",
+      'RejectTx {"reason":"ValueNotConserved","n":"1"}',
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

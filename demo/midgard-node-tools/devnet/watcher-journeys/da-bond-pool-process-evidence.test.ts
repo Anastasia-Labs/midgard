@@ -726,6 +726,35 @@ describe("committee node process view (P16)", () => {
     ).toEqual({ httpStatus: 200, ready: true, reasons: [], poolReasons: [] });
   });
 
+  it("reads the L1 source status and its quarantine reason from /readyz", () => {
+    const reason = "committee replay cannot advance its durable queue";
+    expect(
+      parseDaBondPoolReadyz(
+        503,
+        JSON.stringify({
+          ready: false,
+          reasons: [`L1 source is quarantined: ${reason}`],
+          l1Source: {
+            sourceMode: "local_node",
+            status: "quarantined",
+            observedAt: "2026-09-29T05:52:05.000Z",
+            quarantineReason: reason,
+          },
+        }),
+      ).l1Source,
+    ).toEqual({ status: "quarantined", quarantineReason: reason });
+    expect(
+      parseDaBondPoolReadyz(
+        200,
+        JSON.stringify({
+          ready: true,
+          reasons: [],
+          l1Source: { status: "healthy" },
+        }),
+      ).l1Source,
+    ).toEqual({ status: "healthy" });
+  });
+
   it("refuses a /readyz answer whose status and body disagree, or another shape", () => {
     expect(() =>
       parseDaBondPoolReadyz(200, JSON.stringify({ ready: false, reasons: [] })),
@@ -798,5 +827,30 @@ describe("committee node process view (P16)", () => {
         .take(stderr)
         .map(({ event }) => event),
     ).toEqual(["da_bond_pool_bonded"]);
+  });
+
+  it("collects only pool transitions by default, never read failures or backoffs", () => {
+    const stderr = new Uint8Array(
+      Buffer.from(
+        '{"event":"da_bond_pool_read_failed","error":"fetch failed","failedAt":"t"}\n' +
+          '{"event":"da_bond_pool_apply_backoff","headerHash":"b2","reason":"pool-under-backed"}\n' +
+          '{"event":"da_bond_pool_init_backoff","headerHash":"b2","reason":"pool-unavailable"}\n' +
+          '{"event":"da_bond_pool_backing_short","backing":"1"}\n' +
+          '{"event":"da_bond_pool_backing_restored"}\n' +
+          '{"event":"da_bond_pool_withdrawing","unlockAt":"1"}\n' +
+          '{"event":"da_bond_pool_bonded"}\n',
+        "utf8",
+      ),
+    );
+    expect(
+      createDaBondPoolStderrCursor(9)
+        .take(stderr)
+        .map(({ event }) => event),
+    ).toEqual([
+      "da_bond_pool_backing_short",
+      "da_bond_pool_backing_restored",
+      "da_bond_pool_withdrawing",
+      "da_bond_pool_bonded",
+    ]);
   });
 });
