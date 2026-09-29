@@ -910,6 +910,8 @@ export class OgmiosChainSyncEventSource implements ChainSyncEventSource {
     private readonly network: string,
     private readonly authorityNodeId: string,
     request?: OgmiosChainSyncRequest,
+    /** Proves the live chain's identity on a network with no built-in magic. */
+    private readonly networkMagic?: number,
   ) {
     this.request = request ?? createOgmiosChainSyncRequest();
   }
@@ -924,6 +926,7 @@ export class OgmiosChainSyncEventSource implements ChainSyncEventSource {
       intersectionCandidates,
       this.network,
       this.authorityNodeId,
+      this.networkMagic,
     );
     return response;
   }
@@ -1913,6 +1916,8 @@ export const localNodeChainAuthorityFromConfig = (
       chainSyncUrl.slice("ogmios:".length),
       config.network,
       source.authorityNodeId,
+      undefined,
+      config.cardanoL1Source.networkMagic,
     );
   } else if (chainSyncUrl.startsWith("kupmios:")) {
     const { ogmiosUrl } = parseKupmiosUrl(chainSyncUrl);
@@ -1920,6 +1925,8 @@ export const localNodeChainAuthorityFromConfig = (
       ogmiosUrl,
       config.network,
       source.authorityNodeId,
+      undefined,
+      config.cardanoL1Source.networkMagic,
     );
   } else if (chainSyncUrl.startsWith("fixture:")) {
     eventSource = new FixtureChainSyncEventSource(
@@ -2097,11 +2104,13 @@ export const providerFromUrl = async (
         ogmiosUrl,
         config.network,
         Math.max(1, config.finalityDepth),
+        config.cardanoL1Source.networkMagic,
       ),
       currentChainPointResolver: kupmiosCurrentChainPointResolver(
         config.network,
         kupoUrl,
         ogmiosUrl,
+        config.cardanoL1Source.networkMagic,
       ),
       tipBlockNoResolver: () => fetchOgmiosTipBlockNo(ogmiosUrl, fetch),
       chainPointHeldResolver: (point) =>
@@ -2275,6 +2284,7 @@ export const kupmiosChainPointResolver = (
   ogmiosUrl?: string,
   network?: string,
   requiredDepth = 2160,
+  networkMagic?: number,
 ): ((utxo: UTxO) => Promise<ChainPoint>) => {
   const resolveInclusion = lucidChainPointResolver(lucid);
   return async (utxo) => {
@@ -2297,10 +2307,12 @@ export const kupmiosChainPointResolver = (
       _kupoUrl,
       ogmiosUrl,
       _fetchFn,
+      networkMagic,
     );
     const depth = await requestOgmiosDescendantDepth({
       ogmiosUrl,
       network,
+      networkMagic,
       inclusion: {
         network,
         slot: inclusion.slot,
@@ -2316,6 +2328,7 @@ export const kupmiosChainPointResolver = (
       _kupoUrl,
       ogmiosUrl,
       _fetchFn,
+      networkMagic,
     );
     if (!sameCanonicalPoint(before, after)) {
       throw new ChainMovedDuringSnapshotError(
@@ -2380,6 +2393,7 @@ export const blockfrostCurrentChainPointResolver =
     apiUrl: string,
     projectId: string,
     timeoutMs = BLOCKFROST_REQUEST_TIMEOUT_MS,
+    networkMagic?: number,
   ) =>
   async (): Promise<CanonicalChainPoint> => {
     const [latest, liveNetwork] = await Promise.all([
@@ -2398,7 +2412,12 @@ export const blockfrostCurrentChainPointResolver =
         timeoutMs,
       ),
     ]);
-    assertNetworkMagic(network, liveNetwork.networkMagic, "Blockfrost");
+    assertNetworkMagic(
+      network,
+      liveNetwork.networkMagic,
+      "Blockfrost",
+      networkMagic,
+    );
     return {
       network,
       slot: latest.slot,
@@ -2410,9 +2429,14 @@ export const blockfrostCurrentChainPointResolver =
   };
 
 export const kupmiosCurrentChainPointResolver =
-  (network: string, kupoUrl: string, ogmiosUrl: string) =>
+  (
+    network: string,
+    kupoUrl: string,
+    ogmiosUrl: string,
+    networkMagic?: number,
+  ) =>
   async (): Promise<CanonicalChainPoint> =>
-    alignedKupmiosTip(network, kupoUrl, ogmiosUrl, fetch);
+    alignedKupmiosTip(network, kupoUrl, ogmiosUrl, fetch, networkMagic);
 
 /**
  * Kupo indexes each block shortly after the node adopts it, so one read of
@@ -2427,13 +2451,14 @@ const alignedKupmiosTip = async (
   kupoUrl: string,
   ogmiosUrl: string,
   fetchFn: typeof fetch,
+  networkMagic: number | undefined,
 ): Promise<CanonicalChainPoint> => {
   for (let attempt = 1; ; attempt += 1) {
     const [kupoPoint, ogmiosTip] = await Promise.all([
       fetchKupoCheckpoint(kupoUrl, fetchFn),
       requestOgmiosTip(ogmiosUrl),
     ]);
-    assertNetworkMagic(network, ogmiosTip.networkMagic, "Ogmios");
+    assertNetworkMagic(network, ogmiosTip.networkMagic, "Ogmios", networkMagic);
     if (
       kupoPoint.slot === ogmiosTip.slot &&
       kupoPoint.blockHash === ogmiosTip.blockHash
@@ -2649,6 +2674,7 @@ type OgmiosChainSyncRequest = (
   intersectionCandidates: readonly CanonicalChainPoint[] | undefined,
   network: string,
   authorityNodeId: string,
+  networkMagic: number | undefined,
 ) => Promise<ChainSyncEventBatch>;
 
 type RuntimeWebSocket = {
@@ -2858,6 +2884,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
     intersectionCandidates,
     network,
     authorityNodeId,
+    networkMagic,
   ) => {
     const source = `chain-sync:${authorityNodeId}`;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -2887,6 +2914,7 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
               "Ogmios network magic",
             ),
             "Ogmios",
+            networkMagic,
           );
           const bootstrapTip =
             cursor === undefined
@@ -3091,12 +3119,14 @@ const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
 const requestOgmiosDescendantDepth = async ({
   ogmiosUrl,
   network,
+  networkMagic,
   inclusion,
   expectedTip,
   requiredDepth,
 }: {
   readonly ogmiosUrl: string;
   readonly network: string;
+  readonly networkMagic: number | undefined;
   readonly inclusion: CanonicalChainPoint;
   readonly expectedTip: CanonicalChainPoint;
   readonly requiredDepth: number;
@@ -3117,6 +3147,7 @@ const requestOgmiosDescendantDepth = async ({
         "Ogmios network magic",
       ),
       "Ogmios",
+      networkMagic,
     );
     const found = getRecord(
       await session.request("findIntersection", {
@@ -3394,10 +3425,25 @@ const sameCanonicalPoint = (
   left.slot === right.slot &&
   left.blockHash === right.blockHash;
 
+/**
+ * A live L1 read refused before it compared anything: the configured network
+ * is not a named one, so only a configured network magic can prove the live
+ * chain's identity, and none was given.
+ */
+export class L1NetworkMagicUnconfiguredError extends Error {
+  override readonly name = "L1NetworkMagicUnconfiguredError";
+}
+
+/**
+ * The live chain must carry the configured network's magic: the built-in one
+ * for Mainnet, Preprod and Preview, and on any other network (Custom) the
+ * configured `cardanoL1Source.networkMagic`.
+ */
 const assertNetworkMagic = (
   configuredNetwork: string,
   liveNetworkMagic: number,
   provider: string,
+  configuredNetworkMagic: number | undefined,
 ): void => {
   const expected =
     configuredNetwork === "Mainnet"
@@ -3406,10 +3452,10 @@ const assertNetworkMagic = (
         ? 1
         : configuredNetwork === "Preview"
           ? 2
-          : undefined;
+          : configuredNetworkMagic;
   if (expected === undefined) {
-    throw new Error(
-      `${provider} cannot prove custom-network identity without configured network magic`,
+    throw new L1NetworkMagicUnconfiguredError(
+      `${provider} cannot prove ${configuredNetwork} network identity without configured network magic`,
     );
   }
   if (liveNetworkMagic !== expected) {

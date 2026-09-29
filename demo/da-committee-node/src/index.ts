@@ -47,7 +47,10 @@ import {
   type RetentionL1View,
   runRetentionCycle,
 } from "./store/retention.js";
-import { createCommitteeTickRunner } from "./tick-runner.js";
+import {
+  createCommitteeTickRunner,
+  startCommitteeTickLoop,
+} from "./tick-runner.js";
 
 /** Upper bound on the shutdown before exiting for a lost store instance lock. */
 const STORE_LOCK_LOST_SHUTDOWN_GRACE_MS = 10_000;
@@ -418,15 +421,11 @@ const main = async (): Promise<void> => {
     `da-committee-node listening on http://${config.apiHost}:${config.apiPort.toString()}\n`,
   );
 
-  await tickRunner.runTick();
-  // runTick contains its own error boundary and overlap guard.
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises
-  interval = setInterval(tickRunner.runTick, config.pollIntervalMs);
-  process.once("SIGINT", () => {
-    void shutdown().then(() => process.exit(0));
-  });
-  process.once("SIGTERM", () => {
-    void shutdown().then(() => process.exit(0));
+  interval = await startCommitteeTickLoop({
+    runTick: tickRunner.runTick,
+    pollIntervalMs: config.pollIntervalMs,
+    shutdown,
+    exit: (code) => process.exit(code),
   });
 };
 

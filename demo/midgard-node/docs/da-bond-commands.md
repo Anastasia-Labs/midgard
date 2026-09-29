@@ -16,8 +16,8 @@ single UTxO at the pool address holding the pool NFT, with the datum `Bonded` or
 - **An attestation applies** only while the pool is `Bonded` and its backing is
   at least `da_bond_lovelace` (one DA bond). A `Withdrawing` pool, or a pool
   with less than one bond of backing, backs no attestation. The committee node
-  then backs off Apply (`da_bond_pool_apply_backoff`) until the pool can back
-  one again.
+  then backs off Init and Apply (`da_bond_pool_init_backoff`,
+  `da_bond_pool_apply_backoff`) until the pool can back one again.
 - **A lost availability challenge slashes the pool.** The Timeout takes one DA
   bond, or the whole backing when less is left. Up to
   `da_slash_penalty_lovelace` of it is paid as the transaction fee and the rest
@@ -382,10 +382,10 @@ The fields are `backing`, `required`, `unlockAt` (while withdrawing) and
 `checkedAt`, all strings. The first read reports only a short or withdrawing
 pool, and identical reads report nothing. A failed read emits
 `{"event":"da_bond_pool_read_failed","error":...,"failedAt":...}` once per run of
-failures and keeps the last good read's reasons. Separately, each Apply the pool
-cannot back is logged as `da_bond_pool_apply_backoff` with its reason
-(`pool-under-backed`, `pool-withdrawing` or `pool-unavailable`) and retried on
-the next reconcile.
+failures and keeps the last good read's reasons. Separately, each Init or Apply
+the pool cannot back is logged as `da_bond_pool_init_backoff` or
+`da_bond_pool_apply_backoff` with its reason (`pool-under-backed`,
+`pool-withdrawing` or `pool-unavailable`) and retried on the next reconcile.
 
 To clear an under-backed alert, top up until `status` shows `belowBond: false`.
 To clear a withdrawing alert, have the owners cancel the withdrawal, or complete

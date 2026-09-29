@@ -302,3 +302,43 @@ export const createCommitteeTickRunner = (deps: CommitteeTickRunnerDeps) => {
 
   return { runTick, runRetentionStep };
 };
+
+/**
+ * Starts the node's tick loop: the SIGINT/SIGTERM handlers first, then the
+ * first tick, then one tick every `pollIntervalMs`.
+ *
+ * The handlers come first because the first tick can wait on L1 for a long
+ * time; a stop during it still shuts down and exits 0. A stop before the
+ * first tick finishes starts no interval. Resolves the interval, or
+ * `undefined` when the node was stopped during the first tick.
+ */
+export const startCommitteeTickLoop = async (deps: {
+  readonly runTick: () => Promise<void>;
+  readonly pollIntervalMs: number;
+  readonly shutdown: () => Promise<void>;
+  readonly exit: (code: number) => void;
+  readonly onSignal?: (
+    signal: "SIGINT" | "SIGTERM",
+    handler: () => void,
+  ) => void;
+}): Promise<ReturnType<typeof setInterval> | undefined> => {
+  const onSignal =
+    deps.onSignal ??
+    ((signal: "SIGINT" | "SIGTERM", handler: () => void) => {
+      process.once(signal, handler);
+    });
+  let stopping = false;
+  const stop = (): void => {
+    stopping = true;
+    void deps.shutdown().then(() => deps.exit(0));
+  };
+  onSignal("SIGINT", stop);
+  onSignal("SIGTERM", stop);
+  await deps.runTick();
+  if (stopping) {
+    return undefined;
+  }
+  // runTick contains its own error boundary and overlap guard.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  return setInterval(deps.runTick, deps.pollIntervalMs);
+};

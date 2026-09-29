@@ -45,9 +45,12 @@ bond above its floor, and a lost availability challenge slashes the pool. A
 challenge can time out only once its block is the queue head, and the Timeout
 removes that head and prunes every descendant without a further slash, so the
 committee's liability is one DA bond per withholding episode.
-Starting and signing an attestation need no bond. While the pool cannot back an
-attestation, the coordinator logs `da_bond_pool_apply_backoff` and retries on
-its next reconcile.
+Starting and signing an attestation need no bond on L1, but the coordinator
+starts no attestation the pool cannot back, because one that cannot apply only
+lapses and spends its min-ADA and fees for nothing. While the pool cannot back
+an attestation, the coordinator logs `da_bond_pool_init_backoff` instead of an
+`Init`, or `da_bond_pool_apply_backoff` instead of an Apply, and retries on its
+next reconcile.
 
 With L1 submission enabled (`DA_L1_SUBMISSION_ENABLED=true`), the node reads the
 pool after every tick and before every Apply. A short or withdrawing pool is a

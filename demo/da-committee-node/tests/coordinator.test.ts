@@ -779,6 +779,62 @@ describe("pooled DA bond apply backoff and pool churn", () => {
     },
   );
 
+  it("backs off an init the pool cannot back, adding no signatures, and inits on the next reconcile", async () => {
+    const backoff = new DaBondPoolApplyBackoffError(
+      "pool-withdrawing",
+      "unlock_at=1234",
+      "init",
+    );
+    const initialized = candidateRecord({ attestationCount: 0 });
+    const threshold = candidateRecord({
+      attestationCount: 2,
+      status: "threshold",
+    });
+    const initOutcomes: (Error | "ok")[] = [backoff, "ok"];
+    const candidateResponses = [[], [], [initialized], [threshold]];
+    const calls: string[] = [];
+    const coordinator = new OnChainLifecycleCoordinator({
+      threshold: 2,
+      raceRecoveryRetryCount: 2,
+      raceRecoveryRetryDelayMs: 0,
+      chainReader: {
+        fetchDaAttestationCandidates: async () =>
+          candidateResponses.shift() ?? [],
+      },
+      submitter: {
+        initAttestation: async () => {
+          calls.push("init");
+          const outcome = initOutcomes.shift();
+          if (outcome instanceof Error) {
+            throw outcome;
+          }
+          return submitted("initTx");
+        },
+        addSignatures: async () => {
+          calls.push("add");
+          return submitted("addTx");
+        },
+        applyAttestation: async () => {
+          calls.push("apply");
+          return submitted("applyTx");
+        },
+      },
+    });
+
+    await expect(coordinator.publishSignature(signatureRecord())).resolves.toBe(
+      "post_failed",
+    );
+    expect(calls).toEqual(["init"]);
+    expect(coordinator.lastPublishError({ headerHash: "01".repeat(28) })).toBe(
+      backoff.message,
+    );
+
+    await expect(coordinator.publishSignature(signatureRecord())).resolves.toBe(
+      "posted",
+    );
+    expect(calls).toEqual(["init", "init", "add", "apply"]);
+  });
+
   it("classifies a backoff before the race patterns, even when its message chain reads like a race", async () => {
     // An unavailable pool whose provider said the pool "was spent" or "not
     // found": the message chain matches the race patterns, and the backoff

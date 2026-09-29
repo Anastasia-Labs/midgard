@@ -63,7 +63,8 @@ export type LucidDaAttestationSubmitterDeps = {
   /** Receives every failed pooled DA bond read. */
   readonly recordDaBondPoolReadFailure?: (error: unknown) => void;
   /**
-   * Where submitter funding warnings and pooled-bond apply backoffs go.
+   * Where submitter funding warnings and pooled-bond init and apply backoffs
+   * go.
    * Defaults to stderr.
    */
   readonly log?: (line: string) => void;
@@ -113,6 +114,7 @@ export class LucidDaAttestationSubmitter
     }
     await this.refreshFunding();
     const daParams = await this.fetchDaParamsUtxo();
+    await this.requirePoolBacksInit(record.headerHash);
     const rescueBeneficiaryAddress = await this.deps.lucid.wallet().address();
     const rescueBeneficiary = await Effect.runPromise(
       SDK.addressDataFromBech32(rescueBeneficiaryAddress),
@@ -228,6 +230,52 @@ export class LucidDaAttestationSubmitter
     const txHash = await this.deps.signSubmit(tx);
     await this.waitForApplied(record.headerHash);
     return { status: "submitted", txHash };
+  }
+
+  /**
+   * Refuses to start an attestation that Apply would refuse: Init locks the
+   * attestation's min-ADA and pays its fees, and an attestation the pool
+   * cannot back only lapses. A short, `Withdrawing` or unreadable pool
+   * rejects with an `init` {@link DaBondPoolApplyBackoffError}, logged like an
+   * apply backoff, and the next reconcile tries again.
+   */
+  private async requirePoolBacksInit(headerHash: string): Promise<void> {
+    let backoff: DaBondPoolApplyBackoffError | undefined;
+    try {
+      const check = await this.checkDaBondPool();
+      if (check.state === "withdrawing") {
+        backoff = new DaBondPoolApplyBackoffError(
+          "pool-withdrawing",
+          `unlock_at=${check.unlockAt?.toString() ?? "unknown"}`,
+          "init",
+        );
+      } else if (check.short) {
+        backoff = new DaBondPoolApplyBackoffError(
+          "pool-under-backed",
+          `backing=${check.backing.toString()},da_bond=${check.requiredBacking.toString()}`,
+          "init",
+        );
+      }
+    } catch (error) {
+      backoff = new DaBondPoolApplyBackoffError(
+        "pool-unavailable",
+        error instanceof Error ? error.message : String(error),
+        "init",
+      );
+    }
+    if (backoff === undefined) {
+      return;
+    }
+    this.log(
+      `${JSON.stringify({
+        event: "da_bond_pool_init_backoff",
+        headerHash,
+        reason: backoff.reason,
+        message: backoff.message,
+        detail: backoff.detail,
+      })}\n`,
+    );
+    throw backoff;
   }
 
   /**

@@ -318,7 +318,7 @@ This role can be run by the operator, a DA committee member, or a separate relay
 
 Coordinator responsibilities:
 
-- Create the initial DA attestation UTxO for an unattested state-queue header.
+- Create the initial DA attestation UTxO for an unattested state-queue header, only while the DA bond pool can back its Apply. An attestation the pool cannot back would only lapse, so while the pool is under-backed, withdrawing, or unreadable the coordinator logs `da_bond_pool_init_backoff` with the reason, adds no signatures, reports the header as not posted, and tries again on the next reconcile.
 - Collect `AddSignatures` witnesses from committee nodes.
 - Submit one or more `AddSignatures` transactions until the datum's `attestation_count` reaches the threshold.
 - Submit `ApplyToStateQueue`, reading the DA bond pool (re-fetched for every build) as a reference input, to burn `DAAT || header_hash` and set the state-queue `Attested` commitment hash. While the pool is under-backed, withdrawing, or unreadable, the coordinator backs off: it logs `da_bond_pool_apply_backoff` with the reason, reports the header as not posted, keeps running, and tries again on the next reconcile. A pool outref spent by a top-up or slash between the fetch and submission is a recoverable race and is retried with a fresh build, within the bounded race-recovery retries. An Apply that cannot land before the header's attestation timeout lapses: the block can then be removed as unattested, with no DA slash, and while it is the queue head the state queue refuses every Append until it is removed.

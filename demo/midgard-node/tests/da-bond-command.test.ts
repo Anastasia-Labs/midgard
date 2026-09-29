@@ -48,13 +48,21 @@ import {
  * pass this suite's compiled (Preprod) profile check, so while `custom.active`
  * is set the manifest read and verification, the provider, and the first
  * reference authentication (the stage right after Lucid is built) are stubbed,
- * and the Lucid instance that reaches that stage is captured. Otherwise every
- * mocked export is the real one.
+ * and the Lucid instance that reaches that stage is captured. With
+ * `completeLoad` set, the stubbed manifest also names the DA params governor
+ * and the reference authentication answers with the given pool references, so
+ * the context loads in full. Otherwise every mocked export is the real one.
  */
 const custom = vi.hoisted(() => ({
   active: false,
   provider: undefined as unknown,
   reached: [] as unknown[],
+  completeLoad: undefined as
+    | undefined
+    | {
+        readonly references: Readonly<Record<string, unknown>>;
+        readonly parameters: unknown;
+      },
 }));
 
 vi.mock("../src/commands/contract-deployment-info.js", async (original) => {
@@ -66,7 +74,21 @@ vi.mock("../src/commands/contract-deployment-info.js", async (original) => {
     ...actual,
     readDeploymentManifestFile: (path: string) =>
       custom.active
-        ? { network: "Custom", manifestId: "custom-manifest" }
+        ? {
+            network: "Custom",
+            manifestId: "custom-manifest",
+            ...(custom.completeLoad === undefined
+              ? {}
+              : {
+                  contracts: {
+                    daParamsGovernorSpend: { scriptHash: "aa".repeat(28) },
+                    daParamsGovernorMint: { scriptHash: "bb".repeat(28) },
+                  },
+                  deploymentProfile: {
+                    timing: { da_bond_withdraw_delay_ms: 60_000 },
+                  },
+                }),
+          }
         : actual.readDeploymentManifestFile(path),
   };
 });
@@ -121,8 +143,16 @@ vi.mock(
         if (!custom.active)
           return actual.authenticatedManifestReference(...args);
         custom.reached.push(args[0]);
+        if (custom.completeLoad !== undefined)
+          return Promise.resolve(custom.completeLoad.references[args[3]]);
         return Promise.reject(new Error("stop after Lucid is built"));
       },
+      availabilityParametersFromManifest: (
+        ...args: Parameters<typeof actual.availabilityParametersFromManifest>
+      ) =>
+        custom.active && custom.completeLoad !== undefined
+          ? custom.completeLoad.parameters
+          : actual.availabilityParametersFromManifest(...args),
     };
   },
 );
@@ -762,8 +792,12 @@ describe("da-bond production submit", () => {
 const fakeOgmios = async (options: {
   genesisStartMs: number;
   genesisFails?: true;
+  /** How many slots `queryNetwork/tip` answers behind the wall clock. */
+  tipLagSlots?: number;
 }) => {
   const requests: string[] = [];
+  /** Every slot `queryNetwork/tip` answered, in order. */
+  const tipSlots: number[] = [];
   const slotNow = () =>
     Math.floor((Date.now() - options.genesisStartMs) / 1_000);
   const server = createServer((request, response) => {
@@ -792,7 +826,9 @@ const fakeOgmios = async (options: {
       };
       requests.push(method);
       if (method === "queryNetwork/tip") {
-        reply(200, { jsonrpc: "2.0", result: { slot: slotNow() }, id });
+        const slot = slotNow() - (options.tipLagSlots ?? 0);
+        tipSlots.push(slot);
+        reply(200, { jsonrpc: "2.0", result: { slot }, id });
       } else if (
         method === "queryNetwork/genesisConfiguration" &&
         options.genesisFails === undefined
@@ -817,6 +853,7 @@ const fakeOgmios = async (options: {
   return {
     url: `ws://127.0.0.1:${port.toString()}`,
     requests,
+    tipSlots,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 };
@@ -926,6 +963,42 @@ describe("da-bond on a Custom (local devnet) deployment (P25)", () => {
         "queryNetwork/genesisConfiguration",
       ]);
     } finally {
+      await ogmios.close();
+    }
+  });
+
+  it("loadDaBondContext reads the clock from the local node's tip, which trails the wall clock", async () => {
+    // The node checks a lower bound against its tip slot + 1. A withdraw
+    // begin or complete whose lower bound came from the wall clock, 30 slots
+    // ahead of this tip, would be refused as not yet valid.
+    const ogmios = await fakeOgmios({ genesisStartMs, tipLagSlots: 30 });
+    const { provider } = buildOnlyProvider();
+    custom.active = true;
+    custom.provider = provider;
+    custom.reached = [];
+    custom.completeLoad = {
+      references: {
+        daBondPoolSpend: f.poolReferences.daBondPoolSpending,
+        daBondPoolMint: f.poolReferences.daBondPoolMinting,
+      },
+      parameters: f.parameters,
+    };
+    try {
+      const loaded = await loadDaBondContext(
+        {
+          manifest: "custom-manifest.json",
+          kupoUrl: "http://127.0.0.1:1442",
+          ogmiosUrl: ogmios.url,
+        },
+        {},
+      );
+      const tipSlot = ogmios.tipSlots.at(-1)!;
+      expect(loaded.now()).toBe(genesisStartMs + tipSlot * 1_000);
+      expect(loaded.now()).toBeLessThanOrEqual(Date.now() - 29_000);
+    } finally {
+      custom.active = false;
+      custom.provider = undefined;
+      custom.completeLoad = undefined;
       await ogmios.close();
     }
   });

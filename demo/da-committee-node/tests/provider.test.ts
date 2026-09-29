@@ -42,6 +42,7 @@ import {
   kupmiosChainPointResolver,
   kupmiosCurrentChainPointResolver,
   l1AuthorityProviderSource,
+  L1NetworkMagicUnconfiguredError,
   LOCAL_NODE_SNAPSHOT_ATTEMPTS,
   LocalNodeChainAuthority,
   LocalNodeStateQueueProvider,
@@ -2011,6 +2012,205 @@ describe("L1 provider adapters", () => {
       );
       expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
       expect(fetchFn).toHaveBeenCalledTimes(KUPMIOS_TIP_ALIGNMENT_ATTEMPTS);
+    });
+  });
+
+  describe("Custom network identity at every live Ogmios read", () => {
+    // A Custom network has no built-in magic: the configured one
+    // (cardanoL1Source.networkMagic) is what every live read proves the chain
+    // against, at the aligned tip, the chain-sync session start and the
+    // confirmation-depth query alike.
+    const customMagic = 424242;
+    const inclusion = { slot: 10, id: "11".repeat(32) };
+    const tip = { slot: 100, id: "44".repeat(32) };
+    // A number is every connection's magic; a function gives connection n
+    // (in opening order) its own.
+    type LiveMagic = number | ((connection: number) => number);
+    const liveOgmios = (liveMagic: LiveMagic) => {
+      let connections = 0;
+      return class CustomOgmiosWebSocket {
+        onopen: ((event: unknown) => void) | null = null;
+        onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        onclose: ((event: unknown) => void) | null = null;
+        private nextBlocks = 0;
+        private readonly magic =
+          typeof liveMagic === "number" ? liveMagic : liveMagic(connections++);
+
+        constructor(_url: string) {
+          queueMicrotask(() => this.onopen?.({}));
+        }
+
+        send(raw: string): void {
+          const request = JSON.parse(raw) as {
+            readonly id: string;
+            readonly method: string;
+            readonly params?: { readonly points?: readonly unknown[] };
+          };
+          let result: unknown;
+          if (request.method === "queryNetwork/genesisConfiguration") {
+            result = { networkMagic: this.magic };
+          } else if (request.method === "queryNetwork/tip") {
+            result = tip;
+          } else if (request.method === "findIntersection") {
+            const first = request.params?.points?.[0] as
+              | { readonly slot: number }
+              | undefined;
+            result = {
+              intersection: first?.slot === inclusion.slot ? inclusion : tip,
+              tip,
+            };
+          } else if (this.nextBlocks++ === 0) {
+            result = { direction: "backward", point: inclusion, tip };
+          } else {
+            result = { direction: "forward", block: tip, tip };
+          }
+          queueMicrotask(() =>
+            this.onmessage?.({
+              data: JSON.stringify({ jsonrpc: "2.0", id: request.id, result }),
+            }),
+          );
+        }
+
+        close(): void {}
+      };
+    };
+    const kupoAtTip = (async () =>
+      new Response(`kupo_most_recent_checkpoint ${tip.slot.toString()}\n`, {
+        headers: { etag: `"${tip.id}"` },
+      })) as typeof fetch;
+    const withLiveOgmios = async <A>(
+      liveMagic: LiveMagic,
+      run: () => Promise<A>,
+    ): Promise<A> => {
+      vi.stubGlobal("WebSocket", liveOgmios(liveMagic));
+      vi.stubGlobal("fetch", kupoAtTip);
+      try {
+        return await run();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    };
+    const readAlignedTip = (
+      configuredMagic?: number,
+      network: "Custom" | "Preprod" = "Custom",
+    ) =>
+      kupmiosCurrentChainPointResolver(
+        network,
+        "http://kupo.local",
+        "ws://ogmios.local",
+        configuredMagic,
+      )();
+    const openChainSync = (
+      configuredMagic?: number,
+      network: "Custom" | "Preprod" = "Custom",
+    ) =>
+      new OgmiosChainSyncEventSource(
+        "ws://ogmios.local",
+        network,
+        "node-a",
+        undefined,
+        configuredMagic,
+      ).next(undefined);
+    const readDepth = (
+      configuredMagic?: number,
+      network: "Custom" | "Preprod" = "Custom",
+    ) =>
+      kupmiosChainPointResolver(
+        {
+          transactionStatus: async () => ({
+            status: "confirmed",
+            txHash: "aa".repeat(32),
+            confirmation: {
+              txHash: "aa".repeat(32),
+              slot: inclusion.slot,
+              blockHash: inclusion.id,
+            },
+          }),
+        } as unknown as LucidEvolution,
+        "http://kupo.local",
+        kupoAtTip,
+        "ws://ogmios.local",
+        network,
+        1,
+        configuredMagic,
+      )({ txHash: "aa".repeat(32), outputIndex: 0 } as never);
+
+    const everyRead: readonly ((
+      configuredMagic?: number,
+      network?: "Custom" | "Preprod",
+    ) => Promise<unknown>)[] = [readAlignedTip, openChainSync, readDepth];
+
+    it("reads the aligned tip, opens chain-sync and counts depth when the live magic is the configured one", async () => {
+      await expect(
+        withLiveOgmios(customMagic, () => readAlignedTip(customMagic)),
+      ).resolves.toMatchObject({
+        network: "Custom",
+        slot: tip.slot,
+        blockHash: tip.id,
+      });
+      await expect(
+        withLiveOgmios(customMagic, () => openChainSync(customMagic)),
+      ).resolves.toMatchObject({
+        event: {
+          direction: "roll_forward",
+          point: { network: "Custom", slot: tip.slot },
+        },
+      });
+      await expect(
+        withLiveOgmios(customMagic, () => readDepth(customMagic)),
+      ).resolves.toMatchObject({ slot: inclusion.slot, depth: 1 });
+    });
+
+    it("refuses a live chain whose magic is not the configured one, as an integrity failure", async () => {
+      for (const read of everyRead) {
+        const failure = await withLiveOgmios(42, () => read(customMagic)).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(L1SourceIntegrityError);
+        expect((failure as Error).message).toMatch(
+          /Ogmios network magic 42 does not match configured Custom magic 424242/u,
+        );
+      }
+    });
+
+    it("refuses at the confirmation-depth query itself when only that session's chain is not the configured one", async () => {
+      // Connection 0 is the aligned-tip read before the depth query, 1 the
+      // depth session, 2 the aligned-tip read after it: the aligned reads
+      // pass, so only the depth query's own check can refuse.
+      const failure = await withLiveOgmios(
+        (connection) => (connection === 1 ? 42 : customMagic),
+        () => readDepth(customMagic),
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(L1SourceIntegrityError);
+      expect((failure as Error).message).toMatch(
+        /Ogmios network magic 42 does not match configured Custom magic 424242/u,
+      );
+    });
+
+    it("keeps a named network's built-in magic, whatever magic is configured", async () => {
+      for (const read of everyRead) {
+        const failure = await withLiveOgmios(2, () => read(2, "Preprod")).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(L1SourceIntegrityError);
+        expect((failure as Error).message).toMatch(
+          /Ogmios network magic 2 does not match configured Preprod magic 1/u,
+        );
+      }
+    });
+
+    it("refuses by name when no network magic is configured", async () => {
+      for (const read of everyRead) {
+        await expect(
+          withLiveOgmios(customMagic, () => read(undefined)),
+        ).rejects.toBeInstanceOf(L1NetworkMagicUnconfiguredError);
+      }
     });
   });
 

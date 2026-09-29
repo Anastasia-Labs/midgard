@@ -27,7 +27,8 @@ per block or one bond per member.
   have no share and no claim.
 - **Applying an attestation.** An attestation applies only while the pool is not
   being withdrawn and holds at least one DA bond of backing. Starting and signing
-  an attestation need no bond.
+  an attestation need no bond on L1, but the committee node starts none that the
+  pool cannot back.
 - **Attested commitment.** Applying an attestation binds the block to the hash of
   the commitment the committee signed. An availability challenge opens against
   that hash, before a fixed window after the block's end time closes.
@@ -81,6 +82,15 @@ The normative design is [#685](https://github.com/Anastasia-Labs/midgard/issues/
 - **The pool is shared state.** Every attestation that applies reads the pool, so
   top-ups, slashes and withdrawal steps force pending applies to be rebuilt. The
   minimum top-up puts a price on that churn.
+- **Known edge case: top-ups can delay a Timeout while the pool is
+  withdrawing.** A top-up is valid in both pool states, and a Timeout must spend
+  the pool. A withholding committee could keep topping up to move the pool
+  outref, so each Timeout built against the old outref fails and must be
+  rebuilt, hoping to hold out until `unlock_at` and complete the withdrawal
+  before a slash lands. This is a low concern: the committee cannot reliably
+  hold the pool UTxO long enough to block every Timeout, and it eventually loses
+  a UTxO contention race. There is no on-chain change for it; a top-up stays
+  valid while withdrawing.
 - **The pool outlives committees.** It belongs to the committee role and carries
   across rotations.
 - **Testing profiles can use a small DA bond,** now that the reserve-coverage

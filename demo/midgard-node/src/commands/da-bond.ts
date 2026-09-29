@@ -36,6 +36,8 @@ import { Effect, Either } from "effect";
 import {
   fetchLocalOgmiosShelleyGenesisSlotConfig,
   fetchLocalOgmiosSubmitSlotSnapshot,
+  normalizeOgmiosHttpUrl,
+  parseOgmiosTipSlot,
 } from "../local-ledger-slot.js";
 import { customSlotConfigFromShelleyGenesis } from "../lucid-time.js";
 import {
@@ -78,7 +80,13 @@ export type DaBondContext = Readonly<{
   daParamsGovernor: Readonly<{ address: string; unit: string }>;
   /** The deployment profile's `timing.da_bond_withdraw_delay_ms`. */
   withdrawDelayMs: bigint;
-  /** The current POSIX time in milliseconds (the emulator's clock in tests). */
+  /**
+   * The ledger's current POSIX time in milliseconds: the time of the local
+   * node's tip slot when the command started (the emulator's clock in tests).
+   * The node checks a transaction's validity bounds against its tip, which
+   * trails the wall clock, so a lower bound taken from the wall clock can be
+   * refused as not yet valid.
+   */
   now: () => number;
   /**
    * Submits a signed transaction, waits for it to land, returns its id. A
@@ -854,6 +862,33 @@ export const daBondLucid = async (input: {
 };
 
 /**
+ * The time of the local node's tip slot, read from its Ogmios: the clock the
+ * node checks validity bounds against.
+ */
+export const daBondLedgerTimeMs = async (
+  lucid: LucidEvolution,
+  ogmiosUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<number> => {
+  const response = await fetchImpl(normalizeOgmiosHttpUrl(ogmiosUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "queryNetwork/tip",
+      id: "midgard-da-bond-ledger-time",
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `The local Ogmios tip query at ${ogmiosUrl} failed: HTTP ${response.status.toString()}`,
+    );
+  }
+  return lucid.slotToUnixTime(parseOgmiosTipSlot(await response.json()));
+};
+
+/**
  * The production context: a verified finalized manifest, local Kupmios, and
  * only the references these commands read, each authenticated: the pool's
  * reference scripts (manifest role outputs carrying their
@@ -906,6 +941,7 @@ export const loadDaBondContext = async (
   if (governorSpend === undefined || governorMint === undefined) {
     throw new Error("Deployment omits the DA params governor");
   }
+  const ledgerTimeMs = await daBondLedgerTimeMs(lucid, connection.ogmiosUrl);
   return {
     lucid,
     network,
@@ -926,7 +962,7 @@ export const loadDaBondContext = async (
     withdrawDelayMs: BigInt(
       manifest.deploymentProfile.timing.da_bond_withdraw_delay_ms,
     ),
-    now: () => Date.now(),
+    now: () => ledgerTimeMs,
     submit: daBondChainSubmit(provider, lucid),
   };
 };

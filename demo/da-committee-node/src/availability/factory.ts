@@ -180,24 +180,13 @@ export const availabilityResponderFromConfig = async (
   const { readBoundary, assertActuationCurrent, context, reconcile } =
     availabilityResponderOperations({
       lucid,
-      readers: {
-        currentPoint: kupmiosCurrentChainPointResolver(
-          config.network,
-          kupoUrl,
-          ogmiosUrl,
-        ),
+      readers: availabilityResponderL1ReadersFromConfig({
+        config,
+        lucid,
+        kupoUrl,
+        ogmiosUrl,
         currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
-        tipBlockNo: () => fetchOgmiosTipBlockNo(ogmiosUrl, fetch),
-        resolveInclusion: kupmiosChainPointResolver(
-          lucid,
-          kupoUrl,
-          fetch,
-          ogmiosUrl,
-          config.network,
-          config.finalityDepth,
-        ),
-        foreignSpend: availabilityForeignSpendReaders({ kupoUrl, ogmiosUrl }),
-      },
+      }),
       assertSourceHealthy,
       context: {
         deploymentIdentity: contractManifestId,
@@ -279,6 +268,44 @@ export type AvailabilityResponderL1Readers = Readonly<{
   ) => Promise<Readonly<{ slot?: number; blockHash?: string; depth?: number }>>;
   foreignSpend: Omit<SDK.DaAvailabilityForeignSpendReaders, "readBoundary">;
 }>;
+
+/**
+ * The responder's live L1 readers over its kupmios query provider. The
+ * configured network magic reaches both Ogmios identity checks (the aligned
+ * tip and the confirmation-depth query), which a Custom network needs.
+ */
+export const availabilityResponderL1ReadersFromConfig = (input: {
+  readonly config: Pick<
+    CommitteeL1ClientConfig,
+    "network" | "finalityDepth" | "cardanoL1Source"
+  >;
+  readonly lucid: LucidEvolution;
+  readonly kupoUrl: string;
+  readonly ogmiosUrl: string;
+  readonly currentCursor: () => Promise<ChainSyncCursor>;
+}): AvailabilityResponderL1Readers => {
+  const { config, lucid, kupoUrl, ogmiosUrl } = input;
+  return {
+    currentPoint: kupmiosCurrentChainPointResolver(
+      config.network,
+      kupoUrl,
+      ogmiosUrl,
+      config.cardanoL1Source.networkMagic,
+    ),
+    currentCursor: input.currentCursor,
+    tipBlockNo: () => fetchOgmiosTipBlockNo(ogmiosUrl, fetch),
+    resolveInclusion: kupmiosChainPointResolver(
+      lucid,
+      kupoUrl,
+      fetch,
+      ogmiosUrl,
+      config.network,
+      config.finalityDepth,
+      config.cardanoL1Source.networkMagic,
+    ),
+    foreignSpend: availabilityForeignSpendReaders({ kupoUrl, ogmiosUrl }),
+  };
+};
 
 /**
  * The responder's canonical boundary, operation context and reconcile step,

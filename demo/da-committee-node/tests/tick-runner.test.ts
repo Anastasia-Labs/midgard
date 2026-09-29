@@ -9,6 +9,7 @@ import {
   createCommitteeTickRunner,
   L1_VIEW_UNAVAILABLE_EXIT_CODE,
   L1ViewUnavailableError,
+  startCommitteeTickLoop,
 } from "../src/tick-runner.js";
 
 const FATAL_MS = 60_000;
@@ -352,5 +353,59 @@ describe("committee tick runner pooled DA bond read", () => {
     expect(h.retentionRuns).toEqual([START]);
     expect(h.readiness()?.status).toBe("ok");
     expect(h.exits).toEqual([]);
+  });
+});
+
+describe("committee tick loop start", () => {
+  /** A loop whose first tick waits until `finishFirstTick` is called. */
+  const loopWithHeldFirstTick = () => {
+    const handlers = new Map<string, () => void>();
+    const calls: string[] = [];
+    let finishFirstTick!: () => void;
+    const firstTick = new Promise<void>((resolve) => {
+      finishFirstTick = resolve;
+    });
+    const started = startCommitteeTickLoop({
+      runTick: async () => {
+        calls.push("tick");
+        await firstTick;
+      },
+      pollIntervalMs: 60_000,
+      shutdown: async () => {
+        calls.push("shutdown");
+      },
+      exit: (code) => calls.push(`exit:${code.toString()}`),
+      onSignal: (signal, handler) => handlers.set(signal, handler),
+    });
+    return { started, handlers, calls, finishFirstTick };
+  };
+
+  it.each(["SIGINT", "SIGTERM"] as const)(
+    "shuts down and exits 0 on a %s during the first tick, and starts no interval",
+    async (signal) => {
+      const { started, handlers, calls, finishFirstTick } =
+        loopWithHeldFirstTick();
+
+      expect(calls).toEqual(["tick"]);
+      handlers.get(signal)?.();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(calls).toEqual(["tick", "shutdown", "exit:0"]);
+
+      finishFirstTick();
+      await expect(started).resolves.toBeUndefined();
+    },
+  );
+
+  it("starts the interval once the first tick finishes without a stop", async () => {
+    const { started, handlers, calls, finishFirstTick } =
+      loopWithHeldFirstTick();
+
+    finishFirstTick();
+    const interval = await started;
+    clearInterval(interval);
+
+    expect(interval).toBeDefined();
+    expect([...handlers.keys()]).toEqual(["SIGINT", "SIGTERM"]);
+    expect(calls).toEqual(["tick"]);
   });
 });

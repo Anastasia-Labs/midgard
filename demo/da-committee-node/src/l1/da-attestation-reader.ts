@@ -446,6 +446,8 @@ const lucidFromProviderUrl = async (
         network,
         apiUrl,
         projectId,
+        undefined,
+        networkMagic,
       ),
     };
   }
@@ -474,6 +476,7 @@ const lucidFromProviderUrl = async (
         network,
         kupoUrl,
         ogmiosUrl,
+        networkMagic,
       ),
     };
   }

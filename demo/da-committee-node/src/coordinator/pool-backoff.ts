@@ -31,7 +31,9 @@ const REASON_SUMMARY: Readonly<Record<DaBondPoolApplyBackoffReason, string>> = {
 
 /**
  * Apply was refused because of the pooled DA bond's state, not because the
- * transaction lost a race. Retrying at once cannot help: the pool changes only
+ * transaction lost a race. Init is refused for the same states (`stage`
+ * `init`): an attestation the pool cannot let Apply only lapses, and its
+ * min-ADA and fees are spent for nothing. Retrying at once cannot help: the pool changes only
  * when an operator tops it up, cancels a withdrawal, or L1 becomes readable
  * again. The coordinator therefore does not treat it as a recoverable race; it
  * reports the header as not posted, the node keeps running, and the next
@@ -47,9 +49,10 @@ export class DaBondPoolApplyBackoffError extends Error {
   constructor(
     readonly reason: DaBondPoolApplyBackoffReason,
     readonly detail: string,
+    readonly stage: "init" | "apply" = "apply",
   ) {
     super(
-      `DA attestation apply backed off (${reason}): ${REASON_SUMMARY[reason]}`,
+      `DA attestation ${stage} backed off (${reason}): ${REASON_SUMMARY[reason]}`,
     );
   }
 }

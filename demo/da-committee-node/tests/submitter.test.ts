@@ -1168,6 +1168,9 @@ const fundingSubmitter = (readings: (bigint | Error)[]) => {
   const submitter = new LucidDaAttestationSubmitter({
     lucid: {
       wallet: () => ({ address: async () => address }),
+      // A Bonded pool that backs one DA bond, so an init gets past its pool
+      // check.
+      utxosAtWithUnit: async () => [poolUtxo(BONDED_POOL_LOVELACE, "Bonded")],
     } as unknown as LucidEvolution,
     contracts,
     referenceScripts: {} as never,
@@ -1354,6 +1357,105 @@ describe("pooled DA bond check", () => {
       expect((failures[0] as Error).message).toMatch(refusal);
     },
   );
+
+  it.each([
+    [
+      "backs less than one DA bond",
+      () => [poolUtxo(BONDED_POOL_LOVELACE - 1n, "Bonded")],
+      "pool-under-backed",
+    ],
+    [
+      "is Withdrawing",
+      () => [
+        poolUtxo(BONDED_POOL_LOVELACE, {
+          Withdrawing: { unlock_at: 1_234n },
+        }),
+      ],
+      "pool-withdrawing",
+    ],
+    [
+      "cannot be read",
+      (): readonly UTxO[] => {
+        throw new Error("kupo unavailable");
+      },
+      "pool-unavailable",
+    ],
+  ] as const)(
+    "does not init an attestation while the pool %s, and logs the backoff",
+    async (_, pool, reason) => {
+      const { lucid } = poolLucid(pool);
+      const logged: string[] = [];
+      const submitted: unknown[] = [];
+      const { submitter } = poolSubmitter(lucid, {
+        refreshFundingUtxos: async () => undefined,
+        signSubmit: async (tx) => {
+          submitted.push(tx);
+          return "inittx";
+        },
+        log: (line) => logged.push(line),
+      });
+      const probe = submitter as unknown as SubmitterProbe;
+      probe.findStateQueueHeader = async () => ({
+        stateQueueNode: { da_attestation: SDK.NO_DA_ATTESTATION },
+      });
+      probe.fetchDaParamsUtxo = async () => ({ utxo: {}, datum: {} });
+      vi.mocked(buildInitDaAttestationTx).mockClear();
+
+      const refusal = await submitter.initAttestation(initRecord()).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(refusal).toBeInstanceOf(DaBondPoolApplyBackoffError);
+      expect(refusal).toMatchObject({ reason, stage: "init" });
+      expect((refusal as Error).message).toMatch(
+        /^DA attestation init backed off/u,
+      );
+      expect(buildInitDaAttestationTx).not.toHaveBeenCalled();
+      expect(submitted).toEqual([]);
+      expect(logged).toEqual([
+        expect.stringContaining(
+          `"event":"da_bond_pool_init_backoff","headerHash":"${initRecord().headerHash}","reason":"${reason}"`,
+        ),
+      ]);
+    },
+  );
+
+  it("inits an attestation once the pool is Bonded and backs one DA bond", async () => {
+    const { lucid: poolReader } = poolLucid(() => [
+      poolUtxo(BONDED_POOL_LOVELACE, "Bonded"),
+    ]);
+    const lucid = {
+      utxosAtWithUnit: poolReader.utxosAtWithUnit,
+      wallet: () => ({
+        address: async () =>
+          generateEmulatorAccountFromPrivateKey({ lovelace: 1n }).address,
+      }),
+    } as unknown as LucidEvolution;
+    const logged: string[] = [];
+    const { submitter, checks } = poolSubmitter(lucid, {
+      refreshFundingUtxos: async () => undefined,
+      signSubmit: async () => "inittx",
+      log: (line) => logged.push(line),
+    });
+    const probe = submitter as unknown as SubmitterProbe;
+    probe.findStateQueueHeader = async () => ({
+      stateQueueNode: { da_attestation: SDK.NO_DA_ATTESTATION },
+    });
+    probe.fetchDaParamsUtxo = async () => ({ utxo: {}, datum: {} });
+    vi.mocked(buildInitDaAttestationTx).mockResolvedValueOnce(
+      {} as TxSignBuilder,
+    );
+
+    await expect(submitter.initAttestation(initRecord())).resolves.toEqual({
+      status: "submitted",
+      txHash: "inittx",
+    });
+    expect(checks).toEqual([
+      expect.objectContaining({ state: "bonded", short: false }),
+    ]);
+    expect(logged).toEqual([]);
+  });
 
   it("reads the pool before building apply, so readiness sees the pool that blocked it", async () => {
     const { lucid } = poolLucid(() => [
