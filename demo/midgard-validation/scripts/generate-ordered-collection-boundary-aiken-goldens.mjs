@@ -468,7 +468,7 @@ const AIKEN_FAMILIES = [
     },
   },
   {
-    aiken: "onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
+    aiken: "onchain/aiken/lib/midgard/validation-machine-tests/constants.ak",
     constants: {
       ...terminalFixtureConstants({
         prefix: "maximum_spend_input",

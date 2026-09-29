@@ -319,7 +319,7 @@
         "onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak",
         "onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-inline-datum.test.ak",
         "onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak",
-        "onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
+        "onchain/aiken/lib/midgard/validation-machine-tests/constants.ak",
         "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak"
       ],
       "sync": {

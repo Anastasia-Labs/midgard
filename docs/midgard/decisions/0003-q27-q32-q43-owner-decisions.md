@@ -63,7 +63,7 @@ remains separately covered by ResolveInputs/Signatures.
 - Aiken `signatures_proves_a_missing_required_signer_is_an_exact_no_op` builds
   a 28-byte required signer, an empty authenticated signer frontier, and
   accepts only the exact `E_MISSING_REQUIRED_WITNESS` successor:
-  `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`.
+  `onchain/aiken/lib/midgard/validation-machine-tests/tests-input-resolution.test.ak`.
 - TypeScript phase A independently rejects the same shape at
   `validateRequiredSigners` in `demo/midgard-validation/src/phase-a.ts`; its
   focused fixture asserts `MissingRequiredWitness`.

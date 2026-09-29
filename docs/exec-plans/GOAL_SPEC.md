@@ -683,7 +683,7 @@ is organized:
   evidence, and capability parity;
 - shared Aiken/TypeScript witness sum types and codecs;
 - `onchain/aiken/lib/midgard/validation-machine/` and
-  `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`;
+  `onchain/aiken/lib/midgard/validation-machine-tests/`;
 - fault-proof catalogue ordering, deployment script maps, and generated
   reference-script manifests;
 - `onchain/aiken/plutus.json`;
