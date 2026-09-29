@@ -1563,6 +1563,77 @@ describe("L1 provider adapters", () => {
     ]);
   });
 
+  it("keeps agreed state-queue nodes in the surfaces' linked-list order, not asset-name order", async () => {
+    const dir = await tempDir();
+    const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async () => ({
+          event: { direction: "roll_forward", point: canonical },
+          tip: canonical,
+        }),
+      },
+      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+    );
+    const { header } = await makePayloadFixture();
+    // The list runs B2 then B3, but B3's header hash sorts first.
+    const listOrder = [
+      makeObservedNode({
+        header,
+        headerHash: "f9".repeat(28),
+        outRef: `${"a1".repeat(32)}#1`,
+      }),
+      makeObservedNode({
+        header,
+        headerHash: "bd".repeat(28),
+        outRef: `${"a2".repeat(32)}#0`,
+      }),
+    ];
+    const queryPoint = (providerSource: string): CanonicalChainPoint => ({
+      ...canonical,
+      providerSource,
+    });
+    const surface = (providerSource: string) => ({
+      fetchStateQueueNodes: async () => listOrder,
+      fetchStateQueueSnapshot: async () => ({
+        nodes: listOrder,
+        confirmedHeaderHash: "00".repeat(28),
+        confirmedStateOutRef: `${"00".repeat(32)}#0`,
+        observedChainPoint: queryPoint(providerSource),
+      }),
+      currentChainPoint: async () => queryPoint(providerSource),
+    });
+    const expected = listOrder.map(({ outRef }) => outRef);
+
+    const local = new LocalNodeStateQueueProvider(
+      authority,
+      [surface("query:kupo-a"), surface("query:db-sync-a")],
+      ["query:kupo-a", "query:db-sync-a"],
+      new FileChainSyncConsumerCursorStore(
+        `${dir}/consumer.json`,
+        "11".repeat(32),
+      ),
+    );
+    expect(
+      (await local.fetchStateQueueSnapshot()).nodes.map(({ outRef }) => outRef),
+    ).toEqual(expected);
+
+    const external = new MultiStateQueueProvider(
+      [surface("provider-a"), surface("provider-b")],
+      { sourceMode: "external_providers" },
+    );
+    expect(
+      (await external.fetchStateQueueSnapshot()).nodes.map(
+        ({ outRef }) => outRef,
+      ),
+    ).toEqual(expected);
+    expect(
+      (await external.fetchStateQueueNodes()).map(({ outRef }) => outRef),
+    ).toEqual(expected);
+  });
+
   it("hands a signature record a chain point from a recorded preprod chain-sync session that the strict parser accepts", async () => {
     const dir = await tempDir();
     // The authority's point is what `parseOgmiosPoint` made of a live Ogmios

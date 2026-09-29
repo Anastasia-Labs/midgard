@@ -1292,7 +1292,11 @@ export class MultiStateQueueProvider implements StateQueueProvider {
       }
     }
     assertCompatibleChainPoints(sortedResults);
-    return mergeAgreedObservedNodes(sortedResults, this.mergedIdentities);
+    return mergeAgreedObservedNodes(
+      results[0]!,
+      sortedResults,
+      this.mergedIdentities,
+    );
   }
 
   async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshot> {
@@ -1371,7 +1375,11 @@ export class MultiStateQueueProvider implements StateQueueProvider {
     );
     this.snapshotPoints = snapshots.map(({ point }) => point);
     return {
-      nodes: mergeAgreedObservedNodes(sortedResults, this.mergedIdentities),
+      nodes: mergeAgreedObservedNodes(
+        baseline.nodes,
+        sortedResults,
+        this.mergedIdentities,
+      ),
       confirmedHeaderHash: baseline.confirmedHeaderHash,
       confirmedStateOutRef: baseline.confirmedStateOutRef,
       ...(tipBlockNo === undefined ? {} : { tipBlockNo }),
@@ -1602,6 +1610,7 @@ export class LocalNodeStateQueueProvider
       }
     }
     const merged = mergeAgreedObservedNodes(
+      baselineSnapshot.nodes,
       sortedResults,
       this.queryIdentities,
     );
@@ -2606,21 +2615,29 @@ const compatibleChainPoint = (left: ChainPoint, right: ChainPoint): boolean =>
       leftValue === rightValue,
   );
 
+// Surfaces are compared in one canonical sort, which orders nodes by asset
+// name. The merged nodes go back into the first surface's own order, the
+// linked-list order: replay walks the list, and the scanner's final queue must
+// match it node for node.
 const mergeAgreedObservedNodes = (
+  firstSurfaceNodes: readonly ObservedStateQueueNode[],
   sortedResults: readonly (readonly ObservedStateQueueNode[])[],
   identities?: readonly string[],
 ): readonly ObservedStateQueueNode[] =>
-  sortedResults[0]!.map((node, index) => ({
-    ...node,
-    chainPoint: mergeChainPoints(
-      sortedResults.map((nodes, providerIndex) => ({
-        ...nodes[index]!.chainPoint,
-        providerSource:
-          identities?.[providerIndex] ??
-          nodes[index]!.chainPoint.providerSource,
-      })),
-    ),
-  }));
+  firstSurfaceNodes.map((surfaceNode) => {
+    const index = sortedResults[0]!.indexOf(surfaceNode);
+    return {
+      ...surfaceNode,
+      chainPoint: mergeChainPoints(
+        sortedResults.map((nodes, providerIndex) => ({
+          ...nodes[index]!.chainPoint,
+          providerSource:
+            identities?.[providerIndex] ??
+            nodes[index]!.chainPoint.providerSource,
+        })),
+      ),
+    };
+  });
 
 /**
  * Copies exactly the fields `ChainPoint` declares, leaving out undefined ones.

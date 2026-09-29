@@ -1,9 +1,14 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { StateQueueHeaderRecord } from "../src/domain.js";
+import {
+  type CanonicalChainPoint,
+  MultiStateQueueProvider,
+} from "../src/l1/provider.js";
 import { L1SourceIntegrityError } from "../src/l1/source-integrity.js";
+import { createLocalKupmiosStateQueueReplayProvider } from "../src/l1/state-queue-replay-provider.js";
 import {
   hashBlockHeader,
   scanStateQueue,
@@ -212,6 +217,105 @@ describe("state queue scanner", () => {
     expect(records).toHaveLength(1);
     expect(records[0]!.status).toBe("unattested");
     expect(records[0]!.validationErrors).toEqual([]);
+  });
+
+  it("replays a queue whose header hashes do not ascend along the list from a list-order anchor", async () => {
+    // The list runs the larger header hash first, so list order is not
+    // asset-name order.
+    const listed = (
+      await Promise.all([makePayloadFixture(2), makePayloadFixture(3)])
+    ).sort((left, right) => (left.headerHash < right.headerHash ? 1 : -1));
+    const nodes = listed.map(({ header, headerHash }, index) =>
+      makeObservedNode({
+        header,
+        headerHash,
+        depth: 30,
+        outRef: `${"a1".repeat(32)}#${index.toString()}`,
+      }),
+    );
+    const confirmedStateOutRef = `${"66".repeat(32)}#0`;
+    const listQueue = [
+      { headerHash: null, outRef: confirmedStateOutRef },
+      ...listed.map(({ headerHash }, index) => ({
+        headerHash,
+        outRef: nodes[index]!.outRef,
+      })),
+    ];
+    const common = {
+      deploymentFingerprint: "11".repeat(32),
+      deploymentIdentityDigest: "11".repeat(32),
+      stateQueuePolicyId: "22".repeat(28),
+      daAttestationPolicyId: "33".repeat(28),
+      finalityDepth: 3,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    } as const;
+    const fetchImpl = vi.fn(() => {
+      throw new Error("no I/O expected");
+    });
+    const replay = createLocalKupmiosStateQueueReplayProvider({
+      deploymentIdentityDigest: common.deploymentIdentityDigest,
+      stateQueuePolicyId: common.stateQueuePolicyId,
+      stateQueueAddress: "addr_test1state",
+      hubOraclePolicyId: "44".repeat(28),
+      correctionLockAddress: "addr_test1lock",
+      fraudProofPolicyId: "55".repeat(28),
+      fraudProofAddress: "addr_test1fraud",
+      kupoUrl: "http://127.0.0.1:1442",
+      ogmiosUrl: "http://127.0.0.1:1337",
+      fetchImpl,
+    });
+    const point = (providerSource: string): CanonicalChainPoint => ({
+      network: "Preview",
+      slot: 100,
+      blockHash: "ab".repeat(32),
+      providerSource,
+      observedAt: "2026-07-28T00:00:00.000Z",
+      depth: 30,
+    });
+    const surface = (providerSource: string) => ({
+      fetchStateQueueNodes: async () => nodes,
+      fetchStateQueueSnapshot: async () => ({
+        nodes,
+        confirmedHeaderHash: "00".repeat(28),
+        confirmedStateOutRef,
+        observedChainPoint: point(providerSource),
+        tipBlockNo: 130,
+      }),
+      fetchStateQueueReplayCheckpoints: replay,
+      currentChainPoint: async () => point(providerSource),
+    });
+    // Two surfaces, so the scan reads the providers' agreed merge.
+    const provider = () =>
+      new MultiStateQueueProvider(
+        [surface("provider-a"), surface("provider-b")],
+        { sourceMode: "external_providers" },
+      );
+
+    // The durable anchor names the queue as the list runs: replay sees
+    // nothing to walk and reads nothing.
+    await expect(
+      scanStateQueue(provider(), {
+        ...common,
+        terminalReplayAnchor: {
+          deploymentIdentityDigest: common.deploymentIdentityDigest,
+          stateQueuePolicyId: common.stateQueuePolicyId,
+          queue: listQueue,
+          blockNo: "100",
+          transactionIndex: "0",
+        },
+      }),
+    ).resolves.toHaveLength(2);
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    // A bootstrap records the queue in list order too.
+    let recorded: StateQueueReplayAnchor | undefined;
+    await scanStateQueue(provider(), {
+      ...common,
+      recordReplayAnchor: (anchor) => {
+        recorded = anchor;
+      },
+    });
+    expect(recorded?.queue).toEqual(listQueue);
   });
 
   describe("replay anchor finality", () => {
