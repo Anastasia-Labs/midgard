@@ -1,6 +1,96 @@
+use aiken/builtin
+use aiken/crypto.{blake2b_256}
+use aiken/fuzz
 use aiken/merkle_patricia_forestry.{Branch, Leaf}
 use midgard/mpf_proof_fold_v1
+use midgard/mpf_proof_v1
 use midgard/validation_merkle_v1
+
+// Preserve the shared prefix and choose the adjacent branch for a sibling.
+fn sibling_path(path: ByteArray, cursor: Int) -> ByteArray {
+  let offset = cursor / 2
+  let old = builtin.index_bytearray(path, offset)
+  let replacement = if cursor % 2 == 0 {
+    ( old / 16 + 1 ) % 16 * 16 + old % 16
+  } else {
+    old / 16 * 16 + ( old + 1 ) % 16
+  }
+  builtin.append_bytearray(
+    builtin.slice_bytearray(0, offset, path),
+    builtin.cons_bytearray(
+      replacement,
+      builtin.slice_bytearray(offset + 1, 31 - offset, path),
+    ),
+  )
+}
+
+test incremental_mutation_matches_atomic_mutation_at_each_prefix_depth(
+  skip via fuzz.int_between(0, 60),
+) {
+  let key = #"6c65646765722d656e747279"
+  let value = #"6f7574707574"
+  let path = blake2b_256(key)
+  let outer = mpf_proof_fold_v1.ProofFrameV1 {
+    version: 1,
+    frame_index: 0,
+    cursor: 0,
+    next_cursor: skip + 1,
+    step: Leaf {
+      skip,
+      key: sibling_path(path, skip),
+      value: blake2b_256(#"01"),
+    },
+  }
+  let inner = mpf_proof_fold_v1.ProofFrameV1 {
+    version: 1,
+    frame_index: 1,
+    cursor: skip + 1,
+    next_cursor: skip + 2,
+    step: Leaf {
+      skip: 0,
+      key: sibling_path(path, skip + 1),
+      value: blake2b_256(#"02"),
+    },
+  }
+  let outer_hash = mpf_proof_fold_v1.proof_frame_leaf_hash_v1(outer)
+  let inner_hash = mpf_proof_fold_v1.proof_frame_leaf_hash_v1(inner)
+  let frontier = validation_merkle_v1.build_frontier([outer_hash, inner_hash])
+  let shape = mpf_proof_fold_v1.ProofDescriptorV1 {
+    version: 1,
+    frame_count: 2,
+    terminal_cursor: skip + 2,
+    peaks: frontier.peaks,
+  }
+  expect Some(initial) = mpf_proof_fold_v1.initial_fold_control_v1(
+    key,
+    value,
+    shape,
+  )
+  expect Some(after_inner) = mpf_proof_fold_v1.fold_proof_frame_v1(
+    key,
+    shape,
+    initial,
+    inner,
+    [outer_hash],
+  )
+  expect Some(terminal) = mpf_proof_fold_v1.fold_proof_frame_v1(
+    key,
+    shape,
+    after_inner,
+    outer,
+    [inner_hash],
+  )
+  let proof = [outer.step, inner.step]
+  and {
+    mpf_proof_fold_v1.fold_is_complete_v1(terminal),
+    mpf_proof_v1.delete_root(terminal.including_root, key, value, proof) == Some(
+      terminal.excluding_root,
+    ),
+    mpf_proof_v1.insert_root(terminal.excluding_root, key, value, proof) == Some(
+      terminal.including_root,
+    ),
+  }
+}
 
 const first_neighbors =
   #"fcb3a266af3765b1034ed5b3aa4b4207a3326fe6c8d819833330688f2c789576f78acc03c7a5dfb5cfa9fea66cf3fee9122c7674c71ada7cb7fa0a4d63e3628facf6bc2599db2c5d6d299a15d5721ae11ee7fd7249ae8617b57509a74f2119bd756f6f99694666e954705f5a7b02b7750498dbeb4b889fb344e1d9bc59a9ed10"

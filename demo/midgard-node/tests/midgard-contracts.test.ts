@@ -160,6 +160,7 @@ describe("midgard contracts registry", () => {
       // the pooled DA bond validator was added, the per-block availability
       // bond yield removed, and the availability-challenge and DA-attestation
       // parameters changed (pool policy, commitment-bound challenges).
+      // The nonterminal MPF leaf-fold correction changes the fraud-proof scripts.
       expect(
         createHash("sha256")
           .update(
@@ -167,7 +168,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "8f35f6587ff06f21fc93a24850778ec7d7d5fb6ce6b967fc6d7a2bcb06947ff0",
+        "a5ecebb58a390562fa7e44a70010339332b401257da858d3a897e80124390b16",
       );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

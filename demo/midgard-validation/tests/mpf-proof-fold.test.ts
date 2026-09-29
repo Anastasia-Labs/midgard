@@ -1,4 +1,4 @@
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   buildMidgardMpfProofFoldTrace,
   encodeMidgardMpfProofFrame,
@@ -6,12 +6,78 @@ import {
   parseMidgardMpfProofJson,
   verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 const exactRoot = (trie: Trie): Buffer =>
   trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
 
 describe("bounded MPF proof folding V1", () => {
+  it("matches atomic proof verification across valid shared-prefix depths", () => {
+    const key = Buffer.from("ledger-entry");
+    const value = Buffer.from("output");
+    const path = Buffer.from(blake2b(key, { dkLen: 32 })).toString("hex");
+    const siblingPath = (cursor: number): string =>
+      path.slice(0, cursor) +
+      ((parseInt(path[cursor]!, 16) + 1) % 16).toString(16) +
+      path.slice(cursor + 1);
+    for (let skip = 0; skip <= 62; skip += 1) {
+      const proofJson = [skip, skip + 1].map((cursor, index) => ({
+        type: "leaf",
+        skip: index === 0 ? skip : 0,
+        neighbor: {
+          key: siblingPath(cursor),
+          value: Buffer.from(
+            blake2b(Buffer.from([index + 1]), { dkLen: 32 }),
+          ).toString("hex"),
+        },
+      }));
+      const atomic = Proof.fromJSON(key, value, proofJson);
+      const trace = buildMidgardMpfProofFoldTrace({
+        key,
+        value,
+        steps: parseMidgardMpfProofJson(proofJson),
+      });
+      expect(trace.terminal.includingRoot).toEqual(atomic.verify(true));
+      expect(trace.terminal.excludingRoot).toEqual(atomic.verify(false));
+    }
+  });
+
+  // A smoke anchor against the real trie, not a regression pin for the
+  // non-terminal Leaf arm: none of these 4,096 proofs has a non-terminal Leaf
+  // step with a nonzero skip, so reverting that fix leaves this test green.
+  // The shared-prefix test above is the pin.
+  it(
+    "matches real trie roots throughout ordinary batch insertion and deletion",
+    { timeout: 30_000 },
+    async () => {
+      const store = new Store(undefined);
+      await store.ready();
+      const trie = new Trie(store);
+      const entries = Array.from({ length: 2_048 }, (_, index) => ({
+        key: Buffer.from(`ledger-entry-${index}`),
+        value: Buffer.from(`output-${index}`),
+      }));
+      for (const inserting of [true, false]) {
+        for (const { key, value } of entries) {
+          const before = exactRoot(trie);
+          const proof = await trie.prove(key, inserting);
+          const steps = parseMidgardMpfProofJson(proof.toJSON());
+          const trace = buildMidgardMpfProofFoldTrace({ key, value, steps });
+          if (inserting) await trie.insert(key, value);
+          else await trie.delete(key);
+          expect(trace.terminal.includingRoot).toEqual(
+            inserting ? exactRoot(trie) : before,
+          );
+          expect(trace.terminal.excludingRoot).toEqual(
+            inserting ? before : exactRoot(trie),
+          );
+        }
+      }
+      expect(exactRoot(trie)).toEqual(Buffer.alloc(32));
+    },
+  );
+
   it("reconstructs deletion roots one authenticated frame at a time", async () => {
     const store = new Store(undefined);
     await store.ready();

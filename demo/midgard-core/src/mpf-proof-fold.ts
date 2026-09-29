@@ -401,7 +401,7 @@ const foldExcludingFrame = (
     path,
     frame,
     childRoot,
-    nibbleAt(frame.step.key, frame.cursor),
+    nibbleAt(frame.step.key, frame.nextCursor - 1),
     suffix(frame.step.key, frame.nextCursor),
     frame.step.value,
   );

@@ -253,7 +253,7 @@ fn fold_excluding_frame(
           path,
           frame,
           child_root,
-          nibble(key, frame.cursor),
+          nibble(key, frame.next_cursor - 1),
           suffix(key, frame.next_cursor),
           value,
         )
