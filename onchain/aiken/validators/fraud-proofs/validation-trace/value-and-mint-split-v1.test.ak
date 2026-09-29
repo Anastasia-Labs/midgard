@@ -24,7 +24,7 @@
 //// semantic validator refuses the honest steps of its stage neighbours (the
 //// pairs a cursor or stage discriminator is all that separates). The full
 //// eleven-by-eleven partition is proven at the library level in
-//// `lib/midgard/validation-machine-v1.test.ak`
+//// `lib/midgard/validation-machine-tests/tests-parity.test.ak`
 //// (`value_and_mint_kinds_partition_the_value_and_mint_step_space`).
 ////
 //// The stage bodies themselves (`value_and_mint_stage_zero` ..

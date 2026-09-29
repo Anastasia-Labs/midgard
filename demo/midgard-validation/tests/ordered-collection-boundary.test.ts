@@ -138,7 +138,7 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     // #590 scope item 0: the write channel this suite did not have.
     //
     // The `output-boundary-v1` fixture in
-    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` mirrors this
+    // `onchain/aiken/lib/midgard/validation-machine-tests/` mirrors this
     // boundary's terminal fold, and until now nothing carried the bytes across —
     // so that fixture still pinned the *counted* field roots this package stopped
     // emitting at #585, and stayed green only because the id it pinned was the id

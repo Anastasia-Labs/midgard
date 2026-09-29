@@ -22,31 +22,41 @@ commands and results are in the split commit messages and the session handoff.
 
 ## Oversized-module sweep
 
-The sweep covered every tracked TypeScript/Aiken file over 5,000 lines at the
-starting checkpoint, plus the adjacent 4,146-line throughput command. The
-starting checkpoint has ten files over that threshold; the older skill inventory
-has nine because it was measured before the DA committee tests grew. This is
-not a claim that every smaller file is optimally structured.
+The follow-up uses the audit's 5,000-line threshold and the stable local base
+`44faf3f67`. On 2026-09-28 it split all nine remaining source/test modules above
+that threshold. A fresh inventory includes tracked and new source files across
+TypeScript, JavaScript, Aiken, Haskell, Go, Python, shell, Nix, Lean, C/C++ and
+SQL. It finds zero files above 5,000 lines and 93 above 2,000. This does not claim
+that every smaller module has an ideal boundary.
 
-| Candidate                                                            | Disposition and evidence                                                                                                                                                                                                                                                       |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Node-tools `commands/stress-wallets.ts`                              | Split. Independent tooling, three recent commits including a September 27 fix; neither shared dirty paths nor commits after the checkpoint overlap it. Pure declaration seams; not generated.                                                                                  |
-| Node-tools `commands/e2e-stress-l2-throughput.ts`                    | Split. Independent stress measurement/tooling; recent September 27 command change; no observed concurrent path changes. Parsing, observation and orchestration have pure declaration seams.                                                                                    |
-| Fault-proofs `validation-dispute/submit.ts`                          | Defer until DA checkpoint. Changed by pooled-bond integration `93a16f8d8`; moving the submission orchestration would create conflicts in the active protocol surface.                                                                                                          |
-| Core `deployment-manifest-identity.ts`                               | Defer until DA checkpoint. Changed by the pooled-bond timing/economics and off-chain integration commits; shared deployment-profile sources are also being edited.                                                                                                             |
-| DA committee `tests/committee-service.test.ts`                       | Defer. Directly exercises the committee service under the active bond redesign.                                                                                                                                                                                                |
-| Node `tests/database.test.ts`                                        | Defer. Observed dirty in the shared checkout during this work; moving it would directly overlap another session.                                                                                                                                                               |
-| Watcher `indexers/user-event-indexer.ts` and `l1/rollback-engine.ts` | Defer. Event-history recovery integration is active, including watcher origin, timeout and recovery tests and shared emulator fixtures. These modules implement the behavior that those changes are validating.                                                                |
-| Validation `validation-machine/trace-builder.ts`                     | Separate behavioral refactor. Its principal function spans lines 291–6777 at the checkpoint; moving small helpers would leave the actual large function intact. Cutting it requires control-flow changes and consensus review.                                                 |
-| Aiken `validation-machine-v1.test.ak`                                | Separate generator-aware test split after the protocol checkpoint. The ordered-collection golden generator rewrites named constants in this module, and the module consumes active forced-event fixtures. A direct test-file move alone would break its regeneration contract. |
-| Aiken `cek-core-step-v1-golden.test.ak`                              | Separate generator change. This is generated output, so splitting the file directly would be overwritten on regeneration.                                                                                                                                                      |
+The user explicitly requested preparation of the overlapping splits. They are
+isolated from the active checkout; integration must preserve that checkout's
+concurrent changes.
 
-These boundaries apply the
-[split skill](../../.agents/skills/splitting-oversized-modules/SKILL.md):
-“**Nobody else is editing it**,” “**The seam is a pure move**,” and
-“**It is not generated**.” The active-scope decisions above are conservative
-judgments from changed paths and recent commits; they are not claims to know
-another session's future edits. Recheck the scope before integrating the splits.
+| Original module                                  | Result                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core `deployment-manifest-identity.ts`           | Public entrypoint plus 12 modules for catalogue roles, script mappings, identity, protocol parameters and finalized manifests; 89 declarations preserved.                                                                                                                          |
+| Fault-proofs `validation-dispute/submit.ts`      | Public entrypoint plus 14 modules for transaction material, reference scripts, evidence and dispute stages; 165 declarations preserved.                                                                                                                                            |
+| Watcher `indexers/user-event-indexer.ts`         | Public entrypoint plus five modules for types, policy, decoding, snapshots and local history; 197 declarations preserved.                                                                                                                                                          |
+| Watcher `l1/rollback-engine.ts`                  | Public entrypoint plus five modules for types, records, rollback state, recovery and durable authority; 161 declarations preserved.                                                                                                                                                |
+| Node `tests/database.test.ts`                    | Original test entrypoint registers eight concern suites and shared setup; 124 registration expressions preserved, with explicit relative-path rebasing for helpers and subprocesses.                                                                                               |
+| DA committee `tests/committee-service.test.ts`   | Original entrypoint registers seven concern suites and shared cleanup; 76 registration expressions preserved. Parameterized registrations collect more tests than expressions.                                                                                                     |
+| Validation `validation-machine/trace-builder.ts` | Entry point, preparation phase, execution/completion phase and shared types. The 137 executable statements retain their order; execution budgets use a shared record so witness-recording closures observe updates across phases. This is a refactor, not a pure declaration move. |
+| Aiken validation-machine suite                   | Seven phase test modules and nine fixture/type modules under `onchain/aiken/lib/midgard/validation-machine-tests/`; all 475 declarations and 199 test bodies preserved. The ordered-boundary generator now owns the public constants fixture.                                      |
+| Generated CEK core-step suite                    | Generator emits one module per curated program under `onchain/aiken/lib/midgard/cek-core-step-goldens/`; all 132 test bodies and vector bytes preserved. JSON metadata names the 26 output paths.                                                                                  |
+
+The four production declaration moves preserve their public import paths and
+exports. Their module graph has no runtime cycles. Existing lint exceptions move
+with the same source lines. Test registration modules retain the original suite
+entrypoints, hooks and registration order.
+
+Preflight follows JSON artifact manifests as well as generator helpers, so a
+change to any generated CEK module selects its golden check. The regression test
+checks all 26 paths and fails when JSON-manifest traversal is removed.
+
+The [verification record](agent-contribution-module-splits.md) records exact
+commands, counts, baseline comparisons and unresolved failures. A source-move
+proof does not establish deployment readiness.
 
 ## Observed verification limitation
 
@@ -76,10 +86,8 @@ that import the split modules passed.
    and treatment must not leak task solutions into a measured run.
 4. Choose protected branches and check provenance, land the reviewed workflow
    changes with updated trigger expectations, then approve/activate the policy.
-5. Reassess the deferred modules at the checkpoint. The trace builder and
-   generated Aiken outputs remain dedicated behavioral/generator projects even
-   after concurrent editing stops.
+5. Reconcile all nine follow-up splits with changes made after the stable base,
+   then repeat the affected verification on the combined tree.
 
 The larger hardening plan still contains separate projects such as model
-checking and historical reviewer evaluation. This pass completes the scoped
-parallel work; it does not relabel that entire program complete.
+checking and historical reviewer evaluation. The local structural work does not relabel that entire program complete.

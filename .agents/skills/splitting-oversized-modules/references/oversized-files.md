@@ -1,6 +1,11 @@
 # Oversized files and earlier splits
 
-Measured 2026-09-25 at `94b70237e`. Re-measure before you rely on it:
+Historical inventory measured 2026-09-25 at `94b70237e`. The 2026-09-28
+follow-up splits these modules, the enlarged database and committee suites, and
+the generated CEK suite in `codex/agent-preflight`. Read
+[the contribution work record](../../../../docs/exec-plans/agent-contribution-parallel-work.md)
+for current locations, proof and integration limits. Re-measure before choosing
+new work:
 
 ```bash
 git ls-files 'demo/*.ts' 'onchain/aiken/*.ak' | xargs wc -l | grep -v ' total$' \
@@ -12,6 +17,8 @@ git ls-files 'demo/*.ts' 'onchain/aiken/*.ak' | xargs wc -l | grep -v ' total$' 
 Nine files, not "more than 20" as the hardening plan said; the largest,
 18,590 lines, matches its "18.6k". Churn is `git log --since=2026-08-26
 --oneline -- <file> | wc -l`.
+
+<!-- doc-links:historical -->
 
 | Lines  | File                                                              | Commits since 2026-08-26 | Note                                                                                                                                           |
 | ------ | ----------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
