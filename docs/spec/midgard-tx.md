@@ -579,10 +579,12 @@ one-byte boundary controls; these are fixture-bound measurements.
 
 The current measurement input
 [`native-tx-q1x-exec-ledger-v1.json`](../../onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json)
-is consumed by `verify-q1x-exec-ledger-v1.mjs`. It preserves explicit over-budget
-results for direct absence walks over script and address witnesses. Its role is
-to check those paths and limitations, not to establish the fit of a different
-installed continuation route.
+is consumed by `verify-q1x-exec-ledger-v1.mjs`. It measures the bounded steps
+that replaced direct absence walks at the admissible maximum: step-06 walks at
+most 64 script witnesses directly, and step-04 walks address witnesses in
+32-item batches with a checkpoint. Those readings do not show that a direct
+whole-field walk fits at the admissible maximum; constraint 1 below still holds.
+They are paired harness costs, not complete signed-transaction fit.
 
 Two constraints must remain visible in design and acceptance:
 

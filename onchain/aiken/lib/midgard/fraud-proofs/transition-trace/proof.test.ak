@@ -1850,12 +1850,14 @@ test rejects_deposit_transition_replaying_full_output_bytes() {
 test accepts_valid_l2_transaction_no_op_transition_fault() {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_ledger_value(spent_input.output_index)
   let produced_output = native_output()
   let produced_value = ledger_value(
     0,
     native_components.encode_midgard_tx_output(produced_output),
   )
+  // Both fixture outputs have index zero and identical content. Their ledger
+  // keys differ by transaction id; derive their shared descriptor only once.
+  let spent_value = produced_value
   let spend_inputs_preimage = native_preimages.encode_input_preimage(
     [spent_input],
   )
@@ -1872,11 +1874,11 @@ test accepts_valid_l2_transaction_no_op_transition_fault() {
   )
   let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root = proof.insert_root(
-    proof.delete_root(pre_root, spent_key, spent_value, []),
-    produced_key,
-    produced_value,
-    [],
+  // The only input is consumed, leaving exactly the produced output. Build
+  // the expected tree independently instead of running the proof's delete
+  // and insert helpers a second time as part of this measurement's fixture.
+  let expected_post_root = mpf.root(
+    mpf.insert(mpf.empty, produced_key, produced_value, []),
   )
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
   let opened_step = step(
