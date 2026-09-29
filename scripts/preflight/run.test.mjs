@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 
+import { createProbeSet, probeNix } from "./probes.mjs";
 import {
   changedFiles,
   collectChanges,
@@ -316,3 +317,52 @@ test("merge-tree predicts a conflict with the base as a warning", async () =>
     );
     assert.equal(report.exitCode, EXIT.passed);
   }));
+
+test("docs dependencies cannot be satisfied by the separate demo workspace", async () => {
+  const root = mkdtempSync(join(tmpdir(), "preflight-docs-deps-"));
+  try {
+    write(root, { "demo/node_modules/.modules.yaml": "" });
+    const probes = createProbeSet({ root });
+    assert.equal((await probes.get("node-modules")).status, "available");
+    const missing = await probes.get("docs-site-node-modules");
+    assert.equal(missing.status, "missing");
+    assert.equal(missing.fix, "pnpm --dir docs-site install --frozen-lockfile");
+    write(root, { "docs-site/node_modules/.modules.yaml": "" });
+    probes.invalidate(["docs-site-node-modules"]);
+    assert.equal(
+      (await probes.get("docs-site-node-modules")).status,
+      "available",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the spec probe distinguishes absent Nix from a probe that could not run", () => {
+  for (const [outcome, expected] of [
+    [{ status: 0, stdout: "nix (Nix) 2.24.0\n" }, "available"],
+    [
+      { status: null, error: { code: "ENOENT", message: "not found" } },
+      "missing",
+    ],
+    [{ status: null, error: { code: "EPERM", message: "denied" } }, "unknown"],
+    [
+      { status: null, error: { code: "ETIMEDOUT", message: "timed out" } },
+      "unknown",
+    ],
+    [{ status: 1, stderr: "broken installation" }, "unknown"],
+  ]) {
+    const probe = probeNix({
+      root: "/tmp",
+      run: (command, argv, options) => {
+        assert.equal(command, "nix");
+        assert.deepEqual(argv, ["--version"]);
+        assert.equal(options.cwd, "/tmp");
+        assert.ok(options.timeout > 0);
+        return outcome;
+      },
+    });
+    assert.equal(probe.status, expected);
+    if (expected !== "available") assert.match(probe.fix, /make spec/);
+  }
+});

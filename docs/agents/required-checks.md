@@ -70,6 +70,10 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `aiken`: the pinned Aiken fork (`AIKEN_FORK_VERSION` in the workflows), on
   `PATH` or in `MIDGARD_AIKEN_BIN`.
 - `node-modules`: `pnpm --dir demo install --frozen-lockfile` has run.
+- `docs-site-node-modules`: `pnpm --dir docs-site install --frozen-lockfile`
+  has run; this is separate from the demo workspace's dependencies.
+- `nix`: `nix --version` succeeds. The spec build also needs flakes enabled
+  and access to the dependencies declared in `technical-spec/flake.nix`.
 - `core-dist`: `demo/midgard-core/dist` matches its sources
   (`demo/scripts/assert-midgard-core-dist-current.mjs`).
 - `blueprint`: the blueprint stamp is fresh
@@ -539,7 +543,6 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `onchain/aiken/env/preprod-testing.ak`
   - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/lib/midgard/da-bond-pool-v1-golden.test.ak`
-  - `onchain/aiken/plutus.json`
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
@@ -578,6 +581,69 @@ Blueprint rebuild into a temporary file (never the tracked plutus.json).
 - Runs on:
   - `onchain/aiken/**/*.ak`
 - Needs: `aiken`
+
+### `docs-site-links`
+
+Repository-local Markdown and MDX links resolve.
+
+- Command: `node docs-site/scripts/check-docs-links.mjs`
+- Runs on:
+  - `docs-site/**`
+  - `**/*.md`
+  - `**/*.mdx`
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `.github/workflows/docs-site-ci.yml`
+  - `.gitignore`
+- Mode: runs in the pre-push hook
+
+### `docs-site-build`
+
+Build the documentation site and its SDK examples.
+
+- Command: `pnpm --dir docs-site run build`
+- Runs on:
+  - `docs-site/**`
+  - `**/*.md`
+  - `**/*.mdx`
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `.github/workflows/docs-site-ci.yml`
+- Needs: `node-modules`, `docs-site-node-modules`
+
+### `docs-site-typecheck`
+
+Generate and typecheck the documentation site's types.
+
+- Command: `pnpm --dir docs-site run types:check`
+- Runs on:
+  - `docs-site/**`
+  - `**/*.md`
+  - `**/*.mdx`
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `.github/workflows/docs-site-ci.yml`
+- Needs: `node-modules`, `docs-site-node-modules`
+
+### `spec-build`
+
+Build the technical specification PDF with the repository's Nix environment.
+
+- Command: `make spec`
+- Runs on:
+  - `technical-spec/**`
+  - `Makefile`
+  - `.github/workflows/latex-ci.yml`
+- Needs: `nix`
+
+### `devnet-assets`
+
+Phase 4 devnet generator and shell asset tests (no running devnet).
+
+- Command: `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs`
+- Runs on:
+  - `demo/midgard-node-tools/devnet/phase4-process/**`
+- Needs: `node-modules`, `blueprint`
 
 ### `exec-ledger:canonical-decodability`
 

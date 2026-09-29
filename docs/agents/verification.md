@@ -24,9 +24,6 @@ change their paths. [review]
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Validator parameters, deployment profiles                                | `pnpm --dir demo deployment:check preprod-testing`; `node --test demo/scripts/deployment-profiles.test.mjs`; the emulator scenarios in both polarities (`docs/agents/contracts.md`) |
 | L1 transaction builders, wallet or input selection, validity, submission | `pnpm --dir demo run test:tx-prep:sdk`; `pnpm --dir demo run test:tx-prep:node`; `pnpm --dir demo run test:tx-prep:emulator`                                                        |
-| Phase 4 devnet generator                                                 | `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs`                                                                                                   |
-| `technical-spec/**`                                                      | `make spec` (needs Nix)                                                                                                                                                             |
-| `docs-site/**`                                                           | `pnpm --dir docs-site run check:links`; `pnpm --dir docs-site run build`; `pnpm --dir docs-site run types:check`                                                                    |
 
 `docs/exec-plans/GOAL_SPEC.md` §13 lists the full verification for Goal
 completion, which is wider than this table.

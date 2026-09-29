@@ -124,7 +124,7 @@ a timeout or skipping it.
   `node onchain/aiken/scripts/run-focused-check.mjs <module> <test>...`, which
   fails unless exactly N tests from that one module pass
   [script: onchain/aiken/scripts/run-focused-check.mjs]. Blind spot: a raw
-  `aiken check -m` is still unguarded, and CI does not run the runner's own
+  `aiken check -m` is still unguarded. Repo Tools CI runs the runner's own
   `run-focused-check.test.mjs`.
 - **`test t() fail { and { a, b, c } }` in Aiken.** Green as soon as any
   conjunct is false, so it cannot tell the intended rejection from an
@@ -167,8 +167,9 @@ a timeout or skipping it.
 - **Stale `dist/` or `plutus.json`.** The run exercises old code or old
   validators. Rebuild first (see
   [references/test-levels.md](references/test-levels.md)). [hook: pre-commit]
-  refuses a staged `plutus.json`; nothing checks that the file matches the
-  current `.ak` source.
+  refuses a staged `plutus.json`. Blueprint-reading suites also verify its
+  source/compiler stamp through `demo/midgard-test-support/blueprint-stamp-setup.js`;
+  focused runs can still execute stale subprocess `dist` files.
 - **`it.only` / `describe.only`.** Every other test in the file is skipped.
   vitest refuses `.only` when `CI` is set (`allowOnly: !isCI`), so CI catches
   it; a local run does not. [review]

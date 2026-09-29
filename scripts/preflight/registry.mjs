@@ -29,6 +29,7 @@ import {
   execLedgers,
   goldenChannels,
   indexAikenModules,
+  IGNORED_PATHS,
   matchesAny,
   packageNeedsPostgres,
   workflowText,
@@ -66,11 +67,7 @@ export const FULL_RUN = [
   "scripts/preflight/**",
 ];
 
-// Build outputs that are never committed; they select nothing.
-export const IGNORED_PATHS = [
-  `${AIKEN_PROJECT}/plutus.json`,
-  `${AIKEN_PROJECT}/plutus.json.deployment.json`,
-];
+export { IGNORED_PATHS } from "./derive.mjs";
 
 // The kill switch. It forces a full run; it never disables checks.
 export const FULL_RUN_ENV = "MIDGARD_PREFLIGHT_FULL";
@@ -400,6 +397,82 @@ const goldenChecks = (root, packages, ciText) =>
     };
   });
 
+// --- independent documentation and devnet validation ----------------------
+
+const docsSiteTriggers = [
+  "docs-site/**",
+  "**/*.md",
+  "**/*.mdx",
+  "demo/lucid-midgard/**",
+  "demo/midgard-core/**",
+  ".github/workflows/docs-site-ci.yml",
+];
+
+const independentChecks = () => [
+  {
+    id: "docs-site-links",
+    title: "Repository-local Markdown and MDX links resolve",
+    triggers: [...docsSiteTriggers, ".gitignore"],
+    requiresFiles: ["docs-site/scripts/check-docs-links.mjs"],
+    prePush: true,
+    display: "node docs-site/scripts/check-docs-links.mjs",
+    plan: () => [step(node("docs-site/scripts/check-docs-links.mjs"))],
+  },
+  ...[
+    [
+      "docs-site-build",
+      "Build the documentation site and its SDK examples",
+      "build",
+    ],
+    [
+      "docs-site-typecheck",
+      "Generate and typecheck the documentation site's types",
+      "types:check",
+    ],
+  ].map(([id, title, script]) => ({
+    id,
+    title,
+    triggers: docsSiteTriggers,
+    capabilities: ["node-modules", "docs-site-node-modules"],
+    display: `pnpm --dir docs-site run ${script}`,
+    // These scripts build their SDK dependencies in prebuild/pretypes:check.
+    invalidates: ["core-dist"],
+    plan: () => [step(["pnpm", "--dir", "docs-site", "run", script])],
+  })),
+  {
+    id: "spec-build",
+    title:
+      "Build the technical specification PDF with the repository's Nix environment",
+    triggers: [
+      "technical-spec/**",
+      "Makefile",
+      ".github/workflows/latex-ci.yml",
+    ],
+    capabilities: ["nix"],
+    display: "make spec",
+    plan: () => [step(["make", "spec"])],
+  },
+  {
+    id: "devnet-assets",
+    title: "Phase 4 devnet generator and shell asset tests (no running devnet)",
+    triggers: ["demo/midgard-node-tools/devnet/phase4-process/**"],
+    capabilities: ["node-modules", "blueprint"],
+    requiresFiles: [
+      "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+    ],
+    display:
+      "node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+    plan: () => [
+      step(
+        node(
+          "--test",
+          "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+        ),
+      ),
+    ],
+  },
+];
+
 // --- repository tooling, CI and agent docs -------------------------------
 
 const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
@@ -536,6 +609,7 @@ export const buildRegistry = (root) => {
     ...goldenChecks(root, packages, ciText),
     focused,
     blueprint,
+    ...independentChecks(),
     ...ledgerChecks(root, index, ciText),
     demo.test,
     demo.testDb,
