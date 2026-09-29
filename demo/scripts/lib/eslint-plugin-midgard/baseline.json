@@ -849,13 +849,18 @@
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": ["return left.queueOutRef.localeCompare(right.queueOutRef);"]
     },
-    "midgard-watcher/src/indexers/user-event-indexer.ts": {
+    "midgard-watcher/src/indexers/user-event-indexer/snapshot.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((left, right) => left.outRef.localeCompare(right.outRef));",
         "`${left.terminalPointDigest}:${left.outRef}`.localeCompare(",
         "left.outRef.localeCompare(right.outRef),",
-        "left.outRef.localeCompare(right.outRef),",
+        "left.outRef.localeCompare(right.outRef),"
+      ]
+    },
+    "midgard-watcher/src/indexers/user-event-indexer/local-history.ts": {
+      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "sites": [
         "watcherCanonicalJson(a).localeCompare(watcherCanonicalJson(b)),"
       ]
     },
