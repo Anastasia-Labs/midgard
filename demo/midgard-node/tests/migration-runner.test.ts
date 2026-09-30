@@ -64,13 +64,17 @@ describe("splitSqlStatements", () => {
     expect(statements[1]).toBe("SELECT 1");
   });
 
-  it("exposes one fresh-install baseline with no historical migrations", () => {
-    expect(MIGRATIONS).toHaveLength(1);
-    expect(MIGRATIONS[0]).toMatchObject({
-      version: 1,
-      name: "initial_schema",
-      transactional: true,
-    });
+  it("keeps v1 as the single fresh-install baseline with contiguous transactional successors", () => {
+    expect(
+      MIGRATIONS.map(({ version, name, transactional }) => ({
+        version,
+        name,
+        transactional,
+      })),
+    ).toEqual([
+      { version: 1, name: "initial_schema", transactional: true },
+      { version: 2, name: "automatic_settlement", transactional: true },
+    ]);
   });
 
   it("splits the real baseline into statements that re-split identically", () => {
@@ -88,10 +92,23 @@ describe("splitSqlStatements", () => {
     );
   });
 
-  it("accepts the exact fresh baseline ledger row", () => {
+  it("accepts the exact ledger of every migration", () => {
     expect(() =>
-      validateAppliedMigrationLedger([appliedMigrationRow()], "exact"),
+      validateAppliedMigrationLedger(
+        MIGRATIONS.map((migration) => appliedMigrationRow(migration)),
+        "exact",
+      ),
     ).not.toThrow();
+  });
+
+  it("lets a baseline-only ledger migrate forward but not serve", () => {
+    const baselineOnly = [appliedMigrationRow()];
+    expect(() =>
+      validateAppliedMigrationLedger(baselineOnly, "allowBehind"),
+    ).not.toThrow();
+    expect(() => validateAppliedMigrationLedger(baselineOnly, "exact")).toThrow(
+      expect.objectContaining({ code: "schema_version_behind" }),
+    );
   });
 
   it("rejects adjacent, renamed, checksum-drifted, and manifest-drifted ledgers", () => {
@@ -146,10 +163,12 @@ describe("splitSqlStatements", () => {
   });
 });
 
-const appliedMigrationRow = (): AppliedMigrationRow => ({
-  version: 1,
-  name: "initial_schema",
-  checksum_sha256: MIGRATIONS[0]!.checksumSha256,
+const appliedMigrationRow = (
+  migration: (typeof MIGRATIONS)[number] = MIGRATIONS[0]!,
+): AppliedMigrationRow => ({
+  version: migration.version,
+  name: migration.name,
+  checksum_sha256: migration.checksumSha256,
   manifest_hash_sha256: MIGRATION_MANIFEST_HASH,
   applied_at: new Date("2026-07-27T00:00:00.000Z"),
   app_version: "test",
