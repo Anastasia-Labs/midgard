@@ -71,7 +71,6 @@ export const discoverLocalScriptExecutions = (
         readonly kind: "added";
         readonly execution: RequiredScriptExecution;
       } => {
-    expectedPointers.add(midgardRedeemerPointerKey(pointer));
     const resolved = resolveScriptSource(purpose.scriptHash, sources);
     if (resolved === undefined) {
       return {
@@ -81,7 +80,10 @@ export const discoverLocalScriptExecutions = (
         consensusPhase: "scriptSources",
       };
     }
+    // A native script runs without a redeemer, so a redeemer at its pointer
+    // stays unexpected and is refused below as extraneous.
     if (resolved.version !== "NativeCardano") {
+      expectedPointers.add(midgardRedeemerPointerKey(pointer));
       const redeemer = findRedeemerByPointer(redeemers, pointer);
       if (redeemer === undefined) {
         return {
