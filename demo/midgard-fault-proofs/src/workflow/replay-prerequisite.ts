@@ -272,7 +272,11 @@ export const assertReplayPrerequisiteCovered = (
           "withdrawnInput",
         ])
       : failure.prerequisite === "representable_field_shape"
-        ? new Set(["committedFieldShape", "mintItemNonCanonical"])
+        ? new Set([
+            "committedFieldShape",
+            "mintItemNonCanonical",
+            "redeemerCanonicity",
+          ])
         : failure.prerequisite === "representable_validity_flag"
           ? new Set(["l2TxMistag"])
           : directTransactionCategories;
@@ -294,6 +298,17 @@ export const assertReplayPrerequisiteCovered = (
       );
     }
     if (detection.position !== BigInt(position)) return false;
+    // The redeemer family reports accepted and forced findings under one
+    // violation id, each positioned on its own frontier. Only an accepted
+    // finding naming this transaction speaks for it.
+    if (
+      rule.category === "redeemerCanonicity" &&
+      !(
+        detection.detectionId.startsWith("redeemer-malformed:accepted:") &&
+        detection.detectionId.endsWith(`:${source.entry.txId}`)
+      )
+    )
+      return false;
     // Wrongful rejections belong to the forced frontier, even when its ordinal
     // happens to equal this normal transaction's ordinal.
     if (detection.violationId.includes("wrongful-rejection")) return false;

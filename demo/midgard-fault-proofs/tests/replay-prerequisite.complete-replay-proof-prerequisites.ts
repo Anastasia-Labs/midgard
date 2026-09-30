@@ -35,7 +35,7 @@ import {
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import { transitionTraceAcceptedRetainedFixture } from "./support/transition-trace-retained.js";
 
-const evidenceFor = async (
+export const evidenceFor = async (
   block: Pick<
     Awaited<ReturnType<typeof buildCanonicalBlockFixture>>,
     "header" | "headerHash" | "payloadEnvelopeCbor"

@@ -16,3 +16,4 @@ import "./support/transition-trace-retained.js";
 import "./replay-prerequisite.complete-replay-proof-prerequisites.js";
 import "./replay-prerequisite.withdrawal-replay-prerequisites.js";
 import "./replay-prerequisite.deposit-replay-prerequisites.js";
+import "./replay-prerequisite.redeemer-data-replay-prerequisites.js";
