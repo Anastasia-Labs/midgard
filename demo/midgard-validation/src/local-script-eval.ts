@@ -1,7 +1,8 @@
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
+import { type Data, dataFromCbor } from "@harmoniclabs/plutus-data";
 import { CEKConst, Machine } from "@harmoniclabs/plutus-machine";
 import { Application, parseUPLC, UPLCConst } from "@harmoniclabs/uplc";
-import { Constr, Data, fromHex } from "@lucid-evolution/lucid";
+
+import { encodeMidgardCekPlutusData } from "./cek-constant.js";
 
 export type LocalScriptEvalResult =
   | {
@@ -13,10 +14,12 @@ export type LocalScriptEvalResult =
     }
   | { readonly kind: "script_invalid"; readonly detail: string };
 
-export const encodeScriptContextCbor = (
-  scriptContext: Constr<unknown>,
-): Uint8Array =>
-  fromHex(Data.to(scriptContext as unknown as Data)) as Uint8Array;
+/**
+ * Keeps every map in the order the context builder gave it. Harmonic's own
+ * `dataToCbor` is not used: it truncates long byte strings.
+ */
+export const encodeScriptContextCbor = (scriptContext: Data): Uint8Array =>
+  encodeMidgardCekPlutusData(scriptContext);
 
 export const evaluateUplcWithContextCbor = (
   scriptBytes: Uint8Array,
@@ -51,7 +54,7 @@ export const evaluateUplcWithContextCbor = (
 
 export const evaluateScriptWithHarmonic = (
   scriptBytes: Uint8Array,
-  scriptContext: Constr<unknown>,
+  scriptContext: Data,
 ): LocalScriptEvalResult =>
   evaluateUplcWithContextCbor(
     scriptBytes,

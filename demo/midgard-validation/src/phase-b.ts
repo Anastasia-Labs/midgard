@@ -554,6 +554,12 @@ const discoverLocalScriptExecutions = (
     }
   }
 
+  const purposeByPointer = new Map(
+    executions.map((execution) => [
+      midgardRedeemerPointerKey(execution.pointer),
+      execution.purpose,
+    ]),
+  );
   return {
     kind: "discovered",
     executions,
@@ -568,11 +574,13 @@ const discoverLocalScriptExecutions = (
       observers,
       signatories: candidate.derived.witnessKeyHashHexes,
       mint: mintValue,
-      redeemers: executions.flatMap((execution) => {
-        const redeemer = findRedeemerByPointer(redeemers, execution.pointer);
-        return redeemer === undefined
-          ? []
-          : [{ purpose: execution.purpose, redeemer }];
+      // Witness-list order, which is the order the fault proof commits the
+      // context's redeemer map in.
+      redeemers: redeemers.flatMap((redeemer) => {
+        const purpose = purposeByPointer.get(
+          midgardRedeemerPointerKey(redeemer),
+        );
+        return purpose === undefined ? [] : [{ purpose, redeemer }];
       }),
     },
   };

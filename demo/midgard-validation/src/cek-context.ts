@@ -1,5 +1,10 @@
 import { encodeCbor, MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
+import {
+  type Data as PlutusData,
+  DataConstr,
+  dataFromCbor,
+  DataList,
+} from "@harmoniclabs/plutus-data";
 import {
   Constr,
   Data,
@@ -9,6 +14,10 @@ import {
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import {
+  isPlutusDataMap,
+  type PlutusDataMap,
+} from "./plutus-data-narrowing.js";
 import {
   emptyMidgardCekDataListSummary,
   emptyMidgardCekDataPairSummary,
@@ -74,11 +83,10 @@ export const encodeMidgardCekDataSequenceSummary = (
   summary.memory,
 ];
 
-export const summarizeMidgardCekLucidData = (
-  value: LucidDataValue,
+export const summarizeMidgardCekData = (
+  value: PlutusData,
 ): MidgardCekDataSummary => {
-  const cbor = fromHex(Data.to(value));
-  const tree = commitMidgardCekDataTree(dataFromCbor(cbor));
+  const tree = commitMidgardCekDataTree(value);
   return {
     root: Buffer.from(tree.root),
     cborLength: tree.cborLength,
@@ -86,29 +94,37 @@ export const summarizeMidgardCekLucidData = (
   };
 };
 
-export const summarizeMidgardCekLucidList = (
-  values: readonly LucidDataValue[],
+/**
+ * For map-free Data only: Lucid's encoder sorts maps, so a map summarised
+ * here need not be the one the script sees.
+ */
+export const summarizeMidgardCekLucidData = (
+  value: LucidDataValue,
+): MidgardCekDataSummary =>
+  summarizeMidgardCekData(dataFromCbor(fromHex(Data.to(value))));
+
+const summarizeMidgardCekDataList = (
+  values: readonly PlutusData[],
 ): MidgardCekDataSequenceSummary => {
   let summary = emptyMidgardCekDataListSummary();
   for (let index = values.length - 1; index >= 0; index -= 1) {
     summary = prependMidgardCekDataListSummary(
-      summarizeMidgardCekLucidData(values[index]!),
+      summarizeMidgardCekData(values[index]!),
       summary,
     );
   }
   return summary;
 };
 
-export const summarizeMidgardCekLucidMap = (
-  value: ReadonlyMap<LucidDataValue, LucidDataValue>,
+const summarizeMidgardCekDataPairs = (
+  value: PlutusDataMap,
 ): MidgardCekDataSequenceSummary => {
-  const entries = [...value.entries()];
   let summary = emptyMidgardCekDataPairSummary();
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const [key, mapped] = entries[index]!;
+  for (let index = value.map.length - 1; index >= 0; index -= 1) {
+    const entry = value.map[index]!;
     summary = prependMidgardCekDataPairSummary(
-      summarizeMidgardCekLucidData(key),
-      summarizeMidgardCekLucidData(mapped),
+      summarizeMidgardCekData(entry.fst),
+      summarizeMidgardCekData(entry.snd),
       summary,
     );
   }
@@ -422,26 +438,27 @@ export const encodeMidgardCekValidationWitness = (input: {
   ]);
 
 export type MidgardCekDecodedContext = {
-  readonly context: LucidDataValue;
-  readonly txInfo: LucidDataValue;
-  readonly redeemer: LucidDataValue;
-  readonly scriptInfo: LucidDataValue;
-  readonly txInfoFields: readonly LucidDataValue[];
+  readonly context: PlutusData;
+  readonly txInfo: PlutusData;
+  readonly redeemer: PlutusData;
+  readonly scriptInfo: PlutusData;
+  readonly txInfoFields: readonly PlutusData[];
 };
 
+/** Decodes the context keeping every map's entry order and duplicate keys. */
 export const decodeMidgardCekContext = (
   contextCbor: Uint8Array,
 ): MidgardCekDecodedContext => {
-  const context = Data.from(Buffer.from(contextCbor).toString("hex"));
-  if (!(context instanceof Constr) || context.index !== 0) {
+  const context = dataFromCbor(contextCbor);
+  if (!(context instanceof DataConstr) || context.constr !== 0n) {
     throw new Error("V1 script context must be constructor 0");
   }
-  const contextFields = context.fields as readonly LucidDataValue[];
+  const contextFields = context.fields;
   if (contextFields.length !== 3) {
     throw new Error("V1 script context must contain three fields");
   }
   const txInfo = contextFields[0]!;
-  if (!(txInfo instanceof Constr) || txInfo.index !== 0) {
+  if (!(txInfo instanceof DataConstr) || txInfo.constr !== 0n) {
     throw new Error("V1 transaction info must be constructor 0");
   }
   return {
@@ -449,7 +466,7 @@ export const decodeMidgardCekContext = (
     txInfo,
     redeemer: contextFields[1]!,
     scriptInfo: contextFields[2]!,
-    txInfoFields: txInfo.fields as readonly LucidDataValue[],
+    txInfoFields: txInfo.fields,
   };
 };
 
@@ -477,20 +494,14 @@ export const summarizeMidgardCekContextParts = (
       `V1 transaction info has ${fields.length.toString()} fields, expected ${expected.toString()}`,
     );
   }
-  const asList = (
-    value: LucidDataValue,
-    field: string,
-  ): readonly LucidDataValue[] => {
-    if (!Array.isArray(value)) {
+  const asList = (value: PlutusData, field: string): readonly PlutusData[] => {
+    if (!(value instanceof DataList)) {
       throw new Error(`V1 ${field} is not a Data list`);
     }
-    return value;
+    return value.list;
   };
-  const asMap = (
-    value: LucidDataValue,
-    field: string,
-  ): ReadonlyMap<LucidDataValue, LucidDataValue> => {
-    if (!(value instanceof Map)) {
+  const asMap = (value: PlutusData, field: string): PlutusDataMap => {
+    if (!isPlutusDataMap(value)) {
       throw new Error(`V1 ${field} is not a Data map`);
     }
     return value;
@@ -501,26 +512,24 @@ export const summarizeMidgardCekContextParts = (
   const redeemerIndex = languageTag === 128 ? 8 : 9;
   const tailStart = languageTag === 128 ? 5 : 8;
   return {
-    context: summarizeMidgardCekLucidData(decoded.context),
-    txInfo: summarizeMidgardCekLucidData(decoded.txInfo),
-    redeemer: summarizeMidgardCekLucidData(decoded.redeemer),
-    scriptInfo: summarizeMidgardCekLucidData(decoded.scriptInfo),
-    spendItems: summarizeMidgardCekLucidList(
-      asList(fields[0]!, "spend inputs"),
-    ),
-    referenceItems: summarizeMidgardCekLucidList(
+    context: summarizeMidgardCekData(decoded.context),
+    txInfo: summarizeMidgardCekData(decoded.txInfo),
+    redeemer: summarizeMidgardCekData(decoded.redeemer),
+    scriptInfo: summarizeMidgardCekData(decoded.scriptInfo),
+    spendItems: summarizeMidgardCekDataList(asList(fields[0]!, "spend inputs")),
+    referenceItems: summarizeMidgardCekDataList(
       asList(fields[1]!, "reference inputs"),
     ),
-    outputItems: summarizeMidgardCekLucidList(asList(fields[2]!, "outputs")),
-    observer: summarizeMidgardCekLucidData(fields[observerIndex]!),
-    signerItems: summarizeMidgardCekLucidList(
+    outputItems: summarizeMidgardCekDataList(asList(fields[2]!, "outputs")),
+    observer: summarizeMidgardCekData(fields[observerIndex]!),
+    signerItems: summarizeMidgardCekDataList(
       asList(fields[signerIndex]!, "signers"),
     ),
-    mint: summarizeMidgardCekLucidData(fields[mintIndex]!),
-    redeemerItems: summarizeMidgardCekLucidMap(
+    mint: summarizeMidgardCekData(fields[mintIndex]!),
+    redeemerItems: summarizeMidgardCekDataPairs(
       asMap(fields[redeemerIndex]!, "redeemers"),
     ),
-    tailFields: summarizeMidgardCekLucidList(fields.slice(tailStart)),
+    tailFields: summarizeMidgardCekDataList(fields.slice(tailStart)),
   };
 };
 

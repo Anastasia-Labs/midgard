@@ -12,12 +12,14 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { plutusDataToCborHex, txOutRefData } from "@al-ft/midgard-validation";
 import type { MidgardLedgerRedeemer } from "@al-ft/midgard-validation/ledger-tx/types";
-import { evaluateScriptWithHarmonic } from "@al-ft/midgard-validation/local-script-eval";
+import {
+  encodeScriptContextCbor,
+  evaluateScriptWithHarmonic,
+} from "@al-ft/midgard-validation/local-script-eval";
 import {
   decodeMidgardRedeemers,
   MidgardRedeemerTag,
   midgardScriptPurposeData,
-  redeemerDataFromCborHex,
 } from "@al-ft/midgard-validation/midgard-redeemers";
 import {
   buildMidgardScriptContext,
@@ -81,15 +83,23 @@ const txOutRefDataCborHex = (outRefHex: string): string =>
   plutusDataToCborHex(txOutRefData(outRefHex));
 
 const ledgerRedeemer = <
-  T extends Omit<MidgardLedgerRedeemer, "data"> & {
+  T extends Omit<MidgardLedgerRedeemer, "dataCbor"> & {
     readonly dataCborHex: string;
   },
 >(
   redeemer: T,
 ): T & MidgardLedgerRedeemer => ({
   ...redeemer,
-  data: redeemerDataFromCborHex(redeemer.dataCborHex),
+  dataCbor: Buffer.from(redeemer.dataCborHex, "hex"),
 });
+
+/** The context as Lucid Data, for assertions on map-free parts of it. */
+const lucidContext = (
+  context: Parameters<typeof encodeScriptContextCbor>[0],
+): Constr<unknown> =>
+  Data.from(
+    Buffer.from(encodeScriptContextCbor(context)).toString("hex"),
+  ) as Constr<unknown>;
 
 const makeOutRefHex = (txHashByte: number, outputIndex: bigint): string =>
   makeOutRefCbor(txHashByte, outputIndex).toString("hex");
@@ -374,20 +384,22 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
     });
-    const context = buildMidgardScriptContext(
-      {
-        txId: Buffer.alloc(32, 0),
-        inputs: [],
-        referenceInputs: [],
-        outputs: [],
-        fee: 1n,
-        observers: [scriptHash],
-        signatories: [],
-        mint: new Map([[scriptHash, new Map([["", -2n]])]]),
-        redeemers: [{ purpose, redeemer }],
-      },
-      purpose,
-      redeemer,
+    const context = lucidContext(
+      buildMidgardScriptContext(
+        {
+          txId: Buffer.alloc(32, 0),
+          inputs: [],
+          referenceInputs: [],
+          outputs: [],
+          fee: 1n,
+          observers: [scriptHash],
+          signatories: [],
+          mint: new Map([[scriptHash, new Map([["", -2n]])]]),
+          redeemers: [{ purpose, redeemer }],
+        },
+        purpose,
+        redeemer,
+      ),
     );
 
     expect(context.index).toBe(0);
@@ -468,7 +480,9 @@ describe("Midgard local script evaluation primitives", () => {
       mintRedeemer,
     );
 
-    const [midgardTxInfo] = midgardContext.fields as [Constr<unknown>];
+    const [midgardTxInfo] = lucidContext(midgardContext).fields as [
+      Constr<unknown>,
+    ];
     const midgardOutputs = midgardTxInfo.fields[2] as Constr<unknown>[];
     const midgardOutputAddress = midgardOutputs[0]!
       .fields[0] as Constr<unknown>;
@@ -478,7 +492,9 @@ describe("Midgard local script evaluation primitives", () => {
       new Constr(0, [keyHash.to_hex()]),
     );
 
-    const [plutusTxInfo] = plutusContext.fields as [Constr<unknown>];
+    const [plutusTxInfo] = lucidContext(plutusContext).fields as [
+      Constr<unknown>,
+    ];
     const plutusOutputs = plutusTxInfo.fields[2] as Constr<unknown>[];
     const plutusOutputAddress = plutusOutputs[0]!.fields[0] as Constr<unknown>;
 
@@ -878,11 +894,8 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    const [txInfo, _redeemerData, scriptInfo] = context.fields as [
-      Constr<unknown>,
-      unknown,
-      Constr<unknown>,
-    ];
+    const [txInfo, _redeemerData, scriptInfo] = lucidContext(context)
+      .fields as [Constr<unknown>, unknown, Constr<unknown>];
     const inputs = txInfo.fields[0] as Constr<unknown>[];
     const inputTxOut = inputs[0]!.fields[1] as Constr<unknown>;
     const inputAddress = inputTxOut.fields[0] as Constr<unknown>;
@@ -934,7 +947,7 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    const [txInfo] = context.fields as [
+    const [txInfo] = lucidContext(context).fields as [
       Constr<unknown>,
       unknown,
       Constr<unknown>,

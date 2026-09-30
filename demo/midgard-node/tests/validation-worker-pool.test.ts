@@ -14,7 +14,7 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
-import { Constr } from "@lucid-evolution/lucid";
+import { DataConstr } from "@harmoniclabs/plutus-data";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -274,7 +274,7 @@ describe("long-lived validation worker pool", () => {
     try {
       await pool.start();
       const scriptBytes = Buffer.from("010203", "hex");
-      const context = new Constr(0, []);
+      const context = new DataConstr(0, []);
       const inline = evaluateScriptWithHarmonic(scriptBytes, context);
       const response = await pool.submit({
         kind: "uplc",

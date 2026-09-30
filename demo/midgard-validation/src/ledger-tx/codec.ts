@@ -47,11 +47,7 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import {
-  decodeMidgardRedeemers,
-  redeemerDataFromCborHex,
-} from "../midgard-redeemers.js";
-import { plutusDataToCborHex } from "../plutus-data.js";
+import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
 import type {
   MidgardAssetName,
   MidgardCredentialHash,
@@ -687,7 +683,7 @@ const decodeRedeemers = (preimageCbor: Uint8Array): MidgardLedgerRedeemer[] =>
   decodeMidgardRedeemers(preimageCbor).map((redeemer) => ({
     tag: redeemer.tag,
     index: redeemer.index,
-    data: redeemerDataFromCborHex(redeemer.dataCborHex),
+    dataCbor: Buffer.from(redeemer.dataCborHex, "hex"),
     exUnits: {
       memory: redeemer.exUnits.memory,
       steps: redeemer.exUnits.steps,
@@ -720,10 +716,7 @@ const encodeRedeemers = (
       return {
         purpose: midgardRedeemerPurposeFromTag(redeemer.tag),
         index: redeemer.index,
-        redeemerCbor: Buffer.from(
-          plutusDataToCborHex(redeemer.data, { canonical: true }),
-          "hex",
-        ),
+        redeemerCbor: redeemer.dataCbor,
         executionUnits: {
           memory: redeemer.exUnits.memory,
           steps: redeemer.exUnits.steps,

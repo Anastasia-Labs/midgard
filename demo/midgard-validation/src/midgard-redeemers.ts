@@ -103,9 +103,6 @@ export const findRedeemerByPointer = <T extends MidgardRedeemerPointer>(
   );
 };
 
-export const redeemerDataFromCborHex = (cborHex: string): unknown =>
-  Data.from(cborHex) as unknown;
-
 export type MidgardScriptPurpose =
   | {
       readonly kind: "mint";

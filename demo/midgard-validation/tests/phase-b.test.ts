@@ -5,6 +5,7 @@ import {
   hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import { DataConstr } from "@harmoniclabs/plutus-data";
 import {
   Application,
   Lambda,
@@ -12,7 +13,6 @@ import {
   UPLCProgram,
   UPLCVar,
 } from "@harmoniclabs/uplc";
-import { Constr } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -783,7 +783,7 @@ describe("phase B validation", () => {
 
   it("keeps the split evaluator bit-identical to the composed inline seam", () => {
     const script = Buffer.from("010203", "hex");
-    const context = new Constr(0, []);
+    const context = new DataConstr(0, []);
     expect(
       evaluateUplcWithContextCbor(script, encodeScriptContextCbor(context)),
     ).toStrictEqual(evaluateScriptWithHarmonic(script, context));

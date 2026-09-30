@@ -4,7 +4,17 @@ import {
   type MidgardCredential,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  dataFromCbor,
+  DataI,
+  DataList,
+  DataMap,
+  DataPair,
+} from "@harmoniclabs/plutus-data";
+import { Constr } from "@lucid-evolution/lucid";
 
 import type { MidgardLedgerRedeemer } from "./ledger-tx/types.js";
 import {
@@ -23,6 +33,10 @@ export type ScriptContextAddressEncoding = "cardano" | "midgard";
 
 export type ScriptMintValue = ReadonlyMap<string, ReadonlyMap<string, bigint>>;
 
+/**
+ * `redeemers` is in the order of the transaction's redeemer witness list; the
+ * redeemer map of the context keeps it.
+ */
 export type ScriptContextView = {
   readonly txId: Buffer;
   readonly inputs: readonly ResolvedInput[];
@@ -40,184 +54,239 @@ export type ScriptContextView = {
   }[];
 };
 
-const none = new Constr(1, []);
-const some = (value: unknown) => new Constr(0, [value]);
-const bool = (value: boolean) => new Constr(value ? 1 : 0, []);
+// The context is built as harmonic `Data`, never as Lucid `Data`: Lucid's
+// encoder sorts every map and its decoder merges duplicate keys, while the
+// fault-proof side commits datum and redeemer maps in their CBOR entry order.
+// Maps built here are sorted explicitly where the context orders them.
 
-const credentialData = (credential: MidgardCredential): Constr<unknown> =>
-  new Constr(credential.kind === "PubKey" ? 0 : 1, [
-    credential.hash.toString("hex"),
+const constr = (index: number, fields: Data[]): DataConstr =>
+  new DataConstr(index, fields);
+const bytes = (hex: string): DataB => new DataB(Buffer.from(hex, "hex"));
+const none = (): DataConstr => constr(1, []);
+const some = (value: Data): DataConstr => constr(0, [value]);
+const bool = (value: boolean): DataConstr => constr(value ? 1 : 0, []);
+
+/**
+ * Converts the purpose and out-ref Data, which have no maps, from the Lucid
+ * form their builders return.
+ */
+const fixedShapeData = (value: unknown): Data => {
+  if (typeof value === "bigint") {
+    return new DataI(value);
+  }
+  if (typeof value === "string") {
+    return bytes(value);
+  }
+  if (Array.isArray(value)) {
+    return new DataList(value.map(fixedShapeData));
+  }
+  if (value instanceof Constr) {
+    return constr(value.index, value.fields.map(fixedShapeData));
+  }
+  throw new Error("script context purpose must be map-free Data");
+};
+
+const compareHex = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const credentialData = (credential: MidgardCredential): DataConstr =>
+  constr(credential.kind === "PubKey" ? 0 : 1, [
+    new DataB(Uint8Array.from(credential.hash)),
   ]);
 
 const stakingCredentialData = (
   credential: MidgardCredential | undefined,
-): Constr<unknown> =>
+): DataConstr =>
   credential === undefined
-    ? none
-    : some(new Constr(0, [credentialData(credential)]));
+    ? none()
+    : some(constr(0, [credentialData(credential)]));
 
 const addressData = (
   output: MidgardTxOutput,
   encoding: ScriptContextAddressEncoding,
-): Constr<unknown> => {
+): DataConstr => {
   const decoded = decodeMidgardAddressBytes(output.address);
   const constructor = encoding === "midgard" && decoded.protected ? 1 : 0;
-  return new Constr(constructor, [
+  return constr(constructor, [
     credentialData(decoded.paymentCredential),
     stakingCredentialData(decoded.stakeCredential),
   ]);
 };
 
-const valueData = (
-  output: MidgardTxOutput,
-): Map<string, Map<string, bigint>> => {
-  const result = new Map<string, Map<string, bigint>>();
+/** Policies and asset names ordered by their bytes. */
+const multiAssetPairs = (assets: ScriptMintValue): DataPair<Data, Data>[] =>
+  [...assets.entries()]
+    .sort(([left], [right]) => compareHex(left, right))
+    .map(
+      ([policyId, names]) =>
+        new DataPair(
+          bytes(policyId),
+          new DataMap(
+            [...names.entries()]
+              .sort(([left], [right]) => compareHex(left, right))
+              .map(
+                ([name, quantity]) =>
+                  new DataPair(bytes(name), new DataI(quantity)),
+              ),
+          ),
+        ),
+    );
+
+const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
   const coin = output.value.lovelace;
-  if (coin !== 0n) {
-    result.set("", new Map([["", coin]]));
-  }
-  for (const [policyId, assets] of output.value.assets.entries()) {
-    result.set(policyId, new Map(assets));
-  }
-  return result;
+  return new DataMap([
+    ...(coin === 0n
+      ? []
+      : [
+          new DataPair(
+            bytes(""),
+            new DataMap([new DataPair(bytes(""), new DataI(coin))]),
+          ),
+        ]),
+    ...multiAssetPairs(output.value.assets),
+  ]);
 };
 
-const compareEntryKeys = (
-  [left]: readonly [string, unknown],
-  [right]: readonly [string, unknown],
-): number => (left < right ? -1 : left > right ? 1 : 0);
+const mintData = (mint: ScriptMintValue): DataMap<Data, Data> =>
+  new DataMap(multiAssetPairs(mint));
 
-const mintData = (mint: ScriptMintValue): Map<string, Map<string, bigint>> => {
-  const result = new Map<string, Map<string, bigint>>();
-  for (const [policyId, assets] of [...mint.entries()].sort(compareEntryKeys)) {
-    result.set(policyId, new Map([...assets.entries()].sort(compareEntryKeys)));
-  }
-  return result;
-};
-
-const datumData = (output: MidgardTxOutput): Constr<unknown> => {
+const datumData = (output: MidgardTxOutput): DataConstr => {
   const datum = output.datum;
   if (datum === undefined) {
-    return new Constr(0, []);
+    return constr(0, []);
   }
-  return new Constr(2, [Data.from(datum.cbor.toString("hex")) as unknown]);
+  return constr(2, [dataFromCbor(datum.cbor)]);
 };
 
 export const scriptContextTxOutData = (
   output: MidgardTxOutput,
   addressEncoding: ScriptContextAddressEncoding,
-): Constr<unknown> => {
+): DataConstr => {
   const scriptRef = output.script_ref;
-  return new Constr(0, [
+  return constr(0, [
     addressData(output, addressEncoding),
     valueData(output),
     datumData(output),
     scriptRef === undefined
-      ? none
-      : some(hashMidgardVersionedScript(scriptRef)),
+      ? none()
+      : some(bytes(hashMidgardVersionedScript(scriptRef))),
   ]);
 };
 
 export const scriptContextTxInInfoData = (
   input: ResolvedInput,
   addressEncoding: ScriptContextAddressEncoding,
-): Constr<unknown> =>
-  new Constr(0, [
-    txOutRefData(input.outRefHex),
+): DataConstr =>
+  constr(0, [
+    fixedShapeData(txOutRefData(input.outRefHex)),
     scriptContextTxOutData(input.output, addressEncoding),
   ]);
 
 const validRangeData = (
   start: bigint | undefined,
   end: bigint | undefined,
-): Constr<unknown> =>
-  new Constr(0, [
-    new Constr(0, [
-      start === undefined ? new Constr(0, []) : new Constr(1, [start]),
+): DataConstr =>
+  constr(0, [
+    constr(0, [
+      start === undefined ? constr(0, []) : constr(1, [new DataI(start)]),
       bool(true),
     ]),
-    new Constr(0, [
-      end === undefined ? new Constr(0, []) : new Constr(1, [end]),
+    constr(0, [
+      end === undefined ? constr(0, []) : constr(1, [new DataI(end)]),
       bool(false),
     ]),
   ]);
 
+const redeemerData = (redeemer: MidgardLedgerRedeemer): Data =>
+  dataFromCbor(redeemer.dataCbor);
+
 const redeemersData = (
   redeemers: ScriptContextView["redeemers"],
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
-): Map<Constr<unknown>, unknown> => {
-  const result = new Map<Constr<unknown>, unknown>();
-  for (const entry of redeemers) {
-    const purpose = purposeData(entry.purpose);
-    if (purpose === undefined) {
-      continue;
-    }
-    result.set(purpose, entry.redeemer.data);
-  }
-  return result;
-};
+): DataMap<Data, Data> =>
+  new DataMap(
+    redeemers.flatMap((entry) => {
+      const purpose = purposeData(entry.purpose);
+      return purpose === undefined
+        ? []
+        : [new DataPair(fixedShapeData(purpose), redeemerData(entry.redeemer))];
+    }),
+  );
 
 const withdrawalsData = (
   observers: ScriptContextView["observers"],
-): Map<Constr<unknown>, bigint> =>
-  new Map(
-    [...observers].sort().map((observer) => [new Constr(1, [observer]), 0n]),
+): DataMap<Data, Data> =>
+  new DataMap(
+    [...observers]
+      .sort()
+      .map(
+        (observer) => new DataPair(constr(1, [bytes(observer)]), new DataI(0n)),
+      ),
   );
+
+const bytesList = (values: readonly string[]): DataList =>
+  new DataList([...values].sort().map(bytes));
 
 const baseTxInfoData = (
   view: ScriptContextView,
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
-): Constr<unknown> =>
-  new Constr(0, [
-    view.inputs.map((input) => scriptContextTxInInfoData(input, "cardano")),
-    view.referenceInputs.map((input) =>
-      scriptContextTxInInfoData(input, "cardano"),
+): DataConstr =>
+  constr(0, [
+    new DataList(
+      view.inputs.map((input) => scriptContextTxInInfoData(input, "cardano")),
     ),
-    view.outputs.map((output) => scriptContextTxOutData(output, "cardano")),
-    view.fee,
+    new DataList(
+      view.referenceInputs.map((input) =>
+        scriptContextTxInInfoData(input, "cardano"),
+      ),
+    ),
+    new DataList(
+      view.outputs.map((output) => scriptContextTxOutData(output, "cardano")),
+    ),
+    new DataI(view.fee),
     mintData(view.mint),
-    [],
+    new DataList([]),
     withdrawalsData(view.observers),
     validRangeData(view.validityIntervalStart, view.validityIntervalEnd),
-    [...view.signatories].sort(),
+    bytesList(view.signatories),
     redeemersData(view.redeemers, purposeData),
-    new Map(),
-    view.txId.toString("hex"),
-    new Map(),
-    [],
-    none,
-    none,
+    new DataMap([]),
+    new DataB(Uint8Array.from(view.txId)),
+    new DataMap([]),
+    new DataList([]),
+    none(),
+    none(),
   ]);
 
 const spendDatumData = (
   view: ScriptContextView,
   purpose: Extract<MidgardScriptPurpose, { readonly kind: "spend" }>,
-): Constr<unknown> => {
+): DataConstr => {
   const input = view.inputs.find(
     (candidateInput) => candidateInput.outRefHex === purpose.outRefHex,
   );
   const datum = input?.output.datum;
   if (datum === undefined) {
-    return none;
+    return none();
   }
 
-  return some(Data.from(datum.cbor.toString("hex")) as unknown);
+  return some(dataFromCbor(datum.cbor));
 };
 
 const cardanoScriptInfoData = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
-): Constr<unknown> => {
+): DataConstr => {
   switch (purpose.kind) {
     case "mint":
-      return new Constr(0, [purpose.policyId]);
+      return constr(0, [bytes(purpose.policyId)]);
     case "spend":
-      return new Constr(1, [
-        txOutRefData(purpose.outRefHex),
+      return constr(1, [
+        fixedShapeData(txOutRefData(purpose.outRefHex)),
         spendDatumData(view, purpose),
       ]);
     case "observe":
-      return new Constr(2, [new Constr(1, [purpose.scriptHash])]);
+      return constr(2, [constr(1, [bytes(purpose.scriptHash)])]);
     case "receive":
       throw new Error("Receiving scripts require MidgardV1 context");
   }
@@ -232,10 +301,10 @@ export const buildPlutusV3ScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
   redeemer: MidgardLedgerRedeemer,
-): Constr<unknown> =>
-  new Constr(0, [
+): DataConstr =>
+  constr(0, [
     baseTxInfoData(view, cardanoScriptPurposeDataOrUndefined),
-    redeemer.data,
+    redeemerData(redeemer),
     cardanoScriptInfoData(view, purpose),
   ]);
 
@@ -243,22 +312,28 @@ export const buildMidgardScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
   redeemer: MidgardLedgerRedeemer,
-): Constr<unknown> =>
-  new Constr(0, [
-    new Constr(0, [
-      view.inputs.map((input) => scriptContextTxInInfoData(input, "midgard")),
-      view.referenceInputs.map((input) =>
-        scriptContextTxInInfoData(input, "midgard"),
+): DataConstr =>
+  constr(0, [
+    constr(0, [
+      new DataList(
+        view.inputs.map((input) => scriptContextTxInInfoData(input, "midgard")),
       ),
-      view.outputs.map((output) => scriptContextTxOutData(output, "midgard")),
-      view.fee,
+      new DataList(
+        view.referenceInputs.map((input) =>
+          scriptContextTxInInfoData(input, "midgard"),
+        ),
+      ),
+      new DataList(
+        view.outputs.map((output) => scriptContextTxOutData(output, "midgard")),
+      ),
+      new DataI(view.fee),
       validRangeData(view.validityIntervalStart, view.validityIntervalEnd),
-      [...view.observers].sort(),
-      [...view.signatories].sort(),
+      bytesList(view.observers),
+      bytesList(view.signatories),
       mintData(view.mint),
       redeemersData(view.redeemers, midgardScriptPurposeData),
-      view.txId.toString("hex"),
+      new DataB(Uint8Array.from(view.txId)),
     ]),
-    redeemer.data,
-    midgardScriptPurposeData(purpose),
+    redeemerData(redeemer),
+    fixedShapeData(midgardScriptPurposeData(purpose)),
   ]);

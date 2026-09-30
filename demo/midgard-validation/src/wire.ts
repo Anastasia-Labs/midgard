@@ -9,8 +9,6 @@ import type {
   MidgardLedgerOutput,
   MidgardLedgerTx,
 } from "./ledger-tx/types.js";
-import { redeemerDataFromCborHex } from "./midgard-redeemers.js";
-import { plutusDataToCborHex } from "./plutus-data.js";
 import type { MidgardValueDelta, PhaseAValidatedTx } from "./types.js";
 
 type Bytes = Uint8Array;
@@ -67,7 +65,7 @@ type WireLedgerTx = {
   readonly redeemers: ReadonlyArray<{
     readonly tag: number;
     readonly index: bigint;
-    readonly dataCborHex: string;
+    readonly dataCbor: Bytes;
     readonly exUnits: { readonly memory: bigint; readonly steps: bigint };
   }>;
   readonly mint: {
@@ -287,7 +285,7 @@ export const serializePhaseACandidate = (
       redeemers: tx.redeemers.map((redeemer) => ({
         tag: redeemer.tag,
         index: redeemer.index,
-        dataCborHex: plutusDataToCborHex(redeemer.data, { canonical: true }),
+        dataCbor: bytesView(redeemer.dataCbor),
         exUnits: redeemer.exUnits,
       })),
       mint: {
@@ -367,7 +365,7 @@ export const deserializePhaseACandidate = (
     redeemers: candidate.ledgerTx.redeemers.map((redeemer) => ({
       tag: redeemer.tag,
       index: redeemer.index,
-      data: redeemerDataFromCborHex(redeemer.dataCborHex),
+      dataCbor: bufferView(redeemer.dataCbor),
       exUnits: redeemer.exUnits,
     })),
     mint: {
