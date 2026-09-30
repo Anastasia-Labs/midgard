@@ -315,6 +315,7 @@ export default tseslint.config(
       "midgard/fault-proof-reference-scripts-only": "error",
       "midgard/local-uplc-eval": "error",
       "midgard/locale-compare-explicit-locale": "error",
+      "midgard/no-recursive-plutus-data": "error",
       "midgard/node-cli-operator-commands-only": "error",
       "midgard/scoped-utxo-override": "error",
       "midgard/valid-from-wall-clock-margin": "error",

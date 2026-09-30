@@ -64,6 +64,13 @@ type DataSummary = {
   readonly memory: bigint;
 };
 
+/**
+ * Per-value summaries keyed by `Data` object identity. Passing the same memo
+ * to repeated commitments of values that share subtrees makes each later
+ * commitment cost only its new nodes.
+ */
+export type MidgardCekDataSummaryMemo = Map<Data, DataSummary>;
+
 type ListSummary = {
   readonly root: Uint8Array;
   readonly length: bigint;
@@ -128,6 +135,7 @@ const asByteArray = (value: unknown): Uint8Array => {
  */
 export const commitMidgardCekDataTree = (
   value: Data,
+  summaries: MidgardCekDataSummaryMemo = new Map(),
 ): MidgardCekDataTreeCommitment => {
   const dataNodes = new Map<string, HashedMaterial<MidgardCekDataNode>>();
   const listNodes = new Map<string, HashedMaterial<MidgardCekDataListNode>>();
@@ -156,7 +164,6 @@ export const commitMidgardCekDataTree = (
     return committed.root;
   };
 
-  const summaries = new Map<Data, DataSummary>();
   const operations: DataWork[] = [{ kind: "visit", data: value }];
 
   const emptyListWork = (root: Uint8Array): ListWork => ({

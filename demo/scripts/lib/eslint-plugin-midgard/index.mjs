@@ -11,6 +11,7 @@ import exactFeeNoChangeOutput from "./rules/exact-fee-no-change-output.mjs";
 import faultProofReferenceScriptsOnly from "./rules/fault-proof-reference-scripts-only.mjs";
 import localUplcEval from "./rules/local-uplc-eval.mjs";
 import localeCompareExplicitLocale from "./rules/locale-compare-explicit-locale.mjs";
+import noRecursivePlutusData from "./rules/no-recursive-plutus-data.mjs";
 import nodeCliOperatorCommandsOnly from "./rules/node-cli-operator-commands-only.mjs";
 import scopedUtxoOverride from "./rules/scoped-utxo-override.mjs";
 import validFromWallClockMargin from "./rules/valid-from-wall-clock-margin.mjs";
@@ -27,6 +28,7 @@ export default {
     "fault-proof-reference-scripts-only": faultProofReferenceScriptsOnly,
     "local-uplc-eval": localUplcEval,
     "locale-compare-explicit-locale": localeCompareExplicitLocale,
+    "no-recursive-plutus-data": noRecursivePlutusData,
     "node-cli-operator-commands-only": nodeCliOperatorCommandsOnly,
     "scoped-utxo-override": scopedUtxoOverride,
     "valid-from-wall-clock-margin": validFromWallClockMargin,

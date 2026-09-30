@@ -15,7 +15,6 @@ import {
   type MidgardCekTermNode,
   verifyMidgardCekProgramMaterial,
 } from "@al-ft/midgard-core";
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import {
   Application,
   Builtin,
@@ -50,6 +49,7 @@ import {
   rootHex,
   sameBytes,
 } from "./cek-program.unwrap-canonical-cbor-byte-string.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 /**
  * Decodes a PlutusV3/MidgardV1 Flat/CBOR program into the canonical,
@@ -152,7 +152,7 @@ export const buildMidgardCanonicalCekProgram = (
       );
     }
     const typeRoot = addBlob(canonical.typeCbor);
-    const payload = dataFromCbor(canonical.payloadCbor);
+    const payload = plutusDataFromCborIterative(canonical.payloadCbor);
     const semantic = commitMidgardCekDataTree(payload);
     for (const [key, entry] of semantic.dataNodes) {
       addMaterial(

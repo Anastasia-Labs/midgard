@@ -87,3 +87,23 @@ every stale site and adds none (`--check` only reports).
   `demo/midgard-node-tools`. Blind spot: it reads command names, so a
   test command with an operator-sounding name, or one registered from another
   module, passes. [eslint: midgard/node-cli-operator-commands-only]
+- **Read, build and write Plutus Data without recursion in production
+  source** (`src/` of midgard-core, -validation, -node, -sdk, -watcher and
+  -fault-proofs). The carriers admit Data nested thousands of levels deep, and
+  a recursive walk overflows the stack. Flagged: the recursive
+  `@harmoniclabs/plutus-data` functions (`dataFromCbor`, `dataToCbor`, their
+  `Obj` forms, `eqData`, `cloneData`, `dataFromJson`, `dataToJson`);
+  `new DataPair(...)` outside `midgard-validation/src/plutus-data-iterative.pair.ts`
+  (harmonic 1.2.6 stringifies both halves in the constructor);
+  `@harmoniclabs/plutus-machine` names other than `BnCEK`, `CEKConst`,
+  `CEKError`, `ExBudget`, `PartialBuiltin` and `costModelV3ToBuiltinCosts`;
+  `Cbor` from `@harmoniclabs/cbor`; `cborg`; and Lucid `Data.from` /
+  `Data.to` in midgard-core and midgard-validation. Use
+  `plutusDataFromCborIterative`, `encodeMidgardCekPlutusData` and
+  `midgardDataPair` in midgard-validation, and
+  `@al-ft/midgard-core/plutus-data-lucid-iterative` for Lucid-shaped values.
+  The baselined Lucid encoders take repository-built values of bounded depth.
+  Blind spot: `.toString()`, `.toJson()` and `.clone()` on a harmonic value,
+  `UPLCConst` construction (harmonic uplc 1.4.1 stringifies the value in its
+  constructor's message), and a hand-written recursive walk are not seen.
+  [eslint: midgard/no-recursive-plutus-data]

@@ -10,7 +10,8 @@ import {
   type MidgardFieldCarriage,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import { lucidDataFromCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import { Constr } from "@lucid-evolution/lucid";
 
 import { type ValidationMachineFieldCarriagePlanInput } from "./validation-machine/index.js";
 
@@ -39,7 +40,7 @@ export const byteList = (values: readonly Uint8Array[]): readonly string[] =>
   values.map(bytes);
 
 export const proofData = (proofCbor: Uint8Array): PlutusData =>
-  Data.from(bytes(proofCbor)) as PlutusData;
+  lucidDataFromCborIterative(proofCbor) as PlutusData;
 
 export const frontierPeaksData = (
   frontier: MidgardValidationMerkleFrontier,

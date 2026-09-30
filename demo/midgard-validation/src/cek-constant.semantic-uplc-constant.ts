@@ -6,16 +6,19 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
 } from "@harmoniclabs/plutus-data";
-import { type ConstType, type ConstValue, UPLCConst } from "@harmoniclabs/uplc";
+import {
+  constT,
+  type ConstType,
+  type ConstValue,
+  UPLCConst,
+} from "@harmoniclabs/uplc";
 
 import {
   decodeMidgardCekConstantTypeCbor,
   decodeMidgardCekConstantWitness,
-  encodeMidgardCekPlutusData,
   midgardConstantTypeToTags,
 } from "./cek-constant.payload-matches-type.js";
 import {
@@ -28,7 +31,13 @@ import {
   semanticData,
 } from "./cek-constant.semantic-data.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
-import { isPlutusDataMap } from "./plutus-data-narrowing.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
+import {
+  midgardCekByteStringMemorySize,
+  midgardCekDataMemorySize,
+  midgardCekIntegerMemorySize,
+} from "./plutus-data-iterative.memory.js";
 
 const semanticUplcConstant = (
   type: MidgardCekConstantType,
@@ -174,69 +183,6 @@ export const hashMidgardCekSemanticConstantWitness = (
   });
 };
 
-const byteLengthOrOne = (bytes: Uint8Array): bigint =>
-  BigInt(Math.max(1, bytes.length));
-
-/**
- * Plutus' ExMemory size for an integer. This is the signed CBOR-style byte
- * magnitude used by cardano-node's CEK cost model, not the encoded payload
- * length.
- */
-export const midgardCekIntegerMemorySize = (value: bigint): bigint => {
-  const doubledMagnitude = value < 0n ? (-value - 1n) << 1n : value << 1n;
-  if (doubledMagnitude === 0n) {
-    return 1n;
-  }
-  return BigInt(Math.floor((doubledMagnitude.toString(2).length - 1) / 8) + 1);
-};
-
-export const midgardCekByteStringMemorySize = (value: Uint8Array): bigint =>
-  byteLengthOrOne(value);
-
-/**
- * Plutus Data charges four memory words for every node, then the signed
- * integer or byte-string size for leaf payloads.
- */
-export const midgardCekDataMemorySize = (value: Data): bigint => {
-  if (value instanceof DataConstr) {
-    return (
-      4n +
-      value.fields.reduce(
-        (total, field) => total + midgardCekDataMemorySize(field),
-        0n,
-      )
-    );
-  }
-  if (isPlutusDataMap(value)) {
-    return (
-      4n +
-      value.map.reduce(
-        (total, entry) =>
-          total +
-          midgardCekDataMemorySize(entry.fst) +
-          midgardCekDataMemorySize(entry.snd),
-        0n,
-      )
-    );
-  }
-  if (value instanceof DataList) {
-    return (
-      4n +
-      value.list.reduce(
-        (total, item) => total + midgardCekDataMemorySize(item),
-        0n,
-      )
-    );
-  }
-  if (value instanceof DataI) {
-    return 4n + midgardCekIntegerMemorySize(value.int);
-  }
-  if (value instanceof DataB) {
-    return 4n + byteLengthOrOne(asByteArray(value.bytes));
-  }
-  throw new Error("V1 data constant has an unknown node");
-};
-
 /**
  * ExMemory size of the semantic payload committed by a constant witness.
  * Lists and pairs sum element sizes without an extra container charge.
@@ -256,7 +202,7 @@ export const midgardCekConstantMemorySize = (
       if (!(payload instanceof DataB)) {
         throw new Error("V1 byte payload is not DataB");
       }
-      return byteLengthOrOne(asByteArray(payload.bytes));
+      return midgardCekByteStringMemorySize(asByteArray(payload.bytes));
     case "unit":
     case "boolean":
       if (!(payload instanceof DataConstr)) {
@@ -300,18 +246,32 @@ export const midgardCekConstantMemorySize = (
  * the L1 builtin verifier. Raw Flat is intentionally not the runtime payload:
  * script identity commits the canonical program envelope instead.
  */
-export const encodeMidgardCekCanonicalConstant = (
-  constant: UPLCConst,
+const encodeCanonicalConstant = (
+  typeTags: ConstType,
+  value: ConstValue,
 ): MidgardCekCanonicalConstant => {
-  const type = parseMidgardCekConstantType(constant.type);
+  const type = parseMidgardCekConstantType(typeTags);
   return Object.freeze({
     type,
     typeCbor: encodeMidgardCekPlutusData(
-      new DataList(constant.type.map((tag) => new DataI(BigInt(tag)))),
+      new DataList(typeTags.map((tag) => new DataI(BigInt(tag)))),
     ),
-    payloadCbor: encodeMidgardCekPlutusData(semanticData(type, constant.value)),
+    payloadCbor: encodeMidgardCekPlutusData(semanticData(type, value)),
   });
 };
+
+export const encodeMidgardCekCanonicalConstant = (
+  constant: UPLCConst,
+): MidgardCekCanonicalConstant =>
+  encodeCanonicalConstant(constant.type, constant.value);
+
+/**
+ * `encodeMidgardCekCanonicalConstant(UPLCConst.data(data))` without building
+ * the `UPLCConst`, whose constructor stringifies the whole value recursively.
+ */
+export const encodeMidgardCekCanonicalDataConstant = (
+  data: Data,
+): MidgardCekCanonicalConstant => encodeCanonicalConstant(constT.data, data);
 
 export const midgardCekUplcConstantMemorySize = (
   constant: UPLCConst,
@@ -319,6 +279,6 @@ export const midgardCekUplcConstantMemorySize = (
   const canonical = encodeMidgardCekCanonicalConstant(constant);
   return midgardCekConstantMemorySize(
     canonical.type,
-    dataFromCbor(canonical.payloadCbor),
+    plutusDataFromCborIterative(canonical.payloadCbor),
   );
 };

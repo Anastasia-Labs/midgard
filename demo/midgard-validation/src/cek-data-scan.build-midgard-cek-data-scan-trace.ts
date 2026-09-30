@@ -6,7 +6,6 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
 } from "@harmoniclabs/plutus-data";
@@ -33,6 +32,7 @@ import {
   type MidgardCekDataScanStep,
   type MidgardCekDataScanTraceStep,
 } from "./cek-data-scan.validate-midgard-cek-data-scan-frame.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 import {
   emptyMidgardCekDataListSummary,
@@ -57,7 +57,7 @@ export const buildMidgardCekDataScanTrace = (
   if (raw.length === 0 || raw.length > 9_215) {
     throw new Error("V1 Data scan preimage must contain 1..9215 bytes");
   }
-  const rootData = dataFromCbor(raw);
+  const rootData = plutusDataFromCborIterative(raw);
   const initial: MidgardCekDataScanControl = {
     rawHash: hash32(raw),
     rawLength: raw.length,

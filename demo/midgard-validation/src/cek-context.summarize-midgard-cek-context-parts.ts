@@ -2,7 +2,6 @@ import { encodeCbor } from "@al-ft/midgard-core";
 import {
   type Data as PlutusData,
   DataConstr,
-  dataFromCbor,
   DataList,
 } from "@harmoniclabs/plutus-data";
 
@@ -18,6 +17,7 @@ import {
   summarizeMidgardCekDataList,
   summarizeMidgardCekDataPairs,
 } from "./cek-context.midgard-cek-context-control.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import {
   isPlutusDataMap,
   type PlutusDataMap,
@@ -152,7 +152,7 @@ export type MidgardCekDecodedContext = {
 export const decodeMidgardCekContext = (
   contextCbor: Uint8Array,
 ): MidgardCekDecodedContext => {
-  const context = dataFromCbor(contextCbor);
+  const context = plutusDataFromCborIterative(contextCbor);
   if (!(context instanceof DataConstr) || context.constr !== 0n) {
     throw new Error("V1 script context must be constructor 0");
   }

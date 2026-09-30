@@ -2,7 +2,7 @@ import {
   hashMidgardCekBlsExpressionNode,
   MIDGARD_CEK_MAX_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
-import { DataB, dataFromCbor } from "@harmoniclabs/plutus-data";
+import { DataB } from "@harmoniclabs/plutus-data";
 import {
   BnCEK,
   CEKConst,
@@ -34,6 +34,7 @@ import {
 } from "./cek-constant.js";
 import { MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 export const runPinnedReferenceBuiltin = (
   tag: number,
@@ -102,7 +103,7 @@ export const directConstantToReferenceValue = (
 const semanticConstantFromCanonical = (
   canonical: ReturnType<typeof encodeMidgardCekCanonicalConstant>,
 ): MidgardCekDirectValueWitness => {
-  const payload = dataFromCbor(canonical.payloadCbor);
+  const payload = plutusDataFromCborIterative(canonical.payloadCbor);
   const tree = commitMidgardCekDataTree(payload);
   return Object.freeze({
     kind: "semanticConstant" as const,

@@ -253,11 +253,6 @@ export const encodeCardanoBytes = (bytes: Uint8Array): Buffer => {
   return Buffer.concat(chunks);
 };
 
-export const encodeCardanoList = (items: readonly Buffer[]): Buffer =>
-  items.length === 0
-    ? Buffer.from([0x80])
-    : Buffer.concat([Buffer.from([0x9f]), ...items, Buffer.from([0xff])]);
-
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
 const shortestBigEndianMagnitude = (value: bigint): Buffer => {

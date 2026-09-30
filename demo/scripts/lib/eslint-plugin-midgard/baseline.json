@@ -1059,6 +1059,48 @@
       ]
     }
   },
+  "midgard/no-recursive-plutus-data": {
+    "midgard-core/src/cek-proof.commit-semantic-data.ts": {
+      "reason": "Bounded scalar sites: the constant type CBOR is capped at MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES, and the other two encode a single integer (a leaf value and a constructor index).",
+      "sites": [
+        "const decoded = LucidData.from(Buffer.from(typeCbor).toString(\"hex\"));",
+        "const canonicalCbor = Buffer.from(LucidData.to(value), \"hex\");",
+        "const constructorCbor = Buffer.from(LucidData.to(constructor), \"hex\");"
+      ]
+    },
+    "midgard-core/src/cek-proof.encode-semantic-data.ts": {
+      "reason": "Scalar sites: each encodes a single integer (a constructor index or an integer leaf) inside the iterative semantic encoder.",
+      "sites": [
+        "Buffer.from(LucidData.to(value.constructor), \"hex\"),",
+        "chunks.push(Buffer.from(LucidData.to(current), \"hex\"));"
+      ]
+    },
+    "midgard-core/src/cek-proof.reconstruct-semantic-data.ts": {
+      "reason": "Integer leaf decode: the head check before it admits only an unsigned, negative or bignum (tag 2/3) head, so no container is decoded here.",
+      "sites": ["const decoded = LucidData.from(bytes.toString(\"hex\"));"]
+    },
+    "midgard-core/src/deployment-manifest-identity/catalogue-proof.ts": {
+      "reason": "Decodes and re-encodes the deployment manifest's fraud-proof catalogue membership proofs against their schema; the manifest is deployer configuration read locally, not transaction data.",
+      "sites": ["proof = Data.from(", "const canonicalProofCbor = Data.to("]
+    },
+    "midgard-validation/src/local-script-eval.ts": {
+      "reason": "The harmonic Machine fallback evaluator; it is unreachable for MidgardV1 (phase A refuses a missing CEK sidecar) and is deleted as a whole by the next lane rather than rewritten.",
+      "sites": [
+        "import { type Data, dataFromCbor } from \"@harmoniclabs/plutus-data\";",
+        "import { CEKConst, Machine } from \"@harmoniclabs/plutus-machine\";"
+      ]
+    },
+    "midgard-validation/src/plutus-data.ts": {
+      "reason": "Test-support encoder: its only callers are validation and node tests encoding fixed-shape fixtures. Moving it into test support is a separate change.",
+      "sites": [
+        "): string => Data.to(toLocalPlutusData(value) as never, undefined, options);"
+      ]
+    },
+    "midgard-validation/src/script-context.ts": {
+      "reason": "Owner decision pending: the datum and redeemer reads here run before phase B's script try, so a deep value stops there instead of reaching a recursive harmonic path inside the try, where a throw would be committed as a script failure. They switch to the iterative reader once the DataPair and UPLCConst eager messages are removed.",
+      "sites": ["dataFromCbor,"]
+    }
+  },
   "midgard/scoped-utxo-override": {
     "midgard-node-tools/devnet/watcher-journeys/forced-order.ts": {
       "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",

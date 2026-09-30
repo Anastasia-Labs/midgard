@@ -12,7 +12,7 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
+  type DataPair,
 } from "@harmoniclabs/plutus-data";
 import { Constr } from "@lucid-evolution/lucid";
 
@@ -22,6 +22,7 @@ import {
   MidgardScriptPurpose,
   midgardScriptPurposeData,
 } from "./midgard-redeemers.js";
+import { midgardDataPair } from "./plutus-data-iterative.pair.js";
 import { txOutRefData } from "./tx-out-ref.js";
 
 type ResolvedInput = {
@@ -117,19 +118,17 @@ const addressData = (
 const multiAssetPairs = (assets: ScriptMintValue): DataPair<Data, Data>[] =>
   [...assets.entries()]
     .sort(([left], [right]) => compareHex(left, right))
-    .map(
-      ([policyId, names]) =>
-        new DataPair(
-          bytes(policyId),
-          new DataMap(
-            [...names.entries()]
-              .sort(([left], [right]) => compareHex(left, right))
-              .map(
-                ([name, quantity]) =>
-                  new DataPair(bytes(name), new DataI(quantity)),
-              ),
-          ),
+    .map(([policyId, names]) =>
+      midgardDataPair(
+        bytes(policyId),
+        new DataMap(
+          [...names.entries()]
+            .sort(([left], [right]) => compareHex(left, right))
+            .map(([name, quantity]) =>
+              midgardDataPair(bytes(name), new DataI(quantity)),
+            ),
         ),
+      ),
     );
 
 const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
@@ -138,9 +137,9 @@ const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
     ...(coin === 0n
       ? []
       : [
-          new DataPair(
+          midgardDataPair(
             bytes(""),
-            new DataMap([new DataPair(bytes(""), new DataI(coin))]),
+            new DataMap([midgardDataPair(bytes(""), new DataI(coin))]),
           ),
         ]),
     ...multiAssetPairs(output.value.assets),
@@ -209,7 +208,12 @@ const redeemersData = (
       const purpose = purposeData(entry.purpose);
       return purpose === undefined
         ? []
-        : [new DataPair(fixedShapeData(purpose), redeemerData(entry.redeemer))];
+        : [
+            midgardDataPair(
+              fixedShapeData(purpose),
+              redeemerData(entry.redeemer),
+            ),
+          ];
     }),
   );
 
@@ -219,8 +223,8 @@ const withdrawalsData = (
   new DataMap(
     [...observers]
       .sort()
-      .map(
-        (observer) => new DataPair(constr(1, [bytes(observer)]), new DataI(0n)),
+      .map((observer) =>
+        midgardDataPair(constr(1, [bytes(observer)]), new DataI(0n)),
       ),
   );
 

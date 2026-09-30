@@ -1,17 +1,11 @@
 import { encodeCbor, MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
-import {
-  type Data as PlutusData,
-  dataFromCbor,
-} from "@harmoniclabs/plutus-data";
-import {
-  Constr,
-  Data,
-  type Data as LucidDataValue,
-  fromHex,
-} from "@lucid-evolution/lucid";
+import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import { type Data as PlutusData } from "@harmoniclabs/plutus-data";
+import { Constr, type Data as LucidDataValue } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { type PlutusDataMap } from "./plutus-data-narrowing.js";
 import {
   emptyMidgardCekDataListSummary,
@@ -98,7 +92,9 @@ export const summarizeMidgardCekData = (
 export const summarizeMidgardCekLucidData = (
   value: LucidDataValue,
 ): MidgardCekDataSummary =>
-  summarizeMidgardCekData(dataFromCbor(fromHex(Data.to(value))));
+  summarizeMidgardCekData(
+    plutusDataFromCborIterative(lucidDataToCborIterative(value)),
+  );
 
 export const summarizeMidgardCekDataList = (
   values: readonly PlutusData[],

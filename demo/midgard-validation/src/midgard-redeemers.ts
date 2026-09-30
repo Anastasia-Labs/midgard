@@ -3,7 +3,8 @@ import {
   MIDGARD_REDEEMER_PURPOSE_TAGS,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import { CML, Constr, Data } from "@lucid-evolution/lucid";
+import { lucidDataFromCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import { CML, Constr } from "@lucid-evolution/lucid";
 
 import { txOutRefData } from "./tx-out-ref.js";
 
@@ -51,7 +52,7 @@ const decodeRedeemerDataCborHex = (
       ? Buffer.from(value).toString("hex")
       : encodeCbor(value).toString("hex");
   try {
-    Data.from(dataCborHex);
+    lucidDataFromCborIterative(dataCborHex);
   } catch (e) {
     throw new Error(`${fieldName} must encode Plutus Data: ${String(e)}`);
   }

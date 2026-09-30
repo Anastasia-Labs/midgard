@@ -18,8 +18,6 @@ import {
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
   MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-  MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
-  MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   type MidgardCekContinuationFrame,
@@ -34,11 +32,9 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
   DataMap,
-  DataPair,
 } from "@harmoniclabs/plutus-data";
 
 import {
@@ -76,6 +72,7 @@ import {
   sameBytes,
   type SequenceNode,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
+import { readMidgardCekSemanticData } from "./cek-executor.structural-executor-data.js";
 import {
   hashMidgardCekMapConversionControl,
   midgardCekBuiltinArgumentCount,
@@ -86,6 +83,7 @@ import {
   type MidgardCekMapConversionControl,
   verifyMidgardCekCoreStep,
 } from "./cek-machine.js";
+import { midgardDataPair } from "./plutus-data-iterative.pair.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 export class StructuralExecutor {
@@ -354,137 +352,16 @@ export class StructuralExecutor {
     return resultRoot;
   }
 
-  private blobBytes(
-    root: Bytes,
-    active: ReadonlySet<string> = new Set(),
-  ): Buffer {
-    const key = rootHex(root);
-    if (active.has(key)) {
-      throw new Error("cyclic CEK semantic blob commitment");
-    }
-    const node = this.blobs.get(key);
-    if (node === undefined) {
-      throw new Error(`missing authenticated CEK blob ${key}`);
-    }
-    if (node.kind === "chunk") return Buffer.from(node.bytes);
-    const next = new Set(active);
-    next.add(key);
-    const bytes = Buffer.concat([
-      this.blobBytes(node.left, next),
-      this.blobBytes(node.right, next),
-    ]);
-    if (BigInt(bytes.length) !== node.byteLength) {
-      throw new Error("CEK semantic blob length does not match its root");
-    }
-    return bytes;
-  }
-
-  private dataListValues(root: Bytes, count: bigint): Data[] {
-    const values: Data[] = [];
-    let cursor = Buffer.from(root);
-    let remaining = count;
-    while (remaining > 0n) {
-      const node = this.dataLists.get(rootHex(cursor));
-      if (node === undefined || node.length !== remaining) {
-        throw new Error(
-          `missing authenticated CEK Data-list node ${rootHex(cursor)}`,
-        );
-      }
-      values.push(this.dataValue(node.head));
-      cursor = Buffer.from(node.tail);
-      remaining -= 1n;
-    }
-    if (!sameBytes(cursor, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT)) {
-      throw new Error("CEK Data-list commitment has a non-empty tail");
-    }
-    return values;
-  }
-
-  private dataPairValues(root: Bytes, count: bigint): DataPair<Data, Data>[] {
-    const values: DataPair<Data, Data>[] = [];
-    let cursor = Buffer.from(root);
-    let remaining = count;
-    while (remaining > 0n) {
-      const node = this.dataPairs.get(rootHex(cursor));
-      if (node === undefined || node.length !== remaining) {
-        throw new Error(
-          `missing authenticated CEK Data-pair node ${rootHex(cursor)}`,
-        );
-      }
-      values.push(
-        new DataPair(this.dataValue(node.key), this.dataValue(node.value)),
-      );
-      cursor = Buffer.from(node.tail);
-      remaining -= 1n;
-    }
-    if (!sameBytes(cursor, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT)) {
-      throw new Error("CEK Data-map commitment has a non-empty tail");
-    }
-    return values;
-  }
-
   private dataValue(root: Bytes): Data {
-    const node = this.dataNodes.get(rootHex(root));
-    if (node === undefined) {
-      throw new Error(`missing authenticated CEK Data node ${rootHex(root)}`);
-    }
-    let value: Data;
-    switch (node.kind) {
-      case "constrSmall":
-        value = new DataConstr(
-          node.constructor,
-          this.dataListValues(node.fieldsRoot, node.fieldsCount),
-        );
-        break;
-      case "constrLarge": {
-        const constructor = dataFromCbor(
-          this.blobBytes(node.constructorCborRoot),
-        );
-        if (!(constructor instanceof DataI) || constructor.int <= 127n) {
-          throw new Error("CEK large Data constructor is not canonical");
-        }
-        value = new DataConstr(
-          constructor.int,
-          this.dataListValues(node.fieldsRoot, node.fieldsCount),
-        );
-        break;
-      }
-      case "map":
-        value = new DataMap(
-          this.dataPairValues(node.entriesRoot, node.entriesCount),
-        );
-        break;
-      case "list":
-        value = new DataList(
-          this.dataListValues(node.itemsRoot, node.itemsCount),
-        );
-        break;
-      case "integer": {
-        const integer = dataFromCbor(this.blobBytes(node.cborRoot));
-        if (!(integer instanceof DataI)) {
-          throw new Error("CEK integer Data leaf has a non-integer payload");
-        }
-        value = integer;
-        break;
-      }
-      case "bytes": {
-        const bytes = this.blobBytes(node.bytesRoot);
-        if (BigInt(bytes.length) !== node.bytesLength) {
-          throw new Error("CEK bytes Data leaf has the wrong length");
-        }
-        value = new DataB(bytes);
-        break;
-      }
-    }
-    const canonical = commitMidgardCekDataTree(value);
-    if (
-      !sameBytes(canonical.root, root) ||
-      canonical.cborLength !== node.cborLength ||
-      canonical.memory !== node.memory
-    ) {
-      throw new Error("CEK semantic Data material is not self-consistent");
-    }
-    return value;
+    return readMidgardCekSemanticData(
+      {
+        dataNodes: this.dataNodes,
+        dataLists: this.dataLists,
+        dataPairs: this.dataPairs,
+        blobs: this.blobs,
+      },
+      root,
+    );
   }
 
   private installSemanticTree(
@@ -1109,7 +986,7 @@ export class StructuralExecutor {
           ) {
             throw new Error("mapData requires canonical Data pairs");
           }
-          return new DataPair(item.fields[0]!, item.fields[1]!);
+          return midgardDataPair(item.fields[0]!, item.fields[1]!);
         }),
       );
       resultType = { kind: "data" };

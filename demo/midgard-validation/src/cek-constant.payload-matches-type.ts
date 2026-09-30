@@ -2,7 +2,6 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
 } from "@harmoniclabs/plutus-data";
@@ -10,17 +9,14 @@ import { type ConstType, ConstTyTag } from "@harmoniclabs/uplc";
 
 import {
   asByteArray,
-  encodeCardanoBytes,
-  encodeCardanoInteger,
-  encodeCardanoList,
-  encodeSmallCborArgument,
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   type MidgardCekConstantType,
   type MidgardCekConstantWitness,
   parseMidgardCekConstantType,
   sameBytes,
 } from "./cek-constant.semantic-data.js";
-import { isPlutusDataMap } from "./plutus-data-narrowing.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
 
 export const decodeMidgardCekConstantTypeCbor = (
   typeCbor: Uint8Array,
@@ -28,7 +24,7 @@ export const decodeMidgardCekConstantTypeCbor = (
   if (typeCbor.length > 64) {
     throw new Error("V1 constant type exceeds its direct bound");
   }
-  const typeData = dataFromCbor(typeCbor);
+  const typeData = plutusDataFromCborIterative(typeCbor);
   if (
     !sameBytes(encodeMidgardCekPlutusData(typeData), typeCbor) ||
     !(typeData instanceof DataList)
@@ -48,59 +44,6 @@ export const decodeMidgardCekConstantTypeCbor = (
       return Number(tag.int) as ConstTyTag;
     }) as ConstType,
   );
-};
-
-/**
- * Exact `cbor.serialise(Data)`/cardano-node representation. The upstream
- * harmonic serializer currently loses every byte after the first 64 in
- * dynamic byte strings and rejects negative bignums below the uint64 major-1
- * domain. Consensus code therefore encodes both scalar classes directly.
- */
-export const encodeMidgardCekPlutusData = (data: Data): Buffer => {
-  if (data instanceof DataI) {
-    return encodeCardanoInteger(data.int);
-  }
-  if (data instanceof DataB) {
-    return encodeCardanoBytes(asByteArray(data.bytes));
-  }
-  if (data instanceof DataList) {
-    return encodeCardanoList(
-      data.list.map((item) => encodeMidgardCekPlutusData(item)),
-    );
-  }
-  if (isPlutusDataMap(data)) {
-    return Buffer.concat([
-      encodeSmallCborArgument(5, BigInt(data.map.length)),
-      ...data.map.flatMap((entry) => [
-        encodeMidgardCekPlutusData(entry.fst),
-        encodeMidgardCekPlutusData(entry.snd),
-      ]),
-    ]);
-  }
-  if (data instanceof DataConstr) {
-    const fields = encodeCardanoList(
-      data.fields.map((field) => encodeMidgardCekPlutusData(field)),
-    );
-    if (data.constr <= 6n) {
-      return Buffer.concat([
-        encodeSmallCborArgument(6, 121n + data.constr),
-        fields,
-      ]);
-    }
-    if (data.constr <= 127n) {
-      return Buffer.concat([
-        encodeSmallCborArgument(6, 1280n + data.constr - 7n),
-        fields,
-      ]);
-    }
-    return Buffer.concat([
-      encodeSmallCborArgument(6, 102n),
-      Buffer.from([0x82]),
-      encodeCardanoInteger(data.constr),
-      fields,
-    ]);
-  }
-  throw new Error("V1 constant contains unknown Plutus Data");
 };
 
 const payloadMatchesType = (
@@ -185,8 +128,8 @@ export const decodeMidgardCekConstantWitness = (
   ) {
     throw new Error("V1 constant payload exceeds its direct bound");
   }
-  const typeData = dataFromCbor(witness.typeCbor);
-  const payload = dataFromCbor(witness.payloadCbor);
+  const typeData = plutusDataFromCborIterative(witness.typeCbor);
+  const payload = plutusDataFromCborIterative(witness.payloadCbor);
   if (
     !sameBytes(encodeMidgardCekPlutusData(typeData), witness.typeCbor) ||
     !sameBytes(encodeMidgardCekPlutusData(payload), witness.payloadCbor)
