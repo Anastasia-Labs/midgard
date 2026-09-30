@@ -1,8 +1,5 @@
 import "./index.registration-7.js";
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import { Effect } from "effect";
 import {
   collectStringOption,
@@ -20,7 +17,6 @@ import { runPipelinedCommitProcessAcceptance } from "./commands/e2e-pipelined-co
 import * as E2EProcessCleanupCommand from "./commands/e2e-process-cleanup.js";
 import * as E2EServiceCommand from "./commands/e2e-service.js";
 import * as Phase4T1RecoveryCommand from "./commands/phase4-t1-recovery.js";
-import { runCommandStep } from "./e2e/runner.js";
 import { program } from "./index.registration.js";
 
 program
@@ -160,67 +156,6 @@ program
       );
     } catch (error) {
       failCli("e2e-pipelined-commit-process-acceptance", error);
-    }
-  });
-
-program
-  .command("e2e-run-step")
-  .description("Run one acceptance command through the structured e2e runner")
-  .requiredOption("--id <id>", "Step id")
-  .requiredOption("--cwd <path>", "Working directory")
-  .requiredOption("--raw-log <path>", "Raw log path")
-  .option("--summary-out <path>", "Write the step summary JSON to this path")
-  .option("--timeout-ms <ms>", "Step timeout in milliseconds")
-  .option(
-    "--env-file <path>",
-    "Dotenv-compatible env file to apply before explicit --env overrides; repeatable",
-    collectStringOption,
-    [],
-  )
-  .option(
-    "--env <KEY=VALUE>",
-    "Explicit environment override; repeatable and applied after --env-file",
-    collectStringOption,
-    [],
-  )
-  .option(
-    "--env-inheritance <mode>",
-    "Environment inheritance mode: process or none",
-    "process",
-  )
-  .argument("<command>", "Command to execute")
-  .argument("[args...]", "Command arguments")
-  .action(async (command, args, opts) => {
-    const timeoutMs =
-      typeof opts.timeoutMs === "string"
-        ? parsePositiveIntegerOption(opts.timeoutMs, "--timeout-ms")
-        : undefined;
-    try {
-      const summary = await runCommandStep({
-        id: opts.id,
-        command,
-        args,
-        cwd: opts.cwd,
-        envFiles: parseStringListOption(opts.envFile, "--env-file"),
-        env: parseEnvOverrides(parseStringListOption(opts.env, "--env")),
-        envInheritance: parseE2EEnvInheritanceOption(opts.envInheritance),
-        rawLogPath: opts.rawLog,
-        ...(timeoutMs === undefined ? {} : { timeoutMs }),
-      });
-      if (typeof opts.summaryOut === "string" && opts.summaryOut.length > 0) {
-        await mkdir(dirname(opts.summaryOut), { recursive: true });
-        await writeFile(
-          opts.summaryOut,
-          `${JSON.stringify(summary, null, 2)}\n`,
-          "utf8",
-        );
-      }
-      writeJson(summary);
-      if (summary.status !== "success") {
-        process.exitCode = 1;
-      }
-    } catch (error) {
-      failCli("e2e-run-step", error);
     }
   });
 
