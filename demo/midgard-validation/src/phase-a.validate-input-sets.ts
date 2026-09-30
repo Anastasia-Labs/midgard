@@ -8,6 +8,7 @@ import type {
   MidgardLedgerTx,
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
+import type { RejectSubject } from "./reject-subject.js";
 import {
   PhaseALocalContext,
   RejectCode,
@@ -21,11 +22,13 @@ export const reject = (
   code: RejectCode,
   detail: string | null = null,
   consensusPhase: MidgardValidationPhaseName = "canonicalDecode",
+  subject?: RejectSubject,
 ): RejectedTx => ({
   txId,
   code,
   detail,
   consensusPhase,
+  ...(subject === undefined ? {} : { subject }),
 });
 
 export const codecErrorDetail = (error: unknown): string => {
@@ -157,16 +160,31 @@ export const hashHexes = (hashes: readonly Buffer[]): readonly string[] =>
     ? EMPTY_HASH_HEXES
     : hashes.map((hash) => hash.toString("hex"));
 
-const firstDuplicate = (values: readonly string[]): string | undefined => {
-  const seen = new Set<string>();
-  for (const value of values) {
-    if (seen.has(value)) {
-      return value;
+/** Ordinals of the earliest-completed duplicate pair, first before second. */
+const firstDuplicate = (
+  values: readonly string[],
+): { readonly first: number; readonly second: number } | undefined => {
+  const seen = new Map<string, number>();
+  for (let index = 0; index < values.length; index += 1) {
+    const first = seen.get(values[index]!);
+    if (first !== undefined) {
+      return { first, second: index };
     }
-    seen.add(value);
+    seen.set(values[index]!, index);
   }
   return undefined;
 };
+
+const duplicateInputSubject = (
+  firstField: bigint,
+  first: number,
+  secondField: bigint,
+  second: number,
+): RejectSubject => ({
+  arm: "DuplicateInput",
+  first: { fieldIndex: firstField, itemIndex: BigInt(first) },
+  second: { fieldIndex: secondField, itemIndex: BigInt(second) },
+});
 
 const outRefIdentity = (
   outRef: MidgardLedgerTx["spendInputs"][number],
@@ -185,14 +203,17 @@ export const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
   if (spendOutRefIdentities.length > 1) {
     const duplicateSpend = firstDuplicate(spendOutRefIdentities);
     if (duplicateSpend !== undefined) {
-      const duplicate = tx.spendInputs.find(
-        (outRef) => outRefIdentity(outRef) === duplicateSpend,
-      )!;
       return reject(
         tx.txId,
         RejectCodes.DuplicateInputInTx,
-        midgardOutRefToCborHex(duplicate),
+        midgardOutRefToCborHex(tx.spendInputs[duplicateSpend.first]!),
         "inputSets",
+        duplicateInputSubject(
+          0n,
+          duplicateSpend.first,
+          0n,
+          duplicateSpend.second,
+        ),
       );
     }
   }
@@ -201,25 +222,33 @@ export const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
     return null;
   }
 
-  const spent = new Set(spendOutRefIdentities);
+  const spent = new Map(
+    spendOutRefIdentities.map((identity, index) => [identity, index]),
+  );
   const referenceOutRefs = tx.referenceInputs.map(outRefIdentity);
   if (referenceOutRefs.length > 1) {
     const duplicateReference = firstDuplicate(referenceOutRefs);
     if (duplicateReference !== undefined) {
-      const duplicate = tx.referenceInputs.find(
-        (outRef) => outRefIdentity(outRef) === duplicateReference,
-      )!;
       return reject(
         tx.txId,
         RejectCodes.DuplicateInputInTx,
-        `duplicate reference input ${midgardOutRefToCborHex(duplicate)}`,
+        `duplicate reference input ${midgardOutRefToCborHex(
+          tx.referenceInputs[duplicateReference.first]!,
+        )}`,
         "inputSets",
+        duplicateInputSubject(
+          1n,
+          duplicateReference.first,
+          1n,
+          duplicateReference.second,
+        ),
       );
     }
   }
 
   for (let index = 0; index < referenceOutRefs.length; index += 1) {
-    if (spent.has(referenceOutRefs[index]!)) {
+    const spendIndex = spent.get(referenceOutRefs[index]!);
+    if (spendIndex !== undefined) {
       return reject(
         tx.txId,
         RejectCodes.DuplicateInputInTx,
@@ -227,6 +256,7 @@ export const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
           tx.referenceInputs[index]!,
         )}`,
         "inputSets",
+        duplicateInputSubject(0n, spendIndex, 1n, index),
       );
     }
   }
@@ -291,6 +321,7 @@ export const verifyVKeyWitnessSignatures = (
         RejectCodes.InvalidSignature,
         `invalid native vkey witness #${witness.index}`,
         "signatures",
+        { arm: "AddressWitnessSignatureInvalid", index: BigInt(witness.index) },
       );
     }
   }
@@ -304,13 +335,16 @@ export const validateRequiredSigners = (
     return null;
   }
   const witnessSignerSet = new Set(hashHexes(tx.witnessKeyHashes));
-  for (const requiredSigner of hashHexes(tx.requiredSignerHashes)) {
+  const requiredSigners = hashHexes(tx.requiredSignerHashes);
+  for (let index = 0; index < requiredSigners.length; index += 1) {
+    const requiredSigner = requiredSigners[index]!;
     if (!witnessSignerSet.has(requiredSigner)) {
       return reject(
         tx.txId,
         RejectCodes.MissingRequiredWitness,
         `missing witness for signer ${requiredSigner}`,
         "signatures",
+        { arm: "RequiredSignerUnsigned", index: BigInt(index) },
       );
     }
   }

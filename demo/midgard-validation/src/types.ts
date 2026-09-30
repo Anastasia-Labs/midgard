@@ -9,6 +9,7 @@ import type {
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
 import type { LocalScriptEvalResult } from "./local-script-eval.js";
+import type { RejectSubject } from "./reject-subject.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -159,6 +160,11 @@ export type RejectedTx = {
    * during signer, input-resolution, or script-source validation.
    */
   readonly consensusPhase?: MidgardValidationPhaseName;
+  /**
+   * The arm and subject coordinates of the failed rule, where the rule names
+   * one. A forced verdict cites them; see {@link RejectSubject}.
+   */
+  readonly subject?: RejectSubject;
 };
 
 /**

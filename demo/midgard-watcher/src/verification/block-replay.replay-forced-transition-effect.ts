@@ -2,7 +2,8 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardForcedTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { makeReturn } from "@al-ft/midgard-sdk";
+import { forcedRejectionReason } from "@al-ft/midgard-fault-proofs";
+import { makeReturn, rejectionReasonArmOf } from "@al-ft/midgard-sdk";
 import {
   buildCanonicalTransitionEffect,
   type CanonicalTransitionEffect,
@@ -24,7 +25,6 @@ import {
   type WatcherForcedOperatorVerdict,
 } from "../indexers/user-event-indexer.js";
 import { type ValidatedEventAuthority } from "./block-replay.watcher-block-replay-prior-state.js";
-import { watcherBlockReplayForcedValidityForRejectCode } from "./block-replay.watcher-block-replay-rejection-projection.js";
 import {
   fail,
   type WatcherBlockReplayCommittedStep,
@@ -102,9 +102,8 @@ export const replayForcedTransitionEffect = async (input: {
   if ("code" in phaseA) {
     phaseAStatus = "rejected";
     phaseARejectCode = phaseA.code;
-    canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
-      phaseA.code,
-      "phaseA",
+    canonicalOperatorValidity = rejectionReasonArmOf(
+      forcedRejectionReason(phaseA, "phaseA"),
     );
   } else {
     const phaseB = await makeReturn(
@@ -125,9 +124,8 @@ export const replayForcedTransitionEffect = async (input: {
       }
       phaseBStatus = "rejected";
       phaseBRejectCode = phaseB.rejected[0]!.code;
-      canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
-        phaseBRejectCode,
-        "phaseB",
+      canonicalOperatorValidity = rejectionReasonArmOf(
+        forcedRejectionReason(phaseB.rejected[0]!, "phaseB"),
       );
     } else {
       if (phaseB.accepted.length !== 1) {

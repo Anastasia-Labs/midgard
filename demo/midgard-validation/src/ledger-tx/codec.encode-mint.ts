@@ -338,6 +338,7 @@ export const decodeMidgardSubmittedTxFromCanonicalCbor = (
       "ledger",
       e instanceof MidgardLedgerOutputDecodeError ? e.causeValue : e,
       e instanceof MidgardLedgerOutputDecodeError,
+      e instanceof MidgardLedgerOutputDecodeError ? e.outputIndex : undefined,
     );
   }
 };

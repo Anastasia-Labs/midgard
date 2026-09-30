@@ -18,11 +18,20 @@ import {
   type RequiredScriptExecution,
   type ResolvedReferenceInput,
 } from "./phase-b.resolve-reference-inputs.js";
+import { inputOrdinalOf, REJECT_SOURCE_KIND_SPEND } from "./reject-subject.js";
 import { ScriptContextView } from "./script-context.js";
 import { resolveScriptSource, ScriptSource } from "./script-source.js";
 import { sortTxOutRefHexes } from "./tx-out-ref.js";
 import { RejectCodes } from "./types.js";
 import { mintDeltaToScriptMintValue } from "./value-accounting.js";
+
+/** `purpose_kind` coordinate of a script purpose (0 spend .. 3 receive). */
+const PURPOSE_KIND: Record<MidgardScriptPurpose["kind"], bigint> = {
+  spend: 0n,
+  mint: 1n,
+  observe: 2n,
+  receive: 3n,
+};
 
 export const discoverLocalScriptExecutions = (
   node: CandidateNode,
@@ -41,14 +50,17 @@ export const discoverLocalScriptExecutions = (
   const { ledgerTx } = candidate;
   const redeemers = ledgerTx.redeemers;
   const seenRedeemerPointers = new Set<string>();
-  for (const redeemer of redeemers) {
+  for (const [redeemerIndex, redeemer] of redeemers.entries()) {
     const key = midgardRedeemerPointerKey(redeemer);
     if (seenRedeemerPointers.has(key)) {
+      // The earlier item with this pointer serves its purpose; this later
+      // one is the redeemer no purpose uses.
       return {
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `duplicate redeemer ${key}`,
         consensusPhase: "scriptSources",
+        subject: { arm: "UnusedRedeemer", index: BigInt(redeemerIndex) },
       };
     }
     seenRedeemerPointers.add(key);
@@ -79,6 +91,11 @@ export const discoverLocalScriptExecutions = (
         code: RejectCodes.MissingRequiredWitness,
         detail: `missing script source for ${purpose.kind} ${purpose.scriptHash}`,
         consensusPhase: "scriptSources",
+        subject: {
+          arm: "ScriptSourceMissing",
+          purposeKind: PURPOSE_KIND[purpose.kind],
+          purposeIndex: pointer.index,
+        },
       };
     }
     if (resolved.version !== "NativeCardano") {
@@ -89,6 +106,11 @@ export const discoverLocalScriptExecutions = (
           code: RejectCodes.MissingRequiredWitness,
           detail: `missing redeemer for ${purpose.kind} ${purpose.scriptHash}`,
           consensusPhase: "scriptSources",
+          subject: {
+            arm: "RedeemerMissing",
+            purposeKind: PURPOSE_KIND[purpose.kind],
+            purposeIndex: pointer.index,
+          },
         };
       }
     }
@@ -106,6 +128,11 @@ export const discoverLocalScriptExecutions = (
         code: RejectCodes.InputNotFound,
         detail: outRefHex,
         consensusPhase: "resolveInputs",
+        subject: {
+          arm: "InputNotFound",
+          sourceKind: REJECT_SOURCE_KIND_SPEND,
+          index: inputOrdinalOf(ledgerTx, REJECT_SOURCE_KIND_SPEND, outRefHex),
+        },
       };
     }
     const output = decodeMidgardTxOutput(outputBytes);
@@ -177,6 +204,10 @@ export const discoverLocalScriptExecutions = (
           code: RejectCodes.MissingRequiredWitness,
           detail: `missing witness for protected output signer ${pubKey}`,
           consensusPhase: "scriptSources",
+          subject: {
+            arm: "ProtectedOutputSignerMissing",
+            index: BigInt(index),
+          },
         };
       }
       continue;
@@ -197,13 +228,14 @@ export const discoverLocalScriptExecutions = (
     }
   }
 
-  for (const redeemer of redeemers) {
+  for (const [redeemerIndex, redeemer] of redeemers.entries()) {
     if (!expectedPointers.has(midgardRedeemerPointerKey(redeemer))) {
       return {
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `extraneous redeemer ${midgardRedeemerPointerKey(redeemer)}`,
         consensusPhase: "scriptSources",
+        subject: { arm: "UnusedRedeemer", index: BigInt(redeemerIndex) },
       };
     }
   }

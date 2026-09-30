@@ -1,4 +1,8 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import {
+  REJECT_SOURCE_KIND_REFERENCE,
+  REJECT_SOURCE_KIND_SPEND,
+} from "@al-ft/midgard-validation";
 
 /**
  * Disposition of every typed `RejectionReason` constructor onto the fault-proof
@@ -25,11 +29,6 @@ export type TypedReasonDisposition = {
 export const INTERACTIVE_TYPED_REASON_ARMS = Object.freeze([
   "PlutusExecutionFailed",
 ] as const);
-
-/** `InputNotFound.source_kind` for a spend input (field 0). */
-export const INPUT_NOT_FOUND_SOURCE_KIND_SPEND = 0n;
-/** `InputNotFound.source_kind` for a reference input (field 1). */
-export const INPUT_NOT_FOUND_SOURCE_KIND_REFERENCE = 1n;
 
 const direct = (
   ...categories: readonly FraudProofCatalogueCategoryName[]
@@ -120,10 +119,10 @@ export const directCategoryOfTypedReason = (
   coordinate: { readonly source_kind?: bigint } = {},
 ): FraudProofCatalogueCategoryName => {
   if (arm === "InputNotFound") {
-    if (coordinate.source_kind === INPUT_NOT_FOUND_SOURCE_KIND_SPEND) {
+    if (coordinate.source_kind === REJECT_SOURCE_KIND_SPEND) {
       return "nonExistentInput";
     }
-    if (coordinate.source_kind === INPUT_NOT_FOUND_SOURCE_KIND_REFERENCE) {
+    if (coordinate.source_kind === REJECT_SOURCE_KIND_REFERENCE) {
       return "noReferenceInput";
     }
     throw new Error(

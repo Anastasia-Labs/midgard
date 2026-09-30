@@ -14,6 +14,11 @@ import {
   reject,
   resolveReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
+import {
+  inputOrdinalOf,
+  REJECT_SOURCE_KIND_SPEND,
+  type RejectSubject,
+} from "./reject-subject.js";
 import { PhaseBConfig, RejectCodes, RejectedTx } from "./types.js";
 import {
   describeValueDelta,
@@ -35,11 +40,14 @@ const validatePlainCandidateAgainstState = (
     code: RejectedTx["code"],
     detail: string | null = null,
     consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+    subject?: RejectSubject,
   ) => ({
     index: node.index,
     accepted: false as const,
-    rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
+    rejection: reject(ledgerTx.txId, code, detail, consensusPhase, subject),
   });
+  const spendOrdinal = (outRefHex: string): bigint =>
+    inputOrdinalOf(ledgerTx, REJECT_SOURCE_KIND_SPEND, outRefHex);
 
   if (
     ledgerTx.validityIntervalStart !== undefined &&
@@ -77,7 +85,11 @@ const validatePlainCandidateAgainstState = (
     }
     const inputOutput = stateValue(inputOutRefHex);
     if (inputOutput === undefined) {
-      return fail(RejectCodes.InputNotFound, inputOutRefHex);
+      return fail(RejectCodes.InputNotFound, inputOutRefHex, "resolveInputs", {
+        arm: "InputNotFound",
+        sourceKind: REJECT_SOURCE_KIND_SPEND,
+        index: spendOrdinal(inputOutRefHex),
+      });
     }
     try {
       const output = decodeMidgardTxOutput(inputOutput);
@@ -90,6 +102,11 @@ const validatePlainCandidateAgainstState = (
         return fail(
           RejectCodes.MissingRequiredWitness,
           `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
+          "resolveInputs",
+          {
+            arm: "SpendInputSignerMissing",
+            index: spendOrdinal(inputOutRefHex),
+          },
         );
       }
       inputValues.push(output.value);
@@ -97,6 +114,12 @@ const validatePlainCandidateAgainstState = (
       return fail(
         RejectCodes.InvalidOutput,
         `failed to decode input output: ${String(error)}`,
+        "resolveInputs",
+        {
+          arm: "InputSpentOutputNonCanonical",
+          sourceKind: REJECT_SOURCE_KIND_SPEND,
+          index: spendOrdinal(inputOutRefHex),
+        },
       );
     }
   }
@@ -126,12 +149,16 @@ const validatePlainCandidateAgainstState = (
       RejectCodes.InvalidFieldType,
       `script_integrity_hash mismatch: expected ${expectedIntegrityHash.toString("hex")} actual ${ledgerTx.scriptIntegrityHash.toString("hex")} required_languages=`,
       "scriptIntegrity",
+      { arm: "ScriptIntegrityHashMismatch" },
     );
   }
 
   const underFundedOutput = minAdaViolation(candidate);
   if (underFundedOutput !== null) {
-    return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
+    return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint", {
+      arm: "OutputBelowMinAda",
+      index: BigInt(underFundedOutput.index),
+    });
   }
 
   const delta = valuePreservationDelta(

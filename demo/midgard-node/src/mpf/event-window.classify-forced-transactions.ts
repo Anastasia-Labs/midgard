@@ -10,6 +10,7 @@ import {
   collectMidgardAttachedProgramEnvelopes,
   collectMidgardReferencedProgramEnvelopes,
 } from "@al-ft/midgard-core/script-proof";
+import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyUTxOStatePatch,
@@ -30,7 +31,6 @@ import {
   applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
   type ForcedProgramMaterialSidecarResolver,
-  forcedVerdictForRejection,
   validationLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";
 import {
@@ -169,7 +169,7 @@ export const classifyForcedTransactions = <R>({
       let rejectionCode: RejectCode | null = null;
       if (phaseA.rejected.length > 0) {
         rejectionCode = phaseA.rejected[0]!.code;
-        verdict = forcedVerdictForRejection(rejectionCode, "phaseA");
+        verdict = forcedVerdictForRejection(phaseA.rejected[0]!, "phaseA");
       } else {
         let acceptedCandidate = phaseA.accepted[0]!;
         if (
@@ -228,7 +228,7 @@ export const classifyForcedTransactions = <R>({
         );
         if (phaseB.rejected.length > 0) {
           rejectionCode = phaseB.rejected[0]!.code;
-          verdict = forcedVerdictForRejection(rejectionCode, "phaseB");
+          verdict = forcedVerdictForRejection(phaseB.rejected[0]!, "phaseB");
         } else {
           verdict = "ForcedTxValid";
           transitionEffect = canonicalTransitionEffectFromStatePatch(

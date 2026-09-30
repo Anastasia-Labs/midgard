@@ -16,6 +16,12 @@ import {
 } from "./phase-b.resolve-reference-inputs.js";
 import { runLocalScriptEvaluation } from "./phase-b.run-local-script-evaluation.js";
 import {
+  inputOrdinalOf,
+  REJECT_SOURCE_KIND_SPEND,
+  type RejectSubject,
+} from "./reject-subject.js";
+import { sortTxOutRefHexes } from "./tx-out-ref.js";
+import {
   PhaseAValidatedTx,
   PhaseBConfig,
   RejectCodes,
@@ -128,11 +134,28 @@ export const validateCandidateAgainstState = (
       code: RejectedTx["code"],
       detail: string | null = null,
       consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+      subject?: RejectSubject,
     ) => ({
       index: node.index,
       accepted: false as const,
-      rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
+      rejection: reject(ledgerTx.txId, code, detail, consensusPhase, subject),
     });
+    const spendSubject = (
+      arm:
+        | "InputNotFound"
+        | "InputSpentOutputNonCanonical"
+        | "SpendInputSignerMissing",
+      outRefHex: string,
+    ): RejectSubject => {
+      const index = inputOrdinalOf(
+        ledgerTx,
+        REJECT_SOURCE_KIND_SPEND,
+        outRefHex,
+      );
+      return arm === "SpendInputSignerMissing"
+        ? { arm, index }
+        : { arm, sourceKind: REJECT_SOURCE_KIND_SPEND, index };
+    };
 
     if (
       ledgerTx.validityIntervalStart !== undefined &&
@@ -176,6 +199,8 @@ export const validateCandidateAgainstState = (
     const hasSatisfiedScriptMaterial = (
       scriptHash: string,
       context: string,
+      purposeKind: bigint,
+      purposeIndex: number,
     ): CandidateDecision | true => {
       if (inlineNativeScriptHashes.has(scriptHash)) {
         return true;
@@ -192,29 +217,44 @@ export const validateCandidateAgainstState = (
         RejectCodes.MissingRequiredWitness,
         `missing script witness ${scriptHash} for ${context}`,
         "scriptSources",
+        {
+          arm: "ScriptSourceMissing",
+          purposeKind,
+          purposeIndex: BigInt(purposeIndex),
+        },
       );
     };
 
-    for (const observerHash of candidate.derived.requiredObserverHashHexes) {
+    // Purpose ordinals follow the redeemer-pointer namespace: observers in
+    // their (Phase-A enforced, strictly ascending) field order, mint policies
+    // in mint order, spends in sorted out-ref order.
+    const observers = candidate.derived.requiredObserverHashHexes;
+    for (let index = 0; index < observers.length; index += 1) {
       const observerSatisfied = hasSatisfiedScriptMaterial(
-        observerHash,
-        `required observer ${observerHash}`,
+        observers[index]!,
+        `required observer ${observers[index]!}`,
+        2n,
+        index,
       );
       if (observerSatisfied !== true) {
         return observerSatisfied;
       }
     }
 
-    for (const mintPolicyHash of candidate.derived.mintPolicyHashHexes) {
+    const mintPolicies = candidate.derived.mintPolicyHashHexes;
+    for (let index = 0; index < mintPolicies.length; index += 1) {
       const mintSatisfied = hasSatisfiedScriptMaterial(
-        mintPolicyHash,
-        `mint policy ${mintPolicyHash}`,
+        mintPolicies[index]!,
+        `mint policy ${mintPolicies[index]!}`,
+        1n,
+        index,
       );
       if (mintSatisfied !== true) {
         return mintSatisfied;
       }
     }
 
+    const sortedSpent = sortTxOutRefHexes(node.spentOutRefs);
     for (const inputOutRefHex of node.spentOutRefs) {
       if (spentByAccepted.has(inputOutRefHex)) {
         return fail(RejectCodes.DoubleSpend, inputOutRefHex);
@@ -222,7 +262,12 @@ export const validateCandidateAgainstState = (
 
       const inputOutput = stateValue(inputOutRefHex);
       if (!inputOutput) {
-        return fail(RejectCodes.InputNotFound, inputOutRefHex);
+        return fail(
+          RejectCodes.InputNotFound,
+          inputOutRefHex,
+          "resolveInputs",
+          spendSubject("InputNotFound", inputOutRefHex),
+        );
       }
 
       try {
@@ -237,6 +282,8 @@ export const validateCandidateAgainstState = (
             return fail(
               RejectCodes.MissingRequiredWitness,
               `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
+              "resolveInputs",
+              spendSubject("SpendInputSignerMissing", inputOutRefHex),
             );
           }
         } else {
@@ -245,6 +292,8 @@ export const validateCandidateAgainstState = (
           const inputScriptSatisfied = hasSatisfiedScriptMaterial(
             inputScriptHash,
             `outref ${inputOutRefHex}`,
+            0n,
+            sortedSpent.indexOf(inputOutRefHex),
           );
           if (inputScriptSatisfied !== true) {
             return inputScriptSatisfied;
@@ -256,6 +305,8 @@ export const validateCandidateAgainstState = (
         return fail(
           RejectCodes.InvalidOutput,
           `failed to decode input output: ${String(e)}`,
+          "resolveInputs",
+          spendSubject("InputSpentOutputNonCanonical", inputOutRefHex),
         );
       }
     }
@@ -273,13 +324,22 @@ export const validateCandidateAgainstState = (
           localScriptEvaluation.code,
           localScriptEvaluation.detail,
           localScriptEvaluation.consensusPhase,
+          localScriptEvaluation.subject,
         );
       }
     }
 
     const underFundedOutput = minAdaViolation(candidate);
     if (underFundedOutput !== null) {
-      return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
+      return fail(
+        RejectCodes.MinAda,
+        underFundedOutput.detail,
+        "valueAndMint",
+        {
+          arm: "OutputBelowMinAda",
+          index: BigInt(underFundedOutput.index),
+        },
+      );
     }
 
     const delta = valuePreservationDelta(

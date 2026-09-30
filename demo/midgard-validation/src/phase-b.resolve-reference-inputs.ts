@@ -25,6 +25,11 @@ import {
   MidgardScriptPurpose,
 } from "./midgard-redeemers.js";
 import {
+  inputOrdinalOf,
+  REJECT_SOURCE_KIND_REFERENCE,
+  type RejectSubject,
+} from "./reject-subject.js";
+import {
   ResolvedScriptSource,
   ScriptSource,
   scriptSourceFromVersionedScript,
@@ -196,11 +201,27 @@ export const reject = (
   code: RejectedTx["code"],
   detail: string | null = null,
   consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+  subject?: RejectSubject,
 ): RejectedTx => ({
   txId,
   code,
   detail,
   consensusPhase,
+  ...(subject === undefined ? {} : { subject }),
+});
+
+const referenceInputSubject = (
+  node: CandidateNode,
+  arm: "InputNotFound" | "InputSpentOutputNonCanonical",
+  outRefHex: string,
+): RejectSubject => ({
+  arm,
+  sourceKind: REJECT_SOURCE_KIND_REFERENCE,
+  index: inputOrdinalOf(
+    node.candidate.ledgerTx,
+    REJECT_SOURCE_KIND_REFERENCE,
+    outRefHex,
+  ),
 });
 
 export const resolveReferenceInputs = (
@@ -218,6 +239,8 @@ export const resolveReferenceInputs = (
         node.candidate.ledgerTx.txId,
         RejectCodes.InputNotFound,
         `reference input not found: ${referenceOutRefHex}`,
+        "resolveInputs",
+        referenceInputSubject(node, "InputNotFound", referenceOutRefHex),
       );
     }
 
@@ -229,6 +252,12 @@ export const resolveReferenceInputs = (
         node.candidate.ledgerTx.txId,
         RejectCodes.InvalidOutput,
         `failed to decode reference input output ${referenceOutRefHex}: ${String(e)}`,
+        "resolveInputs",
+        referenceInputSubject(
+          node,
+          "InputSpentOutputNonCanonical",
+          referenceOutRefHex,
+        ),
       );
     }
     inputs.push({ outRefHex: referenceOutRefHex, output });
@@ -295,6 +324,7 @@ export type LocalScriptValidationResult =
       readonly code: RejectedTx["code"];
       readonly detail: string;
       readonly consensusPhase: MidgardValidationPhaseName;
+      readonly subject?: RejectSubject;
     };
 
 export const ledgerOutputToTxOutput = (
