@@ -3,6 +3,12 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { commitMidgardCekBlob } from "./cek-proof.encode-midgard-cek-continuation-frame.js";
 import { MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES } from "./cek-proof.encode-midgard-cek-term-node.js";
 import {
+  assertSemanticDataEncodable,
+  encodeSemanticData,
+  semanticConstrHeader,
+  type SemanticConstrValue,
+} from "./cek-proof.encode-semantic-data.js";
+import {
   encodeSemanticBytes,
   isSemanticConstr,
   isSemanticList,
@@ -87,58 +93,6 @@ export const semanticIntegerMemory = (value: bigint): bigint => {
   return BigInt(Math.ceil(doubled.toString(2).length / 8));
 };
 
-const encodeSemanticList = (values: readonly SemanticDataValue[]): Buffer =>
-  values.length === 0
-    ? Buffer.from([0x80])
-    : Buffer.concat([
-        Buffer.from([0x9f]),
-        ...values.map(encodeSemanticData),
-        Buffer.from([0xff]),
-      ]);
-
-export const encodeSemanticData = (value: SemanticDataValue): Buffer => {
-  if (typeof value === "bigint") {
-    return Buffer.from(LucidData.to(value), "hex");
-  }
-  if (typeof value === "string") {
-    return encodeSemanticBytes(Buffer.from(value, "hex"));
-  }
-  if (isSemanticList(value)) {
-    return encodeSemanticList(value);
-  }
-  if (isSemanticMap(value)) {
-    return Buffer.concat([
-      semanticCborHeader(5, BigInt(value.size)),
-      ...[...value.entries()].flatMap(([key, mapped]) => [
-        encodeSemanticData(key),
-        encodeSemanticData(mapped),
-      ]),
-    ]);
-  }
-  if (isSemanticConstr(value)) {
-    const fields = encodeSemanticList(value.fields);
-    if (value.constructor <= 6n) {
-      return Buffer.concat([
-        semanticCborHeader(6, 121n + value.constructor),
-        fields,
-      ]);
-    }
-    if (value.constructor <= 127n) {
-      return Buffer.concat([
-        semanticCborHeader(6, 1280n + value.constructor - 7n),
-        fields,
-      ]);
-    }
-    return Buffer.concat([
-      semanticCborHeader(6, 102n),
-      Buffer.from([0x82]),
-      Buffer.from(LucidData.to(value.constructor), "hex"),
-      fields,
-    ]);
-  }
-  throw new Error("CEK constant contains unknown semantic Data");
-};
-
 type SemanticDataSummary = {
   readonly root: Hash32;
   readonly cborLength: bigint;
@@ -152,85 +106,45 @@ type SemanticListSummary = {
   readonly memory: bigint;
 };
 
-export const commitSemanticData = (
-  value: SemanticDataValue,
-): SemanticDataSummary => {
-  const canonicalCbor = encodeSemanticData(value);
-  const commitList = (
-    items: readonly SemanticDataValue[],
-  ): SemanticListSummary => {
-    let summary: SemanticListSummary = {
-      root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
-      length: 0n,
-      payloadCborLength: 0n,
-      memory: 0n,
-    };
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const head = commitSemanticData(items[index]!);
-      const node: MidgardCekDataListNode = {
-        head: head.root,
-        headCborLength: head.cborLength,
-        headMemory: head.memory,
-        tail: summary.root,
-        length: summary.length + 1n,
-        payloadCborLength: head.cborLength + summary.payloadCborLength,
-        memory: head.memory + summary.memory,
-      };
-      summary = {
-        root: hashMidgardCekDataListNode(node),
-        length: node.length,
-        payloadCborLength: node.payloadCborLength,
-        memory: node.memory,
-      };
-    }
-    return summary;
-  };
-  const commitPairs = (
-    entries: readonly (readonly [SemanticDataValue, SemanticDataValue])[],
-  ): SemanticListSummary => {
-    let summary: SemanticListSummary = {
-      root: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
-      length: 0n,
-      payloadCborLength: 0n,
-      memory: 0n,
-    };
-    for (let index = entries.length - 1; index >= 0; index -= 1) {
-      const [keyValue, mappedValue] = entries[index]!;
-      const key = commitSemanticData(keyValue);
-      const mapped = commitSemanticData(mappedValue);
-      const node: MidgardCekDataPairNode = {
-        key: key.root,
-        keyCborLength: key.cborLength,
-        keyMemory: key.memory,
-        value: mapped.root,
-        valueCborLength: mapped.cborLength,
-        valueMemory: mapped.memory,
-        tail: summary.root,
-        length: summary.length + 1n,
-        payloadCborLength:
-          key.cborLength + mapped.cborLength + summary.payloadCborLength,
-        memory: key.memory + mapped.memory + summary.memory,
-      };
-      summary = {
-        root: hashMidgardCekDataPairNode(node),
-        length: node.length,
-        payloadCborLength: node.payloadCborLength,
-        memory: node.memory,
-      };
-    }
-    return summary;
-  };
+type CommittedNode = SemanticDataSummary & {
+  /** The length of the node's canonical CBOR, from its children's lengths. */
+  readonly encodedLength: bigint;
+};
 
+type CommitFrame = {
+  readonly owner: SemanticDataValue & object;
+  /** List items, constructor fields, or map entries flattened key/value. */
+  readonly children: readonly SemanticDataValue[];
+  readonly kind: "list" | "map" | "constr";
+  /** Next child, walking from the last entry to the first. */
+  entry: number;
+  pendingKey: CommittedNode | undefined;
+  summary: SemanticListSummary;
+  childrenEncodedLength: bigint;
+};
+
+const emptySummary = (root: Hash32): SemanticListSummary => ({
+  root,
+  length: 0n,
+  payloadCborLength: 0n,
+  memory: 0n,
+});
+
+const commitLeaf = (value: bigint | string): CommittedNode => {
   let node: MidgardCekDataNode;
+  let encodedLength: bigint;
   if (typeof value === "bigint") {
+    const canonicalCbor = Buffer.from(LucidData.to(value), "hex");
+    encodedLength = BigInt(canonicalCbor.length);
     node = {
       kind: "integer",
       cborRoot: commitMidgardCekBlob(canonicalCbor).root,
       cborLength: BigInt(canonicalCbor.length),
       memory: 4n + semanticIntegerMemory(value),
     };
-  } else if (typeof value === "string") {
+  } else {
     const bytes = Buffer.from(value, "hex");
+    encodedLength = BigInt(encodeSemanticBytes(bytes).length);
     node = {
       kind: "bytes",
       bytesRoot: commitMidgardCekBlob(bytes).root,
@@ -238,72 +152,257 @@ export const commitSemanticData = (
       cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
       memory: 4n + BigInt(Math.max(1, bytes.length)),
     };
-  } else if (Array.isArray(value)) {
-    const items = commitList(value);
-    node = {
-      kind: "list",
-      itemsCount: items.length,
-      itemsRoot: items.root,
-      cborLength: midgardCekDataListCborLength(
-        items.length,
-        items.payloadCborLength,
-      ),
-      memory: 4n + items.memory,
-    };
-  } else if (isSemanticMap(value)) {
-    const entries = commitPairs([...value.entries()]);
-    node = {
-      kind: "map",
-      entriesCount: entries.length,
-      entriesRoot: entries.root,
-      cborLength: midgardCekDataMapCborLength(
-        entries.length,
-        entries.payloadCborLength,
-      ),
-      memory: 4n + entries.memory,
-    };
-  } else if (isSemanticConstr(value)) {
-    const constructor = value.constructor;
-    const fields = commitList(value.fields);
-    if (constructor <= 127n) {
-      node = {
-        kind: "constrSmall",
-        constructor,
-        fieldsCount: fields.length,
-        fieldsRoot: fields.root,
-        cborLength: midgardCekDataConstrCborLength(
-          constructor,
-          fields.length,
-          fields.payloadCborLength,
-        ),
-        memory: 4n + fields.memory,
-      };
-    } else {
-      const constructorCbor = Buffer.from(LucidData.to(constructor), "hex");
-      node = {
-        kind: "constrLarge",
-        constructorCborRoot: commitMidgardCekBlob(constructorCbor).root,
-        constructorCborLength: BigInt(constructorCbor.length),
-        constructorMemory: 4n + semanticIntegerMemory(constructor),
-        fieldsCount: fields.length,
-        fieldsRoot: fields.root,
-        cborLength: midgardCekDataConstrCborLength(
-          constructor,
-          fields.length,
-          fields.payloadCborLength,
-        ),
-        memory: 4n + fields.memory,
-      };
-    }
-  } else {
-    throw new Error("CEK constant contains unknown Plutus Data");
   }
-  if (node.cborLength !== BigInt(canonicalCbor.length)) {
+  return sealNode(node, encodedLength);
+};
+
+const sealNode = (
+  node: MidgardCekDataNode,
+  encodedLength: bigint,
+): CommittedNode => {
+  if (node.cborLength !== encodedLength) {
     throw new Error("CEK semantic Data CBOR summary is not exact");
   }
   return {
     root: hashMidgardCekDataNode(node),
     cborLength: node.cborLength,
     memory: node.memory,
+    encodedLength,
   };
+};
+
+const indefiniteListLength = (count: number, payload: bigint): bigint =>
+  count === 0 ? 1n : 2n + payload;
+
+const closeCommitFrame = (frame: CommitFrame): CommittedNode => {
+  const summary = frame.summary;
+  const payload = frame.childrenEncodedLength;
+  if (frame.kind === "list") {
+    return sealNode(
+      {
+        kind: "list",
+        itemsCount: summary.length,
+        itemsRoot: summary.root,
+        cborLength: midgardCekDataListCborLength(
+          summary.length,
+          summary.payloadCborLength,
+        ),
+        memory: 4n + summary.memory,
+      },
+      indefiniteListLength(frame.children.length, payload),
+    );
+  }
+  if (frame.kind === "map") {
+    const map = frame.owner as ReadonlyMap<
+      SemanticDataValue,
+      SemanticDataValue
+    >;
+    return sealNode(
+      {
+        kind: "map",
+        entriesCount: summary.length,
+        entriesRoot: summary.root,
+        cborLength: midgardCekDataMapCborLength(
+          summary.length,
+          summary.payloadCborLength,
+        ),
+        memory: 4n + summary.memory,
+      },
+      BigInt(semanticCborHeader(5, BigInt(map.size)).length) + payload,
+    );
+  }
+  const constr = frame.owner as SemanticConstrValue;
+  const constructor = constr.constructor;
+  const encodedLength =
+    BigInt(semanticConstrHeader(constr).length) +
+    indefiniteListLength(frame.children.length, payload);
+  if (constructor <= 127n) {
+    return sealNode(
+      {
+        kind: "constrSmall",
+        constructor,
+        fieldsCount: summary.length,
+        fieldsRoot: summary.root,
+        cborLength: midgardCekDataConstrCborLength(
+          constructor,
+          summary.length,
+          summary.payloadCborLength,
+        ),
+        memory: 4n + summary.memory,
+      },
+      encodedLength,
+    );
+  }
+  const constructorCbor = Buffer.from(LucidData.to(constructor), "hex");
+  return sealNode(
+    {
+      kind: "constrLarge",
+      constructorCborRoot: commitMidgardCekBlob(constructorCbor).root,
+      constructorCborLength: BigInt(constructorCbor.length),
+      constructorMemory: 4n + semanticIntegerMemory(constructor),
+      fieldsCount: summary.length,
+      fieldsRoot: summary.root,
+      cborLength: midgardCekDataConstrCborLength(
+        constructor,
+        summary.length,
+        summary.payloadCborLength,
+      ),
+      memory: 4n + summary.memory,
+    },
+    encodedLength,
+  );
+};
+
+/** Folds one committed child into its parent's list or pair chain. */
+const attachCommitted = (frame: CommitFrame, child: CommittedNode): void => {
+  const summary = frame.summary;
+  frame.childrenEncodedLength += child.encodedLength;
+  if (frame.kind !== "map") {
+    const node: MidgardCekDataListNode = {
+      head: child.root,
+      headCborLength: child.cborLength,
+      headMemory: child.memory,
+      tail: summary.root,
+      length: summary.length + 1n,
+      payloadCborLength: child.cborLength + summary.payloadCborLength,
+      memory: child.memory + summary.memory,
+    };
+    frame.summary = {
+      root: hashMidgardCekDataListNode(node),
+      length: node.length,
+      payloadCborLength: node.payloadCborLength,
+      memory: node.memory,
+    };
+    return;
+  }
+  if (frame.pendingKey === undefined) {
+    frame.pendingKey = child;
+    return;
+  }
+  const key = frame.pendingKey;
+  frame.pendingKey = undefined;
+  const node: MidgardCekDataPairNode = {
+    key: key.root,
+    keyCborLength: key.cborLength,
+    keyMemory: key.memory,
+    value: child.root,
+    valueCborLength: child.cborLength,
+    valueMemory: child.memory,
+    tail: summary.root,
+    length: summary.length + 1n,
+    payloadCborLength:
+      key.cborLength + child.cborLength + summary.payloadCborLength,
+    memory: key.memory + child.memory + summary.memory,
+  };
+  frame.summary = {
+    root: hashMidgardCekDataPairNode(node),
+    length: node.length,
+    payloadCborLength: node.payloadCborLength,
+    memory: node.memory,
+  };
+};
+
+/** The child to commit next: entries from last to first, key before value. */
+const nextCommitChild = (frame: CommitFrame): SemanticDataValue | undefined => {
+  if (frame.kind === "map") {
+    if (frame.pendingKey !== undefined) {
+      return frame.children[frame.entry * 2 + 1];
+    }
+    frame.entry -= 1;
+    return frame.entry >= 0 ? frame.children[frame.entry * 2] : undefined;
+  }
+  frame.entry -= 1;
+  return frame.entry >= 0 ? frame.children[frame.entry] : undefined;
+};
+
+const openCommitFrame = (value: SemanticDataValue & object): CommitFrame => {
+  if (isSemanticList(value)) {
+    return {
+      owner: value,
+      children: value,
+      kind: "list",
+      entry: value.length,
+      pendingKey: undefined,
+      summary: emptySummary(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT),
+      childrenEncodedLength: 0n,
+    };
+  }
+  if (isSemanticMap(value)) {
+    const children = [...value.entries()].flat();
+    return {
+      owner: value,
+      children,
+      kind: "map",
+      entry: children.length / 2,
+      pendingKey: undefined,
+      summary: emptySummary(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT),
+      childrenEncodedLength: 0n,
+    };
+  }
+  if (isSemanticConstr(value)) {
+    return {
+      owner: value,
+      children: value.fields,
+      kind: "constr",
+      entry: value.fields.length,
+      pendingKey: undefined,
+      summary: emptySummary(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT),
+      childrenEncodedLength: 0n,
+    };
+  }
+  throw new Error("CEK constant contains unknown Plutus Data");
+};
+
+/**
+ * The semantic Data commitment of `value`: its root hash, canonical CBOR
+ * length and memory.
+ *
+ * The value is first checked for encodability, so an unencodable value fails
+ * exactly as the encoder would. The commitment is then one post-order walk (children last to first, keys
+ * before values), with an explicit stack, that checks each node's declared
+ * CBOR length against the length summed from its children. A value reached
+ * twice (a shared subtree) is committed once.
+ */
+export const commitSemanticData = (
+  value: SemanticDataValue,
+): SemanticDataSummary => {
+  assertSemanticDataEncodable(value);
+  const committed = new Map<object, CommittedNode>();
+  const stack: CommitFrame[] = [];
+  let pending: SemanticDataValue = value;
+  for (;;) {
+    let done: CommittedNode | undefined;
+    if (typeof pending === "bigint" || typeof pending === "string") {
+      done = commitLeaf(pending);
+    } else {
+      done = committed.get(pending);
+      if (done === undefined) {
+        stack.push(openCommitFrame(pending));
+      }
+    }
+    // Hand results up until some frame has another child to commit.
+    for (;;) {
+      const top = stack[stack.length - 1];
+      if (done !== undefined) {
+        if (top === undefined) {
+          return {
+            root: done.root,
+            cborLength: done.cborLength,
+            memory: done.memory,
+          };
+        }
+        attachCommitted(top, done);
+        done = undefined;
+      }
+      const frame = top!;
+      const next = nextCommitChild(frame);
+      if (next !== undefined) {
+        pending = next;
+        break;
+      }
+      stack.pop();
+      done = closeCommitFrame(frame);
+      committed.set(frame.owner, done);
+    }
+  }
 };
