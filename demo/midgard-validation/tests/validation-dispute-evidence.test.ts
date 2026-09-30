@@ -43,7 +43,7 @@ const blueprint = JSON.parse(
 // A regenerated blueprint carries no definition for
 // `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`:
 // the auxiliary crosses the wire as `Data` into the yield dispatchers'
-// builtin decodes, so its pin is the frozen 40-arm tag/arity corpus
+// builtin decodes, so its pin is the frozen 41-arm tag/arity corpus
 // (`validation-controls-abi.test.ts` freezes the vectors' bytes and digest)
 // plus the cross-language producer vectors in
 // `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`.

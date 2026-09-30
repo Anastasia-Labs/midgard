@@ -467,8 +467,8 @@ test validation_source_membership_v1_typescript_vectors_are_exact() {
   }
 }
 
-test validation_tail_auxiliary_v1_rejects_adjacent_tag_40() fail {
-  expect Some(data) = cbor.deserialise(#"d9052180")
+test validation_tail_auxiliary_v1_rejects_adjacent_tag_41() fail {
+  expect Some(data) = cbor.deserialise(#"d9052280")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }

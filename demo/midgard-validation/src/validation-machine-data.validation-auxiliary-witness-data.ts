@@ -179,16 +179,16 @@ export const validationAuxiliaryWitnessData = (
       return new Constr(17, [
         redeemerControlData(auxiliary.control),
         int(auxiliary.itemIndex),
-        int(auxiliary.itemCount),
         int(auxiliary.totalLength),
         bytes(auxiliary.itemCommitment),
-        byteList(auxiliary.redeemerSiblings),
-        int(auxiliary.purposeFrontierIndex),
         int(auxiliary.purpose.purposeKind),
         auxiliary.purpose.purposeIndex,
         bytes(auxiliary.purpose.scriptHash),
         bytes(auxiliary.purpose.subject),
-        byteList(auxiliary.purpose.siblings),
+        int(auxiliary.executionLanguageTag),
+        bytes(auxiliary.sourceLeaf),
+        byteList(auxiliary.executionSiblings),
+        bytes(auxiliary.itemFrontierRoot),
       ]);
     case "redeemerItemStep":
       return new Constr(18, [
@@ -312,6 +312,13 @@ export const validationAuxiliaryWitnessData = (
       return new Constr(39, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
+      ]);
+    case "cekRedeemerContextSkip":
+      return new Constr(40, [
+        redeemerControlData(auxiliary.control),
+        bytes(auxiliary.purposeLeaf),
+        bytes(auxiliary.sourceLeaf),
+        byteList(auxiliary.executionSiblings),
       ]);
     case "nativeExecutionDescriptor":
       return new Constr(37, [

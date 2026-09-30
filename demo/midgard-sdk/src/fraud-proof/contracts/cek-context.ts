@@ -125,8 +125,10 @@ export const buildCekContextTail = (
     redeemerSelectHash.spendingScriptHash,
     ctPolicy,
   ]);
+  // A native execution leaf at the frontier is skipped straight to settle.
   const redeemerSelectAuthenticate = build("redeemerSelectAuthenticate", [
     redeemerSelectInitialize.spendingScriptHash,
+    settle.spendingScriptHash,
     ctPolicy,
   ]);
   const itemSelectionContinue = terminal("itemSelectionContinue");

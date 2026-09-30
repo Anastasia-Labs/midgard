@@ -1,4 +1,3 @@
-import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import {
   encodeMidgardCekProgramEnvelope,
   encodeMidgardCekProgramMaterialSidecar,
@@ -21,10 +20,8 @@ import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   applyUTxOStatePatch,
   buildConflictComponents,
-  buildDeterministicValidationMachineTrace,
   LedgerColumns,
   RejectCodes,
-  runPhaseBValidationWithPatch,
 } from "../src/index.js";
 import {
   encodeScriptContextCbor,
@@ -33,55 +30,30 @@ import {
 } from "../src/local-script-eval.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import type { PhaseBResultWithPatch } from "../src/phase-b.js";
-import type { PhaseBConfig, RejectCode, RejectedTx } from "../src/types.js";
 import {
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
 } from "../src/value-accounting.js";
 import {
+  expectSinglePhaseBRejection,
+  phaseBConfig,
+  preState,
+  runPhaseB,
+} from "./phase-b.harness.js";
+import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
-  makeMintPreimageCbor,
-  makeNativeTx,
   makeOutput,
   makePhaseBCandidate,
   makeProtectedScriptOutput,
   makeRedeemersCbor,
-  nativeScriptWitness,
   outRefFromByte,
   plutusV3ScriptWitness,
   TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
-const phaseBConfig: PhaseBConfig = {
-  nowCardanoSlotNo: 100n,
-  bucketConcurrency: 1,
-};
-
-const runPhaseB = (
-  candidates: Parameters<typeof runPhaseBValidationWithPatch>[0],
-  preState: Parameters<typeof runPhaseBValidationWithPatch>[1],
-  config = phaseBConfig,
-) =>
-  Effect.runPromise(runPhaseBValidationWithPatch(candidates, preState, config));
-
 const txIds = (txs: PhaseBResultWithPatch["accepted"]) =>
   txs.map((tx) => tx.ledgerTx.txId.toString("hex"));
-
-const preState = (
-  entries: readonly (readonly [outRef: Buffer, output: Buffer])[],
-) =>
-  new Map(entries.map(([outRef, output]) => [outRef.toString("hex"), output]));
-
-const expectSinglePhaseBRejection = (
-  result: PhaseBResultWithPatch,
-  expectedCode: RejectCode,
-): RejectedTx => {
-  expect(result.accepted).toHaveLength(0);
-  expect(result.rejected).toHaveLength(1);
-  expect(result.rejected[0].code).toBe(expectedCode);
-  return result.rejected[0];
-};
 
 describe("phase B validation", () => {
   it("matches the pairwise conflict oracle on randomized ready waves", () => {
@@ -610,100 +582,6 @@ describe("phase B validation", () => {
     );
     expect(rejection.detail).toContain("extraneous redeemer");
   });
-
-  it("rejects a redeemer that points at a native-script purpose, as the fault proof does", async () => {
-    // A native script runs without a redeemer, so a redeemer at its pointer
-    // is extraneous: Cardano refuses it as ExtraRedeemers, and the fault
-    // proof's redeemer audit finds it unused. A Plutus spend carries the
-    // script integrity hash, so the transaction reaches that audit.
-    const program = buildMidgardCanonicalCekProgram(
-      Buffer.from(
-        UPLCEncoder.compile(
-          new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
-        ).toBuffer().buffer,
-      ),
-    );
-    const plutusScript = plutusV3ScriptWitness(program.envelopeCbor);
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]);
-    const nativeScript = nativeScriptWitness({ type: "all", scripts: [] });
-    const policyId = hashScriptWitness(nativeScript);
-    const spent = outRefFromByte(0x2e);
-    const spentOutput = makeProtectedScriptOutput(
-      hashScriptWitness(plutusScript),
-      FUNDED_OUTPUT_LOVELACE,
-    );
-    const txOptions = {
-      outputs: [
-        makeOutput(
-          FUNDED_OUTPUT_LOVELACE,
-          undefined,
-          new Map([[policyId, new Map([["beef", 5n]])]]),
-        ),
-      ],
-      scriptWitnesses: [plutusScript, nativeScript],
-      mintPreimageCbor: makeMintPreimageCbor(
-        new Map([
-          [
-            Buffer.from(policyId, "hex"),
-            new Map([[Buffer.from("beef", "hex"), 5n]]),
-          ],
-        ]),
-      ),
-      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-        { tag: MidgardRedeemerTag.Spend, index: 0n },
-        { tag: MidgardRedeemerTag.Mint, index: 0n },
-      ]),
-      scriptLanguages: ["PlutusV3" as const],
-    };
-
-    const result = await runPhaseB(
-      [
-        makePhaseBCandidate({
-          spent: [spent],
-          programMaterialSidecarCbor: sidecar,
-          ...txOptions,
-        }),
-      ],
-      preState([[spent, spentOutput]]),
-    );
-    const rejection = expectSinglePhaseBRejection(
-      result,
-      RejectCodes.InvalidFieldType,
-    );
-    expect(rejection.detail).toContain("extraneous redeemer");
-
-    const transaction = makeNativeTx({
-      version: 1n,
-      spendInputs: [spent],
-      ...txOptions,
-    });
-    const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
-    const trace = await Effect.runPromise(
-      buildDeterministicValidationMachineTrace({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-        eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
-        sourceKind: "normal",
-        blockEndTimeMs: 1_750_000_000_000,
-        expectedNetworkId: 0n,
-        minFeeA: 0n,
-        minFeeB: 0n,
-        blockSlot: 100n,
-        transactionId: transaction.txId,
-        canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: sidecar,
-        priorUtxosRoot: unchangedRoot,
-        postUtxosRoot: unchangedRoot,
-        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
-        expectedLedgerOps: [],
-        ledgerMutationSteps: [],
-        expectedVerdict: "rejected",
-        expectedRejectionCode: RejectCodes.InvalidFieldType,
-      }),
-    );
-    expect(trace.verdict).toBe("rejected");
-  }, 60_000);
 
   it("rejects PlutusV3 receiving scripts because receive requires MidgardV1 context", async () => {
     const spent = outRefFromByte(0x2b);

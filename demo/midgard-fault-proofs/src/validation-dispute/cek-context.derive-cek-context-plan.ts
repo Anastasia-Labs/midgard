@@ -140,14 +140,20 @@ export const deriveCekContextPlan = ({
       finish("mintItem");
       break;
     case 9: {
+      // A native execution leaf at the frontier is skipped straight to settle.
+      if (auxiliary instanceof Constr && auxiliary.index === 40) {
+        fields(auxiliary, 40, 4);
+        finish("redeemerSelectAuthenticate");
+        break;
+      }
       const raw = fields(auxiliary, 17, 12);
-      const kind = Number(integer(raw[7]!));
+      const kind = Number(integer(raw[4]!));
       if (kind < 0 || kind > 3)
         throw new Error("Invalid redeemer purpose kind");
       const midgard = integer(context[1]!) === 128n;
-      const scriptHash = raw[9];
-      const subject = raw[10];
-      const commitment = raw[4];
+      const scriptHash = raw[6];
+      const subject = raw[7];
+      const commitment = raw[3];
       if (
         typeof scriptHash !== "string" ||
         typeof subject !== "string" ||
@@ -182,15 +188,19 @@ export const deriveCekContextPlan = ({
                 summary.memory,
               ]),
             ]);
+      // The witness no longer carries the redeemer count or the frontier
+      // index: select-authenticate derives both, and so does the plan.
+      const itemCount = integer(fields(binding.native, 0, 16)[8]!);
+      const purposeFrontier = integer(fields(raw[0]!, 0, 7)[6]!) - 1n;
       const index = Number(integer(raw[1]!));
       const initial = initialMidgardRedeemerItemProofControl({
         mode: omitted ? 0 : 1,
         itemIndex: index,
-        itemCount: Number(integer(raw[2]!)),
-        totalLength: Number(integer(raw[3]!)),
+        itemCount: Number(itemCount),
+        totalLength: Number(integer(raw[2]!)),
         itemCommitment: Buffer.from(commitment, "hex"),
         expectedPurposeTag: [0, 1, 3, 6][kind],
-        expectedPointerIndex: Number(integer(raw[8]!)),
+        expectedPointerIndex: Number(integer(raw[5]!)),
       });
       const leaf = hashMidgardRedeemerItemLeaf({
         redeemerIndex: index,
@@ -200,13 +210,13 @@ export const deriveCekContextPlan = ({
         binding.staged,
         raw[0]!,
         raw[1]!,
+        itemCount,
         raw[2]!,
-        raw[3]!,
         commitment,
         leaf,
-        raw[6]!,
-        raw[7]!,
-        raw[8]!,
+        purposeFrontier,
+        raw[4]!,
+        raw[5]!,
         scriptHash,
         subject,
       ]);

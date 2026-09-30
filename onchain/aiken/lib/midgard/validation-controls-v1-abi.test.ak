@@ -141,7 +141,7 @@ fn auxiliary_constructor_is_exact(data: Data, expected_tag: Int) -> Bool {
 
 fn auxiliary_corpus_is_exact(items: List<Data>, expected_tag: Int) -> Bool {
   when items is {
-    [] -> expected_tag == 40
+    [] -> expected_tag == 41
     [item, ..rest] -> and {
         auxiliary_constructor_is_exact(item, expected_tag),
         auxiliary_corpus_is_exact(rest, expected_tag + 1),
@@ -251,14 +251,14 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
 
 // V-10 (#532). Both rejection tests below used to assert against
 // `auxiliary_constructor_is_exact`, a test-local reimplementation of the ABI.
-// `ValidationAuxiliaryWitnessV1` has exactly 40 constructors (tags 0..39), so
-// `auxiliary_fixture.auxiliary_arity(40)` hits the generated catch-all `_ ->
+// `ValidationAuxiliaryWitnessV1` has exactly 41 constructors (tags 0..40), so
+// `auxiliary_fixture.auxiliary_arity(41)` hits the generated catch-all `_ ->
 // -1` and `list.length([]) == -1` is False — the sentinel proved a sentinel is
 // a sentinel and the production decoder was never invoked at all. They now
 // invoke the generated `ValidationAuxiliaryWitnessV1` decoder directly,
 // copying the sound sibling in validation-tail-controls-v1-abi.test.ak.
-test validation_auxiliary_v1_rejects_adjacent_tag_40() fail {
-  expect Some(data) = cbor.deserialise(#"d9052180")
+test validation_auxiliary_v1_rejects_adjacent_tag_41() fail {
+  expect Some(data) = cbor.deserialise(#"d9052280")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }
@@ -276,6 +276,28 @@ test validation_auxiliary_v1_accepts_the_canonical_constructor_zero() {
   expect Some(data) = cbor.deserialise(#"d87980")
   expect decoded: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   decoded == vm_machine_types.NoAuxiliaryWitness
+}
+
+/// Tag 40 is the last constructor: the redeemer fold's native-execution skip.
+test validation_auxiliary_v1_accepts_the_redeemer_context_skip_at_tag_40() {
+  expect Some(data) = cbor.deserialise(
+    #"d905219fd8799f00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ff4040d8799f400000ffd8799f400000ff01ff58202e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e58202f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f80ff",
+  )
+  expect decoded: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
+  when decoded is {
+    vm_machine_types.CekRedeemerContextSkipWitness {
+      control,
+      purpose_leaf,
+      source_leaf,
+      execution_siblings,
+    } -> and {
+        control.purpose_bound == 1,
+        purpose_leaf == #"2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+        source_leaf == #"2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f",
+        execution_siblings == [],
+      }
+    _ -> False
+  }
 }
 
 test resolve_inputs_v1_rejects_malformed_accumulator() fail {

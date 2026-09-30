@@ -190,19 +190,24 @@ pub type ValidationAuxiliaryWitnessV1 {
     siblings: List<ByteArray>,
     previous: Option<CekMintHead>,
   }
+  /// Selects the redeemer of the purpose just below the control's purpose
+  /// bound. The execution leaf at that index names the purpose, its source
+  /// and its redeemer item, so the item, the purpose and the frontier index
+  /// are all fixed by the pre-state. `item_frontier_root` opens the item
+  /// commitment far enough to fix `total_length`.
   CekRedeemerContextSelectWitness {
     control: CekRedeemerContextControlV1,
     item_index: Int,
-    item_count: Int,
     total_length: Int,
     item_commitment: ByteArray,
-    redeemer_siblings: List<ByteArray>,
-    purpose_frontier_index: Int,
     purpose_kind: Int,
     purpose_index: Int,
     script_hash: ByteArray,
     subject: ByteArray,
-    purpose_siblings: List<ByteArray>,
+    execution_language_tag: Int,
+    source_leaf: ByteArray,
+    execution_siblings: List<ByteArray>,
+    item_frontier_root: ByteArray,
   }
   RedeemerItemStepWitness {
     redeemer_control: Option<CekRedeemerContextControlV1>,
@@ -335,6 +340,15 @@ pub type ValidationAuxiliaryWitnessV1 {
   MintFoldAssetWitness {
     chunk_proof: bounded_item_v1.ChunkProofV1,
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  }
+  /// Steps the purpose bound past a native-script purpose. The execution
+  /// leaf just below the bound must be a native execution, which takes no
+  /// redeemer, so a skip and a select can never both apply at one bound.
+  CekRedeemerContextSkipWitness {
+    control: CekRedeemerContextControlV1,
+    purpose_leaf: ByteArray,
+    source_leaf: ByteArray,
+    execution_siblings: List<ByteArray>,
   }
 }
 

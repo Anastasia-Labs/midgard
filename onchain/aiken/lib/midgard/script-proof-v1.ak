@@ -240,6 +240,15 @@ pub fn redeemer_item_leaf_hash(
 ) -> ByteArray {
   expect redeemer_index >= 0
   expect bytearray.length(item_commitment) == 32
+  redeemer_item_leaf_hash_unchecked(redeemer_index, item_commitment)
+}
+
+/// `redeemer_item_leaf_hash` without its shape guards, for a caller whose
+/// leaf is proved against an already-committed frontier.
+pub fn redeemer_item_leaf_hash_unchecked(
+  redeemer_index: Int,
+  item_commitment: ByteArray,
+) -> ByteArray {
   redeemer_leaf_domain
     |> bytearray.concat(cbor.serialise(redeemer_index))
     |> bytearray.concat(encode_definite_bytes(item_commitment))
@@ -318,6 +327,23 @@ pub fn execution_leaf_hash(
       redeemer_leaf == #"",
       bytearray.length(redeemer_leaf) == 32,
     }
+  execution_leaf_hash_unchecked(
+    language_tag,
+    purpose_leaf,
+    source_leaf,
+    redeemer_leaf,
+  )
+}
+
+/// `execution_leaf_hash` without its shape guards, for a caller whose leaf
+/// is proved against an already-committed execution frontier: a leaf that
+/// is a member was appended through the guarded form.
+pub fn execution_leaf_hash_unchecked(
+  language_tag: Int,
+  purpose_leaf: ByteArray,
+  source_leaf: ByteArray,
+  redeemer_leaf: ByteArray,
+) -> ByteArray {
   execution_leaf_domain
     |> bytearray.concat(cbor.serialise(language_tag))
     |> bytearray.concat(encode_definite_bytes(purpose_leaf))
@@ -339,6 +365,17 @@ pub fn purpose_leaf_hash(
   expect purpose_kind <= 3
   expect purpose_index >= 0
   expect bytearray.length(script_hash) == 28
+  purpose_leaf_hash_unchecked(purpose_kind, purpose_index, script_hash, subject)
+}
+
+/// `purpose_leaf_hash` without its shape guards, for a caller whose leaf is
+/// proved against an already-committed frontier.
+pub fn purpose_leaf_hash_unchecked(
+  purpose_kind: Int,
+  purpose_index: Int,
+  script_hash: ByteArray,
+  subject: ByteArray,
+) -> ByteArray {
   purpose_leaf_domain
     |> bytearray.concat(cbor.serialise(purpose_kind))
     |> bytearray.concat(cbor.serialise(purpose_index))

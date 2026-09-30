@@ -28,7 +28,10 @@ import { scriptSourcesMiddleYieldIndex } from "../../../src/validation-dispute/s
 import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtures.build-accepted-claim-over-rejecting-transaction-fixture.js";
 import { buildForcedValidationDisputeCommitments } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildNativeTransactionTrace } from "./validation-dispute-fixtures.build-native-transaction-trace.js";
-import { forgeRedeemerSelectTrace } from "./validation-dispute-fixtures.forge-redeemer-select.js";
+import {
+  forgeRedeemerSelectTrace,
+  forgeRedeemerSkipTrace,
+} from "./validation-dispute-fixtures.forge-redeemer-select.js";
 import { withMaximumValueAssetProof } from "./value-asset-maximum.js";
 
 /**
@@ -64,6 +67,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   cekPlutusMint = false,
   cekRedeemerSelectOrdinal,
   cekRedeemerSelectDonorOrdinal,
+  cekRedeemerSkipOrdinal,
+  cekRedeemerSkipForgery = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
   redeemerDataCbor,
@@ -124,10 +129,20 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
    * Forge the challenger's disputed redeemer select: from the honest low
    * state it selects what the honest select step at this ordinal selected,
    * and its successor is exactly the one that selection yields. Every
-   * membership proof is genuine, so only the purpose-bound order can refuse
-   * it. The operator's claim is the honest trace.
+   * membership proof is genuine, so only the execution leaf at the purpose
+   * bound can refuse it. The operator's claim is the honest trace.
    */
   readonly cekRedeemerSelectDonorOrdinal?: number;
+  /**
+   * Dispute the nth (0-based) CEK context redeemer skip step of the honest
+   * trace, counted across every execution.
+   */
+  readonly cekRedeemerSkipOrdinal?: number;
+  /**
+   * Forge the challenger's disputed select as a skip of the same purpose.
+   * The operator's claim is the honest trace.
+   */
+  readonly cekRedeemerSkipForgery?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
   readonly redeemerDataCbor?: Uint8Array;
@@ -280,6 +295,10 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     (witness, index) =>
       witness.auxiliary?.kind === "cekRedeemerContextSelect" ? [index] : [],
   );
+  const redeemerSkipIndices = originalTrace.witnesses.flatMap(
+    (witness, index) =>
+      witness.auxiliary?.kind === "cekRedeemerContextSkip" ? [index] : [],
+  );
   if (worstCaseWitness && disputedMatchOrdinal !== undefined) {
     throw new Error(
       "worstCaseWitness and disputedMatchOrdinal select the disputed step by incompatible rules",
@@ -405,6 +424,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
           auxiliary.witness.action.kind === cekContextItemAction)) &&
       (cekRedeemerSelectOrdinal === undefined ||
         index === redeemerSelectIndices[cekRedeemerSelectOrdinal]) &&
+      (cekRedeemerSkipOrdinal === undefined ||
+        index === redeemerSkipIndices[cekRedeemerSkipOrdinal]) &&
       (cekCoreArm === undefined ||
         (auxiliary?.kind === "cekCoreStep" &&
           auxiliary.step.witness.kind === cekCoreArm)) &&
@@ -522,8 +543,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     witnesses[disputedLowIndex] = { ...adjacent, auxiliary: mutatedAuxiliary };
     challengerTrace = { ...challengerTrace, witnesses };
   }
-  const redeemerSelectForgery =
-    cekRedeemerSelectDonorOrdinal === undefined
+  const redeemerSelectForgery = cekRedeemerSkipForgery
+    ? forgeRedeemerSkipTrace({ trace: challengerTrace, disputedLowIndex })
+    : cekRedeemerSelectDonorOrdinal === undefined
       ? undefined
       : forgeRedeemerSelectTrace({
           trace: challengerTrace,

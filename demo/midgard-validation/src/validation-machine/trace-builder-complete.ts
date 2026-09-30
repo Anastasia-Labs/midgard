@@ -100,10 +100,7 @@ import {
   type ValidationMachineNativeScriptTokenHead,
   type ValidationMachineVersionedScriptHeader,
 } from "./native-script-frame.js";
-import {
-  purposeKindForRedeemerTag,
-  redeemerTagForPurposeKind,
-} from "./redeemer-purpose.js";
+import { redeemerTagForPurposeKind } from "./redeemer-purpose.js";
 import { encodeValidationTerminalWitnessCbor } from "./terminal-witness.js";
 import type { prepareValidationTrace } from "./trace-builder-prepare.js";
 import type {
@@ -1485,23 +1482,59 @@ export const completeValidationTrace = (
             }
 
             // The redeemer map is in ledger order, (tag, index) ascending,
-            // which is the purpose frontier's order. Selects walk the
-            // frontier downwards and prepend, so the map ends ascending.
+            // which is the purpose frontier's order. The fold walks the
+            // execution frontier downwards from the purpose bound and
+            // prepends, so the map ends ascending. The execution leaf at
+            // `purposeBound - 1` admits one step: a select when it names a
+            // redeemer, a skip when it is a native execution. The fold stops
+            // once every redeemer is selected.
             for (
-              let purposeFrontierIndex = scriptPurposeEntries.length - 1;
-              purposeFrontierIndex >= 0;
+              let purposeFrontierIndex = scriptExecutionEntries.length - 1;
+              purposeFrontierIndex >= 0 &&
+              redeemerControl.cursor < decodedProofRedeemers.length;
               purposeFrontierIndex -= 1
             ) {
-              const purpose = scriptPurposeEntries[purposeFrontierIndex]!;
-              const redeemerIndex = decodedProofRedeemers.findIndex(
-                (redeemer) =>
-                  purposeKindForRedeemerTag(redeemer.tag) ===
-                    purpose.purposeKind &&
-                  redeemer.index === purpose.purposeIndex,
-              );
-              // A native-script purpose has no redeemer and is not selected.
-              if (redeemerIndex < 0) {
+              const execution = scriptExecutionEntries[purposeFrontierIndex]!;
+              const purpose = execution.purpose;
+              const executionSiblings = buildMidgardValidationMerkleMembership(
+                executionLeaves,
+                purposeFrontierIndex,
+              ).siblings;
+              if (execution.languageTag === 0) {
+                pushWitness(
+                  "cek",
+                  cekContextWitness({
+                    contextControl,
+                    executionCursor: executionIndex,
+                    completedCpu,
+                    completedMemory,
+                  }),
+                  {
+                    kind: "cekRedeemerContextSkip",
+                    control: redeemerControl,
+                    purposeLeaf: purpose.leaf,
+                    sourceLeaf: execution.source.leaf,
+                    executionSiblings,
+                  },
+                );
+                redeemerControl = {
+                  ...redeemerControl,
+                  purposeBound: purposeFrontierIndex,
+                };
+                contextControl = {
+                  ...contextControl,
+                  redeemerContextControlHash:
+                    hashMidgardCekRedeemerContextControl(redeemerControl),
+                };
                 continue;
+              }
+              const redeemerIndex = redeemerLeaves.findIndex((leaf) =>
+                leaf.equals(execution.redeemerLeaf),
+              );
+              if (redeemerIndex < 0) {
+                throw new Error(
+                  "CEK execution leaf names a redeemer outside the redeemer frontier",
+                );
               }
               const item = redeemerWitnessesCollection.items[redeemerIndex]!;
               const descriptorOnly =
@@ -1530,24 +1563,20 @@ export const completeValidationTrace = (
                   kind: "cekRedeemerContextSelect",
                   control: redeemerControl,
                   itemIndex: redeemerIndex,
-                  itemCount: decodedProofRedeemers.length,
                   totalLength: item.bytes.length,
                   itemCommitment: item.commitment,
-                  redeemerSiblings: buildMidgardValidationMerkleMembership(
-                    redeemerLeaves,
-                    redeemerIndex,
-                  ).siblings,
-                  purposeFrontierIndex,
                   purpose: {
                     purposeKind: purpose.purposeKind,
                     purposeIndex: purpose.purposeIndex,
                     scriptHash: purpose.scriptHash,
                     subject: purpose.subject,
-                    siblings: buildMidgardValidationMerkleMembership(
-                      purposeLeaves,
-                      purposeFrontierIndex,
-                    ).siblings,
                   },
+                  executionLanguageTag: execution.languageTag,
+                  sourceLeaf: execution.source.leaf,
+                  executionSiblings,
+                  itemFrontierRoot: commitMidgardValidationMerkleFrontier(
+                    item.frontier,
+                  ),
                 },
               );
               const semanticPurpose = descriptorOnly
