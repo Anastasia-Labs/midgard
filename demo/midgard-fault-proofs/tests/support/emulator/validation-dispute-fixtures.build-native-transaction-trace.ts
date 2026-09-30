@@ -33,6 +33,7 @@ import { cekSelectionProgram } from "./cek-selection-program.js";
 import { transitionTraceOutRef } from "./header-fixtures.js";
 import { makeNativeTx } from "./native-tx.js";
 import { outRefCbor } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
+import { nativeTraceAssets } from "./validation-dispute-fixtures.native-trace-assets.js";
 
 /**
  * Mirror control for VM-DEFECT-2 (GOAL_SPEC §3 invariant 9 -- soundness is
@@ -63,6 +64,7 @@ export const buildNativeTransactionTrace = async ({
   assetCount = 0,
   mintAsset = false,
   plutusSelection = false,
+  cekPlutusMint = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
   redeemerDataCbor,
@@ -94,6 +96,12 @@ export const buildNativeTransactionTrace = async ({
   readonly assetCount?: number;
   readonly mintAsset?: boolean;
   readonly plutusSelection?: boolean;
+  /**
+   * The Plutus script also mints the transaction's assets, and its Mint
+   * redeemer precedes its Spend redeemer in the witness list. Ledger order,
+   * (tag, index) ascending, puts the Spend first.
+   */
+  readonly cekPlutusMint?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
   readonly redeemerDataCbor?: Uint8Array;
@@ -141,40 +149,6 @@ export const buildNativeTransactionTrace = async ({
     scriptBytes: encodeMidgardNativeScript(nativeScript),
     nativeScript,
   };
-  const policyId = mintAsset
-    ? hashMidgardVersionedScript(script)
-    : "aa".repeat(28);
-  const assetEntries = Array.from({ length: assetCount }, (_, i) => {
-    const name =
-      assetCount === 1304
-        ? i === 0
-          ? ""
-          : i <= 256
-            ? (i - 1).toString(16).padStart(2, "0")
-            : (i - 257).toString(16).padStart(4, "0")
-        : i.toString(16).padStart(4, "0");
-    return [name, assetCount === 1304 ? (i === 1303 ? 256n : 1n) : 7n] as const;
-  });
-  const txAssets = new Map([[policyId, new Map(assetEntries)]]);
-  const mintFields = mintAsset
-    ? {
-        scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
-          script,
-        ]),
-        mintPreimageCbor: encodeMidgardFieldPreimageForField({
-          fieldIndex: 5,
-          items: [
-            {
-              policyId: Buffer.from(policyId, "hex"),
-              assets: assetEntries.map(([name, quantity]) => ({
-                assetName: Buffer.from(name, "hex"),
-                quantity,
-              })),
-            },
-          ],
-        }),
-      }
-    : {};
   const program = plutusSelection
     ? cekSelectionProgram(
         cekProgramLambdaCount,
@@ -189,6 +163,18 @@ export const buildNativeTransactionTrace = async ({
     program === undefined
       ? undefined
       : { language: "PlutusV3" as const, scriptBytes: program.envelopeCbor };
+  if (cekPlutusMint && plutusScript === undefined)
+    throw new Error("a Plutus mint needs the Plutus selection script");
+  const policyId = mintAsset
+    ? hashMidgardVersionedScript(script)
+    : cekPlutusMint
+      ? hashMidgardVersionedScript(plutusScript!)
+      : "aa".repeat(28);
+  const { txAssets, mintFields } = nativeTraceAssets({
+    assetCount,
+    policyId,
+    mintScript: mintAsset || cekPlutusMint ? script : undefined,
+  });
   // 496 full 64-byte chunks and one 8-byte chunk encode to 32,747 bytes.
   // The redeemer field adds 21 bytes, preserving its exact 32,768-byte maximum.
   // A single long definite CBOR byte string is not admissible Plutus Data.
@@ -214,6 +200,19 @@ export const buildNativeTransactionTrace = async ({
                     redeemerCbor:
                       maximumDescriptorRedeemer ??
                       Buffer.from(Data.void(), "hex"),
+                    executionUnits: {
+                      memory: 1_000_000_000n,
+                      steps: 1_000_000_000n,
+                    },
+                  },
+                ]
+              : []),
+            ...(cekPlutusMint
+              ? [
+                  {
+                    purpose: "Mint" as const,
+                    index: 0n,
+                    redeemerCbor: Buffer.from(Data.void(), "hex"),
                     executionUnits: {
                       memory: 1_000_000_000n,
                       steps: 1_000_000_000n,
@@ -319,7 +318,8 @@ export const buildNativeTransactionTrace = async ({
     value: {
       lovelace:
         outputLovelace ?? (assetCount > 100 ? 100_000_000n : 10_000_000n),
-      assets: assetCount === 0 || mintAsset ? new Map() : txAssets,
+      assets:
+        assetCount === 0 || mintAsset || cekPlutusMint ? new Map() : txAssets,
     },
     ...(outputDatumCbor === undefined
       ? {}

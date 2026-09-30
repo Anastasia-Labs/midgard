@@ -53,7 +53,7 @@ A Midgard L2 script context orders its redeemer map as Cardano does, and the ord
 3. `MidgardV1` contexts include the `Receive` entries last. `PlutusV3` contexts have no receiving purpose and omit them.
 4. Native scripts take no redeemer, so a native-script purpose has no map entry, and a redeemer that points at one is refused as extraneous.
 5. The node builds the map in this order (`redeemersData`, `demo/midgard-validation/src/script-context.ts`). The fault proof folds the redeemers in descending purpose-frontier order and prepends each pair: `CekRedeemerContextControlV1.purpose_bound` starts at the purpose count, each select must name a frontier index strictly below it and lowers it to that index (`onchain/aiken/lib/midgard/validation-machine/cek.ak`, and the split `cek-context-redeemer-select-authenticate` / `-select-finish` validators). The purpose frontier is itself in ledger order, so the committed map is ascending.
-6. Duplicate pointers differ from Cardano: Cardano's decoder keeps the later entry, while Midgard rejects a transaction with two redeemers at one pointer.
+6. Duplicate pointers differ from Cardano: Cardano's decoder does not reject duplicate redeemer keys and keeps a single entry for the key, while Midgard rejects a transaction with two redeemers at one pointer.
 
 ### Governance-Specific Ordered Fields
 

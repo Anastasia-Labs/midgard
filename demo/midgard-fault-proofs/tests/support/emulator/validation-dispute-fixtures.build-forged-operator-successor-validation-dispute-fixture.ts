@@ -28,6 +28,7 @@ import { scriptSourcesMiddleYieldIndex } from "../../../src/validation-dispute/s
 import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtures.build-accepted-claim-over-rejecting-transaction-fixture.js";
 import { buildForcedValidationDisputeCommitments } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildNativeTransactionTrace } from "./validation-dispute-fixtures.build-native-transaction-trace.js";
+import { forgeRedeemerSelectTrace } from "./validation-dispute-fixtures.forge-redeemer-select.js";
 import { withMaximumValueAssetProof } from "./value-asset-maximum.js";
 
 /**
@@ -60,6 +61,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   cekContextItemAction,
   cekObserverCount,
   plutusSelection = false,
+  cekPlutusMint = false,
+  cekRedeemerSelectOrdinal,
+  cekRedeemerSelectDonorOrdinal,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
   redeemerDataCbor,
@@ -109,6 +113,21 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly cekContextItemAction?: string;
   readonly cekObserverCount?: number;
   readonly plutusSelection?: boolean;
+  /** See {@link buildNativeTransactionTrace}. */
+  readonly cekPlutusMint?: boolean;
+  /**
+   * Dispute the nth (0-based) CEK context redeemer select step of the
+   * honest trace, counted across every execution.
+   */
+  readonly cekRedeemerSelectOrdinal?: number;
+  /**
+   * Forge the challenger's disputed redeemer select: from the honest low
+   * state it selects what the honest select step at this ordinal selected,
+   * and its successor is exactly the one that selection yields. Every
+   * membership proof is genuine, so only the purpose-bound order can refuse
+   * it. The operator's claim is the honest trace.
+   */
+  readonly cekRedeemerSelectDonorOrdinal?: number;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
   readonly redeemerDataCbor?: Uint8Array;
@@ -222,6 +241,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
     assetCount:
       cekSelection ||
+      cekPlutusMint ||
       disputedPhase === "phaseANativeScripts" ||
       (scriptSourcesMiddleKind !== undefined && scriptSourcesMiddleKind >= 5)
         ? Math.max(1, assetCount)
@@ -235,6 +255,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       plutusSelection ||
       preconditionsRejection === "missingIntegrity" ||
       preconditionsRejection === "untaggedObservers",
+    cekPlutusMint,
     cekProgramLambdaCount,
     cekDataGraph,
     redeemerDataCbor,
@@ -255,6 +276,10 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   });
   let challengerTrace = originalTrace;
   let disputedMatchesSeen = 0;
+  const redeemerSelectIndices = originalTrace.witnesses.flatMap(
+    (witness, index) =>
+      witness.auxiliary?.kind === "cekRedeemerContextSelect" ? [index] : [],
+  );
   if (worstCaseWitness && disputedMatchOrdinal !== undefined) {
     throw new Error(
       "worstCaseWitness and disputedMatchOrdinal select the disputed step by incompatible rules",
@@ -378,6 +403,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       (cekContextItemAction === undefined ||
         (auxiliary?.kind === "redeemerItemStep" &&
           auxiliary.witness.action.kind === cekContextItemAction)) &&
+      (cekRedeemerSelectOrdinal === undefined ||
+        index === redeemerSelectIndices[cekRedeemerSelectOrdinal]) &&
       (cekCoreArm === undefined ||
         (auxiliary?.kind === "cekCoreStep" &&
           auxiliary.step.witness.kind === cekCoreArm)) &&
@@ -495,6 +522,14 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     witnesses[disputedLowIndex] = { ...adjacent, auxiliary: mutatedAuxiliary };
     challengerTrace = { ...challengerTrace, witnesses };
   }
+  const redeemerSelectForgery =
+    cekRedeemerSelectDonorOrdinal === undefined
+      ? undefined
+      : forgeRedeemerSelectTrace({
+          trace: challengerTrace,
+          disputedLowIndex,
+          donorIndex: redeemerSelectIndices[cekRedeemerSelectDonorOrdinal],
+        });
   const honestTerminal = challengerTrace.states.at(-1)!;
   if (honestTerminal.phase !== "terminal") {
     throw new Error(
@@ -649,14 +684,17 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     ),
   };
   const claimedOperatorTrace =
-    dishonestChallenger && scriptSourcesRejection === undefined
+    (dishonestChallenger && scriptSourcesRejection === undefined) ||
+    redeemerSelectForgery !== undefined
       ? challengerTrace
       : operatorTrace;
-  const claimedChallengerTrace = dishonestChallenger
-    ? scriptSourcesRejection === undefined
-      ? operatorTrace
-      : rejectionForgery
-    : challengerTrace;
+  const claimedChallengerTrace =
+    redeemerSelectForgery ??
+    (dishonestChallenger
+      ? scriptSourcesRejection === undefined
+        ? operatorTrace
+        : rejectionForgery
+      : challengerTrace);
   const resolveFieldCarriage = await prepareFieldCarriage?.({
     trace: claimedChallengerTrace,
     stateIndex: disputedLowIndex,

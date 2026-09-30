@@ -12,6 +12,7 @@ import {
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
   buildForgedOperatorSuccessorValidationDisputeFixture,
+  expectOnchainRefusal,
   runForcedValidationDisputeScenario as runScenario,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -224,6 +225,54 @@ describe("bounded CEK context registered lifecycle", () => {
     );
     expect(result.awardResult?.txHash).toHaveLength(64);
     expect(result.removal?.transactions.length).toBeGreaterThan(0);
+  }, 900_000);
+
+  // The transaction's one Plutus script spends and mints, and its witness
+  // list holds the Mint redeemer before the Spend redeemer. Ledger order
+  // puts the Spend first, so the honest fold selects the Mint (purpose
+  // frontier 1, witness item 0) and then the Spend (frontier 0, item 1).
+  // These cases call the unmeasured runner, so the fit ledger's measured
+  // set stays the 24 shapes above.
+  it.each([0, 1])(
+    "proves redeemer select %s of a spend-and-mint context whose witness list is out of ledger order",
+    async (cekRedeemerSelectOrdinal) => {
+      const result = await runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal,
+        }),
+      );
+      expect(result.awardResult?.txHash).toHaveLength(64);
+      expect(result.removal?.transactions.length).toBeGreaterThan(0);
+    },
+    900_000,
+  );
+
+  // Negative polarity: after the honest Mint select has lowered the purpose
+  // bound to frontier 1, the challenger selects the Mint again instead of
+  // the Spend. Its redeemer item, purpose membership and successor are all
+  // genuine, so the refusal is the select-authenticate purpose-bound check.
+  it("refuses a redeemer select at the purpose bound against an honest block", async () => {
+    const refusal = await expectOnchainRefusal(() =>
+      runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal: 1,
+          cekRedeemerSelectDonorOrdinal: 0,
+        }),
+      ),
+    );
+    expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
   }, 900_000);
 
   it.each(["restart", "cancel"])(

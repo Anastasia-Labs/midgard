@@ -656,8 +656,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
-    "max": 694,
-    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 732,
+    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (700 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
