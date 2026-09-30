@@ -92,7 +92,7 @@ describe("accepted redeemer data outside the serialiseData image", () => {
     },
   );
 
-  it("classifies a normal transaction committed TxIsInvalid as a mistag whichever decode refusal fires first", async () => {
+  it("classifies a normal transaction committed TxIsInvalid with out-of-image redeemer data as a mistag", async () => {
     const predecessor = await buildCanonicalBlockFixture({
       transactions: [],
       prevHeaderHash: GENESIS_HEADER_HASH,
@@ -111,8 +111,9 @@ describe("accepted redeemer data outside the serialiseData image", () => {
         ],
       }).canonicalCbor,
     );
-    // The redeemer refusal fires before the validity-flag refusal, but the
-    // committed TxIsInvalid tag is what leaves the validity domain.
+    // Phase A refuses the redeemer data, so the validation replay cannot
+    // build this event's trace and records a replay prerequisite at it. The
+    // mistag finding at the same event discharges that prerequisite.
     const fixture = await buildRetainedValidationBlockFixture({
       subject: {
         kind: "normal",

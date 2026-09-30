@@ -129,36 +129,6 @@ export const depositSubject = (
 ): DetectionSubject =>
   eventSubject({ DepositEventKey: { deposit_id: depositId } });
 
-/**
- * The committed event that introduced a post-state output: the accepted or
- * forced transaction whose id the output reference names, or the deposit whose
- * event id it is. The earliest such event in canonical order is the producer.
- * An output no committed event produced is a fault of the block's post-state
- * as a whole.
- */
-export const introducedOutputSubject = (
-  reconstruction: Pick<TransitionTraceReconstruction, "sourceEvents">,
-  outRef: Readonly<{ transactionId: string; outputIndex: bigint }>,
-): DetectionSubject => {
-  const transactionId = outRef.transactionId.toLowerCase();
-  const producer = reconstruction.sourceEvents.find((source) => {
-    switch (source.phase) {
-      case "Withdrawal":
-        return false;
-      case "ForcedTransaction":
-        return source.entry.value.tx_id.toLowerCase() === transactionId;
-      case "L2Transaction":
-        return source.entry.txId.toLowerCase() === transactionId;
-      case "Deposit":
-        return (
-          source.entry.key.transactionId.toLowerCase() === transactionId &&
-          source.entry.key.outputIndex === outRef.outputIndex
-        );
-    }
-  });
-  return producer === undefined ? BLOCK_SUBJECT : sourceEventSubject(producer);
-};
-
 /** Copies exactly the subject fields of a family detection. */
 export const subjectOf = ({
   frontier,
@@ -253,6 +223,55 @@ export const eventOrder = (
   )
     throw new Error(`event ${fingerprint} is not a source event of this block`);
   return order;
+};
+
+/**
+ * The committed event that introduced a post-state output: among the events
+ * whose committed verdict applies their outputs (a forced transaction
+ * committed `ForcedTxValid`, an L2 transaction committed `TxIsValid`, or the
+ * deposit whose event id the output reference is), the one earliest on the
+ * block's event order. A non-accepted copy of the producing transaction
+ * applies no outputs, so it never introduces one. A later accepted copy
+ * spends inputs the earliest one already consumed, so it is a fault of its
+ * own and introduces nothing. An output no accepted event produced is a fault
+ * of the block's post-state as a whole.
+ */
+export const introducedOutputSubject = (
+  reconstruction: EventOrderSource,
+  outRef: Readonly<{ transactionId: string; outputIndex: bigint }>,
+): DetectionSubject => {
+  const transactionId = outRef.transactionId.toLowerCase();
+  const orders = eventOrdersOf(reconstruction);
+  const introducers = reconstruction.sourceEvents.filter((source) => {
+    switch (source.phase) {
+      case "Withdrawal":
+        return false;
+      case "ForcedTransaction":
+        return (
+          source.entry.value.verdict === "ForcedTxValid" &&
+          source.entry.value.tx_id.toLowerCase() === transactionId
+        );
+      case "L2Transaction":
+        return (
+          source.entry.validity === "TxIsValid" &&
+          source.entry.txId.toLowerCase() === transactionId
+        );
+      case "Deposit":
+        return (
+          source.entry.key.transactionId.toLowerCase() === transactionId &&
+          source.entry.key.outputIndex === outRef.outputIndex
+        );
+    }
+  });
+  const earliest = introducers.reduce<(typeof introducers)[number] | undefined>(
+    (best, source) =>
+      best === undefined ||
+      orders.get(source.fingerprint)! < orders.get(best.fingerprint)!
+        ? source
+        : best,
+    undefined,
+  );
+  return earliest === undefined ? BLOCK_SUBJECT : sourceEventSubject(earliest);
 };
 
 /**
