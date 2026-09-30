@@ -1,12 +1,21 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import {
   prepareHubOracleOneShotNonceProgram,
   reconcileHubOracleOneShotNonceAttemptProgram,
 } from "../src/commands/prepare-hub-oracle-nonce.js";
-import { SignedNonceConflictError } from "../src/commands/prepare-hub-oracle-nonce.resume-signed.js";
+import {
+  SignedNonceConflictError,
+  SignedNonceRejectedError,
+} from "../src/commands/prepare-hub-oracle-nonce.resume-signed.js";
+import { hubOracleNonceRunStateHooks } from "../src/commands/prepare-hub-oracle-nonce.run-state-hooks.js";
+import { loadDeploymentRunState } from "../src/e2e/run-state.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.js";
 
@@ -143,6 +152,59 @@ describe("hub-oracle nonce signed before submission", () => {
     expect(order).toEqual(["record aa 84a0"]);
   });
 
+  it("the CLI's run-state hooks write the signed bytes to run state before submitting", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "midgard-nonce-hooks-"));
+    onTestFinished(() => rm(directory, { recursive: true, force: true }));
+    const runStatePath = join(directory, "run-state.json");
+    const signed = { txHash: "dd".repeat(32), signedTxCbor: "84a0" };
+    const seenAtSubmit: unknown[] = [];
+    signSubmitTransactionMock.mockImplementation(() =>
+      Effect.gen(function* () {
+        const intent = yield* Effect.serviceOption(
+          BeforeSignedTransactionSubmission,
+        );
+        if (Option.isSome(intent)) yield* intent.value.persist(signed);
+        const state = yield* Effect.promise(() =>
+          loadDeploymentRunState(runStatePath),
+        );
+        seenAtSubmit.push(state?.steps.hubOracleNonceSigned);
+        return { ...signed, walletAddress: ADDRESS };
+      }),
+    );
+    const tx = {
+      pay: { ToAddressWithData: () => tx },
+      complete: async () => ({}),
+    };
+    const service = {
+      api: {
+        newTx: () => tx,
+        wallet: () => ({ address: async () => ADDRESS }),
+        utxosAt: async () => [],
+      } as unknown as LucidEvolution,
+      switchToOperatorsMainWallet: Effect.void,
+    };
+    await expect(
+      Effect.runPromise(
+        prepareHubOracleOneShotNonceProgram(5_000_000n, {
+          ...hubOracleNonceRunStateHooks(
+            { runStatePath, freshRedeploy: false },
+            "Preprod",
+          ),
+          outputLookupTimeoutMs: 0,
+        }).pipe(Effect.provideService(LucidService, service as never)),
+      ),
+    ).rejects.toThrow("Expected exactly one marked nonce output");
+    expect(seenAtSubmit).toEqual([
+      expect.objectContaining({
+        status: "submitted",
+        txHashes: [signed.txHash],
+        details: expect.objectContaining({
+          signedTxCbor: signed.signedTxCbor,
+        }),
+      }),
+    ]);
+  });
+
   it("completes a recorded transaction that landed without resubmitting it", async () => {
     const signed = signedNonceTx();
     const chain = fakeLucid({
@@ -169,6 +231,47 @@ describe("hub-oracle nonce signed before submission", () => {
     });
     expect(chain.lucid.utxosByOutRef).toHaveBeenCalledWith([INPUT]);
     expect(chain.submitTx).toHaveBeenCalledExactlyOnceWith(signed.signedTxCbor);
+  });
+
+  /** The shape the Kupmios provider throws for a JSON-RPC submit failure. */
+  const ogmiosError = (code: number, message: string, data: unknown) =>
+    Object.assign(new Error(message), { code, data });
+
+  it("stops at once, with the ledger's reason, when the ledger rejects the recorded bytes", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({ statuses: ["not_found"], inputsLive: true });
+    chain.submitTx.mockRejectedValueOnce(
+      ogmiosError(3122, "Insufficient fee", {
+        minimumRequiredFee: { ada: { lovelace: 250_000 } },
+      }),
+    );
+    const error = await Effect.runPromise(
+      Effect.flip(reconcileProgram(chain.service, signed)),
+    );
+    expect(error).toBeInstanceOf(SignedNonceRejectedError);
+    expect(String(error)).toContain(signed.txHash);
+    expect(String(error)).toContain("Insufficient fee");
+    expect(chain.submitTx).toHaveBeenCalledExactlyOnceWith(signed.signedTxCbor);
+    expect(chain.lucid.awaitTxConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("keeps waiting when the ledger reports the recorded inputs already consumed", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({
+      statuses: ["not_found"],
+      inputsLive: true,
+      txHash: signed.txHash,
+    });
+    chain.submitTx.mockRejectedValueOnce(
+      ogmiosError(3117, "Unknown output references", {
+        unknownOutputReferences: [
+          { transaction: { id: INPUT.txHash }, index: INPUT.outputIndex },
+        ],
+      }),
+    );
+    await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
+      outRef: `${signed.txHash}#0`,
+    });
   });
 
   it("fails closed when another transaction spent the recorded inputs", async () => {

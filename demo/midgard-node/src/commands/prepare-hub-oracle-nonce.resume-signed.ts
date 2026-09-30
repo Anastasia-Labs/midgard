@@ -2,9 +2,53 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  isUnknownOutputReferenceSubmitError,
+  parseOutsideValidityIntervalDetails,
+} from "../transactions/utils.js";
+
 export class SignedNonceConflictError extends Error {
   override readonly name = "SignedNonceConflictError";
 }
+
+/** The ledger refused the recorded bytes while their inputs are unspent. */
+export class SignedNonceRejectedError extends Error {
+  override readonly name = "SignedNonceRejectedError";
+}
+
+/** Ogmios reports every ledger refusal of a submitted transaction as 3000–3999. */
+const ogmiosSubmitFailureCode = (error: unknown): number | undefined => {
+  const seen = new Set<unknown>();
+  const search = (value: unknown): number | undefined => {
+    if (typeof value !== "object" || value === null || seen.has(value))
+      return undefined;
+    seen.add(value);
+    const { code } = value as { code?: unknown };
+    if (typeof code === "number" && code >= 3000 && code <= 3999) return code;
+    for (const key of ["error", "cause"])
+      if (key in value) {
+        const found = search((value as Record<string, unknown>)[key]);
+        if (found !== undefined) return found;
+      }
+    return undefined;
+  };
+  return search(error);
+};
+
+/**
+ * A resubmission that fails because the same transaction already consumed the
+ * inputs (in a mempool, or on chain since the check) or has yet to enter its
+ * validity interval can still land; any other ledger refusal is final for
+ * these bytes. Transport failures carry no ledger verdict.
+ */
+const isDefiniteLedgerRejection = (error: unknown) => {
+  if (ogmiosSubmitFailureCode(error) === undefined) return false;
+  if (isUnknownOutputReferenceSubmitError(error)) return false;
+  const validity = parseOutsideValidityIntervalDetails(error);
+  return !(
+    validity !== null && validity.currentSlot < validity.invalidBeforeSlot
+  );
+};
 
 const spendingInputs = (txHash: string, signedTxCbor: string): OutRef[] => {
   const body = CML.Transaction.from_cbor_hex(signedTxCbor).body();
@@ -86,13 +130,29 @@ export const resumeSignedHubOracleNonceTransaction = ({
         new Error("No L1 provider is available to resubmit the nonce"),
       );
     // Same bytes as the first submission: a node that already has it rejects
-    // the duplicate, so a failed resubmission is inconclusive, never fatal.
-    yield* Effect.tryPromise(() => provider.submitTx(signedTxCbor)).pipe(
-      Effect.catchAll((cause) =>
-        Effect.logWarning(
-          `Resubmitting recorded hub-oracle nonce transaction ${txHash} was inconclusive: ${formatUnknownError(cause, { includeCause: true })}`,
-        ),
+    // the duplicate, so only a definite ledger refusal is fatal.
+    const submission = yield* Effect.either(
+      Effect.tryPromise({
+        try: () => provider.submitTx(signedTxCbor),
+        catch: (cause) => cause,
+      }),
+    );
+    if (submission._tag === "Right") return "resubmitted";
+    const reason = formatUnknownError(submission.left, { includeCause: true });
+    if (!isDefiniteLedgerRejection(submission.left)) {
+      yield* Effect.logWarning(
+        `Resubmitting recorded hub-oracle nonce transaction ${txHash} was inconclusive: ${reason}`,
+      );
+      return "resubmitted";
+    }
+    if (yield* landed(lucid, txHash)) return "landed";
+    return yield* Effect.fail(
+      new SignedNonceRejectedError(
+        [
+          `Hub-oracle nonce transaction ${txHash} was signed and recorded (run-state step hubOracleNonceSigned) and its inputs are unspent,`,
+          `but the ledger rejected it, so these bytes can never land: ${reason}.`,
+          "Keep the run state; pass --fresh-redeploy --fresh-redeploy-reason <reason> only when replacing the deployment identity is intentional.",
+        ].join(" "),
       ),
     );
-    return "resubmitted";
   });
