@@ -99,9 +99,9 @@ describe("forced ExecutionNativeScriptFalse coordinate the node writes", () => {
     const threadOutRef = await stage.open(evidence);
     // Step 04 evaluates the script against the signers and convicts a forced
     // rejection only when it is satisfied.
-    await expectOnchainRefusal(
-      () => stage.finalizeUnchecked(threadOutRef),
-      /^expect satisfied == \( state\.direction == 1 \)$/u,
-    );
+    await expectOnchainRefusal(() => stage.finalizeUnchecked(threadOutRef), {
+      refusedBy: "fraud_proofs/execution_native_script_invalid/step_04",
+      check: /^expect satisfied == \( state\.direction == 1 \)$/u,
+    });
   }, 900_000);
 });

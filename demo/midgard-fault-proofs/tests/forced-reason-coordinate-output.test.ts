@@ -216,7 +216,10 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
           ...s.registered.common(terminal, 3),
           witnessReferenceScripts: s.harness.witnessReferenceScripts,
         }),
-      /^Validator returned false$/u,
+      {
+        refusedBy: "fraud_proofs/transaction_output_non_canonical/step_04",
+        check: /^Validator returned false$/u,
+      },
     );
   }, 900_000);
 });

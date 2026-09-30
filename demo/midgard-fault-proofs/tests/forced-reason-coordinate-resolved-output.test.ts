@@ -225,10 +225,10 @@ for (const shape of shapes) {
       // The step authenticates the reconstructed verdict and the terminal
       // rule, which convicts only a verdict the reason contradicts, returns
       // false.
-      await expectOnchainRefusal(
-        () => stages.step05Raw(walked.threadOutRef),
-        /^Validator returned false$/u,
-      );
+      await expectOnchainRefusal(() => stages.step05Raw(walked.threadOutRef), {
+        refusedBy: "fraud_proofs/resolved_output_non_canonical/step_05",
+        check: /^Validator returned false$/u,
+      });
     }, 900_000);
   });
 }

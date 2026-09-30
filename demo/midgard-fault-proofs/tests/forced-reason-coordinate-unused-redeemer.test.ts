@@ -142,9 +142,10 @@ describe("forced UnusedRedeemer coordinate the node writes", () => {
       outRef = await stage.linearStep(offset, outRef);
     // Step 02c reads the cited item's bit in the used-redeemer bitmap, which
     // a forced rejection may cite only when it is set.
-    await expectOnchainRefusal(
-      () => stage.linearStep(3, outRef),
-      /^expect if authenticated\.bound\.subject\.direction == substrate\.direction_wrongful_acceptance \{.*\} else \{ authenticated\.used_redeemer_bitmap \/ bit\(header\.item_index\) % 2 == 1 \}$/u,
-    );
+    await expectOnchainRefusal(() => stage.linearStep(3, outRef), {
+      refusedBy: "fraud_proofs/unused_redeemer/step_02c",
+      check:
+        /^expect if authenticated\.bound\.subject\.direction == substrate\.direction_wrongful_acceptance \{.*\} else \{ authenticated\.used_redeemer_bitmap \/ bit\(header\.item_index\) % 2 == 1 \}$/u,
+    });
   }, 900_000);
 });

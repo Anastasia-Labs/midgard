@@ -191,9 +191,8 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
     });
     // The predicate reopens the named output and, on the forced direction,
     // returns whether it meets its floor: an underfunded output returns false.
-    // The traced build of this step exceeds the reference-script publication
-    // target, so on the plain build the refusal is pinned to the one script
-    // the transaction runs: the step's own thread spend.
+    // On the plain build the refusal is also pinned to the one script the
+    // transaction runs: the step's own thread spend.
     const refusal = await expectOnchainRefusal(
       async () =>
         await submitMinAdaUtxoStep03({
@@ -204,7 +203,10 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
           referenceScriptUtxo: f.refs[2]!,
           unsafeSkipLocalViolationCheckForTest: true,
         }),
-      /^Validator returned false$/u,
+      {
+        refusedBy: "fraud_proofs/min_ada/step_03",
+        check: /^Validator returned false$/u,
+      },
     );
     expect(refusal).toMatch(/failed script execution Spend\[0\]/u);
   }, 900_000);

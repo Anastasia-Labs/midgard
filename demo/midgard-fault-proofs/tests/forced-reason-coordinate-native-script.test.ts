@@ -64,9 +64,9 @@ describe("forced WitnessNativeScriptFalse coordinate the node writes", () => {
     // Init, bind and the grammar pass; step 03 evaluates the script against
     // the signers and returns the terminal rule, which convicts a forced
     // rejection only when the script is satisfied, so it returns false.
-    await expectOnchainRefusal(
-      () => run(f, true),
-      /^Validator returned false$/u,
-    );
+    await expectOnchainRefusal(() => run(f, true), {
+      refusedBy: "fraud_proofs/native_script_invalid/step_03",
+      check: /^Validator returned false$/u,
+    });
   }, 600_000);
 });

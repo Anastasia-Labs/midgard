@@ -1,10 +1,17 @@
+import { recordCheckedPin, TRACED_REFUSALS } from "./traced-refusals.js";
+
 /**
- * Set when the suite runs against a blueprint whose refusing validators are
- * traced (scripts/build-traced-emulator-blueprint.mjs). A pinned refusal must
- * then carry its trace, so a negative cannot pass on an untraced script.
+ * The check a negative expects to refuse it. `refusedBy` names the validator
+ * module that holds the check (for example
+ * "fraud_proofs/missing_signature/forced_witness");
+ * scripts/run-traced-refusals.mjs reads these names from the suites to decide
+ * which validators to trace, so it must be a string literal. `check` matches
+ * that validator's trace.
  */
-const TRACED_REFUSALS_REQUIRED =
-  process.env.MIDGARD_EMULATOR_TRACED_REFUSALS === "1";
+export type RefusalPin = {
+  readonly refusedBy: string;
+  readonly check: RegExp;
+};
 
 /**
  * The trace a traced validator's failure carries, or null when untraced. The
@@ -27,13 +34,13 @@ const refusalTrace = (text: string): string | null => {
  * Assert a negative reaches local UPLC evaluation and fails in a validator,
  * rather than passing because the off-chain builder happened to throw.
  *
- * `check` pins the refusing check by its trace. Plain builds carry no trace,
- * so the pin applies only when the refusing validator is traced, and the run
- * fails if MIDGARD_EMULATOR_TRACED_REFUSALS=1 and it is not.
+ * `pin` names the refusing check. Plain builds carry no trace, so the pin is
+ * checked only in the traced run (scripts/run-traced-refusals.mjs), which
+ * fails a pinned refusal that arrives untraced.
  */
 export const expectOnchainRefusal = async (
   build: () => Promise<unknown>,
-  check?: RegExp,
+  pin?: RefusalPin,
 ): Promise<string> => {
   let failure: unknown;
   try {
@@ -52,20 +59,22 @@ export const expectOnchainRefusal = async (
       `expected an on-chain validator refusal, got a non-validator failure: ${text}`,
     );
   }
-  if (check === undefined) return text;
+  if (pin === undefined) return text;
+  const { refusedBy, check } = pin;
   const trace = refusalTrace(text);
   if (trace === null) {
-    if (TRACED_REFUSALS_REQUIRED) {
+    if (TRACED_REFUSALS) {
       throw new Error(
-        `expected a traced refusal matching ${String(check)}, but the refusing validator is untraced: ${text}`,
+        `expected ${refusedBy} to refuse with a trace matching ${String(check)}, but the refusing validator is untraced: ${text}`,
       );
     }
     return text;
   }
   if (!check.test(trace)) {
     throw new Error(
-      `expected the refusal of the check matching ${String(check)}, but another check refused: ${text}`,
+      `expected the check in ${refusedBy} matching ${String(check)} to refuse, but another check refused: ${text}`,
     );
   }
+  recordCheckedPin(refusedBy);
   return text;
 };

@@ -82,9 +82,9 @@ describe("forced RedeemerMissing coordinate the node writes", () => {
     // The scan found no pointer to the cited spend. Step 05 returns the
     // terminal rule, which convicts a forced rejection only when the pointer
     // is present, so it returns false.
-    await expectOnchainRefusal(
-      () => stage.finalizeDirectly(decision),
-      /^Validator returned false$/u,
-    );
+    await expectOnchainRefusal(() => stage.finalizeDirectly(decision), {
+      refusedBy: "fraud_proofs/missing_redeemer/step_05",
+      check: /^Validator returned false$/u,
+    });
   }, 900_000);
 });

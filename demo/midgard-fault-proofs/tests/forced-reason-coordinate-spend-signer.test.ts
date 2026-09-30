@@ -246,7 +246,10 @@ describe("forced SpendInputSignerMissing coordinate the node writes", () => {
     // only when the signer is present, returns false.
     await expectOnchainRefusal(
       () => run.finalizeDirect(step04.nextThreadOutRef),
-      /^Validator returned false$/u,
+      {
+        refusedBy: "fraud_proofs/spend_input_signer_missing/step_05",
+        check: /^Validator returned false$/u,
+      },
     );
   }, 600_000);
 });

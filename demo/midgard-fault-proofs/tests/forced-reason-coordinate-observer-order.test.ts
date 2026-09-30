@@ -113,9 +113,9 @@ describe("forced ObserverOrderInvalid coordinate the node writes", () => {
     // The scan decided a violation at the cited ordinal. Step 04 returns the
     // terminal rule, which convicts a forced rejection only when that ordinal
     // is ordered, so it returns false.
-    await expectOnchainRefusal(
-      () => h.step04Raw(cursor),
-      /^Validator returned false$/u,
-    );
+    await expectOnchainRefusal(() => h.step04Raw(cursor), {
+      refusedBy: "fraud_proofs/observer_order_invalid/step_04",
+      check: /^Validator returned false$/u,
+    });
   }, 900_000);
 });

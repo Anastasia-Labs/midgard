@@ -105,9 +105,9 @@ describe("forced WitnessNativeScriptMalformed coordinate the node writes", () =>
     );
     // The step authenticates the closed scan and the terminal rule, which
     // convicts only a class that differs from the accused one, returns false.
-    await expectOnchainRefusal(
-      () => h.step04Raw(closed),
-      /^Validator returned false$/u,
-    );
+    await expectOnchainRefusal(() => h.step04Raw(closed), {
+      refusedBy: "fraud_proofs/witness_script_decoding/step_04",
+      check: /^Validator returned false$/u,
+    });
   }, 600_000);
 });

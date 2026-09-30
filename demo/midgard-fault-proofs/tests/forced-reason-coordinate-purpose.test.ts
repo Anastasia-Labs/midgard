@@ -179,7 +179,10 @@ describe("forced ScriptSourceMissing coordinate the node writes", () => {
     // the step authenticates its inputs and the contradiction returns false.
     await expectOnchainRefusal(
       () => submitRawStep06(s.context, scanned.threadOutRef),
-      /^Validator returned false$/u,
+      {
+        refusedBy: "fraud_proofs/missing_script_source/step_06",
+        check: /^Validator returned false$/u,
+      },
     );
   }, 600_000);
 });

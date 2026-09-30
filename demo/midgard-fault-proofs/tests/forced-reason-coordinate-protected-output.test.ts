@@ -208,9 +208,9 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
     // Output 1's signer is missing, as the leaf says. Step 05 authenticates
     // the thread and the terminal rule, which convicts a forced rejection
     // only when the signer is present, returns false.
-    await expectOnchainRefusal(
-      () => s.rawStep05(terminal),
-      /^Validator returned false$/u,
-    );
+    await expectOnchainRefusal(() => s.rawStep05(terminal), {
+      refusedBy: "fraud_proofs/protected_output_signer_missing/step_05",
+      check: /^Validator returned false$/u,
+    });
   }, 600_000);
 });

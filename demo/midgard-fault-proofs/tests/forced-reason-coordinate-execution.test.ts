@@ -144,7 +144,10 @@ describe("forced ReceivePurposePlutusV3Forbidden coordinate the node writes", ()
           ...h.common(authenticated.nextThreadOutRef, 2),
           witnessReferenceScripts: h.harness.witnessReferenceScripts,
         }),
-      /^Validator returned false$/u,
+      {
+        refusedBy: "fraud_proofs/receive_purpose_language/step_03",
+        check: /^Validator returned false$/u,
+      },
     );
   }, 600_000);
 });

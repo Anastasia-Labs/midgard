@@ -309,12 +309,10 @@ describe("forced AddressWitnessSignatureInvalid coordinate the node writes", () 
     // Witness 1's signature does not verify, as the leaf says. Step 02
     // authenticates the thread, the opened field and the exact reason, and
     // the terminal rule, which convicts a forced rejection only when the
-    // named witness verifies, returns false. A verbose-traced step 02 is
-    // larger than the emulator's reference-script publication target, so
-    // reading this trace needs that target lifted for the run.
-    await expectOnchainRefusal(
-      () => s.rawFinalize(),
-      /^Validator returned false$/u,
-    );
+    // named witness verifies, returns false.
+    await expectOnchainRefusal(() => s.rawFinalize(), {
+      refusedBy: "fraud_proofs/invalid_signature/step_02",
+      check: /^Validator returned false$/u,
+    });
   }, 600_000);
 });
