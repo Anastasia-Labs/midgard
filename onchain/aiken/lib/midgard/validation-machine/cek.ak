@@ -1541,17 +1541,16 @@ fn verify_cek_redeemer_data_step(
       control: item_control,
       witness: item_witness,
     } -> {
+      // The select built the item control that `active_scan_hash` pins:
+      // `item_count` from the native control; `item_index`,
+      // `item_commitment` and the redeemer leaf from the execution leaf it
+      // proved; `total_length` from the item commitment; `mode` and the
+      // expected tag from the purpose (descriptor mode only for a receive in
+      // a PlutusV3 context, with the active purpose left empty). `step_v1`
+      // never rewrites those fields, so the pin proves them at every item
+      // step and nothing else here re-checks them.
       let current_matches = and {
-        cek_redeemer_context_control_is_well_formed(
-          native_control.redeemer_count,
-          redeemer_control,
-        ),
         hash_cek_redeemer_context_control_v1(redeemer_control) == context_control.redeemer_context_control_hash,
-        item_control.item_count == native_control.redeemer_count,
-        script_proof_v1.redeemer_item_leaf_hash(
-          item_control.item_index,
-          item_control.item_commitment,
-        ) == redeemer_control.active_redeemer_leaf,
         redeemer_control.active_scan_hash == redeemer_item_proof_v1.hash_control_v1(
           item_control,
         ),
@@ -1598,15 +1597,6 @@ fn verify_cek_redeemer_data_step(
           }
           and {
             current_matches,
-            if next.mode == redeemer_item_proof_v1.mode_descriptor {
-              and {
-                item_control.expected_purpose_tag == 6,
-                context_control.language_tag == 3,
-                redeemer_control.active_purpose == empty_data_summary_v1(),
-              }
-            } else {
-              bytearray.length(redeemer_control.active_purpose.root) == 32
-            },
             cek_redeemer_context_main_successor(
               pre,
               witness,

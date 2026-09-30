@@ -17,10 +17,25 @@ pub type ValidationOneStepWitnessV1 {
   claimed_successor: validation_trace_v1.ValidationMachineStateV1,
 }
 
-/// The redeemer map is folded in descending purpose-frontier order: every
-/// select names a frontier index below `purpose_bound`, which then drops to
-/// it. Pairs are prepended, so the finished map follows the frontier
-/// ascending, which is Cardano's (tag, index) ledger order.
+/// The redeemer map is folded down the execution frontier. `purpose_bound`
+/// starts at the purpose count. Each select or skip step proves the execution
+/// leaf at exactly `purpose_bound - 1` against the native control's execution
+/// frontier; that membership (`[execution-leaf]` / `[native-execution]`) is
+/// the pin, so the frontier index is derived and never named by the witness.
+/// The step is a select (auxiliary constructor 17) when the leaf carries a
+/// redeemer item leaf (language 3 or 128), and a skip (constructor 40) when
+/// it is a native execution (language 0, empty redeemer leaf); only one can
+/// apply at a given bound. Each select or skip lowers the bound by exactly
+/// one. The item steps between a select and its finish walk the selected
+/// item under `active_scan_hash` without moving the bound. The select's `total_length` is fixed by the item commitment through
+/// `commitment_from_frontier_root` (`[item-length]`). The fold completes at
+/// `cursor == redeemer_count`. Pairs are prepended, so the finished map
+/// follows the frontier ascending, which is Cardano's (tag, index) ledger
+/// order. The monolithic verifier is `verify_cek_redeemer_data_step` in
+/// `cek.ak`; the split chain is `cek-context-redeemer-select-authenticate`,
+/// then `-select-initialize`, `-select-hash` and `-select-finish` for a
+/// select, and select-authenticate routes a skip straight to
+/// `cek-context-settle`.
 pub type CekRedeemerContextControlV1 {
   cursor: Int,
   map_items: cek_data_v1.DataSequenceSummaryV1,

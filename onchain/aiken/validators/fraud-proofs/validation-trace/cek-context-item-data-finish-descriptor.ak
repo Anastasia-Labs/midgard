@@ -1,6 +1,5 @@
 use aiken/builtin
 use aiken/crypto.{ScriptHash}
-use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
@@ -46,17 +45,12 @@ validator main(
         let next_item = verified.next
         expect context.stage == 9
         expect Pair(18, [redeemers_data,
-              control_data, _]) = builtin.un_constr_data(action.auxiliary)
+              _, _]) = builtin.un_constr_data(action.auxiliary)
         expect Pair(0, [current_data]) = builtin.un_constr_data(redeemers_data)
         expect current: CekRedeemerContextControlV1 = current_data
-        expect old_item: item.RedeemerItemProofControlV1 = control_data
-        if next_item.mode == item.mode_descriptor {
-          expect old_item.expected_purpose_tag == 6
-          expect context.language_tag == 3
-          expect current.active_purpose == empty_data_summary_v1()
-        } else {
-          expect bytearray.length(current.active_purpose.root) == 32
-        }
+        // item-bind checked `current` against the context and the item
+        // control against `current.active_scan_hash`, which pins its mode
+        // and expected tag as the select chain derived them.
         expect
           next_item.stage == item.stage_terminal && next_item.mode == item.mode_descriptor
         let next_redeemers = CekRedeemerContextControlV1 {

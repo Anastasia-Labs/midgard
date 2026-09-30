@@ -2758,6 +2758,164 @@ test bounded_context_descriptor_tail_handoff_and_return() {
   run_context_descriptor_handoff(True)
 }
 
+// ---- The stage-9 item bind ----
+//
+// At stage 9 item-bind checks no field of the presented item control on its
+// own: `active_scan_hash` pins the control the select built, and the item
+// proof never rewrites its mode, index, count, commitment or tag. These spend
+// item-bind from an honest post-select redeemer control; each fail twin
+// presents a forged item control that only the pin can refuse.
+
+/// The descriptor bytes of witness item `item_index`: a spend at pointer 0,
+/// then a mint at pointer 0.
+fn stage9_item_bytes(item_index: Int) -> ByteArray {
+  if item_index == 0 {
+    #"8400004100820a14"
+  } else {
+    #"8401004100820a14"
+  }
+}
+
+/// The item control an honest select of witness item `item_index` builds.
+fn stage9_item_control(
+  item_index: Int,
+) -> redeemer_item.RedeemerItemProofControlV1 {
+  let bytes = stage9_item_bytes(item_index)
+  redeemer_item.initial_control_v1(
+    redeemer_item.mode_descriptor,
+    item_index,
+    2,
+    bytearray.length(bytes),
+    bounded_item_v1.from_bytes(8, item_index, bytes),
+    item_index,
+    0,
+  )
+}
+
+/// Spend item-bind at stage 9 after the select of item 0, presenting the item
+/// control `forge` makes of the honest one with the header witness of the
+/// item it names. The claimed next control is the one `step_v1` yields.
+fn run_stage9_item_bind(
+  forge: fn(redeemer_item.RedeemerItemProofControlV1) ->
+    redeemer_item.RedeemerItemProofControlV1,
+) -> Bool {
+  let honest = stage9_item_control(0)
+  let presented = forge(honest)
+  let bytes = stage9_item_bytes(presented.item_index)
+  let witness = redeemer_item.RedeemerItemProofWitnessV1 {
+    action: redeemer_item.RedeemerItemOpenHeader,
+    chunk_proof: Some(
+      bounded_item_v1.ChunkProofV1 {
+        version: 1,
+        field_index: 8,
+        item_index: presented.item_index,
+        total_length: bytearray.length(bytes),
+        chunk_index: 0,
+        chunk: bytes,
+        frontier: validation_merkle_v1.build_frontier(
+          [bounded_item_v1.hash_chunk(8, presented.item_index, 0, bytes)],
+        ).peaks,
+        siblings: [],
+      },
+    ),
+    next_chunk_proof: None,
+  }
+  expect Some(redeemer_item.RedeemerItemProofAdvanced { control: next_item }) = redeemer_item.step_v1(
+    presented,
+    witness,
+  )
+  let current = CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    active_scan_hash: redeemer_item.hash_control_v1(honest),
+    active_redeemer_leaf: script_proof_v1.redeemer_item_leaf_hash(
+      0,
+      honest.item_commitment,
+    ),
+    purpose_bound: 1,
+  }
+  let auxiliary = RedeemerItemStepWitness {
+    redeemer_control: Some(current),
+    control: presented,
+    witness,
+  }
+  let auxiliary_data: Data = auxiliary
+  let f = context_step_fixture()
+  let original = context_staged_fixture(f)
+  let staged = context_chain.ContextStaged {
+    ..original,
+    bound: context_chain.ContextBound {
+      ..original.bound,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary_data)),
+    },
+    context: CekContextControlV1 {
+      ..original.context,
+      stage: 9,
+      redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+        current,
+      ),
+    },
+  }
+  let staged_data: Data = staged
+  let witness_data: Data = witness
+  let pending: Data = CekContextItemStepPending {
+    staged: staged_data,
+    item_control: presented,
+    item_witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    claimed_next: next_item,
+  }
+  context_item_bind.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    ct.Continue(
+      context_item.VerifyItem {
+        input_index: 0,
+        output_index: 0,
+        transition: f.transition,
+        auxiliary: auxiliary_data,
+        claimed_next: next_item,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+  )
+}
+
+test bounded_context_stage9_item_bind_accepts_the_selected_item() {
+  run_stage9_item_bind(fn(control) { control })
+}
+
+test bounded_context_stage9_item_bind_refuses_a_forged_item_count() fail {
+  run_stage9_item_bind(
+    fn(control) {
+      redeemer_item.RedeemerItemProofControlV1 {
+        ..control,
+        item_count: control.item_count + 1,
+      }
+    },
+  )
+}
+
+test bounded_context_stage9_item_bind_refuses_a_flipped_mode() fail {
+  run_stage9_item_bind(
+    fn(control) {
+      redeemer_item.RedeemerItemProofControlV1 {
+        ..control,
+        mode: redeemer_item.mode_data,
+      }
+    },
+  )
+}
+
+test bounded_context_stage9_item_bind_refuses_another_item() fail {
+  run_stage9_item_bind(fn(_) { stage9_item_control(1) })
+}
+
 test bounded_context_binding_wire_matches_sdk() {
   let f = context_step_fixture()
   let staged = context_staged_fixture(f)

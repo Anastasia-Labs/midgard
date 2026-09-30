@@ -12,10 +12,7 @@ use midgard/script_proof_v1
 use midgard/script_sources_redeemer_normalization_v1.{CekContextItemStepPending}
 use midgard/validation_machine/machine_types.{CekRedeemerContextControlV1}
 use midgard/validation_machine/shared.{purpose_kind_to_redeemer_tag}
-use midgard/validation_machine/witness.{
-  cek_redeemer_context_control_is_well_formed,
-  hash_cek_redeemer_context_control_v1,
-}
+use midgard/validation_machine/witness.{hash_cek_redeemer_context_control_v1}
 
 validator main(
   item_entry_script_hash: ScriptHash,
@@ -47,20 +44,20 @@ validator main(
               control_data,
               witness_data]) = builtin.un_constr_data(action.auxiliary)
         expect control: item.RedeemerItemProofControlV1 = control_data
-        let leaf = script_proof_v1.redeemer_item_leaf_hash(
-          control.item_index,
-          control.item_commitment,
-        )
-        expect control.item_count == native.redeemer_count
         let expected_hash = if context.stage == 0 {
           expect Pair(1, []) = builtin.un_constr_data(redeemers_data)
+          expect control.item_count == native.redeemer_count
           expect control.mode == item.mode_descriptor
           expect
             control.expected_purpose_tag == purpose_kind_to_redeemer_tag(
               context.purpose_kind,
             )
           expect control.expected_pointer_index == context.purpose_index
-          expect leaf == context.redeemer_leaf
+          expect
+            script_proof_v1.redeemer_item_leaf_hash(
+              control.item_index,
+              control.item_commitment,
+            ) == context.redeemer_leaf
           context.redeemer_context_control_hash
         } else {
           expect context.stage == 9
@@ -69,13 +66,14 @@ validator main(
           )
           expect current: CekRedeemerContextControlV1 = current_data
           expect
-            cek_redeemer_context_control_is_well_formed(
-              native.redeemer_count,
-              current,
-            )
-          expect
             hash_cek_redeemer_context_control_v1(current) == context.redeemer_context_control_hash
-          expect leaf == current.active_redeemer_leaf
+          // The select chain built the item control this pins:
+          // select-authenticate proved `item_index`, `item_commitment`, the
+          // redeemer leaf and `total_length` and took `item_count` from the
+          // native control; select-initialize and select-hash derived `mode`
+          // and the expected tag from the purpose. The item proof never
+          // rewrites those fields, so no field of `control` needs a check of
+          // its own.
           current.active_scan_hash
         }
         expect item.hash_control_v1(control) == expected_hash

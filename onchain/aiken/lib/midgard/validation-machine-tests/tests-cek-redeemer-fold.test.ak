@@ -700,3 +700,273 @@ test script_purpose_summary_shows_a_receive_only_to_midgard() {
     script_context_v1.script_purpose_summary_v1(3, h_28_b, h_28_b, False) == None,
   }
 }
+
+// ---- The stage-9 item step ----
+//
+// After a select, `active_scan_hash` pins the whole item control the select
+// built: `item_count` from the native control, `item_index`,
+// `item_commitment` and `total_length` from the execution leaf and the item
+// commitment, `mode` and the expected tag from the purpose. `step_v1` never
+// rewrites those fields, so every later item step's control is pinned the
+// same way. These tests present a forged item control from an honest
+// post-select state; only the pin can refuse it.
+
+/// The item's single chunk proof.
+fn item_chunk_proof(fold: Fold, item: Int) -> bounded_item_v1.ChunkProofV1 {
+  let bytes = item_cbor(fold, item)
+  bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 8,
+    item_index: item,
+    total_length: bytearray.length(bytes),
+    chunk_index: 0,
+    chunk: bytes,
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: bounded_item_v1.hash_chunk(8, item, 0, bytes),
+      },
+    ],
+    siblings: [],
+  }
+}
+
+/// The item control an honest select of the purpose at frontier `at`
+/// consuming witness item `item` builds.
+fn selected_item_control(
+  fold: Fold,
+  at: Int,
+  item: Int,
+) -> redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+  let execution = execution_at(fold, at)
+  let summary = script_context_v1.script_purpose_summary_v1(
+    execution.purpose_kind,
+    execution.script_hash,
+    execution.subject,
+    fold.context_language == 128,
+  )
+  expect Some(tag) = vm_shared.redeemer_tag_for_purpose_kind_v1(
+    execution.purpose_kind,
+  )
+  redeemer_item_proof_v1.initial_control_v1(
+    when summary is {
+      None -> redeemer_item_proof_v1.mode_descriptor
+      Some(_) -> redeemer_item_proof_v1.mode_data
+    },
+    item,
+    list.length(fold.redeemers),
+    bytearray.length(item_cbor(fold, item)),
+    item_commitment(fold, item),
+    tag,
+    0,
+  )
+}
+
+fn item_witness(
+  fold: Fold,
+  item: Int,
+  action: redeemer_item_proof_v1.RedeemerItemProofActionV1,
+) -> redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+  redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+    action,
+    chunk_proof: Some(item_chunk_proof(fold, item)),
+    next_chunk_proof: None,
+  }
+}
+
+/// One stage-9 item step from `redeemers` presenting item control `control`.
+/// The claimed successor is exactly the one `step_v1` yields from `control`,
+/// so the step verifier's own checks are all that can refuse it.
+fn item_step(
+  fold: Fold,
+  redeemers: vm_machine_types.CekRedeemerContextControlV1,
+  control: redeemer_item_proof_v1.RedeemerItemProofControlV1,
+  witness: redeemer_item_proof_v1.RedeemerItemProofWitnessV1,
+) -> Bool {
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next })
+    = redeemer_item_proof_v1.step_v1(control, witness)
+  let next_redeemers = if next.stage == redeemer_item_proof_v1.stage_terminal {
+    vm_machine_types.CekRedeemerContextControlV1 {
+      ..redeemers,
+      cursor: redeemers.cursor + 1,
+      active_scan_hash: #"",
+      active_redeemer_leaf: #"",
+      active_purpose: vm_witness.empty_data_summary_v1(),
+    }
+  } else {
+    vm_machine_types.CekRedeemerContextControlV1 {
+      ..redeemers,
+      active_scan_hash: redeemer_item_proof_v1.hash_control_v1(next),
+    }
+  }
+  fold_step(
+    fold,
+    redeemers,
+    vm_machine_types.RedeemerItemStepWitness {
+      redeemer_control: Some(redeemers),
+      control,
+      witness,
+    },
+    next_redeemers,
+  )
+}
+
+/// From the honest state after the mint select, open the item header with
+/// the item control `forge` makes of the honest one.
+fn mint_header_step(
+  forge: fn(redeemer_item_proof_v1.RedeemerItemProofControlV1) ->
+    redeemer_item_proof_v1.RedeemerItemProofControlV1,
+  item: Int,
+) -> Bool {
+  let fold = spend_and_mint()
+  let honest = selected_item_control(fold, 1, 0)
+  let presented = forge(honest)
+  expect presented.item_index == item
+  item_step(
+    fold,
+    honest_select_successor(fold, initial(fold), 1, 0),
+    presented,
+    item_witness(fold, item, redeemer_item_proof_v1.RedeemerItemOpenHeader),
+  )
+}
+
+// I1. The honest data-mode header step right after the mint select.
+test redeemer_item_step_opens_the_selected_header() {
+  mint_header_step(fn(control) { control }, 0)
+}
+
+// I2. The honest descriptor-mode header then tail of a receive in a
+// PlutusV3 context; the tail reaches the terminal and clears the active scan.
+test redeemer_item_step_walks_a_descriptor_item_to_its_terminal() {
+  let fold = spend_and_receive(3)
+  let selected = honest_select_successor(fold, initial(fold), 1, 0)
+  let control = selected_item_control(fold, 1, 0)
+  let header = item_witness(
+    fold,
+    0,
+    redeemer_item_proof_v1.RedeemerItemOpenHeader,
+  )
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+        control: tail_control,
+      })
+    = redeemer_item_proof_v1.step_v1(control, header)
+  let opened = vm_machine_types.CekRedeemerContextControlV1 {
+    ..selected,
+    active_scan_hash: redeemer_item_proof_v1.hash_control_v1(tail_control),
+  }
+  and {
+    control.mode == redeemer_item_proof_v1.mode_descriptor,
+    item_step(fold, selected, control, header),
+    item_step(
+      fold,
+      opened,
+      tail_control,
+      item_witness(fold, 0, redeemer_item_proof_v1.RedeemerItemOpenTail),
+    ),
+  }
+}
+
+// I3. A second successor from I1's state: an item control whose item_count
+// differs from the redeemer count. `step_v1` advances it (I6), so only the
+// active_scan_hash pin refuses it.
+test redeemer_item_step_refuses_a_forged_item_count() fail {
+  mint_header_step(
+    fn(control) {
+      redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+        ..control,
+        item_count: control.item_count + 1,
+      }
+    },
+    0,
+  )
+}
+
+// I4. A second successor from I1's state: the data-mode item presented in
+// descriptor mode.
+test redeemer_item_step_refuses_a_flipped_mode() fail {
+  mint_header_step(
+    fn(control) {
+      redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+        ..control,
+        mode: redeemer_item_proof_v1.mode_descriptor,
+      }
+    },
+    0,
+  )
+}
+
+// I5. A second successor from I1's state: the spend's genuine item control
+// and chunk, which open their own header.
+test redeemer_item_step_refuses_another_item() fail {
+  mint_header_step(fn(_) { selected_item_control(spend_and_mint(), 0, 1) }, 1)
+}
+
+/// `step_v1` advances `forge(honest)` from the honest item's header, so a
+/// refusal in I3-I5 comes from the step verifier, not the item proof.
+fn forged_header_advances(
+  forge: fn(redeemer_item_proof_v1.RedeemerItemProofControlV1) ->
+    redeemer_item_proof_v1.RedeemerItemProofControlV1,
+  item: Int,
+) -> Bool {
+  let fold = spend_and_mint()
+  let honest = selected_item_control(fold, 1, 0)
+  let presented = forge(honest)
+  when
+    redeemer_item_proof_v1.step_v1(
+      presented,
+      item_witness(fold, item, redeemer_item_proof_v1.RedeemerItemOpenHeader),
+    )
+  is {
+    Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { .. }) ->
+      presented != honest
+    _ -> False
+  }
+}
+
+// I6. I3-I5's forged controls each advance through `step_v1` itself.
+test redeemer_item_step_forgeries_advance_the_item_proof() {
+  let fold = spend_and_mint()
+  and {
+    forged_header_advances(
+      fn(control) {
+        redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+          ..control,
+          item_count: control.item_count + 1,
+        }
+      },
+      0,
+    ),
+    forged_header_advances(
+      fn(control) {
+        redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+          ..control,
+          mode: redeemer_item_proof_v1.mode_descriptor,
+        }
+      },
+      0,
+    ),
+    forged_header_advances(fn(_) { selected_item_control(fold, 0, 1) }, 1),
+  }
+}
+
+// I7. The select cannot write an active scan with a forged item_count: the
+// select takes item_count from the native control, not the witness.
+test redeemer_item_step_select_cannot_write_a_forged_item_count() fail {
+  let fold = spend_and_mint()
+  let honest = selected_item_control(fold, 1, 0)
+  let forged = redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+    ..honest,
+    item_count: honest.item_count + 1,
+  }
+  fold_step(
+    fold,
+    initial(fold),
+    honest_select(fold, initial(fold), 1, 0),
+    vm_machine_types.CekRedeemerContextControlV1 {
+      ..honest_select_successor(fold, initial(fold), 1, 0),
+      active_scan_hash: redeemer_item_proof_v1.hash_control_v1(forged),
+    },
+  )
+}

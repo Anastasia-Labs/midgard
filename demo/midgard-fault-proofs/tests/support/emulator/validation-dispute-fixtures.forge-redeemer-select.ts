@@ -4,6 +4,7 @@ import {
   buildMidgardValidationTraceTree,
   decodeSingleCbor,
   encodeCbor,
+  hashMidgardRedeemerItemProofControl,
   hashMidgardValidationMachineState,
   hashMidgardValidationWorkWitness,
 } from "@al-ft/midgard-core";
@@ -160,3 +161,82 @@ export const forgeRedeemerSkipTrace = ({
     },
   });
 };
+
+/**
+ * The challenger's forged select for `cekRedeemerSelectLengthDelta`: at the
+ * honest select it keeps the disputed control, the genuine execution leaf,
+ * siblings, item commitment and item frontier root, and changes only
+ * `totalLength` by `lengthDelta`. Its successor is exactly the one that
+ * length yields: the honest successor with the active scan rebuilt from the
+ * item control carrying the forged length. The control hash, the active scan
+ * and `[execution-leaf]` all pass, so only `[item-length]` can refuse it.
+ */
+export const forgeRedeemerLengthTrace = ({
+  trace,
+  disputedLowIndex,
+  lengthDelta,
+}: {
+  readonly trace: DeterministicValidationMachineTrace;
+  readonly disputedLowIndex: number;
+  readonly lengthDelta: number;
+}): DeterministicValidationMachineTrace => {
+  const disputed = trace.witnesses[disputedLowIndex]!.auxiliary;
+  // The first item step after the select carries the redeemer control the
+  // select produced and the item control it pinned.
+  const item = trace.witnesses[disputedLowIndex + 1]!.auxiliary;
+  if (
+    disputed?.kind !== "cekRedeemerContextSelect" ||
+    item?.kind !== "redeemerItemStep" ||
+    item.redeemerControl === null ||
+    item.control.totalLength !== disputed.totalLength
+  )
+    throw new Error("redeemer length forgery needs an honest select step");
+  const totalLength = disputed.totalLength + lengthDelta;
+  return forgeRedeemerFoldStep({
+    trace,
+    disputedLowIndex,
+    auxiliary: { ...disputed, totalLength },
+    forgedControl: {
+      ...item.redeemerControl,
+      activeScanHash: hashMidgardRedeemerItemProofControl({
+        ...item.control,
+        totalLength,
+      }),
+    },
+  });
+};
+
+/**
+ * The challenger's forged redeemer fold step the fixture options name, or
+ * `undefined` when the challenger is honest: a skip in place of the disputed
+ * select (`cekRedeemerSkipForgery`), the disputed select with its length
+ * moved (`cekRedeemerSelectLengthDelta`), or the select of another step
+ * (`cekRedeemerSelectDonorOrdinal`). The operator's claim is the honest
+ * trace.
+ */
+export const forgeRedeemerFoldTrace = ({
+  trace,
+  disputedLowIndex,
+  skipForgery,
+  lengthDelta,
+  donorOrdinal,
+  selectIndices,
+}: {
+  readonly trace: DeterministicValidationMachineTrace;
+  readonly disputedLowIndex: number;
+  readonly skipForgery: boolean;
+  readonly lengthDelta: number | undefined;
+  readonly donorOrdinal: number | undefined;
+  readonly selectIndices: readonly number[];
+}): DeterministicValidationMachineTrace | undefined =>
+  skipForgery
+    ? forgeRedeemerSkipTrace({ trace, disputedLowIndex })
+    : lengthDelta !== undefined
+      ? forgeRedeemerLengthTrace({ trace, disputedLowIndex, lengthDelta })
+      : donorOrdinal === undefined
+        ? undefined
+        : forgeRedeemerSelectTrace({
+            trace,
+            disputedLowIndex,
+            donorIndex: selectIndices[donorOrdinal],
+          });

@@ -299,6 +299,29 @@ describe("bounded CEK context registered lifecycle", () => {
     expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
   }, 900_000);
 
+  // From the honest Mint select the challenger hands the item proof a
+  // `total_length` one byte longer. The execution leaf, siblings, item
+  // commitment and item frontier root are genuine and its successor is the
+  // one that length yields, so only the item commitment's length pin in
+  // select-authenticate refuses it.
+  it("refuses a redeemer select with a forged item length against an honest block", async () => {
+    const refusal = await expectOnchainRefusal(() =>
+      runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal: 0,
+          cekRedeemerSelectLengthDelta: 1,
+        }),
+      ),
+    );
+    expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
+  }, 900_000);
+
   // The native mint policy sits above the Plutus spend in ledger order, so
   // the honest fold first skips the mint's native execution leaf and then
   // selects the spend. The skip settles directly from select-authenticate.

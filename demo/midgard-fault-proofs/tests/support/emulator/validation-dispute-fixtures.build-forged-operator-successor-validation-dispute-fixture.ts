@@ -28,10 +28,7 @@ import { scriptSourcesMiddleYieldIndex } from "../../../src/validation-dispute/s
 import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtures.build-accepted-claim-over-rejecting-transaction-fixture.js";
 import { buildForcedValidationDisputeCommitments } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildNativeTransactionTrace } from "./validation-dispute-fixtures.build-native-transaction-trace.js";
-import {
-  forgeRedeemerSelectTrace,
-  forgeRedeemerSkipTrace,
-} from "./validation-dispute-fixtures.forge-redeemer-select.js";
+import { forgeRedeemerFoldTrace } from "./validation-dispute-fixtures.forge-redeemer-select.js";
 import { withMaximumValueAssetProof } from "./value-asset-maximum.js";
 
 /**
@@ -69,6 +66,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   cekRedeemerSelectDonorOrdinal,
   cekRedeemerSkipOrdinal,
   cekRedeemerSkipForgery = false,
+  cekRedeemerSelectLengthDelta,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
   redeemerDataCbor,
@@ -143,6 +141,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
    * The operator's claim is the honest trace.
    */
   readonly cekRedeemerSkipForgery?: boolean;
+  /** See {@link forgeRedeemerFoldTrace}. */
+  readonly cekRedeemerSelectLengthDelta?: number;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
   readonly redeemerDataCbor?: Uint8Array;
@@ -543,15 +543,14 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     witnesses[disputedLowIndex] = { ...adjacent, auxiliary: mutatedAuxiliary };
     challengerTrace = { ...challengerTrace, witnesses };
   }
-  const redeemerSelectForgery = cekRedeemerSkipForgery
-    ? forgeRedeemerSkipTrace({ trace: challengerTrace, disputedLowIndex })
-    : cekRedeemerSelectDonorOrdinal === undefined
-      ? undefined
-      : forgeRedeemerSelectTrace({
-          trace: challengerTrace,
-          disputedLowIndex,
-          donorIndex: redeemerSelectIndices[cekRedeemerSelectDonorOrdinal],
-        });
+  const redeemerSelectForgery = forgeRedeemerFoldTrace({
+    trace: challengerTrace,
+    disputedLowIndex,
+    skipForgery: cekRedeemerSkipForgery,
+    lengthDelta: cekRedeemerSelectLengthDelta,
+    donorOrdinal: cekRedeemerSelectDonorOrdinal,
+    selectIndices: redeemerSelectIndices,
+  });
   const honestTerminal = challengerTrace.states.at(-1)!;
   if (honestTerminal.phase !== "terminal") {
     throw new Error(
