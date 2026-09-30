@@ -48,8 +48,9 @@ export const programMaterialSidecarCbor = Buffer.from(
 
 /**
  * The retained DA of a block carrying one transaction that spends
- * `spendCount` outputs of one script under `spendCount` spend redeemers and
- * one extra mint redeemer, which no purpose selects.
+ * `spendCount` outputs of one script under `spendCount` spend redeemers and,
+ * by default, one extra mint redeemer, which no purpose selects. `items`
+ * replaces the field-8 redeemers.
  */
 export const buildRetainedDa = async (
   direction: "accepted" | "forced",
@@ -57,6 +58,7 @@ export const buildRetainedDa = async (
   omitAuditHeader = false,
   maximum = false,
   spendCount = 1,
+  items = redeemerItems(spendCount),
 ) => {
   const spent = Array.from({ length: spendCount }, (_, index) =>
     outRefFromByte(0x71, BigInt(index)),
@@ -81,7 +83,7 @@ export const buildRetainedDa = async (
     scriptWitnesses: [script],
     redeemerTxWitsPreimageCbor: maximum
       ? maximumRedeemerField(direction, spendCount)
-      : makeRedeemersCbor(redeemerItems(spendCount)),
+      : makeRedeemersCbor(items),
     scriptLanguages: ["PlutusV3"],
     privateKey,
   });
@@ -313,6 +315,7 @@ export const buildMaterial = async (
   omitAuditHeader = false,
   maximum = false,
   spendCount = 1,
+  items = redeemerItems(spendCount),
 ) => {
   const { block, txCbor, sourceKey, ...da } = await buildRetainedDa(
     direction,
@@ -320,6 +323,7 @@ export const buildMaterial = async (
     omitAuditHeader,
     maximum,
     spendCount,
+    items,
   );
   const redeemerIndex =
     redeemerIndexOverride ??
