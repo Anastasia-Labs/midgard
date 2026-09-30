@@ -113,7 +113,7 @@ export const runPhaseA = (
   config = phaseAConfig,
 ) => Effect.runPromise(runPhaseAValidation(queued, config));
 
-const queuedNativeTx = (
+export const queuedNativeTx = (
   fixture: Pick<ReturnType<typeof makeNativeTx>, "txId" | "txCbor">,
 ) => makeQueued(fixture.txId, fixture.txCbor);
 
