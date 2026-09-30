@@ -159,8 +159,8 @@ describe("midgard contracts registry", () => {
       // normalize bigint parameters as decimal strings. Re-pinned by #689:
       // the pooled DA bond validator was added, the per-block availability
       // bond yield removed, and the availability-challenge and DA-attestation
-      // parameters changed (pool policy, commitment-bound challenges).
-      // The nonterminal MPF leaf-fold correction changes the fraud-proof scripts.
+      // parameters changed (pool policy, commitment-bound challenges). Two MPF
+      // fixes (nonterminal leaf fold, terminal neighbour) change fraud proofs.
       expect(
         createHash("sha256")
           .update(
@@ -168,7 +168,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "a5ecebb58a390562fa7e44a70010339332b401257da858d3a897e80124390b16",
+        "9630ab3584f95f9738392ec8ba5cf01199ff6781b39d4c5b52138ec40d536e36",
       );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

@@ -12,11 +12,53 @@ import {
   type MidgardMpfProofFoldControl,
   type MidgardMpfProofFoldStep,
   type MidgardMpfProofFoldTrace,
+  type MidgardMpfProofFrame,
   type MidgardMpfProofStep,
+  nibbleAt,
   NULL_HASH,
+  PATH_NIBBLE_COUNT,
   suffix,
 } from "./mpf-proof-fold.parse-midgard-mpf-proof-json.js";
 import { buildMidgardValidationMerkleMembership } from "./validation-merkle.js";
+
+// The terminal frame's neighbour is the one the including and excluding roots
+// read two ways, so its shape is pinned to the honest trie's (the twin of
+// `terminal_leaf_neighbor_is_canonical` and
+// `terminal_fork_neighbor_is_canonical` in `mpf-proof-v1.ak`). A terminal Leaf
+// shares the skipped nibbles with the proven path; a terminal Fork neighbour
+// is a branch, so its prefix is a nibble string whose own branching nibble
+// lies inside the path.
+const assertTerminalNeighborIsCanonical = (
+  path: Uint8Array,
+  frame: MidgardMpfProofFrame,
+): void => {
+  if (frame.step.kind === "leaf") {
+    const key = frame.step.key;
+    for (
+      let cursor = frame.cursor;
+      cursor < frame.nextCursor - 1;
+      cursor += 1
+    ) {
+      if (nibbleAt(key, cursor) !== nibbleAt(path, cursor)) {
+        throw new Error(
+          "MPF terminal leaf neighbor does not share the skipped path prefix",
+        );
+      }
+    }
+    return;
+  }
+  if (frame.step.kind === "fork") {
+    const prefix = frame.step.neighbor.prefix;
+    if (
+      frame.nextCursor + prefix.length >= PATH_NIBBLE_COUNT ||
+      prefix.some((byte) => byte > 15)
+    ) {
+      throw new Error(
+        "MPF terminal fork neighbor prefix is not a nibble path inside the key path",
+      );
+    }
+  }
+};
 
 export const buildMidgardMpfProofFoldTrace = ({
   key,
@@ -49,6 +91,9 @@ export const buildMidgardMpfProofFoldTrace = ({
       frame.nextCursor !== control.expectedNextCursor
     ) {
       throw new Error("MPF proof fold frame continuity is invalid");
+    }
+    if (frameIndex === frames.length - 1) {
+      assertTerminalNeighborIsCanonical(path, frame);
     }
     const post: MidgardMpfProofFoldControl = {
       nextFrameIndex: frameIndex - 1,

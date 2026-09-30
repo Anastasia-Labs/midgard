@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/semantic resolver publication",
-  "blueprintSha256": "636e8b9fe6cbc2cf247175c3303fa18ee61660891928e14620fad831be4fae1f",
+  "blueprintSha256": "7df3ff0d3decec36da7bf15f3d3dac0db0e7e8b04b3a1dbfb4a457c8946d2be2",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -116,13 +116,13 @@
       "name": "ledgerDeltaFinalize",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 13057,
+      "signedBytes": 13417,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3327,
+      "signedByteMargin": 2967,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 2815
+      "publicationReserveMargin": 2455
     },
     {
       "name": "ledgerDeltaOperation",
@@ -164,13 +164,13 @@
       "name": "ledgerDeltaProofFrame",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 13492,
+      "signedBytes": 13857,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 2892,
+      "signedByteMargin": 2527,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 2380
+      "publicationReserveMargin": 2015
     },
     {
       "name": "ledgerDeltaReplay",
@@ -500,13 +500,13 @@
       "name": "resolveInputsNonMembership",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 10056,
+      "signedBytes": 10324,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 6328,
+      "signedByteMargin": 6060,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 5816
+      "publicationReserveMargin": 5548
     },
     {
       "name": "scriptIntegrityAuthentication",
@@ -1097,5 +1097,5 @@
       "publicationReserveMargin": 1518
     }
   ],
-  "ledgerSha256": "860f02e60bbf4ef4b2ed3bd6d5f6a714920830f3f90b427c94dc2528c64e9874"
+  "ledgerSha256": "6591363db03814e7985b0a3f567072989e8988e6192ed9d4b5316eed3f621992"
 }

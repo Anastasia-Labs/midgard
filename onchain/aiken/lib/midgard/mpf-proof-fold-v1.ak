@@ -9,6 +9,7 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
+use midgard/mpf_proof_v1
 use midgard/validation_merkle_v1
 
 pub const proof_fold_version: Int = 1
@@ -113,7 +114,16 @@ fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
   }
 }
 
-fn frame_is_well_formed(path: ByteArray, frame: ProofFrameV1) -> Bool {
+// The terminal frame is the deepest one, and the only one whose neighbour the
+// including and excluding roots read differently (see
+// `mpf_proof_v1.terminal_leaf_neighbor_is_canonical` and
+// `terminal_fork_neighbor_is_canonical`). The same frame serves insertion and
+// deletion, so the check binds both directions.
+fn frame_is_well_formed(
+  path: ByteArray,
+  frame: ProofFrameV1,
+  is_terminal_frame: Bool,
+) -> Bool {
   let skip = when frame.step is {
     mpf.Branch { skip, .. } -> skip
     mpf.Fork { skip, .. } -> skip
@@ -133,6 +143,10 @@ fn frame_is_well_formed(path: ByteArray, frame: ProofFrameV1) -> Bool {
       mpf.Fork { neighbor, .. } -> and {
           neighbor_is_well_formed(neighbor),
           nibble(path, frame.next_cursor - 1) != neighbor.nibble,
+          !is_terminal_frame || mpf_proof_v1.terminal_fork_neighbor_is_canonical(
+            frame.next_cursor,
+            neighbor,
+          ),
         }
       mpf.Leaf { key, value, .. } -> and {
           bytearray.length(key) == digest_byte_count,
@@ -140,6 +154,12 @@ fn frame_is_well_formed(path: ByteArray, frame: ProofFrameV1) -> Bool {
           nibble(path, frame.next_cursor - 1) != nibble(
             key,
             frame.next_cursor - 1,
+          ),
+          !is_terminal_frame || mpf_proof_v1.terminal_leaf_neighbor_is_canonical(
+            path,
+            key,
+            frame.cursor,
+            frame.next_cursor,
           ),
         }
     },
@@ -300,7 +320,11 @@ pub fn fold_proof_frame_v1(
     control.next_frame_index < descriptor.frame_count,
     frame.frame_index == control.next_frame_index,
     frame.next_cursor == control.expected_next_cursor,
-    frame_is_well_formed(path, frame),
+    frame_is_well_formed(
+      path,
+      frame,
+      frame.frame_index == descriptor.frame_count - 1,
+    ),
     validation_merkle_v1.verify_membership(
       descriptor.frame_count,
       descriptor.peaks,

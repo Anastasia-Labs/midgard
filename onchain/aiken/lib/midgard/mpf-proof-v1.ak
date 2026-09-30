@@ -1,4 +1,4 @@
-use aiken/builtin.{blake2b_256, slice_bytearray}
+use aiken/builtin.{blake2b_256, index_bytearray, slice_bytearray}
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, nibble, nibbles, suffix}
@@ -24,6 +24,114 @@ fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
     neighbor.nibble < 16,
     bytearray.length(neighbor.prefix) <= digest_byte_count,
     bytearray.length(neighbor.root) == digest_byte_count,
+  }
+}
+
+// Nibbles [from, to) of two byte strings agree. An odd end on either side is
+// compared on its own, and the whole bytes between are compared as one slice,
+// so the cost does not grow with the span.
+fn nibbles_agree(left: ByteArray, right: ByteArray, from: Int, to: Int) -> Bool {
+  if from >= to {
+    True
+  } else if from % 2 == 1 {
+    nibble(left, from) == nibble(right, from) && nibbles_agree(
+      left,
+      right,
+      from + 1,
+      to,
+    )
+  } else if to % 2 == 1 {
+    nibble(left, to - 1) == nibble(right, to - 1) && nibbles_agree(
+      left,
+      right,
+      from,
+      to - 1,
+    )
+  } else {
+    let start = from / 2
+    let length = ( to - from ) / 2
+    slice_bytearray(start, length, left) == slice_bytearray(
+      start,
+      length,
+      right,
+    )
+  }
+}
+
+fn bytes_are_nibbles(bytes: ByteArray, index: Int, length: Int) -> Bool {
+  if index >= length {
+    True
+  } else {
+    index_bytearray(bytes, index) < 16 && bytes_are_nibbles(
+      bytes,
+      index + 1,
+      length,
+    )
+  }
+}
+
+/// The last step of a proof is the only one whose neighbour the two roots of
+/// a mutation read differently. The including side places the neighbour beside
+/// the proven path at `next_cursor - 1`; the excluding side collapses the node
+/// into it. Nothing else in the proof authenticates the neighbour's shape, so
+/// these two predicates pin a terminal `Leaf` or `Fork` neighbour to the one
+/// the honest trie has. Without them a prover chooses among successor roots
+/// that relocate the neighbour to a path with no known preimage, freezing it.
+///
+/// A terminal `Branch` is not pinned. It can stand in for a node whose only
+/// other child is the neighbour: the including root is the same, and the
+/// excluding root keeps a one-child branch that no honest trie has. That case
+/// is still open.
+///
+/// A terminal `Leaf` neighbour shares the node's skipped prefix with the
+/// proven path. The excluding root reads those key nibbles and the including
+/// root never does, so without this a deletion could rewrite them, and an
+/// insertion could claim a longer skip than the true divergence.
+pub fn terminal_leaf_neighbor_is_canonical(
+  path: ByteArray,
+  key: ByteArray,
+  cursor: Int,
+  next_cursor: Int,
+) -> Bool {
+  nibbles_agree(path, key, cursor, next_cursor - 1)
+}
+
+/// A terminal `Fork` neighbour is a branch: its prefix is a nibble string, and
+/// its own branching nibble, at `next_cursor + length(prefix)`, lies inside the
+/// path. Without this a leaf neighbour re-reads as a branch whose prefix is the
+/// leaf's suffix bytes: the including root is unchanged, and the collapse of a
+/// terminal fork builds a node no honest trie has. On insertion at an odd
+/// cursor the same re-reading also passes the predecessor check against the
+/// true root, which let a present key be proven absent.
+pub fn terminal_fork_neighbor_is_canonical(
+  next_cursor: Int,
+  neighbor: mpf.Neighbor,
+) -> Bool {
+  let prefix_length = bytearray.length(neighbor.prefix)
+  and {
+    next_cursor + prefix_length < path_nibble_count,
+    bytes_are_nibbles(neighbor.prefix, 0, prefix_length),
+  }
+}
+
+fn terminal_step_is_canonical(
+  path: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+) -> Bool {
+  when proof is {
+    [] -> True
+    [mpf.Leaf { skip, key, .. }] ->
+      terminal_leaf_neighbor_is_canonical(path, key, cursor, cursor + 1 + skip)
+    [mpf.Fork { skip, neighbor }] ->
+      terminal_fork_neighbor_is_canonical(cursor + 1 + skip, neighbor)
+    [mpf.Branch { .. }] -> True
+    [mpf.Branch { skip, .. }, ..steps] ->
+      terminal_step_is_canonical(path, cursor + 1 + skip, steps)
+    [mpf.Fork { skip, .. }, ..steps] ->
+      terminal_step_is_canonical(path, cursor + 1 + skip, steps)
+    [mpf.Leaf { skip, .. }, ..steps] ->
+      terminal_step_is_canonical(path, cursor + 1 + skip, steps)
   }
 }
 
@@ -127,6 +235,7 @@ fn non_membership_proof_is_well_formed(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
+        terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
       }
     }
     [mpf.Fork { skip, neighbor }, ..steps] -> {
@@ -150,6 +259,7 @@ fn non_membership_proof_is_well_formed(
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
         nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+        terminal_leaf_neighbor_is_canonical(path, key, cursor, next_cursor),
       }
     }
     [mpf.Leaf { skip, key, value }, ..steps] -> {
@@ -279,6 +389,7 @@ fn do_excluding_strict(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
+        terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
       } {
         Some(excluding_terminal_fork(path, cursor, skip, neighbor))
       } else {
@@ -314,6 +425,7 @@ fn do_excluding_strict(
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
         nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+        terminal_leaf_neighbor_is_canonical(path, key, cursor, next_cursor),
       } {
         Some(combine(suffix(key, cursor), value))
       } else {
@@ -507,6 +619,7 @@ fn do_insert_pair_strict(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
+        terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
       } {
         let predecessor = excluding_terminal_fork(path, cursor, skip, neighbor)
         let inserted = combine(suffix(path, next_cursor), new_value_hash)
@@ -553,6 +666,7 @@ fn do_insert_pair_strict(
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
         nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+        terminal_leaf_neighbor_is_canonical(path, key, cursor, next_cursor),
       } {
         let predecessor = combine(suffix(key, cursor), value)
         let inserted = combine(suffix(path, next_cursor), new_value_hash)
@@ -797,6 +911,7 @@ fn do_delete_pair_strict(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
+        terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
       } {
         let included = combine(suffix(path, next_cursor), old_value_hash)
         Some(
@@ -845,6 +960,7 @@ fn do_delete_pair_strict(
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
         nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+        terminal_leaf_neighbor_is_canonical(path, key, cursor, next_cursor),
       } {
         let included = combine(suffix(path, next_cursor), old_value_hash)
         let neighbor = mpf.Neighbor {
@@ -1071,6 +1187,13 @@ fn library_root(root: ByteArray) -> ByteArray {
 /// regeneration event, ruled into that event as R5 item 6 by the owner ruling
 /// of 2026-08-23 on #625 (decision 0005, wave #617). The `insert_root` fold-in
 /// below travels with it — both, or neither.
+///
+/// The terminal step must also name its neighbour canonically
+/// (`terminal_fork_neighbor_is_canonical`, `terminal_leaf_neighbor_is_canonical`).
+/// A present key's own leaf at an odd depth otherwise re-reads as a terminal
+/// fork neighbour whose collapse equals the true root, proving the key absent;
+/// and `insert_root` reads the terminal leaf's skip, which only the leaf check
+/// ties to the true divergence.
 pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool {
   let path = blake2b_256(key)
   let well_formed = and {
@@ -1137,8 +1260,12 @@ pub fn delete_root(
   value: ByteArray,
   proof: mpf.Proof,
 ) -> Option<ByteArray> {
-  if has(root, key, value, proof) {
-    Some(do_excluding(blake2b_256(key), 0, proof))
+  let path = blake2b_256(key)
+  if and {
+    has(root, key, value, proof),
+    terminal_step_is_canonical(path, 0, proof),
+  } {
+    Some(do_excluding(path, 0, proof))
   } else {
     None
   }
@@ -1324,7 +1451,10 @@ pub fn delete_root_two_fold(
       )
     is {
       Some(predecessor) ->
-        if predecessor == root {
+        if and {
+          predecessor == root,
+          terminal_step_is_canonical(path, 0, proof),
+        } {
           Some(do_excluding(path, 0, proof))
         } else {
           None

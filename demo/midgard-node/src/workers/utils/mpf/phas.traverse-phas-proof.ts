@@ -17,6 +17,47 @@ import {
   proofBytes,
 } from "./phas.key-value-phas-non-membership-proof.js";
 
+const PATH_NIBBLE_COUNT = 64;
+
+// The terminal step's neighbour is the one the excluding root reads as the
+// node the proven path collapses into, so a non-membership proof pins it to
+// the honest trie's shape (the twin of `terminal_leaf_neighbor_is_canonical`
+// and `terminal_fork_neighbor_is_canonical` in `mpf-proof-v1.ak`, which
+// `does_not_have` applies). A terminal Leaf shares the skipped nibbles with
+// the proven path; a terminal Fork neighbour is a branch, so its prefix is a
+// nibble string whose own branching nibble lies inside the path.
+const assertTerminalLeafNeighborIsCanonical = (
+  path: string,
+  neighborPath: string,
+  cursor: number,
+  nextCursor: number,
+): void => {
+  if (
+    nextCursor > PATH_NIBBLE_COUNT ||
+    neighborPath.length !== PATH_NIBBLE_COUNT ||
+    neighborPath.slice(cursor, nextCursor - 1) !==
+      path.slice(cursor, nextCursor - 1)
+  ) {
+    throw new Error(
+      "Terminal leaf proof neighbor does not share the skipped path prefix",
+    );
+  }
+};
+
+const assertTerminalForkNeighborIsCanonical = (
+  nextCursor: number,
+  prefix: Buffer,
+): void => {
+  if (
+    nextCursor + prefix.length >= PATH_NIBBLE_COUNT ||
+    prefix.some((byte) => byte > 15)
+  ) {
+    throw new Error(
+      "Terminal fork proof neighbor prefix is not a nibble path inside the key path",
+    );
+  }
+};
+
 const traversePhasProof = (
   mode: PhasProofTraversalMode,
   path: string,
@@ -49,6 +90,10 @@ const traversePhasProof = (
     const skip = parseProofInteger(step.Fork.skip, "fork skip");
     const neighbor = step.Fork.neighbor;
     if (mode.kind === "excluding" && proof[index + 1] === undefined) {
+      assertTerminalForkNeighborIsCanonical(
+        cursor + 1 + skip,
+        proofBytes(neighbor.prefix, "fork neighbor prefix"),
+      );
       const prefixParts =
         skip === 0
           ? [
@@ -101,6 +146,12 @@ const traversePhasProof = (
       "leaf neighbor key",
     ).toString("hex");
     if (mode.kind === "excluding" && proof[index + 1] === undefined) {
+      assertTerminalLeafNeighborIsCanonical(
+        path,
+        neighborPath,
+        cursor,
+        cursor + 1 + parseProofInteger(step.Leaf.skip, "leaf skip"),
+      );
       return computeLeafHash(
         neighborPath.slice(cursor),
         proofBytes(step.Leaf.value, "leaf neighbor value"),

@@ -2,6 +2,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry/helpers.{nibble, suffix}
 use aiken/primitive/bytearray
 use cardano/address.{Address}
 use cardano/assets
@@ -1325,6 +1326,132 @@ test rejects_valid_withdrawal_delete_when_trace_matches_expected_post_root() {
   )
 }
 
+// ## A challenger cannot steer the terminal neighbour of a one-step mutation
+//
+// The challenger supplies the delete and insert proofs of a one-step
+// transition fault. The including root authenticates the terminal neighbour
+// only up to the reading the excluding root makes of it, so a proof that
+// re-reads that neighbour would give a root the honest trie never has, and
+// convict an honest operator whose trace step holds the true root.
+
+// path(out_ref 9 key) = 5 a 1 3 ..., path(#"000a") = 5 e 3 c ...: the spent
+// output's only neighbour sits behind a skip of one.
+const withdrawal_neighbour_key = #"000a"
+
+const neighbour_value = #"0b"
+
+fn withdrawal_neighbour_step() -> mpf.ProofStep {
+  Leaf {
+    skip: 1,
+    key: blake2b_256(withdrawal_neighbour_key),
+    value: blake2b_256(neighbour_value),
+  }
+}
+
+fn withdrawal_neighbour_only_root() -> ByteArray {
+  mpf.root(mpf.insert(mpf.empty, withdrawal_neighbour_key, neighbour_value, []))
+}
+
+fn withdrawal_pre_root() -> ByteArray {
+  mpf.root(
+    mpf.insert(
+      mpf.from_root(withdrawal_neighbour_only_root()),
+      ledger_outref_key(out_ref(9)),
+      native_output_ledger_value(9),
+      [withdrawal_neighbour_step()],
+    ),
+  )
+}
+
+fn withdrawal_delete_witness(
+  delete_proof: mpf.Proof,
+) -> proof.LedgerDeleteWitness {
+  proof.LedgerDeleteWitness {
+    key: ledger_outref_key(out_ref(9)),
+    value: native_output_ledger_value(9),
+    membership_proof: [withdrawal_neighbour_step()],
+    delete_proof,
+  }
+}
+
+fn withdrawal_delete_fault_is_valid(
+  post_root: ByteArray,
+  delete_proof: mpf.Proof,
+) -> Bool {
+  let event_key = withdrawal_event_key(0)
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Withdrawal,
+    withdrawal_pre_root(),
+    post_root,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Withdrawal,
+  )
+  let withdrawal_membership = withdrawal_source_membership(
+    out_ref(0),
+    valid_withdrawal_info(),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..traced_header(trace_proof.root, event_to_step.root),
+    withdrawals_root: withdrawal_membership.root,
+  }
+  valid_against_header(
+    header,
+    proof.InvalidOneStepTransition {
+      witness: proof.ValidWithdrawalTransition {
+        trace_proof,
+        event_to_step,
+        source_membership: withdrawal_membership,
+        spent_utxo: withdrawal_delete_witness(delete_proof),
+      },
+    },
+  )
+}
+
+test honest_withdrawal_delete_proof_resolves_to_the_honest_post_root() {
+  let honest = [withdrawal_neighbour_step()]
+  and {
+    proof.apply_delete_witness(
+      withdrawal_pre_root(),
+      withdrawal_delete_witness(honest),
+    ) == withdrawal_neighbour_only_root(),
+    !withdrawal_delete_fault_is_valid(withdrawal_neighbour_only_root(), honest),
+    withdrawal_delete_fault_is_valid(h32_b, honest),
+  }
+}
+
+test rejects_a_tampered_terminal_leaf_key_against_an_honest_withdrawal_step() fail {
+  let neighbour_path = blake2b_256(withdrawal_neighbour_key)
+  let tampered = [
+    Leaf {
+      skip: 1,
+      key: bytearray.concat(#"7e", bytearray.drop(neighbour_path, 1)),
+      value: blake2b_256(neighbour_value),
+    },
+  ]
+  withdrawal_delete_fault_is_valid(withdrawal_neighbour_only_root(), tampered)
+}
+
+test rejects_a_terminal_fork_masquerade_against_an_honest_withdrawal_step() fail {
+  let neighbour_path = blake2b_256(withdrawal_neighbour_key)
+  let masquerade = [
+    mpf.Fork {
+      skip: 1,
+      neighbor: mpf.Neighbor {
+        nibble: nibble(neighbour_path, 1),
+        prefix: suffix(neighbour_path, 2),
+        root: blake2b_256(neighbour_value),
+      },
+    },
+  ]
+  withdrawal_delete_fault_is_valid(withdrawal_neighbour_only_root(), masquerade)
+}
+
 test accepts_invalid_withdrawal_no_op_transition_fault() {
   let event_key = withdrawal_event_key(0)
   let opened_step = step(0, event_key, ledger_state.Withdrawal, h32_a, h32_b)
@@ -1841,6 +1968,166 @@ test rejects_deposit_transition_replaying_full_output_bytes() {
       ),
     ),
   )
+}
+
+// path(out_ref 0 key) = 6 f b 0 ..., path(#"0008") = 6 8 e 6 ... and
+// path(#"0001") = 0 1 c f ...: the projected deposit lands beside #"0008" at
+// the odd cursor 1, under a root that branches at nibble 0.
+const deposit_near_key = #"0008"
+
+const deposit_far_key = #"0001"
+
+const far_value = #"0c"
+
+fn deposit_far_step() -> mpf.ProofStep {
+  Leaf {
+    skip: 0,
+    key: blake2b_256(deposit_far_key),
+    value: blake2b_256(far_value),
+  }
+}
+
+fn deposit_honest_insert_proof() -> mpf.Proof {
+  [
+    deposit_far_step(),
+    Leaf {
+      skip: 0,
+      key: blake2b_256(deposit_near_key),
+      value: blake2b_256(neighbour_value),
+    },
+  ]
+}
+
+fn deposit_pre_root() -> ByteArray {
+  mpf.root(
+    mpf.insert(
+      mpf.insert(mpf.empty, deposit_far_key, far_value, []),
+      deposit_near_key,
+      neighbour_value,
+      [deposit_far_step()],
+    ),
+  )
+}
+
+fn deposit_projected_value() -> ByteArray {
+  ledger_value(out_ref(0).output_index, native_deposit_output_cbor(0))
+}
+
+fn deposit_honest_post_root() -> ByteArray {
+  mpf.root(
+    mpf.insert(
+      mpf.from_root(deposit_pre_root()),
+      ledger_outref_key(out_ref(0)),
+      deposit_projected_value(),
+      deposit_honest_insert_proof(),
+    ),
+  )
+}
+
+fn deposit_insert_witness(insert_proof: mpf.Proof) -> proof.LedgerInsertWitness {
+  proof.LedgerInsertWitness {
+    key: ledger_outref_key(out_ref(0)),
+    value: deposit_projected_value(),
+    non_membership_proof: deposit_honest_insert_proof(),
+    insert_proof,
+  }
+}
+
+fn deposit_insert_fault_is_valid(
+  post_root: ByteArray,
+  insert_proof: mpf.Proof,
+) -> Bool {
+  let deposit_id = out_ref(0)
+  let deposit_info = sample_deposit_info(0)
+  let event_key = ledger_state.DepositEventKey { deposit_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Deposit,
+    deposit_pre_root(),
+    post_root,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Deposit,
+  )
+  let source_membership = deposit_source_membership(deposit_id, deposit_info)
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    deposits_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_transition_fault_proof(
+    prove(
+      header,
+      proof.InvalidOneStepTransition {
+        witness: proof.ValidDepositTransition {
+          trace_proof,
+          event_to_step,
+          source_membership,
+          projected_utxo: deposit_insert_witness(insert_proof),
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [deposit_reference_input(deposit_id, deposit_info)],
+    Some(
+      timing_fixture.evidence(
+        header,
+        [deposit_reference_input(deposit_id, deposit_info)],
+      ),
+    ),
+  )
+}
+
+test honest_deposit_insert_proof_resolves_to_the_honest_post_root() {
+  let honest = deposit_honest_insert_proof()
+  and {
+    proof.apply_insert_witness(
+      deposit_pre_root(),
+      deposit_insert_witness(honest),
+    ) == deposit_honest_post_root(),
+    !deposit_insert_fault_is_valid(deposit_honest_post_root(), honest),
+    deposit_insert_fault_is_valid(h32_b, honest),
+  }
+}
+
+test rejects_an_inflated_terminal_leaf_skip_against_an_honest_deposit_step() fail {
+  let inflated = [
+    deposit_far_step(),
+    Leaf {
+      skip: 1,
+      key: blake2b_256(deposit_near_key),
+      value: blake2b_256(neighbour_value),
+    },
+  ]
+  deposit_insert_fault_is_valid(deposit_honest_post_root(), inflated)
+}
+
+// The near leaf at odd cursor 1 re-read as a branch at nibble 0 whose prefix
+// is its suffix without the 0x00 marker: its collapse equals the true leaf, so
+// the predecessor check against the true pre-root passes.
+test rejects_a_terminal_fork_masquerade_against_an_honest_deposit_step() fail {
+  let near_path = blake2b_256(deposit_near_key)
+  let masquerade = [
+    deposit_far_step(),
+    mpf.Fork {
+      skip: 0,
+      neighbor: mpf.Neighbor {
+        nibble: 0,
+        prefix: bytearray.drop(suffix(near_path, 1), 1),
+        root: blake2b_256(neighbour_value),
+      },
+    },
+  ]
+  deposit_insert_fault_is_valid(deposit_honest_post_root(), masquerade)
 }
 
 // Q43 structural-N/A adversarial control: a canonical valid normal L2

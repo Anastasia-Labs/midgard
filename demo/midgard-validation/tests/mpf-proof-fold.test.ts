@@ -215,3 +215,118 @@ it("preserves the skipped shared prefix when a terminal fork is compressed", () 
     "aae9218b732ed0dd511191290953ea78b87bf1d3a9e53fa0d2753fe678c9ba9b",
   );
 });
+
+// The terminal frame's neighbour is read two ways: beside the proven path in
+// the including root, and as the node the path collapses into in the excluding
+// root. path(04) = 6 4 2 2 ..., path(0106) = 6 a 9 5 ..., path(05) = f b 3 d ...
+describe("bounded MPF proof folding V1 terminal neighbour", () => {
+  const hash = (bytes: Uint8Array): Buffer =>
+    Buffer.from(blake2b(bytes, { dkLen: 32 }));
+  const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
+  const a = Buffer.from("04", "hex");
+  const b = Buffer.from("0106", "hex");
+  const c = Buffer.from("05", "hex");
+  const va = Buffer.from("0a", "hex");
+  const vb = Buffer.from("0b", "hex");
+  const vc = Buffer.from("0c", "hex");
+  // The MPF suffix of a path from `cursor`, as a leaf hash commits it.
+  const suffix = (path: Buffer, cursor: number): Buffer =>
+    cursor % 2 === 0
+      ? Buffer.concat([Buffer.from([0xff]), path.subarray(cursor / 2)])
+      : Buffer.concat([
+          Buffer.from([0, path[(cursor - 1) / 2]! % 16]),
+          path.subarray((cursor + 1) / 2),
+        ]);
+  const leaf = (key: Buffer, value: Buffer, skip: number) => ({
+    type: "leaf",
+    skip,
+    neighbor: { key: hex(key), value: hex(hash(value)) },
+  });
+  const fork = (
+    skip: number,
+    nibble: number,
+    prefix: Buffer,
+    root: Buffer,
+  ) => ({
+    type: "fork",
+    skip,
+    neighbor: { nibble, prefix: hex(prefix), root: hex(root) },
+  });
+  const fold = (proofJson: unknown) =>
+    buildMidgardMpfProofFoldTrace({
+      key: a,
+      value: va,
+      steps: parseMidgardMpfProofJson(proofJson),
+    });
+  const trieOf = async (entries: readonly (readonly [Buffer, Buffer])[]) => {
+    const store = new Store(undefined);
+    await store.ready();
+    const trie = new Trie(store);
+    for (const [key, value] of entries) await trie.insert(key, value);
+    return trie;
+  };
+
+  it("folds honest terminal leaves to the real trie roots", async () => {
+    const cases = [
+      [await trieOf([[b, vb]]), 1],
+      [
+        await trieOf([
+          [b, vb],
+          [c, vc],
+        ]),
+        0,
+      ],
+    ] as const;
+    for (const [trie, terminalSkip] of cases) {
+      const before = exactRoot(trie);
+      const proofJson = (await trie.prove(a, true)).toJSON() as readonly {
+        readonly type: string;
+        readonly skip: number;
+      }[];
+      expect(proofJson.at(-1)).toMatchObject({
+        type: "leaf",
+        skip: terminalSkip,
+      });
+      const trace = fold(proofJson);
+      await trie.insert(a, va);
+      expect(trace.terminal.includingRoot).toEqual(exactRoot(trie));
+      expect(trace.terminal.excludingRoot).toEqual(before);
+    }
+  });
+
+  it("refuses a terminal leaf whose key leaves the skipped prefix", () => {
+    const tampered = Buffer.concat([Buffer.from([0x7a]), hash(b).subarray(1)]);
+    expect(() => fold([leaf(hash(b), vb, 1)])).not.toThrow();
+    expect(() => fold([leaf(tampered, vb, 1)])).toThrow(
+      /terminal leaf neighbor does not share the skipped path prefix/u,
+    );
+  });
+
+  it("refuses a terminal leaf whose skip passes the true divergence", () => {
+    expect(() => fold([leaf(hash(b), vb, 2)])).toThrow(
+      /terminal leaf neighbor does not share the skipped path prefix/u,
+    );
+  });
+
+  it("refuses a leaf re-read as a terminal fork on deletion and insertion", () => {
+    expect(() => fold([fork(1, 10, suffix(hash(b), 2), hash(vb))])).toThrow(
+      /terminal fork neighbor prefix is not a nibble path/u,
+    );
+    expect(() =>
+      fold([
+        leaf(hash(c), vc, 0),
+        fork(0, 0, suffix(hash(b), 1).subarray(1), hash(vb)),
+      ]),
+    ).toThrow(/terminal fork neighbor prefix is not a nibble path/u);
+  });
+
+  it("bounds a terminal fork prefix by the key path", () => {
+    const neighborNibble = ((hash(a)[15]! % 16) + 1) % 16;
+    const deepFork = (prefixLength: number) =>
+      fork(31, neighborNibble, Buffer.alloc(prefixLength), hash(vc));
+    expect(() => fold([deepFork(31)])).not.toThrow();
+    expect(() => fold([deepFork(32)])).toThrow(
+      /terminal fork neighbor prefix is not a nibble path/u,
+    );
+  });
+});
