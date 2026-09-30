@@ -333,7 +333,11 @@ describe("forced reference InputNotFound coordinate the node writes", () => {
     let thread = await s.init();
     for (const stepIndex of [0, 1, 2] as const)
       thread = await s.rawStep(thread, stepIndex);
-    // The only membership the ledger can prove is reference 0's.
-    await expectOnchainRefusal(() => s.rawStep(thread, 3));
+    // The only membership the ledger can prove is reference 0's. The step
+    // authenticates its inputs and the absence rule returns false.
+    await expectOnchainRefusal(
+      () => s.rawStep(thread, 3),
+      /^Validator returned false$/u,
+    );
   }, 600_000);
 });

@@ -100,7 +100,11 @@ describe("forced RequiredSignerUnsigned coordinate the node writes", () => {
     };
     let thread = await s.init();
     for (let i = 0; i < 3; i++) thread = await s.advance(thread, i, claimed);
-    // The committed witnesses hold one signature, which is signer 0's.
-    await expectOnchainRefusal(() => s.finalizeRaw(thread, 0n));
+    // The committed witnesses hold one signature, which is signer 0's: the
+    // witness-to-signer key check refuses it.
+    await expectOnchainRefusal(
+      () => s.finalizeRaw(thread, 0n),
+      /^expect utils\.get_verification_key_hash\(witness\.verification_key\) == required_signer_hash$/u,
+    );
   }, 600_000);
 });

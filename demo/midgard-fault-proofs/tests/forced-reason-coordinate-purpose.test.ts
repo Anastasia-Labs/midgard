@@ -175,9 +175,11 @@ describe("forced ScriptSourceMissing coordinate the node writes", () => {
     );
     const scanned = await stages.scan(opened, evidence);
     // The chain walked the claimed prefix and recorded no source for the
-    // written purpose, so the terminal contradiction has nothing to convict.
-    await expectOnchainRefusal(() =>
-      submitRawStep06(s.context, scanned.threadOutRef),
+    // written purpose, so the terminal contradiction has nothing to convict:
+    // the step authenticates its inputs and the contradiction returns false.
+    await expectOnchainRefusal(
+      () => submitRawStep06(s.context, scanned.threadOutRef),
+      /^Validator returned false$/u,
     );
   }, 600_000);
 });

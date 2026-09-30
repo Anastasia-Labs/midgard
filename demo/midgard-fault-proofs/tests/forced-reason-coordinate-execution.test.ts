@@ -137,12 +137,14 @@ describe("forced ReceivePurposePlutusV3Forbidden coordinate the node writes", ()
       authentication: rebuilt.authentication,
     });
     // The written execution is the PlutusV3 receive: the rejection holds.
+    // The step authenticates its inputs and the contradiction returns false.
     await expectOnchainRefusal(
       async () =>
         await submitReceiveStep03Raw({
           ...h.common(authenticated.nextThreadOutRef, 2),
           witnessReferenceScripts: h.harness.witnessReferenceScripts,
         }),
+      /^Validator returned false$/u,
     );
   }, 600_000);
 });
