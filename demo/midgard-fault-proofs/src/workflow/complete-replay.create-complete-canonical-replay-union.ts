@@ -19,11 +19,8 @@ import { detectReceivePurposeLanguageCanonicalViolations } from "../receive-purp
 import { detectRedeemerCanonicityCompleteReplay } from "../redeemer-canonicity/authenticated-workflow.js";
 import { detectScriptIntegrityHashMismatchCanonicalViolations } from "../script-integrity-hash-mismatch/replay.js";
 import { type TransitionTraceL1Events } from "../transition-trace/l1-events.js";
-import {
-  provenTransitionEventKeyCbor,
-  replayTransitionTraceFromRetainedHistory,
-  transitionTraceDetectionId,
-} from "../transition-trace/replay-authority.js";
+import { transitionTraceCanonicalDetections } from "../transition-trace/replay-authority.canonical-detections.js";
+import { replayTransitionTraceFromRetainedHistory } from "../transition-trace/replay-authority.js";
 import { detectUnusedRedeemerCanonicalViolations } from "../unused-redeemer/replay.js";
 import { detectUnusedScriptWitnessCanonicalViolations } from "../unused-script-witness/replay.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
@@ -51,7 +48,7 @@ import {
   replayContextIdentity,
   requireReplayHistoricalCorpus,
 } from "./complete-replay.replay-context-identity.js";
-import { eventKeyCborSubject, subjectOf } from "./detection-subject.js";
+import { subjectOf } from "./detection-subject.js";
 import { type HistoricalNativeScriptCorpus } from "./historical-native-script-corpus.js";
 import {
   assertReplayPrerequisiteCovered,
@@ -318,14 +315,7 @@ export const createTransitionTraceCompleteCanonicalReplayFromRetainedHistory = (
       corpus: typeof corpus === "function" ? corpus() : corpus,
       l1Events: typeof l1Events === "function" ? l1Events() : l1Events,
     });
-    return replay.detections.map((detection, index) => ({
-      violationId: "transition-trace",
-      headerHash: evidence.headerHash,
-      ...eventKeyCborSubject(provenTransitionEventKeyCbor(detection)),
-      detectionId: transitionTraceDetectionId(index, detection.kind),
-      position: BigInt(index),
-      provenTransitionEventKeyCbor: provenTransitionEventKeyCbor(detection),
-    }));
+    return transitionTraceCanonicalDetections(evidence, replay.detections);
   });
 
 export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
@@ -341,14 +331,7 @@ export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       corpus,
       l1Events: context.transitionTraceEvents,
     });
-    return replay.detections.map((detection, index) => ({
-      violationId: "transition-trace",
-      headerHash: evidence.headerHash,
-      ...eventKeyCborSubject(provenTransitionEventKeyCbor(detection)),
-      detectionId: transitionTraceDetectionId(index, detection.kind),
-      position: BigInt(index),
-      provenTransitionEventKeyCbor: provenTransitionEventKeyCbor(detection),
-    }));
+    return transitionTraceCanonicalDetections(evidence, replay.detections);
   },
 );
 

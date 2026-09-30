@@ -315,11 +315,6 @@
     "reason": "assertRuntimeTransactionBound is the dominant indivisible declaration (479 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-fault-proofs/src/workflow/header-classifier.classify-header.ts",
-    "max": 591,
-    "reason": "classifyHeader is the dominant indivisible declaration (541 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-fault-proofs/src/workflow/journal.create-fraud-proof-workflow-journal-fold.ts",
     "max": 654,
     "reason": "createFraudProofWorkflowJournalFold is the dominant indivisible declaration (636 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."

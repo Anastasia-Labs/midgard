@@ -333,6 +333,31 @@ export const computeTransitionTraceL1EventEvidenceDigest = ({
   return digest;
 };
 
+/** The findings the block and its raw L1 events prove on their own, with no
+ * predecessor ledger or historical corpus: the list the replay below keeps
+ * when any of it is buildable. Empty when the block needs full replay. */
+export const detectStructuralTransitionTraceFaults = async ({
+  evidence,
+  l1Events,
+}: {
+  evidence: CanonicalBlockEvidence;
+  l1Events: TransitionTraceL1Events;
+}) => {
+  const coverage = readTransitionTraceEventCoverage({ evidence, l1Events });
+  const timed = {
+    omittedDueL1Events: coverage.omitted,
+    outOfWindowSourceEvents: coverage.outside,
+  };
+  const found = await detectTransitionTraceFaults(coverage.current, timed);
+  if (!found.some((item) => item.buildable))
+    return { coverage, timed, detections: [] };
+  if (found.some((item) => !item.buildable))
+    throw new Error(
+      "Transition replay contains an unbuildable authenticated finding",
+    );
+  return { coverage, timed, detections: found };
+};
+
 /** This entry point requires the opaque, freshly admitted history and raw L1
  * handles. A journal copy, supplied proof, or supplied replay verdict cannot
  * recreate that authority. */
@@ -353,52 +378,55 @@ export const replayTransitionTraceFromRetainedHistory = async ({
     throw new Error(
       "Transition replay authority targets another canonical block",
     );
-  const { l1, current, omitted, outside, referencesByEvent, uncovered } =
-    readTransitionTraceEventCoverage({ evidence, l1Events });
-  const timed = {
-    omittedDueL1Events: omitted,
-    outOfWindowSourceEvents: outside,
+  const structural = await detectStructuralTransitionTraceFaults({
+    evidence,
+    l1Events,
+  });
+  const { l1, current, referencesByEvent, uncovered } = structural.coverage;
+  const result = (
+    completeEvidence: TransitionTraceDetectionEvidence,
+    detections: readonly TransitionTraceDetection[],
+  ) => ({
+    completeEvidence,
+    detections,
+    referencesByEvent,
+    l1Snapshot: l1.snapshot,
+  });
+  if (structural.detections.length > 0)
+    return result(structural.timed, structural.detections);
+  // Decision 0007: the fabricated family owns a committed deposit or
+  // withdrawal whose L1 origin is absent. Its finding at that leaf discharges
+  // this prerequisite; a merely consumed origin yields no finding and the
+  // block fails closed.
+  if (uncovered.length > 0)
+    throw new CanonicalReplayPrerequisiteError(
+      uncovered.map(
+        (eventKey) =>
+          replayPrerequisiteFailure(
+            evidence.headerHash,
+            eventKey,
+            "present_source_origin",
+          ).failures[0]!,
+      ),
+    );
+  const completeEvidence: TransitionTraceDetectionEvidence = {
+    ...(await deriveTransitionTraceReplayEvidence({
+      current,
+      predecessor: history.reconstructions.at(-2),
+      deposits: l1.events.flatMap((entry) =>
+        entry.kind === "deposit"
+          ? [
+              {
+                history: entry.history,
+              },
+            ]
+          : [],
+      ),
+      network: l1.network,
+      depositPolicyId: l1.depositPolicyId,
+    })),
+    ...structural.timed,
   };
-  let completeEvidence: TransitionTraceDetectionEvidence = timed;
-  if (
-    !(await detectTransitionTraceFaults(current, timed)).some(
-      (item) => item.buildable,
-    )
-  ) {
-    // Decision 0007: the fabricated family owns a committed deposit or
-    // withdrawal whose L1 origin is absent. Its finding at that leaf discharges
-    // this prerequisite; a merely consumed origin yields no finding and the
-    // block fails closed.
-    if (uncovered.length > 0)
-      throw new CanonicalReplayPrerequisiteError(
-        uncovered.map(
-          (eventKey) =>
-            replayPrerequisiteFailure(
-              evidence.headerHash,
-              eventKey,
-              "present_source_origin",
-            ).failures[0]!,
-        ),
-      );
-    completeEvidence = {
-      ...(await deriveTransitionTraceReplayEvidence({
-        current,
-        predecessor: history.reconstructions.at(-2),
-        deposits: l1.events.flatMap((entry) =>
-          entry.kind === "deposit"
-            ? [
-                {
-                  history: entry.history,
-                },
-              ]
-            : [],
-        ),
-        network: l1.network,
-        depositPolicyId: l1.depositPolicyId,
-      })),
-      ...timed,
-    };
-  }
   const detections = await detectTransitionTraceFaults(
     current,
     completeEvidence,
@@ -407,12 +435,7 @@ export const replayTransitionTraceFromRetainedHistory = async ({
     throw new Error(
       "Transition replay contains an unbuildable authenticated finding",
     );
-  return {
-    completeEvidence,
-    detections,
-    referencesByEvent,
-    l1Snapshot: l1.snapshot,
-  };
+  return result(completeEvidence, detections);
 };
 
 export const transitionTraceDetectionId = (index: number, kind: string) =>

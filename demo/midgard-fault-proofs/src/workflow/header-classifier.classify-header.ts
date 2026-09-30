@@ -15,7 +15,10 @@ import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import { requireTransitionTraceEventAuthority } from "../transition-trace/l1-events.js";
+import {
+  requireTransitionTraceEventAuthority,
+  type TransitionTraceL1Events,
+} from "../transition-trace/l1-events.js";
 import { classifyCanonicalBlockViolations } from "./classification.js";
 import {
   admitCompleteCanonicalReplayHistoricalCorpus,
@@ -42,6 +45,10 @@ import {
   type RecordedDetection,
 } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import { sealDecision } from "./header-classifier.create-header-classifier.js";
+import {
+  classifyTransitionTraceStructuralRoute,
+  sealPreUnionDecision,
+} from "./header-classifier.transition-trace-structural-route.js";
 import { resolveHistoricalNativeScriptCorpus } from "./historical-native-script-corpus.js";
 import {
   HISTORICAL_CORPUS_REPLAY_CATEGORIES,
@@ -102,254 +109,81 @@ export const classifyHeader = async ({
     throw new Error("production evidence route version changed");
   }
   const launchScopeDigest = digest(classifier.launchScope);
+  const preUnion = {
+    classifier,
+    observationDigest,
+    payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
+    payloadSha256: routed.evidence.payloadSha256,
+  };
   if (routed.kind === "observers_forbidden_on_untagged_network") {
-    const selected: RecordedDetection = {
-      detectionId: routed.selected.detectionId,
-      headerHash: routed.selected.headerHash,
-      violationId: "observers-forbidden-on-untagged-network",
-      position: routed.selected.position,
-    };
-    const installed = classifier.launchScope.includes(
-      "observersForbiddenOnUntaggedNetwork",
-    );
-    const classification = {
-      decision: installed ? "fault_detected" : "unprovable",
-      selected: detectionJson(selected),
-      reason: installed ? null : "category_not_installed",
-    } as const;
-    const common = {
-      schemaVersion: HEADER_DECISION,
-      classifierVersion: HEADER_CLASSIFIER,
-      deploymentFingerprint: classifier.deploymentFingerprint,
+    return sealPreUnionDecision({
+      ...preUnion,
       headerHash: routed.evidence.headerHash,
-      authenticatedObservationDigest: observationDigest,
-      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
-      payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY,
-      replayDigest: digest({
-        route: "authenticated_observers_forbidden_raw_v1",
-        launchScope: classifier.launchScope,
-        selected: detectionJson(selected),
-      }),
-      launchScope: classifier.launchScope,
-      launchScopeDigest,
-      classificationDigest: digest(classification),
-    } as const;
-    return installed
-      ? sealDecision({
-          ...common,
-          decision: "fault_detected",
-          category: "observersForbiddenOnUntaggedNetwork",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        })
-      : sealDecision({
-          ...common,
-          decision: "unprovable",
-          reason: "category_not_installed",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        });
+      route: "authenticated_observers_forbidden_raw_v1",
+      category: "observersForbiddenOnUntaggedNetwork",
+      selected: {
+        detectionId: routed.selected.detectionId,
+        headerHash: routed.selected.headerHash,
+        violationId: "observers-forbidden-on-untagged-network",
+        position: routed.selected.position,
+      },
+    });
   }
   if (routed.kind === "mint_declared_asset_limit") {
-    const selected: RecordedDetection = {
-      detectionId: routed.selected.detectionId,
-      headerHash: routed.selected.headerHash,
-      violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
-      position: routed.selected.position,
-    };
-    const installed = classifier.launchScope.includes("mintDeclaredAssetLimit");
-    const classification = {
-      decision: installed ? "fault_detected" : "unprovable",
-      selected: detectionJson(selected),
-      reason: installed ? null : "category_not_installed",
-    } as const;
-    const common = {
-      schemaVersion: HEADER_DECISION,
-      classifierVersion: HEADER_CLASSIFIER,
-      deploymentFingerprint: classifier.deploymentFingerprint,
+    return sealPreUnionDecision({
+      ...preUnion,
       headerHash: routed.evidence.headerHash,
-      authenticatedObservationDigest: observationDigest,
-      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
-      payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY,
-      replayDigest: digest({
-        route: "authenticated_mint_declared_asset_limit_v1",
-        launchScope: classifier.launchScope,
-        selected: detectionJson(selected),
-      }),
-      launchScope: classifier.launchScope,
-      launchScopeDigest,
-      classificationDigest: digest(classification),
-    } as const;
-    return installed
-      ? sealDecision({
-          ...common,
-          decision: "fault_detected",
-          category: "mintDeclaredAssetLimit",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        })
-      : sealDecision({
-          ...common,
-          decision: "unprovable",
-          reason: "category_not_installed",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        });
+      route: "authenticated_mint_declared_asset_limit_v1",
+      category: "mintDeclaredAssetLimit",
+      selected: {
+        detectionId: routed.selected.detectionId,
+        headerHash: routed.selected.headerHash,
+        violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
+        position: routed.selected.position,
+      },
+    });
   }
   if (routed.kind === "canonical_decodability") {
-    const selected: RecordedDetection = {
-      detectionId: `${CANONICAL_DECODABILITY_VIOLATION_ID}:${routed.evidence.selected.transactionIndex.toString()}:${routed.evidence.selected.nodeTxId}:${routed.evidence.selected.fieldIndex.toString()}:${routed.evidence.selected.verdict.toString()}`,
+    return sealPreUnionDecision({
+      ...preUnion,
       headerHash: routed.evidence.headerHash,
-      violationId: CANONICAL_DECODABILITY_VIOLATION_ID,
-      position: BigInt(routed.evidence.selected.transactionIndex),
-    };
-    const installed = classifier.launchScope.includes("canonicalDecodability");
-    const classification = {
-      decision: installed ? "fault_detected" : "unprovable",
-      selected: detectionJson(selected),
-      reason: installed ? null : "category_not_installed",
-    } as const;
-    const common = {
-      schemaVersion: HEADER_DECISION,
-      classifierVersion: HEADER_CLASSIFIER,
-      deploymentFingerprint: classifier.deploymentFingerprint,
-      headerHash: routed.evidence.headerHash,
-      authenticatedObservationDigest: observationDigest,
-      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
-      payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY,
-      replayDigest: digest({
-        route: "authenticated_canonical_decodability_field_v1",
-        launchScope: classifier.launchScope,
-        selected: detectionJson(selected),
-      }),
-      launchScope: classifier.launchScope,
-      launchScopeDigest,
-      classificationDigest: digest(classification),
-    } as const;
-    return installed
-      ? sealDecision({
-          ...common,
-          decision: "fault_detected",
-          category: "canonicalDecodability",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        })
-      : sealDecision({
-          ...common,
-          decision: "unprovable",
-          reason: "category_not_installed",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        });
+      route: "authenticated_canonical_decodability_field_v1",
+      category: "canonicalDecodability",
+      selected: {
+        detectionId: `${CANONICAL_DECODABILITY_VIOLATION_ID}:${routed.evidence.selected.transactionIndex.toString()}:${routed.evidence.selected.nodeTxId}:${routed.evidence.selected.fieldIndex.toString()}:${routed.evidence.selected.verdict.toString()}`,
+        headerHash: routed.evidence.headerHash,
+        violationId: CANONICAL_DECODABILITY_VIOLATION_ID,
+        position: BigInt(routed.evidence.selected.transactionIndex),
+      },
+    });
   }
   if (routed.kind === "da_hash_preimage") {
-    const selected: RecordedDetection = {
-      detectionId: `${DA_HASH_PREIMAGE_VIOLATION_ID}:${routed.plan.violation.index.toString()}:${routed.plan.violation.committedTxId}:${routed.plan.violation.verdict.toString()}`,
+    return sealPreUnionDecision({
+      ...preUnion,
       headerHash: routed.evidence.headerHash,
-      violationId: DA_HASH_PREIMAGE_VIOLATION_ID,
-      position: BigInt(routed.plan.violation.index),
-    };
-    const installed = classifier.launchScope.includes("daHashPreimage");
-    const classification = {
-      decision: installed ? "fault_detected" : "unprovable",
-      selected: detectionJson(selected),
-      reason: installed ? null : "category_not_installed",
-    } as const;
-    const common = {
-      schemaVersion: HEADER_DECISION,
-      classifierVersion: HEADER_CLASSIFIER,
-      deploymentFingerprint: classifier.deploymentFingerprint,
-      headerHash: routed.evidence.headerHash,
-      authenticatedObservationDigest: observationDigest,
-      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
-      payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY,
-      replayDigest: digest({
-        route: "authenticated_da_hash_preimage_v1",
-        launchScope: classifier.launchScope,
-        selected: detectionJson(selected),
-      }),
-      launchScope: classifier.launchScope,
-      launchScopeDigest,
-      classificationDigest: digest(classification),
-    } as const;
-    return installed
-      ? sealDecision({
-          ...common,
-          decision: "fault_detected",
-          category: "daHashPreimage",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        })
-      : sealDecision({
-          ...common,
-          decision: "unprovable",
-          reason: "category_not_installed",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        });
+      route: "authenticated_da_hash_preimage_v1",
+      category: "daHashPreimage",
+      selected: {
+        detectionId: `${DA_HASH_PREIMAGE_VIOLATION_ID}:${routed.plan.violation.index.toString()}:${routed.plan.violation.committedTxId}:${routed.plan.violation.verdict.toString()}`,
+        headerHash: routed.evidence.headerHash,
+        violationId: DA_HASH_PREIMAGE_VIOLATION_ID,
+        position: BigInt(routed.plan.violation.index),
+      },
+    });
   }
   if (routed.kind === "field_preimage_length_mismatch") {
-    const selected: RecordedDetection = {
-      detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${routed.evidence.position.toString()}:${routed.evidence.prepared.transactionId}:${routed.evidence.prepared.fieldIndex.toString()}:${routed.evidence.prepared.direction}`,
+    return sealPreUnionDecision({
+      ...preUnion,
       headerHash: routed.evidence.prepared.headerHash,
-      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,
-      position: routed.evidence.position,
-    };
-    const installed = classifier.launchScope.includes(
-      "fieldPreimageLengthMismatch",
-    );
-    const classification = {
-      decision: installed ? "fault_detected" : "unprovable",
-      selected: detectionJson(selected),
-      reason: installed ? null : "category_not_installed",
-    } as const;
-    const common = {
-      schemaVersion: HEADER_DECISION,
-      classifierVersion: HEADER_CLASSIFIER,
-      deploymentFingerprint: classifier.deploymentFingerprint,
-      headerHash: routed.evidence.prepared.headerHash,
-      authenticatedObservationDigest: observationDigest,
-      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
-      payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY,
-      replayDigest: digest({
-        route: "authenticated_field_preimage_length_mismatch_v1",
-        launchScope: classifier.launchScope,
-        selected: detectionJson(selected),
-      }),
-      launchScope: classifier.launchScope,
-      launchScopeDigest,
-      classificationDigest: digest(classification),
-    } as const;
-    return installed
-      ? sealDecision({
-          ...common,
-          decision: "fault_detected",
-          category: "fieldPreimageLengthMismatch",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        })
-      : sealDecision({
-          ...common,
-          decision: "unprovable",
-          reason: "category_not_installed",
-          violationId: selected.violationId,
-          detectionId: selected.detectionId,
-          position: selected.position.toString(),
-        });
+      route: "authenticated_field_preimage_length_mismatch_v1",
+      category: "fieldPreimageLengthMismatch",
+      selected: {
+        detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${routed.evidence.position.toString()}:${routed.evidence.prepared.transactionId}:${routed.evidence.prepared.fieldIndex.toString()}:${routed.evidence.prepared.direction}`,
+        headerHash: routed.evidence.prepared.headerHash,
+        violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,
+        position: routed.evidence.position,
+      },
+    });
   }
 
   if (replayContext !== undefined && predecessorObservation !== undefined) {
@@ -365,6 +199,27 @@ export const classifyHeader = async ({
       "production classifier rejects caller-supplied historical replay authority",
     );
   }
+  // Captured once: the structural route and the replay read the same events.
+  let transitionTraceEvents: TransitionTraceL1Events | undefined;
+  if (
+    classifier.launchScope.includes("transitionTrace") ||
+    (classifier.launchScope.includes("validationTraceDispute") &&
+      authority.transitionTraceEventAuthority !== undefined)
+  ) {
+    if (authority.transitionTraceEventAuthority === undefined)
+      throw new Error("Transition event authority was lost");
+    transitionTraceEvents = await requireTransitionTraceEventAuthority(
+      authority.transitionTraceEventAuthority,
+    )(routed.evidence.headerHash);
+  }
+  const structural = await classifyTransitionTraceStructuralRoute({
+    classifier,
+    observationDigest,
+    evidence: routed.evidence,
+    l1Events: transitionTraceEvents,
+    minimumConfirmationDepth: authority.confirmationDepth,
+  });
+  if (structural !== undefined) return structural;
   let admittedReplayContext = replayContext;
   const predecessorRequired =
     (authority.replayer.launchScope.includes("validationTraceDispute") &&
@@ -473,18 +328,10 @@ export const classifyHeader = async ({
       settlements: await authority.settlementAuthority.capture(routed.evidence),
     });
   }
-  if (
-    classifier.launchScope.includes("transitionTrace") ||
-    (classifier.launchScope.includes("validationTraceDispute") &&
-      authority.transitionTraceEventAuthority !== undefined)
-  ) {
-    if (authority.transitionTraceEventAuthority === undefined)
-      throw new Error("Transition event authority was lost");
+  if (transitionTraceEvents !== undefined) {
     admittedReplayContext = Object.freeze({
       ...admittedReplayContext,
-      transitionTraceEvents: await requireTransitionTraceEventAuthority(
-        authority.transitionTraceEventAuthority,
-      )(routed.evidence.headerHash),
+      transitionTraceEvents,
     });
   }
   if (
