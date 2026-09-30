@@ -6,7 +6,6 @@ export default defineConfig({
   // its own workers.
   entry: {
     index: "src/index.ts",
-    "e2e-stack": "src/e2e-stack.ts",
     "corpus-chain-builder": "src/workers/corpus-chain-builder.ts",
   },
   format: ["esm"],

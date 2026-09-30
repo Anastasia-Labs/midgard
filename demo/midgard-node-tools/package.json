@@ -5,8 +5,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "midgard-node-tools": "./dist/index.js",
-    "midgard-e2e-stack": "./dist/e2e-stack.js"
+    "midgard-node-tools": "./dist/index.js"
   },
   "exports": {
     "./commands/e2e-stress-l2-throughput": {
@@ -27,7 +26,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
-    "e2e-stack": "pnpm run build && node dist/e2e-stack.js",
+    "e2e-stack": "pnpm run build && node dist/index.js e2e-stack",
     "quick-test": "pnpm run build && node dist/index.js --help",
     "create-l2-wallet": "pnpm run build && node dist/index.js create-l2-wallet",
     "stress-wallets:prepare": "pnpm run build && node dist/index.js stress-wallets:prepare",

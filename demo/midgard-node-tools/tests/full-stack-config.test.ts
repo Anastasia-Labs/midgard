@@ -2,14 +2,20 @@ import { generateKeyPairSync } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { paymentCredentialOf, walletFromSeed } from "@lucid-evolution/lucid";
 import { entropyToMnemonic } from "bip39";
-import { afterEach, expect, it } from "vitest";
+import { parse } from "dotenv";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { configureStackCommittee } from "../src/full-stack/committee.js";
 import { loadStackConfig, parseStackConfig } from "../src/full-stack/config.js";
+import { runStackController } from "../src/full-stack/controller.js";
 
+const operatorCompose = fileURLToPath(
+  new URL("../../midgard-node/scripts/operator-compose.mjs", import.meta.url),
+);
 const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(
@@ -29,18 +35,22 @@ async function fixture() {
   );
   sample.nodeRoot = directory;
   sample.envFile = join(directory, ".env");
-  sample.runDirectory = join(directory, "run");
+  sample.runDirectory = join(directory, "logs/run");
   await mkdir(join(directory, "scripts"));
   // The wrapper prints no derived overrides in the main checkout.
   await writeFile(
     join(directory, "scripts/operator-compose.sh"),
     "#!/bin/sh\nexit 0\n",
   );
+  await writeFile(
+    join(directory, "scripts/operator-compose.mjs"),
+    `export { OPERATOR_HOST_PORTS } from ${JSON.stringify(operatorCompose)};\n`,
+  );
   for (const key of Object.keys(sample.watcher))
     if (key !== "configDirectory" && key !== "releaseDirectory")
       sample.watcher[key] = join(directory, key);
-  sample.watcher.configDirectory = join(directory, "run/watcher");
-  sample.watcher.releaseDirectory = join(directory, "run/release");
+  sample.watcher.configDirectory = join(directory, "logs/run/watcher");
+  sample.watcher.releaseDirectory = join(directory, "logs/run/release");
   await writeFile(sample.watcher.processTemplate, "{}");
   await writeFile(sample.watcher.authorityTemplate, "{}");
   const secretNames = [
@@ -85,6 +95,7 @@ async function fixture() {
     MIN_FEE_A: "10",
     MIN_FEE_B: "10",
     DA_THRESHOLD: "2",
+    MIDGARD_POSTGRES_HOST_PORT: "25433",
   };
   for (const [index, wallet] of Object.values(config.wallets).entries())
     env[wallet.seedEnv] = entropyToMnemonic(
@@ -105,12 +116,12 @@ async function fixture() {
     )
     .sort()
     .join("");
-  for (const key of [
+  for (const [index, key] of [
     config.da.producerTransportEnv,
     config.da.retainedTransportEnv,
     ...config.da.members.map((member) => member.transportEnv),
-  ])
-    env[key] = `seed:${"01".repeat(32)}`;
+  ].entries())
+    env[key] = `seed:${(index + 1).toString(16).padStart(64, "0")}`;
   env[config.da.databasePasswordEnv] = "writer-test-password";
   env[config.da.readerPasswordEnv] = "reader-test-password";
   const envText = () =>
@@ -119,25 +130,40 @@ async function fixture() {
       .join("\n");
   await writeFile(config.envFile, envText());
   const path = join(directory, "stack.json");
-  await writeFile(path, JSON.stringify(config));
-  return { config, env, envText, path, release };
+  const writeConfig = () => writeFile(path, JSON.stringify(config));
+  await writeConfig();
+  return { config, directory, env, envText, path, release, writeConfig };
 }
 
-it("binds wallet and watcher secrets without copying their values into the digest", async () => {
-  const value = await fixture();
-  const first = await loadStackConfig(value.path);
-  expect(first.intentDigest).toMatch(/^[0-9a-f]{64}$/);
-  value.env[value.config.wallets.user!.seedEnv] = entropyToMnemonic(
-    "02".repeat(16),
-  );
-  await writeFile(value.config.envFile, value.envText());
-  expect((await loadStackConfig(value.path)).intentDigest).not.toBe(
-    first.intentDigest,
-  );
-  await writeFile(value.config.watcher.bearerFile, "b".repeat(64));
-  expect((await loadStackConfig(value.path)).intentDigest).not.toBe(
-    first.intentDigest,
-  );
+describe("stack intent", () => {
+  it("binds deployment identity", async () => {
+    const value = await fixture();
+    const first = (await loadStackConfig(value.path)).intentDigest;
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    value.env[value.config.wallets.user!.seedEnv] = entropyToMnemonic(
+      "a2".repeat(16),
+    );
+    await writeFile(value.config.envFile, value.envText());
+    const second = (await loadStackConfig(value.path)).intentDigest;
+    expect(second).not.toBe(first);
+    const watcherEnv = parse(
+      await readFile(value.config.watcher.composeEnvFile),
+    );
+    await writeFile(watcherEnv.WATCHER_RECORD_KEY_FILE!, "c".repeat(64));
+    expect((await loadStackConfig(value.path)).intentDigest).not.toBe(second);
+  });
+  it("lets operational settings change between runs", async () => {
+    const value = await fixture();
+    const first = (await loadStackConfig(value.path)).intentDigest;
+    value.config.timeoutMs += 1;
+    value.config.journey.cycles += 1;
+    value.config.wallets.user!.minimumLovelace = "900000000";
+    await value.writeConfig();
+    value.env.MIN_FEE_A = "11";
+    await writeFile(value.config.envFile, value.envText());
+    await writeFile(value.config.watcher.bearerFile, "b".repeat(64));
+    expect((await loadStackConfig(value.path)).intentDigest).toBe(first);
+  });
 });
 it("permits measured profiles to be corrected before signing while binding the signer and programs", async () => {
   const value = await fixture();
@@ -210,4 +236,197 @@ it("refuses duplicate committee keys, governed threshold violations and malforme
   await expect(
     configureStackCommittee(value.config, value.env),
   ).rejects.toThrow("Invalid DA owner configuration");
+});
+
+it("accepts L1_PROVIDER_FAILOVER written as off", async () => {
+  for (const off of ["false", "", " FALSE "]) {
+    const value = await fixture();
+    value.env.L1_PROVIDER_FAILOVER = off;
+    await writeFile(value.config.envFile, value.envText());
+    await expect(loadStackConfig(value.path)).resolves.toHaveProperty(
+      "intentDigest",
+    );
+  }
+});
+
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+describe("configuration refused before any build or spend", () => {
+  const seedOf = (value: Fixture, role: string) =>
+    value.config.wallets[role]!.seedEnv;
+  const rows: [string, (value: Fixture) => void | Promise<void>, string][] = [
+    [
+      "a deposit that cannot cover the transfer and fees",
+      ({ config }) => {
+        config.journey.depositLovelace = config.journey.transferLovelace;
+      },
+      "Deposit must cover",
+    ],
+    [
+      "overlapping DA ports",
+      ({ config }) => {
+        config.da.ports.database = config.da.ports.committeeApiBase;
+      },
+      "DA ports must be distinct",
+    ],
+    [
+      "a DA port beyond TCP",
+      ({ config }) => {
+        config.da.ports.committeeTransportBase = 65535;
+      },
+      "DA ports must be distinct",
+    ],
+    [
+      "a DA port an operator service publishes",
+      ({ config }) => {
+        config.da.ports.database = 1442;
+      },
+      "collides with KUPO_PORT",
+    ],
+    [
+      "a DA threshold above the committee size",
+      ({ env }) => {
+        env.DA_THRESHOLD = "3";
+      },
+      "Invalid DA threshold configuration",
+    ],
+    [
+      "a zero DA threshold",
+      ({ env }) => {
+        env.DA_THRESHOLD = "0";
+      },
+      "DA_THRESHOLD must be a positive integer",
+    ],
+    [
+      "a non-numeric DA threshold",
+      ({ env }) => {
+        env.DA_THRESHOLD = "two";
+      },
+      "DA_THRESHOLD must be a positive integer",
+    ],
+    [
+      "equal DA database passwords",
+      ({ config, env }) => {
+        env[config.da.readerPasswordEnv] = env[config.da.databasePasswordEnv]!;
+      },
+      "passwords must differ",
+    ],
+    [
+      "a container file transport",
+      ({ config, env }) => {
+        env[config.da.members[0]!.transportEnv] = "file:/run/secrets/key";
+      },
+      "persistent seed/hex transport",
+    ],
+    [
+      "a user budget below every deposit",
+      ({ config }) => {
+        config.wallets.user!.minimumLovelace = config.journey.depositLovelace;
+      },
+      "User funding budget",
+    ],
+    [
+      "two wallet roles sharing a key",
+      (value) => {
+        value.env[seedOf(value, "recipient")] =
+          value.env[seedOf(value, "user")]!;
+      },
+      "shares a payment key",
+    ],
+    [
+      "two DA services sharing a transport identity",
+      ({ config, env }) => {
+        env[config.da.members[1]!.transportEnv] =
+          env[config.da.members[0]!.transportEnv]!;
+      },
+      "distinct persistent identities",
+    ],
+    [
+      "a preset committee that differs from the members",
+      ({ env }) => {
+        env.DA_COMMITTEE_HEX = "ab".repeat(32);
+      },
+      "differ from the configured sorted committee",
+    ],
+    [
+      "an env file other than the node directory's",
+      async ({ config, directory, envText }) => {
+        config.envFile = join(directory, "other.env");
+        await writeFile(config.envFile, envText());
+      },
+      "envFile must be the node directory's .env",
+    ],
+    [
+      "a DA member seed that shadows a node wallet",
+      ({ config, env }) => {
+        config.da.members[0]!.seedEnv = "L1_OPERATOR_SEED_PHRASE";
+        env.L1_OPERATOR_SEED_PHRASE = entropyToMnemonic("10".repeat(16));
+      },
+      "must start with STACK_",
+    ],
+    [
+      "one variable naming two stack secrets",
+      ({ config }) => {
+        config.da.members[1]!.transportEnv = config.da.members[0]!.transportEnv;
+      },
+      "Stack secret variables must be distinct",
+    ],
+    [
+      "a run directory inside the Docker build context",
+      ({ config, directory }) => {
+        config.runDirectory = join(directory, "preprod-stack");
+      },
+      "inside the Docker build context",
+    ],
+    [
+      "the shared test Postgres port",
+      ({ env }) => {
+        env.MIDGARD_POSTGRES_HOST_PORT = "5433";
+      },
+      "MIDGARD_POSTGRES_HOST_PORT",
+    ],
+    [
+      "no explicit Postgres port",
+      ({ env }) => {
+        delete env.MIDGARD_POSTGRES_HOST_PORT;
+      },
+      "MIDGARD_POSTGRES_HOST_PORT",
+    ],
+    [
+      "a node environment that sets a host tool variable",
+      ({ env }) => {
+        env.NODE_OPTIONS = "--require /tmp/hook.js";
+      },
+      "must not set host variable NODE_OPTIONS",
+    ],
+  ];
+  it.each(rows)("refuses %s", async (_, mutate, message) => {
+    const value = await fixture();
+    await mutate(value);
+    await writeFile(value.config.envFile, value.envText());
+    await value.writeConfig();
+    await expect(loadStackConfig(value.path)).rejects.toThrow(message);
+  });
+});
+
+describe("--check", () => {
+  it("runs the offline environment checks and refuses a shared wallet key", async () => {
+    const value = await fixture();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runStackController({ config: value.path, check: true });
+      expect(log).toHaveBeenCalledOnce();
+      value.env[value.config.wallets.recipient!.seedEnv] =
+        value.env[value.config.wallets.user!.seedEnv]!;
+      await writeFile(value.config.envFile, value.envText());
+      await expect(
+        runStackController({ config: value.path, check: true }),
+      ).rejects.toThrow("shares a payment key");
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it("refuses a relative configuration path", () =>
+    expect(
+      runStackController({ config: "stack.json", check: true }),
+    ).rejects.toThrow("--config must be an absolute path"));
 });

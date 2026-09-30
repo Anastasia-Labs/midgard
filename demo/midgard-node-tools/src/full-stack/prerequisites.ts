@@ -1,41 +1,52 @@
 import { createHash } from "node:crypto";
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { parse } from "dotenv";
 
 import { readJsonIfPresent } from "./journal.js";
-import { configureHostNativeLedger } from "./native-ledger.js";
+import {
+  configureHostNativeLedger,
+  nativeLedgerPaths,
+  shareWithContainers,
+} from "./native-ledger.js";
 import type { StackProcesses } from "./process.js";
 
+/** `compose ps --format json` prints one JSON object per line only from Compose 2.21. */
+export function assertComposeVersion(report: unknown) {
+  const version = (report as { version?: unknown } | null)?.version;
+  const match =
+    typeof version === "string" ? /^v?(\d+)\.(\d+)\./.exec(version) : null;
+  const [major, minor] = match ? [Number(match[1]), Number(match[2])] : [0, 0];
+  if (major < 2 || (major === 2 && minor < 21))
+    throw new Error(
+      `Docker Compose 2.21 or newer is required; found ${String(version)}`,
+    );
+}
+
 export async function prepareStackPrerequisites(processes: StackProcesses) {
-  // All input checks precede any on-chain spending.
+  // loadStackConfig ran every offline check; these need the fresh builds.
   const watcherEnv = parse(
     await readFile(processes.config.watcher.composeEnvFile),
   );
-  for (const key of [
-    "WATCHER_RECORD_KEY_FILE",
-    "WATCHER_ROLLBACK_KEY_FILE",
-    "WATCHER_PROVER_KEY_FILE",
-    "WATCHER_AVAILABILITY_KEY_FILE",
-    "WATCHER_BEARER_FILE",
-  ])
-    await access(watcherEnv[key] ?? "");
-  // The canonical Compose file uses this env_file even for provider-only startup.
-  if (
-    resolve(processes.config.envFile) !==
-    join(processes.config.nodeRoot, ".env")
-  )
-    throw new Error(
-      "envFile must be the node directory's .env used by the existing Compose stack",
-    );
   const workspace = resolve(processes.config.nodeRoot, "..");
+  assertComposeVersion(
+    await processes.command(
+      "compose-version",
+      "docker",
+      ["compose", "version", "--format", "json"],
+      {},
+      workspace,
+      "host",
+    ),
+  );
   await processes.command(
     "contracts-build",
     "pnpm",
     ["deployment:build", "preprod-testing"],
     {},
     workspace,
+    "host",
   );
   for (const name of [
     "@al-ft/lucid-midgard",
@@ -52,6 +63,7 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
       ["--filter", name, "build"],
       {},
       workspace,
+      "host",
     );
   await processes.command(
     "native-chain-sync-build",
@@ -59,13 +71,17 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     ["--filter", "midgard-watcher", "native:build"],
     { CGO_ENABLED: "0", GOTOOLCHAIN: "go1.25.7" },
     workspace,
+    "host",
   );
+  // The node and DA containers mount this binary and run it as their own users.
+  await shareWithContainers(nativeLedgerPaths(processes).binary, true);
   await processes.command(
     "native-owner-build",
     "pnpm",
     ["--filter", "midgard-node", "native:mpf-owner:build"],
     {},
     workspace,
+    "host",
   );
   const owner = join(
     processes.config.nodeRoot,
@@ -76,24 +92,6 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     .update(await readFile(owner))
     .digest("hex");
   configureHostNativeLedger(processes);
-  const { deriveStackWallets } = await import("./wallets.js");
-  deriveStackWallets(processes.config, processes.env);
-  const { configureStackCommittee } = await import("./committee.js");
-  await configureStackCommittee(processes.config, processes.env);
-  const { loadDaLibp2pIdentity } = await import(
-    "@al-ft/midgard-core/da-libp2p-identity"
-  );
-  const peers = await Promise.all(
-    [
-      processes.config.da.producerTransportEnv,
-      processes.config.da.retainedTransportEnv,
-      ...processes.config.da.members.map((member) => member.transportEnv),
-    ].map((key) => loadDaLibp2pIdentity(processes.env[key]!)),
-  );
-  if (new Set(peers.map((peer) => peer.peerId)).size !== peers.length)
-    throw new Error(
-      "DA producer, retained service and members need distinct persistent identities",
-    );
   await processes.compose("base-compose-check", ["config", "--quiet"]);
   const { readReleaseInput, releasePaths } = await import("./release.js");
   const {

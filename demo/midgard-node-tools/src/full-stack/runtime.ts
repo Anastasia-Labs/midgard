@@ -6,11 +6,7 @@ import { parse } from "dotenv";
 
 import { generateDaServices, writePrivateEnv } from "./da-services.js";
 import { stackPaths } from "./deployment.js";
-import {
-  readJsonIfPresent,
-  writeDurableBytes,
-  writeDurableJson,
-} from "./journal.js";
+import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { containerNativeLedger } from "./native-ledger.js";
 import {
   bearerHeaders,
@@ -18,7 +14,7 @@ import {
   poll,
   type StackProcesses,
 } from "./process.js";
-import { stackIsReady } from "./readiness.js";
+import { committeeIsReady, stackIsReady } from "./readiness.js";
 import { storageIdentityStep } from "./storage.js";
 import { generateWatcherServices } from "./watcher-services.js";
 import type { StackStep } from "./workflow.js";
@@ -43,8 +39,58 @@ export async function readRuntimeConfiguration(processes: StackProcesses) {
     throw new Error("Runtime configuration is missing");
   return value;
 }
+const servicesDirectory = (processes: StackProcesses) =>
+  join(processes.config.runDirectory, "services");
+/** Host node commands use the generated producer manifest, also after a resume skips generation. */
+export function restoreRuntimeEnvironment(processes: StackProcesses) {
+  processes.env.MIDGARD_DEPLOYMENT_MANIFEST_PATH = join(
+    servicesDirectory(processes),
+    "producer.json",
+  );
+}
+/** Committee peer ids by signer index, from the generated committee manifest. */
+async function committeeExpectation(processes: StackProcesses) {
+  const committee = (await readJsonIfPresent(
+    join(servicesDirectory(processes), "committee-0.json"),
+  )) as {
+    deployment: { fingerprint: string };
+    da_committee: { members: { signer_index: number; peer_id: string }[] };
+  };
+  const peerIds: string[] = [];
+  for (const member of committee.da_committee.members)
+    peerIds[member.signer_index] = member.peer_id;
+  return { manifestId: committee.deployment.fingerprint, peerIds };
+}
+/**
+ * The node's container environment. Every stack-only secret uses the STACK_
+ * namespace (checkStackEnvironment), so blanking that namespace removes other
+ * roles' secrets and never a node setting. Blank values also override the base
+ * Compose file's own env_file.
+ */
+function nodeEnvironment(processes: StackProcesses, ownerSha256: string) {
+  const { config, env } = processes;
+  return {
+    ...Object.fromEntries(
+      Object.entries(env).map(([key, value]) => [
+        key,
+        key.startsWith("STACK_") ? "" : value,
+      ]),
+    ),
+    DA_LIBP2P_PRIVATE_KEY_SOURCE: env[config.da.producerTransportEnv]!,
+    MIN_QUEUE_LENGTH_FOR_MERGING: "1",
+    POSTGRES_HOST: "postgres",
+    POSTGRES_PORT: "5432",
+    MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/app/stack/producer.json",
+    MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH:
+      "/app/deploymentInfo/contract-deployment-info.json",
+    MPF_NATIVE_OWNER_BINARY_PATH: "/app/native/architecture-g-owner",
+    ...containerNativeLedger(processes).env,
+    MPF_NATIVE_OWNER_BINARY_SHA256: ownerSha256,
+  };
+}
 export async function confirmRuntimeReadiness(processes: StackProcesses) {
   const runtime = await readRuntimeConfiguration(processes);
+  const committee = await committeeExpectation(processes);
   const headers = await bearerHeaders(processes.config.watcher.bearerFile);
   const watcherEnv = parse(
     await readFile(processes.config.watcher.composeEnvFile),
@@ -100,6 +146,7 @@ export async function confirmRuntimeReadiness(processes: StackProcesses) {
           committees,
           manifestId,
           recordKeyId,
+          committeePeerIds: committee.peerIds,
         })
       )
         return undefined;
@@ -112,10 +159,17 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
   return [
     {
       id: "runtime-configuration",
-      reconcile: async (record) =>
-        record?.status === "running" && record.data !== null
-          ? { status: "complete", data: record.data }
-          : { status: "retry" },
+      // Generation is deterministic for one intent, so a completed record stays valid.
+      reconcile: async (record) => {
+        if (
+          record?.status === "complete" ||
+          (record?.status === "running" && record.data !== null)
+        ) {
+          restoreRuntimeEnvironment(processes);
+          return { status: "complete", data: record.data };
+        }
+        return { status: "retry" };
+      },
       execute: async () => {
         const da = await generateDaServices(processes);
         const member = (await readJsonIfPresent(
@@ -127,51 +181,22 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         );
         const nodeEnvPath = join(da.directory, "node.env");
         const nativeLedger = containerNativeLedger(processes);
-        await writePrivateEnv(nodeEnvPath, {
-          ...Object.fromEntries(
-            Object.entries(processes.env).map(([key, value]) => {
-              const excluded = [
-                processes.config.wallets.user!.seedEnv,
-                processes.config.wallets.recipient!.seedEnv,
-                processes.config.wallets.prover!.seedEnv,
-                processes.config.wallets.availability!.seedEnv,
-                processes.config.da.submitterSeedEnv,
-                processes.config.da.retainedTransportEnv,
-                processes.config.da.readerPasswordEnv,
-                processes.config.da.databasePasswordEnv,
-                ...processes.config.da.members.flatMap((member) => [
-                  member.seedEnv,
-                  member.transportEnv,
-                ]),
-              ];
-              return [key, excluded.includes(key) ? "" : value];
-            }),
-          ),
-          DA_LIBP2P_PRIVATE_KEY_SOURCE:
-            processes.env[processes.config.da.producerTransportEnv]!,
-          MIN_QUEUE_LENGTH_FOR_MERGING: "1",
-          POSTGRES_HOST: "postgres",
-          POSTGRES_PORT: "5432",
-          MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/app/stack/producer.json",
-          MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH:
-            "/app/deploymentInfo/contract-deployment-info.json",
-          MPF_NATIVE_OWNER_BINARY_PATH: "/app/native/architecture-g-owner",
-          ...nativeLedger.env,
-        });
+        // The services step writes node.env once, with the owner pin of the image it built.
+        const nodeEnvFile = [{ path: nodeEnvPath, required: false }];
         const compose = join(da.directory, "compose.json");
         await writeDurableJson(compose, {
           services: {
             ...da.services,
             ...watcher.services,
             "midgard-node": {
-              env_file: [nodeEnvPath],
+              env_file: nodeEnvFile,
               volumes: [
                 `${da.producer}:/app/stack/producer.json:ro`,
                 ...nativeLedger.volumes,
               ],
             },
             "midgard-node-migrate": {
-              env_file: [nodeEnvPath],
+              env_file: nodeEnvFile,
               volumes: nativeLedger.volumes,
             },
           },
@@ -198,6 +223,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           runtimeConfigurationPath(processes),
           configuration,
         );
+        restoreRuntimeEnvironment(processes);
         return configuration;
       },
     },
@@ -205,11 +231,20 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
     {
       id: "services",
       reconcile: async (record) => {
-        if (record?.status === "running" && record.data !== null)
-          return {
-            status: "complete",
-            data: await confirmRuntimeReadiness(processes),
-          };
+        if (
+          record?.status === "complete" ||
+          (record?.status === "running" && record.data !== null)
+        ) {
+          // A running stack is confirmed without rebuilding; a stopped one is started again.
+          try {
+            return {
+              status: "complete",
+              data: await confirmRuntimeReadiness(processes),
+            };
+          } catch {
+            return { status: "retry" };
+          }
+        }
         return { status: "retry" };
       },
       execute: async () => {
@@ -243,16 +278,10 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         )) as { sha: string };
         if (!/^[0-9a-f]{64}$/.test(pin.sha))
           throw new Error("Invalid native owner image pin");
-        const nodeEnvPath = join(
-          processes.config.runDirectory,
-          "services/node.env",
+        await writePrivateEnv(
+          join(servicesDirectory(processes), "node.env"),
+          nodeEnvironment(processes, pin.sha),
         );
-        const nodeEnv =
-          (await readFile(nodeEnvPath, "utf8")).replace(
-            /^MPF_NATIVE_OWNER_BINARY_SHA256=.*\n?/gm,
-            "",
-          ) + `MPF_NATIVE_OWNER_BINARY_SHA256=${pin.sha}\n`;
-        await writeDurableBytes(nodeEnvPath, Buffer.from(nodeEnv));
         await processes.compose(
           "da-database-start",
           ["up", "-d", "--wait", "da-postgres"],
@@ -277,6 +306,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           ["up", "-d", ...runtime.committeeServices, "public-retained-da"],
           runtime.compose,
         );
+        const expected = await committeeExpectation(processes);
         await poll(
           "committee readiness",
           processes.config.timeoutMs,
@@ -288,17 +318,31 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
                 ),
               ),
             );
-            return ready.every(
-              (value) => (value as { ready?: boolean })?.ready === true,
+            return ready.every((value, index) =>
+              committeeIsReady(value, index, expected),
             )
               ? ready
               : undefined;
           },
         );
-        // Bind only before producer startup. Attach uses dial-only, because its listener is live.
-        const alreadyRunning = await getJson(
-          `${processes.config.endpoint}/readyz`,
-        );
+        // Bind only before the producer container first starts. Docker holds its
+        // port even while the node restarts or is not ready yet, so ask Compose.
+        // `ps --format json` prints one object per container, and nothing when none match.
+        const alreadyRunning =
+          (await processes.compose(
+            "producer-container-state",
+            [
+              "ps",
+              "--format",
+              "json",
+              "--status",
+              "running",
+              "--status",
+              "restarting",
+              "midgard-node",
+            ],
+            runtime.compose,
+          )) !== null;
         const hostManifest = join(
           processes.config.runDirectory,
           "services/producer-host.json",

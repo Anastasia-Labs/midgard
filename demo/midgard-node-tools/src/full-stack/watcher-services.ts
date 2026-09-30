@@ -123,61 +123,143 @@ export async function generateWatcherServices(
     join(watcher.configDirectory, "authority.json"),
     authorityConfig,
   );
+  const source = await renderWatcherCompose(processes, {
+    env,
+    operationsEndpoint: processConfig.operationsEndpoint,
+    authorityEndpoint: authorityConfig.endpoint,
+    l1Directory,
+  });
+  return {
+    ...source,
+    operationsEndpoint: processConfig.operationsEndpoint,
+    authorityEndpoint: authorityConfig.endpoint,
+  };
+}
+
+const SECRET_MOUNTS = {
+  "watcher-authority": {
+    "/run/secrets/record_key": "WATCHER_RECORD_KEY_FILE",
+    "/run/secrets/bearer": "WATCHER_BEARER_FILE",
+  },
+  watcher: {
+    "/run/secrets/rollback_key": "WATCHER_ROLLBACK_KEY_FILE",
+    "/run/secrets/prover_key": "WATCHER_PROVER_KEY_FILE",
+    "/run/secrets/availability_key": "WATCHER_AVAILABILITY_KEY_FILE",
+    "/run/secrets/bearer": "WATCHER_BEARER_FILE",
+  },
+} as const;
+const explicitPort = (url: string) => {
+  const port = new URL(url).port;
+  if (!port) throw new Error(`Watcher endpoint ${url} needs an explicit port`);
+  return port;
+};
+
+/**
+ * Renders the watcher's own Compose file from the validated watcher env file
+ * alone: the node stack's environment would otherwise take precedence over it.
+ */
+export async function renderWatcherCompose(
+  processes: StackProcesses,
+  input: {
+    env: Record<string, string>;
+    operationsEndpoint: string;
+    authorityEndpoint: string;
+    l1Directory: string;
+  },
+) {
+  const { config } = processes;
+  const ports = {
+    WATCHER_AUTHORITY_PORT: explicitPort(input.authorityEndpoint),
+    WATCHER_OPERATIONS_PORT: explicitPort(input.operationsEndpoint),
+  };
+  const taken = [
+    Number(new URL(config.endpoint).port),
+    config.da.ports.database,
+    config.da.ports.retainedTransport,
+    ...config.da.members.flatMap((_, index) => [
+      config.da.ports.committeeApiBase + index,
+      config.da.ports.committeeTransportBase + index,
+    ]),
+  ];
+  if (
+    ports.WATCHER_AUTHORITY_PORT === ports.WATCHER_OPERATIONS_PORT ||
+    Object.values(ports).some((port) => taken.includes(Number(port)))
+  )
+    throw new Error(
+      "Watcher endpoint ports must differ from each other and from node and DA ports",
+    );
+  const ipc = join(config.nodeRoot, "cardano/ipc");
   const source = (await processes.command(
     "watcher-compose-configuration",
     "docker",
     [
       "compose",
       "--env-file",
-      watcher.composeEnvFile,
+      config.watcher.composeEnvFile,
       "-f",
       "compose.yaml",
       "config",
       "--format",
       "json",
     ],
-    {},
-    resolve(processes.config.nodeRoot, "../midgard-watcher"),
+    {
+      ...input.env,
+      MIDGARD_L1_CONFIG_DIR: input.l1Directory,
+      MIDGARD_L1_IPC_DIR: ipc,
+      ...ports,
+    },
+    resolve(config.nodeRoot, "../midgard-watcher"),
+    "host",
   )) as {
     services: Record<
       string,
-      { volumes: { source: string; target: string; type: string }[] }
+      {
+        image?: string;
+        volumes: { source: string; target: string; type: string }[];
+      }
     >;
-    volumes: Record<string, unknown>;
+    volumes: Record<string, Record<string, unknown>>;
   };
-  const replace = (service: string, target: string, path: string) => {
-    const volume = source.services[service]!.volumes.find(
+  const volume = (service: string, target: string) => {
+    const found = source.services[service]!.volumes.find(
       (value) => value.target === target,
     );
-    if (!volume) throw new Error(`Watcher Compose is missing ${target}`);
-    volume.source = path;
+    if (!found) throw new Error(`Watcher Compose is missing ${target}`);
+    return found;
   };
-  replace(
-    "watcher-authority",
-    "/etc/midgard/authority.json",
-    join(watcher.configDirectory, "authority.json"),
-  );
-  replace(
-    "watcher",
-    "/etc/midgard/watcher-process.json",
-    join(watcher.configDirectory, "watcher-process.json"),
-  );
-  replace(
-    "watcher",
-    "/etc/midgard/watcher-runtime.json",
-    join(watcher.configDirectory, "watcher-runtime.json"),
-  );
-  replace("watcher", "/etc/midgard/bundles", watcher.releaseDirectory);
-  replace("watcher", "/cardano-config", l1Directory);
-  replace("watcher", "/ipc", join(processes.config.nodeRoot, "cardano/ipc"));
-  for (const volume of Object.values(source.volumes) as Record<
-    string,
-    unknown
-  >[])
-    delete volume.name;
-  return {
-    ...source,
-    operationsEndpoint: processConfig.operationsEndpoint,
-    authorityEndpoint: authorityConfig.endpoint,
-  };
+  // Checked equals mounted: every secret comes from the validated env file.
+  for (const [service, mounts] of Object.entries(SECRET_MOUNTS))
+    for (const [target, key] of Object.entries(mounts))
+      if (resolve(volume(service, target).source) !== resolve(input.env[key]!))
+        throw new Error(
+          `Watcher ${target} is not ${key} from ${config.watcher.composeEnvFile}`,
+        );
+  for (const [service, target, path] of [
+    [
+      "watcher-authority",
+      "/etc/midgard/authority.json",
+      join(config.watcher.configDirectory, "authority.json"),
+    ],
+    [
+      "watcher",
+      "/etc/midgard/watcher-process.json",
+      join(config.watcher.configDirectory, "watcher-process.json"),
+    ],
+    [
+      "watcher",
+      "/etc/midgard/watcher-runtime.json",
+      join(config.watcher.configDirectory, "watcher-runtime.json"),
+    ],
+    ["watcher", "/etc/midgard/bundles", config.watcher.releaseDirectory],
+    ["watcher", "/cardano-config", input.l1Directory],
+    ["watcher", "/ipc", ipc],
+  ] as const)
+    volume(service, target).source = path;
+  // One image per Compose project, as for the node and DA images.
+  for (const service of ["watcher", "watcher-authority"])
+    source.services[service]!.image = "midgard-watcher:${COMPOSE_PROJECT_NAME}";
+  // Project-scoped on purpose: the stack's watcher keeps its own trusted-head
+  // chain and state, never a standalone midgard-watcher deployment's volumes.
+  for (const value of Object.values(source.volumes)) delete value.name;
+  return source;
 }

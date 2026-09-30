@@ -5,15 +5,18 @@ import { walletFromSeed } from "@lucid-evolution/lucid";
 import { parseReconciliationResult } from "midgard-node/commands/reconcile";
 import { loadDeploymentRunState } from "midgard-node/e2e/run-state";
 
-import { configureStackCommittee } from "./committee.js";
 import {
   type InitializationObservation,
   initializationRecovery,
+  PENDING_REINCLUSION,
 } from "./initialization-recovery.js";
 import { readJsonIfPresent } from "./journal.js";
 import { exportLocalCardanoConfig } from "./native-ledger.js";
 import { StackProcesses } from "./process.js";
-import { assertPreservedStorage } from "./storage.js";
+import {
+  assertHostDatabaseIsStackDatabase,
+  assertPreservedStorage,
+} from "./storage.js";
 import { deriveStackWallets } from "./wallets.js";
 import type { StackStep } from "./workflow.js";
 
@@ -36,8 +39,11 @@ export async function restoreDeploymentEnvironment(processes: StackProcesses) {
   if (nonce) {
     processes.env.HUB_ORACLE_ONE_SHOT_TX_HASH = nonce.txHash;
     processes.env.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX = String(nonce.outputIndex);
-    processes.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH = paths.manifest;
   }
+  // The node refuses a configured manifest that does not exist yet; empty means unset.
+  // Before initialization, node commands derive contracts from MIDGARD_RUN_STATE_PATH.
+  processes.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH =
+    manifest === undefined ? "" : paths.manifest;
 }
 export async function deploymentStatus(processes: StackProcesses) {
   await restoreDeploymentEnvironment(processes);
@@ -54,12 +60,12 @@ export async function deploymentStatus(processes: StackProcesses) {
 }
 export async function checkWallets(processes: StackProcesses) {
   const addresses = deriveStackWallets(processes.config, processes.env);
-  const initialized =
-    (
-      (await readJsonIfPresent(stackPaths(processes).manifest)) as
-        | { steps?: { initProtocol?: { status?: string } } }
-        | undefined
-    )?.steps?.initProtocol?.status === "complete";
+  const paths = stackPaths(processes);
+  // Only a deployment that has spent nothing needs its full budget. A resumed one needs working capital.
+  const fresh =
+    (await readJsonIfPresent(paths.manifest)) === undefined &&
+    (await loadDeploymentRunState(paths.state))?.steps.hubOracleNonce ===
+      undefined;
   for (const [role, wallet] of Object.entries(processes.config.wallets)) {
     const address = addresses[role]!;
     const result = (await processes.node(`wallet-${role}`, [
@@ -77,7 +83,7 @@ export async function checkWallets(processes: StackProcesses) {
     };
     if (
       BigInt(result.totals.lovelace) <
-      (initialized ? 5_000_000n : BigInt(wallet.minimumLovelace))
+      (fresh ? BigInt(wallet.minimumLovelace) : 5_000_000n)
     )
       throw new Error(`Wallet ${role} is below its configured funding budget`);
     if (
@@ -94,7 +100,6 @@ export async function checkWallets(processes: StackProcesses) {
         `Wallet ${role} needs a plain ADA output for collateral/fees`,
       );
   }
-  await configureStackCommittee(processes.config, processes.env);
   return addresses;
 }
 
@@ -147,7 +152,7 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
     },
     {
       id: "nonce",
-      reconcile: async () => {
+      reconcile: async (record) => {
         await restoreDeploymentEnvironment(processes);
         const manifest = await readJsonIfPresent(paths.manifest);
         if (manifest !== undefined) {
@@ -157,14 +162,23 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
           if (value.steps?.initProtocol?.status === "complete") {
             verifyFinalizedDeploymentManifest(manifest);
             const status = await deploymentStatus(processes);
-            if (!status.manifest.ok || !status.protocol.complete)
+            if (!status.manifest.ok)
               throw new Error(
                 "Existing deployment identity/state does not match; preserve its data",
               );
+            if (!status.protocol.complete) throw new Error(PENDING_REINCLUSION);
             return { status: "complete", data: { attached: true } };
           }
         }
         const state = await loadDeploymentRunState(paths.state);
+        // The node records the nonce only after submitting it. A started attempt
+        // without any record may have submitted one, so never create a second.
+        if (
+          record?.status === "running" &&
+          state?.steps.hubOracleNonce === undefined &&
+          manifest === undefined
+        )
+          return { status: "pending" };
         if (state?.steps.hubOracleNonce?.status !== "complete")
           return { status: "retry" };
         const address = walletFromSeed(
@@ -206,8 +220,6 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
       id: "references",
       reconcile: async () => {
         await restoreDeploymentEnvironment(processes);
-        if ((await readJsonIfPresent(paths.manifest)) === undefined)
-          return { status: "retry" };
         const result = parseReconciliationResult(
           await processes.node("references-observation", [
             "reconcile",
@@ -219,8 +231,8 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         );
         if (result.status === "satisfied")
           return { status: "complete", data: result };
-        if (result.status === "blocked" || result.status === "ambiguous")
-          return { status: "pending" };
+        // Blocked means not yet published, which publishing resolves.
+        if (result.status === "ambiguous") return { status: "pending" };
         return { status: "retry" };
       },
       execute: () =>
@@ -234,12 +246,12 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
     },
     {
       id: "initialize",
-      reconcile: async (record) => {
+      reconcile: async () => {
         const status = await deploymentStatus(processes);
         const manifest = (await readJsonIfPresent(paths.manifest)) as
           | { steps?: { initProtocol?: { txHash?: string; status?: string } } }
           | undefined;
-        const recovery = initializationRecovery(status, manifest, record);
+        const recovery = initializationRecovery(status, manifest);
         if (recovery.status !== "complete") return recovery;
         if (recovery.reconstruct)
           await processes.node("initialize-reconcile", [
@@ -257,6 +269,7 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         return { status: "complete", data: { initHash: recovery.initHash } };
       },
       execute: async () => {
+        await assertHostDatabaseIsStackDatabase(processes);
         await processes.node("migrate", ["db:migrate"]);
         return processes.node("initialize-submit", [
           "init",
@@ -267,18 +280,16 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
     },
     {
       id: "operator",
-      reconcile: async (record) => {
+      reconcile: async () => {
         const status = (await processes.node("operator-observation", [
           "operator-status",
         ])) as { state: string };
         if (status.state === "active")
           return { status: "complete", data: status };
-        if (
-          record?.status === "running" ||
-          !["none", "registered"].includes(status.state)
-        )
-          return { status: "pending" };
-        return { status: "retry" };
+        // register-active-operator resumes from registered, and the ordered set refuses a duplicate key.
+        if (["none", "registered"].includes(status.state))
+          return { status: "retry" };
+        return { status: "pending" };
       },
       execute: () =>
         processes.node("operator-register-or-resume", [

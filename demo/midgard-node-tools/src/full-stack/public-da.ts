@@ -2,16 +2,13 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 import {
   createWatcherRetainedDaRuntime,
   parseWatcherProcessConfig,
 } from "midgard-watcher";
 
-import {
-  readJsonIfPresent,
-  writeDurableBytes,
-  writeDurableJson,
-} from "./journal.js";
+import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import type { StackProcesses } from "./process.js";
 import { verifyStackRelease } from "./release.js";
 
@@ -53,7 +50,9 @@ export async function verifyPublicDa(
     const result = await source.fetchPayloadByHeaderHash(headerHash);
     if (!result.ok)
       throw new Error(`Public DA retrieval failed for ${headerHash}`);
-    await writeDurableBytes(`${path}.cbor`, result.payloadEnvelopeCbor);
+    await writeTextFileAtomic(`${path}.cbor`, result.payloadEnvelopeCbor, {
+      mode: 0o600,
+    });
     const receipt = {
       headerHash,
       peerId: result.sourcePeerId,

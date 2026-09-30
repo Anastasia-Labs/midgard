@@ -34,3 +34,43 @@ export function verifyPayoutBody(
     );
   return { outputIndex: matches[0]! };
 }
+
+export type SettlementAttempt = {
+  phase: string;
+  status: string;
+  txHash: string;
+  signedCbor: string;
+};
+export type SettlementObservation = {
+  jobs: { phase: string }[] | null;
+  attempts: SettlementAttempt[] | null;
+};
+/** The single confirmed conclusion of a complete job; undefined while the job is still settling. */
+export function payoutConclusion(status: SettlementObservation) {
+  const conclusions =
+    status.attempts?.filter(
+      (attempt) =>
+        attempt.phase === "conclude" && attempt.status === "confirmed",
+    ) ?? [];
+  if (conclusions.length > 1)
+    throw new Error(
+      "More than one confirmed payout transaction for the same withdrawal",
+    );
+  if (
+    status.jobs?.length !== 1 ||
+    status.jobs[0]!.phase !== "complete" ||
+    conclusions.length !== 1
+  )
+    return undefined;
+  return conclusions[0]!;
+}
+/** The exact payout output, once Cardano includes the concluding transaction. */
+export function includedPayout(
+  attempt: SettlementAttempt,
+  inclusion: string,
+  address: string,
+  assets: Record<string, string | bigint>,
+) {
+  if (inclusion !== "included") return undefined;
+  return verifyPayoutBody(attempt.signedCbor, address, assets);
+}

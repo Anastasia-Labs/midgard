@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import {
+  createDurableJson,
   parseJournal,
   readJsonIfPresent,
   type StackJournal,
@@ -21,27 +22,42 @@ export type StackStep = {
 export type WorkflowContext = {
   directory: string;
   intentDigest: string;
+  /** Runs once this controller's intent owns the journal, before any step. */
+  onJournalAccepted?: () => Promise<void>;
   onProgress?: (id: string, status: string) => void;
 };
+
+/** Creating the journal is exclusive, so two controllers never share one run directory. */
+async function openJournal(
+  path: string,
+  intentDigest: string,
+): Promise<StackJournal> {
+  const saved = await readJsonIfPresent(path);
+  if (saved !== undefined) return parseJournal(saved, intentDigest);
+  const journal: StackJournal = {
+    schemaVersion: "midgard-full-stack-v1",
+    runId: randomUUID(),
+    intentDigest,
+    steps: {},
+  };
+  try {
+    await createDurableJson(path, journal);
+    return journal;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return parseJournal(await readJsonIfPresent(path), intentDigest);
+  }
+}
 
 export async function runStackWorkflow(
   context: WorkflowContext,
   steps: readonly StackStep[],
 ) {
-  const path = join(context.directory, "stack-journal.json");
-  const saved = await readJsonIfPresent(path);
-  const journal: StackJournal =
-    saved === undefined
-      ? {
-          schemaVersion: "midgard-full-stack-v1",
-          runId: randomUUID(),
-          intentDigest: context.intentDigest,
-          steps: {},
-        }
-      : parseJournal(saved, context.intentDigest);
   if (new Set(steps.map((step) => step.id)).size !== steps.length)
     throw new Error("Duplicate workflow step");
-  await writeDurableJson(path, journal);
+  const path = join(context.directory, "stack-journal.json");
+  const journal = await openJournal(path, context.intentDigest);
+  await context.onJournalAccepted?.();
   for (const step of steps) {
     const prior = journal.steps[step.id];
     const recovery = await step.reconcile(prior);
@@ -63,7 +79,8 @@ export async function runStackWorkflow(
     journal.steps[step.id] = {
       status: "running",
       attempts: (prior?.attempts ?? 0) + 1,
-      data: prior?.data ?? null,
+      // Never carry earlier data: non-null data on a running record means this attempt's execute returned.
+      data: null,
     };
     await writeDurableJson(path, journal);
     context.onProgress?.(step.id, "running");

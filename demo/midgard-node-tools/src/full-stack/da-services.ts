@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -6,11 +6,16 @@ import {
   generateDaLibp2pRuntimeManifest,
   writeDaLibp2pRuntimeManifest,
 } from "midgard-node/da/libp2p-runtime-manifest";
+import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
 import { configureStackCommittee } from "./committee.js";
 import { stackPaths } from "./deployment.js";
-import { readJsonIfPresent, writeDurableBytes } from "./journal.js";
+import { readJsonIfPresent } from "./journal.js";
+import { containerChainSync, shareWithContainers } from "./native-ledger.js";
 import type { StackProcesses } from "./process.js";
+
+/** Project-scoped, so two stacks on one host never overwrite each other's image. */
+const STACK_DA_IMAGE = "midgard-stack-da:${COMPOSE_PROJECT_NAME}";
 
 export async function writePrivateEnv(
   path: string,
@@ -25,7 +30,7 @@ export async function writePrivateEnv(
       return `${key}=${JSON.stringify(value.replaceAll("$", "$$"))}`;
     })
     .join("\n");
-  await writeDurableBytes(path, Buffer.from(`${body}\n`));
+  await writeTextFileAtomic(path, `${body}\n`, { mode: 0o600 });
 }
 export async function generateDaServices(processes: StackProcesses) {
   const { config, env } = processes;
@@ -35,6 +40,8 @@ export async function generateDaServices(processes: StackProcesses) {
   const manifest = verifyFinalizedDeploymentManifest(
     await readJsonIfPresent(manifestPath),
   );
+  // A public contract manifest the DA containers read as their own user.
+  await shareWithContainers(manifestPath);
   const threshold = Number(env.DA_THRESHOLD);
   if (
     !Number.isSafeInteger(threshold) ||
@@ -86,11 +93,10 @@ export async function generateDaServices(processes: StackProcesses) {
       profile: "host",
     }),
   );
-  processes.env.MIDGARD_DEPLOYMENT_MANIFEST_PATH = producer;
   const mount = (source: string, target: string) => `${source}:${target}:ro`;
   const build = {
     context: resolve(config.nodeRoot, ".."),
-    dockerfile: "midgard-node-tools/docker/da.Dockerfile",
+    dockerfile: "da-committee-node/Dockerfile",
   };
   const services: Record<string, unknown> = {};
   const writerPassword = env[config.da.databasePasswordEnv]!;
@@ -105,7 +111,8 @@ export async function generateDaServices(processes: StackProcesses) {
     STACK_DA_READER_PASSWORD: readerPassword,
   });
   const init = join(directory, "da-postgres-init.sh");
-  await writeFile(
+  // Container users (postgres, node) read these; an explicit mode is not masked by the umask.
+  await writeTextFileAtomic(
     init,
     `#!/bin/sh\nset -eu\nreader_password_sql=$(printf '%s' "$STACK_DA_READER_PASSWORD" | sed "s/'/''/g")\nprintf "CREATE ROLE midgard_da_reader LOGIN PASSWORD '%s';\\n" "$reader_password_sql" | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"\nfor index in ${members.map((member) => member.signerIndex).join(" ")}; do\n  database="midgard_da_$index"\n  if [ "$index" != 0 ]; then createdb --username "$POSTGRES_USER" "$database"; fi\n  printf '%s\\n' 'GRANT CONNECT ON DATABASE '"$database"' TO midgard_da_reader;' 'GRANT USAGE ON SCHEMA public TO midgard_da_reader;' 'ALTER DEFAULT PRIVILEGES FOR ROLE midgard_da_writer IN SCHEMA public GRANT SELECT ON TABLES TO midgard_da_reader;' | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$database"\ndone\n`,
     { mode: 0o644 },
@@ -141,6 +148,8 @@ export async function generateDaServices(processes: StackProcesses) {
         producerPort: Number(env.MIDGARD_NODE_DA_HOST_PORT ?? 39002),
       }),
     );
+    // Public peer identities and addresses only; the node user in the image reads it.
+    await chmod(memberManifest, 0o644);
     const envFile = join(directory, `committee-${member.signerIndex}.env`);
     await writePrivateEnv(envFile, {
       MIDGARD_NETWORK: "Preprod",
@@ -154,8 +163,7 @@ export async function generateDaServices(processes: StackProcesses) {
         "/var/lib/midgard-da/chain-sync-cursor.json",
       CARDANO_LOCAL_NODE_SOCKET_PATH: "/ipc/node.socket",
       CARDANO_LOCAL_NODE_CONFIG_PATH: "/cardano-config/config.json",
-      CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH:
-        "/usr/local/bin/midgard-chain-sync",
+      CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: containerChainSync(processes).path,
       CARDANO_FINALITY_DEPTH: String(manifest.l1Finality.confirmationDepth),
       DA_LIBP2P_PRIVATE_KEY_SOURCE: member.libp2pPrivateKeySource,
       DA_SIGNER_INDEX: String(member.signerIndex),
@@ -173,7 +181,7 @@ export async function generateDaServices(processes: StackProcesses) {
     });
     services[`da-committee-${member.signerIndex}`] = {
       build,
-      image: "midgard-stack-da:local",
+      image: STACK_DA_IMAGE,
       command: ["dist/index.js"],
       network_mode: "host",
       restart: "unless-stopped",
@@ -186,6 +194,7 @@ export async function generateDaServices(processes: StackProcesses) {
           "/cardano-config",
         ),
         `${join(config.nodeRoot, "cardano/ipc")}:/ipc`,
+        containerChainSync(processes).volume,
         `da-committee-${member.signerIndex}-state:/var/lib/midgard-da`,
       ],
       depends_on: { "da-postgres": { condition: "service_healthy" } },
@@ -204,7 +213,7 @@ export async function generateDaServices(processes: StackProcesses) {
   });
   services["public-retained-da"] = {
     build,
-    image: "midgard-stack-da:local",
+    image: STACK_DA_IMAGE,
     command: ["dist/public-retained-da.js"],
     network_mode: "host",
     restart: "unless-stopped",

@@ -18,10 +18,17 @@ import {
   type StackJournal,
   writeDurableJson,
 } from "./journal.js";
+import {
+  assertDepositCredit,
+  assertDepositFunding,
+  assertTransferDeltas,
+  assertWithdrawalDebit,
+} from "./journey-balances.js";
 import { awaitExactPayout, settlementEvidence } from "./payout.js";
 import { getJson, poll, type StackProcesses } from "./process.js";
 import { verifyPublicDa } from "./public-da.js";
 import { confirmRuntimeReadiness } from "./runtime.js";
+import { assertHostDatabaseIsStackDatabase } from "./storage.js";
 import type { StackStep } from "./workflow.js";
 
 type TransferIntent = {
@@ -37,7 +44,27 @@ type WithdrawalIntent = {
   assets: Record<string, string>;
   recipientBalanceBefore: string;
 };
-export function journeySteps(processes: StackProcesses): StackStep[] {
+type NodeUtxos = Effect.Effect.Success<ReturnType<typeof fetchNodeUtxos>>;
+/** The node's L2 ledger as the journey reads and writes it. */
+export type JourneyLedger = {
+  utxos(address: string): Promise<NodeUtxos>;
+  submitTransfer(signedTxCbor: string, txId: string): Promise<unknown>;
+};
+export const nodeLedger = (endpoint: string): JourneyLedger => ({
+  utxos: (address) =>
+    Effect.runPromise(fetchNodeUtxos(endpoint, address, 10_000)),
+  submitTransfer: (signedTxCbor, txId) =>
+    Effect.runPromise(
+      submitNativeTransferTx(endpoint, signedTxCbor, txId, 30_000),
+    ),
+});
+const lovelaceOf = (utxos: NodeUtxos) =>
+  utxos.reduce((sum, utxo) => sum + (utxo.assets.lovelace ?? 0n), 0n);
+
+export function journeySteps(
+  processes: StackProcesses,
+  ledger: JourneyLedger = nodeLedger(processes.config.endpoint),
+): StackStep[] {
   const { config, env } = processes;
   const user = walletFromSeed(env[config.wallets.user!.seedEnv]!, {
     network: "Preprod",
@@ -45,13 +72,8 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
   const recipient = walletFromSeed(env[config.wallets.recipient!.seedEnv]!, {
     network: "Preprod",
   });
-  const utxos = (address: string) =>
-    Effect.runPromise(fetchNodeUtxos(config.endpoint, address, 10_000));
-  const balance = async (address: string) =>
-    (await utxos(address)).reduce(
-      (sum, utxo) => sum + (utxo.assets.lovelace ?? 0n),
-      0n,
-    );
+  const utxos = (address: string) => ledger.utxos(address);
+  const balance = async (address: string) => lovelaceOf(await utxos(address));
   const journal = () =>
     readJsonIfPresent(
       join(config.runDirectory, "stack-journal.json"),
@@ -91,11 +113,11 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
             balance: string;
           };
           const after = await balance(user.address);
-          if (
-            after !==
-            BigInt(before.balance) + BigInt(config.journey.depositLovelace)
-          )
-            throw new Error("Deposit did not credit the exact L2 balance");
+          assertDepositCredit(
+            BigInt(before.balance),
+            after,
+            BigInt(config.journey.depositLovelace),
+          );
           await writeDurableJson(file("deposit-balance"), {
             before: before.balance,
             after: String(after),
@@ -105,11 +127,23 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
         return { status: "complete", data: { eventId, observed } };
       },
       execute: async () => {
-        if ((await readJsonIfPresent(file("deposit-intent"))) === undefined)
+        if ((await readJsonIfPresent(file("deposit-intent"))) === undefined) {
+          // A resend after a lost response reuses the intent; only a first send checks funds.
+          const funds = (await processes.node(`${prefix}-deposit-funds`, [
+            "l1-utxos",
+            "--address",
+            user.address,
+          ])) as { totals: { lovelace: string } };
+          assertDepositFunding(
+            BigInt(funds.totals.lovelace),
+            BigInt(config.journey.depositLovelace),
+          );
           await writeDurableJson(file("deposit-intent"), {
             balance: String(await balance(user.address)),
           });
+        }
         const run = await journal();
+        await assertHostDatabaseIsStackDatabase(processes);
         const receipt = await processes.node(`${prefix}-deposit-submit`, [
           "submit-deposit",
           "--submission-id",
@@ -168,29 +202,20 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
           },
         );
         if ((await readJsonIfPresent(file("transfer-balance"))) === undefined) {
-          const expected =
-            BigInt(intent.senderBalanceBefore) -
-            BigInt(config.journey.transferLovelace) -
-            BigInt(intent.fee);
           const actual = await balance(user.address);
-          if (actual !== expected)
-            throw new Error("L2 transfer balance or fee does not match");
-          const recipientBalanceAfter = await balance(recipient.address);
-          if (
-            recipientBalanceAfter !==
-            BigInt(intent.recipientBalanceBefore) +
-              BigInt(config.journey.transferLovelace)
-          )
-            throw new Error("Recipient L2 balance does not match the transfer");
-          const received = (await utxos(recipient.address)).filter(
-            (utxo) => utxo.txHash === intent.txId,
-          );
-          if (
-            received.length !== 1 ||
-            received[0]!.assets.lovelace !==
-              BigInt(config.journey.transferLovelace)
-          )
-            throw new Error("Recipient did not receive the exact transfer");
+          const recipientUtxos = await utxos(recipient.address);
+          const recipientBalanceAfter = lovelaceOf(recipientUtxos);
+          assertTransferDeltas({
+            amount: BigInt(config.journey.transferLovelace),
+            fee: BigInt(intent.fee),
+            senderBefore: BigInt(intent.senderBalanceBefore),
+            senderAfter: actual,
+            recipientBefore: BigInt(intent.recipientBalanceBefore),
+            recipientAfter: recipientBalanceAfter,
+            received: recipientUtxos
+              .filter((utxo) => utxo.txHash === intent.txId)
+              .map((utxo) => utxo.assets.lovelace ?? 0n),
+          });
           await writeDurableJson(file("transfer-balance"), {
             senderBalance: String(actual),
             recipientBalance: String(recipientBalanceAfter),
@@ -224,12 +249,7 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
             signedTxCbor: built.txHex,
             fee: String(built.fee),
             recipientBalanceBefore: String(await balance(recipient.address)),
-            senderBalanceBefore: String(
-              available.reduce(
-                (sum, value) => sum + (value.assets.lovelace ?? 0n),
-                0n,
-              ),
-            ),
+            senderBalanceBefore: String(lovelaceOf(available)),
           };
           // This checkpoint precedes the first send, including a lost response.
           await writeDurableJson(file("transfer"), intent);
@@ -244,14 +264,7 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
           throw new Error(
             "Saved transfer differs from its exact transaction identity or fee",
           );
-        return Effect.runPromise(
-          submitNativeTransferTx(
-            config.endpoint,
-            intent.signedTxCbor,
-            intent.txId,
-            30_000,
-          ),
-        );
+        return ledger.submitTransfer(intent.signedTxCbor, intent.txId);
       },
     });
     steps.push({
@@ -280,18 +293,12 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
         if (
           (await readJsonIfPresent(file("withdrawal-balance"))) === undefined
         ) {
-          const after = available.reduce(
-            (sum, utxo) => sum + (utxo.assets.lovelace ?? 0n),
-            0n,
+          const after = lovelaceOf(available);
+          assertWithdrawalDebit(
+            BigInt(intent.recipientBalanceBefore),
+            after,
+            BigInt(intent.assets.lovelace!),
           );
-          if (
-            after !==
-            BigInt(intent.recipientBalanceBefore) -
-              BigInt(intent.assets.lovelace!)
-          )
-            throw new Error(
-              "Withdrawal did not debit the exact recipient L2 balance",
-            );
           await writeDurableJson(file("withdrawal-balance"), {
             before: intent.recipientBalanceBefore,
             after: String(after),
@@ -331,6 +338,7 @@ export function journeySteps(processes: StackProcesses): StackStep[] {
           await writeDurableJson(file("withdrawal-intent"), intent);
         }
         const run = await journal();
+        await assertHostDatabaseIsStackDatabase(processes);
         const receipt = await processes.node(`${prefix}-withdrawal-submit`, [
           "submit-withdrawal",
           "--submission-id",

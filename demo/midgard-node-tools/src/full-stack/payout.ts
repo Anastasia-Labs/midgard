@@ -6,7 +6,11 @@ import { watcherDeploymentReleaseFinalityAuthority } from "midgard-watcher";
 
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
-import { verifyPayoutBody } from "./payout-body.js";
+import {
+  includedPayout,
+  payoutConclusion,
+  type SettlementObservation,
+} from "./payout-body.js";
 import { poll, type StackProcesses } from "./process.js";
 import { verifyStackRelease } from "./release.js";
 
@@ -35,12 +39,7 @@ export async function settlementEvidence(
     "-t",
     "-c",
     query,
-  ])) as {
-    jobs: { phase: string }[] | null;
-    attempts:
-      | { phase: string; status: string; txHash: string; signedCbor: string }[]
-      | null;
-  };
+  ])) as SettlementObservation;
 }
 
 export async function awaitExactPayout(
@@ -67,30 +66,21 @@ export async function awaitExactPayout(
     processes.config.timeoutMs,
     async () => {
       const status = await settlementEvidence(processes, "withdrawal", eventId);
-      const conclusions =
-        status.attempts?.filter(
-          (attempt) =>
-            attempt.phase === "conclude" && attempt.status === "confirmed",
-        ) ?? [];
-      if (conclusions.length > 1)
-        throw new Error(
-          "More than one confirmed payout transaction for the same withdrawal",
-        );
-      if (
-        status.jobs?.length !== 1 ||
-        status.jobs[0]!.phase !== "complete" ||
-        conclusions.length !== 1
-      )
-        return undefined;
-      const attempt = conclusions[0]!;
+      const attempt = payoutConclusion(status);
+      if (attempt === undefined) return undefined;
       const observation =
         await readAdmittedLocalKupmiosSignedTransactionRecovery({
           source,
           transactionHash: attempt.txHash,
           signedTransactionCborHex: attempt.signedCbor,
         });
-      if (observation.status !== "included") return undefined;
-      const output = verifyPayoutBody(attempt.signedCbor, address, assets);
+      const output = includedPayout(
+        attempt,
+        observation.status,
+        address,
+        assets,
+      );
+      if (output === undefined) return undefined;
       return {
         eventId,
         txHash: attempt.txHash,

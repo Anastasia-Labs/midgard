@@ -27,6 +27,9 @@ export async function configureStackCommittee(
   if (new Set(members.map((member) => member.daVkey)).size !== members.length)
     throw new Error("DA committee members must have distinct signing keys");
   const committee = members.map((member) => member.daVkey).join("");
+  // deriveOperatorDaParams enforces the governed floor and the committee size.
+  if (!/^[1-9][0-9]*$/.test(env.DA_THRESHOLD ?? ""))
+    throw new Error("DA_THRESHOLD must be a positive integer");
   if (env.DA_COMMITTEE_HEX && env.DA_COMMITTEE_HEX !== committee)
     throw new Error("DA members differ from the configured sorted committee");
   const params = await Effect.runPromise(

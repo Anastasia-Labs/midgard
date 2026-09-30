@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { constants } from "node:fs";
+import { access, readFile } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
-import { validateMnemonic } from "bip39";
 import { parse } from "dotenv";
+
+import { l1ProviderFailoverEnabled } from "../environment.js";
+import { checkStackEnvironment, stackIntentDigest } from "./preflight.js";
 
 export type StackConfig = {
   nodeRoot: string;
@@ -265,7 +267,7 @@ export async function loadStackConfig(path: string) {
     ],
     {
       cwd: config.nodeRoot,
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, ...env },
+      env: { ...env, PATH: process.env.PATH, HOME: process.env.HOME },
     },
   );
   Object.assign(env, parse(derived.stdout));
@@ -285,7 +287,7 @@ export async function loadStackConfig(path: string) {
     env.NETWORK !== "Preprod" ||
     env.MIDGARD_DEPLOYMENT_PROFILE !== "preprod-testing" ||
     env.L1_PROVIDER !== "Kupmios" ||
-    env.L1_PROVIDER_FAILOVER ||
+    l1ProviderFailoverEnabled(env.L1_PROVIDER_FAILOVER) ||
     env.RUN_GENESIS_ON_STARTUP !== "false"
   )
     throw new Error(
@@ -310,13 +312,6 @@ export async function loadStackConfig(path: string) {
     ]),
   ])
     if (!env[key]) throw new Error(`Missing ${key}`);
-  const threshold = Number(env.DA_THRESHOLD);
-  if (
-    !Number.isSafeInteger(threshold) ||
-    threshold < 1 ||
-    threshold > config.da.members.length
-  )
-    throw new Error("DA_THRESHOLD must match the configured committee size");
   if (env[config.da.databasePasswordEnv] === env[config.da.readerPasswordEnv])
     throw new Error("DA reader and writer passwords must differ");
   if (config.da.submitterSeedEnv !== config.wallets.daSubmitter!.seedEnv)
@@ -336,21 +331,6 @@ export async function loadStackConfig(path: string) {
       10_000_000n
   )
     throw new Error("User funding budget must cover all deposits and fees");
-  // Bind credentials as well as public settings without copying them into the journal.
-  const hash = createHash("sha256");
-  for (const input of [
-    config.watcher.processTemplate,
-    config.watcher.authorityTemplate,
-    config.watcher.composeEnvFile,
-  ])
-    hash.update(input).update(await readFile(input));
-  for (const key of [
-    ...Object.values(config.wallets).map((wallet) => wallet.seedEnv),
-    ...config.da.members.map((member) => member.seedEnv),
-    ...(env.DA_COSIGNER_SEED_PHRASE ? ["DA_COSIGNER_SEED_PHRASE"] : []),
-  ])
-    if (!validateMnemonic(env[key]!))
-      throw new Error(`Invalid wallet mnemonic in ${key}`);
   const watcherSecrets = parse(await readFile(config.watcher.composeEnvFile));
   for (const key of [
     "WATCHER_RECORD_KEY_FILE",
@@ -362,7 +342,7 @@ export async function loadStackConfig(path: string) {
     const path = watcherSecrets[key];
     if (!path || !isAbsolute(path))
       throw new Error(`Set absolute ${key} in watcher Compose environment`);
-    hash.update(path).update(await readFile(path));
+    await access(path, constants.R_OK);
   }
   if (config.watcher.releaseInput) {
     const release = JSON.parse(
@@ -371,42 +351,7 @@ export async function loadStackConfig(path: string) {
     if (!release.signingKeyFile || !isAbsolute(release.signingKeyFile))
       throw new Error("Release input needs an absolute signingKeyFile");
     record(release.programCommitments, "Release program commitments");
-    // Measurements remain replaceable until their bundle is signed for the deployment.
-    hash
-      .update(config.watcher.releaseInput)
-      .update(JSON.stringify(release.programCommitments));
-    hash
-      .update(release.signingKeyFile)
-      .update(await readFile(release.signingKeyFile));
   }
-  if (!config.watcher.releaseInput) {
-    const template = JSON.parse(
-      await readFile(config.watcher.processTemplate, "utf8"),
-    ) as {
-      deploymentAuthorityPath: string;
-      ruleBundlePath: string;
-      fundingProfileBundlePath: string;
-      faultProofInfrastructure: {
-        manifestPath: string;
-        blueprintPath: string;
-        deploymentInfoPath: string;
-      };
-    };
-    for (const input of [
-      template.deploymentAuthorityPath,
-      template.ruleBundlePath,
-      template.fundingProfileBundlePath,
-      template.faultProofInfrastructure.manifestPath,
-      template.faultProofInfrastructure.blueprintPath,
-      template.faultProofInfrastructure.deploymentInfoPath,
-    ]) {
-      const path = join(config.watcher.releaseDirectory, basename(input));
-      hash.update(path).update(await readFile(path));
-    }
-  }
-  const intentDigest = hash
-    .update(JSON.stringify(config))
-    .update(JSON.stringify(Object.entries(env).sort()))
-    .digest("hex");
-  return { config, env, intentDigest };
+  await checkStackEnvironment(config, env);
+  return { config, env, intentDigest: await stackIntentDigest(config, env) };
 }

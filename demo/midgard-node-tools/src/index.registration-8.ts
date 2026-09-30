@@ -287,4 +287,46 @@ program
     }
   });
 
+program
+  .command("e2e-stack")
+  .description(
+    "Set up or resume the persistent local-provider Preprod stack and verify wallet journeys",
+  )
+  .requiredOption(
+    "--config <file>",
+    "Absolute path of the stack configuration JSON",
+  )
+  .option(
+    "--setup-only",
+    "Finish after setup; Compose continues supervising services",
+  )
+  .option(
+    "--check",
+    "Run the offline configuration checks only: no build, service start or transaction",
+  )
+  .action(
+    async (options: {
+      config: string;
+      setupOnly?: boolean;
+      check?: boolean;
+    }) => {
+      try {
+        const [major, minor] = process.versions.node.split(".").map(Number);
+        if (major! < 22 || (major === 22 && minor! < 16))
+          throw new Error("Node 22.16 or newer is required");
+        const { runStackController } = await import(
+          "./full-stack/controller.js"
+        );
+        await runStackController(options);
+      } catch (error) {
+        console.error(
+          error instanceof Error
+            ? error.message
+            : "Stack command failed; inspect saved artifacts",
+        );
+        process.exitCode = 1;
+      }
+    },
+  );
+
 program.parse(process.argv);

@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { StackProcesses } from "./process.js";
@@ -12,6 +12,30 @@ export function nativeLedgerPaths(processes: StackProcesses) {
       "../midgard-watcher/dist/native/midgard-chain-sync",
     ),
   };
+}
+/** The one chain-sync binary, built on the host with the pinned Go toolchain. */
+const CONTAINER_CHAIN_SYNC_BINARY = "/app/native-ledger/midgard-chain-sync";
+export function containerChainSync(processes: StackProcesses) {
+  return {
+    path: CONTAINER_CHAIN_SYNC_BINARY,
+    volume: `${nativeLedgerPaths(processes).binary}:${CONTAINER_CHAIN_SYNC_BINARY}:ro`,
+  };
+}
+/**
+ * Containers run as their own users, and the controller's umask makes every
+ * file it creates private; these public files must stay readable to them.
+ */
+export async function shareWithContainers(path: string, executable = false) {
+  const entries = await readdir(path, { withFileTypes: true }).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOTDIR") return undefined;
+      throw error;
+    },
+  );
+  await chmod(path, entries !== undefined || executable ? 0o755 : 0o644);
+  for (const entry of entries ?? [])
+    if (!entry.isSymbolicLink())
+      await shareWithContainers(join(path, entry.name));
 }
 export function configureHostNativeLedger(processes: StackProcesses) {
   const paths = nativeLedgerPaths(processes);
@@ -31,6 +55,7 @@ export async function exportLocalCardanoConfig(processes: StackProcesses) {
     "cardano-node:/opt/cardano/config/preprod/.",
     paths.directory,
   ]);
+  await shareWithContainers(paths.directory);
 }
 export function containerNativeLedger(processes: StackProcesses) {
   const paths = nativeLedgerPaths(processes);
@@ -38,12 +63,12 @@ export function containerNativeLedger(processes: StackProcesses) {
     env: {
       L1_NODE_SOCKET_PATH: "/ipc/node.socket",
       L1_NODE_CONFIG_PATH: "/cardano-config/config.json",
-      L1_NATIVE_CHAIN_SYNC_BINARY_PATH: "/app/native-ledger/midgard-chain-sync",
+      L1_NATIVE_CHAIN_SYNC_BINARY_PATH: containerChainSync(processes).path,
     },
     volumes: [
       `${paths.socketDirectory}:/ipc`,
       `${paths.directory}:/cardano-config:ro`,
-      `${paths.binary}:/app/native-ledger/midgard-chain-sync:ro`,
+      containerChainSync(processes).volume,
     ],
   };
 }

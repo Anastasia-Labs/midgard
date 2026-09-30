@@ -1,12 +1,6 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.25.7-bookworm AS native-chain-sync
-WORKDIR /src/native-chain-sync
-COPY midgard-watcher/native-chain-sync/go.mod midgard-watcher/native-chain-sync/go.sum ./
-RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod go mod download && go mod verify
-COPY midgard-watcher/native-chain-sync ./
-COPY midgard-watcher/tests/support/conway-block.hex ../tests/support/conway-block.hex
-RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod --mount=type=cache,id=midgard-watcher-go-build,target=/root/.cache/go-build go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /out/midgard-chain-sync .
-
+# Built from demo/. midgard-chain-sync is not in the image: services mount the host
+# build (midgard-watcher native:build), the one pinned Go build of that binary.
 FROM node:22.22.2 AS build
 RUN corepack enable
 WORKDIR /workspace/demo
@@ -35,7 +29,6 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm --filte
 FROM node:22.22.2-bookworm-slim
 WORKDIR /app
 COPY --from=build --chown=node:node /prod/da ./
-COPY --from=native-chain-sync /out/midgard-chain-sync /usr/local/bin/midgard-chain-sync
 RUN mkdir -p /var/lib/midgard-da && chown node:node /var/lib/midgard-da
 USER node
 ENV NODE_ENV=production

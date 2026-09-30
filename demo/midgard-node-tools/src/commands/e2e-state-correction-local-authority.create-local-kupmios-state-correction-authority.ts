@@ -1,6 +1,7 @@
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 
+import { l1ProviderFailoverEnabled } from "../environment.js";
 import { parseReleaseL1FinalityPolicy } from "./e2e-release-finality-policy.js";
 import { assertAtOrAfter } from "./e2e-state-correction-local-authority.assert-at-or-after.js";
 import { createLocalKupmiosStateCorrectionSource } from "./e2e-state-correction-local-authority.create-local-kupmios-state-correction-source.js";
@@ -20,11 +21,7 @@ export const createLocalKupmiosStateCorrectionAuthority = (
   if (config.provider !== "Kupmios") {
     throw new Error("Q57 authority requires L1_PROVIDER=Kupmios");
   }
-  if (
-    config.providerFailover !== undefined &&
-    config.providerFailover.trim() !== "" &&
-    config.providerFailover.trim().toLowerCase() !== "false"
-  ) {
+  if (l1ProviderFailoverEnabled(config.providerFailover)) {
     throw new Error("Q57 authority forbids L1 provider failover");
   }
   assertLoopbackEndpoint(config.kupoUrl, "L1_KUPO_KEY");

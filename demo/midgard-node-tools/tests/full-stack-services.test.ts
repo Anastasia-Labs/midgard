@@ -1,4 +1,12 @@
-import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,7 +16,7 @@ import { parse } from "dotenv";
 import { computeDeploymentManifestDaCommitteeSignersHash } from "midgard-node/deployment-manifest";
 import { parseNativeLedgerSettings } from "midgard-node/services/native-ledger";
 import { writeFinalizedDeploymentInfo } from "midgard-node/tests/da-libp2p-runtime-manifest.write-finalized-deployment-info";
-import { expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 
 import { configureStackCommittee } from "../src/full-stack/committee.js";
 import { parseStackConfig } from "../src/full-stack/config.js";
@@ -16,8 +24,39 @@ import { generateDaServices } from "../src/full-stack/da-services.js";
 import {
   configureHostNativeLedger,
   containerNativeLedger,
+  exportLocalCardanoConfig,
+  nativeLedgerPaths,
 } from "../src/full-stack/native-ledger.js";
 import { StackProcesses } from "../src/full-stack/process.js";
+import {
+  RecordingProcesses,
+  removeStackFixtures,
+  stackEnvironment,
+  stackFixture,
+} from "./full-stack-fixtures.js";
+
+afterEach(removeStackFixtures);
+
+it("leaves the exported Cardano configuration readable to container users", async () => {
+  const { config } = await stackFixture();
+  const processes = new RecordingProcesses(config, stackEnvironment(config));
+  const { directory } = nativeLedgerPaths(processes);
+  processes.responses["cardano-config-export"] = async () => {
+    // docker cp extracts in the controller process, under its umask.
+    await mkdir(join(directory, "genesis"), { recursive: true, mode: 0o700 });
+    await writeFile(join(directory, "genesis/shelley.json"), "{}", {
+      mode: 0o600,
+    });
+  };
+  const umask = process.umask(0o077);
+  await exportLocalCardanoConfig(processes).finally(() => process.umask(umask));
+  for (const [path, mode] of [
+    [directory, 0o755],
+    [join(directory, "genesis"), 0o755],
+    [join(directory, "genesis/shelley.json"), 0o644],
+  ] as const)
+    expect((await stat(path)).mode & 0o777).toBe(mode);
+});
 
 it("generates committee configurations accepted by the real loader with persistent local chain authority", async () => {
   const directory = await mkdtemp(join(tmpdir(), "midgard-stack-services-"));
@@ -78,13 +117,41 @@ it("generates committee configurations accepted by the real loader with persiste
       );
       da.threshold = 2;
     });
+    // The controller's umask; files the containers read must still be readable.
+    const umask = process.umask(0o077);
     await mkdir(join(directory, "deploymentInfo"));
     const manifest = join(
       directory,
       "deploymentInfo/contract-deployment-info.json",
     );
     await copyFile(fixture.path, manifest);
-    const generated = await generateDaServices(new StackProcesses(config, env));
+    const generated = await generateDaServices(
+      new StackProcesses(config, env),
+    ).finally(() => process.umask(umask));
+    for (const name of ["da-postgres-init.sh", "committee-0.json"])
+      expect((await stat(join(generated.directory, name))).mode & 0o044).toBe(
+        0o044,
+      );
+    expect((await stat(manifest)).mode & 0o044).toBe(0o044);
+    const services = generated.services as Record<
+      string,
+      { image?: string; volumes: string[] }
+    >;
+    for (const service of ["da-committee-0", "public-retained-da"])
+      expect(services[service]!.image).toBe(
+        "midgard-stack-da:${COMPOSE_PROJECT_NAME}",
+      );
+    // Readiness compares the committee's configured fingerprint with this id.
+    const { manifestId } = JSON.parse(await readFile(manifest, "utf8"));
+    const committeeManifest = JSON.parse(
+      await readFile(join(generated.directory, "committee-0.json"), "utf8"),
+    );
+    expect(committeeManifest.deployment.fingerprint).toBe(manifestId);
+    expect(
+      committeeManifest.da_committee.members.map(
+        (member: { signer_index: number }) => member.signer_index,
+      ),
+    ).toEqual(committee.map((member) => member.signerIndex));
     for (const member of committee) {
       const serviceEnv = parse(
         await readFile(
@@ -101,7 +168,11 @@ it("generates committee configurations accepted by the real loader with persiste
       });
       expect(loaded.l1Source.sourceMode).toBe("local_node");
       expect(loaded.nativeLedger?.binaryPath).toBe(
-        "/usr/local/bin/midgard-chain-sync",
+        "/app/native-ledger/midgard-chain-sync",
+      );
+      // The host's pinned build, the same binary the node container mounts.
+      expect(services[`da-committee-${member.signerIndex}`]!.volumes).toContain(
+        `${hostLedger!.binaryPath}:/app/native-ledger/midgard-chain-sync:ro`,
       );
       expect(loaded.signerIndex).toBe(member.signerIndex);
       expect(loaded.signerKeySource).toBe(

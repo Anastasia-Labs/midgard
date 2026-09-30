@@ -5,11 +5,17 @@ Cardano Preprod with local Docker providers, the node, DA committee, public
 retained DA, watcher and trusted-head authority, then runs wallet journeys:
 
 ```sh
-pnpm --dir demo/midgard-node-tools e2e-stack --config /absolute/path/preprod-stack.json
+pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/preprod-stack.json
 ```
 
+`--config` must be an absolute path: the package script runs from the package
+directory, so a relative path would not resolve against the caller's directory.
+An already built tool runs the same command as
+`node demo/midgard-node-tools/dist/index.js e2e-stack --config ...`.
+
 Use Node 22.16 or newer, the repository's pnpm, its pinned Aiken compiler, Docker
-Compose, Go (setup selects 1.25.7), Rust/Cargo and Linux `flock`. Install the workspace dependencies first. Setup builds
+Compose 2.21 or newer (setup refuses older versions), Go (setup selects
+1.25.7), Rust/Cargo and Linux `flock`. Install the workspace dependencies first. Setup builds
 the Preprod contract profile and the workspace runtimes. Provider startup may
 need several hours to download and synchronize the Preprod snapshots.
 
@@ -20,7 +26,11 @@ and Docker volumes. Set `NETWORK=Preprod`, `MIDGARD_DEPLOYMENT_PROFILE=preprod-t
 and Ogmios URLs, no failover, `RUN_GENESIS_ON_STARTUP=false`, and the exact L2
 `MIN_FEE_A`/`MIN_FEE_B`. Keep the operator deployment profile settings from
 `demo/midgard-node/.env.example`. Define all wallet and DA secret variables named
-by the stack configuration in that `.env`. Each wallet role must be distinct.
+by the stack configuration in that `.env`. The stack-only secrets (user,
+recipient, prover, availability, DA submitter, DA members, transports and DA
+passwords) must use distinct `STACK_` names, so they never name a node, DA or
+watcher setting; the generated node environment blanks them. Each wallet role
+must be distinct.
 Set `DA_THRESHOLD` to the intended threshold, between the SDK governed floor
 `ceil(2 * memberCount / 3)` and the member count (the example uses two members
 and threshold two). Setup derives and sorts the Cardano verification keys and
@@ -33,17 +43,28 @@ Transport identities use persistent `seed:<32-byte-hex>` or `hex:` sources.
 The retained DA identity is separate from every signer and the producer.
 
 Wallet budgets are explicit minimum balances for fresh setup; choose them for
-your contract publication costs and measured funding requirements. The prover and availability addresses use the existing watcher Enterprise
-address derivation; the other wallet roles use the node's normal seed addresses.
-Each wallet also needs a plain ADA output of at least 5 ADA for fees/collateral. The user
-budget must cover every deposit plus fee headroom. On attachment, funding
-checks require working capital rather than the original deployment budget.
+your contract publication costs and measured funding requirements. The prover
+and availability addresses use the existing watcher Enterprise address
+derivation; the other wallet roles use the node's normal seed addresses. Each
+wallet also needs a plain ADA output of at least 5 ADA for fees/collateral.
+The configured budgets apply only before the hub-oracle nonce is recorded. A
+resumed or attached deployment, before or after initialization, requires only
+that working capital: 5 ADA per wallet plus that plain output. The user budget
+must cover every deposit plus fee headroom at fresh setup. Before each deposit
+is first submitted, the journey also checks that the user's L1 balance covers
+that deposit plus 5 ADA of fee headroom; a resent deposit reuses its saved
+intent without repeating the check.
 
 The Compose wrapper derives operator host ports in linked worktrees. Configure
 the node endpoint and local provider URLs to match those ports (`scripts/operator-compose.sh
 --print-env --env-file .env`). DA ports are explicit and must not collide with
-another stack. Host operational commands use loopback Postgres at the operator
-stack's host port; containers use `postgres:5432`.
+another stack. Host operational commands (`db:migrate`, `submit-deposit`,
+`submit-withdrawal`) use loopback Postgres at `MIDGARD_POSTGRES_HOST_PORT`;
+containers use `postgres:5432`. Set `MIDGARD_POSTGRES_HOST_PORT` explicitly in
+the `.env`; 5433 and 55433 are refused because they belong to test databases.
+Before each host database command, setup compares the Postgres cluster
+identity seen inside Compose with the one reached at `127.0.0.1` on that port
+and refuses to run when they differ.
 Setup builds and pins the host native owner, exports the local Cardano config,
 and configures the native ledger query helper for host commands and containers.
 Node and committee reward-account queries use that same local Cardano socket.
@@ -60,8 +81,13 @@ name the existing regular secret files with `WATCHER_RECORD_KEY_FILE`,
 `MIDGARD_L1_CONFIG_DIR` (replaced with the exported local node config at setup).
 Authentication keys are 32-byte lowercase hex; bearer text and wallet secrets
 must be canonical, without a trailing newline. The prover and availability
-files must hold the seeds of the corresponding funded wallets. The watcher
-retains its own SQLite stores and authority records in named volumes.
+files must hold the seeds of the corresponding funded wallets. The stack's
+watcher keeps its SQLite stores and authority records in the project-scoped
+volumes `<node project>_watcher-state` and
+`<node project>_watcher-authority-records`. It starts its own trusted-head
+chain and state, separate from any standalone `midgard-watcher` deployment.
+Use a record key file that no standalone watcher uses, or retire the
+standalone watcher first.
 
 For an existing deployment, `releaseDirectory` holds the signed watcher release
 artifacts named by the process template; set `releaseInput` to `null` when no
@@ -88,27 +114,60 @@ deployment. The signing key and program commitments remain fixed. Once signed,
 the saved authority binds the measured bundle digest and rejects replacements. The example above describes the input shape;
 replace its illustrative values with release artifacts before running.
 
-`--check` validates paths, environment, budgets and local endpoint bindings
-without starting services or spending funds. `--setup-only` completes setup
+`--check` runs every check that needs no build, network or service, and
+starts nothing and spends nothing: the configuration fields and absolute paths,
+the node environment (network, profile, Kupmios, failover, genesis, exact fees,
+the Postgres host port and the operator and DA port collisions), the presence
+of every named secret, wallet mnemonics and derived addresses, the committee
+keys and threshold, distinct persistent transport identities, readable watcher
+secret files and the release input shape. It loads the built workspace
+packages, so build them once first. The Compose version, `compose config`, the
+watcher key and bearer decoding and the prover/availability seed match run
+later, after the builds, on a full run. `--setup-only` completes setup
 and readiness checks without the wallet journeys; Compose keeps the services
 running after the command exits. Run the same command again to attach or
 resume. `docker compose restart` on the configured project preserves the
 running services' generated settings. The generated override is saved in
 `<runDirectory>/services/compose.json`; use the operator Compose wrapper with
-that override when managing this stack.
+that override when managing this stack. Do not start this stack with the node
+README's plain `docker compose ... up`: that reads the `.env` holding the stack
+secrets without the generated settings.
 
 The file journal is written atomically and fsynced, with a stable run identity.
-Native nonce/reference/deposit/withdrawal journals preserve submitted intents.
-Before repeating a transaction step, setup queries Cardano. It can reconstruct
-a deployment manifest when initialization confirmed before the success record
-was written. An ambiguous submission stops without constructing a new one.
-Transfer bytes are saved before their first send and reused after a lost
-response. A controller lock prevents two runs against one node directory; a
-separate command lock remains held while an orphaned child command finishes.
-The deployment and local storage identities are checked on restart. Corrupt
-records, changed configuration or mismatched storage stop without resetting
+Reference, deposit and withdrawal journals preserve submitted intents. The
+hub-oracle nonce is recorded by the node after its submission returns, so a
+controller that dies inside that window leaves the step pending: setup stops
+instead of building a second nonce and preserves every record for the operator
+to resolve against Cardano. Before repeating a transaction step, setup queries
+Cardano. It can reconstruct a deployment manifest when initialization confirmed
+before the success record was written, and it waits, preserving the data, when
+a finalized initialization is no longer at the Cardano tip. An ambiguous
+submission stops without constructing a new one. Transfer bytes are saved
+before their first send and reused after a lost response.
+
+A controller lock prevents two runs against one node directory, and a command
+lock allows one stack command at a time. Interrupting the controller (Ctrl-C or
+kill) ends the in-flight child command at its next output line and releases
+both locks; the rerun's Cardano and journal reconciliation then prevents
+duplicate transactions.
+
+A run is bound to its identity: network, deployment profile, node and run
+directories, wallet seeds, DA members, transports, threshold, owners and
+cosigner, the watcher record, rollback, prover and availability keys, and the
+release signer and program commitments (or the existing signed release
+artifacts). Changing any of these stops a resume. Timeouts, journey size,
+budgets, ports, templates and the watcher bearer may change between runs. The
+deployment and local storage identities are checked on restart. Corrupt
+records, changed identity or mismatched storage stop without resetting
 anything. No command uses volume deletion, database wipes or fresh-redeploy
 flags. Preserve the run directory, signing keys, `.env` and service volumes.
+
+Fresh setup requires fresh local storage: a Postgres volume that was never used
+or was only migrated, with no deployment rows (the migrations' own tables and
+the unchanged calibration seed are allowed), and an empty or absent node `db`
+directory. To get one without deleting existing volumes, run from a separate
+linked worktree: the Compose wrapper gives it its own project, volumes, host
+ports and node directory.
 
 The generated node environment explicitly sets `MIN_QUEUE_LENGTH_FOR_MERGING=1`
 for these small Preprod journeys. This uses the existing automatic merge worker
@@ -129,10 +188,14 @@ and release-readiness acceptance suite.
 Focused recovery checks:
 
 ```sh
-pnpm --dir demo/midgard-node-tools exec vitest run --config vitest.full-stack.config.mjs
+MIDGARD_SKIP_DB_TESTS=1 pnpm --dir demo/midgard-node-tools exec vitest run tests/full-stack
 ```
 
-These tests cover unrecorded confirmations, ambiguous submissions, durable
-intents, configuration drift, corruption, exact payouts and service readiness.
-They also exercise the actual kernel lock through process death. They do not
-replace the live wallet journey against funded Preprod wallets.
+Build the Preprod blueprint first (`pnpm --dir demo deployment:build preprod-testing`).
+Without `MIDGARD_SKIP_DB_TESTS=1`, the run also executes the storage queries
+against a migrated test Postgres. These tests cover unrecorded confirmations,
+ambiguous submissions, durable intents, configuration drift, corruption, exact
+balances and payouts, transfer resends and service readiness. The lock tests
+drive the controller and command locks with real processes, including a holder
+killed with SIGKILL. They do not replace the live wallet journey against funded
+Preprod wallets.

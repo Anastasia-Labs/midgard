@@ -17,6 +17,7 @@ import {
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { paymentCredentialOf, walletFromSeed } from "@lucid-evolution/lucid";
+import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 import {
   computeWatcherRuleBundleCommitment,
   createWatcherWorkflowFundingProfileBundle,
@@ -32,11 +33,7 @@ import {
 } from "midgard-watcher";
 
 import { stackPaths } from "./deployment.js";
-import {
-  readJsonIfPresent,
-  writeDurableBytes,
-  writeDurableJson,
-} from "./journal.js";
+import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import type { StackProcesses } from "./process.js";
 
 type ReleaseInput = {
@@ -289,9 +286,11 @@ export async function prepareStackRelease(processes: StackProcesses) {
   await writeDurableJson(paths.rules, rules);
   await writeDurableJson(paths.manifest, manifest);
   await writeDurableJson(paths.deploymentInfo, manifest);
-  await writeDurableBytes(paths.blueprint, blueprintJson);
+  await writeTextFileAtomic(paths.blueprint, blueprintJson, { mode: 0o600 });
   // Funding bundles require canonical bytes, including no trailing newline.
-  await writeDurableBytes(paths.funding, funding.fundingProfileBundleBytes);
+  await writeTextFileAtomic(paths.funding, funding.fundingProfileBundleBytes, {
+    mode: 0o600,
+  });
   // Publish the signed authority only after every bound artifact is durable.
   await writeDurableJson(paths.authority, {
     signedIdentity,

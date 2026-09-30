@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -97,36 +96,64 @@ describe("durable stack recovery", () => {
     );
     expect(calls).toBe(1);
   });
-  it("resumes the same saved signed transaction after a lost response", async () => {
+  it("persists submitted evidence before confirming it", async () => {
     const ctx = await context();
-    const intentFile = join(ctx.directory, "intent.json");
-    let builds = 0;
-    const sent: unknown[] = [];
-    let confirmed = false;
-    const submission = step(
+    await expect(
+      runStackWorkflow(ctx, [
+        step(
+          async () => ({ signed: "evidence" }),
+          async (record) => {
+            if (record) throw new Error("confirmation unavailable");
+            return { status: "retry" };
+          },
+        ),
+      ]),
+    ).rejects.toThrow("confirmation unavailable");
+    expect((await readCheckpoint(ctx.directory)).steps.deploy).toEqual({
+      status: "running",
+      attempts: 1,
+      data: { signed: "evidence" },
+    });
+  });
+  it("never carries an earlier attempt's evidence into a new attempt", async () => {
+    const ctx = await context();
+    let fail = false;
+    const deployment = step(
       async () => {
-        let intent = await readJsonIfPresent(intentFile);
-        if (!intent) {
-          builds++;
-          intent = { signedCbor: "signed immutable intent" };
-          await writeDurableJson(intentFile, intent);
-        }
-        sent.push(intent);
-        if (sent.length === 1) throw new Error("response lost");
-        confirmed = true;
-        return intent;
+        if (fail) throw new Error("underfunded");
+        return { addresses: "checked" };
       },
-      async () =>
-        confirmed
-          ? { status: "complete", data: await readJsonIfPresent(intentFile) }
-          : { status: "retry" },
+      async (record) => {
+        // Mirrors the reconciles that accept a running record whose execute returned.
+        return record?.status === "running" && record.data !== null
+          ? { status: "complete", data: record.data }
+          : { status: "retry" };
+      },
     );
-    await expect(runStackWorkflow(ctx, [submission])).rejects.toThrow(
-      "response lost",
+    await runStackWorkflow(ctx, [deployment]);
+    // A completed step whose reconcile accepts only running records re-executes, and now fails.
+    fail = true;
+    await expect(runStackWorkflow(ctx, [deployment])).rejects.toThrow(
+      "underfunded",
     );
-    await runStackWorkflow(ctx, [submission]);
-    expect(builds).toBe(1);
-    expect(sent[0]).toEqual(sent[1]);
+    expect((await readCheckpoint(ctx.directory)).steps.deploy).toMatchObject({
+      status: "running",
+      data: null,
+    });
+    await expect(runStackWorkflow(ctx, [deployment])).rejects.toThrow(
+      "underfunded",
+    );
+  });
+  it("creates the journal exclusively and refuses a concurrent different intent", async () => {
+    const ctx = await context();
+    const results = await Promise.allSettled([
+      runStackWorkflow(ctx, []),
+      runStackWorkflow({ ...ctx, intentDigest: "c".repeat(64) }, []),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
   });
   it("rechecks previously completed steps against authoritative state", async () => {
     const ctx = await context();
@@ -237,12 +264,12 @@ describe("stack input and payout verification", () => {
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     { network: "Preprod" },
   ).address;
-  function payout(amounts: bigint[]) {
+  function payout(amounts: bigint[], to = address) {
     const outputs = CML.TransactionOutputList.new();
     for (const amount of amounts)
       outputs.add(
         CML.TransactionOutput.new(
-          CML.Address.from_bech32(address),
+          CML.Address.from_bech32(to),
           CML.Value.from_coin(amount),
         ),
       );
@@ -272,57 +299,27 @@ describe("stack input and payout verification", () => {
         verifyPayoutBody(payout(amounts), address, { lovelace: "10000000" }),
       ).toThrow("exactly one output");
   });
+  it("rejects the exact value paid to another address", () => {
+    const other = walletFromSeed(
+      "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+      { network: "Preprod" },
+    ).address;
+    expect(() =>
+      verifyPayoutBody(payout([10_000_000n], other), address, {
+        lovelace: "10000000",
+      }),
+    ).toThrow("exactly one output");
+  });
 });
 
-it("kernel locks prevent concurrent controllers and release after process death", async () => {
-  const ctx = await context();
-  const lock = join(ctx.directory, "controller.lock");
-  const child = spawn(
-    "flock",
-    [
-      "--nonblock",
-      "--no-fork",
-      lock,
-      process.execPath,
-      "-e",
-      "console.log('locked');setInterval(()=>{},1000)",
-    ],
-    { stdio: ["ignore", "pipe", "pipe"], env: { PATH: process.env.PATH } },
-  );
-  const exited = new Promise<void>((resolve) =>
-    child.once("exit", () => resolve()),
-  );
-  try {
-    await new Promise<void>((resolve, reject) => {
-      child.stdout.once("data", () => resolve());
-      child.once("error", reject);
-      child.once("exit", (code) =>
-        reject(new Error(`Lock owner exited before readiness: ${code}`)),
-      );
-      child.stderr.once("data", (data) =>
-        reject(new Error(`Lock owner stderr: ${String(data)}`)),
-      );
-    });
-    const probe = () =>
-      new Promise<number | null>((resolve, reject) => {
-        const attempt = spawn(
-          "flock",
-          ["--nonblock", lock, process.execPath, "-e", ""],
-          { stdio: "ignore", env: { PATH: process.env.PATH } },
-        );
-        attempt.once("exit", resolve);
-        attempt.once("error", reject);
-      });
-    expect(await probe()).toBe(1);
-    child.kill("SIGKILL");
-    await exited;
-    expect(await probe()).toBe(0);
-  } finally {
-    child.kill("SIGKILL");
-    await exited;
-  }
+const committeeReady = (signerIndex: number) => ({
+  ready: true,
+  deployment: {
+    configuredFingerprint: "a".repeat(64),
+    storeMatchesConfigured: true,
+  },
+  peer: { signerIndex, localPeerId: `peer-${signerIndex}` },
 });
-
 describe("published stack readiness schemas", () => {
   const ready = {
     manifestId: "a".repeat(64),
@@ -336,7 +333,8 @@ describe("published stack readiness schemas", () => {
       launchScope: { complete: true },
     },
     authority: { recordAuthenticationKeyId: "b".repeat(64) },
-    committees: [{ ready: true }],
+    committees: [committeeReady(0)],
+    committeePeerIds: ["peer-0"],
   };
   it("accepts healthy automatic settlement waiting for work", () =>
     expect(stackIsReady(ready)).toBe(true));
@@ -359,9 +357,15 @@ describe("published stack readiness schemas", () => {
         node: { ...ready.node, reasons: ["l1 unavailable"] },
       }),
     ).toBe(false);
-    expect(stackIsReady({ ...ready, committees: [{ ready: false }] })).toBe(
-      false,
-    );
+    expect(
+      stackIsReady({
+        ...ready,
+        committees: [{ ...committeeReady(0), ready: false }],
+      }),
+    ).toBe(false);
+    expect(
+      stackIsReady({ ...ready, node: { ...ready.node, ready: false } }),
+    ).toBe(false);
     expect(
       stackIsReady({
         ...ready,
@@ -393,59 +397,56 @@ describe("Cardano initialization recovery", () => {
     },
   };
   it("recovers the initialization hash from the published UTxO after an unrecorded confirmation", () =>
-    expect(
-      initializationRecovery(initialized, undefined, {
-        status: "running",
-        attempts: 1,
-        data: null,
-      }),
-    ).toEqual({
+    expect(initializationRecovery(initialized, undefined)).toEqual({
       status: "complete",
       initHash: "e".repeat(64),
       reconstruct: true,
     }));
-  it("refuses partial protocol state and ambiguous previous attempts", () => {
+  it("retries an empty protocol after any earlier attempt and refuses partial state", () => {
+    // The one-shot nonce lets at most one initialization land.
     const empty = {
       ...initialized,
       protocol: { ...initialized.protocol, complete: false, empty: true },
     };
-    expect(initializationRecovery(empty, undefined, undefined)).toEqual({
+    expect(initializationRecovery(empty, undefined)).toEqual({
       status: "retry",
     });
-    expect(
-      initializationRecovery(empty, undefined, {
-        status: "running",
-        attempts: 1,
-        data: null,
-      }),
-    ).toEqual({ status: "pending" });
     expect(
       initializationRecovery(
         { ...empty, protocol: { ...empty.protocol, empty: false } },
         undefined,
-        undefined,
       ),
     ).toEqual({ status: "pending" });
+    expect(() =>
+      initializationRecovery(empty, {
+        steps: { initProtocol: { status: "complete", txHash: "e".repeat(64) } },
+      }),
+    ).toThrow("pending re-inclusion");
   });
   it("refuses finalized manifest drift and unidentified initialization", () => {
     expect(() =>
+      initializationRecovery(initialized, {
+        steps: {
+          initProtocol: { status: "complete", txHash: "f".repeat(64) },
+        },
+      }),
+    ).toThrow("disagrees with Cardano");
+    expect(() =>
       initializationRecovery(
-        initialized,
+        { ...initialized, manifest: { ok: true } },
         {
           steps: {
             initProtocol: { status: "complete", txHash: "f".repeat(64) },
           },
         },
-        undefined,
       ),
-    ).toThrow("disagrees with Cardano");
+    ).toThrow("Recorded initialization transaction disagrees with Cardano");
     expect(() =>
       initializationRecovery(
         {
           ...initialized,
           protocol: { ...initialized.protocol, hubOracleWitness: null },
         },
-        undefined,
         undefined,
       ),
     ).toThrow("Cannot establish");
