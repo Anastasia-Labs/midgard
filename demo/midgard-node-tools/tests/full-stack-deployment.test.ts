@@ -3,12 +3,16 @@ import { join } from "node:path";
 
 import {
   createDeploymentRunState,
+  type DeploymentRunState,
+  loadDeploymentRunState,
   transitionDeploymentStep,
   writeDeploymentRunStateAtomic,
 } from "midgard-node/e2e/run-state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { checkWallets, deploymentSteps } from "../src/full-stack/deployment.js";
+import { readJsonIfPresent } from "../src/full-stack/journal.js";
+import { CommandNotStartedError } from "../src/full-stack/process.js";
 import {
   runStackWorkflow,
   type StackStep,
@@ -96,13 +100,96 @@ describe("deployment steps before initialization", () => {
       "deployment-status",
     );
   });
-  it("never creates a second nonce after an attempt that left no record", async () => {
-    const { steps } = await deployment({ nonceRecorded: false });
-    expect(await steps.nonce!.reconcile(undefined)).toEqual({
-      status: "retry",
+  // What the node leaves in its run state at each point of one nonce attempt.
+  const stages: Record<
+    string,
+    (state: DeploymentRunState) => DeploymentRunState
+  > = {
+    "never started": (state) => state,
+    "signed but not submitted": (state) =>
+      transitionDeploymentStep(state, "hubOracleNonceSigned", "submitted", {
+        txHashes: [nonce.txHash],
+      }),
+    "submitted, not yet visible": (state) =>
+      transitionDeploymentStep(
+        stages["signed but not submitted"]!(state),
+        "hubOracleNonce",
+        "submitted",
+        { txHashes: [nonce.txHash] },
+      ),
+    landed: (state) =>
+      transitionDeploymentStep(
+        {
+          ...stages["submitted, not yet visible"]!(state),
+          identity: { network: "Preprod", hubOracleOneShot: nonce },
+        },
+        "hubOracleNonce",
+        "complete",
+      ),
+  };
+  for (const [stage, write] of Object.entries(stages))
+    it(`resumes a nonce attempt that stopped ${stage === "landed" ? "after it landed" : `when ${stage}`}`, async () => {
+      const { config, processes, statePath, steps } = await deployment({
+        nonceRecorded: false,
+      });
+      const state = createDeploymentRunState({
+        mode: "fresh",
+        identity: { network: "Preprod" },
+      });
+      if (stage !== "never started")
+        await writeDeploymentRunStateAtomic(statePath, write(state));
+      processes.responses["nonce-observation"] = { utxos: [nonce] };
+      // The node resumes whatever its run state holds and records the landed nonce.
+      processes.responses["nonce-create-or-resume"] = async () =>
+        writeDeploymentRunStateAtomic(
+          statePath,
+          stages.landed!((await loadDeploymentRunState(statePath)) ?? state),
+        );
+      // A started attempt is never wedged as ambiguous: rerunning the node is safe.
+      expect(await steps.nonce!.reconcile(running)).toEqual(
+        stage === "landed"
+          ? { status: "complete", data: nonce }
+          : { status: "retry" },
+      );
+      const journal = await runStackWorkflow(
+        { directory: config.runDirectory, intentDigest: "c".repeat(64) },
+        [steps.nonce!],
+      );
+      expect(journal.steps.nonce).toMatchObject({
+        status: "complete",
+        data: nonce,
+      });
+      const runs = processes.calls.filter(
+        (call) => call.id === "nonce-create-or-resume",
+      );
+      expect(runs).toHaveLength(stage === "landed" ? 0 : 1);
+      for (const run of runs)
+        expect(run.args).not.toContain("--fresh-redeploy");
     });
-    expect(await steps.nonce!.reconcile(running)).toEqual({
-      status: "pending",
+  it("restores the prior record when the nonce command never started", async () => {
+    const { config, processes, steps } = await deployment({
+      nonceRecorded: false,
+    });
+    processes.responses["nonce-create-or-resume"] = () => {
+      throw new CommandNotStartedError("nonce-create-or-resume did not start");
+    };
+    const context = {
+      directory: config.runDirectory,
+      intentDigest: "c".repeat(64),
+    };
+    await expect(runStackWorkflow(context, [steps.nonce!])).rejects.toThrow(
+      CommandNotStartedError,
+    );
+    const path = join(config.runDirectory, "stack-journal.json");
+    expect(await readJsonIfPresent(path)).toHaveProperty("steps", {});
+    processes.responses["nonce-create-or-resume"] = () => {
+      throw new Error("nonce-create-or-resume failed");
+    };
+    await expect(runStackWorkflow(context, [steps.nonce!])).rejects.toThrow(
+      "failed",
+    );
+    expect(await readJsonIfPresent(path)).toMatchObject({
+      steps: { nonce: { status: "running", attempts: 1, data: null } },
     });
   });
   it("resumes a started operator registration", async () => {
@@ -142,6 +229,20 @@ describe("wallet funding", () => {
   });
   it("needs only working capital once the deployment has started spending", async () => {
     const { processes } = await deployment({ nonceRecorded: true });
+    for (const role of Object.keys(processes.config.wallets))
+      processes.responses[`wallet-${role}`] = funded(6_000_000n);
+    await expect(checkWallets(processes)).resolves.toHaveProperty("user");
+  });
+  it("treats a signed nonce as spending, since it may already have landed", async () => {
+    const { processes, statePath } = await deployment({ nonceRecorded: false });
+    await writeDeploymentRunStateAtomic(
+      statePath,
+      transitionDeploymentStep(
+        createDeploymentRunState({ mode: "fresh" }),
+        "hubOracleNonceSigned",
+        "submitted",
+      ),
+    );
     for (const role of Object.keys(processes.config.wallets))
       processes.responses[`wallet-${role}`] = funded(6_000_000n);
     await expect(checkWallets(processes)).resolves.toHaveProperty("user");

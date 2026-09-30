@@ -190,6 +190,21 @@ program
           yield* PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
             amountLovelace,
             {
+              beforeSubmission: (attempt) =>
+                Effect.tryPromise({
+                  try: () =>
+                    DeploymentRunStateCommand.recordHubOracleNonceSigned({
+                      options: runOptions,
+                      network: nodeConfig.NETWORK,
+                      ...attempt,
+                    }),
+                  catch: (cause) =>
+                    cause instanceof Error
+                      ? cause
+                      : new Error(
+                          `Failed to record signed hub-oracle nonce in run state: ${String(cause)}`,
+                        ),
+                }),
               onSubmitted: (attempt) =>
                 Effect.tryPromise({
                   try: () =>

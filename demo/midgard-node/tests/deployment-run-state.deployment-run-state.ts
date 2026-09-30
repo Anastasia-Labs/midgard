@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   type DeploymentRunCliOptions,
   loadPendingHubOracleNonceAttempt,
+  recordHubOracleNonce,
+  recordHubOracleNonceSigned,
   recordHubOracleNonceSubmitted,
   recordHubOracleNonceTxHashConfirmed,
 } from "../src/commands/deployment-run-state.js";
@@ -373,6 +375,57 @@ describe("deployment run state", () => {
       lovelace: "5000000",
       inlineDatum: "d8799f00",
     });
+  });
+
+  it("resumes the nonce signed before submission, and only that one", async () => {
+    const dir = await makeTempDir();
+    const options: DeploymentRunCliOptions = {
+      runStatePath: join(dir, "run-state.json"),
+      freshRedeploy: false,
+    };
+    const txHash = "dd".repeat(32);
+    const attempt = {
+      txHash,
+      address: "addr_test1operatornonce",
+      lovelace: "5000000",
+      inlineDatum: "d8799f00",
+    };
+    const signed = await recordHubOracleNonceSigned({
+      options,
+      network: "Preprod",
+      signedTxCbor: "84a0",
+      ...attempt,
+    });
+
+    // Additive: the step other readers use is untouched until submission.
+    expect(signed.steps.hubOracleNonce).toBeUndefined();
+    expect(signed.steps.hubOracleNonceSigned).toMatchObject({
+      status: "submitted",
+      txHashes: [txHash],
+      message: "signed_before_submission",
+    });
+    const pending = { ...attempt, signedTxCbor: "84a0" };
+    await expect(
+      loadPendingHubOracleNonceAttempt({ options }),
+    ).resolves.toEqual(pending);
+    await recordHubOracleNonceSubmitted({
+      options,
+      network: "Preprod",
+      ...attempt,
+    });
+    await expect(
+      loadPendingHubOracleNonceAttempt({ options }),
+    ).resolves.toEqual(pending);
+    await recordHubOracleNonce({
+      options,
+      network: "Preprod",
+      txHash,
+      outputIndex: 0,
+      outRef: `${txHash}#0`,
+    });
+    await expect(
+      loadPendingHubOracleNonceAttempt({ options }),
+    ).resolves.toBeNull();
   });
 
   it("hashes manifest files and resolves env override paths", async () => {

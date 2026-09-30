@@ -62,10 +62,10 @@ export async function checkWallets(processes: StackProcesses) {
   const addresses = deriveStackWallets(processes.config, processes.env);
   const paths = stackPaths(processes);
   // Only a deployment that has spent nothing needs its full budget. A resumed one needs working capital.
+  // The node writes its run state before it first submits, so no run state means nothing was signed.
   const fresh =
     (await readJsonIfPresent(paths.manifest)) === undefined &&
-    (await loadDeploymentRunState(paths.state))?.steps.hubOracleNonce ===
-      undefined;
+    (await loadDeploymentRunState(paths.state)) === null;
   for (const [role, wallet] of Object.entries(processes.config.wallets)) {
     const address = addresses[role]!;
     const result = (await processes.node(`wallet-${role}`, [
@@ -152,7 +152,7 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
     },
     {
       id: "nonce",
-      reconcile: async (record) => {
+      reconcile: async () => {
         await restoreDeploymentEnvironment(processes);
         const manifest = await readJsonIfPresent(paths.manifest);
         if (manifest !== undefined) {
@@ -171,14 +171,9 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
           }
         }
         const state = await loadDeploymentRunState(paths.state);
-        // The node records the nonce only after submitting it. A started attempt
-        // without any record may have submitted one, so never create a second.
-        if (
-          record?.status === "running" &&
-          state?.steps.hubOracleNonce === undefined &&
-          manifest === undefined
-        )
-          return { status: "pending" };
+        // Rerunning the node is safe at every point: it records the signed nonce
+        // before submitting it, then only resubmits those bytes, and it refuses a
+        // fresh nonce once any run state exists.
         if (state?.steps.hubOracleNonce?.status !== "complete")
           return { status: "retry" };
         const address = walletFromSeed(

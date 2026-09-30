@@ -9,6 +9,7 @@ import {
   type StepRecord,
   writeDurableJson,
 } from "./journal.js";
+import { CommandNotStartedError } from "./process.js";
 
 export type Recovery =
   | { status: "complete"; data: unknown }
@@ -84,7 +85,18 @@ export async function runStackWorkflow(
     };
     await writeDurableJson(path, journal);
     context.onProgress?.(step.id, "running");
-    const data = await step.execute(prior);
+    let data: unknown;
+    try {
+      data = await step.execute(prior);
+    } catch (error) {
+      // A command that never started changed nothing: restore the prior record.
+      if (error instanceof CommandNotStartedError) {
+        if (prior === undefined) delete journal.steps[step.id];
+        else journal.steps[step.id] = prior;
+        await writeDurableJson(path, journal);
+      }
+      throw error;
+    }
     // Persist submitted evidence before checking confirmation. Resume verifies it.
     const submitted: StepRecord = {
       ...journal.steps[step.id]!,

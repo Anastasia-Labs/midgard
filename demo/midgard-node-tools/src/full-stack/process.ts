@@ -10,6 +10,10 @@ import { writeDurableJson } from "./journal.js";
 export type CommandScope = "stack" | "host";
 /** The per-command lock's conflict code, distinct from any command's own failure. */
 export const COMMAND_LOCK_CONFLICT_EXIT_CODE = 75;
+/** The command never ran: another stack command held the per-command lock. */
+export class CommandNotStartedError extends Error {
+  override readonly name = "CommandNotStartedError";
+}
 
 const HOST_KEYS = [
   "PATH",
@@ -75,7 +79,7 @@ export class StackProcesses {
     });
     await writeDurableJson(join(directory, `${attempt}.json`), summary);
     if (summary.exitCode === COMMAND_LOCK_CONFLICT_EXIT_CODE)
-      throw new Error(
+      throw new CommandNotStartedError(
         `${id} did not start: another stack command holds ${lock}`,
       );
     if (summary.status !== "success")

@@ -47,8 +47,8 @@ your contract publication costs and measured funding requirements. The prover
 and availability addresses use the existing watcher Enterprise address
 derivation; the other wallet roles use the node's normal seed addresses. Each
 wallet also needs a plain ADA output of at least 5 ADA for fees/collateral.
-The configured budgets apply only before the hub-oracle nonce is recorded. A
-resumed or attached deployment, before or after initialization, requires only
+The configured budgets apply only before the node records the signed hub-oracle
+nonce, its first write to the deployment run state. A resumed or attached deployment, before or after initialization, requires only
 that working capital: 5 ADA per wallet plus that plain output. The user budget
 must cover every deposit plus fee headroom at fresh setup. Before each deposit
 is first submitted, the journey also checks that the user's L1 balance covers
@@ -135,11 +135,13 @@ secrets without the generated settings.
 
 The file journal is written atomically and fsynced, with a stable run identity.
 Reference, deposit and withdrawal journals preserve submitted intents. The
-hub-oracle nonce is recorded by the node after its submission returns, so a
-controller that dies inside that window leaves the step pending: setup stops
-instead of building a second nonce and preserves every record for the operator
-to resolve against Cardano. Before repeating a transaction step, setup queries
-Cardano. It can reconstruct a deployment manifest when initialization confirmed
+hub-oracle nonce transaction is recorded in the node's run state, with its
+signed bytes, before it is first submitted, and the node refuses to build a
+fresh nonce once that run state exists. A rerun therefore completes a nonce that
+landed, resubmits exactly the recorded bytes while their inputs are unspent, and
+stops, naming the transaction and the spent inputs, if another transaction spent
+them; it never builds a second nonce. Before repeating a transaction step,
+setup queries Cardano. It can reconstruct a deployment manifest when initialization confirmed
 before the success record was written, and it waits, preserving the data, when
 a finalized initialization is no longer at the Cardano tip. An ambiguous
 submission stops without constructing a new one. Transfer bytes are saved
