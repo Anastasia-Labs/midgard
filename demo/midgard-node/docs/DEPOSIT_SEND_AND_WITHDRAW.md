@@ -15,13 +15,12 @@ internally. No step requires hand-built CBOR or manually assembled proofs.
 
 **The manual `/commit` and `/merge` calls in sections 2, 4 and 8 are for a
 local devnet only.** They bypass the node's commit fiber and automatic merge
-fiber, so a run that uses them is not fresh-deploy acceptance evidence. For
-acceptance, follow
-[live-acceptance.md](../../../.agents/skills/midgard-e2e-acceptance/references/live-acceptance.md):
-skip every manual `/commit` and `/merge` call here, and instead wait for the
-running node to commit and to merge automatically, as its
-`await-automatic-merge` step does. The deposit, withdrawal and payout commands
-in this runbook are the same in both cases.
+fiber, so a run that uses them is not acceptance evidence. Live acceptance is
+the one-command `e2e-stack` run in
+[live-acceptance.md](../../../.agents/skills/midgard-e2e-acceptance/references/live-acceptance.md),
+which submits the deposit, transfer and withdrawal itself and waits for the
+node to commit, merge and pay out automatically. Do not run this runbook's
+commands by hand against a stack deployment.
 
 ## Prerequisites
 

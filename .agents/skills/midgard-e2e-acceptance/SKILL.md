@@ -1,13 +1,13 @@
 ---
 name: midgard-e2e-acceptance
-description: Run, resume, diagnose, or assess merge and release readiness for the Midgard demo-node live end-to-end acceptance flow. Use for fresh or interrupted Preprod deployments, local Kupmios, reference scripts, operator lifecycle, libp2p DA publication and attestation, deposits, L2 transfers, automatic merge/finality, launch-scope state correction, recovery drills, structured evidence, and bounded opt-in throughput checks.
+description: Run, attach, resume, or diagnose the Midgard live Preprod acceptance run through the one-command `e2e-stack` harness, and assess what it does and does not prove. Use for fresh or interrupted Preprod deployments with local Kupmios, reference scripts, operator registration, the DA committee and public retained DA, the watcher, deposits, L2 transfers, automatic merge and finality, withdrawals and payouts, stop-message recovery, the release-readiness gates, and opt-in throughput checks.
 ---
 
 # Midgard E2E Acceptance
 
 Treat this as production L2 acceptance. Preserve deployment identity, durable
-state, transaction evidence, and the distinction between functional recovery
-and a clean first-attempt run.
+state and every saved record. One command, `e2e-stack`, deploys, attaches,
+resumes and runs the wallet journeys; there is no second, hand-driven flow.
 
 ## Required reading
 
@@ -17,8 +17,10 @@ Before any state-changing command, read:
 - `demo/AGENTS.md`;
 - `docs/agents/production-l2.md`;
 - `docs/agents/state-reset.md`;
-- `docs/agents/transaction-finalization.md`; and
-- `demo/midgard-node/AGENTS.md`.
+- `docs/agents/transaction-finalization.md`;
+- `demo/midgard-node/AGENTS.md`; and
+- `demo/midgard-node-tools/docs/PREPROD_STACK.md` (configuration, secrets,
+  ports, funding and the saved-record model).
 
 Then run the skill currency check from the repository root:
 
@@ -27,100 +29,82 @@ node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs
 ```
 
 If it fails, repair the runbook or use current source help before operating a
-live deployment. Never improvise past a stale command, missing evidence gate,
-or deployment-identity mismatch. [review]
+live deployment. Never improvise past a stale command, a missing evidence
+gate, or a deployment-identity mismatch. [review]
 
 ## Choose one run mode
 
-Record the mode and reason before changing state:
+Every mode is the same command with the same configuration file. Record the
+mode and reason before running it:
 
-1. **Attach**: a complete matching deployment exists. Do not run `init` or
-   reset durable state. Verify manifest, one-shot, reference scripts, provider,
-   operator, DB route, `/healthz`, and `/readyz`, then start `listen` or Docker.
-   [review]
-2. **Resume**: a fresh deployment was interrupted before `init`, or a submitted
-   post-init milestone has been reconciled. Preserve the same manifest,
-   run-state, policy, one-shot, and submitted transaction identities.
-3. **Post-init diagnosis**: a state-changing command may have submitted. Stop,
-   reconcile chain/DB/run-state evidence, and classify the attempt before any
-   retry.
-4. **Fresh**: intentionally create a new on-chain identity, fresh reference
-   scripts and `init`, and matching clean local state.
+1. **Fresh**: a new on-chain identity (nonce, reference scripts, `init`) on
+   fresh local storage. Use a separate linked worktree; the stack refuses to
+   reuse populated storage. [runtime: assertPreservedStorage]
+2. **Attach**: a complete deployment exists for this configuration. The stack
+   verifies it against Cardano and local storage and skips every confirmed
+   step. It never runs `init` again. [runtime: initializationRecovery]
+3. **Resume**: an earlier run stopped. The stack reconciles each unfinished
+   step against Cardano and its saved records before repeating anything.
+4. **Post-init diagnosis**: the stack stopped with a message. Read the message
+   and route it through [references/recovery.md](references/recovery.md)
+   before rerunning. Never run a state-changing node command by hand to get
+   past it. [review]
 
-“Fresh redeploy” is a reason for mode `fresh`, not an
-`e2e-finalize-summary --mode` value. The summary CLI accepts `fresh`, `attach`,
-`resume`, or `unknown`.
-
-Provider, wallet, DA, projection, scheduler, lease, and evidence failures are
-not automatic redeploy triggers. Use a fresh deployment only when requested or
-required by `docs/agents/state-reset.md`. [review]
+Provider, wallet, DA, projection, scheduler, lease and evidence failures are
+not redeploy triggers. Use a fresh deployment only when requested or required
+by `docs/agents/state-reset.md`. [review]
 
 ## Route to the relevant reference
 
-- Read [references/live-acceptance.md](references/live-acceptance.md) completely
-  for a fresh run or value-submitting attach/resume flow.
-- Read [references/recovery.md](references/recovery.md) completely for an
-  interruption, ambiguous submission, readiness failure, DA failure, or merge
-  failure.
+- Read [references/live-acceptance.md](references/live-acceptance.md)
+  completely before any fresh, attach or resume run.
+- Read [references/recovery.md](references/recovery.md) completely when the
+  stack stops, a run was interrupted, or a service is unhealthy.
+- Read [references/release-readiness.md](references/release-readiness.md)
+  when asked whether a run proves release readiness, fault proofs, rollback
+  recovery or state correction.
 - Read [references/benchmark.md](references/benchmark.md) only when the user
-  explicitly requests stress or throughput evidence. Functional E2E does not
-  include stress by default.
+  explicitly requests stress or throughput evidence. The journey does not run
+  stress.
 
 ## Hard rules
 
-- Work from `demo/midgard-node` for operational commands. [review]
-- `e2e-run-step`, `e2e-start-service`, `e2e-finalize-summary`,
-  `e2e-stress-l2-throughput`, and the `stress-*` commands are
-  `midgard-node-tools` commands (`node "$TOOLS_CLI" ...`, built with
-  `pnpm --dir demo/midgard-node-tools build`); they are not in the operator
-  binary. Blind spot: the runbook validator checks that each documented tooling
-  command is declared by the tooling binary, but it runs only by hand; no CI
-  step runs it.
-  [ci: repo-tools-ci/Validate the e2e acceptance runbook]
-- `listen` and Docker startup attach; `init` bootstraps. [review]
-- Never wipe local durable state without a full fresh on-chain deployment. [review]
-- Never attach value-submitting flows to an old deployment after local state was
-  wiped. [review]
+- Drive deployment, operator, DA, deposit, transfer and withdrawal work only
+  through `e2e-stack`. Hand-run node commands bypass its journal, locks and
+  identity checks. [review]
+- Pass `--config` as an absolute path, and keep the same configuration file
+  for attach and resume. A changed identity field stops the run.
+  [runtime: runStackController]
+- The configuration must name Preprod, the `preprod-testing` profile, local
+  Kupmios with no failover, `RUN_GENESIS_ON_STARTUP=false`, the exact L2 fees,
+  and a Postgres host port other than 5433 and 55433; setup refuses anything
+  else. [runtime: loadStackConfig]
+- Never wipe local durable state, the run directory or service volumes under a
+  deployment. [review]
 - Do not delete `demo/midgard-node/cardano/db` or `cardano/kupo`; they are the
-  local Preprod provider state, not the Midgard deployment reset target. [review]
-- Use a fresh funded operator UTxO for `HUB_ORACLE_ONE_SHOT_*`. Patch it before
-  reference-script publication and keep the same identity through `init`. [review]
-- Build `onchain/aiken/plutus.json` with `aiken build --env testnet` before a
-  fresh demo/Preprod image build. [review]
-- Publish node-runtime reference scripts before `init` and preserve the
-  deployment run-state used to create their auth policy. [review]
-- Keep `RUN_GENESIS_ON_STARTUP=false`; run explicit `init` through
-  `e2e-run-step`. [review]
-- Use local Docker Kupmios only. Require `L1_PROVIDER=Kupmios`, local Kupo and
-  Ogmios endpoints, and no `L1_PROVIDER_FAILOVER`. Blind spot: only the
-  state-correction local authority (and, for the provider alone, the phase 4
-  process acceptance) refuses another provider, failover or a non-loopback
-  endpoint; the other steps accept whatever the environment says.
-  [runtime: createLocalKupmiosStateCorrectionAuthority]
-- Pass `--wallet-seed-phrase-env USER_SEED_PHRASE` on user-wallet commands.
-  Do not use a default `USER_WALLET` source. [review]
-- Run DB-backed host commands with
-  `POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433`, or run them inside the node
-  container. [review]
-- `/tx-status` accepts `tx_hash`; the L2 submission response field is `txId`. [review]
-- Use the DA committee node and libp2p manifests for acceptance. Do not replace
-  it with `attest-state-queue-once`. [review]
-- Keep the DA signer and L1 submitter roles explicit. Require a configured,
-  funded `DA_L1_SUBMITTER_KEY_SOURCE`; never hardcode a local secret path in the
-  runbook. [review]
-- Start enough DA committee listeners to meet threshold before the producer
-  bind/listen preflight. Generate matching producer and watcher manifests from
-  the finalized contract deployment manifest. [review]
+  local Preprod provider state, not a deployment reset target. [review]
+- Never pass `--fresh-redeploy` to the node yourself unless
+  [references/recovery.md](references/recovery.md) routes a dead signed nonce
+  there and the owner has chosen to replace the deployment identity. [review]
+- Manage the running stack only through `scripts/operator-compose.sh` with the
+  generated `<runDirectory>/services/compose.json` override. Do not use the
+  node README's plain `docker compose ... up` on a stack node directory.
+  [review]
 - Do not use manual SQL rewrites, manual `/merge`,
   `reconcile merge-complete --repair`, local-only finalization, or disabled
-  local UPLC evaluation to make acceptance pass. [review]
-- Preserve raw logs. Report compact failure summaries with artifact paths rather
-  than pasting secrets or large bodies. [review]
+  local UPLC evaluation to make a run pass. [review]
+- Preserve `attempts/`, `stack-journal.json` and every receipt. Report compact
+  failure summaries with artifact paths, never secrets or large bodies.
+  [review]
+- Keep the runbook and the CLIs in step: the runbook validator checks that
+  every documented command and `e2e-stack` flag is declared, and CI runs it.
+  Blind spot: it checks names, not what a command does.
+  [ci: repo-tools-ci/Validate the e2e acceptance runbook]
 
 ## Lower-layer feedback gate
 
 For transaction builders, wallet/input selection, validity, workers, DA, or
-recovery changes, run the relevant workspace checks before live E2E:
+recovery changes, run the relevant workspace checks before a live run:
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -130,63 +114,42 @@ pnpm run test:tx-prep:node
 pnpm run test:tx-prep:emulator
 ```
 
-If live E2E finds a deterministic defect, stop repeated live retries. Add a
+For changes to the stack harness itself, run its focused tests:
+
+```bash
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+MIDGARD_SKIP_DB_TESTS=1 pnpm --dir "$REPO_ROOT/demo/midgard-node-tools" \
+  exec vitest run tests/full-stack
+```
+
+If a live run finds a deterministic defect, stop repeated live runs. Add a
 targeted local or emulator regression, fix it, rerun the lower layer, then
-return to live acceptance.
+return to the live run.
 
 ## Acceptance contract
 
-For a fresh run, use `e2e-run-step` for every required milestone. The current
-finalizer source is authoritative for required step IDs and transaction labels;
-the runbook validator compares the documentation to that source.
-[ci: repo-tools-ci/Validate the e2e acceptance runbook]
+A wallet-journey run is complete only when:
 
-Acceptance is complete only when:
+- the command exits 0 and `<runDirectory>/journey-summary.json` has
+  `result: "wallet-journey-complete"` and the configured `cycles`;
+- every step in `stack-journal.json` is `complete`, including each
+  `cycle-N-deposit`, `cycle-N-transfer` and `cycle-N-withdrawal`;
+- each cycle's receipts show exact L2 credits and debits including fees, a
+  committed transfer retrieved through public libp2p DA, confirmed-ledger
+  finality, and the exact L1 payout destination and value; and
+- the stack reached readiness: node `/readyz` without reasons, healthy
+  automatic settlement, the watcher live and ready with its launch scope
+  complete, and every DA committee member ready.
 
-- `e2e-finalize-summary` writes `summary.json` and `summary.md`;
-- `functionalVerdict`, `cleanRunVerdict`, and `verdict` are `success`;
-- `nextSafeAction` is `none_run_complete`;
-- `required_fresh_steps`, `required_transaction_evidence`, and
-  `required_fresh_step_attempt_quality` are satisfied for mode `fresh`;
-- the `--state-correction-evidence` aggregate is bound to the same run and used
-  only as an index; the finalizer independently loads and reconciles immutable
-  workflow journals, authenticated L1 terminal observations, raw recovery
-  outputs, digest-checked raw Kupo and Ogmios responses, a raw node-database
-  export, the Preprod manifest, blueprint, catalogue root, parameters, release
-  identity, economics, and final chain/queue state, and the local-only Kupmios
-  authority re-reads canonical transaction bodies, exact fees and outputs,
-  queue/proof-token/reserve UTxOs, tip, and database drain state before any gate
-  becomes satisfied;
-- every launch-scope family has public L1+DA watcher detection, route, proof
-  init/steps/token, state-queue removal/correction, exact slash and prover
-  reward, a final chain point, and resumed verification;
-- `state_correction_acceptance`, `state_correction_exact_economics`,
-  `withdrawal_reserve_payout`, `forced_classification_directions`,
-  `watcher_crash_rollback_matrix`, and
-  `state_correction_final_reconciliation` are satisfied;
-- withdrawal order, reserve, payout init/add/conclude, exact destination/value,
-  both forced-classification directions, and every named crash/rollback,
-  inconsistency, DA, withholding, stale-manifest, and rewind drill are present;
-- no aggregate-supplied boolean or transaction hash is promoted to confirmed
-  evidence; the state-correction gates remain blocked until each claim is
-  derived from those independent inputs, and a bundle of mutually consistent
-  files remains blocked when the live authority is absent or disagrees;
-- both baseline L2 transactions are committed;
-- every transaction observation is reconciled, with no submitted, unknown,
-  timed-out, or signaled attempt left ambiguous;
-- DA payload publication, watcher verification, attestation init/add/apply, and
-  automatic merge/finality evidence are present for every committed header;
-- `/healthz` is healthy, `/readyz` is ready without reasons, and the DA watcher
-  is healthy and ready;
-- the state queue is empty; pending finalizations are finalized; volatile
-  tables and unfinished mutation jobs are empty; and confirmed/immutable state
-  reflects the run; and
-- the final error scan has no unexplained error, failure, abandonment, crash, or
-  hash mismatch.
+The journey proves the functional deployment, DA, finality and payout path.
+It is not release readiness: the fault-proof, state-correction and
+crash/rollback gates are described in
+[references/release-readiness.md](references/release-readiness.md), and an
+`e2e-stack` run does not produce their evidence. Report release readiness as
+not run unless that reference was followed. [review]
 
-A recovered run may reach functional success while `cleanRunVerdict` remains
-failed or interrupted. Report that honestly as recovery evidence; do not call
-it a clean acceptance run. [review]
+A run that needed recovery is still recovery evidence. Report the stops, the
+diagnosis and the rerun alongside the final result. [review]
 
 ## Before handoff
 
@@ -194,6 +157,7 @@ Rerun:
 
 ```bash
 node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs
+node --test .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.test.mjs
 # Locate quick_validate.py in the installed skill-creator skill first.
 python3 "$SKILL_CREATOR_DIR/scripts/quick_validate.py" \
   .agents/skills/midgard-e2e-acceptance
@@ -202,4 +166,4 @@ python3 "$SKILL_CREATOR_DIR/scripts/quick_validate.py" \
 Also run the narrow Midgard tests for any source behavior changed alongside the
 skill. A documentation-only update still requires the runbook validator,
 frontmatter validator, formatting check, and review against the current CLI
-help/source.
+help and source.

@@ -1,1075 +1,213 @@
 # Live Acceptance Runbook
 
-Use this reference for fresh runs and value-submitting attach/resume runs. Read
-it completely before changing live state.
+Use this reference for every fresh, attach and resume run. Read it completely
+before changing live state. Every run is one command, `e2e-stack`; the
+configuration, secrets, ports and funding model it expects are specified in
+[PREPROD_STACK.md](../../../../demo/midgard-node-tools/docs/PREPROD_STACK.md).
 
 ## Contents
 
-1. [Shared preparation](#shared-preparation)
-2. [Attach or resume](#attach-or-resume)
-3. [Fresh deployment](#fresh-deployment)
-4. [DA manifests and committee node](#da-manifests-and-committee-node)
-5. [Node, deposit, and L2 activity](#node-deposit-and-l2-activity)
-6. [DA, finality, and automatic merge](#da-finality-and-automatic-merge)
-7. [State-correction and recovery acceptance](#state-correction-and-recovery-acceptance)
-8. [Final evidence](#final-evidence)
+1. [Prepare the configuration](#prepare-the-configuration)
+2. [Check it offline](#check-it-offline)
+3. [Choose where to run](#choose-where-to-run)
+4. [Run](#run)
+5. [What each step does](#what-each-step-does)
+6. [Evidence](#evidence)
+7. [Operate the running stack](#operate-the-running-stack)
+8. [Report](#report)
 
-## Shared preparation
+## Prepare the configuration
 
 Start from the repository root. Keep local Preprod provider state intact.
 
 ```bash
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel)}"
-NODE_DIR="$REPO_ROOT/demo/midgard-node"
-# The e2e step runner, service supervisor, finalizer, and stress commands live
-# in the tooling binary; operator commands stay on the node's dist/index.js.
 TOOLS_DIR="$REPO_ROOT/demo/midgard-node-tools"
-TOOLS_CLI="$TOOLS_DIR/dist/index.js"
-DA_NODE_DIR="$REPO_ROOT/demo/da-committee-node"
-cd "$NODE_DIR"
-
-COMPOSE="docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml"
-RUN_ID="${RUN_ID:-e2e-run-$(date -u +%Y%m%dT%H%M%SZ)}"
-E2E_STEP_DIR="logs/$RUN_ID/steps"
-RUN_STATE_PATH="logs/$RUN_ID/deployment-run-state.json"
-mkdir -p "$E2E_STEP_DIR" logs deploymentInfo db
+NODE_DIR="$REPO_ROOT/demo/midgard-node"
+STACK_CONFIG="${STACK_CONFIG:?absolute path of the stack configuration JSON}"
 ```
 
-Verify `.env` without printing seed phrases:
+Copy `demo/midgard-node-tools/config/preprod-stack.example.json` to a path
+outside the repository and replace its absolute paths. The file names secret
+environment variables; it never holds their values. Verify the node `.env` it
+points at, without printing seed phrases:
 
-- `NETWORK=Preprod`;
-- `L1_PROVIDER=Kupmios` and no `L1_PROVIDER_FAILOVER`;
-- host Kupo/Ogmios endpoints use `127.0.0.1`, while container endpoints use
-  Compose service names;
-- `RUN_GENESIS_ON_STARTUP=false`;
-- distinct operator, reference-script, merge, user, and DA submitter roles;
-- `MIDGARD_DEPLOYMENT_MANIFEST_PATH` points to the producer runtime manifest;
-- `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity; and
-- the native MPF owner is pinned: `MPF_NATIVE_OWNER_BINARY_PATH=/app/native/architecture-g-owner`,
-  `MPF_NATIVE_OWNER_SIDECAR_PATH` set, and `MPF_NATIVE_OWNER_BINARY_SHA256` set
-  to the value printed by
-  `$COMPOSE run --rm --no-deps --entrypoint cat midgard-node /app/native/architecture-g-owner.sha256`.
-  `.env.example` leaves the SHA-256 blank on purpose, and the node refuses to
-  `listen` without it (under `restart: always` that is a crash loop). Re-pin
-  after every image rebuild.
+- `NETWORK=Preprod` and `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`;
+- `L1_PROVIDER=Kupmios`, loopback Kupo and Ogmios URLs, and no
+  `L1_PROVIDER_FAILOVER`;
+- `RUN_GENESIS_ON_STARTUP=false` and the exact L2 `MIN_FEE_A`/`MIN_FEE_B`;
+- an explicit `MIDGARD_POSTGRES_HOST_PORT` that is neither 5433 nor 55433
+  (both belong to test databases);
+- every wallet, DA member, transport and DA password variable the
+  configuration names, with the stack-only secrets under distinct `STACK_`
+  names and each wallet role distinct; and
+- `DA_THRESHOLD` between `ceil(2 * members / 3)` and the member count.
 
-For a fresh deployment, configure explicit positive integers for
-`MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES`,
-`MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES`,
-`MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_NODES`, and
-`MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS` before deriving scripts or
-publishing references. Inline bytes must not exceed maximum payload bytes.
-Use bounds verified for the intended subsequent list operations and retain
-their measurement evidence; emulator fixture values are not production defaults.
-Attach/resume reads these parameters and the complete history recipes from the
-finalized manifest. Verify both deposit and withdrawal list, retention, and
-retirement identities against that manifest. Preserve a mismatching old
-deployment and its durable state while preparing a separate fresh identity.
+Fund the wallets to the configured budgets before a fresh run, each with a
+plain output of at least 5 ADA. Attach and resume need only 5 ADA of working
+capital per wallet plus that output. Put the watcher release input and secret
+files in place as PREPROD_STACK.md describes; setup never fabricates funding
+measurements.
 
-Before submitting, verify the current protocol tuple, finalized deployment
-manifest, and actual deployed validators using the attach/resume checks below.
-Release reports are acceptance evidence, not protocol inputs. The finalizer's
-local authority derives finality and economics from the validated manifest.
-Executable workflow coverage is proven by the watcher's own startup refusal and
-by one verified workflow journal per launch-scope family, not by a separate
-finalizer registry gate. A matching deployment is a prerequisite, not proof
-that acceptance passed.
+Install the workspace dependencies with the repository's pnpm, and use Node
+22.16 or newer, the pinned Aiken compiler, Docker Compose 2.21 or newer, Go,
+Rust/Cargo and Linux `flock`. Setup builds the Preprod contract profile, the
+workspace runtimes and the service images itself.
 
-Build the current core, operator, and tooling packages before starting local
-provider plumbing. Compose dependencies start Cardano node and bootstrap
-services.
+## Check it offline
+
+`--check` loads the configuration and runs every check that needs no build,
+network or service. It starts nothing and spends nothing. It loads the built
+workspace packages, so build them once first:
 
 ```bash
-pnpm --dir "$REPO_ROOT/demo/midgard-core" build || exit 1
-pnpm build
-pnpm --dir "$TOOLS_DIR" build
-$COMPOSE up -d cardano-node-ogmios kupo
-node dist/index.js l1-provider-preflight --json
+pnpm --dir "$TOOLS_DIR" run e2e-stack --config "$STACK_CONFIG" --check
 ```
 
-Do not continue until the preflight reports local Kupmios healthy and no
-failover.
+It prints the network, node and run directories, and the configured number of
+journey cycles. Fix every refusal before a live run. The Compose version, the
+`compose config` rendering, the watcher key and bearer decoding and the
+prover/availability seed match are checked later, after the builds.
 
-## Attach or resume
+## Choose where to run
 
-Do not run `init` or reset local state.
+- **Fresh**: fresh local storage is required: a Postgres volume that was never
+  used or was only migrated, and an empty or absent node `db` directory. Do not
+  delete existing volumes to get one. Run from a separate linked worktree; the
+  operator Compose wrapper gives it its own project, volumes, host ports and
+  node directory. Point `nodeRoot`, `envFile` and `runDirectory` at that
+  worktree.
+- **Attach or resume**: run the same command with the same configuration file
+  from the same checkout. The node directory is bound to the run directory and
+  identity recorded in `deploymentInfo/full-stack-intent.json`; another
+  configuration is refused there.
+
+A run's identity is its network, deployment profile, node and run
+directories, wallet seeds, DA members, transports, threshold, owners and
+cosigner, watcher keys, and release signer and program commitments. Timeouts,
+journey size, budgets, ports, templates and the watcher bearer may change
+between runs; a change that reaches the generated services regenerates them
+and recreates the affected containers. Raising `journey.cycles` on a complete
+deployment runs only the new cycles.
+
+## Run
+
+Run the full setup and wallet journeys:
 
 ```bash
-node dist/index.js deployment-status
-node dist/index.js reference-script-wallet-status --json
-node dist/index.js l1-provider-preflight --json
-node dist/index.js reconcile phas-registered --json
-node dist/index.js reconcile reference-scripts-complete \
-  --scope node-runtime \
-  --json
+pnpm --dir "$TOOLS_DIR" run e2e-stack --config "$STACK_CONFIG"
 ```
 
-Verify manifest ID and SHA-256, network, hub-oracle one-shot, reference-script
-auth policy and UTxOs, operator status, provider route, DB route, and wallet
-role addresses. Use addresses or hashes in evidence, never seed phrases.
-
-For an interrupted milestone, read `recovery.md`, reconcile the specific
-transaction, and add the previous and recovery step summaries to the final
-dashboard. A recovery summary uses `--mode resume`; an ordinary attach summary
-uses `--mode attach`.
-
-Once identity is proven, generate or verify the DA manifests as described below,
-start the DA committee node, run the producer preflight in the appropriate mode, and then
-start the node with `$COMPOSE up -d midgard-node`.
-
-## Fresh deployment
-
-### Build contracts and images
+Or finish after setup and readiness, leaving Compose supervising the
+services:
 
 ```bash
-cd "$REPO_ROOT/onchain/aiken"
-aiken build --env testnet
-cd "$NODE_DIR"
-pnpm build
-$COMPOSE build midgard-node midgard-node-migrate
+pnpm --dir "$TOOLS_DIR" run e2e-stack --config "$STACK_CONFIG" --setup-only
 ```
 
-### Create the fresh hub-oracle one-shot
+The package script rebuilds the tooling first. An already built tool runs the
+same command as `node demo/midgard-node-tools/dist/index.js e2e-stack`. The
+command prints `<step>: running` and `<step>: confirmed` for each step and a
+JSON summary at the end.
 
-The local Kupmios stack must be healthy before this transaction.
+To attach or resume, run exactly the same command again. Provider startup can
+take hours on a first run while the Preprod snapshots download and
+synchronize; run it where it can be left running, and do not interrupt a slow
+step to retry it.
 
-```bash
-HUB_ORACLE_NONCE_LOG="logs/$RUN_ID/hub-oracle-nonce.log"
-HUB_ORACLE_NONCE_STEP="$E2E_STEP_DIR/hub-oracle-nonce.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id hub-oracle-nonce \
-  --cwd "$NODE_DIR" \
-  --raw-log "$HUB_ORACLE_NONCE_LOG" \
-  --summary-out "$HUB_ORACLE_NONCE_STEP" \
-  --timeout-ms 1200000 \
-  -- \
-  node dist/index.js prepare-hub-oracle-one-shot-nonce \
-  --run-state "$RUN_STATE_PATH" \
-  --fresh-redeploy \
-  --fresh-redeploy-reason "fresh e2e acceptance $RUN_ID" \
-  --json
-```
+When the command stops with an error, do not rerun it blindly. Read the
+message and follow [recovery.md](recovery.md) first.
 
-Patch `.env` with the returned `txHash` and `outputIndex`. Confirm they differ
-from the previous deployment and that the UTxO is funded and confirmed. Keep
-the same `$RUN_STATE_PATH` for reference-script publication.
+## What each step does
 
-If the command reports insufficient funding, use `l1-utxos` or
-`reference-script-wallet-status --json` for the intended role, fund it, wait
-for confirmation, and retry only after proving the first attempt did not
-submit.
+Before the journaled steps, prerequisites check the Compose version, build the
+contracts and workspace runtimes, and record `prerequisites.json`. The steps
+then run in this order. `providers`, `storage` and `wallets` run their checks
+on every run; every other step already confirmed in `stack-journal.json` is
+reconciled against Cardano and its saved records, never repeated.
 
-### Reset only matching Midgard state
+| Step                    | What it does                                                                                                                                                                 | On rerun                                                                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `providers`             | Starts the local Cardano node with Ogmios, Kupo and Postgres through the operator Compose wrapper, then runs the node's `l1-provider-preflight`.                             | Starts and checks them again.                                                                                                              |
+| `storage`               | Checks that storage is fresh (fresh run) or holds this deployment's marker and event history (attach).                                                                       | Refuses mismatched storage.                                                                                                                |
+| `wallets`               | Checks each wallet's budget (fresh) or working capital (resume) and its plain 5 ADA output.                                                                                  | Checks again.                                                                                                                              |
+| `nonce`                 | Runs the node's `prepare-hub-oracle-one-shot-nonce`, which records the signed nonce in the deployment run state before first submitting it.                                  | Completes a nonce that landed or resubmits exactly the recorded bytes; never builds a second nonce. Attaches when `init` is already final. |
+| `references`            | Publishes the node-runtime reference scripts and confirms them with `reconcile reference-scripts-complete --scope node-runtime`.                                             | Confirms published scripts before publishing any missing one.                                                                              |
+| `initialize`            | Runs `db:migrate` and `init`, then verifies the finalized deployment manifest.                                                                                               | Reconstructs the manifest from Cardano when `init` confirmed unrecorded; waits when a finalized `init` left the tip.                       |
+| `operator`              | Registers and activates the operator with `register-active-operator` after `operator-status`.                                                                                | Resumes from registered; refuses a duplicate.                                                                                              |
+| `runtime-configuration` | Generates the node environment, DA committee, public retained DA, watcher and authority services, and `<runDirectory>/services/compose.json`.                                | Reuses them while their input digest matches; otherwise regenerates.                                                                       |
+| `storage-identity`      | Writes or verifies the Postgres deployment marker and the durable storage identity.                                                                                          | Refuses a changed identity.                                                                                                                |
+| `services`              | Builds images, pins the native owner, starts DA storage, checks the DA submitter wallet, starts the committee, runs the producer DA preflight, then starts node and watcher. | Confirms a ready stack from one snapshot; otherwise starts the services again.                                                             |
+| `cycle-N-deposit`       | Submits a deposit with a stable submission ID and waits for automatic absorption and the exact L2 credit.                                                                    | Reuses the saved intent and receipt.                                                                                                       |
+| `cycle-N-transfer`      | Saves the signed transfer before sending it, waits for commitment, retrieves the payload over public libp2p DA and waits for confirmed-ledger finality.                      | Resends the same bytes after a lost response.                                                                                              |
+| `cycle-N-withdrawal`    | Submits the recipient's withdrawal and waits for the node's automatic payout to the exact destination and value.                                                             | Verifies an already paid payout through its historical transaction.                                                                        |
 
-This reset is allowed only because the same run proceeds to fresh reference
-scripts and fresh `init`. It deliberately does not delete `cardano/db` or
-`cardano/kupo`.
+The generated node environment sets `MIN_QUEUE_LENGTH_FOR_MERGING=1` for these
+small journeys and uses the existing automatic merge worker. No merge, payout
+or repair command is ever run. The committee is started and ready before the
+producer's DA preflight, and the node starts only after that preflight.
 
-```bash
-$COMPOSE down -v --remove-orphans
-mkdir -p db deploymentInfo logs
-docker run --rm \
-  -v "$PWD/deploymentInfo:/mnt/deploymentInfo" \
-  -v "$PWD/db:/mnt/db" \
-  busybox sh -lc \
-  'rm -rf /mnt/db/* /mnt/deploymentInfo/* && chown -R 1000:1000 /mnt/db /mnt/deploymentInfo'
+## Evidence
 
-$COMPOSE up -d cardano-node-ogmios kupo
-node dist/index.js l1-provider-preflight --json
-```
+Everything lives under the configured `runDirectory`:
 
-The run-state is under `logs/$RUN_ID`, so the reset preserves the new
-deployment identity.
+- `stack-journal.json`: the step journal, written atomically and fsynced, with
+  the run identity digest;
+- `attempts/<step>-<uuid>.log` and `.json`: the raw log and structured summary
+  of every command the stack ran;
+- `deployment-run-state.json`: the node's deployment run state, including the
+  signed nonce;
+- `prerequisites.json`, `<runDirectory>/services/compose.json` and the generated service
+  configuration;
+- `cycle-N-*.json`: per-cycle intents, receipts, balances and payout evidence,
+  and the `da-<header>.cbor`/`.json` payloads retrieved over public DA; and
+- `setup-summary.json` or `journey-summary.json`
+  (`midgard-full-stack-summary-v1`), with `result`, `confirmedSteps` and
+  `cycles`.
 
-### Publish node-runtime reference scripts
+The deployment manifest is in the node directory's `deploymentInfo/`. These
+records are private: they hold transaction bodies and intents but no secret
+values. Preserve all of them with the run.
 
-```bash
-REFERENCE_LOG="logs/$RUN_ID/reference-scripts.log"
-REFERENCE_STEP="$E2E_STEP_DIR/reference-scripts.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id reference-scripts \
-  --cwd "$NODE_DIR" \
-  --raw-log "$REFERENCE_LOG" \
-  --summary-out "$REFERENCE_STEP" \
-  --timeout-ms 10800000 \
-  -- \
-  node dist/index.js deploy-reference-script-node-runtime \
-  --run-state "$RUN_STATE_PATH" \
-  --contract-deployment-info-output \
-  deploymentInfo/contract-deployment-info.json
+## Operate the running stack
 
-node dist/index.js reconcile reference-scripts-complete \
-  --scope node-runtime \
-  --json
-```
-
-Batch splits and funding-input escalation are progress while transactions keep
-submitting and confirming. Record duration, policy ID, UTxO count, batch splits,
-highest funding-input count, step summary, and raw log.
-
-If interrupted, preserve the run-state and log. Resume only when network,
-one-shot, manifest path, and auth policy all match. Never guess a policy or mix
-identities.
-
-### Initialize and activate the operator
-
-```bash
-INIT_LOG="logs/$RUN_ID/init-protocol.log"
-INIT_STEP="$E2E_STEP_DIR/init-protocol.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id init-protocol \
-  --cwd "$NODE_DIR" \
-  --raw-log "$INIT_LOG" \
-  --summary-out "$INIT_STEP" \
-  --timeout-ms 1200000 \
-  -- \
-  node dist/index.js init \
-  --contract-deployment-info-output \
-  deploymentInfo/contract-deployment-info.json
-
-INIT_TX_HASH="$(node --input-type=module -e '
-  import { readFileSync } from "node:fs";
-  const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"));
-  const step = manifest.steps?.initProtocol;
-  const hash = step?.txHash;
-  if (step?.status !== "complete" || typeof hash !== "string"
-      || !/^[0-9a-f]{64}$/i.test(hash)) {
-    throw new Error("deployment manifest has no completed init transaction");
-  }
-  process.stdout.write(hash.toLowerCase());
-' deploymentInfo/contract-deployment-info.json)"
-
-node dist/index.js reconcile deployment-manifest \
-  --out deploymentInfo/contract-deployment-info.json \
-  --init-tx-hash "$INIT_TX_HASH" \
-  --json
-
-OPERATOR_LOG="logs/$RUN_ID/operator-lifecycle.log"
-OPERATOR_STEP="$E2E_STEP_DIR/operator-lifecycle.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id operator-lifecycle \
-  --cwd "$NODE_DIR" \
-  --raw-log "$OPERATOR_LOG" \
-  --summary-out "$OPERATOR_STEP" \
-  --timeout-ms 1200000 \
-  -- \
-  node dist/index.js register-active-operator
-```
-
-The combined operator command may resume an exactly-one-registered,
-not-yet-active operator. Use `activate-operator` only after chain evidence proves
-that exact recovery state. Do not deregister or rewrite SQL to recover.
-
-## DA manifests and committee node
-
-Generate three manifests from the finalized canonical contract deployment manifest:
-
-- a producer runtime manifest for the producer container;
-- a producer host-preflight manifest used while the producer is stopped; and
-- a committee runtime manifest for the host DA committee node.
-
-The host-preflight manifest matters: `host.docker.internal` is a container route,
-so the host preflight must use the `host` address profile.
-
-Set an explicit funded L1 submitter key source without printing it. Supported
-forms include `seed:<mnemonic>` and `file:<path-containing-a-supported-source>`.
-Keep this wallet distinct from the operator and DA signer.
-
-The command block below is the local development 1-of-1 example. If `.env`
-configures a larger committee or threshold, supply one `--committee-member`
-entry per configured member, generate a target-specific committee manifest for
-each signer, and start enough committee node instances to reach the configured
-threshold. Do not lower the threshold or collapse the committee to make the
-run pass.
+Manage the services only through the operator Compose wrapper, from the node
+directory, with the generated override:
 
 ```bash
 cd "$NODE_DIR"
-set -a
-. ./.env
-set +a
-
-: "${L1_OPERATOR_SEED_PHRASE:?missing L1 operator seed phrase}"
-: "${DA_L1_SUBMITTER_KEY_SOURCE:?set a funded DA L1 submitter key source}"
-
-CONTRACT_INFO="$NODE_DIR/deploymentInfo/contract-deployment-info.json"
-PRODUCER_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-manifest.json"
-PRODUCER_PREFLIGHT_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-host-preflight-manifest.json"
-COMMITTEE_MANIFEST="$DA_NODE_DIR/run/$RUN_ID-committee-manifest.json"
-# Provision the committee database and a distinct SELECT-only public reader
-# as described in the DA committee guide before starting either process.
-: "${DA_COMMITTEE_DATABASE_URL:?set the committee PostgreSQL writer connection}"
-PRODUCER_LIBP2P_KEY_SOURCE="${DA_PRODUCER_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000001}"
-COMMITTEE_LIBP2P_KEY_SOURCE="${DA_COMMITTEE_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000002}"
-PUBLIC_RETAINED_LIBP2P_KEY_SOURCE="${DA_RETAINED_LIBP2P_KEY_SOURCE:?set a dedicated non-signer libp2p identity}"
-DA_THRESHOLD="${DA_THRESHOLD:-1}"
-mkdir -p "$DA_NODE_DIR/run" "$DA_NODE_DIR/db"
-
-DA_VKEY="$(node --input-type=module <<'NODE'
-import { CML, walletFromSeed } from "@lucid-evolution/lucid";
-const network = process.env.NETWORK || "Preprod";
-const seed = process.env.L1_OPERATOR_SEED_PHRASE;
-if (!seed) throw new Error("L1_OPERATOR_SEED_PHRASE is required");
-const wallet = walletFromSeed(seed, { network });
-const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
-process.stdout.write(
-  Buffer.from(privateKey.to_public().to_raw_bytes()).toString("hex"),
-);
-NODE
-)"
-
-COMMON_MANIFEST_ARGS=(
-  --contract-deployment-info "$CONTRACT_INFO"
-  --producer-libp2p-key-source "$PRODUCER_LIBP2P_KEY_SOURCE"
-  --public-retained-da-libp2p-key-source "$PUBLIC_RETAINED_LIBP2P_KEY_SOURCE"
-  --threshold "$DA_THRESHOLD"
-  --committee-member "0,$DA_VKEY,$COMMITTEE_LIBP2P_KEY_SOURCE,committee+retrieval+coordinator"
-  --network "${NETWORK:-Preprod}"
-)
-
-node dist/index.js da-libp2p-generate-manifest \
-  --target producer \
-  --profile producer-container-committee-host \
-  "${COMMON_MANIFEST_ARGS[@]}" \
-  --out "$PRODUCER_MANIFEST"
-
-node dist/index.js da-libp2p-generate-manifest \
-  --target producer \
-  --profile host \
-  "${COMMON_MANIFEST_ARGS[@]}" \
-  --out "$PRODUCER_PREFLIGHT_MANIFEST"
-
-node dist/index.js da-libp2p-generate-manifest \
-  --target committee \
-  --profile producer-container-committee-host \
-  "${COMMON_MANIFEST_ARGS[@]}" \
-  --local-signer-index 0 \
-  --out "$COMMITTEE_MANIFEST"
+RUN_DIRECTORY="${RUN_DIRECTORY:?the configured runDirectory}"
+STACK_COMPOSE=(bash scripts/operator-compose.sh --env-file .env
+  -f docker-compose.yaml -f docker-compose.kupmios.yaml
+  -f "$RUN_DIRECTORY/services/compose.json")
+"${STACK_COMPOSE[@]}" ps
+"${STACK_COMPOSE[@]}" logs --no-color midgard-node
 ```
 
-Ensure `.env` contains the container-relative producer runtime path and matching
-producer identity, and does not define `DA_PAYLOAD_ENDPOINTS`:
-
-```dotenv
-MIDGARD_DEPLOYMENT_MANIFEST_PATH=deploymentInfo/da-libp2p-producer-manifest.json
-DA_LIBP2P_PRIVATE_KEY_SOURCE=seed:0000000000000000000000000000000000000000000000000000000000000001
-```
-
-Build the DA committee node and export its environment for the wallet preflight and
-service. `export` is a shell builtin, so secret-bearing values do not become
-child-process arguments. Do not enable shell tracing or print the array because
-it contains key sources.
-
-```bash
-pnpm --dir "$DA_NODE_DIR" install --frozen-lockfile
-pnpm --dir "$DA_NODE_DIR" build
-
-if [ -z "${DA_COMMITTEE_HEX:-}" ]; then
-  unset DA_COMMITTEE_HEX
-fi
-
-# Committee configuration rejects public-reader credentials and cohosting.
-unset DA_COMMITTEE_DB_PATH DA_PUBLIC_RETAINED_DA_ENABLED \
-  DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE DA_PUBLIC_RETAINED_DA_DATABASE_URL \
-  DA_PUBLIC_RETAINED_DA_DATABASE_ROLE
-
-DA_COMMITTEE_ENV=(
-  "MIDGARD_NETWORK=${NETWORK:-Preprod}"
-  "MIDGARD_DEPLOYMENT_MANIFEST_PATH=$COMMITTEE_MANIFEST"
-  "MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH=$CONTRACT_INFO"
-  "CARDANO_PROVIDER_URLS=kupmios:http://127.0.0.1:${KUPO_PORT:-1442}|http://127.0.0.1:${OGMIOS_PORT:-1337}"
-  "CARDANO_FINALITY_DEPTH=${CARDANO_FINALITY_DEPTH:?set to the manifest l1Finality.confirmationDepth}"
-  "DA_LIBP2P_PRIVATE_KEY_SOURCE=$COMMITTEE_LIBP2P_KEY_SOURCE"
-  "DA_SIGNER_INDEX=0"
-  "DA_SIGNER_KEY_SOURCE=cardano-seed:$L1_OPERATOR_SEED_PHRASE"
-  "DA_THRESHOLD=$DA_THRESHOLD"
-  "DA_L1_SUBMISSION_ENABLED=true"
-  "L1_SUBMITTER_KEY_SOURCE=$DA_L1_SUBMITTER_KEY_SOURCE"
-  "DA_COMMITTEE_DATABASE_URL=$DA_COMMITTEE_DATABASE_URL"
-  "DA_COMMITTEE_API_HOST=127.0.0.1"
-  "DA_COMMITTEE_API_PORT=8787"
-  "DA_COMMITTEE_POLL_INTERVAL_MS=15000"
-)
-export "${DA_COMMITTEE_ENV[@]}"
-
-DA_WALLET_PREFLIGHT_LOG="logs/$RUN_ID/da-l1-wallet-preflight.log"
-DA_WALLET_PREFLIGHT_STEP="$E2E_STEP_DIR/da-l1-wallet-preflight.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id da-l1-wallet-preflight \
-  --cwd "$NODE_DIR" \
-  --raw-log "$DA_WALLET_PREFLIGHT_LOG" \
-  --summary-out "$DA_WALLET_PREFLIGHT_STEP" \
-  --timeout-ms 180000 \
-  -- \
-  node "$DA_NODE_DIR/dist/index.js" l1-wallet-preflight --json
-```
-
-Stop if the submitter wallet is not ready. Fund the distinct submitter wallet,
-wait for confirmation, and rerun the preflight.
-
-Start the DA committee node before probing producer-to-committee reachability.
-The committee uses PostgreSQL so the dedicated public retained-DA reader can
-read the same retained payload/header tables with a separate SELECT-only role.
-A JSON file store cannot support that public-reader path.
-
-After the committee starts and initializes its tables, start the dedicated
-`midgard-public-retained-da` process in a separately managed environment using the
-[DA committee guide](../../../../docs-site/content/docs/watchers/da-committee-node.mdx).
-Use the committee manifest, the same contract manifest, the dedicated
-`PUBLIC_RETAINED_LIBP2P_KEY_SOURCE`, and the read-only database role. Never pass
-committee signer, provider, submitter, or writer-store credentials to that
-process. Its readiness must be established by a real public libp2p retrieval;
-it does not expose the committee's HTTP `/readyz` endpoint. Preserve its process,
-log, role, and retrieval evidence with the run.
-
-```bash
-DA_NODE_LOG="logs/$RUN_ID/da-committee-node.log"
-DA_NODE_PID="$DA_NODE_DIR/run/$RUN_ID-da-committee-node.pid"
-node "$TOOLS_CLI" e2e-start-service \
-  --service da-committee-node \
-  --cwd "$DA_NODE_DIR" \
-  --raw-log "$DA_NODE_LOG" \
-  --pid-file "$DA_NODE_PID" \
-  --ready-url http://127.0.0.1:8787/readyz \
-  --health-url http://127.0.0.1:8787/healthz \
-  --ready-timeout-ms 180000 \
-  --poll-interval-ms 5000 \
-  pnpm start
-
-# The managed committee node has inherited its environment. Remove the values from
-# this shell before starting producer-side commands.
-for assignment in "${DA_COMMITTEE_ENV[@]}"; do
-  unset "${assignment%%=*}"
-done
-unset DA_COMMITTEE_ENV
-
-DA_LIBP2P_PREFLIGHT_LOG="logs/$RUN_ID/da-libp2p-bind-listen-preflight.log"
-DA_LIBP2P_PREFLIGHT_STEP="$E2E_STEP_DIR/da-libp2p-bind-listen-preflight.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id da-libp2p-bind-listen-preflight \
-  --cwd "$NODE_DIR" \
-  --raw-log "$DA_LIBP2P_PREFLIGHT_LOG" \
-  --summary-out "$DA_LIBP2P_PREFLIGHT_STEP" \
-  --timeout-ms 180000 \
-  -- \
-  env \
-  "MIDGARD_DEPLOYMENT_MANIFEST_PATH=$PRODUCER_PREFLIGHT_MANIFEST" \
-  "DA_LIBP2P_PRIVATE_KEY_SOURCE=$PRODUCER_LIBP2P_KEY_SOURCE" \
-  node dist/index.js da-libp2p-preflight --mode bind-listen --json
-```
-
-Require `passed: true`, a bound producer listener, and reachable committee
-signer indexes at or above threshold. If the producer port is already bound,
-stop the stale producer and rerun. Do not substitute `dial-only` for fresh
-listener bind evidence.
-
-After the producer is running, attach/resume diagnostics may use `dial-only`
-with the runtime producer manifest. Label that evidence as reachability only.
-
-## Node, deposit, and L2 activity
-
-### Start the node and prove readiness
-
-```bash
-$COMPOSE up -d midgard-node
-
-READY_LOG="logs/$RUN_ID/midgard-node-ready.log"
-READY_STEP="$E2E_STEP_DIR/midgard-node-ready.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id midgard-node-ready \
-  --cwd "$NODE_DIR" \
-  --raw-log "$READY_LOG" \
-  --summary-out "$READY_STEP" \
-  --timeout-ms 180000 \
-  -- \
-  node --input-type=module -e '
-    const deadline = Date.now() + 170000;
-    while (Date.now() < deadline) {
-      const health = await fetch("http://127.0.0.1:3000/healthz").catch(() => null);
-      const ready = await fetch("http://127.0.0.1:3000/readyz").catch(() => null);
-      if (health?.ok && ready?.ok) {
-        const body = await ready.json();
-        console.log(JSON.stringify({ healthz: await health.json(), readyz: body }));
-        process.exit(body.ready === true && (body.reasons?.length ?? 0) === 0 ? 0 : 1);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-    }
-    process.exit(1);
-  '
-```
-
-### Deposit and project
-
-```bash
-USER_L2_ADDRESS="$(node --input-type=module -e '
-  import "dotenv/config";
-  import { walletFromSeed } from "@lucid-evolution/lucid";
-  console.log(walletFromSeed(process.env.USER_SEED_PHRASE, {
-    network: process.env.NETWORK,
-  }).address);
-')"
-DEST_A="$(node --input-type=module -e '
-  import "dotenv/config";
-  import { walletFromSeed } from "@lucid-evolution/lucid";
-  console.log(walletFromSeed(process.env.TESTNET_GENESIS_WALLET_SEED_PHRASE_A, {
-    network: process.env.NETWORK,
-  }).address);
-')"
-DEST_B="$(node --input-type=module -e '
-  import "dotenv/config";
-  import { walletFromSeed } from "@lucid-evolution/lucid";
-  console.log(walletFromSeed(process.env.TESTNET_GENESIS_WALLET_SEED_PHRASE_B, {
-    network: process.env.NETWORK,
-  }).address);
-')"
-
-# Preserve RUN_ID and this submission ID for every retry of this operation.
-# A new operation needs a distinct ID; changed intent under the same ID fails.
-DEPOSIT_LOG="logs/$RUN_ID/submit-deposit.log"
-DEPOSIT_STEP="$E2E_STEP_DIR/submit-deposit.json"
-DEPOSIT_SUBMISSION_ID="$RUN_ID:deposit"
-node "$TOOLS_CLI" e2e-run-step \
-  --id submit-deposit \
-  --cwd "$NODE_DIR" \
-  --raw-log "$DEPOSIT_LOG" \
-  --summary-out "$DEPOSIT_STEP" \
-  --timeout-ms 1200000 \
-  -- \
-  env POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433 \
-  node dist/index.js submit-deposit \
-  --submission-id "$DEPOSIT_SUBMISSION_ID" \
-  --wallet-seed-phrase-env USER_SEED_PHRASE \
-  --l2-address "$USER_L2_ADDRESS" \
-  --lovelace 12000000
-
-DEPOSIT_EVENT_ID="$(node --input-type=module -e '
-  import { readFileSync } from "node:fs";
-  const summary = JSON.parse(readFileSync(process.argv[1], "utf8"));
-  const eventId = summary.parsedJson?.metadata?.depositEventId;
-  if (typeof eventId !== "string") throw new Error("no metadata.depositEventId");
-  console.log(eventId);
-' "$DEPOSIT_STEP")"
-
-DEPOSIT_PROJECTED_LOG="logs/$RUN_ID/deposit-projected.log"
-DEPOSIT_PROJECTED_STEP="$E2E_STEP_DIR/deposit-projected.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id deposit-projected \
-  --cwd "$NODE_DIR" \
-  --raw-log "$DEPOSIT_PROJECTED_LOG" \
-  --summary-out "$DEPOSIT_PROJECTED_STEP" \
-  --timeout-ms 1200000 \
-  -- \
-  env "DEPOSIT_EVENT_ID=$DEPOSIT_EVENT_ID" \
-  node --input-type=module -e '
-    const eventId = process.env.DEPOSIT_EVENT_ID ?? "";
-    if (!/^[0-9a-f]+$/.test(eventId)) {
-      console.log(JSON.stringify({ error: "DEPOSIT_EVENT_ID is not hex", eventId }));
-      process.exit(1);
-    }
-    const deadline = Date.now() + 1170000;
-    const url = `http://127.0.0.1:3000/deposit-status?eventId=${eventId}`;
-    let last = null;
-    while (Date.now() < deadline) {
-      const response = await fetch(url).catch(() => null);
-      if (response !== null) last = await response.json().catch(() => null);
-      if (last?.status === "projected" || last?.status === "consumed") {
-        console.log(JSON.stringify(last));
-        process.exit(0);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-    }
-    console.log(JSON.stringify({ timedOut: true, last }));
-    process.exit(1);
-  '
-
-curl -sf "http://127.0.0.1:3000/utxos?address=$USER_L2_ADDRESS"
-```
-
-The running node's history owner records and projects the deposit, so this
-step only waits for it; no block commit is involved. The deposit is due at its
-`inclusionTime`, the deposit transaction's validity upper bound (at most 120 s
-out: the validity window is 180 s and starts 60 s in the past) plus the
-profile's `event_wait_ms` (300 s on preprod-testing), and the
-history owner projects it once its authenticated L1 source reaches that time.
-The 20-minute bound covers that wait and the history owner's L1 lag with a wide
-margin. A `404` or an `awaiting` status inside the bound is not a failure. On
-timeout, compare the last `inclusionTime` with the node's `/readyz` reasons
-(for example `history_owner_not_ready`) before retrying anything.
-
-Before spending the deposit, wait for its block to commit, receive DA attestation,
-mature, and merge through the normal fibers. Confirm its settlement membership
-with `resolve-event-settlement-proof --kind deposit --event-id <event-id>`.
-A projected local UTxO alone is insufficient: deposits execute after transactions
-within a block, so the same block cannot introduce and spend that deposit.
-Retain the deposit block's confirmation and merge evidence with the run.
-
-### Submit two baseline L2 transfers
-
-Require the DA committee node to remain ready first:
-
-```bash
-curl -sf http://127.0.0.1:8787/healthz
-curl -sf http://127.0.0.1:8787/readyz
-
-L2_TRANSFER_A_LOG="logs/$RUN_ID/submit-l2-transfer-a.log"
-L2_TRANSFER_A_STEP="$E2E_STEP_DIR/submit-l2-transfer-a.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id submit-l2-transfer-a \
-  --cwd "$NODE_DIR" \
-  --raw-log "$L2_TRANSFER_A_LOG" \
-  --summary-out "$L2_TRANSFER_A_STEP" \
-  --timeout-ms 300000 \
-  -- \
-  bash -lc "$COMPOSE exec -T midgard-node node dist/index.js submit-l2-transfer --wallet-seed-phrase-env USER_SEED_PHRASE --endpoint http://127.0.0.1:3000 --l2-address '$DEST_A' --lovelace 2000000"
-
-L2_TRANSFER_B_LOG="logs/$RUN_ID/submit-l2-transfer-b.log"
-L2_TRANSFER_B_STEP="$E2E_STEP_DIR/submit-l2-transfer-b.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id submit-l2-transfer-b \
-  --cwd "$NODE_DIR" \
-  --raw-log "$L2_TRANSFER_B_LOG" \
-  --summary-out "$L2_TRANSFER_B_STEP" \
-  --timeout-ms 300000 \
-  -- \
-  bash -lc "$COMPOSE exec -T midgard-node node dist/index.js submit-l2-transfer --wallet-seed-phrase-env USER_SEED_PHRASE --endpoint http://127.0.0.1:3000 --l2-address '$DEST_B' --lovelace 1500000"
-```
-
-Use the `txId` fields from the two step summaries with `/tx-status?tx_hash=`.
-Poll until both are `committed`. Do not treat `accepted` as committed or final.
-
-## DA, finality, and automatic merge
-
-For every committed header:
-
-1. Retain the producer libp2p publication report for the header, including
-   deployment fingerprint, threshold, announcement topic, and per-peer results.
-2. Retain the exact payload bytes obtained through libp2p retrieval and their
-   digest. The operator HTTP server has no DA payload retrieval route; retrieve
-   from the `midgard-public-retained-da` process over libp2p, as the
-   [DA committee guide](../../../../docs-site/content/docs/watchers/da-committee-node.mdx)
-   describes under "Publish, retain, and retrieve". Retrieve each header's payload
-   as soon as the header is attested, and always before its successor merges
-   and before its `end_time` plus 1.5 × block maturity (1,350 s on
-   preprod-testing). The committee prunes a merged non-head block's payload at
-   that horizon, so a header retrieved later returns not-found. That is the
-   expected retention behaviour, not a DA failure, but the header's retrieval
-   evidence is then lost and cannot be recovered in this run.
-3. Query the committee node deployment/header status.
-4. Record payload hash/schema, committee node verification, attestation init,
-   add-signatures, and apply transaction hashes.
-5. Require committee node header status `attested` or `merged` before automatic merge.
-
-Derive the deployment fingerprint from the contract manifest ID, not a file
-hash:
-
-```bash
-DEPLOYMENT_FINGERPRINT="$(node --input-type=module -e '
-  import { readFileSync } from "node:fs";
-  const manifest = JSON.parse(readFileSync(
-    "deploymentInfo/contract-deployment-info.json",
-    "utf8",
-  ));
-  if (manifest.schemaVersion !== "midgard-deployment-manifest-v1"
-      || typeof manifest.manifestId !== "string") {
-    throw new Error("expected canonical deployment manifest");
-  }
-  process.stdout.write(manifest.manifestId.toLowerCase());
-')"
-```
-
-If the committee node reports `root_mismatch`, `malformed_da`, or `conflicted`, stop.
-Do not merge. Diagnose payload construction, retained data, and peer identity.
-
-Wait for the running merge fiber to empty the state queue. A header becomes
-mergeable only at its `end_time` plus the profile's block maturity, and a
-header's `end_time` can sit up to about 419 s after its commit (the commit
-validity range minus its 60 s backdate). The merge then needs about 20 s of
-slot alignment and L1 confirmation, and queued headers merge one after
-another. The budget below is derived from the compiled profile's block
-maturity: maturity + 420 s end-time lead + 20 s alignment + 180 s L1
-confirmation + 300 s for sequential merges, which is 1,820 s on
-preprod-testing. Start it right after the last header commits. The outer step
-timeout is always 60 s longer than the inner deadline, so the loop, not the
-runner, reports a timeout.
-
-```bash
-BLOCK_MATURITY_MS="$(node --input-type=module -e '
-  import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
-  process.stdout.write(String(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs));
-')" || exit 1
-export MERGE_WAIT_S=$(( BLOCK_MATURITY_MS / 1000 + 420 + 20 + 180 + 300 ))
-AUTOMATIC_MERGE_LOG="logs/$RUN_ID/await-automatic-merge.log"
-AUTOMATIC_MERGE_STEP="$E2E_STEP_DIR/await-automatic-merge.json"
-node "$TOOLS_CLI" e2e-run-step \
-  --id await-automatic-merge \
-  --cwd "$NODE_DIR" \
-  --raw-log "$AUTOMATIC_MERGE_LOG" \
-  --summary-out "$AUTOMATIC_MERGE_STEP" \
-  --timeout-ms "$(( (MERGE_WAIT_S + 60) * 1000 ))" \
-  -- \
-  bash -lc '
-    set -euo pipefail
-    deadline=$((SECONDS + ${MERGE_WAIT_S:?}))
-    while [ "$SECONDS" -lt "$deadline" ]; do
-      body="$(curl -sf \
-        -H "x-midgard-admin-key: ${ADMIN_API_KEY:-localdev-admin}" \
-        http://127.0.0.1:3000/stateQueue)"
-      printf "%s\n" "$body"
-      if node --input-type=module - "$body" <<'"'"'NODE'"'"'
-const body = JSON.parse(process.argv[2]);
-process.exit(Array.isArray(body.headers) && body.headers.length === 0 ? 0 : 1);
-NODE
-      then
-        exit 0
-      fi
-      curl -s http://127.0.0.1:3000/readyz || true
-      sleep 5
-    done
-    echo "automatic merge fiber did not empty stateQueue" >&2
-    exit 1
-  '
-```
-
-If it times out, inspect readiness, the state queue, mutation lease, unfinished
-jobs, scheduler refresh, commit/finality workers, and merge-fiber logs. Use
-`recovery.md`; never call `/merge` to manufacture success.
-
-## State-correction and recovery acceptance
-
-The baseline deposit/L2/merge flow is not Q57 acceptance. A fresh final-release
-run must also produce one
-`midgard-e2e-state-correction-acceptance-v1` aggregate. This aggregate is an
-index, not proof: none of its booleans or transaction hashes may become
-confirmed evidence on their own. The finalizer must independently load and
-reconcile the immutable workflow journals, authenticated terminal L1
-observations, raw recovery outputs, deployment manifest, blueprint, catalogue,
-parameters, manifest-bound protocol identity, economics, and final chain/queue observation.
-Until all of those independent sources are present and agree, every
-state-correction gate remains blocked. An absent, partial, inexact, cross-run,
-or incomplete aggregate fails outright.
-
-Each L1 observation must point to the unmodified raw Kupo match response, raw
-Ogmios block response, and raw Ogmios tip response used to derive its inclusion
-point and confirmation depth, with a recomputable SHA-256 for each file. The
-final snapshot must likewise point to the raw Kupo empty-state-queue response,
-one raw unspent quantity-one Kupo response for each permanent proof-token
-unit/outref, the raw Ogmios tip, and a complete raw node-database export. Kupo,
-Ogmios, and the database must agree. These captures are still claims: a
-non-artifact authority must re-read the configured live services and approve
-the derived facts. Mutually consistent files cannot substitute for that live
-read.
-
-Before any live drill, run the deterministic parser/gate rehearsal. It submits
-nothing and does not touch the deployment:
-
-```bash
-cd "$TOOLS_DIR"
-NODE_ENV=emulator pnpm exec vitest run \
-  tests/e2e-state-correction-acceptance.test.ts \
-  tests/e2e-state-correction-reconciliation.test.ts \
-  tests/e2e-state-correction-local-authority.test.ts
-cd "$NODE_DIR"
-```
-
-Set the artifact path now and preserve it with the run:
-
-```bash
-STATE_CORRECTION_EVIDENCE="logs/$RUN_ID/state-correction-acceptance.json"
-STATE_CORRECTION_MANIFEST="$CONTRACT_INFO"
-STATE_CORRECTION_BLUEPRINT="$REPO_ROOT/onchain/aiken/plutus.json"
-STATE_CORRECTION_CATALOGUE="logs/$RUN_ID/state-correction-catalogue.json"
-STATE_CORRECTION_PARAMETERS="logs/$RUN_ID/cardano-protocol-parameters.json"
-STATE_CORRECTION_FINAL_SNAPSHOT="logs/$RUN_ID/state-correction-final-snapshot.json"
-STATE_CORRECTION_WORKFLOW_JOURNAL_LIST="logs/$RUN_ID/state-correction-workflow-journals.txt"
-STATE_CORRECTION_L1_OBSERVATION_LIST="logs/$RUN_ID/state-correction-l1-observations.txt"
-STATE_CORRECTION_RECOVERY_OBSERVATION_LIST="logs/$RUN_ID/state-correction-recovery-observations.txt"
-```
-
-The three list files contain one absolute or run-relative path per line. Keep
-workflow journals in canonical family order, authenticated L1 observations in
-the order they were captured, and recovery observations in canonical recovery
-matrix order. The finalizer validates the semantic identities and exact sets;
-the list order does not grant trust.
-
-Use the canonical launch-scope order from the finalized deployment catalogue.
-For each family, the production watcher/workflow journal must do all of the
-following from public L1+DA only:
-
-1. detect the committed violation and record the violation and selected route;
-2. initialize and complete every proof step with mandatory reference scripts;
-3. confirm the permanent proof-token mint, its exact reference by the removal
-   transaction, and the same unit/outref still retained after removal;
-4. confirm state-queue removal and the corrected queue/root;
-5. observe the configured operator slash and prover reward, recording expected
-   and observed lovelace exactly; and
-6. resume verification from the final chain point.
-
-Use one drill instance as Q57, C83, and W45 evidence when it meets all three
-claims. Do not submit a second transaction merely to give another task ID its
-own hash. If an enabled family has no production watcher/workflow adapter,
-stop: the sweep is not runnable and must not be replaced with manual proof CLI
-steps or a hand-authored success record.
-
-The same artifact must record a real withdrawal through order, reserve, payout
-init, every payout add, and payout conclude. The executable commands for that
-leg (`submit-withdrawal`, `withdrawal-status`,
-`resolve-event-settlement-proof --kind withdrawal`, `initialize-payout`,
-`add-reserve-funds-to-payout`, `conclude-payout`, `payout-status`) are in
-sections 5 to 11 of
-[DEPOSIT_SEND_AND_WITHDRAW.md](../../../../demo/midgard-node/docs/DEPOSIT_SEND_AND_WITHDRAW.md).
-Skip its manual `/commit` and `/merge` calls, which are devnet-only: wait for
-the commit fiber and rerun the `await-automatic-merge` step above instead. Hash the canonical expected and
-observed payout/reserve values independently, require exact destination and
-value equality, and retain the final paid chain point. The Q57 value digest is
-SHA-256 over UTF-8 canonical JSON of a unit-to-decimal-string object: omit zero
-quantities and sort keys lexicographically; use `lovelace` for ADA and the
-dotless lowercase `policy_id || asset_name` unit for native assets. The payout
-digest covers the exact output at the withdrawal destination. The reserve
-digest covers the aggregate value of every currently unspent output at the
-manifest-bound reserve validator address. The local authority re-reads the
-payout transaction through Ogmios, cross-checks its complete output vector
-against Kupo, and reads the current reserve UTxO set from Kupo. It must also
-record both forced-classification directions in this order:
-
-- valid block marked invalid, canonically restored to valid; and
-- invalid block marked valid, publicly detected and corrected to invalid.
-
-Both directions must be watcher-driven, route through the production workflow,
-and bind their evidence/correction transactions and final chain points.
-
-Finally, record the crash/rollback and fail-closed matrix in the exact order
-published by
-`REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS` in
-`e2e-state-correction-acceptance.ts`. It includes the fourteen before/after
-durable watcher crash boundaries, pre-finality and within-`k` finalized
-rollback paths, configured-source inconsistency, external-provider
-disagreement, missing DA, withholding, stale manifest, and the adapter rewind
-rehearsal against recorded live chain data. Every case requires:
-
-- zero duplicate submissions, lost evidence, false verified states, and
-  unrecoverable workflows;
-- fail-closed behavior and no manual repair; and
-- watcher readiness and verification resumption only after reconciliation.
-
-Do not manufacture a natural Preprod rollback. The local W44 matrix plus the
-recorded-live-data adapter rewind is the required rollback evidence. A
-naturally observed rollback is bonus evidence only.
-
-Write the aggregate only from confirmed workflow journal, provider, watcher,
-chain-point, manifest, blueprint, catalogue, parameter, and
-final-state observations. Preserve every underlying source separately and pass
-those immutable sources to the finalizer for its independent derivation. The
-aggregate parser requires exact keys and the canonical family/recovery order,
-but structural validity alone never satisfies a gate. Do not run the finalizer
-until state queue depth, unfinished mutation jobs, and pending finalizations
-are zero and watcher verification has resumed.
-
-Load every independent source explicitly. Empty lists are a hard failure:
-
-```bash
-mapfile -t STATE_CORRECTION_WORKFLOW_JOURNALS < "$STATE_CORRECTION_WORKFLOW_JOURNAL_LIST"
-mapfile -t STATE_CORRECTION_L1_OBSERVATIONS < "$STATE_CORRECTION_L1_OBSERVATION_LIST"
-mapfile -t STATE_CORRECTION_RECOVERY_OBSERVATIONS < "$STATE_CORRECTION_RECOVERY_OBSERVATION_LIST"
-
-[ "${#STATE_CORRECTION_WORKFLOW_JOURNALS[@]}" -gt 0 ]
-[ "${#STATE_CORRECTION_L1_OBSERVATIONS[@]}" -gt 0 ]
-[ "${#STATE_CORRECTION_RECOVERY_OBSERVATIONS[@]}" -gt 0 ]
-
-STATE_CORRECTION_WORKFLOW_ARGS=()
-for path in "${STATE_CORRECTION_WORKFLOW_JOURNALS[@]}"; do
-  STATE_CORRECTION_WORKFLOW_ARGS+=(--state-correction-workflow-journal "$path")
-done
-STATE_CORRECTION_L1_ARGS=()
-for path in "${STATE_CORRECTION_L1_OBSERVATIONS[@]}"; do
-  STATE_CORRECTION_L1_ARGS+=(--state-correction-l1-observation "$path")
-done
-STATE_CORRECTION_RECOVERY_ARGS=()
-for path in "${STATE_CORRECTION_RECOVERY_OBSERVATIONS[@]}"; do
-  STATE_CORRECTION_RECOVERY_ARGS+=(--state-correction-recovery-observation "$path")
-done
-```
-
-## Final evidence
-
-### Extract transaction hashes
-
-The helper prefers structured transaction observations and falls back to a
-named JSON field:
-
-```bash
-step_tx_hash() {
-  node --input-type=module - "$1" "$2" <<'NODE'
-import { readFileSync } from "node:fs";
-const [summaryPath, selector] = process.argv.slice(2);
-const pattern = /^[0-9a-f]{64}$/i;
-const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
-const observations = Array.isArray(summary.txObservations)
-  ? summary.txObservations
-  : [];
-const observation = observations.find((entry) =>
-  typeof entry?.txHash === "string"
-  && pattern.test(entry.txHash)
-  && (entry.field === selector || entry.field?.endsWith(`.${selector}`)),
-);
-if (observation) {
-  process.stdout.write(observation.txHash.toLowerCase());
-  process.exit(0);
-}
-const find = (value) => {
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const found = find(entry);
-      if (found) return found;
-    }
-  } else if (value && typeof value === "object") {
-    if (typeof value[selector] === "string" && pattern.test(value[selector])) {
-      return value[selector];
-    }
-    for (const entry of Object.values(value)) {
-      const found = find(entry);
-      if (found) return found;
-    }
-  }
-};
-const hash = find(summary.parsedJson);
-if (!hash) throw new Error(`no ${selector} transaction hash in ${summaryPath}`);
-process.stdout.write(hash.toLowerCase());
-NODE
-}
-
-HUB_ORACLE_NONCE_TX_HASH="$(step_tx_hash "$HUB_ORACLE_NONCE_STEP" txHash)"
-# INIT_TX_HASH was read from the completed deployment-manifest init step.
-OPERATOR_REGISTRATION_TX_HASH="$(step_tx_hash "$OPERATOR_STEP" registerTxHash)"
-OPERATOR_ACTIVATION_TX_HASH="$(step_tx_hash "$OPERATOR_STEP" activateTxHash)"
-DEPOSIT_TX_HASH="$(step_tx_hash "$DEPOSIT_STEP" txHash)"
-TX_A="$(step_tx_hash "$L2_TRANSFER_A_STEP" txId)"
-TX_B="$(step_tx_hash "$L2_TRANSFER_B_STEP" txId)"
-```
-
-After automatic merge, reconcile the confirmed header commits against the
-fresh run's deposit and L2 transactions. Assign `HEADER_COMMIT_A_TX_HASH` and
-`HEADER_COMMIT_B_TX_HASH` from those authenticated observations for the required
-`header-commit-a` and `header-commit-b` evidence labels. Record which header and
-source events each hash proves. Retain any additional commits separately.
-
-The finalizer requires those labels; it does not require exactly two total
-header commits in the database. Do not select the first two rows from an
-unfiltered table, truncate additional commits, or use unrelated transaction hashes.
-
-### Generate the dashboard
-
-Capture the full container log for this run; a fixed recent-time window can
-omit an earlier failed attempt. For attach/resume, retain the existing raw
-logs as well and identify the run's start in the evidence.
-
-Require the reconciled commit observations before constructing the dashboard:
-
-```bash
-: "${HEADER_COMMIT_A_TX_HASH:?set from confirmed run evidence}"
-: "${HEADER_COMMIT_B_TX_HASH:?set from confirmed run evidence}"
-```
-
-Include every required step summary, including the DA bind/listen preflight.
-
-```bash
-NODE_LOG="logs/$RUN_ID/midgard-node.log"
-$COMPOSE logs --no-color midgard-node > "$NODE_LOG"
-rg -i \
-  "error|failed|failure|unknownOutput|crashed|abandon|ScriptIntegrityHashMismatch|hash mismatch" \
-  "$NODE_LOG" || true
-
-STEP_SUMMARY_ARGS=()
-for step in \
-  "$HUB_ORACLE_NONCE_STEP" \
-  "$REFERENCE_STEP" \
-  "$INIT_STEP" \
-  "$OPERATOR_STEP" \
-  "$DA_WALLET_PREFLIGHT_STEP" \
-  "$DA_LIBP2P_PREFLIGHT_STEP" \
-  "$READY_STEP" \
-  "$DEPOSIT_STEP" \
-  "$DEPOSIT_PROJECTED_STEP" \
-  "$L2_TRANSFER_A_STEP" \
-  "$L2_TRANSFER_B_STEP" \
-  "$AUTOMATIC_MERGE_STEP"; do
-  if [ -f "$step" ]; then
-    STEP_SUMMARY_ARGS+=(--step-summary "$step")
-  fi
-done
-
-TX_ARGS=()
-append_tx_arg() {
-  [ -z "$2" ] || TX_ARGS+=(--tx "$1:$2:$3:$4")
-}
-require_committed_l2_tx() {
-  local body
-  body="$(curl -sf "http://127.0.0.1:3000/tx-status?tx_hash=$1")"
-  node --input-type=module - "$body" <<'NODE'
-const body = JSON.parse(process.argv[2]);
-process.exit(body.status === "committed" ? 0 : 1);
-NODE
-}
-require_committed_l2_tx "$TX_A"
-require_committed_l2_tx "$TX_B"
-append_tx_arg hub-oracle-nonce "$HUB_ORACLE_NONCE_TX_HASH" confirmed "$HUB_ORACLE_NONCE_STEP"
-append_tx_arg init "$INIT_TX_HASH" confirmed "$INIT_STEP"
-append_tx_arg operator-registration "$OPERATOR_REGISTRATION_TX_HASH" confirmed "$OPERATOR_STEP"
-append_tx_arg operator-activation "$OPERATOR_ACTIVATION_TX_HASH" confirmed "$OPERATOR_STEP"
-append_tx_arg deposit "$DEPOSIT_TX_HASH" confirmed "$DEPOSIT_STEP"
-append_tx_arg l2-transfer-a "$TX_A" committed "tx-status:$TX_A"
-append_tx_arg l2-transfer-b "$TX_B" committed "tx-status:$TX_B"
-append_tx_arg header-commit-a "$HEADER_COMMIT_A_TX_HASH" confirmed "postgres:pending_block_finalizations"
-append_tx_arg header-commit-b "$HEADER_COMMIT_B_TX_HASH" confirmed "postgres:pending_block_finalizations"
-
-SUMMARY_MODE="${SUMMARY_MODE:-fresh}"
-case "$SUMMARY_MODE" in
-  fresh|attach|resume) ;;
-  *) echo "invalid summary mode: $SUMMARY_MODE" >&2; exit 1 ;;
-esac
-
-POSTGRES_HOST=127.0.0.1 \
-POSTGRES_PORT=5433 \
-ADMIN_API_KEY="${ADMIN_API_KEY:-localdev-admin}" \
-node "$TOOLS_CLI" e2e-finalize-summary \
-  --mode "$SUMMARY_MODE" \
-  --run-id "$RUN_ID" \
-  --out-dir "logs/$RUN_ID" \
-  --node-log "$NODE_LOG" \
-  --state-correction-evidence "$STATE_CORRECTION_EVIDENCE" \
-  --state-correction-deployment-manifest "$STATE_CORRECTION_MANIFEST" \
-  --state-correction-blueprint "$STATE_CORRECTION_BLUEPRINT" \
-  --state-correction-catalogue "$STATE_CORRECTION_CATALOGUE" \
-  --state-correction-parameters "$STATE_CORRECTION_PARAMETERS" \
-  --state-correction-final-snapshot "$STATE_CORRECTION_FINAL_SNAPSHOT" \
-  "${STATE_CORRECTION_WORKFLOW_ARGS[@]}" \
-  "${STATE_CORRECTION_L1_ARGS[@]}" \
-  "${STATE_CORRECTION_RECOVERY_ARGS[@]}" \
-  "${STEP_SUMMARY_ARGS[@]}" \
-  "${TX_ARGS[@]}"
-```
-
-The command constructs its non-artifact authority from `L1_PROVIDER=Kupmios`,
-the configured loopback `L1_KUPO_KEY` and `L1_OGMIOS_KEY`, and the live node
-database. It forbids provider failover, re-reads every transaction from Kupo and
-its canonical Ogmios block, rejects a rollback before the captured tip, and
-re-reads the final queue and retained proof tokens. A remote endpoint, a missing
-local source, or a callback that merely rereads the evidence directory is a hard
-failure.
-
-For opt-in stress, follow `benchmark.md` and append the verified
-`--stress-summary` artifact.
-
-### Audit the result
-
-Inspect `logs/$RUN_ID/summary.json` and `summary.md`, not only the CLI exit code.
-Confirm every acceptance condition in `SKILL.md`. Also record:
-
-- run mode and reason;
-- manifest ID/hash, one-shot, reference-script policy/count;
-- all step/log paths and transaction hashes;
-- watcher manifest/store/PID/log paths and per-header status;
-- endpoint health/readiness and L2 balances;
-- scheduler, finalization, DA and automatic merge evidence; and
-- any recovered attempt and why clean-run status differs from functional status.
-
-Do not call the run complete while any transaction or required evidence item is
-missing or ambiguous.
+`restart` on that project keeps the generated settings. Do not start the stack
+with the node README's plain `docker compose ... up`, which reads the `.env`
+holding the stack secrets without the generated settings. To change the
+services, change the configuration and rerun `e2e-stack`.
+
+Read-only checks the stack itself polls: node `/healthz`, `/readyz` and
+`/tx-status?tx_hash=<hash>` at the configured `endpoint`, each committee
+member's `/readyz` on `committeeApiBase + index`, and the watcher's
+`/v1/status`. Print the wrapper's derived ports with
+`bash scripts/operator-compose.sh --print-env --env-file .env`.
+
+## Report
+
+Report, with artifact paths rather than bodies:
+
+- run mode, reason and configuration path (never secret values);
+- the final summary's `result`, `confirmedSteps` and `cycles`;
+- the deployment manifest ID and the nonce, `init` and operator transaction
+  hashes from the journal;
+- per cycle: the deposit, transfer and withdrawal hashes, the committed header,
+  the public DA payload file, and the exact L2 and payout values;
+- every stop, its message, the diagnosis and the rerun that followed; and
+- that release readiness was not run, unless
+  [release-readiness.md](release-readiness.md) was followed.
+
+Do not call the run complete while any step is `running` in the journal or
+the summary is missing.

@@ -13,6 +13,11 @@ directory, so a relative path would not resolve against the caller's directory.
 An already built tool runs the same command as
 `node demo/midgard-node-tools/dist/index.js e2e-stack --config ...`.
 
+This command is the only live acceptance flow. The operating runbook (run
+modes, the step-by-step reference, evidence and stop-message recovery) is the
+[midgard-e2e-acceptance skill](../../../.agents/skills/midgard-e2e-acceptance/SKILL.md);
+this document specifies the configuration and behavior it relies on.
+
 Use Node 22.16 or newer, the repository's pnpm, its pinned Aiken compiler, Docker
 Compose 2.21 or newer (setup refuses older versions), Go (setup selects
 1.25.7), Rust/Cargo and Linux `flock`. Install the workspace dependencies first. Setup builds
@@ -202,7 +207,8 @@ continues after the first payment. No merge or payout repair command is used.
 Private evidence lives in `attempts/`, `stack-journal.json`, per-cycle receipt
 files and `setup-summary.json`/`journey-summary.json`. The journey summary proves
 this functional scope; it is not the repository's full fault-proof, rollback
-and release-readiness acceptance suite.
+and release-readiness acceptance suite. The gates it does not produce are listed
+in [release-readiness.md](../../../.agents/skills/midgard-e2e-acceptance/references/release-readiness.md).
 
 Focused recovery checks:
 

@@ -268,13 +268,17 @@ export const toolingChecks = () => [
     plan: () => [step(node(script))],
   })),
   {
-    // The runbook names CLI commands, so a renamed command breaks it too.
+    // The runbook names CLI commands, the stack's steps and its stop messages,
+    // so a renamed command, step or message breaks it too.
     id: "e2e-runbook",
     title: "The e2e acceptance runbook matches the CLIs it drives",
     triggers: [
       `${E2E_SKILL}/**`,
       "demo/midgard-node/src/index*.ts",
+      "demo/midgard-node/src/commands/prepare-hub-oracle-nonce.resume-signed.ts",
       "demo/midgard-node-tools/src/**",
+      "demo/midgard-node-tools/docs/PREPROD_STACK.md",
+      "demo/midgard-node-tools/package.json",
     ],
     requiresFiles: [`${E2E_SKILL}/scripts/validate-runbook.mjs`],
     prePush: true,

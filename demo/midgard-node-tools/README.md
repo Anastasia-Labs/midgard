@@ -52,23 +52,27 @@ Run `pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/st
 from the repository root. It saves confirmed progress, resumes the deployment,
 starts the existing Compose stack and checks deposits, transfers and automatic
 withdrawal payments. See [configuration and recovery](docs/PREPROD_STACK.md).
+This is the only live acceptance flow; the operating runbook is
+`.agents/skills/midgard-e2e-acceptance` at the repository root.
 
 ## Commands
 
 | Command                                                              | Purpose                                                                    |
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `e2e-stack`                                                          | One-command persistent Preprod setup, resume and wallet journeys           |
 | `e2e-run-step`, `e2e-start-service`, `e2e-clean-owned-process-group` | Structured step runner, managed service start, fail-closed process cleanup |
-| `e2e-finalize-summary`                                               | Collect endpoint/database evidence and write `summary.json` + `summary.md` |
+| `e2e-finalize-summary`                                               | Release-readiness dashboard (`summary.json` + `summary.md`)                |
 | `e2e-stress-l2-throughput`                                           | Opt-in bounded L2 transfer stress with SQL-grounded stage metrics          |
 | `create-l2-wallet`, `stress-wallets:*`                               | Persisted stress wallets: create, prepare, fan-out, consolidate, drain     |
 | `stress-corpus-generate`, `stress-corpus-verify`                     | Signed NDJSON transaction corpus for repeatable benchmarks                 |
 | `phase4-genesis-ledger`, `phase4-t1-probe`, `phase4-t1-advance`      | Gated Phase 4 local-devnet genesis and T1 recovery commands                |
 | `e2e-pipelined-commit-process-acceptance`                            | The Phase 4 crash/restart and two-node process acceptance matrix           |
 
-The operator-facing runbook that sequences these is
-`.agents/skills/midgard-e2e-acceptance` at the repository root; it invokes them
-as `node "$TOOLS_CLI" <command>` and operator commands as
-`node dist/index.js <command>` from `demo/midgard-node`.
+`e2e-stack` runs its commands through the same structured step runner as
+`e2e-run-step`. `e2e-start-service` supervises hand-started devnet processes
+(see `.agents/skills/running-the-devnet`). `e2e-finalize-summary` gates release
+readiness on evidence an `e2e-stack` run does not produce; see
+`.agents/skills/midgard-e2e-acceptance/references/release-readiness.md`.
 
 ## Parallel Fanout Stress Wallets
 
