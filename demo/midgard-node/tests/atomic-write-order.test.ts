@@ -4,12 +4,14 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   calls: [] as string[],
+  syncedDirectories: [] as string[],
+  firstCreated: undefined as string | undefined,
   failDirectorySync: false,
   failTempWrite: false,
 }));
 
 const openMock = vi.hoisted(() =>
-  vi.fn(async (_path: string, flags: string, _mode?: number) => {
+  vi.fn(async (path: string, flags: string, _mode?: number) => {
     const kind = flags === "wx" ? "file" : "directory";
     return {
       writeFile: async () => {
@@ -18,6 +20,7 @@ const openMock = vi.hoisted(() =>
       },
       sync: async () => {
         state.calls.push(`sync:${kind}`);
+        if (kind === "directory") state.syncedDirectories.push(path);
         if (kind === "directory" && state.failDirectorySync) {
           throw new Error("injected directory sync failure");
         }
@@ -35,6 +38,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...actual,
     mkdir: vi.fn(async () => {
       state.calls.push("mkdir");
+      return state.firstCreated;
     }),
     open: openMock,
     chmod: vi.fn(async () => {
@@ -70,6 +74,8 @@ const relativeOrder = (call: string): number => state.calls.indexOf(call);
 describe("durable atomic write ordering", () => {
   beforeEach(() => {
     state.calls.length = 0;
+    state.syncedDirectories.length = 0;
+    state.firstCreated = undefined;
     state.failDirectorySync = false;
     state.failTempWrite = false;
   });
@@ -86,6 +92,17 @@ describe("durable atomic write ordering", () => {
     expect(relativeOrder("rename")).toBeLessThan(
       relativeOrder("sync:directory"),
     );
+  });
+
+  it("syncs the parent of every directory it created, not only the file's parent", async () => {
+    state.firstCreated = "/tmp/run";
+    await writeTextFileAtomic("/tmp/run/services/state.json", "content");
+
+    expect(state.syncedDirectories).toEqual([
+      "/tmp/run/services",
+      "/tmp/run",
+      "/tmp",
+    ]);
   });
 
   it("still removes the temp file when the parent-directory sync fails after rename", async () => {
