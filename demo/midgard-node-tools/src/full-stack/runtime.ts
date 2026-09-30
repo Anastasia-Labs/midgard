@@ -20,6 +20,7 @@ import { generateWatcherServices } from "./watcher-services.js";
 import type { StackStep } from "./workflow.js";
 
 type RuntimeConfiguration = {
+  inputDigest: string;
   compose: string;
   operationsEndpoint: string;
   authorityEndpoint: string;
@@ -38,6 +39,30 @@ export async function readRuntimeConfiguration(processes: StackProcesses) {
   )
     throw new Error("Runtime configuration is missing");
   return value;
+}
+/**
+ * Digest of what generation reads besides the deployment: the stack
+ * configuration and the files it names. Ports and templates may change between
+ * runs without changing the run intent.
+ */
+export async function runtimeInputDigest(processes: StackProcesses) {
+  const { config } = processes;
+  const hash = createHash("sha256").update(JSON.stringify(config));
+  for (const path of [
+    config.envFile,
+    config.watcher.composeEnvFile,
+    config.watcher.processTemplate,
+    config.watcher.authorityTemplate,
+  ]) {
+    const bytes = await readFile(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return Buffer.from("absent");
+      throw error;
+    });
+    hash
+      .update(`\0${path}\0`)
+      .update(createHash("sha256").update(bytes).digest("hex"));
+  }
+  return hash.digest("hex");
 }
 const servicesDirectory = (processes: StackProcesses) =>
   join(processes.config.runDirectory, "services");
@@ -88,7 +113,8 @@ function nodeEnvironment(processes: StackProcesses, ownerSha256: string) {
     MPF_NATIVE_OWNER_BINARY_SHA256: ownerSha256,
   };
 }
-export async function confirmRuntimeReadiness(processes: StackProcesses) {
+/** One read of every service's readiness; undefined while any is not ready. */
+async function runtimeReadinessReader(processes: StackProcesses) {
   const runtime = await readRuntimeConfiguration(processes);
   const committee = await committeeExpectation(processes);
   const headers = await bearerHeaders(processes.config.watcher.bearerFile);
@@ -106,52 +132,55 @@ export async function confirmRuntimeReadiness(processes: StackProcesses) {
   const { manifestId } = (await readJsonIfPresent(
     stackPaths(processes).manifest,
   )) as { manifestId: string };
+  return async () => {
+    const node = (await getJson(`${processes.config.endpoint}/readyz`)) as
+      | {
+          ready?: boolean;
+          reasons?: unknown[];
+          settlement?: { state?: string };
+        }
+      | undefined;
+    const watcher = (await getJson(
+      `${runtime.operationsEndpoint}/v1/status`,
+      headers,
+    )) as
+      | {
+          liveness?: string;
+          readiness?: string;
+          readinessReasons?: unknown[];
+        }
+      | undefined;
+    const authority = await getJson(
+      `${runtime.authorityEndpoint}/v1/identity`,
+      headers,
+    );
+    const committees = await Promise.all(
+      processes.config.da.members.map((_, index) =>
+        getJson(
+          `http://127.0.0.1:${processes.config.da.ports.committeeApiBase + index}/readyz`,
+        ),
+      ),
+    );
+    if (
+      !stackIsReady({
+        node,
+        watcher,
+        authority,
+        committees,
+        manifestId,
+        recordKeyId,
+        committeePeerIds: committee.peerIds,
+      })
+    )
+      return undefined;
+    return { node, watcher, authority, committees };
+  };
+}
+export async function confirmRuntimeReadiness(processes: StackProcesses) {
   return poll(
     "complete stack readiness",
     processes.config.timeoutMs,
-    async () => {
-      const node = (await getJson(`${processes.config.endpoint}/readyz`)) as
-        | {
-            ready?: boolean;
-            reasons?: unknown[];
-            settlement?: { state?: string };
-          }
-        | undefined;
-      const watcher = (await getJson(
-        `${runtime.operationsEndpoint}/v1/status`,
-        headers,
-      )) as
-        | {
-            liveness?: string;
-            readiness?: string;
-            readinessReasons?: unknown[];
-          }
-        | undefined;
-      const authority = await getJson(
-        `${runtime.authorityEndpoint}/v1/identity`,
-        headers,
-      );
-      const committees = await Promise.all(
-        processes.config.da.members.map((_, index) =>
-          getJson(
-            `http://127.0.0.1:${processes.config.da.ports.committeeApiBase + index}/readyz`,
-          ),
-        ),
-      );
-      if (
-        !stackIsReady({
-          node,
-          watcher,
-          authority,
-          committees,
-          manifestId,
-          recordKeyId,
-          committeePeerIds: committee.peerIds,
-        })
-      )
-        return undefined;
-      return { node, watcher, authority, committees };
-    },
+    await runtimeReadinessReader(processes),
   );
 }
 
@@ -159,18 +188,25 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
   return [
     {
       id: "runtime-configuration",
-      // Generation is deterministic for one intent, so a completed record stays valid.
+      // Generation also reads inputs the intent does not bind, such as ports and
+      // templates, so a saved configuration is reused only while their digest matches.
       reconcile: async (record) => {
         if (
           record?.status === "complete" ||
           (record?.status === "running" && record.data !== null)
         ) {
+          const saved = (await readJsonIfPresent(
+            runtimeConfigurationPath(processes),
+          )) as Partial<RuntimeConfiguration> | undefined;
+          if (saved?.inputDigest !== (await runtimeInputDigest(processes)))
+            return { status: "retry" };
           restoreRuntimeEnvironment(processes);
           return { status: "complete", data: record.data };
         }
         return { status: "retry" };
       },
       execute: async () => {
+        const inputDigest = await runtimeInputDigest(processes);
         const da = await generateDaServices(processes);
         const member = (await readJsonIfPresent(
           join(da.directory, "committee-0.json"),
@@ -212,6 +248,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           compose,
         );
         const configuration = {
+          inputDigest,
           compose,
           operationsEndpoint: watcher.operationsEndpoint,
           authorityEndpoint: watcher.authorityEndpoint,
@@ -235,15 +272,16 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           record?.status === "complete" ||
           (record?.status === "running" && record.data !== null)
         ) {
-          // A running stack is confirmed without rebuilding; a stopped one is started again.
+          // One snapshot confirms a running stack without rebuilding it; a
+          // stopped or unready one is started again, and only execute waits.
           try {
-            return {
-              status: "complete",
-              data: await confirmRuntimeReadiness(processes),
-            };
+            const snapshot = await (await runtimeReadinessReader(processes))();
+            if (snapshot !== undefined)
+              return { status: "complete", data: snapshot };
           } catch {
-            return { status: "retry" };
+            // Missing or unreadable expectations restart the services too.
           }
+          return { status: "retry" };
         }
         return { status: "retry" };
       },

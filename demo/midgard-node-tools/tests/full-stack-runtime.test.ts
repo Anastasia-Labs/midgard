@@ -5,11 +5,11 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 
 import { parse } from "dotenv";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { assertComposeVersion } from "../src/full-stack/prerequisites.js";
 import { committeeIsReady } from "../src/full-stack/readiness.js";
-import { runtimeSteps } from "../src/full-stack/runtime.js";
+import { runtimeInputDigest, runtimeSteps } from "../src/full-stack/runtime.js";
 import {
   RecordingProcesses,
   removeStackFixtures,
@@ -124,20 +124,21 @@ async function stack() {
       da_committee: { members: [{ signer_index: 0, peer_id: "peer-0" }] },
     }),
   );
-  await writeFile(
-    join(directory, "run/runtime.json"),
-    JSON.stringify({
-      compose: join(directory, "run/services/compose.json"),
-      operationsEndpoint: servicesUrl,
-      authorityEndpoint: servicesUrl,
-      committeeServices: ["da-committee-0"],
-    }),
-  );
   await writeFile(join(directory, "bearer"), "bearer-token\n");
   await writeFile(join(directory, "record-key"), `${recordKey}\n`);
   await writeFile(
     join(directory, "watcher.env"),
     `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\n`,
+  );
+  await writeFile(
+    join(directory, "run/runtime.json"),
+    JSON.stringify({
+      inputDigest: await runtimeInputDigest(processes),
+      compose: join(directory, "run/services/compose.json"),
+      operationsEndpoint: servicesUrl,
+      authorityEndpoint: servicesUrl,
+      committeeServices: ["da-committee-0"],
+    }),
   );
   const [configuration, , services_] = runtimeSteps(processes);
   return {
@@ -212,6 +213,39 @@ describe("runtime services step", () => {
     });
     expect(result.status).toBe("complete");
     expect(processes.calls).toEqual([]);
+  });
+  it("restarts an unready completed run from one snapshot, without waiting out the timeout", async () => {
+    const { processes, services } = await stack();
+    processes.config.timeoutMs = 600_000;
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+    try {
+      // Waiting would need the fake clock to advance, so it would never settle.
+      await expect(
+        services.reconcile({ status: "complete", attempts: 1, data: {} }),
+      ).resolves.toEqual({ status: "retry" });
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 30_000);
+  it("regenerates a completed configuration whose generation inputs changed", async () => {
+    const { directory, processes, configuration } = await stack();
+    const complete = {
+      status: "complete" as const,
+      attempts: 1,
+      data: { compose: "compose.json" },
+    };
+    processes.config.da.ports.database += 1;
+    expect(await configuration.reconcile(complete)).toEqual({
+      status: "retry",
+    });
+    processes.config.da.ports.database -= 1;
+    await writeFile(
+      join(directory, "watcher.env"),
+      `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\nOTHER=1\n`,
+    );
+    expect(await configuration.reconcile(complete)).toEqual({
+      status: "retry",
+    });
   });
   it("keeps a completed configuration and restores the host producer manifest", async () => {
     const { directory, processes, configuration } = await stack();
