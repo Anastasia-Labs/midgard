@@ -21,3 +21,4 @@ import "./support/submit-init-emulator-shared.js";
 import "./redeemer-canonicity-lifecycle.init-thread.js";
 import "./redeemer-canonicity-lifecycle.redeemer-canonicity-accepted-lifecycle.js";
 import "./redeemer-canonicity-lifecycle.redeemer-canonicity-forced-lifecycle.js";
+import "./redeemer-canonicity-lifecycle.redeemer-canonicity-forced-accepted-lifecycle.js";
