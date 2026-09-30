@@ -379,6 +379,36 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     });
   }
 
+  it("seals a header count its authenticated root disagrees with", async () => {
+    const fixture = await buildRetainedPlutusIdentityFixture({
+      verdict: "accepted",
+    });
+    const { header } = fixture.block;
+    // Header-valid: the source counts still sum to the total and the step
+    // count still equals it, but no counted root embeds the new counts.
+    const block = await recommit(fixture.block, () => ({}), {
+      depositCount: header.depositCount + 1n,
+      totalEventCount: header.totalEventCount + 1n,
+      transitionStepCount: header.transitionStepCount + 1n,
+    });
+    const { decision, requested, classifier } = await classify({
+      fixture,
+      block,
+      installed: true,
+    });
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "transitionTrace",
+      violationId: "transition-trace",
+      detectionId: "transition-trace:0:countFault",
+    });
+    if (decision.decision !== "fault_detected") throw new Error("narrowed");
+    expect(decision.replayDigest).toBe(
+      structuralReplayDigest(classifier.launchScope, decision),
+    );
+    expect(requested).toEqual([block.headerHash]);
+  });
+
   it("leaves an uninstalled scope to its installed families", async () => {
     // The route never replaces an installed family's result: networkId has
     // nothing to prove on this block, so the union's verdict stands.

@@ -64,14 +64,16 @@ import {
 } from "./replay.read-origin-events.js";
 
 /**
- * Freshly authenticates retained inputs and derives each verdict,
- * ledger mutation and trace through the canonical validation owner. No caller
+ * Freshly authenticates retained inputs and derives each verdict, ledger
+ * mutation and trace through the canonical validation owner. No caller
  * supplies a verdict, descriptor, replay input, evaluator or detector callback.
  * Non-L2 events require their exact originating L1 authority. Under decision
  * 0007 a committed deposit or withdrawal whose origin is absent, or whose
  * authentic origin differs in content, records the prerequisite owed to
  * `fabricatedDeposit`/`fabricatedWithdrawal` rather than aborting; an absent
- * forced origin still aborts, because no family proves it.
+ * forced origin still aborts, because no family proves it. The coverage and
+ * ordering checks below are invariants: a block breaking them is a
+ * transitionTrace fault, sealed before replay when that family is installed.
  */
 export const admitValidationTraceReplayContext = async ({
   evidence,
@@ -111,10 +113,8 @@ export const admitValidationTraceReplayContext = async ({
     !sameEvidenceIdentity(prior, predecessor) ||
     prior.headerHash !== current.header.prevHeaderHash ||
     prior.header.utxosRoot !== current.header.prevUtxosRoot
-  ) {
+  )
     throw new Error("validation replay predecessor identity changed");
-  }
-
   const reconstruction = current.reconstruction;
   const origins =
     transitionTraceEvents === undefined
