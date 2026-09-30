@@ -149,9 +149,12 @@ before their first send and reused after a lost response.
 
 A controller lock prevents two runs against one node directory, and a command
 lock allows one stack command at a time. Interrupting the controller (Ctrl-C or
-kill) ends the in-flight child command at its next output line and releases
-both locks; the rerun's Cardano and journal reconciliation then prevents
-duplicate transactions.
+kill) ends an in-flight child command at its next output line, which releases
+both locks. A child blocked without output survives the controller and keeps
+the command lock, and through the inherited controller-lock descriptor it keeps
+the controller lock too, so a rerun is refused until that child exits. The
+rerun's Cardano and journal reconciliation then prevents duplicate
+transactions.
 
 A run is bound to its identity: network, deployment profile, node and run
 directories, wallet seeds, DA members, transports, threshold, owners and
