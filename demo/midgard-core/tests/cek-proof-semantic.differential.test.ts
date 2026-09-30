@@ -45,8 +45,12 @@ const describeSemantic = (value: unknown): string => {
   if (typeof value === "bigint") return `${value}n`;
   if (typeof value === "string") return `h:${value}`;
   if (Array.isArray(value)) return `[${value.map(describeSemantic).join(",")}]`;
-  if (value instanceof Map) {
-    return `M{${[...(value as Map<unknown, unknown>)]
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { kind?: unknown }).kind === "map"
+  ) {
+    return `M{${(value as { entries: [unknown, unknown][] }).entries
       .map(([k, v]) => `${describeSemantic(k)}=>${describeSemantic(v)}`)
       .join(",")}}`;
   }
@@ -101,7 +105,7 @@ const semanticBuilders = (rng: FuzzRng) => {
       odd<SemanticDataValue>(rng.chance(0.1) ? hex.toUpperCase() : hex),
     list: (items: SemanticDataValue[]) => odd<SemanticDataValue>(items),
     map: (entries: [SemanticDataValue, SemanticDataValue][]) =>
-      odd<SemanticDataValue>(new Map(entries)),
+      odd<SemanticDataValue>({ kind: "map", entries }),
     constr: (constructor: bigint, fields: SemanticDataValue[]) =>
       odd<SemanticDataValue>({ kind: "constr", constructor, fields }),
   };
@@ -302,24 +306,6 @@ describe("semantic Data reconstruction vs the recursive version", () => {
     }
     expect(accepted).toBeGreaterThan(SEEDED_MATERIALS / 2);
   }, 60_000);
-
-  it("still collapses duplicate map keys, so the root check refuses them", () => {
-    const material = emptySemanticMaterial();
-    const summary = addRawData(material, {
-      kind: "map",
-      entries: [
-        [1n, 2n],
-        [1n, 3n],
-      ],
-    });
-    const rebuilt = makeSemanticDataReconstructor(materialSource(material))(
-      summary.root,
-    );
-    expect(describeSemantic(rebuilt)).toBe("M{1n=>3n}");
-    expect(hexRoot(commitSemanticData(rebuilt).root)).not.toBe(
-      hexRoot(summary.root),
-    );
-  });
 
   it("names the leaf where Lucid would have failed on a non-integer leaf", () => {
     const material = emptySemanticMaterial();

@@ -41,7 +41,7 @@ export const deepSemanticValue = (
       shape === "list"
         ? [value]
         : shape === "map"
-          ? new Map([[0n, value]])
+          ? { kind: "map", entries: [[0n, value]] }
           : { kind: "constr", constructor: 0n, fields: [value] };
   }
   return value;

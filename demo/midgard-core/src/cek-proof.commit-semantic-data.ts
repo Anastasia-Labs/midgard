@@ -16,6 +16,7 @@ import {
   semanticCborHeader,
   type SemanticConstantType,
   type SemanticDataValue,
+  semanticMapChildren,
 } from "./cek-proof.program-material-task.js";
 import {
   hashMidgardCekDataListNode,
@@ -193,10 +194,6 @@ const closeCommitFrame = (frame: CommitFrame): CommittedNode => {
     );
   }
   if (frame.kind === "map") {
-    const map = frame.owner as ReadonlyMap<
-      SemanticDataValue,
-      SemanticDataValue
-    >;
     return sealNode(
       {
         kind: "map",
@@ -208,7 +205,8 @@ const closeCommitFrame = (frame: CommitFrame): CommittedNode => {
         ),
         memory: 4n + summary.memory,
       },
-      BigInt(semanticCborHeader(5, BigInt(map.size)).length) + payload,
+      BigInt(semanticCborHeader(5, BigInt(frame.children.length / 2)).length) +
+        payload,
     );
   }
   const constr = frame.owner as SemanticConstrValue;
@@ -328,7 +326,7 @@ const openCommitFrame = (value: SemanticDataValue & object): CommitFrame => {
     };
   }
   if (isSemanticMap(value)) {
-    const children = [...value.entries()].flat();
+    const children = semanticMapChildren(value);
     return {
       owner: value,
       children,

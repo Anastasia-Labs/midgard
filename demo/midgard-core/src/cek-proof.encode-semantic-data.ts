@@ -7,6 +7,7 @@ import {
   isSemanticMap,
   semanticCborHeader,
   type SemanticDataValue,
+  semanticMapChildren,
 } from "./cek-proof.program-material-task.js";
 
 export type SemanticConstrValue = Extract<
@@ -116,8 +117,9 @@ const walkSemanticData = (
       } else if (isSemanticList(current)) {
         openList(current, current, undefined, -1);
       } else if (isSemanticMap(current)) {
-        push(semanticCborHeader(5, BigInt(current.size)));
-        openFrame(current, [...current.entries()].flat(), false, undefined, -1);
+        const children = semanticMapChildren(current);
+        push(semanticCborHeader(5, BigInt(children.length / 2)));
+        openFrame(current, children, false, undefined, -1);
       } else if (isSemanticConstr(current)) {
         const headerSlot = chunks?.length ?? -1;
         push(NO_BYTES);
@@ -153,8 +155,9 @@ const walkSemanticData = (
 
 /**
  * The canonical CBOR of a semantic Data value: integers as Lucid writes them,
- * bytes chunked at 64, lists indefinite (empty as `80`), maps definite, and
- * constructors in compact or tag-102 form.
+ * bytes chunked at 64, lists indefinite (empty as `80`), maps definite with
+ * every entry in order (duplicate keys included), and constructors in compact
+ * or tag-102 form.
  */
 export const encodeSemanticData = (value: SemanticDataValue): Buffer => {
   const chunks: Buffer[] = [];

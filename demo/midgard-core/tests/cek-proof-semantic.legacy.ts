@@ -1,8 +1,10 @@
 /**
  * The recursive semantic-Data walks as they stood before they were made
- * iterative, vendored verbatim (bodies unchanged; imports repointed, the
- * reconstruct closures wrapped in a factory over the same source) so the
- * differential test can compare old and new. Test-only.
+ * iterative, vendored (imports repointed, the reconstruct closures wrapped in
+ * a factory over the same source) so the differential test can compare old
+ * and new. Test-only. The one change to the bodies: a map is the ordered
+ * entry list `SemanticDataMap` rather than a JS `Map`, so duplicate keys stay
+ * separate entries here as they do in the code under test.
  */
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
@@ -15,6 +17,8 @@ import {
   isSemanticList,
   isSemanticMap,
   semanticCborHeader,
+  type SemanticDataEntry,
+  type SemanticDataMap,
   type SemanticDataValue,
 } from "../src/cek-proof.program-material-task.js";
 import { type SemanticDataReconstructionSource } from "../src/cek-proof.reconstruct-semantic-data.js";
@@ -57,8 +61,8 @@ export const legacyEncodeSemanticData = (value: SemanticDataValue): Buffer => {
   }
   if (isSemanticMap(value)) {
     return Buffer.concat([
-      semanticCborHeader(5, BigInt(value.size)),
-      ...[...value.entries()].flatMap(([key, mapped]) => [
+      semanticCborHeader(5, BigInt(value.entries.length)),
+      ...value.entries.flatMap(([key, mapped]) => [
         legacyEncodeSemanticData(key),
         legacyEncodeSemanticData(mapped),
       ]),
@@ -200,7 +204,7 @@ export const legacyCommitSemanticData = (
       memory: 4n + items.memory,
     };
   } else if (isSemanticMap(value)) {
-    const entries = commitPairs([...value.entries()]);
+    const entries = commitPairs(value.entries);
     node = {
       kind: "map",
       entriesCount: entries.length,
@@ -290,8 +294,8 @@ export const makeLegacySemanticDataReconstructor = ({
   const reconstructDataPairs = (
     root: Uint8Array,
     length: bigint,
-  ): ReadonlyMap<SemanticDataValue, SemanticDataValue> => {
-    const entries = new Map<SemanticDataValue, SemanticDataValue>();
+  ): SemanticDataMap => {
+    const entries: SemanticDataEntry[] = [];
     let cursor = rootKey(root);
     let remaining = length;
     while (remaining > 0n) {
@@ -299,14 +303,14 @@ export const makeLegacySemanticDataReconstructor = ({
       if (link === undefined || link.length !== remaining) {
         throw new Error("CEK semantic Data map cannot be reconstructed");
       }
-      entries.set(reconstructData(link.key), reconstructData(link.value));
+      entries.push([reconstructData(link.key), reconstructData(link.value)]);
       cursor = rootKey(link.tail);
       remaining -= 1n;
     }
     if (cursor !== rootKey(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT)) {
       throw new Error("CEK semantic Data map has a non-empty tail");
     }
-    return entries;
+    return { kind: "map", entries };
   };
   function reconstructData(root: Uint8Array): SemanticDataValue {
     const key = rootKey(root);

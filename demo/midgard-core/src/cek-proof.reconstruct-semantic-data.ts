@@ -1,7 +1,10 @@
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import { MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES } from "./cek-proof.encode-midgard-cek-term-node.js";
-import { type SemanticDataValue } from "./cek-proof.program-material-task.js";
+import {
+  type SemanticDataEntry,
+  type SemanticDataValue,
+} from "./cek-proof.program-material-task.js";
 import {
   MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
   MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
@@ -69,7 +72,7 @@ type ChainFrame = {
   cursor: string;
   remaining: bigint;
   readonly items: SemanticDataValue[];
-  readonly entries: Map<SemanticDataValue, SemanticDataValue>;
+  readonly entries: SemanticDataEntry[];
   /** The map link whose key has been rebuilt and whose value is next. */
   pendingPair: MidgardCekDataPairNode | undefined;
   pendingKey: SemanticDataValue | undefined;
@@ -82,8 +85,8 @@ type ChainFrame = {
  * The walk uses an explicit stack. It visits nodes and links in the order of
  * the recursive walk it replaced (each link checked, then its head, or its key
  * then value, rebuilt in full), so it fails with the same first error. Rebuilt
- * values are shared by root: a map whose keys share a root collapses in the
- * JS `Map`, and the caller's root check then refuses it, as before.
+ * values are shared by root. A map keeps every entry in chain order, so keys
+ * that share a root (duplicate keys) stay separate entries.
  */
 export const makeSemanticDataReconstructor = (
   source: SemanticDataReconstructionSource,
@@ -107,7 +110,7 @@ export const makeSemanticDataReconstructor = (
       cursor: rootKey(chainRoot),
       remaining: count,
       items: [],
-      entries: new Map(),
+      entries: [],
       pendingPair: undefined,
       pendingKey: undefined,
     });
@@ -187,7 +190,7 @@ export const makeSemanticDataReconstructor = (
     } else if (frame.pendingKey === undefined) {
       frame.pendingKey = value;
     } else {
-      frame.entries.set(frame.pendingKey, value);
+      frame.entries.push([frame.pendingKey, value]);
       frame.pendingKey = undefined;
       frame.pendingPair = undefined;
     }
@@ -228,7 +231,7 @@ export const makeSemanticDataReconstructor = (
 
   const finish = (frame: ChainFrame): SemanticDataValue => {
     if (frame.kind === "list") return frame.items;
-    if (frame.kind === "map") return frame.entries;
+    if (frame.kind === "map") return { kind: "map", entries: frame.entries };
     return {
       kind: "constr",
       constructor: frame.constructor,
