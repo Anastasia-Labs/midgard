@@ -30,12 +30,30 @@ export const MIGRATIONS: readonly Migration[] = [
 export const EXPECTED_SCHEMA_VERSION =
   MIGRATIONS[MIGRATIONS.length - 1]!.version;
 
-export const MIGRATION_MANIFEST_HASH = sha256Hex(
-  MIGRATIONS.map(
-    (migration) =>
-      `${migration.version}:${migration.name}:${migration.checksumSha256}`,
-  ).join("\n"),
-);
+const manifestHashOf = (migrations: readonly Migration[]): string =>
+  sha256Hex(
+    migrations
+      .map(
+        (migration) =>
+          `${migration.version}:${migration.name}:${migration.checksumSha256}`,
+      )
+      .join("\n"),
+  );
+
+export const MIGRATION_MANIFEST_HASH = manifestHashOf(MIGRATIONS);
+
+/**
+ * The manifest hash an earlier release stamped, for each prefix of
+ * MIGRATIONS, mapped to the last version that prefix covers. Rows keep the
+ * hash of the release that applied them.
+ */
+export const MIGRATION_PREFIX_MANIFEST_HASHES: ReadonlyMap<string, number> =
+  new Map(
+    MIGRATIONS.map((migration, index) => [
+      manifestHashOf(MIGRATIONS.slice(0, index + 1)),
+      migration.version,
+    ]),
+  );
 
 export const APPLICATION_TABLE_NAMES = [
   "settlement_jobs",
