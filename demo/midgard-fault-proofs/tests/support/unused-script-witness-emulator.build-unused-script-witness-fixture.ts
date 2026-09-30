@@ -376,6 +376,7 @@ export const buildUnusedScriptWitnessFixture = async (
     scriptHashes,
     purposeCount,
     trace,
+    ledgerEntries,
     eventKey,
     orderKey,
     subject,
