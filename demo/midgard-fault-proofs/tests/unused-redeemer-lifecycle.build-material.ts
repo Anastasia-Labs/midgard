@@ -40,10 +40,20 @@ import {
   redeemerItems,
 } from "./unused-redeemer-lifecycle.maximum-redeemer-field.js";
 
-export const buildMaterial = async (
+/** The program material of the fixture's one PlutusV3 script. */
+export const programMaterialSidecarCbor = Buffer.from(
+  "82018282582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d47830100438200008258207d068efad94d2953eefe63951671327af75e08c963cd1f232b08966e6026bf5e582983010058248202582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d",
+  "hex",
+);
+
+/**
+ * The retained DA of a block carrying one transaction that spends
+ * `spendCount` outputs of one script under `spendCount` spend redeemers and
+ * one extra mint redeemer, which no purpose selects.
+ */
+export const buildRetainedDa = async (
   direction: "accepted" | "forced",
   mutateProofIndex = false,
-  redeemerIndexOverride?: number,
   omitAuditHeader = false,
   maximum = false,
   spendCount = 1,
@@ -95,6 +105,10 @@ export const buildMaterial = async (
       ]),
     },
   });
+  const ledgerWitnessEntries = spent.map((outRef) => ({
+    outRef,
+    output: spentOutput,
+  }));
   const sourceKey = { transactionId: "f7".repeat(32), outputIndex: 0n };
   const eventKey =
     direction === "accepted"
@@ -122,16 +136,10 @@ export const buildMaterial = async (
               decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
             )
           : transaction.txCbor,
-      programMaterialSidecarCbor: Buffer.from(
-        "82018282582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d47830100438200008258207d068efad94d2953eefe63951671327af75e08c963cd1f232b08966e6026bf5e582983010058248202582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d",
-        "hex",
-      ),
+      programMaterialSidecarCbor,
       priorUtxosRoot: "00".repeat(32),
       postUtxosRoot: "00".repeat(32),
-      ledgerWitnessEntries: spent.map((outRef) => ({
-        outRef,
-        output: spentOutput,
-      })),
+      ledgerWitnessEntries,
       expectedLedgerOps: [],
       ledgerMutationSteps: [],
       expectedVerdict: "rejected",
@@ -279,14 +287,49 @@ export const buildMaterial = async (
       },
     },
   } as unknown as CanonicalBlockEvidence;
+  const txCbor =
+    direction === "forced"
+      ? encodeMidgardForcedTxCanonical(
+          decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
+        )
+      : transaction.txCbor;
+  return {
+    block,
+    txCbor,
+    ledgerWitnessEntries,
+    sourceKey,
+    transaction,
+    traceRoot,
+    trace,
+    eventKey,
+    auditHeaderPc,
+  };
+};
+
+export const buildMaterial = async (
+  direction: "accepted" | "forced",
+  mutateProofIndex = false,
+  redeemerIndexOverride?: number,
+  omitAuditHeader = false,
+  maximum = false,
+  spendCount = 1,
+) => {
+  const { block, txCbor, sourceKey, ...da } = await buildRetainedDa(
+    direction,
+    mutateProofIndex,
+    omitAuditHeader,
+    maximum,
+    spendCount,
+  );
   const redeemerIndex =
     redeemerIndexOverride ??
     (direction === "accepted" ? spendCount : spendCount - 1);
+  const transactionId = da.transaction.txId.toString("hex");
   const subject =
     direction === "accepted"
-      ? SDK.acceptedVerdictSubject(transaction.txId.toString("hex"))
+      ? SDK.acceptedVerdictSubject(transactionId)
       : SDK.forcedVerdictSubject({
-          transactionId: transaction.txId.toString("hex"),
+          transactionId,
           sourceKey,
           rejectionReason: {
             UnusedRedeemer: { redeemer_index: BigInt(redeemerIndex) },
@@ -294,25 +337,12 @@ export const buildMaterial = async (
         });
   const material = await buildUnusedRedeemerMaterialFromRetainedDa({
     block,
-    eventKey,
+    eventKey: da.eventKey,
     subject,
     redeemerIndex,
-    txCbor:
-      direction === "forced"
-        ? encodeMidgardForcedTxCanonical(
-            decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
-          )
-        : transaction.txCbor,
+    txCbor,
   });
-  return {
-    material,
-    transaction,
-    traceRoot,
-    trace,
-    subject,
-    eventKey,
-    auditHeaderPc,
-  };
+  return { ...da, material, subject };
 };
 
 export const measuredFit = createMeasuredFitRecorder(
