@@ -461,6 +461,23 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         new Error("a rejected transaction must commit an exact ledger no-op"),
       );
     }
+    // A canonicalDecode rejection has no bounded trace: the bytes the trace
+    // would decode below are exactly the ones phase A refused, so exit before
+    // any of them is decoded.
+    if (rejection !== null && rejectionPhase(rejection) === "canonicalDecode") {
+      if (
+        rejection.code === RejectCodes.InvalidFieldType ||
+        rejection.code === RejectCodes.IsValidFalseForbidden
+      )
+        return yield* Effect.fail(
+          new DirectValidationTraceUnavailable(rejection.code),
+        );
+      return yield* Effect.fail(
+        new Error(
+          `V1 canonical rejection ${rejection.code} is not representable by the bounded canonical source`,
+        ),
+      );
+    }
 
     const authenticatedLedgerOps = input.ledgerMutationSteps.map(
       ({ operation, proofFoldTrace }) => ({
@@ -1335,20 +1352,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           }
         }
       }
-    }
-    if (rejection !== null && terminalPhase === "canonicalDecode") {
-      if (
-        rejection.code === RejectCodes.InvalidFieldType ||
-        rejection.code === RejectCodes.IsValidFalseForbidden
-      )
-        return yield* Effect.fail(
-          new DirectValidationTraceUnavailable(rejection.code),
-        );
-      return yield* Effect.fail(
-        new Error(
-          `V1 canonical rejection ${rejection.code} is not representable by the bounded canonical source`,
-        ),
-      );
     }
     for (const phase of ["compactBinding", "staticLedgerRules"] as const) {
       if (stoppedAtRejection) break;
