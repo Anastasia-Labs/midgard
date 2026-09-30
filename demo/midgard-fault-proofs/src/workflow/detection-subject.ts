@@ -49,14 +49,6 @@ const PHASE_FRONTIER: Readonly<
   Deposit: "deposit",
 };
 
-/** Canonical transition phase order: withdrawals, forced, normal, deposits. */
-const PHASE_RANK: Readonly<Record<SDK.TransitionPhase, number>> = {
-  Withdrawal: 0,
-  ForcedTransaction: 1,
-  L2Transaction: 2,
-  Deposit: 3,
-};
-
 export const BLOCK_SUBJECT: DetectionSubject = Object.freeze({
   frontier: "block",
   subjectEventKeyCbors: Object.freeze([]),
@@ -175,59 +167,101 @@ export const subjectOf = ({
   Object.freeze({ frontier, subjectEventKeyCbors });
 
 /**
- * A point on the one total event order of a block: phase rank, then the
- * authenticated transition step. Block-level findings precede every event.
+ * A point on the one total event order of a block: the `step_index` of the
+ * event's step in the authenticated transition trace, the order the replay
+ * applies events in (GOAL_SPEC §6: the earliest invalid transition is the
+ * earliest trace step). Within a phase that is the operator's application
+ * order, which need not be the committed list order: a transaction that
+ * spends a same-block output steps after the transaction producing it. A
+ * block-level finding precedes every event. An event of the block that no
+ * trace step names follows every traced event, in source-event order; the
+ * block then has a block-level structural finding, which sorts first. The
+ * committed `event_to_step` is never read: it is operator-written, so an
+ * omitted or permuted entry is a fault to prove, never an input that orders
+ * the proofs.
  */
-export type EventOrder = Readonly<{ rank: number; stepIndex: bigint }>;
+export type EventOrder = number;
 
-const BLOCK_ORDER: EventOrder = Object.freeze({ rank: -1, stepIndex: -1n });
+const BLOCK_ORDER: EventOrder = -1;
 
-export const compareEventOrder = (left: EventOrder, right: EventOrder) =>
-  left.rank !== right.rank
-    ? left.rank - right.rank
-    : left.stepIndex < right.stepIndex
-      ? -1
-      : left.stepIndex > right.stepIndex
-        ? 1
-        : 0;
+export const compareEventOrder = (
+  left: EventOrder,
+  right: EventOrder,
+): number => left - right;
+
+type EventOrderSource = Pick<
+  TransitionTraceReconstruction,
+  "sourceEvents" | "sourceEventsByFingerprint" | "transitionTrace"
+>;
+
+const eventOrders = new WeakMap<
+  EventOrderSource["sourceEvents"],
+  ReadonlyMap<string, EventOrder>
+>();
 
 /**
- * Places one committed event on the block's event order from the
- * authenticated `event_to_step` root. An event the root does not map fails
- * closed.
+ * Every source event's order, built once per reconstruction. The trace is
+ * scanned in `step_index` order and the lowest step naming an event wins;
+ * untraced events are placed after the last step in source-event order.
  */
-export const authenticatedEventOrder = (
-  reconstruction: Pick<
-    TransitionTraceReconstruction,
-    "eventToStepByFingerprint"
-  >,
-  eventKeyCbor: string,
-): EventOrder => {
-  const eventKey = Data.from(eventKeyCbor, SDK.EventKey);
-  const fingerprint = eventKeyFingerprint(eventKey);
-  if (fingerprint !== eventKeyCbor)
-    throw new Error(`event key ${eventKeyCbor} is not canonical EventKey CBOR`);
-  const entry = reconstruction.eventToStepByFingerprint.get(fingerprint);
-  if (entry === undefined)
-    throw new Error(
-      `event ${fingerprint} has no step in the authenticated transition trace`,
-    );
-  return Object.freeze({
-    rank: PHASE_RANK[eventKeyPhase(eventKey)],
-    stepIndex: entry.value.step_index,
-  });
+const eventOrdersOf = (
+  reconstruction: EventOrderSource,
+): ReadonlyMap<string, EventOrder> => {
+  const cached = eventOrders.get(reconstruction.sourceEvents);
+  if (cached !== undefined) return cached;
+  const stepByFingerprint = new Map<string, number>();
+  for (const { key, value } of [...reconstruction.transitionTrace].sort(
+    (left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0),
+  )) {
+    const fingerprint = eventKeyFingerprint(value.event_key);
+    if (!stepByFingerprint.has(fingerprint))
+      stepByFingerprint.set(fingerprint, Number(key));
+  }
+  const untracedBase = reconstruction.transitionTrace.length;
+  const orders = new Map(
+    reconstruction.sourceEvents.map(
+      ({ fingerprint }, index) =>
+        [
+          fingerprint,
+          stepByFingerprint.get(fingerprint) ?? untracedBase + index,
+        ] as const,
+    ),
+  );
+  eventOrders.set(reconstruction.sourceEvents, orders);
+  return orders;
 };
 
 /**
- * The transition a detection convicts, derived only from its declared subject
- * and the authenticated trace, never from its position or violation id. A pair
- * finding convicts its later event.
+ * Places one committed event on the block's event order. An event that is
+ * not a source event of this block at all is a watcher-internal
+ * inconsistency and fails closed; an event of the block never throws, whether
+ * or not the trace or the committed `event_to_step` names it.
+ */
+export const eventOrder = (
+  reconstruction: EventOrderSource,
+  eventKeyCbor: string,
+): EventOrder => {
+  const fingerprint = eventKeyFingerprint(
+    Data.from(eventKeyCbor, SDK.EventKey),
+  );
+  if (fingerprint !== eventKeyCbor)
+    throw new Error(`event key ${eventKeyCbor} is not canonical EventKey CBOR`);
+  const order = eventOrdersOf(reconstruction).get(fingerprint);
+  if (
+    order === undefined ||
+    !reconstruction.sourceEventsByFingerprint.has(fingerprint)
+  )
+    throw new Error(`event ${fingerprint} is not a source event of this block`);
+  return order;
+};
+
+/**
+ * The event a detection convicts, placed on the event order from its
+ * declared subject only, never from its position, its violation id or the
+ * committed `event_to_step`. A pair finding convicts its later event.
  */
 export const detectionEventOrder = (
-  reconstruction: Pick<
-    TransitionTraceReconstruction,
-    "eventToStepByFingerprint"
-  >,
+  reconstruction: EventOrderSource,
   detection: DetectionSubject & Readonly<{ detectionId: string }>,
 ): EventOrder => {
   const { frontier, subjectEventKeyCbors } = detection;
@@ -247,15 +281,13 @@ export const detectionEventOrder = (
     throw new Error(
       `detection ${detection.detectionId} names no subject event`,
     );
-  return subjectEventKeyCbors
-    .map((eventKeyCbor) => {
+  return Math.max(
+    ...subjectEventKeyCbors.map((eventKeyCbor) => {
       if (eventKeyPhase(Data.from(eventKeyCbor, SDK.EventKey)) !== phase)
         throw new Error(
           `detection ${detection.detectionId} names an event outside its ${frontier} frontier`,
         );
-      return authenticatedEventOrder(reconstruction, eventKeyCbor);
-    })
-    .reduce((later, order) =>
-      compareEventOrder(order, later) > 0 ? order : later,
-    );
+      return eventOrder(reconstruction, eventKeyCbor);
+    }),
+  );
 };

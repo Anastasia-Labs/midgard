@@ -19,9 +19,9 @@ import {
   FRAUD_PROOF_CLASSIFICATION_RULES,
 } from "./classification.js";
 import {
-  authenticatedEventOrder,
   compareEventOrder,
   detectionEventOrder,
+  eventOrder,
 } from "./detection-subject.js";
 
 export type ReplayPrerequisite =
@@ -191,8 +191,10 @@ const fabricatedSourceOriginCovered = (
 
 /**
  * Whether a registered finding convicts a transition at or before the event
- * the replay could not open, on the block's one event order (phase rank, then
- * the authenticated transition step). Any such finding makes the block
+ * the replay could not open, on the block's one event order: the authenticated
+ * transition trace's `step_index`, the order the replay walks and so the order
+ * prerequisite failures arise in, independent of the committed
+ * `event_to_step`. Any such finding makes the block
  * removable, and selection orders on the same axis, so the chosen proof is
  * never later than the unopened event and no earlier fault the replay did
  * not reach can hide behind it (GOAL_SPEC §6). The order comes only from each
@@ -206,10 +208,7 @@ const coveredAtOrBefore = (
 ): boolean => {
   const limit = (() => {
     try {
-      return authenticatedEventOrder(
-        evidence.reconstruction,
-        failure.eventKeyCbor,
-      );
+      return eventOrder(evidence.reconstruction, failure.eventKeyCbor);
     } catch {
       return undefined;
     }

@@ -50,6 +50,7 @@ export const buildDecodingBlockFixture = async ({
   subject,
   decoyTransactionCount = 0,
   additionalTransactions = [],
+  commitEventToStep = (entries) => entries,
 }: {
   readonly operatorVkey: string;
   readonly startTime: bigint;
@@ -63,6 +64,13 @@ export const buildDecodingBlockFixture = async ({
   readonly decoyTransactionCount?: number;
   /** Caller-supplied normal transactions committed beside the subject. */
   readonly additionalTransactions?: readonly MidgardNativeTxFull[];
+  /**
+   * The `event_to_step` entries the block commits, derived from the honest
+   * ones. The header and payload commit whatever this returns.
+   */
+  readonly commitEventToStep?: (
+    entries: readonly SDK.DaPayloadEntry[],
+  ) => readonly SDK.DaPayloadEntry[];
 }): Promise<DecodingBlockFixture> => {
   const submitted = materializeMidgardForcedTxFromCanonical(subject.nativeTx);
   const canonicalCbor =
@@ -244,6 +252,7 @@ export const buildDecodingBlockFixture = async ({
     );
   }
 
+  const committedEventToStep = commitEventToStep(eventToStep);
   const utxoRoot = await keyValuePhasRootWithCount([]);
   const roots = {
     withdrawals: await buildCountedRoot(SDK.ROOT_DOMAINS.withdrawals, []),
@@ -262,7 +271,7 @@ export const buildDecodingBlockFixture = async ({
     ),
     eventToStep: await buildCountedRoot(
       SDK.ROOT_DOMAINS.eventToStep,
-      bufferEntries(eventToStep),
+      bufferEntries(committedEventToStep),
     ),
     validationTraces: await buildCountedRoot(
       SDK.ROOT_DOMAINS.validationTraces,
@@ -311,7 +320,7 @@ export const buildDecodingBlockFixture = async ({
       transactions: sorted(transactions),
       deposits: [],
       transition_trace: sorted(transitionTrace),
-      event_to_step: sorted(eventToStep),
+      event_to_step: sorted(committedEventToStep),
       transaction_preimages: sorted(transactionPreimages),
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
       cek_program_material: [],

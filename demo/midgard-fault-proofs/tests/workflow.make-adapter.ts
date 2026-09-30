@@ -1,5 +1,5 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 
 import {
   type CanonicalBlockEvidence,
@@ -110,8 +110,12 @@ export const detection = (
   ...overrides,
 });
 
-/** Evidence whose authenticated trace has one normal step per transaction. */
-export const canonicalEvidenceWithSteps = async (
+/**
+ * Evidence with one normal transaction per id and ids in event order. The
+ * fixture commits an empty transition trace, so no event has a step and each
+ * falls back to its source-event order: the committed list order.
+ */
+export const canonicalEvidenceWithEvents = async (
   count: number,
 ): Promise<readonly [CanonicalBlockEvidence, readonly string[]]> => {
   const transactions = Array.from({ length: count }, (_, index) =>
@@ -121,18 +125,17 @@ export const canonicalEvidenceWithSteps = async (
     }),
   );
   const fixture = await buildCanonicalBlockFixture({ transactions });
-  return [
-    await canonicalBlockEvidenceFromVerifiedPayload({
-      observation: authenticatedHeaderObservation(fixture),
-      payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
-      daProvenance: {
-        trustClass: "public_or_permissionless_da",
-        sourceId: "libp2p/peer-a",
-        grade: "security",
-      },
-    }),
-    transactions.map(({ txId }) => txId),
-  ];
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
+    payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+    daProvenance: {
+      trustClass: "public_or_permissionless_da",
+      sourceId: "libp2p/peer-a",
+      grade: "security",
+    },
+  });
+  expect(evidence.reconstruction.transitionTrace).toEqual([]);
+  return [evidence, evidence.transactions.map(({ nodeTxId }) => nodeTxId)];
 };
 
 type AdapterControls = {

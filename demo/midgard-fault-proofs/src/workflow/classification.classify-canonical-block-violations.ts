@@ -76,8 +76,8 @@ export type CanonicalViolationDetection = DetectionSubject & {
   readonly violationId: string;
   /**
    * Reported ordinal within the detection's own source frontier. It never
-   * orders detections: the declared subject's authenticated transition step
-   * does.
+   * orders detections: the declared subject's step in the authenticated
+   * transition trace does, independent of the committed `event_to_step`.
    */
   readonly position: bigint;
   /** Public diagnostic text only; never used to select a proof family. */

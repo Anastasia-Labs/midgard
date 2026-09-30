@@ -10,7 +10,7 @@ import { acceptedTransactionSubject } from "../src/workflow/detection-subject.js
 import { h32 } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   canonicalEvidence,
-  canonicalEvidenceWithSteps,
+  canonicalEvidenceWithEvents,
   detection,
 } from "./workflow.make-adapter.js";
 
@@ -41,12 +41,12 @@ describe("Q55/W-O6 deterministic violation classification", () => {
     ).toEqual(SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(0, promoted));
   });
 
-  it("selects the earliest authenticated step, then stable family order", async () => {
-    const [evidence, txIds] = await canonicalEvidenceWithSteps(3);
+  it("selects the earliest event, then stable family order", async () => {
+    const [evidence, txIds] = await canonicalEvidenceWithEvents(3);
     const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: [
-        // A lower reported position never outranks an earlier step.
+        // A lower reported position never outranks an earlier event.
         detection(evidence, "mint-authorization", {
           ...acceptedTransactionSubject(txIds[2]!),
           detectionId: "mint-late",
@@ -72,7 +72,7 @@ describe("Q55/W-O6 deterministic violation classification", () => {
   });
 
   it("maps unknown earliest violations to unprovable_gap, never verified", async () => {
-    const [evidence, txIds] = await canonicalEvidenceWithSteps(2);
+    const [evidence, txIds] = await canonicalEvidenceWithEvents(2);
     const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: [
