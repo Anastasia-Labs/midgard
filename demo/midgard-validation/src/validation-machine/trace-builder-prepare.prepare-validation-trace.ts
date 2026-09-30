@@ -227,8 +227,8 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     }
     const rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
       !("ledgerTx" in phaseA) &&
-      phaseA.code === RejectCodes.InvalidFieldType &&
-      phaseA.consensusPhase === "canonicalDecode"
+      phaseA.consensusPhase === "canonicalDecode" &&
+      phaseA.subject?.arm === "WitnessNativeScriptMalformed"
         ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
             queued.txCbor,
             queued.sourceKind,

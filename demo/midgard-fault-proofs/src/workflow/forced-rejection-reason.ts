@@ -269,7 +269,7 @@ const dispositionOf = (code: RejectCode): CodeDisposition => {
  * phase), so a block holding one is never built and this reason is never
  * committed; it only lets a replay compare the arm it would have written.
  * The raw-envelope field-6 case is the one decode rejection a trace commits,
- * and it always carries its subject.
+ * and the trace commits it only when it carries its subject.
  */
 const UNCOMMITTED_CANONICAL_DECODE_REASONS: Partial<
   Record<RejectCode, SDK.RejectionReason>
