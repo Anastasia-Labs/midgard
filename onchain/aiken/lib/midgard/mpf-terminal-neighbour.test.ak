@@ -412,6 +412,132 @@ test mpf_terminal_fork_prefix_past_the_path_is_refused() {
   }
 }
 
+// ## A terminal Fork does not re-read as a terminal Leaf
+//
+// At an odd next cursor a leaf's suffix is `00 ‖ nibble ‖ key bytes`. A fork
+// neighbour whose prefix has that length and opens with nibble 0 re-reads as
+// the leaf whose key packs the prefix and whose value is the fork's root: the
+// including root is the same, the collapse is not.
+
+// The fork beside `a` at nibble 2: a 32-nibble prefix opening with 0, so its
+// own branch sits at nibble 35.
+const deep_neighbour_slot = 7
+
+fn deep_neighbour_prefix() -> ByteArray {
+  bytearray.push(builtin.replicate_byte(31, 3), 0)
+}
+
+fn deep_neighbour_root() -> ByteArray {
+  blake2b_256(#"0d")
+}
+
+fn deep_neighbour_pre() -> ByteArray {
+  combine(
+    nibbles(pa(), 0, 2),
+    sparse_merkle_16(
+      nibble(pa(), 2),
+      leaf(pa(), 3, va),
+      deep_neighbour_slot,
+      combine(deep_neighbour_prefix(), deep_neighbour_root()),
+    ),
+  )
+}
+
+fn deep_neighbour_post() -> ByteArray {
+  combine(
+    bytearray.concat(
+      nibbles(pa(), 0, 2),
+      bytearray.push(deep_neighbour_prefix(), deep_neighbour_slot),
+    ),
+    deep_neighbour_root(),
+  )
+}
+
+fn deep_neighbour_fork() -> mpf.ProofStep {
+  mpf.Fork {
+    skip: 2,
+    neighbor: mpf.Neighbor {
+      nibble: deep_neighbour_slot,
+      prefix: deep_neighbour_prefix(),
+      root: deep_neighbour_root(),
+    },
+  }
+}
+
+fn deep_neighbour_leaf_reread() -> mpf.ProofStep {
+  let prefix = deep_neighbour_prefix()
+  let key = bytearray.drop(prefix, 2)
+    |> bytearray.push(
+        deep_neighbour_slot * 16 + builtin.index_bytearray(prefix, 1),
+      )
+    |> bytearray.push(builtin.index_bytearray(pa(), 0))
+  mpf.Leaf { skip: 2, key, value: deep_neighbour_root() }
+}
+
+// The premise: both steps prove `a` a member of the same root.
+test mpf_terminal_fork_re_read_as_a_leaf_proves_membership() {
+  and {
+    nibble(pa(), 2) != deep_neighbour_slot,
+    proof.has(deep_neighbour_pre(), a, va, [deep_neighbour_fork()]),
+    proof.has(deep_neighbour_pre(), a, va, [deep_neighbour_leaf_reread()]),
+  }
+}
+
+test mpf_terminal_fork_re_read_as_a_leaf_is_refused_on_delete() {
+  expect Some(folded) = fold_steps(a, va, [deep_neighbour_fork()], Some(#""))
+  and {
+    proof.delete_root_paired_fold(
+      deep_neighbour_pre(),
+      a,
+      va,
+      [deep_neighbour_fork()],
+      #"",
+    ) == Some(deep_neighbour_post()),
+    folded.including_root == deep_neighbour_pre(),
+    folded.excluding_root == deep_neighbour_post(),
+    proof.delete_root_paired_fold(
+      deep_neighbour_pre(),
+      a,
+      va,
+      [deep_neighbour_leaf_reread()],
+      #"",
+    ) == None,
+    fold_steps(a, va, [deep_neighbour_leaf_reread()], Some(#"")) == None,
+  }
+}
+
+// A leaf whose key tail is all nibbles is refused exactly where a fork could
+// stand in for it: at an odd next cursor from 3, where the suffix is at most
+// 32 bytes, to 59, where the fork's own branch still lies inside the path. A
+// key tail with any byte of 16 or more is never refused.
+test mpf_terminal_leaf_check_refuses_exactly_the_fork_readings() {
+  let nibble_key = builtin.replicate_byte(32, 0)
+  let other_key = bytearray.concat(builtin.replicate_byte(31, 0), #"10")
+  list.all(
+    list.range(1, 64),
+    fn(next_cursor) {
+      and {
+        proof.terminal_leaf_neighbor_is_canonical(
+          nibble_key,
+          nibble_key,
+          next_cursor - 1,
+          next_cursor,
+        ) == !and {
+          next_cursor % 2 == 1,
+          next_cursor >= 3,
+          next_cursor <= 59,
+        },
+        proof.terminal_leaf_neighbor_is_canonical(
+          other_key,
+          other_key,
+          next_cursor - 1,
+          next_cursor,
+        ),
+      }
+    },
+  )
+}
+
 // ## The resumable fold binds the same terminal frame
 
 fn frame(index: Int, cursor: Int, step: mpf.ProofStep) {
@@ -865,4 +991,57 @@ test mpf_fold_terminal_branch_binds_deletion_only() {
 // depth 2 (left, then right).
 test mpf_terminal_branch_opening_cross_language_vector() {
   honest_opening([5, 10, 11], 5) == #"000123f26c647a6f86b97488cf39e51aff07382b82473f0bc7078927eecaa0f1bd8152e855108067f344c569011ef098276c4fed20f7d705dfcb063d4052a3a20080"
+}
+
+// A deletion's non-terminal Branch is not held to the rule: the other
+// children of the root below sit in one n8 group (slots 8 and 9), and the
+// proof opens no group for it. Slot 5 holds a branch of `node.slot_key(5)`
+// and #"000a", so deleting the first collapses that branch to a leaf. The
+// roots and the neighbours are pinned to the off-chain reference trie.
+fn two_frame_root_children(five: ByteArray) -> List<ByteArray> {
+  node.children(
+    [
+      Pair(5, five),
+      Pair(8, leaf(slot_path(8), 1, node.slot_key(8))),
+      Pair(9, leaf(slot_path(9), 1, node.slot_key(9))),
+    ],
+  )
+}
+
+test mpf_fold_exempts_a_non_terminal_branch_from_the_two_children_rule() {
+  let k = node.slot_key(5)
+  let k2 = #"000a"
+  let sub_branch = combine(
+    #"",
+    node.merkle(
+      node.children(
+        [
+          Pair(nibble(blake2b_256(k), 1), leaf(blake2b_256(k), 2, k)),
+          Pair(nibble(blake2b_256(k2), 1), leaf(blake2b_256(k2), 2, k2)),
+        ],
+      ),
+    ),
+  )
+  let before = combine(#"", node.merkle(two_frame_root_children(sub_branch)))
+  let after = combine(
+    #"",
+    node.merkle(two_frame_root_children(leaf(blake2b_256(k2), 1, k2))),
+  )
+  let neighbors = node.neighbors(two_frame_root_children(sub_branch), 5)
+  let steps = [
+    mpf.Branch { skip: 0, neighbors },
+    mpf.Leaf { skip: 0, key: blake2b_256(k2), value: blake2b_256(k2) },
+  ]
+  expect Some(done) = fold_steps(k, k, steps, Some(#""))
+  and {
+    nibble(blake2b_256(k2), 0) == 5,
+    !proof.terminal_branch_keeps_two_children(neighbors, #""),
+    proof.delete_root_paired_fold(before, k, k, steps, #"") == Some(after),
+    fold.fold_is_complete_v1(done),
+    done.including_root == before,
+    done.excluding_root == after,
+    before == #"8973842c15e9d348695f901360031115e25e2cc5a16b07bc895c68b6ab06ef0c",
+    after == #"20b8ca8282f99ed4d9e2614e624bed5a8686df0f314b178ed25a873c5e37d05b",
+    neighbors == #"3d02058fedc23b15b37613b8e6a7b636fcce05e681da425e4c1bc46945c5e2b885c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000",
+  }
 }

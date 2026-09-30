@@ -26,9 +26,25 @@ import { buildMidgardValidationMerkleMembership } from "./validation-merkle.js";
 // read two ways, so its shape is pinned to the honest trie's (the twin of
 // `terminal_leaf_neighbor_is_canonical` and
 // `terminal_fork_neighbor_is_canonical` in `mpf-proof-v1.ak`). A terminal Leaf
-// shares the skipped nibbles with the proven path; a terminal Fork neighbour
-// is a branch, so its prefix is a nibble string whose own branching nibble
-// lies inside the path.
+// shares the skipped nibbles with the proven path, and its suffix does not
+// read as a terminal Fork prefix (at an odd next cursor the suffix is
+// `00 ‖ nibble ‖ key bytes`, so a fork could stand in for a leaf whose key
+// tail is all nibbles); a terminal Fork neighbour is a branch, so its prefix
+// is a nibble string whose own branching nibble lies inside the path.
+const leafSuffixReadsAsForkPrefix = (
+  key: Uint8Array,
+  nextCursor: number,
+): boolean => {
+  const from = Math.floor((nextCursor + 1) / 2);
+  const prefixLength = 2 + 32 - from;
+  return (
+    nextCursor % 2 === 1 &&
+    prefixLength <= 32 &&
+    nextCursor + prefixLength < PATH_NIBBLE_COUNT &&
+    key.subarray(from, 32).every((byte) => byte < 16)
+  );
+};
+
 const assertTerminalNeighborIsCanonical = (
   path: Uint8Array,
   frame: MidgardMpfProofFrame,
@@ -45,6 +61,11 @@ const assertTerminalNeighborIsCanonical = (
           "MPF terminal leaf neighbor does not share the skipped path prefix",
         );
       }
+    }
+    if (leafSuffixReadsAsForkPrefix(key, frame.nextCursor)) {
+      throw new Error(
+        "MPF terminal leaf neighbor suffix reads as a fork neighbor prefix",
+      );
     }
     return;
   }

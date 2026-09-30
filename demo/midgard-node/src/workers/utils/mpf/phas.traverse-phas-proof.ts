@@ -24,8 +24,33 @@ const PATH_NIBBLE_COUNT = 64;
 // the honest trie's shape (the twin of `terminal_leaf_neighbor_is_canonical`
 // and `terminal_fork_neighbor_is_canonical` in `mpf-proof-v1.ak`, which
 // `does_not_have` applies). A terminal Leaf shares the skipped nibbles with
-// the proven path; a terminal Fork neighbour is a branch, so its prefix is a
-// nibble string whose own branching nibble lies inside the path.
+// the proven path, and its suffix does not read as a terminal Fork prefix (at
+// an odd next cursor the suffix is `00 ‖ nibble ‖ key bytes`, so a fork could
+// stand in for a leaf whose key tail is all nibbles); a terminal Fork
+// neighbour is a branch, so its prefix is a nibble string whose own branching
+// nibble lies inside the path.
+const leafSuffixReadsAsForkPrefix = (
+  neighborPath: string,
+  nextCursor: number,
+): boolean => {
+  const from = Math.floor((nextCursor + 1) / 2);
+  const prefixLength = 2 + 32 - from;
+  if (
+    nextCursor % 2 !== 1 ||
+    prefixLength > 32 ||
+    nextCursor + prefixLength >= PATH_NIBBLE_COUNT
+  ) {
+    return false;
+  }
+  // A key byte is below 16 exactly when its high nibble is 0.
+  for (let byte = from; byte < 32; byte += 1) {
+    if (neighborPath[2 * byte] !== "0") {
+      return false;
+    }
+  }
+  return true;
+};
+
 const assertTerminalLeafNeighborIsCanonical = (
   path: string,
   neighborPath: string,
@@ -40,6 +65,11 @@ const assertTerminalLeafNeighborIsCanonical = (
   ) {
     throw new Error(
       "Terminal leaf proof neighbor does not share the skipped path prefix",
+    );
+  }
+  if (leafSuffixReadsAsForkPrefix(neighborPath, nextCursor)) {
+    throw new Error(
+      "Terminal leaf proof neighbor suffix reads as a fork neighbor prefix",
     );
   }
 };

@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
 use cardano/address.{
   Address, Credential, Inline, Pointer, Script, StakeCredential, VerificationKey,
@@ -1976,6 +1977,10 @@ pub fn insert_root(
   next_root
 }
 
+/// Deleting the last entry leaves the library's empty trie, whose root is
+/// `null_hash`; a Midgard ledger commits an empty ledger as
+/// `env.empty_merkle_tree_root`, so the successor is read back into that
+/// encoding, the output twin of the translation on the way in.
 pub fn delete_root(
   root: ByteArray,
   key: ByteArray,
@@ -1995,7 +2000,11 @@ pub fn delete_root(
     proof,
     opening,
   )
-  next_root
+  if next_root == null_hash {
+    env.empty_merkle_tree_root
+  } else {
+    next_root
+  }
 }
 
 test canonical_fork_exclusion() {

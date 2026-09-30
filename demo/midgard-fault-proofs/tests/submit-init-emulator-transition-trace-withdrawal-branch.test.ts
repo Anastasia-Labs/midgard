@@ -45,7 +45,8 @@ import {
 // other children (`terminal_branch_keeps_two_children`). An honest step is
 // defended against a Branch standing in for the spent output's lone
 // neighbour, and a genuinely wrong step is still convicted with an honest
-// delete that sends a lone group's opening.
+// delete that sends a lone group's opening. A delete ending in a Leaf, and one
+// that removes the last ledger entry, are held the same way.
 
 const NULL = Buffer.alloc(32);
 const nibble0 = (key: Buffer): number => computeHash32(key)[0]! >> 4;
@@ -322,6 +323,123 @@ describe("transition-trace withdrawal delete ending in a Branch", () => {
         delete_proof: deleteProof,
       }),
     );
+    await removeAndAssertPermanentProof({
+      harness: harnessed.harness,
+      setup: lifecycle.setup,
+      deploymentInfo: lifecycle.deploymentInfo,
+      proofResult,
+    });
+  }, 240_000);
+});
+
+// Both remaining refusals are asserted the same way: the final-2 submission
+// fails, and the thread and the block are both still there.
+const expectRefusedAndKept = async (
+  harnessed: Harnessed,
+  lifecycle: Awaited<ReturnType<typeof commitWithdrawalStep>>["lifecycle"],
+  submission: Promise<unknown>,
+) => {
+  const { harness } = harnessed;
+  const resolved = await resolveTransitionTraceDeploymentContracts({
+    blueprint: harness.realBlueprint,
+    deploymentInfo: lifecycle.deploymentInfo,
+    network,
+    requireFraudProofSpend: true,
+  });
+  await expect(submission).rejects.toThrow(/failed script execution/u);
+  await expect(
+    harness.proverLucid.utxosAtWithUnit(
+      resolved.contracts.transitionTrace.finals[2]!.spendingScriptAddress,
+      lifecycle.init.computationThreadUnit,
+    ),
+  ).resolves.toHaveLength(1);
+  await expect(
+    harness.funderLucid.utxosAtWithUnit(
+      harness.contracts.stateQueue.spendingScriptAddress,
+      lifecycle.setup.stateQueueBlockUnit,
+    ),
+  ).resolves.toHaveLength(1);
+};
+
+describe("transition-trace withdrawal delete ending in a Leaf", () => {
+  it("defends an honest withdrawal step against a terminal Leaf whose skipped nibble is rewritten", async () => {
+    const harnessed = await makeHarness();
+    // One neighbour sharing the spent output's first path nibble: the honest
+    // delete ends in a Leaf that skips that nibble.
+    const neighbourKey = Array.from({ length: 256 }, (_, byte) =>
+      otherKey(byte),
+    ).find((key) => nibble0(key) === nibble0(spentKey))!;
+    const pre = await trieOf([spentKey, neighbourKey]);
+    const post = await trieOf([neighbourKey]);
+    const honestProof = await sdkProof(pre, spentKey);
+    const [terminal] = honestProof;
+    if (terminal === undefined || !("Leaf" in terminal)) {
+      throw new Error("expected the honest delete to end in a Leaf");
+    }
+    expect(terminal.Leaf.skip).toBeGreaterThanOrEqual(1n);
+    const key = terminal.Leaf.key;
+    const moved = ((Number.parseInt(key[0]!, 16) + 1) % 16).toString(16);
+    const tampered: SDK.Proof = [
+      { Leaf: { ...terminal.Leaf, key: `${moved}${key.slice(1)}` } },
+    ];
+
+    const { lifecycle, faultProof, submit } = await commitWithdrawalStep(
+      harnessed,
+      rootHex(pre),
+      rootHex(post),
+    );
+    await expectRefusedAndKept(
+      harnessed,
+      lifecycle,
+      submit(
+        await faultProof({
+          key: spentKey.toString("hex"),
+          value: descriptor(spentKey).toString("hex"),
+          opening: "",
+          delete_proof: tampered,
+        }),
+      ),
+    );
+  }, 240_000);
+});
+
+// Withdrawing the only ledger entry leaves an empty ledger, which a block
+// commits as the protocol's empty root, never as the MPF library's all-zero
+// null root.
+describe("transition-trace withdrawal of the last ledger entry", () => {
+  const lastEntryDelete = async (): Promise<SDK.LedgerDeleteWitness> => {
+    const proof = await sdkProof(await trieOf([spentKey]), spentKey);
+    expect(proof).toEqual([]);
+    return {
+      key: spentKey.toString("hex"),
+      value: descriptor(spentKey).toString("hex"),
+      opening: "",
+      delete_proof: proof,
+    };
+  };
+
+  it("defends an honest step that commits the empty ledger root", async () => {
+    const harnessed = await makeHarness();
+    const { lifecycle, faultProof, submit } = await commitWithdrawalStep(
+      harnessed,
+      rootHex(await trieOf([spentKey])),
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    );
+    await expectRefusedAndKept(
+      harnessed,
+      lifecycle,
+      submit(await faultProof(await lastEntryDelete())),
+    );
+  }, 240_000);
+
+  it("convicts a step that commits the all-zero root for the empty ledger", async () => {
+    const harnessed = await makeHarness();
+    const { lifecycle, faultProof, submit } = await commitWithdrawalStep(
+      harnessed,
+      rootHex(await trieOf([spentKey])),
+      "00".repeat(32),
+    );
+    const proofResult = await submit(await faultProof(await lastEntryDelete()));
     await removeAndAssertPermanentProof({
       harness: harnessed.harness,
       setup: lifecycle.setup,

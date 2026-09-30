@@ -85,13 +85,38 @@ fn bytes_are_nibbles(bytes: ByteArray, index: Int, length: Int) -> Bool {
 /// proven path. The excluding root reads those key nibbles and the including
 /// root never does, so without this a deletion could rewrite them, and an
 /// insertion could claim a longer skip than the true divergence.
+///
+/// Its suffix also must not read as a terminal `Fork` prefix. At an odd
+/// `next_cursor` the suffix is `00 ‖ nibble ‖ key[(next_cursor + 1) / 2 ..]`,
+/// so when those key bytes are all nibbles a fork neighbour re-reads as this
+/// leaf: the including root is unchanged and the excluding root is not the
+/// fork's collapse. An honest leaf is refused here only when its key has
+/// those bytes all below 16, which then proves only as the fork.
 pub fn terminal_leaf_neighbor_is_canonical(
   path: ByteArray,
   key: ByteArray,
   cursor: Int,
   next_cursor: Int,
 ) -> Bool {
-  nibbles_agree(path, key, cursor, next_cursor - 1)
+  and {
+    nibbles_agree(path, key, cursor, next_cursor - 1),
+    !leaf_suffix_reads_as_fork_prefix(key, next_cursor),
+  }
+}
+
+// The suffix of `key` at `next_cursor` passes as a terminal fork prefix there:
+// `neighbor_is_well_formed` bounds its length, and
+// `terminal_fork_neighbor_is_canonical` its end and its bytes. An even cursor's
+// suffix opens with 0xff, never a nibble.
+fn leaf_suffix_reads_as_fork_prefix(key: ByteArray, next_cursor: Int) -> Bool {
+  let from = ( next_cursor + 1 ) / 2
+  let prefix_length = 2 + digest_byte_count - from
+  and {
+    next_cursor % 2 == 1,
+    prefix_length <= digest_byte_count,
+    next_cursor + prefix_length < path_nibble_count,
+    bytes_are_nibbles(key, from, digest_byte_count),
+  }
 }
 
 /// A terminal `Fork` neighbour is a branch: its prefix is a nibble string, and

@@ -1278,51 +1278,34 @@ test accepts_valid_withdrawal_delete_transition_fault() {
   )
 }
 
-test rejects_valid_withdrawal_delete_when_trace_matches_expected_post_root() {
-  let event_key = withdrawal_event_key(0)
-  let spent_key = ledger_outref_key(out_ref(9))
-  let spent_value = native_output_ledger_value(out_ref(9).output_index)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root = proof.delete_root(
-    pre_root,
-    spent_key,
-    spent_value,
+// ## Withdrawing the last ledger entry
+//
+// An honest node commits an empty ledger as `env.empty_merkle_tree_root`, not
+// as the MPF library's `null_hash`. The step that withdraws the only entry is
+// honest exactly when its post root is that sentinel.
+
+fn last_entry_withdrawal_fault_is_valid(post_root: ByteArray) -> Bool {
+  withdrawal_delete_fault_from_is_valid(
+    mpf.root(
+      mpf.insert(
+        mpf.empty,
+        ledger_outref_key(out_ref(9)),
+        native_output_ledger_value(9),
+        [],
+      ),
+    ),
+    post_root,
     [],
     #"",
   )
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.Withdrawal,
-    pre_root,
-    expected_post_root,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.Withdrawal,
-  )
-  let withdrawal_membership = withdrawal_source_membership(
-    out_ref(0),
-    valid_withdrawal_info(),
-  )
-  let header = ledger_state.HeaderV1 {
-    ..traced_header(trace_proof.root, event_to_step.root),
-    withdrawals_root: withdrawal_membership.root,
-  }
+}
 
-  !valid_against_header(
-    header,
-    proof.InvalidOneStepTransition {
-      witness: proof.ValidWithdrawalTransition {
-        trace_proof,
-        event_to_step,
-        source_membership: withdrawal_membership,
-        spent_utxo: ledger_delete_witness(spent_key, spent_value),
-      },
-    },
-  )
+test rejects_a_last_entry_withdrawal_that_commits_the_empty_ledger() {
+  !last_entry_withdrawal_fault_is_valid(env.empty_merkle_tree_root)
+}
+
+test accepts_a_last_entry_withdrawal_that_commits_the_library_empty_root() {
+  last_entry_withdrawal_fault_is_valid(null_hash)
 }
 
 // ## A challenger cannot steer the terminal neighbour of a one-step mutation

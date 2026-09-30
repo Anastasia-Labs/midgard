@@ -320,6 +320,23 @@ describe("bounded MPF proof folding V1 terminal neighbour", () => {
     ).toThrow(/terminal fork neighbor prefix is not a nibble path/u);
   });
 
+  it("refuses a terminal fork re-read as a leaf", () => {
+    // A fork beside `a` at nibble 2 whose 32-nibble prefix opens with 0: at
+    // next cursor 3 a leaf's suffix `00 ‖ nibble ‖ key[2..]` spells the same
+    // prefix when the key packs it.
+    const slot = 7;
+    const prefix = Buffer.concat([Buffer.from([0]), Buffer.alloc(31, 3)]);
+    const rereadKey = Buffer.concat([
+      Buffer.from([hash(a)[0]!, slot * 16 + prefix[1]!]),
+      prefix.subarray(2),
+    ]);
+    expect(suffix(rereadKey, 3)).toEqual(prefix);
+    expect(() => fold([fork(2, slot, prefix, hash(vc))])).not.toThrow();
+    expect(() => fold([leaf(rereadKey, vc, 2)])).toThrow(
+      /terminal leaf neighbor suffix reads as a fork neighbor prefix/u,
+    );
+  });
+
   it("bounds a terminal fork prefix by the key path", () => {
     const neighborNibble = ((hash(a)[15]! % 16) + 1) % 16;
     const deepFork = (prefixLength: number) =>

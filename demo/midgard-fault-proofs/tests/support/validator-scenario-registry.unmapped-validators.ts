@@ -489,7 +489,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/transition_trace/output_value.value_output",
       "fraud_proofs/transition_trace/route_v1.main",
       "fraud_proofs/transition_trace/source_v1.main",
-      "fraud_proofs/transition_trace/withdrawal_v1.main",
       "fraud_proofs/unused_redeemer/step_01.main",
       "fraud_proofs/unused_redeemer/step_02.main",
       "fraud_proofs/unused_redeemer/step_02a.main",
