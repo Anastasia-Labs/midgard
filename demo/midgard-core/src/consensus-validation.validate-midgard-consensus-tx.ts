@@ -17,7 +17,6 @@ import { decodeMidgardTxOutput } from "./codec/output.js";
 import { midgardValueToCmlValue } from "./codec/value.js";
 import { decodeMidgardVersionedScriptListPreimage } from "./codec/versioned-script.js";
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
-import { nativeScriptBoundViolation } from "./consensus-validation.native-script-complexity.js";
 import {
   enforceCount,
   enforcePreimageSize,
@@ -199,13 +198,9 @@ export const validateMidgardConsensusTx = (
   );
   for (let index = 0; index < scripts.length; index += 1) {
     const script = scripts[index]!;
-    if (script.language === "NativeCardano") {
-      const nativeBound = nativeScriptBoundViolation(
-        script.nativeScript,
-        `script_witnesses[${index.toString()}]`,
-      );
-      if (nativeBound !== null) return nativeBound;
-    } else {
+    // Decoding a native script enforces the V1 depth and node-count bounds,
+    // so only program envelopes are checked here.
+    if (script.language !== "NativeCardano") {
       try {
         decodeMidgardCekProgramEnvelope(script.scriptBytes);
       } catch (error) {
@@ -243,13 +238,11 @@ export const validateMidgardConsensusTx = (
         distinctAssets.add(`${policyId}.${assetName}`);
       }
     }
-    if (output.script_ref?.language === "NativeCardano") {
-      const nativeBound = nativeScriptBoundViolation(
-        output.script_ref.nativeScript,
-        `reference_scripts[${index.toString()}]`,
-      );
-      if (nativeBound !== null) return nativeBound;
-    } else if (output.script_ref !== undefined) {
+    // As for witnesses, decoding the output bounded a native reference script.
+    if (
+      output.script_ref !== undefined &&
+      output.script_ref.language !== "NativeCardano"
+    ) {
       try {
         decodeMidgardCekProgramEnvelope(output.script_ref.scriptBytes);
       } catch (error) {

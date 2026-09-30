@@ -21,6 +21,7 @@ import { Effect } from "effect";
 import {
   decodeMidgardSubmittedTxFromCanonicalCbor,
   MidgardLedgerTxDecodeError,
+  projectMidgardMalformedNativeWitnessEnvelopeV1,
 } from "./ledger-tx/codec.js";
 import type { MidgardLedgerTx, MidgardSubmittedTx } from "./ledger-tx/types.js";
 import {
@@ -146,14 +147,28 @@ export const validatePhaseASingle = (
       e instanceof MidgardLedgerTxDecodeError
         ? e.invalidOutputIndex
         : undefined;
+    // A malformed field-6 native script is the one decode failure the
+    // validation trace commits, so it names the script it proves malformed.
+    const malformedScriptIndex =
+      code === RejectCodes.InvalidFieldType
+        ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
+            queuedTx.txCbor,
+            queuedTx.sourceKind,
+          )?.malformedScriptIndex ?? null)
+        : null;
     return reject(
       queuedTx.txId,
       code,
       codecErrorDetail(e),
       "canonicalDecode",
-      outputIndex === undefined
-        ? undefined
-        : { arm: "OutputNonCanonical", index: BigInt(outputIndex) },
+      outputIndex !== undefined
+        ? { arm: "OutputNonCanonical", index: BigInt(outputIndex) }
+        : malformedScriptIndex !== null
+          ? {
+              arm: "WitnessNativeScriptMalformed",
+              index: BigInt(malformedScriptIndex),
+            }
+          : undefined,
     );
   }
 

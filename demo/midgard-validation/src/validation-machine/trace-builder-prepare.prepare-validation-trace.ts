@@ -60,7 +60,6 @@ import {
   decodeMidgardNativeTxWitnessSetCompact,
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
-  decodeMidgardVersionedScript,
   decodeSingleCbor,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
@@ -91,7 +90,7 @@ import {
 } from "../ledger-output-descriptor.js";
 import {
   type MidgardRawEnvelopePhaseAProjection,
-  projectMidgardRawEnvelopeForPhaseAV1,
+  projectMidgardMalformedNativeWitnessEnvelopeV1,
 } from "../ledger-tx.js";
 import type { LocalScriptEvalResult } from "../local-script-eval.js";
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
@@ -226,38 +225,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       });
       ledgerDescriptorState.set(outRefHex, outputMaterial.descriptorCbor);
     }
-    let rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
-      null;
-    if (
+    const rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
       !("ledgerTx" in phaseA) &&
       phaseA.code === RejectCodes.InvalidFieldType &&
       phaseA.consensusPhase === "canonicalDecode"
-    ) {
-      try {
-        const projected = projectMidgardRawEnvelopeForPhaseAV1(
-          queued.txCbor,
-          queued.sourceKind,
-        );
-        if (
-          projected.canonicalSubmittedTx === null &&
-          projected.scriptWitnesses.some(
-            ({ languageTag, versionedItemBytes }) => {
-              if (languageTag !== 0) return false;
-              try {
-                decodeMidgardVersionedScript(versionedItemBytes);
-                return false;
-              } catch {
-                return true;
-              }
-            },
-          )
-        )
-          rawExecutionProjection = projected;
-      } catch {
-        // Non-field-6 malformed material remains the original fail-closed
-        // canonicalDecode rejection.
-      }
-    }
+        ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
+            queued.txCbor,
+            queued.sourceKind,
+          )?.projection ?? null)
+        : null;
     const phaseALedgerTx =
       "ledgerTx" in phaseA
         ? phaseA.ledgerTx

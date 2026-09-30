@@ -1,4 +1,7 @@
-import { forcedRejectionReason } from "@al-ft/midgard-fault-proofs";
+import {
+  forcedRejectionReason,
+  ForcedRejectionSubjectMissing,
+} from "@al-ft/midgard-fault-proofs";
 import {
   OperatorVerdictSchema,
   rejectionReasonArmOf,
@@ -200,15 +203,22 @@ describe("forced operator verdict vocabulary", () => {
   it("admits every tag the forced rejection writer emits", () => {
     // Forced replay compares the committed verdict's tag against the tag of
     // `forcedRejectionReason`, the one writer the node commits with, so every
-    // tag it can produce must be in the watcher's accepted vocabulary.
-    for (const phase of ["phaseA", "phaseB"] as const) {
-      for (const code of Object.values(RejectCodes)) {
-        const tag = rejectionReasonArmOf(
-          forcedRejectionReason({ code }, phase),
+    // tag it can produce must be in the watcher's accepted vocabulary. A
+    // located code is written from its subject, whose tag is one of the arms
+    // pinned above; without a subject it throws, or, for the canonical-decode
+    // rejections no trace commits, writes the tag checked here.
+    for (const code of Object.values(RejectCodes)) {
+      let tag: string;
+      try {
+        tag = rejectionReasonArmOf(
+          forcedRejectionReason({ code, consensusPhase: "canonicalDecode" }),
         );
-        expect(isWatcherForcedOperatorVerdict(tag), code).toBe(true);
-        expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID);
+      } catch (error) {
+        expect(error, code).toBeInstanceOf(ForcedRejectionSubjectMissing);
+        continue;
       }
+      expect(isWatcherForcedOperatorVerdict(tag), code).toBe(true);
+      expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID);
     }
   });
 });

@@ -9,10 +9,9 @@ import { describe, expect, it } from "vitest";
 import {
   FORCED_REJECTION_NO_ARM_CODES,
   forcedRejectionReason,
+  ForcedRejectionSubjectMissing,
   forcedVerdictForRejection,
 } from "../src/workflow/forced-rejection-reason.js";
-
-const PHASES = ["phaseA", "phaseB"] as const;
 
 /** The descriptor-code bytes of a node reject code, as `rejection_code_of` returns them. */
 const codeHex = (code: string): string =>
@@ -139,6 +138,11 @@ const SUBJECT_CASES: readonly (readonly [
     { PlutusExecutionFailed: { execution_index: 14n } },
   ],
   [
+    RejectCodes.InvalidFieldType,
+    { arm: "WitnessNativeScriptMalformed", index: 17n },
+    { WitnessNativeScriptMalformed: { script_index: 17n } },
+  ],
+  [
     RejectCodes.InvalidOutput,
     { arm: "OutputNonCanonical", index: 15n },
     { OutputNonCanonical: { output_index: 15n } },
@@ -160,22 +164,44 @@ const SIMPLE_FAULTS: readonly (readonly [RejectCode, SDK.RejectionReason])[] = [
   [RejectCodes.ValueNotPreserved, "ValueNotPreserved"],
 ];
 
+/** Codes whose arms carry coordinates, so a leaf needs the rule's subject. */
+const LOCATED_CODES = ARM_CODES.filter(
+  (code) => !SIMPLE_FAULTS.some(([simple]) => simple === code),
+);
+
+/** The reason recorded for a canonical-decode rejection that has no subject. */
+const UNCOMMITTED_DECODE_REASONS: readonly (readonly [
+  RejectCode,
+  SDK.RejectionReason,
+])[] = [
+  [
+    RejectCodes.InvalidFieldType,
+    { FieldItemWidthIllegal: { field_index: 0n, item_index: 0n } },
+  ],
+  [RejectCodes.InvalidOutput, { OutputNonCanonical: { output_index: 0n } }],
+  [
+    RejectCodes.FieldPreimageSize,
+    { FieldPreimageLengthMismatch: { field_index: 0n } },
+  ],
+  [RejectCodes.AssetCount, { MintAssetAccumulationLimit: { mint_index: 0n } }],
+];
+
 describe("forced rejection reason", () => {
   it("round-trips the rejection code of every code an arm covers", () => {
     expect(ARM_CODES).toHaveLength(19);
-    for (const phase of PHASES) {
-      for (const code of ARM_CODES) {
-        expect(
-          SDK.rejectionCodeOf(forcedRejectionReason({ code }, phase)),
-          `${phase} ${code}`,
-        ).toBe(codeHex(code));
-      }
-      for (const [code, subject] of SUBJECT_CASES) {
-        expect(
-          SDK.rejectionCodeOf(forcedRejectionReason({ code, subject }, phase)),
-          `${phase} ${subject.arm}`,
-        ).toBe(codeHex(code));
-      }
+    for (const [code] of SIMPLE_FAULTS) {
+      expect(SDK.rejectionCodeOf(forcedRejectionReason({ code })), code).toBe(
+        codeHex(code),
+      );
+    }
+    for (const [code, subject] of SUBJECT_CASES) {
+      expect(
+        SDK.rejectionCodeOf(forcedRejectionReason({ code, subject })),
+        subject.arm,
+      ).toBe(codeHex(code));
+    }
+    for (const [code, reason] of UNCOMMITTED_DECODE_REASONS) {
+      expect(SDK.rejectionCodeOf(reason), code).toBe(codeHex(code));
     }
   });
 
@@ -183,56 +209,62 @@ describe("forced rejection reason", () => {
     expect(new Set(SUBJECT_CASES.map(([, subject]) => subject.arm)).size).toBe(
       SUBJECT_CASES.length,
     );
-    for (const phase of PHASES) {
-      for (const [code, subject, reason] of SUBJECT_CASES) {
-        expect(
-          forcedRejectionReason({ code, subject }, phase),
-          subject.arm,
-        ).toStrictEqual(reason);
-      }
+    for (const [code, subject, reason] of SUBJECT_CASES) {
+      expect(
+        forcedRejectionReason({ code, subject }),
+        subject.arm,
+      ).toStrictEqual(reason);
     }
     expect(
-      forcedVerdictForRejection(
-        { code: RejectCodes.DuplicateInputInTx, subject: SUBJECT_CASES[0]![1] },
-        "phaseA",
-      ),
+      forcedVerdictForRejection({
+        code: RejectCodes.DuplicateInputInTx,
+        subject: SUBJECT_CASES[0]![1],
+      }),
     ).toStrictEqual({ ForcedTxInvalid: { reason: SUBJECT_CASES[0]![2] } });
   });
 
   it.each(SIMPLE_FAULTS)("names %s by its single arm", (code, reason) => {
-    for (const phase of PHASES) {
-      expect(forcedRejectionReason({ code }, phase)).toStrictEqual(reason);
+    expect(forcedRejectionReason({ code })).toStrictEqual(reason);
+  });
+
+  it("refuses a located code without the subject of the failing rule", () => {
+    expect(LOCATED_CODES).toHaveLength(13);
+    for (const code of LOCATED_CODES) {
+      for (const consensusPhase of [
+        undefined,
+        "resolveInputs",
+        "nativeScripts",
+      ] as const) {
+        expect(
+          () => forcedRejectionReason({ code, consensusPhase }),
+          `${code} ${String(consensusPhase)}`,
+        ).toThrow(ForcedRejectionSubjectMissing);
+      }
     }
   });
 
-  it("splits the native-script code by the phase that raised it", () => {
-    expect(
-      forcedRejectionReason(
-        { code: RejectCodes.NativeScriptInvalid },
-        "phaseA",
-      ),
-    ).toStrictEqual({
-      WitnessNativeScriptFalse: { script_index: 0n },
-    });
-    expect(
-      forcedRejectionReason(
-        { code: RejectCodes.NativeScriptInvalid },
-        "phaseB",
-      ),
-    ).toStrictEqual({
-      ExecutionNativeScriptFalse: { execution_index: 0n },
-    });
-  });
-
   it("never writes a subject whose arm bridges to another code", () => {
-    const reason = forcedRejectionReason(
-      {
+    expect(() =>
+      forcedRejectionReason({
         code: RejectCodes.MinAda,
         subject: { arm: "UnusedRedeemer", index: 3n },
-      },
-      "phaseB",
-    );
-    expect(reason).toStrictEqual({ OutputBelowMinAda: { output_index: 0n } });
+      }),
+    ).toThrow(ForcedRejectionSubjectMissing);
+  });
+
+  it("records only the four canonical-decode codes that can lack a subject", () => {
+    const recorded = new Map(UNCOMMITTED_DECODE_REASONS);
+    for (const code of LOCATED_CODES) {
+      const rejection = { code, consensusPhase: "canonicalDecode" } as const;
+      const expected = recorded.get(code);
+      if (expected === undefined) {
+        expect(() => forcedRejectionReason(rejection), code).toThrow(
+          ForcedRejectionSubjectMissing,
+        );
+      } else {
+        expect(forcedRejectionReason(rejection), code).toStrictEqual(expected);
+      }
+    }
   });
 });
 
@@ -248,23 +280,19 @@ describe("rejection codes without an arm", () => {
   });
 
   it("keep the verdict the node has always written for them", () => {
-    for (const phase of PHASES) {
-      for (const code of FORCED_REJECTION_NO_ARM_CODES) {
-        const expected: SDK.RejectionReason =
-          code === RejectCodes.PlutusEvaluationUnavailable
-            ? { PlutusExecutionFailed: { execution_index: 0n } }
-            : "ValueNotPreserved";
-        expect(forcedRejectionReason({ code }, phase), code).toStrictEqual(
-          expected,
-        );
-        expect(
-          forcedRejectionReason(
-            { code, subject: { arm: "UnusedRedeemer", index: 2n } },
-            phase,
-          ),
+    for (const code of FORCED_REJECTION_NO_ARM_CODES) {
+      const expected: SDK.RejectionReason =
+        code === RejectCodes.PlutusEvaluationUnavailable
+          ? { PlutusExecutionFailed: { execution_index: 0n } }
+          : "ValueNotPreserved";
+      expect(forcedRejectionReason({ code }), code).toStrictEqual(expected);
+      expect(
+        forcedRejectionReason({
           code,
-        ).toStrictEqual(expected);
-      }
+          subject: { arm: "UnusedRedeemer", index: 2n },
+        }),
+        code,
+      ).toStrictEqual(expected);
     }
   });
 });

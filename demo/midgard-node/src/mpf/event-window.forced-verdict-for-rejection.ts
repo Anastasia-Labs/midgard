@@ -3,10 +3,13 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   type MidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core/cek-proof";
+import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
+import type * as SDK from "@al-ft/midgard-sdk";
 import {
   applyValidationMachineLedgerMutationStep,
   type CanonicalTransitionEffect,
   type RejectCode,
+  type RejectedTx,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
@@ -31,6 +34,23 @@ export type ClassifiedForcedTransaction = {
   readonly rejectionCode: RejectCode | null;
   readonly programMaterialSidecarCbor: Buffer;
 };
+
+/**
+ * The forced leaf's verdict for a rejection. A rejection the writer cannot
+ * cite exactly fails the block build instead of committing a guessed reason.
+ */
+export const forcedRejectionVerdict = (
+  rejection: RejectedTx,
+): Effect.Effect<SDK.OperatorVerdict, DatabaseError> =>
+  Effect.try({
+    try: () => forcedVerdictForRejection(rejection),
+    catch: (cause) =>
+      new DatabaseError({
+        table: ForcedTransactionsDB.tableName,
+        message: "Forced transaction rejection has no exact verdict",
+        cause,
+      }),
+  });
 
 export type ForcedProgramMaterialSidecarResolver<R> = (
   envelopes: readonly MidgardCekProgramEnvelope[],

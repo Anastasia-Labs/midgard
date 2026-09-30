@@ -6,11 +6,29 @@ import {
   type RejectSubject,
 } from "@al-ft/midgard-validation";
 
-/** The validation phase whose rejection the forced verdict records. */
-export type ForcedRejectionPhase = "phaseA" | "phaseB";
-
 /** What the writer reads from a Phase A/B rejection. */
-export type ForcedRejection = Pick<RejectedTx, "code" | "subject">;
+export type ForcedRejection = Pick<
+  RejectedTx,
+  "code" | "subject" | "consensusPhase"
+>;
+
+/**
+ * A rejection whose code has coordinate-carrying arms arrived without a
+ * subject of that code. Writing any coordinate would be a guess, and a
+ * guessed coordinate the family finds sound convicts the operator.
+ */
+export class ForcedRejectionSubjectMissing extends Error {
+  constructor(rejection: ForcedRejection) {
+    super(
+      `forced rejection ${rejection.code} at ${rejection.consensusPhase} records no subject of its code${
+        rejection.subject === undefined
+          ? ""
+          : ` (it names ${rejection.subject.arm})`
+      }`,
+    );
+    this.name = "ForcedRejectionSubjectMissing";
+  }
+}
 
 /**
  * Rejection codes no `RejectionReasonV1` arm covers. Each is raised by a node
@@ -73,6 +91,8 @@ export const rejectionReasonOfSubject = (
       return { RequiredSignerUnsigned: { signer_index: subject.index } };
     case "WitnessNativeScriptFalse":
       return { WitnessNativeScriptFalse: { script_index: subject.index } };
+    case "WitnessNativeScriptMalformed":
+      return { WitnessNativeScriptMalformed: { script_index: subject.index } };
     case "ObserverOrderInvalid":
       return { ObserverOrderInvalid: { observer_index: subject.index } };
     case "ScriptIntegrityHashMissing":
@@ -137,102 +157,62 @@ export const rejectionReasonOfSubject = (
 };
 
 type CodeDisposition =
-  | {
-      readonly kind: "arm";
-      readonly code: SDK.RejectionCodeLabel;
-      /** The reason written when the rejection recorded no usable subject. */
-      readonly unlocated: SDK.RejectionReason;
-    }
+  /** The code's only arm carries no coordinate. */
+  | { readonly kind: "fixed"; readonly reason: SDK.RejectionReason }
+  /** The code has coordinate-carrying arms: the subject names the one. */
+  | { readonly kind: "located"; readonly code: SDK.RejectionCodeLabel }
   | { readonly kind: "noArm"; readonly reason: SDK.RejectionReason };
 
-const arm = (
-  code: SDK.RejectionCodeLabel,
-  unlocated: SDK.RejectionReason,
-): CodeDisposition => ({ kind: "arm", code, unlocated });
+const fixed = (reason: SDK.RejectionReason): CodeDisposition => ({
+  kind: "fixed",
+  reason,
+});
 
-const dispositionOf = (
-  code: RejectCode,
-  phase: ForcedRejectionPhase,
-): CodeDisposition => {
+const located = (code: SDK.RejectionCodeLabel): CodeDisposition => ({
+  kind: "located",
+  code,
+});
+
+const dispositionOf = (code: RejectCode): CodeDisposition => {
   switch (code) {
     case RejectCodes.EmptyInputs:
-      return arm("E_EMPTY_INPUTS", "EmptyInputs");
-    case RejectCodes.DuplicateInputInTx:
-      return arm("E_DUPLICATE_INPUT_IN_TX", {
-        DuplicateInput: {
-          first_field_index: 0n,
-          first_item_index: 0n,
-          second_field_index: 0n,
-          second_item_index: 0n,
-        },
-      });
-    case RejectCodes.InvalidOutput:
-      return arm("E_INVALID_OUTPUT", {
-        OutputNonCanonical: { output_index: 0n },
-      });
-    case RejectCodes.InvalidFieldType:
-      return arm("E_INVALID_FIELD_TYPE", {
-        FieldItemWidthIllegal: { field_index: 0n, item_index: 0n },
-      });
-    case RejectCodes.InputNotFound:
-      return arm("E_INPUT_NOT_FOUND", {
-        InputNotFound: { source_kind: 0n, input_index: 0n },
-      });
+      return fixed("EmptyInputs");
     case RejectCodes.InvalidValidityIntervalFormat:
-      return arm(
-        "E_INVALID_VALIDITY_INTERVAL_FORMAT",
-        "ValidityIntervalMalformed",
-      );
+      return fixed("ValidityIntervalMalformed");
     case RejectCodes.ValidityIntervalMismatch:
-      return arm(
-        "E_VALIDITY_INTERVAL_MISMATCH",
-        "ValidityIntervalExcludesBlockSlot",
-      );
+      return fixed("ValidityIntervalExcludesBlockSlot");
     case RejectCodes.MinFee:
-      return arm("E_MIN_FEE", "FeeBelowMinimum");
-    case RejectCodes.MinAda:
-      return arm("E_MIN_ADA", { OutputBelowMinAda: { output_index: 0n } });
+      return fixed("FeeBelowMinimum");
     case RejectCodes.ValueNotPreserved:
-      return arm("E_VALUE_NOT_PRESERVED", "ValueNotPreserved");
-    case RejectCodes.MissingRequiredWitness:
-      return arm("E_MISSING_REQUIRED_WITNESS", {
-        RequiredSignerUnsigned: { signer_index: 0n },
-      });
-    case RejectCodes.InvalidSignature:
-      return arm("E_INVALID_SIGNATURE", {
-        AddressWitnessSignatureInvalid: { witness_index: 0n },
-      });
-    case RejectCodes.NativeScriptInvalid:
-      // Phase A raises it only for witness-set natives, Phase B only for
-      // execution natives; both arms bridge to this one code.
-      return arm(
-        "E_NATIVE_SCRIPT_INVALID",
-        phase === "phaseA"
-          ? { WitnessNativeScriptFalse: { script_index: 0n } }
-          : { ExecutionNativeScriptFalse: { execution_index: 0n } },
-      );
-    case RejectCodes.PlutusScriptInvalid:
-      return arm("E_PLUTUS_SCRIPT_INVALID", {
-        PlutusExecutionFailed: { execution_index: 0n },
-      });
+      return fixed("ValueNotPreserved");
     case RejectCodes.NetworkIdMismatch:
-      return arm("E_NETWORK_ID_MISMATCH", "NetworkIdMismatch");
+      return fixed("NetworkIdMismatch");
+    case RejectCodes.DuplicateInputInTx:
+      return located("E_DUPLICATE_INPUT_IN_TX");
+    case RejectCodes.InvalidOutput:
+      return located("E_INVALID_OUTPUT");
+    case RejectCodes.InvalidFieldType:
+      return located("E_INVALID_FIELD_TYPE");
+    case RejectCodes.InputNotFound:
+      return located("E_INPUT_NOT_FOUND");
+    case RejectCodes.MinAda:
+      return located("E_MIN_ADA");
+    case RejectCodes.MissingRequiredWitness:
+      return located("E_MISSING_REQUIRED_WITNESS");
+    case RejectCodes.InvalidSignature:
+      return located("E_INVALID_SIGNATURE");
+    case RejectCodes.NativeScriptInvalid:
+      return located("E_NATIVE_SCRIPT_INVALID");
+    case RejectCodes.PlutusScriptInvalid:
+      return located("E_PLUTUS_SCRIPT_INVALID");
     case RejectCodes.FieldPreimageSize:
-      return arm("E_FIELD_PREIMAGE_SIZE", {
-        FieldPreimageLengthMismatch: { field_index: 0n },
-      });
+      return located("E_FIELD_PREIMAGE_SIZE");
     case RejectCodes.NativeScriptDepth:
-      return arm("E_NATIVE_SCRIPT_DEPTH", {
-        WitnessNativeScriptDepthLimit: { script_index: 0n },
-      });
+      return located("E_NATIVE_SCRIPT_DEPTH");
     case RejectCodes.NativeScriptNodeCount:
-      return arm("E_NATIVE_SCRIPT_NODE_COUNT", {
-        WitnessNativeScriptNodeLimit: { script_index: 0n },
-      });
+      return located("E_NATIVE_SCRIPT_NODE_COUNT");
     case RejectCodes.AssetCount:
-      return arm("E_ASSET_COUNT", {
-        MintAssetAccumulationLimit: { mint_index: 0n },
-      });
+      return located("E_ASSET_COUNT");
     // Open question: no fault proof can prove these rejections, so each
     // needs either an on-chain RejectionReasonV1 arm or removal of the node
     // pre-screen that raises it. Until then they keep the verdict the node
@@ -283,6 +263,30 @@ const dispositionOf = (
 };
 
 /**
+ * Canonical-decode rejections that can arrive without a subject, with the
+ * reason recorded for them. The validation trace refuses every
+ * canonical-decode rejection (`prepareValidationTrace` fails on its terminal
+ * phase), so a block holding one is never built and this reason is never
+ * committed; it only lets a replay compare the arm it would have written.
+ * The raw-envelope field-6 case is the one decode rejection a trace commits,
+ * and it always carries its subject.
+ */
+const UNCOMMITTED_CANONICAL_DECODE_REASONS: Partial<
+  Record<RejectCode, SDK.RejectionReason>
+> = Object.freeze({
+  [RejectCodes.InvalidFieldType]: {
+    FieldItemWidthIllegal: { field_index: 0n, item_index: 0n },
+  },
+  [RejectCodes.InvalidOutput]: { OutputNonCanonical: { output_index: 0n } },
+  [RejectCodes.FieldPreimageSize]: {
+    FieldPreimageLengthMismatch: { field_index: 0n },
+  },
+  [RejectCodes.AssetCount]: {
+    MintAssetAccumulationLimit: { mint_index: 0n },
+  },
+});
+
+/**
  * The exact `RejectionReasonV1` a forced leaf records for a Phase A/B
  * rejection: the arm and coordinates of the rule that failed.
  *
@@ -290,27 +294,32 @@ const dispositionOf = (
  * (`rejection_code_of`), so a reason whose code differs from the replay's
  * is disproved outright. The families behind each arm reopen the subject
  * the reason names, so the coordinates must be the ones the failing rule
- * found. The subject is used only when its arm bridges to the rejection's
- * own code; otherwise the code's arm is written at ordinal zero, which
- * keeps the code binding exact.
+ * found: a code with coordinate-carrying arms is written only from a subject
+ * of that code, and a rejection without one throws
+ * {@link ForcedRejectionSubjectMissing}.
  */
 export const forcedRejectionReason = (
   rejection: ForcedRejection,
-  phase: ForcedRejectionPhase,
 ): SDK.RejectionReason => {
-  const disposition = dispositionOf(rejection.code, phase);
-  if (disposition.kind === "noArm") return disposition.reason;
-  if (rejection.subject === undefined) return disposition.unlocated;
-  const located = rejectionReasonOfSubject(rejection.subject);
-  return SDK.rejectionCodeOf(located) === SDK.RejectionCodes[disposition.code]
-    ? located
-    : disposition.unlocated;
+  const disposition = dispositionOf(rejection.code);
+  if (disposition.kind !== "located") return disposition.reason;
+  if (rejection.subject !== undefined) {
+    const reason = rejectionReasonOfSubject(rejection.subject);
+    if (SDK.rejectionCodeOf(reason) === SDK.RejectionCodes[disposition.code])
+      return reason;
+    throw new ForcedRejectionSubjectMissing(rejection);
+  }
+  const uncommitted =
+    rejection.consensusPhase === "canonicalDecode"
+      ? UNCOMMITTED_CANONICAL_DECODE_REASONS[rejection.code]
+      : undefined;
+  if (uncommitted !== undefined) return uncommitted;
+  throw new ForcedRejectionSubjectMissing(rejection);
 };
 
 /** The forced leaf's operator verdict for a Phase A/B rejection. */
 export const forcedVerdictForRejection = (
   rejection: ForcedRejection,
-  phase: ForcedRejectionPhase,
 ): SDK.OperatorVerdict => ({
-  ForcedTxInvalid: { reason: forcedRejectionReason(rejection, phase) },
+  ForcedTxInvalid: { reason: forcedRejectionReason(rejection) },
 });

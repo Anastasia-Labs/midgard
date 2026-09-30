@@ -415,7 +415,7 @@ export const makeHarness = async () => {
               : shape.carriage.compactCbor,
           witnessSet: shape.carriage.witnessSet,
           witnessSetCompactCbor: shape.carriage.witnessSetCompactCbor,
-          scriptWitnessItems: [shape.item],
+          scriptWitnessItems: shape.items,
           publishCarriage:
             shape.certified || publishedCarriageUtxos !== undefined,
           publishedCarriageUtxos,
@@ -439,7 +439,7 @@ export const makeHarness = async () => {
       fieldIndex: SDK.MIDGARD_FIELD_INDEX.scriptWitnesses,
       anchorTxId: shape.txId,
       nativeTxCompactCbor: shape.carriage.compactCbor,
-      itemCbors: [shape.item],
+      itemCbors: shape.items,
       owner: signer.paymentKeyHash,
       publish: true,
       witnessSet: shape.carriage.witnessSet,
@@ -503,7 +503,7 @@ export const makeHarness = async () => {
    * raw support exactly as an adversarial publisher would derive it.
    */
   const certifyOverBoundField = async (shape: Shape) => {
-    const preimage = scriptWitnessField([shape.item]);
+    const preimage = scriptWitnessField(shape.items);
     expect(preimage).toHaveLength(ADJACENT_FIELD_BYTES);
     const plan = overBoundFieldCarriagePlan({
       owner: signer.paymentKeyHash,
@@ -566,7 +566,7 @@ export const makeHarness = async () => {
       anchorTxId: shape.txId,
       anchorWitnessSetHash: shape.carriage.witnessSetHash,
       carriage: shape.carriage,
-      scriptWitnessItems: [shape.item],
+      scriptWitnessItems: shape.items,
       carriageUtxos: published.carriageUtxos,
       certificateUtxo: published.certificateUtxo,
       referenceScriptUtxo: ref(1),

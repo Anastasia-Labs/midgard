@@ -81,7 +81,7 @@ export const nodeVerdictForDuplicateInputForcedOrder =
     if (phaseA.accepted.length !== 0 || rejection === undefined) {
       throw new Error("expected Phase A to reject the duplicated-input order");
     }
-    return forcedVerdictForRejection(rejection, "phaseA");
+    return forcedVerdictForRejection(rejection);
   };
 
 /**

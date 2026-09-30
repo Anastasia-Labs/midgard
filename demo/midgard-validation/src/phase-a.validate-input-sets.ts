@@ -79,10 +79,6 @@ export const consensusProfileRejectCode = (
       return RejectCodes.ScriptProgramSize;
     case "E_SCRIPT_PROGRAM_ENCODING":
       return RejectCodes.ScriptProgramEncoding;
-    case "E_NATIVE_SCRIPT_DEPTH":
-      return RejectCodes.NativeScriptDepth;
-    case "E_NATIVE_SCRIPT_NODE_COUNT":
-      return RejectCodes.NativeScriptNodeCount;
     case "E_ASSET_COUNT":
       return RejectCodes.AssetCount;
   }

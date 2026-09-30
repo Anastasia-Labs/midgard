@@ -53,7 +53,7 @@ export const nodeForcedVerdict = async ({
   );
   const phaseARejection = phaseA.rejected[0];
   if (phaseARejection !== undefined)
-    return forcedVerdictForRejection(phaseARejection, "phaseA");
+    return forcedVerdictForRejection(phaseARejection);
   const phaseB = await Effect.runPromise(
     runPhaseBValidationWithPatch(
       [phaseA.accepted[0]!],
@@ -66,5 +66,5 @@ export const nodeForcedVerdict = async ({
   const phaseBRejection = phaseB.rejected[0];
   return phaseBRejection === undefined
     ? "ForcedTxValid"
-    : forcedVerdictForRejection(phaseBRejection, "phaseB");
+    : forcedVerdictForRejection(phaseBRejection);
 };

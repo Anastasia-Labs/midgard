@@ -37,7 +37,10 @@ export type RejectSubject =
     }
   | { readonly arm: "AddressWitnessSignatureInvalid"; readonly index: bigint }
   | { readonly arm: "RequiredSignerUnsigned"; readonly index: bigint }
-  | { readonly arm: "WitnessNativeScriptFalse"; readonly index: bigint }
+  | {
+      readonly arm: "WitnessNativeScriptFalse" | "WitnessNativeScriptMalformed";
+      readonly index: bigint;
+    }
   | { readonly arm: "ObserverOrderInvalid"; readonly index: bigint }
   | { readonly arm: "ScriptIntegrityHashMissing" }
   | { readonly arm: "ObserversForbiddenOnUntaggedNetwork" }

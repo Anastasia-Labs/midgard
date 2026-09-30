@@ -36,8 +36,6 @@ export type MidgardConsensusViolationCode =
   | "E_VALUE_SIZE"
   | "E_SCRIPT_PROGRAM_SIZE"
   | "E_SCRIPT_PROGRAM_ENCODING"
-  | "E_NATIVE_SCRIPT_DEPTH"
-  | "E_NATIVE_SCRIPT_NODE_COUNT"
   | "E_ASSET_COUNT";
 
 export type MidgardConsensusViolation = {
@@ -293,8 +291,3 @@ export const enforcePreimageSize = (
         featureId,
         `${bytes.length.toString()} > ${maximum.toString()}`,
       );
-
-export type NativeScriptComplexity = {
-  readonly depth: number;
-  readonly nodeCount: number;
-};
