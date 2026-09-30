@@ -46,6 +46,13 @@ Runtime configuration is the node's: the CLI loads the same dotenv and
 `NodeConfig` the operator binary does, so run it from (or point it at) the node
 checkout whose `.env`, `logs/`, and `dist/index.js` a command should use.
 
+## Persistent Preprod setup and wallet tests
+
+Run `pnpm --dir demo/midgard-node-tools e2e-stack --config /absolute/path/stack.json`
+from the repository root. It saves confirmed progress, resumes the deployment,
+starts the existing Compose stack and checks deposits, transfers and automatic
+withdrawal payments. See [configuration and recovery](docs/PREPROD_STACK.md).
+
 ## Commands
 
 | Command                                                              | Purpose                                                                    |

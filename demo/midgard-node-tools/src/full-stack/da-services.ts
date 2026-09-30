@@ -1,0 +1,226 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  generateDaLibp2pRuntimeManifest,
+  writeDaLibp2pRuntimeManifest,
+} from "midgard-node/da/libp2p-runtime-manifest";
+
+import { configureStackCommittee } from "./committee.js";
+import { stackPaths } from "./deployment.js";
+import { readJsonIfPresent, writeDurableBytes } from "./journal.js";
+import type { StackProcesses } from "./process.js";
+
+export async function writePrivateEnv(
+  path: string,
+  env: Record<string, string>,
+) {
+  const body = Object.entries(env)
+    .map(([key, value]) => {
+      if (/\r|\n/.test(value))
+        throw new Error(
+          `Multiline ${key} is not supported in a Compose environment file`,
+        );
+      return `${key}=${JSON.stringify(value.replaceAll("$", "$$"))}`;
+    })
+    .join("\n");
+  await writeDurableBytes(path, Buffer.from(`${body}\n`));
+}
+export async function generateDaServices(processes: StackProcesses) {
+  const { config, env } = processes;
+  const directory = join(config.runDirectory, "services");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const manifestPath = stackPaths(processes).manifest;
+  const manifest = verifyFinalizedDeploymentManifest(
+    await readJsonIfPresent(manifestPath),
+  );
+  const threshold = Number(env.DA_THRESHOLD);
+  if (
+    !Number.isSafeInteger(threshold) ||
+    threshold < 1 ||
+    threshold > config.da.members.length
+  )
+    throw new Error(
+      "Set the exact configured DA_THRESHOLD before running the stack",
+    );
+  const members = (await configureStackCommittee(config, env)).map((member) => {
+    const { signerIndex } = member;
+    return {
+      signerIndex,
+      daVkey: member.daVkey,
+      seedEnv: member.seedEnv,
+      libp2pPrivateKeySource: env[member.transportEnv]!,
+      roles: [
+        "committee",
+        "retrieval",
+        ...(signerIndex === 0 ? ["coordinator"] : []),
+      ],
+      endpoint: { port: config.da.ports.committeeTransportBase + signerIndex },
+    };
+  });
+  const common = {
+    contractDeploymentInfoPath: manifestPath,
+    network: "Preprod",
+    producerPrivateKeySource: env[config.da.producerTransportEnv]!,
+    publicRetainedDaPrivateKeySource: env[config.da.retainedTransportEnv]!,
+    committeeMembers: members,
+    threshold,
+    publicRetainedDaPort: config.da.ports.retainedTransport,
+  };
+  const producer = join(directory, "producer.json");
+  await writeDaLibp2pRuntimeManifest(
+    producer,
+    await generateDaLibp2pRuntimeManifest({
+      ...common,
+      target: "producer",
+      profile: "producer-container-committee-host",
+    }),
+  );
+  await writeDaLibp2pRuntimeManifest(
+    join(directory, "producer-host.json"),
+    await generateDaLibp2pRuntimeManifest({
+      ...common,
+      target: "producer",
+      producerPort: Number(env.MIDGARD_NODE_DA_HOST_PORT ?? 39002),
+      profile: "host",
+    }),
+  );
+  processes.env.MIDGARD_DEPLOYMENT_MANIFEST_PATH = producer;
+  const mount = (source: string, target: string) => `${source}:${target}:ro`;
+  const build = {
+    context: resolve(config.nodeRoot, ".."),
+    dockerfile: "midgard-node-tools/docker/da.Dockerfile",
+  };
+  const services: Record<string, unknown> = {};
+  const writerPassword = env[config.da.databasePasswordEnv]!;
+  const readerPassword = env[config.da.readerPasswordEnv]!;
+  if (writerPassword === readerPassword)
+    throw new Error("DA reader and writer passwords must differ");
+  const pgEnv = join(directory, "da-postgres.env");
+  await writePrivateEnv(pgEnv, {
+    POSTGRES_USER: "midgard_da_writer",
+    POSTGRES_PASSWORD: writerPassword,
+    POSTGRES_DB: "midgard_da_0",
+    STACK_DA_READER_PASSWORD: readerPassword,
+  });
+  const init = join(directory, "da-postgres-init.sh");
+  await writeFile(
+    init,
+    `#!/bin/sh\nset -eu\nreader_password_sql=$(printf '%s' "$STACK_DA_READER_PASSWORD" | sed "s/'/''/g")\nprintf "CREATE ROLE midgard_da_reader LOGIN PASSWORD '%s';\\n" "$reader_password_sql" | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"\nfor index in ${members.map((member) => member.signerIndex).join(" ")}; do\n  database="midgard_da_$index"\n  if [ "$index" != 0 ]; then createdb --username "$POSTGRES_USER" "$database"; fi\n  printf '%s\\n' 'GRANT CONNECT ON DATABASE '"$database"' TO midgard_da_reader;' 'GRANT USAGE ON SCHEMA public TO midgard_da_reader;' 'ALTER DEFAULT PRIVILEGES FOR ROLE midgard_da_writer IN SCHEMA public GRANT SELECT ON TABLES TO midgard_da_reader;' | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$database"\ndone\n`,
+    { mode: 0o644 },
+  );
+  services["da-postgres"] = {
+    image: "postgres:15.15-alpine",
+    restart: "unless-stopped",
+    env_file: [pgEnv],
+    ports: [`127.0.0.1:${config.da.ports.database}:5432`],
+    volumes: [
+      "da-postgres-data:/var/lib/postgresql/data",
+      mount(init, "/docker-entrypoint-initdb.d/10-reader.sh"),
+    ],
+    healthcheck: {
+      test: ["CMD-SHELL", "pg_isready -U midgard_da_writer -d midgard_da_0"],
+      interval: "2s",
+      timeout: "3s",
+      retries: 60,
+    },
+  };
+  for (const member of members) {
+    const memberManifest = join(
+      directory,
+      `committee-${member.signerIndex}.json`,
+    );
+    await writeDaLibp2pRuntimeManifest(
+      memberManifest,
+      await generateDaLibp2pRuntimeManifest({
+        ...common,
+        target: "committee",
+        profile: "host",
+        localSignerIndex: member.signerIndex,
+        producerPort: Number(env.MIDGARD_NODE_DA_HOST_PORT ?? 39002),
+      }),
+    );
+    const envFile = join(directory, `committee-${member.signerIndex}.env`);
+    await writePrivateEnv(envFile, {
+      MIDGARD_NETWORK: "Preprod",
+      MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/config/committee.json",
+      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: "/config/manifest.json",
+      CARDANO_PROVIDER_URLS: `kupmios:${env.L1_KUPO_KEY}|${env.L1_OGMIOS_KEY}`,
+      CARDANO_L1_SOURCE_MODE: "local_node",
+      CARDANO_LOCAL_NODE_AUTHORITY_ID: "local-cardano-node",
+      CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: `chain-sync:kupmios:${env.L1_KUPO_KEY}|${env.L1_OGMIOS_KEY}`,
+      CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+        "/var/lib/midgard-da/chain-sync-cursor.json",
+      CARDANO_LOCAL_NODE_SOCKET_PATH: "/ipc/node.socket",
+      CARDANO_LOCAL_NODE_CONFIG_PATH: "/cardano-config/config.json",
+      CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH:
+        "/usr/local/bin/midgard-chain-sync",
+      CARDANO_FINALITY_DEPTH: String(manifest.l1Finality.confirmationDepth),
+      DA_LIBP2P_PRIVATE_KEY_SOURCE: member.libp2pPrivateKeySource,
+      DA_SIGNER_INDEX: String(member.signerIndex),
+      DA_SIGNER_KEY_SOURCE: `cardano-seed:${env[member.seedEnv]}`,
+      DA_THRESHOLD: String(threshold),
+      DA_L1_SUBMISSION_ENABLED: String(member.signerIndex === 0),
+      ...(member.signerIndex === 0
+        ? { L1_SUBMITTER_KEY_SOURCE: `seed:${env[config.da.submitterSeedEnv]}` }
+        : {}),
+      DA_COMMITTEE_DATABASE_URL: `postgresql://midgard_da_writer:${encodeURIComponent(writerPassword)}@127.0.0.1:${config.da.ports.database}/midgard_da_${member.signerIndex}`,
+      DA_COMMITTEE_API_HOST: "127.0.0.1",
+      DA_COMMITTEE_API_PORT: String(
+        config.da.ports.committeeApiBase + member.signerIndex,
+      ),
+    });
+    services[`da-committee-${member.signerIndex}`] = {
+      build,
+      image: "midgard-stack-da:local",
+      command: ["dist/index.js"],
+      network_mode: "host",
+      restart: "unless-stopped",
+      env_file: [envFile],
+      volumes: [
+        mount(memberManifest, "/config/committee.json"),
+        mount(manifestPath, "/config/manifest.json"),
+        mount(
+          join(config.watcher.configDirectory, "cardano"),
+          "/cardano-config",
+        ),
+        `${join(config.nodeRoot, "cardano/ipc")}:/ipc`,
+        `da-committee-${member.signerIndex}-state:/var/lib/midgard-da`,
+      ],
+      depends_on: { "da-postgres": { condition: "service_healthy" } },
+    };
+  }
+  const publicEnv = join(directory, "retained.env");
+  await writePrivateEnv(publicEnv, {
+    MIDGARD_NETWORK: "Preprod",
+    MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/config/committee.json",
+    MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: "/config/manifest.json",
+    DA_PUBLIC_RETAINED_DA_ENABLED: "true",
+    DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE:
+      env[config.da.retainedTransportEnv]!,
+    DA_PUBLIC_RETAINED_DA_DATABASE_ROLE: "midgard_da_reader",
+    DA_PUBLIC_RETAINED_DA_DATABASE_URL: `postgresql://midgard_da_reader:${encodeURIComponent(readerPassword)}@127.0.0.1:${config.da.ports.database}/midgard_da_0`,
+  });
+  services["public-retained-da"] = {
+    build,
+    image: "midgard-stack-da:local",
+    command: ["dist/public-retained-da.js"],
+    network_mode: "host",
+    restart: "unless-stopped",
+    env_file: [publicEnv],
+    volumes: [
+      mount(join(directory, "committee-0.json"), "/config/committee.json"),
+      mount(manifestPath, "/config/manifest.json"),
+    ],
+    depends_on: { "da-postgres": { condition: "service_healthy" } },
+  };
+  return {
+    directory,
+    services,
+    producer,
+    volumes: Object.fromEntries(
+      members.map((member) => [`da-committee-${member.signerIndex}-state`, {}]),
+    ),
+  };
+}

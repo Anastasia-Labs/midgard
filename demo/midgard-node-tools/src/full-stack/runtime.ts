@@ -1,0 +1,329 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { parse } from "dotenv";
+
+import { generateDaServices, writePrivateEnv } from "./da-services.js";
+import { stackPaths } from "./deployment.js";
+import {
+  readJsonIfPresent,
+  writeDurableBytes,
+  writeDurableJson,
+} from "./journal.js";
+import { containerNativeLedger } from "./native-ledger.js";
+import {
+  bearerHeaders,
+  getJson,
+  poll,
+  type StackProcesses,
+} from "./process.js";
+import { stackIsReady } from "./readiness.js";
+import { storageIdentityStep } from "./storage.js";
+import { generateWatcherServices } from "./watcher-services.js";
+import type { StackStep } from "./workflow.js";
+
+type RuntimeConfiguration = {
+  compose: string;
+  operationsEndpoint: string;
+  authorityEndpoint: string;
+  committeeServices: string[];
+};
+export const runtimeConfigurationPath = (processes: StackProcesses) =>
+  join(processes.config.runDirectory, "runtime.json");
+export async function readRuntimeConfiguration(processes: StackProcesses) {
+  const value = (await readJsonIfPresent(
+    runtimeConfigurationPath(processes),
+  )) as RuntimeConfiguration;
+  if (
+    !value?.compose ||
+    !value.operationsEndpoint ||
+    !Array.isArray(value.committeeServices)
+  )
+    throw new Error("Runtime configuration is missing");
+  return value;
+}
+export async function confirmRuntimeReadiness(processes: StackProcesses) {
+  const runtime = await readRuntimeConfiguration(processes);
+  const headers = await bearerHeaders(processes.config.watcher.bearerFile);
+  const watcherEnv = parse(
+    await readFile(processes.config.watcher.composeEnvFile),
+  );
+  const keyHex = (
+    await readFile(watcherEnv.WATCHER_RECORD_KEY_FILE!, "utf8")
+  ).trim();
+  if (!/^[0-9a-f]{64}$/i.test(keyHex))
+    throw new Error("Watcher record key must be 32-byte hex");
+  const recordKeyId = createHash("sha256")
+    .update(Buffer.from(keyHex, "hex"))
+    .digest("hex");
+  const { manifestId } = (await readJsonIfPresent(
+    stackPaths(processes).manifest,
+  )) as { manifestId: string };
+  return poll(
+    "complete stack readiness",
+    processes.config.timeoutMs,
+    async () => {
+      const node = (await getJson(`${processes.config.endpoint}/readyz`)) as
+        | {
+            ready?: boolean;
+            reasons?: unknown[];
+            settlement?: { state?: string };
+          }
+        | undefined;
+      const watcher = (await getJson(
+        `${runtime.operationsEndpoint}/v1/status`,
+        headers,
+      )) as
+        | {
+            liveness?: string;
+            readiness?: string;
+            readinessReasons?: unknown[];
+          }
+        | undefined;
+      const authority = await getJson(
+        `${runtime.authorityEndpoint}/v1/identity`,
+        headers,
+      );
+      const committees = await Promise.all(
+        processes.config.da.members.map((_, index) =>
+          getJson(
+            `http://127.0.0.1:${processes.config.da.ports.committeeApiBase + index}/readyz`,
+          ),
+        ),
+      );
+      if (
+        !stackIsReady({
+          node,
+          watcher,
+          authority,
+          committees,
+          manifestId,
+          recordKeyId,
+        })
+      )
+        return undefined;
+      return { node, watcher, authority, committees };
+    },
+  );
+}
+
+export function runtimeSteps(processes: StackProcesses): StackStep[] {
+  return [
+    {
+      id: "runtime-configuration",
+      reconcile: async (record) =>
+        record?.status === "running" && record.data !== null
+          ? { status: "complete", data: record.data }
+          : { status: "retry" },
+      execute: async () => {
+        const da = await generateDaServices(processes);
+        const member = (await readJsonIfPresent(
+          join(da.directory, "committee-0.json"),
+        )) as { public_retained_da: { announce_multiaddrs: string[] } };
+        const watcher = await generateWatcherServices(
+          processes,
+          member.public_retained_da.announce_multiaddrs[0]!,
+        );
+        const nodeEnvPath = join(da.directory, "node.env");
+        const nativeLedger = containerNativeLedger(processes);
+        await writePrivateEnv(nodeEnvPath, {
+          ...Object.fromEntries(
+            Object.entries(processes.env).map(([key, value]) => {
+              const excluded = [
+                processes.config.wallets.user!.seedEnv,
+                processes.config.wallets.recipient!.seedEnv,
+                processes.config.wallets.prover!.seedEnv,
+                processes.config.wallets.availability!.seedEnv,
+                processes.config.da.submitterSeedEnv,
+                processes.config.da.retainedTransportEnv,
+                processes.config.da.readerPasswordEnv,
+                processes.config.da.databasePasswordEnv,
+                ...processes.config.da.members.flatMap((member) => [
+                  member.seedEnv,
+                  member.transportEnv,
+                ]),
+              ];
+              return [key, excluded.includes(key) ? "" : value];
+            }),
+          ),
+          DA_LIBP2P_PRIVATE_KEY_SOURCE:
+            processes.env[processes.config.da.producerTransportEnv]!,
+          MIN_QUEUE_LENGTH_FOR_MERGING: "1",
+          POSTGRES_HOST: "postgres",
+          POSTGRES_PORT: "5432",
+          MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/app/stack/producer.json",
+          MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH:
+            "/app/deploymentInfo/contract-deployment-info.json",
+          MPF_NATIVE_OWNER_BINARY_PATH: "/app/native/architecture-g-owner",
+          ...nativeLedger.env,
+        });
+        const compose = join(da.directory, "compose.json");
+        await writeDurableJson(compose, {
+          services: {
+            ...da.services,
+            ...watcher.services,
+            "midgard-node": {
+              env_file: [nodeEnvPath],
+              volumes: [
+                `${da.producer}:/app/stack/producer.json:ro`,
+                ...nativeLedger.volumes,
+              ],
+            },
+            "midgard-node-migrate": {
+              env_file: [nodeEnvPath],
+              volumes: nativeLedger.volumes,
+            },
+          },
+          volumes: {
+            "da-postgres-data": {},
+            ...da.volumes,
+            ...watcher.volumes,
+          },
+        });
+        await processes.compose(
+          "compose-validate",
+          ["config", "--quiet"],
+          compose,
+        );
+        const configuration = {
+          compose,
+          operationsEndpoint: watcher.operationsEndpoint,
+          authorityEndpoint: watcher.authorityEndpoint,
+          committeeServices: processes.config.da.members.map(
+            (_, index) => `da-committee-${index}`,
+          ),
+        };
+        await writeDurableJson(
+          runtimeConfigurationPath(processes),
+          configuration,
+        );
+        return configuration;
+      },
+    },
+    storageIdentityStep(processes),
+    {
+      id: "services",
+      reconcile: async (record) => {
+        if (record?.status === "running" && record.data !== null)
+          return {
+            status: "complete",
+            data: await confirmRuntimeReadiness(processes),
+          };
+        return { status: "retry" };
+      },
+      execute: async () => {
+        const runtime = await readRuntimeConfiguration(processes);
+        await processes.compose(
+          "services-build",
+          [
+            "build",
+            "midgard-node",
+            "midgard-node-migrate",
+            "da-committee-0",
+            "watcher",
+            "watcher-authority",
+          ],
+          runtime.compose,
+        );
+        // Pin the actual owner in the built image, never copy a hash from another checkout.
+        const pin = (await processes.compose(
+          "native-owner-pin",
+          [
+            "run",
+            "--rm",
+            "--no-deps",
+            "--entrypoint",
+            "node",
+            "midgard-node",
+            "-e",
+            "console.log(JSON.stringify({sha:require('node:fs').readFileSync('/app/native/architecture-g-owner.sha256','utf8').trim()}))",
+          ],
+          runtime.compose,
+        )) as { sha: string };
+        if (!/^[0-9a-f]{64}$/.test(pin.sha))
+          throw new Error("Invalid native owner image pin");
+        const nodeEnvPath = join(
+          processes.config.runDirectory,
+          "services/node.env",
+        );
+        const nodeEnv =
+          (await readFile(nodeEnvPath, "utf8")).replace(
+            /^MPF_NATIVE_OWNER_BINARY_SHA256=.*\n?/gm,
+            "",
+          ) + `MPF_NATIVE_OWNER_BINARY_SHA256=${pin.sha}\n`;
+        await writeDurableBytes(nodeEnvPath, Buffer.from(nodeEnv));
+        await processes.compose(
+          "da-database-start",
+          ["up", "-d", "--wait", "da-postgres"],
+          runtime.compose,
+        );
+        for (const service of runtime.committeeServices.slice(0, 1))
+          await processes.compose(
+            `${service}-wallet-preflight`,
+            [
+              "run",
+              "--rm",
+              "--no-deps",
+              service,
+              "dist/index.js",
+              "l1-wallet-preflight",
+              "--json",
+            ],
+            runtime.compose,
+          );
+        await processes.compose(
+          "committee-start",
+          ["up", "-d", ...runtime.committeeServices, "public-retained-da"],
+          runtime.compose,
+        );
+        await poll(
+          "committee readiness",
+          processes.config.timeoutMs,
+          async () => {
+            const ready = await Promise.all(
+              runtime.committeeServices.map((_, index) =>
+                getJson(
+                  `http://127.0.0.1:${processes.config.da.ports.committeeApiBase + index}/readyz`,
+                ),
+              ),
+            );
+            return ready.every(
+              (value) => (value as { ready?: boolean })?.ready === true,
+            )
+              ? ready
+              : undefined;
+          },
+        );
+        // Bind only before producer startup. Attach uses dial-only, because its listener is live.
+        const alreadyRunning = await getJson(
+          `${processes.config.endpoint}/readyz`,
+        );
+        const hostManifest = join(
+          processes.config.runDirectory,
+          "services/producer-host.json",
+        );
+        await processes.node(
+          "producer-da-preflight",
+          [
+            "da-libp2p-preflight",
+            "--mode",
+            alreadyRunning ? "dial-only" : "bind-listen",
+            "--json",
+          ],
+          {
+            MIDGARD_DEPLOYMENT_MANIFEST_PATH: hostManifest,
+            DA_LIBP2P_PRIVATE_KEY_SOURCE:
+              processes.env[processes.config.da.producerTransportEnv]!,
+          },
+        );
+        await processes.compose(
+          "runtime-start",
+          ["up", "-d", "midgard-node", "watcher-authority", "watcher"],
+          runtime.compose,
+        );
+        return confirmRuntimeReadiness(processes);
+      },
+    },
+  ];
+}
