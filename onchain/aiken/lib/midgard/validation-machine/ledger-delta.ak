@@ -5,6 +5,7 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/types.{MidgardTxInput}
 use midgard/ledger_output_commitment_v1
 use midgard/mpf_proof_fold_v1
+use midgard/mpf_proof_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
   LedgerDeltaControlV1, LedgerDeltaOperationProofV1, LedgerDeltaOperationWitness,
@@ -182,15 +183,22 @@ fn ledger_delta_pending_step(
         pending.descriptor,
       ),
     )
+    // The fold reconstructs library roots, which name the empty ledger
+    // `null_hash`; the machine carries the committed Midgard root, which names
+    // it `env.empty_merkle_tree_root`. Both ends of the transition are read in
+    // the committed encoding so the terminal root a claim compares with the
+    // block's `utxos_root` has exactly one name for an emptied ledger.
     and {
       auxiliary == NoAuxiliaryWitness,
-      control.current_ledger_root == expected_current_root,
+      control.current_ledger_root == mpf_proof_v1.committed_root(
+        expected_current_root,
+      ),
       ledger_delta_successor_is_exact(
         pre,
         witness,
         LedgerDeltaControlV1 {
           ..control,
-          current_ledger_root: next_root,
+          current_ledger_root: mpf_proof_v1.committed_root(next_root),
           operation_count: control.operation_count + 1,
           operation_peaks: next_peaks,
           pending_mutation_cbor: #"",

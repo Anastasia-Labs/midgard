@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
+  committedLedgerRoot,
   exactTrieRoot,
   ledgerDeltaProofFrameAuxiliary,
   validationMachineLedgerRoot,
@@ -31,7 +32,7 @@ describe("validation ledger roots at the header boundary", () => {
     ).toEqual([]);
   });
 
-  it("keeps the MPF empty sentinel inside first-deposit insertion and last-entry deletion proofs", async () => {
+  it("names the empty ledger by the committed root at both ends of a mutation, and by the MPF sentinel inside its proof fold", async () => {
     const entry = {
       outRef: outRefFromByte(0x41),
       output: makeOutput(10_000_000n),
@@ -46,22 +47,29 @@ describe("validation ledger roots at the header boundary", () => {
     });
     expect(steps).toHaveLength(2);
     const [insert, remove] = steps;
+    const emptyLedgerRoot = Buffer.from(EMPTY_MERKLE_TREE_ROOT, "hex");
     const populatedRoot = await validationMachineLedgerRoot([entry]);
-    expect(insert!.preRoot).toEqual(Buffer.alloc(32));
+    expect(insert!.preRoot).toEqual(emptyLedgerRoot);
     expect(insert!.postRoot).toEqual(populatedRoot);
     expect(insert!.proofFoldTrace.terminal).toMatchObject({
       excludingRoot: Buffer.alloc(32),
       includingRoot: populatedRoot,
     });
     expect(remove!.preRoot).toEqual(populatedRoot);
-    expect(remove!.postRoot).toEqual(Buffer.alloc(32));
+    expect(remove!.postRoot).toEqual(emptyLedgerRoot);
     expect(remove!.proofFoldTrace.terminal).toMatchObject({
       includingRoot: populatedRoot,
       excludingRoot: Buffer.alloc(32),
     });
-    expect(await validationMachineLedgerRoot([])).toEqual(
-      Buffer.from(EMPTY_MERKLE_TREE_ROOT, "hex"),
-    );
+    expect(await validationMachineLedgerRoot([])).toEqual(emptyLedgerRoot);
+  });
+
+  it("translates only the MPF empty sentinel into the committed empty-ledger root", () => {
+    const emptyLedgerRoot = Buffer.from(EMPTY_MERKLE_TREE_ROOT, "hex");
+    expect(committedLedgerRoot(Buffer.alloc(32))).toEqual(emptyLedgerRoot);
+    expect(committedLedgerRoot(emptyLedgerRoot)).toEqual(emptyLedgerRoot);
+    const populated = Buffer.alloc(32, 0x5a);
+    expect(committedLedgerRoot(populated)).toEqual(populated);
   });
 
   it("carries a deletion's group opening on its terminal proof frame only", async () => {

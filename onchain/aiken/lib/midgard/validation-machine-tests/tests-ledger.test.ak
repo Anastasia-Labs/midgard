@@ -40,6 +40,7 @@ use midgard/validation_machine_tests/fixtures_ledger.{
   compact_ledger_delta_successor, compact_ledger_output_descriptor,
   conservation_final_step_is_provable, conservation_mint_step_is_exact,
   ledger_delta_operation_authentication_fixture,
+  ledger_delta_singleton_entry_root, ledger_delta_singleton_finalize,
   min_ada_absolute_vector_is_exact, min_ada_probe_enterprise_output,
   min_ada_probe_rich_output, mint_authorization_step_is_provable,
   target_snapshot_canonical_size, target_snapshot_min_fee_step_is_provable,
@@ -432,61 +433,29 @@ test ledger_delta_deletion_frame_keeps_a_terminal_branch_with_two_children() {
   }
 }
 
+// The first insertion starts from the committed empty ledger, which is named
+// only by `env.empty_merkle_tree_root`; the library's `null_hash` is not a
+// second name for it.
 test ledger_delta_finalize_applies_only_authenticated_root_transition() {
-  let key = #"696e736572742d6b6579"
-  let value = #"696e736572742d76616c7565"
-  let descriptor = empty_mpf_proof_descriptor()
-  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
-    key,
-    value,
-    descriptor,
-  )
-  let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
-    authorization_stage: 1,
-    operation_kind: 1,
-    key,
-    value,
-    descriptor,
-    fold_control,
+  let inserted = ledger_delta_singleton_entry_root()
+  and {
+    ledger_delta_singleton_finalize(1, env.empty_merkle_tree_root, inserted),
+    !ledger_delta_singleton_finalize(1, null_hash, inserted),
+    !ledger_delta_singleton_finalize(1, env.empty_merkle_tree_root, h_a),
   }
-  let operation_leaf = vm_shared.ledger_delta_operation_leaf_hash(
-    1,
-    key,
-    value,
-    descriptor,
-  )
-  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    ..compact_ledger_delta_control(1),
-    current_ledger_root: fold_control.excluding_root,
-    pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
-      pending,
-    ),
+}
+
+// Deleting the only entry leaves the committed empty ledger. The machine's
+// successor root must be the sentinel a block commits for it, never the
+// library's `null_hash`: otherwise the terminal root of an honest drain would
+// disagree with the block, and a block committing `null_hash` would agree.
+test ledger_delta_finalize_names_a_drained_ledger_by_the_committed_sentinel() {
+  let entry = ledger_delta_singleton_entry_root()
+  and {
+    ledger_delta_singleton_finalize(0, entry, env.empty_merkle_tree_root),
+    !ledger_delta_singleton_finalize(0, entry, null_hash),
+    !ledger_delta_singleton_finalize(0, h_a, env.empty_merkle_tree_root),
   }
-  let pre = compact_ledger_delta_state(
-    control,
-    56,
-    validation_merkle_v1.frontier_commitment(
-      operation_frontier.count,
-      operation_frontier.peaks,
-    ),
-  )
-  vm_ledger_delta.verify_ledger_delta_finalize_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: compact_ledger_delta_successor(
-        pre,
-        vm_machine_types.LedgerDeltaControlV1 {
-          ..control,
-          current_ledger_root: fold_control.including_root,
-          operation_count: 1,
-          operation_peaks: operation_frontier.peaks,
-          pending_mutation_cbor: #"",
-        },
-      ),
-    },
-  )
 }
 
 test value_and_mint_final_equation_is_enforced_on_l1() {

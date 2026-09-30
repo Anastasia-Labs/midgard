@@ -10,7 +10,10 @@ import {
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { ensureHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
-import { encodeValidationTerminalWitnessCbor } from "@al-ft/midgard-validation";
+import {
+  buildValidationMachineLedgerMutationSteps,
+  encodeValidationTerminalWitnessCbor,
+} from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -21,12 +24,19 @@ export const buildAcceptedClaimTransitionFixture = async ({
   operatorVkey,
   now,
   honest = false,
+  drained = false,
   endTime,
   blockSlot,
 }: {
   operatorVkey: string;
   now: number;
   honest?: boolean;
+  /**
+   * The transaction spends the ledger's only entry and produces nothing. The
+   * claim's terminal root is then the one the validation machine builder
+   * derives for that drain, and `honest` picks only the block's post root.
+   */
+  drained?: boolean;
   endTime?: bigint;
   blockSlot?: bigint;
 }) => {
@@ -34,6 +44,7 @@ export const buildAcceptedClaimTransitionFixture = async ({
     operatorVkey,
     now,
     honest,
+    drained,
   });
   if (
     !("InvalidOneStepTransition" in base.proof.fault) ||
@@ -78,10 +89,18 @@ export const buildAcceptedClaimTransitionFixture = async ({
     -1n,
     0n,
   ]);
-  const root = Buffer.from(
-    honest ? opening.trace_proof.value.post_utxos_root : "cc".repeat(32),
-    "hex",
-  );
+  const root =
+    base.drainedEntry === null
+      ? Buffer.from(
+          honest ? opening.trace_proof.value.post_utxos_root : "cc".repeat(32),
+          "hex",
+        )
+      : (
+          await buildValidationMachineLedgerMutationSteps({
+            initialEntries: [base.drainedEntry],
+            operations: [{ type: "delete", key: base.drainedEntry.outRef }],
+          })
+        ).at(-1)!.postRoot;
   const terminalWitness = encodeValidationTerminalWitnessCbor({
     verdict: "accepted",
     postLedgerRoot: root,

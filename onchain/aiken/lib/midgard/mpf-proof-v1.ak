@@ -1280,9 +1280,26 @@ pub fn has_value_hash(
 /// and `insert_root` (which needs a trie) translate through one place and
 /// cannot drift apart: `mpf.from_root(null_hash)` is `mpf.empty` by
 /// construction.
-fn library_root(root: ByteArray) -> ByteArray {
+pub fn library_root(root: ByteArray) -> ByteArray {
   if root == env.empty_merkle_tree_root {
     null_hash
+  } else {
+    root
+  }
+}
+
+/// The Midgard root that names the trie a library root reconstructs: the exact
+/// inverse of `library_root`.
+///
+/// Every root a proof hands back to be compared with a committed Midgard root
+/// (a block's `utxos_root`, a validation machine's `current_ledger_root`) goes
+/// through here, so an emptied ledger is always named by the one committed
+/// sentinel. Without it, the last deletion leaves `null_hash`, a second name
+/// for the empty ledger: an honest block that commits the sentinel would then
+/// be convicted, and a block that commits `null_hash` would escape.
+pub fn committed_root(root: ByteArray) -> ByteArray {
+  if root == null_hash {
+    env.empty_merkle_tree_root
   } else {
     root
   }

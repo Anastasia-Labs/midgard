@@ -31,6 +31,7 @@ use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
 use midgard/validation_claim_v1
 use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_tests/fixtures_ledger
 use midgard/validation_trace_v1
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -1308,6 +1309,25 @@ test accepts_a_last_entry_withdrawal_that_commits_the_library_empty_root() {
   last_entry_withdrawal_fault_is_valid(null_hash)
 }
 
+// The L2 replay route folds each spent input through `apply_delete_witness`
+// and, for a transaction with no outputs, convicts exactly when the folded root
+// differs from the step's post root. Spending the ledger's only entry folds to
+// the committed sentinel, so the route convicts a block that names the drained
+// ledger `null_hash` and not the honest block.
+test l2_replay_names_a_drained_ledger_by_the_committed_sentinel() {
+  let key = ledger_outref_key(out_ref(9))
+  let value = native_output_ledger_value(9)
+  let drained = proof.apply_delete_witness(
+    mpf.root(mpf.insert(mpf.empty, key, value, [])),
+    ledger_delete_witness(key, value),
+  )
+  let convicts = fn(post_root) { drained != post_root }
+  and {
+    !convicts(env.empty_merkle_tree_root),
+    convicts(null_hash),
+  }
+}
+
 // ## A challenger cannot steer the terminal neighbour of a one-step mutation
 //
 // The challenger supplies the delete and insert proofs of a one-step
@@ -1735,6 +1755,40 @@ test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
     prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
     asset_name_for(header),
   )
+}
+
+// An accepted claim over a transaction that deletes the ledger's only entry
+// ends at the terminal root the ledger delta admits for the drain. That root is
+// the committed empty-ledger sentinel, so the claim convicts a block that
+// commits the library's `null_hash` for the drained ledger and does not convict
+// the honest block that commits the sentinel.
+test accepted_claim_names_a_drained_ledger_by_the_committed_sentinel() {
+  let entry = fixtures_ledger.ledger_delta_singleton_entry_root()
+  let admits = fn(root) {
+    fixtures_ledger.ledger_delta_singleton_finalize(0, entry, root)
+  }
+  expect admits(env.empty_merkle_tree_root) != admits(null_hash)
+  let terminal_root = if admits(env.empty_merkle_tree_root) {
+    env.empty_merkle_tree_root
+  } else {
+    null_hash
+  }
+  let convicts = fn(post_root) {
+    let Pair(header, witness) = accepted_forced_transition_case(
+      rejection_reason_v1.ForcedTxValid,
+      ledger_state.ForcedTransaction,
+      post_root,
+      terminal_root,
+    )
+    proof.validate_accepted_transaction_fault_proof(
+      prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
+      asset_name_for(header),
+    )
+  }
+  and {
+    !convicts(env.empty_merkle_tree_root),
+    convicts(null_hash),
+  }
 }
 
 test rejects_invalid_forced_source_with_accepted_validation_claim() {
