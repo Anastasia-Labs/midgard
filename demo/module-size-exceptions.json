@@ -440,11 +440,6 @@
     "reason": "Retained test registration “missingScriptSource retained ScriptSources universe” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-fault-proofs/tests/missing-signature-wrongful-rejection-lifecycle.test.ts",
-    "max": 813,
-    "reason": "Retained test registration “missingSignature wrongful rejection real lifecycle” (407 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-fault-proofs/tests/native-script-family-evidence.test.ts",
     "max": 1147,
     "reason": "Retained test registration “Q33/Q34 retained-DA evidence” (956 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."

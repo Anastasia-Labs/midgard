@@ -1,32 +1,29 @@
 import { CML } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { afterAll, describe, expect, it } from "vitest";
 
-import {
-  RejectCodes,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "../src/index.js";
+import { RejectCodes } from "../src/index.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
-import type {
-  PhaseAValidatedTx,
-  RejectCode,
-  RejectedTx,
-} from "../src/types.js";
 import {
+  phaseARejection,
+  phaseBRejection,
+  scriptAddressBytes,
+} from "./reject-subject.support.js";
+import {
+  encodeByteList,
+  encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
   makePhaseBCandidate,
   makeProtectedScriptOutput,
-  makeQueued,
   makeRedeemersCbor,
   nativeScriptWitness,
   outRefFromByte,
   plutusV3ScriptWitness,
   TEST_SIGNER_HASH,
 } from "./validation-fixtures.js";
+import { TEST_PRIVATE_KEY } from "./validation-fixtures.make-min-ada-funded-exact-size-output-item.js";
 
 /**
  * The subject a rejection records is the arm and coordinate a forced verdict
@@ -34,50 +31,6 @@ import {
  * puts the fault at a non-zero ordinal so a writer that ignored the subject
  * (and wrote ordinal zero) is caught.
  */
-
-const phaseAConfig = {
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  concurrency: 1,
-  strictnessProfile: "phase-a-unit",
-};
-
-const phaseARejection = async (
-  fixture: ReturnType<typeof makeNativeTx>,
-  code: RejectCode,
-): Promise<RejectedTx> => {
-  const result = await Effect.runPromise(
-    runPhaseAValidation(
-      [makeQueued(fixture.txId, fixture.txCbor)],
-      phaseAConfig,
-    ),
-  );
-  expect(result.accepted).toHaveLength(0);
-  expect(result.rejected).toHaveLength(1);
-  expect(result.rejected[0]!.code).toBe(code);
-  return result.rejected[0]!;
-};
-
-const phaseBRejection = async (
-  candidate: PhaseAValidatedTx,
-  state: readonly (readonly [Buffer, Buffer])[],
-  code: RejectCode,
-): Promise<RejectedTx> => {
-  const result = await Effect.runPromise(
-    runPhaseBValidationWithPatch(
-      [candidate],
-      new Map(
-        state.map(([outRef, output]) => [outRef.toString("hex"), output]),
-      ),
-      { nowCardanoSlotNo: 100n, bucketConcurrency: 1 },
-    ),
-  );
-  expect(result.accepted).toHaveLength(0);
-  expect(result.rejected).toHaveLength(1);
-  expect(result.rejected[0]!.code).toBe(code);
-  return result.rejected[0]!;
-};
 
 const foreignKey = CML.PrivateKey.generate_ed25519();
 const foreignAddress = CML.EnterpriseAddress.new(
@@ -133,13 +86,50 @@ describe("phase A rejection subjects", () => {
   });
 
   it("names the invalid address witness", async () => {
+    // Witness 0 signs the transaction id; witness 1 signs other bytes.
+    const base = makeNativeTx();
+    const witness = (message: Buffer, key: CML.PrivateKey) =>
+      Buffer.from(
+        CML.make_vkey_witness(
+          CML.TransactionHash.from_raw_bytes(message),
+          key,
+        ).to_cbor_bytes(),
+      );
+    const fixture = encodeRecomputedNativeTx({
+      ...base.tx,
+      witnessSet: {
+        ...base.tx.witnessSet,
+        addrTxWitsPreimageCbor: encodeByteList([
+          witness(base.txId, TEST_PRIVATE_KEY),
+          witness(Buffer.alloc(32, 0x7f), foreignKey),
+        ]),
+      },
+    });
+    expect(fixture.txId).toStrictEqual(base.txId);
     const rejection = await phaseARejection(
-      makeNativeTx({ invalidVkeyWitness: true }),
+      fixture,
       RejectCodes.InvalidSignature,
     );
     expect(rejection.subject).toStrictEqual({
       arm: "AddressWitnessSignatureInvalid",
-      index: 0n,
+      index: 1n,
+    });
+  });
+
+  it("names the first required observer out of order", async () => {
+    const rejection = await phaseARejection(
+      makeNativeTx({
+        requiredObserverItems: [
+          Buffer.alloc(28, 0x01),
+          Buffer.alloc(28, 0x03),
+          Buffer.alloc(28, 0x02),
+        ],
+      }),
+      RejectCodes.InvalidFieldType,
+    );
+    expect(rejection.subject).toStrictEqual({
+      arm: "ObserverOrderInvalid",
+      index: 2n,
     });
   });
 
@@ -262,24 +252,72 @@ describe("phase B rejection subjects", () => {
   });
 
   it("names the redeemer no purpose uses", async () => {
+    // Redeemer 0 serves the Plutus spend; redeemer 1 points at no purpose.
+    const script = plutusV3ScriptWitness(Buffer.from("01", "hex"));
     const rejection = await phaseBRejection(
       makePhaseBCandidate({
         spent: [a],
+        scriptWitnesses: [script],
         scriptLanguages: ["PlutusV3"],
         redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+          { tag: MidgardRedeemerTag.Spend, index: 0n },
           { tag: MidgardRedeemerTag.Mint, index: 0n },
         ]),
       }),
-      [[a, funded]],
+      [
+        [
+          a,
+          makeOutput(
+            FUNDED_OUTPUT_LOVELACE,
+            scriptAddressBytes(hashScriptWitness(script)),
+          ),
+        ],
+      ],
       RejectCodes.InvalidFieldType,
     );
     expect(rejection.subject).toStrictEqual({
       arm: "UnusedRedeemer",
-      index: 0n,
+      index: 1n,
     });
   });
 
-  it("names the PlutusV3 receive execution", async () => {
+  it("names the missing reference input by its field position", async () => {
+    const [r0, r1] = [outRefFromByte(0x43), outRefFromByte(0x44)];
+    const rejection = await phaseBRejection(
+      makePhaseBCandidate({ spent: [a], referenceInputs: [r0, r1] }),
+      [
+        [a, funded],
+        [r0, funded],
+      ],
+      RejectCodes.InputNotFound,
+    );
+    expect(rejection.subject).toStrictEqual({
+      arm: "InputNotFound",
+      sourceKind: 1n,
+      index: 1n,
+    });
+  });
+
+  it("names the reference input whose resolved output fails to decode", async () => {
+    const [r0, r1] = [outRefFromByte(0x45), outRefFromByte(0x46)];
+    const rejection = await phaseBRejection(
+      makePhaseBCandidate({ spent: [a], referenceInputs: [r0, r1] }),
+      [
+        [a, funded],
+        [r0, funded],
+        [r1, Buffer.from("ff", "hex")],
+      ],
+      RejectCodes.InvalidOutput,
+    );
+    expect(rejection.subject).toStrictEqual({
+      arm: "InputSpentOutputNonCanonical",
+      sourceKind: 1n,
+      index: 1n,
+    });
+  });
+
+  it("counts a native spend execution before the PlutusV3 receive execution", async () => {
+    const native = nativeScriptWitness({ type: "all", scripts: [] });
     const script = plutusV3ScriptWitness(Buffer.from("010203", "hex"));
     const rejection = await phaseBRejection(
       makePhaseBCandidate({
@@ -290,18 +328,26 @@ describe("phase B rejection subjects", () => {
             FUNDED_OUTPUT_LOVELACE,
           ),
         ],
-        scriptWitnesses: [script],
+        scriptWitnesses: [native, script],
         redeemerTxWitsPreimageCbor: makeRedeemersCbor([
           { tag: MidgardRedeemerTag.Receiving, index: 0n },
         ]),
         scriptLanguages: ["PlutusV3"],
       }),
-      [[a, funded]],
+      [
+        [
+          a,
+          makeOutput(
+            FUNDED_OUTPUT_LOVELACE,
+            scriptAddressBytes(hashScriptWitness(native)),
+          ),
+        ],
+      ],
       RejectCodes.PlutusScriptInvalid,
     );
     expect(rejection.subject).toStrictEqual({
       arm: "ReceivePurposePlutusV3Forbidden",
-      index: 0n,
+      index: 1n,
     });
   });
 });

@@ -73,6 +73,12 @@ export type MissingScriptSourceFixtureShape = Readonly<{
    * machine accepts it: the honest accepted block a prover cannot convict.
    */
   honest?: boolean;
+  /**
+   * Spend only: a second spent input, first in field order but second in the
+   * sorted spend namespace, locked by a script no source carries. The
+   * machine rejects at that purpose, (0, 1), after the required one.
+   */
+  absentSecondSpend?: boolean;
 }>;
 
 const FAKE_LEDGER_ROOT = "33".repeat(32);
@@ -121,10 +127,23 @@ export const buildMissingScriptSourceFixture = async (
     referenceDecoys,
     direction,
     honest = false,
+    absentSecondSpend = false,
   } = shape;
   if (honest && (presentAt === "absent" || inlineDecoys + referenceDecoys > 0))
     throw new Error("an honest fixture commits exactly the required source");
-  if (!honest && presentAt !== "absent" && inlineDecoys === 0)
+  if (
+    absentSecondSpend &&
+    (purposeKind !== 0 || presentAt === "absent" || direction !== "forced")
+  )
+    throw new Error(
+      "an absent second spend follows a present spend purpose in a forced fixture",
+    );
+  if (
+    !honest &&
+    presentAt !== "absent" &&
+    inlineDecoys === 0 &&
+    !absentSecondSpend
+  )
     throw new Error(
       "a present-source fixture needs an unused inline decoy so the machine rejects after discovery",
     );
@@ -157,6 +176,13 @@ export const buildMissingScriptSourceFixture = async (
     output: referenceOutput(script),
   }));
   const spent = outRefFromByte(0x31);
+  const secondSpent = outRefFromByte(0x32);
+  const secondSpentOutput = makeProtectedScriptOutput(
+    hashScriptWitness(
+      nativeScriptWitness({ type: "sig", keyHash: Buffer.alloc(28, 0x45) }),
+    ),
+    FUNDED_OUTPUT_LOVELACE,
+  );
   const spentOutput =
     purposeKind === 0
       ? makeProtectedScriptOutput(requiredHashHex, FUNDED_OUTPUT_LOVELACE)
@@ -176,7 +202,7 @@ export const buildMissingScriptSourceFixture = async (
         : makeOutput(FUNDED_OUTPUT_LOVELACE);
   const transaction = makeNativeTx({
     version: 1n,
-    spendInputs: [spent],
+    spendInputs: absentSecondSpend ? [secondSpent, spent] : [spent],
     referenceInputs: references.map(({ outRef }) => outRef),
     outputs: [output],
     scriptWitnesses: inlineScripts,
@@ -201,6 +227,9 @@ export const buildMissingScriptSourceFixture = async (
   );
   const ledgerWitnessEntries = [
     { outRef: spent, output: spentOutput },
+    ...(absentSecondSpend
+      ? [{ outRef: secondSpent, output: secondSpentOutput }]
+      : []),
     ...references,
   ];
   const honestOperations = honest
@@ -247,7 +276,7 @@ export const buildMissingScriptSourceFixture = async (
       expectedVerdict: honest ? "accepted" : "rejected",
       expectedRejectionCode: honest
         ? null
-        : presentAt === "absent"
+        : presentAt === "absent" || absentSecondSpend
           ? "E_MISSING_REQUIRED_WITNESS"
           : "E_INVALID_FIELD_TYPE",
     }),
@@ -338,6 +367,7 @@ export const buildMissingScriptSourceFixture = async (
     retainedEntries,
     expectedRoot: root.root,
     priorLedgerRoot,
+    ledgerWitnessEntries,
     requiredHashHex,
     sourceCount,
     transactionSourceCount: inlineScripts.length,
