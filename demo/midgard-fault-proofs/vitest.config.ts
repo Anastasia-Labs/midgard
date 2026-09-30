@@ -9,6 +9,7 @@ import {
 import { defineConfig } from "vitest/config";
 
 import { EmulatorSequencer } from "./tests/support/emulator-sequencer.js";
+import { interactiveTests } from "./vitest.interactive-tests.mjs";
 
 /**
  * How many test files may run at once. Overridable with
@@ -40,24 +41,6 @@ const parseMaxForks = (raw: string | undefined): number => {
 
 const maxForks = parseMaxForks(process.env.MIDGARD_FAULT_PROOF_FORKS);
 
-// Interactive journeys need enough protocol time to finish. Their isolated
-// project uses a separately stamped blueprint; emulator clock jumps are instant.
-const interactiveTests = [
-  "./tests/*validation-dispute*.test.ts",
-  "./tests/validation-trace-dispute-installed-lifecycle.test.ts",
-  "./tests/cek-*-lifecycle.test.ts",
-  "./tests/value-and-mint-asset-yield-lifecycle.test.ts",
-  "./tests/ledger-output-value-permutation-lifecycle.test.ts",
-  "./tests/forced-submission-lifecycle.test.ts",
-  "./tests/submit-init-emulator-cek-value-and-mint.test.ts",
-  "./tests/submit-init-emulator-value-and-mint.test.ts",
-  "./tests/submit-init-emulator-min-ada.test.ts",
-  "./tests/submit-init-emulator-option-b-*.test.ts",
-  "./tests/submit-init-emulator-route-freedom-*.test.ts",
-  "./tests/submit-init-emulator-soundness*.test.ts",
-  "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
-];
-
 export default defineConfig({
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
@@ -78,7 +61,13 @@ export default defineConfig({
           name: "interactive-emulator",
           include: interactiveTests,
           globalSetup: [interactiveEmulatorSetup],
-          env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
+          env: {
+            // scripts/run-traced-refusals.mjs swaps in a blueprint whose
+            // pinned validators carry their traces.
+            MIDGARD_REAL_BLUEPRINT_PATH:
+              process.env.MIDGARD_TRACED_INTERACTIVE_BLUEPRINT ??
+              interactiveEmulatorBlueprint,
+          },
         },
       },
     ],

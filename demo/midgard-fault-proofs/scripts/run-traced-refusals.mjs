@@ -17,14 +17,18 @@
  *
  *   node scripts/run-traced-refusals.mjs [test file ...]
  *
- * With no arguments it runs every file that declares a pin. It needs the plain
- * blueprint fresh (`pnpm --dir demo deployment:build <profile>`); the traced
- * build uses the same profile and is cached under
- * onchain/aiken/build/traced-refusals until the sources or compiler change.
+ * With no arguments it runs every file that declares a pin. Each file runs in
+ * its own Vitest project against that project's blueprint: the testing-profile
+ * files need onchain/aiken/plutus.json fresh (`pnpm --dir demo
+ * deployment:build <profile>`), and the interactive-emulator files use the
+ * blueprint that project stamps for itself. Each traced build uses its plain
+ * blueprint's profile and is cached under onchain/aiken/build/traced-refusals
+ * until the sources or compiler change.
  */
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  globSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -43,14 +47,15 @@ import {
   buildRecordPath,
   checkBlueprintStamp,
 } from "../../scripts/lib/blueprint-stamp.mjs";
+import prepareInteractiveBlueprint, {
+  interactiveEmulatorBlueprint,
+} from "../../midgard-test-support/interactive-emulator.js";
+import { interactiveTests } from "../vitest.interactive-tests.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const aikenRoot = resolve(packageRoot, "../../onchain/aiken");
 const plainBlueprint = resolve(aikenRoot, "plutus.json");
 const buildDirectory = resolve(aikenRoot, "build/traced-refusals");
-const tracedBlueprint = resolve(buildDirectory, "plutus.json");
-const tracedRecord = resolve(buildDirectory, "traced-build.json");
-const overlayBlueprint = resolve(buildDirectory, "overlay.json");
 const checkedPinsLog = resolve(buildDirectory, "checked-pins.jsonl");
 
 const fail = (message) => {
@@ -87,18 +92,22 @@ const declaredPins = () => {
   return pins;
 };
 
-const plainRecord = () => {
-  const verdict = checkBlueprintStamp({ blueprintPath: plainBlueprint });
+/** A project's plain blueprint's build record, once the blueprint is fresh. */
+const plainRecord = (blueprintPath) => {
+  const verdict = checkBlueprintStamp({ blueprintPath });
   if (verdict.status !== "fresh") {
     fail(
       `${verdict.detail}${verdict.fix === null ? "" : `\nRebuild it: ${verdict.fix}`}`,
     );
   }
-  return JSON.parse(readFileSync(buildRecordPath(plainBlueprint), "utf8"));
+  return JSON.parse(readFileSync(buildRecordPath(blueprintPath), "utf8"));
 };
 
 /** Build the traced blueprint from the plain one's sources and profile. */
 const buildTraced = (profile) => {
+  const directory = resolve(buildDirectory, profile);
+  const tracedBlueprint = resolve(directory, "plutus.json");
+  const tracedRecord = resolve(directory, "traced-build.json");
   const compilerPath = defaultAikenBinary();
   const record = {
     profile,
@@ -110,9 +119,9 @@ const buildTraced = (profile) => {
     existsSync(tracedRecord) &&
     readFileSync(tracedRecord, "utf8") === JSON.stringify(record)
   ) {
-    return;
+    return tracedBlueprint;
   }
-  mkdirSync(buildDirectory, { recursive: true });
+  mkdirSync(directory, { recursive: true });
   const result = spawnSync(
     compilerPath,
     [
@@ -131,14 +140,19 @@ const buildTraced = (profile) => {
   if (result.error) throw result.error;
   if (result.status !== 0) fail(`traced build exited ${result.status}`);
   writeFileSync(tracedRecord, JSON.stringify(record));
+  return tracedBlueprint;
 };
 
 /**
- * The plain blueprint with every handler of each named module traced. Its
- * build record is the plain one's, rebound to the overlay's bytes: both come
- * from the same sources, compiler and profile.
+ * A project's plain blueprint with every handler of each named module traced,
+ * written next to its traced build. Its build record is the plain one's,
+ * rebound to the overlay's bytes: both come from the same sources, compiler
+ * and profile.
  */
-const writeOverlay = (record, modules) => {
+const writeOverlay = (plainBlueprint, modules) => {
+  const record = plainRecord(plainBlueprint);
+  const tracedBlueprint = buildTraced(record.profile.name);
+  const overlayBlueprint = resolve(dirname(tracedBlueprint), "overlay.json");
   const plain = JSON.parse(readFileSync(plainBlueprint, "utf8"));
   const traced = new Map(
     JSON.parse(readFileSync(tracedBlueprint, "utf8")).validators.map(
@@ -169,6 +183,7 @@ const writeOverlay = (record, modules) => {
       2,
     ) + "\n",
   );
+  return overlayBlueprint;
 };
 
 /** A vitest name filter matching exactly the named cases. */
@@ -187,35 +202,64 @@ for (const file of requested) {
 const files = requested.length > 0 ? requested : [...pins.keys()].sort();
 if (files.length === 0) fail("no test file declares a refusedBy pin");
 
-const record = plainRecord();
-buildTraced(record.profile.name);
-const selected = files.flatMap((file) => pins.get(file));
-writeOverlay(record, new Set(selected.map(({ module }) => module)));
-writeFileSync(checkedPinsLog, "");
-
-const run = spawnSync(
-  resolve(packageRoot, "node_modules/.bin/vitest"),
-  [
-    "run",
-    "--project",
-    "testing-profile",
-    "-t",
-    casePattern(selected.map(({ name }) => name)),
-    ...files,
-  ],
-  {
-    cwd: packageRoot,
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      MIDGARD_REAL_BLUEPRINT_PATH: overlayBlueprint,
-      MIDGARD_EMULATOR_TRACED_REFUSALS: "1",
-      MIDGARD_TRACED_REFUSALS_LOG: checkedPinsLog,
-    },
-  },
+// Each Vitest project runs its files against its own blueprint, with the
+// modules its pins name swapped for their traced builds.
+const interactiveFiles = new Set(
+  globSync(
+    interactiveTests.map((pattern) => pattern.replace(/^\.\//u, "")),
+    { cwd: packageRoot },
+  ),
 );
-if (run.error) throw run.error;
-if (run.status !== 0) fail(`vitest exited ${run.status}`);
+const projects = [
+  {
+    name: "testing-profile",
+    files: files.filter((file) => !interactiveFiles.has(file)),
+    blueprint: () => plainBlueprint,
+    overlayVariable: "MIDGARD_REAL_BLUEPRINT_PATH",
+  },
+  {
+    name: "interactive-emulator",
+    files: files.filter((file) => interactiveFiles.has(file)),
+    blueprint: async () => {
+      await prepareInteractiveBlueprint();
+      return interactiveEmulatorBlueprint;
+    },
+    overlayVariable: "MIDGARD_TRACED_INTERACTIVE_BLUEPRINT",
+  },
+].filter((project) => project.files.length > 0);
+
+mkdirSync(buildDirectory, { recursive: true });
+writeFileSync(checkedPinsLog, "");
+for (const project of projects) {
+  const selected = project.files.flatMap((file) => pins.get(file));
+  const overlay = writeOverlay(
+    await project.blueprint(),
+    new Set(selected.map(({ module }) => module)),
+  );
+  const run = spawnSync(
+    resolve(packageRoot, "node_modules/.bin/vitest"),
+    [
+      "run",
+      "--project",
+      project.name,
+      "-t",
+      casePattern(selected.map(({ name }) => name)),
+      ...project.files,
+    ],
+    {
+      cwd: packageRoot,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        [project.overlayVariable]: overlay,
+        MIDGARD_EMULATOR_TRACED_REFUSALS: "1",
+        MIDGARD_TRACED_REFUSALS_LOG: checkedPinsLog,
+      },
+    },
+  );
+  if (run.error) throw run.error;
+  if (run.status !== 0) fail(`${project.name}: vitest exited ${run.status}`);
+}
 
 // Every declared pin must have been checked against a trace, and every
 // checked pin must be one this script read and traced.

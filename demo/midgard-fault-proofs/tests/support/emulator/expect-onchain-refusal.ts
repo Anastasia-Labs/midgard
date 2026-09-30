@@ -15,13 +15,16 @@ export type RefusalPin = {
 
 /**
  * The trace a traced validator's failure carries, or null when untraced. The
- * evaluator's message can arrive JSON-quoted.
+ * evaluator's message can arrive JSON-quoted, alone or after a caller's
+ * prefix such as a lifecycle stage label.
  */
 const refusalTrace = (text: string): string | null => {
   let message = text.trim();
-  if (message.startsWith('"')) {
+  const quoted =
+    /"((?:[^"\\]|\\.)*failed script execution(?:[^"\\]|\\.)*)"/u.exec(message);
+  if (quoted !== null) {
     try {
-      message = String(JSON.parse(message));
+      message = String(JSON.parse(`"${quoted[1]!}"`));
     } catch {
       // Not a JSON string; match the raw text.
     }
