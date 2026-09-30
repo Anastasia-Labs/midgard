@@ -1,10 +1,8 @@
-import "cborg";
 import "./errors.js";
 import "./cbor.read-argument.js";
 import "./cbor.skip-cbor-item.js";
 export {
   type CborItemSpan,
-  type CborReadOptions,
   compareBytes,
   compareCborKeyBytes,
   readCborArrayHeader,

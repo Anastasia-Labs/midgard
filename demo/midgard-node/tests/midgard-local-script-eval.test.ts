@@ -7,7 +7,6 @@ import "@al-ft/midgard-validation/midgard-redeemers";
 import "@al-ft/midgard-validation/script-context";
 import "@al-ft/midgard-validation/script-source";
 import "@lucid-evolution/lucid";
-import "cborg";
 import "vitest";
 import "./midgard-output-helpers.js";
 import "./midgard-local-script-eval.make-midgard-context-probe-redeemer-cbor-hex.js";
@@ -15,6 +14,7 @@ import "./midgard-local-script-eval.make-midgard-context-probe-redeemer-cbor-hex
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
+  encodeCbor,
   encodeMidgardFieldPreimageForField,
   encodeMidgardNativeScript,
   encodeMidgardVersionedScript,
@@ -33,7 +33,6 @@ import {
 } from "@al-ft/midgard-validation/script-context";
 import { decodeScriptSource } from "@al-ft/midgard-validation/script-source";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -127,7 +126,7 @@ describe("Midgard local script evaluation primitives", () => {
           {
             purpose: "Receive",
             index: 0n,
-            redeemerCbor: Buffer.from(encode(42n)),
+            redeemerCbor: Buffer.from(encodeCbor(42n)),
             executionUnits: { memory: 0n, steps: 0n },
           },
         ],
@@ -189,7 +188,7 @@ describe("Midgard local script evaluation primitives", () => {
       CML.Credential.new_pub_key(keyHash),
     ).to_address();
     const output = Buffer.from(
-      encode(
+      encodeCbor(
         new Map<bigint, unknown>([
           [0n, Buffer.from(address.to_raw_bytes())],
           [1n, [2_000_000n, new Map<Uint8Array, unknown>()]],
@@ -260,13 +259,13 @@ describe("Midgard local script evaluation primitives", () => {
     expect(() =>
       decodeMidgardTxOutput(
         Buffer.from(
-          encode(new Map<bigint, unknown>([[1n, [2_000_000n, new Map()]]])),
+          encodeCbor(new Map<bigint, unknown>([[1n, [2_000_000n, new Map()]]])),
         ),
       ),
     ).toThrow("missing address key 0");
     expect(() =>
       decodeMidgardTxOutput(
-        Buffer.from(encode(new Map([[0n, Buffer.alloc(0)]]))),
+        Buffer.from(encodeCbor(new Map([[0n, Buffer.alloc(0)]]))),
       ),
     ).toThrow(
       "Midgard address must be a base or enterprise Shelley payment address",

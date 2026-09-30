@@ -10,6 +10,7 @@ import {
   deriveMidgardNativeTxCompact,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
+  encodeCbor,
   encodeMidgardFieldPreimageForField,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
@@ -28,14 +29,13 @@ import {
   verifyMidgardTxFieldPreimage,
 } from "@al-ft/midgard-core/consensus-validation";
 import { CML } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { describe, expect, it } from "vitest";
 
 export const mkHash = (tag: string): Buffer =>
   computeHash32(Buffer.from(tag, "utf8"));
 
 export const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+  Buffer.from(encodeCbor(items.map((item) => Buffer.from(item))));
 
 export const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
@@ -163,7 +163,7 @@ describe("midgard native tx codec - strict roundtrip", () => {
     const witnessCompact =
       deriveMidgardNativeTxWitnessSetCompact(mkWitnessSet());
     const unsupportedShape = Buffer.from(
-      encode([
+      encodeCbor([
         Buffer.from(witnessCompact.addrTxWitsHash),
         Buffer.from(witnessCompact.scriptTxWitsHash),
         Buffer.from(witnessCompact.redeemerTxWitsHash),
@@ -199,7 +199,7 @@ describe("midgard native tx codec - strict roundtrip", () => {
       full.witnessSet,
     );
     const encodedTuple = Buffer.from(
-      encode([
+      encodeCbor([
         Buffer.from(compactWitnessSet.addrTxWitsHash),
         Buffer.from(compactWitnessSet.scriptTxWitsHash),
         Buffer.from(compactWitnessSet.redeemerTxWitsHash),

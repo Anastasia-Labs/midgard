@@ -1,21 +1,9 @@
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
-export type CborReadOptions = {
-  readonly allowTags?: boolean;
-};
-
 export type CborItemSpan = {
   readonly start: number;
   readonly end: number;
   readonly major: number;
-};
-
-export const DECODER_OPTIONS = {
-  strict: true,
-  allowIndefinite: false,
-  allowUndefined: false,
-  useMaps: true,
-  rejectDuplicateMapKeys: true,
 };
 
 export const FATAL_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });

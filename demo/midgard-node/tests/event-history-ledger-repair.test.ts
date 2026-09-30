@@ -5,6 +5,7 @@ import {
   computeHash32,
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
+  encodeCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   MIDGARD_NATIVE_TX_VERSION,
@@ -21,7 +22,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML, Data, toUnit } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { Effect } from "effect";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -85,7 +85,7 @@ const address = CML.EnterpriseAddress.new(
 const sidecar = Buffer.from(encodeMidgardCekProgramMaterialSidecar([]));
 const empty = Buffer.from([0x80]);
 const byteList = (items: readonly Uint8Array[]) =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+  Buffer.from(encodeCbor(items.map((item) => Buffer.from(item))));
 const output = (lovelace = 5_000_000n) =>
   Buffer.from(
     makeMidgardTxOutput(
