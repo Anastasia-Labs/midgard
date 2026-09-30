@@ -1,10 +1,42 @@
 import "../utils.js";
+import "node:child_process";
+import "node:crypto";
+import "node:fs";
+import "node:fs/promises";
+import "node:inspector";
+import "node:os";
+import "node:path";
+import "node:perf_hooks";
+import "node:readline";
+import "node:url";
+import "node:util";
+import "@al-ft/midgard-core/codec";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-validation";
+import "@effect/sql";
+import "@effect/sql-pg";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../../src/database/index.js";
+import "../../src/fibers/tx-queue-processor.js";
+import "../../src/open-loop-corpus-format.js";
+import "../../src/services/config.js";
+import "../../src/services/database.js";
+import "../../src/services/globals.js";
+import "../../src/services/lucid.js";
+import "../../src/services/mempool-ledger-cache.js";
+import "../../src/services/validation-pool.js";
+import "../../src/services/write-behind.js";
+import "../../src/workers/utils/validation-pool.js";
+import "../helpers/deposit-projection.js";
+import "./validation-stage-b.stage-breplica-report.js";
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { Session } from "node:inspector";
 import { availableParallelism, cpus, hostname } from "node:os";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -22,17 +54,8 @@ import {
   runPhaseAValidation,
 } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
-import { PgClient } from "@effect/sql-pg";
 import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
-import {
-  Duration,
-  Effect,
-  Fiber,
-  Metric,
-  Option,
-  Redacted,
-  type Scope,
-} from "effect";
+import { Duration, Effect, Fiber, Metric, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -74,206 +97,128 @@ import {
   summarizeWriteBehindTelemetry,
   WriteBehind,
 } from "../../src/services/write-behind.js";
-import type { ValidationCacheStats } from "../../src/workers/utils/validation-pool.js";
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { projectDepositsToMempoolLedger } from "../helpers/deposit-projection.js";
+import {
+  type AdmissionInsert,
+  assertGate,
+  type CoordinatorCpuProfileHandle,
+  type CorpusManifest,
+  databasePrefix,
+  disableTxDeltaWriteBehindDiagnostic,
+  expandCpuList,
+  expectedFullCorpusRows,
+  expectedFullCorpusSha256,
+  fullGateCorpusCapacityTps,
+  fullGateMinimumCorpusRows,
+  fullGateReplicaDurationMs,
+  minimumAcceptedTps,
+  type NodeBenchmarkContainerAffinity,
+  operatorEnabled,
+  physicalCoreIdsFor,
+  type PostgresContainerAffinity,
+  type PostgresSocketEvidence,
+  preflightOnly,
+  queuedFromCorpusRow,
+  readAffinityTopology,
+  readCorpusRows,
+  replicaCount,
+  reuseDatabases,
+  runInDatabase,
+  sameCpuIds,
+  shortAssert,
+  type StageBReplicaReport,
+  startCoordinatorCpuProfile,
+  templateDatabase,
+  type WorkerCacheSnapshot,
+} from "./validation-stage-b.stage-breplica-report.js";
 
-type WorkerCacheSnapshot = {
-  readonly publicKeyCache: ValidationCacheStats;
-  readonly addressCache: ValidationCacheStats;
-};
-
-type CorpusManifest = {
-  readonly chainCount: number;
-  readonly chainDepth: number;
-  readonly networkId: string;
-  readonly feeParams: {
-    readonly minFeeA: string;
-    readonly minFeeB: string;
-  };
-  readonly files: {
-    readonly corpus: {
-      readonly sha256: string;
-      readonly rowCount: number;
-    };
-  };
-};
-
-type AdmissionInsert = {
-  readonly tx_id: Buffer;
-  readonly tx_canonical_cbor: Buffer;
-  readonly tx_full_hash_v1: Buffer;
-  readonly arrival_seq: bigint;
-  readonly status: "queued";
-  readonly submit_source: "native";
-};
-
-type StageBReplicaReport = {
-  readonly database: string;
-  readonly writeBehindMaxBatch: number;
-  readonly depositProjectionDeltaIntervalMs: number;
-  readonly depositProjectionActiveDurationMs: number;
-  readonly depositProjectionDeltaBumps: number;
-  readonly ledgerCacheDeltaApplies: number;
-  readonly ledgerCacheFullReloads: number;
-  readonly averageBatchMs: number;
-  readonly bumpWindowAverageBatchMs: readonly number[];
-  readonly worstBumpThroughputRatio: number | null;
-  readonly accepted: number;
-  readonly rejected: number;
-  readonly batches: number;
-  readonly durationMs: number;
-  readonly acceptedTps: number;
-  readonly p99BatchMs: number;
-  readonly averagePhaseAMs: number;
-  readonly averagePhaseBMs: number;
-  readonly averagePersistMs: number;
-  readonly averageClaimMs: number;
-  readonly averageClaimPayloadLoadMs: number;
-  readonly writeBehindFlushMs: number;
-  readonly writeBehindFlushCount: number;
-  readonly writeBehindFlushRows: number;
-  readonly writeBehindTxDeltaPreparationCborMs: number;
-  readonly writeBehindDeltaSqlMs: number;
-  readonly writeBehindAddressSqlMs: number;
-  readonly writeBehindTransactionMs: number;
-  readonly writeBehindTransactionOverheadMs: number;
-  readonly writeBehindInlineFallbackCount: number;
-  readonly writeBehindFinalFlushMs: number;
-  readonly writeBehindRowsBeforeFinalFlush: number;
-  readonly serializationRatio: number;
-  readonly acceptedAdmissionRows: number;
-  readonly queuedAdmissionRows: number;
-  readonly validatingAdmissionRows: number;
-  readonly rejectedAdmissionRows: number;
-  readonly admissionPayloadRows: number;
-  readonly mempoolRows: number;
-  readonly mempoolLedgerRows: number;
-  readonly cachedLedgerRows: number;
-  readonly missingExpectedTxIds: number;
-  readonly unexpectedAcceptedTxIds: number;
-};
-
-const operatorEnabled = process.env.BENCH_PHASE2_OPERATOR === "1";
-const assertGate = process.env.BENCH_ASSERT_PHASE2 === "1";
-const preflightOnly = process.env.BENCH_PHASE2_PREFLIGHT_ONLY === "1";
-const shortAssert = process.env.BENCH_PHASE2_SHORT_ASSERT === "1";
-// Diagnostic only: isolates the PostgreSQL cost of the reconstructable
-// tx-delta projection without changing the production WriteBehind service.
-// The asserted closure gate must never run with this enabled.
-const disableTxDeltaWriteBehindDiagnostic =
-  process.env.BENCH_PHASE2_DISABLE_TX_DELTA_WRITE_BEHIND === "1";
-const minimumAcceptedTps = Number(
-  process.env.BENCH_PHASE2_MIN_ACCEPTED_TPS ?? 10_000,
-);
-const expectedFullCorpusSha256 =
-  process.env.PHASE2_EXPECTED_FULL_CORPUS_SHA256 ?? "";
-const expectedFullCorpusRows = Number(
-  process.env.PHASE2_EXPECTED_FULL_CORPUS_ROWS ?? Number.NaN,
-);
-const fullGateReplicaDurationMs = 300_000;
-const fullGateCorpusCapacityTps = 12_600;
-const fullGateMinimumCorpusRows =
-  (fullGateReplicaDurationMs / 1_000) * fullGateCorpusCapacityTps;
-const reuseDatabases = process.env.BENCH_PHASE2_REUSE_DATABASES === "1";
-const databasePrefix =
-  process.env.BENCH_PHASE2_DATABASE_PREFIX ?? "midgard_phase2_bench";
-const templateDatabase = `${databasePrefix}_template`;
-const replicaCount = Number(process.env.BENCH_PHASE2_REPLICA_COUNT ?? 2);
 if (!Number.isInteger(replicaCount) || replicaCount < 1 || replicaCount > 2) {
   throw new Error("BENCH_PHASE2_REPLICA_COUNT must be 1 or 2");
 }
+
 const replicaDatabases = [
   `${databasePrefix}_a`,
   ...(replicaCount === 2 ? [`${databasePrefix}_b`] : []),
 ];
+
 const benchmarkDatabasePattern = /^midgard_phase2_bench[a-z0-9_]*$/u;
+
 const corpusPath = resolve(
   process.env.BENCH_PHASE2_CORPUS_PATH ??
     "logs/phase-1-full-corpus-20260709T002743Z/corpus/corpus.ndjson",
 );
+
 const manifestPath = resolve(
   process.env.BENCH_PHASE2_CORPUS_MANIFEST_PATH ??
     `${corpusPath}.manifest.json`,
 );
+
 const walletsDirectory = resolve(
   process.env.BENCH_PHASE2_WALLETS_DIRECTORY ??
     "logs/phase-1-full-corpus-20260709T002743Z/wallets",
 );
+
 const workerEntry = pathToFileURL(resolve("dist/validation.js"));
+
 const outputPath = resolve(
   process.env.BENCH_PHASE2_OUTPUT_PATH ??
     "tests/benchmarks/output/validation-stage-b.json",
 );
+
 const cpuProfileDirectory =
   process.env.BENCH_PHASE2_CPU_PROFILE_DIR === undefined
     ? undefined
     : resolve(process.env.BENCH_PHASE2_CPU_PROFILE_DIR);
+
 const poolSize = Number(process.env.BENCH_PHASE2_POOL_SIZE ?? 6);
+
 const chunkSize = Number(process.env.BENCH_PHASE2_CHUNK_SIZE ?? 64);
+
 const batchSize = Number(process.env.BENCH_PHASE2_BATCH_SIZE ?? 2_048);
+
 const drainLoops = Number(process.env.BENCH_PHASE2_DRAIN_LOOPS ?? 4);
+
 const preloadBatchSize = Number(
   process.env.BENCH_PHASE2_PRELOAD_BATCH_SIZE ?? 1_000,
 );
+
 const warmupIterations = Number(
   process.env.BENCH_PHASE2_WARMUP_ITERATIONS ?? 2,
 );
 
-type CoordinatorCpuProfileHandle = {
-  readonly stop: () => Promise<unknown>;
-};
-
-const startCoordinatorCpuProfile =
-  async (): Promise<CoordinatorCpuProfileHandle> => {
-    const session = new Session();
-    session.connect();
-    await new Promise<void>((resolvePost, rejectPost) => {
-      session.post("Profiler.enable", (error) => {
-        if (error === null) resolvePost();
-        else rejectPost(error);
-      });
-    });
-    await new Promise<void>((resolvePost, rejectPost) => {
-      session.post("Profiler.start", (error) => {
-        if (error === null) resolvePost();
-        else rejectPost(error);
-      });
-    });
-    return {
-      stop: async () => {
-        try {
-          return await new Promise<unknown>((resolvePost, rejectPost) => {
-            session.post("Profiler.stop", (error, result) => {
-              if (error === null) resolvePost(result.profile);
-              else rejectPost(error);
-            });
-          });
-        } finally {
-          session.disconnect();
-        }
-      },
-    };
-  };
 const postgresContainerName = process.env.BENCH_PHASE2_POSTGRES_CONTAINER ?? "";
+
 const nodeContainerName = process.env.BENCH_PHASE2_NODE_CONTAINER ?? "";
+
 const privateNetworkName = process.env.BENCH_PHASE2_PRIVATE_NETWORK ?? "";
+
 const nodeRepoSource = process.env.BENCH_PHASE2_NODE_REPO_SOURCE ?? "";
+
 const nodeRepoDestination =
   process.env.BENCH_PHASE2_NODE_REPO_DESTINATION ?? "/workspace";
+
 const nodeDockerCliSource =
   process.env.BENCH_PHASE2_NODE_DOCKER_CLI_SOURCE ??
   "/mnt/wsl/docker-desktop/cli-tools/usr/bin/docker";
+
 const nodeDockerCliDestination = "/usr/local/bin/docker";
+
 const nodeDockerSocketSource = "/var/run/docker.sock";
+
 const postgresEphemeralDeclared =
   process.env.BENCH_PHASE2_POSTGRES_EPHEMERAL === "1";
+
 const expectedNodeImage = process.env.BENCH_PHASE2_NODE_IMAGE ?? "node:22";
+
 const expectedNodeImageId = process.env.BENCH_PHASE2_NODE_IMAGE_ID ?? "";
+
 const expectedPostgresImage =
   process.env.BENCH_PHASE2_POSTGRES_IMAGE ?? "postgres:15.15-alpine";
+
 const postgresSocketDestination =
   process.env.BENCH_PHASE2_POSTGRES_SOCKET_DESTINATION ?? "";
+
 const execFileAsync = promisify(execFile);
 
 if (assertGate && reuseDatabases) {
@@ -281,6 +226,7 @@ if (assertGate && reuseDatabases) {
     "BENCH_ASSERT_PHASE2 requires BENCH_PHASE2_REUSE_DATABASES=0 so corpus bytes and durable transaction identities are recomputed",
   );
 }
+
 if (
   assertGate &&
   (expectedNodeImage !== "node:22.22.2" ||
@@ -290,74 +236,6 @@ if (
     "BENCH_ASSERT_PHASE2 requires node:22.22.2 and postgres:15.15-alpine",
   );
 }
-
-const expandCpuList = (cpuList: string): readonly number[] =>
-  cpuList
-    .trim()
-    .split(",")
-    .flatMap((part) => {
-      const [startText, endText] = part.split("-");
-      const start = Number(startText);
-      const end = endText === undefined ? start : Number(endText);
-      return Array.from(
-        { length: end - start + 1 },
-        (_, offset) => start + offset,
-      );
-    });
-
-const physicalCoreIdsFor = async (
-  logicalCpuIds: readonly number[],
-): Promise<readonly string[]> => {
-  const physicalCoreIds = await Promise.all(
-    logicalCpuIds.map(async (cpuId) => {
-      const topologyRoot = `/sys/devices/system/cpu/cpu${cpuId}/topology`;
-      const [packageId, coreId] = await Promise.all([
-        readFile(`${topologyRoot}/physical_package_id`, "utf8"),
-        readFile(`${topologyRoot}/core_id`, "utf8"),
-      ]);
-      return `${packageId.trim()}:${coreId.trim()}`;
-    }),
-  );
-  return [...new Set(physicalCoreIds)].sort();
-};
-
-const readAffinityTopology = async (): Promise<{
-  readonly logicalCpuIds: readonly number[];
-  readonly physicalCoreIds: readonly string[];
-}> => {
-  const status = await readFile("/proc/self/status", "utf8");
-  const allowedList = /^Cpus_allowed_list:\s*(.+)$/mu.exec(status)?.[1];
-  if (allowedList === undefined) {
-    throw new Error("Unable to read Cpus_allowed_list from /proc/self/status");
-  }
-  const logicalCpuIds = expandCpuList(allowedList);
-  return {
-    logicalCpuIds,
-    physicalCoreIds: await physicalCoreIdsFor(logicalCpuIds),
-  };
-};
-
-type PostgresContainerAffinity = {
-  readonly name: string;
-  readonly id: string;
-  readonly image: string;
-  readonly cpuset: string;
-  readonly logicalCpuIds: readonly number[];
-  readonly physicalCoreIds: readonly string[];
-  readonly running: boolean;
-  readonly autoRemove: boolean;
-  readonly networkMode: string;
-  readonly publishedPostgresPorts: readonly number[];
-  readonly mounts: readonly {
-    readonly type: string;
-    readonly source: string;
-    readonly destination: string;
-    readonly name: string;
-    readonly readWrite: boolean;
-  }[];
-  readonly tmpfsDestinations: readonly string[];
-  readonly networks: readonly string[];
-};
 
 const readPostgresContainerAffinity = async (): Promise<
   PostgresContainerAffinity | undefined
@@ -428,22 +306,6 @@ const readPostgresContainerAffinity = async (): Promise<
   };
 };
 
-type NodeBenchmarkContainerAffinity = {
-  readonly name: string;
-  readonly id: string;
-  readonly image: string;
-  readonly imageId: string;
-  readonly configuredHostname: string;
-  readonly cpuset: string;
-  readonly logicalCpuIds: readonly number[];
-  readonly physicalCoreIds: readonly string[];
-  readonly running: boolean;
-  readonly autoRemove: boolean;
-  readonly publishedPorts: readonly number[];
-  readonly mounts: PostgresContainerAffinity["mounts"];
-  readonly networks: readonly string[];
-};
-
 const readNodeContainerAffinity = async (): Promise<
   NodeBenchmarkContainerAffinity | undefined
 > => {
@@ -512,19 +374,6 @@ const readNodeContainerAffinity = async (): Promise<
   };
 };
 
-type PostgresSocketEvidence = {
-  readonly hostDirectory: string;
-  readonly containerDirectory: string;
-  readonly directoryUid: number;
-  readonly directoryGid: number;
-  readonly directoryMode: number;
-  readonly socketPath: string;
-  readonly socketUid: number;
-  readonly socketGid: number;
-  readonly socketMode: number;
-  readonly socketIsSocket: boolean;
-};
-
 const readPostgresSocketEvidence = async (): Promise<
   PostgresSocketEvidence | undefined
 > => {
@@ -555,13 +404,6 @@ const readPostgresSocketEvidence = async (): Promise<
   };
 };
 
-const sameCpuIds = (
-  left: readonly number[],
-  right: readonly number[],
-): boolean =>
-  left.length === right.length &&
-  left.every((cpuId, index) => cpuId === right[index]);
-
 const requireBenchmarkDatabaseName = (database: string): void => {
   if (!benchmarkDatabasePattern.test(database)) {
     throw new Error(
@@ -569,58 +411,6 @@ const requireBenchmarkDatabaseName = (database: string): void => {
     );
   }
 };
-
-const databaseOptions = (database: string) => {
-  const host = process.env.POSTGRES_HOST ?? "127.0.0.1";
-  const port = Number(process.env.POSTGRES_PORT ?? 5433);
-  return {
-    ...(host.startsWith("/")
-      ? { path: resolve(host, `.s.PGSQL.${port.toString()}`) }
-      : { host, port }),
-    username: process.env.POSTGRES_USER ?? "postgres",
-    password: Redacted.make(process.env.POSTGRES_PASSWORD ?? "postgres"),
-    database,
-    maxConnections: 20,
-    applicationName: `midgard-phase2-stage-b-${database}`,
-  };
-};
-
-const runInDatabase = <A, E>(
-  database: string,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient | Scope.Scope>,
-): Promise<A> =>
-  Effect.runPromise(
-    Effect.scoped(
-      effect.pipe(Effect.provide(PgClient.layer(databaseOptions(database)))),
-    ),
-  );
-
-const readCorpusRows = async (
-  path: string,
-  limit: number,
-): Promise<readonly OpenLoopCorpusRow[]> => {
-  const input = createReadStream(path, { encoding: "utf8" });
-  const lines = createInterface({ input, crlfDelay: Number.POSITIVE_INFINITY });
-  const rows: OpenLoopCorpusRow[] = [];
-  for await (const line of lines) {
-    if (line.trim().length === 0) continue;
-    rows.push(JSON.parse(line) as OpenLoopCorpusRow);
-    if (rows.length >= limit) break;
-  }
-  lines.close();
-  input.destroy();
-  return rows;
-};
-
-const queuedFromCorpusRow = (
-  row: OpenLoopCorpusRow,
-  arrivalSeq: bigint,
-): QueuedTx => ({
-  txId: Buffer.from(row.txHash, "hex"),
-  txCbor: Buffer.from(row.canonicalCborHex, "hex"),
-  arrivalSeq,
-  createdAt: new Date(0),
-});
 
 const runPoolPhaseA = async (
   pool: FixedValidationWorkerPool,

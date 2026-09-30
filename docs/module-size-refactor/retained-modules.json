@@ -1,0 +1,2238 @@
+{
+  "measuredAt": "2026-09-30",
+  "scope": "Off-chain owned code only; concurrent full-stack work excluded. Data/lock/generated blueprint artifacts are not modules.",
+  "modules": [
+    {
+      "file": ".agents/skills/adding-fault-proof-families/scripts/family-checklist.check-family.mjs",
+      "lines": 561,
+      "reason": "One checkFamily routine owns the end-to-end family integration checklist and accumulates its findings in order. Independent parsing/output helpers have been extracted; splitting the remaining routine needs an explicit finding/state interface.",
+      "enforcedBy": "documented non-ESLint exception"
+    },
+    {
+      "file": ".agents/skills/committing-safely/scripts/commit-paths.test.mjs",
+      "lines": 739,
+      "reason": "A suite shares temporary Git-repository fixtures and process assertions across commit-path refusal/success cases. Preserve fixture lifetime and cleanup; dividing it needs a separately reviewed test-harness extraction.",
+      "enforcedBy": "documented non-ESLint exception"
+    },
+    {
+      "file": ".agents/skills/fixing-flaky-tests/scripts/diff-test-reds.test.mjs",
+      "lines": 729,
+      "reason": "The suite shares scratch repository creation, command execution, cleanup and red/green classification assertions. Splitting individual cases requires an explicit common fixture harness rather than moving independent top-level declarations.",
+      "enforcedBy": "documented non-ESLint exception"
+    },
+    {
+      "file": ".agents/skills/regenerating-goldens-and-ledgers/scripts/affected-channels.test.mjs",
+      "lines": 509,
+      "reason": "Channel selection tests share one channel-table/checker fixture and scratch Git histories. Preserve fixture construction and cleanup; this small overage requires a test-harness split to reduce further.",
+      "enforcedBy": "documented non-ESLint exception"
+    },
+    {
+      "file": "demo/da-committee-node/src/committee-service.committee-service.ts",
+      "lines": 1757,
+      "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/src/da/libp2p/payload-protocols.da-libp2p-payload-protocol-handlers.ts",
+      "lines": 512,
+      "reason": "DaLibp2pPayloadProtocolHandlers is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/src/store.json-file-committee-store.ts",
+      "lines": 1099,
+      "reason": "JsonFileCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/src/store/postgres.postgres-committee-store.ts",
+      "lines": 1234,
+      "reason": "PostgresCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/l1-finality.ts",
+      "lines": 1859,
+      "reason": "registerL1FinalityTests is the dominant indivisible declaration (1826 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/lifecycle.ts",
+      "lines": 1130,
+      "reason": "registerLifecycleTests is the dominant indivisible declaration (1093 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/rollback.ts",
+      "lines": 850,
+      "reason": "registerRollbackTests is the dominant indivisible declaration (819 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/signing.ts",
+      "lines": 724,
+      "reason": "registerSigningTests is the dominant indivisible declaration (699 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/config.load-committee-config.ts",
+      "lines": 1665,
+      "reason": "Retained test registration \u201cloadCommitteeConfig\u201d (1269 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/coordinator-factory.test.ts",
+      "lines": 517,
+      "reason": "Retained test registration \u201conChainCoordinatorFromConfig\u201d (392 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts",
+      "lines": 960,
+      "reason": "Retained test registration \u201ccoordinator witness and candidate planning\u201d (606 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/libp2p-attestation-exchange.da-attestation-exchange-over-real-libp2p.ts",
+      "lines": 850,
+      "reason": "Retained test registration \u201cDA attestation exchange over real libp2p\u201d (239 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+      "lines": 757,
+      "reason": "Retained test registration \u201ccanonical V1 DA libp2p payload protocols\u201d (692 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/libp2p-runtime.public-retained-da-listener.ts",
+      "lines": 607,
+      "reason": "Retained test registration \u201cpublic retained-DA listener\u201d (570 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/peer-coordinator.test.ts",
+      "lines": 666,
+      "reason": "Retained test registration \u201cPeerSignatureCoordinator\u201d (616 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/provider.test.ts",
+      "lines": 4545,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/state-queue-scanner.test.ts",
+      "lines": 708,
+      "reason": "Retained test registration \u201cstate queue scanner\u201d (683 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/store-factory.test.ts",
+      "lines": 848,
+      "reason": "Retained test registration \u201copenCommitteeStore\u201d (688 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/submitter.test.ts",
+      "lines": 1521,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/da-committee-node/tests/tx-builders.da-attestation-init-output.ts",
+      "lines": 518,
+      "reason": "Retained test registration \u201cDA attestation init output\u201d (173 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/lucid-midgard/src/builder.complete-tx.ts",
+      "lines": 931,
+      "reason": "The transaction builder, trusted completion factories and validation callbacks form a mutually dependent ownership group. They share branded construction and transaction lifecycle invariants; separating the group requires redesigning those boundaries rather than moving independent declarations.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/lucid-midgard/src/builder.lucid-midgard.ts",
+      "lines": 511,
+      "reason": "LucidMidgard is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/lucid-midgard/src/builder.tx-builder.ts",
+      "lines": 922,
+      "reason": "TxBuilder is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/lucid-midgard/tests/finalization.test.ts",
+      "lines": 693,
+      "reason": "Retained test registration \u201cTxBuilder finalization\u201d (650 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/lucid-midgard/tests/provider.test.ts",
+      "lines": 647,
+      "reason": "Retained test registration \u201cMidgardNodeProvider\u201d (611 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.render-aiken.mjs",
+      "lines": 504,
+      "reason": "renderAiken is the dominant indivisible declaration (484 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/src/availability-operation-journal.ts",
+      "lines": 602,
+      "reason": "The synchronous SQLite journal is loaded directly from this .ts source by Node strip-types in the killed-process durability test. One 466-line constructor owns database transactions and lifecycle cleanup. Retain the self-contained source boundary; moving it behind .js facet imports breaks that runtime contract.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/src/cek-proof.verify-one-program-material.ts",
+      "lines": 1017,
+      "reason": "verifyOneProgramMaterial is the dominant indivisible declaration (959 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
+      "lines": 571,
+      "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
+      "lines": 965,
+      "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
+      "lines": 762,
+      "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/tests/availability-operation-journal.test.ts",
+      "lines": 584,
+      "reason": "Retained test registration \u201cavailability operation journal durability and fencing\u201d (541 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/tests/cek-proof.test.ts",
+      "lines": 1854,
+      "reason": "Retained test registration \u201cV1 CEK commitments\u201d (1778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/tests/consensus-validation.test.ts",
+      "lines": 548,
+      "reason": "Retained test registration \u201ccanonical V1 consensus transaction bounds\u201d (509 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+      "lines": 1382,
+      "reason": "Retained test registration \u201cDA transport full message vectors\u201d (1229 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/tests/deployment-manifest-identity.deployment-manifest-v1-shared-identity.ts",
+      "lines": 811,
+      "reason": "Retained test registration \u201cDeploymentManifestV1 shared identity\u201d (778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-core/tests/native-codec.test.ts",
+      "lines": 700,
+      "reason": "Retained test registration \u201cMidgard native v1 codec\u201d (598 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/bin.main.ts",
+      "lines": 1742,
+      "reason": "main is the dominant indivisible declaration (1668 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/execution-native-script-invalid/v1.capture-execution-native-script-invalid-action.ts",
+      "lines": 569,
+      "reason": "captureExecutionNativeScriptInvalidAction is the dominant indivisible declaration (497 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.ts",
+      "lines": 537,
+      "reason": "submitInputSetUniquenessStep02 is the dominant indivisible declaration (473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/inspect-contracts.inspect-contracts.ts",
+      "lines": 578,
+      "reason": "inspectContracts is the dominant indivisible declaration (549 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/mint-item-non-canonical/central-journal.create-mint-item-non-canonical-central-journal-adapter.ts",
+      "lines": 716,
+      "reason": "createMintItemNonCanonicalCentralJournalAdapter is the dominant indivisible declaration (656 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/native-script-decoding/prover.run-native-script-decoding-prover.ts",
+      "lines": 644,
+      "reason": "runNativeScriptDecodingProver is the dominant indivisible declaration (596 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/network-id/submit-network-id-step-02.submit-network-id-step02.ts",
+      "lines": 643,
+      "reason": "submitNetworkIdStep02 is the dominant indivisible declaration (564 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/network-id/workflow-adapter.create-network-id-workflow-adapter.ts",
+      "lines": 1534,
+      "reason": "createNetworkIdWorkflowAdapter is the dominant indivisible declaration (1439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/output-reference-script-decoding/central-journal.create-output-reference-script-decoding-central-journal-adapter.ts",
+      "lines": 516,
+      "reason": "createOutputReferenceScriptDecodingCentralJournalAdapter is the dominant indivisible declaration (476 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/protected-output-signer-missing/central-journal.create-protected-output-signer-missing-central-journal-adapter.ts",
+      "lines": 516,
+      "reason": "createProtectedOutputSignerMissingCentralJournalAdapter is the dominant indivisible declaration (476 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block.ts",
+      "lines": 764,
+      "reason": "submitRemoveFraudulentBlock is the dominant indivisible declaration (683 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts",
+      "lines": 532,
+      "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (484 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.create-resolved-output-non-canonical-central-journal-adapter.ts",
+      "lines": 512,
+      "reason": "createResolvedOutputNonCanonicalCentralJournalAdapter is the dominant indivisible declaration (472 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/script-integrity-hash-missing/actuator.create-script-integrity-hash-missing-transaction-port.ts",
+      "lines": 538,
+      "reason": "createScriptIntegrityHashMissingTransactionPort is the dominant indivisible declaration (487 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/spend-input-signer-missing/central-journal.create-spend-input-signer-missing-central-journal-adapter.ts",
+      "lines": 513,
+      "reason": "createSpendInputSignerMissingCentralJournalAdapter is the dominant indivisible declaration (473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/transition-trace/fetch.da-libp2p-retained-da-source.ts",
+      "lines": 583,
+      "reason": "DaLibp2pRetainedDaSource is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/transition-trace/submit.submit-transition-trace-final.ts",
+      "lines": 821,
+      "reason": "submitTransitionTraceFinal is the dominant indivisible declaration (725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/validation-dispute/replay.admit-validation-trace-replay-context.ts",
+      "lines": 502,
+      "reason": "admitValidationTraceReplayContext is the dominant indivisible declaration (439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/validation-dispute/submit/semantic-redeemers.semantic-action-fields.ts",
+      "lines": 766,
+      "reason": "semanticActionFields is the dominant indivisible declaration (742 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/validation-dispute/submit/semantic-resolution.ts",
+      "lines": 2398,
+      "reason": "submitValidationDisputeSemanticResolution is the dominant indivisible declaration (2251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
+      "lines": 636,
+      "reason": "planConservationFold is the dominant indivisible declaration (596 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/value-not-preserved/workflow.create-manifest-bound-value-conservation-workflow.ts",
+      "lines": 650,
+      "reason": "createManifestBoundValueConservationWorkflow is the dominant indivisible declaration (571 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
+      "lines": 681,
+      "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.ts",
+      "lines": 1013,
+      "reason": "createDoubleSpendConstrainedWorkflowAdapter is the dominant indivisible declaration (946 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.ts",
+      "lines": 556,
+      "reason": "createAuthenticatedFieldCarriagePrerequisitePort is the dominant indivisible declaration (506 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.assert-runtime-transaction-bound.ts",
+      "lines": 507,
+      "reason": "assertRuntimeTransactionBound is the dominant indivisible declaration (479 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/header-classifier.classify-header.ts",
+      "lines": 593,
+      "reason": "classifyHeader is the dominant indivisible declaration (541 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/journal.create-fraud-proof-workflow-journal-fold.ts",
+      "lines": 654,
+      "reason": "createFraudProofWorkflowJournalFold is the dominant indivisible declaration (636 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts",
+      "lines": 1533,
+      "reason": "createLocalKupmiosHttpOgmiosRawSource is the dominant indivisible declaration (1448 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
+      "lines": 974,
+      "reason": "runAdmittedFraudProofWorkflow is the dominant indivisible declaration (899 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/bin.test.ts",
+      "lines": 805,
+      "reason": "Retained test registration \u201cfault-proof CLI argument parsing\u201d (726 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/catalogue-retained-classification.test.ts",
+      "lines": 818,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/cross-block-installed-lifecycle.test.ts",
+      "lines": 898,
+      "reason": "Retained test registration \u201ccrossBlockDuplicateEvent installed cursor actuator\u201d (517 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/custom-transaction-runner-recovery.test.ts",
+      "lines": 748,
+      "reason": "recovery is the dominant indivisible declaration (234 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/distinct-asset-accumulation-limit-lifecycle.test.ts",
+      "lines": 1294,
+      "reason": "Retained test registration \u201cdistinctAssetAccumulationLimit concrete Lucid lifecycle\u201d (1159 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/execution-native-script-invalid-lifecycle.test.ts",
+      "lines": 1566,
+      "reason": "Retained test registration \u201cexecutionNativeScriptInvalid genuine machine fixture\u201d (1448 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/execution-source-script-decoding-lifecycle.test.ts",
+      "lines": 797,
+      "reason": "Retained test registration \u201cexecutionSourceScriptDecoding registered-chain lifecycle\u201d (709 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/execution-source-script-decoding.test.ts",
+      "lines": 507,
+      "reason": "Retained test registration \u201cexecutionSourceScriptDecoding V1\u201d (385 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/field-preimage-length-mismatch-lifecycle.test.ts",
+      "lines": 949,
+      "reason": "Retained test registration \u201cfield-preimage-length-mismatch registered-chain lifecycle\u201d (853 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/field-preimage-length-recovery.test.ts",
+      "lines": 603,
+      "reason": "Retained test registration (386 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/header-classifier.test.ts",
+      "lines": 554,
+      "reason": "Retained test registration \u201cproduction authenticated-header classifier V1\u201d (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/ledger-delta-dense-trace-totality.test.ts",
+      "lines": 730,
+      "reason": "Retained test registration \u201cledger-delta dense trace totality v1\u201d (682 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/linear-family-adapter.test.ts",
+      "lines": 760,
+      "reason": "Retained test registration \u201cproduction linear family adapter V1\u201d (677 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/linear-family-state.test.ts",
+      "lines": 653,
+      "reason": "Retained test registration \u201cproduction linear family authenticated state machine V1\u201d (592 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/manifest-bound-family-assembly.test.ts",
+      "lines": 513,
+      "reason": "Retained test registration \u201cmanifest-bound family assembly\u201d (272 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/min-ada-wrongful-rejection-lifecycle.test.ts",
+      "lines": 674,
+      "reason": "Retained test registration \u201cminimum-Ada forced rejection\u201d (566 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/mint-authorization-installed-lifecycle.test.ts",
+      "lines": 835,
+      "reason": "Retained test registration \u201cmintAuthorization installed cursor actuator\u201d (678 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/mint-declared-asset-limit-lifecycle.test.ts",
+      "lines": 1446,
+      "reason": "Retained test registration \u201cmintDeclaredAssetLimit registered-chain lifecycle\u201d (1302 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-redeemer-lifecycle.make-stage.ts",
+      "lines": 550,
+      "reason": "makeStage is the dominant indivisible declaration (477 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-script-source-lifecycle.missing-script-source-real-lifecycle.ts",
+      "lines": 636,
+      "reason": "Retained test registration \u201cmissingScriptSource real lifecycle\u201d (585 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-script-source-retained-universe.test.ts",
+      "lines": 582,
+      "reason": "Retained test registration \u201cmissingScriptSource retained ScriptSources universe\u201d (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-signature-wrongful-rejection-lifecycle.test.ts",
+      "lines": 813,
+      "reason": "Retained test registration \u201cmissingSignature wrongful rejection real lifecycle\u201d (407 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/native-script-family-evidence.test.ts",
+      "lines": 1147,
+      "reason": "Retained test registration \u201cQ33/Q34 retained-DA evidence\u201d (956 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/network-id-forced-workflow.test.ts",
+      "lines": 1102,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/network-id-wrongful-rejection-lifecycle.test.ts",
+      "lines": 822,
+      "reason": "Retained test registration \u201cnetworkId wrongful-rejection real lifecycle\u201d (733 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/no-reference-input-wrongful-rejection-lifecycle.test.ts",
+      "lines": 670,
+      "reason": "Retained test registration \u201cnoReferenceInput wrongful rejection registered lifecycle\u201d (581 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/non-existent-input-wrongful-rejection-lifecycle.test.ts",
+      "lines": 667,
+      "reason": "Retained test registration \u201cnonExistentInput wrongful rejection registered lifecycle\u201d (576 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/observer-order-invalid-lifecycle.make-harness.ts",
+      "lines": 575,
+      "reason": "makeHarness is the dominant indivisible declaration (510 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/observer-order-invalid-lifecycle.test.ts",
+      "lines": 799,
+      "reason": "Retained test registration \u201cobserverOrderInvalid registered-chain lifecycle\u201d (671 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/observers-forbidden-on-untagged-network-lifecycle.test.ts",
+      "lines": 566,
+      "reason": "Retained test registration \u201cobserversForbiddenOnUntaggedNetwork registered-chain lifecycle\u201d (469 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/output-reference-script-decoding-lifecycle.test.ts",
+      "lines": 1050,
+      "reason": "Retained test registration \u201coutputReferenceScriptDecoding registered-chain lifecycle\u201d (918 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/proof-chunk-prerequisite.production-proof-chunk-prerequisite-v1.ts",
+      "lines": 655,
+      "reason": "Retained test registration \u201cproduction proof-chunk prerequisite V1\u201d (619 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/protected-output-signer-missing-lifecycle.test.ts",
+      "lines": 1238,
+      "reason": "Retained test registration \u201cprotectedOutputSignerMissing registered-chain lifecycle\u201d (1102 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/receive-purpose-language-lifecycle.test.ts",
+      "lines": 713,
+      "reason": "Retained test registration \u201creceivePurposeLanguage real lifecycle\u201d (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/remove-unattested-block-submit.test.ts",
+      "lines": 501,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+      "lines": 808,
+      "reason": "Retained test registration \u201cresolvedOutputNonCanonical registered-chain lifecycle\u201d (711 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/retained-classification-polarities.test.ts",
+      "lines": 585,
+      "reason": "Retained test registration \u201cordinary retained classification polarities\u201d (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/script-integrity-hash-mismatch-lifecycle.test.ts",
+      "lines": 979,
+      "reason": "Retained test registration \u201cscriptIntegrityHashMismatch concrete Lucid lifecycle\u201d (855 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/script-integrity-hash-missing-lifecycle.test.ts",
+      "lines": 2065,
+      "reason": "Retained test registration \u201cscript-integrity-hash-missing real lifecycle\u201d (1920 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/spend-input-signer-missing-lifecycle.test.ts",
+      "lines": 879,
+      "reason": "Retained test registration \u201cspendInputSignerMissing registered-chain lifecycle\u201d (776 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-chunked-proof-carriage.test.ts",
+      "lines": 1192,
+      "reason": "Retained test registration \u201cfault-proof published-chunk proof carriage\u201d (1080 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-event-history-capture.test.ts",
+      "lines": 505,
+      "reason": "Ordered module-level registration/CLI execution (294 lines in the largest statement) shares initialization state. Independent declarations were extracted; slicing the execution statement requires changing its control-flow boundary.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-event-history-list.journey.ts",
+      "lines": 786,
+      "reason": "journey is the dominant indivisible declaration (742 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts",
+      "lines": 1265,
+      "reason": "Retained test registration \u201cfabricated-deposit fault-proof emulator lifecycle\u201d (887 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts",
+      "lines": 1345,
+      "reason": "Retained test registration \u201cfabricated-withdrawal fault-proof emulator lifecycle\u201d (934 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-input-no-idx.test.ts",
+      "lines": 876,
+      "reason": "Retained test registration \u201cinput-no-idx fault-proof emulator lifecycle\u201d (784 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-input-set-uniqueness-lifecycle.test.ts",
+      "lines": 587,
+      "reason": "Retained test registration \u201cinput-set-uniqueness emulator lifecycle\u201d (526 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-invalid-signature-lifecycle.test.ts",
+      "lines": 752,
+      "reason": "Retained test registration \u201cinvalid-signature emulator lifecycle\u201d (686 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+      "lines": 1108,
+      "reason": "Retained test registration \u201cfault-proof emulator integration\u201d (1046 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-max-proof-fit.test.ts",
+      "lines": 1234,
+      "reason": "Retained test registration \u201cfault-proof maximum proof fit\u201d (1047 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-adversarial.test.ts",
+      "lines": 1035,
+      "reason": "Retained test registration \u201cnative-script-decoding adversarial-prover emulator suite\u201d (944 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-direction-a.test.ts",
+      "lines": 530,
+      "reason": "Retained test registration \u201cnative-script-decoding direction-A emulator lifecycle\u201d (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-negatives.test.ts",
+      "lines": 728,
+      "reason": "Retained test registration \u201cnative-script-decoding aborts, refusals and resume\u201d (633 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-network-id.test.ts",
+      "lines": 747,
+      "reason": "Retained test registration \u201cQ35 network-id real-fault lifecycle\u201d (692 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-reference-input-no-idx-lifecycle.test.ts",
+      "lines": 998,
+      "reason": "Retained test registration \u201creference-input-no-idx fault-proof emulator lifecycle\u201d (915 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-history.test.ts",
+      "lines": 511,
+      "reason": "Retained test registration \u201capplied transition history\u201d (435 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-timing-history.test.ts",
+      "lines": 574,
+      "reason": "Retained test registration \u201capplied timed history final\u201d (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts",
+      "lines": 629,
+      "reason": "Retained test registration \u201ctransition-trace omitted/out-of-window/count subvariant lifecycle\u201d (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts",
+      "lines": 976,
+      "reason": "Retained test registration \u201cfault-proof emulator integration\u201d (901 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
+      "lines": 787,
+      "reason": "Retained test registration \u201cfault-proof emulator integration\u201d (708 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init.fault-proof-deployment-contract-resolution.ts",
+      "lines": 626,
+      "reason": "Retained test registration \u201cfault-proof deployment contract resolution\u201d (590 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts",
+      "lines": 1229,
+      "reason": "buildMinimalFaultProofContracts is the dominant indivisible declaration (1114 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
+      "lines": 1577,
+      "reason": "runForcedValidationDisputeScenario is the dominant indivisible declaration (1478 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/removal-deployment.build-removal-deployment-info.ts",
+      "lines": 566,
+      "reason": "buildRemovalDeploymentInfo is the dominant indivisible declaration (510 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
+      "lines": 694,
+      "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
+      "lines": 509,
+      "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
+      "lines": 577,
+      "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (524 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts",
+      "lines": 722,
+      "reason": "makeResolvedOutputStages is the dominant indivisible declaration (647 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.ts",
+      "lines": 550,
+      "reason": "buildProvedDoubleSpendFixture is the dominant indivisible declaration (482 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.retire-fixture-operator-after-inactivity.ts",
+      "lines": 642,
+      "reason": "retireFixtureOperatorAfterInactivity is the dominant indivisible declaration (600 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
+      "lines": 926,
+      "reason": "registerTransitionTraceFinalCases is the dominant indivisible declaration (842 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",
+      "lines": 652,
+      "reason": "FAMILY_SCENARIOS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/validator-scenario-registry.unmapped-validators.ts",
+      "lines": 594,
+      "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts",
+      "lines": 946,
+      "reason": "Retained test registration \u201ctransactionOutputNonCanonical registered-chain lifecycle\u201d (858 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transition-trace-challenger.transition-trace-challenger-tooling.ts",
+      "lines": 1962,
+      "reason": "Retained test registration \u201ctransition-trace challenger tooling\u201d (1878 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts",
+      "lines": 996,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transition-trace-l1-evidence.test.ts",
+      "lines": 1431,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/typed-reason-retained-classification.typed-reasons-classified-from-committed-retained-da.ts",
+      "lines": 525,
+      "reason": "Retained test registration \u201ctyped reasons classified from committed retained DA\u201d (458 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/unused-redeemer-lifecycle.test.ts",
+      "lines": 540,
+      "reason": "Retained test registration \u201cunusedRedeemer concrete retained lifecycle material\u201d (460 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/unused-script-witness-lifecycle.unused-script-witness-real-lifecycle.ts",
+      "lines": 914,
+      "reason": "Retained test registration \u201cunusedScriptWitness real lifecycle\u201d (828 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
+      "lines": 2331,
+      "reason": "Retained test registration \u201cvalidation-dispute transaction validity\u201d (2231 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/validation-trace-dispute-installed-lifecycle.test.ts",
+      "lines": 884,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/value-conservation-lifecycle.test.ts",
+      "lines": 1286,
+      "reason": "Retained test registration \u201cuniversal value conservation\u201d (1178 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/withdrawal-mistag-installed-lifecycle.test.ts",
+      "lines": 530,
+      "reason": "Retained test registration \u201cwithdrawalMistag installed cursor actuator\u201d (398 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/witness-script-decoding-lifecycle.make-harness.ts",
+      "lines": 799,
+      "reason": "makeHarness is the dominant indivisible declaration (728 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/witness-script-decoding-lifecycle.test.ts",
+      "lines": 994,
+      "reason": "Retained test registration \u201cwitnessScriptDecoding registered-chain lifecycle\u201d (910 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-kupmios-source.production-local-kupmios-raw-source-v1.ts",
+      "lines": 986,
+      "reason": "Retained test registration \u201cproduction local Kupmios raw source V1\u201d (946 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-raw-l1-family-derivation.raw-l1-family-terminal-economics.ts",
+      "lines": 583,
+      "reason": "Retained test registration \u201craw L1 family terminal economics\u201d (546 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-runtime.compiled-manifest-bound-production-runtime-v1.ts",
+      "lines": 1866,
+      "reason": "Retained test registration \u201ccompiled manifest-bound production runtime V1\u201d (1775 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-tier3-actions.test.ts",
+      "lines": 992,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow.compiled-production-workflow-boundary.ts",
+      "lines": 521,
+      "reason": "Retained test registration \u201ccompiled production workflow boundary\u201d (470 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow.q51-w-o4-resumable-workflow.ts",
+      "lines": 1419,
+      "reason": "Retained test registration \u201cQ51/W-O4 resumable workflow\u201d (1339 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts",
+      "lines": 540,
+      "reason": "Retained test registration \u201czeroInput wrongful-rejection real lifecycle\u201d (471 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+      "lines": 640,
+      "reason": "runCaptureSnapshot is the dominant indivisible declaration (137 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/correction-recovery.test.ts",
+      "lines": 818,
+      "reason": "Retained test registration \u201cresumes pending stamps across family boundaries and accepts a reauthenticated replacement point\u201d (81 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.create-da-bond-pool-emulator-port.ts",
+      "lines": 596,
+      "reason": "createDaBondPoolEmulatorPort is the dominant indivisible declaration (541 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.fake-port.ts",
+      "lines": 578,
+      "reason": "fakePort is the dominant indivisible declaration (560 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.test.ts",
+      "lines": 1199,
+      "reason": "Retained test registration \u201cpooled DA bond journey driver\u201d (1174 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.try-run-da-bond-pool-journey.ts",
+      "lines": 948,
+      "reason": "tryRunDaBondPoolJourney is the dominant indivisible declaration (914 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts",
+      "lines": 1630,
+      "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.da-bond-pool-live-port-availability-validity-and-lapses.ts",
+      "lines": 600,
+      "reason": "Retained test registration \u201cDA bond pool live port: availability validity and lapses\u201d (569 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-process-evidence.da-bond-cli-submit-evidence-p18.ts",
+      "lines": 575,
+      "reason": "Retained test registration \u201cda-bond CLI submit evidence (P18)\u201d (556 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/history-event-cases.test.ts",
+      "lines": 1034,
+      "reason": "Retained test registration (460 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/journey-runner.run-journey.ts",
+      "lines": 507,
+      "reason": "runJourney is the dominant indivisible declaration (468 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/journey-session.open-journey-session.ts",
+      "lines": 579,
+      "reason": "openJourneySession is the dominant indivisible declaration (537 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/journey-session.test.ts",
+      "lines": 614,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",
+      "lines": 863,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/staging.stage-journey.ts",
+      "lines": 768,
+      "reason": "stageJourney is the dominant indivisible declaration (714 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
+      "lines": 1434,
+      "reason": "The retained CLI identity, blueprint-relative loading and mutually dependent summary validation group share the original executable boundary. Independent validation helpers were extracted. Remaining division requires a dedicated separation of loading and validation ownership.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/e2e-state-correction-reconciliation.reconcile-state-correction-independent-evidence.ts",
+      "lines": 813,
+      "reason": "reconcileStateCorrectionIndependentEvidence is the dominant indivisible declaration (774 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput/run.ts",
+      "lines": 603,
+      "reason": "runE2EL2StressThroughput is the dominant indivisible declaration (558 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput/summary-artifact.parse-e2-el2-stress-summary.ts",
+      "lines": 535,
+      "reason": "parseE2EL2StressSummary is the dominant indivisible declaration (507 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/stress-wallets/consolidation.consolidate-stress-wallets-unlocked.ts",
+      "lines": 635,
+      "reason": "consolidateStressWalletsUnlocked is the dominant indivisible declaration (573 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/e2e-state-correction-reconciliation.test.ts",
+      "lines": 695,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/e2e-stress-l2-throughput.e2e-stress-l2-throughput-runner.ts",
+      "lines": 1036,
+      "reason": "Retained test registration \u201ce2e-stress-l2-throughput runner\u201d (1010 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/e2e-summary.test.ts",
+      "lines": 940,
+      "reason": "Retained test registration \u201ce2e run summary\u201d (898 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
+      "lines": 619,
+      "reason": "validSummary is the dominant indivisible declaration (129 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/stress-corpus.stress-corpus-generation.ts",
+      "lines": 564,
+      "reason": "Retained test registration \u201cstress corpus generation\u201d (536 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/stress-wallets.test.ts",
+      "lines": 2226,
+      "reason": "Retained test registration \u201cstress wallet commands\u201d (2164 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/native/mpf-event-flat-wasm/src/owner/compact_index.rs",
+      "lines": 611,
+      "reason": "One FullIndex ownership module couples compaction, authenticated-closure construction, proof-arena access and child-index cache invariants. CLI/RPC/runtime/record helpers were extracted; splitting this remaining state owner needs a separately verified ownership design.",
+      "enforcedBy": "documented non-ESLint exception"
+    },
+    {
+      "file": "demo/midgard-node/scripts/generate-transaction-root-v1-fixture.mjs",
+      "lines": 676,
+      "reason": "makeAiken is the dominant indivisible declaration (200 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/scripts/mpf-architecture-g-gate-config.test.mjs",
+      "lines": 1648,
+      "reason": "Retained test registration \u201cPhase 3 evidence resolves the explicit current Phase 1 binding and rejects every stale identity edge\u201d (141 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/scripts/mpf-event-flat-wasm-prototype.mjs",
+      "lines": 831,
+      "reason": "The retained benchmark executable loads its WASM artifact relative to this script and executes an ordered comparison using shared engine state and pinned timing/root expectations. Encoding helpers were extracted; changing the process/loading boundary needs a benchmark-specific refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/scripts/phase3-architecture-g-soak.mjs",
+      "lines": 626,
+      "reason": "run is the dominant indivisible declaration (404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/scripts/phase3-architecture-g-soak.test.mjs",
+      "lines": 1248,
+      "reason": "Retained test registration \u201cPhase 3 pre-lifecycle evidence and load-generator isolation\u201d (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/scripts/throughput-valid-stress.mjs",
+      "lines": 3876,
+      "reason": "The stress CLI retains its main execution and coupled producer, submission, metrics and cleanup state. Independent schema/reporting helpers were extracted. Dividing this remaining cohort requires an explicit lifecycle API so cancellation, admission order and resource cleanup remain consistent.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/scripts/verify-phase2-benchmark-report.verify-phase2-benchmark-reports.mjs",
+      "lines": 658,
+      "reason": "verifyPhase2BenchmarkReports is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/scripts/verify-phase3-architecture-g-soak-report.evaluate-phase3-architecture-gsoak-report.mjs",
+      "lines": 751,
+      "reason": "evaluatePhase3ArchitectureGSoakReport is the dominant indivisible declaration (708 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/database/migrations/sql/0001_initial_schema.sql",
+      "lines": 1875,
+      "reason": "An existing durable initial migration is one ordered atomic schema change with a tracked migration identity/checksum. Splitting or reordering it changes upgrade behavior; line-count cleanup does not justify changing deployed migration semantics.",
+      "enforcedBy": "documented non-ESLint exception"
+    },
+    {
+      "file": "demo/midgard-node/src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts",
+      "lines": 962,
+      "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/fibers/block-commitment.build-and-submit-commitment-block-action.ts",
+      "lines": 545,
+      "reason": "buildAndSubmitCommitmentBlockAction is the dominant indivisible declaration (490 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/mpf/process.process-mpfs.ts",
+      "lines": 1597,
+      "reason": "processMpfs is the dominant indivisible declaration (1477 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/mpf/root-view-store.ts",
+      "lines": 1499,
+      "reason": "MidgardMpfRootViewStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/mpf/store.midgard-mpf.ts",
+      "lines": 962,
+      "reason": "MidgardMpf is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/services/admission-writer.make-admission-writer-with-options.ts",
+      "lines": 565,
+      "reason": "makeAdmissionWriterWithOptions is the dominant indivisible declaration (528 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
+      "lines": 541,
+      "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/services/config.make-config.ts",
+      "lines": 1134,
+      "reason": "makeConfig is the dominant indivisible declaration (1077 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
+      "lines": 1015,
+      "reason": "makeEventHistoryOwner is the dominant indivisible declaration (952 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
+      "lines": 750,
+      "reason": "midgardContractsFromDeploymentManifest is the dominant indivisible declaration (722 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
+      "lines": 930,
+      "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/transactions/reference-publication.publish-reference-scripts.ts",
+      "lines": 685,
+      "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",
+      "lines": 939,
+      "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
+      "lines": 554,
+      "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header.database-operations-program.ts",
+      "lines": 1263,
+      "reason": "databaseOperationsProgram is the dominant indivisible declaration (1153 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header.revalidate-and-persist-speculative-candidate-sources.ts",
+      "lines": 599,
+      "reason": "revalidateAndPersistSpeculativeCandidateSources is the dominant indivisible declaration (559 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
+      "lines": 550,
+      "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (474 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
+      "lines": 672,
+      "reason": "submitTxBackedCommit is the dominant indivisible declaration (588 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/src/workers/mpf-engine-probe.ts",
+      "lines": 577,
+      "reason": "This self-identifying probe executable captures its own source path/hash and runs an ordered native-engine verification sequence. Moving its execution changes the recorded identity and process boundary; a dedicated probe redesign is needed before splitting it.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/admission-writer.test.ts",
+      "lines": 501,
+      "reason": "Retained test registration \u201cdurable admission microbatch writer\u201d (437 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/attestation-timeout-reinclusion-emulator.test.ts",
+      "lines": 530,
+      "reason": "Retained test registration \u201cresumes a rewind to a retained non-empty base interrupted after the native root moved and before reinclusion committed\u201d (70 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/attestation-timeout-reinclusion-hardening-emulator.test.ts",
+      "lines": 998,
+      "reason": "Retained test registration \u201creturns a removed block\u201d (209 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-command.test.ts",
+      "lines": 562,
+      "reason": "Retained test registration \u201coperational availability commands\u201d (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-lifecycle.test.ts",
+      "lines": 554,
+      "reason": "Retained test registration \u201cavailability challenge real ledger lifecycle under Van Rossem limits\u201d (488 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-operation.test.ts",
+      "lines": 641,
+      "reason": "Retained test registration \u201cavailability operation signed recovery\u201d (562 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-pool-slash-lifecycle.test.ts",
+      "lines": 748,
+      "reason": "Retained test registration \u201cpooled DA bond challenge and slash lifecycle\u201d (689 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-sdk-lifecycle.test.ts",
+      "lines": 577,
+      "reason": "Retained test registration \u201cproduction SDK availability builders\u201d (539 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/benchmark-regression.test.mjs",
+      "lines": 1640,
+      "reason": "Retained test registration \u201cPhase 1 formal scenario contracts\u201d (554 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
+      "lines": 1511,
+      "reason": "Retained test registration \u201cPhase 2 sustained real-Postgres Stage B operator benchmark\u201d (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/benchmarks/validation-worker-isolation.bench.ts",
+      "lines": 592,
+      "reason": "Retained test registration \u201cPhase 2 validation-worker isolation benchmark\u201d (524 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/commit-block-planner.test.ts",
+      "lines": 783,
+      "reason": "Retained test registration \u201ccommit block planner\u201d (704 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/commit-end-time.test.ts",
+      "lines": 519,
+      "reason": "Retained test registration \u201ccommit end-time resolver\u201d (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
+      "lines": 514,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",
+      "lines": 1199,
+      "reason": "Retained test registration \u201ccontract deployment info\u201d (1149 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/da-bond-command.test.ts",
+      "lines": 1057,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+      "lines": 849,
+      "reason": "Retained test registration \u201cDA payload libp2p producer publication\u201d (773 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
+      "lines": 3464,
+      "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/availability.ts",
+      "lines": 759,
+      "reason": "registerAvailabilityTests is the dominant indivisible declaration (733 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
+      "lines": 1641,
+      "reason": "registerFinalizationTests is the dominant indivisible declaration (1581 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/history.ts",
+      "lines": 1059,
+      "reason": "registerHistoryTests is the dominant indivisible declaration (1018 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/ledger.ts",
+      "lines": 1498,
+      "reason": "registerLedgerTests is the dominant indivisible declaration (1439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/mpf.ts",
+      "lines": 717,
+      "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",
+      "lines": 974,
+      "reason": "Retained test registration \u201cdeposit flow emulator\u201d (896 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-merge-payout.test.ts",
+      "lines": 1185,
+      "reason": "Retained test registration \u201cdeposit flow emulator\u201d (1094 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-recovery-invalidation.test.ts",
+      "lines": 692,
+      "reason": "Retained test registration \u201cdeposit flow emulator\u201d (639 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-shared.ts",
+      "lines": 1989,
+      "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-journal.test.ts",
+      "lines": 2217,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-ledger-receipts.test.ts",
+      "lines": 718,
+      "reason": "Retained test registration \u201cowned accepted-ledger inverse receipts\u201d (223 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-ledger-repair.test.ts",
+      "lines": 1049,
+      "reason": "Retained test registration \u201cunpublished history-dependent ledger repair\u201d (276 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-ready-append.test.ts",
+      "lines": 1254,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-recovery-plans.durable-history-recovery-plans-modeled-source-real-sql.ts",
+      "lines": 582,
+      "reason": "Retained test registration \u201cdurable history recovery plans (modeled source, real SQL)\u201d (556 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-recovery-plans.retained-native-recovery-root-selection-real-sql-component.ts",
+      "lines": 507,
+      "reason": "Retained test registration \u201cretained native recovery root selection (real SQL component)\u201d (477 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-recovery.test.ts",
+      "lines": 603,
+      "reason": "Retained test registration \u201ccanonical history recovery composition\u201d (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-retired-membership.test.ts",
+      "lines": 930,
+      "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/forced-transactions.test.ts",
+      "lines": 936,
+      "reason": "Retained test registration \u201cV1 forced transaction material\u201d (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
+      "lines": 797,
+      "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts",
+      "lines": 2077,
+      "reason": "runHistoryOwnerRollbackJourney is the dominant indivisible declaration (2008 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
+      "lines": 576,
+      "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/history-source-owner-retention.test.ts",
+      "lines": 628,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/initialization-emulator.test.ts",
+      "lines": 739,
+      "reason": "Retained test registration \u201cinitialization emulator\u201d (684 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-control-plane.test.ts",
+      "lines": 1419,
+      "reason": "Retained test registration \u201cL1 control-plane serialization\u201d (1397 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
+      "lines": 895,
+      "reason": "Retained test registration \u201creplays actual initialized lists and joins current external orders whose retained bodies predate activation\u201d (818 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-initialization-emulator.test.ts",
+      "lines": 682,
+      "reason": "Retained test registration \u201cbootstraps both histories from accepted atomic initialization and subsequent public admissions\u201d (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-initialization.test.ts",
+      "lines": 574,
+      "reason": "Retained test registration \u201cwhole-block history initialization replay\u201d (238 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts",
+      "lines": 807,
+      "reason": "Retained test registration \u201crecovers a genuinely observed deposit-only signed commitment before local finalization\u201d (748 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-parent-lease-emulator.test.ts",
+      "lines": 587,
+      "reason": "Retained test registration \u201cfails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent\u201d (544 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-projection-native-assets-emulator.test.ts",
+      "lines": 537,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts",
+      "lines": 562,
+      "reason": "Retained test registration \u201cpreserves actual inline and external Deposit raw map pair order and duplicates through continuation, capture and node conversion\u201d (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-raw-production-lifecycle-emulator.test.ts",
+      "lines": 758,
+      "reason": "Retained test registration \u201cpreserves public raw external events through real settlement, refund, payout and reclaim\u201d (719 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-signed-intent-continuation-emulator.test.ts",
+      "lines": 581,
+      "reason": "Retained test registration \u201cretains the original signed intent through an accepted queue pointer continuation before local confirmation\u201d (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-source-owner-emulator.test.ts",
+      "lines": 807,
+      "reason": "Retained test registration \u201cruns the default history owner through actual bootstrap, continuation, retirement and fresh restart intersection\u201d (742 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-source.test.ts",
+      "lines": 879,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-streaming-production-lifecycle-emulator.test.ts",
+      "lines": 980,
+      "reason": "Retained test registration \u201cstreams public raw events through production reconciliation, native commitment, refund, payout and reclaim\u201d (939 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/mempool-ledger-cache.mempool-ledger-cache.ts",
+      "lines": 850,
+      "reason": "Retained test registration \u201cmempool ledger cache\u201d (826 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/merge-landed-finalization-emulator.test.ts",
+      "lines": 718,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/merge-maturity-preflight.test.ts",
+      "lines": 892,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/midgard-contracts.test.ts",
+      "lines": 570,
+      "reason": "Retained test registration \u201cmidgard contracts registry\u201d (486 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/midgard-local-script-eval.test.ts",
+      "lines": 874,
+      "reason": "Retained test registration \u201cMidgard local script evaluation primitives\u201d (816 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf-audit-merge-permit-emulator.test.ts",
+      "lines": 1016,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",
+      "lines": 570,
+      "reason": "Retained test registration \u201cArchitecture G commit-candidate probe V1 artifacts\u201d (317 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf-native-owner-service.test.ts",
+      "lines": 818,
+      "reason": "Retained test registration (731 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf.test.ts",
+      "lines": 2572,
+      "reason": "Retained test registration \u201cMidgard MPF wrapper\u201d (2432 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/native-transaction-integration.test.ts",
+      "lines": 2790,
+      "reason": "Retained test registration \u201cnative transaction integration\u201d (2696 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/operator-lifecycle-emulator.test.ts",
+      "lines": 946,
+      "reason": "Retained test registration \u201coperator lifecycle emulator\u201d (895 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/phase2-benchmark-report.test.ts",
+      "lines": 751,
+      "reason": "Retained test registration \u201cPhase 2 benchmark report gate\u201d (732 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/reference-publication.test.ts",
+      "lines": 606,
+      "reason": "Retained test registration \u201cfunds the consolidation fees of a wallet holding exactly the lane requirements\u201d (67 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/reserve-payout-builders.test.ts",
+      "lines": 1186,
+      "reason": "Retained test registration \u201creserve/payout transaction builder primitives\u201d (1082 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/reserve-payout-economic-acceptance-emulator.test.ts",
+      "lines": 594,
+      "reason": "Retained test registration \u201cenforces reserve sibling/accounting and exact payout economics on a real settled withdrawal\u201d (539 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/scheduler-refresh.test.ts",
+      "lines": 709,
+      "reason": "Retained test registration \u201cscheduler refresh witness selection\u201d (649 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/sdk-abi-fixtures.build-transition-trace-abi-fixtures.ts",
+      "lines": 523,
+      "reason": "buildTransitionTraceAbiFixtures is the dominant indivisible declaration (501 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/sdk-abi-fixtures.test.ts",
+      "lines": 1046,
+      "reason": "Retained test registration \u201cSDK canonical ABI fixtures\u201d (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/signed-intent-canonical-coverage.test.ts",
+      "lines": 508,
+      "reason": "Retained test registration \u201csigned intent canonical coverage supplied-evidence classifier\u201d (415 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/signed-intent-replacement-revival-emulator.test.ts",
+      "lines": 505,
+      "reason": "Retained test registration \u201crevives a replaced commit that wins its base slot after all, abandons its unlanded replacement with the same members, never revives it while an admitted correction abandoned it, and locally finalizes the winner once\u201d (119 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/state-queue-correction-observer.test.ts",
+      "lines": 1205,
+      "reason": "Retained test registration \u201cnode-owned state-queue correction observer\u201d (1137 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/state-reconciliation.test.ts",
+      "lines": 917,
+      "reason": "Retained test registration \u201cstate reconciliation evaluator\u201d (874 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/transactions-utils.validity-window-submit-recovery.ts",
+      "lines": 810,
+      "reason": "Retained test registration \u201cvalidity-window submit recovery\u201d (796 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/transition-trace-builder.test.ts",
+      "lines": 735,
+      "reason": "Retained test registration \u201ctransition trace builder\u201d (677 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-node/tests/tx-admissions-claim-load.test.ts",
+      "lines": 662,
+      "reason": "Retained test registration \u201cdurable admission lightweight claim and payload load\u201d (606 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/src/fraud-proof/contracts/families/validation-trace-dispute.build-validation-trace-dispute-chain.ts",
+      "lines": 1614,
+      "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
+      "lines": 769,
+      "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
+      "lines": 567,
+      "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (487 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/tests/availability-challenge.q58-canonical-da-availability-commitment-v1.ts",
+      "lines": 1729,
+      "reason": "Retained test registration \u201cQ58 canonical DA availability commitment V1\u201d (1652 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/tests/event-abi.vectors.ts",
+      "lines": 735,
+      "reason": "vectors: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/tests/fault-proof.fault-proof-abi.ts",
+      "lines": 1113,
+      "reason": "Retained test registration \u201cfault-proof ABI\u201d (1061 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
+      "lines": 1239,
+      "reason": "Retained test registration \u201cfault-proof contract builder\u201d (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-sdk/tests/tx-order.test.ts",
+      "lines": 659,
+      "reason": "Retained test registration \u201cV1 transaction-order datum, \u00a78 field carriage, and CEK program material\u201d (624 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-test-support/scripts/capture-l1-recordings.mjs",
+      "lines": 502,
+      "reason": "recordTransaction is the dominant indivisible declaration (66 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs",
+      "lines": 860,
+      "reason": "generated is the dominant indivisible declaration (251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/src/cek-executor.structural-executor.ts",
+      "lines": 2567,
+      "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/src/validation-machine/trace-builder-complete.ts",
+      "lines": 2850,
+      "reason": "completeValidationTrace is the dominant indivisible declaration (2725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
+      "lines": 3964,
+      "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/cek-executor.test.ts",
+      "lines": 827,
+      "reason": "Retained test registration \u201cV1 CEK trace generator\u201d (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts",
+      "lines": 566,
+      "reason": "Retained test registration \u201ccomplete-item proof fit V1 (emulator, applied validators)\u201d (519 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/complete-item-proof-fit.test.ts",
+      "lines": 534,
+      "reason": "Retained test registration \u201ccomplete-item proof fit V1\u201d (484 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/complete-item-route-adversarial-emulator.test.ts",
+      "lines": 855,
+      "reason": "Retained test registration (513 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts",
+      "lines": 1026,
+      "reason": "Retained test registration \u201ccanonical V1 Cardano Data breadth boundaries\u201d (867 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts",
+      "lines": 598,
+      "reason": "This canonical fixture is imported directly as .ts by the auxiliary-witness golden CLI under Node strip-types. Retain its self-contained source boundary: .js facet imports have no corresponding source JavaScript, and changing the loader or fixture import contract is outside a pure module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/nested-value-boundary.test.ts",
+      "lines": 563,
+      "reason": "Retained test registration \u201ccanonical V1 nested Cardano Value boundary\u201d (438 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/ordered-collection-redeemer-boundary.test.ts",
+      "lines": 605,
+      "reason": "Retained test registration \u201ccanonical V1 spend-redeemer Cardano boundary\u201d (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/phase-b.test.ts",
+      "lines": 791,
+      "reason": "Retained test registration \u201cphase B validation\u201d (712 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts",
+      "lines": 1076,
+      "reason": "Retained test registration \u201ccanonical V1 Plutus Data unary-depth boundary\u201d (976 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-validation/tests/validation-machine.deterministic-validation-machine.ts",
+      "lines": 2460,
+      "reason": "Retained test registration \u201cdeterministic validation machine\u201d (2387 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
+      "lines": 874,
+      "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (813 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
+      "lines": 620,
+      "reason": "createBridge is the dominant indivisible declaration (588 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
+      "lines": 837,
+      "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
+      "lines": 863,
+      "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
+      "lines": 1403,
+      "reason": "openInternal is the dominant indivisible declaration (1365 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/index.ts",
+      "lines": 753,
+      "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/indexers/user-event-indexer/local-history.prepare-watcher-local-user-event-readmission.ts",
+      "lines": 889,
+      "reason": "prepareWatcherLocalUserEventReadmission is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/l1/multi-provider-consistency.evaluate-admitted-consistency.ts",
+      "lines": 567,
+      "reason": "evaluateAdmittedConsistency is the dominant indivisible declaration (538 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/chain-coordinator.create-coordinator.ts",
+      "lines": 977,
+      "reason": "createCoordinator is the dominant indivisible declaration (948 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
+      "lines": 540,
+      "reason": "createWatcherOperationsObservability is the dominant indivisible declaration (512 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts",
+      "lines": 1585,
+      "reason": "createWatcherUserEventRuntime is the dominant indivisible declaration (1488 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
+      "lines": 781,
+      "reason": "createWatcherRuntime is the dominant indivisible declaration (686 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/src/storage/public-da-client.watcher-public-da-client.ts",
+      "lines": 829,
+      "reason": "WatcherPublicDaClient is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/availability/concurrent-challenges.test.ts",
+      "lines": 1361,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/availability/source-capture.test.ts",
+      "lines": 595,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts",
+      "lines": 1450,
+      "reason": "Retained test registration \u201cproduction fault decision bridge\u201d (1248 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts",
+      "lines": 737,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts",
+      "lines": 708,
+      "reason": "Retained test registration \u201cwatcher production fault-proof application V1\u201d (600 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts",
+      "lines": 723,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-supervisor.test.ts",
+      "lines": 575,
+      "reason": "Retained test registration \u201cproduction fault-proof supervisor\u201d (514 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/replay-transcript-capture.test.ts",
+      "lines": 676,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts",
+      "lines": 838,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/funding/prover-funding-calculation.test.ts",
+      "lines": 876,
+      "reason": "Retained test registration \u201cproduction prover funding calculation V1\u201d (823 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/funding/prover-funding-recovery.funding-recovery-across-authenticated-observation-refresh.ts",
+      "lines": 1155,
+      "reason": "Retained test registration \u201cfunding recovery across authenticated observation refresh\u201d (1124 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts",
+      "lines": 1323,
+      "reason": "Retained test registration \u201cSQLite prover funding reservation store V1\u201d (1280 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/indexers/authenticated-state-queue-observation.production-state-queue-observation-source.ts",
+      "lines": 1639,
+      "reason": "Retained test registration \u201cproduction state-queue observation source\u201d (1590 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/indexers/user-event-history.bounded-local-user-event-semantic-publication-synthetic-local-blocks.ts",
+      "lines": 693,
+      "reason": "Retained test registration \u201cbounded local user-event semantic publication (synthetic local blocks)\u201d (652 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/indexers/user-event-origin.test.ts",
+      "lines": 867,
+      "reason": "fixture is the dominant indivisible declaration (358 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/crash-rollback-matrix.test.ts",
+      "lines": 1476,
+      "reason": "Retained test registration \u201cW44 watcher crash and rollback matrix\u201d (518 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/finality-engine.canonical-release-bound-watcher-finality.ts",
+      "lines": 1075,
+      "reason": "Retained test registration \u201ccanonical release-bound watcher finality\u201d (1040 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/l1-adapter.test.ts",
+      "lines": 1013,
+      "reason": "Retained test registration \u201cprovider-neutral authenticated L1 adapter\u201d (870 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/local-historical-capture.test.ts",
+      "lines": 1543,
+      "reason": "Retained test registration \u201creceipt-only local backfill admission\u201d (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/multi-provider-consistency.test.ts",
+      "lines": 787,
+      "reason": "Retained test registration \u201cfail-closed multi-provider consistency\u201d (621 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/native-chain-sync.test.ts",
+      "lines": 524,
+      "reason": "Retained test registration \u201cnative Cardano node-to-client chain-sync supervisor\u201d (479 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/resolved-block-observation.test.ts",
+      "lines": 561,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/rollback-engine.test.ts",
+      "lines": 3603,
+      "reason": "Retained test registration \u201ccanonical watcher rollback engine\u201d (3050 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/chain-coordinator.test.ts",
+      "lines": 933,
+      "reason": "Retained test registration \u201cproduction native-chain coordinator\u201d (855 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/config.strict-watcher-configuration.ts",
+      "lines": 746,
+      "reason": "Retained test registration \u201cstrict watcher configuration\u201d (729 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/deployment-identity.test.ts",
+      "lines": 796,
+      "reason": "Retained test registration \u201cwatcher deployment identity\u201d (749 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/state-queue-runtime.test.ts",
+      "lines": 912,
+      "reason": "Retained test registration \u201cproduction state-queue runtime V1\u201d (834 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/storage/retained-da-runtime.test.ts",
+      "lines": 1218,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts",
+      "lines": 669,
+      "reason": "setupFundingRecoveryFixture is the dominant indivisible declaration (599 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/local-user-event-authority-fixture.history-lifecycle.ts",
+      "lines": 651,
+      "reason": "historyLifecycle is the dominant indivisible declaration (616 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts",
+      "lines": 857,
+      "reason": "createPublishedWatcherBlockActor is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",
+      "lines": 818,
+      "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (780 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
+      "lines": 1055,
+      "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (1006 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/midgard-watcher/tests/verification/block-replay.w25-roots-and-deterministic-replay.ts",
+      "lines": 1414,
+      "reason": "Retained test registration \u201cW25 roots and deterministic replay\u201d (1341 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/scripts/deployment-profiles.mjs",
+      "lines": 525,
+      "reason": "validateProfile is the dominant indivisible declaration (206 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/scripts/deployment-profiles.test.mjs",
+      "lines": 627,
+      "reason": "Retained test registration \u201cevery profile carries the pooled DA bond amounts and timing, rendered into env\u201d (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    },
+    {
+      "file": "demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
+      "lines": 575,
+      "reason": "Ordered module-level registration/CLI execution (55 lines in the largest statement) shares initialization state. Independent declarations were extracted; slicing the execution statement requires changing its control-flow boundary.",
+      "enforcedBy": "ESLint exact file cap + module-size cap validator"
+    }
+  ]
+}

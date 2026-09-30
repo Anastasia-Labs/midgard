@@ -1,5 +1,19 @@
 #!/usr/bin/env node
 
+import "node:child_process";
+import "node:crypto";
+import "node:fs";
+import "node:os";
+import "node:path";
+import "node:url";
+import "@al-ft/midgard-core/codec";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "../../../onchain/aiken/scripts/pinned-compiler.mjs";
+import "./generate-transaction-root-v1-fixture.parse-canonical-transaction.mjs";
+
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -15,8 +29,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardForcedTxCanonical,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -27,23 +41,42 @@ import {
   assertPinnedAiken,
   defaultAikenBinary,
 } from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
+import {
+  aikenBytes,
+  aikenInt,
+  decimal,
+  enumValue,
+  exactKeys,
+  fail,
+  hex,
+  nonEmptyString,
+  parseCanonicalTransaction,
+  toJsonTransaction,
+} from "./generate-transaction-root-v1-fixture.parse-canonical-transaction.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+
 const packageRoot = resolve(scriptDirectory, "..");
+
 const repositoryRoot = resolve(packageRoot, "../..");
+
 const canonicalPath = join(
   packageRoot,
   "tests/fixtures/transaction-root-v1.canonical.json",
 );
+
 const generatedJsonPath = join(
   packageRoot,
   "tests/fixtures/transaction-root-v1.generated.json",
 );
+
 const generatedAikenPath = join(
   repositoryRoot,
   "onchain/aiken/lib/midgard/transaction-root-v1-golden.test.ak",
 );
+
 const buildEntrypointPath = join(packageRoot, "dist/transaction-root.js");
+
 const checkOnly = process.argv.includes("--check");
 
 if (
@@ -54,55 +87,6 @@ if (
     "usage: node scripts/generate-transaction-root-v1-fixture.mjs [--check]",
   );
 }
-
-const fail = (message) => {
-  throw new Error(`transaction-root-v1 fixture generation failed: ${message}`);
-};
-
-const isRecord = (value) =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
-const exactKeys = (value, keys, label) => {
-  if (!isRecord(value)) fail(`${label} must be an object`);
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    fail(`${label} must contain exactly ${keys.join(", ")}`);
-  }
-  return value;
-};
-
-const nonEmptyString = (value, label) => {
-  if (typeof value !== "string" || value.length === 0) {
-    fail(`${label} must be a non-empty string`);
-  }
-  return value;
-};
-
-const hex = (value, label, byteLength) => {
-  nonEmptyString(value, label);
-  if (!/^[0-9a-f]+$/u.test(value) || value.length % 2 !== 0) {
-    fail(`${label} must be lowercase even-length hexadecimal`);
-  }
-  if (byteLength !== undefined && value.length !== byteLength * 2) {
-    fail(`${label} must be exactly ${byteLength.toString()} bytes`);
-  }
-  return Buffer.from(value, "hex");
-};
-
-const decimal = (value, label) => {
-  if (typeof value !== "string" || !/^(?:0|-?[1-9][0-9]*)$/u.test(value)) {
-    fail(`${label} must be a canonical decimal integer string`);
-  }
-  return BigInt(value);
-};
-
-const enumValue = (value, allowed, label) => {
-  if (typeof value !== "string" || !allowed.includes(value)) {
-    fail(`${label} must be one of ${allowed.join(", ")}`);
-  }
-  return value;
-};
 
 // The canonical-input verdict vocabulary. Each name selects one
 // `OperatorVerdict` value (#640): `ForcedTxValid`, or `ForcedTxInvalid` with
@@ -152,132 +136,8 @@ const VERDICTS = {
       "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.ValueNotPreserved,\n    }",
   },
 };
+
 const VERDICT_NAMES = Object.keys(VERDICTS);
-
-const parseCanonicalTransaction = (value, label) => {
-  exactKeys(
-    value,
-    ["name", "version", "validity", "body", "witnessSet"],
-    label,
-  );
-  const name = nonEmptyString(value.name, `${label}.name`);
-  exactKeys(
-    value.body,
-    [
-      "spendInputsPreimageCbor",
-      "referenceInputsPreimageCbor",
-      "outputsPreimageCbor",
-      "fee",
-      "validityIntervalStart",
-      "validityIntervalEnd",
-      "requiredObserversPreimageCbor",
-      "requiredSignersPreimageCbor",
-      "mintPreimageCbor",
-      "scriptIntegrityHash",
-      "auxiliaryDataHash",
-      "networkId",
-    ],
-    `${label}.body`,
-  );
-  exactKeys(
-    value.witnessSet,
-    [
-      "addrTxWitsPreimageCbor",
-      "scriptTxWitsPreimageCbor",
-      "redeemerTxWitsPreimageCbor",
-    ],
-    `${label}.witnessSet`,
-  );
-  const body = value.body;
-  const witnessSet = value.witnessSet;
-  return {
-    name,
-    transaction: {
-      version: decimal(value.version, `${label}.version`),
-      validity: enumValue(value.validity, ["TxIsValid"], `${label}.validity`),
-      body: {
-        spendInputsPreimageCbor: hex(
-          body.spendInputsPreimageCbor,
-          `${label}.body.spendInputsPreimageCbor`,
-        ),
-        referenceInputsPreimageCbor: hex(
-          body.referenceInputsPreimageCbor,
-          `${label}.body.referenceInputsPreimageCbor`,
-        ),
-        outputsPreimageCbor: hex(
-          body.outputsPreimageCbor,
-          `${label}.body.outputsPreimageCbor`,
-        ),
-        fee: decimal(body.fee, `${label}.body.fee`),
-        validityIntervalStart: decimal(
-          body.validityIntervalStart,
-          `${label}.body.validityIntervalStart`,
-        ),
-        validityIntervalEnd: decimal(
-          body.validityIntervalEnd,
-          `${label}.body.validityIntervalEnd`,
-        ),
-        requiredObserversPreimageCbor: hex(
-          body.requiredObserversPreimageCbor,
-          `${label}.body.requiredObserversPreimageCbor`,
-        ),
-        requiredSignersPreimageCbor: hex(
-          body.requiredSignersPreimageCbor,
-          `${label}.body.requiredSignersPreimageCbor`,
-        ),
-        mintPreimageCbor: hex(
-          body.mintPreimageCbor,
-          `${label}.body.mintPreimageCbor`,
-        ),
-        scriptIntegrityHash: hex(
-          body.scriptIntegrityHash,
-          `${label}.body.scriptIntegrityHash`,
-          32,
-        ),
-        auxiliaryDataHash: hex(
-          body.auxiliaryDataHash,
-          `${label}.body.auxiliaryDataHash`,
-          32,
-        ),
-        networkId: decimal(body.networkId, `${label}.body.networkId`),
-      },
-      witnessSet: {
-        addrTxWitsPreimageCbor: hex(
-          witnessSet.addrTxWitsPreimageCbor,
-          `${label}.witnessSet.addrTxWitsPreimageCbor`,
-        ),
-        scriptTxWitsPreimageCbor: hex(
-          witnessSet.scriptTxWitsPreimageCbor,
-          `${label}.witnessSet.scriptTxWitsPreimageCbor`,
-        ),
-        redeemerTxWitsPreimageCbor: hex(
-          witnessSet.redeemerTxWitsPreimageCbor,
-          `${label}.witnessSet.redeemerTxWitsPreimageCbor`,
-        ),
-      },
-    },
-  };
-};
-
-const toJsonTransaction = (parsed) => ({
-  version: parsed.version.toString(),
-  validity: parsed.validity,
-  body: Object.fromEntries(
-    Object.entries(parsed.body).map(([key, value]) => [
-      key,
-      value instanceof Buffer ? value.toString("hex") : value.toString(),
-    ]),
-  ),
-  witnessSet: Object.fromEntries(
-    Object.entries(parsed.witnessSet).map(([key, value]) => [
-      key,
-      value.toString("hex"),
-    ]),
-  ),
-});
-
-const aikenBytes = (value) => `#"${value}"`;
-const aikenInt = (value) => value.toString();
 
 const aikenVerdict = (name) => {
   const verdict = VERDICTS[name];
@@ -526,29 +386,36 @@ const formatAiken = (source) => {
 };
 
 const canonicalBytes = readFileSync(canonicalPath);
+
 let canonical;
+
 try {
   canonical = JSON.parse(canonicalBytes.toString("utf8"));
 } catch (error) {
   fail(`canonical input is invalid JSON: ${String(error)}`);
 }
+
 exactKeys(
   canonical,
   ["schema", "version", "transactions", "forcedOrders"],
   "canonical input",
 );
+
 if (canonical.schema !== "midgard-transaction-root-v1-canonical-input") {
   fail(
     "canonical input schema is not midgard-transaction-root-v1-canonical-input",
   );
 }
+
 if (canonical.version !== 1) fail("canonical input version must be 1");
+
 if (
   !Array.isArray(canonical.transactions) ||
   canonical.transactions.length < 2
 ) {
   fail("canonical input must contain at least two normal transactions");
 }
+
 if (
   !Array.isArray(canonical.forcedOrders) ||
   canonical.forcedOrders.length < 2
@@ -561,6 +428,7 @@ if (!existsSync(buildEntrypointPath)) {
     `production build entrypoint does not exist: ${relative(repositoryRoot, buildEntrypointPath)}; run pnpm run fixtures:transaction-root-v1`,
   );
 }
+
 const production = await import(pathToFileURL(buildEntrypointPath).href);
 
 const parsedTransactions = canonical.transactions.map((value, index) =>
@@ -569,7 +437,9 @@ const parsedTransactions = canonical.transactions.map((value, index) =>
     `canonical input.transactions[${index.toString()}]`,
   ),
 );
+
 const transactionNames = new Set();
+
 for (const transaction of parsedTransactions) {
   if (transactionNames.has(transaction.name)) {
     fail(`duplicate normal transaction name ${transaction.name}`);
@@ -601,8 +471,11 @@ const normalEntries = parsedTransactions.map((parsed) => {
 });
 
 const normalByName = new Map(normalEntries.map((entry) => [entry.name, entry]));
+
 const forcedInputNames = new Set();
+
 const forcedEntries = [];
+
 for (const [index, value] of canonical.forcedOrders.entries()) {
   const label = `canonical input.forcedOrders[${index.toString()}]`;
   exactKeys(value, ["name", "transaction", "orderId", "verdict"], label);
@@ -719,6 +592,7 @@ const transactionsRoot = await buildRoot(
   })),
   normalEntries,
 );
+
 const forcedTransactionsRoot = await buildRoot(
   SDK.ROOT_DOMAINS.forcedTransactionsV1,
   forcedEntries.map((entry) => ({
@@ -749,6 +623,7 @@ const attachMembershipProofs = async (entries) => {
 };
 
 const normalEntriesWithProofs = await attachMembershipProofs(normalEntries);
+
 const forcedEntriesWithProofs = await attachMembershipProofs(forcedEntries);
 
 const golden = {
@@ -779,7 +654,9 @@ const golden = {
     forcedTransactions: forcedTransactionsRoot,
   },
 };
+
 const goldenJson = `${JSON.stringify(golden, null, 2)}\n`;
+
 const aiken = formatAiken(
   makeAiken({
     transactions: normalEntriesWithProofs,
@@ -789,6 +666,7 @@ const aiken = formatAiken(
 );
 
 writeOrCheck(generatedJsonPath, goldenJson);
+
 writeOrCheck(generatedAikenPath, aiken);
 
 if (!checkOnly) {

@@ -6,8 +6,8 @@
 // names registered in midgard-node/src/index.ts and flags a name that says it
 // is one of those.
 
-import { defineRule } from "../baseline.mjs";
 import { calleeName, unwrap } from "../ast.mjs";
+import { defineRule } from "../baseline.mjs";
 
 export const NODE_CLI_ENTRYPOINT = "midgard-node/src/index.ts";
 
@@ -46,7 +46,7 @@ export default defineRule({
     },
   },
   create: (_context, report, file) =>
-    file === NODE_CLI_ENTRYPOINT
+    file === NODE_CLI_ENTRYPOINT || file.startsWith("midgard-node/src/index.")
       ? {
           "CallExpression, NewExpression"(node) {
             const isRegistration =

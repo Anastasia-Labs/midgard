@@ -1,0 +1,442 @@
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+  NonExistentInputStep04SpendRedeemer,
+  type NonMembershipCarriage,
+  Proof,
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+  requireWithdrawalRedeemerIndex,
+} from "@al-ft/midgard-sdk";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  type Network,
+  type Script,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import {
+  chunkedNonMembershipClaimRedeemer,
+  chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
+  type PublishedProofChunk,
+  requireBuiltChunkReferenceIndices,
+  walletInputsExcludingChunks,
+} from "../proof-chunk-carriage.js";
+import {
+  DEFAULT_CONFIRMATION_POLL_MS,
+  encodeRawPexcludesProofRedeemer,
+  fetchUtxoByOutRef,
+  getCompiledScript,
+  outRefLabel,
+  parseOutRef,
+  phasMembershipRewardAddress,
+  type ResolvedProverSigner,
+  resolveNonExistentInputDeploymentContracts,
+} from "../runtime.js";
+import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../step-support.js";
+import {
+  requireComputationThreadToken,
+  selectFeeInput,
+} from "../step-support.js";
+import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
+} from "../witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "../workflow/transaction-boundary.js";
+import {
+  type NeSubmitStep04Result,
+  requireStep04Datum,
+} from "./submit-step-04.ne-submit-step04-result.js";
+
+export const neSubmitStep04 = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  txsNonMembershipProofCbor,
+  publishedProofChunks,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly txsNonMembershipProofCbor: string;
+  /**
+   * Chunks published by `publishProofChunksV1`, in proof order. When present
+   * the absence proof reaches L1 through them and never enters this
+   * transaction (issue #545).
+   */
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
+  /** The mandatory published step-04 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}): Promise<NeSubmitStep04Result> => {
+  const { nonExistentInputCategory, contracts } =
+    await resolveNonExistentInputDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireFraudProofSpend: true,
+    });
+  const steps = contracts.nonExistentInput.steps;
+
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "non-existent-input step-04 computation-thread UTxO",
+  });
+  if (threadUtxo.address !== steps[3].spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at non-existent-input step 04.`,
+    );
+  }
+  const threadToken = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: nonExistentInputCategory.categoryId,
+    categoryLabel: "non-existent-input",
+  });
+  const inputDatum = requireStep04Datum({ threadUtxo, signer });
+  const proof = Data.from(txsNonMembershipProofCbor, Proof);
+
+  signer.selectWallet(lucid);
+  const chunks = publishedProofChunks ?? [];
+  const carriedByChunks = chunks.length > 0;
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
+  const pexcludesScript: Script = {
+    type: "PlutusV3",
+    script: getCompiledScript(blueprint, PEXCLUDES_EXCLUSION_WITHDRAW_TITLE),
+  };
+  const pexcludesRewardAddress = phasMembershipRewardAddress(
+    network,
+    pexcludesScript,
+  );
+  // On the chunked route the merkelized published-chunk verifier stands in for
+  // the `pexcludes` exclusion withdrawal; the proof stays in the chunks.
+  const chunkedVerifyScript = chunkedVerifyWithdrawalScript(blueprint);
+  const chunkedVerifyRewardAddress = phasMembershipRewardAddress(
+    network,
+    chunkedVerifyScript,
+  );
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "non-existent-input step 04 validator",
+  });
+  const nonMembershipCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriage({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "non-existent-input step 04 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriage({
+        script: pexcludesScript,
+        referenceUtxo: witnessReferenceScripts?.pexcludesWithdraw,
+        label: "non-existent-input step 04 pexcludes exclusion",
+      });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "non-existent-input step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "non-existent-input step 04 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...chunks.map((chunk) => chunk.utxo),
+    ...stepScriptCarriage.referenceInputs,
+    ...nonMembershipCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "non-existent-input step 04",
+  });
+  const fraudProofUnit = toUnit(
+    contracts.fraudProof.policyId,
+    threadToken.assetName,
+  );
+  const fraudProofDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash },
+    FraudProofTokenDatum,
+  );
+  const fraudProofAssets = {
+    lovelace: threadUtxo.assets.lovelace ?? 0n,
+    [fraudProofUnit]: 1n,
+  };
+  const fraudProofOutputMatches = outputWithDatumAndUnitPredicate({
+    address: contracts.fraudProof.spendingScriptAddress,
+    datum: fraudProofDatum,
+    unit: fraudProofUnit,
+  });
+
+  let spendLayout:
+    | {
+        inputIndex: bigint;
+        outputIndex: bigint;
+        fraudProofMintRedeemerIndex: bigint;
+        nonMembershipProofScriptRedeemerIndex: bigint;
+      }
+    | undefined;
+  let computationThreadMintRedeemerIndex: bigint | undefined;
+
+  const spendRedeemer = ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "non-existent-input step 04");
+    const layout = {
+      inputIndex: requireInputIndex(
+        ctx,
+        threadUtxo,
+        "non-existent-input step 04",
+      ),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        fraudProofOutputMatches,
+        "non-existent-input step 04 fraud-proof",
+      ),
+      fraudProofMintRedeemerIndex: requireMintRedeemerIndex(
+        ctx,
+        contracts.fraudProof.policyId,
+        "non-existent-input step 04 fraud-proof",
+      ),
+      nonMembershipProofScriptRedeemerIndex: requireWithdrawalRedeemerIndex(
+        ctx,
+        carriedByChunks ? chunkedVerifyRewardAddress : pexcludesRewardAddress,
+        "non-existent-input step 04 txs non-membership",
+      ),
+    };
+    spendLayout = layout;
+    // The prover chooses the carriage for the absence opening exactly as
+    // step-01 does for the membership one (issue #545).
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "non-existent-input step 04",
+    });
+    const carriage: NonMembershipCarriage = carriedByChunks
+      ? {
+          PublishedChunkNonMembership: [
+            {
+              ordered_chunk_reference_input_indices: resolvedChunkIndices,
+            },
+          ],
+        }
+      : {
+          RedeemerCarriedNonMembership: {
+            non_membership_proof: proof,
+            non_membership_proof_script_redeemer_index:
+              layout.nonMembershipProofScriptRedeemerIndex,
+          },
+        };
+    return Data.to(
+      {
+        Continue: [
+          {
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+            non_membership_in_txs: carriage,
+          },
+        ],
+      },
+      NonExistentInputStep04SpendRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  const fraudProofMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      contracts.fraudProof.policyId,
+      "non-existent-input step 04 fraud-proof mint",
+    );
+    const ctIndex = requireMintRedeemerIndex(
+      ctx,
+      contracts.computationThread.policyId,
+      "non-existent-input step 04 computation-thread burn",
+    );
+    computationThreadMintRedeemerIndex = ctIndex;
+    return Data.to(
+      {
+        computation_thread_token_asset_name: threadToken.assetName,
+        computation_thread_mint_redeemer_index: ctIndex,
+      },
+      FraudProofTokenMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  const computationThreadSuccessRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      contracts.computationThread.policyId,
+      "non-existent-input step 04 computation-thread burn",
+    );
+    return Data.to(
+      { Success: { burning_token_asset_name: threadToken.assetName } },
+      FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  // This step reads no oracle and no state-queue node, so with neither chunks
+  // nor published witnesses it has no reference inputs at all and must not
+  // declare an empty set.
+  const collected = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom([threadUtxo], spendRedeemer);
+  const base =
+    referenceInputs.length === 0
+      ? collected
+      : collected.readFrom(referenceInputs);
+  const withCarriage = carriedByChunks
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+        chunkedNonMembershipClaimRedeemer({
+          merkleRoot: inputDatum.data.blocks_transactions_root,
+          keyBytes: inputDatum.data.missing_input_tx_id,
+          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+        })) satisfies BuildTxWithRedeemer)
+    : base.withdraw(
+        pexcludesRewardAddress,
+        0n,
+        encodeRawPexcludesProofRedeemer({
+          root: inputDatum.data.blocks_transactions_root,
+          keyBytes: inputDatum.data.missing_input_tx_id,
+          nonMembershipProofCbor: txsNonMembershipProofCbor,
+        }),
+      );
+  const chained = withCarriage
+    .mintAssets({ [threadToken.unit]: -1n }, computationThreadSuccessRedeemer)
+    .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
+    .pay.ToContract(
+      contracts.fraudProof.spendingScriptAddress,
+      { kind: "inline", value: fraudProofDatum },
+      fraudProofAssets,
+    )
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(
+      nonMembershipCarriage.attach(stepScriptCarriage.attach(chained)),
+    ),
+  );
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  if (
+    spendLayout === undefined ||
+    computationThreadMintRedeemerIndex === undefined
+  ) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve non-existent-input step 04 layout.",
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof non-existent-input step-04",
+          utxo: referenceScriptUtxo,
+          expectedScript: steps[3].spendingScript,
+        },
+        {
+          role: carriedByChunks
+            ? "V1 MPF chunked-verify withdrawal"
+            : "V1 MPF pexcludes withdrawal",
+          utxo: carriedByChunks
+            ? witnessReferenceScripts?.chunkedVerifyWithdraw
+            : witnessReferenceScripts?.pexcludesWithdraw,
+          expectedScript: carriedByChunks
+            ? chunkedVerifyScript
+            : pexcludesScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
+  const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `non-existent-input step-04 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+
+  return {
+    txHash,
+    walletSource: signer.source,
+    proverAddress: signer.address,
+    fraudProver: signer.paymentKeyHash,
+    threadOutRef,
+    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    computationThreadAssetName: threadToken.assetName,
+    computationThreadUnit: threadToken.unit,
+    fraudProofPolicyId: contracts.fraudProof.policyId,
+    fraudProofAssetName: threadToken.assetName,
+    fraudProofUnit,
+    fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+    fourthStepAddress: steps[3].spendingScriptAddress,
+    missingInputTxId: inputDatum.data.missing_input_tx_id,
+    inputIndex: Number(spendLayout.inputIndex),
+    outputIndex: Number(spendLayout.outputIndex),
+    nonMembershipProofScriptRedeemerIndex: Number(
+      spendLayout.nonMembershipProofScriptRedeemerIndex,
+    ),
+    computationThreadMintRedeemerIndex: Number(
+      computationThreadMintRedeemerIndex,
+    ),
+    fraudProofMintRedeemerIndex: Number(
+      spendLayout.fraudProofMintRedeemerIndex,
+    ),
+    proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
+    publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
+    awaitedConfirmation: awaitConfirmation,
+  };
+};

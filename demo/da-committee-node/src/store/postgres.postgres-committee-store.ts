@@ -1,0 +1,1234 @@
+import { daRetentionPruneDecision } from "@al-ft/midgard-core";
+import {
+  assertDeploymentMarkerMatches,
+  type DeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
+  parseDeploymentMarker,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { Client, Pool, type PoolClient } from "pg";
+
+import type {
+  DaAttestationCandidateRecord,
+  DaPayloadRecord,
+  DaPeerBroadcastRecord,
+  DaPeerHealthRecord,
+  DaPeerNonceRecord,
+  DaSignatureRecord,
+  DaSignatureRecordV1,
+  DaStoredConflictEvidenceRecord,
+  DaStoredPayloadRecord,
+  L1SubmissionRecord,
+  StateQueueHeaderRecord,
+} from "../domain.js";
+import {
+  parseDaSignatureRecord,
+  parseDaStoredConflictEvidenceRecord,
+  parseDaStoredPayloadRecord,
+} from "../domain.js";
+import {
+  type CommitteeDeploymentRecord,
+  type CommitteeStore,
+  type DecisionOutboxRecord,
+  type DecisionOutboxStatus,
+  InFlightDecisionAttempts,
+  type L1SourceState,
+  mergeQuarantinedL1SourceState,
+  parseDecisionOutboxRecord,
+  parseL1SourceState,
+  resolveDaPayloadSave,
+  type RetainedPayloadPruneRequest,
+} from "../store.js";
+import {
+  assertConflictEvidenceRowIdentity,
+  assertDecisionOutboxRowIdentity,
+  assertPayloadRowIdentity,
+  assertPostgresDecisionRetry,
+  assertPostgresDecisionSignature,
+  assertPostgresDecisionSourceState,
+  assertSignatureRowIdentity,
+  COMMITTEE_TABLES,
+  decodeParsedRow,
+  decodeRecord,
+  decodeRow,
+  encodeRecord,
+  ensureL1SourceStateRow,
+  type JsonRecordRow,
+  lockL1SourceState,
+  mergeLockedL1SourceState,
+  type PostgresCommitteeStoreOptions,
+  queryOne,
+  upsertRecordWithClient,
+  upsertRecordWithPool,
+  upsertSignatureWithClient,
+} from "./postgres.assert-postgres-decision-retry.js";
+import {
+  retentionBlockEndTimeMs,
+  retentionQueueReference,
+} from "./retention.js";
+
+export class PostgresCommitteeStore implements CommitteeStore {
+  private readonly pool: Pool;
+  private readonly instanceLock: PostgresStoreInstanceLock;
+  private readonly inFlightDecisions = new InFlightDecisionAttempts();
+
+  private constructor(pool: Pool, instanceLock: PostgresStoreInstanceLock) {
+    this.pool = pool;
+    this.instanceLock = instanceLock;
+  }
+
+  /**
+   * Opens the store and takes its instance lock for the life of the store,
+   * refusing to open while another live process holds it.
+   */
+  static async open(
+    databaseUrl: string,
+    options: PostgresCommitteeStoreOptions = {},
+  ): Promise<PostgresCommitteeStore> {
+    const parsed = new URL(databaseUrl);
+    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+      throw new Error(
+        "DA_COMMITTEE_DATABASE_URL must be a postgres:// or postgresql:// URL",
+      );
+    }
+    const instanceLock = await PostgresStoreInstanceLock.acquire(
+      databaseUrl,
+      options.onInstanceLockLost,
+    );
+    const store = new PostgresCommitteeStore(
+      new Pool({
+        connectionString: databaseUrl,
+        max: 10,
+      }),
+      instanceLock,
+    );
+    try {
+      await store.initSchema();
+    } catch (error) {
+      await store.close().catch(() => undefined);
+      throw error;
+    }
+    return store;
+  }
+
+  async close(): Promise<void> {
+    try {
+      await this.pool.end();
+    } finally {
+      await this.instanceLock.release();
+    }
+  }
+
+  async initDeployment(args: {
+    readonly marker: DeploymentMarker;
+    readonly manifestSha256: string;
+    readonly contractDeploymentInfoSha256: string;
+    readonly manifestRaw: string;
+  }): Promise<void> {
+    const marker = parseDeploymentMarker(args.marker);
+    const result = await this.pool.query<{
+      readonly marker_schema_version: string;
+      readonly manifest_id: string;
+    }>(
+      "SELECT marker_schema_version, manifest_id FROM committee_deployment WHERE id = 1",
+    );
+    const existing = result.rows[0];
+    if (existing !== undefined) {
+      try {
+        assertDeploymentMarkerMatches(
+          marker,
+          {
+            schemaVersion: existing.marker_schema_version,
+            manifestId: existing.manifest_id,
+          },
+          "DA Postgres store",
+        );
+      } catch {
+        throw new Error(
+          `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${existing.manifest_id}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale committee node state; perform an explicit fresh redeploy/reset before deleting local committee node state.`,
+        );
+      }
+    }
+    await this.pool.query(
+      `INSERT INTO committee_deployment (
+         id,
+         marker_schema_version,
+         manifest_id,
+         manifest_sha256,
+         contract_deployment_info_sha256,
+         manifest_raw,
+         updated_at
+       )
+       VALUES (1, $1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         marker_schema_version = EXCLUDED.marker_schema_version,
+         manifest_id = EXCLUDED.manifest_id,
+         manifest_sha256 = EXCLUDED.manifest_sha256,
+         contract_deployment_info_sha256 = EXCLUDED.contract_deployment_info_sha256,
+         manifest_raw = EXCLUDED.manifest_raw,
+         updated_at = NOW()`,
+      [
+        marker.schemaVersion,
+        marker.manifestId,
+        args.manifestSha256,
+        args.contractDeploymentInfoSha256,
+        args.manifestRaw,
+      ],
+    );
+  }
+
+  async getDeployment(): Promise<CommitteeDeploymentRecord | undefined> {
+    const result = await this.pool.query<{
+      readonly marker_schema_version: string;
+      readonly manifest_id: string;
+      readonly manifest_sha256: string;
+      readonly contract_deployment_info_sha256: string;
+      readonly manifest_raw: string;
+    }>(
+      `SELECT marker_schema_version,
+              manifest_id,
+              manifest_sha256,
+              contract_deployment_info_sha256,
+              manifest_raw
+       FROM committee_deployment
+       WHERE id = 1`,
+    );
+    const row = result.rows[0];
+    if (row === undefined) {
+      return undefined;
+    }
+    return {
+      marker: parseDeploymentMarker({
+        schemaVersion: row.marker_schema_version,
+        manifestId: row.manifest_id,
+      }),
+      manifestSha256: row.manifest_sha256,
+      contractDeploymentInfoSha256: row.contract_deployment_info_sha256,
+      manifestRaw: row.manifest_raw,
+    };
+  }
+
+  async getL1SourceState(): Promise<L1SourceState | undefined> {
+    const result = await this.pool.query<JsonRecordRow>(
+      "SELECT record FROM committee_l1_source_state WHERE id = 1",
+    );
+    const decoded = decodeRow<unknown>(result.rows[0]);
+    return decoded === undefined ? undefined : parseL1SourceState(decoded);
+  }
+
+  async saveL1SourceState(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        await mergeLockedL1SourceState(client, canonical);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async getDecisionOutbox(
+    effectId: string,
+  ): Promise<DecisionOutboxRecord | undefined> {
+    return this.getParsedRecord(
+      "SELECT effect_id, header_hash, record FROM committee_decision_outbox WHERE effect_id = $1",
+      [effectId],
+      parseDecisionOutboxRecord,
+      assertDecisionOutboxRowIdentity,
+    );
+  }
+
+  async listDecisionOutbox(
+    headerHash?: string,
+  ): Promise<readonly DecisionOutboxRecord[]> {
+    return this.listParsedRecords(
+      headerHash === undefined
+        ? `SELECT effect_id, header_hash, record FROM committee_decision_outbox
+           ORDER BY effect_id`
+        : `SELECT effect_id, header_hash, record FROM committee_decision_outbox
+           WHERE header_hash = $1 ORDER BY effect_id`,
+      headerHash === undefined ? [] : [headerHash],
+      parseDecisionOutboxRecord,
+      assertDecisionOutboxRowIdentity,
+    );
+  }
+
+  async beginDecisionEffect(args: {
+    readonly effect: DecisionOutboxRecord;
+    readonly sourceState: L1SourceState;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    const effect = parseDecisionOutboxRecord(args.effect);
+    const proposedSourceState = parseL1SourceState(args.sourceState);
+    if (effect.status !== "pending") {
+      throw new Error("decision outbox begin requires pending status");
+    }
+    const signature =
+      args.signature === undefined
+        ? undefined
+        : parseDaSignatureRecord(args.signature);
+    assertPostgresDecisionSignature(effect, signature);
+    this.instanceLock.assertHeld();
+    let claimed = false;
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const sourceState = await mergeLockedL1SourceState(
+          client,
+          proposedSourceState,
+        );
+        assertPostgresDecisionSourceState(effect, sourceState);
+        const current = await queryOne(
+          client,
+          "SELECT effect_id, header_hash, record FROM committee_decision_outbox WHERE effect_id = $1 FOR UPDATE",
+          [effect.effectId],
+          parseDecisionOutboxRecord,
+          assertDecisionOutboxRowIdentity,
+        );
+        assertPostgresDecisionRetry(current, effect);
+        // A pending attempt this instance did not begin was begun by an
+        // earlier holder of the instance lock, which is gone once the lock is
+        // ours. The attempt is claimed before COMMIT, so a concurrent begin
+        // that waited on the row lock sees it.
+        await this.instanceLock.assertHeldAtServer(client);
+        this.inFlightDecisions.claim(effect);
+        claimed = true;
+        await client.query(
+          `INSERT INTO committee_decision_outbox
+             (effect_id, header_hash, record, updated_at)
+           VALUES ($1, $2, $3::jsonb, NOW())
+           ON CONFLICT (effect_id) DO UPDATE SET
+             record = EXCLUDED.record, updated_at = NOW()`,
+          [effect.effectId, effect.headerHash, encodeRecord(effect)],
+        );
+        if (signature !== undefined) {
+          await upsertSignatureWithClient(client, signature);
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        if (claimed) {
+          this.inFlightDecisions.release(effect.effectId, effect.attemptCount);
+        }
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async completeDecisionEffect(args: {
+    readonly effectId: string;
+    readonly expectedAttemptCount: number;
+    readonly status: Exclude<DecisionOutboxStatus, "pending">;
+    readonly updatedAt: string;
+    readonly lastError?: string;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    try {
+      this.instanceLock.assertHeld();
+      await this.completeDecisionEffectRow(args);
+    } finally {
+      this.inFlightDecisions.release(args.effectId, args.expectedAttemptCount);
+    }
+  }
+
+  private async completeDecisionEffectRow(args: {
+    readonly effectId: string;
+    readonly expectedAttemptCount: number;
+    readonly status: Exclude<DecisionOutboxStatus, "pending">;
+    readonly updatedAt: string;
+    readonly lastError?: string;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const sourceState = await lockL1SourceState(client);
+        const existing = await queryOne(
+          client,
+          "SELECT effect_id, header_hash, record FROM committee_decision_outbox WHERE effect_id = $1 FOR UPDATE",
+          [args.effectId],
+          parseDecisionOutboxRecord,
+          assertDecisionOutboxRowIdentity,
+        );
+        if (existing === undefined) {
+          throw new Error(`decision outbox effect ${args.effectId} is missing`);
+        }
+        if (
+          existing.status !== "pending" ||
+          existing.attemptCount !== args.expectedAttemptCount ||
+          existing.quarantineReason !== undefined ||
+          existing.quarantinedAt !== undefined
+        ) {
+          throw new Error(
+            "decision outbox completion does not match the pending attempt",
+          );
+        }
+        assertPostgresDecisionSourceState(existing, sourceState);
+        const signature =
+          args.signature === undefined
+            ? undefined
+            : parseDaSignatureRecord(args.signature);
+        assertPostgresDecisionSignature(existing, signature);
+        const completed = parseDecisionOutboxRecord({
+          ...existing,
+          status: args.status,
+          updatedAt: args.updatedAt,
+          ...(args.lastError === undefined
+            ? { lastError: undefined }
+            : { lastError: args.lastError }),
+        });
+        await client.query(
+          `UPDATE committee_decision_outbox
+           SET record = $2::jsonb, updated_at = NOW()
+           WHERE effect_id = $1`,
+          [args.effectId, encodeRecord(completed)],
+        );
+        if (signature !== undefined) {
+          await upsertSignatureWithClient(client, signature);
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async quarantineL1Decisions(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    if (canonical.status !== "quarantined") {
+      throw new Error(
+        "L1 decision quarantine requires quarantined source state",
+      );
+    }
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        await ensureL1SourceStateRow(client, canonical);
+        const current = await lockL1SourceState(client);
+        const quarantined = mergeQuarantinedL1SourceState(current, canonical);
+        const headerHashes = quarantined.observations
+          .filter(({ hasPersistedDecision }) => hasPersistedDecision)
+          .map(({ headerHash }) => headerHash);
+        const reason = `l1_source_quarantined:${quarantined.quarantineReason!}`;
+        await client.query(
+          `UPDATE committee_l1_source_state
+           SET record = $1::jsonb, updated_at = NOW()
+           WHERE id = 1`,
+          [encodeRecord(quarantined)],
+        );
+        if (headerHashes.length > 0) {
+          await client.query(
+            `UPDATE committee_state_queue_headers
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'status', 'conflicted',
+                     'validationErrors',
+                       COALESCE(record->'validationErrors', '[]'::jsonb) ||
+                       to_jsonb($2::text),
+                     'updatedAt', $3::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason, quarantined.quarantinedAt],
+          );
+          await client.query(
+            `UPDATE committee_da_payloads
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'validationStatus', 'conflicted',
+                     'validationError', $2::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason],
+          );
+          await client.query(
+            `UPDATE committee_da_signatures
+             SET record = record || jsonb_build_object(
+                   'broadcastStatus', 'post_failed'
+                 ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes],
+          );
+          await client.query(
+            `UPDATE committee_l1_submissions
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'resultStatus', 'failed',
+                     'failureCause', $2::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason],
+          );
+          await client.query(
+            `UPDATE committee_peer_broadcasts
+             SET record =
+                   (record - 'nextAttemptAt') ||
+                   jsonb_build_object(
+                     'status', 'failed',
+                     'lastError', $2::text,
+                     'updatedAt', $3::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason, quarantined.quarantinedAt],
+          );
+          await client.query(
+            `UPDATE committee_decision_outbox
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'status', 'failed',
+                     'lastError', $2::text,
+                     'quarantineReason', $3::text,
+                     'quarantinedAt', $4::text,
+                     'updatedAt', $4::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [
+              headerHashes,
+              reason,
+              quarantined.quarantineReason,
+              quarantined.quarantinedAt,
+            ],
+          );
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
+    await this.upsertRecord(
+      "committee_state_queue_headers",
+      record.headerHash,
+      record,
+    );
+  }
+
+  async listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]> {
+    return this.listRecords<StateQueueHeaderRecord>(
+      "SELECT record FROM committee_state_queue_headers ORDER BY header_hash",
+    );
+  }
+
+  async getStateQueueHeader(
+    headerHash: string,
+  ): Promise<StateQueueHeaderRecord | undefined> {
+    return this.getRecord<StateQueueHeaderRecord>(
+      "SELECT record FROM committee_state_queue_headers WHERE header_hash = $1",
+      [headerHash],
+    );
+  }
+
+  async saveDaPayload(record: DaPayloadRecord): Promise<DaStoredPayloadRecord> {
+    const canonicalRecord = parseDaStoredPayloadRecord(record);
+    return this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const existing = await queryOne(
+          client,
+          "SELECT header_hash, record FROM committee_da_payloads WHERE header_hash = $1 FOR UPDATE",
+          [canonicalRecord.headerHash],
+          parseDaStoredPayloadRecord,
+          assertPayloadRowIdentity,
+        );
+        const saved = resolveDaPayloadSave(existing, canonicalRecord);
+        await upsertRecordWithClient(
+          client,
+          "committee_da_payloads",
+          canonicalRecord.headerHash,
+          saved,
+        );
+        await client.query("COMMIT");
+        return saved;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async getDaPayload(
+    headerHash: string,
+  ): Promise<DaStoredPayloadRecord | undefined> {
+    return this.getParsedRecord(
+      "SELECT header_hash, record FROM committee_da_payloads WHERE header_hash = $1",
+      [headerHash],
+      parseDaStoredPayloadRecord,
+      assertPayloadRowIdentity,
+    );
+  }
+
+  async listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]> {
+    return this.listParsedRecords(
+      "SELECT header_hash, record FROM committee_da_payloads ORDER BY header_hash",
+      [],
+      parseDaStoredPayloadRecord,
+      assertPayloadRowIdentity,
+    );
+  }
+
+  async deleteDaPayloadIfPrunable(
+    request: RetainedPayloadPruneRequest,
+  ): Promise<boolean> {
+    return this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        // The payload row is locked and its header row share-locked, so a
+        // header written between the caller's scan and this delete is either
+        // decided here or waits for the decision to commit.
+        const payload = await queryOne(
+          client,
+          "SELECT header_hash, record FROM committee_da_payloads WHERE header_hash = $1 FOR UPDATE",
+          [request.headerHash],
+          parseDaStoredPayloadRecord,
+          assertPayloadRowIdentity,
+        );
+        const header =
+          payload === undefined
+            ? undefined
+            : decodeRow<StateQueueHeaderRecord>(
+                (
+                  await client.query<JsonRecordRow>(
+                    "SELECT record FROM committee_state_queue_headers WHERE header_hash = $1 FOR SHARE",
+                    [request.headerHash],
+                  )
+                ).rows[0],
+              );
+        const prune =
+          payload !== undefined &&
+          daRetentionPruneDecision({
+            nowMs: request.nowMs,
+            blockEndTimeMs: retentionBlockEndTimeMs(payload, header),
+            headerStatus: header?.status ?? "unobserved",
+            queueReference: retentionQueueReference(
+              request.headerHash,
+              request,
+            ),
+            retentionDays: request.retentionDays,
+          }).decision === "prune";
+        const deleted =
+          prune &&
+          ((
+            await client.query(
+              "DELETE FROM committee_da_payloads WHERE header_hash = $1",
+              [request.headerHash],
+            )
+          ).rowCount ?? 0) > 0;
+        await client.query("COMMIT");
+        return deleted;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async saveDaSignature(record: DaSignatureRecord): Promise<void> {
+    const canonicalRecord = parseDaSignatureRecord(record);
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const sourceState = await lockL1SourceState(client);
+        if (sourceState?.status === "quarantined") {
+          throw new Error(
+            "cannot persist a DA signature while the L1 source is quarantined",
+          );
+        }
+        await upsertSignatureWithClient(client, canonicalRecord);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async getDaSignature(args: {
+    readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
+    readonly signerIndex: number;
+  }): Promise<DaSignatureRecordV1 | undefined> {
+    return this.getParsedRecord(
+      `SELECT header_hash, commitment_digest, signer_index, record FROM committee_da_signatures
+       WHERE header_hash = $1 AND commitment_digest = $2 AND signer_index = $3`,
+      [args.headerHash, args.availabilityCommitmentDigest, args.signerIndex],
+      parseDaSignatureRecord,
+      assertSignatureRowIdentity,
+    );
+  }
+
+  async listDaSignatures(
+    headerHash?: string,
+  ): Promise<readonly DaSignatureRecordV1[]> {
+    return this.listParsedRecords(
+      headerHash === undefined
+        ? `SELECT header_hash, commitment_digest, signer_index, record
+           FROM committee_da_signatures
+           ORDER BY header_hash, commitment_digest, signer_index`
+        : `SELECT header_hash, commitment_digest, signer_index, record
+           FROM committee_da_signatures
+           WHERE header_hash = $1
+           ORDER BY header_hash, commitment_digest, signer_index`,
+      headerHash === undefined ? [] : [headerHash],
+      parseDaSignatureRecord,
+      assertSignatureRowIdentity,
+    );
+  }
+
+  async saveDaConflictEvidence(
+    record: DaStoredConflictEvidenceRecord,
+  ): Promise<boolean> {
+    const canonicalRecord = parseDaStoredConflictEvidenceRecord(record);
+    const result = await this.pool.query(
+      `INSERT INTO committee_da_conflict_evidence (
+         deployment_fingerprint,
+         evidence_hash,
+         header_hash,
+         commitment_digest,
+         conflicting_header_hash,
+         conflicting_commitment_digest,
+         signer_index,
+         reporter_peer_id,
+         record,
+         created_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW())
+       ON CONFLICT (deployment_fingerprint, evidence_hash) DO NOTHING`,
+      [
+        canonicalRecord.deploymentFingerprint,
+        canonicalRecord.evidenceHash,
+        canonicalRecord.headerHash,
+        canonicalRecord.commitmentDigest,
+        canonicalRecord.conflictingHeaderHash,
+        canonicalRecord.conflictingCommitmentDigest,
+        canonicalRecord.signerIndex,
+        canonicalRecord.reporterPeerId,
+        encodeRecord(canonicalRecord),
+      ],
+    );
+    return result.rowCount === 1;
+  }
+
+  async listDaConflictEvidence(
+    headerHash?: string,
+  ): Promise<readonly DaStoredConflictEvidenceRecord[]> {
+    return this.listParsedRecords(
+      headerHash === undefined
+        ? `SELECT deployment_fingerprint, evidence_hash, header_hash,
+                  commitment_digest, conflicting_header_hash,
+                  conflicting_commitment_digest, signer_index, reporter_peer_id,
+                  record
+           FROM committee_da_conflict_evidence
+           ORDER BY header_hash, signer_index, evidence_hash`
+        : `SELECT deployment_fingerprint, evidence_hash, header_hash,
+                  commitment_digest, conflicting_header_hash,
+                  conflicting_commitment_digest, signer_index, reporter_peer_id,
+                  record
+           FROM committee_da_conflict_evidence
+           WHERE header_hash = $1
+           ORDER BY header_hash, signer_index, evidence_hash`,
+      headerHash === undefined ? [] : [headerHash],
+      parseDaStoredConflictEvidenceRecord,
+      assertConflictEvidenceRowIdentity,
+    );
+  }
+
+  async saveDaAttestationCandidate(
+    record: DaAttestationCandidateRecord,
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO committee_da_attestation_candidates (
+         header_hash,
+         out_ref,
+         record,
+         updated_at
+       )
+       VALUES ($1, $2, $3::jsonb, NOW())
+       ON CONFLICT (header_hash, out_ref) DO UPDATE SET
+         record = EXCLUDED.record,
+         updated_at = NOW()`,
+      [record.headerHash, record.outRef, encodeRecord(record)],
+    );
+  }
+
+  async listDaAttestationCandidates(
+    headerHash?: string,
+  ): Promise<readonly DaAttestationCandidateRecord[]> {
+    return this.listRecords<DaAttestationCandidateRecord>(
+      headerHash === undefined
+        ? `SELECT record FROM committee_da_attestation_candidates
+           ORDER BY header_hash, out_ref`
+        : `SELECT record FROM committee_da_attestation_candidates
+           WHERE header_hash = $1
+           ORDER BY header_hash, out_ref`,
+      headerHash === undefined ? [] : [headerHash],
+    );
+  }
+
+  async saveL1Submission(record: L1SubmissionRecord): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO committee_l1_submissions (
+         header_hash,
+         tx_kind,
+         tx_hash,
+         record,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4::jsonb, NOW())
+       ON CONFLICT (header_hash, tx_kind, tx_hash) DO UPDATE SET
+         record = EXCLUDED.record,
+         updated_at = NOW()`,
+      [record.headerHash, record.txKind, record.txHash, encodeRecord(record)],
+    );
+  }
+
+  async listL1Submissions(): Promise<readonly L1SubmissionRecord[]> {
+    return this.listRecords<L1SubmissionRecord>(
+      `SELECT record FROM committee_l1_submissions
+       ORDER BY header_hash, tx_kind, tx_hash`,
+    );
+  }
+
+  async savePeerBroadcast(record: DaPeerBroadcastRecord): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO committee_peer_broadcasts (
+         peer_id,
+         header_hash,
+         commitment_digest,
+         signer_index,
+         record,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+       ON CONFLICT (peer_id, header_hash, commitment_digest, signer_index) DO UPDATE SET
+         record = EXCLUDED.record,
+         updated_at = NOW()`,
+      [
+        record.peerId,
+        record.headerHash,
+        record.availabilityCommitmentDigest,
+        record.signerIndex,
+        encodeRecord(record),
+      ],
+    );
+  }
+
+  async getPeerBroadcast(args: {
+    readonly peerId: string;
+    readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
+    readonly signerIndex: number;
+  }): Promise<DaPeerBroadcastRecord | undefined> {
+    return this.getRecord<DaPeerBroadcastRecord>(
+      `SELECT record FROM committee_peer_broadcasts
+       WHERE peer_id = $1 AND header_hash = $2 AND commitment_digest = $3 AND signer_index = $4`,
+      [
+        args.peerId,
+        args.headerHash,
+        args.availabilityCommitmentDigest,
+        args.signerIndex,
+      ],
+    );
+  }
+
+  async listPeerBroadcasts(
+    headerHash?: string,
+  ): Promise<readonly DaPeerBroadcastRecord[]> {
+    return this.listRecords<DaPeerBroadcastRecord>(
+      headerHash === undefined
+        ? `SELECT record FROM committee_peer_broadcasts
+           ORDER BY header_hash, commitment_digest, signer_index, peer_id`
+        : `SELECT record FROM committee_peer_broadcasts
+           WHERE header_hash = $1
+           ORDER BY header_hash, commitment_digest, signer_index, peer_id`,
+      headerHash === undefined ? [] : [headerHash],
+    );
+  }
+
+  async savePeerHealth(record: DaPeerHealthRecord): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO committee_peer_health (
+         peer_id,
+         record,
+         updated_at
+       )
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (peer_id) DO UPDATE SET
+         record = EXCLUDED.record,
+         updated_at = NOW()`,
+      [record.peerId, encodeRecord(record)],
+    );
+  }
+
+  async listPeerHealth(): Promise<readonly DaPeerHealthRecord[]> {
+    return this.listRecords<DaPeerHealthRecord>(
+      `SELECT record FROM committee_peer_health ORDER BY peer_id`,
+    );
+  }
+
+  async recordPeerNonce(record: DaPeerNonceRecord): Promise<boolean> {
+    const result = await this.pool.query(
+      `INSERT INTO committee_peer_nonces (
+         deployment_fingerprint,
+         signer_index,
+         nonce,
+         record,
+         created_at
+       )
+       VALUES ($1, $2, $3, $4::jsonb, NOW())
+       ON CONFLICT (deployment_fingerprint, signer_index, nonce) DO NOTHING`,
+      [
+        record.deploymentFingerprint,
+        record.signerIndex,
+        record.nonce,
+        encodeRecord(record),
+      ],
+    );
+    return result.rowCount === 1;
+  }
+
+  private async initSchema(): Promise<void> {
+    await this.renameLegacyTables();
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS committee_deployment (
+        id integer PRIMARY KEY CHECK (id = 1),
+        marker_schema_version text NOT NULL CHECK (marker_schema_version = '${MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION}'),
+        manifest_id text NOT NULL CHECK (manifest_id ~ '^[0-9a-f]{64}$'),
+        manifest_sha256 text NOT NULL CHECK (manifest_sha256 ~ '^[0-9a-f]{64}$'),
+        contract_deployment_info_sha256 text NOT NULL CHECK (contract_deployment_info_sha256 ~ '^[0-9a-f]{64}$'),
+        manifest_raw text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_state_queue_headers (
+        header_hash text PRIMARY KEY,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_l1_source_state (
+        id integer PRIMARY KEY CHECK (id = 1),
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_decision_outbox (
+        effect_id text PRIMARY KEY,
+        header_hash text NOT NULL,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_da_payloads (
+        header_hash text PRIMARY KEY,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_da_signatures (
+        header_hash text NOT NULL,
+        commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
+        signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (header_hash, commitment_digest, signer_index)
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_da_conflict_evidence (
+        deployment_fingerprint text NOT NULL CHECK (deployment_fingerprint ~ '^[0-9a-f]{64}$'),
+        evidence_hash text NOT NULL CHECK (evidence_hash ~ '^[0-9a-f]{64}$'),
+        header_hash text NOT NULL CHECK (header_hash ~ '^[0-9a-f]{56}$'),
+        commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
+        conflicting_header_hash text NOT NULL CHECK (conflicting_header_hash ~ '^[0-9a-f]{56}$'),
+        conflicting_commitment_digest text NOT NULL CHECK (conflicting_commitment_digest ~ '^[0-9a-f]{64}$'),
+        CHECK ((conflicting_header_hash || conflicting_commitment_digest) > (header_hash || commitment_digest)),
+        signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
+        reporter_peer_id text NOT NULL CHECK (length(reporter_peer_id) > 0),
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (deployment_fingerprint, evidence_hash)
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_da_attestation_candidates (
+        header_hash text NOT NULL,
+        out_ref text NOT NULL,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (header_hash, out_ref)
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_l1_submissions (
+        header_hash text NOT NULL,
+        tx_kind text NOT NULL,
+        tx_hash text NOT NULL,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (header_hash, tx_kind, tx_hash)
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_peer_broadcasts (
+        peer_id text NOT NULL,
+        header_hash text NOT NULL,
+        commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
+        signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (peer_id, header_hash, commitment_digest, signer_index)
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_peer_health (
+        peer_id text PRIMARY KEY,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS committee_peer_nonces (
+        deployment_fingerprint text NOT NULL,
+        signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
+        nonce text NOT NULL,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (deployment_fingerprint, signer_index, nonce)
+      );
+    `);
+  }
+
+  /**
+   * The committee node's tables were named `watcher_*` before the DA
+   * committee role was split out of the watcher.  Rename any legacy table in
+   * place so an existing Postgres store keeps its data; the rename is skipped
+   * when the new table already exists.
+   */
+  private async renameLegacyTables(): Promise<void> {
+    const statements = COMMITTEE_TABLES.map(
+      (table) => `
+      DO $$
+      BEGIN
+        IF to_regclass('committee_${table}') IS NULL
+           AND to_regclass('watcher_${table}') IS NOT NULL THEN
+          ALTER TABLE watcher_${table} RENAME TO committee_${table};
+        END IF;
+      END
+      $$;`,
+    );
+    await this.pool.query(statements.join("\n"));
+  }
+
+  private async upsertRecord<T extends { readonly headerHash: string }>(
+    tableName: string,
+    headerHash: string,
+    record: T,
+  ): Promise<void> {
+    await upsertRecordWithPool(this.pool, tableName, headerHash, record);
+  }
+
+  private async getRecord<T>(
+    query: string,
+    values: readonly unknown[],
+  ): Promise<T | undefined> {
+    const result = await this.pool.query<JsonRecordRow>(query, [...values]);
+    return decodeRow<T>(result.rows[0]);
+  }
+
+  private async getParsedRecord<T>(
+    query: string,
+    values: readonly unknown[],
+    parseRecord: (record: unknown) => T,
+    validateRow: (row: JsonRecordRow, record: T) => void,
+  ): Promise<T | undefined> {
+    const result = await this.pool.query<JsonRecordRow>(query, [...values]);
+    return decodeParsedRow(result.rows[0], parseRecord, validateRow);
+  }
+
+  private async listRecords<T>(
+    query: string,
+    values: readonly unknown[] = [],
+  ): Promise<readonly T[]> {
+    const result = await this.pool.query<JsonRecordRow>(query, [...values]);
+    return result.rows.map((row) => decodeRecord<T>(row.record));
+  }
+
+  private async listParsedRecords<T>(
+    query: string,
+    values: readonly unknown[],
+    parseRecord: (record: unknown) => T,
+    validateRow: (row: JsonRecordRow, record: T) => void,
+  ): Promise<readonly T[]> {
+    const result = await this.pool.query<JsonRecordRow>(query, [...values]);
+    return result.rows.map((row) => {
+      const record = parseRecord(decodeRecord<unknown>(row.record));
+      validateRow(row, record);
+      return record;
+    });
+  }
+
+  private async withClient<T>(
+    action: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      return await action(client);
+    } finally {
+      client.release();
+    }
+  }
+}
+
+/**
+ * The Postgres store's single-instance guarantee: a session-level advisory
+ * lock, taken on a dedicated connection when the store opens and held until it
+ * closes. Postgres releases it when that session ends, so a process that dies
+ * frees it and the next process takes it, while a second process started
+ * beside a live one cannot open the store at all.
+ *
+ * The key is derived from the schema the store's tables resolve to, so two
+ * stores in different schemas of one database do not exclude each other.
+ */
+class PostgresStoreInstanceLock {
+  private readonly client: Client;
+  private readonly key: string;
+  private readonly backendPid: number;
+  private lost: Error | undefined;
+  private releasing = false;
+
+  private constructor(args: {
+    readonly client: Client;
+    readonly key: string;
+    readonly backendPid: number;
+  }) {
+    this.client = args.client;
+    this.key = args.key;
+    this.backendPid = args.backendPid;
+  }
+
+  static async acquire(
+    databaseUrl: string,
+    onLost: ((error: Error) => void) | undefined,
+  ): Promise<PostgresStoreInstanceLock> {
+    const client = new Client({
+      connectionString: databaseUrl,
+      keepAlive: true,
+    });
+    // An unexpected end of the session is handled on "end" below.
+    client.on("error", () => undefined);
+    await client.connect();
+    let row:
+      | {
+          readonly key: string;
+          readonly acquired: boolean;
+          readonly pid: number;
+        }
+      | undefined;
+    try {
+      const result = await client.query<{
+        readonly key: string;
+        readonly acquired: boolean;
+        readonly pid: number;
+      }>(
+        `WITH lock_key AS (
+           SELECT ('x' || left(md5(
+                    'midgard-da-committee-store:' ||
+                    coalesce(current_schema(), '')
+                  ), 15))::bit(60)::bigint AS key
+         )
+         SELECT key::text AS key,
+                pg_try_advisory_lock(key) AS acquired,
+                pg_backend_pid() AS pid
+         FROM lock_key`,
+      );
+      row = result.rows[0];
+    } catch (error) {
+      await client.end().catch(() => undefined);
+      throw error;
+    }
+    if (row?.acquired !== true) {
+      await client.end().catch(() => undefined);
+      throw new Error(
+        "committee node Postgres store is already exclusively leased by another live committee node process; stop that process before starting another on the same store",
+      );
+    }
+    const lock = new PostgresStoreInstanceLock({
+      client,
+      key: row.key,
+      backendPid: row.pid,
+    });
+    client.once("end", () => {
+      if (lock.releasing) {
+        return;
+      }
+      lock.lost = new Error(
+        "committee node Postgres store lost its instance lock: the session holding it ended; this process must stop",
+      );
+      onLost?.(lock.lost);
+    });
+    return lock;
+  }
+
+  assertHeld(): void {
+    if (this.lost !== undefined) {
+      throw this.lost;
+    }
+  }
+
+  /**
+   * Confirms, from inside `client`'s transaction, that the server still holds
+   * the lock for this instance's session. The session can end at the server
+   * before this process sees it end.
+   */
+  async assertHeldAtServer(client: PoolClient): Promise<void> {
+    this.assertHeld();
+    const result = await client.query<{ readonly held: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_locks
+         WHERE locktype = 'advisory'
+           AND granted
+           AND pid = $1
+           AND database = (
+             SELECT oid FROM pg_database WHERE datname = current_database()
+           )
+           AND objsubid = 1
+           AND ((classid::bigint << 32) | objid::bigint) = $2::bigint
+       ) AS held`,
+      [this.backendPid, this.key],
+    );
+    if (result.rows[0]?.held !== true) {
+      throw new Error(
+        "committee node Postgres store lost its instance lock: the server no longer holds it for this process",
+      );
+    }
+  }
+
+  async release(): Promise<void> {
+    if (this.releasing) {
+      return;
+    }
+    this.releasing = true;
+    if (this.lost === undefined) {
+      await this.client.end();
+    }
+  }
+}

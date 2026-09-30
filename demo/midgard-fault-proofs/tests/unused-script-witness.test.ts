@@ -1,3 +1,16 @@
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/unused-script-witness/checkpoint.js";
+import "../src/unused-script-witness/family.js";
+import "../src/unused-script-witness/replay.js";
+import "../src/unused-script-witness/schemas.js";
+import "../src/unused-script-witness/v1.js";
+import "../src/unused-script-witness/workflow.js";
+import "./support/unused-script-witness-emulator.js";
+import "./unused-script-witness.source-fixture.js";
+
 import {
   buildMidgardBoundedItem,
   buildMidgardValidationMerkleMembership,
@@ -5,13 +18,9 @@ import {
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardReferenceScriptSourceLeaf,
-  hashMidgardScriptPurposeLeaf,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import {
-  acceptedVerdictSubject,
-  forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -20,12 +29,9 @@ import { initialUnusedScriptWitnessReverseScan } from "../src/unused-script-witn
 import {
   classifyUnusedScriptWitnessFinding,
   inlineSourceKeyHex,
-  prepareUnusedScriptWitnessEvidence as prepareAgainstUniverse,
-  type UnusedScriptPurposeOpening,
   type UnusedScriptSourceOpening,
   unusedScriptWitnessAccountabilityRoute,
   unusedScriptWitnessEvidenceCloses,
-  type UnusedScriptWitnessFinding,
 } from "../src/unused-script-witness/family.js";
 import { detectUnusedScriptWitnessCanonicalViolations } from "../src/unused-script-witness/replay.js";
 import {
@@ -42,108 +48,17 @@ import {
   type UnusedScriptWitnessJournalEntry,
 } from "../src/unused-script-witness/workflow.js";
 import { buildUnusedScriptWitnessFixture } from "./support/unused-script-witness-emulator.js";
-
-const txId = "11".repeat(32);
-const scriptA = {
-  language: "PlutusV3" as const,
-  scriptBytes: Buffer.from("01", "hex"),
-};
-const scriptB = {
-  language: "PlutusV3" as const,
-  scriptBytes: Buffer.from("02", "hex"),
-};
-const scripts = [scriptA, scriptB];
-const preimage = encodeMidgardVersionedScriptListPreimage(scripts);
-
-const sourceFixture = (): readonly UnusedScriptSourceOpening[] => {
-  const leaves = scripts.map((script, sourceIndex) => {
-    const bytes = encodeMidgardVersionedScript(script);
-    return hashMidgardInlineScriptSourceLeaf({
-      sourceIndex: BigInt(sourceIndex),
-      scriptLanguageTag: 3,
-      scriptHash: Buffer.from(hashMidgardVersionedScript(script), "hex"),
-      scriptTotalLength: bytes.length,
-      itemCommitment: buildMidgardBoundedItem({
-        fieldIndex: 6,
-        itemIndex: sourceIndex,
-        bytes,
-      }).commitment,
-    });
-  });
-  return leaves.map((_, sourceIndex) => ({
-    frontierIndex: sourceIndex,
-    originKind: 0 as const,
-    sourceIndex,
-    sourceKeyHex: inlineSourceKeyHex(sourceIndex),
-    languageTag: 3 as const,
-    scriptHashHex: hashMidgardVersionedScript(scripts[sourceIndex]!),
-    scriptTotalLength: encodeMidgardVersionedScript(scripts[sourceIndex]!)
-      .length,
-    itemCommitmentHex: buildMidgardBoundedItem({
-      fieldIndex: 6,
-      itemIndex: sourceIndex,
-      bytes: encodeMidgardVersionedScript(scripts[sourceIndex]!),
-    }).commitment.toString("hex"),
-    membership: buildMidgardValidationMerkleMembership(leaves, sourceIndex),
-  }));
-};
-
-const purposeFixture = (
-  hashes: readonly string[],
-): readonly UnusedScriptPurposeOpening[] => {
-  const leaves = hashes.map((scriptHashHex, frontierIndex) =>
-    hashMidgardScriptPurposeLeaf({
-      purposeKind: (frontierIndex % 4) as 0 | 1 | 2 | 3,
-      purposeIndex: 0n,
-      scriptHash: Buffer.from(scriptHashHex, "hex"),
-      subject: Buffer.from([frontierIndex]),
-    }),
-  );
-  return leaves.map((_, frontierIndex) => ({
-    frontierIndex,
-    purposeKind: (frontierIndex % 4) as 0 | 1 | 2 | 3,
-    purposeIndex: 0,
-    scriptHashHex: hashes[frontierIndex]!,
-    purposeSubjectHex: Buffer.from([frontierIndex]).toString("hex"),
-    membership: buildMidgardValidationMerkleMembership(leaves, frontierIndex),
-  }));
-};
-
-const acceptedFinding = {
-  subject: acceptedVerdictSubject(txId),
-  scriptIndex: 1,
-} as const;
-const forcedFinding = {
-  subject: forcedVerdictSubject({
-    transactionId: txId,
-    sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
-    rejectionReason: { UnusedScriptWitness: { script_index: 1n } },
-  }),
-  scriptIndex: 1,
-} as const;
-
-const prepareUnusedScriptWitnessEvidence = ({
-  finding,
-  fieldPreimage,
-  sources,
-  purposes,
-}: {
-  readonly finding: UnusedScriptWitnessFinding;
-  readonly fieldPreimage: Uint8Array;
-  readonly sources: readonly UnusedScriptSourceOpening[];
-  readonly purposes: readonly UnusedScriptPurposeOpening[];
-}) =>
-  prepareAgainstUniverse({
-    finding,
-    fieldPreimage,
-    universe: {
-      schemaVersion: "midgard-committed-script-universe-v1",
-      transactionId: finding.subject.transaction_id,
-      universeDigest: "99".repeat(32),
-      sources,
-      purposes,
-    },
-  });
+import {
+  acceptedFinding,
+  forcedFinding,
+  preimage,
+  prepareUnusedScriptWitnessEvidence,
+  purposeFixture,
+  scriptA,
+  scriptB,
+  sourceFixture,
+  txId,
+} from "./unused-script-witness.source-fixture.js";
 
 describe("unusedScriptWitness V1", () => {
   it("exposes only infrastructure keys", () => {

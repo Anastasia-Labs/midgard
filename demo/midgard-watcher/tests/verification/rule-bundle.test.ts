@@ -1,474 +1,50 @@
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import "node:crypto";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-core/da-transport";
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@al-ft/midgard-core/deployment-profile";
+import "@al-ft/midgard-core/validation-trace";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../../src/runtime/deployment-identity.js";
+import "../../src/verification/rule-bundle.js";
+import "../canonical-fraud-proof-catalogue.js";
+import "../support/deployment-authority-fixture.js";
+import "./rule-bundle.canonical-manifest-identity.js";
+import "./rule-bundle.fixture.js";
 
 import {
   MIDGARD_CONSENSUS_FEATURES,
   MIDGARD_CONSENSUS_LIMITS,
-  MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
-  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS,
-  DA_TRANSPORT_PROTOCOL_VERSION,
-} from "@al-ft/midgard-core/da-transport";
-import {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_L1_FINALITY,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
-  DEPLOYMENT_MANIFEST_STEP_NAMES,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  daBondManifestAmounts,
-  SELECTED_DEPLOYMENT_PROFILE,
-  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
-} from "@al-ft/midgard-core/deployment-profile";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  makeWatcherDeploymentIdentitySignaturePayload,
-  verifyWatcherDeploymentIdentity,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
-  WatcherDeploymentIdentityError,
-  type WatcherDeploymentIdentityErrorCode,
-  type WatcherDeploymentIdentityPolicy,
-  type WatcherDeploymentTrustRoot,
-} from "../../src/runtime/deployment-identity.js";
 import {
   computeWatcherRuleBundleCommitment,
   encodeWatcherRuleBundle,
   loadWatcherRuleBundle,
-  makeWatcherCanonicalRuleBundle,
   parseWatcherRuleBundle,
   WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
   WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
   WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
-  WatcherRuleBundleError,
-  type WatcherRuleBundleErrorCode,
 } from "../../src/verification/rule-bundle.js";
 import {
-  canonicalFraudProofCatalogueFixture,
-  positionalContractScriptCbor,
-  positionalContractScriptHash,
-} from "../canonical-fraud-proof-catalogue.js";
+  h32,
+  makeTrustRoot,
+  TARGET_PARAMETERS,
+} from "./rule-bundle.canonical-manifest-identity.js";
 import {
-  addWatcherHistoryFixtureMetadata,
-  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
-} from "../support/deployment-authority-fixture.js";
-
-const h32 = (byte: string): string => byte.repeat(64);
-
-const NATIVE_SCRIPT_CBOR = "820501";
-const NATIVE_SCRIPT_HASH = validatorToScriptHash({
-  type: "Native",
-  script: NATIVE_SCRIPT_CBOR,
-});
-const DA_VKEY = "44".repeat(32);
-const DA_SIGNERS_HASH =
-  "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";
-const BLUEPRINT_HASH = h32("5");
-
-const TARGET_PARAMETERS = Object.freeze({
-  coinsPerUtxoByte: "4310",
-  maxTxExUnits: Object.freeze({
-    memory: "16500000",
-    steps: "10000000000",
-  }),
-  maxTxSize: 16_384,
-  maxValueSize: 5_000,
-  minFeeA: 44,
-  minFeeB: 155_381,
-  prices: Object.freeze({
-    memory: 0.0577,
-    steps: 0.000_072_1,
-  }),
-});
-
-type MutableRecord = Record<string, any>;
-
-const referenceOutRefByContract = new Map<
-  string,
-  { txHash: string; outputIndex: number }
->(
-  Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
-    (contractName, outputIndex) => [
-      contractName,
-      { txHash: h32("2"), outputIndex },
-    ],
-  ),
-);
-
-const canonicalManifestIdentity = (): MutableRecord => {
-  const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => {
-      const scriptName =
-        contractName === "depositSpend"
-          ? "depositMint"
-          : contractName === "withdrawalSpend"
-            ? "withdrawalMint"
-            : contractName;
-      const contractScriptCbor = positionalContractScriptCbor(scriptName);
-      return [
-        contractName,
-        {
-          refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
-          contract: {
-            type:
-              contractName === "referenceScriptAuthMint"
-                ? "Native"
-                : "PlutusV3",
-            cborHex:
-              contractName === "referenceScriptAuthMint"
-                ? NATIVE_SCRIPT_CBOR
-                : contractScriptCbor,
-          },
-          scriptHash:
-            contractName === "referenceScriptAuthMint"
-              ? NATIVE_SCRIPT_HASH
-              : positionalContractScriptHash(scriptName),
-        },
-      ];
-    }),
-  ) as MutableRecord;
-  addWatcherHistoryFixtureMetadata(contracts, {
-    txHash: h32("1"),
-    outputIndex: 0,
-  });
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
-    canonicalFraudProofCatalogueFixture(contracts);
-  const referenceScripts = Object.fromEntries(
-    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
-      ([role, contractName]) => {
-        const outRef = referenceOutRefByContract.get(contractName);
-        if (outRef === undefined) {
-          throw new Error("Missing canonical test reference outref");
-        }
-        const tokenName =
-          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
-            role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
-          ];
-        return [
-          role,
-          {
-            status: "confirmed",
-            roleUnit:
-              NATIVE_SCRIPT_HASH +
-              Buffer.from(tokenName, "utf8").toString("hex"),
-            scriptHash: contracts[contractName].scriptHash,
-            outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
-          },
-        ];
-      },
-    ),
-  );
-  return {
-    schemaVersion: "midgard-deployment-manifest-v1",
-    deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
-    deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
-    network: "Preprod",
-    cardanoProtocolParameters: {
-      snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
-      digest: computeDeploymentManifestJsonDigest(
-        WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
-      ),
-    },
-    genesis: {
-      headerHash: "00".repeat(28),
-      utxoSetDigest: computeDeploymentManifestJsonDigest([]),
-    },
-    createdAt: "2026-07-28T00:00:00.000Z",
-    updatedAt: "2026-07-28T00:00:00.000Z",
-    referenceScriptDeployAddress: "addr_test1vcanonical",
-    hubOracleOneShot: {
-      txHash: h32("1"),
-      outputIndex: 0,
-      outRef: `${h32("1")}#0`,
-      status: "consumed_by_init",
-    },
-    referenceScriptAuthPolicy: {
-      policyId: NATIVE_SCRIPT_HASH,
-      nativeScript: {
-        type: "Native",
-        cborHex: NATIVE_SCRIPT_CBOR,
-        expiresAtSlot: 1,
-        expiresAtUnixTime: 1,
-        timelockDurationMs: 1,
-      },
-      tokenNames: DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
-      postTimelockAudit: {
-        required: true,
-        rule: "No authenticated reference-script output may change.",
-      },
-    },
-    contracts,
-    referenceScripts,
-    da: {
-      committeeVkeys: [DA_VKEY],
-      committeeSignersHash: DA_SIGNERS_HASH,
-      threshold: 1,
-      transportProfile: {
-        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
-        envelopeEncoding: "identity",
-        zstdLevel: 3,
-        limits: DA_TRANSPORT_LIMITS,
-        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
-      },
-    },
-    artifacts: {
-      blueprintHash: BLUEPRINT_HASH,
-    },
-    steps: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
-        stepName,
-        {
-          status:
-            stepName === "prepareHubOracleNonce" ||
-            stepName === "deployNodeRuntimeReferenceScripts" ||
-            stepName === "initProtocol" ||
-            stepName === "availabilityRegistration"
-              ? "complete"
-              : "pending",
-        },
-      ]),
-    ),
-    validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
-      responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
-      maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
-    },
-    economics:
-      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
-    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
-    availabilityChallenge: {
-      responseClasses: {
-        smallPayloadMaxBytes: 65_536,
-        smallResponseWindowMs:
-          SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
-        fullPayloadMaxBytes: 67_108_864,
-        fullResponseWindowMs:
-          SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
-      },
-      responseGeometry: {
-        chunkByteLength: 14_020,
-        trancheByteLength: 4_194_304,
-        maxTrancheCount: 16,
-      },
-      ...daBondManifestAmounts(),
-      challengerBondLovelace: 10_000_000_000,
-      maxOpenFeeLovelace: 500_000,
-      maxPublicationFeeLovelace: 500_000,
-      maxSettlementFeeLovelace: 500_000,
-      maxCloseFeeLovelace: 1_000_000,
-      maxTimeoutFeeLovelace: 1_200_000,
-    },
-  };
-};
-
-const withManifestId = (identity: MutableRecord): MutableRecord => ({
-  ...identity,
-  manifestId: computeDeploymentManifestId(identity),
-});
-
-const makeTrustRoot = (): {
-  readonly privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"];
-  readonly trustRoot: WatcherDeploymentTrustRoot;
-} => {
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-  const publicKeySpkiDer = publicKey.export({
-    format: "der",
-    type: "spki",
-  });
-  const publicKeySpkiDerHex = publicKeySpkiDer.toString("hex");
-  return {
-    privateKey,
-    trustRoot: {
-      trustRootId: createHash("sha256").update(publicKeySpkiDer).digest("hex"),
-      publicKeySpkiDerHex,
-    },
-  };
-};
-
-const appliedScriptHashes = (manifest: MutableRecord): Record<string, string> =>
-  Object.fromEntries(
-    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => [
-      contractName,
-      manifest.contracts[contractName].scriptHash,
-    ]),
-  );
-
-const referenceScriptPolicy = (
-  manifest: MutableRecord,
-): Record<string, { scriptHash: string; outRef: string }> =>
-  Object.fromEntries(
-    Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
-      (role) => [
-        role,
-        {
-          scriptHash: manifest.referenceScripts[role].scriptHash,
-          outRef: manifest.referenceScripts[role].outRef,
-        },
-      ],
-    ),
-  );
-
-const cataloguePolicy = (
-  manifest: MutableRecord,
-): WatcherDeploymentIdentityPolicy["fraudProofCatalogue"] => {
-  const catalogue =
-    manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue;
-  return {
-    root: catalogue.root as string,
-    categories: Object.fromEntries(
-      Object.entries(catalogue.categories as MutableRecord).map(
-        ([category, value]) => [
-          category,
-          {
-            categoryId: value.categoryId as string,
-            scriptHash: value.scriptHash as string,
-          },
-        ],
-      ),
-    ),
-  } as WatcherDeploymentIdentityPolicy["fraudProofCatalogue"];
-};
-
-type SignedAuthorityFixture = Readonly<{
-  signedIdentity: MutableRecord;
-  policy: WatcherDeploymentIdentityPolicy;
-  trustRoots: readonly WatcherDeploymentTrustRoot[];
-  durableMarker: ReturnType<typeof makeDeploymentMarker>;
-}>;
-
-const fixture = (network: "Preprod" | "Custom" = "Preprod") => {
-  const manifest = withManifestId({ ...canonicalManifestIdentity(), network });
-  const programCommitments = Object.freeze({
-    "transition-order-v1": h32("8"),
-    "validation-machine-v1": h32("9"),
-  });
-  const bundle = makeWatcherCanonicalRuleBundle({
-    constructionIdentity: {
-      manifestId: manifest.manifestId,
-      network,
-      blueprintHash: BLUEPRINT_HASH,
-      programCommitments,
-    },
-    targetParameterSnapshot: TARGET_PARAMETERS,
-  });
-  const ruleBundleCommitment = computeWatcherRuleBundleCommitment(bundle);
-  const releaseBindings = {
-    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
-    fundingProfileBundleDigest: "ab".repeat(32),
-    ruleBundleCommitment,
-    programCommitments,
-    da: {
-      mode: "authenticated_committee_v1",
-      identityDigest: computeDeploymentManifestJsonDigest(manifest.da),
-    },
-    artifacts: {
-      blueprintHash: BLUEPRINT_HASH,
-    },
-  };
-  const { privateKey, trustRoot } = makeTrustRoot();
-  const signedIdentity: MutableRecord = {
-    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
-    manifest,
-    releaseBindings,
-    attestation: {
-      algorithm: "ed25519",
-      trustRootId: trustRoot.trustRootId,
-      signature: "",
-    },
-  };
-  const policy: WatcherDeploymentIdentityPolicy = {
-    network,
-    hubOracleOneShotOutRef: manifest.hubOracleOneShot.outRef,
-    appliedScriptHashes: appliedScriptHashes(manifest),
-    referenceScripts: referenceScriptPolicy(manifest),
-    fraudProofCatalogue: cataloguePolicy(manifest),
-    ruleBundleCommitment,
-    programCommitments,
-    daMode: "authenticated_committee_v1",
-    daIdentityDigest: releaseBindings.da.identityDigest,
-    fundingProfileBundleDigest: releaseBindings.fundingProfileBundleDigest,
-
-    blueprintHash: BLUEPRINT_HASH,
-  };
-  signedIdentity.attestation.signature = sign(
-    null,
-    makeWatcherDeploymentIdentitySignaturePayload(
-      manifest.manifestId,
-      releaseBindings,
-    ),
-    privateKey,
-  ).toString("hex");
-  const authority: SignedAuthorityFixture = Object.freeze({
-    signedIdentity,
-    policy,
-    trustRoots: Object.freeze([trustRoot]),
-    durableMarker: makeDeploymentMarker(manifest.manifestId),
-  });
-  return {
-    authority,
-    bundle,
-    verifiedIdentity: verifyWatcherDeploymentIdentity(authority),
-  };
-};
-
-type Mutable<T> = T extends readonly (infer Entry)[]
-  ? Mutable<Entry>[]
-  : T extends object
-    ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
-    : T;
-
-const clone = <T>(value: T): Mutable<T> =>
-  JSON.parse(JSON.stringify(value)) as Mutable<T>;
-
-const rejected = (
-  action: () => unknown,
-  code: WatcherRuleBundleErrorCode,
-  path: string,
-): WatcherRuleBundleError => {
-  try {
-    action();
-  } catch (error) {
-    expect(error).toBeInstanceOf(WatcherRuleBundleError);
-    const ruleError = error as WatcherRuleBundleError;
-    expect(ruleError.code).toBe(code);
-    expect(ruleError.path).toBe(path);
-    return ruleError;
-  }
-  throw new Error("Expected canonical V1 rule-bundle rejection");
-};
-
-const authorityRejected = (
-  action: () => unknown,
-  code: WatcherDeploymentIdentityErrorCode,
-  path: string,
-): WatcherDeploymentIdentityError => {
-  try {
-    action();
-  } catch (error) {
-    expect(error).toBeInstanceOf(WatcherDeploymentIdentityError);
-    const authorityError = error as WatcherDeploymentIdentityError;
-    expect(authorityError.code).toBe(code);
-    expect(authorityError.path).toBe(path);
-    return authorityError;
-  }
-  throw new Error("Expected signed W02 deployment-authority rejection");
-};
+  authorityRejected,
+  clone,
+  fixture,
+  rejected,
+} from "./rule-bundle.fixture.js";
 
 describe("watcher canonical V1 rule bundle", () => {
   it("rejects a network different from the compiled deployment profile", () => {

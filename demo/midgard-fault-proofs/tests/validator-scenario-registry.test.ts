@@ -5,11 +5,13 @@
  * passing on an empty validator set.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { sourceFacetPaths } from "../../../scripts/lib/source-facets.mjs";
 import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
 import {
   FAMILY_SCENARIOS,
@@ -96,13 +98,74 @@ const declaredTestTitles = (text: string): Set<string> => {
 };
 
 const titlesByFile = new Map<string, Set<string> | undefined>();
+const reachableTestTitles = (
+  entry: string,
+  sources: ReadonlyMap<string, string>,
+): Set<string> => {
+  const visited = new Set<string>();
+  const titles = new Set<string>();
+  const visit = (path: string): void => {
+    const source = sources.get(path);
+    if (source === undefined || visited.has(path)) return;
+    visited.add(path);
+    for (const title of declaredTestTitles(source)) titles.add(title);
+    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest);
+    for (const statement of file.statements) {
+      if (
+        (!ts.isImportDeclaration(statement) &&
+          !ts.isExportDeclaration(statement)) ||
+        statement.moduleSpecifier === undefined ||
+        !ts.isStringLiteral(statement.moduleSpecifier)
+      )
+        continue;
+      if (ts.isImportDeclaration(statement)) {
+        const clause = statement.importClause;
+        if (clause?.isTypeOnly) continue;
+        if (
+          clause !== undefined &&
+          clause.name === undefined &&
+          clause.namedBindings !== undefined &&
+          ts.isNamedImports(clause.namedBindings) &&
+          clause.namedBindings.elements.length > 0 &&
+          clause.namedBindings.elements.every((binding) => binding.isTypeOnly)
+        )
+          continue;
+      } else {
+        if (statement.isTypeOnly) continue;
+        if (
+          statement.exportClause !== undefined &&
+          ts.isNamedExports(statement.exportClause) &&
+          statement.exportClause.elements.length > 0 &&
+          statement.exportClause.elements.every((binding) => binding.isTypeOnly)
+        )
+          continue;
+      }
+      const target = resolve(
+        dirname(path),
+        statement.moduleSpecifier.text,
+      ).replace(/\.js$/u, ".ts");
+      visit(target);
+    }
+  };
+  visit(entry);
+  return titles;
+};
+
 const titlesIn = (file: string): Set<string> | undefined => {
   if (!titlesByFile.has(file)) {
     const path = join(REPOSITORY_ROOT, file);
     titlesByFile.set(
       file,
       existsSync(path)
-        ? declaredTestTitles(readFileSync(path, "utf8"))
+        ? reachableTestTitles(
+            path,
+            new Map(
+              sourceFacetPaths(path).map((part) => [
+                part,
+                readFileSync(part, "utf8"),
+              ]),
+            ),
+          )
         : undefined,
     );
   }
@@ -137,6 +200,21 @@ describe("validator scenario registry", () => {
   const unmappedFamilies: string[] = UNMAPPED_FAMILIES.flatMap(
     (group) => group.families,
   );
+
+  it("rejects scenario titles in unimported or type-only sibling modules", () => {
+    const entry = "/scenarios/example.test.ts";
+    const sources = new Map([
+      [
+        entry,
+        'import "./example.registered.js"; export type { T } from "./example.orphan.js";',
+      ],
+      ["/scenarios/example.registered.ts", 'it("registered", () => {});'],
+      ["/scenarios/example.orphan.ts", 'it("orphan", () => {});'],
+    ]);
+    expect([...reachableTestTitles(entry, sources)]).toEqual(["registered"]);
+    sources.set(entry, "");
+    expect([...reachableTestTitles(entry, sources)]).toEqual([]);
+  });
 
   it("reads the test titles it checks against, including table tests", () => {
     // Guards the parser: if it stopped seeing titles, every reference would

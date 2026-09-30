@@ -7,9 +7,25 @@
  * (`expectOnchainRefusal`), never through an off-chain guard alone. Coverage
  * is recorded while the journeys run and declared at the end.
  */
+import "node:crypto";
+import "node:fs";
+import "node:url";
+import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-validation";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/execution-source-script-decoding/index.js";
+import "../src/native-script-decoding/evidence.js";
+import "../src/native-script-decoding/scan-plan.js";
+import "../src/proof-fit/van-rossem-fit-ledger.js";
+import "../src/testing/complete-lifecycle.js";
+import "./support/execution-source-script-decoding-emulator.js";
+import "./support/lifecycle-coverage.js";
+import "./support/submit-init-emulator-shared.js";
+import "./execution-source-script-decoding-lifecycle.bind-state-of.js";
+
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import {
   encodeRetainedValidationWitness,
@@ -30,11 +46,9 @@ import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evi
 import {
   executionSourceAuthenticatedSource,
   executionSourceScriptDecodingCheckpoint,
-  ExecutionSourceScriptDecodingResultClasses,
   prepareExecutionSourceScriptDecodingArtifact,
   prepareExecutionSourceScriptDecodingEvidence,
 } from "../src/execution-source-script-decoding/index.js";
-import { buildNativeScriptDecodingChunkProof } from "../src/native-script-decoding/evidence.js";
 import { buildNativeScriptDecodingScanPlan } from "../src/native-script-decoding/scan-plan.js";
 import {
   buildVanRossemFitLedger,
@@ -42,118 +56,36 @@ import {
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import {
+  AUTHENTICATION_SEAMS,
+  bindStateOf,
+  boundOf,
+  CANCELLABLE_STEPS,
+  chunkOf,
+  Classes,
+  coverage,
+  ledgerPath,
+  progress,
+  record,
+  recorder,
+  stand,
+} from "./execution-source-script-decoding-lifecycle.bind-state-of.js";
+import {
   buildSubjectFixture,
-  commitSubjectBlock,
-  createMeasurementRecorder,
   emptyAllScript,
   EXECUTION_SOURCE_CATEGORY_ID,
   EXECUTION_SOURCE_MAX_FIELD_BYTES,
   EXECUTION_SOURCE_REASON_ARMS,
-  type ExecutionSourceContext,
   expectOnchainRefusal,
   forcedReason,
   foreignForcedMembership,
   makeExecutionSourceHarness,
-  makeExecutionSourceStages,
   maximumMalformedItem,
   maximumWideScript,
   type Measurement,
   nestedScript,
-  publishFamilyReferences,
   rawNativeItem,
-  type SubjectFixture,
 } from "./support/execution-source-script-decoding-emulator.js";
-import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
-
-const AUTHENTICATION_SEAMS = [
-  "tx_membership",
-  "validation_trace_root",
-  "machine_state",
-  "execution_descriptor",
-  "forced_leaf_root",
-  "forced_leaf_header",
-  "forced_leaf_direction",
-  "forced_leaf_reason_coordinate",
-  "source_item_chunk",
-  "bind_result",
-  "scan_window_chunk",
-  "scan_checkpoint",
-  "wrong_successor",
-  "premature_close",
-] as const;
-const CANCELLABLE_STEPS = [
-  "step-01",
-  "step-02",
-  "step-03",
-  "step-04",
-  "step-05",
-] as const;
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/execution-source-script-decoding-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
-const coverage = createLifecycleCoverageRecorder();
-const recorder = createMeasurementRecorder();
-const { record } = recorder;
-const progress = (message: string) =>
-  console.info(`[execution-source-script-decoding-progress] ${message}`);
-const Classes = ExecutionSourceScriptDecodingResultClasses;
-
-/** The block, references and stages one subject fixture is driven through. */
-const stand = async (
-  context: ExecutionSourceContext,
-  fixture: SubjectFixture,
-  label: string,
-) => {
-  const setup = await commitSubjectBlock(context, fixture);
-  const references = await publishFamilyReferences(context, recorder, label);
-  return makeExecutionSourceStages({ context, setup, references });
-};
-/** The step-02 datum a thread bound to `fixture` carries at `executionIndex`. */
-const boundOf = (fixture: SubjectFixture, executionIndex = 0n) => ({
-  subject: fixture.subject,
-  validation_traces_root: fixture.header.validationTracesRoot,
-  validation_trace_count: fixture.header.validationTraceCount,
-  execution_index: executionIndex,
-  accused_class: BigInt(fixture.evidence.finding.accusedClass),
-});
-/** The step-04 state step 03 opens for `fixture`, given its validators. */
-const bindStateOf = (
-  context: ExecutionSourceContext,
-  fixture: SubjectFixture,
-) => {
-  const { evidence } = fixture;
-  const nextExpectedScriptHash = context.contracts.steps[3].spendingScriptHash;
-  return {
-    source: executionSourceAuthenticatedSource(
-      boundOf(fixture),
-      fixture.authentication.authentication,
-    ),
-    control_cbor: evidence.initialControlCbor,
-    next_expected_script_hash: nextExpectedScriptHash,
-    checkpoint_hash: executionSourceScriptDecodingCheckpoint({
-      evidence,
-      controlCbor: evidence.initialControlCbor,
-      nextExpectedScriptHash,
-    }),
-    result_class: BigInt(
-      evidence.initialControlCbor === ""
-        ? evidence.resultClass
-        : Classes.Pending,
-    ),
-  };
-};
-const chunkOf = (fixture: SubjectFixture, chunkIndex: number) =>
-  buildNativeScriptDecodingChunkProof({
-    fieldIndex: 6,
-    itemIndex: fixture.evidence.descriptor.sourceIndex,
-    itemBytes: fixture.scriptItem,
-    chunkIndex,
-  });
 
 describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
   it("contradicts a wrongful acceptance of a malformed source item at the 32,768-byte field cap: refuses every accepted seam, closes the two-chunk verdict window, mints and removes", async () => {

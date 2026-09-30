@@ -50,6 +50,13 @@
  *   --json-out <path>    use <path> instead of the checked-in JSON fixture
  */
 
+import "node:path";
+import "node:url";
+import "@al-ft/midgard-core/scripts/golden-channel.mjs";
+import "../../scripts/deployment-profiles.mjs";
+import "./da-vector-support.mjs";
+import "./generate-da-bond-pool-v1-goldens.render-vector.mjs";
+
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,26 +70,33 @@ import {
   readProfiles,
 } from "../../scripts/deployment-profiles.mjs";
 import {
-  aikenBytesLiteral,
-  aikenIntLiteral,
-  blake2b224,
-  blake2b256,
   CHALLENGE_ASSET_NAME_PREFIX_V1,
   concatBytes,
-  DA_BOND_POOL_SPEND_REDEEMER_ARMS,
   daBondPoolDatumData,
   daBondPoolMintRedeemerData,
   daBondPoolSpendRedeemerData,
   parametersV1Data,
   parseGeneratorArguments,
-  serialiseData,
   stateQueueStatusV1Data,
-  toHex,
   utf8,
 } from "./da-vector-support.mjs";
+import {
+  ceilDiv,
+  jsonVectors,
+  renderParameters,
+  renderPoolDatum,
+  renderPoolMintRedeemer,
+  renderPoolSpendRedeemer,
+  renderStatus,
+  renderVector,
+  seeded,
+  withCbor,
+} from "./generate-da-bond-pool-v1-goldens.render-vector.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+
 const packageRoot = resolve(scriptDirectory, "..");
+
 const repositoryRoot = resolve(packageRoot, "../..");
 
 export const GENERATOR_PATH =
@@ -101,14 +115,10 @@ export const AIKEN_PATH = join(repositoryRoot, AIKEN_MODULE);
 const PARAMETERS_PROFILE = "preprod-testing";
 
 const MiB = 1024n * 1024n;
-const FULL_PAYLOAD_MAX_BYTES = 64n * MiB;
-const INT64_MAX = (1n << 63n) - 1n;
 
-/** A labelled, deterministic stand-in for a hash the vectors need. */
-const seeded = (label, length) =>
-  (length === 28 ? blake2b224 : blake2b256)(
-    utf8(`midgard-da-bond-pool-v1-golden/${label}`),
-  );
+const FULL_PAYLOAD_MAX_BYTES = 64n * MiB;
+
+const INT64_MAX = (1n << 63n) - 1n;
 
 // ---------------------------------------------------------------------------
 // Vector shapes
@@ -248,9 +258,6 @@ const profileAmounts = () => {
   };
 };
 
-const ceilDiv = (numerator, denominator) =>
-  (numerator + denominator - 1n) / denominator;
-
 /**
  * Every maximum-size publication plus every settlement plus the larger
  * terminal fee must stay below the challenger bond.
@@ -316,16 +323,6 @@ const parameterShapes = () => {
   });
 };
 
-// ---------------------------------------------------------------------------
-// Vectors
-// ---------------------------------------------------------------------------
-
-const withCbor = (shapes, key, toData) =>
-  shapes.map((shape) => ({
-    ...shape,
-    cbor: serialiseData(toData(shape[key])),
-  }));
-
 export const buildVectors = () => ({
   poolDatums: withCbor(POOL_DATUMS, "datum", daBondPoolDatumData),
   poolMintRedeemers: withCbor(
@@ -342,29 +339,6 @@ export const buildVectors = () => ({
   parameters: withCbor(parameterShapes(), "parameters", parametersV1Data),
 });
 
-// ---------------------------------------------------------------------------
-// JSON: integers as decimal strings (unlock_at reaches 2^63 - 1), bytes as hex
-// ---------------------------------------------------------------------------
-
-const jsonValue = (value) => {
-  if (typeof value === "bigint") return value.toString();
-  if (value instanceof Uint8Array) return toHex(value);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, inner]) => [key, jsonValue(inner)]),
-    );
-  }
-  return value;
-};
-
-const jsonVectors = (vectors, key) =>
-  vectors.map((vector) => ({
-    label: vector.label,
-    ...(vector.note === undefined ? {} : { note: vector.note }),
-    [key]: jsonValue(vector[key]),
-    cborHex: toHex(vector.cbor),
-  }));
-
 const buildJson = (vectors) => ({
   schema: "midgard-da-bond-pool-v1-goldens",
   generator: GENERATOR_PATH,
@@ -377,96 +351,6 @@ const buildJson = (vectors) => ({
   statuses: jsonVectors(vectors.statuses, "status"),
   parameters: jsonVectors(vectors.parameters, "parameters"),
 });
-
-// ---------------------------------------------------------------------------
-// Aiken
-// ---------------------------------------------------------------------------
-
-const snake = (name) =>
-  name.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`);
-
-/** `prefix.Kind { field: value, ... }`, or `prefix.Kind` without fields. */
-const renderConstructor = (qualified, fields) =>
-  fields.length === 0
-    ? [qualified]
-    : [
-        `${qualified} {`,
-        ...fields.map(([name, literal]) => `  ${snake(name)}: ${literal},`),
-        "}",
-      ];
-
-const literalOf = (value) =>
-  value instanceof Uint8Array
-    ? aikenBytesLiteral(value)
-    : aikenIntLiteral(value);
-
-const fieldsOf = (value) =>
-  Object.entries(value)
-    .filter(([key]) => key !== "kind")
-    .map(([key, inner]) => [key, literalOf(inner)]);
-
-const renderPoolDatum = (datum) =>
-  renderConstructor(`pool.${datum.kind}`, fieldsOf(datum));
-
-const renderPoolMintRedeemer = (redeemer) =>
-  renderConstructor(`pool.${redeemer.kind}`, fieldsOf(redeemer));
-
-const renderPoolSpendRedeemer = (redeemer) => {
-  const arm = DA_BOND_POOL_SPEND_REDEEMER_ARMS.find(
-    ([kind]) => kind === redeemer.kind,
-  );
-  // Fields in the constructor's declared order, not the object's.
-  return renderConstructor(
-    `pool.${redeemer.kind}`,
-    arm[1].map((field) => [field, literalOf(redeemer[field])]),
-  );
-};
-
-const renderStatus = (status) =>
-  renderConstructor(`availability.${status.kind}`, fieldsOf(status));
-
-const renderParameters = (parameters) => {
-  const geometry = parameters.responseGeometry;
-  return [
-    "availability.ParametersV1 {",
-    "  response_geometry: availability.ResponseGeometryV1 {",
-    `    chunk_byte_length: ${aikenIntLiteral(geometry.chunkByteLength)},`,
-    `    tranche_byte_length: ${aikenIntLiteral(geometry.trancheByteLength)},`,
-    `    max_tranche_count: ${aikenIntLiteral(geometry.maxTrancheCount)},`,
-    "  },",
-    ...Object.entries(parameters)
-      .filter(([key]) => key !== "responseGeometry")
-      .map(([key, value]) => `  ${snake(key)}: ${aikenIntLiteral(value)},`),
-    "}",
-  ];
-};
-
-const indent = (lines, by) => lines.map((line) => `${" ".repeat(by)}${line}`);
-
-const renderVector = ({ vector, key, type, render }) => {
-  const { label } = vector;
-  const prefix = `da_bond_pool_v1_golden_${label}`;
-  return [
-    ...(vector.note === undefined ? [] : [`// ${label}: ${vector.note}.`]),
-    `fn ${label}() -> ${type} {`,
-    ...indent(render(vector[key]), 2),
-    "}",
-    "",
-    `const ${label}_cbor: ByteArray = ${aikenBytesLiteral(vector.cbor)}`,
-    "",
-    `test ${prefix}_cbor() {`,
-    `  let value: Data = ${label}()`,
-    `  builtin.serialise_data(value) == ${label}_cbor`,
-    "}",
-    "",
-    `test ${prefix}_decodes() {`,
-    `  expect Some(data) = cbor.deserialise(${label}_cbor)`,
-    `  expect decoded: ${type} = data`,
-    `  decoded == ${label}()`,
-    "}",
-    "",
-  ];
-};
 
 const SECTIONS = [
   {

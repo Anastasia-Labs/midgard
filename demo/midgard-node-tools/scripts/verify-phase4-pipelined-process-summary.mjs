@@ -1,38 +1,64 @@
 #!/usr/bin/env node
 
+import "node:fs";
+import "node:path";
+import "node:crypto";
+import "node:url";
+import "node:util";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "./verify-phase4-pipelined-process-summary.validate-cleanup.mjs";
+import "./verify-phase4-pipelined-process-summary.validate-phas-registration-transaction-body.mjs";
+
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, getAddressDetails } from "@lucid-evolution/lucid";
+import { getAddressDetails } from "@lucid-evolution/lucid";
 
-export const PHASE4_PROCESS_SUMMARY_SCHEMA =
-  "midgard-phase4-pipelined-commit-process-acceptance-v1";
-export const PHASE4_PROCESS_SUMMARY_MODE =
-  "attach-resume-matched-local-devnet-snapshot";
-export const PHASE4_PROCESS_CHECKPOINTS = [
-  "speculative_mid_build",
-  "candidate_ready_unconfirmed",
-  "confirmation_wake_before_journal",
-];
+import {
+  ACTIVE_JOURNAL_STATUSES,
+  CARDANO_OUT_REF,
+  check,
+  exactKeys,
+  HASH_32,
+  hexBytes,
+  ISOLATED_PREFIX,
+  isoTimestamp,
+  L2_HEADER_HASH,
+  LEASE_STATUSES,
+  object,
+  pathWithin,
+  PHASE4_PROCESS_CHECKPOINTS,
+  PHASE4_PROCESS_SUMMARY_MODE,
+  PHASE4_PROCESS_SUMMARY_SCHEMA,
+  requireFileTermination,
+  requireOutputTermination,
+  SAFE_ATTEMPT_ID,
+  safeNonnegative,
+  safePositive,
+  sha256,
+  SUPERVISOR_SCHEMA,
+  T1_RECOVERY_SCHEMA,
+  validateClassification,
+  validateCleanup,
+  validateJournalMembers,
+  validateRoots,
+  validateTermination,
+} from "./verify-phase4-pipelined-process-summary.validate-cleanup.mjs";
+import {
+  assertNoJournalBeyondBase,
+  candidateLineMatches,
+  journalSourceIds,
+  logicalDatabaseState,
+  retainedTransactionIds,
+  sortedStrings,
+  validateLedgerDelta,
+  validatePhasRegistrationTransactionBody,
+} from "./verify-phase4-pipelined-process-summary.validate-phas-registration-transaction-body.mjs";
 
-const L2_HEADER_HASH = /^[a-f0-9]{56}$/u;
-const HASH_32 = /^[a-f0-9]{64}$/u;
-const CARDANO_OUT_REF = /^[a-f0-9]{64}#[0-9]+$/u;
-const SAFE_ATTEMPT_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/u;
-const ISOLATED_PREFIX = "midgard_phase4_process_";
-const SUPERVISOR_SCHEMA = "midgard-e2e-service-supervisor-v1";
-const T1_RECOVERY_SCHEMA = "midgard-phase4-t1-recovery-attestation-v1";
-const ACTIVE_JOURNAL_STATUSES = new Set([
-  "pending_submission",
-  "submitted_local_finalization_pending",
-  "submitted_unconfirmed",
-  "observed_waiting_stability",
-]);
-const LEASE_STATUSES = new Set(["active", "released", "failed"]);
 const canonicalPhasIdentity = (() => {
   const blueprint = SDK.parsePhasMembershipBlueprint(
     JSON.parse(
@@ -61,161 +87,6 @@ const TOP_LEVEL_KEYS = [
   "journalKillContention",
   "journalKillContentionState",
 ];
-
-const object = (value) =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-const safeNonnegative = (value) => Number.isSafeInteger(value) && value >= 0;
-const safePositive = (value) => Number.isSafeInteger(value) && value > 0;
-const isoTimestamp = (value) =>
-  typeof value === "string" &&
-  Number.isFinite(Date.parse(value)) &&
-  new Date(value).toISOString() === value;
-const hexBytes = (value) =>
-  typeof value === "string" &&
-  value.length > 0 &&
-  value.length % 2 === 0 &&
-  /^[a-f0-9]+$/u.test(value);
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-
-const check = (reasons, condition, message) => {
-  if (!condition) reasons.push(message);
-  return condition;
-};
-
-const exactKeys = (reasons, value, expected, label) => {
-  if (!object(value)) {
-    reasons.push(`${label} must be an object`);
-    return false;
-  }
-  const actual = Object.keys(value).sort((left, right) =>
-    left.localeCompare(right),
-  );
-  const wanted = [...expected].sort((left, right) => left.localeCompare(right));
-  return check(
-    reasons,
-    isDeepStrictEqual(actual, wanted),
-    `${label} fields do not match the exact schema`,
-  );
-};
-
-const pathWithin = (parent, child) => {
-  if (typeof parent !== "string" || typeof child !== "string") return false;
-  if (!path.isAbsolute(parent) || !path.isAbsolute(child)) return false;
-  const relative = path.relative(parent, child);
-  return (
-    relative.length > 0 &&
-    relative !== ".." &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-};
-
-const validateCleanup = (reasons, value, label) => {
-  if (value === null) return;
-  const baseKeys = ["attempted", "pid", "target", "signal", "success", "error"];
-  const keys = Object.hasOwn(value ?? {}, "ownershipValidation")
-    ? [...baseKeys, "ownershipValidation"]
-    : baseKeys;
-  if (!exactKeys(reasons, value, keys, label)) return;
-  check(
-    reasons,
-    typeof value.attempted === "boolean",
-    `${label}.attempted is invalid`,
-  );
-  check(
-    reasons,
-    value.pid === null || safePositive(value.pid),
-    `${label}.pid is invalid`,
-  );
-  check(
-    reasons,
-    ["process_group", "process", "none"].includes(value.target),
-    `${label}.target is invalid`,
-  );
-  check(
-    reasons,
-    typeof value.signal === "string" && value.signal.startsWith("SIG"),
-    `${label}.signal is invalid`,
-  );
-  check(
-    reasons,
-    typeof value.success === "boolean",
-    `${label}.success is invalid`,
-  );
-  check(
-    reasons,
-    value.error === null || typeof value.error === "string",
-    `${label}.error is invalid`,
-  );
-  if (Object.hasOwn(value, "ownershipValidation")) {
-    if (
-      exactKeys(
-        reasons,
-        value.ownershipValidation,
-        ["valid", "reason"],
-        `${label}.ownershipValidation`,
-      )
-    ) {
-      check(
-        reasons,
-        typeof value.ownershipValidation.valid === "boolean" &&
-          typeof value.ownershipValidation.reason === "string" &&
-          value.ownershipValidation.reason.length > 0,
-        `${label}.ownershipValidation is invalid`,
-      );
-    }
-  }
-};
-
-const validateClassification = (reasons, value, label) => {
-  if (!exactKeys(reasons, value, ["class", "reason", "restartable"], label)) {
-    return;
-  }
-  check(reasons, typeof value.class === "string", `${label}.class is invalid`);
-  check(
-    reasons,
-    typeof value.reason === "string" && value.reason.length > 0,
-    `${label}.reason is invalid`,
-  );
-  check(
-    reasons,
-    typeof value.restartable === "boolean",
-    `${label}.restartable is invalid`,
-  );
-};
-
-const validateTermination = (reasons, value, label, kind) => {
-  if (value === null) return;
-  const keys =
-    kind === "output"
-      ? ["marker", "occurrence", "signal", "at"]
-      : ["path", "signal", "at"];
-  if (!exactKeys(reasons, value, keys, label)) return;
-  if (kind === "output") {
-    check(
-      reasons,
-      typeof value.marker === "string" && value.marker.length > 0,
-      `${label}.marker is invalid`,
-    );
-    check(
-      reasons,
-      safePositive(value.occurrence),
-      `${label}.occurrence is invalid`,
-    );
-  } else {
-    check(
-      reasons,
-      typeof value.path === "string" && path.isAbsolute(value.path),
-      `${label}.path must be absolute`,
-    );
-  }
-  check(
-    reasons,
-    typeof value.signal === "string" && value.signal.startsWith("SIG"),
-    `${label}.signal is invalid`,
-  );
-  check(reasons, isoTimestamp(value.at), `${label}.at is invalid`);
-};
 
 const REQUIRED_NODE_ENV_KEYS = [
   "NETWORK",
@@ -427,38 +298,6 @@ const validateSupervisor = (reasons, value, runDir, label) => {
   );
 };
 
-const requireOutputTermination = (reasons, summary, marker, signal, label) => {
-  const matching = Array.isArray(summary?.attempts)
-    ? summary.attempts.filter(
-        (attempt) => attempt?.outputTermination?.marker === marker,
-      )
-    : [];
-  check(
-    reasons,
-    matching.length === 1,
-    `${label} must contain exactly one ${marker} termination`,
-  );
-  const attempt = matching[0];
-  check(
-    reasons,
-    attempt?.outputTermination?.signal === signal && attempt?.signal === signal,
-    `${label} must terminate with ${signal} at ${marker}`,
-  );
-};
-
-const requireFileTermination = (reasons, summary, signal, label) => {
-  const matching = Array.isArray(summary?.attempts)
-    ? summary.attempts.filter((attempt) => attempt?.fileTermination !== null)
-    : [];
-  check(
-    reasons,
-    matching.length === 1 &&
-      matching[0]?.fileTermination?.signal === signal &&
-      matching[0]?.signal === signal,
-    `${label} must terminate with ${signal} through its stop file`,
-  );
-};
-
 const ROOT_KEYS = [
   "utxos",
   "forcedTransactions",
@@ -466,7 +305,9 @@ const ROOT_KEYS = [
   "deposits",
   "withdrawals",
 ];
+
 const EXPECTED_ROOT_KEYS = [...ROOT_KEYS, "transitionTrace", "eventToStep"];
+
 const JOURNAL_PAYLOAD_KEYS = [
   "deposits",
   "forcedTransactions",
@@ -476,105 +317,6 @@ const JOURNAL_PAYLOAD_KEYS = [
   "eventToStep",
   "ledgerDelta",
 ];
-
-const validateRoots = (reasons, value, keys, label) => {
-  if (!exactKeys(reasons, value, keys, label)) return;
-  for (const key of keys) {
-    check(reasons, HASH_32.test(value[key]), `${label}.${key} is invalid`);
-  }
-};
-
-const canonicalJsonOrder = (value) =>
-  isDeepStrictEqual(
-    value,
-    [...value].sort((left, right) =>
-      JSON.stringify(left).localeCompare(JSON.stringify(right)),
-    ),
-  );
-
-const validateJournalMembers = (reasons, value, label) => {
-  if (!Array.isArray(value)) {
-    reasons.push(`${label} must be an array`);
-    return;
-  }
-  check(
-    reasons,
-    canonicalJsonOrder(value),
-    `${label} is not canonically sorted`,
-  );
-  const memberIds = new Set();
-  const ordinals = new Set();
-  value.forEach((member, index) => {
-    const itemLabel = `${label}[${index.toString()}]`;
-    if (
-      !exactKeys(
-        reasons,
-        member,
-        ["memberId", "ordinal", "payloadSha256", "sourceTable", "sourceId"],
-        itemLabel,
-      )
-    ) {
-      return;
-    }
-    check(
-      reasons,
-      HASH_32.test(member.memberId) &&
-        safeNonnegative(member.ordinal) &&
-        HASH_32.test(member.payloadSha256) &&
-        typeof member.sourceTable === "string" &&
-        /^[a-z][a-z0-9_]*$/u.test(member.sourceTable) &&
-        (member.sourceId === null || hexBytes(member.sourceId)),
-      `${itemLabel} contains a noncanonical value`,
-    );
-    check(
-      reasons,
-      !memberIds.has(member.memberId) && !ordinals.has(member.ordinal),
-      `${itemLabel} duplicates a member identity or ordinal`,
-    );
-    memberIds.add(member.memberId);
-    ordinals.add(member.ordinal);
-  });
-};
-
-const validateLedgerDelta = (reasons, value, label) => {
-  if (!exactKeys(reasons, value, ["spent", "produced"], label)) return;
-  if (Array.isArray(value.spent)) {
-    check(
-      reasons,
-      value.spent.every(hexBytes) &&
-        new Set(value.spent).size === value.spent.length &&
-        isDeepStrictEqual(
-          value.spent,
-          [...value.spent].sort((left, right) => left.localeCompare(right)),
-        ),
-      `${label}.spent is not canonical`,
-    );
-  } else {
-    reasons.push(`${label}.spent must be an array`);
-  }
-  if (!Array.isArray(value.produced)) {
-    reasons.push(`${label}.produced must be an array`);
-    return;
-  }
-  check(
-    reasons,
-    canonicalJsonOrder(value.produced),
-    `${label}.produced is not canonically sorted`,
-  );
-  const outrefs = new Set();
-  value.produced.forEach((member, index) => {
-    const itemLabel = `${label}.produced[${index.toString()}]`;
-    if (!exactKeys(reasons, member, ["outref", "output"], itemLabel)) return;
-    check(
-      reasons,
-      hexBytes(member.outref) &&
-        hexBytes(member.output) &&
-        !outrefs.has(member.outref),
-      `${itemLabel} contains a noncanonical or duplicate value`,
-    );
-    outrefs.add(member.outref);
-  });
-};
 
 const validateDatabaseState = (reasons, value, label) => {
   if (
@@ -846,64 +588,6 @@ const validateDatabaseState = (reasons, value, label) => {
   }
 };
 
-const logicalDatabaseState = (state) => ({
-  activeJournalCount: state.activeJournalCount,
-  activeJournal:
-    state.activeJournal === null
-      ? null
-      : {
-          headerHash: state.activeJournal.headerHash,
-          headerCbor: state.activeJournal.headerCbor,
-          journalPayloadIdentity: state.activeJournal.journalPayloadIdentity,
-          baseTailHeaderHash: state.activeJournal.baseTailHeaderHash,
-          baseTailOutRef: state.activeJournal.baseTailOutRef,
-          baseTailDatumCbor: state.activeJournal.baseTailDatumCbor,
-          baseRoots: state.activeJournal.baseRoots,
-          expectedRoots: state.activeJournal.expectedRoots,
-          mpfReplay: state.activeJournal.mpfReplay,
-          leaseTokenPresent:
-            typeof state.activeJournal.leaseToken === "string" &&
-            state.activeJournal.leaseToken.length > 0,
-          submittedTxHash: state.activeJournal.submittedTxHash,
-          submitted: state.activeJournal.submittedTxHash !== null,
-          status: state.activeJournal.status,
-          depositCount: state.activeJournal.depositCount,
-          mempoolTxCount: state.activeJournal.mempoolTxCount,
-        },
-  activeLease:
-    state.activeLease === null
-      ? null
-      : {
-          holder: state.activeLease.holder,
-          status: state.activeLease.status,
-          tokenPresent:
-            typeof state.activeLease.token === "string" &&
-            state.activeLease.token.length > 0,
-        },
-  deposits: Array.isArray(state.deposits)
-    ? state.deposits.map((deposit) => ({
-        status: deposit?.status,
-        projected: deposit?.projectedHeaderHash !== null,
-      }))
-    : state.deposits,
-  mempool: state.mempool,
-  processed: state.processed,
-});
-
-const assertNoJournalBeyondBase = (reasons, state, baseHeaderHash, label) => {
-  check(
-    reasons,
-    state?.activeJournalCount <= 1,
-    `${label} violates the single-active-journal invariant`,
-  );
-  check(
-    reasons,
-    state?.activeJournal === null ||
-      state?.activeJournal?.headerHash === baseHeaderHash,
-    `${label} persisted a journal beyond the submitted base`,
-  );
-};
-
 const validatePhasRegistrationProof = (reasons, proof, isolation) => {
   const keys = [
     "schemaVersion",
@@ -1048,55 +732,6 @@ const validatePhasRegistrationProof = (reasons, proof, isolation) => {
   );
 };
 
-const validatePhasRegistrationTransactionBody = (reasons, envelope, proof) => {
-  if (
-    !exactKeys(
-      reasons,
-      envelope,
-      ["type", "description", "cborHex"],
-      "isolation.snapshotPhasRegistrationTransactionBody",
-    )
-  ) {
-    return;
-  }
-  if (
-    !check(
-      reasons,
-      envelope.type === "Unwitnessed Tx ConwayEra" &&
-        typeof envelope.description === "string" &&
-        envelope.description.length > 0 &&
-        hexBytes(envelope.cborHex),
-      "isolation PHAS transaction-body envelope is not exact canonical unsigned CBOR",
-    )
-  ) {
-    return;
-  }
-  try {
-    const cborBytes = Buffer.from(envelope.cborHex, "hex");
-    const transaction = CML.Transaction.from_cbor_hex(envelope.cborHex);
-    const body = transaction.body();
-    const certificates = body.certs();
-    const certificate = certificates?.len() === 1 ? certificates.get(0) : null;
-    const credential = certificate?.as_stake_registration()?.stake_credential();
-    check(
-      reasons,
-      sha256(cborBytes) === proof?.transactionBody?.cborSha256 &&
-        cborBytes.length === proof?.transactionBody?.cborSizeBytes &&
-        transaction.to_canonical_cbor_hex() === envelope.cborHex &&
-        transaction.witness_set().to_cbor_hex() === "a0" &&
-        CML.hash_transaction(body).to_hex() === proof?.registrationTxHash &&
-        certificate?.kind() === CML.CertificateKind.StakeRegistration &&
-        credential?.kind() === CML.CredentialKind.Script &&
-        credential.as_script()?.to_hex() === proof?.scriptHash,
-      "isolation PHAS unsigned transaction body does not contain the exact submitted script registration certificate",
-    );
-  } catch {
-    reasons.push(
-      "isolation PHAS transaction-body envelope is not valid canonical Cardano CBOR",
-    );
-  }
-};
-
 const validateIsolation = (reasons, isolation) => {
   const keys = [
     "envFile",
@@ -1208,45 +843,6 @@ const validateIsolation = (reasons, isolation) => {
     isolation.snapshotPhasRegistration,
   );
 };
-
-const sortedStrings = (value, pattern) =>
-  Array.isArray(value) &&
-  value.every((entry) => typeof entry === "string" && pattern.test(entry)) &&
-  isDeepStrictEqual(
-    value,
-    [...value].sort((left, right) => left.localeCompare(right)),
-  );
-
-const journalSourceIds = (state) =>
-  (Array.isArray(state?.activeJournal?.journalPayloadIdentity?.transactions)
-    ? state.activeJournal.journalPayloadIdentity.transactions
-    : []
-  )
-    .flatMap((entry) =>
-      object(entry) && typeof entry.sourceId === "string"
-        ? [entry.sourceId]
-        : [],
-    )
-    .sort((left, right) => left.localeCompare(right));
-
-const retainedTransactionIds = (state) =>
-  [
-    ...new Set(
-      [
-        ...(Array.isArray(state?.mempool) ? state.mempool : []),
-        ...(Array.isArray(state?.processed) ? state.processed : []),
-      ].flatMap((entry) =>
-        object(entry) && typeof entry.txId === "string" ? [entry.txId] : [],
-      ),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-
-const candidateLineMatches = (line, baseHeaderHash) =>
-  typeof line === "string" &&
-  new RegExp(
-    `pipeline_trace phase=candidate_ready[^\\n]*base_header_hash=${baseHeaderHash}(?:\\s|$)`,
-    "u",
-  ).test(line);
 
 const validateT1Recovery = (reasons, t1, isolation, runDir) => {
   const keys = [
@@ -1825,8 +1421,14 @@ export const runPhase4PipelinedProcessSummaryVerifierCli = (
 };
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+
 if (isMain) {
   process.exitCode = runPhase4PipelinedProcessSummaryVerifierCli(
     process.argv.slice(2),
   );
 }
+export {
+  PHASE4_PROCESS_CHECKPOINTS,
+  PHASE4_PROCESS_SUMMARY_MODE,
+  PHASE4_PROCESS_SUMMARY_SCHEMA,
+} from "./verify-phase4-pipelined-process-summary.validate-cleanup.mjs";

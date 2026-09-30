@@ -1,0 +1,337 @@
+import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
+import {
+  FUNDED_OUTPUT_LOVELACE,
+  makeNativeTx,
+  makeOutput,
+  nativeScriptWitness,
+  outRefFromByte,
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { CML } from "@lucid-evolution/lucid";
+import { afterAll, beforeAll } from "vitest";
+
+import type { WatcherLocalUserEventAuthority } from "../../src/indexers/user-event-indexer.js";
+import {
+  evaluateWatcherBlockReplayCandidates,
+  makeWatcherPhaseBConfig,
+  watcherBlockReplayPriorState,
+  type WatcherBlockReplayPriorUtxo,
+} from "../../src/verification/block-replay.js";
+import {
+  dataHex,
+  type LocalReplayEvent,
+  type PublicFixtureEvent,
+  readLocalReplayEvent,
+} from "../support/block-replay-public-fixture.js";
+import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
+import {
+  createLocalReplayUserEventAuthorities,
+  type LocalReplayUserEventAuthorities,
+} from "../support/local-user-event-authority-fixture.js";
+import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
+
+const header = { blockSlot: 0n } as Parameters<
+  typeof makeWatcherPhaseBConfig
+>[0];
+
+export const config = makeWatcherPhaseBConfig(header);
+
+export const FIXED_KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 7));
+
+export const FIXED_ADDRESS = Buffer.from(
+  CML.EnterpriseAddress.new(
+    0,
+    CML.Credential.new_pub_key(FIXED_KEY.to_public().hash()),
+  )
+    .to_address()
+    .to_raw_bytes(),
+);
+
+const FIXED_ADDRESS_DATA: SDK.AddressData = {
+  paymentCredential: {
+    PublicKeyCredential: [FIXED_KEY.to_public().hash().to_hex()],
+  },
+  stakeCredential: null,
+};
+
+export const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
+
+export const WITHDRAWAL_FLOW_INPUT = outRefFromByte(0x51);
+
+export const WITHDRAWAL_FLOW_NATIVE = makeNativeTx({
+  spendInputs: [WITHDRAWAL_FLOW_INPUT],
+  outputs: [FLOW_OUTPUT],
+  privateKey: FIXED_KEY,
+});
+
+export const FORCED_FLOW_INPUT = outRefFromByte(0x71);
+
+export const FORCED_FLOW_NATIVE = makeForcedTxFixture({
+  spendInputs: [FORCED_FLOW_INPUT],
+  outputs: [FLOW_OUTPUT],
+  privateKey: FIXED_KEY,
+});
+
+export const FORCED_INVALID_CASES = Object.freeze({
+  InputNotFound: Object.freeze({
+    input: outRefFromByte(0x72),
+    native: makeForcedTxFixture({
+      spendInputs: [outRefFromByte(0x72)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+    }),
+    operatorValidity: "InputNotFound" as const,
+  }),
+  AddressWitnessSignatureInvalid: Object.freeze({
+    input: outRefFromByte(0x73),
+    native: makeForcedTxFixture({
+      spendInputs: [outRefFromByte(0x73)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+      invalidVkeyWitness: true,
+    }),
+    operatorValidity: "AddressWitnessSignatureInvalid" as const,
+  }),
+  WitnessNativeScriptFalse: Object.freeze({
+    input: outRefFromByte(0x74),
+    native: makeForcedTxFixture({
+      spendInputs: [outRefFromByte(0x74)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+      scriptWitnesses: [
+        nativeScriptWitness({
+          type: "sig",
+          keyHash: Buffer.alloc(28, 0x06),
+        }),
+      ],
+    }),
+    operatorValidity: "WitnessNativeScriptFalse" as const,
+  }),
+  FeeBelowMinimum: Object.freeze({
+    input: outRefFromByte(0x75),
+    native: makeForcedTxFixture({
+      spendInputs: [outRefFromByte(0x75)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+      fee: 0n,
+    }),
+    operatorValidity: "FeeBelowMinimum" as const,
+  }),
+  ValueNotPreserved: Object.freeze({
+    input: outRefFromByte(0x76),
+    native: makeForcedTxFixture({
+      spendInputs: [outRefFromByte(0x76)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE - 1n, FIXED_ADDRESS)],
+      privateKey: FIXED_KEY,
+    }),
+    operatorValidity: "ValueNotPreserved" as const,
+  }),
+});
+
+const FORCED_VARIANT_NONCES = Object.freeze({
+  InputNotFound: "d4",
+  AddressWitnessSignatureInvalid: "d5",
+  WitnessNativeScriptFalse: "d6",
+  FeeBelowMinimum: "d7",
+  ValueNotPreserved: "d8",
+  Mismatch: "d9",
+});
+
+export let localAuthorities: LocalReplayUserEventAuthorities;
+
+export let depositLocal: LocalReplayEvent;
+
+export let withdrawalLocal: LocalReplayEvent;
+
+export let forcedLocal: LocalReplayEvent;
+
+export let forcedVariantLocal: Readonly<
+  Record<keyof typeof FORCED_VARIANT_NONCES, LocalReplayEvent>
+>;
+
+beforeAll(async () => {
+  localAuthorities = await createLocalReplayUserEventAuthorities({
+    deposit: { nonceByte: "d1", l2Address: FIXED_ADDRESS_DATA },
+    withdrawals: [
+      {
+        key: "flow",
+        nonceByte: "d2",
+        l2OutRef: {
+          transactionId: WITHDRAWAL_FLOW_NATIVE.txId.toString("hex"),
+          outputIndex: 0n,
+        },
+        info: {
+          body: {
+            l2_outref: {
+              transactionId: WITHDRAWAL_FLOW_NATIVE.txId.toString("hex"),
+              outputIndex: 0n,
+            },
+            l2_owner: FIXED_KEY.to_public().hash().to_hex(),
+            l2_value: new Map([["", new Map([["", FUNDED_OUTPUT_LOVELACE]])]]),
+            l1_address: FIXED_ADDRESS_DATA,
+            l1_datum: "NoDatum",
+          },
+          signature: ["aa", "bb"],
+          validity: "WithdrawalIsValid",
+        },
+      },
+    ],
+    forcedOrders: [
+      {
+        key: "flow",
+        nonceByte: "d3",
+        payload: genuineUserEventForcedPayloadForCanonicalTx(
+          FORCED_FLOW_NATIVE.txCbor,
+        ),
+      },
+      ...(
+        Object.entries(FORCED_VARIANT_NONCES) as [
+          keyof typeof FORCED_VARIANT_NONCES,
+          string,
+        ][]
+      ).map(([key, nonceByte]) => ({
+        key,
+        nonceByte,
+        payload: genuineUserEventForcedPayloadForCanonicalTx(
+          (key === "Mismatch"
+            ? FORCED_INVALID_CASES.ValueNotPreserved
+            : FORCED_INVALID_CASES[key]
+          ).native.txCbor,
+        ),
+      })),
+    ],
+  });
+  const read = async (
+    authority: WatcherLocalUserEventAuthority | null | undefined,
+  ): Promise<LocalReplayEvent> => {
+    if (authority === null || authority === undefined)
+      throw new Error("local replay authority was not published");
+    return readLocalReplayEvent(authority);
+  };
+  depositLocal = await read(localAuthorities.deposit);
+  withdrawalLocal = await read(localAuthorities.withdrawals.flow);
+  forcedLocal = await read(localAuthorities.forcedOrders.flow);
+  const variants: Partial<
+    Record<keyof typeof FORCED_VARIANT_NONCES, LocalReplayEvent>
+  > = {};
+  for (const key of Object.keys(
+    FORCED_VARIANT_NONCES,
+  ) as (keyof typeof FORCED_VARIANT_NONCES)[])
+    variants[key] = await read(localAuthorities.forcedOrders[key]);
+  forcedVariantLocal = variants as Record<
+    keyof typeof FORCED_VARIANT_NONCES,
+    LocalReplayEvent
+  >;
+}, 120_000);
+
+afterAll(async () => {
+  await localAuthorities?.close();
+}, 120_000);
+
+// Every `outRef` below is §5.3's fixed-index field-0/1 item — the ledger MPF
+// trie key — so each is exactly 38 bytes and its output index is the
+// non-minimal `19 0000`, never the minimal `00` CML would emit. The two tx ids
+// and all eight roots are downstream of that key width: the spend-input items a
+// fixture transaction commits determine its id, and the trie keys determine
+// every root, so re-pinning the out-refs necessarily re-pins the rest.
+export const FIXED_TWO_TX_ROOTS = [
+  {
+    sequence: 0,
+    txIndex: 0,
+    txId: "5aa36d0b6f5cc700f18f54386542bd937ba7b96625eff82e81c1f451686e94dd",
+    stepIndex: null,
+    phase: null,
+    operation: "delete",
+    outRef:
+      "8258201111111111111111111111111111111111111111111111111111111111111111190000",
+    preRoot: "49476a071f7393279ca22a35d4ebe3b3316190c47890e5af7f3f12fded51c915",
+    postRoot:
+      "82fc6f18dd68ee99bc196356f2464631186bac1391508525f5e6267bd860bfce",
+  },
+  {
+    sequence: 1,
+    txIndex: 0,
+    txId: "5aa36d0b6f5cc700f18f54386542bd937ba7b96625eff82e81c1f451686e94dd",
+    stepIndex: null,
+    phase: null,
+    operation: "insert",
+    outRef:
+      "8258205aa36d0b6f5cc700f18f54386542bd937ba7b96625eff82e81c1f451686e94dd190000",
+    preRoot: "82fc6f18dd68ee99bc196356f2464631186bac1391508525f5e6267bd860bfce",
+    postRoot:
+      "6bb3c6e322f6cf64aacde28c9d4e489dd5173a92ba76e270771c2e7226fc1fad",
+  },
+  {
+    sequence: 2,
+    txIndex: 1,
+    txId: "72e8307b8f82e2e380eed82386cf0d480304166cedb40011147e65fb110ab9ff",
+    stepIndex: null,
+    phase: null,
+    operation: "delete",
+    outRef:
+      "8258201212121212121212121212121212121212121212121212121212121212121212190000",
+    preRoot: "6bb3c6e322f6cf64aacde28c9d4e489dd5173a92ba76e270771c2e7226fc1fad",
+    postRoot:
+      "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
+  },
+  {
+    sequence: 3,
+    txIndex: 1,
+    txId: "72e8307b8f82e2e380eed82386cf0d480304166cedb40011147e65fb110ab9ff",
+    stepIndex: null,
+    phase: null,
+    operation: "insert",
+    outRef:
+      "82582072e8307b8f82e2e380eed82386cf0d480304166cedb40011147e65fb110ab9ff190000",
+    preRoot: "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
+    postRoot:
+      "6d4a5867c105f9c81fa71dfea9c531063c1b3d88d28539b77941eab4ec6c58ac",
+  },
+] as const;
+
+export const replay = async (
+  candidates: Parameters<
+    typeof evaluateWatcherBlockReplayCandidates
+  >[0]["candidates"],
+  priorState: readonly WatcherBlockReplayPriorUtxo[],
+  expectedPostStateRoot?: string,
+) => {
+  const prior = await watcherBlockReplayPriorState(priorState);
+  return await evaluateWatcherBlockReplayCandidates({
+    candidates,
+    priorState,
+    expectedPriorStateRoot: prior.root,
+    ...(expectedPostStateRoot === undefined ? {} : { expectedPostStateRoot }),
+    config,
+  });
+};
+
+export const outputReference = (byte: number): SDK.OutputReference => ({
+  transactionId: h32(byte),
+  outputIndex: 0n,
+});
+
+const addressData = (byte: number): SDK.AddressData => ({
+  paymentCredential: { PublicKeyCredential: [h28(byte)] },
+  stakeCredential: null,
+});
+
+export const depositEvent = (byte: number): PublicFixtureEvent => {
+  const id = outputReference(byte);
+  return {
+    eventKey: { DepositEventKey: { deposit_id: id } },
+    phase: "Deposit",
+    domain: "deposits",
+    entry: [
+      dataHex(id, SDK.OutputReferenceSchema),
+      dataHex(
+        {
+          l2_address: addressData(byte + 1),
+          l2_network_id: 0n,
+          l2_datum: null,
+        } satisfies SDK.DepositInfo,
+        SDK.DepositInfoSchema,
+      ),
+    ],
+  };
+};

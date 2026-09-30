@@ -1,11 +1,48 @@
+import "@aiken-lang/merkle-patricia-forestry";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec/forced";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import "../src/field-opening.js";
+import "../src/linear-fault-family.js";
+import "../src/mint-declared-asset-limit/actuator.js";
+import "../src/mint-declared-asset-limit/artifact.js";
+import "../src/mint-declared-asset-limit/contracts.js";
+import "../src/mint-declared-asset-limit/family.js";
+import "../src/mint-declared-asset-limit/schemas.js";
+import "../src/mint-declared-asset-limit/staged-plan.js";
+import "../src/mint-declared-asset-limit/submit-cancel.js";
+import "../src/mint-declared-asset-limit/submit-step-01.js";
+import "../src/mint-declared-asset-limit/submit-step-02.js";
+import "../src/mint-declared-asset-limit/submit-step-03.js";
+import "../src/mint-declared-asset-limit/submit-step-04.js";
+import "../src/step-support.js";
+import "../src/testing/complete-lifecycle.js";
+import "../src/transition-trace/phas.js";
+import "../src/workflow/transaction-boundary.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/expect-onchain-refusal.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/native-tx.js";
+import "./support/emulator/reference-scripts.js";
+import "./support/emulator/registered-chain.js";
+import "./support/emulator/removal-deployment.js";
+import "./support/emulator/setup-tx.js";
+import "./support/lifecycle-coverage.js";
+import "./support/measured-fit-ledger.js";
+import "./support/submit-init-emulator-fixtures.js";
+import "./support/submit-init-emulator-shared.js";
+import "./mint-declared-asset-limit-lifecycle.registered-contracts.js";
+import "./mint-declared-asset-limit-lifecycle.expect-positive-margins.js";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardFieldPreimage,
-  encodeMidgardMintPolicyItem,
-  encodeMidgardNativeTxCompact,
-  encodeMidgardNativeTxWitnessSetCompact,
   materializeMidgardNativeTxFromCanonical,
   midgardFieldCommitment,
   selectMidgardFieldCarriageTier,
@@ -14,8 +51,6 @@ import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forc
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
-  AddressData,
-  addressDataFromBech32,
   fieldOpeningForField,
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -29,20 +64,10 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import {
-  certifyFaultProofFieldCarriage,
-  faultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { faultProofFieldCarriage } from "../src/field-opening.js";
 import { requireLinearFaultReferenceScript } from "../src/linear-fault-family.js";
 import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset-limit/actuator.js";
 import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/artifact.js";
-import {
-  applyMintDeclaredAssetLimitScripts,
-  MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
-  type MintDeclaredAssetLimitContracts,
-} from "../src/mint-declared-asset-limit/contracts.js";
 import {
   MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET,
   MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS,
@@ -82,333 +107,41 @@ import {
   submitMintDeclaredAssetLimitStep04,
   submitMintDeclaredAssetLimitStep04Raw,
 } from "../src/mint-declared-asset-limit/submit-step-04.js";
-import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
+import { expectPositiveMargins } from "./mint-declared-asset-limit-lifecycle.expect-positive-margins.js";
+import {
+  acceptedBlock,
+  acceptedEvidence,
+  coverage,
+  declaring,
+  fieldOfExactly,
+  firstStepDeploymentEntry,
+  type Measurement,
+  mintTx,
+  network,
+  printLedger,
+  progress,
+  publishCarriage,
+  publishFamilyReferences,
+  REASON_ARM,
+  registeredContracts,
+  singleton,
+  wide,
+} from "./mint-declared-asset-limit-lifecycle.registered-contracts.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import {
-  l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeNativeTx,
-} from "./support/emulator/native-tx.js";
-import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import {
-  expectRegisteredChainParity,
-  familyStepsFromRegisteredChain,
-} from "./support/emulator/registered-chain.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
   setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
-
-const network = "Custom" as const;
-const firstStepDeploymentEntry = "fraudProofMintDeclaredAssetLimit";
-const REASON_ARM = "MintDeclaredAssetLimit";
-const coverage = createLifecycleCoverageRecorder();
-
-type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
-type Capture = Awaited<ReturnType<typeof captureEmulatorSubmission>>;
-type Measurement = Capture["measurement"];
-
-/**
- * The registered chain is the deployed identity: the harness folds its first
- * step into the catalogue root. The family-side application must reproduce it
- * step for step before the suite drives it.
- */
-const registeredContracts = async (harness: Harness) => {
-  const addressData = await Effect.runPromise(
-    addressDataFromBech32(
-      harness.contracts.fraudProof.spendingScriptAddress,
-    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-  );
-  const registered =
-    harness.contracts.fraudProofContracts.mintDeclaredAssetLimit;
-  const category = harness.catalogue.categories.mintDeclaredAssetLimit;
-  expectRegisteredChainParity({
-    registered,
-    applied: applyMintDeclaredAssetLimitScripts({
-      blueprint: harness.realBlueprint,
-      network,
-      computationThreadPolicyId: harness.contracts.computationThread.policyId,
-      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-    }),
-    category,
-  });
-  const applied = familyStepsFromRegisteredChain(
-    registered.steps,
-    MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
-  );
-  const contracts: MintDeclaredAssetLimitContracts = {
-    steps: applied,
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
-    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    fieldPreimageCertificatePolicyId:
-      harness.contracts.fieldPreimageCertificate.policyId,
-    fieldPreimageCertificateMintingScript:
-      harness.contracts.fieldPreimageCertificate.mintingScript,
-  };
-  // Reference scripts are published only after the block under dispute is
-  // set up: the funder's publications must not consume the harness nonce.
-  return {
-    applied,
-    contracts,
-    catalogue: harness.catalogue,
-    category,
-    references: undefined as unknown as readonly [UTxO, UTxO, UTxO, UTxO],
-    certificateReference: undefined as unknown as UTxO,
-  };
-};
-type Registered = Awaited<ReturnType<typeof registeredContracts>>;
-
-/** Publishes the four applied steps and the certificate mint by reference. */
-const publishFamilyReferences = async (
-  harness: Harness,
-  registered: Registered,
-) => {
-  const references: UTxO[] = [];
-  for (const [index, step] of registered.applied.entries())
-    references.push(
-      (
-        await publishPlainReferenceScriptUtxo({
-          lucid: harness.funderLucid,
-          script: step.spendingScript,
-          label: `mint-declared-lifecycle-${index.toString()}`,
-        })
-      ).utxo,
-    );
-  registered.references = references as unknown as readonly [
-    UTxO,
-    UTxO,
-    UTxO,
-    UTxO,
-  ];
-  registered.certificateReference = (
-    await publishPlainReferenceScriptUtxo({
-      lucid: harness.funderLucid,
-      script: harness.contracts.fieldPreimageCertificate.mintingScript,
-      label: "mint-declared-lifecycle-certificate",
-    })
-  ).utxo;
-  return registered.references;
-};
-
-const policy = (byte: number) => Buffer.alloc(28, byte);
-
-const singleton = (byte: number) =>
-  encodeMidgardMintPolicyItem({
-    policyId: policy(byte),
-    assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
-  });
-
-/** `count` canonical two-byte asset names in ascending order. */
-const wide = (byte: number, count: number) =>
-  encodeMidgardMintPolicyItem({
-    policyId: policy(byte),
-    assets: Array.from({ length: count }, (_, index) => ({
-      assetName: Buffer.from([index >> 8, index & 255]),
-      quantity: 1n,
-    })),
-  });
-
-/**
- * A policy item whose canonical map header declares `count` (>= 256) assets
- * over `padding` body bytes the machine never reads when the header decides.
- */
-const declaring = (byte: number, count: number, padding: number) =>
-  Buffer.concat([
-    Buffer.from([0x82, 0x58, 0x1c]),
-    policy(byte),
-    Buffer.from([0xb9, count >> 8, count & 255]),
-    Buffer.alloc(Math.max(1, padding), 0),
-  ]);
-
-/** Pads the declaring target so the field-5 preimage is exactly `total` bytes. */
-const fieldOfExactly = (
-  prefix: readonly Buffer[],
-  targetByte: number,
-  declaredCount: number,
-  total: number,
-) => {
-  let padding = 1;
-  let field = encodeMidgardFieldPreimage([
-    ...prefix,
-    declaring(targetByte, declaredCount, padding),
-  ]);
-  for (let attempt = 0; attempt < 3 && field.length !== total; attempt += 1) {
-    padding += total - field.length;
-    field = encodeMidgardFieldPreimage([
-      ...prefix,
-      declaring(targetByte, declaredCount, padding),
-    ]);
-  }
-  expect(field).toHaveLength(total);
-  return field;
-};
-
-const mintTx = (mintField: Buffer, fee: bigint) => {
-  const base = makeNativeTx({ spendInputCbors: [], fee });
-  const nativeTx = materializeMidgardNativeTxFromCanonical({
-    version: base.version,
-    validity: base.validity,
-    body: { ...base.body, mintPreimageCbor: mintField },
-    witnessSet: base.witnessSet,
-  });
-  return {
-    nativeTx,
-    id: computeMidgardNativeTxId(nativeTx).toString("hex"),
-    compactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString("hex"),
-    sourceCbor: l2TransactionSourceCborV1(nativeTx),
-    witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
-      deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
-    ).toString("hex"),
-    mintField,
-    commitmentHex: midgardFieldCommitment(mintField).toString("hex"),
-  };
-};
-type MintTx = ReturnType<typeof mintTx>;
-
-/** One accepted block over several L2 transactions, with a proof for each. */
-const acceptedBlock = async (txs: readonly MintTx[]) => {
-  const store = new Store(undefined);
-  await store.ready();
-  const trie = new Trie(store);
-  for (const tx of txs)
-    await trie.insert(
-      Buffer.from(tx.id, "hex"),
-      Buffer.from(tx.sourceCbor, "hex"),
-    );
-  const transactionsRoot = Buffer.from(trie.hash).toString("hex");
-  const inclusions = [];
-  for (const tx of txs) {
-    const proof = await trie.prove(Buffer.from(tx.id, "hex"));
-    const proofCbor = proof.toCBOR().toString("hex");
-    inclusions.push({
-      nativeTxId: tx.id,
-      nativeTx: nativeTxFromCoreCompact(tx.nativeTx.compact),
-      nativeTxCompactCbor: tx.compactCbor,
-      l2TransactionSourceCbor: tx.sourceCbor,
-      transactionsPhasRoot: transactionsRoot,
-      txMembershipProof: Data.from(proofCbor, Proof),
-      txMembershipProofCbor: proofCbor,
-    });
-  }
-  return { transactionsRoot, inclusions };
-};
-
-const acceptedEvidence = (tx: MintTx, policyIndex: number) =>
-  prepareMintDeclaredAssetLimitEvidence({
-    finding: { subject: acceptedVerdictSubject(tx.id), policyIndex },
-    fieldPreimage: tx.mintField,
-    committedFieldHashHex: tx.commitmentHex,
-  });
-
-/** Publishes a field's carriage (and, when certified, its certificate). */
-const publishCarriage = async (
-  harness: Harness,
-  registered: Registered,
-  tx: Pick<MintTx, "id" | "compactCbor"> &
-    Partial<Pick<MintTx, "witnessSetCompactCbor">>,
-  items: readonly Buffer[],
-  label: string,
-  sourceKind: 0n | 1n,
-) => {
-  const planned = planFaultProofFieldOpening({
-    anchorSourceKind: sourceKind,
-    fieldIndex: 5,
-    anchorTxId: tx.id,
-    nativeTxCompactCbor: tx.compactCbor,
-    itemCbors: items,
-    owner: harness.proverSigner.paymentKeyHash,
-    publish: true,
-    label,
-  });
-  const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-    publishFaultProofFieldCarriage({
-      lucid: harness.proverLucid,
-      signer: harness.proverSigner,
-      planned,
-      publisherAddress: harness.proverSigner.address,
-      label,
-    }),
-  );
-  const certificate =
-    planned.plan.tier === "Certified"
-      ? await captureEmulatorSubmission(harness.emulator, () =>
-          certifyFaultProofFieldCarriage({
-            lucid: harness.proverLucid,
-            network,
-            signer: harness.proverSigner,
-            planned,
-            certificatePolicyId:
-              harness.contracts.fieldPreimageCertificate.policyId,
-            certificateMintingScript:
-              harness.contracts.fieldPreimageCertificate.mintingScript,
-            certificateReferenceScriptUtxo: registered.certificateReference,
-            chunkUtxos: carriage.result,
-            compactCbor: tx.compactCbor,
-            witnessSetCompactCbor: tx.witnessSetCompactCbor!,
-          }),
-        )
-      : undefined;
-  return { planned, carriage, certificate };
-};
-
-const progress = (message: string) => {
-  if (process.env.MIDGARD_PRINT_FIT === "1")
-    console.info(`[mint-declared-lifecycle] ${message}`);
-};
-
-const measuredFit = createMeasuredFitRecorder(
-  "mint-declared-asset-limit",
-  "lifecycle",
-  "62 policies with 1000-asset first policy, exact 32768-byte certified field and 192-unit fold; both directions",
-);
-
-const printLedger = (
-  label: string,
-  rows: readonly (readonly [string, Measurement])[],
-) => {
-  rows.forEach(([name, measurement], index) =>
-    measuredFit.record(
-      `${label}/${index}-${name}`,
-      measurement,
-      measurement.executionMemory === 0n ? "publication" : "lifecycle",
-    ),
-  );
-  if (process.env.MIDGARD_PRINT_FIT === "1")
-    console.info(
-      `[${label}] ${JSON.stringify(rows, (_key, value: unknown) =>
-        typeof value === "bigint" ? value.toString() : value,
-      )}`,
-    );
-};
-
-const expectPositiveMargins = (
-  rows: readonly (readonly [string, Measurement])[],
-  publicationOnly: readonly string[] = [],
-) => {
-  for (const [label, measurement] of rows) {
-    expect(measurement.l1ByteMargin, label).toBeGreaterThan(0);
-    if (!publicationOnly.includes(label)) {
-      expect(measurement.executionMemory, label).toBeGreaterThan(0n);
-      expect(measurement.executionSteps, label).toBeGreaterThan(0n);
-    }
-  }
-};
 
 describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
   it("proves the maximum accepted crossing, refuses every honest and substituted accepted shape, and removes the block", async () => {

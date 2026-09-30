@@ -30,35 +30,51 @@
  * the artifact's own arithmetic.
  */
 
-import { createHash } from "node:crypto";
+import "node:crypto";
+import "node:child_process";
+import "node:fs";
+import "node:path";
+import "node:url";
+import "./verify-canonical-v1-cg1-control-publication-fit.matching-bracket-end.mjs";
+
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  extractArrayLiteralNames,
+  extractStringRecord,
+  flagValue,
+  sameJson,
+} from "./verify-canonical-v1-cg1-control-publication-fit.matching-bracket-end.mjs";
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+
 const repositoryRoot = resolve(scriptDirectory, "../..");
 
 const GATE_PATH =
   "docs/exec-plans/evidence/canonical-v1-cg1-control-publication-fit-v1.json";
+
 const BLUEPRINT_PATH = "onchain/aiken/plutus.json";
+
 /* The blueprint is gitignored, so a fresh checkout (CI) structurally     */
 /* cannot carry it. --blueprint-optional skips ONLY the working-tree hash */
 /* comparison in that case; every index-bound check still enforces, and a */
 /* PRESENT blueprint is always compared regardless of the flag.           */
 const blueprintOptional = process.argv.includes("--blueprint-optional");
+
 const ROSTER_SOURCE_PATH =
   "demo/midgard-node/src/transactions/reference-scripts.ts";
+
 const AUTH_TOKEN_MAP_PATH = "demo/midgard-sdk/src/reference-scripts.ts";
+
 const RESOLVER_APPLIED_HASHES_TEST_PATH =
   "demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts";
+
 const L1_MAX_TX_SIZE = 16384;
 
-const flagValue = (name) => {
-  const prefix = `--${name}=`;
-  const found = process.argv.find((argument) => argument.startsWith(prefix));
-  return found === undefined ? null : found.slice(prefix.length);
-};
 const gatePath = (() => {
   const explicit =
     flagValue("gate-under-test") ?? process.env.MIDGARD_CG1_GATE_PATH ?? null;
@@ -66,6 +82,7 @@ const gatePath = (() => {
 })();
 
 const errors = [];
+
 const fail = (message) => {
   errors.push(message);
 };
@@ -86,110 +103,8 @@ const indexedPaths = new Set(
     .split("\n")
     .filter((line) => line.length > 0),
 );
+
 const indexHas = (path) => indexedPaths.has(path);
-
-const sameJson = (left, right) =>
-  JSON.stringify(left) === JSON.stringify(right);
-
-/* ------------------------------------------------------------------ */
-/* A minimal, dependency-free extractor for the two source shapes this  */
-/* gate reads: an arrow function returning an array literal, and a      */
-/* `export const X = { ... } as const` string-to-string object literal. */
-/* Both walk bracket depth with quote-awareness rather than regexing the */
-/* whole file, so a literal brace/bracket inside a string cannot desync  */
-/* the scan.                                                             */
-/* ------------------------------------------------------------------ */
-
-const skipStringLiteral = (text, start) => {
-  const quote = text[start];
-  let index = start + 1;
-  while (index < text.length) {
-    const character = text[index];
-    if (character === "\\") {
-      index += 2;
-      continue;
-    }
-    if (character === quote) return index + 1;
-    index += 1;
-  }
-  throw new Error("unterminated string literal");
-};
-
-/** Scans forward from `openIndex` (which must point at an opening bracket)
- * and returns the index just past its matching close, tracking string
- * literals and `//`/`/* *\/` comments so bracket and quote characters inside
- * either are never counted. Without comment-awareness a stray apostrophe in
- * an English comment (e.g. "midgard-core's") reads as an unterminated
- * single-quote string and desyncs the whole scan. */
-const matchingBracketEnd = (text, openIndex, openChar, closeChar) => {
-  let depth = 0;
-  let index = openIndex;
-  while (index < text.length) {
-    const character = text[index];
-    const next = text[index + 1];
-    if (character === "/" && next === "/") {
-      const lineEnd = text.indexOf("\n", index);
-      index = lineEnd < 0 ? text.length : lineEnd + 1;
-      continue;
-    }
-    if (character === "/" && next === "*") {
-      const blockEnd = text.indexOf("*/", index + 2);
-      if (blockEnd < 0) throw new Error("unterminated block comment");
-      index = blockEnd + 2;
-      continue;
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      index = skipStringLiteral(text, index);
-      continue;
-    }
-    if (character === openChar) depth += 1;
-    else if (character === closeChar) {
-      depth -= 1;
-      if (depth === 0) return index + 1;
-    }
-    index += 1;
-  }
-  throw new Error(
-    `unbalanced ${openChar}${closeChar} starting at ${String(openIndex)}`,
-  );
-};
-
-/** Extracts the ordered `name: "..."` literals from an
- * `export const X = (...): T => [ ... ];` array-literal function body. */
-const extractArrayLiteralNames = (source, exportedConstName) => {
-  const declMarker = `export const ${exportedConstName} = (`;
-  const declStart = source.indexOf(declMarker);
-  if (declStart < 0) {
-    throw new Error(`${exportedConstName} declaration not found in source`);
-  }
-  const arrowMarker = "=> [";
-  const arrowIndex = source.indexOf(arrowMarker, declStart);
-  if (arrowIndex < 0) {
-    throw new Error(`${exportedConstName} does not return an array literal`);
-  }
-  const openIndex = arrowIndex + arrowMarker.length - 1;
-  const closeEnd = matchingBracketEnd(source, openIndex, "[", "]");
-  const body = source.slice(openIndex, closeEnd);
-  return [...body.matchAll(/\bname:\s*"([^"]+)"/gu)].map((match) => match[1]);
-};
-
-/** Extracts the ordered `"key": "value"` string-to-string entries from an
- * `export const X = { ... } as const;` object literal. */
-const extractStringRecord = (source, exportedConstName) => {
-  const declMarker = `export const ${exportedConstName} = {`;
-  const declStart = source.indexOf(declMarker);
-  if (declStart < 0) {
-    throw new Error(`${exportedConstName} declaration not found in source`);
-  }
-  const openIndex = declStart + declMarker.length - 1;
-  const closeEnd = matchingBracketEnd(source, openIndex, "{", "}");
-  const body = source.slice(openIndex, closeEnd);
-  const record = new Map();
-  for (const match of body.matchAll(/"([^"]+)":\s*"([^"]+)"/gu)) {
-    record.set(match[1], match[2]);
-  }
-  return record;
-};
 
 /* ------------------------------------------------------------------ */
 /* Derivation from source.                                             */
@@ -198,6 +113,7 @@ const extractStringRecord = (source, exportedConstName) => {
 if (!indexHas(ROSTER_SOURCE_PATH)) {
   fail(`Roster source ${ROSTER_SOURCE_PATH} is not in the index`);
 }
+
 if (!indexHas(AUTH_TOKEN_MAP_PATH)) {
   fail(`Auth-token map source ${AUTH_TOKEN_MAP_PATH} is not in the index`);
 }
@@ -205,6 +121,7 @@ if (!indexHas(AUTH_TOKEN_MAP_PATH)) {
 const rosterSourceText = indexHas(ROSTER_SOURCE_PATH)
   ? readIndexed(ROSTER_SOURCE_PATH)
   : "";
+
 const authTokenMapSourceText = indexHas(AUTH_TOKEN_MAP_PATH)
   ? readIndexed(AUTH_TOKEN_MAP_PATH)
   : "";
@@ -215,6 +132,7 @@ const derivedRosterNames = rosterSourceText
       "nodeRuntimeReferenceScriptTargets",
     )
   : [];
+
 const derivedAuthTokenMap = authTokenMapSourceText
   ? extractStringRecord(
       authTokenMapSourceText,
@@ -231,13 +149,16 @@ const derivedAuthTokenMap = authTokenMapSourceText
 // caught even though it would not change which names appear in source text.
 const CEK_MATERIAL_GUARD =
   "contracts.cekProgramMaterial.spendingScriptHash ===\n  contracts.txOrder.spendingScriptHash";
+
 const VALIDATION_TRACE_GUARD =
   "contracts.fraudProofs.validationTraceDispute === undefined";
+
 if (rosterSourceText && !rosterSourceText.includes(CEK_MATERIAL_GUARD)) {
   fail(
     "nodeRuntimeReferenceScriptTargets's CEK program-material inclusion guard no longer reads as expected; the roster derivation may no longer match a real contract set",
   );
 }
+
 if (rosterSourceText && !rosterSourceText.includes(VALIDATION_TRACE_GUARD)) {
   fail(
     "nodeRuntimeReferenceScriptTargets's validation-trace-dispute inclusion guard no longer reads as expected; the roster derivation may no longer match a real contract set",
@@ -247,6 +168,7 @@ if (rosterSourceText && !rosterSourceText.includes(VALIDATION_TRACE_GUARD)) {
 const rosterSourceSha256 = rosterSourceText
   ? createHash("sha256").update(rosterSourceText, "utf8").digest("hex")
   : null;
+
 const authTokenMapSourceSha256 = authTokenMapSourceText
   ? createHash("sha256").update(authTokenMapSourceText, "utf8").digest("hex")
   : null;
@@ -258,10 +180,15 @@ const authTokenMapSourceSha256 = authTokenMapSourceText
 /* ------------------------------------------------------------------ */
 
 const blueprintAbsolutePath = resolve(repositoryRoot, BLUEPRINT_PATH);
+
 const blueprintExists = existsSync(blueprintAbsolutePath);
+
 let blueprintSha256 = null;
+
 let blueprintMd5 = null;
+
 let blueprintValidatorCount = -1;
+
 if (blueprintExists) {
   const blueprintBytes = readFileSync(blueprintAbsolutePath);
   blueprintSha256 = createHash("sha256").update(blueprintBytes).digest("hex");
@@ -279,6 +206,7 @@ if (blueprintExists) {
     `Blueprint ${BLUEPRINT_PATH} does not exist in the working tree; CG1 cannot measure a hash basis without it (pass --blueprint-optional only where the gitignored blueprint is structurally absent, e.g. CI)`,
   );
 }
+
 const blueprintIsIndexed = indexHas(BLUEPRINT_PATH);
 
 /* ------------------------------------------------------------------ */
@@ -289,6 +217,7 @@ if (!existsSync(gatePath)) {
   process.stderr.write(`CG1 gate artifact does not exist: ${gatePath}\n`);
   process.exit(1);
 }
+
 const gate = JSON.parse(readFileSync(gatePath, "utf8"));
 
 if (
@@ -299,12 +228,15 @@ if (
 ) {
   fail("the gate artifact must be the CG1 control-publication fit review");
 }
+
 if (!Array.isArray(gate.waivers) || gate.waivers.length !== 0) {
   fail("CG1 admits no waivers; the waivers array must exist and be empty");
 }
+
 if (gate.createsC70Snapshots !== false) {
   fail("CG1 is a local gate and must never create a C70 trusted snapshot");
 }
+
 if (gate.liveOrReadinessClaims !== 0) {
   fail("CG1 must publish exactly 0 live or readiness claims");
 }
@@ -312,6 +244,7 @@ if (gate.liveOrReadinessClaims !== 0) {
 /* --- 1. Hash basis: the blueprint this artifact is bound to ---------- */
 
 const hashBasis = gate.hashBasis;
+
 if (hashBasis === undefined || hashBasis === null) {
   fail(
     "hashBasis is required: every hash in this artifact is bound to a blueprint",
@@ -363,6 +296,7 @@ if (hashBasis === undefined || hashBasis === null) {
 /* --- 3. Roster source binding ----------------------------------------- */
 
 const rosterSource = gate.rosterSource;
+
 if (rosterSource === undefined || rosterSource === null) {
   fail("rosterSource is required: the roster must cite its derivation source");
 } else {
@@ -400,10 +334,13 @@ if (rosterSource === undefined || rosterSource === null) {
 /* --- 4. Roster inventory: re-derived from source, not restated -------- */
 
 const publishedRoster = Array.isArray(gate.roster) ? gate.roster : [];
+
 const publishedNames = publishedRoster.map((entry) => entry?.name);
+
 const missingRosterEntries = derivedRosterNames.filter(
   (name) => !publishedNames.includes(name),
 );
+
 const extraRosterEntries = publishedNames.filter(
   (name) => !derivedRosterNames.includes(name),
 );
@@ -413,12 +350,15 @@ if (!sameJson(publishedNames, derivedRosterNames)) {
     `roster names/order must equal nodeRuntimeReferenceScriptTargets's source order exactly: missing ${JSON.stringify(missingRosterEntries)}, extra ${JSON.stringify(extraRosterEntries)}`,
   );
 }
+
 if (gate.rosterCount !== publishedRoster.length) {
   fail("rosterCount must equal the published roster's length");
 }
 
 const seenRosterNames = new Set();
+
 let rosterEntriesNotFitting = 0;
+
 for (const [index, entry] of publishedRoster.entries()) {
   const label = entry?.name ?? `roster[${String(index)}]`;
   if (seenRosterNames.has(entry?.name)) {
@@ -473,6 +413,7 @@ for (const [index, entry] of publishedRoster.entries()) {
     fail(`roster entry "${label}" must publish a positive feeLovelace`);
   }
 }
+
 if (gate.rosterAllFit !== (rosterEntriesNotFitting === 0)) {
   fail("rosterAllFit must equal (every roster entry fits)");
 }
@@ -480,9 +421,11 @@ if (gate.rosterAllFit !== (rosterEntriesNotFitting === 0)) {
 /* --- 5. Exclusions: named, justified, and genuinely absent from source */
 
 const CEK_RESOLVER_NAME = "V1 validation-trace CEK direct resolver";
+
 const publishedExclusions = Array.isArray(gate.exclusions)
   ? gate.exclusions
   : [];
+
 let unjustifiedExclusions = 0;
 
 if (publishedExclusions.length !== 1) {
@@ -541,8 +484,10 @@ if (publishedExclusions.length !== 1) {
 /* --- 6. Oversize canary: points at the self-test that proves it -------- */
 
 const canary = gate.oversizeCanary;
+
 const SELF_TEST_PATH =
   "demo/scripts/verify-canonical-v1-cg1-control-publication-fit-self-test.mjs";
+
 if (canary === undefined || canary === null) {
   fail(
     "oversizeCanary is required: CG1 must prove it enforces the real byte bound",
@@ -592,11 +537,13 @@ const everythingMeasuredPass =
 if (gate.gateStatus !== "PASS" && gate.gateStatus !== "BLOCKED") {
   fail("gateStatus must be measured as PASS or BLOCKED");
 }
+
 if (gate.gateStatus === "PASS" && !everythingMeasuredPass) {
   fail(
     "gateStatus is PASS while the roster, exclusions, or blueprint hash basis are not all measured clean",
   );
 }
+
 if (
   gate.gateStatus !== "PASS" &&
   everythingMeasuredPass &&

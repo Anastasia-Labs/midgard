@@ -1,30 +1,42 @@
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import "@aiken-lang/merkle-patricia-forestry";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/field-opening.js";
+import "../src/field-preimage-length-mismatch/prepare-accepted.js";
+import "../src/field-preimage-length-mismatch/submit-lucid.js";
+import "../src/field-preimage-length-mismatch/workflow.js";
+import "../src/prepare-double-spend.js";
+import "../src/remove-fraudulent-block.js";
+import "../src/step-support.js";
+import "../src/testing/complete-lifecycle.js";
+import "../src/transition-trace/witnesses.js";
+import "./support/committed-field-shape-emulator.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/header-fixtures.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/reference-scripts.js";
+import "./support/emulator/registered-chain.js";
+import "./support/emulator/setup-tx.js";
+import "./support/field-preimage-length-mismatch-forced-fixture.js";
+import "./support/lifecycle-coverage.js";
+import "./support/measured-fit-ledger.js";
+import "./support/submit-init-emulator-fixtures.js";
+import "./support/submit-init-emulator-shared.js";
+import "./field-preimage-length-mismatch-lifecycle.registered-contracts.js";
+import "./field-preimage-length-mismatch-lifecycle.setup.js";
+import "./field-preimage-length-mismatch-lifecycle.forced-prepared.js";
+
 import {
-  computeMidgardNativeTxId,
-  deriveMidgardNativeTxWitnessSetCompact,
-  encodeCbor,
-  encodeMidgardFieldPreimage,
-  encodeMidgardNativeTxCanonical,
-  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxProofFieldLengths,
-  encodeMidgardNativeTxWitnessSetCompact,
-  materializeMidgardNativeTxFromCanonical,
-  midgardNativeTxProofFieldPreimageLengths,
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
-import {
-  buildFaultProofContracts,
-  buildFieldPreimageLengthMismatchFaultProofContracts,
-  type CommittedFieldClaim,
-  type FieldPreimageLengthMismatchFaultProofContracts,
-  type Header,
-  L2TransactionSourceSchema,
-  parseFaultProofBlueprint,
-  Proof,
-} from "@al-ft/midgard-sdk";
+import { L2TransactionSourceSchema } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { getAddressDetails } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -33,7 +45,6 @@ import {
   faultProofRawFieldCarriage,
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
-import type { ManifestBoundFieldPreimageLengthConfig } from "../src/field-preimage-length-mismatch/config.js";
 import {
   fieldPreimageLengthCommittedClaim,
   prepareAcceptedFieldPreimageLengthMismatch,
@@ -51,545 +62,38 @@ import {
   type PreparedFieldPreimageLengthWorkflow,
   prepareFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/workflow.js";
-import { encodeL2TransactionSourceValue } from "../src/prepare-double-spend.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import {
-  nativeTxFromCoreCompact,
-  parseSubmitStep01TxInclusion,
-} from "../src/step-support.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
-import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
+import {
+  forcedPrepared,
+  forcedSetup,
+  inlineBodyClaim,
+} from "./field-preimage-length-mismatch-lifecycle.forced-prepared.js";
+import {
+  coverage,
+  emitFit,
+  expectOnChainRefusal,
+  fitRows,
+  flipFirstByte,
+  REASON,
+  successorSwappedConfig,
+  WORKFLOW,
+} from "./field-preimage-length-mismatch-lifecycle.registered-contracts.js";
+import {
+  removeFraudulentBlock,
+  setup,
+} from "./field-preimage-length-mismatch-lifecycle.setup.js";
 import { network } from "./support/emulator/blueprints.js";
-import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
-import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { expectRegisteredChainParity } from "./support/emulator/registered-chain.js";
-import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX } from "./support/field-preimage-length-mismatch-forced-fixture.js";
 import {
-  buildFieldPreimageLengthForcedFixture,
-  FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX,
-} from "./support/field-preimage-length-mismatch-forced-fixture.js";
-import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
   countedTransactionsRoot,
-  createRecordingLeaseCoordinator,
   emulatorSuccessorHeaderStart,
-  setupFraudulentBlock,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
-
-const measuredFit = createMeasuredFitRecorder(
-  "field-preimage-length-mismatch",
-  "lifecycle",
-  "32,768-byte certified field preimage, inline carriage, both proof directions and cancellation",
-);
-
-const REASON = "FieldPreimageLengthMismatch";
-const WORKFLOW = "midgard-field-preimage-length-mismatch-workflow-v1" as const;
-const coverage = createLifecycleCoverageRecorder();
-const fitRows: {
-  readonly stage: string;
-  readonly measurement: CompleteSignedTransactionMeasurement;
-}[] = [];
-
-const emitFit = (
-  stage: string,
-  measurement: CompleteSignedTransactionMeasurement,
-): void => {
-  fitRows.push({ stage, measurement });
-  measuredFit.record(
-    stage,
-    measurement,
-    measurement.executionMemory === 0n ? "publication" : "lifecycle",
-  );
-  expect(measurement.l1ByteMargin).toBeGreaterThan(0);
-  expect(measurement.executionMemory).toBeLessThanOrEqual(16_500_000n);
-  expect(measurement.executionSteps).toBeLessThanOrEqual(10_000_000_000n);
-  console.info(
-    `[field-preimage-length-fit] ${JSON.stringify({
-      stage,
-      signedBytes: measurement.completeSignedBytes,
-      byteMargin: measurement.l1ByteMargin,
-      memory: measurement.executionMemory.toString(),
-      memoryMargin: (16_500_000n - measurement.executionMemory).toString(),
-      cpu: measurement.executionSteps.toString(),
-      cpuMargin: (10_000_000_000n - measurement.executionSteps).toString(),
-    })}`,
-  );
-};
-
-/**
- * A refusal raised by local UPLC evaluation of the real applied script, as
- * opposed to one of the family's own pre-construction guards. The submitters
- * prefix every off-chain refusal with the family label; a script failure
- * surfaces from Lucid's evaluator without it.
- */
-const expectOnChainRefusal = async (
-  attempt: () => Promise<unknown>,
-  label: string,
-): Promise<void> => {
-  let message: string | undefined;
-  try {
-    await attempt();
-  } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
-  }
-  if (message === undefined) {
-    throw new Error(
-      `${label}: the applied script accepted a mutated transaction`,
-    );
-  }
-  expect(message).not.toMatch(/field-preimage-length-mismatch:/u);
-  expect(message).not.toMatch(/forced leaf differs/u);
-  expect(message).toMatch(/eval|script|uplc|redeemer|budget|fail/iu);
-  console.info(
-    `[field-preimage-length-refusal] ${label}: ${message.slice(0, 200)}`,
-  );
-};
-
-const successorSwappedConfig = (
-  config: ManifestBoundFieldPreimageLengthConfig,
-): ManifestBoundFieldPreimageLengthConfig => {
-  const chain = config.contracts.fieldPreimageLengthMismatch;
-  return {
-    ...config,
-    contracts: {
-      ...config.contracts,
-      fieldPreimageLengthMismatch: {
-        ...chain,
-        acceptedStep02: chain.forcedStep02,
-      },
-    },
-  };
-};
-
-const flipFirstByte = (bytes: Uint8Array): Buffer => {
-  const flipped = Buffer.from(bytes);
-  flipped[0] = (flipped[0]! ^ 0x01) & 0xff;
-  return flipped;
-};
-
-type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
-
-/**
- * The registered chain is the deployed identity: the harness folds its first
- * step into the catalogue root. The family SDK builder and the central SDK
- * chain builder are the two application paths that must reproduce it step
- * for step before the suite drives it.
- */
-const registeredContracts = async (harness: Harness) => {
-  const registered =
-    harness.contracts.fraudProofContracts.fieldPreimageLengthMismatch;
-  const category = harness.catalogue.categories.fieldPreimageLengthMismatch;
-  if (registered === undefined || category === undefined) {
-    throw new Error("field-preimage-length deployment is absent");
-  }
-  const params = () => ({
-    eventHistoryBounds: {
-      inlineLimitBytes: 512n,
-      maxPayloadBytes: 5000n,
-      maxPayloadNodes: 512n,
-    },
-    blueprint: parseFaultProofBlueprint(structuredClone(harness.realBlueprint)),
-    network,
-    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    fraudProofCataloguePolicyId: harness.contracts.fraudProofCatalogue.policyId,
-    referenceScriptAuthPolicyId: harness.contracts.referenceScriptAuth.policyId,
-  });
-  const family = await Effect.runPromise(
-    buildFieldPreimageLengthMismatchFaultProofContracts(params()),
-  );
-  expectRegisteredChainParity({
-    registered,
-    applied: family.fieldPreimageLengthMismatch.steps,
-    category,
-  });
-  expect(
-    family.fieldPreimageLengthMismatch.acceptedStep02.spendingScriptHash,
-  ).toBe(registered.steps[1].spendingScriptHash);
-  expect(
-    family.fieldPreimageLengthMismatch.forcedStep02.spendingScriptHash,
-  ).toBe(registered.steps[2].spendingScriptHash);
-  expect(family.fieldPreimageCertificate.policyId).toBe(
-    harness.contracts.fieldPreimageCertificate.policyId,
-  );
-  const central = await Effect.runPromise(buildFaultProofContracts(params()));
-  expectRegisteredChainParity({
-    registered,
-    applied: central.fieldPreimageLengthMismatch.steps,
-    category,
-  });
-  expect(category.categoryId).toBe("00000020");
-  return { chain: registered, category };
-};
-
-type SetupOptions = Readonly<{
-  forced?: boolean;
-  acceptedPreimageBytes?: number;
-  /** Commit the honest length vector: the accepted block is not at fault. */
-  honestAccepted?: boolean;
-  /**
-   * A forced leaf the family opens straight from the retained root entries:
-   * `verdict` is the operator's, and `mismatch` overstates field 0 by one
-   * byte in the committed length vector. Reconstruction refuses such a
-   * payload, so these leaves never come out of `reconstructDaPayload`.
-   */
-  forcedLeaf?: {
-    readonly verdict: "rejected" | "valid";
-    readonly mismatch: boolean;
-  };
-}>;
-
-const setup = async ({
-  forced = false,
-  acceptedPreimageBytes,
-  honestAccepted = false,
-  forcedLeaf,
-}: SetupOptions = {}) => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: {
-      realFieldPreimageLengthMismatch: true,
-      alwaysFraudProofCatalogue: true,
-    },
-  });
-  const { chain, category } = await registeredContracts(harness);
-  const operator = async () => {
-    const credential = getAddressDetails(
-      await harness.funderLucid.wallet().address(),
-    ).paymentCredential;
-    if (credential?.type !== "Key") throw new Error("missing funder key");
-    return {
-      operatorVkey: credential.hash,
-      now:
-        alignUnixTimeToEmulatorSlotBoundary(
-          harness.funderLucid,
-          harness.emulator.now() + 120_000,
-        ) - 1,
-    };
-  };
-  const forcedFixture = forced
-    ? await buildInvalidForcedTransitionTraceFixture({
-        ...(await operator()),
-        fieldPreimageLengthMismatchIndex: 0,
-      })
-    : undefined;
-  const familyForced =
-    forcedLeaf === undefined
-      ? undefined
-      : await buildFieldPreimageLengthForcedFixture({
-          ...(await operator()),
-          verdict: forcedLeaf.verdict,
-          ...(forcedLeaf.mismatch
-            ? {
-                lengthsMutation: (lengths: number[]) => [
-                  lengths[0]! + 1,
-                  ...lengths.slice(1),
-                ],
-              }
-            : {}),
-        });
-  const forcedHeader = forcedFixture?.header ?? familyForced?.header;
-  const baseMaterial = committedFieldShapeScenarioMaterial("honest");
-  if (baseMaterial.fullTx === null || baseMaterial.canonicalTx === null)
-    throw new Error("missing canonical tx");
-  const material =
-    acceptedPreimageBytes === undefined
-      ? baseMaterial
-      : (() => {
-          const canonical = {
-            ...baseMaterial.canonicalTx,
-            body: {
-              ...baseMaterial.canonicalTx.body,
-              spendInputsPreimageCbor:
-                acceptedPreimageBytes === 32_768
-                  ? encodeMidgardFieldPreimage([
-                      encodeCbor(Buffer.alloc(32_761, 0xa5)),
-                    ])
-                  : Buffer.alloc(acceptedPreimageBytes, 0xa5),
-            },
-          };
-          const fullTx = materializeMidgardNativeTxFromCanonical(canonical);
-          return {
-            ...baseMaterial,
-            canonicalTx: canonical,
-            fullTx,
-            compact: fullTx.compact,
-            committedPreimage: Buffer.from(fullTx.body.spendInputsPreimageCbor),
-          };
-        })();
-  const materialFullTx = material.fullTx;
-  if (materialFullTx === null) throw new Error("missing material full tx");
-  expect(material.fieldIndex).toBe(0);
-  const nativeTxId = computeMidgardNativeTxId(material.compact).toString("hex");
-  const honestLengths = [
-    ...midgardNativeTxProofFieldPreimageLengths({
-      body: materialFullTx.body,
-      witnessSet: materialFullTx.witnessSet,
-    }),
-  ];
-  const lengths = [...honestLengths];
-  if (!honestAccepted) {
-    lengths[material.fieldIndex] = lengths[material.fieldIndex]! + 1;
-  }
-  const proofSource = (fieldLengths: readonly number[]) => ({
-    compactCbor: encodeMidgardNativeTxCompact(material.compact),
-    witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
-      deriveMidgardNativeTxWitnessSetCompact(materialFullTx.witnessSet),
-    ),
-    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
-      ...fieldLengths,
-    ]),
-  });
-  const sourceCbor = encodeL2TransactionSourceValue({
-    txId: nativeTxId,
-    proofSource: proofSource(lengths),
-  });
-  const store = new Store(undefined);
-  await store.ready();
-  const trie = new Trie(store);
-  await trie.insert(
-    Buffer.from(nativeTxId, "hex"),
-    Buffer.from(sourceCbor, "hex"),
-  );
-  const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
-  const transactionsRoot = Buffer.from(trie.hash).toString("hex");
-  const fraudulent =
-    forcedHeader === undefined
-      ? await setupFraudulentBlock({
-          funderLucid: harness.funderLucid,
-          emulator: harness.emulator,
-          contracts: harness.contracts,
-          catalogue: harness.catalogue,
-          fixture: {
-            transactionsRoot,
-            l2TransactionCount: 1n,
-            headerDurationMs: 300_000,
-          },
-        })
-      : await submitSetupTx({
-          lucid: harness.funderLucid,
-          contracts: harness.contracts,
-          nonceUtxo: harness.nonceUtxo,
-          catalogue: harness.catalogue,
-          header: forcedHeader,
-        });
-  const references = [];
-  for (const [index, step] of chain.steps.entries()) {
-    references.push(
-      (
-        await publishPlainReferenceScriptUtxo({
-          lucid: harness.funderLucid,
-          script: step.spendingScript,
-          label: `field-preimage-length-step-${index.toString()}`,
-        })
-      ).utxo,
-    );
-  }
-  const acceptedPrepared =
-    forcedFixture === undefined &&
-    acceptedPreimageBytes === undefined &&
-    !honestAccepted
-      ? await prepareAcceptedFieldPreimageLengthMismatch({
-          headerHash: fraudulent.headerHash,
-          committedTransactionsRoot: await countedTransactionsRoot(
-            transactionsRoot,
-            1n,
-          ),
-          l2TransactionCount: 1n,
-          entries: [[nativeTxId, sourceCbor]],
-          transactionId: nativeTxId,
-          canonicalTransactionCbor:
-            encodeMidgardNativeTxCanonical(materialFullTx),
-          fieldIndex: material.fieldIndex,
-        })
-      : undefined;
-  const scenario = {
-    canonicalTx: material.canonicalTx,
-    fullTx: material.fullTx,
-    nativeTxId,
-    fieldIndex: material.fieldIndex,
-    committedPreimage: material.committedPreimage,
-    referenceInputsPreimage: Buffer.from(
-      materialFullTx.body.referenceInputsPreimageCbor,
-    ),
-    honestLengths,
-    lengths,
-    witnessSetCompactCbor: proofSource(lengths).witnessSetCompactCbor,
-    /** The same transaction re-keyed under the honest vector: not in the PHAS. */
-    substitutedSourceCbor: encodeL2TransactionSourceValue({
-      txId: nativeTxId,
-      proofSource: proofSource(honestLengths),
-    }),
-    inclusion: {
-      nativeTxId,
-      nativeTx: nativeTxFromCoreCompact(material.compact),
-      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
-        material.compact,
-      ).toString("hex"),
-      l2TransactionSourceCbor: sourceCbor,
-      transactionsPhasRoot: transactionsRoot,
-      txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
-      txMembershipProofCbor: proof.toCBOR().toString("hex"),
-    },
-  };
-  const contracts: FieldPreimageLengthMismatchFaultProofContracts = {
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
-    fieldPreimageCertificate: harness.contracts.fieldPreimageCertificate,
-    fieldPreimageLengthMismatch: {
-      ...chain,
-      acceptedStep02: chain.steps[1],
-      forcedStep02: chain.steps[2],
-    },
-  };
-  const config = {
-    schemaVersion:
-      "midgard-field-preimage-length-mismatch-production-config-v1",
-    lucid: harness.proverLucid,
-    signer: harness.proverSigner,
-    binding: {
-      blueprint: harness.realBlueprint,
-      network,
-      catalogue: {
-        policyId: harness.contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: harness.catalogue.root,
-      },
-      definition: {
-        headerHash: fraudulent.headerHash,
-        stateQueue: { policyId: harness.contracts.stateQueue.policyId },
-      },
-      resolvedContracts: {
-        hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-        category,
-      },
-    },
-    contracts,
-    referenceScripts: {
-      step01: references[0],
-      step02Accepted: references[1],
-      step02Forced: references[2],
-      step03: references[3],
-      witnesses: harness.witnessReferenceScripts,
-    },
-  } as unknown as ManifestBoundFieldPreimageLengthConfig;
-  return {
-    harness,
-    config,
-    fraudulent,
-    scenario,
-    forcedFixture,
-    familyForced,
-    acceptedPrepared,
-    sourceCbor,
-    transactionsRoot,
-    canonicalTransactionCbor: encodeMidgardNativeTxCanonical(materialFullTx),
-    fraudulentHeader:
-      forcedHeader ??
-      (fraudulent as unknown as { readonly header: Header }).header,
-  };
-};
-
-type Fixture = Awaited<ReturnType<typeof setup>>;
-
-const removeFraudulentBlock = async (
-  fixture: Pick<Fixture, "harness" | "fraudulent">,
-  { leased = false }: { readonly leased?: boolean } = {},
-) => {
-  const removalReferences = await publishRemovalReferenceScripts({
-    lucid: fixture.harness.proverLucid,
-    contracts: fixture.harness.contracts,
-  });
-  // A registered family resolves removal through the canonical catalogue:
-  // the manifest's fraudProofFieldPreimageLengthMismatch entries carry the
-  // registered chain the harness folded into the catalogue root.
-  return await captureEmulatorSubmission(fixture.harness.emulator, () =>
-    submitRemoveFraudulentBlock({
-      lucid: fixture.harness.proverLucid,
-      blueprint: fixture.harness.realBlueprint,
-      deploymentInfo: buildRemovalDeploymentInfo(
-        fixture.harness.contracts,
-        fixture.harness.catalogue,
-        { removalReferenceScripts: removalReferences.published },
-      ),
-      network,
-      signer: fixture.harness.proverSigner,
-      fraudCategory: "fieldPreimageLengthMismatch",
-      fraudulentHeaderHash: fixture.fraudulent.headerHash,
-      awaitConfirmation: true,
-      requireReferenceScripts: true,
-      ...(leased
-        ? {
-            stateQueueMutationLeaseCoordinator: createRecordingLeaseCoordinator(
-              [],
-            ),
-          }
-        : {}),
-      validFrom: BigInt(Math.max(0, fixture.harness.emulator.now() - 120_000)),
-      validTo: BigInt(fixture.harness.emulator.now() + 300_000),
-    }),
-  );
-};
-
-const forcedPrepared = ({
-  headerHash,
-  transactionId,
-  direction,
-  declaredLength,
-  preimage,
-}: {
-  readonly headerHash: string;
-  readonly transactionId: string;
-  readonly direction: "wrongfulAcceptance" | "wrongfulRejection";
-  readonly declaredLength: number;
-  readonly preimage: Uint8Array;
-}): PreparedFieldPreimageLengthWorkflow => ({
-  schemaVersion: WORKFLOW,
-  headerHash,
-  transactionId,
-  direction,
-  fieldIndex: FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX,
-  declaredLength,
-  actualLength: preimage.length,
-  preimageHex: Buffer.from(preimage).toString("hex"),
-  carriage: "Inline",
-  evidenceDigest: "00".repeat(32),
-});
-
-const inlineBodyClaim = (
-  fieldIndex: number,
-  preimage: Uint8Array,
-): CommittedFieldClaim => ({
-  BodyFieldClaim: {
-    field_index: BigInt(fieldIndex),
-    carriage: { Inline: { preimage: Buffer.from(preimage).toString("hex") } },
-  },
-});
-
-/** `setup` over a retained-root forced leaf, exposing that leaf directly. */
-const forcedSetup = async (
-  verdict: "rejected" | "valid",
-  mismatch: boolean,
-) => {
-  const fixture = await setup({
-    honestAccepted: true,
-    forcedLeaf: { verdict, mismatch },
-  });
-  if (fixture.familyForced === undefined)
-    throw new Error("missing family forced leaf");
-  return { ...fixture, forced: fixture.familyForced };
-};
 
 describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   it.each([

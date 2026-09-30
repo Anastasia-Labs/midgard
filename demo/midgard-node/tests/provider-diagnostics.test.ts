@@ -1,10 +1,10 @@
 import "./utils.js";
 
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { readSourceFacets } from "../../../scripts/lib/source-facets.mjs";
 import { runL1ProviderPreflight } from "../src/commands/l1-provider-preflight.js";
 import {
   classifyProviderHttpResponse,
@@ -197,7 +197,7 @@ describe("provider diagnostics", () => {
     ];
 
     for (const relativePath of runtimeFiles) {
-      const text = await readFile(join(process.cwd(), relativePath), "utf8");
+      const text = readSourceFacets(join(process.cwd(), relativePath));
       for (const pattern of forbidden) {
         expect(text, `${relativePath} contains ${pattern.source}`).not.toMatch(
           pattern,

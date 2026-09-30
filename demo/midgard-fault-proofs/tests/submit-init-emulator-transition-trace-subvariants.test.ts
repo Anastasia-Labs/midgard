@@ -1,3 +1,28 @@
+import "node:crypto";
+import "node:fs/promises";
+import "node:path";
+import "node:url";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec/forced";
+import "@al-ft/midgard-core/da-payload-envelope";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/index.js";
+import "../src/proof-fit/van-rossem-fit-ledger.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/family-history.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/native-tx.js";
+import "./support/legacy-submit-emulator.js";
+import "./support/pinned-fit-ledger.js";
+import "./support/submit-init-emulator-fixtures.js";
+import "./support/submit-init-emulator-shared.js";
+import "./support/transition-trace-yields.js";
+import "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
+import "./submit-init-emulator-transition-trace-subvariants.remove-and-assert-permanent-proof.js";
+
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -7,25 +32,11 @@ import {
   computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxId,
 } from "@al-ft/midgard-core";
-/**
- * Transition-trace representation audit for fault variants that previously
- * had only direct validator vectors. Each positive case enters through the
- * registered catalogue category, routes to the selected real final validator,
- * mints the permanent fraud-proof token, and removes the condemned block.
- */
 import { outRefLabel } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
-import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  CML,
-  Data,
-  Emulator,
-  getAddressDetails,
-  toUnit,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { CML, Data, Emulator, toUnit } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import {
@@ -33,10 +44,7 @@ import {
   buildOmittedDueL1EventFault,
   buildOutOfWindowSourceEventFault,
   buildTransitionFaultProof,
-  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
-  reconstructDaPayload,
   resolveTransitionTraceDeploymentContracts,
-  submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
   transitionTraceFinalIndex,
 } from "../src/index.js";
@@ -44,41 +52,38 @@ import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
-  awaitHeaderCommitWindow,
-  FAMILY_HISTORY_HEADER_LEAD_MS,
-  prepareFamilyHistory,
-} from "./support/emulator/family-history.js";
+  alignedHeaderStart,
+  removeAndAssertPermanentProof,
+} from "./submit-init-emulator-transition-trace-subvariants.remove-and-assert-permanent-proof.js";
+import {
+  firstThreadUtxo,
+  historyRecords,
+  makeHarness,
+  reconstruct,
+  setupChallenge,
+  setupWithdrawalChallenge,
+  withdrawalIdFor,
+  withdrawalInfo,
+} from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { FAMILY_HISTORY_HEADER_LEAD_MS } from "./support/emulator/family-history.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   readBlueprintIdentity,
   writeOrVerifyPinnedFitLedger,
 } from "./support/pinned-fit-ledger.js";
 import {
-  expectStateQueueHeaderOrder,
-  sortedDaEntries,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
   ledgerOrderedIndex,
-  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
-  publishFraudProofChainReferenceScripts,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
   transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
-import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
-const historyRecords: unknown[] = [];
 afterAll(async () => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
   if (directory === undefined) return;
@@ -102,7 +107,9 @@ afterAll(async () => {
 });
 
 const forcedWindowMeasurements: VanRossemFitMeasurement[] = [];
+
 const forcedWindowCases = new Set<boolean>();
+
 afterAll(async () => {
   expect(forcedWindowCases.size).toBe(2);
   const ledger = buildVanRossemFitLedger({
@@ -119,324 +126,6 @@ afterAll(async () => {
   // Fresh execution budgets may differ; identity and row coverage must not.
   await writeOrVerifyPinnedFitLedger(ledgerPath, ledger);
 });
-
-type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
-type Setup = Awaited<ReturnType<typeof submitSetupTx>>;
-type DeploymentInfo = ReturnType<typeof buildRemovalDeploymentInfo>;
-
-const address = (byte: string): SDK.AddressData => ({
-  paymentCredential: { PublicKeyCredential: [byte.repeat(28)] },
-  stakeCredential: null,
-});
-
-const withdrawalInfo = (
-  validity: SDK.WithdrawalValidity,
-): SDK.WithdrawalInfo => ({
-  body: {
-    l2_outref: transitionTraceOutRef("71"),
-    l2_owner: "72".repeat(28),
-    l2_value: new Map([["", new Map([["", 50_000_000n]])]]),
-    l1_address: address("73"),
-    l1_datum: "NoDatum",
-  },
-  signature: ["74".repeat(32), "75".repeat(64)],
-  validity,
-});
-
-const headerCounts = (header: SDK.Header) => ({
-  withdrawalCount: header.withdrawalCount,
-  forcedTransactionCount: header.forcedTransactionCount,
-  l2TransactionCount: header.l2TransactionCount,
-  depositCount: header.depositCount,
-  totalEventCount: header.totalEventCount,
-  transitionStepCount: header.transitionStepCount,
-  validationTraceCount: header.validationTraceCount,
-});
-
-const reconstruct = async ({
-  header,
-  withdrawals = [],
-  transitionTrace = [],
-  eventToStep = [],
-}: {
-  readonly header: SDK.Header;
-  readonly withdrawals?: readonly SDK.DaPayloadEntry[];
-  readonly transitionTrace?: readonly SDK.DaPayloadEntry[];
-  readonly eventToStep?: readonly SDK.DaPayloadEntry[];
-}) => {
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payloadEnvelopeCbor = await wrapDaPayload(
-    SDK.encodeDaPayload({
-      version: SDK.DA_PAYLOAD_VERSION,
-      block_body: {
-        header_hash: headerHash,
-        header,
-        utxos: [],
-        withdrawals: sortedDaEntries(withdrawals),
-        forced_transactions: [],
-        transactions: [],
-        deposits: [],
-        transition_trace: sortedDaEntries(transitionTrace),
-        event_to_step: sortedDaEntries(eventToStep),
-        transaction_preimages: [],
-        forced_transaction_preimages: [],
-        cek_program_material: [],
-        validation_traces: [],
-        validation_trace_witnesses: [],
-        counts: headerCounts(header),
-      },
-    }),
-    { mode: "identity" },
-  );
-  return await reconstructDaPayload({
-    payloadEnvelopeCbor,
-    expectedHeaderHash: headerHash,
-    committedHeader: header,
-  });
-};
-
-const makeHarness = async ({
-  alwaysStateQueue = false,
-}: {
-  readonly alwaysStateQueue?: boolean;
-} = {}) => {
-  const base = await makeFaultProofEmulatorHarness({
-    contractOptions: {
-      realTransitionTrace: true,
-      alwaysFraudProofCatalogue: true,
-      alwaysStateQueue,
-    },
-  });
-  const submit = base.emulator.submitTx.bind(base.emulator);
-  const scenario = expect.getState().currentTestName;
-  base.emulator.submitTx = async (transactionCbor) => {
-    const txHash = await submit(transactionCbor);
-    historyRecords.push({
-      scenario,
-      txHash,
-      transactionCbor,
-      measurement: measureCompleteSignedTransaction(transactionCbor),
-      fee: CML.Transaction.from_cbor_hex(transactionCbor).body().fee(),
-    });
-    return txHash;
-  };
-  const history = await prepareFamilyHistory(base, historyRecords);
-  const harness = { ...base, contracts: history.contracts };
-  const publications = await publishRemovalReferenceScripts({
-    lucid: harness.proverLucid,
-    contracts: harness.contracts,
-  });
-  const transitionTraceReferenceScripts =
-    await publishFraudProofChainReferenceScripts({
-      lucid: harness.proverLucid,
-      steps: harness.contracts.fraudProofContracts.transitionTrace.steps,
-      entryNames: FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transitionTrace,
-      familyLabel: "transition-trace",
-    });
-  const yields = await publishTransitionTraceYields(
-    harness.proverLucid,
-    harness.contracts,
-  );
-  return {
-    harness,
-    history,
-    publications,
-    transitionTraceReferenceScripts: {
-      ...transitionTraceReferenceScripts,
-      ...yields,
-    },
-  };
-};
-
-const setupChallenge = async ({
-  harness,
-  publications,
-  transitionTraceReferenceScripts,
-  header,
-  beforeHeaderCommit,
-}: {
-  readonly harness: Harness;
-  readonly publications: Awaited<
-    ReturnType<typeof publishRemovalReferenceScripts>
-  >;
-  readonly transitionTraceReferenceScripts: Awaited<
-    ReturnType<typeof publishFraudProofChainReferenceScripts>
-  >;
-  readonly header: SDK.Header;
-  readonly beforeHeaderCommit?: Parameters<
-    typeof submitSetupTx
-  >[0]["beforeHeaderCommit"];
-}) => {
-  const setup = await submitSetupTx({
-    lucid: harness.funderLucid,
-    contracts: harness.contracts,
-    nonceUtxo: harness.nonceUtxo,
-    catalogue: harness.catalogue,
-    header,
-    beforeHeaderCommit,
-  });
-  const deploymentInfo = buildRemovalDeploymentInfo(
-    harness.contracts,
-    harness.catalogue,
-    {
-      removalReferenceScripts: publications.published,
-      fraudProofReferenceScripts: transitionTraceReferenceScripts,
-    },
-  );
-  historyRecords.push({ header, headerHash: setup.headerHash, deploymentInfo });
-  const init = await submitInit({
-    lucid: harness.proverLucid,
-    blueprint: harness.realBlueprint,
-    deploymentInfo,
-    network,
-    signer: harness.proverSigner,
-    fraudCategory: "transitionTrace",
-    fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-    witnessReferenceScripts: harness.witnessReferenceScripts,
-    awaitConfirmation: true,
-  });
-  expect(init.fraudCategoryId).toBe(
-    harness.catalogue.categories.transitionTrace.categoryId,
-  );
-  expect(init.fraudulentHeaderHash).toBe(setup.headerHash);
-  return { setup, deploymentInfo, init };
-};
-
-const withdrawalIdFor = (
-  history: Awaited<ReturnType<typeof prepareFamilyHistory>>,
-): SDK.OutputReference => {
-  const nonce = history.nonce("Withdrawal");
-  return {
-    transactionId: nonce.txHash,
-    outputIndex: BigInt(nonce.outputIndex),
-  };
-};
-
-const setupWithdrawalChallenge = async ({
-  harness,
-  history,
-  publications,
-  transitionTraceReferenceScripts,
-  header,
-  inclusionTime,
-}: Awaited<ReturnType<typeof makeHarness>> & {
-  header: SDK.Header;
-  inclusionTime: bigint;
-}) => {
-  const withdrawalId = withdrawalIdFor(history);
-  let admission: Awaited<ReturnType<typeof history.admit>> | undefined;
-  const lifecycle = await setupChallenge({
-    harness,
-    publications,
-    transitionTraceReferenceScripts,
-    header,
-    beforeHeaderCommit: async (hub) => {
-      admission = await history.admit(
-        hub,
-        {
-          WithdrawalPayload: {
-            event: {
-              id: withdrawalId,
-              info: withdrawalInfo("WithdrawalIsValid"),
-            },
-            refund_address: address("77"),
-            refund_datum: "NoDatum",
-          },
-        },
-        { ...header, endTime: inclusionTime },
-        { lovelace: 25_000_000n },
-      );
-      awaitHeaderCommitWindow(harness.emulator, header);
-    },
-  });
-  if (admission === undefined)
-    throw new Error("Withdrawal admission did not run");
-  return {
-    lifecycle,
-    withdrawalId,
-    event: { utxo: admission.witness.anchor.utxo },
-  };
-};
-
-const firstThreadUtxo = async ({
-  harness,
-  init,
-}: {
-  readonly harness: Harness;
-  readonly init: Awaited<ReturnType<typeof submitInit>>;
-}) =>
-  await expectSingleUtxoWithUnit(
-    harness.proverLucid,
-    init.firstStepAddress,
-    init.computationThreadUnit,
-  );
-
-const removeAndAssertPermanentProof = async ({
-  harness,
-  setup,
-  deploymentInfo,
-  proofResult,
-}: {
-  readonly harness: Harness;
-  readonly setup: Setup;
-  readonly deploymentInfo: DeploymentInfo;
-  readonly proofResult: Awaited<ReturnType<typeof submitTransitionTraceProof>>;
-}) => {
-  const proofUtxo = await expectSingleUtxoWithUnit(
-    harness.proverLucid,
-    proofResult.fraudProofAddress,
-    proofResult.fraudProofUnit,
-  );
-  const paymentCredential = getAddressDetails(
-    await harness.proverLucid.wallet().address(),
-  ).paymentCredential;
-  expect(paymentCredential?.type).toBe("Key");
-  expect(Data.from(proofUtxo.datum!, SDK.FraudProofTokenDatum)).toEqual({
-    fraud_prover: paymentCredential!.hash,
-  });
-
-  const now = BigInt(harness.emulator.now());
-  const removal = await submitRemoveFraudulentBlock({
-    lucid: harness.proverLucid,
-    blueprint: harness.realBlueprint,
-    deploymentInfo,
-    network,
-    signer: harness.proverSigner,
-    fraudCategory: "transitionTrace",
-    fraudulentHeaderHash: setup.headerHash,
-    awaitConfirmation: true,
-    requireReferenceScripts: true,
-    validFrom: now > 120_000n ? now - 120_000n : 0n,
-    validTo: now + 300_000n,
-  });
-  expect(removal.transactions.map(({ kind }) => kind)).toEqual([
-    "remove-target",
-  ]);
-  await expectStateQueueHeaderOrder({
-    lucid: harness.funderLucid,
-    contracts: harness.contracts,
-    expectedHeaderHashes: [],
-  });
-  await expect(
-    harness.funderLucid.utxosAtWithUnit(
-      harness.contracts.stateQueue.spendingScriptAddress,
-      setup.stateQueueBlockUnit,
-    ),
-  ).resolves.toHaveLength(0);
-  const retained = await expectSingleUtxoWithUnit(
-    harness.proverLucid,
-    proofResult.fraudProofAddress,
-    proofResult.fraudProofUnit,
-  );
-  expect(outRefLabel(retained)).toBe(outRefLabel(proofUtxo));
-  expect(retained.assets[proofResult.fraudProofUnit]).toBe(1n);
-};
-
-const alignedHeaderStart = async (harness: Harness, leadTime = 120_000) =>
-  alignUnixTimeToEmulatorSlotBoundary(
-    harness.funderLucid,
-    harness.emulator.now() + leadTime,
-  ) - 1;
 
 describe("transition-trace omitted/out-of-window/count subvariant lifecycle", () => {
   it("routes an omitted due withdrawal to final 6 and removes the block", async () => {

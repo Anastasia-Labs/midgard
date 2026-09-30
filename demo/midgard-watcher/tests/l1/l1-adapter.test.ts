@@ -1,11 +1,26 @@
-import { execFile } from "node:child_process";
+import "node:child_process";
+import "node:crypto";
+import "node:fs/promises";
+import "node:net";
+import "node:os";
+import "node:path";
+import "node:tls";
+import "node:util";
+import "@al-ft/midgard-core/codec/hash";
+import "@al-ft/midgard-fault-proofs";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../../src/l1/l1-adapter.js";
+import "../../src/l1/native-block-admission.js";
+import "../../src/l1/native-chain-sync.js";
+import "./l1-adapter.transaction.js";
+
 import { createHash, X509Certificate } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer as createNetServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
-import { promisify } from "node:util";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { requireOgmiosRawTransactionCbor } from "@al-ft/midgard-fault-proofs";
@@ -27,42 +42,30 @@ import {
   WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
   WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION,
   watcherL1AdapterDiagnostic,
-  WatcherL1AdapterError,
-  type WatcherL1AdapterErrorCode,
   watcherL1NormalizationSessionStats,
-  type WatcherL1TransportAttestationContext,
   watcherL1TransportAttestationDetails,
 } from "../../src/l1/l1-adapter.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
+import {
+  blake2b256,
+  execFileAsync,
+  listen,
+  type MutableRecord,
+  normalizeUntrustedL1Block,
+  observation,
+  provider,
+  providerMetadata,
+  publicBytes,
+  rejected,
+  tlsIdentities,
+  transaction,
+  transportContexts,
+} from "./l1-adapter.transaction.js";
 
-type MutableRecord = Record<string, any>;
-const normalizeUntrustedL1Block = normalizeWatcherL1Block as unknown as (
-  context: unknown,
-  observation: unknown,
-) => ReturnType<typeof normalizeWatcherL1Block>;
-const execFileAsync = promisify(execFile);
-const transportContexts = new Map<
-  string,
-  WatcherL1TransportAttestationContext
->();
-const tlsIdentities = new Map<string, string>();
 let transportFixtureDirectory = "";
-const tlsServers: Server[] = [];
 
-const listen = async (server: Server, target: string | number): Promise<void> =>
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    const onListen = () => {
-      server.off("error", reject);
-      resolve();
-    };
-    if (typeof target === "string") {
-      server.listen(target, onListen);
-    } else {
-      server.listen(target, "127.0.0.1", onListen);
-    }
-  });
+const tlsServers: Server[] = [];
 
 const makeTlsFixture = async (name: string) => {
   const keyPath = join(transportFixtureDirectory, `${name}.key`);
@@ -138,221 +141,6 @@ afterAll(async () => {
   }
   await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
-
-const blake2b256 = (bytesHex: string): string =>
-  computeHash32(Buffer.from(bytesHex, "hex")).toString("hex");
-
-const providerMetadata = (
-  providerId = "provider-a",
-  identityByte = "aa",
-): MutableRecord => ({
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
-  network: "Preprod",
-  providerId,
-  source: {
-    sourceMode: "external_providers",
-    operatorIdentitySha256: identityByte.repeat(32),
-  },
-  authentication: {
-    kind: "https_tls_identity_v1",
-    publicIdentitySha256: identityByte.repeat(32),
-  },
-});
-
-const provider = (providerId = "provider-a", identityByte = "aa") =>
-  transportContexts.get(`external:${providerId}:${identityByte}`)!;
-
-const publicBytes = (bytesHex: string): MutableRecord => ({
-  ...makeWatcherL1PublicBytes(bytesHex),
-});
-
-const transaction = (
-  seedHex: string,
-  outputIndex: string,
-  redeemerEncoding: "legacy" | "map" = "legacy",
-  includeScriptDataHash = true,
-  isValid = true,
-  includeCollateralReturn = false,
-): MutableRecord => {
-  const nativeScript = CML.NativeScript.new_script_all(
-    CML.NativeScriptList.new(),
-  );
-  const nativeScripts = CML.NativeScriptList.new();
-  nativeScripts.add(nativeScript);
-  const datum = CML.PlutusData.from_cbor_hex("01");
-  const datums = CML.PlutusDataList.new();
-  datums.add(datum);
-  const address = CML.Address.from_raw_bytes(
-    Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x44)]),
-  );
-  const output = CML.TransactionOutput.new(
-    address,
-    CML.Value.from_coin(2_000_000n + BigInt(outputIndex)),
-    CML.DatumOption.new_datum(datum),
-    CML.Script.new_native(nativeScript),
-  );
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(output);
-  const body = CML.TransactionBody.new(
-    CML.TransactionInputList.new(),
-    outputs,
-    BigInt(`0x${seedHex}`),
-  );
-  const collateralReturn = CML.TransactionOutput.new(
-    address,
-    CML.Value.from_coin(1_500_000n),
-    undefined,
-    undefined,
-  );
-  if (includeCollateralReturn) {
-    body.set_collateral_return(collateralReturn);
-    body.set_total_collateral(500_000n);
-  }
-  if (includeScriptDataHash) {
-    body.set_script_data_hash(
-      CML.ScriptDataHash.from_raw_bytes(
-        Buffer.alloc(32, Number(BigInt(outputIndex) % 256n)),
-      ),
-    );
-  }
-  const mintData = CML.PlutusData.from_cbor_hex("d87980");
-  const spendData = CML.PlutusData.from_cbor_hex("d8798101");
-  const witnessSet = CML.TransactionWitnessSet.new();
-  witnessSet.set_native_scripts(nativeScripts);
-  witnessSet.set_plutus_datums(datums);
-  if (redeemerEncoding === "legacy") {
-    const redeemers = CML.LegacyRedeemerList.new();
-    redeemers.add(
-      CML.LegacyRedeemer.new(
-        CML.RedeemerTag.Mint,
-        10n,
-        mintData,
-        CML.ExUnits.new(5n, 7n),
-      ),
-    );
-    redeemers.add(
-      CML.LegacyRedeemer.new(
-        CML.RedeemerTag.Spend,
-        BigInt(outputIndex),
-        spendData,
-        CML.ExUnits.new(11n, 13n),
-      ),
-    );
-    witnessSet.set_redeemers(CML.Redeemers.new_arr_legacy_redeemer(redeemers));
-  } else {
-    const redeemers = CML.MapRedeemerKeyToRedeemerVal.new();
-    redeemers.insert(
-      CML.RedeemerKey.new(CML.RedeemerTag.Mint, 10n),
-      CML.RedeemerVal.new(mintData, CML.ExUnits.new(5n, 7n)),
-    );
-    redeemers.insert(
-      CML.RedeemerKey.new(CML.RedeemerTag.Spend, BigInt(outputIndex)),
-      CML.RedeemerVal.new(spendData, CML.ExUnits.new(11n, 13n)),
-    );
-    witnessSet.set_redeemers(
-      CML.Redeemers.new_map_redeemer_key_to_redeemer_val(redeemers),
-    );
-  }
-  const fullTransaction = CML.Transaction.new(
-    body,
-    witnessSet,
-    isValid,
-    undefined,
-  );
-  const bodyBytes = body.to_canonical_cbor_hex();
-  const txHash = blake2b256(bodyBytes);
-  const datumBytes = datum.to_canonical_cbor_hex();
-  const scriptBytes = nativeScript.to_canonical_cbor_hex();
-  return {
-    txHash,
-    fullTransaction: publicBytes(fullTransaction.to_canonical_cbor_hex()),
-    body: publicBytes(bodyBytes),
-    witnessSet: publicBytes(witnessSet.to_canonical_cbor_hex()),
-    utxos: isValid
-      ? [
-          {
-            outRef: `${txHash}#0`,
-            outputIndex: "0",
-            output: publicBytes(output.to_canonical_cbor_hex()),
-            datum: {
-              datumHash: blake2b256(datumBytes),
-              bytes: publicBytes(datumBytes),
-            },
-            referenceScript: {
-              scriptHash: nativeScript.hash().to_hex(),
-              language: "Native",
-              bytes: publicBytes(scriptBytes),
-            },
-          },
-        ]
-      : includeCollateralReturn
-        ? [
-            {
-              outRef: `${txHash}#1`,
-              outputIndex: "1",
-              output: publicBytes(collateralReturn.to_canonical_cbor_hex()),
-              datum: null,
-              referenceScript: null,
-            },
-          ]
-        : [],
-    scripts: [
-      {
-        scriptHash: nativeScript.hash().to_hex(),
-        language: "Native",
-        bytes: publicBytes(scriptBytes),
-      },
-    ],
-    datums: [
-      {
-        datumHash: blake2b256("01"),
-        bytes: publicBytes("01"),
-      },
-    ],
-    redeemers: [
-      {
-        purpose: "mint",
-        index: "10",
-        bytes: publicBytes("d87980"),
-      },
-      {
-        purpose: "spend",
-        index: outputIndex,
-        bytes: publicBytes("d8798101"),
-      },
-    ],
-  };
-};
-
-const observation = (): MutableRecord => ({
-  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
-  network: "Preprod",
-  providerId: "provider-a",
-  chainPoint: {
-    blockHash: "11".repeat(32),
-    parentBlockHash: "10".repeat(32),
-    slot: "76543210",
-    blockNo: "2345678",
-    depth: "15",
-  },
-  transactions: [transaction("a20081825820", "10"), transaction("a100", "2")],
-});
-
-const rejected = (
-  action: () => unknown,
-  code: WatcherL1AdapterErrorCode,
-  path: string,
-): WatcherL1AdapterError => {
-  try {
-    action();
-  } catch (error) {
-    expect(error).toBeInstanceOf(WatcherL1AdapterError);
-    const adapterError = error as WatcherL1AdapterError;
-    expect(adapterError).toMatchObject({ code, path });
-    return adapterError;
-  }
-  throw new Error("Expected L1 adapter rejection");
-};
 
 describe("provider-neutral authenticated L1 adapter", () => {
   it("does not let literals or serialized context fields mint transport trust", () => {

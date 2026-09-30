@@ -15,24 +15,41 @@
  * positive transaction is measured against the Van Rossem envelope with the
  * repository's reserves; no oversized route exists here.
  */
+import "@aiken-lang/merkle-patricia-forestry";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec/forced";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/field-opening.js";
+import "../src/network-id/index.js";
+import "../src/remove-fraudulent-block.js";
+import "../src/transition-trace/phas.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/native-tx.js";
+import "./support/emulator/proof-fit.js";
+import "./support/emulator/reference-scripts.js";
+import "./support/emulator/removal-deployment.js";
+import "./support/emulator/setup-tx.js";
+import "./support/measured-fit-ledger.js";
+import "./support/network-id-emulator.js";
+import "./support/network-id-shapes.js";
+import "./support/submit-init-emulator-fixtures.js";
+import "./support/submit-init-emulator-shared.js";
+import "./network-id-wrongful-rejection-lifecycle.commit-forced-block.js";
+import "./network-id-wrongful-rejection-lifecycle.make-stages.js";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  computeMidgardNativeTxId,
-  encodeMidgardFieldPreimage,
-  encodeMidgardSpendInputItem,
-  encodeMidgardTxOutput,
-} from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
   ForcedInclusionTxV1Schema,
-  forcedVerdictSubject,
   NETWORK_ID_FORCED_SCAN_BATCH,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
-import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -42,601 +59,29 @@ import {
 import {
   NETWORK_ID_FORCED_CERTIFIED_SCAN_DRIVER_BATCH,
   NETWORK_ID_FORCED_GRAMMAR_DRIVER_BATCH,
-  type NetworkIdForcedScanPlan,
-  type NetworkIdForcedScanStep,
   networkIdWrongfulRejectionCloses,
-  planNetworkIdForcedScan,
   planNetworkIdOutputsOpening,
-  type PreparedNetworkIdWrongfulRejection,
-  submitNetworkIdCancel,
-  submitNetworkIdForcedBind,
-  submitNetworkIdForcedScanAction,
-  submitNetworkIdForcedStep01,
-  submitNetworkIdInit,
-  submitNetworkIdStep02,
 } from "../src/network-id/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-} from "./support/emulator/measurement.js";
-import { makeNativeTx } from "./support/emulator/native-tx.js";
+  commitForcedBlock,
+  forcedTransactionAt,
+  mutatedAdvance,
+  network,
+  NETWORK_ID_MISMATCH,
+  preparedFor,
+} from "./network-id-wrongful-rejection-lifecycle.commit-forced-block.js";
+import {
+  makeHarness,
+  makeStages,
+} from "./network-id-wrongful-rejection-lifecycle.make-stages.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { expectProofFit } from "./support/emulator/proof-fit.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
-import {
-  makeNetworkIdEmulatorHarness,
-  publishNetworkIdReferenceScriptsMeasured,
-} from "./support/network-id-emulator.js";
 import {
   MAXIMUM_CERTIFIED_OUTPUT_COUNT,
   MAXIMUM_SUPPORTED_OUTPUT_COUNT,
 } from "./support/network-id-shapes.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
-
-const network = "Custom" as const;
-const EXPECTED_NETWORK_ID = 0n;
-const NETWORK_ID_MISMATCH = {
-  ForcedTxInvalid: { reason: "NetworkIdMismatch" },
-};
-export {
-  MAXIMUM_CERTIFIED_OUTPUT_COUNT,
-  MAXIMUM_SUPPORTED_OUTPUT_COUNT,
-} from "./support/network-id-shapes.js";
-
-type Harness = Awaited<ReturnType<typeof makeNetworkIdEmulatorHarness>>;
-
-type NetworkIdForcedScanAdvance = Extract<
-  NetworkIdForcedScanStep,
-  { readonly kind: "advance" }
->;
-
-/** A planned `Advance` with one field deliberately changed. */
-const mutatedAdvance = (
-  step: NetworkIdForcedScanStep,
-  patch: Partial<NetworkIdForcedScanAdvance>,
-): NetworkIdForcedScanStep => {
-  if (step.kind !== "advance") {
-    throw new Error("scan mutation expects a planned Advance batch");
-  }
-  return { ...step, ...patch };
-};
-
-/** One forced native transaction: its outputs live at the given network ids. */
-const forcedTransactionAt = ({
-  outputNetworkIds,
-  bodyNetworkId = 0n,
-  inputByte = "77",
-}: {
-  readonly outputNetworkIds: readonly number[];
-  readonly bodyNetworkId?: bigint;
-  readonly inputByte?: string;
-}) => {
-  const outputs = outputNetworkIds.map((networkId, index) =>
-    encodeMidgardTxOutput({
-      // Enterprise key address: header nibble `6`, low nibble = network id.
-      address: Buffer.concat([
-        Buffer.from([0x60 | networkId]),
-        Buffer.alloc(28, 0x40 + (index % 64)),
-      ]),
-      value: { lovelace: 2_000_000n + BigInt(index), assets: new Map() },
-    }),
-  );
-  const invalid = materializeMidgardForcedTxFromCanonical(
-    makeNativeTx({
-      spendInputCbors: [
-        encodeMidgardSpendInputItem({
-          txId: Buffer.from(inputByte.repeat(32), "hex"),
-          outputIndex: 0,
-        }),
-      ],
-      outputCbors: outputs,
-      fee: 0n,
-      networkId: bodyNetworkId,
-    }),
-  );
-  const proofSource = deriveMidgardForcedTxProofSource(invalid);
-  return {
-    transactionId: computeMidgardNativeTxId(invalid).toString("hex"),
-    outputs,
-    bodyNetworkId,
-    outputNetworkIds,
-    source: {
-      compact_cbor: proofSource.compactCbor.toString("hex"),
-      witness_set_compact_cbor:
-        proofSource.witnessSetCompactCbor.toString("hex"),
-      field_preimage_lengths_cbor:
-        proofSource.fieldPreimageLengthsCbor.toString("hex"),
-    },
-  };
-};
-type ForcedTransaction = ReturnType<typeof forcedTransactionAt>;
-
-type ForcedLeaf = {
-  /** Output index of the leaf's source key under the fixture's forced event. */
-  readonly outputIndex: bigint;
-  readonly value: {
-    readonly tx_id: string;
-    readonly submitted_source: ForcedTransaction["source"];
-    readonly verdict: unknown;
-  };
-};
-
-/**
- * Commits the given forced leaves to one counted root, publishes the disputed
- * block, and returns a membership proof per leaf. Leaves are committed exactly
- * as given so a dishonest operator's leaf (wrong reason, wrong tx id) is
- * authenticated by the root the way the chain will see it.
- */
-const commitForcedBlock = async (
-  harness: Harness,
-  leaves: readonly ForcedLeaf[],
-) => {
-  const credential = getAddressDetails(
-    await harness.funderLucid.wallet().address(),
-  ).paymentCredential;
-  if (credential?.type !== "Key") throw new Error("funder key absent");
-  const base = await buildInvalidForcedTransitionTraceFixture({
-    operatorVkey: credential.hash,
-    now:
-      alignUnixTimeToEmulatorSlotBoundary(
-        harness.funderLucid,
-        harness.emulator.now() + 120_000,
-      ) - 1,
-  });
-  const keyed = leaves.map((leaf) => ({
-    ...leaf,
-    key: {
-      ...base.eventKey.ForcedTransactionEventKey.tx_order_id,
-      outputIndex: leaf.outputIndex,
-    },
-  }));
-  const encoded = keyed.map((leaf) => ({
-    key: Buffer.from(Data.to(leaf.key, OutputReference), "hex"),
-    value: Buffer.from(
-      Data.to(leaf.value as never, ForcedInclusionTxV1Schema as never),
-      "hex",
-    ),
-  }));
-  const root = await buildCountedRoot(
-    ROOT_DOMAINS.forcedTransactionsV1,
-    encoded,
-  );
-  const store = new Store(undefined);
-  await store.ready();
-  const trie = new Trie(store);
-  for (const { key, value } of encoded) await trie.insert(key, value);
-  const memberships: PreparedNetworkIdWrongfulRejection["forcedSource"]["membership"][] =
-    await Promise.all(
-      keyed.map(async (leaf, index) => ({
-        domain: root.domain,
-        root: root.root,
-        phas_root: root.phasRoot,
-        count: root.count,
-        key: leaf.key,
-        value: leaf.value,
-        proof: Data.from(
-          (await trie.prove(encoded[index]!.key)).toCBOR().toString("hex"),
-          Proof,
-        ),
-      })) as never,
-    );
-  const header = {
-    ...base.header,
-    forcedTransactionsRoot: root.root,
-    forcedTransactionCount: BigInt(leaves.length),
-  };
-  const setup = await submitSetupTx({
-    lucid: harness.funderLucid,
-    contracts: harness.contracts,
-    nonceUtxo: harness.nonceUtxo,
-    catalogue: harness.catalogue,
-    header,
-  });
-  return { base, header, setup, root, memberships };
-};
-
-/** The prepared artifact the planner would build, from retained payload only. */
-const preparedFor = ({
-  transaction,
-  headerHash,
-  header,
-  membership,
-  claimedOutputNetworkIds = transaction.outputNetworkIds.map(BigInt),
-  claimedBodyNetworkId = transaction.bodyNetworkId,
-}: {
-  readonly transaction: ForcedTransaction;
-  readonly headerHash: string;
-  readonly header: Awaited<ReturnType<typeof commitForcedBlock>>["header"];
-  readonly membership: Awaited<
-    ReturnType<typeof commitForcedBlock>
-  >["memberships"][number];
-  readonly claimedOutputNetworkIds?: readonly bigint[];
-  readonly claimedBodyNetworkId?: bigint;
-}): PreparedNetworkIdWrongfulRejection => {
-  const subject = forcedVerdictSubject({
-    transactionId: transaction.transactionId,
-    sourceKey: membership.key,
-    rejectionReason: "NetworkIdMismatch",
-  });
-  const outputsItemCbors = transaction.outputs.map((output) =>
-    output.toString("hex"),
-  );
-  return {
-    headerHash,
-    expectedNetworkId: EXPECTED_NETWORK_ID,
-    badTxId: transaction.transactionId,
-    nativeTxCompactCbor: transaction.source.compact_cbor,
-    outputsItemCbors,
-    faultClaim: { kind: "forced-network-mismatch" },
-    fault: "ForcedNetworkIdMismatch",
-    subject,
-    forcedSource: { header, membership, direction: 1n },
-    evidence: {
-      subject,
-      expectedNetworkId: EXPECTED_NETWORK_ID,
-      committedNetworkId: claimedBodyNetworkId,
-      outputNetworkIds: claimedOutputNetworkIds,
-      outputsItemCbors,
-      outputsPreimageCbor: encodeMidgardFieldPreimage(
-        transaction.outputs,
-      ).toString("hex"),
-    },
-  };
-};
-
-/** Stage builders over one harness; every submission is measured. */
-let measuredScenario = 0;
-const makeStages = (
-  harness: Harness,
-  refs: readonly [UTxO, UTxO, UTxO, UTxO],
-  setup: Awaited<ReturnType<typeof commitForcedBlock>>["setup"],
-) => {
-  const measuredCase = measuredScenario++;
-  const [step01Ref, step02Ref, forcedRef, scanRef] = refs;
-  const measurements: {
-    stage: string;
-    measurement: CompleteSignedTransactionMeasurement;
-  }[] = [];
-  const record = <T>(
-    stage: string,
-    captured: Awaited<ReturnType<typeof captureEmulatorSubmission<T>>>,
-  ) => {
-    measurements.push({ stage, measurement: captured.measurement });
-    captured.measurements.forEach((measurement, index) =>
-      measuredFit.record(
-        `case-${measuredCase}/${measurements.length - 1}-${stage}-${index}`,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      ),
-    );
-    return captured.result;
-  };
-  const initialize = async () => {
-    console.info("[network-id-forced-stage] init");
-    const result = record(
-      "init",
-      await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdInit({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts: harness.networkId,
-          category: harness.category,
-          catalogue: {
-            policyId: harness.contracts.fraudProofCatalogue.policyId,
-            spendingScriptAddress:
-              harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-            root: harness.catalogue.root,
-          },
-          signer: harness.proverSigner,
-          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
-      ),
-    );
-    return `${result.txHash}#${result.firstStepOutputIndex.toString()}`;
-  };
-  const dispatch = async (
-    threadOutRef: string,
-    prepared: PreparedNetworkIdWrongfulRejection,
-    referenceScriptUtxo: UTxO = step01Ref,
-  ) => {
-    console.info("[network-id-forced-stage] dispatch");
-    return record(
-      "dispatch",
-      await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdForcedStep01({
-          lucid: harness.proverLucid,
-          contracts: harness.networkId,
-          categoryId: harness.category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef,
-          prepared,
-          referenceScriptUtxo,
-        }),
-      ),
-    ).nextThreadOutRef;
-  };
-  const bind = async (
-    threadOutRef: string,
-    prepared: PreparedNetworkIdWrongfulRejection,
-    referenceScriptUtxo: UTxO = forcedRef,
-  ) => {
-    console.info("[network-id-forced-stage] bind");
-    return record(
-      "bind",
-      await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdForcedBind({
-          lucid: harness.proverLucid,
-          contracts: harness.networkId,
-          categoryId: harness.category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef,
-          prepared,
-          referenceScriptUtxo,
-        }),
-      ),
-    );
-  };
-  /**
-   * One planned (or deliberately malformed) scan batch. Every batch re-supplies
-   * the same authenticated opening, so the carriage and certificate a caller
-   * publishes once are threaded through unchanged.
-   */
-  const scanStep = async (
-    threadOutRef: string,
-    prepared: PreparedNetworkIdWrongfulRejection,
-    scan: NetworkIdForcedScanPlan,
-    step: NetworkIdForcedScanStep,
-    options: {
-      readonly publish?: boolean;
-      readonly certificateUtxos?: readonly UTxO[];
-      readonly referenceScriptUtxo?: UTxO;
-    } = {},
-  ) => {
-    const label = `scan-${step.kind}${
-      "ordinal" in step ? `-${step.ordinal.toString()}` : ""
-    }`;
-    console.info(`[network-id-forced-stage] ${label}`);
-    return record(
-      label,
-      await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdForcedScanAction({
-          lucid: harness.proverLucid,
-          contracts: harness.networkId,
-          categoryId: harness.category.categoryId,
-          network,
-          signer: harness.proverSigner,
-          threadOutRef,
-          prepared,
-          outputsOpeningPlan: planNetworkIdOutputsOpening({
-            prepared,
-            owner: harness.proverSigner.paymentKeyHash,
-            publish: options.publish ?? false,
-          }),
-          scan,
-          step,
-          referenceScriptUtxo: options.referenceScriptUtxo ?? scanRef,
-          ...(options.certificateUtxos === undefined
-            ? {}
-            : { certificateUtxos: options.certificateUtxos }),
-        }),
-      ),
-    );
-  };
-  /** The whole planned scan, in order, returning the step-02 thread out-ref. */
-  const scan = async (
-    threadOutRef: string,
-    prepared: PreparedNetworkIdWrongfulRejection,
-    plan: NetworkIdForcedScanPlan,
-    options: {
-      readonly publish?: boolean;
-      readonly certificateUtxos?: readonly UTxO[];
-    } = {},
-  ) => {
-    let cursor = threadOutRef;
-    for (const step of plan.steps) {
-      cursor = (await scanStep(cursor, prepared, plan, step, options))
-        .nextThreadOutRef;
-    }
-    return cursor;
-  };
-  /** The planned scan schedule for a prepared artifact's outputs field. */
-  const scanPlanFor = (
-    prepared: PreparedNetworkIdWrongfulRejection,
-    publish = false,
-  ) => {
-    const opening = planNetworkIdOutputsOpening({
-      prepared,
-      owner: harness.proverSigner.paymentKeyHash,
-      publish,
-    });
-    return {
-      opening,
-      plan: planNetworkIdForcedScan({
-        outputsCarriagePlan: opening,
-        outputCount: opening.itemCount,
-      }),
-    };
-  };
-  const finalize = async (
-    threadOutRef: string,
-    prepared: PreparedNetworkIdWrongfulRejection,
-  ) => {
-    console.info("[network-id-forced-stage] finalize");
-    return record(
-      "finalize",
-      await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdStep02({
-          lucid: harness.proverLucid,
-          contracts: harness.networkId,
-          categoryId: harness.category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef,
-          prepared,
-          referenceScriptUtxo: step02Ref,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
-      ),
-    );
-  };
-  const cancel = async (
-    threadOutRef: string,
-    expected: "step01" | "forcedStep" | "forcedScan" | "step02",
-  ) => {
-    console.info(`[network-id-forced-stage] cancel-${expected}`);
-    const result = record(
-      `cancel-${expected}`,
-      await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdCancel({
-          lucid: harness.proverLucid,
-          contracts: harness.networkId,
-          categoryId: harness.category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef,
-          referenceScriptUtxo:
-            expected === "step01"
-              ? step01Ref
-              : expected === "forcedStep"
-                ? forcedRef
-                : expected === "forcedScan"
-                  ? scanRef
-                  : step02Ref,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
-      ),
-    );
-    expect(result.cancelledStep).toBe(expected);
-  };
-  const remove = async () => {
-    console.info("[network-id-forced-stage] remove");
-    const removalRefs = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
-    });
-    const baseDeployment = buildRemovalDeploymentInfo(
-      harness.contracts,
-      harness.catalogue,
-      { removalReferenceScripts: removalRefs.published },
-    );
-    // The shared harness registers a scaffold for this family; removal must
-    // see the applied chain the thread actually ran through.
-    const deploymentInfo = {
-      ...baseDeployment,
-      contracts: {
-        ...baseDeployment.contracts,
-        fraudProofNetworkId: {
-          scriptHash: harness.networkId.steps[0].spendingScriptHash,
-        },
-        fraudProofNetworkIdStep02: {
-          scriptHash: harness.networkId.steps[1].spendingScriptHash,
-        },
-        fraudProofNetworkIdForcedStep: {
-          scriptHash: harness.networkId.forcedStep!.spendingScriptHash,
-        },
-        fraudProofNetworkIdForcedScan: {
-          scriptHash: harness.networkId.forcedScan!.spendingScriptHash,
-        },
-      },
-    };
-    const now = BigInt(harness.emulator.now());
-    return record(
-      "remove",
-      await captureEmulatorSubmission(harness.emulator, () =>
-        submitRemoveFraudulentBlock({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          deploymentInfo,
-          network,
-          signer: harness.proverSigner,
-          fraudCategory: "networkId",
-          fraudulentHeaderHash: setup.headerHash,
-          requireReferenceScripts: true,
-          validFrom: now > 120_000n ? now - 120_000n : 0n,
-          validTo: now + 300_000n,
-        }),
-      ),
-    );
-  };
-  const assertFit = (label: string) => {
-    for (const { stage, measurement } of measurements) {
-      expectProofFit({
-        stage: `${label}:${stage}`,
-        measurement,
-        maxTxExMem: harness.emulator.protocolParameters.maxTxExMem,
-        maxTxExSteps: harness.emulator.protocolParameters.maxTxExSteps,
-      });
-    }
-    console.info(
-      `[network-id-forced-lifecycle:${label}] ${JSON.stringify(
-        measurements.map(({ stage, measurement }) => ({
-          stage,
-          bytes: measurement.completeSignedBytes,
-          margin: measurement.l1ByteMargin,
-          memory: measurement.executionMemory.toString(),
-          cpu: measurement.executionSteps.toString(),
-        })),
-      )}`,
-    );
-  };
-  return {
-    initialize,
-    dispatch,
-    bind,
-    scanPlanFor,
-    scanStep,
-    scan,
-    finalize,
-    cancel,
-    remove,
-    assertFit,
-    measurements,
-  };
-};
-
-let measuredPublicationScenario = 0;
-const makeHarness = async () => {
-  const publicationCase = measuredPublicationScenario++;
-  const harness = await makeNetworkIdEmulatorHarness();
-  const published = await publishNetworkIdReferenceScriptsMeasured({
-    lucid: harness.proverLucid,
-    contracts: harness.networkId,
-  });
-  for (const { name, scriptHash, measurement } of published.measurements) {
-    measuredFit.record(
-      `publication-${publicationCase}/${name}`,
-      measurement,
-      "publication",
-    );
-    expectProofFit({
-      stage: `publication:${name}`,
-      measurement,
-      maxTxExMem: harness.emulator.protocolParameters.maxTxExMem,
-      maxTxExSteps: harness.emulator.protocolParameters.maxTxExSteps,
-    });
-    console.info(
-      `[network-id-forced-publication] ${JSON.stringify({
-        name,
-        scriptHash,
-        bytes: measurement.completeSignedBytes,
-        margin: measurement.l1ByteMargin,
-      })}`,
-    );
-  }
-  return { harness, refs: published.utxos };
-};
-
-const measuredFit = createMeasuredFitRecorder(
-  "network-id-wrongful-rejection",
-  "lifecycle",
-  "forced universal output scan, maximum inline/certified fields, cancellation and correction",
-);
 
 describe("networkId wrongful-rejection real lifecycle", () => {
   it("runs Init through the forced door to a permanent mint and removal, cancels every nonterminal step, and restarts by out-ref", async () => {
@@ -1370,3 +815,8 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     await stages.remove();
   }, 1_800_000);
 });
+
+export {
+  MAXIMUM_CERTIFIED_OUTPUT_COUNT,
+  MAXIMUM_SUPPORTED_OUTPUT_COUNT,
+} from "./support/network-id-shapes.js";

@@ -1,6 +1,45 @@
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec/cbor";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/evidence/forced-leaf-evidence.js";
+import "../src/field-opening.js";
+import "../src/index.js";
+import "../src/missing-native-script-tx/staged-walk.js";
+import "../src/proof-fit/van-rossem-fit-ledger.js";
+import "../src/script-integrity-hash-missing/actuator.js";
+import "../src/script-integrity-hash-missing/artifact.js";
+import "../src/script-integrity-hash-missing/family.js";
+import "../src/script-integrity-hash-missing/replay.js";
+import "../src/script-integrity-hash-missing/schemas.js";
+import "../src/script-integrity-hash-missing/staged-plan.js";
+import "../src/script-integrity-hash-missing/submit-direct.js";
+import "../src/script-integrity-hash-missing/submit-init.js";
+import "../src/script-integrity-hash-missing/submitters.js";
+import "../src/testing/complete-lifecycle.js";
+import "../src/transition-trace/witnesses.js";
+import "../src/workflow/cursor-family-state.js";
+import "../src/workflow/transaction-boundary.js";
+import "./support/emulator/expect-onchain-refusal.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/registered-chain.js";
+import "./support/lifecycle-coverage.js";
+import "./support/native-script-decoding-emulator.js";
+import "./support/submit-init-emulator-shared.js";
+import "node:crypto";
+import "node:fs/promises";
+import "node:url";
+import "./script-integrity-hash-missing-lifecycle.registered-family.js";
+import "./script-integrity-hash-missing-lifecycle.make-scenario.js";
+
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
 import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
-  computeHash32,
   deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   encodeMidgardNativeTxCompact,
@@ -14,7 +53,6 @@ import {
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -45,7 +83,6 @@ import {
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { createScriptIntegrityHashMissingTransactionPort } from "../src/script-integrity-hash-missing/actuator.js";
 import { testingOnlyScriptIntegrityHashMissingArtifact } from "../src/script-integrity-hash-missing/artifact.js";
-import type { ScriptIntegrityHashMissingContracts } from "../src/script-integrity-hash-missing/contracts.js";
 import { prepareScriptIntegrityHashMissingEvidence } from "../src/script-integrity-hash-missing/family.js";
 import {
   detectScriptIntegrityHashMissingFromReconstruction,
@@ -59,7 +96,6 @@ import {
 } from "../src/script-integrity-hash-missing/staged-plan.js";
 import {
   submitScriptIntegrityHashMissingStep01Accepted,
-  submitScriptIntegrityHashMissingStep01Forced,
   submitScriptIntegrityHashMissingStep02Accepted,
   submitScriptIntegrityHashMissingStep03Direct,
 } from "../src/script-integrity-hash-missing/submit-direct.js";
@@ -69,8 +105,6 @@ import {
   submitScriptIntegrityHashMissingRedeemerGrammar,
   submitScriptIntegrityHashMissingScriptGrammar,
   submitScriptIntegrityHashMissingScriptScan,
-  submitScriptIntegrityHashMissingStep02,
-  submitScriptIntegrityHashMissingStep03,
   submitScriptIntegrityHashMissingStep04,
 } from "../src/script-integrity-hash-missing/submitters.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
@@ -79,10 +113,25 @@ import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
+import { makeScenario } from "./script-integrity-hash-missing-lifecycle.make-scenario.js";
+import {
+  ABSENT_HASH,
+  advanceField8,
+  AUTHENTICATION_SEAMS,
+  coverage,
+  decodeField8,
+  encodeField8,
+  field8Checkpoint,
+  FORCED_ORDER_KEY,
+  hashField8,
+  nativeTxOf,
+  PHYSICAL_STEPS,
+  plutusScript,
+  REASON,
+  registeredFamily,
+} from "./script-integrity-hash-missing-lifecycle.registered-family.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { expectRegisteredChainParity } from "./support/emulator/registered-chain.js";
-import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -94,397 +143,6 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
-
-const field8Checkpoint = (
-  checkpoint: ReturnType<typeof initialMissingNativeScriptTxGrammarCheckpoint>,
-) => ({ ...checkpoint, fieldIndex: 8 });
-const advanceField8 = (
-  checkpoint: ReturnType<typeof field8Checkpoint>,
-  items: readonly Uint8Array[],
-  budget = 32,
-) =>
-  field8Checkpoint(
-    advanceMissingNativeScriptTxGrammarCheckpoint({
-      checkpoint: { ...checkpoint, fieldIndex: 6 },
-      items,
-      budget,
-    }),
-  );
-const encodeField8 = (
-  checkpoint: ReturnType<typeof field8Checkpoint>,
-): Buffer => {
-  const bytes = encodeMissingNativeScriptTxGrammarCheckpoint({
-    ...checkpoint,
-    fieldIndex: 6,
-  });
-  bytes[36] = 8;
-  return bytes;
-};
-const decodeField8 = (
-  bytes: Uint8Array,
-): ReturnType<typeof field8Checkpoint> => {
-  const canonicalField6Bytes = Buffer.from(bytes);
-  canonicalField6Bytes[36] = 6;
-  return field8Checkpoint(
-    decodeMissingNativeScriptTxGrammarCheckpoint(canonicalField6Bytes),
-  );
-};
-const hashField8 = (checkpoint: ReturnType<typeof field8Checkpoint>): string =>
-  computeHash32(
-    Buffer.concat([
-      Buffer.from("MidgardFieldGrammarCheckpointV1", "ascii"),
-      encodeField8(checkpoint),
-    ]),
-  ).toString("hex");
-
-const REASON = "ScriptIntegrityHashMissing";
-const ABSENT_HASH = EMPTY_NULL_ROOT.toString("hex");
-/** Every seam a step authenticates before it reads or commits anything. */
-const AUTHENTICATION_SEAMS = [
-  "tx_membership",
-  "forced_leaf",
-  "compact_tx",
-  "witness_set_anchor",
-  "field_preimage",
-  "field_certificate",
-  "checkpoint",
-] as const;
-/** The seven physical scripts, in chain order; every one carries a cancel arm. */
-const PHYSICAL_STEPS = [
-  "step-01",
-  "step-02",
-  "step-03",
-  "script-grammar",
-  "script-scan",
-  "redeemer-grammar",
-  "step-04",
-] as const;
-const coverage = createLifecycleCoverageRecorder();
-
-type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
-
-/**
- * The registered chain is the deployed identity: the harness folds its first
- * step into the catalogue root. A fresh application of the same blueprint and
- * shared policies must reproduce it step for step before a suite drives it.
- */
-const registeredFamily = async (harness: Harness) => {
-  const registered =
-    harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
-  const category = harness.catalogue.categories.scriptIntegrityHashMissing!;
-  const applied = await Effect.runPromise(
-    SDK.buildScriptIntegrityHashMissingFaultProofContracts({
-      blueprint: SDK.parseFaultProofBlueprint(
-        structuredClone(harness.realBlueprint),
-      ),
-      network,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      fraudProofCataloguePolicyId:
-        harness.contracts.fraudProofCatalogue.policyId,
-    }),
-  );
-  expectRegisteredChainParity({
-    registered,
-    applied: applied.scriptIntegrityHashMissing.steps,
-    category,
-  });
-  expect(applied.computationThread.policyId).toBe(
-    harness.contracts.computationThread.policyId,
-  );
-  expect(applied.fraudProof.policyId).toBe(
-    harness.contracts.fraudProof.policyId,
-  );
-  const family: ScriptIntegrityHashMissingContracts = {
-    steps: registered.steps,
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
-    fieldPreimageCertificatePolicyId:
-      harness.contracts.fieldPreimageCertificate.policyId,
-    fieldPreimageCertificateMintingScript:
-      harness.contracts.fieldPreimageCertificate.mintingScript,
-    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-  };
-  return { family, category };
-};
-
-const nativeTxOf = ({
-  scriptItems,
-  redeemerItems,
-  scriptIntegrityHash,
-  fee,
-}: {
-  readonly scriptItems: readonly Buffer[];
-  readonly redeemerItems: readonly Buffer[];
-  readonly scriptIntegrityHash: Buffer;
-  readonly fee: bigint;
-}) =>
-  materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
-    validity: "TxIsValid",
-    body: {
-      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
-      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-      outputsPreimageCbor: EMPTY_CBOR_LIST,
-      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-      mintPreimageCbor: EMPTY_CBOR_LIST,
-      scriptIntegrityHash,
-      auxiliaryDataHash: Buffer.alloc(32),
-      fee,
-      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
-    },
-    witnessSet: {
-      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      scriptTxWitsPreimageCbor: encodeCbor([...scriptItems]),
-      redeemerTxWitsPreimageCbor: encodeCbor([...redeemerItems]),
-    },
-  });
-
-const plutusScript = (byte: number) =>
-  encodeMidgardVersionedScript({
-    language: "PlutusV3",
-    scriptBytes: Buffer.from([byte]),
-  });
-
-const FORCED_ORDER_KEY = { transactionId: "ab".repeat(32), outputIndex: 0n };
-
-/**
- * One committed block on the registered chain with the family's seven
- * reference scripts published, plus raw submitters that hand the caller's
- * datum and redeemer to the chain unchanged, so every negative below is a
- * validator refusal rather than an off-chain guard.
- */
-const makeScenario = async ({
-  nativeTx,
-  forcedReason,
-}: {
-  readonly nativeTx: ReturnType<typeof nativeTxOf>;
-  readonly forcedReason?: SDK.RejectionReason;
-}) => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: { realScriptIntegrityHashMissing: true },
-  });
-  const { family, category } = await registeredFamily(harness);
-  const block = await buildDecodingBlockFixture({
-    operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
-    startTime: BigInt(
-      alignUnixTimeToEmulatorSlotBoundary(
-        harness.funderLucid,
-        harness.emulator.now() + 120_000,
-      ) - 1,
-    ),
-    priorLedgerRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    subject:
-      forcedReason === undefined
-        ? { kind: "normal", nativeTx }
-        : {
-            kind: "forced",
-            nativeTx,
-            orderKey: FORCED_ORDER_KEY,
-            verdict: { ForcedTxInvalid: { reason: forcedReason } },
-          },
-  });
-  const setup = await submitSetupTx({
-    lucid: harness.funderLucid,
-    contracts: harness.contracts,
-    nonceUtxo: harness.nonceUtxo,
-    catalogue: harness.catalogue,
-    header: block.header,
-  });
-  const refs: UTxO[] = [];
-  for (const [index, step] of family.steps.entries())
-    refs.push(
-      (
-        await publishPlainReferenceScriptUtxo({
-          lucid: harness.funderLucid,
-          script: step.spendingScript,
-          label: `integrity scenario step ${(index + 1).toString()}`,
-        })
-      ).utxo,
-    );
-  const compactCbor = block.nativeTxCompactCbor;
-  const derived = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
-  const witnessSet: SDK.NativeTxWitnessSetCompact = {
-    addr_tx_wits_hash: Buffer.from(derived.addrTxWitsHash).toString("hex"),
-    script_tx_wits_hash: Buffer.from(derived.scriptTxWitsHash).toString("hex"),
-    redeemer_tx_wits_hash: Buffer.from(derived.redeemerTxWitsHash).toString(
-      "hex",
-    ),
-  };
-  const witnessSetCbor = encodeMidgardNativeTxWitnessSetCompact({
-    addrTxWitsHash: Buffer.from(derived.addrTxWitsHash),
-    scriptTxWitsHash: Buffer.from(derived.scriptTxWitsHash),
-    redeemerTxWitsHash: Buffer.from(derived.redeemerTxWitsHash),
-  }).toString("hex");
-  const witnessSetHash =
-    nativeTx.compact.transactionWitnessSetHash.toString("hex");
-  const owner = harness.proverSigner.paymentKeyHash;
-  const common = (index: number) => ({
-    lucid: harness.proverLucid,
-    contracts: family,
-    categoryId: category.categoryId,
-    signer: harness.proverSigner,
-    referenceScriptUtxo: refs[index]!,
-  });
-  const datum = (index: number, data: unknown) =>
-    Data.to(
-      { fraud_prover: owner, data } as never,
-      ScriptIntegrityStepDatums[index] as never,
-    );
-  const init = async () =>
-    (
-      await submitScriptIntegrityHashMissingInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: family,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: harness.catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      })
-    ).nextThreadOutRef;
-  const accepted01 = async (
-    threadOutRef: string,
-    txInclusion = block.txInclusion!,
-  ) =>
-    (
-      await submitScriptIntegrityHashMissingStep01Accepted({
-        ...common(0),
-        blueprint: harness.realBlueprint,
-        network,
-        threadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      })
-    ).nextThreadOutRef;
-  const forced01 = async (threadOutRef: string) =>
-    (
-      await submitScriptIntegrityHashMissingStep01Forced({
-        ...common(0),
-        threadOutRef,
-        direction: 1n,
-      })
-    ).nextThreadOutRef;
-  const step02 = async (
-    threadOutRef: string,
-    {
-      subject,
-      anchoredWitnessSetHash = witnessSetHash,
-      forcedMembership = null,
-    }: {
-      readonly subject: SDK.VerdictSubject;
-      readonly anchoredWitnessSetHash?: string;
-      readonly forcedMembership?: SDK.RootMembershipProof<
-        SDK.OutputReference,
-        SDK.ForcedInclusionTxV1
-      > | null;
-    },
-  ) =>
-    (
-      await submitScriptIntegrityHashMissingStep02({
-        ...common(1),
-        threadOutRef,
-        nextDatum: datum(2, {
-          subject,
-          witness_set_hash: anchoredWitnessSetHash,
-        }),
-        buildArgs: ({ input_index, output_index }) => ({
-          input_index,
-          output_index,
-          header: block.header,
-          forced_membership: forcedMembership,
-        }),
-      })
-    ).nextThreadOutRef;
-  const direct03 = async (
-    threadOutRef: string,
-    {
-      decision,
-      compact = compactCbor,
-      scriptPreimage,
-      redeemerPreimage,
-      staged = false,
-    }: {
-      readonly decision: {
-        readonly subject: SDK.VerdictSubject;
-        readonly script_integrity_hash: string;
-        readonly contains_non_native_script: boolean;
-        readonly has_redeemers: boolean;
-      };
-      readonly compact?: string;
-      readonly scriptPreimage: Buffer;
-      readonly redeemerPreimage: Buffer;
-      readonly staged?: boolean;
-    },
-  ) =>
-    (
-      await submitScriptIntegrityHashMissingStep03({
-        ...common(2),
-        threadOutRef,
-        staged,
-        nextDatum: datum(6, decision),
-        buildArgs: ({ input_index, output_index }) => ({
-          Direct: {
-            input_index,
-            output_index,
-            native_tx_compact_cbor: compact,
-            witness_set: witnessSet,
-            script_witnesses: {
-              Inline: { preimage: scriptPreimage.toString("hex") },
-            },
-            redeemers: {
-              Inline: { preimage: redeemerPreimage.toString("hex") },
-            },
-          },
-        }),
-      })
-    ).nextThreadOutRef;
-  const step04 = (threadOutRef: string) =>
-    submitScriptIntegrityHashMissingStep04({
-      ...common(6),
-      threadOutRef,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-  const cancel = (threadOutRef: string, index: number) =>
-    submitScriptIntegrityHashMissingCancel({
-      ...common(index),
-      threadOutRef,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-  return {
-    harness,
-    family,
-    category,
-    block,
-    setup,
-    refs,
-    compactCbor,
-    witnessSet,
-    witnessSetCbor,
-    witnessSetHash,
-    owner,
-    common,
-    datum,
-    init,
-    accepted01,
-    forced01,
-    step02,
-    direct03,
-    step04,
-    cancel,
-  };
-};
 
 describe("script-integrity-hash-missing real lifecycle", () => {
   it("publishes, proves accepted absent integrity hash, mints, and removes", async () => {
@@ -2405,6 +2063,3 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     });
   });
 });
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";

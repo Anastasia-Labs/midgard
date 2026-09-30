@@ -1,14 +1,26 @@
+import "@aiken-lang/merkle-patricia-forestry";
+import "@al-ft/midgard-sdk";
+import "@effect/vitest";
+import "@lucid-evolution/lucid";
+import "blake2b";
+import "effect";
+import "level";
+import "vitest";
+import "../src/database/utils/ledger.js";
+import "../src/database/utils/tx.js";
+import "../src/mpf/index.js";
+import "./midgard-output-helpers.js";
+import "./mpf.build-deep-shared-mpf-dag.js";
+
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import blake2b from "blake2b";
 import { Effect } from "effect";
 import { Level } from "level";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 
 import * as Ledger from "../src/database/utils/ledger.js";
-import * as Tx from "../src/database/utils/tx.js";
 import {
   applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
   applyTraceLedgerOpsToMpf,
@@ -17,7 +29,6 @@ import {
   computeUtxoPayloadRoot,
   configureMpfArenaLimits,
   configureMpfPathHydration,
-  DecodedMempoolTxForCommit,
   deleteMpfStore,
   encodeEventToStepValueCbor,
   encodeTransitionEventKeyCbor,
@@ -43,145 +54,30 @@ import {
   verifyKeyValuePhasNonMembershipProof,
 } from "../src/mpf/index.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
-
-const TEST_DB = "test-mpf-db";
-const EMPTY_DELETE_DB = "test-mpf-empty-delete-db";
-const BATCH_PERSIST_DB = "test-mpf-batch-persist-db";
-const CORRUPT_DB = "test-mpf-corrupt-db";
-const OVERLAY_DB = "test-mpf-overlay-db";
-const OVERLAY_RESET_DB = "test-mpf-overlay-reset-db";
-const OVERLAY_SPILL_DB = "test-mpf-overlay-spill-db";
-const OVERLAY_FAILURE_DB = "test-mpf-overlay-failure-db";
-const PATH_HYDRATION_DB = "test-mpf-path-hydration-db";
-const PATH_HYDRATION_FAILURE_DB = "test-mpf-path-hydration-failure-db";
-const key1 = Buffer.from("01", "hex");
-const key2 = Buffer.from("02", "hex");
-const key3 = Buffer.from("03", "hex");
-const value1 = Buffer.from("aa", "hex");
-const value2 = Buffer.from("bb", "hex");
-const value3 = Buffer.from("cc", "hex");
-
-const mpfDigest = (value: Buffer): Buffer =>
-  Buffer.from(blake2b(32).update(value).digest());
-
-const mpfMerkleRoot = (children: readonly (Buffer | undefined)[]): Buffer => {
-  let nodes = children.map((child) => child ?? Buffer.alloc(32));
-  while (nodes.length > 1) {
-    const next: Buffer[] = [];
-    for (let index = 0; index < nodes.length; index += 2) {
-      next.push(mpfDigest(Buffer.concat([nodes[index]!, nodes[index + 1]!])));
-    }
-    nodes = next;
-  }
-  return nodes[0]!;
-};
-
-const mpfLeafHash = (prefix: string, value: Buffer): Buffer => {
-  const odd = prefix.length % 2 > 0;
-  const head = odd
-    ? Buffer.from([0, Number.parseInt(prefix[0]!, 16)])
-    : Buffer.from([255]);
-  const tail = Buffer.from(odd ? prefix.slice(1) : prefix, "hex");
-  return mpfDigest(Buffer.concat([head, tail, mpfDigest(value)]));
-};
-
-const buildDeepSharedMpfDag = (
-  key: Buffer,
-  value: Buffer,
-  depth = 10,
-  sharedPrefix = "f",
-) => {
-  const path = mpfDigest(key).toString("hex");
-  const records = new Map<string, Record<string, unknown>>();
-  const chosenLeaf = {
-    __kind: "Leaf",
-    prefix: path.slice(depth),
-    key: key.toString("hex"),
-    value: value.toString("hex"),
-  };
-  let currentHash = mpfLeafHash(chosenLeaf.prefix, value);
-  records.set(currentHash.toString("hex"), chosenLeaf);
-
-  const sharedValue = Buffer.from("5a", "hex");
-  const sharedLeaf = {
-    __kind: "Leaf",
-    prefix: sharedPrefix,
-    key: Buffer.alloc(32, 0x5a).toString("hex"),
-    value: sharedValue.toString("hex"),
-  };
-  const sharedHash = mpfLeafHash(sharedPrefix, sharedValue);
-  records.set(sharedHash.toString("hex"), sharedLeaf);
-  const chainHashes: string[] = [];
-
-  for (let index = depth - 1; index >= 0; index -= 1) {
-    const selected = Number.parseInt(path[index]!, 16);
-    const sibling = (selected + 1) % 16;
-    const childHashes = Array<Buffer | undefined>(16).fill(undefined);
-    childHashes[selected] = currentHash;
-    childHashes[sibling] = sharedHash;
-    const children = childHashes.map((child) => child?.toString("hex"));
-    currentHash = mpfDigest(mpfMerkleRoot(childHashes));
-    records.set(currentHash.toString("hex"), {
-      __kind: "Branch",
-      prefix: "",
-      children,
-      size: depth - index + 1,
-    });
-    chainHashes[index] = currentHash.toString("hex");
-  }
-  return {
-    root: currentHash.toString("hex"),
-    path,
-    records,
-    sharedHash: sharedHash.toString("hex"),
-    chainHashes,
-  };
-};
-
-const seedSerializedMpfDag = async (
-  path: string,
-  dag: ReturnType<typeof buildDeepSharedMpfDag>,
-): Promise<void> => {
-  const level = new Level<string, string | Record<string, unknown>>(path, {
-    valueEncoding: "json",
-  });
-  await level.open();
-  await level.batch([
-    ...[...dag.records].map(([key, value]) => ({
-      type: "put" as const,
-      key,
-      value,
-    })),
-    { type: "put" as const, key: "__root__", value: dag.root },
-  ]);
-  await level.close();
-};
-
-const makeTxHash = (byte: number) => Buffer.alloc(32, byte);
-const makeOutRef = (byte: number) => Buffer.from([byte, 0]);
-
-const makeDecodedMempoolTx = ({
-  txHash,
-  spent,
-  produced,
-}: {
-  readonly txHash: Buffer;
-  readonly spent: readonly Buffer[];
-  readonly produced: readonly Buffer[];
-}): DecodedMempoolTxForCommit => ({
-  entry: {
-    [Tx.Columns.TX_ID]: txHash,
-    [Tx.Columns.TX]: txHash,
-    [Tx.Columns.TIMESTAMPTZ]: new Date(0),
-  },
-  txHash,
-  txCbor: txHash,
-  spent,
-  produced: produced.map((outRef) => ({
-    [Ledger.Columns.OUTREF]: outRef,
-    [Ledger.Columns.OUTPUT]: Buffer.from("01", "hex"),
-  })),
-});
+import {
+  BATCH_PERSIST_DB,
+  buildDeepSharedMpfDag,
+  CORRUPT_DB,
+  EMPTY_DELETE_DB,
+  key1,
+  key2,
+  key3,
+  makeDecodedMempoolTx,
+  makeOutRef,
+  makeTxHash,
+  mpfDigest,
+  OVERLAY_DB,
+  OVERLAY_FAILURE_DB,
+  OVERLAY_RESET_DB,
+  OVERLAY_SPILL_DB,
+  PATH_HYDRATION_DB,
+  PATH_HYDRATION_FAILURE_DB,
+  seedSerializedMpfDag,
+  TEST_DB,
+  value1,
+  value2,
+  value3,
+} from "./mpf.build-deep-shared-mpf-dag.js";
 
 beforeAll(async () => {
   await Effect.runPromise(deleteMpfStore(TEST_DB, "test-mpf"));

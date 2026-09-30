@@ -20,6 +20,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readSourceFacets } from "../../scripts/lib/source-facets.mjs";
 import { isPassStatus, statusRole } from "./lib/evidence-status.mjs";
 import { runFixtureMode } from "./lib/runner-fixtures.mjs";
 import {
@@ -75,7 +76,7 @@ for (const [name, source] of Object.entries(evidence.sources)) {
             .map((entry) => readFile(resolve(absolutePath, entry), "utf8")),
         )
       ).join("\n")
-    : (await readFile(absolutePath)).toString("utf8");
+    : readSourceFacets(absolutePath);
 }
 
 // Statuses are classified by base role, so a decoration that records how a

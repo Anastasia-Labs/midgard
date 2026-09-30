@@ -1,23 +1,39 @@
+import "node:crypto";
+import "node:fs";
+import "node:path";
+import "node:sqlite";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-validation";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/evidence/index.js";
+import "../src/missing-native-script-tx/historical-preimage.js";
+import "../src/missing-native-script-tx/historical-script.js";
+import "../src/missing-native-script-utxo/artifact.js";
+import "../src/missing-native-script-utxo/prepare.js";
+import "../src/native-script-invalid/artifact.js";
+import "../src/native-script-invalid/prepare.js";
+import "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
+import "../src/transition-trace/phas.js";
+import "../src/transition-trace/reconstruct.js";
+import "../src/workflow/historical-native-script-corpus.js";
+import "../src/workflow/journal.js";
+import "../src/workflow/raw-l1-snapshot.js";
+import "../src/workflow/release-finality-policy.js";
+import "./helpers/canonical-block-evidence-fixture.js";
+import "./native-script-family-evidence.retained-source.js";
+
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import {
-  computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  encodeCbor,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -29,10 +45,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import {
-  authenticateTransactionsInclusionRoots,
-  canonicalBlockEvidenceFromVerifiedPayload,
-} from "../src/evidence/index.js";
 import {
   admitHistoricalNativeScriptPreimage,
   prepareHistoricalNativeScriptPreimage,
@@ -55,9 +67,7 @@ import {
 } from "../src/native-script-invalid/artifact.js";
 import { prepareNativeScriptInvalidFromCanonicalEvidence } from "../src/native-script-invalid/prepare.js";
 import { deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
-import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
-import { encodeData } from "../src/transition-trace/reconstruct.js";
 import {
   createHistoricalNativeScriptHistorySource,
   createHistoricalNativeScriptProviderRoster,
@@ -83,162 +93,21 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
+import { buildCanonicalBlockFixture } from "./helpers/canonical-block-evidence-fixture.js";
 import {
-  authenticatedHeaderObservation,
-  buildCanonicalBlockFixture,
-  type CanonicalBlockFixture,
-  type FixtureTransaction,
-} from "./helpers/canonical-block-evidence-fixture.js";
+  archivedFixtures,
+  canonicalEvidence,
+  evidenceFromFixture,
+  fixtureTransaction,
+  nativeScript,
+  nativeTx,
+  retainedSource,
+} from "./native-script-family-evidence.retained-source.js";
 
-const absentKeyHash = Buffer.alloc(28, 0x44);
-const nativeScript = {
-  language: "NativeCardano",
-  scriptBytes: Buffer.concat([Buffer.from("8200581c", "hex"), absentKeyHash]),
-  nativeScript: { type: "sig", keyHash: absentKeyHash },
-} satisfies MidgardVersionedScript;
-
-const nativeTx = ({
-  spendInputs = [],
-  scripts = [],
-}: {
-  readonly spendInputs?: readonly Buffer[];
-  readonly scripts?: readonly MidgardVersionedScript[];
-}) =>
-  materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
-    validity: "TxIsValid",
-    body: {
-      spendInputsPreimageCbor: encodeCbor([...spendInputs]),
-      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-      outputsPreimageCbor: EMPTY_CBOR_LIST,
-      fee: 0n,
-      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-      mintPreimageCbor: EMPTY_CBOR_LIST,
-      scriptIntegrityHash: EMPTY_NULL_ROOT,
-      auxiliaryDataHash: EMPTY_NULL_ROOT,
-      networkId: 0n,
-    },
-    witnessSet: {
-      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      scriptTxWitsPreimageCbor: encodeCbor(
-        scripts.map(encodeMidgardVersionedScript),
-      ),
-      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    },
-  });
-
-const fixtureTransaction = (
-  tx: ReturnType<typeof nativeTx>,
-): FixtureTransaction => {
-  const canonicalCbor = encodeMidgardNativeTxCanonical(tx);
-  const proof =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
-  const txId = computeMidgardNativeTxId(tx).toString("hex");
-  const source: SDK.L2TransactionSource = {
-    tx_id: txId,
-    source: {
-      compact_cbor: proof.compactCbor.toString("hex"),
-      witness_set_compact_cbor: proof.witnessSetCompactCbor.toString("hex"),
-      field_preimage_lengths_cbor:
-        proof.fieldPreimageLengthsCbor.toString("hex"),
-    },
-  };
-  return {
-    txId,
-    canonicalCbor,
-    compactCbor: proof.compactCbor,
-    source,
-    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceSchema),
-  };
-};
-
-const canonicalEvidence = async (tx: ReturnType<typeof nativeTx>) => {
-  const transaction = fixtureTransaction(tx);
-  const nativeFixture = await buildCanonicalBlockFixture({
-    transactions: [transaction],
-  });
-  const payloadFixture = await buildCanonicalBlockFixture({
-    transactions: [transaction],
-  });
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
-    observation: authenticatedHeaderObservation(payloadFixture),
-    payloadEnvelopeCbor: payloadFixture.payloadEnvelopeCbor,
-    daProvenance: {
-      trustClass: "public_or_permissionless_da",
-      sourceId: "libp2p/native-script-family-test",
-      grade: "security",
-    },
-  });
-  return {
-    ...evidence,
-    observation: authenticatedHeaderObservation(nativeFixture),
-    headerHash: nativeFixture.headerHash,
-    header: nativeFixture.header,
-    inclusionRootAuthentication: await authenticateTransactionsInclusionRoots({
-      header: nativeFixture.header,
-      reconstruction: evidence.reconstruction,
-      transactions: evidence.transactions,
-    }),
-  };
-};
-
-const evidenceFromFixture = async (
-  fixture: Awaited<ReturnType<typeof buildCanonicalBlockFixture>>,
-) =>
-  await canonicalBlockEvidenceFromVerifiedPayload({
-    observation: authenticatedHeaderObservation(fixture),
-    payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
-    daProvenance: {
-      trustClass: "public_or_permissionless_da",
-      sourceId: "libp2p/native-script-family-test",
-      grade: "security",
-    },
-  });
-
-const retainedSource = (
-  fixtures: readonly Awaited<ReturnType<typeof buildCanonicalBlockFixture>>[],
-): RetainedDaPayloadSource => ({
-  sourceId: "native-script-family-retained-da",
-  fetchPayloadByHeaderHash: async (headerHash) => {
-    const fixture = fixtures.find(
-      (candidate) => candidate.headerHash === headerHash,
-    );
-    return fixture === undefined
-      ? {
-          ok: false,
-          sourceId: "native-script-family-retained-da",
-          attempts: [
-            {
-              sourceId: "native-script-family-retained-da",
-              sourcePeerId: "peer-1",
-              protocol: "payload-by-header",
-              status: "not_found",
-              detail: "fixture intentionally pruned",
-            },
-          ],
-        }
-      : {
-          ok: true,
-          sourceId: "native-script-family-retained-da",
-          sourcePeerId: "peer-1",
-          provenance: {
-            trustClass: "public_or_permissionless_da",
-            sourceId: "native-script-family-retained-da/peer-1",
-            grade: "security",
-          },
-          payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
-          attempts: [],
-        };
-  },
-});
-
-const archivedFixtures = new Map<string, CanonicalBlockFixture>();
 let admittedHistorySource: ReturnType<
   typeof createHistoricalNativeScriptHistorySource
 >;
+
 const checkpointDirectories: string[] = [];
 
 const authenticatedCheckpointStore = () => {

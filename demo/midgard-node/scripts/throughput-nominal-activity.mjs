@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+import "node:fs";
+import "node:path";
+import "node:url";
+import "@al-ft/midgard-core/cek-proof";
+import "./native-tx-workload-utils.mjs";
+import "./throughput-nominal-activity.parse-args.mjs";
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,125 +19,24 @@ import {
   makeWalletsFromEnv,
   parseEnv,
 } from "./native-tx-workload-utils.mjs";
+import {
+  boolFrom,
+  extractCounter,
+  numberFrom,
+  parseArgs,
+  parseDurationMs,
+  sleep,
+  usage,
+} from "./throughput-nominal-activity.parse-args.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
+
 const __dirname = path.dirname(__filename);
+
 const pkgRoot = path.resolve(__dirname, "..");
 
-/**
- * Waits for the requested number of milliseconds.
- */
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Parses a duration flag into milliseconds.
- */
-const parseDurationMs = (value) => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error("duration must be a non-empty string");
-  }
-  const trimmed = value.trim().toLowerCase();
-  const match = /^(\d+)(ms|s|m|h)?$/.exec(trimmed);
-  if (match === null) {
-    throw new Error(`Invalid duration value: ${value}`);
-  }
-  const amount = Number.parseInt(match[1], 10);
-  const unit = match[2] ?? "s";
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error(`Duration must be a positive integer: ${value}`);
-  }
-  switch (unit) {
-    case "ms":
-      return amount;
-    case "s":
-      return amount * 1000;
-    case "m":
-      return amount * 60_000;
-    case "h":
-      return amount * 3_600_000;
-    default:
-      throw new Error(`Unsupported duration unit: ${unit}`);
-  }
-};
-
-/**
- * Parses CLI arguments for the nominal-activity workload.
- */
-const parseArgs = (argv) => {
-  const out = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (!token.startsWith("--")) {
-      continue;
-    }
-    if (token === "--help" || token === "-h") {
-      out.help = "true";
-      continue;
-    }
-    const eq = token.indexOf("=");
-    if (eq >= 0) {
-      const key = token.slice(2, eq);
-      const value = token.slice(eq + 1);
-      out[key] = value;
-      continue;
-    }
-    const key = token.slice(2);
-    const next = argv[i + 1];
-    if (next !== undefined && !next.startsWith("--")) {
-      out[key] = next;
-      i += 1;
-    } else {
-      out[key] = "true";
-    }
-  }
-  return out;
-};
-
-/**
- * Parses a boolean environment or CLI value.
- */
-const boolFrom = (value, defaultValue) => {
-  if (value === undefined) return defaultValue;
-  const normalized = String(value).trim().toLowerCase();
-  return normalized !== "false" && normalized !== "0" && normalized !== "no";
-};
-
-/**
- * Parses a numeric environment or CLI value.
- */
-const numberFrom = (value, fallback, name) => {
-  if (value === undefined) return fallback;
-  const parsed = Number.parseInt(String(value), 10);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`${name} must be a valid integer`);
-  }
-  return parsed;
-};
-
-/**
- * Prints the script usage message.
- */
-const usage = () => {
-  console.log(`Nominal Midgard activity generator
-
-Usage:
-  node scripts/throughput-nominal-activity.mjs [options]
-
-Options:
-  --duration <value>         Total run duration (e.g. 300s, 5m, 1h)
-  --target-txs <n>           Max successful submits before stopping
-  --min-interval-ms <n>      Minimum wait between submissions
-  --max-interval-ms <n>      Maximum wait between submissions
-  --submit-endpoint <url>    Midgard node HTTP endpoint
-  --metrics-endpoint <url>   Prometheus metrics endpoint
-  --env-file <path>          Env file with genesis seed phrases
-  --wallet-mode <mode>       random (default) or round_robin
-  --metrics-poll-ms <n>      Metrics poll interval
-  --help                     Show this message
-`);
-};
-
 const args = parseArgs(process.argv.slice(2));
+
 if (args.help === "true") {
   usage();
   process.exit(0);
@@ -140,37 +46,44 @@ const envPath =
   args["env-file"] ??
   process.env.ACTIVITY_ENV_FILE ??
   path.join(pkgRoot, ".env");
+
 const submitEndpoint =
   args["submit-endpoint"] ??
   process.env.ACTIVITY_SUBMIT_ENDPOINT ??
   process.env.STRESS_SUBMIT_ENDPOINT ??
   "http://127.0.0.1:3000";
+
 const metricsEndpoint =
   args["metrics-endpoint"] ??
   process.env.ACTIVITY_METRICS_ENDPOINT ??
   process.env.STRESS_METRICS_ENDPOINT ??
   "http://127.0.0.1:9464/metrics";
+
 const durationMs = parseDurationMs(
   args.duration ??
     process.env.ACTIVITY_DURATION ??
     process.env.ACTIVITY_DURATION_SEC ??
     "10m",
 );
+
 const targetTxs = numberFrom(
   args["target-txs"] ?? process.env.ACTIVITY_TARGET_TXS,
   100,
   "target txs",
 );
+
 const minIntervalMs = numberFrom(
   args["min-interval-ms"] ?? process.env.ACTIVITY_MIN_INTERVAL_MS,
   750,
   "min interval",
 );
+
 const maxIntervalMs = numberFrom(
   args["max-interval-ms"] ?? process.env.ACTIVITY_MAX_INTERVAL_MS,
   7000,
   "max interval",
 );
+
 const walletModeRaw = (
   args["wallet-mode"] ??
   process.env.ACTIVITY_WALLET_MODE ??
@@ -178,22 +91,29 @@ const walletModeRaw = (
 )
   .trim()
   .toLowerCase();
+
 const walletMode = walletModeRaw === "round_robin" ? "round_robin" : "random";
+
 const metricsPollMs = numberFrom(
   args["metrics-poll-ms"] ?? process.env.ACTIVITY_METRICS_POLL_MS,
   1000,
   "metrics poll",
 );
+
 const minLovelace = BigInt(
   process.env.ACTIVITY_MIN_LOVELACE ?? process.env.STRESS_MIN_LOVELACE ?? "0",
 );
+
 const retry503 = numberFrom(process.env.ACTIVITY_RETRY_503, 3, "retry503");
+
 const retryDelayMs = numberFrom(
   process.env.ACTIVITY_RETRY_DELAY_MS,
   50,
   "retry delay",
 );
+
 const logEverySuccess = boolFrom(process.env.ACTIVITY_LOG_EVERY_SUCCESS, false);
+
 const inFlightTtlMs = numberFrom(
   process.env.ACTIVITY_INFLIGHT_TTL_MS,
   45_000,
@@ -203,42 +123,26 @@ const inFlightTtlMs = numberFrom(
 if (!fs.existsSync(envPath)) {
   throw new Error(`Env file does not exist: ${envPath}`);
 }
+
 if (durationMs <= 0) {
   throw new Error("duration must be positive");
 }
+
 if (!Number.isFinite(targetTxs) || targetTxs <= 0) {
   throw new Error("target txs must be a positive integer");
 }
+
 if (!Number.isFinite(minIntervalMs) || minIntervalMs < 0) {
   throw new Error("min interval must be >= 0");
 }
+
 if (!Number.isFinite(maxIntervalMs) || maxIntervalMs <= 0) {
   throw new Error("max interval must be > 0");
 }
+
 if (minIntervalMs > maxIntervalMs) {
   throw new Error("min interval cannot be greater than max interval");
 }
-
-/** @typedef {{ outref: string; value: string }} NodeUtxo */
-
-/**
- * Escapes a string for literal use in a regular expression.
- */
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/**
- * Extracts a Prometheus counter value from metrics text.
- */
-const extractCounter = (text, names) => {
-  for (const name of names) {
-    const pattern = `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`;
-    const m = text.match(new RegExp(pattern, "m"));
-    if (m !== null) {
-      return Number(m[1]);
-    }
-  }
-  return 0;
-};
 
 /**
  * Fetches raw Prometheus metrics text from the node.

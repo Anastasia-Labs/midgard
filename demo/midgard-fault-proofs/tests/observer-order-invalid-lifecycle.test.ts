@@ -1,1003 +1,131 @@
+import "node:crypto";
+import "node:fs";
+import "node:url";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec/forced";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import "../src/field-opening.js";
+import "../src/missing-native-script-tx/staged-walk.js";
+import "../src/observer-order-invalid/actuator.js";
+import "../src/observer-order-invalid/artifact.js";
+import "../src/observer-order-invalid/contracts.js";
+import "../src/observer-order-invalid/family.js";
+import "../src/observer-order-invalid/staged-plan.js";
+import "../src/observer-order-invalid/submit-cancel.js";
+import "../src/observer-order-invalid/submit-step-01.js";
+import "../src/observer-order-invalid/submit-step-02.js";
+import "../src/observer-order-invalid/submit-step-03.js";
+import "../src/observer-order-invalid/submit-step-04.js";
+import "../src/proof-fit/van-rossem-fit-ledger.js";
+import "../src/remove-fraudulent-block.js";
+import "../src/testing/complete-lifecycle.js";
+import "../src/workflow/transaction-boundary.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/expect-onchain-refusal.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/reference-scripts.js";
+import "./support/emulator/registered-chain.js";
+import "./support/emulator/removal-deployment.js";
+import "./support/emulator/setup-tx.js";
+import "./support/lifecycle-coverage.js";
+import "./support/observer-order-invalid-raw.js";
+import "./support/submit-init-emulator-fixtures.js";
+import "./support/submit-init-emulator-shared.js";
+import "./observer-order-invalid-lifecycle.authentication-seams.js";
+import "./observer-order-invalid-lifecycle.make-harness.js";
+import "./observer-order-invalid-lifecycle.forced-success.js";
+import "./observer-order-invalid-lifecycle.accepted-success.js";
+
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import {
-  encodeMidgardForcedTxCompact as forcedCompact,
-  materializeMidgardForcedTxFromCanonical as forcedView,
-} from "@al-ft/midgard-core/codec/forced";
-import {
   acceptedVerdictSubject,
-  AddressData,
-  addressDataFromBech32,
   forcedVerdictSubject,
-  type RejectionReason,
 } from "@al-ft/midgard-sdk";
-import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
 import { advanceMissingNativeScriptTxSemanticCheckpoint } from "../src/missing-native-script-tx/staged-walk.js";
 import { createObserverOrderInvalidActuator } from "../src/observer-order-invalid/actuator.js";
 import { buildObserverOrderInvalidArtifact } from "../src/observer-order-invalid/artifact.js";
-import {
-  applyObserverOrderInvalidScripts,
-  OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES,
-  type ObserverOrderInvalidContracts,
-} from "../src/observer-order-invalid/contracts.js";
 import {
   classifyObserverOrderInvalidFinding,
   OBSERVER_ORDER_INVALID_ITEM_BUDGET,
   type ObserverOrderInvalidEvidence,
   observerOrderInvalidEvidenceCloses,
   type ObserverOrderInvalidFinding,
-  prepareObserverOrderInvalidEvidence,
 } from "../src/observer-order-invalid/family.js";
 import {
   encodeObserverOrderWalkCheckpoint,
   hashObserverOrderWalkCheckpoint,
   type ObserverOrderInvalidStagedPlan,
-  planObserverOrderInvalidStagedWalk,
 } from "../src/observer-order-invalid/staged-plan.js";
-import { submitObserverOrderInvalidCancel } from "../src/observer-order-invalid/submit-cancel.js";
-import {
-  submitObserverOrderInvalidStep01Accepted,
-  submitObserverOrderInvalidStep01Forced,
-} from "../src/observer-order-invalid/submit-step-01.js";
-import { submitObserverOrderInvalidStep02 } from "../src/observer-order-invalid/submit-step-02.js";
-import { submitObserverOrderInvalidStep03 } from "../src/observer-order-invalid/submit-step-03.js";
-import { submitObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04.js";
 import {
   buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
+import { acceptedSuccess } from "./observer-order-invalid-lifecycle.accepted-success.js";
+import {
+  AUTHENTICATION_SEAMS,
+  CANCELLABLE_STEPS,
+  CATEGORY_ID,
+  coverage,
+  LAST_ORDINAL,
+  ledgerPath,
+  MAXIMUM_FIELD_BYTES,
+  MAXIMUM_OBSERVERS,
+  MAXIMUM_SCANS,
+  measurements,
+  network,
+  REASON_ARM,
+  record,
+  scanLabel,
+  type Seam,
+} from "./observer-order-invalid-lifecycle.authentication-seams.js";
+import {
+  acceptedBlock,
+  acceptedFinding,
+  duplicateFirstShape,
+  earlierViolationShape,
+  emptyShape,
+  evidenceOf,
+  firstPairDescendingShape,
+  forcedBlock,
+  forcedFinding,
+  forcedSuccess,
+  maximumLastViolationShape,
+  maximumOrderedShape,
+  middleDuplicateShape,
+  reasonAt,
+  singleShape,
+  smallOrderedShape,
+  stagedOf,
+  twoOrderedShape,
+} from "./observer-order-invalid-lifecycle.forced-success.js";
+import { makeHarness } from "./observer-order-invalid-lifecycle.make-harness.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-} from "./support/emulator/measurement.js";
-import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import {
-  expectRegisteredChainParity,
-  familyStepsFromRegisteredChain,
-} from "./support/emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
   ascendingObservers,
-  buildAcceptedObserverInclusions,
-  buildForcedObserverLeaf,
   compactCborHex,
-  type ForcedObserverLeaf,
   mutateCertifiedCarriage,
   mutateCompactSource,
   mutateRawUtxoCarriage,
   observerAt,
-  type ObserverFieldShape,
   observerFieldShape,
-  submitObserverOrderInvalidStep01ForcedRaw,
-  submitObserverOrderInvalidStep02Raw,
-  submitObserverOrderInvalidStep03Raw,
-  submitObserverOrderInvalidStep04Raw,
   transactionIdOf,
   witnessSetCompactCborHex,
 } from "./support/observer-order-invalid-raw.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
-  setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
-
-const network = "Custom" as const;
-const REASON_ARM = "ObserverOrderInvalid";
-const CATEGORY_ID = "00000025";
-/**
- * The largest field 3 the §5.4 aggregate field bound admits: a three-byte
- * array header plus 1,092 fixed-stride 30-byte items is 32,763 of the
- * 32,768 admissible bytes, carried as three certified chunks. One more item
- * is not an encodable transaction.
- */
-const MAXIMUM_OBSERVERS = 1092;
-const MAXIMUM_FIELD_BYTES = 32_763;
-const MAXIMUM_CHUNKS = 3;
-const LAST_ORDINAL = MAXIMUM_OBSERVERS - 1;
-const MAXIMUM_SCANS = Math.ceil(
-  MAXIMUM_OBSERVERS / OBSERVER_ORDER_INVALID_ITEM_BUDGET,
-);
-
-/**
- * Every place a prover-supplied value is authenticated on chain. Each is
- * mutated once against a real bound thread and must be refused by a
- * validator, not by a builder.
- */
-const AUTHENTICATION_SEAMS = [
-  "tx_membership",
-  "forced_leaf_header",
-  "forced_leaf_membership",
-  "forced_leaf_reason",
-  "forced_reason_coordinate",
-  "forced_subject_transaction",
-  "forced_direction",
-  "successor_script",
-  "native_tx_source",
-  "field_raw_utxo",
-  "field_certificate",
-  "field_chunks",
-  "scan_checkpoint",
-  "scan_successor_state",
-  "scan_wrong_successor",
-  "scan_budget",
-  "premature_decision",
-  "decision_polarity",
-] as const;
-type Seam = (typeof AUTHENTICATION_SEAMS)[number];
-const CANCELLABLE_STEPS = ["step-01", "step-02", "step-03", "step-04"] as const;
-
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/observer-order-invalid-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
-const coverage = createLifecycleCoverageRecorder();
-const measurements: VanRossemFitMeasurement[] = [];
-let publicationsRecorded = false;
-
-const record = (
-  name: string,
-  maximumShape: string,
-  measurement: CompleteSignedTransactionMeasurement,
-  kind: VanRossemFitMeasurement["kind"] = "lifecycle",
-): void => {
-  expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
-  // Chunk publications and reference-script publications run no script; every
-  // transaction that does must have been evaluated locally.
-  if (measurement.redeemerCount > 0) {
-    expect(measurement.executionMemory, name).toBeGreaterThan(0n);
-    expect(measurement.executionSteps, name).toBeGreaterThan(0n);
-  }
-  measurements.push({
-    name,
-    kind,
-    maximumShape,
-    signedBytes: measurement.completeSignedBytes,
-    memoryUnits: measurement.executionMemory,
-    cpuUnits: measurement.executionSteps,
-  });
-};
-
-const scanLabel = (prefix: string, ordinal: number) =>
-  `${prefix}-step03-scan${(ordinal + 1).toString().padStart(2, "0")}`;
-
-// ---------------------------------------------------------------------------
-// Shapes: every ordering polarity at first, middle, last and duplicate ordinals
-// ---------------------------------------------------------------------------
-
-/** Ascending, with the last adjacent pair swapped: the offence is ordinal 1091. */
-const maximumLastViolationShape = () => {
-  const observers = ascendingObservers(MAXIMUM_OBSERVERS);
-  observers[LAST_ORDINAL - 1] = observerAt(LAST_ORDINAL);
-  observers[LAST_ORDINAL] = observerAt(LAST_ORDINAL - 1);
-  return observerFieldShape({
-    label: `${MAXIMUM_OBSERVERS.toString()} observers, last pair descending (${MAXIMUM_FIELD_BYTES.toString()}-byte certified field)`,
-    observers,
-  });
-};
-const maximumOrderedShape = () =>
-  observerFieldShape({
-    label: `${MAXIMUM_OBSERVERS.toString()} strictly ascending observers (${MAXIMUM_FIELD_BYTES.toString()}-byte certified field)`,
-    observers: ascendingObservers(MAXIMUM_OBSERVERS),
-  });
-const firstPairDescendingShape = () =>
-  observerFieldShape({
-    label: "2 observers, first pair descending (published inline field)",
-    observers: [observerAt(1), observerAt(0)],
-    fee: 11n,
-  });
-const middleDuplicateShape = () =>
-  observerFieldShape({
-    label: "5 observers, duplicate at ordinal 2 (published inline field)",
-    observers: [
-      observerAt(0),
-      observerAt(1),
-      observerAt(1),
-      observerAt(2),
-      observerAt(3),
-    ],
-    fee: 13n,
-  });
-const smallOrderedShape = () =>
-  observerFieldShape({
-    label: "5 strictly ascending observers (published inline field)",
-    observers: ascendingObservers(5),
-    fee: 17n,
-  });
-const twoOrderedShape = () =>
-  observerFieldShape({
-    label: "2 strictly ascending observers (published inline field)",
-    observers: ascendingObservers(2),
-  });
-const emptyShape = () =>
-  observerFieldShape({
-    label: "0 observers (published inline field)",
-    observers: [],
-  });
-const singleShape = () =>
-  observerFieldShape({
-    label: "1 observer (published inline field)",
-    observers: [observerAt(3)],
-  });
-const duplicateFirstShape = () =>
-  observerFieldShape({
-    label: "3 observers, duplicate at ordinal 1 (published inline field)",
-    observers: [observerAt(0), observerAt(0), observerAt(1)],
-  });
-const earlierViolationShape = () =>
-  observerFieldShape({
-    label: "3 observers, descending at ordinal 1, ascending at ordinal 2",
-    observers: [observerAt(1), observerAt(0), observerAt(2)],
-  });
-
-const reasonAt = (observerIndex: number): RejectionReason => ({
-  ObserverOrderInvalid: { observer_index: BigInt(observerIndex) },
-});
-
-const acceptedFinding = (
-  shape: ObserverFieldShape,
-  observerIndex: number,
-): ObserverOrderInvalidFinding => ({
-  subject: acceptedVerdictSubject(transactionIdOf(shape)),
-  observerIndex,
-});
-
-const evidenceOf = (
-  shape: ObserverFieldShape,
-  finding: ObserverOrderInvalidFinding,
-): ObserverOrderInvalidEvidence =>
-  prepareObserverOrderInvalidEvidence({
-    finding,
-    fieldPreimage: shape.fieldPreimage,
-    committedFieldHashHex: midgardFieldCommitment(shape.fieldPreimage).toString(
-      "hex",
-    ),
-  });
-
-const stagedOf = (
-  shape: ObserverFieldShape,
-  observerIndex: number,
-): ObserverOrderInvalidStagedPlan =>
-  planObserverOrderInvalidStagedWalk({
-    transactionId: transactionIdOf(shape),
-    fieldPreimageCbor: Buffer.from(shape.fieldPreimage).toString("hex"),
-    observerIndex,
-  });
-
-const forcedFinding = (
-  leaf: ForcedObserverLeaf,
-  sourceKey: { transactionId: string; outputIndex: bigint },
-  observerIndex: number,
-  rejectionReason: RejectionReason = reasonAt(observerIndex),
-): ObserverOrderInvalidFinding => ({
-  subject: forcedVerdictSubject({
-    transactionId: leaf.transactionId,
-    sourceKey,
-    rejectionReason,
-  }),
-  observerIndex,
-});
-
-// ---------------------------------------------------------------------------
-// Harness
-// ---------------------------------------------------------------------------
-
-/**
- * The registered chain is the deployed identity: the harness folds its first
- * step into the catalogue root. The family-side application must reproduce it
- * step for step before the suite drives it.
- */
-const makeHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: {
-      realObserverOrderInvalid: true,
-      alwaysFraudProofCatalogue: true,
-      alwaysStateQueue: true,
-    },
-  });
-  const addressData = await Effect.runPromise(
-    addressDataFromBech32(
-      harness.contracts.fraudProof.spendingScriptAddress,
-    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-  );
-  const registered = harness.contracts.fraudProofContracts.observerOrderInvalid;
-  const category = harness.catalogue.categories.observerOrderInvalid;
-  if (category === undefined) throw new Error("observer order category absent");
-  expect(category.categoryId).toBe(CATEGORY_ID);
-  expectRegisteredChainParity({
-    registered,
-    applied: applyObserverOrderInvalidScripts({
-      blueprint: harness.realBlueprint,
-      network,
-      computationThreadPolicyId: harness.contracts.computationThread.policyId,
-      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-    }),
-    category,
-  });
-  const steps = familyStepsFromRegisteredChain(
-    registered.steps,
-    OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES,
-  );
-  const contracts: ObserverOrderInvalidContracts = {
-    steps,
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
-    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    fieldPreimageCertificatePolicyId:
-      harness.contracts.fieldPreimageCertificate.policyId,
-    fieldPreimageCertificateMintingScript:
-      harness.contracts.fieldPreimageCertificate.mintingScript,
-  };
-  const catalogue = harness.catalogue;
-  const references: UTxO[] = [];
-  let certificateReference: UTxO | undefined;
-  /**
-   * Published only after the block setup: the setup mint policies are
-   * parameterized on the funder's nonce UTxO, which any earlier funder
-   * transaction would consume.
-   */
-  const publishReferences = async () => {
-    if (references.length > 0) return;
-    for (const [index, step] of steps.entries()) {
-      const published = await captureEmulatorSubmission(harness.emulator, () =>
-        publishPlainReferenceScriptUtxo({
-          lucid: harness.funderLucid,
-          script: step.spendingScript,
-          label: `observer-order-step-${(index + 1).toString()}`,
-        }),
-      );
-      if (!publicationsRecorded) {
-        record(
-          `publish-step0${(index + 1).toString()}`,
-          "fully applied testnet validator",
-          published.measurement,
-          "publication",
-        );
-      }
-      references.push(published.result.utxo);
-    }
-    publicationsRecorded = true;
-    certificateReference = (
-      await publishPlainReferenceScriptUtxo({
-        lucid: harness.funderLucid,
-        script: harness.contracts.fieldPreimageCertificate.mintingScript,
-        label: "observer-order-certificate",
-      })
-    ).utxo;
-  };
-  const requireCertificateReference = (): UTxO => {
-    if (certificateReference === undefined)
-      throw new Error("references not published");
-    return certificateReference;
-  };
-  const stepReferences = () =>
-    references as unknown as readonly [UTxO, UTxO, UTxO, UTxO];
-
-  /**
-   * Publish (and certify, when the tier requires it) the field-3 carriage
-   * the way the production builder expects to resolve it. Returns the chunk
-   * and certificate measurements of a certified publication.
-   */
-  const publishField = async (shape: ObserverFieldShape) => {
-    const planned = planFaultProofFieldOpening({
-      anchorSourceKind: 0n,
-      fieldIndex: 3,
-      anchorTxId: transactionIdOf(shape),
-      nativeTxCompactCbor: compactCborHex(shape.nativeTx),
-      itemCbors: shape.observers,
-      owner: harness.proverSigner.paymentKeyHash,
-      publish: true,
-      label: `observer order field ${shape.label}`,
-    });
-    if (planned.plan.tier !== "Certified") {
-      await publishFaultProofFieldCarriage({
-        lucid: harness.proverLucid,
-        signer: harness.proverSigner,
-        planned,
-        publisherAddress: harness.proverSigner.address,
-        label: `observer order field ${shape.label}`,
-      });
-      return { tier: planned.plan.tier, chunks: [], certificate: undefined };
-    }
-    const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-      publishFaultProofFieldCarriage({
-        lucid: harness.proverLucid,
-        signer: harness.proverSigner,
-        planned,
-        publisherAddress: harness.proverSigner.address,
-        label: `observer order field ${shape.label}`,
-      }),
-    );
-    const certificate = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyFaultProofFieldCarriage({
-        lucid: harness.proverLucid,
-        network,
-        signer: harness.proverSigner,
-        planned,
-        certificatePolicyId:
-          harness.contracts.fieldPreimageCertificate.policyId,
-        certificateMintingScript:
-          harness.contracts.fieldPreimageCertificate.mintingScript,
-        certificateReferenceScriptUtxo: requireCertificateReference(),
-        chunkUtxos: carriage.result,
-        compactCbor: compactCborHex(shape.nativeTx),
-        witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
-      }),
-    );
-    return {
-      tier: planned.plan.tier,
-      chunks: carriage.measurements,
-      certificate: certificate.measurement,
-    };
-  };
-  const recordCarriage = (
-    prefix: string,
-    shape: ObserverFieldShape,
-    published: Awaited<ReturnType<typeof publishField>>,
-  ) => {
-    expect(published.tier).toBe("Certified");
-    expect(published.chunks).toHaveLength(MAXIMUM_CHUNKS);
-    published.chunks.forEach((measurement, index) =>
-      record(
-        `${prefix}-carriage-chunk0${(index + 1).toString()}`,
-        shape.label,
-        measurement,
-      ),
-    );
-    record(
-      `${prefix}-carriage-certificate`,
-      shape.label,
-      published.certificate!,
-    );
-  };
-
-  const init = (fraudulentBlockOutRef: string, fraudulentHeaderHash: string) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: contracts as never,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef,
-        fraudulentHeaderHash,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  type Initialized = Awaited<ReturnType<typeof init>>["result"];
-  const threadOf = (initialized: Initialized) =>
-    `${initialized.txHash}#${initialized.firstStepOutputIndex.toString()}`;
-  const threadUtxoOf = async (initialized: Initialized) => {
-    const [threadUtxo] = await harness.proverLucid.utxosByOutRef([
-      {
-        txHash: initialized.txHash,
-        outputIndex: initialized.firstStepOutputIndex,
-      },
-    ]);
-    if (threadUtxo === undefined) throw new Error("init thread absent");
-    return threadUtxo;
-  };
-  /** The thread output a raw continuation left at `address`. */
-  const threadAfter = async (txHash: string, address: string) => {
-    const next = (await harness.proverLucid.utxosAt(address)).find(
-      (utxo) => utxo.txHash === txHash,
-    );
-    if (next === undefined) throw new Error("raw continuation output absent");
-    return `${next.txHash}#${next.outputIndex.toString()}`;
-  };
-  const step01Accepted = async (
-    initialized: Initialized,
-    finding: ObserverOrderInvalidFinding,
-    txInclusion: SubmitStep01TxInclusion,
-    stateQueueBlockOutRef: string,
-  ) =>
-    captureEmulatorSubmission(harness.emulator, async () =>
-      submitObserverOrderInvalidStep01Accepted({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts,
-        signer: harness.proverSigner,
-        finding,
-        threadUtxo: await threadUtxoOf(initialized),
-        threadToken: {
-          unit: initialized.computationThreadUnit,
-          fraudulentHeaderHash: initialized.fraudulentHeaderHash,
-        },
-        stateQueueBlockOutRef,
-        txInclusion,
-        referenceScriptUtxo: references[0]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  const step01Forced = (
-    threadOutRef: string,
-    finding: ObserverOrderInvalidFinding,
-    forcedSource: Readonly<Record<string, unknown>>,
-  ) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep01Forced({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        finding,
-        forcedSource,
-        referenceScriptUtxo: references[0]!,
-      }),
-    );
-  const step01ForcedRaw = (
-    threadOutRef: string,
-    finding: ObserverOrderInvalidFinding,
-    forcedSource: Readonly<Record<string, unknown>>,
-    nextStepIndex: 0 | 1 | 2 | 3,
-  ) =>
-    submitObserverOrderInvalidStep01ForcedRaw({
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef,
-      finding,
-      forcedSource,
-      referenceScriptUtxo: references[0]!,
-      nextStepIndex,
-    });
-  const step02 = (
-    threadOutRef: string,
-    evidence: ObserverOrderInvalidEvidence,
-    shape: ObserverFieldShape,
-    staged: ObserverOrderInvalidStagedPlan,
-  ) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep02({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        evidence,
-        nativeTxCompactCbor:
-          evidence.subject.source_kind === 1n
-            ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
-            : compactCborHex(shape.nativeTx),
-        staged,
-        action: { kind: "authenticate" },
-        referenceScriptUtxo: references[1]!,
-      }),
-    );
-  const step02Raw = (
-    threadOutRef: string,
-    evidence: ObserverOrderInvalidEvidence,
-    shape: ObserverFieldShape,
-    staged: ObserverOrderInvalidStagedPlan,
-    mutateOpening?: Parameters<
-      typeof submitObserverOrderInvalidStep02Raw
-    >[0]["mutateOpening"],
-  ) =>
-    submitObserverOrderInvalidStep02Raw({
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef,
-      evidence,
-      nativeTxCompactCbor:
-        evidence.subject.source_kind === 1n
-          ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
-          : compactCborHex(shape.nativeTx),
-      staged,
-      referenceScriptUtxo: references[1]!,
-      mutateOpening,
-    });
-  const step03 = (
-    threadOutRef: string,
-    evidence: ObserverOrderInvalidEvidence,
-    shape: ObserverFieldShape,
-    staged: ObserverOrderInvalidStagedPlan,
-    walkOrdinal: number,
-  ) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep03({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        evidence,
-        nativeTxCompactCbor:
-          evidence.subject.source_kind === 1n
-            ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
-            : compactCborHex(shape.nativeTx),
-        staged,
-        walkOrdinal,
-        referenceScriptUtxo: references[2]!,
-      }),
-    );
-  type Step03Exposed = Omit<
-    Parameters<typeof submitObserverOrderInvalidStep03Raw>[0],
-    | "lucid"
-    | "contracts"
-    | "categoryId"
-    | "signer"
-    | "threadOutRef"
-    | "evidence"
-    | "nativeTxCompactCbor"
-    | "staged"
-    | "walkOrdinal"
-    | "referenceScriptUtxo"
-  >;
-  const step03Raw = (
-    threadOutRef: string,
-    evidence: ObserverOrderInvalidEvidence,
-    shape: ObserverFieldShape,
-    staged: ObserverOrderInvalidStagedPlan,
-    walkOrdinal: number,
-    exposed: Step03Exposed = {},
-  ) =>
-    submitObserverOrderInvalidStep03Raw({
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef,
-      evidence,
-      nativeTxCompactCbor:
-        evidence.subject.source_kind === 1n
-          ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
-          : compactCborHex(shape.nativeTx),
-      staged,
-      walkOrdinal,
-      referenceScriptUtxo: references[2]!,
-      ...exposed,
-    });
-  /** Every scan of the plan through the production builder, recorded. */
-  const scanAll = async (
-    threadOutRef: string,
-    evidence: ObserverOrderInvalidEvidence,
-    shape: ObserverFieldShape,
-    staged: ObserverOrderInvalidStagedPlan,
-    prefix: string,
-  ) => {
-    let cursor = threadOutRef;
-    for (let ordinal = 0; ordinal < staged.walk.length; ordinal += 1) {
-      const scanned = await step03(cursor, evidence, shape, staged, ordinal);
-      record(scanLabel(prefix, ordinal), shape.label, scanned.measurement);
-      cursor = scanned.result.nextThreadOutRef;
-    }
-    if (staged.walk.length > 1) coverage.resumed();
-    return cursor;
-  };
-  const step04 = (
-    threadOutRef: string,
-    evidence: ObserverOrderInvalidEvidence,
-  ) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep04({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        evidence,
-        referenceScriptUtxo: references[3]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  const step04Raw = (threadOutRef: string) =>
-    submitObserverOrderInvalidStep04Raw({
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef,
-      referenceScriptUtxo: references[3]!,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-  const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) => {
-    const cancelled = await captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidCancel({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        referenceScriptUtxo: references[stepIndex]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    coverage.cancelled(CANCELLABLE_STEPS[stepIndex]);
-    return cancelled;
-  };
-  const removalDeploymentInfo = async () => {
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
-    });
-    // A registered family resolves removal through the canonical catalogue:
-    // the manifest's fraudProofObserverOrderInvalid entries carry the
-    // registered chain the harness built.
-    return buildRemovalDeploymentInfo(harness.contracts, catalogue, {
-      removalReferenceScripts: removalReferences.published,
-    });
-  };
-  const removal = async (fraudulentHeaderHash: string) => {
-    const deploymentInfo = await removalDeploymentInfo();
-    const now = BigInt(harness.emulator.now());
-    const removed = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRemoveFraudulentBlock({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        deploymentInfo,
-        network,
-        signer: harness.proverSigner,
-        fraudCategory: "observerOrderInvalid",
-        fraudulentHeaderHash,
-        awaitConfirmation: true,
-        requireReferenceScripts: true,
-        validFrom: now > 120_000n ? now - 120_000n : 0n,
-        validTo: now + 300_000n,
-      }),
-    );
-    expect(removed.result.fraudCategoryId).toBe(CATEGORY_ID);
-    expect(removed.result.transactions.map(({ kind }) => kind)).toEqual([
-      "remove-target",
-    ]);
-    coverage.scenario("permanent_proof_token_and_descendant_removal");
-    return removed;
-  };
-  return {
-    harness,
-    contracts,
-    catalogue,
-    category,
-    publishReferences,
-    requireCertificateReference,
-    stepReferences,
-    publishField,
-    recordCarriage,
-    init,
-    threadOf,
-    threadAfter,
-    step01Accepted,
-    step01Forced,
-    step01ForcedRaw,
-    step02,
-    step02Raw,
-    step03,
-    step03Raw,
-    scanAll,
-    step04,
-    step04Raw,
-    cancel,
-    removalDeploymentInfo,
-    removal,
-  };
-};
-
-type Harness = Awaited<ReturnType<typeof makeHarness>>;
-
-const acceptedBlock = async (
-  h: Harness,
-  shapes: readonly ObserverFieldShape[],
-) => {
-  const block = await buildAcceptedObserverInclusions(
-    shapes.map((shape) => shape.nativeTx),
-  );
-  const setup = await setupFraudulentBlock({
-    funderLucid: h.harness.funderLucid,
-    emulator: h.harness.emulator,
-    contracts: h.harness.contracts,
-    catalogue: h.catalogue,
-    fixture: {
-      transactionsRoot: block.transactionsRoot,
-      l2TransactionCount: block.l2TransactionCount,
-    },
-  });
-  await h.publishReferences();
-  return { setup, inclusions: block.inclusions };
-};
-
-/**
- * One rejected forced leaf typed with `rejectionReason` under a header the
- * committed block carries; the prover's finding claims this family's reason
- * at `observerIndex`.
- */
-const forcedBlock = async (
-  h: Harness,
-  shape: ObserverFieldShape,
-  observerIndex: number,
-  rejectionReason: RejectionReason = reasonAt(observerIndex),
-) => {
-  const credential = getAddressDetails(
-    await h.harness.funderLucid.wallet().address(),
-  ).paymentCredential;
-  if (credential?.type !== "Key") throw new Error("forced funder key absent");
-  const baseFixture = await buildInvalidForcedTransitionTraceFixture({
-    operatorVkey: credential.hash,
-    now:
-      alignUnixTimeToEmulatorSlotBoundary(
-        h.harness.funderLucid,
-        h.harness.emulator.now() + 120_000,
-      ) - 1,
-  });
-  const sourceKey = baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
-  const leaf = await buildForcedObserverLeaf({
-    shape,
-    sourceKey,
-    rejectionReason,
-  });
-  const header = {
-    ...baseFixture.header,
-    forcedTransactionsRoot: leaf.root.root,
-  };
-  const setup = await submitSetupTx({
-    lucid: h.harness.funderLucid,
-    contracts: h.harness.contracts,
-    nonceUtxo: h.harness.nonceUtxo,
-    catalogue: h.catalogue,
-    header,
-  });
-  await h.publishReferences();
-  const finding = forcedFinding(leaf, sourceKey, observerIndex);
-  const source = { header, membership: leaf.membership, direction: 1n };
-  return { setup, header, leaf, sourceKey, finding, source };
-};
-
-type ForcedContext = Harness &
-  Awaited<ReturnType<typeof forcedBlock>> & {
-    readonly shape: ObserverFieldShape;
-    readonly evidence: ObserverOrderInvalidEvidence;
-    readonly staged: ObserverOrderInvalidStagedPlan;
-  };
-
-/**
- * Init -> forced step 01 -> step 02 -> every scan -> step 04 proof mint ->
- * removal, every transaction recorded under `prefix`.
- */
-const forcedSuccess = async (
-  prefix: string,
-  shape: ObserverFieldShape,
-  observerIndex: number,
-  beforeRemoval: (context: ForcedContext) => Promise<void> = async () => {},
-) => {
-  const h = await makeHarness();
-  const block = await forcedBlock(h, shape, observerIndex);
-  const { setup, finding, source } = block;
-  const evidence = evidenceOf(shape, finding);
-  const staged = stagedOf(shape, observerIndex);
-  expect(evidence.violation).toBe(false);
-  expect(observerOrderInvalidEvidenceCloses(evidence)).toBe(true);
-  const initialized = await h.init(
-    setup.fraudulentBlockOutRef,
-    setup.headerHash,
-  );
-  record(`${prefix}-init`, shape.label, initialized.measurement);
-  const bound = await h.step01Forced(
-    h.threadOf(initialized.result),
-    finding,
-    source,
-  );
-  record(`${prefix}-step01`, shape.label, bound.measurement);
-  const published = await h.publishField(shape);
-  if (published.tier === "Certified")
-    h.recordCarriage(prefix, shape, published);
-  const opened = await h.step02(
-    bound.result.nextThreadOutRef,
-    evidence,
-    shape,
-    staged,
-  );
-  record(`${prefix}-step02`, shape.label, opened.measurement);
-  const decided = await h.scanAll(
-    opened.result.nextThreadOutRef,
-    evidence,
-    shape,
-    staged,
-    prefix,
-  );
-  const proven = await h.step04(decided, evidence);
-  expect(proven.result.fraudProofUnit).toBeTruthy();
-  record(`${prefix}-step04-proof-mint`, shape.label, proven.measurement);
-  coverage.reason(REASON_ARM, "forced_rejection_wrong");
-  coverage.scenario("wrongful_forced_rejection_success");
-  await beforeRemoval({ ...h, ...block, shape, evidence, staged });
-  record(
-    `${prefix}-remove`,
-    shape.label,
-    (await h.removal(setup.headerHash)).measurement,
-  );
-};
-
-/** Init -> accepted step 01 -> step 02 -> every scan -> step 04 -> removal. */
-const acceptedSuccess = async (
-  prefix: string,
-  shape: ObserverFieldShape,
-  observerIndex: number,
-) => {
-  const h = await makeHarness();
-  const { setup, inclusions } = await acceptedBlock(h, [shape]);
-  const finding = acceptedFinding(shape, observerIndex);
-  const evidence = evidenceOf(shape, finding);
-  const staged = stagedOf(shape, observerIndex);
-  expect(evidence.violation).toBe(true);
-  expect(observerOrderInvalidEvidenceCloses(evidence)).toBe(true);
-  await h.publishField(shape);
-  const initialized = await h.init(
-    setup.fraudulentBlockOutRef,
-    setup.headerHash,
-  );
-  record(`${prefix}-init`, shape.label, initialized.measurement);
-  const bound = await h.step01Accepted(
-    initialized.result,
-    finding,
-    inclusions[0]!,
-    setup.fraudulentBlockOutRef,
-  );
-  record(`${prefix}-step01`, shape.label, bound.measurement);
-  const opened = await h.step02(
-    bound.result.nextThreadOutRef,
-    evidence,
-    shape,
-    staged,
-  );
-  record(`${prefix}-step02`, shape.label, opened.measurement);
-  const decided = await h.scanAll(
-    opened.result.nextThreadOutRef,
-    evidence,
-    shape,
-    staged,
-    prefix,
-  );
-  const proven = await h.step04(decided, evidence);
-  expect(proven.result.fraudProofUnit).toBeTruthy();
-  record(`${prefix}-step04-proof-mint`, shape.label, proven.measurement);
-  coverage.reason(REASON_ARM, "accepted_invalid");
-  coverage.scenario("wrongful_acceptance_success");
-  record(
-    `${prefix}-remove`,
-    shape.label,
-    (await h.removal(setup.headerHash)).measurement,
-  );
-};
 
 describe("observerOrderInvalid registered-chain lifecycle", () => {
   it("convicts the maximum accepted field at its last ordinal through the production actuator, cancels every step, refuses every accepted seam and the honest ordered field, then mints and removes", async () => {

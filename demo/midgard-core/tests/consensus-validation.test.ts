@@ -1,3 +1,8 @@
+import "vitest";
+import "../src/index.js";
+import "../src/plutus-data-cbor.js";
+import "./consensus-validation.canonical.js";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,26 +13,16 @@ import {
   deriveMidgardNativeTxProofSource,
   deriveMidgardTxFieldPreimages,
   EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardFieldPreimageForField,
   encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_CONSENSUS_LIMITS,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  midgardAddressFromText,
   midgardExpectedChunkCount,
   midgardFieldCommitment,
   midgardFieldCommitmentFromItems,
   type MidgardNativeScript,
-  type MidgardNativeTxCanonical,
-  type MidgardTxOutput,
-  protectMidgardAddress,
   reconstructMidgardTransaction,
   splitMidgardFieldPreimageIntoChunks,
   validateMidgardConsensusTx,
@@ -35,98 +30,13 @@ import {
   verifyMidgardNativeTxProofSource,
   verifyMidgardTxFieldPreimage,
 } from "../src/index.js";
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "../src/plutus-data-cbor.js";
-
-const canonicalDataBytes = (payload: Buffer): Buffer =>
-  Buffer.from(
-    aikenSerialisedPlutusDataCborPreservingMapOrder(
-      encodeCbor(payload).toString("hex"),
-    ),
-    "hex",
-  );
-
-const address = midgardAddressFromText(
-  "addr1q9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzs02spk6",
-);
-
-const cekProgramEnvelope = (
-  nodeCount = 3n,
-  materialByteLength = 144n,
-): Buffer =>
-  encodeMidgardCekProgramEnvelope({
-    uplcVersion: [1n, 1n, 0n],
-    termRoot: Buffer.alloc(32, 0x33),
-    nodeCount,
-    materialByteLength,
-  });
-
-const output = (overrides: Partial<MidgardTxOutput> = {}): MidgardTxOutput => ({
-  address: protectMidgardAddress(address),
-  value: { lovelace: 2_000_000n, assets: new Map() },
-  script_ref: {
-    language: "MidgardV1",
-    scriptBytes: cekProgramEnvelope(),
-  },
-  ...overrides,
-});
-
-const canonical = (
-  version = MIDGARD_NATIVE_TX_VERSION,
-): MidgardNativeTxCanonical => ({
-  version,
-  validity: "TxIsValid",
-  body: {
-    spendInputsPreimageCbor: EMPTY_CBOR_LIST,
-    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-    outputsPreimageCbor: encodeCbor([encodeMidgardTxOutput(output())]),
-    fee: 0n,
-    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: encodeCbor([Buffer.alloc(28, 7)]),
-    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    // §5.6: the enveloped per-policy item list, not the retired raw map.
-    mintPreimageCbor: encodeMidgardFieldPreimageForField({
-      fieldIndex: 5,
-      items: [
-        {
-          policyId: Buffer.alloc(28, 8),
-          assets: [{ assetName: Buffer.from("asset", "ascii"), quantity: 1n }],
-        },
-      ],
-    }),
-    scriptIntegrityHash: Buffer.alloc(32, 9),
-    auxiliaryDataHash: EMPTY_NULL_ROOT,
-    networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
-  },
-  witnessSet: {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
-      { language: "MidgardV1", scriptBytes: cekProgramEnvelope() },
-    ]),
-    redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageForField({
-      fieldIndex: 8,
-      items: [
-        {
-          purpose: "Spend",
-          index: 0n,
-          redeemerCbor: Buffer.from([0x80]),
-          executionUnits: { memory: 0n, steps: 0n },
-        },
-      ],
-    }),
-  },
-});
-
-const nestedNativeScript = (depth: number): MidgardNativeScript => {
-  let script: MidgardNativeScript = {
-    type: "sig",
-    keyHash: Buffer.alloc(28, 0x44),
-  };
-  for (let index = 1; index < depth; index += 1) {
-    script = { type: "all", scripts: [script] };
-  }
-  return script;
-};
+import {
+  canonical,
+  canonicalDataBytes,
+  cekProgramEnvelope,
+  nestedNativeScript,
+  output,
+} from "./consensus-validation.canonical.js";
 
 describe("canonical V1 consensus transaction bounds", () => {
   it("admits the requested V1 feature surface instead of feature-gating it", () => {

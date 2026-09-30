@@ -1,3 +1,26 @@
+import "node:crypto";
+import "node:fs/promises";
+import "node:path";
+import "node:perf_hooks";
+import "node:url";
+import "@al-ft/midgard-core/codec/hash";
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@al-ft/midgard-fault-proofs";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../../src/indexers/user-event-reference-authority.js";
+import "../../src/l1/finality-engine.js";
+import "../../src/l1/l1-adapter.js";
+import "../../src/l1/local-historical-capture.js";
+import "../../src/l1/local-kupmios-raw-source.js";
+import "../../src/l1/multi-provider-consistency.js";
+import "../../src/l1/native-block-admission.js";
+import "../../src/l1/native-chain-sync.js";
+import "../../src/runtime/config.js";
+import "../../src/storage/durable-store.js";
+import "../support/deployment-authority-fixture.js";
+import "./local-historical-capture.config.js";
+
 import { createHash } from "node:crypto";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -7,7 +30,6 @@ import { fileURLToPath } from "node:url";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  computeFraudProofRawL1PointId,
   readAdmittedLocalKupmiosRawBlockAtPoint,
   readAdmittedLocalKupmiosReferenceBodiesAtPoint,
 } from "@al-ft/midgard-fault-proofs";
@@ -44,141 +66,37 @@ import {
 } from "../../src/l1/multi-provider-consistency.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
-import {
-  parseWatcherConfig,
-  WATCHER_CONFIG_SCHEMA_VERSION,
-} from "../../src/runtime/config.js";
+import { parseWatcherConfig } from "../../src/runtime/config.js";
 import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import {
+  config,
+  delay,
+  earlier,
+  type FixtureOptions,
+  GENESIS,
+  GENESIS_BYTES,
+  type Log,
+  metadata,
+  parent,
+  type ReferenceFixture,
+  target,
+} from "./local-historical-capture.config.js";
 
-const GENESIS_BYTES = JSON.stringify({ networkMagic: 1 });
-const GENESIS = createHash("sha256").update(GENESIS_BYTES).digest("hex");
-const config = (NODE_CONFIG_PATH: string, GENESIS_CONFIG_PATH: string) =>
-  Object.freeze({
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: Object.freeze({
-      source: Object.freeze({
-        sourceMode: "local_node",
-        authorityNodeId: "watcher-node",
-        chainSync: Object.freeze({
-          kind: "cardano_node_socket",
-          socketPath: "/run/cardano/node.socket",
-          nodeConfigPath: NODE_CONFIG_PATH,
-          genesisConfigPath: GENESIS_CONFIG_PATH,
-          genesisIdentitySha256: GENESIS,
-        }),
-        queryServices: Object.freeze([
-          Object.freeze({
-            kind: "ogmios",
-            identity: "local-ogmios",
-            endpoint: "ws://127.0.0.1:1337",
-          }),
-          Object.freeze({
-            kind: "kupo",
-            identity: "local-kupo",
-            endpoint: "http://127.0.0.1:1442",
-          }),
-        ]),
-      }),
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-      finality: Object.freeze({
-        depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-        rollback: Object.freeze({
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-        }),
-      }),
-    }),
-    da: Object.freeze({
-      peers: Object.freeze([
-        {
-          identity: "da-peer-a",
-          multiaddr:
-            "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
-        },
-      ]),
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-    }),
-    storage: Object.freeze({
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-      rollbackAuthorityKeySource: Object.freeze({
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
-      }),
-    }),
-    proverWallet: Object.freeze({
-      keySource: Object.freeze({
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
-      }),
-    }),
-    deadlines: Object.freeze({
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
-    }),
-  });
-
-// Metadata and bytes of the unchanged ordinary Conway fixture. The scalar
-// provider predecessor below is test data, not another block encoded in it.
-const metadata = Object.freeze({
-  blockHash: "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
-  blockNo: "12069665",
-  blockType: "7",
-  prevHash: "ff51732269af51a2efaa2a7ad4a2ff5647af5629013a446511249e837be617a0",
-  slot: "159835207",
-});
-const target = Object.freeze({
-  blockHash: metadata.blockHash,
-  blockNo: metadata.blockNo,
-  slot: metadata.slot,
-  pointId: computeFraudProofRawL1PointId(metadata),
-});
-const parent = {
-  blockHash: metadata.prevHash,
-  blockNo: (BigInt(metadata.blockNo) - 1n).toString(),
-  slot: (BigInt(metadata.slot) - 1n).toString(),
-};
-const earlier = { blockHash: "ee".repeat(32), slot: Number(metadata.slot) - 2 };
 const rawPath = fileURLToPath(
   new URL("../support/conway-block.hex", import.meta.url),
 );
-type ReferenceFixture = Readonly<{
-  schemaVersion: string;
-  provenance: Readonly<{
-    dataNetwork: string;
-    transactionDatasetSha256: string;
-    predecessorDatasetSha256: string;
-  }>;
-  transactions: readonly Readonly<{
-    txHash: string;
-    transactionCbor: string;
-    creatingPoint: Readonly<{
-      blockHash: string;
-      blockNo: string;
-      slot: string;
-    }>;
-    predecessorPoint: Readonly<{
-      blockHash: string;
-      blockNo: string;
-      slot: string;
-    }>;
-    creatingTransactionIndex: number;
-  }>[];
-}>;
+
 let referenceFixture: ReferenceFixture;
+
 let rawBlockCbor: string;
+
 let ordinaryBlock: ReturnType<typeof admitWatcherNativeRollForwardBlock>;
+
 let deployment: Awaited<
   ReturnType<typeof makeWatcherDeploymentAuthorityFixture>
 >;
+
 beforeAll(async () => {
   referenceFixture = JSON.parse(
     await readFile(
@@ -201,31 +119,15 @@ beforeAll(async () => {
   });
   deployment = makeWatcherDeploymentAuthorityFixture();
 }, 60_000);
+
 const cleanup: (() => Promise<void>)[] = [];
+
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-const delay = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
-type Log = { kind: string; query: number; value?: Record<string, unknown> };
-type FixtureOptions = Readonly<{
-  modes?: readonly string[];
-  tipOffsets?: readonly number[];
-  secondBlockType?: string;
-  recheckChangesHead?: boolean | "always";
-  reverseTransactions?: boolean;
-  pendingHttp?: boolean;
-  socketMode?: "opening" | "request";
-  onLastInitialCheckpoint?: () => void;
-  referenceMode?:
-    | "missing"
-    | "wrong_frame"
-    | "wrong_index"
-    | "head_changed"
-    | "wait";
-}>;
+
 const fixture = async (options: FixtureOptions = {}) => {
   const dir = await mkdtemp(join("/var/tmp", "local-historical-capture-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));

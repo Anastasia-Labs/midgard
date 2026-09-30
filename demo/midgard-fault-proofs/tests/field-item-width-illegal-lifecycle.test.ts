@@ -1,65 +1,72 @@
+import "node:crypto";
+import "node:fs";
+import "node:url";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import "../src/field-item-width-illegal/index.js";
+import "../src/proof-fit/van-rossem-fit-ledger.js";
+import "../src/remove-fraudulent-block.js";
+import "../src/testing/complete-lifecycle.js";
+import "../src/transition-trace/witnesses.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/expect-onchain-refusal.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/reference-scripts.js";
+import "./support/emulator/registered-chain.js";
+import "./support/emulator/removal-deployment.js";
+import "./support/emulator/setup-tx.js";
+import "./support/field-item-width-illegal-shapes.js";
+import "./support/lifecycle-coverage.js";
+import "./support/submit-init-emulator-fixtures.js";
+import "./support/submit-init-emulator-shared.js";
+import "./field-item-width-illegal-lifecycle.record.js";
+import "./field-item-width-illegal-lifecycle.make-harness.js";
+import "./field-item-width-illegal-lifecycle.forced-block.js";
+
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
-import {
-  computeMidgardNativeTxId,
-  midgardFieldCommitment,
-} from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
-  AddressData,
-  addressDataFromBech32,
-  type FieldOpening,
   forcedVerdictSubject,
-  type RejectionReason,
 } from "@al-ft/midgard-sdk";
-import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import {
-  applyFieldItemWidthIllegalScripts,
-  FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES,
-  type FieldItemWidthEvidence,
-  type FieldItemWidthFinding,
-  type FieldItemWidthIllegalContracts,
-  prepareFieldItemWidthEvidence,
-  submitFieldItemWidthIllegalCancel,
-  submitFieldItemWidthIllegalStep01Accepted,
-  submitFieldItemWidthIllegalStep01Forced,
-  submitFieldItemWidthIllegalStep02,
-  submitFieldItemWidthIllegalStep03,
-} from "../src/field-item-width-illegal/index.js";
+import { type FieldItemWidthFinding } from "../src/field-item-width-illegal/index.js";
 import {
   buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import {
+  acceptedBlock,
+  acceptedEvidence,
+  forcedHonestRefusal,
+  forcedSuccess,
+  mutateCertifiedCarriage,
+  recordCarriage,
+  widthReason,
+} from "./field-item-width-illegal-lifecycle.forced-block.js";
+import { makeHarness } from "./field-item-width-illegal-lifecycle.make-harness.js";
+import {
+  AUTHENTICATION_SEAMS,
+  CANCELLABLE_STEPS,
+  coverage,
+  ledgerPath,
+  measurements,
+  REASON_ARM,
+  record,
+} from "./field-item-width-illegal-lifecycle.record.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-} from "./support/emulator/measurement.js";
-import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import {
-  expectRegisteredChainParity,
-  familyStepsFromRegisteredChain,
-} from "./support/emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
   boundaryLegalOutputShape,
-  buildAcceptedWidthInclusions,
-  buildWidthForcedFixture,
   compactCborHex,
   emptyMintItemShape,
   forcedIllegalOutputShape,
@@ -68,581 +75,7 @@ import {
   maximumIllegalOutputShape,
   mintFieldTx,
   nonEmptyMintItemShape,
-  submitWidthStep02Raw,
-  submitWidthStep03Raw,
-  type WidthShape,
-  witnessSetCompactCborHex,
 } from "./support/field-item-width-illegal-shapes.js";
-import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
-
-const network = "Custom" as const;
-const REASON_ARM = "FieldItemWidthIllegal";
-const CATEGORY_ID = "00000021";
-/**
- * Every place a prover-supplied value is authenticated on chain. Each is
- * mutated once against a real bound thread and must be refused by a
- * validator, not by a builder.
- */
-const AUTHENTICATION_SEAMS = [
-  "tx_membership",
-  "forced_leaf_header",
-  "forced_leaf_membership",
-  "forced_leaf_reason_coordinate",
-  "forced_direction",
-  "native_tx_source",
-  "field_preimage_bytes",
-  "field_certificate",
-  "field_chunks",
-  "successor_script",
-] as const;
-const CANCELLABLE_STEPS = ["step-01", "step-02", "step-03"] as const;
-
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/field-item-width-illegal-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
-const coverage = createLifecycleCoverageRecorder();
-const measurements: VanRossemFitMeasurement[] = [];
-let publicationsRecorded = false;
-
-const record = (
-  name: string,
-  maximumShape: string,
-  measurement: CompleteSignedTransactionMeasurement,
-  kind: VanRossemFitMeasurement["kind"] = "lifecycle",
-): void => {
-  expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
-  // Chunk publications and reference-script publications run no script; every
-  // transaction that does must have been evaluated locally.
-  if (measurement.redeemerCount > 0) {
-    expect(measurement.executionMemory, name).toBeGreaterThan(0n);
-    expect(measurement.executionSteps, name).toBeGreaterThan(0n);
-  }
-  measurements.push({
-    name,
-    kind,
-    maximumShape,
-    signedBytes: measurement.completeSignedBytes,
-    memoryUnits: measurement.executionMemory,
-    cpuUnits: measurement.executionSteps,
-  });
-};
-
-const widthReason = (fieldIndex: number, itemIndex: number): RejectionReason =>
-  ({
-    FieldItemWidthIllegal: {
-      field_index: BigInt(fieldIndex),
-      item_index: BigInt(itemIndex),
-    },
-  }) as const;
-
-const acceptedEvidence = (shape: WidthShape): FieldItemWidthEvidence =>
-  prepareFieldItemWidthEvidence({
-    finding: {
-      subject: acceptedVerdictSubject(
-        computeMidgardNativeTxId(shape.nativeTx).toString("hex"),
-      ),
-      fieldIndex: shape.fieldIndex,
-      itemIndex: shape.itemIndex,
-    },
-    fieldPreimage: shape.fieldPreimage,
-    committedFieldHashHex: midgardFieldCommitment(shape.fieldPreimage).toString(
-      "hex",
-    ),
-  });
-
-type CertifiedCarriage = {
-  cert_ref_input_index: bigint;
-  chunk_ref_input_indices: bigint[];
-};
-
-const mutateCertifiedCarriage = (
-  opening: FieldOpening,
-  patch: (carriage: CertifiedCarriage) => CertifiedCarriage,
-): FieldOpening => {
-  if (!("BodyFieldOpening" in opening))
-    throw new Error("body opening expected");
-  const carriage = opening.BodyFieldOpening.carriage;
-  if (!("Certified" in carriage))
-    throw new Error("certified carriage expected");
-  return {
-    BodyFieldOpening: {
-      ...opening.BodyFieldOpening,
-      carriage: {
-        Certified: patch({
-          cert_ref_input_index: carriage.Certified.cert_ref_input_index,
-          chunk_ref_input_indices: [
-            ...carriage.Certified.chunk_ref_input_indices,
-          ],
-        }),
-      },
-    },
-  };
-};
-
-/**
- * The registered chain is the deployed identity: the harness folds its first
- * step into the catalogue root. The family-side application must reproduce it
- * step for step before the suite drives it.
- */
-const makeHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: {
-      realFieldItemWidthIllegal: true,
-      alwaysFraudProofCatalogue: true,
-    },
-  });
-  const addressData = await Effect.runPromise(
-    addressDataFromBech32(
-      harness.contracts.fraudProof.spendingScriptAddress,
-    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-  );
-  const registered =
-    harness.contracts.fraudProofContracts.fieldItemWidthIllegal;
-  const category = harness.catalogue.categories.fieldItemWidthIllegal;
-  if (category === undefined) throw new Error("width category absent");
-  expect(category.categoryId).toBe(CATEGORY_ID);
-  expectRegisteredChainParity({
-    registered,
-    applied: applyFieldItemWidthIllegalScripts({
-      blueprint: harness.realBlueprint,
-      network,
-      computationThreadPolicyId: harness.contracts.computationThread.policyId,
-      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-    }),
-    category,
-  });
-  const steps = familyStepsFromRegisteredChain(
-    registered.steps,
-    Object.values(FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES),
-  );
-  const contracts: FieldItemWidthIllegalContracts = {
-    steps,
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
-    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    fieldPreimageCertificatePolicyId:
-      harness.contracts.fieldPreimageCertificate.policyId,
-    fieldPreimageCertificateMintingScript:
-      harness.contracts.fieldPreimageCertificate.mintingScript,
-  };
-  const catalogue = harness.catalogue;
-  const references: UTxO[] = [];
-  let certificateReference: UTxO | undefined;
-  /**
-   * Published only after the block setup: the setup mint policies are
-   * parameterized on the funder's nonce UTxO, which any earlier funder
-   * transaction would consume.
-   */
-  const publishReferences = async () => {
-    if (references.length > 0) return;
-    for (const [index, step] of steps.entries()) {
-      const published = await captureEmulatorSubmission(harness.emulator, () =>
-        publishPlainReferenceScriptUtxo({
-          lucid: harness.funderLucid,
-          script: step.spendingScript,
-          label: `width-step-${(index + 1).toString()}`,
-        }),
-      );
-      if (!publicationsRecorded) {
-        record(
-          `publish-step0${(index + 1).toString()}`,
-          "fully applied testnet validator",
-          published.measurement,
-          "publication",
-        );
-      }
-      references.push(published.result.utxo);
-    }
-    publicationsRecorded = true;
-    certificateReference = (
-      await publishPlainReferenceScriptUtxo({
-        lucid: harness.funderLucid,
-        script: harness.contracts.fieldPreimageCertificate.mintingScript,
-        label: "width-certificate",
-      })
-    ).utxo;
-  };
-  const requireCertificateReference = (): UTxO => {
-    if (certificateReference === undefined)
-      throw new Error("references not published");
-    return certificateReference;
-  };
-
-  const init = (fraudulentBlockOutRef: string) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: contracts as never,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  type Initialized = Awaited<ReturnType<typeof init>>["result"];
-  const threadOf = (initialized: Initialized) =>
-    `${initialized.txHash}#${initialized.firstStepOutputIndex.toString()}`;
-  const step01Accepted = async (
-    initialized: Initialized,
-    finding: FieldItemWidthFinding,
-    txInclusion: SubmitStep01TxInclusion,
-    stateQueueBlockOutRef: string,
-  ) => {
-    const [threadUtxo] = await harness.proverLucid.utxosByOutRef([
-      {
-        txHash: initialized.txHash,
-        outputIndex: initialized.firstStepOutputIndex,
-      },
-    ]);
-    if (threadUtxo === undefined) throw new Error("init thread absent");
-    return captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep01Accepted({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts,
-        signer: harness.proverSigner,
-        finding,
-        threadUtxo,
-        threadToken: {
-          unit: initialized.computationThreadUnit,
-          fraudulentHeaderHash: initialized.fraudulentHeaderHash,
-        },
-        stateQueueBlockOutRef,
-        txInclusion,
-        referenceScriptUtxo: references[0]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  };
-  const step01Forced = (
-    threadOutRef: string,
-    finding: FieldItemWidthFinding,
-    forcedSource: Readonly<Record<string, unknown>>,
-  ) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep01Forced({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        finding,
-        forcedSource,
-        referenceScriptUtxo: references[0]!,
-      }),
-    );
-  const step02 = (
-    threadOutRef: string,
-    evidence: FieldItemWidthEvidence,
-    shape: WidthShape,
-  ) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep02({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        evidence,
-        nativeTxCompactCbor: compactCborHex(
-          shape.nativeTx,
-          evidence.subject.source_kind,
-        ),
-        witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
-        referenceScriptUtxo: references[1]!,
-        certificateReferenceScriptUtxo: requireCertificateReference(),
-      }),
-    );
-  const step02Raw = (
-    threadOutRef: string,
-    evidence: FieldItemWidthEvidence,
-    shape: WidthShape,
-    options: {
-      readonly mutateOpening?: (
-        opening: FieldOpening,
-        referenceInputs: readonly UTxO[],
-      ) => FieldOpening;
-      readonly nextStepIndex?: 1 | 2;
-    },
-  ) =>
-    submitWidthStep02Raw({
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef,
-      evidence,
-      nativeTxCompactCbor: compactCborHex(
-        shape.nativeTx,
-        evidence.subject.source_kind,
-      ),
-      witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
-      referenceScriptUtxo: references[1]!,
-      certificateReferenceScriptUtxo: requireCertificateReference(),
-      ...options,
-    });
-  const step03 = (threadOutRef: string, evidence: FieldItemWidthEvidence) =>
-    captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep03({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        evidence,
-        referenceScriptUtxo: references[2]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  const step03Raw = (threadOutRef: string) =>
-    submitWidthStep03Raw({
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef,
-      referenceScriptUtxo: references[2]!,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-  const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2) => {
-    const cancelled = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalCancel({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        referenceScriptUtxo: references[stepIndex]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    coverage.cancelled(CANCELLABLE_STEPS[stepIndex]);
-    return cancelled;
-  };
-  const removal = async (fraudulentHeaderHash: string) => {
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
-    });
-    // A registered family resolves removal through the canonical catalogue.
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      harness.contracts,
-      catalogue,
-      { removalReferenceScripts: removalReferences.published },
-    );
-    const now = BigInt(harness.emulator.now());
-    const removed = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRemoveFraudulentBlock({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        deploymentInfo,
-        network,
-        signer: harness.proverSigner,
-        fraudCategory: "fieldItemWidthIllegal",
-        fraudulentHeaderHash,
-        awaitConfirmation: true,
-        requireReferenceScripts: true,
-        validFrom: now > 120_000n ? now - 120_000n : 0n,
-        validTo: now + 300_000n,
-      }),
-    );
-    expect(removed.result.fraudCategoryId).toBe(CATEGORY_ID);
-    expect(removed.result.transactions.map(({ kind }) => kind)).toEqual([
-      "remove-target",
-    ]);
-    coverage.scenario("permanent_proof_token_and_descendant_removal");
-    return removed;
-  };
-  return {
-    harness,
-    contracts,
-    catalogue,
-    category,
-    publishReferences,
-    init,
-    threadOf,
-    step01Accepted,
-    step01Forced,
-    step02,
-    step02Raw,
-    step03,
-    step03Raw,
-    cancel,
-    removal,
-  };
-};
-
-type Harness = Awaited<ReturnType<typeof makeHarness>>;
-
-/** The chunk publications, the certificate, then the step: recorded apart. */
-const recordCarriage = (
-  prefix: string,
-  shape: string,
-  captured: Awaited<ReturnType<Harness["step02"]>>,
-  expectedChunks: number,
-): void => {
-  const all = captured.measurements;
-  if (expectedChunks === 0) {
-    expect(all).toHaveLength(1);
-  } else {
-    expect(all).toHaveLength(expectedChunks + 2);
-    for (let index = 0; index < expectedChunks; index += 1)
-      record(
-        `${prefix}-carriage-chunk0${(index + 1).toString()}`,
-        shape,
-        all[index]!,
-      );
-    record(`${prefix}-carriage-certificate`, shape, all[expectedChunks]!);
-  }
-  record(`${prefix}-step02`, shape, captured.measurement);
-};
-
-const acceptedBlock = async (h: Harness, transactions: WidthShape[]) => {
-  const block = await buildAcceptedWidthInclusions(
-    transactions.map((shape) => shape.nativeTx),
-  );
-  const setup = await setupFraudulentBlock({
-    funderLucid: h.harness.funderLucid,
-    emulator: h.harness.emulator,
-    contracts: h.harness.contracts,
-    catalogue: h.catalogue,
-    fixture: {
-      transactionsRoot: block.transactionsRoot,
-      l2TransactionCount: block.l2TransactionCount,
-    },
-  });
-  await h.publishReferences();
-  return { setup, inclusions: block.inclusions };
-};
-
-const forcedBlock = async (h: Harness, shape: WidthShape) => {
-  const credential = getAddressDetails(
-    await h.harness.funderLucid.wallet().address(),
-  ).paymentCredential;
-  if (credential?.type !== "Key") throw new Error("missing funder key");
-  const forced = await buildWidthForcedFixture({
-    operatorVkey: credential.hash,
-    now:
-      alignUnixTimeToEmulatorSlotBoundary(
-        h.harness.funderLucid,
-        h.harness.emulator.now() + 120_000,
-      ) - 1,
-    nativeTx: shape.nativeTx,
-    rejectionReason: widthReason(shape.fieldIndex, shape.itemIndex),
-  });
-  const setup = await submitSetupTx({
-    lucid: h.harness.funderLucid,
-    contracts: h.harness.contracts,
-    nonceUtxo: h.harness.nonceUtxo,
-    catalogue: h.catalogue,
-    header: forced.header,
-  });
-  await h.publishReferences();
-  const membership = await buildForcedTransactionLeafMembershipProof({
-    reconstruction: forced.reconstruction,
-    eventKey: forced.eventKey,
-  });
-  const evidence = prepareFieldItemWidthEvidence({
-    finding: {
-      subject: forcedVerdictSubject({
-        transactionId: forced.transaction.tx_id,
-        sourceKey: membership.key,
-        rejectionReason: forced.rejectionReason,
-      }),
-      fieldIndex: shape.fieldIndex,
-      itemIndex: shape.itemIndex,
-    },
-    fieldPreimage: shape.fieldPreimage,
-    committedFieldHashHex: midgardFieldCommitment(shape.fieldPreimage).toString(
-      "hex",
-    ),
-  });
-  expect(evidence.decisiveFaultHolds).toBe(shape.illegal);
-  const source = { header: forced.header, membership, direction: 1n };
-  return { forced, setup, membership, evidence, source };
-};
-
-/** Init → forced step 01 → step 02 → proof mint → removal, all recorded. */
-const forcedSuccess = async (
-  prefix: string,
-  shape: WidthShape,
-  expectedChunks: number,
-  beforeRemoval: (
-    context: Harness & Awaited<ReturnType<typeof forcedBlock>>,
-  ) => Promise<void> = async () => {},
-) => {
-  const h = await makeHarness();
-  const block = await forcedBlock(h, shape);
-  const { setup, evidence, source } = block;
-  const initialized = await h.init(setup.fraudulentBlockOutRef);
-  record(`${prefix}-init`, shape.label, initialized.measurement);
-  const bound = await h.step01Forced(
-    h.threadOf(initialized.result),
-    evidence,
-    source,
-  );
-  record(`${prefix}-step01`, shape.label, bound.measurement);
-  const authenticated = await h.step02(
-    bound.result.nextThreadOutRef,
-    evidence,
-    shape,
-  );
-  recordCarriage(prefix, shape.label, authenticated, expectedChunks);
-  const proven = await h.step03(
-    authenticated.result.nextThreadOutRef,
-    evidence,
-  );
-  expect(proven.result.fraudProofUnit).toBeTruthy();
-  record(`${prefix}-step03-proof-mint`, shape.label, proven.measurement);
-  coverage.reason(REASON_ARM, "forced_rejection_wrong");
-  coverage.scenario("wrongful_forced_rejection_success");
-  await beforeRemoval({ ...h, ...block });
-  record(
-    `${prefix}-remove`,
-    shape.label,
-    (await h.removal(setup.headerHash)).measurement,
-  );
-};
-
-/** Init → forced step 01 → step 02, then the terminal step must refuse. */
-const forcedHonestRefusal = async (shape: WidthShape) => {
-  const h = await makeHarness();
-  const { setup, evidence, source } = await forcedBlock(h, shape);
-  const bound = await h.step01Forced(
-    h.threadOf((await h.init(setup.fraudulentBlockOutRef)).result),
-    evidence,
-    source,
-  );
-  const authenticated = await h.step02(
-    bound.result.nextThreadOutRef,
-    evidence,
-    shape,
-  );
-  await expectOnchainRefusal(() =>
-    h.step03Raw(authenticated.result.nextThreadOutRef),
-  );
-  coverage.scenario("honest_forced_rejection_refusal");
-};
 
 describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
   it("convicts the widest accepted output a maximum field can carry: cancels every step, refuses every step-02 seam, the adjacent item coordinate and the honest bound, then mints and removes", async () => {

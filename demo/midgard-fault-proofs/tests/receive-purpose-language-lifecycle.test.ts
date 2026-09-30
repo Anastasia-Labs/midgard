@@ -1,435 +1,98 @@
+import "node:crypto";
+import "node:fs";
+import "node:url";
+import "@aiken-lang/merkle-patricia-forestry";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/proof-fit/van-rossem-fit-ledger.js";
+import "../src/receive-purpose-language/actuator.js";
+import "../src/receive-purpose-language/authenticated-replay.js";
+import "../src/receive-purpose-language/contracts.js";
+import "../src/receive-purpose-language/family.js";
+import "../src/receive-purpose-language/retained-witness.js";
+import "../src/receive-purpose-language/submit-cancel.js";
+import "../src/receive-purpose-language/submit-init.js";
+import "../src/receive-purpose-language/submit-step-01.js";
+import "../src/receive-purpose-language/submit-step-02.js";
+import "../src/receive-purpose-language/submit-step-03.js";
+import "../src/remove-fraudulent-block.js";
+import "../src/testing/complete-lifecycle.js";
+import "../src/transition-trace/phas.js";
+import "../src/workflow/transaction-boundary.js";
+import "./support/emulator/catalogue.js";
+import "./support/emulator/measurement.js";
+import "./support/receive-purpose-language-emulator.js";
+import "./support/submit-init-emulator-shared.js";
+import "./receive-purpose-language-lifecycle.make-harness.js";
+import "./receive-purpose-language-lifecycle.refuse-every-step02-seam.js";
+
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  AddressData,
-  addressDataFromBech32,
   ForcedInclusionTxV1Schema,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { createReceivePurposeLanguageActuator } from "../src/receive-purpose-language/actuator.js";
 import { prepareReceivePurposeLanguageArtifact } from "../src/receive-purpose-language/authenticated-replay.js";
-import {
-  applyReceivePurposeLanguageScripts,
-  type ReceivePurposeLanguageContracts,
-} from "../src/receive-purpose-language/contracts.js";
 import { prepareReceivePurposeLanguageEvidence } from "../src/receive-purpose-language/family.js";
 import {
   buildReceivePurposeLanguageAuthenticationFromRetainedDa,
   receivePurposeLanguageDescriptorFromAuthentication,
 } from "../src/receive-purpose-language/retained-witness.js";
-import { submitReceivePurposeLanguageCancel } from "../src/receive-purpose-language/submit-cancel.js";
-import { submitReceivePurposeLanguageInit } from "../src/receive-purpose-language/submit-init.js";
 import {
   submitReceivePurposeLanguageStep01Accepted,
   submitReceivePurposeLanguageStep01Forced,
 } from "../src/receive-purpose-language/submit-step-01.js";
-import {
-  type ReceivePurposeLanguageAuthentication,
-  submitReceivePurposeLanguageStep02,
-} from "../src/receive-purpose-language/submit-step-02.js";
+import { submitReceivePurposeLanguageStep02 } from "../src/receive-purpose-language/submit-step-02.js";
 import { submitReceivePurposeLanguageStep03 } from "../src/receive-purpose-language/submit-step-03.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
   assertCompleteLifecycleCoverage,
-  COMPLETE_LIFECYCLE_BASE_SCENARIOS,
   type CompleteLifecycleCoverage,
 } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
-import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-} from "./support/emulator/measurement.js";
+  AUTHENTICATION_SEAMS,
+  CANCELLABLE_STEPS,
+  coverage,
+  ledgerPath,
+  makeHarness,
+  MAXIMUM_DECOY_TRANSACTION_COUNT,
+  MAXIMUM_PURPOSE_COUNT,
+  measurements,
+  progress,
+  REASON_ARM,
+  record,
+  shapeLabel,
+} from "./receive-purpose-language-lifecycle.make-harness.js";
+import { refuseEveryStep02Seam } from "./receive-purpose-language-lifecycle.refuse-every-step02-seam.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
   buildReceivePurposeFixture,
-  type ReceivePurposeFixture,
   submitReceiveStep01ForcedRaw,
   submitReceiveStep02Raw,
   submitReceiveStep03Raw,
 } from "./support/receive-purpose-language-emulator.js";
 import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
   expectOnchainRefusal,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
   network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
   realBlueprintPath,
-  submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
-
-/**
- * The maximum evidence shape the suite drives through the real chain: the
- * accused receive purpose plus 255 native spend purposes (distinct spent
- * out-refs under one trivial script), so the purpose and execution frontiers
- * of the native-scripts control carry 256 leaves (an eight-sibling path from
- * every position) while every widened transaction field stays inside its
- * 32,768-byte consensus bound; the decoys widen the validation-traces trie so
- * the descriptor membership proof has real branch steps. The on-chain envelope itself (every
- * frontier at 4,095 leaves) is measured by
- * `receive_authenticates_consensus_bounded_frontiers` in
- * `onchain/aiken/lib/midgard/fraud-proofs/receive-purpose-language/rule.test.ak`;
- * the size plan combines both rows.
- */
-export const MAXIMUM_PURPOSE_COUNT = 256;
-export const MAXIMUM_DECOY_TRANSACTION_COUNT = 15;
-
-const REASON_ARM = "ReceivePurposePlutusV3Forbidden";
-const AUTHENTICATION_SEAMS = [
-  "forced_leaf_reason_coordinate",
-  "forced_leaf_header",
-  "forced_leaf_root",
-  "forced_leaf_direction",
-  "validation_traces_root",
-  "trace_descriptor",
-  "subject_event_key",
-  "machine_state",
-  "trace_proof",
-  "native_control",
-  "purpose_item",
-  "source_language",
-  "execution_membership",
-] as const;
-const CANCELLABLE_STEPS = ["step01", "step02", "step03"] as const;
-
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/receive-purpose-language-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
-const measurements: VanRossemFitMeasurement[] = [];
-const coverage = {
-  reasonArms: new Set<string>(),
-  successfulDirections: new Set<
-    "accepted_invalid" | "forced_rejection_wrong"
-  >(),
-  scenarios: new Set<(typeof COMPLETE_LIFECYCLE_BASE_SCENARIOS)[number]>(),
-  seams: new Set<string>(),
-  cancelledSteps: new Set<string>(),
-  adjacentOverBoundRefused: false,
-};
-let publicationsRecorded = false;
-
-const record = (
-  name: string,
-  maximumShape: string,
-  measurement: CompleteSignedTransactionMeasurement,
-) => {
-  expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
-  expect(measurement.executionMemory, name).toBeGreaterThan(0n);
-  expect(measurement.executionSteps, name).toBeGreaterThan(0n);
-  measurements.push({
-    name,
-    kind: "lifecycle",
-    maximumShape,
-    signedBytes: measurement.completeSignedBytes,
-    memoryUnits: measurement.executionMemory,
-    cpuUnits: measurement.executionSteps,
-  });
-};
-
-const progress = (message: string) =>
-  console.info(`[receive-purpose-language-progress] ${message}`);
-
-const makeHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: { alwaysFraudProofCatalogue: true },
-  });
-  const addressData = await Effect.runPromise(
-    addressDataFromBech32(
-      harness.contracts.fraudProof.spendingScriptAddress,
-    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-  );
-  const applied = applyReceivePurposeLanguageScripts({
-    blueprint: harness.realBlueprint,
-    network,
-    computationThreadPolicyId: harness.contracts.computationThread.policyId,
-    fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-    fraudProofTokenAddressData: addressData,
-    hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-  });
-  const contracts: ReceivePurposeLanguageContracts = {
-    steps: applied,
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
-    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-  };
-  const catalogue = await buildCatalogueDeploymentInfo({
-    ...harness.contracts.fraudProofs,
-    receivePurposeLanguage: {
-      ...harness.contracts.fraudProofs.receivePurposeLanguage,
-      spendingScriptHash: applied[0].spendingScriptHash,
-    },
-  });
-  const category = catalogue.categories.receivePurposeLanguage;
-  expect(category.categoryId).toBe("00000034");
-  expect(category.scriptHash).toBe(applied[0].spendingScriptHash);
-  const references: UTxO[] = [];
-  // Published after the block setup so the harness nonce UTxO is still
-  // unspent when the state-queue block is committed.
-  const publishReferences = async () => {
-    for (const [index, step] of applied.entries()) {
-      const published = await publishPlainReferenceScriptUtxo({
-        lucid: harness.funderLucid,
-        script: step.spendingScript,
-        label: `receive-purpose-language-step-${(index + 1).toString()}`,
-      });
-      references.push(published.utxo);
-      expect(
-        published.publicationMeasurement.completeSignedBytes,
-        `step ${(index + 1).toString()} publication`,
-      ).toBeLessThanOrEqual(15_872);
-      if (!publicationsRecorded)
-        measurements.push({
-          name: `publish-step0${(index + 1).toString()}`,
-          kind: "publication",
-          maximumShape: `applied testnet ${step.blueprintTitle}`,
-          signedBytes: published.publicationMeasurement.completeSignedBytes,
-          memoryUnits: published.publicationMeasurement.executionMemory,
-          cpuUnits: published.publicationMeasurement.executionSteps,
-        });
-    }
-    publicationsRecorded = true;
-  };
-  const startTime = () =>
-    BigInt(
-      alignUnixTimeToEmulatorSlotBoundary(
-        harness.funderLucid,
-        harness.emulator.now() + 120_000,
-      ) - 1,
-    );
-  const common = (threadOutRef: string, stepIndex: number) =>
-    ({
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef,
-      referenceScriptUtxo: references[stepIndex]!,
-    }) as const;
-  const init = async (setup: {
-    fraudulentBlockOutRef: string;
-    headerHash: string;
-  }) =>
-    await captureEmulatorSubmission(
-      harness.emulator,
-      async () =>
-        await submitReceivePurposeLanguageInit({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts,
-          category,
-          catalogue: {
-            policyId: harness.contracts.fraudProofCatalogue.policyId,
-            spendingScriptAddress:
-              harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-            root: catalogue.root,
-          },
-          signer: harness.proverSigner,
-          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-          fraudulentHeaderHash: setup.headerHash,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
-    );
-  const cancel = async (threadOutRef: string, stepIndex: number) => {
-    const captured = await captureEmulatorSubmission(
-      harness.emulator,
-      async () =>
-        await submitReceivePurposeLanguageCancel({
-          ...common(threadOutRef, stepIndex),
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
-    );
-    expect(captured.result.txHash).toMatch(/^[0-9a-f]{64}$/u);
-    coverage.cancelledSteps.add(CANCELLABLE_STEPS[stepIndex]!);
-    return captured;
-  };
-  const setupBlock = async (fixture: ReceivePurposeFixture) => {
-    const setup = await submitSetupTx({
-      lucid: harness.funderLucid,
-      contracts: harness.contracts,
-      nonceUtxo: harness.nonceUtxo,
-      catalogue,
-      header: fixture.header,
-    });
-    await publishReferences();
-    return setup;
-  };
-  const removalDeployment = async () => {
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
-    });
-    const base = buildRemovalDeploymentInfo(harness.contracts, catalogue, {
-      removalReferenceScripts: removalReferences.published,
-    });
-    const entry = (step: (typeof applied)[number]) => ({
-      scriptHash: step.spendingScriptHash,
-      contract: {
-        type: step.spendingScript.type,
-        cborHex: step.spendingScript.script,
-      },
-    });
-    return {
-      ...base,
-      contracts: {
-        ...base.contracts,
-        fraudProofReceivePurposeLanguage: entry(applied[0]),
-        fraudProofReceivePurposeLanguageStep02: entry(applied[1]),
-        fraudProofReceivePurposeLanguageStep03: entry(applied[2]),
-      },
-    };
-  };
-  return {
-    harness,
-    applied,
-    contracts,
-    catalogue,
-    category,
-    references,
-    startTime,
-    common,
-    init,
-    cancel,
-    setupBlock,
-    removalDeployment,
-  };
-};
-
-type Harness = Awaited<ReturnType<typeof makeHarness>>;
-
-const shapeLabel = (fixture: ReceivePurposeFixture) =>
-  `${fixture.spec.purposeCount.toString()} purposes (${fixture.spec.language} receive at execution ${fixture.executionIndex.toString()}), ${fixture.header.validationTraceCount.toString()} validation traces`;
-
-const mutate = (
-  authentication: ReceivePurposeLanguageAuthentication,
-  patch: Partial<ReceivePurposeLanguageAuthentication>,
-): ReceivePurposeLanguageAuthentication => ({ ...authentication, ...patch });
-
-/** Every step-02 authentication seam, mutated one at a time against a bound thread. */
-const refuseEveryStep02Seam = async (
-  h: Harness,
-  threadOutRef: string,
-  authentication: ReceivePurposeLanguageAuthentication,
-) => {
-  const attempt = async (
-    seam: string,
-    mutated: ReceivePurposeLanguageAuthentication,
-  ) => {
-    progress(`step-02 refusal: ${seam}`);
-    await expectOnchainRefusal(
-      async () =>
-        await submitReceiveStep02Raw({
-          ...h.common(threadOutRef, 1),
-          authentication: mutated,
-        }),
-    );
-    coverage.seams.add(seam);
-  };
-  const membership = authentication.trace_membership;
-  await attempt(
-    "validation_traces_root",
-    mutate(authentication, {
-      trace_membership: { ...membership, root: "ff".repeat(32) },
-    }),
-  );
-  await attempt(
-    "trace_descriptor",
-    mutate(authentication, {
-      trace_membership: {
-        ...membership,
-        value: {
-          ...membership.value,
-          step_count: membership.value.step_count + 1n,
-        },
-      },
-    }),
-  );
-  await attempt(
-    "subject_event_key",
-    mutate(authentication, {
-      trace_membership: {
-        ...membership,
-        key: { L2TransactionEventKey: { tx_id: "aa".repeat(32) } },
-      },
-    }),
-  );
-  await attempt(
-    "machine_state",
-    mutate(authentication, {
-      machine_state: {
-        ...authentication.machine_state,
-        prior_ledger_root: "ee".repeat(32),
-      },
-    }),
-  );
-  expect(authentication.trace_proof.siblings.length).toBeGreaterThan(0);
-  await attempt(
-    "trace_proof",
-    mutate(authentication, {
-      trace_proof: {
-        ...authentication.trace_proof,
-        siblings: [
-          "dd".repeat(32),
-          ...authentication.trace_proof.siblings.slice(1),
-        ],
-      },
-    }),
-  );
-  await attempt(
-    "native_control",
-    mutate(authentication, {
-      control: {
-        ...authentication.control,
-        purpose_peaks: authentication.control.purpose_peaks.map((peak) => ({
-          ...peak,
-          hash: "cc".repeat(32),
-        })),
-      },
-    }),
-  );
-  await attempt(
-    "purpose_item",
-    mutate(authentication, { script_hash: "bb".repeat(28) }),
-  );
-  await attempt(
-    "source_language",
-    mutate(authentication, {
-      language_tag: authentication.language_tag === 3n ? 0n : 3n,
-    }),
-  );
-  expect(authentication.execution_siblings.length).toBeGreaterThan(0);
-  await attempt(
-    "execution_membership",
-    mutate(authentication, {
-      execution_siblings: [
-        "99".repeat(32),
-        ...authentication.execution_siblings.slice(1),
-      ],
-    }),
-  );
-};
 
 describe("receivePurposeLanguage real lifecycle", () => {
   it("convicts an accepted PlutusV3 receive at the maximum shape: cancels every step, refuses every step-02 seam and the adjacent index, then mints and removes through the actuator", async () => {
@@ -1044,3 +707,7 @@ describe("receivePurposeLanguage real lifecycle", () => {
     );
   });
 });
+export {
+  MAXIMUM_DECOY_TRANSACTION_COUNT,
+  MAXIMUM_PURPOSE_COUNT,
+} from "./receive-purpose-language-lifecycle.make-harness.js";

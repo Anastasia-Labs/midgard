@@ -1,0 +1,1832 @@
+[
+  {
+    "file": "da-committee-node/src/committee-service.committee-service.ts",
+    "max": 1757,
+    "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "da-committee-node/src/da/libp2p/payload-protocols.da-libp2p-payload-protocol-handlers.ts",
+    "max": 512,
+    "reason": "DaLibp2pPayloadProtocolHandlers is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "da-committee-node/src/store.json-file-committee-store.ts",
+    "max": 1099,
+    "reason": "JsonFileCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "da-committee-node/src/store/postgres.postgres-committee-store.ts",
+    "max": 1234,
+    "reason": "PostgresCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "da-committee-node/tests/committee-service.test/l1-finality.ts",
+    "max": 1859,
+    "reason": "registerL1FinalityTests is the dominant indivisible declaration (1826 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "da-committee-node/tests/committee-service.test/lifecycle.ts",
+    "max": 1130,
+    "reason": "registerLifecycleTests is the dominant indivisible declaration (1093 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "da-committee-node/tests/committee-service.test/rollback.ts",
+    "max": 850,
+    "reason": "registerRollbackTests is the dominant indivisible declaration (819 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "da-committee-node/tests/committee-service.test/signing.ts",
+    "max": 724,
+    "reason": "registerSigningTests is the dominant indivisible declaration (699 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "da-committee-node/tests/config.load-committee-config.ts",
+    "max": 1665,
+    "reason": "Retained test registration “loadCommitteeConfig” (1269 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/coordinator-factory.test.ts",
+    "max": 517,
+    "reason": "Retained test registration “onChainCoordinatorFromConfig” (392 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts",
+    "max": 960,
+    "reason": "Retained test registration “coordinator witness and candidate planning” (606 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/libp2p-attestation-exchange.da-attestation-exchange-over-real-libp2p.ts",
+    "max": 850,
+    "reason": "Retained test registration “DA attestation exchange over real libp2p” (239 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/libp2p-payload-protocols.test.ts",
+    "max": 757,
+    "reason": "Retained test registration “canonical V1 DA libp2p payload protocols” (692 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/libp2p-runtime.public-retained-da-listener.ts",
+    "max": 607,
+    "reason": "Retained test registration “public retained-DA listener” (570 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/peer-coordinator.test.ts",
+    "max": 666,
+    "reason": "Retained test registration “PeerSignatureCoordinator” (616 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/provider.test.ts",
+    "max": 4545,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "da-committee-node/tests/state-queue-scanner.test.ts",
+    "max": 708,
+    "reason": "Retained test registration “state queue scanner” (683 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/store-factory.test.ts",
+    "max": 848,
+    "reason": "Retained test registration “openCommitteeStore” (688 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "da-committee-node/tests/submitter.test.ts",
+    "max": 1521,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "da-committee-node/tests/tx-builders.da-attestation-init-output.ts",
+    "max": 518,
+    "reason": "Retained test registration “DA attestation init output” (173 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "lucid-midgard/src/builder.complete-tx.ts",
+    "max": 931,
+    "reason": "The transaction builder, trusted completion factories and validation callbacks form a mutually dependent ownership group. They share branded construction and transaction lifecycle invariants; separating the group requires redesigning those boundaries rather than moving independent declarations."
+  },
+  {
+    "file": "lucid-midgard/src/builder.lucid-midgard.ts",
+    "max": 511,
+    "reason": "LucidMidgard is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "lucid-midgard/src/builder.tx-builder.ts",
+    "max": 922,
+    "reason": "TxBuilder is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "lucid-midgard/tests/finalization.test.ts",
+    "max": 693,
+    "reason": "Retained test registration “TxBuilder finalization” (650 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "lucid-midgard/tests/provider.test.ts",
+    "max": 647,
+    "reason": "Retained test registration “MidgardNodeProvider” (611 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-core/scripts/generate-native-tx-field-items-v1-goldens.render-aiken.mjs",
+    "max": 504,
+    "reason": "renderAiken is the dominant indivisible declaration (484 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-core/src/availability-operation-journal.ts",
+    "max": 602,
+    "reason": "The synchronous SQLite journal is loaded directly from this .ts source by Node strip-types in the killed-process durability test. One 466-line constructor owns database transactions and lifecycle cleanup. Retain the self-contained source boundary; moving it behind .js facet imports breaks that runtime contract."
+  },
+  {
+    "file": "midgard-core/src/cek-proof.verify-one-program-material.ts",
+    "max": 1017,
+    "reason": "verifyOneProgramMaterial is the dominant indivisible declaration (959 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
+    "max": 571,
+    "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review."
+  },
+  {
+    "file": "midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
+    "max": 965,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
+    "max": 762,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-core/tests/availability-operation-journal.test.ts",
+    "max": 584,
+    "reason": "Retained test registration “availability operation journal durability and fencing” (541 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-core/tests/cek-proof.test.ts",
+    "max": 1854,
+    "reason": "Retained test registration “V1 CEK commitments” (1778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-core/tests/consensus-validation.test.ts",
+    "max": 548,
+    "reason": "Retained test registration “canonical V1 consensus transaction bounds” (509 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-core/tests/da-transport-vectors.test.ts",
+    "max": 1382,
+    "reason": "Retained test registration “DA transport full message vectors” (1229 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-core/tests/deployment-manifest-identity.deployment-manifest-v1-shared-identity.ts",
+    "max": 811,
+    "reason": "Retained test registration “DeploymentManifestV1 shared identity” (778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-core/tests/native-codec.test.ts",
+    "max": 700,
+    "reason": "Retained test registration “Midgard native v1 codec” (598 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/src/bin.main.ts",
+    "max": 1742,
+    "reason": "main is the dominant indivisible declaration (1668 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/execution-native-script-invalid/v1.capture-execution-native-script-invalid-action.ts",
+    "max": 569,
+    "reason": "captureExecutionNativeScriptInvalidAction is the dominant indivisible declaration (497 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.ts",
+    "max": 537,
+    "reason": "submitInputSetUniquenessStep02 is the dominant indivisible declaration (473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/inspect-contracts.inspect-contracts.ts",
+    "max": 578,
+    "reason": "inspectContracts is the dominant indivisible declaration (549 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/mint-item-non-canonical/central-journal.create-mint-item-non-canonical-central-journal-adapter.ts",
+    "max": 716,
+    "reason": "createMintItemNonCanonicalCentralJournalAdapter is the dominant indivisible declaration (656 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/native-script-decoding/prover.run-native-script-decoding-prover.ts",
+    "max": 644,
+    "reason": "runNativeScriptDecodingProver is the dominant indivisible declaration (596 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/network-id/submit-network-id-step-02.submit-network-id-step02.ts",
+    "max": 643,
+    "reason": "submitNetworkIdStep02 is the dominant indivisible declaration (564 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/network-id/workflow-adapter.create-network-id-workflow-adapter.ts",
+    "max": 1534,
+    "reason": "createNetworkIdWorkflowAdapter is the dominant indivisible declaration (1439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/output-reference-script-decoding/central-journal.create-output-reference-script-decoding-central-journal-adapter.ts",
+    "max": 516,
+    "reason": "createOutputReferenceScriptDecodingCentralJournalAdapter is the dominant indivisible declaration (476 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/protected-output-signer-missing/central-journal.create-protected-output-signer-missing-central-journal-adapter.ts",
+    "max": 516,
+    "reason": "createProtectedOutputSignerMissingCentralJournalAdapter is the dominant indivisible declaration (476 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block.ts",
+    "max": 764,
+    "reason": "submitRemoveFraudulentBlock is the dominant indivisible declaration (683 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts",
+    "max": 532,
+    "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (484 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.create-resolved-output-non-canonical-central-journal-adapter.ts",
+    "max": 512,
+    "reason": "createResolvedOutputNonCanonicalCentralJournalAdapter is the dominant indivisible declaration (472 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/script-integrity-hash-missing/actuator.create-script-integrity-hash-missing-transaction-port.ts",
+    "max": 538,
+    "reason": "createScriptIntegrityHashMissingTransactionPort is the dominant indivisible declaration (487 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/spend-input-signer-missing/central-journal.create-spend-input-signer-missing-central-journal-adapter.ts",
+    "max": 513,
+    "reason": "createSpendInputSignerMissingCentralJournalAdapter is the dominant indivisible declaration (473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/transition-trace/fetch.da-libp2p-retained-da-source.ts",
+    "max": 583,
+    "reason": "DaLibp2pRetainedDaSource is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "midgard-fault-proofs/src/transition-trace/submit.submit-transition-trace-final.ts",
+    "max": 821,
+    "reason": "submitTransitionTraceFinal is the dominant indivisible declaration (725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/validation-dispute/replay.admit-validation-trace-replay-context.ts",
+    "max": 502,
+    "reason": "admitValidationTraceReplayContext is the dominant indivisible declaration (439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/validation-dispute/submit/semantic-redeemers.semantic-action-fields.ts",
+    "max": 766,
+    "reason": "semanticActionFields is the dominant indivisible declaration (742 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/validation-dispute/submit/semantic-resolution.ts",
+    "max": 2398,
+    "reason": "submitValidationDisputeSemanticResolution is the dominant indivisible declaration (2251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
+    "max": 636,
+    "reason": "planConservationFold is the dominant indivisible declaration (596 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/value-not-preserved/workflow.create-manifest-bound-value-conservation-workflow.ts",
+    "max": 650,
+    "reason": "createManifestBoundValueConservationWorkflow is the dominant indivisible declaration (571 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
+    "max": 681,
+    "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.ts",
+    "max": 1013,
+    "reason": "createDoubleSpendConstrainedWorkflowAdapter is the dominant indivisible declaration (946 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.ts",
+    "max": 556,
+    "reason": "createAuthenticatedFieldCarriagePrerequisitePort is the dominant indivisible declaration (506 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/funding-reservation-permit.assert-runtime-transaction-bound.ts",
+    "max": 507,
+    "reason": "assertRuntimeTransactionBound is the dominant indivisible declaration (479 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/header-classifier.classify-header.ts",
+    "max": 593,
+    "reason": "classifyHeader is the dominant indivisible declaration (541 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/journal.create-fraud-proof-workflow-journal-fold.ts",
+    "max": 654,
+    "reason": "createFraudProofWorkflowJournalFold is the dominant indivisible declaration (636 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts",
+    "max": 1533,
+    "reason": "createLocalKupmiosHttpOgmiosRawSource is the dominant indivisible declaration (1448 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
+    "max": 974,
+    "reason": "runAdmittedFraudProofWorkflow is the dominant indivisible declaration (899 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/bin.test.ts",
+    "max": 805,
+    "reason": "Retained test registration “fault-proof CLI argument parsing” (726 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/catalogue-retained-classification.test.ts",
+    "max": 818,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/cross-block-installed-lifecycle.test.ts",
+    "max": 898,
+    "reason": "Retained test registration “crossBlockDuplicateEvent installed cursor actuator” (517 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/custom-transaction-runner-recovery.test.ts",
+    "max": 748,
+    "reason": "recovery is the dominant indivisible declaration (234 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/distinct-asset-accumulation-limit-lifecycle.test.ts",
+    "max": 1294,
+    "reason": "Retained test registration “distinctAssetAccumulationLimit concrete Lucid lifecycle” (1159 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/execution-native-script-invalid-lifecycle.test.ts",
+    "max": 1566,
+    "reason": "Retained test registration “executionNativeScriptInvalid genuine machine fixture” (1448 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/execution-source-script-decoding-lifecycle.test.ts",
+    "max": 797,
+    "reason": "Retained test registration “executionSourceScriptDecoding registered-chain lifecycle” (709 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/execution-source-script-decoding.test.ts",
+    "max": 507,
+    "reason": "Retained test registration “executionSourceScriptDecoding V1” (385 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/field-preimage-length-mismatch-lifecycle.test.ts",
+    "max": 949,
+    "reason": "Retained test registration “field-preimage-length-mismatch registered-chain lifecycle” (853 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/field-preimage-length-recovery.test.ts",
+    "max": 603,
+    "reason": "Retained test registration (386 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/header-classifier.test.ts",
+    "max": 554,
+    "reason": "Retained test registration “production authenticated-header classifier V1” (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/ledger-delta-dense-trace-totality.test.ts",
+    "max": 730,
+    "reason": "Retained test registration “ledger-delta dense trace totality v1” (682 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/linear-family-adapter.test.ts",
+    "max": 760,
+    "reason": "Retained test registration “production linear family adapter V1” (677 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/linear-family-state.test.ts",
+    "max": 653,
+    "reason": "Retained test registration “production linear family authenticated state machine V1” (592 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/manifest-bound-family-assembly.test.ts",
+    "max": 513,
+    "reason": "Retained test registration “manifest-bound family assembly” (272 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/min-ada-wrongful-rejection-lifecycle.test.ts",
+    "max": 674,
+    "reason": "Retained test registration “minimum-Ada forced rejection” (566 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/mint-authorization-installed-lifecycle.test.ts",
+    "max": 835,
+    "reason": "Retained test registration “mintAuthorization installed cursor actuator” (678 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/mint-declared-asset-limit-lifecycle.test.ts",
+    "max": 1446,
+    "reason": "Retained test registration “mintDeclaredAssetLimit registered-chain lifecycle” (1302 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/missing-redeemer-lifecycle.make-stage.ts",
+    "max": 550,
+    "reason": "makeStage is the dominant indivisible declaration (477 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/missing-script-source-lifecycle.missing-script-source-real-lifecycle.ts",
+    "max": 636,
+    "reason": "Retained test registration “missingScriptSource real lifecycle” (585 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/missing-script-source-retained-universe.test.ts",
+    "max": 582,
+    "reason": "Retained test registration “missingScriptSource retained ScriptSources universe” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/missing-signature-wrongful-rejection-lifecycle.test.ts",
+    "max": 813,
+    "reason": "Retained test registration “missingSignature wrongful rejection real lifecycle” (407 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/native-script-family-evidence.test.ts",
+    "max": 1147,
+    "reason": "Retained test registration “Q33/Q34 retained-DA evidence” (956 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/network-id-forced-workflow.test.ts",
+    "max": 1102,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/network-id-wrongful-rejection-lifecycle.test.ts",
+    "max": 822,
+    "reason": "Retained test registration “networkId wrongful-rejection real lifecycle” (733 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/no-reference-input-wrongful-rejection-lifecycle.test.ts",
+    "max": 670,
+    "reason": "Retained test registration “noReferenceInput wrongful rejection registered lifecycle” (581 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/non-existent-input-wrongful-rejection-lifecycle.test.ts",
+    "max": 667,
+    "reason": "Retained test registration “nonExistentInput wrongful rejection registered lifecycle” (576 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/observer-order-invalid-lifecycle.make-harness.ts",
+    "max": 575,
+    "reason": "makeHarness is the dominant indivisible declaration (510 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/observer-order-invalid-lifecycle.test.ts",
+    "max": 799,
+    "reason": "Retained test registration “observerOrderInvalid registered-chain lifecycle” (671 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/observers-forbidden-on-untagged-network-lifecycle.test.ts",
+    "max": 566,
+    "reason": "Retained test registration “observersForbiddenOnUntaggedNetwork registered-chain lifecycle” (469 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/output-reference-script-decoding-lifecycle.test.ts",
+    "max": 1050,
+    "reason": "Retained test registration “outputReferenceScriptDecoding registered-chain lifecycle” (918 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/proof-chunk-prerequisite.production-proof-chunk-prerequisite-v1.ts",
+    "max": 655,
+    "reason": "Retained test registration “production proof-chunk prerequisite V1” (619 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/protected-output-signer-missing-lifecycle.test.ts",
+    "max": 1238,
+    "reason": "Retained test registration “protectedOutputSignerMissing registered-chain lifecycle” (1102 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/receive-purpose-language-lifecycle.test.ts",
+    "max": 713,
+    "reason": "Retained test registration “receivePurposeLanguage real lifecycle” (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/remove-unattested-block-submit.test.ts",
+    "max": 501,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+    "max": 808,
+    "reason": "Retained test registration “resolvedOutputNonCanonical registered-chain lifecycle” (711 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/retained-classification-polarities.test.ts",
+    "max": 585,
+    "reason": "Retained test registration “ordinary retained classification polarities” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/script-integrity-hash-mismatch-lifecycle.test.ts",
+    "max": 979,
+    "reason": "Retained test registration “scriptIntegrityHashMismatch concrete Lucid lifecycle” (855 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/script-integrity-hash-missing-lifecycle.test.ts",
+    "max": 2065,
+    "reason": "Retained test registration “script-integrity-hash-missing real lifecycle” (1920 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/spend-input-signer-missing-lifecycle.test.ts",
+    "max": 879,
+    "reason": "Retained test registration “spendInputSignerMissing registered-chain lifecycle” (776 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-chunked-proof-carriage.test.ts",
+    "max": 1192,
+    "reason": "Retained test registration “fault-proof published-chunk proof carriage” (1080 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-event-history-capture.test.ts",
+    "max": 505,
+    "reason": "Ordered module-level registration/CLI execution (294 lines in the largest statement) shares initialization state. Independent declarations were extracted; slicing the execution statement requires changing its control-flow boundary."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-event-history-list.journey.ts",
+    "max": 786,
+    "reason": "journey is the dominant indivisible declaration (742 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts",
+    "max": 1265,
+    "reason": "Retained test registration “fabricated-deposit fault-proof emulator lifecycle” (887 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts",
+    "max": 1345,
+    "reason": "Retained test registration “fabricated-withdrawal fault-proof emulator lifecycle” (934 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-input-no-idx.test.ts",
+    "max": 876,
+    "reason": "Retained test registration “input-no-idx fault-proof emulator lifecycle” (784 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-input-set-uniqueness-lifecycle.test.ts",
+    "max": 587,
+    "reason": "Retained test registration “input-set-uniqueness emulator lifecycle” (526 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-invalid-signature-lifecycle.test.ts",
+    "max": 752,
+    "reason": "Retained test registration “invalid-signature emulator lifecycle” (686 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+    "max": 1108,
+    "reason": "Retained test registration “fault-proof emulator integration” (1046 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-max-proof-fit.test.ts",
+    "max": 1234,
+    "reason": "Retained test registration “fault-proof maximum proof fit” (1047 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-adversarial.test.ts",
+    "max": 1035,
+    "reason": "Retained test registration “native-script-decoding adversarial-prover emulator suite” (944 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-direction-a.test.ts",
+    "max": 530,
+    "reason": "Retained test registration “native-script-decoding direction-A emulator lifecycle” (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-negatives.test.ts",
+    "max": 728,
+    "reason": "Retained test registration “native-script-decoding aborts, refusals and resume” (633 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-network-id.test.ts",
+    "max": 747,
+    "reason": "Retained test registration “Q35 network-id real-fault lifecycle” (692 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-reference-input-no-idx-lifecycle.test.ts",
+    "max": 998,
+    "reason": "Retained test registration “reference-input-no-idx fault-proof emulator lifecycle” (915 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-transition-history.test.ts",
+    "max": 511,
+    "reason": "Retained test registration “applied transition history” (435 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-transition-timing-history.test.ts",
+    "max": 574,
+    "reason": "Retained test registration “applied timed history final” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts",
+    "max": 629,
+    "reason": "Retained test registration “transition-trace omitted/out-of-window/count subvariant lifecycle” (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts",
+    "max": 976,
+    "reason": "Retained test registration “fault-proof emulator integration” (901 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init-emulator.test.ts",
+    "max": 787,
+    "reason": "Retained test registration “fault-proof emulator integration” (708 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/submit-init.fault-proof-deployment-contract-resolution.ts",
+    "max": 626,
+    "reason": "Retained test registration “fault-proof deployment contract resolution” (590 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts",
+    "max": 1229,
+    "reason": "buildMinimalFaultProofContracts is the dominant indivisible declaration (1114 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
+    "max": 1577,
+    "reason": "runForcedValidationDisputeScenario is the dominant indivisible declaration (1478 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/emulator/removal-deployment.build-removal-deployment-info.ts",
+    "max": 566,
+    "reason": "buildRemovalDeploymentInfo is the dominant indivisible declaration (510 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
+    "max": 694,
+    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
+    "max": 509,
+    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
+    "max": 577,
+    "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (524 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts",
+    "max": 722,
+    "reason": "makeResolvedOutputStages is the dominant indivisible declaration (647 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.ts",
+    "max": 550,
+    "reason": "buildProvedDoubleSpendFixture is the dominant indivisible declaration (482 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.retire-fixture-operator-after-inactivity.ts",
+    "max": 642,
+    "reason": "retireFixtureOperatorAfterInactivity is the dominant indivisible declaration (600 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
+    "max": 926,
+    "reason": "registerTransitionTraceFinalCases is the dominant indivisible declaration (842 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",
+    "max": 652,
+    "reason": "FAMILY_SCENARIOS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.unmapped-validators.ts",
+    "max": 594,
+    "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts",
+    "max": 946,
+    "reason": "Retained test registration “transactionOutputNonCanonical registered-chain lifecycle” (858 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/transition-trace-challenger.transition-trace-challenger-tooling.ts",
+    "max": 1962,
+    "reason": "Retained test registration “transition-trace challenger tooling” (1878 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts",
+    "max": 996,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/transition-trace-l1-evidence.test.ts",
+    "max": 1431,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/typed-reason-retained-classification.typed-reasons-classified-from-committed-retained-da.ts",
+    "max": 525,
+    "reason": "Retained test registration “typed reasons classified from committed retained DA” (458 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/unused-redeemer-lifecycle.test.ts",
+    "max": 540,
+    "reason": "Retained test registration “unusedRedeemer concrete retained lifecycle material” (460 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/unused-script-witness-lifecycle.unused-script-witness-real-lifecycle.ts",
+    "max": 914,
+    "reason": "Retained test registration “unusedScriptWitness real lifecycle” (828 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
+    "max": 2331,
+    "reason": "Retained test registration “validation-dispute transaction validity” (2231 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/validation-trace-dispute-installed-lifecycle.test.ts",
+    "max": 884,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/value-conservation-lifecycle.test.ts",
+    "max": 1286,
+    "reason": "Retained test registration “universal value conservation” (1178 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/withdrawal-mistag-installed-lifecycle.test.ts",
+    "max": 530,
+    "reason": "Retained test registration “withdrawalMistag installed cursor actuator” (398 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/witness-script-decoding-lifecycle.make-harness.ts",
+    "max": 799,
+    "reason": "makeHarness is the dominant indivisible declaration (728 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/witness-script-decoding-lifecycle.test.ts",
+    "max": 994,
+    "reason": "Retained test registration “witnessScriptDecoding registered-chain lifecycle” (910 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/workflow-kupmios-source.production-local-kupmios-raw-source-v1.ts",
+    "max": 986,
+    "reason": "Retained test registration “production local Kupmios raw source V1” (946 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/workflow-raw-l1-family-derivation.raw-l1-family-terminal-economics.ts",
+    "max": 583,
+    "reason": "Retained test registration “raw L1 family terminal economics” (546 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/workflow-runtime.compiled-manifest-bound-production-runtime-v1.ts",
+    "max": 1866,
+    "reason": "Retained test registration “compiled manifest-bound production runtime V1” (1775 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/workflow-tier3-actions.test.ts",
+    "max": 992,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/workflow.compiled-production-workflow-boundary.ts",
+    "max": 521,
+    "reason": "Retained test registration “compiled production workflow boundary” (470 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/workflow.q51-w-o4-resumable-workflow.ts",
+    "max": 1419,
+    "reason": "Retained test registration “Q51/W-O4 resumable workflow” (1339 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts",
+    "max": 540,
+    "reason": "Retained test registration “zeroInput wrongful-rejection real lifecycle” (471 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+    "max": 640,
+    "reason": "runCaptureSnapshot is the dominant indivisible declaration (137 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/correction-recovery.test.ts",
+    "max": 818,
+    "reason": "Retained test registration “resumes pending stamps across family boundaries and accepts a reauthenticated replacement point” (81 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.create-da-bond-pool-emulator-port.ts",
+    "max": 596,
+    "reason": "createDaBondPoolEmulatorPort is the dominant indivisible declaration (541 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.fake-port.ts",
+    "max": 578,
+    "reason": "fakePort is the dominant indivisible declaration (560 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.test.ts",
+    "max": 1199,
+    "reason": "Retained test registration “pooled DA bond journey driver” (1174 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.try-run-da-bond-pool-journey.ts",
+    "max": 948,
+    "reason": "tryRunDaBondPoolJourney is the dominant indivisible declaration (914 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts",
+    "max": 1630,
+    "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.da-bond-pool-live-port-availability-validity-and-lapses.ts",
+    "max": 600,
+    "reason": "Retained test registration “DA bond pool live port: availability validity and lapses” (569 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-process-evidence.da-bond-cli-submit-evidence-p18.ts",
+    "max": 575,
+    "reason": "Retained test registration “da-bond CLI submit evidence (P18)” (556 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/history-event-cases.test.ts",
+    "max": 1034,
+    "reason": "Retained test registration (460 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/journey-runner.run-journey.ts",
+    "max": 507,
+    "reason": "runJourney is the dominant indivisible declaration (468 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/journey-session.open-journey-session.ts",
+    "max": 579,
+    "reason": "openJourneySession is the dominant indivisible declaration (537 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/journey-session.test.ts",
+    "max": 614,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",
+    "max": 863,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node-tools/devnet/watcher-journeys/staging.stage-journey.ts",
+    "max": 768,
+    "reason": "stageJourney is the dominant indivisible declaration (714 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
+    "max": 1434,
+    "reason": "The retained CLI identity, blueprint-relative loading and mutually dependent summary validation group share the original executable boundary. Independent validation helpers were extracted. Remaining division requires a dedicated separation of loading and validation ownership."
+  },
+  {
+    "file": "midgard-node-tools/src/commands/e2e-state-correction-reconciliation.reconcile-state-correction-independent-evidence.ts",
+    "max": 813,
+    "reason": "reconcileStateCorrectionIndependentEvidence is the dominant indivisible declaration (774 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/src/commands/e2e-stress-l2-throughput/run.ts",
+    "max": 603,
+    "reason": "runE2EL2StressThroughput is the dominant indivisible declaration (558 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/src/commands/e2e-stress-l2-throughput/summary-artifact.parse-e2-el2-stress-summary.ts",
+    "max": 535,
+    "reason": "parseE2EL2StressSummary is the dominant indivisible declaration (507 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/src/commands/stress-wallets/consolidation.consolidate-stress-wallets-unlocked.ts",
+    "max": 635,
+    "reason": "consolidateStressWalletsUnlocked is the dominant indivisible declaration (573 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/tests/e2e-state-correction-reconciliation.test.ts",
+    "max": 695,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node-tools/tests/e2e-stress-l2-throughput.e2e-stress-l2-throughput-runner.ts",
+    "max": 1036,
+    "reason": "Retained test registration “e2e-stress-l2-throughput runner” (1010 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/tests/e2e-summary.test.ts",
+    "max": 940,
+    "reason": "Retained test registration “e2e run summary” (898 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
+    "max": 619,
+    "reason": "validSummary is the dominant indivisible declaration (129 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node-tools/tests/stress-corpus.stress-corpus-generation.ts",
+    "max": 564,
+    "reason": "Retained test registration “stress corpus generation” (536 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node-tools/tests/stress-wallets.test.ts",
+    "max": 2226,
+    "reason": "Retained test registration “stress wallet commands” (2164 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/scripts/generate-transaction-root-v1-fixture.mjs",
+    "max": 676,
+    "reason": "makeAiken is the dominant indivisible declaration (200 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/scripts/mpf-architecture-g-gate-config.test.mjs",
+    "max": 1648,
+    "reason": "Retained test registration “Phase 3 evidence resolves the explicit current Phase 1 binding and rejects every stale identity edge” (141 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/scripts/mpf-event-flat-wasm-prototype.mjs",
+    "max": 831,
+    "reason": "The retained benchmark executable loads its WASM artifact relative to this script and executes an ordered comparison using shared engine state and pinned timing/root expectations. Encoding helpers were extracted; changing the process/loading boundary needs a benchmark-specific refactor."
+  },
+  {
+    "file": "midgard-node/scripts/phase3-architecture-g-soak.mjs",
+    "max": 626,
+    "reason": "run is the dominant indivisible declaration (404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/scripts/phase3-architecture-g-soak.test.mjs",
+    "max": 1248,
+    "reason": "Retained test registration “Phase 3 pre-lifecycle evidence and load-generator isolation” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/scripts/throughput-valid-stress.mjs",
+    "max": 3876,
+    "reason": "The stress CLI retains its main execution and coupled producer, submission, metrics and cleanup state. Independent schema/reporting helpers were extracted. Dividing this remaining cohort requires an explicit lifecycle API so cancellation, admission order and resource cleanup remain consistent."
+  },
+  {
+    "file": "midgard-node/scripts/verify-phase2-benchmark-report.verify-phase2-benchmark-reports.mjs",
+    "max": 658,
+    "reason": "verifyPhase2BenchmarkReports is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/scripts/verify-phase3-architecture-g-soak-report.evaluate-phase3-architecture-gsoak-report.mjs",
+    "max": 751,
+    "reason": "evaluatePhase3ArchitectureGSoakReport is the dominant indivisible declaration (708 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts",
+    "max": 962,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/fibers/block-commitment.build-and-submit-commitment-block-action.ts",
+    "max": 545,
+    "reason": "buildAndSubmitCommitmentBlockAction is the dominant indivisible declaration (490 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/mpf/process.process-mpfs.ts",
+    "max": 1597,
+    "reason": "processMpfs is the dominant indivisible declaration (1477 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/mpf/root-view-store.ts",
+    "max": 1499,
+    "reason": "MidgardMpfRootViewStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "midgard-node/src/mpf/store.midgard-mpf.ts",
+    "max": 962,
+    "reason": "MidgardMpf is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "midgard-node/src/services/admission-writer.make-admission-writer-with-options.ts",
+    "max": 565,
+    "reason": "makeAdmissionWriterWithOptions is the dominant indivisible declaration (528 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
+    "max": 541,
+    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/services/config.make-config.ts",
+    "max": 1134,
+    "reason": "makeConfig is the dominant indivisible declaration (1077 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
+    "max": 1015,
+    "reason": "makeEventHistoryOwner is the dominant indivisible declaration (952 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
+    "max": 750,
+    "reason": "midgardContractsFromDeploymentManifest is the dominant indivisible declaration (722 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
+    "max": 930,
+    "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "midgard-node/src/transactions/reference-publication.publish-reference-scripts.ts",
+    "max": 685,
+    "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",
+    "max": 939,
+    "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
+    "max": 554,
+    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/workers/commit-block-header.database-operations-program.ts",
+    "max": 1263,
+    "reason": "databaseOperationsProgram is the dominant indivisible declaration (1153 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/workers/commit-block-header.revalidate-and-persist-speculative-candidate-sources.ts",
+    "max": 599,
+    "reason": "revalidateAndPersistSpeculativeCandidateSources is the dominant indivisible declaration (559 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
+    "max": 550,
+    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (474 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
+    "max": 672,
+    "reason": "submitTxBackedCommit is the dominant indivisible declaration (588 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/src/workers/mpf-engine-probe.ts",
+    "max": 577,
+    "reason": "This self-identifying probe executable captures its own source path/hash and runs an ordered native-engine verification sequence. Moving its execution changes the recorded identity and process boundary; a dedicated probe redesign is needed before splitting it."
+  },
+  {
+    "file": "midgard-node/tests/admission-writer.test.ts",
+    "max": 501,
+    "reason": "Retained test registration “durable admission microbatch writer” (437 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/attestation-timeout-reinclusion-emulator.test.ts",
+    "max": 530,
+    "reason": "Retained test registration “resumes a rewind to a retained non-empty base interrupted after the native root moved and before reinclusion committed” (70 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/attestation-timeout-reinclusion-hardening-emulator.test.ts",
+    "max": 998,
+    "reason": "Retained test registration “returns a removed block” (209 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/availability-challenge-command.test.ts",
+    "max": 562,
+    "reason": "Retained test registration “operational availability commands” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/availability-challenge-lifecycle.test.ts",
+    "max": 554,
+    "reason": "Retained test registration “availability challenge real ledger lifecycle under Van Rossem limits” (488 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/availability-challenge-operation.test.ts",
+    "max": 641,
+    "reason": "Retained test registration “availability operation signed recovery” (562 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/availability-challenge-pool-slash-lifecycle.test.ts",
+    "max": 748,
+    "reason": "Retained test registration “pooled DA bond challenge and slash lifecycle” (689 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/availability-challenge-sdk-lifecycle.test.ts",
+    "max": 577,
+    "reason": "Retained test registration “production SDK availability builders” (539 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/benchmark-regression.test.mjs",
+    "max": 1640,
+    "reason": "Retained test registration “Phase 1 formal scenario contracts” (554 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
+    "max": 1511,
+    "reason": "Retained test registration “Phase 2 sustained real-Postgres Stage B operator benchmark” (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/benchmarks/validation-worker-isolation.bench.ts",
+    "max": 592,
+    "reason": "Retained test registration “Phase 2 validation-worker isolation benchmark” (524 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/commit-block-planner.test.ts",
+    "max": 783,
+    "reason": "Retained test registration “commit block planner” (704 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/commit-end-time.test.ts",
+    "max": 519,
+    "reason": "Retained test registration “commit end-time resolver” (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
+    "max": 514,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",
+    "max": 1199,
+    "reason": "Retained test registration “contract deployment info” (1149 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/da-bond-command.test.ts",
+    "max": 1057,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/da-payload-libp2p-producer.test.ts",
+    "max": 849,
+    "reason": "Retained test registration “DA payload libp2p producer publication” (773 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
+    "max": 3464,
+    "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/database.test/availability.ts",
+    "max": 759,
+    "reason": "registerAvailabilityTests is the dominant indivisible declaration (733 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
+    "max": 1641,
+    "reason": "registerFinalizationTests is the dominant indivisible declaration (1581 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/database.test/history.ts",
+    "max": 1059,
+    "reason": "registerHistoryTests is the dominant indivisible declaration (1018 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/database.test/ledger.ts",
+    "max": 1498,
+    "reason": "registerLedgerTests is the dominant indivisible declaration (1439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/database.test/mpf.ts",
+    "max": 717,
+    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",
+    "max": 974,
+    "reason": "Retained test registration “deposit flow emulator” (896 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/deposit-flow-emulator-merge-payout.test.ts",
+    "max": 1185,
+    "reason": "Retained test registration “deposit flow emulator” (1094 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/deposit-flow-emulator-recovery-invalidation.test.ts",
+    "max": 692,
+    "reason": "Retained test registration “deposit flow emulator” (639 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
+    "max": 1989,
+    "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API."
+  },
+  {
+    "file": "midgard-node/tests/event-history-journal.test.ts",
+    "max": 2217,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/event-history-ledger-receipts.test.ts",
+    "max": 718,
+    "reason": "Retained test registration “owned accepted-ledger inverse receipts” (223 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/event-history-ledger-repair.test.ts",
+    "max": 1049,
+    "reason": "Retained test registration “unpublished history-dependent ledger repair” (276 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/event-history-ready-append.test.ts",
+    "max": 1254,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/event-history-recovery-plans.durable-history-recovery-plans-modeled-source-real-sql.ts",
+    "max": 582,
+    "reason": "Retained test registration “durable history recovery plans (modeled source, real SQL)” (556 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/event-history-recovery-plans.retained-native-recovery-root-selection-real-sql-component.ts",
+    "max": 507,
+    "reason": "Retained test registration “retained native recovery root selection (real SQL component)” (477 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/event-history-recovery.test.ts",
+    "max": 603,
+    "reason": "Retained test registration “canonical history recovery composition” (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/event-history-retired-membership.test.ts",
+    "max": 930,
+    "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/forced-transactions.test.ts",
+    "max": 936,
+    "reason": "Retained test registration “V1 forced transaction material” (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
+    "max": 797,
+    "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts",
+    "max": 2077,
+    "reason": "runHistoryOwnerRollbackJourney is the dominant indivisible declaration (2008 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
+    "max": 576,
+    "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/history-source-owner-retention.test.ts",
+    "max": 628,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/initialization-emulator.test.ts",
+    "max": 739,
+    "reason": "Retained test registration “initialization emulator” (684 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-control-plane.test.ts",
+    "max": 1419,
+    "reason": "Retained test registration “L1 control-plane serialization” (1397 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
+    "max": 895,
+    "reason": "Retained test registration “replays actual initialized lists and joins current external orders whose retained bodies predate activation” (818 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-initialization-emulator.test.ts",
+    "max": 682,
+    "reason": "Retained test registration “bootstraps both histories from accepted atomic initialization and subsequent public admissions” (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-initialization.test.ts",
+    "max": 574,
+    "reason": "Retained test registration “whole-block history initialization replay” (238 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts",
+    "max": 807,
+    "reason": "Retained test registration “recovers a genuinely observed deposit-only signed commitment before local finalization” (748 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-parent-lease-emulator.test.ts",
+    "max": 587,
+    "reason": "Retained test registration “fails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent” (544 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-projection-native-assets-emulator.test.ts",
+    "max": 537,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts",
+    "max": 562,
+    "reason": "Retained test registration “preserves actual inline and external Deposit raw map pair order and duplicates through continuation, capture and node conversion” (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-raw-production-lifecycle-emulator.test.ts",
+    "max": 758,
+    "reason": "Retained test registration “preserves public raw external events through real settlement, refund, payout and reclaim” (719 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-signed-intent-continuation-emulator.test.ts",
+    "max": 581,
+    "reason": "Retained test registration “retains the original signed intent through an accepted queue pointer continuation before local confirmation” (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-source-owner-emulator.test.ts",
+    "max": 807,
+    "reason": "Retained test registration “runs the default history owner through actual bootstrap, continuation, retirement and fresh restart intersection” (742 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-source.test.ts",
+    "max": 879,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/l1-event-history-streaming-production-lifecycle-emulator.test.ts",
+    "max": 980,
+    "reason": "Retained test registration “streams public raw events through production reconciliation, native commitment, refund, payout and reclaim” (939 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/mempool-ledger-cache.mempool-ledger-cache.ts",
+    "max": 850,
+    "reason": "Retained test registration “mempool ledger cache” (826 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/merge-landed-finalization-emulator.test.ts",
+    "max": 718,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/merge-maturity-preflight.test.ts",
+    "max": 892,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/midgard-contracts.test.ts",
+    "max": 570,
+    "reason": "Retained test registration “midgard contracts registry” (486 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/midgard-local-script-eval.test.ts",
+    "max": 874,
+    "reason": "Retained test registration “Midgard local script evaluation primitives” (816 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/mpf-audit-merge-permit-emulator.test.ts",
+    "max": 1016,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",
+    "max": 570,
+    "reason": "Retained test registration “Architecture G commit-candidate probe V1 artifacts” (317 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/mpf-native-owner-service.test.ts",
+    "max": 818,
+    "reason": "Retained test registration (731 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/mpf.test.ts",
+    "max": 2572,
+    "reason": "Retained test registration “Midgard MPF wrapper” (2432 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/native-transaction-integration.test.ts",
+    "max": 2790,
+    "reason": "Retained test registration “native transaction integration” (2696 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/operator-lifecycle-emulator.test.ts",
+    "max": 946,
+    "reason": "Retained test registration “operator lifecycle emulator” (895 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/phase2-benchmark-report.test.ts",
+    "max": 751,
+    "reason": "Retained test registration “Phase 2 benchmark report gate” (732 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/reference-publication.test.ts",
+    "max": 606,
+    "reason": "Retained test registration “funds the consolidation fees of a wallet holding exactly the lane requirements” (67 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/reserve-payout-builders.test.ts",
+    "max": 1186,
+    "reason": "Retained test registration “reserve/payout transaction builder primitives” (1082 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/reserve-payout-economic-acceptance-emulator.test.ts",
+    "max": 594,
+    "reason": "Retained test registration “enforces reserve sibling/accounting and exact payout economics on a real settled withdrawal” (539 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/scheduler-refresh.test.ts",
+    "max": 709,
+    "reason": "Retained test registration “scheduler refresh witness selection” (649 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/sdk-abi-fixtures.build-transition-trace-abi-fixtures.ts",
+    "max": 523,
+    "reason": "buildTransitionTraceAbiFixtures is the dominant indivisible declaration (501 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-node/tests/sdk-abi-fixtures.test.ts",
+    "max": 1046,
+    "reason": "Retained test registration “SDK canonical ABI fixtures” (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/signed-intent-canonical-coverage.test.ts",
+    "max": 508,
+    "reason": "Retained test registration “signed intent canonical coverage supplied-evidence classifier” (415 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/signed-intent-replacement-revival-emulator.test.ts",
+    "max": 505,
+    "reason": "Retained test registration “revives a replaced commit that wins its base slot after all, abandons its unlanded replacement with the same members, never revives it while an admitted correction abandoned it, and locally finalizes the winner once” (119 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/state-queue-correction-observer.test.ts",
+    "max": 1205,
+    "reason": "Retained test registration “node-owned state-queue correction observer” (1137 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/state-reconciliation.test.ts",
+    "max": 917,
+    "reason": "Retained test registration “state reconciliation evaluator” (874 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/transactions-utils.validity-window-submit-recovery.ts",
+    "max": 810,
+    "reason": "Retained test registration “validity-window submit recovery” (796 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/transition-trace-builder.test.ts",
+    "max": 735,
+    "reason": "Retained test registration “transition trace builder” (677 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-node/tests/tx-admissions-claim-load.test.ts",
+    "max": 662,
+    "reason": "Retained test registration “durable admission lightweight claim and payload load” (606 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-sdk/src/fraud-proof/contracts/families/validation-trace-dispute.build-validation-trace-dispute-chain.ts",
+    "max": 1614,
+    "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
+    "max": 769,
+    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+  },
+  {
+    "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
+    "max": 567,
+    "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (487 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-sdk/tests/availability-challenge.q58-canonical-da-availability-commitment-v1.ts",
+    "max": 1729,
+    "reason": "Retained test registration “Q58 canonical DA availability commitment V1” (1652 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-sdk/tests/event-abi.vectors.ts",
+    "max": 735,
+    "reason": "vectors: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+  },
+  {
+    "file": "midgard-sdk/tests/fault-proof.fault-proof-abi.ts",
+    "max": 1113,
+    "reason": "Retained test registration “fault-proof ABI” (1061 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
+    "max": 1239,
+    "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-sdk/tests/tx-order.test.ts",
+    "max": 659,
+    "reason": "Retained test registration “V1 transaction-order datum, §8 field carriage, and CEK program material” (624 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-test-support/scripts/capture-l1-recordings.mjs",
+    "max": 502,
+    "reason": "recordTransaction is the dominant indivisible declaration (66 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs",
+    "max": 860,
+    "reason": "generated is the dominant indivisible declaration (251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-validation/src/cek-executor.structural-executor.ts",
+    "max": 2567,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
+    "max": 2850,
+    "reason": "completeValidationTrace is the dominant indivisible declaration (2725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
+    "max": 3964,
+    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-validation/tests/cek-executor.test.ts",
+    "max": 827,
+    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/complete-item-proof-fit-emulator.test.ts",
+    "max": 566,
+    "reason": "Retained test registration “complete-item proof fit V1 (emulator, applied validators)” (519 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/complete-item-proof-fit.test.ts",
+    "max": 534,
+    "reason": "Retained test registration “complete-item proof fit V1” (484 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/complete-item-route-adversarial-emulator.test.ts",
+    "max": 855,
+    "reason": "Retained test registration (513 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/data-breadth-boundary.test.ts",
+    "max": 1026,
+    "reason": "Retained test registration “canonical V1 Cardano Data breadth boundaries” (867 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts",
+    "max": 598,
+    "reason": "This canonical fixture is imported directly as .ts by the auxiliary-witness golden CLI under Node strip-types. Retain its self-contained source boundary: .js facet imports have no corresponding source JavaScript, and changing the loader or fixture import contract is outside a pure module move."
+  },
+  {
+    "file": "midgard-validation/tests/nested-value-boundary.test.ts",
+    "max": 563,
+    "reason": "Retained test registration “canonical V1 nested Cardano Value boundary” (438 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/ordered-collection-redeemer-boundary.test.ts",
+    "max": 605,
+    "reason": "Retained test registration “canonical V1 spend-redeemer Cardano boundary” (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/phase-b.test.ts",
+    "max": 791,
+    "reason": "Retained test registration “phase B validation” (712 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts",
+    "max": 1076,
+    "reason": "Retained test registration “canonical V1 Plutus Data unary-depth boundary” (976 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-validation/tests/validation-machine.deterministic-validation-machine.ts",
+    "max": 2460,
+    "reason": "Retained test registration “deterministic validation machine” (2387 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
+    "max": 874,
+    "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (813 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
+    "max": 620,
+    "reason": "createBridge is the dominant indivisible declaration (588 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
+    "max": 837,
+    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
+    "max": 863,
+    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
+    "max": 1403,
+    "reason": "openInternal is the dominant indivisible declaration (1365 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/index.ts",
+    "max": 753,
+    "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation."
+  },
+  {
+    "file": "midgard-watcher/src/indexers/user-event-indexer/local-history.prepare-watcher-local-user-event-readmission.ts",
+    "max": 889,
+    "reason": "prepareWatcherLocalUserEventReadmission is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/l1/multi-provider-consistency.evaluate-admitted-consistency.ts",
+    "max": 567,
+    "reason": "evaluateAdmittedConsistency is the dominant indivisible declaration (538 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/chain-coordinator.create-coordinator.ts",
+    "max": 977,
+    "reason": "createCoordinator is the dominant indivisible declaration (948 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
+    "max": 540,
+    "reason": "createWatcherOperationsObservability is the dominant indivisible declaration (512 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts",
+    "max": 1585,
+    "reason": "createWatcherUserEventRuntime is the dominant indivisible declaration (1488 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
+    "max": 781,
+    "reason": "createWatcherRuntime is the dominant indivisible declaration (686 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/storage/public-da-client.watcher-public-da-client.ts",
+    "max": 829,
+    "reason": "WatcherPublicDaClient is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+  },
+  {
+    "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
+    "max": 1361,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/availability/source-capture.test.ts",
+    "max": 595,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts",
+    "max": 1450,
+    "reason": "Retained test registration “production fault decision bridge” (1248 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts",
+    "max": 737,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts",
+    "max": 708,
+    "reason": "Retained test registration “watcher production fault-proof application V1” (600 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts",
+    "max": 723,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/fault-proofs/fault-proof-supervisor.test.ts",
+    "max": 575,
+    "reason": "Retained test registration “production fault-proof supervisor” (514 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/fault-proofs/replay-transcript-capture.test.ts",
+    "max": 676,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts",
+    "max": 838,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/funding/prover-funding-calculation.test.ts",
+    "max": 876,
+    "reason": "Retained test registration “production prover funding calculation V1” (823 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/funding/prover-funding-recovery.funding-recovery-across-authenticated-observation-refresh.ts",
+    "max": 1155,
+    "reason": "Retained test registration “funding recovery across authenticated observation refresh” (1124 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts",
+    "max": 1323,
+    "reason": "Retained test registration “SQLite prover funding reservation store V1” (1280 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/indexers/authenticated-state-queue-observation.production-state-queue-observation-source.ts",
+    "max": 1639,
+    "reason": "Retained test registration “production state-queue observation source” (1590 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/indexers/user-event-history.bounded-local-user-event-semantic-publication-synthetic-local-blocks.ts",
+    "max": 693,
+    "reason": "Retained test registration “bounded local user-event semantic publication (synthetic local blocks)” (652 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/indexers/user-event-origin.test.ts",
+    "max": 867,
+    "reason": "fixture is the dominant indivisible declaration (358 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/crash-rollback-matrix.test.ts",
+    "max": 1476,
+    "reason": "Retained test registration “W44 watcher crash and rollback matrix” (518 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/finality-engine.canonical-release-bound-watcher-finality.ts",
+    "max": 1075,
+    "reason": "Retained test registration “canonical release-bound watcher finality” (1040 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/l1-adapter.test.ts",
+    "max": 1013,
+    "reason": "Retained test registration “provider-neutral authenticated L1 adapter” (870 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/local-historical-capture.test.ts",
+    "max": 1543,
+    "reason": "Retained test registration “receipt-only local backfill admission” (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/multi-provider-consistency.test.ts",
+    "max": 787,
+    "reason": "Retained test registration “fail-closed multi-provider consistency” (621 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/native-chain-sync.test.ts",
+    "max": 524,
+    "reason": "Retained test registration “native Cardano node-to-client chain-sync supervisor” (479 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/resolved-block-observation.test.ts",
+    "max": 561,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/l1/rollback-engine.test.ts",
+    "max": 3603,
+    "reason": "Retained test registration “canonical watcher rollback engine” (3050 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/runtime/chain-coordinator.test.ts",
+    "max": 933,
+    "reason": "Retained test registration “production native-chain coordinator” (855 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/runtime/config.strict-watcher-configuration.ts",
+    "max": 746,
+    "reason": "Retained test registration “strict watcher configuration” (729 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/runtime/deployment-identity.test.ts",
+    "max": 796,
+    "reason": "Retained test registration “watcher deployment identity” (749 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/runtime/state-queue-runtime.test.ts",
+    "max": 912,
+    "reason": "Retained test registration “production state-queue runtime V1” (834 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-watcher/tests/storage/retained-da-runtime.test.ts",
+    "max": 1218,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+  },
+  {
+    "file": "midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts",
+    "max": 669,
+    "reason": "setupFundingRecoveryFixture is the dominant indivisible declaration (599 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/tests/support/local-user-event-authority-fixture.history-lifecycle.ts",
+    "max": 651,
+    "reason": "historyLifecycle is the dominant indivisible declaration (616 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts",
+    "max": 857,
+    "reason": "createPublishedWatcherBlockActor is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",
+    "max": 818,
+    "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (780 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
+    "max": 1055,
+    "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (1006 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/tests/verification/block-replay.w25-roots-and-deterministic-replay.ts",
+    "max": 1414,
+    "reason": "Retained test registration “W25 roots and deterministic replay” (1341 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "scripts/deployment-profiles.mjs",
+    "max": 525,
+    "reason": "validateProfile is the dominant indivisible declaration (206 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "scripts/deployment-profiles.test.mjs",
+    "max": 627,
+    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
+    "max": 575,
+    "reason": "Ordered module-level registration/CLI execution (55 lines in the largest statement) shares initialization state. Independent declarations were extracted; slicing the execution statement requires changing its control-flow boundary."
+  }
+]

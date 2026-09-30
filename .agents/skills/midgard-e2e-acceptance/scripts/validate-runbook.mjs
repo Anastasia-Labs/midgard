@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { readSourceFacets } from "../../../../scripts/lib/source-facets.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const skillDir = resolve(scriptDir, "..");
@@ -44,7 +44,7 @@ const failures = [];
 const fail = (message) => failures.push(message);
 const read = (path) => {
   try {
-    return readFileSync(path, "utf8");
+    return readSourceFacets(path);
   } catch (error) {
     fail(`cannot read ${path}: ${error.message}`);
     return "";

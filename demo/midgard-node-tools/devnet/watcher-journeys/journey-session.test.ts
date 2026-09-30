@@ -23,6 +23,10 @@ const state = vi.hoisted(() => ({
   bindingCalls: 0,
   failBinding: false,
   failArchivesClose: false,
+  sessionSources: [] as string[],
+}));
+vi.mock("../../../../scripts/lib/source-facets.mjs", () => ({
+  sourceFacetPaths: () => state.sessionSources,
 }));
 vi.mock("./journey-timing.js", () => ({
   readJourneyTiming: async () => undefined,
@@ -173,6 +177,7 @@ beforeEach(async () => {
   state.bindingCalls = 0;
   state.failBinding = false;
   state.failArchivesClose = false;
+  state.sessionSources = [];
   state.watcherState = { state: "running", exitCode: null };
   await mkdir(join(state.runDirectory, "secrets"));
   await mkdir(join(state.runDirectory, "work/journeys/runtime"), {
@@ -584,4 +589,26 @@ it("rejects a foreign run directory before restarting its failed watcher", async
     "authority",
     "start",
   ]);
+});
+
+it.each([
+  "journey-session.ts",
+  "journey-session.capture-baseline.ts",
+  "journey-runner.run.ts",
+])("refuses reuse after pinned module part %s changes", async (changed) => {
+  state.sessionSources = [
+    "journey-session.ts",
+    "journey-session.capture-baseline.ts",
+    "journey-runner.run.ts",
+  ].map((name) => join(state.runDirectory, name));
+  for (const path of state.sessionSources)
+    await writeFile(path, "original source");
+  const session = await openJourneySession(state.runDirectory);
+  await session.ensureWatcher();
+  await writeFile(join(state.runDirectory, changed), "changed source");
+  await expect(session.assertHealthy()).rejects.toThrow(
+    `session input changed: ${join(state.runDirectory, changed)}`,
+  );
+  expect(state.closed).toHaveLength(5);
+  await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });

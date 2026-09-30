@@ -1,73 +1,62 @@
+import "node:fs/promises";
+import "@aiken-lang/merkle-patricia-forestry";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import "../src/remove-fraudulent-block.js";
+import "../src/step-support.js";
+import "../src/testing/complete-lifecycle.js";
+import "../src/transaction-output-non-canonical/index.js";
+import "../src/transition-trace/witnesses.js";
+import "./support/emulator/expect-onchain-refusal.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/native-tx.js";
+import "./support/emulator/reference-scripts.js";
+import "./support/emulator/registered-chain.js";
+import "./support/emulator/removal-deployment.js";
+import "./support/lifecycle-coverage.js";
+import "./support/measured-fit-ledger.js";
+import "./support/submit-init-emulator-fixtures.js";
+import "./support/submit-init-emulator-shared.js";
+import "./support/transaction-output-non-canonical-emulator.js";
+import "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
+import "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
+
 import { writeFile } from "node:fs/promises";
 
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  computeMidgardNativeTxId,
-  deriveMidgardNativeTxWitnessSetCompact,
-  encodeMidgardNativeTxCompact,
-  encodeMidgardNativeTxWitnessSetCompact,
-  midgardFieldCommitment,
-} from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
-  AddressData,
-  addressDataFromBech32,
   forcedVerdictSubject,
-  Proof,
-  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
-import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import {
-  applyTransactionOutputNonCanonicalScripts,
-  prepareTransactionOutputEvidence,
-  submitTransactionOutputNonCanonicalCancel,
   submitTransactionOutputNonCanonicalStep01Accepted,
   submitTransactionOutputNonCanonicalStep01Forced,
   submitTransactionOutputNonCanonicalStep02,
   submitTransactionOutputNonCanonicalStep03,
   submitTransactionOutputNonCanonicalStep04,
-  TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
-  type TransactionOutputNonCanonicalContracts,
-  transactionOutputScanControlData,
-  TransactionOutputScanControlSchema,
 } from "../src/transaction-output-non-canonical/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-} from "./support/emulator/measurement.js";
-import {
-  l2TransactionSourceCbor,
-  makeNativeTx,
-} from "./support/emulator/native-tx.js";
-import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import {
-  expectRegisteredChainParity,
-  familyStepsFromRegisteredChain,
-} from "./support/emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  publishRemovalReferenceScripts,
   submitSetupTx,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
 import {
   buildForcedOutputFixture,
   canonicalOutputOfLength,
-  type Common,
   initialScanStateOfItem,
   MALFORMED_OUTPUT,
   outputFieldOpening,
@@ -81,385 +70,22 @@ import {
   submitOutputStep03Raw,
   submitOutputStep04Raw,
 } from "./support/transaction-output-non-canonical-emulator.js";
-
-const network = "Custom" as const;
-const CATEGORY_ID = "00000029";
-const MAXIMUM_OUTPUT_BYTES = 16_384;
-const coverage = createLifecycleCoverageRecorder();
-
-const measuredFit = createMeasuredFitRecorder(
-  "transaction-output-non-canonical",
-  "lifecycle",
-  "16,384-byte selected output in a 32,768-byte certified field, both directions and canonical terminal scan",
-);
-
-/** Every complete signed transaction the suite measures, in submission order. */
-const fit: [string, CompleteSignedTransactionMeasurement][] = [];
-const record = (
-  name: string,
-  measurement: CompleteSignedTransactionMeasurement,
-): void => {
-  expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
-  fit.push([name, measurement]);
-  measuredFit.record(
-    name,
-    measurement,
-    measurement.executionMemory === 0n ? "publication" : "lifecycle",
-  );
-};
-/** Labels the chunk, certificate and step transactions one builder call submitted. */
-const recordAll = (
-  prefix: string,
-  measurements: readonly CompleteSignedTransactionMeasurement[],
-  certified: boolean,
-): void => {
-  const stepIndex = measurements.length - 1;
-  const certificateIndex = certified ? stepIndex - 1 : -1;
-  measurements.forEach((measurement, index) => {
-    if (index === stepIndex) record(prefix, measurement);
-    else if (index === certificateIndex)
-      record(`${prefix}-carriage-certificate`, measurement);
-    else
-      record(
-        `${prefix}-carriage-chunk${(index + 1).toString().padStart(2, "0")}`,
-        measurement,
-      );
-  });
-};
-
-type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
-type NativeTx = ReturnType<typeof makeNativeTx>;
-type Evidence = ReturnType<typeof prepareTransactionOutputEvidence>;
-
-/**
- * The registered chain is the deployed identity: the harness folds its first
- * step into the catalogue root. The family-side application must reproduce it
- * step for step before the suite drives it.
- */
-const registeredContracts = async (harness: Harness) => {
-  const addressData = await Effect.runPromise(
-    addressDataFromBech32(
-      harness.contracts.fraudProof.spendingScriptAddress,
-    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-  );
-  const registered =
-    harness.contracts.fraudProofContracts.transactionOutputNonCanonical;
-  const category = harness.catalogue.categories.transactionOutputNonCanonical;
-  expectRegisteredChainParity({
-    registered,
-    applied: applyTransactionOutputNonCanonicalScripts({
-      blueprint: harness.realBlueprint,
-      network,
-      computationThreadPolicyId: harness.contracts.computationThread.policyId,
-      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-    }),
-    category,
-  });
-  const steps = familyStepsFromRegisteredChain(
-    registered.steps,
-    Object.values(TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES),
-  );
-  const contracts: TransactionOutputNonCanonicalContracts = {
-    steps,
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
-    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    fieldPreimageCertificatePolicyId:
-      harness.contracts.fieldPreimageCertificate.policyId,
-    fieldPreimageCertificateMintingScript:
-      harness.contracts.fieldPreimageCertificate.mintingScript,
-  };
-  // Published only after the fraudulent block is set up: setup consumes the
-  // harness nonce, which reference publication must not spend first.
-  const references: UTxO[] = [];
-  const publishReferences = async (): Promise<UTxO> => {
-    for (const [index, step] of steps.entries()) {
-      references.push(
-        (
-          await publishPlainReferenceScriptUtxo({
-            lucid: harness.funderLucid,
-            script: step.spendingScript,
-            label: `transaction-output-non-canonical-${index.toString()}`,
-          })
-        ).utxo,
-      );
-    }
-    return (
-      await publishPlainReferenceScriptUtxo({
-        lucid: harness.funderLucid,
-        script: harness.contracts.fieldPreimageCertificate.mintingScript,
-        label: "transaction-output-non-canonical-certificate",
-      })
-    ).utxo;
-  };
-  const common = (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3): Common => ({
-    lucid: harness.proverLucid,
-    contracts,
-    categoryId: category.categoryId,
-    signer: harness.proverSigner,
-    threadOutRef,
-    referenceScriptUtxo: references[stepIndex]!,
-  });
-  const init = async (fraudulentBlockOutRef: string) =>
-    await captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: contracts as never,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: harness.catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  const threadUtxoOf = async (
-    txHash: string,
-    outputIndex: number,
-  ): Promise<UTxO> => {
-    const [utxo] = await harness.proverLucid.utxosByOutRef([
-      { txHash, outputIndex },
-    ]);
-    if (utxo === undefined) throw new Error(`thread ${txHash} absent`);
-    return utxo;
-  };
-  const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
-    await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalCancel({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        referenceScriptUtxo: references[stepIndex]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-  const removal = async (fraudulentHeaderHash: string) => {
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
-    });
-    // A registered family resolves removal through the canonical catalogue:
-    // the manifest's fraudProofTransactionOutputNonCanonical entries carry
-    // the registered chain the harness built.
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      harness.contracts,
-      harness.catalogue,
-      { removalReferenceScripts: removalReferences.published },
-    );
-    const now = BigInt(harness.emulator.now());
-    const removed = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRemoveFraudulentBlock({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        deploymentInfo,
-        network,
-        signer: harness.proverSigner,
-        fraudCategory: "transactionOutputNonCanonical",
-        fraudulentHeaderHash,
-        awaitConfirmation: true,
-        requireReferenceScripts: true,
-        validFrom: now > 120_000n ? now - 120_000n : 0n,
-        validTo: now + 300_000n,
-      }),
-    );
-    expect(removed.result.fraudCategoryId).toBe(CATEGORY_ID);
-    return removed;
-  };
-  return {
-    harness,
-    contracts,
-    catalogue: harness.catalogue,
-    category,
-    references,
-    publishReferences,
-    common,
-    init,
-    threadUtxoOf,
-    cancel,
-    removal,
-  };
-};
-
-type Registered = Awaited<ReturnType<typeof registeredContracts>>;
-
-const evidenceOf = (
-  subject: VerdictSubject,
-  nativeTx: NativeTx,
-  itemIndex: number,
-): Evidence =>
-  prepareTransactionOutputEvidence({
-    finding: { subject, fieldIndex: 2, itemIndex },
-    fieldPreimage: nativeTx.body.outputsPreimageCbor,
-    committedFieldHashHex: midgardFieldCommitment(
-      nativeTx.body.outputsPreimageCbor,
-    ).toString("hex"),
-  });
-
-const witnessSetCborOf = (nativeTx: NativeTx): string =>
-  encodeMidgardNativeTxWitnessSetCompact(
-    deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
-  ).toString("hex");
-
-/** Commits every transaction in one transactions trie and proves each of them. */
-const committedInclusions = async (nativeTxs: readonly NativeTx[]) => {
-  const store = new Store(undefined);
-  await store.ready();
-  const trie = new Trie(store);
-  const ids = nativeTxs.map((nativeTx) =>
-    computeMidgardNativeTxId(nativeTx).toString("hex"),
-  );
-  for (const [index, nativeTx] of nativeTxs.entries()) {
-    await trie.insert(
-      Buffer.from(ids[index]!, "hex"),
-      Buffer.from(l2TransactionSourceCbor(nativeTx), "hex"),
-    );
-  }
-  const transactionsRoot = Buffer.from(trie.hash).toString("hex");
-  const inclusions = [];
-  for (const [index, nativeTx] of nativeTxs.entries()) {
-    const proof = await trie.prove(Buffer.from(ids[index]!, "hex"));
-    inclusions.push({
-      nativeTxId: ids[index]!,
-      nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
-      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
-        nativeTx.compact,
-      ).toString("hex"),
-      l2TransactionSourceCbor: l2TransactionSourceCbor(nativeTx),
-      transactionsPhasRoot: transactionsRoot,
-      txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
-      txMembershipProofCbor: proof.toCBOR().toString("hex"),
-    });
-  }
-  return { transactionsRoot, inclusions };
-};
-
-type Inclusion = Awaited<
-  ReturnType<typeof committedInclusions>
->["inclusions"][number];
-
-const controlCbor = (control: unknown): string =>
-  Data.to(control as never, TransactionOutputScanControlSchema as never);
-
-/**
- * Drives step 03 to its terminal through fresh builder calls. After the
- * first transition it verifies the on-chain checkpoint is exactly the trace
- * position the evidence reproduces, refuses the successor and checkpoint
- * seams at that checkpoint, then resumes from evidence derived afresh from
- * the retained field bytes.
- */
-const scanToTerminal = async ({
-  registered,
-  threadOutRef,
-  evidence,
-  rederive,
-  label,
-  nativeTxCompactCbor,
-  witnessSetCompactCbor,
-}: {
-  readonly registered: Registered;
-  readonly threadOutRef: string;
-  readonly evidence: Evidence;
-  readonly rederive: () => Evidence;
-  readonly label: string;
-  readonly nativeTxCompactCbor: string;
-  readonly witnessSetCompactCbor: string;
-}) => {
-  let current = threadOutRef;
-  let scans = 0;
-  let active = evidence;
-  for (;;) {
-    const scan = await captureEmulatorSubmission(
-      registered.harness.emulator,
-      () =>
-        submitTransactionOutputNonCanonicalStep03({
-          lucid: registered.harness.proverLucid,
-          contracts: registered.contracts,
-          categoryId: registered.category.categoryId,
-          signer: registered.harness.proverSigner,
-          threadOutRef: current,
-          evidence: active,
-          nativeTxCompactCbor,
-          witnessSetCompactCbor,
-          referenceScriptUtxo: registered.references[2]!,
-        }),
-    );
-    scans += 1;
-    current = scan.result.nextThreadOutRef;
-    if (scans === 1) record(`${label}-scan-first`, scan.measurement);
-    if (scan.result.terminal) {
-      record(`${label}-scan-final`, scan.measurement);
-      return { threadOutRef: current, scans };
-    }
-    if (scans === 1) {
-      // A real checkpoint: the thread now carries the trace position after
-      // one window, and it must be exactly what the evidence reproduces.
-      const observed = await readOutputScanState(
-        registered.common(current, 2),
-        2,
-      );
-      expect(observed.outcome).toBe(0n);
-      expect(observed.control.cursor).toBeGreaterThan(0n);
-      expect(controlCbor(observed.control)).toBe(
-        controlCbor(
-          transactionOutputScanControlData(evidence.scanControls[1]!),
-        ),
-      );
-      const window = scanWindowAt(
-        Buffer.from(evidence.itemHex, "hex"),
-        observed.control,
-      );
-      // Wrong successor while scanning: the self-loop may not hand over early.
-      await expectOnchainRefusal(
-        async () =>
-          await submitOutputStep03Raw({
-            ...registered.common(current, 2),
-            window,
-            nextState: scanStateOf(evidence, 2, 0n),
-            nextStepIndex: 3,
-          }),
-      );
-      coverage.seamMutated("step_03_successor");
-      // Forged checkpoint: a canonical outcome claimed before the terminal.
-      await expectOnchainRefusal(
-        async () =>
-          await submitOutputStep03Raw({
-            ...registered.common(current, 2),
-            window,
-            nextState: { ...scanStateOf(evidence, 2, 0n), outcome: 1n },
-            nextStepIndex: 3,
-          }),
-      );
-      // Replayed checkpoint: re-emitting the consumed position is no progress.
-      await expectOnchainRefusal(
-        async () =>
-          await submitOutputStep03Raw({
-            ...registered.common(current, 2),
-            window,
-            nextState: scanStateOf(evidence, 1, 0n),
-            nextStepIndex: 2,
-          }),
-      );
-      coverage.seamMutated("scan_checkpoint");
-      // Resume: the remaining windows are driven from evidence derived afresh.
-      active = rederive();
-      expect(active).toStrictEqual(evidence);
-      coverage.resumed();
-    }
-  }
-};
+import {
+  committedInclusions,
+  coverage,
+  type Evidence,
+  evidenceOf,
+  fit,
+  type Inclusion,
+  MAXIMUM_OUTPUT_BYTES,
+  type NativeTx,
+  network,
+  record,
+  recordAll,
+  registeredContracts,
+  witnessSetCborOf,
+} from "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
+import { scanToTerminal } from "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
 
 describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
   it("convicts an accepted malformed output at the maximum shape, refuses every accepted seam, the honest twin and the adjacent width, cancels every step, then mints and removes", async () => {

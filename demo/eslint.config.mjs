@@ -3,6 +3,8 @@ import simpleImportSort from "eslint-plugin-simple-import-sort";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+import moduleSizeExceptions from "./module-size-exceptions.json" with { type: "json" };
+import testModuleFacets from "./module-test-facets.json" with { type: "json" };
 import midgard, {
   loadBaseline,
 } from "./scripts/lib/eslint-plugin-midgard/index.mjs";
@@ -46,6 +48,10 @@ export default tseslint.config(
       globals: globals.node,
     },
     rules: {
+      "max-lines": [
+        "error",
+        { max: 500, skipBlankLines: false, skipComments: false },
+      ],
       "no-unused-vars": [
         "error",
         {
@@ -153,7 +159,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/tests/**/*.ts", "**/*.test.ts"],
+    files: ["**/tests/**/*.ts", "**/*.test.ts", ...testModuleFacets],
     rules: {
       // Test fixtures deliberately inspect malformed/untyped external data and
       // Vitest assertions routinely reference methods without invoking them.
@@ -167,7 +173,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["midgard-node/src/index.ts", "midgard-node-tools/src/index.ts"],
+    files: ["midgard-node/src/index*.ts", "midgard-node-tools/src/index*.ts"],
     rules: {
       // Commander necessarily exposes explicit `any` in its callback
       // adapter signatures.
@@ -314,4 +320,10 @@ export default tseslint.config(
       "midgard/valid-from-wall-clock-margin": "error",
     },
   },
+  // Individually reviewed cohesive declarations/suites are capped at their
+  // recorded size. New files and all unlisted files retain the 500-line limit.
+  ...moduleSizeExceptions.map(({ file, max }) => ({
+    files: [file],
+    rules: { "max-lines": ["error", { max }] },
+  })),
 );

@@ -1,0 +1,280 @@
+import { SqlClient } from "@effect/sql";
+import { Effect, Option, Queue, Ref } from "effect";
+
+import * as Authority from "../database/eventHistoryAuthority.js";
+import type { Checkpoint } from "../database/eventHistoryJournal.js";
+import {
+  type CorrectionRewindIntent,
+  type CorrectionRewindMember,
+  prepareCorrectionRewindRecoveryPlan,
+  retainedPreparedRecoveryPlan,
+} from "../database/eventHistoryRecoveryPlans.js";
+import * as Pending from "../database/pendingBlockFinalizations.js";
+import * as StateQueueLeases from "../database/stateQueueMutationLeases.js";
+import { invalidateSpeculativeCommitCandidate } from "../fibers/speculative-commit-builder.js";
+import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
+import type { NodeConfigDep } from "./config.js";
+import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
+import { Globals } from "./globals.js";
+import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
+import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
+import { reincludeStateQueueCorrectedBlocks } from "./state-queue-correction-recovery.js";
+import {
+  C,
+  chainIdentity,
+  failure,
+  sha,
+  type StateQueueCorrectionRewindAuthority,
+} from "./state-queue-correction-rewind.admitted-removals.js";
+import {
+  blockedReasons,
+  loadRetainedChain,
+  logBlocked,
+} from "./state-queue-correction-rewind.load-retained-chain.js";
+import { loadObligation } from "./state-queue-correction-rewind.prove-unlanded.js";
+
+/**
+ * Recovery preparation: resumes a retained rewind plan, or proves a fresh
+ * obligation and executes it. Returns without effect when nothing is owed,
+ * when another domain's plan is retained (its owner resumes it first), or
+ * when the obligation is blocked (the disposition keeps the gate closed).
+ */
+export const prepareStateQueueCorrectionRewind = (input: {
+  readonly bindingDigest: string;
+  readonly checkpoint: Checkpoint;
+  readonly preparation: HistoryRecoveryPreparation;
+  readonly config: NodeConfigDep;
+  readonly authority: StateQueueCorrectionRewindAuthority;
+}) =>
+  Effect.gen(function* () {
+    const { checkpoint, preparation, authority, config } = input;
+    const owned = <A, E, R>(work: Effect.Effect<A, E, R>) =>
+      Authority.withRecovery(
+        preparation.token,
+        preparation.assertCurrent.pipe(
+          Effect.zipRight(work),
+          Effect.tap(() => preparation.assertCurrent),
+        ),
+      );
+    yield* preparation.assertCurrent;
+    const derived = yield* owned(
+      Effect.gen(function* () {
+        const retained = yield* retainedPreparedRecoveryPlan(
+          input.bindingDigest,
+        );
+        // A signed-header recovery or a signed-intent release resumes its
+        // own plan; the rewind waits for it.
+        if (
+          retained?.kind === "signed_header" ||
+          retained?.kind === "signed_intent_release"
+        )
+          return undefined;
+        if (retained?.kind === "correction_rewind") {
+          const ready = yield* loadRetainedChain(authority, retained.intent);
+          return { ready, retained: retained.intent };
+        }
+        const obligation = yield* loadObligation(authority);
+        yield* logBlocked(
+          input.bindingDigest,
+          obligation.kind === "blocked" ? obligation.reason : undefined,
+        );
+        return obligation.kind === "ready"
+          ? { ready: obligation, retained: undefined }
+          : undefined;
+      }),
+    );
+    if (derived === undefined) return;
+    const { ready } = derived;
+    const records = ready.chain.map(({ record }) => record);
+    const members: readonly CorrectionRewindMember[] = ready.chain.map(
+      ({ record, transitionDigest, kind }) => ({
+        headerHash: record[C.HEADER_HASH].toString("hex"),
+        transitionDigest,
+        kind,
+      }),
+    );
+    const targetRoot = records[0]![C.BASE_UTXOS_ROOT];
+    const acceptedRoots = [
+      targetRoot,
+      ...records.map((record) => record[C.EXPECTED_UTXOS_ROOT]),
+    ];
+    const journalDigest = chainIdentity(ready.chain);
+    const globals = yield* Globals;
+    if (config.SPECULATIVE_COMMIT_BUILD)
+      yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
+    let owner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+    if (owner === undefined) {
+      // Open only retained native bytes; never genesis-bootstrap or replay a
+      // removed block's journal on this path. Create validates the marker.
+      owner = yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          const opened = yield* Effect.tryPromise({
+            try: () =>
+              ProductionNativeMpfOwnerService.create({
+                levelPath: config.LEDGER_MPF_DB_PATH,
+                binaryPath: config.MPF_NATIVE_OWNER_BINARY_PATH,
+                binarySha256: config.MPF_NATIVE_OWNER_BINARY_SHA256,
+                maxFrameBytes: config.MPF_NATIVE_OWNER_MAX_FRAME_BYTES,
+                maxChunkBytes: config.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES,
+                requestTimeoutMs: config.MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS,
+                restartLimit: config.MPF_NATIVE_OWNER_RESTART_LIMIT,
+                sidecarPath: config.MPF_NATIVE_OWNER_SIDECAR_PATH,
+              }),
+            catch: (cause) =>
+              failure("Retained native rewind owner could not open", cause),
+          });
+          yield* Ref.set(globals.NATIVE_MPF_OWNER, opened);
+          return opened;
+        }),
+      );
+    }
+    yield* preparation.assertCurrent;
+    const diagnostics = yield* Effect.tryPromise({
+      try: () => owner.diagnostics(),
+      catch: (cause) =>
+        failure("Retained native rewind diagnostics failed", cause),
+    });
+    const durableRoot = diagnostics.durableRoot;
+    let expectedRoot: string;
+    if (derived.retained !== undefined) {
+      expectedRoot = derived.retained.expectedRoot;
+      if (durableRoot !== expectedRoot && durableRoot !== targetRoot)
+        return yield* Effect.fail(
+          failure(
+            `Native MPF durable root ${durableRoot} is neither the retained rewind base ${expectedRoot} nor its target ${targetRoot}`,
+          ),
+        );
+    } else {
+      // The native root is the removed chain's replay base (a crash before the
+      // first promotion) or one of its blocks' roots. Anything else is not a
+      // state this rewind can prove it restores from; never guess a base.
+      if (!acceptedRoots.includes(durableRoot))
+        return yield* Effect.fail(
+          failure(
+            `Native MPF durable root ${durableRoot} is outside the removed chain ${members.map(({ headerHash }) => headerHash).join(",")}; refusing to rewind`,
+          ),
+        );
+      expectedRoot = durableRoot;
+    }
+    const intent: CorrectionRewindIntent = {
+      bindingDigest: input.bindingDigest,
+      manifestId: checkpoint.manifestId,
+      headerHash: members[0]!.headerHash,
+      members,
+      expectedRoot,
+      targetRoot,
+      journalDigest,
+    };
+    const evidenceDigest = sha(
+      eventHistoryCanonicalJson({
+        members,
+        point: checkpoint.head,
+        snapshot: checkpoint.capture.snapshotDigest,
+      }),
+    );
+    // Re-proves the whole chain inside the caller's transaction with the
+    // observer row held FOR SHARE: every removal is still admitted, every
+    // unlanded descendant is still provably unlanded, and the journal identity
+    // is unchanged. No observer save can retract a removal until the
+    // transaction that acts on this proof commits.
+    const recheck = loadRetainedChain(
+      authority,
+      derived.retained ?? intent,
+      true,
+    ).pipe(Effect.map(({ chain }) => chain));
+    const plan = yield* owned(
+      recheck.pipe(
+        Effect.zipRight(
+          prepareCorrectionRewindRecoveryPlan(
+            checkpoint,
+            derived.retained ?? intent,
+            evidenceDigest,
+          ),
+        ),
+      ),
+    );
+    if (
+      plan.intent.targetRoot !== targetRoot ||
+      plan.intent.journalDigest !== journalDigest
+    )
+      return yield* Effect.fail(
+        failure("Retained correction rewind identity changed"),
+      );
+    let submitted: Readonly<{ txHash: string; sinceMs: number }> | undefined;
+    yield* executeHistoryDependentRecovery({
+      checkpoint,
+      preparation,
+      plan,
+      owner,
+      repair: Effect.gen(function* () {
+        const current = yield* recheck;
+        const sql = yield* SqlClient.SqlClient;
+        const results = yield* reincludeStateQueueCorrectedBlocks(
+          current.map(({ record, transitionDigest, kind }) => ({
+            headerHash: record[C.HEADER_HASH].toString("hex"),
+            transitionDigest,
+            kind,
+          })),
+        );
+        if (
+          results.length !== members.length ||
+          results.some(({ journalFound }) => !journalFound)
+        )
+          return yield* Effect.fail(
+            failure("Rewind reinclusion did not resolve every removed block"),
+          );
+        // Removed and unlanded blocks can never be continued; retire only
+        // their own leases, atomically with their abandonment.
+        for (const { record } of current)
+          yield* StateQueueLeases.release(record[C.STATE_QUEUE_LEASE_TOKEN]);
+        // The SQL marker follows the native root, which the plan's CAS already
+        // proved. It was stamped by the latest journaled block, which may be
+        // a later unsubmitted attempt, so it is replaced, not compared. The
+        // aggregate is the replay base's own (its parent journal's) or none,
+        // which makes the commit base recompute it from ledger entries.
+        const aggregate = ready.parentAggregate;
+        const engine = yield* sql`UPDATE mpf_engine_state
+          SET root_hex = ${targetRoot},
+            utxo_payload_entry_count = ${aggregate?.entryCount ?? null},
+            utxo_payload_encoded_tuple_bytes = ${aggregate?.encodedTupleBytes ?? null},
+            updated_at = NOW()
+          WHERE store_name = 'ledger'
+          RETURNING store_name`;
+        if (engine.length !== 1)
+          return yield* Effect.fail(
+            failure("Native SQL marker row is missing"),
+          );
+        const active = yield* Pending.retrieveActive();
+        submitted = Option.match(active, {
+          onNone: () => undefined,
+          onSome: (record) => ({
+            txHash:
+              (
+                record[C.SUBMITTED_TX_HASH] ?? record[C.INTENDED_TX_HASH]
+              )?.toString("hex") ?? "",
+            sinceMs: record[C.UPDATED_AT].getTime(),
+          }),
+        });
+      }),
+      // The commit preflight re-derives the tail, boundary and any remaining
+      // finalization from L1 and the journal once no finalization is pending.
+      afterSqlCommit: Effect.gen(function* () {
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+          submitted?.txHash ?? "",
+        );
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+          submitted?.sinceMs ?? 0,
+        );
+        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
+        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
+        yield* Queue.takeAll(globals.COMMIT_SUBMIT_WAKE_QUEUE);
+        yield* Queue.takeAll(globals.SPECULATIVE_BUILD_WAKE_QUEUE);
+      }),
+    });
+    blockedReasons.delete(input.bindingDigest);
+    yield* Effect.logInfo(
+      `State-queue correction rewind restored native root ${targetRoot} and reincluded block(s) ${members.map(({ headerHash, kind }) => `${headerHash}(${kind})`).join(",")}.`,
+    );
+  });

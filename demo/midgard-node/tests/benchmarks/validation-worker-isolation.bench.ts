@@ -1,17 +1,30 @@
+import "node:fs";
+import "node:os";
+import "node:path";
+import "node:perf_hooks";
+import "node:url";
+import "@al-ft/midgard-core/cek-proof";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-validation";
+import "@effect/sql";
+import "effect";
+import "vitest";
+import "../../../midgard-validation/tests/validation-fixtures.js";
+import "../../src/database/index.js";
+import "../../src/services/validation-pool.js";
+import "../../src/workers/utils/validation-pool.js";
+import "../utils.js";
+import "./phase2-cpu-topology.js";
+import "./validation-worker-isolation.run-pool-phase-a.js";
+
 import fs from "node:fs";
 import { availableParallelism, cpus, hostname } from "node:os";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
-import { pathToFileURL } from "node:url";
 
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
-  deserializePhaseACandidate,
-  type PhaseAResult,
-  type PhaseBResultWithPatch,
   processedTxFromValidatedTx,
-  type QueuedTx,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
@@ -20,151 +33,39 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  ledgerEntry,
-  makeNativeTx,
-  makeOutput,
-  makeQueued,
-  outRefFromByte,
-} from "../../../midgard-validation/tests/validation-fixtures.js";
-import {
   MempoolDB,
   MempoolLedgerDB,
   MigrationRunner,
   TxAdmissionsDB,
 } from "../../src/database/index.js";
 import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
-import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { provideDatabaseLayers } from "../utils.js";
 import {
   readPhase2ContainerIdentity,
   readPhase2CpuTopology,
 } from "./phase2-cpu-topology.js";
-
-const quick = process.env.BENCH_QUICK === "1";
-const batchSize = Number(
-  process.env.BENCH_PHASE2_BATCH_SIZE ?? (quick ? 512 : 4_096),
-);
-const poolSize = Number(process.env.BENCH_PHASE2_POOL_SIZE ?? 6);
-const chunkSize = Number(process.env.BENCH_PHASE2_CHUNK_SIZE ?? 64);
-const durationMs = Number(
-  process.env.BENCH_PHASE2_DURATION_MS ?? (quick ? 5_000 : 300_000),
-);
-const assertGate = process.env.BENCH_ASSERT_PHASE2 === "1";
-const assertLeakSoak = process.env.BENCH_ASSERT_PHASE2_LEAK_SOAK === "1";
-const targetTps = Number(process.env.BENCH_PHASE2_TARGET_TPS ?? 2_500);
-const steadyStateWarmupMs = Number(
-  process.env.BENCH_PHASE2_STEADY_STATE_WARMUP_MS ??
-    (assertLeakSoak ? 300_000 : 0),
-);
-const expectedNodeImage = process.env.BENCH_PHASE2_NODE_IMAGE ?? "node:22.22.2";
-const expectedNodeImageId = process.env.BENCH_PHASE2_NODE_IMAGE_ID ?? "";
-const runDatabaseDiagnostic =
-  process.env.BENCH_PHASE2_DATABASE_DIAGNOSTIC === "1";
-const benchmarkDatabaseNamePattern = /^midgard_phase2_bench_[a-z0-9_]+$/u;
-const workerEntry = pathToFileURL(resolve("dist/validation.js"));
-const outputPath = resolve(
-  process.env.BENCH_PHASE2_OUTPUT_PATH ??
-    "tests/benchmarks/output/validation-worker-isolation.json",
-);
-const phaseAConfig = {
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  concurrency: 1,
-  strictnessProfile: "phase2_worker_isolation",
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-} as const;
-
-const percentile = (samples: readonly number[], p: number): number => {
-  const sorted = [...samples].sort((left, right) => left - right);
-  return (
-    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0
-  );
-};
-
-const normalizePhaseB = (result: PhaseBResultWithPatch) => ({
-  acceptedTxIds: result.accepted.map((candidate) =>
-    candidate.ledgerTx.txId.toString("hex"),
-  ),
-  rejected: result.rejected.map((rejection) => ({
-    txId: rejection.txId.toString("hex"),
-    code: rejection.code,
-    detail: rejection.detail,
-  })),
-  statePatch: result.statePatch,
-});
-
-const buildCorpus = (): {
-  readonly queued: readonly QueuedTx[];
-  readonly preState: Map<string, Buffer>;
-  readonly preStateRows: readonly MempoolLedgerDB.EntryNoTimeStamp[];
-} => {
-  const queued: QueuedTx[] = [];
-  const preState = new Map<string, Buffer>();
-  const preStateRows: MempoolLedgerDB.EntryNoTimeStamp[] = [];
-  for (let index = 0; index < batchSize; index += 1) {
-    const spent = outRefFromByte(
-      (index % 250) + 1,
-      BigInt(Math.floor(index / 250)),
-    );
-    const output = makeOutput(10n);
-    const fixture = makeNativeTx({ spendInputs: [spent], outputs: [output] });
-    queued.push(makeQueued(fixture.txId, fixture.txCbor, BigInt(index)));
-    const entry = ledgerEntry(spent, output);
-    preState.set(entry.outref.toString("hex"), entry.output);
-    preStateRows.push({
-      ...entry,
-      [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
-    });
-  }
-  return { queued, preState, preStateRows };
-};
-
-const runPoolPhaseA = async (
-  pool: FixedValidationWorkerPool,
-  queued: readonly QueuedTx[],
-): Promise<{
-  result: PhaseAResult;
-  serializeMs: number;
-  deserializeMs: number;
-}> => {
-  let serializeMs = 0;
-  const requests = [];
-  for (let offset = 0; offset < queued.length; offset += chunkSize) {
-    const startedAt = performance.now();
-    requests.push(
-      packPhaseAJob(
-        pool.allocateJobId(),
-        queued.slice(offset, offset + chunkSize),
-      ),
-    );
-    serializeMs += performance.now() - startedAt;
-  }
-  const responses = await Promise.all(
-    requests.map((request) => pool.submit(request)),
-  );
-  const deserializeStartedAt = performance.now();
-  const accepted = [];
-  const rejected = [];
-  for (const response of responses) {
-    if (response.kind !== "phase_a")
-      throw new Error(`unexpected ${response.kind}`);
-    for (const item of response.results) {
-      if (item.ok) accepted.push(deserializePhaseACandidate(item.candidate));
-      else
-        rejected.push({
-          txId: Buffer.from(item.txId),
-          code: item.code,
-          detail: item.detail,
-        });
-    }
-  }
-  return {
-    result: { accepted, rejected },
-    serializeMs,
-    deserializeMs: performance.now() - deserializeStartedAt,
-  };
-};
+import {
+  assertGate,
+  assertLeakSoak,
+  batchSize,
+  benchmarkDatabaseNamePattern,
+  buildCorpus,
+  chunkSize,
+  durationMs,
+  expectedNodeImage,
+  expectedNodeImageId,
+  normalizePhaseB,
+  outputPath,
+  percentile,
+  phaseAConfig,
+  poolSize,
+  quick,
+  runDatabaseDiagnostic,
+  runPoolPhaseA,
+  steadyStateWarmupMs,
+  targetTps,
+  workerEntry,
+} from "./validation-worker-isolation.run-pool-phase-a.js";
 
 describe("Phase 2 validation-worker isolation benchmark", () => {
   it(

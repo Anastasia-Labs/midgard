@@ -1,17 +1,35 @@
+import "node:assert/strict";
+import "node:module";
+import "node:perf_hooks";
+import "level";
+import "./mpf-event-flat-wasm-prototype.encode-input.mjs";
+
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
 
 import { Level } from "level";
 
+import {
+  commonPrefix,
+  encodeInput,
+  key,
+  makeProbeEvents,
+  opSize,
+  prefixBytes,
+} from "./mpf-event-flat-wasm-prototype.encode-input.mjs";
+
 const require = createRequire(import.meta.url);
+
 const blake2b = require("blake2b");
+
 const wasm = require("../.architecture-f-wasm/midgard_mpf_event_flat_wasm.js");
 
 const EMPTY_ROOT = Buffer.from(
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
   "hex",
 );
+
 const EXPECTED = new Map([
   [
     100_000,
@@ -40,6 +58,7 @@ const EXPECTED = new Map([
 await new Promise((resolve, reject) =>
   blake2b.ready((error) => (error === undefined ? resolve() : reject(error))),
 );
+
 if (blake2b.WASM_SUPPORTED !== true || blake2b.WASM_LOADED !== true) {
   throw new Error("Prototype JS path digest requires canonical BLAKE2b WASM");
 }
@@ -49,9 +68,9 @@ const digest = (...parts) => {
   for (const part of parts) hash.update(part);
   return Buffer.from(hash.digest());
 };
+
 const pathOf = (key) => digest(key).toString("hex");
-const prefixBytes = (prefix) =>
-  Buffer.from([...prefix].map((digit) => Number.parseInt(digit, 16)));
+
 const leafHash = (prefix, value) => {
   const odd = prefix.length % 2 === 1;
   const head = odd
@@ -60,6 +79,7 @@ const leafHash = (prefix, value) => {
   const tail = Buffer.from(odd ? prefix.slice(1) : prefix, "hex");
   return digest(head, tail, digest(value));
 };
+
 const branchHash = (prefix, children) => {
   let level = children.map((child) =>
     child == null ? Buffer.alloc(32) : Buffer.from(child, "hex"),
@@ -72,12 +92,6 @@ const branchHash = (prefix, children) => {
     level = next;
   }
   return digest(prefixBytes(prefix), level[0]);
-};
-
-const key = (index) => {
-  const value = Buffer.alloc(32);
-  value.writeUInt32BE(index, 28);
-  return value;
 };
 
 const loadRawTouchedProof = async (db, baseRoot, ops) => {
@@ -109,7 +123,8 @@ const loadRawTouchedProof = async (db, baseRoot, ops) => {
   let frontier = [];
   if (!baseRoot.equals(EMPTY_ROOT)) {
     const [root] = await load([baseRoot.toString("hex")]);
-    if (root === undefined) throw new Error("Fixture is missing its root record");
+    if (root === undefined)
+      throw new Error("Fixture is missing its root record");
     records.set(baseRoot.toString("hex"), root);
     frontier = [{ hash: baseRoot, value: root, states }];
   } else {
@@ -188,7 +203,11 @@ const loadRawTouchedProof = async (db, baseRoot, ops) => {
         }
         records.set(hash, value);
         if (childStates.length > 0) {
-          next.push({ hash: Buffer.from(hash, "hex"), value, states: childStates });
+          next.push({
+            hash: Buffer.from(hash, "hex"),
+            value,
+            states: childStates,
+          });
         }
       }
     }
@@ -202,100 +221,6 @@ const loadRawTouchedProof = async (db, baseRoot, ops) => {
   return { records, levelGetMs, levelGetManyCalls, maxBatchKeys };
 };
 
-const recordSize = (value) => {
-  const common = 1 + 32 + 1 + value.prefix.length;
-  if (value.__kind === "Leaf") {
-    return common + 2 + 4 + value.key.length / 2 + value.value.length / 2;
-  }
-  return (
-    common +
-    8 +
-    2 +
-    value.children.filter((child) => child != null).length * 32
-  );
-};
-const opSize = (op) =>
-  1 + 2 + 4 + op.key.length + (op.type === "insert" ? op.value.length : 0);
-
-const encodeInput = ({ baseRoot, records, events }) => {
-  const ops = events.flat();
-  const bytes =
-    72 +
-    [...records.values()].reduce((total, value) => total + recordSize(value), 0) +
-    events.length * 4 +
-    ops.reduce((total, op) => total + opSize(op), 0);
-  const output = Buffer.allocUnsafe(bytes);
-  let offset = 0;
-  const put = (value) => {
-    Buffer.from(value).copy(output, offset);
-    offset += value.length;
-  };
-  const u8 = (value) => {
-    output.writeUInt8(value, offset);
-    offset += 1;
-  };
-  const u16 = (value) => {
-    output.writeUInt16LE(value, offset);
-    offset += 2;
-  };
-  const u32 = (value) => {
-    output.writeUInt32LE(value, offset);
-    offset += 4;
-  };
-  const u64 = (value) => {
-    output.writeBigUInt64LE(BigInt(value), offset);
-    offset += 8;
-  };
-  put(Buffer.from("MEF6"));
-  u16(1);
-  u16(0);
-  u32(1_000_000);
-  u32(100_000);
-  u32(400_000);
-  u32(536_870_912);
-  u32(536_870_912);
-  u32(records.size);
-  u32(events.length);
-  u32(ops.length);
-  put(baseRoot);
-  for (const [hash, value] of records) {
-    u8(value.__kind === "Leaf" ? 1 : 2);
-    put(Buffer.from(hash, "hex"));
-    u8(value.prefix.length);
-    put(prefixBytes(value.prefix));
-    if (value.__kind === "Leaf") {
-      const keyBytes = Buffer.from(value.key, "hex");
-      const valueBytes = Buffer.from(value.value, "hex");
-      u16(keyBytes.length);
-      u32(valueBytes.length);
-      put(keyBytes);
-      put(valueBytes);
-    } else {
-      u64(value.size);
-      const bitmap = value.children.reduce(
-        (bits, child, index) => bits | (child == null ? 0 : 1 << index),
-        0,
-      );
-      u16(bitmap);
-      for (const child of value.children) {
-        if (child != null) put(Buffer.from(child, "hex"));
-      }
-    }
-  }
-  for (const event of events) {
-    u32(event.length);
-    for (const op of event) {
-      u8(op.type === "insert" ? 1 : 2);
-      u16(op.key.length);
-      u32(op.type === "insert" ? op.value.length : 0);
-      put(op.key);
-      if (op.type === "insert") put(op.value);
-    }
-  }
-  assert.equal(offset, output.length);
-  return output;
-};
-
 const encodeEventStream = ({
   baseRoot,
   events,
@@ -304,9 +229,7 @@ const encodeEventStream = ({
 }) => {
   const ops = events.flat();
   const bytes =
-    92 +
-    events.length * 4 +
-    ops.reduce((total, op) => total + opSize(op), 0);
+    92 + events.length * 4 + ops.reduce((total, op) => total + opSize(op), 0);
   const output = Buffer.allocUnsafe(bytes);
   let offset = 0;
   const put = (value) => {
@@ -473,7 +396,11 @@ const decodeOutput = (raw, { includeEventRoots = true } = {}) => {
     const hash = pending.pop();
     if (reachable.has(hash)) continue;
     const children = records.get(hash);
-    assert.notEqual(children, undefined, "delta closure is missing a dirty child");
+    assert.notEqual(
+      children,
+      undefined,
+      "delta closure is missing a dirty child",
+    );
     reachable.add(hash);
     for (const child of children) {
       if (child != null && records.has(child)) pending.push(child);
@@ -496,19 +423,11 @@ const decodeOutput = (raw, { includeEventRoots = true } = {}) => {
         : output.subarray(deltaOffset - 32, deltaOffset).toString("hex"),
     eventRoots: includeEventRoots
       ? Array.from({ length: eventCount }, (_, index) =>
-          output
-            .subarray(120 + index * 32, 152 + index * 32)
-            .toString("hex"),
+          output.subarray(120 + index * 32, 152 + index * 32).toString("hex"),
         )
       : undefined,
     deltaKinds,
   };
-};
-
-const commonPrefix = (left, right) => {
-  let index = 0;
-  while (index < left.length && left[index] === right[index]) index += 1;
-  return left.slice(0, index);
 };
 
 const forestryRoots = async (initialEntries, events) => {
@@ -557,8 +476,10 @@ const runAdversarial = async () => {
   const leaf1Hash = leafHash(leaf1.prefix, value1);
   const leaf2Hash = leafHash(leaf2.prefix, value2);
   const children = Array(16).fill(null);
-  children[Number.parseInt(path1[prefix.length], 16)] = leaf1Hash.toString("hex");
-  children[Number.parseInt(path2[prefix.length], 16)] = leaf2Hash.toString("hex");
+  children[Number.parseInt(path1[prefix.length], 16)] =
+    leaf1Hash.toString("hex");
+  children[Number.parseInt(path2[prefix.length], 16)] =
+    leaf2Hash.toString("hex");
   const root = branchHash(prefix, children);
   assert.equal(
     root.toString("hex"),
@@ -613,7 +534,10 @@ const runAdversarial = async () => {
   );
   const sessionSetup = encodeInput({ baseRoot: root, records, events: [] });
   const session = new wasm.ArchitectureGSession(sessionSetup);
-  assert.equal(Buffer.from(session.base_root()).toString("hex"), root.toString("hex"));
+  assert.equal(
+    Buffer.from(session.base_root()).toString("hex"),
+    root.toString("hex"),
+  );
   const firstHandle = session.fork_generation();
   const replayHandle = session.fork_generation();
   assert.equal(session.active_generations(), 2);
@@ -679,7 +603,8 @@ const runAdversarial = async () => {
     if (previous === undefined) byPrefix.set(hashedPrefix, candidate);
     else longPair = [previous, candidate];
   }
-  if (longPair === undefined) throw new Error("Unable to make long-prefix fixture");
+  if (longPair === undefined)
+    throw new Error("Unable to make long-prefix fixture");
   const thirdKey = Buffer.alloc(32, 0xff);
   const longEvents = [
     [
@@ -696,10 +621,7 @@ const runAdversarial = async () => {
     events: longEvents,
   });
   const longResult = decodeOutput(wasm.run_architecture_f(longInput));
-  assert.deepEqual(
-    longResult.eventRoots,
-    await forestryRoots([], longEvents),
-  );
+  assert.deepEqual(longResult.eventRoots, await forestryRoots([], longEvents));
   process.stdout.write(
     `${JSON.stringify({
       mode: "adversarial",
@@ -719,19 +641,10 @@ const runAdversarial = async () => {
   );
 };
 
-const makeProbeEvents = (initialUtxos, transactions) =>
-  Array.from({ length: transactions }, (_, index) => [
-    { type: "delete", key: key(index) },
-    {
-      type: "insert",
-      key: key(initialUtxos + index),
-      value: Buffer.alloc(64, (index + 1) % 251),
-    },
-  ]);
-
 const runLevel = async ({ levelPath, initialUtxos, transactions }) => {
   const expected = EXPECTED.get(initialUtxos);
-  if (expected === undefined) throw new Error("Only exact 100k/1M fixtures are accepted");
+  if (expected === undefined)
+    throw new Error("Only exact 100k/1M fixtures are accepted");
   const events = makeProbeEvents(initialUtxos, transactions);
   const ops = events.flat();
   const db = new Level(levelPath, { valueEncoding: "json" });
@@ -740,7 +653,11 @@ const runLevel = async ({ levelPath, initialUtxos, transactions }) => {
     const marker = await db.get("__root__", { valueEncoding: "json" });
     assert.equal(marker, expected.fixtureRoot);
     const fetchStartedAt = performance.now();
-    const proof = await loadRawTouchedProof(db, Buffer.from(marker, "hex"), ops);
+    const proof = await loadRawTouchedProof(
+      db,
+      Buffer.from(marker, "hex"),
+      ops,
+    );
     const fetchMs = performance.now() - fetchStartedAt;
     const encodeStartedAt = performance.now();
     const input = encodeInput({
@@ -789,7 +706,8 @@ const runLevel = async ({ levelPath, initialUtxos, transactions }) => {
 
 const runLevelSession = async ({ levelPath, initialUtxos, transactions }) => {
   const expected = EXPECTED.get(initialUtxos);
-  if (expected === undefined) throw new Error("Only exact 100k/1M fixtures are accepted");
+  if (expected === undefined)
+    throw new Error("Only exact 100k/1M fixtures are accepted");
   const events = makeProbeEvents(initialUtxos, transactions);
   const ops = events.flat();
   const db = new Level(levelPath, { valueEncoding: "json" });
@@ -798,7 +716,11 @@ const runLevelSession = async ({ levelPath, initialUtxos, transactions }) => {
     const marker = await db.get("__root__", { valueEncoding: "json" });
     assert.equal(marker, expected.fixtureRoot);
     const fetchStartedAt = performance.now();
-    const proof = await loadRawTouchedProof(db, Buffer.from(marker, "hex"), ops);
+    const proof = await loadRawTouchedProof(
+      db,
+      Buffer.from(marker, "hex"),
+      ops,
+    );
     const setupFetchMs = performance.now() - fetchStartedAt;
 
     const baseEncodeStartedAt = performance.now();
@@ -896,6 +818,7 @@ const args = new Map(
     return [name, value];
   }),
 );
+
 if (args.has("--level")) {
   const run = args.has("--session") ? runLevelSession : runLevel;
   await run({

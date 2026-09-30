@@ -1,3 +1,15 @@
+import "@al-ft/midgard-core/da-stream-codec";
+import "@al-ft/midgard-core/da-transport";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/da/libp2p/DaPeerRegistry.js";
+import "../src/da/libp2p/DaProtocols.js";
+import "../src/da/libp2p/proof-protocols.js";
+import "../src/store.js";
+import "./helpers.js";
+import "./libp2p-proof-protocols.save-verified-payload.js";
+
 import {
   encodeDaStreamFrame,
   readSingleDaStreamFrame,
@@ -19,20 +31,17 @@ import { describe, expect, it } from "vitest";
 import type { DaLibp2pStreamHandler } from "../src/da/libp2p/DaLibp2pNode.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "../src/da/libp2p/DaProtocols.js";
-import {
-  createDaLibp2pProofRequestHandlers,
-  DaLibp2pProofProtocolHandlers,
-} from "../src/da/libp2p/proof-protocols.js";
-import type {
-  DaStoredPayloadRootSet,
-  Header,
-  StateQueueHeaderRecord,
-} from "../src/domain.js";
+import { createDaLibp2pProofRequestHandlers } from "../src/da/libp2p/proof-protocols.js";
 import { JsonFileCommitteeStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
-
-const deploymentFingerprint = "01".repeat(32);
-const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
+import {
+  deploymentFingerprint,
+  deploymentFingerprintBytes,
+  makeHandlers,
+  rootSummaryFromHeader,
+  saveVerifiedPayload,
+  stateQueueHeaderRecord,
+} from "./libp2p-proof-protocols.save-verified-payload.js";
 
 describe("DA libp2p proof protocol handlers", () => {
   it("serves proof bundles, trace openings, and event-to-step membership proofs from verified payloads", async () => {
@@ -402,19 +411,6 @@ const streamLimits = {
   requestTimeoutMs: 1_000,
 };
 
-const makeHandlers = async (): Promise<{
-  readonly handlers: DaLibp2pProofProtocolHandlers;
-  readonly store: JsonFileCommitteeStore;
-}> => {
-  const store = await JsonFileCommitteeStore.open(await tempDir());
-  const handlers = new DaLibp2pProofProtocolHandlers({
-    deploymentFingerprint,
-    store,
-    accessPolicy: { kind: "any_noise_authenticated_peer" },
-  });
-  return { handlers, store };
-};
-
 const invokeStreamHandler = async (
   handler: DaLibp2pStreamHandler,
   protocolId: string,
@@ -445,72 +441,3 @@ const invokeStreamHandler = async (
     maxFrameBytes: streamLimits.maxPayloadBytes,
   });
 };
-
-const saveVerifiedPayload = async ({
-  store,
-  payloadCbor,
-  payloadHash,
-  header,
-  headerHash,
-  rootSummary = rootSummaryFromHeader(header),
-}: {
-  readonly store: JsonFileCommitteeStore;
-  readonly payloadCbor: Buffer;
-  readonly payloadHash: Buffer;
-  readonly header: Header;
-  readonly headerHash: string;
-  readonly rootSummary?: DaStoredPayloadRootSet;
-}): Promise<void> => {
-  await store.saveDaPayload({
-    deploymentFingerprint,
-    headerHash,
-    payloadSchemaVersion: 1,
-    payloadCborHex: payloadCbor.toString("hex"),
-    payloadSha256: payloadHash.toString("hex"),
-    sourcePeerId: "libp2p-fixture",
-    fetchedAt: "2026-06-21T00:00:00.000Z",
-    verifiedAt: "2026-06-21T00:00:01.000Z",
-    rootSummary,
-    validationStatus: "verified",
-  });
-  await store.upsertStateQueueHeader(
-    stateQueueHeaderRecord({ header, headerHash }),
-  );
-};
-
-const stateQueueHeaderRecord = ({
-  header,
-  headerHash,
-}: {
-  readonly header: Header;
-  readonly headerHash: string;
-}): StateQueueHeaderRecord => ({
-  deploymentFingerprint,
-  headerHash,
-  stateQueueOutRef: "aa".repeat(32) + "#0",
-  blockAssetName: `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
-  header,
-  computedHeaderHash: headerHash,
-  daAttestation: SDK.NO_DA_ATTESTATION,
-  observedChainPoint: {
-    slot: 1,
-    blockHash: "bb".repeat(32),
-    depth: 10,
-    providerSource: "fixture",
-  },
-  finalized: true,
-  status: "attested",
-  validationErrors: [],
-  updatedAt: "2026-06-21T00:00:02.000Z",
-});
-
-const rootSummaryFromHeader = (header: Header): DaStoredPayloadRootSet => ({
-  utxosRoot: header.utxosRoot,
-  withdrawalsRoot: header.withdrawalsRoot,
-  forcedTransactionsRoot: header.forcedTransactionsRoot,
-  transactionsRoot: header.transactionsRoot,
-  depositsRoot: header.depositsRoot,
-  transitionTraceRoot: header.transitionTraceRoot,
-  eventToStepRoot: header.eventToStepRoot,
-  validationTracesRoot: header.validationTracesRoot,
-});

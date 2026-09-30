@@ -1,0 +1,1432 @@
+{
+  "measuredAt": "2026-09-30T03:35:07.512Z",
+  "definition": "Physical TypeScript lines, including comments/blanks; onchain excluded. Production excludes test/spec/bench files, test/e2e/benchmark directories and registered test facets.",
+  "excludePrefix": "demo/midgard-node-tools/src/full-stack/",
+  "current": {
+    "all": {
+      "files": 5624,
+      "largest": 4545,
+      "above500": 348,
+      "above1000": 93,
+      "above2000": 15
+    },
+    "production": {
+      "files": 3411,
+      "largest": 3964,
+      "above500": 90,
+      "above1000": 21,
+      "above2000": 4
+    }
+  },
+  "oversized": [
+    {
+      "file": "demo/da-committee-node/tests/provider.test.ts",
+      "lines": 4545
+    },
+    {
+      "file": "demo/midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
+      "lines": 3964
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/rollback-engine.test.ts",
+      "lines": 3603
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
+      "lines": 3464
+    },
+    {
+      "file": "demo/midgard-validation/src/validation-machine/trace-builder-complete.ts",
+      "lines": 2850
+    },
+    {
+      "file": "demo/midgard-node/tests/native-transaction-integration.test.ts",
+      "lines": 2790
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf.test.ts",
+      "lines": 2572
+    },
+    {
+      "file": "demo/midgard-validation/src/cek-executor.structural-executor.ts",
+      "lines": 2567
+    },
+    {
+      "file": "demo/midgard-validation/tests/validation-machine.deterministic-validation-machine.ts",
+      "lines": 2460
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/validation-dispute/submit/semantic-resolution.ts",
+      "lines": 2398
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
+      "lines": 2331
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/stress-wallets.test.ts",
+      "lines": 2226
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-journal.test.ts",
+      "lines": 2217
+    },
+    {
+      "file": "demo/midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts",
+      "lines": 2077
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/script-integrity-hash-missing-lifecycle.test.ts",
+      "lines": 2065
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-shared.ts",
+      "lines": 1989
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transition-trace-challenger.transition-trace-challenger-tooling.ts",
+      "lines": 1962
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-runtime.compiled-manifest-bound-production-runtime-v1.ts",
+      "lines": 1866
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/l1-finality.ts",
+      "lines": 1859
+    },
+    {
+      "file": "demo/midgard-core/tests/cek-proof.test.ts",
+      "lines": 1854
+    },
+    {
+      "file": "demo/da-committee-node/src/committee-service.committee-service.ts",
+      "lines": 1757
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/bin.main.ts",
+      "lines": 1742
+    },
+    {
+      "file": "demo/midgard-sdk/tests/availability-challenge.q58-canonical-da-availability-commitment-v1.ts",
+      "lines": 1729
+    },
+    {
+      "file": "demo/da-committee-node/tests/config.load-committee-config.ts",
+      "lines": 1665
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
+      "lines": 1641
+    },
+    {
+      "file": "demo/midgard-watcher/tests/indexers/authenticated-state-queue-observation.production-state-queue-observation-source.ts",
+      "lines": 1639
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts",
+      "lines": 1630
+    },
+    {
+      "file": "demo/midgard-sdk/src/fraud-proof/contracts/families/validation-trace-dispute.build-validation-trace-dispute-chain.ts",
+      "lines": 1614
+    },
+    {
+      "file": "demo/midgard-node/src/mpf/process.process-mpfs.ts",
+      "lines": 1597
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts",
+      "lines": 1585
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
+      "lines": 1577
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/execution-native-script-invalid-lifecycle.test.ts",
+      "lines": 1566
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/local-historical-capture.test.ts",
+      "lines": 1543
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/network-id/workflow-adapter.create-network-id-workflow-adapter.ts",
+      "lines": 1534
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts",
+      "lines": 1533
+    },
+    {
+      "file": "demo/da-committee-node/tests/submitter.test.ts",
+      "lines": 1521
+    },
+    {
+      "file": "demo/midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
+      "lines": 1511
+    },
+    {
+      "file": "demo/midgard-node/src/mpf/root-view-store.ts",
+      "lines": 1499
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/ledger.ts",
+      "lines": 1498
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/crash-rollback-matrix.test.ts",
+      "lines": 1476
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts",
+      "lines": 1450
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/mint-declared-asset-limit-lifecycle.test.ts",
+      "lines": 1446
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transition-trace-l1-evidence.test.ts",
+      "lines": 1431
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow.q51-w-o4-resumable-workflow.ts",
+      "lines": 1419
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-control-plane.test.ts",
+      "lines": 1419
+    },
+    {
+      "file": "demo/midgard-watcher/tests/verification/block-replay.w25-roots-and-deterministic-replay.ts",
+      "lines": 1414
+    },
+    {
+      "file": "demo/midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
+      "lines": 1403
+    },
+    {
+      "file": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+      "lines": 1382
+    },
+    {
+      "file": "demo/midgard-watcher/tests/availability/concurrent-challenges.test.ts",
+      "lines": 1361
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts",
+      "lines": 1345
+    },
+    {
+      "file": "demo/midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts",
+      "lines": 1323
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/distinct-asset-accumulation-limit-lifecycle.test.ts",
+      "lines": 1294
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/value-conservation-lifecycle.test.ts",
+      "lines": 1286
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts",
+      "lines": 1265
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header.database-operations-program.ts",
+      "lines": 1263
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-ready-append.test.ts",
+      "lines": 1254
+    },
+    {
+      "file": "demo/midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
+      "lines": 1239
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/protected-output-signer-missing-lifecycle.test.ts",
+      "lines": 1238
+    },
+    {
+      "file": "demo/da-committee-node/src/store/postgres.postgres-committee-store.ts",
+      "lines": 1234
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-max-proof-fit.test.ts",
+      "lines": 1234
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts",
+      "lines": 1229
+    },
+    {
+      "file": "demo/midgard-watcher/tests/storage/retained-da-runtime.test.ts",
+      "lines": 1218
+    },
+    {
+      "file": "demo/midgard-node/tests/state-queue-correction-observer.test.ts",
+      "lines": 1205
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.test.ts",
+      "lines": 1199
+    },
+    {
+      "file": "demo/midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",
+      "lines": 1199
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-chunked-proof-carriage.test.ts",
+      "lines": 1192
+    },
+    {
+      "file": "demo/midgard-node/tests/reserve-payout-builders.test.ts",
+      "lines": 1186
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-merge-payout.test.ts",
+      "lines": 1185
+    },
+    {
+      "file": "demo/midgard-watcher/tests/funding/prover-funding-recovery.funding-recovery-across-authenticated-observation-refresh.ts",
+      "lines": 1155
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/native-script-family-evidence.test.ts",
+      "lines": 1147
+    },
+    {
+      "file": "demo/midgard-node/src/services/config.make-config.ts",
+      "lines": 1134
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/lifecycle.ts",
+      "lines": 1130
+    },
+    {
+      "file": "demo/midgard-sdk/tests/fault-proof.fault-proof-abi.ts",
+      "lines": 1113
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+      "lines": 1108
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/network-id-forced-workflow.test.ts",
+      "lines": 1102
+    },
+    {
+      "file": "demo/da-committee-node/src/store.json-file-committee-store.ts",
+      "lines": 1099
+    },
+    {
+      "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts",
+      "lines": 1076
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/finality-engine.canonical-release-bound-watcher-finality.ts",
+      "lines": 1075
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/history.ts",
+      "lines": 1059
+    },
+    {
+      "file": "demo/midgard-node/tests/da-bond-command.test.ts",
+      "lines": 1057
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
+      "lines": 1055
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/output-reference-script-decoding-lifecycle.test.ts",
+      "lines": 1050
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-ledger-repair.test.ts",
+      "lines": 1049
+    },
+    {
+      "file": "demo/midgard-node/tests/sdk-abi-fixtures.test.ts",
+      "lines": 1046
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/e2e-stress-l2-throughput.e2e-stress-l2-throughput-runner.ts",
+      "lines": 1036
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-adversarial.test.ts",
+      "lines": 1035
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/history-event-cases.test.ts",
+      "lines": 1034
+    },
+    {
+      "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts",
+      "lines": 1026
+    },
+    {
+      "file": "demo/midgard-core/src/cek-proof.verify-one-program-material.ts",
+      "lines": 1017
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf-audit-merge-permit-emulator.test.ts",
+      "lines": 1016
+    },
+    {
+      "file": "demo/midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
+      "lines": 1015
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.ts",
+      "lines": 1013
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/l1-adapter.test.ts",
+      "lines": 1013
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-reference-input-no-idx-lifecycle.test.ts",
+      "lines": 998
+    },
+    {
+      "file": "demo/midgard-node/tests/attestation-timeout-reinclusion-hardening-emulator.test.ts",
+      "lines": 998
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts",
+      "lines": 996
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/witness-script-decoding-lifecycle.test.ts",
+      "lines": 994
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-tier3-actions.test.ts",
+      "lines": 992
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-kupmios-source.production-local-kupmios-raw-source-v1.ts",
+      "lines": 986
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-streaming-production-lifecycle-emulator.test.ts",
+      "lines": 980
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/script-integrity-hash-mismatch-lifecycle.test.ts",
+      "lines": 979
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/chain-coordinator.create-coordinator.ts",
+      "lines": 977
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts",
+      "lines": 976
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
+      "lines": 974
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",
+      "lines": 974
+    },
+    {
+      "file": "demo/midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
+      "lines": 965
+    },
+    {
+      "file": "demo/midgard-node/src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts",
+      "lines": 962
+    },
+    {
+      "file": "demo/midgard-node/src/mpf/store.midgard-mpf.ts",
+      "lines": 962
+    },
+    {
+      "file": "demo/da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts",
+      "lines": 960
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/field-preimage-length-mismatch-lifecycle.test.ts",
+      "lines": 949
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.try-run-da-bond-pool-journey.ts",
+      "lines": 948
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts",
+      "lines": 946
+    },
+    {
+      "file": "demo/midgard-node/tests/operator-lifecycle-emulator.test.ts",
+      "lines": 946
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/e2e-summary.test.ts",
+      "lines": 940
+    },
+    {
+      "file": "demo/midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",
+      "lines": 939
+    },
+    {
+      "file": "demo/midgard-node/tests/forced-transactions.test.ts",
+      "lines": 936
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/chain-coordinator.test.ts",
+      "lines": 933
+    },
+    {
+      "file": "demo/lucid-midgard/src/builder.complete-tx.ts",
+      "lines": 931
+    },
+    {
+      "file": "demo/midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
+      "lines": 930
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-retired-membership.test.ts",
+      "lines": 930
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
+      "lines": 926
+    },
+    {
+      "file": "demo/lucid-midgard/src/builder.tx-builder.ts",
+      "lines": 922
+    },
+    {
+      "file": "demo/midgard-node/tests/state-reconciliation.test.ts",
+      "lines": 917
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/unused-script-witness-lifecycle.unused-script-witness-real-lifecycle.ts",
+      "lines": 914
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/state-queue-runtime.test.ts",
+      "lines": 912
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/cross-block-installed-lifecycle.test.ts",
+      "lines": 898
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
+      "lines": 895
+    },
+    {
+      "file": "demo/midgard-node/tests/merge-maturity-preflight.test.ts",
+      "lines": 892
+    },
+    {
+      "file": "demo/midgard-watcher/src/indexers/user-event-indexer/local-history.prepare-watcher-local-user-event-readmission.ts",
+      "lines": 889
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/validation-trace-dispute-installed-lifecycle.test.ts",
+      "lines": 884
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/spend-input-signer-missing-lifecycle.test.ts",
+      "lines": 879
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-source.test.ts",
+      "lines": 879
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-input-no-idx.test.ts",
+      "lines": 876
+    },
+    {
+      "file": "demo/midgard-watcher/tests/funding/prover-funding-calculation.test.ts",
+      "lines": 876
+    },
+    {
+      "file": "demo/midgard-node/tests/midgard-local-script-eval.test.ts",
+      "lines": 874
+    },
+    {
+      "file": "demo/midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
+      "lines": 874
+    },
+    {
+      "file": "demo/midgard-watcher/tests/indexers/user-event-origin.test.ts",
+      "lines": 867
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",
+      "lines": 863
+    },
+    {
+      "file": "demo/midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
+      "lines": 863
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts",
+      "lines": 857
+    },
+    {
+      "file": "demo/midgard-validation/tests/complete-item-route-adversarial-emulator.test.ts",
+      "lines": 855
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/rollback.ts",
+      "lines": 850
+    },
+    {
+      "file": "demo/da-committee-node/tests/libp2p-attestation-exchange.da-attestation-exchange-over-real-libp2p.ts",
+      "lines": 850
+    },
+    {
+      "file": "demo/midgard-node/tests/mempool-ledger-cache.mempool-ledger-cache.ts",
+      "lines": 850
+    },
+    {
+      "file": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+      "lines": 849
+    },
+    {
+      "file": "demo/da-committee-node/tests/store-factory.test.ts",
+      "lines": 848
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts",
+      "lines": 838
+    },
+    {
+      "file": "demo/midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
+      "lines": 837
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/mint-authorization-installed-lifecycle.test.ts",
+      "lines": 835
+    },
+    {
+      "file": "demo/midgard-watcher/src/storage/public-da-client.watcher-public-da-client.ts",
+      "lines": 829
+    },
+    {
+      "file": "demo/midgard-validation/tests/cek-executor.test.ts",
+      "lines": 827
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/network-id-wrongful-rejection-lifecycle.test.ts",
+      "lines": 822
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/transition-trace/submit.submit-transition-trace-final.ts",
+      "lines": 821
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/catalogue-retained-classification.test.ts",
+      "lines": 818
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/correction-recovery.test.ts",
+      "lines": 818
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf-native-owner-service.test.ts",
+      "lines": 818
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",
+      "lines": 818
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-signature-wrongful-rejection-lifecycle.test.ts",
+      "lines": 813
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/e2e-state-correction-reconciliation.reconcile-state-correction-independent-evidence.ts",
+      "lines": 813
+    },
+    {
+      "file": "demo/midgard-core/tests/deployment-manifest-identity.deployment-manifest-v1-shared-identity.ts",
+      "lines": 811
+    },
+    {
+      "file": "demo/midgard-node/tests/transactions-utils.validity-window-submit-recovery.ts",
+      "lines": 810
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+      "lines": 808
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts",
+      "lines": 807
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-source-owner-emulator.test.ts",
+      "lines": 807
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/bin.test.ts",
+      "lines": 805
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/observer-order-invalid-lifecycle.test.ts",
+      "lines": 799
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/witness-script-decoding-lifecycle.make-harness.ts",
+      "lines": 799
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/execution-source-script-decoding-lifecycle.test.ts",
+      "lines": 797
+    },
+    {
+      "file": "demo/midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
+      "lines": 797
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/deployment-identity.test.ts",
+      "lines": 796
+    },
+    {
+      "file": "demo/midgard-validation/tests/phase-b.test.ts",
+      "lines": 791
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
+      "lines": 787
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/multi-provider-consistency.test.ts",
+      "lines": 787
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-event-history-list.journey.ts",
+      "lines": 786
+    },
+    {
+      "file": "demo/midgard-node/tests/commit-block-planner.test.ts",
+      "lines": 783
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
+      "lines": 781
+    },
+    {
+      "file": "demo/midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
+      "lines": 769
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/staging.stage-journey.ts",
+      "lines": 768
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/validation-dispute/submit/semantic-redeemers.semantic-action-fields.ts",
+      "lines": 766
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block.ts",
+      "lines": 764
+    },
+    {
+      "file": "demo/midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
+      "lines": 762
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/linear-family-adapter.test.ts",
+      "lines": 760
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/availability.ts",
+      "lines": 759
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-raw-production-lifecycle-emulator.test.ts",
+      "lines": 758
+    },
+    {
+      "file": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+      "lines": 757
+    },
+    {
+      "file": "demo/midgard-watcher/src/index.ts",
+      "lines": 753
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-invalid-signature-lifecycle.test.ts",
+      "lines": 752
+    },
+    {
+      "file": "demo/midgard-node/tests/phase2-benchmark-report.test.ts",
+      "lines": 751
+    },
+    {
+      "file": "demo/midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
+      "lines": 750
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/custom-transaction-runner-recovery.test.ts",
+      "lines": 748
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-pool-slash-lifecycle.test.ts",
+      "lines": 748
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-network-id.test.ts",
+      "lines": 747
+    },
+    {
+      "file": "demo/midgard-watcher/tests/runtime/config.strict-watcher-configuration.ts",
+      "lines": 746
+    },
+    {
+      "file": "demo/midgard-node/tests/initialization-emulator.test.ts",
+      "lines": 739
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts",
+      "lines": 737
+    },
+    {
+      "file": "demo/midgard-node/tests/transition-trace-builder.test.ts",
+      "lines": 735
+    },
+    {
+      "file": "demo/midgard-sdk/tests/event-abi.vectors.ts",
+      "lines": 735
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/ledger-delta-dense-trace-totality.test.ts",
+      "lines": 730
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-negatives.test.ts",
+      "lines": 728
+    },
+    {
+      "file": "demo/da-committee-node/tests/committee-service.test/signing.ts",
+      "lines": 724
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts",
+      "lines": 723
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts",
+      "lines": 722
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-ledger-receipts.test.ts",
+      "lines": 718
+    },
+    {
+      "file": "demo/midgard-node/tests/merge-landed-finalization-emulator.test.ts",
+      "lines": 718
+    },
+    {
+      "file": "demo/midgard-node/tests/database.test/mpf.ts",
+      "lines": 717
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/mint-item-non-canonical/central-journal.create-mint-item-non-canonical-central-journal-adapter.ts",
+      "lines": 716
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/receive-purpose-language-lifecycle.test.ts",
+      "lines": 713
+    },
+    {
+      "file": "demo/midgard-node/tests/scheduler-refresh.test.ts",
+      "lines": 709
+    },
+    {
+      "file": "demo/da-committee-node/tests/state-queue-scanner.test.ts",
+      "lines": 708
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts",
+      "lines": 708
+    },
+    {
+      "file": "demo/midgard-core/tests/native-codec.test.ts",
+      "lines": 700
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/e2e-state-correction-reconciliation.test.ts",
+      "lines": 695
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
+      "lines": 694
+    },
+    {
+      "file": "demo/lucid-midgard/tests/finalization.test.ts",
+      "lines": 693
+    },
+    {
+      "file": "demo/midgard-watcher/tests/indexers/user-event-history.bounded-local-user-event-semantic-publication-synthetic-local-blocks.ts",
+      "lines": 693
+    },
+    {
+      "file": "demo/midgard-node/tests/deposit-flow-emulator-recovery-invalidation.test.ts",
+      "lines": 692
+    },
+    {
+      "file": "demo/midgard-node/src/transactions/reference-publication.publish-reference-scripts.ts",
+      "lines": 685
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-initialization-emulator.test.ts",
+      "lines": 682
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
+      "lines": 681
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/replay-transcript-capture.test.ts",
+      "lines": 676
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/min-ada-wrongful-rejection-lifecycle.test.ts",
+      "lines": 674
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
+      "lines": 672
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/no-reference-input-wrongful-rejection-lifecycle.test.ts",
+      "lines": 670
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts",
+      "lines": 669
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/non-existent-input-wrongful-rejection-lifecycle.test.ts",
+      "lines": 667
+    },
+    {
+      "file": "demo/da-committee-node/tests/peer-coordinator.test.ts",
+      "lines": 666
+    },
+    {
+      "file": "demo/midgard-node/tests/tx-admissions-claim-load.test.ts",
+      "lines": 662
+    },
+    {
+      "file": "demo/midgard-sdk/tests/tx-order.test.ts",
+      "lines": 659
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/proof-chunk-prerequisite.production-proof-chunk-prerequisite-v1.ts",
+      "lines": 655
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/journal.create-fraud-proof-workflow-journal-fold.ts",
+      "lines": 654
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/linear-family-state.test.ts",
+      "lines": 653
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",
+      "lines": 652
+    },
+    {
+      "file": "demo/midgard-watcher/tests/support/local-user-event-authority-fixture.history-lifecycle.ts",
+      "lines": 651
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/value-not-preserved/workflow.create-manifest-bound-value-conservation-workflow.ts",
+      "lines": 650
+    },
+    {
+      "file": "demo/lucid-midgard/tests/provider.test.ts",
+      "lines": 647
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/native-script-decoding/prover.run-native-script-decoding-prover.ts",
+      "lines": 644
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/network-id/submit-network-id-step-02.submit-network-id-step02.ts",
+      "lines": 643
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.retire-fixture-operator-after-inactivity.ts",
+      "lines": 642
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-operation.test.ts",
+      "lines": 641
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
+      "lines": 636
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-script-source-lifecycle.missing-script-source-real-lifecycle.ts",
+      "lines": 636
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/stress-wallets/consolidation.consolidate-stress-wallets-unlocked.ts",
+      "lines": 635
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts",
+      "lines": 629
+    },
+    {
+      "file": "demo/midgard-node/tests/history-source-owner-retention.test.ts",
+      "lines": 628
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init.fault-proof-deployment-contract-resolution.ts",
+      "lines": 626
+    },
+    {
+      "file": "demo/midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
+      "lines": 620
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/journey-session.test.ts",
+      "lines": 614
+    },
+    {
+      "file": "demo/da-committee-node/tests/libp2p-runtime.public-retained-da-listener.ts",
+      "lines": 607
+    },
+    {
+      "file": "demo/midgard-node/tests/reference-publication.test.ts",
+      "lines": 606
+    },
+    {
+      "file": "demo/midgard-validation/tests/ordered-collection-redeemer-boundary.test.ts",
+      "lines": 605
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/field-preimage-length-recovery.test.ts",
+      "lines": 603
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput/run.ts",
+      "lines": 603
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-recovery.test.ts",
+      "lines": 603
+    },
+    {
+      "file": "demo/midgard-core/src/availability-operation-journal.ts",
+      "lines": 602
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.da-bond-pool-live-port-availability-validity-and-lapses.ts",
+      "lines": 600
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header.revalidate-and-persist-speculative-candidate-sources.ts",
+      "lines": 599
+    },
+    {
+      "file": "demo/midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts",
+      "lines": 598
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.create-da-bond-pool-emulator-port.ts",
+      "lines": 596
+    },
+    {
+      "file": "demo/midgard-watcher/tests/availability/source-capture.test.ts",
+      "lines": 595
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/validator-scenario-registry.unmapped-validators.ts",
+      "lines": 594
+    },
+    {
+      "file": "demo/midgard-node/tests/reserve-payout-economic-acceptance-emulator.test.ts",
+      "lines": 594
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/header-classifier.classify-header.ts",
+      "lines": 593
+    },
+    {
+      "file": "demo/midgard-node/tests/benchmarks/validation-worker-isolation.bench.ts",
+      "lines": 592
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-input-set-uniqueness-lifecycle.test.ts",
+      "lines": 587
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-parent-lease-emulator.test.ts",
+      "lines": 587
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/retained-classification-polarities.test.ts",
+      "lines": 585
+    },
+    {
+      "file": "demo/midgard-core/tests/availability-operation-journal.test.ts",
+      "lines": 584
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/transition-trace/fetch.da-libp2p-retained-da-source.ts",
+      "lines": 583
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow-raw-l1-family-derivation.raw-l1-family-terminal-economics.ts",
+      "lines": 583
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-script-source-retained-universe.test.ts",
+      "lines": 582
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-recovery-plans.durable-history-recovery-plans-modeled-source-real-sql.ts",
+      "lines": 582
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-signed-intent-continuation-emulator.test.ts",
+      "lines": 581
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/journey-session.open-journey-session.ts",
+      "lines": 579
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/inspect-contracts.inspect-contracts.ts",
+      "lines": 578
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-journey.fake-port.ts",
+      "lines": 578
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
+      "lines": 577
+    },
+    {
+      "file": "demo/midgard-node/src/workers/mpf-engine-probe.ts",
+      "lines": 577
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-sdk-lifecycle.test.ts",
+      "lines": 577
+    },
+    {
+      "file": "demo/midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
+      "lines": 576
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/observer-order-invalid-lifecycle.make-harness.ts",
+      "lines": 575
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/da-bond-pool-process-evidence.da-bond-cli-submit-evidence-p18.ts",
+      "lines": 575
+    },
+    {
+      "file": "demo/midgard-watcher/tests/fault-proofs/fault-proof-supervisor.test.ts",
+      "lines": 575
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-timing-history.test.ts",
+      "lines": 574
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-initialization.test.ts",
+      "lines": 574
+    },
+    {
+      "file": "demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
+      "lines": 571
+    },
+    {
+      "file": "demo/midgard-node/tests/midgard-contracts.test.ts",
+      "lines": 570
+    },
+    {
+      "file": "demo/midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",
+      "lines": 570
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/execution-native-script-invalid/v1.capture-execution-native-script-invalid-action.ts",
+      "lines": 569
+    },
+    {
+      "file": "demo/midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
+      "lines": 567
+    },
+    {
+      "file": "demo/midgard-watcher/src/l1/multi-provider-consistency.evaluate-admitted-consistency.ts",
+      "lines": 567
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/observers-forbidden-on-untagged-network-lifecycle.test.ts",
+      "lines": 566
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/removal-deployment.build-removal-deployment-info.ts",
+      "lines": 566
+    },
+    {
+      "file": "demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts",
+      "lines": 566
+    },
+    {
+      "file": "demo/midgard-node/src/services/admission-writer.make-admission-writer-with-options.ts",
+      "lines": 565
+    },
+    {
+      "file": "demo/midgard-node-tools/tests/stress-corpus.stress-corpus-generation.ts",
+      "lines": 564
+    },
+    {
+      "file": "demo/midgard-validation/tests/nested-value-boundary.test.ts",
+      "lines": 563
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-command.test.ts",
+      "lines": 562
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts",
+      "lines": 562
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/resolved-block-observation.test.ts",
+      "lines": 561
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.ts",
+      "lines": 556
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/header-classifier.test.ts",
+      "lines": 554
+    },
+    {
+      "file": "demo/midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
+      "lines": 554
+    },
+    {
+      "file": "demo/midgard-node/tests/availability-challenge-lifecycle.test.ts",
+      "lines": 554
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/missing-redeemer-lifecycle.make-stage.ts",
+      "lines": 550
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.ts",
+      "lines": 550
+    },
+    {
+      "file": "demo/midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
+      "lines": 550
+    },
+    {
+      "file": "demo/midgard-core/tests/consensus-validation.test.ts",
+      "lines": 548
+    },
+    {
+      "file": "demo/midgard-node/src/fibers/block-commitment.build-and-submit-commitment-block-action.ts",
+      "lines": 545
+    },
+    {
+      "file": "demo/midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
+      "lines": 541
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/unused-redeemer-lifecycle.test.ts",
+      "lines": 540
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts",
+      "lines": 540
+    },
+    {
+      "file": "demo/midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
+      "lines": 540
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/script-integrity-hash-missing/actuator.create-script-integrity-hash-missing-transaction-port.ts",
+      "lines": 538
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.ts",
+      "lines": 537
+    },
+    {
+      "file": "demo/midgard-node/tests/l1-event-history-projection-native-assets-emulator.test.ts",
+      "lines": 537
+    },
+    {
+      "file": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput/summary-artifact.parse-e2-el2-stress-summary.ts",
+      "lines": 535
+    },
+    {
+      "file": "demo/midgard-validation/tests/complete-item-proof-fit.test.ts",
+      "lines": 534
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts",
+      "lines": 532
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-direction-a.test.ts",
+      "lines": 530
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/withdrawal-mistag-installed-lifecycle.test.ts",
+      "lines": 530
+    },
+    {
+      "file": "demo/midgard-node/tests/attestation-timeout-reinclusion-emulator.test.ts",
+      "lines": 530
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/typed-reason-retained-classification.typed-reasons-classified-from-committed-retained-da.ts",
+      "lines": 525
+    },
+    {
+      "file": "demo/midgard-watcher/tests/l1/native-chain-sync.test.ts",
+      "lines": 524
+    },
+    {
+      "file": "demo/midgard-node/tests/sdk-abi-fixtures.build-transition-trace-abi-fixtures.ts",
+      "lines": 523
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/workflow.compiled-production-workflow-boundary.ts",
+      "lines": 521
+    },
+    {
+      "file": "demo/midgard-node/tests/commit-end-time.test.ts",
+      "lines": 519
+    },
+    {
+      "file": "demo/da-committee-node/tests/tx-builders.da-attestation-init-output.ts",
+      "lines": 518
+    },
+    {
+      "file": "demo/da-committee-node/tests/coordinator-factory.test.ts",
+      "lines": 517
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/output-reference-script-decoding/central-journal.create-output-reference-script-decoding-central-journal-adapter.ts",
+      "lines": 516
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/protected-output-signer-missing/central-journal.create-protected-output-signer-missing-central-journal-adapter.ts",
+      "lines": 516
+    },
+    {
+      "file": "demo/midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
+      "lines": 514
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/spend-input-signer-missing/central-journal.create-spend-input-signer-missing-central-journal-adapter.ts",
+      "lines": 513
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/manifest-bound-family-assembly.test.ts",
+      "lines": 513
+    },
+    {
+      "file": "demo/da-committee-node/src/da/libp2p/payload-protocols.da-libp2p-payload-protocol-handlers.ts",
+      "lines": 512
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.create-resolved-output-non-canonical-central-journal-adapter.ts",
+      "lines": 512
+    },
+    {
+      "file": "demo/lucid-midgard/src/builder.lucid-midgard.ts",
+      "lines": 511
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-history.test.ts",
+      "lines": 511
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
+      "lines": 509
+    },
+    {
+      "file": "demo/midgard-node/tests/signed-intent-canonical-coverage.test.ts",
+      "lines": 508
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.assert-runtime-transaction-bound.ts",
+      "lines": 507
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/execution-source-script-decoding.test.ts",
+      "lines": 507
+    },
+    {
+      "file": "demo/midgard-node-tools/devnet/watcher-journeys/journey-runner.run-journey.ts",
+      "lines": 507
+    },
+    {
+      "file": "demo/midgard-node/tests/event-history-recovery-plans.retained-native-recovery-root-selection-real-sql-component.ts",
+      "lines": 507
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-event-history-capture.test.ts",
+      "lines": 505
+    },
+    {
+      "file": "demo/midgard-node/tests/signed-intent-replacement-revival-emulator.test.ts",
+      "lines": 505
+    },
+    {
+      "file": "demo/midgard-fault-proofs/src/validation-dispute/replay.admit-validation-trace-replay-context.ts",
+      "lines": 502
+    },
+    {
+      "file": "demo/midgard-fault-proofs/tests/remove-unattested-block-submit.test.ts",
+      "lines": 501
+    },
+    {
+      "file": "demo/midgard-node/tests/admission-writer.test.ts",
+      "lines": 501
+    }
+  ],
+  "baseline": {
+    "commit": "dae1120a5611819af953ab539f848b5cdf745fdb",
+    "all": {
+      "files": 3258,
+      "largest": 4545,
+      "above500": 801,
+      "above1000": 294,
+      "above2000": 74
+    },
+    "production": {
+      "files": 1846,
+      "largest": 4033,
+      "above500": 401,
+      "above1000": 159,
+      "above2000": 45
+    }
+  }
+}

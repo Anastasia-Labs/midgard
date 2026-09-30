@@ -1,356 +1,47 @@
+import "node:fs/promises";
+import "node:path";
+import "node:sqlite";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec/hash";
+import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../../src/fault-proofs/fault-decision-bridge.js";
+import "../../src/fault-proofs/fault-proof-application.js";
+import "../../src/indexers/authenticated-state-queue-observation.js";
+import "../../src/runtime/operations-observability.js";
+import "../../src/runtime/state-queue-runtime.js";
+import "./fault-decision-bridge.observation.js";
+import "./fault-decision-bridge.harness.js";
+
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import {
   authenticatedStateQueueObservationDigest,
-  type HeaderDecision,
   LocalKupmiosCheckpointChangedError,
 } from "@al-ft/midgard-fault-proofs";
-import {
-  type CorrectionLockDatum,
-  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  Header,
-  type Header as HeaderType,
-} from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.js";
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import type { WatcherFaultProofProgressRequest } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,
   WatcherRetainedHeaderAttestationPendingError,
-  type WatcherStateQueueHeaderObservation,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
-import {
-  createWatcherOperationsObservability,
-  type WatcherOperationsSink,
-} from "../../src/runtime/operations-observability.js";
+import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { createWatcherStateQueueRuntime } from "../../src/runtime/state-queue-runtime.js";
-
-const DEPLOYMENT = "dd".repeat(32);
-const OBSERVATION_DIGEST = "11".repeat(32);
-
-const headerFixture = (suffix = "00"): HeaderType => ({
-  prevUtxosRoot: "00".repeat(32),
-  transactionsRoot: "01".repeat(32),
-  utxosRoot: "02".repeat(32),
-  depositsRoot: "03".repeat(32),
-  withdrawalsRoot: "04".repeat(32),
-  forcedTransactionsRoot: "05".repeat(32),
-  transitionTraceRoot: "06".repeat(32),
-  eventToStepRoot: "07".repeat(32),
-  validationTracesRoot: "08".repeat(32),
-  withdrawalCount: 0n,
-  forcedTransactionCount: 0n,
-  l2TransactionCount: 1n,
-  depositCount: 0n,
-  totalEventCount: 1n,
-  transitionStepCount: 1n,
-  validationTraceCount: 1n,
-  startTime: 1n,
-  endTime: 2n,
-  blockSlot: BigInt(`0x${suffix}`),
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  prevHeaderHash: "08".repeat(28),
-  operatorVkey: "09".repeat(28),
-  protocolVersion: 1n,
-});
-
-const encodedHeader = (header: HeaderType) => {
-  const cbor = Data.to(header, Header);
-  return {
-    cbor,
-    hash: computeHash28(Buffer.from(cbor, "hex")).toString("hex"),
-  };
-};
-
-const observation = (
-  headers: readonly HeaderType[],
-  lockDatum: CorrectionLockDatum = "Idle",
-): WatcherAuthenticatedStateQueueObservation => {
-  const encoded = headers.map(encodedHeader);
-  return Object.freeze({
-    schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
-    deploymentIdentityDigest: DEPLOYMENT,
-    protocolScriptAuthorityDigest: "10".repeat(32),
-    stateQueuePolicyId: "11".repeat(28),
-    hubOraclePolicyId: "12".repeat(28),
-    nativePoint: Object.freeze({
-      blockHash: "13".repeat(32),
-      parentBlockHash: "14".repeat(32),
-      slot: "1000",
-      blockNo: "100",
-      chainPointId: "15".repeat(32),
-      finalityDepth: "30",
-    }),
-    sourceId: "watcher-test-local-node",
-    previousObservationDigest: null,
-    checkpoints: Object.freeze([]),
-    finalizedQueue: Object.freeze([
-      Object.freeze({ headerHash: null, outRef: `${"16".repeat(32)}#0` }),
-      ...encoded.map(({ hash }, index) =>
-        Object.freeze({
-          headerHash: hash,
-          outRef: `${"17".repeat(32)}#${index.toString()}`,
-        }),
-      ),
-    ]),
-    finalizedHeaders: Object.freeze(
-      encoded.map(({ cbor, hash }, index) =>
-        Object.freeze({
-          headerHash: hash,
-          headerCborHex: cbor,
-          stateQueueNodeCborHex: "d87980",
-          linkedListDatumCborHex: "d87980",
-          daAvailability: "Unattested",
-          queueOutRef: `${"17".repeat(32)}#${index.toString()}`,
-          nextHeaderHash: encoded[index + 1]?.hash ?? null,
-          observedTransactionHash: "18".repeat(32),
-          observedBlockHash: "19".repeat(32),
-          observedSlot: (900 + index).toString(),
-          observedBlockNo: (90 + index).toString(),
-          observedChainPointId: "20".repeat(32),
-          finalityDepth: "30",
-        }),
-      ),
-    ),
-    finalizedCorrectionLock: Object.freeze({
-      outRef: `${"21".repeat(32)}#0`,
-      datum: lockDatum,
-      observedTransactionHash: "22".repeat(32),
-      observedBlockHash: "23".repeat(32),
-      observedSlot: "950",
-      observedBlockNo: "95",
-      observedChainPointId: "24".repeat(32),
-      finalityDepth: "30",
-    }),
-    correctionLockWitnesses: Object.freeze([]),
-    observationDigest: "25".repeat(32),
-  });
-};
-
-const decision = (
-  headerHash: string,
-  category: (typeof WATCHER_INSTALLED_WORKFLOW_CATEGORIES)[number],
-  decisionDigest = `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category]}${headerHash}`,
-) =>
-  Object.freeze({
-    schemaVersion: "midgard-production-header-decision-v1" as const,
-    classifierVersion: "midgard-production-header-classifier-v1" as const,
-    deploymentFingerprint: DEPLOYMENT,
-    headerHash,
-    authenticatedObservationDigest: OBSERVATION_DIGEST,
-    payloadEnvelopeSha256: "26".repeat(32),
-    payloadSha256: "27".repeat(32),
-    replayVersion: "midgard-complete-canonical-replay-v1" as const,
-    replayDigest: "28".repeat(32),
-    launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    launchScopeDigest: "29".repeat(32),
-    classificationDigest: "2a".repeat(32),
-    decisionDigest,
-    decision: "fault_detected" as const,
-    category,
-    violationId: `${category}_v1`,
-    detectionId: `${category}_v1:0`,
-    position: "0",
-  });
-
-const harness = (input: {
-  readonly current: WatcherAuthenticatedStateQueueObservation;
-  readonly categoryByHeader: Readonly<Record<string, string>>;
-  readonly records?: readonly WatcherPersistedFaultDecisionRecord[];
-  readonly classifyOverride?: (
-    value: ReturnType<typeof decision>,
-  ) => HeaderDecision | Promise<HeaderDecision>;
-  readonly enqueueError?: Error;
-  readonly operationsSink?: WatcherOperationsSink;
-  readonly nowMs?: () => bigint;
-  readonly monotonicNowMs?: () => number;
-  readonly pendingAvailabilityHeaders?: () => ReadonlySet<string>;
-  readonly resolvePredecessorOverride?: (
-    header: WatcherStateQueueHeaderObservation,
-  ) => Promise<WatcherStateQueueHeaderObservation | undefined>;
-  readonly classificationContextIdentity?: () => Promise<string>;
-  readonly decisionUsesLocalEventHistory?: boolean;
-  readonly permitAuthority?:
-    | "submission"
-    | "reconciliation"
-    | (() => "submission" | "reconciliation");
-  readonly observationDigestOverride?: typeof authenticatedStateQueueObservationDigest;
-  readonly deadlineOffset?: () => number;
-}) => {
-  const admitted = new WeakSet<object>([input.current]);
-  const appended: ReturnType<typeof decision>[] = [];
-  const enqueued: ReturnType<typeof decision>[] = [];
-  const enqueuedGenerations: string[] = [];
-  const controllerGenerations: string[] = [];
-  const revocations: string[] = [];
-  const restrictions: string[] = [];
-  const progressRequests: WatcherFaultProofProgressRequest[] = [];
-  const authorityRevocations: string[] = [];
-  const permitIdentities = new WeakMap<
-    object,
-    {
-      decision: Extract<HeaderDecision, { decision: "fault_detected" }>;
-      generation: string;
-    }
-  >();
-  const retainedDecisionAuthorities: (string | null)[] = [];
-  const application = {
-    deploymentFingerprint: input.current.deploymentIdentityDigest,
-    installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    classifyHeader: vi.fn(async ({ observation: header }) => {
-      const category = input.categoryByHeader[header.headerHash];
-      if (
-        category === undefined ||
-        !WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(category as never)
-      ) {
-        throw new Error("test omitted category");
-      }
-      const fresh = decision(header.headerHash, category as never);
-      return input.classifyOverride === undefined
-        ? fresh
-        : await input.classifyOverride(fresh);
-    }),
-  };
-  const bridge = unsafeCreateWatcherFaultDecisionBridgeForTest({
-    application,
-    runtimeConfigPath: "/var/lib/midgard/watcher.json",
-    maximumClassificationConcurrency: 2,
-    dependencies: Object.freeze({
-      ...(input.operationsSink === undefined
-        ? {}
-        : { operationsSink: input.operationsSink }),
-      ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
-      ...(input.monotonicNowMs === undefined
-        ? {}
-        : { monotonicNowMs: input.monotonicNowMs }),
-      ...(input.pendingAvailabilityHeaders === undefined
-        ? {}
-        : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),
-      retainDecisionAuthorities: (digest) =>
-        retainedDecisionAuthorities.push(digest),
-      decisionUsesLocalEventHistory: () =>
-        input.decisionUsesLocalEventHistory ?? false,
-      assertObservation: (candidate) => {
-        if (!admitted.has(candidate)) throw new Error("not admitted");
-      },
-      observationDigest: async (observation) =>
-        input.observationDigestOverride === undefined
-          ? OBSERVATION_DIGEST
-          : await input.observationDigestOverride({
-              observation,
-              minimumConfirmationDepth: 30,
-            }),
-      ...(input.resolvePredecessorOverride === undefined
-        ? {}
-        : { resolvePredecessorHeader: input.resolvePredecessorOverride }),
-      classificationContextIdentity:
-        input.classificationContextIdentity ?? (async () => "test-context"),
-      readRecords: async () => input.records ?? Object.freeze([]),
-      append: async (fresh) => {
-        appended.push(fresh as ReturnType<typeof decision>);
-        return Object.freeze({
-          schemaVersion: "midgard-watcher-production-fault-decision-record-v1",
-          revision: (appended.length - 1).toString(),
-          priorRecordSha256: null,
-          decision: fresh,
-        });
-      },
-      assertActuationPermitIdentity: ({
-        permit,
-        category,
-        rollbackGeneration,
-      }) => {
-        const stored = permitIdentities.get(permit);
-        if (
-          stored === undefined ||
-          stored.decision.category !== category ||
-          stored.generation !== rollbackGeneration ||
-          revocations.length !== 0
-        )
-          throw new Error("test permit revoked or substituted");
-        return {
-          decisionDigest: stored.decision.decisionDigest,
-          executionDecisionDigest: stored.decision.decisionDigest,
-          launchScope: stored.decision.launchScope,
-          deploymentFingerprint: input.current.deploymentIdentityDigest,
-          headerHash: stored.decision.headerHash,
-          authority:
-            typeof input.permitAuthority === "function"
-              ? input.permitAuthority()
-              : (input.permitAuthority ?? "submission"),
-        };
-      },
-      createActuationController: (_fresh, rollbackGeneration) => {
-        controllerGenerations.push(rollbackGeneration);
-        const permit = Object.freeze({
-          permitVersion:
-            "midgard-production-workflow-actuation-permit-v1" as const,
-        });
-        permitIdentities.set(permit, {
-          decision: _fresh,
-          generation: rollbackGeneration,
-        });
-        return Object.freeze({
-          permit,
-          restrictToReconciliation: (reason: string) => {
-            restrictions.push(reason);
-          },
-          revoke: (reason: string) => {
-            revocations.push(reason);
-          },
-        });
-      },
-      deadlineForHeader: (header) =>
-        Object.freeze({
-          headerHash: header.headerHash,
-          headerEndTimeMs: "0",
-          maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
-          latestSafeStartAtMs: (
-            MIDGARD_RETENTION_WINDOW.maturityMs -
-            MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs +
-            (input.deadlineOffset?.() ?? 0)
-          ).toString(),
-        }),
-      requestProgress: async (request) => {
-        if (input.enqueueError !== undefined) throw input.enqueueError;
-        progressRequests.push(request);
-        if (request.fault !== undefined) {
-          enqueued.push(request.fault.decision as ReturnType<typeof decision>);
-          enqueuedGenerations.push(request.rollbackGeneration);
-        }
-      },
-      unfinishedObjectiveCount: () => enqueued.length,
-      revokeAuthority: (reason) => {
-        authorityRevocations.push(reason);
-      },
-    }),
-  });
-  return {
-    admitted,
-    appended,
-    application,
-    bridge,
-    controllerGenerations,
-    enqueued,
-    enqueuedGenerations,
-    revocations,
-    restrictions,
-    progressRequests,
-    authorityRevocations,
-    retainedDecisionAuthorities,
-  };
-};
+import { harness } from "./fault-decision-bridge.harness.js";
+import {
+  decision,
+  DEPLOYMENT,
+  encodedHeader,
+  headerFixture,
+  observation,
+} from "./fault-decision-bridge.observation.js";
 
 describe("production fault decision bridge", () => {
   it("forwards recovery authority without scanning workflow journals", async () => {
@@ -1601,6 +1292,7 @@ describe("production fault decision bridge", () => {
 });
 
 const retainedRunDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
+
 it.skipIf(retainedRunDirectory === undefined).each(["pending", "forward"])(
   "retains the exact admitted target through %s follower hooks restored from retained queue snapshots",
   async (mode) => {

@@ -1,0 +1,181 @@
+import * as SDK from "@al-ft/midgard-sdk";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
+  availabilityResponderCollateral,
+  type AvailabilityResponderSkippedRecord,
+  DACH_SUFFIX_HEX_LENGTH,
+} from "./factory.availability-responder-operations.js";
+import {
+  type AvailabilityResponderAction,
+  type AvailabilityResponderChallenge,
+} from "./responder.js";
+
+/**
+ * Every live availability challenge, read from its challenge record
+ * (`ChallengeRecordV1`). A record is the UTxO at the availability script that
+ * holds a 32-byte DACH token under the availability policy; its datum is parsed
+ * canonically against the deployment's parameters, and the SDK snapshot of its
+ * header then authenticates the record against the `Challenged` state-queue
+ * node, the terminal accumulator and every unsettled tranche. Ordered by
+ * response deadline, then header hash.
+ *
+ * A record is judged on its own: one that cannot be answered is reported to
+ * `onSkipped` and left out, and never stops discovery of the others. A record
+ * whose state-queue node is gone, or is not `Challenged` by it, is stranded
+ * (a timeout or fraud removal pruned its node while it was challenged; nothing
+ * can spend it again), so there is nothing to answer.
+ */
+export const discoverAvailabilityResponderChallenges = async (
+  lucid: LucidEvolution,
+  deployment: SDK.DaAvailabilityDeployment,
+  onSkipped: (skipped: AvailabilityResponderSkippedRecord) => void = () => {},
+): Promise<readonly AvailabilityResponderChallenge[]> => {
+  const [availabilityUtxos, stateQueueUtxos, correctionLockUtxos] =
+    await Promise.all([
+      lucid.utxosAt(
+        deployment.contracts.availabilityChallenge.spendingScriptAddress,
+      ),
+      lucid.utxosAt(deployment.contracts.stateQueue.spendingScriptAddress),
+      lucid.utxosAt(deployment.contracts.correctionLock.spendingScriptAddress),
+    ]);
+  const recordUnitPrefix =
+    deployment.contracts.availabilityChallenge.policyId +
+    SDK.DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX;
+  const result: AvailabilityResponderChallenge[] = [];
+  for (const utxo of availabilityUtxos) {
+    const recordUnit = Object.keys(utxo.assets).find(
+      (unit) =>
+        unit.length === recordUnitPrefix.length + DACH_SUFFIX_HEX_LENGTH &&
+        unit.startsWith(recordUnitPrefix),
+    );
+    if (recordUnit === undefined) continue;
+    const skip = (stranded: boolean, reason: string) =>
+      onSkipped({
+        outRef: `${utxo.txHash}#${utxo.outputIndex}`,
+        stranded,
+        reason,
+      });
+    try {
+      if (typeof utxo.datum !== "string")
+        throw new Error(
+          "Authenticated availability challenge record has no inline datum",
+        );
+      const record = SDK.parseDaAvailabilityChallengeRecordCbor(
+        utxo.datum,
+        deployment.parameters,
+      );
+      const challengeAssetName = recordUnit.slice(
+        deployment.contracts.availabilityChallenge.policyId.length,
+      );
+      if (record.challenge_asset_name !== challengeAssetName)
+        throw new Error(
+          "Availability challenge record datum names a different challenge than its token",
+        );
+      const snapshot = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
+        deployment,
+        record.commitment.header_hash,
+        {
+          availabilityUtxos,
+          stateQueueUtxos,
+          correctionLockUtxos,
+        },
+      );
+      if (
+        !snapshot.queue ||
+        !snapshot.record ||
+        !snapshot.recordDatum ||
+        snapshot.record.txHash !== utxo.txHash ||
+        snapshot.record.outputIndex !== utxo.outputIndex ||
+        snapshot.recordDatum.challenge_asset_name !== challengeAssetName
+      ) {
+        skip(
+          true,
+          "Availability challenge record is not the one its state-queue node is challenged by",
+        );
+        continue;
+      }
+      if (!snapshot.terminal || !snapshot.terminalDatum) {
+        throw new Error(
+          "Authenticated availability challenge has incomplete live state",
+        );
+      }
+      result.push({
+        record: { utxo: snapshot.record, datum: snapshot.recordDatum },
+        terminal: { utxo: snapshot.terminal, datum: snapshot.terminalDatum },
+        queue: snapshot.queue.utxo,
+        tranches: snapshot.tranches,
+      });
+    } catch (error) {
+      skip(false, error instanceof Error ? error.message : String(error));
+    }
+  }
+  return result.sort((a, b) => {
+    const left = a.record.datum,
+      right = b.record.datum;
+    return left.response_deadline === right.response_deadline
+      ? left.commitment.header_hash.localeCompare(right.commitment.header_hash)
+      : left.response_deadline < right.response_deadline
+        ? -1
+        : 1;
+  });
+};
+
+export const buildAvailabilityResponderTransaction = async (
+  lucid: LucidEvolution,
+  deployment: SDK.DaAvailabilityDeployment,
+  action: AvailabilityResponderAction,
+  nowMs = Date.now(),
+): Promise<SDK.BuiltDaAvailabilityTransaction> => {
+  const p = deployment.parameters;
+  const feeLovelace =
+    action.kind === "publish"
+      ? p.max_publication_fee_lovelace
+      : action.kind === "settle"
+        ? p.max_settlement_fee_lovelace
+        : p.max_close_fee_lovelace;
+  const validFrom = BigInt(Math.max(0, nowMs - 60_000));
+  const unconstrainedUpper = validFrom + 120_000n;
+  const deadlineUpper = action.challenge.record.datum.response_deadline + 1n;
+  const validTo =
+    action.kind === "publish" && deadlineUpper < unconstrainedUpper
+      ? deadlineUpper
+      : unconstrainedUpper;
+  const resources = {
+    feeLovelace,
+    validFrom,
+    validTo,
+    collateralInputs: await availabilityResponderCollateral(lucid, feeLovelace),
+  };
+  switch (action.kind) {
+    case "publish":
+      return Effect.runPromise(
+        SDK.buildPublishDaAvailabilityChunkTxProgram(lucid, deployment, {
+          ...resources,
+          thread: action.tranche.utxo,
+          previousCarrier: action.tranche.carrier,
+          publication: action.publication,
+        }),
+      );
+    case "settle":
+      return Effect.runPromise(
+        SDK.buildSettleDaAvailabilityTrancheTxProgram(lucid, deployment, {
+          ...resources,
+          record: action.challenge.record.utxo,
+          terminal: action.challenge.terminal.utxo,
+          thread: action.tranche.utxo,
+          carrier: action.tranche.carrier,
+        }),
+      );
+    case "close":
+      return Effect.runPromise(
+        SDK.buildCloseDaAvailabilityChallengeTxProgram(lucid, deployment, {
+          ...resources,
+          record: action.challenge.record.utxo,
+          terminal: action.challenge.terminal.utxo,
+          queue: action.challenge.queue,
+        }),
+      );
+  }
+};

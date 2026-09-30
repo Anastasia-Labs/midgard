@@ -1,0 +1,307 @@
+import {
+  decodeMidgardCekProgramMaterialSidecar,
+  verifyMidgardCekProgramMaterial,
+  verifyMidgardCekProgramMaterialBundle,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  EMPTY_NULL_ROOT,
+  verifyMidgardNativeScript,
+} from "@al-ft/midgard-core/codec";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
+import {
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE,
+} from "@al-ft/midgard-core/consensus-profile";
+import { validateMidgardConsensusForcedTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import { Effect } from "effect";
+
+import {
+  decodeMidgardSubmittedTxFromCanonicalCbor,
+  MidgardLedgerTxDecodeError,
+} from "./ledger-tx/codec.js";
+import type { MidgardLedgerTx, MidgardSubmittedTx } from "./ledger-tx/types.js";
+import {
+  codecErrorDetail,
+  consensusProfileRejectCode,
+  hashHexes,
+  reject,
+  validateInputSets,
+  validateRequiredSigners,
+  validateValidityInterval,
+  verifyVKeyWitnessSignatures,
+} from "./phase-a.validate-input-sets.js";
+import {
+  PhaseAConfig,
+  PhaseALocalContext,
+  PhaseAResult,
+  PhaseAValidatedTx,
+  QueuedTx,
+  RejectCodes,
+  RejectedTx,
+} from "./types.js";
+import { buildPhaseAValidatedTx } from "./validation-candidate.js";
+
+const validateNativeScriptWitnesses = (
+  tx: MidgardLedgerTx,
+): RejectedTx | null => {
+  let witnessSigners: ReadonlySet<string> | undefined;
+  for (const witness of tx.scriptWitnesses) {
+    if (witness.script.language !== "NativeCardano") {
+      continue;
+    }
+    witnessSigners ??= new Set(hashHexes(tx.witnessKeyHashes));
+    if (
+      !verifyMidgardNativeScript(witness.script.nativeScript, {
+        validityIntervalStart: tx.validityIntervalStart,
+        validityIntervalEnd: tx.validityIntervalEnd,
+        witnessSigners,
+      })
+    ) {
+      return reject(
+        tx.txId,
+        RejectCodes.NativeScriptInvalid,
+        `native script verification failed for script index ${witness.index}`,
+        "phaseANativeScripts",
+      );
+    }
+  }
+  return null;
+};
+
+const validateRequiredObservers = (tx: MidgardLedgerTx): RejectedTx | null => {
+  if (tx.requiredObserverHashes.length < 2) {
+    return null;
+  }
+  for (let index = 1; index < tx.requiredObserverHashes.length; index += 1) {
+    if (
+      Buffer.compare(
+        tx.requiredObserverHashes[index - 1]!,
+        tx.requiredObserverHashes[index]!,
+      ) >= 0
+    ) {
+      return reject(
+        tx.txId,
+        RejectCodes.InvalidFieldType,
+        `required observers must be strictly ordered and unique at index ${index}`,
+        "phaseAScriptPreconditions",
+      );
+    }
+  }
+  return null;
+};
+
+const validateScriptEvaluationPreconditions = (
+  tx: MidgardLedgerTx,
+): RejectedTx | null => {
+  if (!tx.requiresPlutusEvaluation) {
+    return null;
+  }
+  if (Buffer.from(tx.scriptIntegrityHash).equals(EMPTY_NULL_ROOT)) {
+    return reject(
+      tx.txId,
+      RejectCodes.InvalidFieldType,
+      "missing script_integrity_hash for plutus witness bundle",
+      "phaseAScriptPreconditions",
+    );
+  }
+
+  if (tx.requiredObserverHashes.length > 0 && tx.networkId === undefined) {
+    return reject(
+      tx.txId,
+      RejectCodes.InvalidFieldType,
+      "network_id is required when plutus witness bundles use required observers",
+      "phaseAScriptPreconditions",
+    );
+  }
+
+  return null;
+};
+
+export const validatePhaseASingle = (
+  queuedTx: QueuedTx,
+  config: PhaseAConfig,
+  localContext: PhaseALocalContext = {},
+): PhaseAValidatedTx | RejectedTx => {
+  let submittedTx: MidgardSubmittedTx;
+  try {
+    submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
+      queuedTx.txCbor,
+      queuedTx.sourceKind,
+    );
+  } catch (e) {
+    const code =
+      e instanceof MidgardLedgerTxDecodeError && e.stage === "ledger"
+        ? e.invalidOutput
+          ? RejectCodes.InvalidOutput
+          : RejectCodes.InvalidFieldType
+        : RejectCodes.CborDeserialization;
+    return reject(queuedTx.txId, code, codecErrorDetail(e));
+  }
+
+  const { ledgerTx } = submittedTx;
+
+  if (!ledgerTx.txId.equals(queuedTx.txId)) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.TxHashMismatch,
+      `queued tx_id ${queuedTx.txId.toString("hex")} != native ${ledgerTx.txId.toString("hex")}`,
+      "compactBinding",
+    );
+  }
+
+  // Consensus admission is intentionally independent of the configurable
+  // validation strictness profile. Only the exact compiled V1 tuple may reach
+  // Phase B, even if an operator relaxes local configuration.
+  const consensusProfile = config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE;
+  if (!isMidgardConsensusProfile(consensusProfile)) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.TxVersion,
+      "unsupported consensus profile",
+    );
+  }
+  if (queuedTx.programMaterialSidecarCbor == null) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.CekProgramMaterial,
+      "V1 admission is missing its canonical program-material sidecar",
+    );
+  }
+  const consensusViolation = (
+    queuedTx.sourceKind === "forced"
+      ? validateMidgardConsensusForcedTxCbor
+      : validateMidgardConsensusTxCbor
+  )(queuedTx.txCbor);
+  if (consensusViolation !== null) {
+    return reject(
+      ledgerTx.txId,
+      consensusProfileRejectCode(consensusViolation.code),
+      `${consensusViolation.featureId}: ${consensusViolation.detail}`,
+    );
+  }
+  try {
+    const material = decodeMidgardCekProgramMaterialSidecar(
+      queuedTx.programMaterialSidecarCbor,
+    );
+    const canonicalTx = (
+      queuedTx.sourceKind === "forced"
+        ? decodeMidgardForcedTxFullFromCanonicalCbor
+        : decodeMidgardNativeTxFullFromCanonicalCbor
+    )(queuedTx.txCbor);
+    const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
+    if (ledgerTx.referenceInputs.length > 0) {
+      // Phase A has not resolved reference-input outputs yet. Require complete
+      // attached programs now; Phase B checks the exact combined bundle once
+      // the referenced program envelopes are authoritative.
+      for (const envelope of envelopes) {
+        verifyMidgardCekProgramMaterial(envelope, material, {
+          allowUnreachable: true,
+        });
+      }
+    } else {
+      verifyMidgardCekProgramMaterialBundle(envelopes, material);
+    }
+  } catch (cause) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.CekProgramMaterial,
+      `invalid V1 program material: ${String(cause)}`,
+    );
+  }
+
+  if (
+    ledgerTx.networkId !== undefined &&
+    ledgerTx.networkId !== config.expectedNetworkId
+  ) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.NetworkIdMismatch,
+      `${ledgerTx.networkId} != ${config.expectedNetworkId}`,
+      "staticLedgerRules",
+    );
+  }
+
+  const minFee =
+    config.minFeeA *
+      BigInt(
+        queuedTx.txCbor.length + (queuedTx.sourceKind === "forced" ? 1 : 0),
+      ) +
+    config.minFeeB;
+  if (ledgerTx.fee < minFee) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.MinFee,
+      `${ledgerTx.fee} < ${minFee}`,
+      "staticLedgerRules",
+    );
+  }
+
+  let rejection = validateInputSets(ledgerTx);
+  if (rejection === null) rejection = validateValidityInterval(ledgerTx);
+  if (rejection === null) rejection = validateRequiredSigners(ledgerTx);
+  if (rejection === null) {
+    rejection = verifyVKeyWitnessSignatures(
+      ledgerTx,
+      localContext.verifyVKeyWitnessSignature,
+    );
+  }
+  if (rejection === null) rejection = validateNativeScriptWitnesses(ledgerTx);
+  if (rejection === null) rejection = validateRequiredObservers(ledgerTx);
+  if (rejection === null) {
+    rejection = validateScriptEvaluationPreconditions(ledgerTx);
+  }
+  if (rejection !== null) {
+    return rejection;
+  }
+
+  try {
+    return buildPhaseAValidatedTx({
+      sourceKind: queuedTx.sourceKind ?? "normal",
+      ledgerTx,
+      expectedNetworkId: config.expectedNetworkId,
+      txCbor: submittedTx.txCbor,
+      programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
+      arrivalSeq: queuedTx.arrivalSeq,
+      createdAt: queuedTx.createdAt,
+      redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
+    });
+  } catch (e) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.InvalidOutput,
+      `failed to materialize Phase B candidate: ${String(e)}`,
+      "phaseAScriptPreconditions",
+    );
+  }
+};
+
+export const runPhaseAValidation = (
+  queuedTxs: readonly QueuedTx[],
+  config: PhaseAConfig,
+  localContext: PhaseALocalContext = {},
+): Effect.Effect<PhaseAResult> =>
+  Effect.gen(function* () {
+    const orderedResults = yield* Effect.forEach(
+      queuedTxs,
+      (queuedTx) =>
+        Effect.sync(() => validatePhaseASingle(queuedTx, config, localContext)),
+      {
+        concurrency: config.concurrency <= 0 ? "unbounded" : config.concurrency,
+      },
+    );
+
+    const accepted: PhaseAValidatedTx[] = [];
+    const rejected: RejectedTx[] = [];
+    for (const item of orderedResults) {
+      if ("ledgerTx" in item) {
+        accepted.push(item);
+      } else {
+        rejected.push(item);
+      }
+    }
+
+    return { accepted, rejected };
+  });

@@ -214,7 +214,7 @@ The e2e acceptance runbook matches the CLIs it drives.
 - Command: `node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs`
 - Runs on:
   - `.agents/skills/midgard-e2e-acceptance/**`
-  - `demo/midgard-node/src/index.ts`
+  - `demo/midgard-node/src/index*.ts`
   - `demo/midgard-node-tools/src/**`
 - Mode: runs in the pre-push hook
 
@@ -300,6 +300,8 @@ Golden channel native-tx-field-access-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:native-tx-field-access-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.mjs`
+  - `demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.build-golden.mjs`
+  - `demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.render-aiken.mjs`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/src/codec/native-tx-field-access.ts`
   - `demo/midgard-core/tests/fixtures/native-tx-field-access-v1.generated.json`
@@ -318,6 +320,10 @@ Golden channel native-tx-field-items-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:native-tx-field-items-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.mjs`
+  - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.build-golden.mjs`
+  - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.build-straddle.mjs`
+  - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.registration.mjs`
+  - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.render-aiken.mjs`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/src/codec/native-tx-field-items.ts`
   - `demo/midgard-core/tests/fixtures/native-tx-field-items-v1.generated.json`
@@ -355,6 +361,8 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
+  - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.aiken-families.mjs`
+  - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.terminal-fixture-constants.mjs`
   - `demo/midgard-validation/tests/blob-chunk-boundary.test.ts`
   - `demo/midgard-validation/tests/ordered-collection-boundary.test.ts`
   - `demo/midgard-validation/tests/ordered-collection-mint-boundary.test.ts`
@@ -489,6 +497,7 @@ Golden channel transaction-root-v1 (midgard-node).
 - Fix: `pnpm --dir demo/midgard-node run fixtures:transaction-root-v1`
 - Runs on:
   - `demo/midgard-node/scripts/generate-transaction-root-v1-fixture.mjs`
+  - `demo/midgard-node/scripts/generate-transaction-root-v1-fixture.parse-canonical-transaction.mjs`
   - `demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json`
   - `demo/midgard-node/tests/fixtures/transaction-root-v1.generated.json`
   - `onchain/aiken/lib/midgard/transaction-root-v1-golden.test.ak`
@@ -514,6 +523,9 @@ Golden channel native-tx-carriage-wire-v1 (@al-ft/midgard-sdk).
 - Fix: `pnpm --dir demo/midgard-sdk run fixtures:native-tx-carriage-wire-v1:sync`
 - Runs on:
   - `demo/midgard-sdk/scripts/generate-native-tx-carriage-wire-v1-goldens.mjs`
+  - `demo/midgard-sdk/scripts/generate-native-tx-carriage-wire-v1-goldens.negative-vectors.mjs`
+  - `demo/midgard-sdk/scripts/generate-native-tx-carriage-wire-v1-goldens.render-aiken.mjs`
+  - `demo/midgard-sdk/scripts/generate-native-tx-carriage-wire-v1-goldens.vectors.mjs`
   - `demo/midgard-sdk/tests/fixtures/native-tx-carriage-wire-v1.generated.json`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/native-tx-carriage-wire-v1-golden.test.ak`
@@ -530,6 +542,8 @@ Golden channel canonical-decodability-v1 (@al-ft/midgard-sdk).
 - Fix: `pnpm --dir demo/midgard-sdk run fixtures:canonical-decodability-v1:sync`
 - Runs on:
   - `demo/midgard-sdk/scripts/generate-canonical-decodability-v1-goldens.mjs`
+  - `demo/midgard-sdk/scripts/generate-canonical-decodability-v1-goldens.render-aiken.mjs`
+  - `demo/midgard-sdk/scripts/generate-canonical-decodability-v1-goldens.verdict-vectors.mjs`
   - `demo/midgard-sdk/tests/fixtures/canonical-decodability-v1.generated.json`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/fraud-proofs/canonical-decodability/rule-golden.test.ak`
@@ -546,6 +560,8 @@ Golden channel committed-field-shape-v1 (@al-ft/midgard-sdk).
 - Fix: `pnpm --dir demo/midgard-sdk run fixtures:committed-field-shape-v1:sync`
 - Runs on:
   - `demo/midgard-sdk/scripts/generate-committed-field-shape-v1-goldens.mjs`
+  - `demo/midgard-sdk/scripts/generate-committed-field-shape-v1-goldens.build-golden.mjs`
+  - `demo/midgard-sdk/scripts/generate-committed-field-shape-v1-goldens.verdict-vectors.mjs`
   - `demo/midgard-sdk/tests/fixtures/committed-field-shape-v1.generated.json`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/fraud-proofs/committed-field-shape/rule-golden.test.ak`
@@ -581,6 +597,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `config/deployments/env.ak.template`
   - `demo/midgard-core/src/generated-deployment-profiles.ts`
   - `demo/midgard-sdk/scripts/da-vector-support.mjs`
+  - `demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.render-vector.mjs`
   - `demo/midgard-sdk/tests/fixtures/da-bond-pool-v1.generated.json`
   - `demo/scripts/deployment-profiles.mjs`
   - `demo/scripts/lib/blueprint-stamp.mjs`

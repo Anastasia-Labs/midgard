@@ -1,9 +1,18 @@
-import { readFileSync } from "node:fs";
-import { isDeepStrictEqual } from "node:util";
+import "node:fs";
+import "node:util";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/cek-program.js";
+import "../src/midgard-redeemers.js";
+import "../src/validation-machine/index.js";
+import "./helpers/ordered-collection-boundary.js";
+import "./helpers/retained-da-boundary.js";
+import "./data-breadth-boundary.assert-exact-fold-semantics.js";
+import "./data-breadth-boundary.exact-broad-frontier-vector.js";
 
 import {
-  advanceMidgardCekDataTraverse,
-  advanceMidgardRedeemerItemProof,
   buildMidgardLedgerOutputProofTrace,
   buildMidgardRedeemerItemProofTrace,
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
@@ -13,14 +22,11 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  encodeMidgardCekDataFrame,
-  encodeMidgardCekDataTraverseControl,
   encodeMidgardNativeTxCanonical,
   encodeMidgardVersionedScriptListPreimage,
   finalizeMidgardCekDataTraverse,
   finalizeMidgardRedeemerItemProof,
   hashMidgardVersionedScript,
-  isExactMidgardLedgerOutputProofTerminal,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
@@ -28,7 +34,6 @@ import {
   midgardNativeTxFullToCardanoTxEncoding,
   midgardRedeemerItemDescriptor,
   MidgardRedeemerItemProofModes,
-  nextMidgardCekDataTraverseSpan,
   nextMidgardRedeemerItemProofSpan,
   validateMidgardConsensusTx,
   verifyMidgardCekProgramMaterialBundle,
@@ -49,6 +54,23 @@ import { buildMidgardCanonicalScriptArtifact } from "../src/cek-program.js";
 import { decodeMidgardRedeemers } from "../src/midgard-redeemers.js";
 import { countedMachineFieldTrace } from "../src/validation-machine/index.js";
 import {
+  alwaysSucceedsCompiledCode,
+  assertExactBreadthSemantics,
+  assertExactFoldSemantics,
+  assertExactTerminalSummary,
+  cardanoBreadthDataCbor,
+  dataNodeCount,
+} from "./data-breadth-boundary.assert-exact-fold-semantics.js";
+import {
+  exactBroadFrontierVector,
+  exactTerminalVector,
+  extractAuthenticatedLedgerOutputDataSteps,
+  maximumDatumChunkBytes,
+  maximumRedeemerChunkBytes,
+  maximumSourceSpan,
+  replayRedeemerItemProof,
+} from "./data-breadth-boundary.exact-broad-frontier-vector.js";
+import {
   buildCollateralFreeMidgardSchemaParallelCandidate,
   buildSignedCardanoNestedDatumCandidate,
   buildSignedCardanoSpendRedeemersCandidate,
@@ -63,28 +85,6 @@ import {
 } from "./helpers/ordered-collection-boundary.js";
 import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary.js";
 
-type DataBreadthKind = "constructor" | "list" | "map";
-
-type BlueprintValidator = {
-  readonly title: string;
-  readonly compiledCode: string;
-};
-
-const alwaysSucceedsBlueprint = JSON.parse(
-  readFileSync(
-    new URL(
-      "../../midgard-node/blueprints/always-succeeds/plutus.json",
-      import.meta.url,
-    ),
-    "utf8",
-  ),
-) as {
-  readonly validators: readonly BlueprintValidator[];
-};
-
-const alwaysSucceedsCompiledCode = alwaysSucceedsBlueprint.validators.find(
-  (validator) => validator.title === "midgard.deposit_spend.else",
-)?.compiledCode;
 if (alwaysSucceedsCompiledCode === undefined) {
   throw new Error(
     "Missing always-succeeds blueprint entry midgard.deposit_spend.else",
@@ -95,521 +95,6 @@ const spendingScript: SpendingValidator = {
   type: "PlutusV3",
   script: applyDoubleCborEncoding(alwaysSucceedsCompiledCode),
 };
-
-const cborUnsignedHex = (value: number): string => {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error("Data breadth integer must be non-negative");
-  }
-  if (value < 24) return value.toString(16).padStart(2, "0");
-  if (value <= 0xff) {
-    return `18${value.toString(16).padStart(2, "0")}`;
-  }
-  if (value <= 0xffff) {
-    return `19${value.toString(16).padStart(4, "0")}`;
-  }
-  return `1a${value.toString(16).padStart(8, "0")}`;
-};
-
-const cborMapHeaderHex = (pairCount: number): string => {
-  if (!Number.isSafeInteger(pairCount) || pairCount <= 0) {
-    throw new Error("Data map breadth must be positive");
-  }
-  if (pairCount < 24) {
-    return (0xa0 + pairCount).toString(16);
-  }
-  if (pairCount <= 0xff) {
-    return `b8${pairCount.toString(16).padStart(2, "0")}`;
-  }
-  if (pairCount <= 0xffff) {
-    return `b9${pairCount.toString(16).padStart(4, "0")}`;
-  }
-  return `ba${pairCount.toString(16).padStart(8, "0")}`;
-};
-
-const cardanoBreadthDataCbor = (
-  kind: DataBreadthKind,
-  breadth: number,
-): string => {
-  if (!Number.isSafeInteger(breadth) || breadth <= 0) {
-    throw new Error("Cardano Data breadth must be positive");
-  }
-  if (kind === "list") {
-    return `9f${"00".repeat(breadth)}ff`;
-  }
-  if (kind === "constructor") {
-    return `d8668218809f${"00".repeat(breadth)}ff`;
-  }
-  const entries = Array.from(
-    { length: breadth },
-    (_, index) => `${cborUnsignedHex(index)}00`,
-  ).join("");
-  return `${cborMapHeaderHex(breadth)}${entries}`;
-};
-
-const dataNodeCount = (kind: DataBreadthKind, breadth: number): number =>
-  kind === "map" ? breadth * 2 + 1 : breadth + 1;
-
-type DataTraverseStep = {
-  readonly control: Parameters<
-    typeof advanceMidgardCekDataTraverse
-  >[0]["control"];
-  readonly action: Parameters<
-    typeof advanceMidgardCekDataTraverse
-  >[0]["action"];
-  readonly next: Parameters<typeof advanceMidgardCekDataTraverse>[0]["control"];
-};
-
-const unsignedByteLength = (value: number): number => {
-  let size = 1;
-  let remaining = value;
-  while (remaining >= 256) {
-    size += 1;
-    remaining = Math.floor(remaining / 256);
-  }
-  return size;
-};
-
-const integerDataMemory = (value: number): bigint =>
-  BigInt(4 + unsignedByteLength(value * 2));
-
-const exactBreadthMemory = (kind: DataBreadthKind, breadth: number): bigint => {
-  if (kind !== "map") return 4n + BigInt(breadth) * 5n;
-  let memory = 4n;
-  for (let index = 0; index < breadth; index += 1) {
-    memory += integerDataMemory(index) + 5n;
-  }
-  return memory;
-};
-
-const assertExactBreadthSemantics = (
-  kind: DataBreadthKind,
-  breadth: number,
-  cborHex: string,
-): void => {
-  const data = CML.PlutusData.from_cbor_hex(cborHex);
-  expect(data.to_cbor_hex()).toBe(cborHex);
-  if (kind === "constructor") {
-    const constructor = data.as_constr_plutus_data();
-    expect(constructor?.alternative()).toBe(128n);
-    const fields = constructor?.fields();
-    expect(fields?.len()).toBe(breadth);
-    for (let index = 0; index < breadth; index += 1) {
-      expect(fields!.get(index).to_cbor_hex()).toBe("00");
-    }
-    return;
-  }
-  if (kind === "list") {
-    const list = data.as_list();
-    expect(list?.len()).toBe(breadth);
-    for (let index = 0; index < breadth; index += 1) {
-      expect(list!.get(index).to_cbor_hex()).toBe("00");
-    }
-    return;
-  }
-  const map = data.as_map();
-  expect(map?.len()).toBe(breadth);
-  const keys = map!.keys();
-  expect(keys.len()).toBe(breadth);
-  for (let index = 0; index < breadth; index += 1) {
-    const key = keys.get(index);
-    expect(key.to_cbor_hex()).toBe(cborUnsignedHex(index));
-    expect(key.as_integer()?.as_u64()).toBe(BigInt(index));
-    const values = map!.get_all(key);
-    expect(values?.len()).toBe(1);
-    expect(values!.get(0).to_cbor_hex()).toBe("00");
-  }
-};
-
-const assertExactFoldSemantics = ({
-  kind,
-  breadth,
-  steps,
-}: {
-  readonly kind: DataBreadthKind;
-  readonly breadth: number;
-  readonly steps: readonly DataTraverseStep[];
-}): void => {
-  const folds = steps.flatMap(({ action }) =>
-    action?.kind === "foldList" || action?.kind === "foldMap" ? [action] : [],
-  );
-  if (folds.length !== breadth) {
-    throw new Error(
-      `${kind} production fold count ${folds.length.toString()} != ${breadth.toString()}`,
-    );
-  }
-  const zeroRoots = new Set<string>();
-  const keyRoots = new Set<string>();
-  for (let position = 0; position < folds.length; position += 1) {
-    const action = folds[position]!;
-    const expectedIndex = breadth - position - 1;
-    const expectedChildren = kind === "map" ? breadth * 2 : breadth;
-    if (
-      action.frame.expectedChildren !== expectedChildren ||
-      action.frame.childCount !== expectedChildren ||
-      action.frame.foldCursor !== position
-    ) {
-      throw new Error(
-        `${kind} production frame lost exact child count or cursor at ${position.toString()}`,
-      );
-    }
-    if (kind === "map") {
-      if (
-        action.kind !== "foldMap" ||
-        action.pairIndex !== expectedIndex ||
-        action.key.cborLength !==
-          BigInt(cborUnsignedHex(expectedIndex).length / 2) ||
-        action.key.memory !== integerDataMemory(expectedIndex) ||
-        action.value.cborLength !== 1n ||
-        action.value.memory !== 5n
-      ) {
-        throw new Error(
-          `map production fold lost pair/key/value identity at ${expectedIndex.toString()}`,
-        );
-      }
-      keyRoots.add(Buffer.from(action.key.root).toString("hex"));
-      zeroRoots.add(Buffer.from(action.value.root).toString("hex"));
-    } else {
-      if (
-        action.kind !== "foldList" ||
-        action.childIndex !== expectedIndex ||
-        action.child.cborLength !== 1n ||
-        action.child.memory !== 5n
-      ) {
-        throw new Error(
-          `${kind} production fold lost child identity at ${expectedIndex.toString()}`,
-        );
-      }
-      zeroRoots.add(Buffer.from(action.child.root).toString("hex"));
-    }
-  }
-  if (zeroRoots.size !== 1 || (kind === "map" && keyRoots.size !== breadth)) {
-    throw new Error(`${kind} production fold lost exact scalar identities`);
-  }
-};
-
-const assertExactTerminalSummary = ({
-  kind,
-  breadth,
-  dataCborHex,
-  summary,
-}: {
-  readonly kind: DataBreadthKind;
-  readonly breadth: number;
-  readonly dataCborHex: string;
-  readonly summary: {
-    readonly root: Uint8Array;
-    readonly cborLength: bigint;
-    readonly memory: bigint;
-  };
-}): void => {
-  expect(Buffer.from(summary.root)).toHaveLength(32);
-  expect(summary.cborLength).toBe(BigInt(dataCborHex.length / 2));
-  expect(summary.memory).toBe(exactBreadthMemory(kind, breadth));
-};
-
-const jsonSummary = (summary: {
-  readonly root: Uint8Array;
-  readonly cborLength: bigint;
-  readonly memory: bigint;
-}) => ({
-  rootHex: Buffer.from(summary.root).toString("hex"),
-  cborLength: summary.cborLength.toString(),
-  memory: summary.memory.toString(),
-});
-
-const jsonFrame = (frame: Parameters<typeof encodeMidgardCekDataFrame>[0]) => ({
-  cborHex: encodeMidgardCekDataFrame(frame).toString("hex"),
-  kind: frame.kind,
-  ...(frame.kind === "constrSmall"
-    ? { constructor: frame.constructor.toString() }
-    : frame.kind === "constrLarge"
-      ? {
-          constructorCborRootHex: Buffer.from(
-            frame.constructorCborRoot,
-          ).toString("hex"),
-          constructorCborLength: frame.constructorCborLength.toString(),
-          constructorMemory: frame.constructorMemory.toString(),
-        }
-      : {}),
-  tailHex: Buffer.from(frame.tail).toString("hex"),
-  expectedChildren: frame.expectedChildren,
-  childCount: frame.childCount,
-  childPeaks: frame.childFrontier.peaks.map(({ height, hash }) => ({
-    height,
-    hashHex: Buffer.from(hash).toString("hex"),
-  })),
-  foldCursor: frame.foldCursor,
-  sequence: {
-    rootHex: Buffer.from(frame.sequence.root).toString("hex"),
-    length: frame.sequence.length.toString(),
-    payloadCborLength: frame.sequence.payloadCborLength.toString(),
-    memory: frame.sequence.memory.toString(),
-  },
-});
-
-const exactBroadFrontierVector = (
-  kind: DataBreadthKind,
-  steps: readonly DataTraverseStep[],
-) => {
-  let step: DataTraverseStep | undefined;
-  let membershipDepth = -1;
-  for (const candidate of steps) {
-    const action = candidate.action;
-    const candidateDepth =
-      kind === "map"
-        ? action?.kind === "foldMap" &&
-          action.keySiblings.length > 0 &&
-          action.valueSiblings.length > 0
-          ? action.keySiblings.length + action.valueSiblings.length
-          : -1
-        : action?.kind === "foldList"
-          ? action.siblings.length
-          : -1;
-    if (candidateDepth > membershipDepth) {
-      step = candidate;
-      membershipDepth = candidateDepth;
-    }
-  }
-  if (step?.action?.kind !== "foldList" && step?.action?.kind !== "foldMap") {
-    throw new Error("Broad Data trace lost its frontier fold");
-  }
-  expect(membershipDepth).toBeGreaterThan(0);
-  const action = step.action;
-  const mutatedAction =
-    action.kind === "foldList"
-      ? {
-          ...action,
-          childIndex: action.childIndex - 1,
-        }
-      : {
-          ...action,
-          pairIndex: action.pairIndex - 1,
-        };
-  expect(
-    advanceMidgardCekDataTraverse({
-      control: step.control,
-      sourceBytes: null,
-      action: mutatedAction,
-    }),
-  ).toBeNull();
-  const mutateFirstSibling = (
-    siblings: readonly Uint8Array[],
-  ): readonly Buffer[] => {
-    expect(siblings.length).toBeGreaterThan(0);
-    const mutatedFirst = Buffer.from(siblings[0]!);
-    mutatedFirst[0] = mutatedFirst[0]! ^ 0x01;
-    return [
-      mutatedFirst,
-      ...siblings.slice(1).map((sibling) => Buffer.from(sibling)),
-    ];
-  };
-  if (action.kind === "foldList") {
-    expect(
-      advanceMidgardCekDataTraverse({
-        control: step.control,
-        sourceBytes: null,
-        action: {
-          ...action,
-          siblings: mutateFirstSibling(action.siblings),
-        },
-      }),
-    ).toBeNull();
-  } else {
-    expect(
-      advanceMidgardCekDataTraverse({
-        control: step.control,
-        sourceBytes: null,
-        action: {
-          ...action,
-          keySiblings: mutateFirstSibling(action.keySiblings),
-        },
-      }),
-    ).toBeNull();
-    expect(
-      advanceMidgardCekDataTraverse({
-        control: step.control,
-        sourceBytes: null,
-        action: {
-          ...action,
-          valueSiblings: mutateFirstSibling(action.valueSiblings),
-        },
-      }),
-    ).toBeNull();
-  }
-  return {
-    preControlCborHex: encodeMidgardCekDataTraverseControl(
-      step.control,
-    ).toString("hex"),
-    sourceBytesHex: null,
-    membershipDepth,
-    action:
-      action.kind === "foldList"
-        ? {
-            kind: action.kind,
-            frame: jsonFrame(action.frame),
-            childIndex: action.childIndex,
-            child: jsonSummary(action.child),
-            siblingHexes: action.siblings.map((sibling) =>
-              Buffer.from(sibling).toString("hex"),
-            ),
-          }
-        : {
-            kind: action.kind,
-            frame: jsonFrame(action.frame),
-            pairIndex: action.pairIndex,
-            key: jsonSummary(action.key),
-            value: jsonSummary(action.value),
-            keySiblingHexes: action.keySiblings.map((sibling) =>
-              Buffer.from(sibling).toString("hex"),
-            ),
-            valueSiblingHexes: action.valueSiblings.map((sibling) =>
-              Buffer.from(sibling).toString("hex"),
-            ),
-          },
-    postControlCborHex: encodeMidgardCekDataTraverseControl(step.next).toString(
-      "hex",
-    ),
-  };
-};
-
-const exactTerminalVector = (steps: readonly DataTraverseStep[]) => {
-  const terminalStep = steps.at(-1);
-  if (terminalStep?.action?.kind !== "finalizeFrame") {
-    throw new Error("Broad Data trace lost its final frame");
-  }
-  const summary = finalizeMidgardCekDataTraverse(terminalStep.next);
-  if (summary === null) {
-    throw new Error("Broad Data trace did not terminate");
-  }
-  const mutatedFrame = {
-    ...terminalStep.action.frame,
-    sequence: {
-      ...terminalStep.action.frame.sequence,
-      root: Buffer.concat([
-        Buffer.from([terminalStep.action.frame.sequence.root[0]! ^ 0x01]),
-        Buffer.from(terminalStep.action.frame.sequence.root.subarray(1)),
-      ]),
-    },
-  };
-  expect(
-    advanceMidgardCekDataTraverse({
-      control: terminalStep.control,
-      sourceBytes: null,
-      action: {
-        ...terminalStep.action,
-        frame: mutatedFrame,
-      },
-    }),
-  ).toBeNull();
-  return {
-    preControlCborHex: encodeMidgardCekDataTraverseControl(
-      terminalStep.control,
-    ).toString("hex"),
-    frameCborHex: encodeMidgardCekDataFrame(terminalStep.action.frame).toString(
-      "hex",
-    ),
-    postControlCborHex: encodeMidgardCekDataTraverseControl(
-      terminalStep.next,
-    ).toString("hex"),
-    summary: {
-      rootHex: Buffer.from(summary.root).toString("hex"),
-      cborLength: summary.cborLength.toString(),
-      memory: summary.memory.toString(),
-    },
-  };
-};
-
-const maximumSourceSpan = (steps: readonly DataTraverseStep[]): number =>
-  steps.reduce(
-    (maximum, { control }) =>
-      Math.max(maximum, nextMidgardCekDataTraverseSpan(control)?.length ?? 0),
-    0,
-  );
-
-const extractAuthenticatedLedgerOutputDataSteps = (
-  trace: ReturnType<typeof buildMidgardLedgerOutputProofTrace>,
-): readonly DataTraverseStep[] => {
-  const dataSteps: DataTraverseStep[] = [];
-  let expectedControl = trace.initial;
-  for (let index = 0; index < trace.steps.length; index += 1) {
-    const { control, witness, next } = trace.steps[index]!;
-    if (control !== expectedControl) {
-      throw new Error(
-        `ledger-output production trace lost successor identity at step ${index.toString()}`,
-      );
-    }
-    expectedControl = next;
-    if (
-      witness?.kind === "datum" &&
-      control.datum !== null &&
-      next.datum !== null
-    ) {
-      dataSteps.push({
-        control: control.datum,
-        action: witness.action,
-        next: next.datum,
-      });
-    }
-  }
-  if (
-    expectedControl !== trace.terminal ||
-    !isExactMidgardLedgerOutputProofTerminal(trace.terminal)
-  ) {
-    throw new Error("ledger-output production trace did not terminate");
-  }
-  return dataSteps;
-};
-
-const replayRedeemerItemProof = (
-  trace: ReturnType<typeof buildMidgardRedeemerItemProofTrace>,
-): readonly DataTraverseStep[] => {
-  const dataSteps: DataTraverseStep[] = [];
-  for (let index = 0; index < trace.steps.length; index += 1) {
-    const { control, witness, next } = trace.steps[index]!;
-    const replay = advanceMidgardRedeemerItemProof({
-      control,
-      witness,
-    });
-    if (replay === null || !isDeepStrictEqual(replay, next)) {
-      throw new Error(
-        `redeemer-item production replay diverged at step ${index.toString()}`,
-      );
-    }
-    if (
-      witness.action.kind === "traverseData" &&
-      control.traversal !== null &&
-      next.traversal !== null
-    ) {
-      dataSteps.push({
-        control: control.traversal,
-        action: witness.action.action,
-        next: next.traversal,
-      });
-    }
-  }
-  return dataSteps;
-};
-
-const maximumDatumChunkBytes = (
-  trace: ReturnType<typeof buildMidgardLedgerOutputProofTrace>,
-): number =>
-  trace.steps.reduce((maximum, { witness }) => {
-    if (witness?.kind !== "datum") return maximum;
-    return Math.max(maximum, witness.window?.length ?? 0);
-  }, 0);
-
-const maximumRedeemerChunkBytes = (
-  trace: ReturnType<typeof buildMidgardRedeemerItemProofTrace>,
-): number =>
-  trace.steps.reduce(
-    (maximum, { witness }) =>
-      Math.max(
-        maximum,
-        witness.chunkProof?.chunk.length ?? 0,
-        witness.nextChunkProof?.chunk.length ?? 0,
-      ),
-    0,
-  );
 
 /**
  * The exact genuine signed-Cardano breadth boundaries, per Data kind and per

@@ -1,26 +1,63 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { createHash } from "node:crypto";
+import "node:fs";
+import "node:os";
+import "node:path";
+import "node:crypto";
+import "node:child_process";
+import "node:util";
+import "node:perf_hooks";
+import "node:url";
+import "@lucid-evolution/lucid";
+import "undici";
+import "@al-ft/midgard-core/cek-proof";
+import "./throughput-benchmark-utils.mjs";
+import "./native-tx-workload-utils.mjs";
+import "./throughput-valid-stress-corpus.mjs";
+import "./lib/deadline-batched-schedule.mjs";
+import "./phase3-architecture-g-soak-preflight.mjs";
+import "./phase3-architecture-g-load-generator-isolation.mjs";
+import "./phase1-formal-identity.mjs";
+import "./throughput-valid-stress.create-runtime-sampler.mjs";
+import "./throughput-valid-stress.summarize-cursor-continuity.mjs";
+
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import {
-  PerformanceObserver,
-  monitorEventLoopDelay,
-  performance,
-} from "node:perf_hooks";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { CML } from "@lucid-evolution/lucid";
 import { Pool } from "undici";
-import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
+
+import { runDeadlineBatchedSchedule } from "./lib/deadline-batched-schedule.mjs";
 import {
-  BENCHMARK_WINDOWS_MS,
+  buildNativeSignedSplit,
+  decodeCoin,
+  makeWalletsFromEnv,
+  outputHasMultiAssets,
+  parseEnv,
+} from "./native-tx-workload-utils.mjs";
+import {
+  loadPhase1FormalBindingSync,
+  PHASE1_FORMAL_SCENARIO,
+  sha256FileSync,
+  validatePhase1BindingEnvironment,
+  validatePhase1FormalCorpus,
+  verifyPhase1LivePreflight,
+} from "./phase1-formal-identity.mjs";
+import { consumePhase3LoadGeneratorIsolation } from "./phase3-architecture-g-load-generator-isolation.mjs";
+import { consumePhase3SoakCorpusPreflight } from "./phase3-architecture-g-soak-preflight.mjs";
+import {
   acceptedStatuses,
+  BENCHMARK_WINDOWS_MS,
   classifyLikelyBottleneckWithEvidence,
   counterDelta,
   createPhaseRecorder,
+  deriveCalibratedClientCapacity,
   gaugeSlopePerSec,
   isDrainComplete,
   rateBetweenCounters,
@@ -28,22 +65,37 @@ import {
   summarizeHistogramDelta,
   summarizeL1Observation,
   summarizeLatency,
-  deriveCalibratedClientCapacity,
   summarizeOpenLoopCheckpointProgress,
   summarizePhase1StageAWindowGate,
   summarizePhase1StarvationGate,
-  summarizeSubmitSuccessStatuses,
   summarizeRollingRates,
+  summarizeSubmitSuccessStatuses,
   terminalStatuses,
 } from "./throughput-benchmark-utils.mjs";
 import {
-  buildNativeSignedOneToOneWithMinFee as buildNativeSignedOneToOne,
-  buildNativeSignedSplit,
-  decodeCoin,
-  makeWalletsFromEnv,
-  outputHasMultiAssets,
-  parseEnv,
-} from "./native-tx-workload-utils.mjs";
+  collectCalibrationRows,
+  createRuntimeSampler,
+  createStageStats,
+  extractHistogram,
+  extractMetricSum,
+  extractMetricValue,
+  findAvailableCursor,
+  makeChainCursors,
+  makeNdjsonWriter,
+  prebuildChain,
+  remainingTxCount,
+  sleep,
+  snapshotCursorPositions,
+  summarizeScheduleSlip,
+  takeNextTx,
+  updateFramedHash,
+} from "./throughput-valid-stress.create-runtime-sampler.mjs";
+import {
+  activeCursorCount,
+  hasCounterActivity,
+  readRuntimeMetadata,
+  summarizeCursorContinuity,
+} from "./throughput-valid-stress.summarize-cursor-continuity.mjs";
 import {
   corpusRowsForEntries,
   defaultCorpusIndexPath,
@@ -55,26 +107,21 @@ import {
   validateCorpusSlice,
   verifyCorpusArtifactIdentity,
 } from "./throughput-valid-stress-corpus.mjs";
-import { runDeadlineBatchedSchedule } from "./lib/deadline-batched-schedule.mjs";
-import { consumePhase3SoakCorpusPreflight } from "./phase3-architecture-g-soak-preflight.mjs";
-import { consumePhase3LoadGeneratorIsolation } from "./phase3-architecture-g-load-generator-isolation.mjs";
-import {
-  loadPhase1FormalBindingSync,
-  PHASE1_FORMAL_SCENARIO,
-  sha256FileSync,
-  validatePhase1BindingEnvironment,
-  validatePhase1FormalCorpus,
-  verifyPhase1LivePreflight,
-} from "./phase1-formal-identity.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
+
 const __dirname = path.dirname(__filename);
+
 const pkgRoot = path.resolve(__dirname, "..");
 
 const envPath = process.env.STRESS_ENV_FILE ?? path.join(pkgRoot, ".env");
+
 const loadedStressEnv = fs.existsSync(envPath) ? parseEnv(envPath) : {};
+
 const stressEnv = { ...loadedStressEnv, ...process.env };
+
 const envValue = (name, fallback = undefined) => stressEnv[name] ?? fallback;
+
 const parsePositiveIntegerSetting = (name, fallback, sentinel = null) => {
   const raw = String(envValue(name, fallback)).trim();
   if (sentinel !== null && raw === sentinel) {
@@ -86,6 +133,7 @@ const parsePositiveIntegerSetting = (name, fallback, sentinel = null) => {
   }
   return { raw, value, sentinel: false };
 };
+
 const parsePositiveFloatSetting = (name, fallback) => {
   const value = Number.parseFloat(String(envValue(name, fallback)).trim());
   if (!Number.isFinite(value) || value <= 0) {
@@ -93,140 +141,185 @@ const parsePositiveFloatSetting = (name, fallback) => {
   }
   return value;
 };
+
 const submitEndpoint = envValue(
   "STRESS_SUBMIT_ENDPOINT",
   "http://127.0.0.1:3000",
 );
+
 const metricsEndpoint = envValue(
   "STRESS_METRICS_ENDPOINT",
   "http://127.0.0.1:9464/metrics",
 );
+
 const corpusPath = envValue("STRESS_CORPUS_PATH", null);
+
 const corpusIndexPath =
   envValue("STRESS_CORPUS_INDEX_PATH", null) ??
   (corpusPath === null ? null : defaultCorpusIndexPath(corpusPath));
+
 const corpusManifestPath =
   envValue("STRESS_CORPUS_MANIFEST_PATH", null) ??
   (corpusPath === null ? null : defaultCorpusManifestPath(corpusPath));
+
 const corpusShape = envValue("STRESS_CORPUS_SHAPE", "mixed");
+
 const corpusSliceId = envValue("STRESS_CORPUS_SLICE_ID", null);
+
 const corpusReadAheadRows = Number.parseInt(
   envValue("STRESS_CORPUS_READAHEAD_ROWS", "50"),
   10,
 );
+
 const corpusPreflightRequired =
   String(envValue("STRESS_CORPUS_PREFLIGHT_REQUIRED", "false"))
     .trim()
     .toLowerCase() === "true";
+
 const corpusPreflightPath = envValue("STRESS_CORPUS_PREFLIGHT_PATH", null);
+
 const corpusPreflightSha256 = envValue("STRESS_CORPUS_PREFLIGHT_SHA256", null);
+
 const corpusPreflightSourceIdentitySha256 = envValue(
   "STRESS_CORPUS_PREFLIGHT_SOURCE_IDENTITY_SHA256",
   null,
 );
+
 const corpusPreflightPhase1BindingSha256 = envValue(
   "STRESS_CORPUS_PREFLIGHT_PHASE1_BINDING_SHA256",
   null,
 );
+
 const loadGeneratorIsolationRequired =
   String(envValue("STRESS_LOAD_GENERATOR_ISOLATION_REQUIRED", "false"))
     .trim()
     .toLowerCase() === "true";
+
 const loadGeneratorIsolationPath = envValue(
   "STRESS_LOAD_GENERATOR_ISOLATION_PATH",
   null,
 );
+
 const loadGeneratorIsolationSha256 = envValue(
   "STRESS_LOAD_GENERATOR_ISOLATION_SHA256",
   null,
 );
+
 const requireNoOpCalibration =
   String(envValue("STRESS_REQUIRE_NOOP_CALIBRATION", "false"))
     .trim()
     .toLowerCase() === "true";
+
 const noOpEndpointValue = String(envValue("STRESS_NOOP_ENDPOINT", "")).trim();
+
 const noOpEndpoint = noOpEndpointValue.length === 0 ? null : noOpEndpointValue;
+
 const calibrationHeadroomMultiplier = parsePositiveFloatSetting(
   "STRESS_CALIBRATION_HEADROOM_MULTIPLIER",
   "2",
 );
+
 const calibrationDurationSec = parsePositiveFloatSetting(
   "STRESS_CALIBRATION_DURATION_SEC",
   "5",
 );
+
 const nodeSaturationMinRatio = parsePositiveFloatSetting(
   "STRESS_NODE_SATURATION_MIN_RATIO",
   "1.2",
 );
+
 const chainLength = Number.parseInt(envValue("STRESS_CHAIN_LENGTH", "500"), 10);
+
 const maxChainsSetting = parsePositiveIntegerSetting(
   "STRESS_MAX_CHAINS",
   "8",
   "auto",
 );
+
 let maxChains = maxChainsSetting.sentinel ? null : maxChainsSetting.value;
+
 const utxosPerWallet = Number.parseInt(
   envValue("STRESS_UTXOS_PER_WALLET", "3"),
   10,
 );
+
 const minLovelace = BigInt(envValue("STRESS_MIN_LOVELACE", "0"));
+
 const fanoutEnabled =
   String(envValue("STRESS_FANOUT_ENABLED", "true")).trim().toLowerCase() !==
   "false";
+
 const fanoutMaxOutputsPerTx = Number.parseInt(
   envValue("STRESS_FANOUT_MAX_OUTPUTS_PER_TX", "256"),
   10,
 );
+
 const fanoutOutputLovelace =
   envValue("STRESS_FANOUT_OUTPUT_LOVELACE") === undefined
     ? null
     : BigInt(envValue("STRESS_FANOUT_OUTPUT_LOVELACE"));
+
 const fanoutStatusTimeoutMs = Number.parseInt(
   envValue("STRESS_FANOUT_STATUS_TIMEOUT_MS", "30000"),
   10,
 );
+
 const retry503 = Number.parseInt(envValue("STRESS_RETRY_503", "3"), 10);
+
 const measuredRetry503 = Number.parseInt(
   envValue("STRESS_MEASURED_RETRY_503", "0"),
   10,
 );
+
 const retryDelayMs = Number.parseInt(
   envValue("STRESS_RETRY_DELAY_MS", "25"),
   10,
 );
+
 const metricsPollMs = Number.parseInt(
   envValue("STRESS_METRICS_POLL_MS", "1000"),
   10,
 );
+
 const observeAfterSubmitSec = Number.parseInt(
   envValue("STRESS_OBSERVE_AFTER_SUBMIT_SEC", "15"),
   10,
 );
+
 const targetAcceptedTps = Number.parseFloat(
   envValue("STRESS_TARGET_ACCEPTED_TPS", "600"),
 );
+
 const requireFreshChains =
   String(envValue("STRESS_REQUIRE_FRESH_CHAINS", "true"))
     .trim()
     .toLowerCase() !== "false";
+
 const txStatusRetries = Number.parseInt(
   envValue("STRESS_TX_STATUS_RETRIES", "5"),
   10,
 );
+
 const txStatusRetryDelayMs = Number.parseInt(
   envValue("STRESS_TX_STATUS_RETRY_DELAY_MS", "50"),
   10,
 );
+
 const benchmarkMode = String(envValue("STRESS_MODE", "closed"))
   .trim()
   .toLowerCase();
+
 const scenarioClass = String(envValue("STRESS_SCENARIO_CLASS", "A"))
   .trim()
   .toUpperCase();
+
 const scenarioName = String(envValue("STRESS_SCENARIO_NAME", "custom")).trim();
+
 const formalBenchmark =
   String(envValue("STRESS_FORMAL_BENCHMARK", "false")).trim().toLowerCase() ===
   "true";
+
 const phase1FormalBinding =
   formalBenchmark && scenarioName === PHASE1_FORMAL_SCENARIO
     ? (() => {
@@ -243,41 +336,52 @@ const phase1FormalBinding =
         });
       })()
     : null;
+
 const loadGeneratorPlacement = String(
   envValue("STRESS_LOAD_GENERATOR_PLACEMENT", "unspecified"),
 ).trim();
+
 const loadGeneratorCohostedRaw = String(
   envValue("STRESS_LOADGEN_COHOSTED", "unspecified"),
 )
   .trim()
   .toLowerCase();
+
 const loadGeneratorCohosted =
   loadGeneratorCohostedRaw === "true"
     ? true
     : loadGeneratorCohostedRaw === "false"
       ? false
       : null;
+
 const clockOffsetMsRaw = String(envValue("STRESS_CLOCK_OFFSET_MS", "")).trim();
+
 const clockOffsetMs =
   clockOffsetMsRaw.length === 0 ? null : Number(clockOffsetMsRaw);
+
 const observabilityProfile = String(
   envValue("STRESS_OBSERVABILITY_PROFILE", "unspecified"),
 )
   .trim()
   .toLowerCase();
+
 const measuredSec = Number.parseFloat(envValue("STRESS_MEASURED_SEC", "30"));
+
 const phase4BlockTxTarget = Number.parseInt(
   envValue("STRESS_PHASE4_BLOCK_TX_TARGET", "0"),
   10,
 );
+
 const configuredCommitMaxL2TxCount = Number.parseInt(
   envValue("COMMIT_MAX_L2_TX_COUNT", "0"),
   10,
 );
+
 const phase4EnvironmentFingerprintPath = envValue(
   "STRESS_PHASE4_ENVIRONMENT_FINGERPRINT_PATH",
   null,
 );
+
 const phase4EnvironmentFingerprint =
   phase4EnvironmentFingerprintPath === null
     ? null
@@ -292,154 +396,202 @@ const phase4EnvironmentFingerprint =
           document: artifact.document,
         };
       })();
+
 const warmupTxs = Number.parseInt(envValue("STRESS_WARMUP_TXS", "0"), 10);
+
 const warmupSec = Number.parseFloat(envValue("STRESS_WARMUP_SEC", "0"));
+
 const cooldownSec = Number.parseFloat(envValue("STRESS_COOLDOWN_SEC", "3"));
+
 const drainTimeoutSec = Number.parseFloat(
   envValue("STRESS_DRAIN_TIMEOUT_SEC", "60"),
 );
+
 const waitForCommit =
   String(envValue("STRESS_WAIT_FOR_COMMIT", "false")).trim().toLowerCase() ===
   "true";
+
 const waitForMerge =
   String(envValue("STRESS_WAIT_FOR_MERGE", "false")).trim().toLowerCase() ===
   "true";
+
 const statusSampleSize = Number.parseInt(
   envValue("STRESS_STATUS_SAMPLE_SIZE", "100"),
   10,
 );
+
 const submitConcurrencySetting = parsePositiveIntegerSetting(
   "STRESS_SUBMIT_CONCURRENCY",
   "512",
   "from-calibration",
 );
+
 let submitConcurrency = submitConcurrencySetting.value;
+
 const httpConnectionsSetting = parsePositiveIntegerSetting(
   "STRESS_HTTP_CONNECTIONS",
   "256",
   "from-calibration",
 );
+
 let httpConnections = httpConnectionsSetting.value;
+
 const httpPipelining = Number.parseInt(
   envValue("STRESS_HTTP_PIPELINING", "1"),
   10,
 );
+
 const httpTimeoutMs = Number.parseInt(
   envValue("STRESS_HTTP_TIMEOUT_MS", "30000"),
   10,
 );
+
 const openLoopRate = Number.parseFloat(
   envValue("STRESS_OPEN_LOOP_RATE_TPS", String(targetAcceptedTps)),
 );
+
 const rampStartTps = Number.parseFloat(
   envValue("STRESS_RAMP_START_TPS", "100"),
 );
+
 const rampStepTps = Number.parseFloat(envValue("STRESS_RAMP_STEP_TPS", "100"));
+
 const rampMaxTps = Number.parseFloat(
   envValue(
     "STRESS_RAMP_MAX_TPS",
     String(targetAcceptedTps > 0 ? targetAcceptedTps : 1000),
   ),
 );
+
 const rampStageSec = Number.parseFloat(envValue("STRESS_RAMP_STAGE_SEC", "15"));
+
 const rampMinAcceptedRatio = Number.parseFloat(
   envValue("STRESS_RAMP_MIN_ACCEPTED_RATIO", "0.99"),
 );
+
 const offeredRateMinRatio = Number.parseFloat(
   envValue("STRESS_OFFERED_RATE_MIN_RATIO", "0.98"),
 );
+
 const acceptedRateMinRatio = Number.parseFloat(
   envValue("STRESS_ACCEPTED_RATE_MIN_RATIO", "0.99"),
 );
+
 const scheduleLagP95MaxMs = Number.parseFloat(
   envValue("STRESS_SCHEDULE_LAG_P95_MAX_MS", "100"),
 );
+
 const scheduleLagP99MaxMs = Number.parseFloat(
   envValue("STRESS_SCHEDULE_LAG_P99_MAX_MS", "250"),
 );
+
 const submitLatencyP99MaxMs = Number.parseFloat(
   envValue("STRESS_SUBMIT_LATENCY_P99_MAX_MS", "1000"),
 );
+
 const missedStartMaxRatio = Number.parseFloat(
   envValue("STRESS_MISSED_START_MAX_RATIO", "0.001"),
 );
+
 const backlogSlopeMaxPerSec = Number.parseFloat(
   envValue("STRESS_BACKLOG_SLOPE_MAX_PER_SEC", "0.1"),
 );
+
 const phase1StarvationGateEnabled =
   String(envValue("STRESS_PHASE1_STARVATION_GATE", "false"))
     .trim()
     .toLowerCase() === "true";
+
 const phase1StarvationMinDurationSec = parsePositiveFloatSetting(
   "STRESS_PHASE1_STARVATION_MIN_DURATION_SEC",
   "600",
 );
+
 const phase1StarvationMaxAgeMultiplier = parsePositiveFloatSetting(
   "STRESS_PHASE1_STARVATION_MAX_AGE_MULTIPLIER",
   "3",
 );
+
 const phase1StarvationMinOverloadRatio = parsePositiveFloatSetting(
   "STRESS_PHASE1_STARVATION_MIN_OVERLOAD_RATIO",
   "2",
 );
+
 const phase1StarvationBaselineTps = parsePositiveFloatSetting(
   "STRESS_PHASE1_STARVATION_BASELINE_TPS",
   "2500",
 );
+
 const phase1StageAWindowGateEnabled =
   String(envValue("STRESS_PHASE1_STAGE_A_WINDOW_GATE", "false"))
     .trim()
     .toLowerCase() === "true";
+
 const phase1StageAWindowSec = parsePositiveFloatSetting(
   "STRESS_PHASE1_STAGE_A_WINDOW_SEC",
   "300",
 );
+
 const phase1StageACheckpointMaxJitterMs = parsePositiveFloatSetting(
   "STRESS_PHASE1_STAGE_A_CHECKPOINT_MAX_JITTER_MS",
   "1000",
 );
+
 const candidateCleanTimeoutSec = Number.parseFloat(
   envValue("STRESS_CANDIDATE_CLEAN_TIMEOUT_SEC", "30"),
 );
+
 const requireIdleNode =
   String(envValue("STRESS_REQUIRE_IDLE_NODE", "true")).trim().toLowerCase() !==
   "false";
+
 const idleProbeSec = Number.parseFloat(envValue("STRESS_IDLE_PROBE_SEC", "2"));
+
 const requireMetricPresence =
   String(envValue("STRESS_REQUIRE_METRIC_PRESENCE", "true"))
     .trim()
     .toLowerCase() !== "false";
+
 const findMaxBinaryIterations = Number.parseInt(
   envValue("STRESS_FIND_MAX_BINARY_ITERATIONS", "6"),
   10,
 );
+
 const findMaxConfirmationSec = Number.parseFloat(
   envValue("STRESS_FIND_MAX_CONFIRMATION_SEC", String(measuredSec)),
 );
+
 const findMaxRepeats = Number.parseInt(
   envValue("STRESS_FIND_MAX_REPEATS", "2"),
   10,
 );
+
 const findMaxMaxCandidates = Number.parseInt(
   envValue("STRESS_FIND_MAX_MAX_CANDIDATES", "32"),
   10,
 );
+
 const clientSelfCheckEnabled =
   String(envValue("STRESS_CLIENT_SELF_CHECK", "true")).trim().toLowerCase() !==
   "false";
+
 const clientSelfCheckRequired =
   String(envValue("STRESS_CLIENT_SELF_CHECK_REQUIRED", "false"))
     .trim()
     .toLowerCase() !== "false";
+
 const clientSelfCheckMultiplier = Number.parseFloat(
   envValue("STRESS_CLIENT_SELF_CHECK_MULTIPLIER", "2"),
 );
+
 const clientSelfCheckMinRatio = Number.parseFloat(
   envValue("STRESS_CLIENT_SELF_CHECK_MIN_RATIO", "0.95"),
 );
+
 const clientSelfCheckDurationSec = Number.parseFloat(
   envValue("STRESS_CLIENT_SELF_CHECK_DURATION_SEC", "2"),
 );
+
 const reportPath =
   envValue("STRESS_REPORT_PATH") ??
   path.join(
@@ -447,22 +599,28 @@ const reportPath =
     "benchmark-results",
     `l2-throughput-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
   );
+
 const engineEventsPath =
   envValue("STRESS_ENGINE_EVENTS_PATH", null) ??
   path.join(path.dirname(reportPath), "engine-events.ndjson");
+
 const submitRecordsPath =
   envValue("STRESS_SUBMIT_RECORDS_PATH", null) ??
   path.join(path.dirname(reportPath), "submit-records.ndjson");
+
 const noOpCalibrationPath =
   envValue("STRESS_NOOP_CALIBRATION_PATH", null) ??
   path.join(path.dirname(reportPath), "noop-calibration.json");
+
 const pgStatStatementsEnabled =
   String(envValue("STRESS_PG_STAT_STATEMENTS", "false"))
     .trim()
     .toLowerCase() === "true";
+
 const profileMode =
   String(envValue("STRESS_PROFILE_MODE", "false")).trim().toLowerCase() ===
   "true";
+
 const pyroscopeEnabled =
   String(envValue("STRESS_PYROSCOPE", "false")).trim().toLowerCase() === "true";
 
@@ -471,24 +629,30 @@ const execFileAsync = promisify(execFile);
 if (!Number.isFinite(chainLength) || chainLength <= 0) {
   throw new Error("STRESS_CHAIN_LENGTH must be a positive integer");
 }
+
 if (maxChains !== null && (!Number.isFinite(maxChains) || maxChains <= 0)) {
   throw new Error("STRESS_MAX_CHAINS must be a positive integer");
 }
+
 if (!["fanout", "chain", "mixed"].includes(corpusShape)) {
   throw new Error("STRESS_CORPUS_SHAPE must be fanout, chain, or mixed");
 }
+
 if (!Number.isFinite(corpusReadAheadRows) || corpusReadAheadRows <= 0) {
   throw new Error("STRESS_CORPUS_READAHEAD_ROWS must be a positive integer");
 }
+
 const corpusPreflightValues = [
   corpusPreflightPath,
   corpusPreflightSha256,
   corpusPreflightSourceIdentitySha256,
   corpusPreflightPhase1BindingSha256,
 ];
+
 const corpusPreflightEnabled = corpusPreflightValues.every(
   (value) => typeof value === "string" && value.trim().length > 0,
 );
+
 if (
   (corpusPreflightRequired && !corpusPreflightEnabled) ||
   (!corpusPreflightEnabled &&
@@ -498,26 +662,33 @@ if (
     "full corpus preflight requires path, artifact SHA-256, source-identity SHA-256, and Phase 1 binding SHA-256",
   );
 }
+
 if (!Number.isFinite(utxosPerWallet) || utxosPerWallet <= 0) {
   throw new Error("STRESS_UTXOS_PER_WALLET must be a positive integer");
 }
+
 if (!Number.isFinite(fanoutMaxOutputsPerTx) || fanoutMaxOutputsPerTx <= 1) {
   throw new Error(
     "STRESS_FANOUT_MAX_OUTPUTS_PER_TX must be an integer greater than 1",
   );
 }
+
 if (!Number.isFinite(fanoutStatusTimeoutMs) || fanoutStatusTimeoutMs <= 0) {
   throw new Error("STRESS_FANOUT_STATUS_TIMEOUT_MS must be a positive integer");
 }
+
 if (!Number.isFinite(metricsPollMs) || metricsPollMs <= 0) {
   throw new Error("STRESS_METRICS_POLL_MS must be a positive integer");
 }
+
 if (!["closed", "open", "ramp", "find-max"].includes(benchmarkMode)) {
   throw new Error("STRESS_MODE must be one of: closed, open, ramp, find-max");
 }
+
 if (!["A", "B"].includes(scenarioClass)) {
   throw new Error("STRESS_SCENARIO_CLASS must be A or B");
 }
+
 if (formalBenchmark) {
   if (
     !["separate-host", "separate-container", "measured-cgroup"].includes(
@@ -553,20 +724,24 @@ if (formalBenchmark) {
     );
   }
 }
+
 const loadGeneratorIsolation = loadGeneratorIsolationRequired
   ? consumePhase3LoadGeneratorIsolation({
       artifactPath: loadGeneratorIsolationPath,
       artifactSha256: loadGeneratorIsolationSha256,
     })
   : null;
+
 if (!Number.isFinite(measuredSec) || measuredSec <= 0) {
   throw new Error("STRESS_MEASURED_SEC must be a positive number");
 }
+
 if (!Number.isInteger(phase4BlockTxTarget) || phase4BlockTxTarget < 0) {
   throw new Error(
     "STRESS_PHASE4_BLOCK_TX_TARGET must be a non-negative integer",
   );
 }
+
 if (
   phase4BlockTxTarget > 0 &&
   configuredCommitMaxL2TxCount !== phase4BlockTxTarget
@@ -575,41 +750,53 @@ if (
     `Phase 4 block target ${phase4BlockTxTarget.toString()} does not match COMMIT_MAX_L2_TX_COUNT=${configuredCommitMaxL2TxCount.toString()}`,
   );
 }
+
 if (phase4BlockTxTarget > 0 && phase4EnvironmentFingerprint === null) {
   throw new Error(
     "STRESS_PHASE4_ENVIRONMENT_FINGERPRINT_PATH is required for a Phase 4 gate",
   );
 }
+
 if (!Number.isFinite(warmupTxs) || warmupTxs < 0) {
   throw new Error("STRESS_WARMUP_TXS must be a non-negative integer");
 }
+
 if (!Number.isFinite(warmupSec) || warmupSec < 0) {
   throw new Error("STRESS_WARMUP_SEC must be a non-negative number");
 }
+
 if (!Number.isFinite(cooldownSec) || cooldownSec < 0) {
   throw new Error("STRESS_COOLDOWN_SEC must be a non-negative number");
 }
+
 if (!Number.isFinite(drainTimeoutSec) || drainTimeoutSec <= 0) {
   throw new Error("STRESS_DRAIN_TIMEOUT_SEC must be a positive number");
 }
+
 if (!Number.isFinite(statusSampleSize) || statusSampleSize < 0) {
   throw new Error("STRESS_STATUS_SAMPLE_SIZE must be a non-negative integer");
 }
+
 if (!Number.isFinite(submitConcurrency) || submitConcurrency <= 0) {
   throw new Error("STRESS_SUBMIT_CONCURRENCY must be a positive integer");
 }
+
 if (!Number.isFinite(httpConnections) || httpConnections <= 0) {
   throw new Error("STRESS_HTTP_CONNECTIONS must be a positive integer");
 }
+
 if (!Number.isFinite(httpPipelining) || httpPipelining <= 0) {
   throw new Error("STRESS_HTTP_PIPELINING must be a positive integer");
 }
+
 if (!Number.isFinite(httpTimeoutMs) || httpTimeoutMs <= 0) {
   throw new Error("STRESS_HTTP_TIMEOUT_MS must be a positive integer");
 }
+
 if (!Number.isFinite(measuredRetry503) || measuredRetry503 < 0) {
   throw new Error("STRESS_MEASURED_RETRY_503 must be a non-negative integer");
 }
+
 for (const [name, value] of [
   ["STRESS_OFFERED_RATE_MIN_RATIO", offeredRateMinRatio],
   ["STRESS_ACCEPTED_RATE_MIN_RATIO", acceptedRateMinRatio],
@@ -619,6 +806,7 @@ for (const [name, value] of [
     throw new Error(`${name} must be in the range (0, 1]`);
   }
 }
+
 for (const [name, value] of [
   ["STRESS_SCHEDULE_LAG_P95_MAX_MS", scheduleLagP95MaxMs],
   ["STRESS_SCHEDULE_LAG_P99_MAX_MS", scheduleLagP99MaxMs],
@@ -632,9 +820,11 @@ for (const [name, value] of [
     throw new Error(`${name} must be a non-negative number`);
   }
 }
+
 if (!Number.isFinite(missedStartMaxRatio) || missedStartMaxRatio < 0) {
   throw new Error("STRESS_MISSED_START_MAX_RATIO must be non-negative");
 }
+
 for (const [name, value] of [
   ["STRESS_FIND_MAX_BINARY_ITERATIONS", findMaxBinaryIterations],
   ["STRESS_FIND_MAX_REPEATS", findMaxRepeats],
@@ -645,29 +835,8 @@ for (const [name, value] of [
   }
 }
 
-/** @typedef {{ outref: string; outputCbor: string }} NodeUtxo */
-/** @typedef {{ txHex: string; txIdHex: string }} PrebuiltTx */
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const makeNdjsonWriter = (filePath) => {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const stream = fs.createWriteStream(filePath, { flags: "w" });
-  return {
-    path: filePath,
-    write(value) {
-      stream.write(`${JSON.stringify(value)}\n`);
-    },
-    async close() {
-      await new Promise((resolve, reject) => {
-        stream.once("error", reject);
-        stream.end(resolve);
-      });
-    },
-  };
-};
-
 let engineEventWriter = null;
+
 let submitRecordWriter = null;
 
 const writeEngineEvent = (event, payload = {}) => {
@@ -758,44 +927,6 @@ const fetchMetricsText = async () => {
   return resp.body;
 };
 
-/**
- * Escapes a string for literal use in a regular expression.
- */
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/**
- * Extracts a Prometheus sample value from metrics text.
- */
-const extractMetricValue = (text, names) => {
-  for (const name of names) {
-    const pattern = `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`;
-    const m = text.match(new RegExp(pattern, "m"));
-    if (m !== null) {
-      return { value: Number(m[1]), name };
-    }
-  }
-  return { value: 0, name: null };
-};
-
-const extractMetricSum = (text, names) => {
-  for (const name of names) {
-    const pattern = new RegExp(
-      `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`,
-      "gm",
-    );
-    const values = [];
-    let match = pattern.exec(text);
-    while (match !== null) {
-      values.push(Number(match[1]));
-      match = pattern.exec(text);
-    }
-    if (values.length > 0) {
-      return { value: values.reduce((sum, value) => sum + value, 0), name };
-    }
-  }
-  return { value: 0, name: null };
-};
-
 const metricSpecs = {
   submit: ["tx_count_total", "tx_count"],
   accept: ["validation_accept_count_total", "validation_accept_count"],
@@ -850,38 +981,6 @@ const requiredStageMetricKeys = [
 
 const metricMissingKeys = (counters, keys = requiredStageMetricKeys) =>
   keys.filter((key) => counters.metricNames?.[key] === null);
-
-/**
- * Extracts Prometheus histogram series for machine-readable report artifacts.
- */
-const extractHistogram = (text, baseName) => {
-  const escaped = escapeRegex(baseName);
-  const count = extractMetricValue(text, [`${baseName}_count`]);
-  const sum = extractMetricValue(text, [`${baseName}_sum`]);
-  const buckets = [];
-  const re = new RegExp(
-    `^${escaped}_bucket\\{([^}]*)\\}\\s+([0-9]+(?:\\.[0-9]+)?)$`,
-    "gm",
-  );
-  let match = re.exec(text);
-  while (match !== null) {
-    const labels = match[1];
-    const le = labels
-      .split(",")
-      .map((part) => part.trim())
-      .find((part) => part.startsWith("le="));
-    buckets.push({
-      le: le === undefined ? null : le.slice(3).replace(/^"|"$/g, ""),
-      value: Number(match[2]),
-    });
-    match = re.exec(text);
-  }
-  return {
-    count: count.name === null ? null : count.value,
-    sum: sum.name === null ? null : sum.value,
-    buckets,
-  };
-};
 
 /**
  * Fetches and parses the counters used by the workload monitor.
@@ -1016,32 +1115,6 @@ const fetchTxStatus = async (txIdHex) => {
     }
   }
   return "unknown";
-};
-
-/**
- * Prebuilds a dependent transaction chain for the stress workload.
- */
-const prebuildChain = (chain, length, feeConfig) => {
-  /** @type {PrebuiltTx[]} */
-  const txs = [];
-  let currentOutRef = chain.spendOutRefCbor;
-  let currentOutputCbor = chain.outputCbor;
-  for (let i = 0; i < length; i++) {
-    const tx = buildNativeSignedOneToOne({
-      spendOutRefCbor: currentOutRef,
-      signer: chain.signer,
-      inputOutputCbor: currentOutputCbor,
-      minFeeA: feeConfig.minFeeA,
-      minFeeB: feeConfig.minFeeB,
-    });
-    txs.push({
-      txHex: tx.txHex,
-      txIdHex: tx.txId.toString("hex"),
-    });
-    currentOutRef = tx.nextOutRef;
-    currentOutputCbor = tx.outputCbor;
-  }
-  return txs;
 };
 
 /**
@@ -1266,89 +1339,6 @@ const ensureFanoutCandidates = async ({ candidates, minFeeA, minFeeB }) => {
   };
 };
 
-const makeChainCursors = (chains) =>
-  chains.map((chain, chainIndex) => ({
-    chain,
-    chainIndex,
-    nextIndex: 0,
-    stopped: false,
-    async takeNextTx() {
-      if (this.stopped || this.nextIndex >= this.chain.txs.length) {
-        return null;
-      }
-      const tx = this.chain.txs[this.nextIndex];
-      const txIndex = this.nextIndex;
-      this.nextIndex += 1;
-      return {
-        ...tx,
-        chainIndex: this.chainIndex,
-        txIndex,
-      };
-    },
-  }));
-
-const remainingTxCount = (cursors) =>
-  cursors.reduce(
-    (acc, cursor) =>
-      acc +
-      (cursor.stopped
-        ? 0
-        : (cursor.entry?.rowCount ?? cursor.chain.txs.length) -
-          cursor.nextIndex),
-    0,
-  );
-
-const takeNextTx = async (cursor) => await cursor.takeNextTx();
-
-const createStageStats = ({ name, mode, targetRateTps = null }) => ({
-  name,
-  mode,
-  targetRateTps,
-  startedAtMs: Date.now(),
-  endedAtMs: null,
-  counterStart: null,
-  counterEnd: null,
-  drainCounters: null,
-  drain: null,
-  logicalSubmitAttempts: 0,
-  physicalSubmitAttempts: 0,
-  submitted: 0,
-  submitErrors: 0,
-  submitStatusCounts: {},
-  physicalSubmitStatusCounts: {},
-  queueFullResponses: 0,
-  firstErrors: [],
-  submitLatencyMs: [],
-  submitAttemptLatencyMs: [],
-  statusLatencyMs: [],
-  scheduleLagMs: [],
-  scheduledStarts: 0,
-  sentStarts: 0,
-  missedStarts: 0,
-  inFlightHighWater: 0,
-  bytesSent: 0,
-  statusSampleTxIds: [],
-  submittedAtByTxId: new Map(),
-  cursorPositionsAtStart: null,
-  cursorPositionsAtEnd: null,
-  phase1StageACheckpoint: null,
-});
-
-const snapshotCursorPositions = (cursors) =>
-  cursors.map((cursor) => ({
-    chainIndex: cursor.chainIndex,
-    nextIndex: cursor.nextIndex,
-  }));
-
-const cursorPositionDigest = (positions) =>
-  createHash("sha256")
-    .update(
-      positions
-        .map(({ chainIndex, nextIndex }) => `${chainIndex}|${nextIndex}`)
-        .join("\n"),
-    )
-    .digest("hex");
-
 const schedulePhase1StageACheckpoint = ({ stage, cursors }) => {
   if (!phase1StageAWindowGateEnabled) {
     return null;
@@ -1560,21 +1550,6 @@ const runClosedLoopStage = async ({
   return stage;
 };
 
-const findAvailableCursor = (cursors, busy, startIndex) => {
-  for (let offset = 0; offset < cursors.length; offset += 1) {
-    const index = (startIndex + offset) % cursors.length;
-    const cursor = cursors[index];
-    if (
-      !busy.has(cursor.chainIndex) &&
-      !cursor.stopped &&
-      cursor.nextIndex < (cursor.entry?.rowCount ?? cursor.chain.txs.length)
-    ) {
-      return { cursor, nextIndex: (index + 1) % cursors.length };
-    }
-  }
-  return null;
-};
-
 const runOpenLoopStage = async ({
   name,
   cursors,
@@ -1661,41 +1636,6 @@ const runOpenLoopStage = async ({
     aborted_corpus_exhausted: exhausted,
   });
   return stage;
-};
-
-const collectCalibrationRows = async (cursors, count) => {
-  const rows = [];
-  const busy = new Set();
-  let nextCursorIndex = 0;
-  while (rows.length < count) {
-    const selected = findAvailableCursor(cursors, busy, nextCursorIndex);
-    if (selected === null) {
-      break;
-    }
-    nextCursorIndex = selected.nextIndex;
-    const tx = await takeNextTx(selected.cursor);
-    if (tx !== null) {
-      // Calibration needs only the request body. Retaining parsed corpus rows
-      // multiplies heap use by every metadata string and output array.
-      rows.push(tx.txHex);
-    }
-  }
-  if (rows.length < count) {
-    throw new Error(
-      `no-op calibration needs ${count} corpus rows but only ${rows.length} were available`,
-    );
-  }
-  return rows;
-};
-
-const summarizeScheduleSlip = (values) => {
-  const summary = summarizeLatency(values);
-  return {
-    p50: summary.p50 ?? 0,
-    p95: summary.p95 ?? 0,
-    p99: summary.p99 ?? 0,
-    max: summary.max ?? 0,
-  };
 };
 
 const runNoOpCalibrationStage = async ({ cursors, targetRateTps }) => {
@@ -2009,56 +1949,6 @@ const startCounterMonitor = async (phaseNameRef) => {
   };
 };
 
-const createRuntimeSampler = () => {
-  const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
-  const gcDurations = [];
-  let observer = null;
-  try {
-    observer = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        gcDurations.push(entry.duration);
-      }
-    });
-    observer.observe({ entryTypes: ["gc"] });
-  } catch {
-    observer = null;
-  }
-  eventLoopDelay.enable();
-  const startElu = performance.eventLoopUtilization();
-  const startCpu = process.cpuUsage();
-  const startMemory = process.memoryUsage();
-  const startedAtMs = Date.now();
-
-  return {
-    stop() {
-      const endElu = performance.eventLoopUtilization(startElu);
-      const endCpu = process.cpuUsage(startCpu);
-      const endMemory = process.memoryUsage();
-      eventLoopDelay.disable();
-      if (observer !== null) {
-        observer.disconnect();
-      }
-      return {
-        startedAtMs,
-        endedAtMs: Date.now(),
-        eventLoopUtilization: endElu.utilization,
-        eventLoopDelayMs: {
-          min: eventLoopDelay.min / 1e6,
-          mean: eventLoopDelay.mean / 1e6,
-          p50: eventLoopDelay.percentile(50) / 1e6,
-          p95: eventLoopDelay.percentile(95) / 1e6,
-          p99: eventLoopDelay.percentile(99) / 1e6,
-          max: eventLoopDelay.max / 1e6,
-        },
-        cpuUsageMicros: endCpu,
-        memoryStart: startMemory,
-        memoryEnd: endMemory,
-        gcPauseMs: summarizeLatency(gcDurations),
-      };
-    },
-  };
-};
-
 const maybeStartPyroscope = async () => {
   if (!pyroscopeEnabled) {
     return { enabled: false };
@@ -2177,14 +2067,6 @@ const regularFilesUnder = (relativeDirectory) => {
   return files;
 };
 
-const updateFramedHash = (hash, relativePath, bytes) => {
-  const pathBytes = Buffer.from(relativePath);
-  const lengths = Buffer.allocUnsafe(12);
-  lengths.writeUInt32LE(pathBytes.length, 0);
-  lengths.writeBigUInt64LE(BigInt(bytes.length), 4);
-  hash.update(lengths).update(pathBytes).update(bytes);
-};
-
 const readSourceTreeIdentity = () => {
   const sourceFiles = [
     "../pnpm-lock.yaml",
@@ -2268,23 +2150,6 @@ const readGitMetadata = async () => {
     };
   }
 };
-
-const readRuntimeMetadata = async () => ({
-  nodeVersion: process.version,
-  platform: process.platform,
-  arch: process.arch,
-  hostname: os.hostname(),
-  cpuModel: os.cpus()[0]?.model ?? null,
-  cpuCount: os.cpus().length,
-  totalMemoryBytes: os.totalmem(),
-  freeMemoryBytes: os.freemem(),
-  loadAverage: os.loadavg(),
-  pid: process.pid,
-  argv: process.argv,
-  env: {
-    NODE_ENV: process.env.NODE_ENV ?? null,
-  },
-});
 
 const runClientSelfCheck = async () => {
   if (!clientSelfCheckEnabled) {
@@ -2383,61 +2248,6 @@ const runClientSelfCheck = async () => {
     );
   }
   return result;
-};
-
-const summarizeCursorContinuity = (stage, checkpoint) => {
-  const start = stage.cursorPositionsAtStart;
-  const middle = checkpoint?.cursorPositions;
-  const end = stage.cursorPositionsAtEnd;
-  if (!Array.isArray(start) || !Array.isArray(middle) || !Array.isArray(end)) {
-    return {
-      passed: false,
-      reason: "cursor position snapshot missing",
-    };
-  }
-  if (start.length !== middle.length || middle.length !== end.length) {
-    return {
-      passed: false,
-      reason: `cursor count changed start=${start.length} checkpoint=${middle.length} end=${end.length}`,
-    };
-  }
-  for (let index = 0; index < start.length; index += 1) {
-    const initial = start[index];
-    const observed = middle[index];
-    const final = end[index];
-    if (
-      initial.chainIndex !== observed.chainIndex ||
-      observed.chainIndex !== final.chainIndex
-    ) {
-      return {
-        passed: false,
-        reason: `cursor chain order changed at ordinal=${index}`,
-      };
-    }
-    if (
-      initial.nextIndex > observed.nextIndex ||
-      observed.nextIndex > final.nextIndex
-    ) {
-      return {
-        passed: false,
-        reason: `cursor regressed chain=${initial.chainIndex} start=${initial.nextIndex} checkpoint=${observed.nextIndex} end=${final.nextIndex}`,
-      };
-    }
-  }
-  const total = (positions) =>
-    positions.reduce((sum, position) => sum + position.nextIndex, 0);
-  return {
-    passed: true,
-    reason: null,
-    cursorCount: start.length,
-    startConsumedRows: total(start),
-    checkpointConsumedRows: total(middle),
-    endConsumedRows: total(end),
-    startPositionsSha256: cursorPositionDigest(start),
-    checkpointPositionsSha256: cursorPositionDigest(middle),
-    endPositionsSha256: cursorPositionDigest(end),
-    checkpointMode: "observer_only_no_cursor_mutation",
-  };
 };
 
 const buildPhase1StageAWindowGate = (stage) => {
@@ -2667,13 +2477,6 @@ const buildStageReport = (stage) => {
   };
 };
 
-const activeCursorCount = (cursors) =>
-  cursors.filter(
-    (cursor) =>
-      !cursor.stopped &&
-      cursor.nextIndex < (cursor.entry?.rowCount ?? cursor.chain.txs.length),
-  ).length;
-
 const assertCandidateCapacity = ({
   cursors,
   targetRateTps,
@@ -2734,16 +2537,6 @@ const estimateRequiredCorpusRows = () => {
   }
   return warmupRows + Math.ceil(targetAcceptedTps * measuredSec * 1.02);
 };
-
-const hasCounterActivity = (before, after) =>
-  [
-    "submit",
-    "accept",
-    "reject",
-    "commitBlock",
-    "commitBlockTx",
-    "mergeBlock",
-  ].some((key) => counterDelta(before, after, key) !== 0);
 
 const waitForCandidateCleanliness = async (label) => {
   const startedAt = Date.now();

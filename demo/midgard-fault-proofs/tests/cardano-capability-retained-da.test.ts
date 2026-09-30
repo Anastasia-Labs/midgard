@@ -1,32 +1,29 @@
-import { readFileSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import "node:fs";
+import "node:path";
+import "@al-ft/midgard-core";
+import "@al-ft/midgard-core/codec/forced";
+import "@al-ft/midgard-core/da-payload-envelope";
+import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-validation";
+import "effect";
+import "vitest";
+import "../src/transition-trace/index.js";
+import "./helpers/cardano-capability-retained-da.js";
+import "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 
 import {
   collectMidgardAttachedProgramEnvelopes,
-  computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardCekProgramMaterialDaEntry,
   decodeMidgardCekProgramMaterialSidecar,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
-  deriveMidgardTxFieldPreimages,
   encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardTxOutput,
   hashMidgardVersionedScript,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  reconstructMidgardTransaction,
-  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
-import {
-  computeMidgardForcedTxProofCommitment,
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { countedMachineTransactionChunkSteps } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -34,153 +31,14 @@ import {
   eventKeyFingerprint,
   reconstructDaPayload,
 } from "../src/transition-trace/index.js";
+import {
+  corpus,
+  expectedLabels,
+  recomputeCorpusIdentity,
+  reconstructAuthenticatedCanonicalTransactionFromFieldChunks,
+  verifyFixtureProgramMaterial,
+} from "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-retained-da.js";
-
-type BoundaryCorpusEntry = {
-  readonly label: string;
-  readonly transactionIdHex: string;
-  readonly transactionCommitmentHex: string;
-  readonly canonicalCborHex: string;
-  readonly canonicalMaterialSidecarCborHex?: string;
-  readonly sourceRawScriptAuditHash?: string;
-  readonly productionAdmission:
-    | "required"
-    | "diagnostic-synthetic-script-witnesses";
-  readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
-};
-
-const boundaryCorpusInput = (): string | URL => {
-  const override = process.env.MIDGARD_BOUNDARY_CORPUS_JSON;
-  if (override === undefined) {
-    return new URL(
-      "./fixtures/cardano-capability-p2-boundary-corpus-v1.json",
-      import.meta.url,
-    );
-  }
-  if (!isAbsolute(override)) {
-    throw new Error("MIDGARD_BOUNDARY_CORPUS_JSON must be an absolute path");
-  }
-  return override;
-};
-
-const corpus = JSON.parse(readFileSync(boundaryCorpusInput(), "utf8")) as {
-  readonly schema: string;
-  readonly entries: readonly BoundaryCorpusEntry[];
-};
-
-const expectedLabels = [
-  "balanced-nested-datum",
-  "balanced-nested-redeemer",
-  "maximum-constructor-datum-breadth",
-  "maximum-constructor-redeemer-breadth",
-  "maximum-inline-datum-blob",
-  "maximum-list-datum-breadth",
-  "maximum-list-redeemer-breadth",
-  "maximum-map-datum-breadth",
-  "maximum-map-redeemer-breadth",
-  "maximum-mint-and-native-policies",
-  "maximum-nested-value",
-  "maximum-observers-and-native-scripts",
-  "maximum-outputs",
-  "maximum-redeemers",
-  "maximum-reference-inputs",
-  "maximum-signers-and-witnesses",
-  "maximum-spend-inputs",
-  "mixed-size-balanced",
-] as const;
-
-const recomputeCorpusIdentity = (
-  canonicalCbor: Uint8Array,
-): {
-  readonly transactionIdHex: string;
-  readonly transactionCommitmentHex: string;
-} => {
-  const exactCanonicalCbor = Buffer.from(canonicalCbor);
-  const transaction =
-    decodeMidgardNativeTxFullFromCanonicalCbor(exactCanonicalCbor);
-  const source =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(exactCanonicalCbor);
-  return {
-    transactionIdHex: computeMidgardNativeTxId(transaction).toString("hex"),
-    transactionCommitmentHex:
-      computeMidgardNativeTxProofCommitment(source).toString("hex"),
-  };
-};
-
-const verifyFixtureProgramMaterial = ({
-  canonicalCbor,
-  payload,
-}: {
-  readonly canonicalCbor: Uint8Array;
-  readonly payload: SDK.DaPayload;
-}) => {
-  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
-  const envelopes = collectMidgardAttachedProgramEnvelopes(transaction);
-  const material = payload.block_body.cek_program_material.map(
-    ([rootHex, valueHex]) =>
-      decodeMidgardCekProgramMaterialDaEntry(
-        Buffer.from(rootHex, "hex"),
-        Buffer.from(valueHex, "hex"),
-      ),
-  );
-  return verifyMidgardCekProgramMaterialBundle(envelopes, material);
-};
-
-const reconstructAuthenticatedCanonicalTransactionFromFieldChunks = (
-  canonicalCbor: Uint8Array,
-  sourceKind: "normal" | "forced",
-): {
-  readonly transactionIdHex: string;
-  readonly transactionCommitmentHex: string;
-  readonly revealStepCount: number;
-  readonly maximumChunkBytes: number;
-  readonly reconstructed: Buffer;
-} => {
-  const exactCanonicalCbor = Buffer.from(canonicalCbor);
-  const transaction = (
-    sourceKind === "forced"
-      ? decodeMidgardForcedTxFullFromCanonicalCbor
-      : decodeMidgardNativeTxFullFromCanonicalCbor
-  )(exactCanonicalCbor);
-  const transactionId = computeMidgardNativeTxId(transaction);
-  const source = (
-    sourceKind === "forced"
-      ? deriveMidgardForcedTxProofSourceFromCanonicalCbor
-      : deriveMidgardNativeTxProofSourceFromCanonicalCbor
-  )(exactCanonicalCbor);
-  const transactionCommitment = (
-    sourceKind === "forced"
-      ? computeMidgardForcedTxProofCommitment
-      : computeMidgardNativeTxProofCommitment
-  )(source);
-  // §4 authenticates a field once, over its whole preimage, against the hash the
-  // compact structure carries — which is what `reconstructMidgardTransaction`
-  // does for all nine. The retired counted chain verified per-item chunk openings
-  // here instead; §4 leaves nothing for such an opening to be checked against.
-  const fields = deriveMidgardTxFieldPreimages(exactCanonicalCbor, sourceKind);
-  // The machine's own counted trace is still what a dispute step walks, so its
-  // step count and widest chunk stay measured here. They are trace measurements,
-  // not publication claims (see `countedMachineFieldChunkSteps`).
-  const chunks = countedMachineTransactionChunkSteps(
-    exactCanonicalCbor,
-    sourceKind,
-  );
-  return {
-    transactionIdHex: transactionId.toString("hex"),
-    transactionCommitmentHex: transactionCommitment.toString("hex"),
-    revealStepCount: chunks.length,
-    maximumChunkBytes: Math.max(
-      ...chunks.map(({ chunkProof }) => chunkProof.chunk.length),
-    ),
-    reconstructed: reconstructMidgardTransaction({
-      sourceKind,
-      transactionId,
-      transactionCommitment,
-      source,
-      fieldPreimages: fields.map((field) => field.preimageCbor),
-    }),
-  };
-};
 
 describe("Cardano capability P2 production retained-DA boundary", () => {
   it("strictly authenticates every established maximum before bounded field/item chunk reconstruction", async () => {

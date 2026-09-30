@@ -1,0 +1,134 @@
+import { createHash } from "node:crypto";
+
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type TxSigned } from "@lucid-evolution/lucid";
+
+import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.js";
+import {
+  actionKind,
+  refresh,
+  stateForJournal,
+} from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
+import {
+  admittedPermits,
+  journalPermits,
+  type PermitState,
+  WORKFLOW_FUNDING_RESERVATION_PERMIT,
+  type WorkflowFundingReservationPermit,
+  WorkflowFundingReservationUnavailableError,
+} from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+
+export const bindWorkflowFundingReservationJournal = <Journal extends object>({
+  journal,
+  permit,
+}: {
+  readonly journal: Journal;
+  readonly permit: WorkflowFundingReservationPermit;
+}): Journal => {
+  const state = admittedPermits.get(permit);
+  if (
+    permit.permitVersion !== WORKFLOW_FUNDING_RESERVATION_PERMIT ||
+    state === undefined
+  ) {
+    throw new Error("production funding reservation permit was not admitted");
+  }
+  if (journalPermits.has(journal)) {
+    throw new Error(
+      "workflow journal already has funding reservation authority",
+    );
+  }
+  if (state.boundJournal !== undefined) {
+    throw new Error(
+      "production funding reservation permit is already bound to a workflow journal",
+    );
+  }
+  state.boundJournal = journal;
+  journalPermits.set(journal, state);
+  return journal;
+};
+
+export const assertFundingSubmissionAuthority = (state: PermitState): void => {
+  if (workflowActuationPermitIsReconciliationOnly(state.actuationPermit))
+    throw new Error(
+      "reconciliation-only funding authority cannot spend or sign",
+    );
+};
+
+export const beginWorkflowFundingReservationAction = async ({
+  journal,
+  action,
+}: {
+  readonly journal: object;
+  readonly action: FraudProofWorkflowAction;
+}): Promise<void> => {
+  const state = stateForJournal(journal);
+  if (state === undefined) return;
+  if (state.policy === undefined)
+    throw new Error("test-only funding permit cannot build transactions");
+  assertFundingSubmissionAuthority(state);
+  if ((await state.port.readAbandonmentHandoff()) !== null)
+    throw new Error(
+      "funding abandonment outcome awaits journal acknowledgment",
+    );
+  let staleInputs = false;
+  try {
+    await refresh(state);
+  } catch (error) {
+    if (!(error instanceof WorkflowFundingReservationUnavailableError))
+      throw error;
+    staleInputs = true;
+  }
+  if (
+    (staleInputs || state.snapshot.activeInputs.length === 0) &&
+    state.port.refreshIdle !== undefined
+  ) {
+    const refreshed = await state.port.refreshIdle({
+      expectedRevision: state.snapshot.revision,
+      releaseStaleInputs: state.idleReleaseAuthorized,
+    });
+    if (refreshed === null)
+      throw new WorkflowFundingReservationUnavailableError();
+    state.snapshot = parseStateSnapshot(state, refreshed);
+    await refresh(state);
+  } else if (staleInputs) {
+    throw new WorkflowFundingReservationUnavailableError();
+  }
+  assertFundingSubmissionAuthority(state);
+  if (state.snapshot.state !== "active")
+    throw new Error("production funding reservation is not active");
+  state.currentActionKind = actionKind(action);
+  state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
+  // The real builder selects from durable leased candidates; admission below
+  // derives the exact consumed subset from its signed transaction.
+  state.currentFundingOutRefs = Object.freeze(
+    state.snapshot.activeInputs
+      .filter(({ role }) => role === "funding")
+      .map(({ outRef }) => outRef),
+  );
+  state.currentCollateralOutRefs = Object.freeze(
+    state.snapshot.activeInputs
+      .filter(({ role }) => role === "collateral")
+      .map(({ outRef }) => outRef),
+  );
+};
+
+export const bodySha256 = (signed: TxSigned): string =>
+  createHash("sha256")
+    .update(Buffer.from(signed.toTransaction().body().to_cbor_hex(), "hex"))
+    .digest("hex");
+
+export const addAssets = (
+  totals: Map<string, bigint>,
+  assets: Readonly<Record<string, bigint>>,
+): void => {
+  for (const [unit, quantity] of Object.entries(assets)) {
+    totals.set(unit, (totals.get(unit) ?? 0n) + quantity);
+  }
+};
+
+export const isProtocolFundingContract = (contract: {
+  readonly role: string;
+}): boolean =>
+  contract.role === "protocol_state" || contract.role === "correction_lock";

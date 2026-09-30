@@ -3,6 +3,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { sourceFacetPaths } from "../../../scripts/lib/source-facets.mjs";
+
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const demoRoot = resolve(packageRoot, "..");
 const injectedTarget = process.argv[2];
@@ -43,7 +45,9 @@ const forbidden = [
 const listSourceFiles = async (target) => {
   const targetStat = await stat(target);
   if (targetStat.isFile()) {
-    return sourceExtensions.has(extname(target)) ? [target] : [];
+    return sourceExtensions.has(extname(target))
+      ? sourceFacetPaths(target)
+      : [];
   }
   const entries = await readdir(target, { withFileTypes: true });
   const nested = await Promise.all(
