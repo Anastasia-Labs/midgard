@@ -43,7 +43,8 @@ export async function readRuntimeConfiguration(processes: StackProcesses) {
 /**
  * Digest of what generation reads besides the deployment: the stack
  * configuration and the files it names. Ports and templates may change between
- * runs without changing the run intent.
+ * runs without changing the run intent. Release inputs are included so that
+ * changed measurements are checked against the saved release again.
  */
 export async function runtimeInputDigest(processes: StackProcesses) {
   const { config } = processes;
@@ -53,6 +54,7 @@ export async function runtimeInputDigest(processes: StackProcesses) {
     config.watcher.composeEnvFile,
     config.watcher.processTemplate,
     config.watcher.authorityTemplate,
+    ...(config.watcher.releaseInput ? [config.watcher.releaseInput] : []),
   ]) {
     const bytes = await readFile(path).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return Buffer.from("absent");
@@ -274,10 +276,18 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         ) {
           // One snapshot confirms a running stack without rebuilding it; a
           // stopped or unready one is started again, and only execute waits.
+          // Services started from other generated configuration are started
+          // again too, so Compose recreates what changed and node.env is rewritten.
           try {
+            const { inputDigest } = await readRuntimeConfiguration(processes);
+            if (
+              (record.data as { inputDigest?: unknown }).inputDigest !==
+              inputDigest
+            )
+              return { status: "retry" };
             const snapshot = await (await runtimeReadinessReader(processes))();
             if (snapshot !== undefined)
-              return { status: "complete", data: snapshot };
+              return { status: "complete", data: { inputDigest, ...snapshot } };
           } catch {
             // Missing or unreadable expectations restart the services too.
           }
@@ -404,7 +414,10 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           ["up", "-d", "midgard-node", "watcher-authority", "watcher"],
           runtime.compose,
         );
-        return confirmRuntimeReadiness(processes);
+        return {
+          inputDigest: runtime.inputDigest,
+          ...(await confirmRuntimeReadiness(processes)),
+        };
       },
     },
   ];

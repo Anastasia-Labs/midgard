@@ -138,9 +138,18 @@ Reference, deposit and withdrawal journals preserve submitted intents. The
 hub-oracle nonce transaction is recorded in the node's run state, with its
 signed bytes, before it is first submitted, and the node refuses to build a
 fresh nonce once that run state exists. A rerun therefore completes a nonce that
-landed, resubmits exactly the recorded bytes while their inputs are unspent, and
-stops, naming the transaction and the spent inputs, if another transaction spent
-them; it never builds a second nonce. Before repeating a transaction step,
+landed and resubmits exactly the recorded bytes while their inputs are unspent;
+it never builds a second nonce. It stops, naming the transaction, if another
+transaction spent those inputs (`SignedNonceConflictError`, with the spent
+inputs) or if the ledger rejects the recorded bytes while their inputs are
+unspent (`SignedNonceRejectedError`, with the ledger's reason, for example a
+fee that a protocol-parameter change made too small). Those bytes can never
+land, and rerunning the stack stops the same way. Either start again from a
+separate linked worktree (see fresh setup below), or, deliberately replacing the
+deployment identity, run the node's `prepare-hub-oracle-one-shot-nonce
+--run-state <runDirectory>/deployment-run-state.json --fresh-redeploy
+--fresh-redeploy-reason <reason>` yourself and then rerun the stack, which
+adopts the confirmed replacement nonce. Before repeating a transaction step,
 setup queries Cardano. It can reconstruct a deployment manifest when initialization confirmed
 before the success record was written, and it waits, preserving the data, when
 a finalized initialization is no longer at the Cardano tip. An ambiguous
@@ -149,23 +158,28 @@ before their first send and reused after a lost response.
 
 A controller lock prevents two runs against one node directory, and a command
 lock allows one stack command at a time. Interrupting the controller (Ctrl-C or
-kill) ends an in-flight child command at its next output line, which releases
-both locks. A child blocked without output survives the controller and keeps
-the command lock, and through the inherited controller-lock descriptor it keeps
-the controller lock too, so a rerun is refused until that child exits. The
-rerun's Cardano and journal reconciliation then prevents duplicate
-transactions.
+kill) releases the controller lock; child commands do not inherit its
+descriptor. An in-flight child command ends at its next output line, which
+releases the command lock. A child blocked without output survives the
+controller and keeps the command lock. A rerun then starts, but its first stack
+command does not run: it stops with `CommandNotStartedError` ("another stack
+command holds" the lock) and leaves the journal record as it was, until that
+child exits. The rerun's Cardano and journal reconciliation then prevents
+duplicate transactions.
 
 A run is bound to its identity: network, deployment profile, node and run
 directories, wallet seeds, DA members, transports, threshold, owners and
 cosigner, the watcher record, rollback, prover and availability keys, and the
 release signer and program commitments (or the existing signed release
 artifacts). Changing any of these stops a resume. Timeouts, journey size,
-budgets, ports, templates and the watcher bearer may change between runs. The
-deployment and local storage identities are checked on restart. Corrupt
-records, changed identity or mismatched storage stop without resetting
-anything. No command uses volume deletion, database wipes or fresh-redeploy
-flags. Preserve the run directory, signing keys, `.env` and service volumes.
+budgets, ports, templates and the watcher bearer may change between runs. When
+a change reaches the generated service configuration, the rerun regenerates it,
+rewrites the node environment and runs Compose `up` again, which recreates the
+containers whose configuration changed. The deployment and local storage
+identities are checked on restart. Corrupt records, changed identity or
+mismatched storage stop without resetting anything. No stack command uses
+volume deletion, database wipes or fresh-redeploy flags. Preserve the run
+directory, signing keys, `.env` and service volumes.
 
 Fresh setup requires fresh local storage: a Postgres volume that was never used
 or was only migrated, with no deployment rows (the migrations' own tables and

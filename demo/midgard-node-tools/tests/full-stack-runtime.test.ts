@@ -206,22 +206,59 @@ describe("runtime services step", () => {
   it("confirms a completed run without rebuilding or restarting it", async () => {
     const { processes, services, state } = await stack();
     state.nodeStarted = true;
+    const inputDigest = await runtimeInputDigest(processes);
     const result = await services.reconcile({
       status: "complete",
       attempts: 1,
-      data: {},
+      data: { inputDigest },
     });
-    expect(result.status).toBe("complete");
+    expect(result).toMatchObject({ status: "complete", data: { inputDigest } });
+    expect(processes.calls).toEqual([]);
+  });
+  it("starts services again after their generated configuration changed", async () => {
+    const { directory, processes, services, configuration } = await stack();
+    const started = await services.execute(undefined);
+    expect(
+      await services.reconcile({
+        status: "complete",
+        attempts: 1,
+        data: started,
+      }),
+    ).toMatchObject({ status: "complete" });
+    await writeFile(
+      join(directory, "watcher.env"),
+      `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\nOTHER=1\n`,
+    );
+    const complete = { status: "complete" as const, attempts: 1 };
+    expect(
+      await configuration.reconcile({ ...complete, data: { compose: "c" } }),
+    ).toEqual({ status: "retry" });
+    // Regeneration saves the new digest; the running services still carry the old one.
+    const runtime = JSON.parse(
+      await readFile(join(directory, "run/runtime.json"), "utf8"),
+    );
+    await writeFile(
+      join(directory, "run/runtime.json"),
+      JSON.stringify({
+        ...runtime,
+        inputDigest: await runtimeInputDigest(processes),
+      }),
+    );
+    processes.calls.length = 0;
+    expect(await services.reconcile({ ...complete, data: started })).toEqual({
+      status: "retry",
+    });
     expect(processes.calls).toEqual([]);
   });
   it("restarts an unready completed run from one snapshot, without waiting out the timeout", async () => {
     const { processes, services } = await stack();
+    const data = { inputDigest: await runtimeInputDigest(processes) };
     processes.config.timeoutMs = 600_000;
     vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     try {
       // Waiting would need the fake clock to advance, so it would never settle.
       await expect(
-        services.reconcile({ status: "complete", attempts: 1, data: {} }),
+        services.reconcile({ status: "complete", attempts: 1, data }),
       ).resolves.toEqual({ status: "retry" });
     } finally {
       vi.useRealTimers();
@@ -246,6 +283,15 @@ describe("runtime services step", () => {
     expect(await configuration.reconcile(complete)).toEqual({
       status: "retry",
     });
+  });
+  it("counts the release inputs among the generation inputs, so a change is checked again", async () => {
+    const { directory, processes } = await stack();
+    const releaseInput = join(directory, "release-input.json");
+    processes.config.watcher.releaseInput = releaseInput;
+    await writeFile(releaseInput, '{"fundingProfiles":[]}');
+    const before = await runtimeInputDigest(processes);
+    await writeFile(releaseInput, '{"fundingProfiles":[{}]}');
+    expect(await runtimeInputDigest(processes)).not.toBe(before);
   });
   it("keeps a completed configuration and restores the host producer manifest", async () => {
     const { directory, processes, configuration } = await stack();
