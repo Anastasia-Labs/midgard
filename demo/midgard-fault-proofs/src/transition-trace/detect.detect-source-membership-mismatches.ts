@@ -13,6 +13,7 @@ import {
   type TransitionTraceDetection,
 } from "./detect.detect-count-faults.js";
 import { transitionTraceError } from "./errors.js";
+import { traceStepPhaseFault } from "./phase-band.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
@@ -91,11 +92,17 @@ export const detectEventToStepMismatches = async (
     const mapped = reconstruction.eventToStepByFingerprint.get(
       eventKeyFingerprint(step.event_key),
     );
-    if (
+    const mapMismatch =
       mapped === undefined ||
       mapped.value.step_index !== step.step_index ||
-      mapped.value.phase !== step.phase
-    ) {
+      mapped.value.phase !== step.phase;
+    // An e2s entry that agrees with the trace still proves the step
+    // misplaced when the step breaks its header phase band or its own event
+    // key's phase (the same EventToStepMismatch arm).
+    const phaseFault = mapMismatch
+      ? undefined
+      : traceStepPhaseFault(reconstruction.header, step);
+    if (mapMismatch || phaseFault !== undefined) {
       const mappedText =
         mapped === undefined
           ? "absent"
@@ -104,10 +111,12 @@ export const detectEventToStepMismatches = async (
         detection({
           reconstruction,
           kind: "eventToStepMismatch",
-          invariant: "event_to_step_matches_trace",
-          diagnostic: `Trace step ${step.step_index.toString()} maps event key ${eventKeyFingerprint(
-            step.event_key,
-          )}, but event_to_step is ${mappedText}.`,
+          invariant: phaseFault?.invariant ?? "event_to_step_matches_trace",
+          diagnostic:
+            phaseFault?.diagnostic ??
+            `Trace step ${step.step_index.toString()} maps event key ${eventKeyFingerprint(
+              step.event_key,
+            )}, but event_to_step is ${mappedText}.`,
           fault: await buildEventToStepMismatchFault({
             reconstruction,
             stepIndex: step.step_index,

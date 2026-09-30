@@ -51,6 +51,7 @@ export const buildDecodingBlockFixture = async ({
   decoyTransactionCount = 0,
   additionalTransactions = [],
   commitEventToStep = (entries) => entries,
+  orderEvents = (events) => events,
 }: {
   readonly operatorVkey: string;
   readonly startTime: bigint;
@@ -71,6 +72,11 @@ export const buildDecodingBlockFixture = async ({
   readonly commitEventToStep?: (
     entries: readonly SDK.DaPayloadEntry[],
   ) => readonly SDK.DaPayloadEntry[];
+  /**
+   * The order the trace steps the events in (subject first, then the L2
+   * transactions). The event_to_step entries follow the same order.
+   */
+  readonly orderEvents?: <T>(events: readonly T[]) => readonly T[];
 }): Promise<DecodingBlockFixture> => {
   const submitted = materializeMidgardForcedTxFromCanonical(subject.nativeTx);
   const canonicalCbor =
@@ -205,7 +211,7 @@ export const buildDecodingBlockFixture = async ({
   const transitionTrace: SDK.DaPayloadEntry[] = [];
   const eventToStep: SDK.DaPayloadEntry[] = [];
   const validationTraces: SDK.DaPayloadEntry[] = [];
-  for (const [stepIndex, event] of events.entries()) {
+  for (const [stepIndex, event] of orderEvents(events).entries()) {
     const step: SDK.TransitionStep = {
       schema_version: SDK.TRANSITION_STEP_SCHEMA_VERSION,
       step_index: BigInt(stepIndex),
