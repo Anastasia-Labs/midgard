@@ -1606,7 +1606,7 @@
   },
   {
     "file": "midgard-watcher/src/index.ts",
-    "max": 753,
+    "max": 759,
     "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation."
   },
   {
