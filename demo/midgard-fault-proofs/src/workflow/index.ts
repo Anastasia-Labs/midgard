@@ -19,6 +19,7 @@ export * from "./cursor-family-spec.js";
 export * from "./cursor-family-state.js";
 export * from "./da-hash-preimage.js";
 export * from "./deployment-manifest-binding.js";
+export * from "./detection-subject.js";
 export * from "./double-spend-adapter.js";
 export * from "./double-withdraw.js";
 export * from "./fabricated-deposit.js";

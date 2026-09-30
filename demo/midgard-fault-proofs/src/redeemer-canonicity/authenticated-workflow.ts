@@ -16,6 +16,11 @@ import {
 } from "../evidence/canonical-block-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
+  acceptedTransactionSubject,
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   prepareRedeemerCanonicityEvidence,
   REDEEMER_CANONICITY_FIELD_INDEX,
   type RedeemerCanonicityEvidence,
@@ -25,13 +30,14 @@ import {
 export const REDEEMER_CANONICITY_WORKFLOW =
   "midgard-redeemer-canonicity-production-workflow-v1" as const;
 
-export type RedeemerCanonicityDetection = Readonly<{
-  detectionId: string;
-  headerHash: string;
-  position: bigint;
-  source: "accepted" | "forced";
-  evidence: RedeemerCanonicityEvidence;
-}>;
+export type RedeemerCanonicityDetection = DetectionSubject &
+  Readonly<{
+    detectionId: string;
+    headerHash: string;
+    position: bigint;
+    source: "accepted" | "forced";
+    evidence: RedeemerCanonicityEvidence;
+  }>;
 
 /** Callback-free replay over authenticated L1 plus retained public DA bytes. */
 export const detectRedeemerCanonicityFromCanonicalBlock = (
@@ -59,6 +65,7 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
       if (!redeemerCanonicityEvidenceCloses(evidence)) return;
       found.push(
         Object.freeze({
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `redeemer-malformed:accepted:${transactionIndex.toString()}:${evidence.redeemerIndex.toString()}:${transaction.nodeTxId}`,
           headerHash: block.headerHash,
           position: BigInt(transactionIndex),
@@ -100,6 +107,7 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
       if (!redeemerCanonicityEvidenceCloses(evidence)) return;
       found.push(
         Object.freeze({
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `redeemer-malformed:forced:${forcedIndex.toString()}:${redeemerIndex.toString()}:${transaction.value.tx_id}`,
           headerHash: block.headerHash,
           position: BigInt(forcedIndex),

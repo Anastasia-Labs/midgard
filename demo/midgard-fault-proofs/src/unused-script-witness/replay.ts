@@ -24,6 +24,10 @@ import {
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
 import type { UnusedScriptWitnessArtifact } from "./actuator.js";
 import {
   prepareUnusedScriptWitnessEvidence,
@@ -141,6 +145,7 @@ export const detectUnusedScriptWitnessCanonicalViolations = async (
       .sort((left, right) => left - right)[0];
     if (unused === undefined) return;
     detections.push({
+      ...acceptedTransactionSubject(transaction.nodeTxId),
       detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${unused.toString()}`,
       headerHash: block.headerHash,
       violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
@@ -170,6 +175,7 @@ export const detectUnusedScriptWitnessCanonicalViolations = async (
     )
       return;
     detections.push({
+      ...forcedTransactionSubject(transaction.key),
       detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${scriptIndex.toString()}`,
       headerHash: block.headerHash,
       violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,

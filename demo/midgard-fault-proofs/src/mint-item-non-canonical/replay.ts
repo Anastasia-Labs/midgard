@@ -15,6 +15,7 @@ import {
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 import {
   type MintItemEvidence,
   prepareMintItemEvidence,
@@ -129,6 +130,7 @@ export const detectMintItemNonCanonicalCompleteReplay = (
 ): readonly CanonicalViolationDetection[] =>
   findMintItemNonCanonicalBlockEvidence(block).map(
     ({ transactionIndex, evidence }) => ({
+      ...verdictDetectionSubject(evidence.subject),
       detectionId: `mint-item-non-canonical:${transactionIndex}:${evidence.subject.transaction_id}:${evidence.itemIndex}`,
       headerHash: block.headerHash,
       violationId: "mint-item-non-canonical",

@@ -51,6 +51,7 @@ import {
   replayContextIdentity,
   requireReplayHistoricalCorpus,
 } from "./complete-replay.replay-context-identity.js";
+import { eventKeyCborSubject, subjectOf } from "./detection-subject.js";
 import { type HistoricalNativeScriptCorpus } from "./historical-native-script-corpus.js";
 import {
   assertReplayPrerequisiteCovered,
@@ -77,6 +78,7 @@ export const REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["redeemerCanonicity"],
   async (evidence) =>
     detectRedeemerCanonicityCompleteReplay(evidence).map((detection) => ({
+      ...subjectOf(detection),
       detectionId: detection.detectionId,
       headerHash: detection.headerHash,
       violationId: "redeemer-malformed",
@@ -319,6 +321,7 @@ export const createTransitionTraceCompleteCanonicalReplayFromRetainedHistory = (
     return replay.detections.map((detection, index) => ({
       violationId: "transition-trace",
       headerHash: evidence.headerHash,
+      ...eventKeyCborSubject(provenTransitionEventKeyCbor(detection)),
       detectionId: transitionTraceDetectionId(index, detection.kind),
       position: BigInt(index),
       provenTransitionEventKeyCbor: provenTransitionEventKeyCbor(detection),
@@ -341,6 +344,7 @@ export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     return replay.detections.map((detection, index) => ({
       violationId: "transition-trace",
       headerHash: evidence.headerHash,
+      ...eventKeyCborSubject(provenTransitionEventKeyCbor(detection)),
       detectionId: transitionTraceDetectionId(index, detection.kind),
       position: BigInt(index),
       provenTransitionEventKeyCbor: provenTransitionEventKeyCbor(detection),

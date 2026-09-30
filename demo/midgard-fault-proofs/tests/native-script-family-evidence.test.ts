@@ -68,6 +68,7 @@ import {
 import { prepareNativeScriptInvalidFromCanonicalEvidence } from "../src/native-script-invalid/prepare.js";
 import { deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
+import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import {
   createHistoricalNativeScriptHistorySource,
   createHistoricalNativeScriptProviderRoster,
@@ -519,6 +520,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       scriptIndex: prepared.scriptIndex,
     });
     const detection = {
+      ...BLOCK_SUBJECT,
       detectionId,
       headerHash: evidence.headerHash,
       violationId: SDK.NATIVE_SCRIPT_INVALID_VIOLATION_ID,
@@ -868,6 +870,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       inputIndex: prepared.badInputIndex,
     });
     const detection = {
+      ...BLOCK_SUBJECT,
       detectionId,
       headerHash: challenged.headerHash,
       violationId: SDK.MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,

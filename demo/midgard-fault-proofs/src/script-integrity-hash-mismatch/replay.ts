@@ -14,6 +14,7 @@ import {
 import { requireRetainedReplayPhase } from "../transition-trace/replay-terminal.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import {
   prepareScriptIntegrityHashMismatchEvidence,
@@ -41,6 +42,7 @@ export const scriptIntegrityHashMismatchDetectionFromEvidence = ({
   if (!scriptIntegrityHashMismatchEvidenceCloses(evidence)) return null;
   const transactionId = evidence.finding.subject.transaction_id;
   return Object.freeze({
+    ...verdictDetectionSubject(evidence.finding.subject),
     detectionId: `${SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID}:${source}:${position.toString()}:${transactionId}`,
     headerHash,
     violationId: SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID,

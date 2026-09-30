@@ -31,6 +31,11 @@ import {
 } from "../transition-trace/reconstruct.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
+  acceptedTransactionSubject,
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   prepareScriptIntegrityHashMissingEvidence,
   type ScriptIntegrityHashMissingEvidence,
   scriptIntegrityHashMissingFaultHolds,
@@ -39,17 +44,18 @@ import {
 export const SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID =
   "script-integrity-hash-missing" as const;
 
-export type ScriptIntegrityHashMissingReplayDetection = Readonly<{
-  detectionId: string;
-  headerHash: string;
-  violationId: typeof SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID;
-  position: bigint;
-  transactionId: string;
-  source: "accepted" | "forced";
-  direction: "wrongfulAcceptance" | "wrongfulRejection";
-  forcedIndex?: number;
-  diagnostic: string;
-}>;
+export type ScriptIntegrityHashMissingReplayDetection = DetectionSubject &
+  Readonly<{
+    detectionId: string;
+    headerHash: string;
+    violationId: typeof SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID;
+    position: bigint;
+    transactionId: string;
+    source: "accepted" | "forced";
+    direction: "wrongfulAcceptance" | "wrongfulRejection";
+    forcedIndex?: number;
+    diagnostic: string;
+  }>;
 
 export type ScriptIntegrityHashMissingAuthenticatedSource = Readonly<{
   header: SDK.Header;
@@ -153,6 +159,7 @@ export const detectScriptIntegrityHashMissingFromReconstruction = ({
     ) {
       detections.push(
         Object.freeze({
+          ...acceptedTransactionSubject(transaction.txId),
           detectionId: `${SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID}:accepted:${transactionIndex.toString()}:${transaction.txId}`,
           headerHash,
           violationId: SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID,
@@ -187,6 +194,7 @@ export const detectScriptIntegrityHashMissingFromReconstruction = ({
     if (direction === null) return;
     detections.push(
       Object.freeze({
+        ...forcedTransactionSubject(transaction.key),
         detectionId: `${SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${direction}`,
         headerHash,
         violationId: SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID,

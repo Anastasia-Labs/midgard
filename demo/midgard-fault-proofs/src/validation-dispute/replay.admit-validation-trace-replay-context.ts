@@ -43,6 +43,7 @@ import {
   type CompleteCanonicalReplayPredecessor,
   completeCanonicalReplayPredecessorEvidence,
 } from "../workflow/complete-replay.js";
+import { eventSubject } from "../workflow/detection-subject.js";
 import {
   type ReplayPrerequisiteFailure,
   replayPrerequisiteFailure,
@@ -444,6 +445,7 @@ export const admitValidationTraceReplayContext = async ({
   const detections = Object.freeze(
     material.filter(isInteractiveDisagreement).map((entry) =>
       Object.freeze({
+        ...eventSubject(Data.from(entry.eventKeyCbor, EventKey)),
         detectionId: replayDetectionId(entry),
         headerHash: current.headerHash,
         violationId: "validation-trace",

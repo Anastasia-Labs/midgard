@@ -16,10 +16,7 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { requireTransitionTraceEventAuthority } from "../transition-trace/l1-events.js";
-import {
-  type CanonicalViolationDetection,
-  classifyCanonicalBlockViolations,
-} from "./classification.js";
+import { classifyCanonicalBlockViolations } from "./classification.js";
 import {
   admitCompleteCanonicalReplayHistoricalCorpus,
   admitCompleteCanonicalReplayPredecessor,
@@ -42,6 +39,7 @@ import {
   HEX_32,
   MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
   PREDECESSOR_CONTEXT_REQUIRED,
+  type RecordedDetection,
 } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import { sealDecision } from "./header-classifier.create-header-classifier.js";
 import { resolveHistoricalNativeScriptCorpus } from "./historical-native-script-corpus.js";
@@ -105,7 +103,7 @@ export const classifyHeader = async ({
   }
   const launchScopeDigest = digest(classifier.launchScope);
   if (routed.kind === "observers_forbidden_on_untagged_network") {
-    const selected: CanonicalViolationDetection = {
+    const selected: RecordedDetection = {
       detectionId: routed.selected.detectionId,
       headerHash: routed.selected.headerHash,
       violationId: "observers-forbidden-on-untagged-network",
@@ -156,7 +154,7 @@ export const classifyHeader = async ({
         });
   }
   if (routed.kind === "mint_declared_asset_limit") {
-    const selected: CanonicalViolationDetection = {
+    const selected: RecordedDetection = {
       detectionId: routed.selected.detectionId,
       headerHash: routed.selected.headerHash,
       violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
@@ -205,7 +203,7 @@ export const classifyHeader = async ({
         });
   }
   if (routed.kind === "canonical_decodability") {
-    const selected: CanonicalViolationDetection = {
+    const selected: RecordedDetection = {
       detectionId: `${CANONICAL_DECODABILITY_VIOLATION_ID}:${routed.evidence.selected.transactionIndex.toString()}:${routed.evidence.selected.nodeTxId}:${routed.evidence.selected.fieldIndex.toString()}:${routed.evidence.selected.verdict.toString()}`,
       headerHash: routed.evidence.headerHash,
       violationId: CANONICAL_DECODABILITY_VIOLATION_ID,
@@ -254,7 +252,7 @@ export const classifyHeader = async ({
         });
   }
   if (routed.kind === "da_hash_preimage") {
-    const selected: CanonicalViolationDetection = {
+    const selected: RecordedDetection = {
       detectionId: `${DA_HASH_PREIMAGE_VIOLATION_ID}:${routed.plan.violation.index.toString()}:${routed.plan.violation.committedTxId}:${routed.plan.violation.verdict.toString()}`,
       headerHash: routed.evidence.headerHash,
       violationId: DA_HASH_PREIMAGE_VIOLATION_ID,
@@ -303,7 +301,7 @@ export const classifyHeader = async ({
         });
   }
   if (routed.kind === "field_preimage_length_mismatch") {
-    const selected: CanonicalViolationDetection = {
+    const selected: RecordedDetection = {
       detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${routed.evidence.position.toString()}:${routed.evidence.prepared.transactionId}:${routed.evidence.prepared.fieldIndex.toString()}:${routed.evidence.prepared.direction}`,
       headerHash: routed.evidence.prepared.headerHash,
       violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,
@@ -399,7 +397,7 @@ export const classifyHeader = async ({
     });
   }
   if (predecessorRequired && admittedReplayContext === undefined) {
-    const selected: CanonicalViolationDetection = {
+    const selected: RecordedDetection = {
       detectionId: `${PREDECESSOR_CONTEXT_REQUIRED}:0:${routed.evidence.header.prevHeaderHash}`,
       headerHash: routed.evidence.headerHash,
       violationId: PREDECESSOR_CONTEXT_REQUIRED,

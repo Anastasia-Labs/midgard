@@ -20,6 +20,10 @@ import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
 } from "../workflow/deployment-manifest-binding.js";
+import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
 import { defineFamily } from "../workflow/family-definition.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -98,6 +102,7 @@ export const detectFieldItemWidthIllegalCompleteReplay = (
           fieldItemWidthIsIllegal(fieldIndex, item.length)
             ? [
                 {
+                  ...acceptedTransactionSubject(transaction.nodeTxId),
                   detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID}:${transactionIndex.toString()}:${transactionId}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
                   headerHash: evidence.headerHash,
                   violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
@@ -152,6 +157,7 @@ export const detectFieldItemWidthIllegalCompleteReplay = (
       }
       return [
         {
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
           headerHash: evidence.headerHash,
           violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,

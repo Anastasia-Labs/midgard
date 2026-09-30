@@ -7,6 +7,7 @@ import "@lucid-evolution/lucid";
 import "../prepare-da-hash-preimage.js";
 import "../prepare-double-spend.js";
 import "../transition-trace/witnesses.js";
+import "../workflow/detection-subject.js";
 import "./artifact.js";
 import "./family.js";
 import "./replay.observer-order-invalid-raw-block-evidence-from-verified-payload.js";

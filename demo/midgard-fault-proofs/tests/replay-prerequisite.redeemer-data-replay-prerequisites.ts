@@ -15,10 +15,12 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { ADVISORY_VIOLATION_ID } from "./replay-prerequisite.complete-replay-proof-prerequisites.js";
 import { evidenceFor } from "./replay-prerequisite.complete-replay-proof-prerequisites.js";
 
-/** Normal transactions, the first carrying `redeemerData` in a spend redeemer. */
-const redeemerDataEvidence = async (redeemerData: string) => {
+/** Two normal transactions, the one at `carrier` carrying `redeemerData` in a
+ * spend redeemer and the other a canonical one. */
+const redeemerDataEvidence = async (redeemerData: string, carrier = 0) => {
   const redeemer = (data: string) =>
     encodeMidgardRedeemerWitnessItem({
       purpose: "Spend",
@@ -27,18 +29,15 @@ const redeemerDataEvidence = async (redeemerData: string) => {
       executionUnits: { memory: 1n, steps: 2n },
     });
   const block = await buildCanonicalBlockFixture({
-    transactions: [
+    transactions: [0, 1].map((index) =>
       buildFixtureTransaction({
-        spendInputs: [outRefCbor(0x31, 0n)],
-        fee: 1n,
-        redeemerWitnesses: [redeemer(redeemerData)],
+        spendInputs: [outRefCbor(0x31 + index, 0n)],
+        fee: BigInt(index + 1),
+        redeemerWitnesses: [
+          redeemer(index === carrier ? redeemerData : "d87980"),
+        ],
       }),
-      buildFixtureTransaction({
-        spendInputs: [outRefCbor(0x32, 0n)],
-        fee: 2n,
-        redeemerWitnesses: [redeemer("d87980")],
-      }),
-    ],
+    ),
   });
   const evidence = await evidenceFor(block);
   const decision =
@@ -66,46 +65,58 @@ describe("redeemer data replay prerequisites", () => {
     const { evidence, detections, fieldShape } =
       await redeemerDataEvidence("d8798101");
     expect(
-      detections.map(({ violationId, position }) => [violationId, position]),
-    ).toEqual([["redeemer-malformed", 0n]]);
+      detections.map(({ violationId, position, frontier }) => [
+        violationId,
+        position,
+        frontier,
+      ]),
+    ).toEqual([["redeemer-malformed", 0n, "accepted"]]);
     expect(() =>
       assertReplayPrerequisiteCovered(evidence, fieldShape(0), detections),
     ).not.toThrow();
-  });
-
-  it("refuses a redeemer-malformed finding for another transaction, header or frontier", async () => {
-    const { evidence, detections, fieldShape } =
-      await redeemerDataEvidence("d8798101");
-    const [finding] = detections;
-    // Another transaction of the same block.
+    // The finding precedes the second transaction, so it covers that too.
     expect(() =>
       assertReplayPrerequisiteCovered(evidence, fieldShape(1), detections),
+    ).not.toThrow();
+  });
+
+  it("orders a redeemer-malformed finding by its declared subject only", async () => {
+    const { evidence, detections, fieldShape } = await redeemerDataEvidence(
+      "d8798101",
+      1,
+    );
+    const [finding] = detections;
+    expect(finding).toMatchObject({ position: 1n, frontier: "accepted" });
+    // A fault at the second transaction cannot speak for the first.
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, fieldShape(0), detections),
     ).toThrow(CanonicalReplayPrerequisiteError);
+    // Neither the reported position nor the detection id moves the finding.
+    for (const relabelled of [
+      { ...finding!, position: 0n },
+      {
+        ...finding!,
+        detectionId: finding!.detectionId
+          .replace(":accepted:", ":forced:")
+          .replace(
+            evidence.transactions[1]!.nodeTxId,
+            evidence.transactions[0]!.nodeTxId,
+          ),
+      },
+    ]) {
+      expect(() =>
+        assertReplayPrerequisiteCovered(evidence, fieldShape(0), [relabelled]),
+      ).toThrow(CanonicalReplayPrerequisiteError);
+      expect(() =>
+        assertReplayPrerequisiteCovered(evidence, fieldShape(1), [relabelled]),
+      ).not.toThrow();
+    }
     for (const unrelated of [
       { ...finding!, headerHash: "99".repeat(32) },
-      { ...finding!, position: 1n },
-      // The same family's forced-frontier finding at the same ordinal.
-      {
-        ...finding!,
-        detectionId: finding!.detectionId.replace(":accepted:", ":forced:"),
-      },
-      // A finding naming another transaction at this ordinal.
-      {
-        ...finding!,
-        detectionId: finding!.detectionId.replace(
-          evidence.transactions[0]!.nodeTxId,
-          evidence.transactions[1]!.nodeTxId,
-        ),
-      },
-      // An unrelated direct family at the exact transaction.
-      {
-        ...finding!,
-        detectionId: "invalid-signature:0",
-        violationId: "invalid-signature",
-      },
+      { ...finding!, violationId: ADVISORY_VIOLATION_ID },
     ])
       expect(() =>
-        assertReplayPrerequisiteCovered(evidence, fieldShape(0), [unrelated]),
+        assertReplayPrerequisiteCovered(evidence, fieldShape(1), [unrelated]),
       ).toThrow(CanonicalReplayPrerequisiteError);
   });
 

@@ -9,6 +9,7 @@ import "../src/transition-trace/replay-terminal.js";
 import "../src/transition-trace/witnesses.js";
 import "../src/workflow/classification.js";
 import "../src/workflow/complete-replay.js";
+import "../src/workflow/detection-subject.js";
 import "../src/workflow/replay-prerequisite.js";
 import "./helpers/canonical-block-evidence-fixture.js";
 import "./support/native-script-decoding-emulator.js";

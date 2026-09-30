@@ -20,6 +20,7 @@ import {
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
+import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import {
   admitNativeInclusionTwoStepArtifact,
   NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
@@ -372,6 +373,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       },
     } as never;
     const detection = {
+      ...BLOCK_SUBJECT,
       detectionId: `zero-input:forced:0:${transactionId}`,
       headerHash: boundHeaderHash,
       violationId: "zero-input",

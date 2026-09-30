@@ -53,6 +53,7 @@ import {
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { requireComputationThreadToken } from "../src/step-support.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { forcedTransactionSubject } from "../src/workflow/detection-subject.js";
 import {
   computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
@@ -195,6 +196,7 @@ const setupScenario = async (
     rejectionReason: reason,
   });
   const prepared: PreparedMissingSignatureWrongfulRejection = {
+    ...forcedTransactionSubject(membership.key),
     detectionId: "test",
     violationId: "missing-signature-wrongful-rejection",
     position: 0n,

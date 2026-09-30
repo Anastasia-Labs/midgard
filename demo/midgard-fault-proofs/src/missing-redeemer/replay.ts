@@ -23,6 +23,11 @@ import {
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
+  acceptedTransactionSubject,
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   type AuthenticatedScriptPurpose,
   MISSING_REDEEMER_VIOLATION_ID,
   type MissingRedeemerEvidence,
@@ -49,13 +54,14 @@ export type MissingRedeemerArtifact = Readonly<{
   >;
 }>;
 export type MissingRedeemerCandidate = Readonly<{
-  detection: Readonly<{
-    detectionId: string;
-    headerHash: string;
-    violationId: typeof MISSING_REDEEMER_VIOLATION_ID;
-    position: bigint;
-    diagnostic: string;
-  }>;
+  detection: DetectionSubject &
+    Readonly<{
+      detectionId: string;
+      headerHash: string;
+      violationId: typeof MISSING_REDEEMER_VIOLATION_ID;
+      position: bigint;
+      diagnostic: string;
+    }>;
   artifact: MissingRedeemerArtifact;
 }>;
 
@@ -245,6 +251,7 @@ export const replayMissingRedeemer = async (
           });
           return {
             detection: {
+              ...acceptedTransactionSubject(transaction.nodeTxId),
               detectionId: `${MISSING_REDEEMER_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
               headerHash: block.headerHash,
               violationId: MISSING_REDEEMER_VIOLATION_ID,
@@ -336,6 +343,7 @@ export const replayMissingRedeemer = async (
         if (!missingRedeemerEvidenceCloses(evidence)) return null;
         return {
           detection: {
+            ...forcedTransactionSubject(transaction.key),
             detectionId: `${MISSING_REDEEMER_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
             headerHash: block.headerHash,
             violationId: MISSING_REDEEMER_VIOLATION_ID,

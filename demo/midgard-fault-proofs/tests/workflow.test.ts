@@ -15,6 +15,7 @@ import "../src/workflow/classification.js";
 import "../src/workflow/cli.js";
 import "../src/workflow/complete-replay.js";
 import "../src/workflow/deployment-manifest-binding.js";
+import "../src/workflow/detection-subject.js";
 import "../src/workflow/double-spend-adapter.js";
 import "../src/workflow/funding-reservation-permit.js";
 import "../src/workflow/journal.js";

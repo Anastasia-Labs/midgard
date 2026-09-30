@@ -14,6 +14,10 @@ import {
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import {
   prepareTransactionOutputEvidence,
@@ -63,6 +67,7 @@ export const detectTransactionOutputNonCanonicalCompleteReplay = (
           return prepared.decisiveFaultHolds
             ? [
                 {
+                  ...acceptedTransactionSubject(transactionId),
                   detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID}:${transactionIndex.toString()}:${transactionId}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
                   headerHash: evidence.headerHash,
                   violationId: TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID,
@@ -127,6 +132,7 @@ export const detectTransactionOutputNonCanonicalCompleteReplay = (
       if (!transactionOutputEvidenceCloses(prepared)) return [];
       return [
         {
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
           headerHash: evidence.headerHash,
           violationId: TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID,

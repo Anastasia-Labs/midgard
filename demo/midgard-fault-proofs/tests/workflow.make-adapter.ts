@@ -7,6 +7,7 @@ import {
 } from "../src/evidence/canonical-block-evidence.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
+import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalStore,
@@ -30,6 +31,8 @@ import {
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
 export const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
@@ -99,12 +102,38 @@ export const detection = (
   violationId = "double-spend",
   overrides: Partial<CanonicalViolationDetection> = {},
 ): CanonicalViolationDetection => ({
+  ...BLOCK_SUBJECT,
   detectionId: `${violationId}-0`,
   headerHash: evidence.headerHash,
   violationId,
   position: 0n,
   ...overrides,
 });
+
+/** Evidence whose authenticated trace has one normal step per transaction. */
+export const canonicalEvidenceWithSteps = async (
+  count: number,
+): Promise<readonly [CanonicalBlockEvidence, readonly string[]]> => {
+  const transactions = Array.from({ length: count }, (_, index) =>
+    buildFixtureTransaction({
+      spendInputs: [outRefCbor(0x40 + index, 0n)],
+      fee: 0n,
+    }),
+  );
+  const fixture = await buildCanonicalBlockFixture({ transactions });
+  return [
+    await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(fixture),
+      payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+      daProvenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "libp2p/peer-a",
+        grade: "security",
+      },
+    }),
+    transactions.map(({ txId }) => txId),
+  ];
+};
 
 type AdapterControls = {
   readonly submit?: FraudProofFamilyWorkflowAdapter["submit"];
