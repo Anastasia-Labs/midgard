@@ -181,6 +181,12 @@ export const finalizeMidgardCekObserverItems = (input: {
     ? summarizeMidgardCekListData(input.items)
     : summarizeMidgardCekMapData(input.items);
 
+/**
+ * The redeemer map is folded in descending purpose-frontier order: every
+ * select names a frontier index below `purposeBound`, which then drops to it.
+ * Pairs are prepended, so the finished map follows the frontier ascending,
+ * which is Cardano's (tag, index) ledger order.
+ */
 export type MidgardCekRedeemerContextControl = {
   readonly cursor: number;
   readonly mapItems: MidgardCekDataSequenceSummary;
@@ -188,17 +194,20 @@ export type MidgardCekRedeemerContextControl = {
   readonly activeRedeemerLeaf: Buffer;
   readonly activePurpose: MidgardCekDataSummary;
   readonly currentRedeemer: MidgardCekDataSummary;
+  readonly purposeBound: number;
 };
 
-export const initialMidgardCekRedeemerContextControl =
-  (): MidgardCekRedeemerContextControl => ({
-    cursor: 0,
-    mapItems: emptyMidgardCekDataPairSummary(),
-    activeScanHash: Buffer.alloc(0),
-    activeRedeemerLeaf: Buffer.alloc(0),
-    activePurpose: emptyMidgardCekDataSummary(),
-    currentRedeemer: emptyMidgardCekDataSummary(),
-  });
+export const initialMidgardCekRedeemerContextControl = (
+  purposeCount: number,
+): MidgardCekRedeemerContextControl => ({
+  cursor: 0,
+  mapItems: emptyMidgardCekDataPairSummary(),
+  activeScanHash: Buffer.alloc(0),
+  activeRedeemerLeaf: Buffer.alloc(0),
+  activePurpose: emptyMidgardCekDataSummary(),
+  currentRedeemer: emptyMidgardCekDataSummary(),
+  purposeBound: purposeCount,
+});
 
 export const encodeMidgardCekRedeemerContextControl = (
   control: MidgardCekRedeemerContextControl,
@@ -210,6 +219,7 @@ export const encodeMidgardCekRedeemerContextControl = (
     control.activeRedeemerLeaf,
     encodeMidgardCekDataSummary(control.activePurpose),
     encodeMidgardCekDataSummary(control.currentRedeemer),
+    BigInt(control.purposeBound),
   ]);
 
 export const hashMidgardCekRedeemerContextControl = (

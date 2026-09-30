@@ -75,8 +75,6 @@ validator main(
             )
           expect
             hash_cek_redeemer_context_control_v1(current) == context.redeemer_context_control_hash
-          expect
-            control.item_index == native.redeemer_count - current.cursor - 1
           expect leaf == current.active_redeemer_leaf
           current.active_scan_hash
         }

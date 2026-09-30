@@ -63,6 +63,7 @@ const redeemerControl = {
   activeRedeemerLeaf: Buffer.alloc(0),
   activePurpose: emptySummary,
   currentRedeemer: emptySummary,
+  purposeBound: 1,
 } as const;
 const contextPartsControl = {
   redeemerItems: emptySequence,

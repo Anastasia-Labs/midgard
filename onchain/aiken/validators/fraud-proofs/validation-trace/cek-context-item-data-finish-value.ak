@@ -78,6 +78,7 @@ validator main(
           } else {
             current.current_redeemer
           },
+          purpose_bound: current.purpose_bound,
         }
         let next_context = redeemers.context_successor(staged, next_redeemers)
         let next: Data = chain.ContextVerified {

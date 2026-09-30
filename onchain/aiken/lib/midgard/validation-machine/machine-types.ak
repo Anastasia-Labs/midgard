@@ -17,6 +17,10 @@ pub type ValidationOneStepWitnessV1 {
   claimed_successor: validation_trace_v1.ValidationMachineStateV1,
 }
 
+/// The redeemer map is folded in descending purpose-frontier order: every
+/// select names a frontier index below `purpose_bound`, which then drops to
+/// it. Pairs are prepended, so the finished map follows the frontier
+/// ascending, which is Cardano's (tag, index) ledger order.
 pub type CekRedeemerContextControlV1 {
   cursor: Int,
   map_items: cek_data_v1.DataSequenceSummaryV1,
@@ -24,6 +28,7 @@ pub type CekRedeemerContextControlV1 {
   active_redeemer_leaf: ByteArray,
   active_purpose: cek_data_v1.DataSummaryV1,
   current_redeemer: cek_data_v1.DataSummaryV1,
+  purpose_bound: Int,
 }
 
 pub type CekFinalContextControlV1 {

@@ -283,6 +283,7 @@ export const redeemerControlData = (
     bytes(control.activeRedeemerLeaf),
     summaryData(control.activePurpose),
     summaryData(control.currentRedeemer),
+    int(control.purposeBound),
   ]);
 
 export const finalContextControlData = (

@@ -729,7 +729,9 @@ fn verify_cek_redeemer_selection(
       Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> False
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) ->
         if next.stage == redeemer_item_proof_v1.stage_terminal {
-          let redeemer_context = initial_cek_redeemer_context_control_v1()
+          let redeemer_context = initial_cek_redeemer_context_control_v1(
+            native_control.purpose_count,
+          )
           and {
             current_matches,
             cek_context_successor_is_exact(
@@ -1400,8 +1402,11 @@ fn verify_cek_redeemer_data_step(
         hash_cek_redeemer_context_control_v1(control) == context_control.redeemer_context_control_hash,
         control.active_scan_hash == #"",
       }
+      // Selects walk the purpose frontier strictly downwards, so each
+      // purpose is selected at most once and the prepended map ends in
+      // frontier order. The item proof binds the item to that purpose.
       let membership_matches = and {
-        item_index == native_control.redeemer_count - control.cursor - 1,
+        purpose_frontier_index < control.purpose_bound,
         item_count == native_control.redeemer_count,
         validation_merkle_v1.verify_membership(
           native_control.redeemer_count,
@@ -1455,6 +1460,7 @@ fn verify_cek_redeemer_data_step(
                   item_control,
                 ),
                 active_redeemer_leaf: redeemer_leaf,
+                purpose_bound: purpose_frontier_index,
               },
               execution_cursor,
               completed_cpu,
@@ -1488,6 +1494,7 @@ fn verify_cek_redeemer_data_step(
                 ),
                 active_redeemer_leaf: redeemer_leaf,
                 active_purpose: purpose,
+                purpose_bound: purpose_frontier_index,
               },
               execution_cursor,
               completed_cpu,
@@ -1509,7 +1516,6 @@ fn verify_cek_redeemer_data_step(
         ),
         hash_cek_redeemer_context_control_v1(redeemer_control) == context_control.redeemer_context_control_hash,
         item_control.item_count == native_control.redeemer_count,
-        item_control.item_index == native_control.redeemer_count - redeemer_control.cursor - 1,
         script_proof_v1.redeemer_item_leaf_hash(
           item_control.item_index,
           item_control.item_commitment,
@@ -1549,6 +1555,7 @@ fn verify_cek_redeemer_data_step(
                 active_redeemer_leaf: #"",
                 active_purpose: empty_data_summary_v1(),
                 current_redeemer: next_current,
+                purpose_bound: redeemer_control.purpose_bound,
               }
             }
           } else {

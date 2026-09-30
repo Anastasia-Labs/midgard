@@ -69,8 +69,10 @@ validator main(
         expect
           hash_cek_redeemer_context_control_v1(control) == staged.context.redeemer_context_control_hash
         expect control.active_scan_hash == #""
+        // Selects walk the purpose frontier strictly downwards; the item
+        // proof binds the item to the selected purpose.
         expect
-          index == native.redeemer_count - control.cursor - 1 && count == native.redeemer_count
+          purpose_frontier < control.purpose_bound && count == native.redeemer_count
         let leaf = script_proof_v1.redeemer_item_leaf_hash(index, commitment)
         expect
           validation_merkle_v1.verify_membership(
@@ -103,6 +105,7 @@ validator main(
           total_length: length,
           item_commitment: commitment,
           redeemer_leaf: leaf,
+          purpose_frontier,
           purpose_kind,
           purpose_index,
           script_hash,

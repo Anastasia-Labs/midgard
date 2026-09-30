@@ -27,8 +27,8 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardExecutionUnits, MidgardRedeemerWitness,
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
   MidgardTxInput, MidgardTxOutput, MidgardValue, MidgardVersionedScript,
-  NativeCardanoScript, PlutusV3Script, PubKeyCredential, RewardRedeemer,
-  SpendRedeemer, native_tx_version_v1,
+  MintRedeemer, NativeCardanoScript, PlutusV3Script, PubKeyCredential,
+  RewardRedeemer, SpendRedeemer, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
@@ -819,8 +819,8 @@ test cross_language_cek_context_control_vectors() {
   and {
     vm_witness.encode_cek_context_control_v1(context) == #"981900035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa5600000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000040834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
     vm_witness.hash_cek_redeemer_context_control_v1(
-      vm_witness.initial_cek_redeemer_context_control_v1(),
-    ) == #"c56f80a85b46a479d9a766ce7050e825484f42da6453a3ec217afc6b03d5f938",
+      vm_witness.initial_cek_redeemer_context_control_v1(0),
+    ) == #"16d11fb592d3cad09ef73bd20c31a8d35a0f502c4eeeddf00ab3e8d037bb6a3f",
   }
 }
 
@@ -986,7 +986,9 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
       tail_control,
     ),
   }
-  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1(
+    native_control.purpose_count,
+  )
   let selected_context = vm_machine_types.CekContextControlV1 {
     ..initial_context,
     stage: 1,
@@ -1128,7 +1130,7 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     subject: key,
     redeemer_leaf: h_c,
     redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
-      vm_witness.initial_cek_redeemer_context_control_v1(),
+      vm_witness.initial_cek_redeemer_context_control_v1(control.purpose_count),
     ),
     execution_memory_limit: 10,
     execution_cpu_limit: 20,
@@ -2048,10 +2050,11 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     False,
   )
   let active_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
-    ..vm_witness.initial_cek_redeemer_context_control_v1(),
+    ..vm_witness.initial_cek_redeemer_context_control_v1(1),
     active_scan_hash: cek_data_scan_v1.hash_control_v1(scan),
     active_redeemer_leaf: redeemer_leaf,
     active_purpose: purpose_summary,
+    purpose_bound: 0,
   }
   let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(9),
@@ -2075,6 +2078,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     active_redeemer_leaf: #"",
     active_purpose: cek_data_scan_v1.empty_result_v1(),
     current_redeemer: completed_scan.result,
+    purpose_bound: 0,
   }
   let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
@@ -2133,7 +2137,9 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     redeemer_peaks: redeemer_frontier.peaks,
     purpose_peaks: purpose_frontier.peaks,
   }
-  let initial_redeemers = vm_witness.initial_cek_redeemer_context_control_v1()
+  let initial_redeemers = vm_witness.initial_cek_redeemer_context_control_v1(
+    native_control.purpose_count,
+  )
   // The active redeemer scan is a bounded `redeemer_item_proof_v1` control, not
   // the superseded free-standing `cek_data_scan_v1` control:
   // `verify_cek_redeemer_data_step` seeds `active_scan_hash` with
@@ -2168,6 +2174,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     active_scan_hash: redeemer_item_proof_v1.hash_control_v1(item_control),
     active_redeemer_leaf: redeemer_leaf,
     active_purpose: purpose_summary,
+    purpose_bound: 0,
   }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
@@ -2235,7 +2242,262 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
   )
 }
 
-test cek_context_finalize_seeds_the_exact_semantic_context_application() {
+// Redeemer ledger order. The script-context redeemer map is (tag, index)
+// ascending, which is the purpose frontier's order, so selects walk the
+// frontier strictly downwards and prepend. The fixture puts the two
+// redeemers in the witness list in the reverse of that order: item 0 is the
+// mint redeemer (frontier index 1), item 1 the spend redeemer (frontier
+// index 0).
+fn two_purpose_spend_redeemer() -> MidgardRedeemerWitness {
+  MidgardRedeemerWitness {
+    purpose: SpendRedeemer,
+    index: 0,
+    redeemer_cbor: cbor.serialise(builtin.i_data(0)),
+    execution_units: MidgardExecutionUnits { memory: 10, steps: 20 },
+  }
+}
+
+fn two_purpose_mint_redeemer() -> MidgardRedeemerWitness {
+  MidgardRedeemerWitness {
+    purpose: MintRedeemer,
+    index: 0,
+    redeemer_cbor: cbor.serialise(builtin.i_data(1)),
+    execution_units: MidgardExecutionUnits { memory: 10, steps: 20 },
+  }
+}
+
+fn two_purpose_spend_subject() -> ByteArray {
+  encode_midgard_tx_input(MidgardTxInput { tx_id: h_b, output_index: 0 })
+}
+
+fn two_purpose_summary(purpose_frontier_index: Int) -> cek_data_v1.DataSummaryV1 {
+  expect Some(summary) = if purpose_frontier_index == 0 {
+    script_context_v1.script_purpose_summary_v1(
+      0,
+      h_28_a,
+      two_purpose_spend_subject(),
+      False,
+    )
+  } else {
+    script_context_v1.script_purpose_summary_v1(1, h_28_b, h_28_b, False)
+  }
+  summary
+}
+
+/// The control after the mint redeemer (frontier index 1) was selected and
+/// folded first, as ledger order requires.
+fn two_purpose_after_mint() -> vm_machine_types.CekRedeemerContextControlV1 {
+  vm_machine_types.CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    cursor: 1,
+    map_items: cek_data_v1.prepend_data_pair_summary_v1(
+      two_purpose_summary(1),
+      cek_data_v1.semantic_data_summary_v1(builtin.i_data(1)),
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    purpose_bound: 1,
+  }
+}
+
+/// The control after the spend redeemer (frontier index 0) was selected and
+/// folded first, as the retired witness-list order did.
+fn two_purpose_after_spend() -> vm_machine_types.CekRedeemerContextControlV1 {
+  let redeemer = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
+  vm_machine_types.CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    cursor: 1,
+    map_items: cek_data_v1.prepend_data_pair_summary_v1(
+      two_purpose_summary(0),
+      redeemer,
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    current_redeemer: redeemer,
+    purpose_bound: 0,
+  }
+}
+
+fn two_purpose_redeemer_select(
+  control: vm_machine_types.CekRedeemerContextControlV1,
+  item_index: Int,
+  purpose_frontier_index: Int,
+) -> Bool {
+  let spend = two_purpose_spend_redeemer()
+  let mint = two_purpose_mint_redeemer()
+  let witness_list = [mint, spend]
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      redeemer_tx_wits: witness_list,
+    },
+  }
+  let subject = two_purpose_spend_subject()
+  let redeemer_leaves = [
+    script_proof_v1.redeemer_leaf_hash(0, mint),
+    script_proof_v1.redeemer_leaf_hash(1, spend),
+  ]
+  let purpose_leaves = [
+    script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, subject),
+    script_proof_v1.purpose_leaf_hash(1, 0, h_28_b, h_28_b),
+  ]
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
+    ..cek_context_native_control_fixture(tx),
+    redeemer_count: 2,
+    redeemer_peaks: validation_merkle_v1.build_frontier(redeemer_leaves).peaks,
+    purpose_count: 2,
+    purpose_peaks: validation_merkle_v1.build_frontier(purpose_leaves).peaks,
+    execution_count: 2,
+    execution_peaks: validation_merkle_v1.build_frontier([h_a, h_b]).peaks,
+    execution_cursor: 2,
+  }
+  expect Some(redeemer) = list.at(witness_list, item_index)
+  expect Some(redeemer_leaf) = list.at(redeemer_leaves, item_index)
+  expect Some(redeemer_sibling) = list.at(redeemer_leaves, 1 - item_index)
+  expect Some(purpose_sibling) = list.at(
+    purpose_leaves,
+    1 - purpose_frontier_index,
+  )
+  let purpose_kind = purpose_frontier_index
+  let script_hash = if purpose_frontier_index == 0 {
+    h_28_a
+  } else {
+    h_28_b
+  }
+  let purpose_subject = if purpose_frontier_index == 0 {
+    subject
+  } else {
+    h_28_b
+  }
+  let item_cbor = encode_midgard_redeemer_witness(redeemer)
+  let item_commitment = bounded_item_v1.from_bytes(8, item_index, item_cbor)
+  expect Some(redeemer_tag) = vm_shared.redeemer_tag_for_purpose_kind_v1(
+    purpose_kind,
+  )
+  let item_control = redeemer_item_proof_v1.initial_control_v1(
+    redeemer_item_proof_v1.mode_data,
+    item_index,
+    2,
+    bytearray.length(item_cbor),
+    item_commitment,
+    redeemer_tag,
+    0,
+  )
+  let active_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
+    ..control,
+    active_scan_hash: redeemer_item_proof_v1.hash_control_v1(item_control),
+    active_redeemer_leaf: redeemer_leaf,
+    active_purpose: two_purpose_summary(purpose_frontier_index),
+    purpose_bound: purpose_frontier_index,
+  }
+  expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
+    [],
+    False,
+  )
+  let context_control = vm_machine_types.CekContextControlV1 {
+    ..empty_cek_context_control_fixture(9),
+    subject,
+    redeemer_leaf: script_proof_v1.redeemer_leaf_hash(1, spend),
+    observer_summary,
+    mint_summary: cek_data_v1.map_data_summary_v1(
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      control,
+    ),
+  }
+  let next_control = vm_machine_types.CekContextControlV1 {
+    ..context_control,
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      active_redeemers,
+    ),
+  }
+  let Pair(pre, work_witness_cbor) = cek_state_fixture(
+    tx,
+    native_control,
+    vm_witness.encode_cek_context_control_v1(context_control),
+    0,
+    53,
+  )
+  let Pair(post, _) = cek_state_fixture(
+    tx,
+    native_control,
+    vm_witness.encode_cek_context_control_v1(next_control),
+    0,
+    54,
+  )
+  vm_one_step.verify_one_step_evidence(
+    pre,
+    one_step_evidence(
+      work_witness_cbor,
+      post,
+      vm_machine_types.CekRedeemerContextSelectWitness {
+        control,
+        item_index,
+        item_count: 2,
+        total_length: bytearray.length(item_cbor),
+        item_commitment,
+        redeemer_siblings: [redeemer_sibling],
+        purpose_frontier_index,
+        purpose_kind,
+        purpose_index: 0,
+        script_hash,
+        subject: purpose_subject,
+        purpose_siblings: [purpose_sibling],
+      },
+    ),
+    inline_field_door(),
+  )
+}
+
+test cek_context_redeemer_select_takes_the_highest_purpose_first() {
+  two_purpose_redeemer_select(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+  )
+}
+
+test cek_context_redeemer_select_then_takes_the_next_lower_purpose() {
+  two_purpose_redeemer_select(two_purpose_after_mint(), 1, 0)
+}
+
+// The retired witness-list order folded the spend redeemer (item 1) first
+// and the mint redeemer (item 0) second. Its second select names frontier
+// index 1 above the bound 0 the first select left, so it is refused.
+test cek_context_redeemer_select_refuses_the_witness_list_order() fail {
+  two_purpose_redeemer_select(two_purpose_after_spend(), 0, 1)
+}
+
+// The same step with the bound left open is accepted, so the bound alone
+// refuses the one above.
+test cek_context_redeemer_select_witness_list_order_hinges_on_the_bound() {
+  two_purpose_redeemer_select(
+    vm_machine_types.CekRedeemerContextControlV1 {
+      ..two_purpose_after_spend(),
+      purpose_bound: 2,
+    },
+    0,
+    1,
+  )
+}
+
+test cek_context_redeemer_select_refuses_the_same_purpose_twice() fail {
+  two_purpose_redeemer_select(two_purpose_after_mint(), 0, 1)
+}
+
+test cek_context_redeemer_select_same_purpose_twice_hinges_on_the_bound() {
+  two_purpose_redeemer_select(
+    vm_machine_types.CekRedeemerContextControlV1 {
+      ..two_purpose_after_mint(),
+      purpose_bound: 2,
+    },
+    0,
+    1,
+  )
+}
+
+fn cek_context_finalize_with_redeemer_count(redeemer_count: Int) -> Bool {
   let redeemer = MidgardRedeemerWitness {
     purpose: RewardRedeemer,
     index: 0,
@@ -2255,8 +2517,10 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)
   let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
-    redeemer_count: 1,
-    redeemer_peaks: validation_merkle_v1.build_frontier([redeemer_leaf]).peaks,
+    redeemer_count,
+    redeemer_peaks: validation_merkle_v1.build_frontier(
+      list.repeat(redeemer_leaf, redeemer_count),
+    ).peaks,
     purpose_peaks: validation_merkle_v1.build_frontier([purpose_leaf]).peaks,
   }
   let redeemer_summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
@@ -2278,6 +2542,7 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
     active_redeemer_leaf: #"",
     active_purpose: cek_data_scan_v1.empty_result_v1(),
     current_redeemer: redeemer_summary,
+    purpose_bound: 0,
   }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [h_28_a],
@@ -2362,6 +2627,16 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
   }
 }
 
+test cek_context_finalize_seeds_the_exact_semantic_context_application() {
+  cek_context_finalize_with_redeemer_count(1)
+}
+
+// Completion needs every redeemer folded: with one of two folded the
+// finalize step is refused.
+test cek_context_finalize_refuses_an_unfolded_redeemer() fail {
+  cek_context_finalize_with_redeemer_count(2)
+}
+
 test cek_spend_finalize_authenticates_descriptor_datum_summary() {
   let tx = empty_v1_transaction()
   let input = MidgardTxInput { tx_id: h_b, output_index: 2 }
@@ -2393,7 +2668,9 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
   }
   let redeemer_summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
   let redeemer_control = vm_machine_types.CekRedeemerContextControlV1 {
-    ..vm_witness.initial_cek_redeemer_context_control_v1(),
+    ..vm_witness.initial_cek_redeemer_context_control_v1(
+      native_control.purpose_count,
+    ),
     current_redeemer: redeemer_summary,
   }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(

@@ -44,6 +44,17 @@ It is intentionally strict about scope:
 6. `transaction.redeemers` only contains script witnesses, so pubkey-spent inputs do not create `Spend(...)` entries there.
 7. Therefore, when reading `transaction.redeemers` directly, the observable ordering fact is: `Spend` redeemers are sorted by the `TxOutRef` of the spent script inputs that have redeemers.
 
+### Redeemers in Midgard L2 contexts
+
+A Midgard L2 script context orders its redeemer map as Cardano does, and the order does not depend on the order of the transaction's redeemer witness list.
+
+1. Cardano keys its redeemers by `PlutusPurpose AsIx`, whose derived order is (tag, index), and `txInfoRedeemers` is `Map.toList` of that map, so the context map is (tag, index) ascending (cardano-ledger `347ff73c`: `Conway/Scripts.hs`, `Alonzo/TxWits.hs`, `Babbage/TxInfo.hs`; plutus `de88d284`: `AssocMap.unsafeFromList` does not re-sort).
+2. Midgard's redeemer tags are `Spend` 0, `Mint` 1, `Reward` 3 and `Receive` 6, so the map holds spends, then mints, then observers, then receives, each by pointer index ascending. A pointer index is the purpose's position among the transaction's sorted spent inputs, mint policies, observers or receive hashes.
+3. `MidgardV1` contexts include the `Receive` entries last. `PlutusV3` contexts have no receiving purpose and omit them.
+4. Native scripts take no redeemer, so a native-script purpose has no map entry, and a redeemer that points at one is refused as extraneous.
+5. The node builds the map in this order (`redeemersData`, `demo/midgard-validation/src/script-context.ts`). The fault proof folds the redeemers in descending purpose-frontier order and prepends each pair: `CekRedeemerContextControlV1.purpose_bound` starts at the purpose count, each select must name a frontier index strictly below it and lowers it to that index (`onchain/aiken/lib/midgard/validation-machine/cek.ak`, and the split `cek-context-redeemer-select-authenticate` / `-select-finish` validators). The purpose frontier is itself in ledger order, so the committed map is ascending.
+6. Duplicate pointers differ from Cardano: Cardano's decoder keeps the later entry, while Midgard rejects a transaction with two redeemers at one pointer.
+
 ### Governance-Specific Ordered Fields
 
 1. `transaction.votes` is ordered by ascending `Voter` and then ascending `GovernanceActionId`.

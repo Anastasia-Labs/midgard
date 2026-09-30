@@ -40,6 +40,8 @@ use fraud_proofs/validation_trace/cek_context_mint_item as context_mint_item
 use fraud_proofs/validation_trace/cek_context_observer_authenticate as context_observer_authenticate
 use fraud_proofs/validation_trace/cek_context_observer_fold as context_observer_fold
 use fraud_proofs/validation_trace/cek_context_output as context_output
+use fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate as redeemer_select_authenticate
+use fraud_proofs/validation_trace/cek_context_redeemer_select_finish as redeemer_select_finish
 use fraud_proofs/validation_trace/cek_context_reference as context_reference
 use fraud_proofs/validation_trace/cek_context_settle as context_settle
 use fraud_proofs/validation_trace/cek_context_signer as context_signer
@@ -56,6 +58,9 @@ use midgard/bounded_item_v1
 use midgard/cek_context_chain as context_chain
 use midgard/cek_context_item as context_item
 use midgard/cek_context_observer as context_observer
+use midgard/cek_context_redeemer.{
+  RedeemerInitialPending, RedeemerSelectionPending,
+} as context_redeemer
 use midgard/cek_context_step as context_step
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
@@ -85,10 +90,10 @@ use midgard/script_sources_redeemer_normalization_v1.{
 use midgard/validation_machine/cek as cek_semantics
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekCoreStepWitness, CekMintContextItemWitness,
-  CekMintHead, CekWitnessControlV1, NativeExecutionScanWitness,
-  NativeScriptsControlV1, NoAuxiliaryWitness, RedeemerItemStepWitness,
-  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1,
+  CekMintHead, CekRedeemerContextControlV1, CekRedeemerContextSelectWitness,
+  CekWitnessControlV1, NativeExecutionScanWitness, NativeScriptsControlV1,
+  NoAuxiliaryWitness, RedeemerItemStepWitness, ValidationAuxiliaryWitnessV1,
+  ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared.{
@@ -671,7 +676,9 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     [],
     False,
   )
-  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1(
+    control.purpose_count,
+  )
   let init_control = CekContextControlV1 {
     stage: 6,
     language_tag: 3,
@@ -2577,7 +2584,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       execution_memory_limit: next_item.execution_memory,
       execution_cpu_limit: next_item.execution_steps,
       redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
-        vm_witness.initial_cek_redeemer_context_control_v1(),
+        vm_witness.initial_cek_redeemer_context_control_v1(native.purpose_count),
       ),
     }
   } else {
@@ -2768,7 +2775,7 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"3683841371786bc1967f96e267e3ccf3f9bed29b09ae1e229f9311c5e9dac338"
+  blake2b_256(cbor.serialise(vector)) == #"fde5213b570b4d1b49fd4abcf5b491dc11665d9cfd7e01bfe588dbd4d1098aee"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
@@ -3303,4 +3310,258 @@ test context_mint_order_refuses_policy_revisit_and_spurious_head() {
       None,
     ),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Redeemer ledger order in the split redeemer select
+// ---------------------------------------------------------------------------
+//
+// Two purposes on the frontier (spend at 0, mint at 1) and two redeemers
+// whose witness-list order is the reverse (item 0 is the mint redeemer,
+// item 1 the spend redeemer). Selects walk the frontier strictly downwards,
+// so the map they prepend ends in ledger order.
+
+fn redeemer_select_commitment(item_index: Int) -> ByteArray {
+  if item_index == 0 {
+    h_a
+  } else {
+    h_b
+  }
+}
+
+fn redeemer_select_leaves() -> List<ByteArray> {
+  [
+    script_proof_v1.redeemer_item_leaf_hash(0, h_a),
+    script_proof_v1.redeemer_item_leaf_hash(1, h_b),
+  ]
+}
+
+fn redeemer_select_purpose_leaves() -> List<ByteArray> {
+  [
+    script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, h_c),
+    script_proof_v1.purpose_leaf_hash(1, 0, h_28_a, h_28_a),
+  ]
+}
+
+fn redeemer_select_subject(purpose_frontier_index: Int) -> ByteArray {
+  if purpose_frontier_index == 0 {
+    h_c
+  } else {
+    h_28_a
+  }
+}
+
+fn redeemer_select_auxiliary(
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  purpose_frontier_index: Int,
+) -> Data {
+  expect Some(redeemer_sibling) = list.at(
+    redeemer_select_leaves(),
+    1 - item_index,
+  )
+  expect Some(purpose_sibling) = list.at(
+    redeemer_select_purpose_leaves(),
+    1 - purpose_frontier_index,
+  )
+  let auxiliary: ValidationAuxiliaryWitnessV1 = CekRedeemerContextSelectWitness {
+    control,
+    item_index,
+    item_count: 2,
+    total_length: 8,
+    item_commitment: redeemer_select_commitment(item_index),
+    redeemer_siblings: [redeemer_sibling],
+    purpose_frontier_index,
+    purpose_kind: purpose_frontier_index,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: redeemer_select_subject(purpose_frontier_index),
+    purpose_siblings: [purpose_sibling],
+  }
+  let auxiliary_data: Data = auxiliary
+  auxiliary_data
+}
+
+fn redeemer_select_staged(
+  control: CekRedeemerContextControlV1,
+  auxiliary: Data,
+) -> context_chain.ContextStaged {
+  let original = context_staged_fixture(context_step_fixture())
+  context_chain.ContextStaged {
+    ..original,
+    bound: context_chain.ContextBound {
+      ..original.bound,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary)),
+    },
+    context: CekContextControlV1 {
+      ..original.context,
+      stage: 9,
+      redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+        control,
+      ),
+    },
+    native: context_step.NativeFacts {
+      ..original.native,
+      redeemer_count: 2,
+      redeemer_peaks: validation_merkle_v1.build_frontier(
+        redeemer_select_leaves(),
+      ).peaks,
+      purpose_count: 2,
+      purpose_peaks: validation_merkle_v1.build_frontier(
+        redeemer_select_purpose_leaves(),
+      ).peaks,
+    },
+  }
+}
+
+fn redeemer_select_pending(
+  staged: context_chain.ContextStaged,
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  purpose_frontier_index: Int,
+) -> RedeemerSelectionPending {
+  let staged_data: Data = staged
+  let commitment = redeemer_select_commitment(item_index)
+  RedeemerSelectionPending {
+    staged: staged_data,
+    control,
+    item_index,
+    item_count: 2,
+    total_length: 8,
+    item_commitment: commitment,
+    redeemer_leaf: script_proof_v1.redeemer_item_leaf_hash(
+      item_index,
+      commitment,
+    ),
+    purpose_frontier: purpose_frontier_index,
+    purpose_kind: purpose_frontier_index,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: redeemer_select_subject(purpose_frontier_index),
+  }
+}
+
+fn redeemer_select_action(auxiliary: Data) -> context_chain.ContextRedeemer {
+  ct.Continue(
+    context_chain.VerifyContext {
+      ..context_chain_action(context_step_fixture()),
+      auxiliary,
+    },
+  )
+}
+
+fn run_redeemer_select_authenticate(
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  purpose_frontier_index: Int,
+) -> Bool {
+  let auxiliary = redeemer_select_auxiliary(
+    control,
+    item_index,
+    purpose_frontier_index,
+  )
+  let staged = redeemer_select_staged(control, auxiliary)
+  let pending: Data = redeemer_select_pending(
+    staged,
+    control,
+    item_index,
+    purpose_frontier_index,
+  )
+  redeemer_select_authenticate.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+  )
+}
+
+/// A control with one redeemer folded and the given purpose bound.
+fn redeemer_select_after_one(bound: Int) -> CekRedeemerContextControlV1 {
+  CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    cursor: 1,
+    map_items: cek_data_v1.prepend_data_pair_summary_v1(
+      cek_data_v1.semantic_data_summary_v1(builtin.i_data(0)),
+      cek_data_v1.semantic_data_summary_v1(builtin.i_data(1)),
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    purpose_bound: bound,
+  }
+}
+
+test redeemer_select_authenticate_takes_the_highest_purpose_first() {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+  )
+}
+
+test redeemer_select_authenticate_takes_a_purpose_below_the_bound() {
+  run_redeemer_select_authenticate(redeemer_select_after_one(1), 1, 0)
+}
+
+// After the spend purpose (frontier index 0) the bound is 0, so the mint
+// purpose above it, the retired witness-list order's second select, is
+// refused.
+test redeemer_select_authenticate_refuses_a_purpose_at_or_above_the_bound() fail {
+  run_redeemer_select_authenticate(redeemer_select_after_one(0), 0, 1)
+}
+
+test redeemer_select_authenticate_refuses_the_same_purpose_twice() fail {
+  run_redeemer_select_authenticate(redeemer_select_after_one(1), 0, 1)
+}
+
+fn run_redeemer_select_finish(next_bound: Int) -> Bool {
+  let control = vm_witness.initial_cek_redeemer_context_control_v1(2)
+  let auxiliary = redeemer_select_auxiliary(control, 0, 1)
+  let staged = redeemer_select_staged(control, auxiliary)
+  let selection = redeemer_select_pending(staged, control, 0, 1)
+  let summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
+  let pending = RedeemerInitialPending {
+    selection,
+    purpose: Some(summary),
+    initial_hash: h_c,
+  }
+  let next_redeemers = CekRedeemerContextControlV1 {
+    ..control,
+    active_scan_hash: h_c,
+    active_redeemer_leaf: selection.redeemer_leaf,
+    active_purpose: summary,
+    purpose_bound: next_bound,
+  }
+  let next: Data = context_chain.ContextVerified {
+    staged: selection.staged,
+    successor: context_chain.ContinueContext {
+      next: context_redeemer.context_successor(staged, next_redeemers),
+    },
+  }
+  redeemer_select_finish.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(pending),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+  )
+}
+
+test redeemer_select_finish_lowers_the_bound_to_the_selected_purpose() {
+  run_redeemer_select_finish(1)
+}
+
+test redeemer_select_finish_refuses_a_successor_that_keeps_the_bound() fail {
+  run_redeemer_select_finish(2)
 }

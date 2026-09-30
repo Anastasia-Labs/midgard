@@ -44,6 +44,7 @@ import { Effect } from "effect";
 import {
   composeMidgardCekContextSummary,
   decodeMidgardCekContext,
+  emptyMidgardCekDataSummary,
   encodeMidgardCekValidationWitness,
   finalizeMidgardCekObserverItems,
   hashMidgardCekContextPartsControl,
@@ -894,7 +895,9 @@ export const completeValidationTrace = (
               executionEntry.languageTag,
             );
 
-            let redeemerControl = initialMidgardCekRedeemerContextControl();
+            let redeemerControl = initialMidgardCekRedeemerContextControl(
+              scriptPurposeEntries.length,
+            );
             const selectedItem =
               redeemerWitnessesCollection.items[selected.index]!;
             const selectionTrace = buildMidgardRedeemerItemProofTrace({
@@ -1481,24 +1484,25 @@ export const completeValidationTrace = (
               );
             }
 
+            // The redeemer map is in ledger order, (tag, index) ascending,
+            // which is the purpose frontier's order. Selects walk the
+            // frontier downwards and prepend, so the map ends ascending.
             for (
-              let redeemerIndex = decodedProofRedeemers.length - 1;
-              redeemerIndex >= 0;
-              redeemerIndex -= 1
+              let purposeFrontierIndex = scriptPurposeEntries.length - 1;
+              purposeFrontierIndex >= 0;
+              purposeFrontierIndex -= 1
             ) {
-              const redeemer = decodedProofRedeemers[redeemerIndex]!;
-              const purposeKind = purposeKindForRedeemerTag(redeemer.tag);
-              const purposeFrontierIndex = scriptPurposeEntries.findIndex(
-                (purpose) =>
-                  purpose.purposeKind === purposeKind &&
-                  purpose.purposeIndex === redeemer.index,
-              );
-              if (purposeFrontierIndex < 0 || purposeKind === null) {
-                throw new Error(
-                  "CEK redeemer does not select an authenticated purpose",
-                );
-              }
               const purpose = scriptPurposeEntries[purposeFrontierIndex]!;
+              const redeemerIndex = decodedProofRedeemers.findIndex(
+                (redeemer) =>
+                  purposeKindForRedeemerTag(redeemer.tag) ===
+                    purpose.purposeKind &&
+                  redeemer.index === purpose.purposeIndex,
+              );
+              // A native-script purpose has no redeemer and is not selected.
+              if (redeemerIndex < 0) {
+                continue;
+              }
               const item = redeemerWitnessesCollection.items[redeemerIndex]!;
               const descriptorOnly =
                 executionEntry.languageTag === 3 && purpose.purposeKind === 3;
@@ -1547,7 +1551,7 @@ export const completeValidationTrace = (
                 },
               );
               const semanticPurpose = descriptorOnly
-                ? initialMidgardCekRedeemerContextControl().activePurpose
+                ? emptyMidgardCekDataSummary()
                 : purposeSummary(purpose, executionEntry.languageTag);
               redeemerControl = {
                 ...redeemerControl,
@@ -1556,6 +1560,7 @@ export const completeValidationTrace = (
                 ),
                 activeRedeemerLeaf: redeemerLeaves[redeemerIndex]!,
                 activePurpose: semanticPurpose,
+                purposeBound: purposeFrontierIndex,
               };
               contextControl = {
                 ...contextControl,
@@ -1588,8 +1593,7 @@ export const completeValidationTrace = (
                       cursor: redeemerControl.cursor + 1,
                       activeScanHash: Buffer.alloc(0),
                       activeRedeemerLeaf: Buffer.alloc(0),
-                      activePurpose:
-                        initialMidgardCekRedeemerContextControl().activePurpose,
+                      activePurpose: emptyMidgardCekDataSummary(),
                     };
                   } else {
                     const nextSummary = finalizeMidgardRedeemerItemProof(
@@ -1615,8 +1619,7 @@ export const completeValidationTrace = (
                       ),
                       activeScanHash: Buffer.alloc(0),
                       activeRedeemerLeaf: Buffer.alloc(0),
-                      activePurpose:
-                        initialMidgardCekRedeemerContextControl().activePurpose,
+                      activePurpose: emptyMidgardCekDataSummary(),
                       currentRedeemer: nextCurrent,
                     };
                   }
@@ -1638,6 +1641,11 @@ export const completeValidationTrace = (
                     hashMidgardCekRedeemerContextControl(redeemerControl),
                 };
               }
+            }
+            if (redeemerControl.cursor !== decodedProofRedeemers.length) {
+              throw new Error(
+                "CEK redeemer does not select an authenticated purpose",
+              );
             }
             if (
               contextControl.stage !== 10 ||

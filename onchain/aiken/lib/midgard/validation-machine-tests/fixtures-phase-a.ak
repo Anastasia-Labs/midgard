@@ -1639,7 +1639,8 @@ pub fn cek_state_fixture(
 pub fn empty_cek_context_control_fixture(
   stage: Int,
 ) -> vm_machine_types.CekContextControlV1 {
-  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  // One purpose, as in `cek_context_native_control_fixture`.
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1(1)
   vm_machine_types.CekContextControlV1 {
     stage,
     language_tag: 3,

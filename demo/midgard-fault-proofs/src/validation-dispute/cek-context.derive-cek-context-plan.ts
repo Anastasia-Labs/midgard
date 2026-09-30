@@ -204,6 +204,7 @@ export const deriveCekContextPlan = ({
         raw[3]!,
         commitment,
         leaf,
+        raw[6]!,
         raw[7]!,
         raw[8]!,
         scriptHash,
@@ -232,7 +233,7 @@ export const deriveCekContextPlan = ({
         !midgard && purpose === 0n ? 20 : 19,
         !midgard && purpose === 0n ? 5 : 1,
       );
-      const current = fields(raw[0]!, 0, 6);
+      const current = fields(raw[0]!, 0, 7);
       route.push("finalizeAuthenticate");
       states.push(record([binding.staged, current[1]!, current[5]!]));
       const key = midgard
