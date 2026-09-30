@@ -2,13 +2,15 @@
 
 Read this reference when asked whether a live run proves release readiness,
 fault proofs, state correction or crash/rollback recovery. An `e2e-stack` run
-proves the functional deployment, DA, finality and payout path. It does not
-produce the evidence these gates need.
+proves the functional deployment, DA, finality and payout path, and the
+finalizer re-derives that proof from the run's own records. It does not
+produce the state-correction evidence, so the release-readiness verdict stays
+blocked.
 
 ## Contents
 
 1. [What the gates require](#what-the-gates-require)
-2. [Why an e2e-stack run cannot satisfy them](#why-an-e2e-stack-run-cannot-satisfy-them)
+2. [What the finalizer reads from a stack run](#what-the-finalizer-reads-from-a-stack-run)
 3. [What to run and report](#what-to-run-and-report)
 4. [Finalizer inputs](#finalizer-inputs)
 
@@ -47,23 +49,41 @@ manifest, blueprint, catalogue, parameters, and a live re-read through local
 Kupmios. A bundle of mutually consistent files without that live read stays
 blocked.
 
-## Why an e2e-stack run cannot satisfy them
+## What the finalizer reads from a stack run
 
-- Mode `fresh` requires step summaries with the IDs in
-  `REQUIRED_FRESH_E2E_STEP_IDS` (for example `hub-oracle-nonce`,
-  `init-protocol`, `await-automatic-merge`) and the transaction labels in
-  `REQUIRED_FRESH_TRANSACTION_LABELS`. The stack's journal and `attempts/`
-  records use its own step IDs and are not in that shape.
-- The finalizer expects exactly one consumed deposit and exactly two accepted
-  L2 transactions, a baseline the stack's cycles do not match.
-- No part of the stack runs a fault-proof family, a forced classification, or
-  a crash/rollback drill, and nothing writes the state-correction aggregate or
-  its independent sources.
+Run the finalizer against the same stack configuration, on the host that ran
+the stack, while its services are still up. It loads the configuration the way
+the stack's `--check` does, so the run directory, node endpoint, database port,
+admin key and local Kupmios are the stack's own, and it refuses provider
+failover and remote endpoints. From the run directory it re-applies the checks
+the stack made before confirming each step:
 
-So the finalizer cannot pass on an `e2e-stack` run. Do not recreate hand-run
-deployment or journey steps to feed it: the one-command stack is the only
-live flow. Whether the finalizer is ported onto the stack's records or
-retired is an owner decision. [review]
+- `stack_run_identity`: `stack-journal.json` belongs to this configuration,
+  records exactly the steps it runs, all `complete`, and
+  `journey-summary.json` was written from that journal;
+- `stack_deposit_credit`: each `cycle-N-deposit` receipt's event, its complete
+  settlement job, and the exact configured L2 credit;
+- `stack_transfer_finality`: each saved signed transfer's identity and fee,
+  its commitment and confirmed-ledger finality, the unchanged public DA bytes,
+  and the exact sender and recipient deltas;
+- `stack_withdrawal_payout`: each withdrawal of the transferred output, one
+  payout included on Cardano with the exact destination and value, and the
+  exact L2 debit;
+- `stack_storage_identity` and `stack_settlement`: the database is this run's,
+  and still holds one complete deposit job and exactly one confirmed payout,
+  the journal's own, per cycle.
+
+With `--mode fresh`, `stack_fresh_deployment` also requires that this run
+directory's `attempts/` ran every command that creates the deployment, and
+`stack_attempt_quality` reports any command that failed, timed out or was left
+unfinished as recovery evidence.
+
+No part of the stack runs a fault-proof family, a forced classification, or a
+crash/rollback drill, and nothing writes the state-correction aggregate or its
+independent sources. Without them the six state-correction gates are
+`blocked` with reason "not run", so the verdict reads blocked, never
+release-ready. Do not recreate hand-run deployment or journey steps, or build
+drills into the stack, to change that. [review]
 
 ## What to run and report
 
@@ -79,17 +99,27 @@ NODE_ENV=emulator pnpm exec vitest run \
   tests/e2e-state-correction-local-authority.test.ts
 ```
 
-For a live run, report release readiness as **not run**, name the gates above
-as outstanding, and state which functional evidence the stack's
-`journey-summary.json` does provide. Never report a green journey as release
-readiness.
+To re-derive a completed run, build the tooling and point the finalizer at
+the stack configuration. `--stack-config` must be an absolute path:
+
+```bash
+pnpm --dir "$REPO_ROOT/demo/midgard-node-tools" run build
+cd "$REPO_ROOT"
+node demo/midgard-node-tools/dist/index.js e2e-finalize-summary \
+  --stack-config "$STACK_CONFIG" --mode fresh --out-dir <summary directory>
+```
+
+Use `--mode fresh` only for the run that created the deployment; an attached
+or resumed run passes `--mode attach` or `--mode resume`. Report the stack
+gates from `summary.md`, name the state-correction gates above as not run, and
+never report a green journey as release readiness.
 
 ## Finalizer inputs
 
-For reference when the finalizer is ported or retired, it takes:
+The finalizer takes:
 
-- `--mode`, `--run-id`, `--out-dir`, `--node-url`, `--node-log`;
-- repeatable `--step-summary` and `--tx <label:txHash:status:source>`;
+- `--stack-config`, `--mode`, `--out-dir`, `--node-log` and
+  `--admin-api-key-env`;
 - optional `--stress-summary` (see [benchmark.md](benchmark.md));
 - `--state-correction-evidence`, `--state-correction-deployment-manifest`,
   `--state-correction-blueprint`, `--state-correction-catalogue`,
@@ -98,6 +128,6 @@ For reference when the finalizer is ported or retired, it takes:
   `--state-correction-l1-observation` and
   `--state-correction-recovery-observation`.
 
-It builds its live authority from `L1_PROVIDER=Kupmios`, the loopback
-`L1_KUPO_KEY` and `L1_OGMIOS_KEY`, and the node database, and refuses provider
-failover or a remote endpoint.
+It builds its live authority from the stack node's `L1_PROVIDER=Kupmios`, the
+loopback `L1_KUPO_KEY` and `L1_OGMIOS_KEY`, and the stack's database, and
+refuses provider failover or a remote endpoint.

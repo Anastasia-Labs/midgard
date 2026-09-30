@@ -207,8 +207,11 @@ continues after the first payment. No merge or payout repair command is used.
 Private evidence lives in `attempts/`, `stack-journal.json`, per-cycle receipt
 files and `setup-summary.json`/`journey-summary.json`. The journey summary proves
 this functional scope; it is not the repository's full fault-proof, rollback
-and release-readiness acceptance suite. The gates it does not produce are listed
-in [release-readiness.md](../../../.agents/skills/midgard-e2e-acceptance/references/release-readiness.md).
+and release-readiness acceptance suite. The finalizer, `e2e-finalize-summary`
+with `--stack-config`, re-derives this evidence from the run's records, node and
+database into the release-readiness dashboard, where the state-correction gates
+the stack does not produce stay blocked as not run; see
+[release-readiness.md](../../../.agents/skills/midgard-e2e-acceptance/references/release-readiness.md).
 
 Focused recovery checks:
 

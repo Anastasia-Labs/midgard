@@ -102,8 +102,8 @@ Preserve the canonical artifacts:
 
 Keep the stress `--out-dir` beside the stack's `runDirectory` and report it
 separately from the journey summary. The finalizer's `--stress-summary` input
-belongs to the release-readiness dashboard, which an `e2e-stack` run does not
-produce (see [release-readiness.md](release-readiness.md)).
+adds it to the release-readiness dashboard the finalizer re-derives from the
+stack run (see [release-readiness.md](release-readiness.md)).
 
 The stress admission gate is `metrics.l2Admission`. Immutable observation and
 full automatic-drain finality are distinct evidence. A passed admission metric

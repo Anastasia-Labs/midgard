@@ -1,15 +1,8 @@
 import { readFile } from "node:fs/promises";
 
-import {
-  E2E_STEP_SCHEMA_VERSION,
-  parseE2EStep,
-  type StepSummary,
-} from "../e2e/runner.js";
-import {
-  type CleanRunGate,
-  type RunVerdict,
-  type TransactionEvidence,
-} from "../e2e/summary.js";
+import { E2E_STEP_SCHEMA_VERSION, type StepSummary } from "../e2e/runner.js";
+import { type RunVerdict, type TransactionEvidence } from "../e2e/summary.js";
+import type { StackRunInputs } from "./e2e-finalize-summary.stack-inputs.js";
 import {
   type E2EStateCorrectionAcceptance,
   parseE2EStateCorrectionAcceptance,
@@ -26,14 +19,12 @@ import {
 import type { StressMetricWindow } from "./stress-stage-metrics.js";
 
 export type FinalizeSummaryOptions = {
+  /** The `e2e-stack` run whose records and database the summary reads. */
+  readonly stackRun: Pick<StackRunInputs, "expectation" | "endpoint">;
   readonly outDir?: string;
-  readonly runId?: string;
   readonly mode?: "attach" | "resume" | "fresh" | "unknown";
-  readonly nodeUrl?: string;
   readonly adminApiKey?: string;
   readonly nodeLogPath?: string;
-  readonly stepSummaryPaths?: readonly string[];
-  readonly transactions?: readonly TransactionEvidence[];
   readonly stressSummaryPath?: string;
   readonly stateCorrectionEvidencePath?: string;
   readonly stateCorrectionIndependentSourcePaths?: StateCorrectionIndependentSourcePaths;
@@ -53,19 +44,6 @@ export type FinalizeSummaryResult = {
   readonly functionalVerdict: RunVerdict;
   readonly cleanRunVerdict: RunVerdict;
   readonly nextSafeAction: string;
-  readonly requiredFreshStepAttemptQuality: RequiredFreshStepAttemptQualityCounts;
-};
-
-export type RequiredFreshStepAttemptQualityCounts = {
-  readonly status: CleanRunGate["status"] | "not_applicable";
-  readonly totalProblemAttempts: number;
-  readonly failedAttempts: number;
-  readonly timeoutAttempts: number;
-  readonly signaledAttempts: number;
-  readonly runnerErrorAttempts: number;
-  readonly unreconciledAttempts: number;
-  readonly submittedOrUnknownTransactions: number;
-  readonly rejectedTransactions: number;
 };
 
 type HttpProbe = {
@@ -155,18 +133,6 @@ export const collectorStep = ({
   parsedJson: null,
   error: null,
 });
-
-export const loadStepSummaries = async (
-  paths: readonly string[],
-): Promise<readonly StepSummary[]> =>
-  Promise.all(
-    paths.map(async (path) =>
-      parseE2EStep(
-        JSON.parse(await readFile(path, "utf8")) as unknown,
-        `E2E step summary ${path}`,
-      ),
-    ),
-  );
 
 export const loadStressSummary = async (
   path: string,

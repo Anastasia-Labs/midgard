@@ -364,8 +364,8 @@ for (const marker of ["SignedNonceConflictError", "SignedNonceRejectedError"]) {
   requireText(documents.recovery, marker, "nonce error route");
 }
 
-// Release readiness: the gates exist, and the reasons the runbook gives for
-// the stack not satisfying them are still true.
+// Release readiness: the gates exist, and what the runbook says the finalizer
+// reads from a stack run is still what it reads.
 const parseConstStringArray = (source, name, sourceLabel) => {
   const match = source.match(
     new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\] as const`),
@@ -376,16 +376,6 @@ const parseConstStringArray = (source, name, sourceLabel) => {
   }
   return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 };
-const requiredStepIds = parseConstStringArray(
-  finalizerSource,
-  "REQUIRED_FRESH_E2E_STEP_IDS",
-  "e2e-finalize-summary.ts",
-);
-const requiredTransactionLabels = parseConstStringArray(
-  finalizerSource,
-  "REQUIRED_FRESH_TRANSACTION_LABELS",
-  "e2e-finalize-summary.ts",
-);
 const stateCorrectionGateLabels = parseConstStringArray(
   stateCorrectionSource,
   "REQUIRED_STATE_CORRECTION_GATE_LABELS",
@@ -397,30 +387,55 @@ const stateCorrectionRecoveryDrills = parseConstStringArray(
   "e2e-state-correction-acceptance.ts",
 );
 const readiness = documents.releaseReadiness;
-for (const name of [
-  "REQUIRED_FRESH_E2E_STEP_IDS",
-  "REQUIRED_FRESH_TRANSACTION_LABELS",
-  "REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS",
-]) {
-  requireText(readiness, name, "release-readiness source reference");
-}
-for (const id of [
-  "hub-oracle-nonce",
-  "init-protocol",
-  "await-automatic-merge",
-]) {
-  if (!requiredStepIds.includes(id))
-    fail(
-      `release-readiness cites a fresh step id the finalizer dropped: ${id}`,
-    );
-  if (sourceStepIds.has(id))
-    fail(`the stack now runs step ${id}; revisit release-readiness.md`);
-}
 requireText(
-  finalizerSource,
-  "consumedDeposits === 1n",
-  "finalizer single-deposit baseline cited by release-readiness.md",
+  readiness,
+  "REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS",
+  "release-readiness source reference",
 );
+// The finalizer reads an e2e-stack run: its configuration flag, the gates it
+// derives from the run's records and database, and the deployment-creating
+// commands fresh mode requires are the ones the runbook documents.
+requireText(
+  toolsCliSource,
+  '"--stack-config <path>"',
+  "finalizer stack configuration option",
+);
+requireText(readiness, "`--stack-config`", "finalizer stack input");
+const stackGateLabels = new Set(
+  [
+    ...finalizerSource.matchAll(/(?:label: |cycleGate\()"(stack_[a-z_]+)"/g),
+  ].map((match) => match[1]),
+);
+if (stackGateLabels.size < 8) {
+  fail(`found only ${stackGateLabels.size} stack gate labels in the finalizer`);
+}
+for (const gate of stackGateLabels) {
+  requireText(readiness, `\`${gate}\``, `finalizer stack gate ${gate}`);
+}
+for (const span of backticked(readiness)) {
+  if (/^stack_[a-z_]+$/.test(span) && !stackGateLabels.has(span))
+    fail(`release-readiness names a stack gate the finalizer dropped: ${span}`);
+}
+const deploymentCommandIds = parseConstStringArray(
+  finalizerSource,
+  "STACK_DEPLOYMENT_COMMAND_IDS",
+  "e2e-finalize-summary.ts",
+);
+if (deploymentCommandIds.length === 0) {
+  fail("the finalizer names no deployment-creating stack command");
+}
+for (const id of deploymentCommandIds) {
+  if (!stackSource.includes(`.node("${id}"`))
+    fail(`fresh mode requires a command the stack no longer runs: ${id}`);
+}
+// Without the state-correction sources the gates are blocked as not run, so a
+// stack run never reads as release-ready.
+requireText(
+  stateCorrectionSource,
+  'reason: "not run"',
+  "state-correction gates blocked as not run",
+);
+requireText(readiness, '"not run"', "not-run state-correction statement");
 for (const gate of stateCorrectionGateLabels) {
   requireText(readiness, gate, `state-correction gate ${gate}`);
 }
@@ -542,8 +557,8 @@ process.stdout.write(
       stackFlags: [...stackFlags],
       stackStepIds: [...sourceStepIds],
       stackNodeCommands: [...stackNodeCommands],
-      finalizerRequiredStepIds: requiredStepIds,
-      finalizerRequiredTransactionLabels: requiredTransactionLabels,
+      finalizerStackGateLabels: [...stackGateLabels],
+      finalizerDeploymentCommandIds: deploymentCommandIds,
       stateCorrectionGateLabels,
       stateCorrectionRecoveryDrillCount: stateCorrectionRecoveryDrills.length,
       bashBlockCount: bashBlocks.length,

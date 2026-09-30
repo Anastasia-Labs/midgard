@@ -151,3 +151,30 @@ test("a dropped release-readiness gate fails", () => {
     /state-correction gate watcher_crash_rollback_matrix/,
   );
 });
+
+test("an undocumented finalizer stack gate fails", () => {
+  const result = validateEdited(readiness, (text) =>
+    text.replace("- `stack_deposit_credit`: ", "- deposit credit: "),
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /finalizer stack gate stack_deposit_credit/);
+});
+
+test("a stack gate the finalizer does not derive fails", () => {
+  const result = validateEdited(readiness, (text) =>
+    text.replace("`stack_settlement`", "`stack_settlement_rows`"),
+  );
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /names a stack gate the finalizer dropped: stack_settlement_rows/,
+  );
+});
+
+test("a runbook that omits how to point the finalizer at a stack run fails", () => {
+  const result = validateEdited(readiness, (text) =>
+    text.replaceAll("`--stack-config`", "the stack configuration"),
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /finalizer stack input: `--stack-config`/);
+});

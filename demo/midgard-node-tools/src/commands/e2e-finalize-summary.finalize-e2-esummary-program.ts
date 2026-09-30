@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { defaultMidgardNodeEndpoint } from "midgard-node/commands/command-utils";
 import type { Database } from "midgard-node/services/database";
 
 import {
@@ -21,15 +20,21 @@ import {
   hasEmptyHeaders,
   isReady,
   loadStateCorrectionAcceptance,
-  loadStepSummaries,
   loadStressSummary,
   timestampForPath,
 } from "./e2e-finalize-summary.collector-step.js";
+import { collectDbCounts } from "./e2e-finalize-summary.db-counts.js";
 import {
-  collectDbCounts,
-  requiredFreshEvidence,
-  requiredFreshStepAttemptQualityCounts,
-} from "./e2e-finalize-summary.required-fresh-evidence.js";
+  readStackAttempts,
+  stackAttemptQualityGate,
+  stackFreshDeploymentGate,
+} from "./e2e-finalize-summary.stack-attempts.js";
+import {
+  collectStackDatabase,
+  stackDatabaseGates,
+  stackSettlementTargets,
+} from "./e2e-finalize-summary.stack-database.js";
+import { readStackRun } from "./e2e-finalize-summary.stack-run.js";
 import { stressEvidenceFromSummary } from "./e2e-finalize-summary.stress-evidence-from-summary.js";
 import { stateCorrectionAcceptanceEvidence } from "./e2e-state-correction-acceptance.js";
 import {
@@ -44,15 +49,25 @@ export const finalizeE2ESummaryProgram = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const startedAt = new Date().toISOString();
-    const runId = options.runId ?? `e2e-run-${timestampForPath()}`;
+    const mode = options.mode ?? "unknown";
+    const { expectation } = options.stackRun;
+    const stackRun = yield* Effect.promise(() => readStackRun(expectation));
+    const stackAttempts =
+      mode === "fresh"
+        ? yield* Effect.promise(() =>
+            readStackAttempts(expectation.runDirectory),
+          )
+        : undefined;
+    const stackDatabase = yield* collectStackDatabase(
+      expectation.manifestId,
+      stackSettlementTargets(stackRun.journal, expectation.cycles),
+    );
+    const runId = stackRun.journal?.runId ?? `e2e-run-${timestampForPath()}`;
     const outDir = options.outDir ?? join("logs", runId);
     const rawLogPath = join(outDir, "collector.log");
     yield* Effect.promise(() => mkdir(outDir, { recursive: true }));
 
-    const nodeUrl = (options.nodeUrl ?? defaultMidgardNodeEndpoint()).replace(
-      /\/+$/,
-      "",
-    );
+    const nodeUrl = options.stackRun.endpoint.replace(/\/+$/, "");
     const adminHeaders: Readonly<Record<string, string>> =
       options.adminApiKey === undefined || options.adminApiKey.length === 0
         ? {}
@@ -64,7 +79,6 @@ export const finalizeE2ESummaryProgram = (
       readyz,
       stateQueue,
       counts,
-      stepSummaries,
       stressSummary,
       stateCorrectionAcceptance,
     ] = yield* Effect.all(
@@ -72,7 +86,6 @@ export const finalizeE2ESummaryProgram = (
         Effect.promise(() => fetchJson(`${nodeUrl}/readyz`)),
         Effect.promise(() => fetchJson(`${nodeUrl}/stateQueue`, adminHeaders)),
         collectDbCounts(),
-        Effect.promise(() => loadStepSummaries(options.stepSummaryPaths ?? [])),
         stressSummaryPath === undefined
           ? Effect.succeed(undefined)
           : Effect.promise(() => loadStressSummary(stressSummaryPath)),
@@ -183,31 +196,29 @@ export const finalizeE2ESummaryProgram = (
           : { evidencePath: stateCorrectionEvidencePath }),
       });
     const transactions = [
-      ...(options.transactions ?? []),
       ...stressEvidence.transactions,
       ...stateCorrectionEvidence.transactions,
     ];
+    // Each journey cycle consumes one deposit and admits one L2 transfer; a
+    // withdrawal is an L1 order, not an L2 admission.
+    const journeyCycles = BigInt(expectation.cycles);
     const expectedL2Count =
       stressSummary === undefined
-        ? 2n
-        : 2n + BigInt(stressEvidence.acceptedStressCount);
+        ? journeyCycles
+        : journeyCycles + BigInt(stressEvidence.acceptedStressCount);
+    // Stack attempts stay out of `steps`: their commands are reconciled by the
+    // stack journal, not by transaction evidence the summary would derive.
     const allSteps = [
-      ...stepSummaries,
       collectorStep({
         startedAt,
         finishedAt,
         rawLogPath,
       }),
     ];
-    const requiredFresh = requiredFreshEvidence({
-      mode: options.mode ?? "unknown",
-      steps: allSteps,
-      transactions: options.transactions ?? [],
-    });
 
     const base = createE2ERunSummary({
       runId,
-      mode: options.mode ?? "unknown",
+      mode,
       now: new Date(startedAt),
     });
     const summary = updateE2ERunSummary(
@@ -240,7 +251,16 @@ export const finalizeE2ESummaryProgram = (
           },
         ],
         db: [
-          ...requiredFresh.db,
+          ...stackRun.db,
+          ...(stackAttempts === undefined
+            ? []
+            : [stackFreshDeploymentGate(stackAttempts)]),
+          ...stackDatabaseGates({
+            journal: stackRun.journal,
+            cycles: expectation.cycles,
+            manifestId: expectation.manifestId,
+            observation: stackDatabase,
+          }),
           {
             label: "finalization_residue",
             status:
@@ -260,11 +280,11 @@ export const finalizeE2ESummaryProgram = (
           },
           {
             label: "deposits_consumed",
-            status: consumedDeposits === 1n ? "satisfied" : "failed",
+            status: consumedDeposits === journeyCycles ? "satisfied" : "failed",
             source: "postgres",
             details: {
               consumed: consumedDeposits.toString(),
-              expected: "1",
+              expected: journeyCycles.toString(),
             },
           },
           {
@@ -310,7 +330,7 @@ export const finalizeE2ESummaryProgram = (
             status:
               confirmedLedgerRows > 0n &&
               daPayloads >= finalized &&
-              consumedDeposits === 1n
+              consumedDeposits === journeyCycles
                 ? "satisfied"
                 : "failed",
             source: "postgres",
@@ -325,10 +345,20 @@ export const finalizeE2ESummaryProgram = (
           ...stateCorrectionEvidence.db,
         ],
         cleanRunGates: [
-          ...requiredFresh.cleanRunGates,
+          ...(stackAttempts === undefined
+            ? []
+            : [stackAttemptQualityGate(stackAttempts)]),
           ...stressEvidence.cleanRunGates,
         ],
         rawEvidence: [
+          {
+            label: "stack-journal",
+            path: join(expectation.runDirectory, "stack-journal.json"),
+          },
+          {
+            label: "stack-journey-summary",
+            path: join(expectation.runDirectory, "journey-summary.json"),
+          },
           ...(options.nodeLogPath === undefined
             ? []
             : [{ label: "node-log", path: options.nodeLogPath }]),
@@ -336,7 +366,7 @@ export const finalizeE2ESummaryProgram = (
           ...stateCorrectionEvidence.rawEvidence,
         ],
         notes: [
-          "Generated by e2e-finalize-summary from live endpoints and database counts.",
+          "Generated by e2e-finalize-summary from the e2e-stack run records, live endpoints and database counts.",
           ...stressEvidence.notes,
           ...stateCorrectionEvidence.notes,
         ],
@@ -359,8 +389,5 @@ export const finalizeE2ESummaryProgram = (
       functionalVerdict: summary.functionalVerdict,
       cleanRunVerdict: summary.cleanRunVerdict,
       nextSafeAction: summary.nextSafeAction,
-      requiredFreshStepAttemptQuality: requiredFreshStepAttemptQualityCounts(
-        summary.cleanRunGates,
-      ),
     };
   });

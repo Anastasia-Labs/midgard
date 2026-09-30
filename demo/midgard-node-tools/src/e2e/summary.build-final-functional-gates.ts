@@ -52,10 +52,7 @@ const txLabelFromObservation = (observation: TxObservation): string => {
   if (field.endsWith(".initTxHash")) {
     return "init";
   }
-  return observation.stepId
-    .replace(/^submit-/, "")
-    .replace(/^project-/, "")
-    .replace(/^init-protocol$/, "init");
+  return observation.stepId.replace(/^submit-/, "").replace(/^project-/, "");
 };
 
 export const evidenceStatuses = new Set([

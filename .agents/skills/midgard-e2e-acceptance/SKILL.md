@@ -142,11 +142,13 @@ A wallet-journey run is complete only when:
   complete, and every DA committee member ready.
 
 The journey proves the functional deployment, DA, finality and payout path.
-It is not release readiness: the fault-proof, state-correction and
-crash/rollback gates are described in
-[references/release-readiness.md](references/release-readiness.md), and an
-`e2e-stack` run does not produce their evidence. Report release readiness as
-not run unless that reference was followed. [review]
+To re-derive that proof from the run's records, node and database, run the
+finalizer `e2e-finalize-summary` with `--stack-config` set to the same absolute
+configuration path while the stack is still up, as
+[references/release-readiness.md](references/release-readiness.md) shows. It
+is not release readiness: the stack produces no fault-proof, state-correction
+or crash/rollback evidence, so those gates read blocked as not run and the
+verdict stays blocked. Report release readiness as not run. [review]
 
 A run that needed recovery is still recovery evidence. Report the stops, the
 diagnosis and the rerun alongside the final result. [review]

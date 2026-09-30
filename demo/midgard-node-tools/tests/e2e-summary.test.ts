@@ -14,13 +14,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  REQUIRED_FRESH_E2E_STEP_IDS,
-  REQUIRED_FRESH_TRANSACTION_LABELS,
-  requiredFreshEvidence,
-  requiredFreshStepAttemptQualityCounts,
-  stressEvidenceFromSummary,
-} from "../src/commands/e2e-finalize-summary.js";
+import { stressEvidenceFromSummary } from "../src/commands/e2e-finalize-summary.js";
 import {
   createE2ERunSummary,
   E2E_SUMMARY_SCHEMA_VERSION,
@@ -33,9 +27,6 @@ import {
 } from "../src/e2e/summary.js";
 import {
   makeTempDir,
-  requiredFreshSuccessSteps,
-  requiredFreshTransactions,
-  satisfiedHttp,
   step,
   stressSummary,
   submittedObservation,
@@ -158,12 +149,10 @@ describe("e2e run summary", () => {
         ],
         cleanRunGates: [
           {
-            label: "required_fresh_step_attempt_quality",
+            label: "stack_attempt_quality",
             status: "failed",
-            source: "e2e-run-step",
-            details: {
-              failed: "submit-deposit:failed:logs/submit-deposit.log",
-            },
+            source: "e2e-stack",
+            details: { failed: "submit-deposit:failed" },
           },
         ],
         transactions: [
@@ -280,10 +269,10 @@ describe("e2e run summary", () => {
         steps: [step({ id: "readyz", status: "success" })],
         db: [
           {
-            label: "required_fresh_steps",
+            label: "stack_fresh_deployment",
             status: "failed",
-            source: "e2e-run-step",
-            details: { missing: "init-protocol" },
+            source: "e2e-stack",
+            details: { missing: "initialize-submit" },
           },
         ],
       },
@@ -293,200 +282,6 @@ describe("e2e run summary", () => {
     expect(summary.cleanRunVerdict).toBe("success");
     expect(summary.functionalVerdict).toBe("failed");
     expect(summary.nextSafeAction).toBe("investigate_unknown");
-  });
-
-  it("requires all fresh state-changing steps and tx evidence", () => {
-    const missing = requiredFreshEvidence({
-      mode: "fresh",
-      steps: [step({ id: "collect-final-evidence", status: "success" })],
-      transactions: [],
-    });
-
-    expect(missing.db).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_steps",
-        status: "failed",
-        details: expect.objectContaining({
-          missing: REQUIRED_FRESH_E2E_STEP_IDS.join(","),
-        }),
-      }),
-    );
-    expect(missing.db).toContainEqual(
-      expect.objectContaining({
-        label: "required_transaction_evidence",
-        status: "failed",
-        details: expect.objectContaining({
-          missing: REQUIRED_FRESH_TRANSACTION_LABELS.join(","),
-        }),
-      }),
-    );
-    expect(missing.cleanRunGates).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_step_attempt_quality",
-        status: "satisfied",
-      }),
-    );
-
-    const satisfied = requiredFreshEvidence({
-      mode: "fresh",
-      steps: requiredFreshSuccessSteps(),
-      transactions: requiredFreshTransactions(),
-    });
-
-    expect(satisfied.db.every((entry) => entry.status === "satisfied")).toBe(
-      true,
-    );
-    expect(
-      satisfied.cleanRunGates.every((entry) => entry.status === "satisfied"),
-    ).toBe(true);
-  });
-
-  it("keeps required fresh coverage satisfied when a failed attempt is retried successfully", () => {
-    const steps = [
-      step({ id: "submit-deposit", status: "failed" }),
-      ...requiredFreshSuccessSteps(),
-    ];
-    const evidence = requiredFreshEvidence({
-      mode: "fresh",
-      steps,
-      transactions: requiredFreshTransactions(),
-    });
-    const summary = updateE2ERunSummary(
-      createE2ERunSummary({ runId: "e2e-run-dirty-success", mode: "fresh" }),
-      {
-        steps,
-        transactions: requiredFreshTransactions(),
-        http: satisfiedHttp,
-        db: evidence.db,
-        cleanRunGates: evidence.cleanRunGates,
-      },
-    );
-
-    expect(evidence.db).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_steps",
-        status: "satisfied",
-        details: expect.objectContaining({ missing: "" }),
-      }),
-    );
-    expect(evidence.cleanRunGates).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_step_attempt_quality",
-        status: "failed",
-        details: expect.objectContaining({
-          failedAttempts: "1",
-          totalProblemAttempts: "1",
-        }),
-      }),
-    );
-    expect(summary.functionalVerdict).toBe("success");
-    expect(summary.cleanRunVerdict).toBe("failed");
-    expect(summary.verdict).toBe("success");
-    expect(summary.nextSafeAction).toBe("none_run_complete");
-  });
-
-  it("accepts identity-safe resume and retry aliases while preserving failed attempt quality", () => {
-    const steps = [
-      step({ id: "reference-scripts", status: "failed" }),
-      ...requiredFreshSuccessSteps().filter(
-        (entry) =>
-          entry.id !== "reference-scripts" &&
-          entry.id !== "init-protocol" &&
-          entry.id !== "operator-lifecycle",
-      ),
-      step({ id: "reference-scripts-resume", status: "success" }),
-      step({ id: "init-protocol-retry", status: "success" }),
-      step({ id: "operator-activate-retry", status: "success" }),
-    ];
-
-    const evidence = requiredFreshEvidence({
-      mode: "fresh",
-      steps,
-      transactions: requiredFreshTransactions(),
-    });
-
-    expect(evidence.db).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_steps",
-        status: "satisfied",
-        details: expect.objectContaining({ missing: "" }),
-      }),
-    );
-    expect(evidence.db).toContainEqual(
-      expect.objectContaining({
-        label: "required_transaction_evidence",
-        status: "satisfied",
-      }),
-    );
-    expect(evidence.cleanRunGates).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_step_attempt_quality",
-        status: "failed",
-        details: expect.objectContaining({
-          failedAttempts: "1",
-          failed: "reference-scripts:failed:logs/reference-scripts.log",
-        }),
-      }),
-    );
-  });
-
-  it("blocks completion when a recovered signaled attempt has unresolved submitted tx risk", () => {
-    const riskyTxHash = "bb".repeat(32);
-    const steps = [
-      step({
-        id: "submit-deposit",
-        status: "signaled",
-        txObservations: [
-          submittedObservation({
-            stepId: "submit-deposit",
-            txHash: riskyTxHash,
-          }),
-        ],
-      }),
-      ...requiredFreshSuccessSteps(),
-    ];
-    const evidence = requiredFreshEvidence({
-      mode: "fresh",
-      steps,
-      transactions: requiredFreshTransactions(),
-    });
-    const summary = updateE2ERunSummary(
-      createE2ERunSummary({ runId: "e2e-run-signaled-risk", mode: "fresh" }),
-      {
-        steps,
-        transactions: requiredFreshTransactions(),
-        http: satisfiedHttp,
-        db: evidence.db,
-        cleanRunGates: evidence.cleanRunGates,
-      },
-    );
-
-    expect(evidence.cleanRunGates).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_step_attempt_quality",
-        status: "blocked",
-        details: expect.objectContaining({
-          signaledAttempts: "1",
-          unreconciledAttempts: "1",
-          submittedOrUnknownTransactions: "1",
-        }),
-      }),
-    );
-    expect(
-      requiredFreshStepAttemptQualityCounts(evidence.cleanRunGates),
-    ).toEqual(
-      expect.objectContaining({
-        status: "blocked",
-        totalProblemAttempts: 1,
-        signaledAttempts: 1,
-        unreconciledAttempts: 1,
-        submittedOrUnknownTransactions: 1,
-      }),
-    );
-    expect(summary.functionalVerdict).toBe("success");
-    expect(summary.cleanRunVerdict).toBe("blocked");
-    expect(summary.verdict).toBe("success");
-    expect(summary.nextSafeAction).toBe("reconcile_submitted_tx_before_rerun");
   });
 
   it("lets later final transaction evidence satisfy a logical label after a rejected historical tx", () => {
@@ -526,114 +321,6 @@ describe("e2e run summary", () => {
     expect(summary.functionalVerdict).toBe("success");
     expect(summary.verdict).toBe("success");
     expect(summary.nextSafeAction).toBe("none_run_complete");
-  });
-
-  it("counts required fresh tx evidence derived from step summaries", () => {
-    const evidence = requiredFreshEvidence({
-      mode: "fresh",
-      steps: [
-        step({
-          id: "hub-oracle-nonce",
-          status: "success",
-          txObservations: [
-            submittedObservation({
-              stepId: "hub-oracle-nonce",
-              txHash: "01".repeat(32),
-            }),
-          ],
-        }),
-        step({ id: "reference-scripts", status: "success" }),
-        step({
-          id: "init-protocol",
-          status: "success",
-          txObservations: [
-            submittedObservation({
-              stepId: "init-protocol",
-              txHash: "02".repeat(32),
-              field: "$.initTxHash",
-            }),
-          ],
-        }),
-        step({
-          id: "operator-lifecycle",
-          status: "success",
-          txObservations: [
-            submittedObservation({
-              stepId: "operator-lifecycle",
-              txHash: "03".repeat(32),
-              field: "$.registerTxHash",
-            }),
-            submittedObservation({
-              stepId: "operator-lifecycle",
-              txHash: "04".repeat(32),
-              field: "$.activateTxHash",
-            }),
-          ],
-        }),
-        step({ id: "da-libp2p-bind-listen-preflight", status: "success" }),
-        step({ id: "midgard-node-ready", status: "success" }),
-        step({
-          id: "submit-deposit",
-          status: "success",
-          txObservations: [
-            submittedObservation({
-              stepId: "submit-deposit",
-              txHash: "05".repeat(32),
-            }),
-          ],
-        }),
-        step({ id: "deposit-projected", status: "success" }),
-        step({
-          id: "submit-l2-transfer-a",
-          status: "success",
-          txObservations: [
-            submittedObservation({
-              stepId: "submit-l2-transfer-a",
-              txHash: "06".repeat(32),
-            }),
-          ],
-        }),
-        step({
-          id: "submit-l2-transfer-b",
-          status: "success",
-          txObservations: [
-            submittedObservation({
-              stepId: "submit-l2-transfer-b",
-              txHash: "07".repeat(32),
-            }),
-          ],
-        }),
-        step({ id: "await-automatic-merge", status: "success" }),
-      ],
-      transactions: [
-        {
-          label: "header-commit-a",
-          txHash: "08".repeat(32),
-          status: "confirmed",
-          source: "test",
-        },
-        {
-          label: "header-commit-b",
-          txHash: "09".repeat(32),
-          status: "confirmed",
-          source: "test",
-        },
-      ],
-    });
-
-    expect(evidence.db).toContainEqual(
-      expect.objectContaining({
-        label: "required_fresh_steps",
-        status: "satisfied",
-      }),
-    );
-    expect(evidence.db).toContainEqual(
-      expect.objectContaining({
-        label: "required_transaction_evidence",
-        status: "satisfied",
-        details: expect.objectContaining({ missing: "" }),
-      }),
-    );
   });
 
   it("does not promote prepared or generic hashes into transaction evidence", () => {

@@ -13,10 +13,11 @@ import {
 import * as Services from "midgard-node/services/index";
 
 import * as E2EFinalizeSummaryCommand from "./commands/e2e-finalize-summary.js";
+import type { StackRunInputs } from "./commands/e2e-finalize-summary.stack-inputs.js";
 import * as Phase4GenesisLedgerCommand from "./commands/phase4-genesis-ledger.js";
 import * as StressCorpusCommand from "./commands/stress-corpus-generate.js";
 import { l1KupmiosEnvironment } from "./environment.js";
-import { parseTxEvidenceOptions, program } from "./index.registration.js";
+import { program } from "./index.registration.js";
 
 program
   .command("stress-corpus-generate")
@@ -139,30 +140,23 @@ program
 program
   .command("e2e-finalize-summary")
   .description(
-    "Collect final e2e endpoint/database evidence and write summary.json plus summary.md",
+    "Re-derive an e2e-stack run's evidence from its records, node and database, and write summary.json plus summary.md",
+  )
+  .requiredOption(
+    "--stack-config <path>",
+    "Absolute path of the e2e-stack configuration whose run directory, node and database to read",
   )
   .option("--out-dir <path>", "Output directory for summary artifacts")
-  .option("--run-id <id>", "Stable run id for the summary")
-  .option("--mode <mode>", "Run mode: attach, resume, fresh, or unknown")
-  .option("--node-url <url>", "Midgard node URL")
+  .option(
+    "--mode <mode>",
+    "Run mode: attach, resume, fresh, or unknown; fresh also requires this run directory to have created the deployment",
+  )
   .option(
     "--admin-api-key-env <name>",
     "Environment variable that contains the admin API key",
     "ADMIN_API_KEY",
   )
   .option("--node-log <path>", "Raw Midgard node log artifact to link")
-  .option(
-    "--step-summary <path>",
-    "Structured e2e-run-step summary JSON file to include; repeatable",
-    collectStringOption,
-    [],
-  )
-  .option(
-    "--tx <label:txHash:status:source>",
-    "Transaction evidence to include in the summary; repeatable",
-    collectStringOption,
-    [],
-  )
   .option(
     "--stress-summary <path>",
     "Optional e2e-stress-l2-throughput summary.json artifact to include as a functional gate",
@@ -218,10 +212,6 @@ program
       opts.mode === "unknown"
         ? opts.mode
         : "unknown";
-    const adminApiKey =
-      typeof opts.adminApiKeyEnv === "string"
-        ? process.env[opts.adminApiKeyEnv]
-        : undefined;
     const stateCorrectionWorkflowJournalDirectories = parseStringListOption(
       opts.stateCorrectionWorkflowJournal,
       "--state-correction-workflow-journal",
@@ -263,21 +253,35 @@ program
         "State-correction independent reconciliation requires manifest, blueprint, catalogue, parameters, at least one workflow journal, at least one authenticated L1 observation, at least one recovery observation, and the final snapshot together.",
       );
     }
+    let stackRun: StackRunInputs;
+    try {
+      const { loadStackRunInputs } = await import(
+        "./commands/e2e-finalize-summary.stack-inputs.js"
+      );
+      stackRun = await loadStackRunInputs(String(opts.stackConfig));
+    } catch (error) {
+      failCli("e2e-finalize-summary", error);
+      return;
+    }
+    // Read the stack's own database, admin key and L1 provider, exactly as the
+    // stack's host node commands do.
+    Object.assign(process.env, stackRun.nodeEnvironment);
+    const adminApiKey =
+      typeof opts.adminApiKeyEnv === "string"
+        ? process.env[opts.adminApiKeyEnv]
+        : undefined;
     const mainEffect = provideDatabaseServices(
       E2EFinalizeSummaryCommand.finalizeE2ESummaryProgram({
+        stackRun: {
+          expectation: stackRun.expectation,
+          endpoint: stackRun.endpoint,
+        },
         ...(typeof opts.outDir === "string" ? { outDir: opts.outDir } : {}),
-        ...(typeof opts.runId === "string" ? { runId: opts.runId } : {}),
         mode,
-        ...(typeof opts.nodeUrl === "string" ? { nodeUrl: opts.nodeUrl } : {}),
         ...(adminApiKey === undefined ? {} : { adminApiKey }),
         ...(typeof opts.nodeLog === "string"
           ? { nodeLogPath: opts.nodeLog }
           : {}),
-        stepSummaryPaths: parseStringListOption(
-          opts.stepSummary,
-          "--step-summary",
-        ),
-        transactions: parseTxEvidenceOptions(opts.tx),
         ...(typeof opts.stressSummary === "string"
           ? { stressSummaryPath: opts.stressSummary }
           : {}),
