@@ -5,6 +5,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
@@ -32,6 +33,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
+use midgard/rejection_reason_v1.{reject_plutus_script_invalid}
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as vm_cek
@@ -2931,6 +2933,186 @@ test cek_active_core_step_replays_exact_machine_transition() {
           },
         },
       },
+      inline_field_door(),
+    ),
+  }
+}
+
+// One validation-machine pre-state whose active CEK state is mkCons of a
+// well-typed item and list. The success step is its one successor: the type
+// failure is refused whichever presentation carries the committed item.
+test mk_cons_of_well_typed_values_has_one_one_step_successor() {
+  let item = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f00ff",
+    payload_cbor: #"01",
+  }
+  let items = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f0500ff",
+    payload_cbor: #"80",
+  }
+  let result = cek_builtin_v1.ConstantValue(
+    cek_constant_v1.ConstantWitnessV1 {
+      type_cbor: #"9f0500ff",
+      payload_cbor: cbor.serialise(builtin.list_data([builtin.i_data(1)])),
+    },
+  )
+  let direct = [
+    cek_builtin_v1.ConstantValue(item),
+    cek_builtin_v1.ConstantValue(items),
+  ]
+  let Pair(item_payload, item_memory) = cek_constant_v1.constant_semantic_projection(
+    item,
+  )
+  let semantic_item = [
+    cek_builtin_v1.RuntimeSemanticConstantValue {
+      type_cbor: item.type_cbor,
+      payload: item_payload,
+      memory: item_memory,
+    },
+    cek_builtin_v1.RuntimeConstantValue(items),
+  ]
+  let Pair(arguments_root, arguments_count) = cek_builtin_v1.arguments_root_v1(
+    direct,
+  )
+  let machine_pre = cek_machine_v1.MachineStateV1 {
+    mode: cek_machine_v1.mode_builtin,
+    execution_index: 0,
+    focus_root: cek_proof_v1.hash_builtin_value_v1(
+      32,
+      0,
+      arguments_count,
+      arguments_root,
+    ),
+    environment_root: cek_proof_v1.empty_environment_root_v1,
+    continuation_root: cek_proof_v1.empty_continuation_root_v1,
+    auxiliary: 0,
+    cpu: 10,
+    memory: 11,
+  }
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(32, direct)
+  let machine_success = cek_machine_v1.exact_state(
+    machine_pre,
+    cek_machine_v1.mode_return,
+    cek_builtin_v1.result_root_v1(result),
+    cek_proof_v1.empty_environment_root_v1,
+    machine_pre.continuation_root,
+    0,
+    budget.cpu,
+    budget.memory,
+  )
+  let machine_failure = cek_machine_v1.exact_state(
+    machine_pre,
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_builtin_failure,
+    0,
+    0,
+  )
+  let tx = empty_v1_transaction()
+  let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
+  let execution_frontier = validation_merkle_v1.build_frontier([h_b])
+  let control = vm_machine_types.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+  }
+  let work_witness_cbor = vm_witness.encode_cek_witness_v1(
+    control,
+    #"",
+    0,
+    0,
+    0,
+    vm_shared.cek_machine_state_hash(machine_pre),
+    1000000,
+    1000000,
+    h_b,
+  )
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..forced_pending_state(
+      tx_id,
+      tx,
+      validation_context_cbor,
+      validation_trace_v1.Cek,
+      40,
+      work_witness_cbor,
+      validation_trace_v1.hash_ledger_delta(#"80"),
+    ),
+    execution_cpu: 10,
+    execution_memory: 11,
+  }
+  let success_successor = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      41,
+      vm_witness.encode_cek_witness_v1(
+        control,
+        #"",
+        0,
+        0,
+        0,
+        vm_shared.cek_machine_state_hash(machine_success),
+        1000000,
+        1000000,
+        h_b,
+      ),
+    ),
+    execution_cpu: machine_success.cpu,
+    execution_memory: machine_success.memory,
+  }
+  let failure_successor = validation_trace_v1.ValidationMachineStateV1 {
+    ..exact_rejection_post(pre, reject_plutus_script_invalid),
+    execution_cpu: machine_failure.cpu,
+    execution_memory: machine_failure.memory,
+  }
+  and {
+    vm_one_step.verify_one_step_evidence(
+      pre,
+      one_step_evidence(
+        work_witness_cbor,
+        success_successor,
+        vm_machine_types.CekCoreStepWitness {
+          step: cek_machine_v1.CoreStepEvidenceV1 {
+            pre: machine_pre,
+            post: machine_success,
+            witness: cek_machine_v1.ExecuteBuiltinDirect {
+              tag: 32,
+              arguments: direct,
+              result,
+            },
+          },
+        },
+      ),
+      inline_field_door(),
+    ),
+    !vm_one_step.verify_one_step_evidence(
+      pre,
+      one_step_evidence(
+        work_witness_cbor,
+        failure_successor,
+        vm_machine_types.CekCoreStepWitness {
+          step: cek_machine_v1.CoreStepEvidenceV1 {
+            pre: machine_pre,
+            post: machine_failure,
+            witness: cek_machine_v1.ExecuteBuiltinTypeFailure {
+              tag: 32,
+              arguments: semantic_item,
+            },
+          },
+        },
+      ),
       inline_field_door(),
     ),
   }

@@ -54,7 +54,7 @@ const runForcedValidationDisputeScenario = async (
 };
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  expect(completed).toBe(17);
+  expect(completed).toBe(18);
   for (const row of rows) {
     expect(row.memoryUnits, row.name).toBeLessThanOrEqual(13_200_000n);
     expect(row.cpuUnits, row.name).toBeLessThanOrEqual(8_000_000_000n);
@@ -129,6 +129,37 @@ describe("bounded CEK core published lifecycle", () => {
     );
     expect(result.awardResult?.txHash).toHaveLength(64);
     expect(result.removal?.transactions.length).toBeGreaterThan(0);
+  }, 900_000);
+  it("proves the mapData conversion start against a forged successor", async () => {
+    const result = await runForcedValidationDisputeScenario(
+      ({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekSemanticTag: 38,
+          cekCoreArm: "startBuiltinMapConversion",
+        }),
+    );
+    expect(result.awardResult?.txHash).toHaveLength(64);
+    expect(result.removal?.transactions.length).toBeGreaterThan(0);
+  }, 900_000);
+  it("refuses the direct builtin successor of an honest mapData start", async () => {
+    await expect(
+      runForcedValidationDisputeScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekSemanticTag: 38,
+          cekCoreArm: "startBuiltinMapConversion",
+          dishonestChallenger: true,
+          cekDirectMapConversion: true,
+        }),
+      ),
+    ).rejects.toThrow(/CEK core directStructured transaction failed/);
   }, 900_000);
   it("proves the exact application step, mints the proof and removes the forged block", async () => {
     const result = await runForcedValidationDisputeScenario(

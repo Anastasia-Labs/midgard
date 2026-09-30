@@ -25,6 +25,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { redeemerItemExecutor } from "../../../src/redeemer-item-plan.js";
 import { scriptSourcesMiddleYieldIndex } from "../../../src/validation-dispute/script-sources-yields.js";
+import { forgeDirectMapConversionSuccessor } from "./cek-direct-map-conversion-forgery.js";
 import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtures.build-accepted-claim-over-rejecting-transaction-fixture.js";
 import { buildForcedValidationDisputeCommitments } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildNativeTransactionTrace } from "./validation-dispute-fixtures.build-native-transaction-trace.js";
@@ -74,6 +75,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   cekBlsFinal = false,
   cekMaximumDirect = false,
   cekSemanticTag,
+  cekDirectMapConversion = false,
   assetCount = 0,
   dishonestChallenger = false,
   maximumAssetProof = false,
@@ -150,6 +152,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly cekBlsFinal?: boolean;
   readonly cekMaximumDirect?: boolean;
   readonly cekSemanticTag?: number;
+  /** With `dishonestChallenger`: see {@link forgeDirectMapConversionSuccessor}. */
+  readonly cekDirectMapConversion?: boolean;
   readonly assetCount?: number;
   readonly dishonestChallenger?: boolean;
   readonly maximumAssetProof?: boolean;
@@ -576,6 +580,13 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
         : forgedTerminal,
   );
   const operatorWitnesses = [...challengerTrace.witnesses];
+  if (dishonestChallenger && cekDirectMapConversion)
+    forgeDirectMapConversionSuccessor(
+      challengerTrace,
+      disputedLowIndex,
+      operatorStates,
+      operatorWitnesses,
+    );
   if (dishonestChallenger && cekContextStage !== undefined) {
     const successorIndex = disputedLowIndex + 1;
     const adjacent = operatorWitnesses[successorIndex]!;

@@ -151,7 +151,7 @@ test division_by_zero_failure_is_authenticated_without_charging() {
       builtin_root(3, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(3, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+    cek_builtin_v1.authenticated_builtin_failure_budget(3, arguments) == cek_cost_v1.BuiltinBudgetV1 {
       cpu: 0,
       memory: 0,
     },
@@ -166,7 +166,7 @@ test quotient_by_zero_failure_charges_before_the_operation_fails() {
       builtin_root(4, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(4, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.authenticated_builtin_failure_budget(4, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
       4,
       arguments,
     ),
@@ -194,7 +194,7 @@ test integer_to_bytes_size_failure_charges_the_pinned_builtin_cost() {
       builtin_root(73, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(73, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+    cek_builtin_v1.authenticated_builtin_failure_budget(73, arguments) == cek_cost_v1.BuiltinBudgetV1 {
       cpu: 1351512,
       memory: 1,
     },
@@ -219,7 +219,7 @@ test malformed_ecdsa_public_key_failure_is_paid_and_authenticated() {
       builtin_root(52, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(52, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.authenticated_builtin_failure_budget(52, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
       52,
       arguments,
     ),
@@ -244,7 +244,7 @@ test malformed_schnorr_x_coordinate_failure_is_paid_and_authenticated() {
       builtin_root(53, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(53, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.authenticated_builtin_failure_budget(53, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
       53,
       arguments,
     ),
@@ -282,7 +282,7 @@ test malformed_bls_g1_compression_header_failure_is_paid() {
       builtin_root(60, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.authenticated_builtin_failure_budget(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
       60,
       arguments,
     ),
@@ -301,7 +301,7 @@ test malformed_bls_g2_compression_header_failure_is_paid() {
       builtin_root(67, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(67, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.authenticated_builtin_failure_budget(67, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
       67,
       arguments,
     ),
@@ -320,7 +320,7 @@ test off_curve_bls_g1_encoding_has_a_bounded_paid_failure_proof() {
       builtin_root(60, arguments),
       arguments,
     ),
-    cek_builtin_v1.direct_builtin_failure_budget_v1(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.authenticated_builtin_failure_budget(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
       60,
       arguments,
     ),
@@ -1039,4 +1039,316 @@ fn verify_semantic_with_split_parity(
 test bls_root_hop_refuses_twelve_leaves() {
   let expression = six_miller_loop_expression()
   !cek_builtin_v1.verify_bls_expression_roots(expression, expression, #"", #"")
+}
+
+fn repeated_byte(byte: Int, count: Int) -> ByteArray {
+  if count == 0 {
+    #""
+  } else {
+    builtin.cons_bytearray(byte, repeated_byte(byte, count - 1))
+  }
+}
+
+fn one_pair_map() -> cek_builtin_v1.ValueWitnessV1 {
+  constant(
+    #"9f08ff",
+    cbor.serialise(
+      builtin.map_data([Pair(builtin.i_data(1), builtin.i_data(2))]),
+    ),
+  )
+}
+
+fn one_pair_list() -> cek_builtin_v1.ValueWitnessV1 {
+  constant(
+    #"9f05060808ff",
+    cbor.serialise(
+      builtin.list_data(
+        [builtin.constr_data(0, [builtin.i_data(1), builtin.i_data(2)])],
+      ),
+    ),
+  )
+}
+
+// mapData and unMapData have exactly one successor: the map-conversion start.
+// The direct arm refuses both even when the conversion it claims is correct.
+test map_conversions_have_no_direct_arm() {
+  let map_arguments = [one_pair_list()]
+  let unmap_arguments = [one_pair_map()]
+  and {
+    !verify_direct_with_split_parity(
+      38,
+      builtin_root(38, map_arguments),
+      map_arguments,
+      one_pair_map(),
+    ),
+    !verify_direct_with_split_parity(
+      43,
+      builtin_root(43, unmap_arguments),
+      unmap_arguments,
+      one_pair_list(),
+    ),
+  }
+}
+
+fn ill_typed_failure_has_one_arm(
+  tag: Int,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+  runtime: List<cek_builtin_v1.RuntimeValueWitnessV1>,
+) -> Bool {
+  and {
+    cek_builtin_v1.runtime_arguments_root_v1(runtime) == cek_builtin_v1.arguments_root_v1(
+      arguments,
+    ),
+    !cek_builtin_v1.verify_direct_builtin_failure_v1(
+      tag,
+      builtin_root(tag, arguments),
+      arguments,
+    ),
+    cek_builtin_v1.verify_builtin_type_failure_v1(
+      tag,
+      runtime_builtin_root(tag, runtime),
+      runtime,
+    ),
+  }
+}
+
+// A division whose dividend is not an integer is a type failure at zero cost,
+// never a paid division-by-zero failure.
+test ill_typed_division_is_only_a_type_failure() {
+  let dividend = cbor.serialise(builtin.b_data(#"aa"))
+  let divisor = cbor.serialise(builtin.i_data(0))
+  let arguments = [bytes(dividend), integer(divisor)]
+  let runtime = [
+    runtime_constant(#"9f01ff", dividend),
+    runtime_constant(#"9f00ff", divisor),
+  ]
+  and {
+    ill_typed_failure_has_one_arm(4, arguments, runtime),
+    ill_typed_failure_has_one_arm(5, arguments, runtime),
+    ill_typed_failure_has_one_arm(6, arguments, runtime),
+  }
+}
+
+// Likewise for hash-to-group with an integer message.
+test ill_typed_hash_to_group_is_only_a_type_failure() {
+  let message = cbor.serialise(builtin.i_data(7))
+  let dst = cbor.serialise(builtin.b_data(repeated_byte(7, 256)))
+  let arguments = [integer(message), bytes(dst)]
+  let runtime = [
+    runtime_constant(#"9f00ff", message),
+    runtime_constant(#"9f01ff", dst),
+  ]
+  and {
+    ill_typed_failure_has_one_arm(58, arguments, runtime),
+    ill_typed_failure_has_one_arm(65, arguments, runtime),
+  }
+}
+
+// consByteString with an out-of-range byte and a non-bytes suffix is a type
+// failure, never a paid known failure.
+test ill_typed_cons_byte_string_is_only_a_type_failure() {
+  let byte = cbor.serialise(builtin.i_data(300))
+  let suffix = cbor.serialise(builtin.i_data(7))
+  ill_typed_failure_has_one_arm(
+    11,
+    [integer(byte), integer(suffix)],
+    [runtime_constant(#"9f00ff", byte), runtime_constant(#"9f00ff", suffix)],
+  )
+}
+
+// writeBits is a known failure only over a list of integers and a boolean;
+// the same out-of-range index in a list of Data, or with a non-boolean bit,
+// is a type failure.
+test ill_typed_write_bits_is_only_a_type_failure() {
+  let source = cbor.serialise(builtin.b_data(#"00"))
+  let indices = cbor.serialise(builtin.list_data([builtin.i_data(9)]))
+  let set = #"d87a80"
+  let well_typed = [bytes(source), constant(#"9f0500ff", indices), boolean(set)]
+  and {
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      80,
+      builtin_root(80, well_typed),
+      well_typed,
+    ),
+    ill_typed_failure_has_one_arm(
+      80,
+      [bytes(source), constant(#"9f0508ff", indices), boolean(set)],
+      [
+        runtime_constant(#"9f01ff", source),
+        runtime_constant(#"9f0508ff", indices),
+        runtime_constant(#"9f04ff", set),
+      ],
+    ),
+    ill_typed_failure_has_one_arm(
+      80,
+      [bytes(source), constant(#"9f0500ff", indices), bytes(source)],
+      [
+        runtime_constant(#"9f01ff", source),
+        runtime_constant(#"9f0500ff", indices),
+        runtime_constant(#"9f01ff", source),
+      ],
+    ),
+  }
+}
+
+fn opaque_dividend_arguments() -> List<cek_builtin_v1.ValueWitnessV1> {
+  [
+    cek_builtin_v1.OpaqueValue(
+      cek_constant_v1.constant_root_v1(
+        cek_constant_v1.ConstantWitnessV1 {
+          type_cbor: #"9f00ff",
+          payload_cbor: cbor.serialise(builtin.i_data(5)),
+        },
+      ),
+    ),
+    integer(#"00"),
+  ]
+}
+
+// A sized argument presented opaquely has no budget, so the failure it hides
+// is proved only by revealing it.
+test revealed_dividend_is_a_known_failure() {
+  let revealed = [integer(cbor.serialise(builtin.i_data(5))), integer(#"00")]
+  and {
+    builtin_root(4, opaque_dividend_arguments()) == builtin_root(4, revealed),
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      4,
+      builtin_root(4, revealed),
+      revealed,
+    ),
+  }
+}
+
+test opaque_dividend_is_not_a_known_failure() fail {
+  let hidden = opaque_dividend_arguments()
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    4,
+    builtin_root(4, hidden),
+    hidden,
+  )
+}
+
+test opaque_value_has_no_memory_size() fail {
+  cek_builtin_v1.value_memory_size_v1(
+    cek_builtin_v1.OpaqueValue(
+      #"1111111111111111111111111111111111111111111111111111111111111111",
+    ),
+  ) >= 0
+}
+
+// mkCons is typed by the committed runtime type, so a semantic presentation of
+// a well-typed item or list is not a type failure.
+test mk_cons_is_typed_by_the_committed_type_in_any_presentation() {
+  let item = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f00ff",
+    payload_cbor: #"01",
+  }
+  let items = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f0500ff",
+    payload_cbor: #"80",
+  }
+  let Pair(item_payload, item_memory) = cek_constant_v1.constant_semantic_projection(
+    item,
+  )
+  let Pair(items_payload, items_memory) = cek_constant_v1.constant_semantic_projection(
+    items,
+  )
+  let constant_arguments = [
+    cek_builtin_v1.RuntimeConstantValue(item),
+    cek_builtin_v1.RuntimeConstantValue(items),
+  ]
+  let semantic_item = [
+    cek_builtin_v1.RuntimeSemanticConstantValue {
+      type_cbor: #"9f00ff",
+      payload: item_payload,
+      memory: item_memory,
+    },
+    cek_builtin_v1.RuntimeConstantValue(items),
+  ]
+  let semantic_list = [
+    cek_builtin_v1.RuntimeConstantValue(item),
+    cek_builtin_v1.RuntimeSemanticConstantValue {
+      type_cbor: #"9f0500ff",
+      payload: items_payload,
+      memory: items_memory,
+    },
+  ]
+  let root = runtime_builtin_root(32, constant_arguments)
+  and {
+    runtime_builtin_root(32, semantic_item) == root,
+    runtime_builtin_root(32, semantic_list) == root,
+    cek_builtin_v1.builtin_arguments_are_well_typed_v1(32, constant_arguments),
+    cek_builtin_v1.builtin_arguments_are_well_typed_v1(32, semantic_item),
+    cek_builtin_v1.builtin_arguments_are_well_typed_v1(32, semantic_list),
+    !cek_builtin_v1.verify_builtin_type_failure_v1(32, root, semantic_item),
+    !cek_builtin_v1.verify_builtin_type_failure_v1(32, root, semantic_list),
+  }
+}
+
+// An out-of-range index over a source that is not a byte string: tags 14
+// (indexByteString) and 79 (readBit) read the index first, and a negative
+// index must not let the source go untyped.
+fn integer_source_negative_index() -> List<cek_builtin_v1.ValueWitnessV1> {
+  [integer(cbor.serialise(builtin.i_data(5))), integer(#"20")]
+}
+
+fn integer_source_negative_index_runtime() -> List<
+  cek_builtin_v1.RuntimeValueWitnessV1,
+> {
+  [
+    runtime_constant(#"9f00ff", cbor.serialise(builtin.i_data(5))),
+    runtime_constant(#"9f00ff", #"20"),
+  ]
+}
+
+fn known_failure_of_integer_source(tag: Int) -> Bool {
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    tag,
+    builtin_root(tag, integer_source_negative_index()),
+    integer_source_negative_index(),
+  )
+}
+
+test ill_typed_index_byte_string_source_is_not_a_known_failure() fail {
+  known_failure_of_integer_source(14)
+}
+
+test ill_typed_read_bit_source_is_not_a_known_failure() fail {
+  known_failure_of_integer_source(79)
+}
+
+test ill_typed_index_source_is_a_type_failure() {
+  let runtime = integer_source_negative_index_runtime()
+  and {
+    cek_builtin_v1.runtime_arguments_root_v1(runtime) == cek_builtin_v1.arguments_root_v1(
+      integer_source_negative_index(),
+    ),
+    cek_builtin_v1.verify_builtin_type_failure_v1(
+      14,
+      runtime_builtin_root(14, runtime),
+      runtime,
+    ),
+    cek_builtin_v1.verify_builtin_type_failure_v1(
+      79,
+      runtime_builtin_root(79, runtime),
+      runtime,
+    ),
+  }
+}
+
+// The same negative index over a byte string is a known failure.
+test negative_index_over_bytes_is_a_known_failure() {
+  let arguments = [bytes(cbor.serialise(builtin.b_data(#"aa"))), integer(#"20")]
+  and {
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      14,
+      builtin_root(14, arguments),
+      arguments,
+    ),
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      79,
+      builtin_root(79, arguments),
+      arguments,
+    ),
+  }
 }
