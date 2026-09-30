@@ -280,6 +280,7 @@ export const validationAuxiliaryWitnessData = (
       return new Constr(34, [
         mpfProofFrameData(auxiliary.frame),
         byteList(auxiliary.siblings),
+        bytes(auxiliary.opening),
       ]);
     case "transactionRedeemerItemBegin":
       return new Constr(29, [

@@ -1,4 +1,5 @@
 import { ensureHash32 } from "./codec/hash.js";
+import { midgardMpfTerminalBranchKeepsTwoChildren } from "./mpf-deletion-opening.js";
 import {
   buildMidgardMpfProofDescriptor,
   buildMidgardMpfProofFrames,
@@ -60,14 +61,23 @@ const assertTerminalNeighborIsCanonical = (
   }
 };
 
+/**
+ * `deletionOpening` marks the trace as a deletion and carries the terminal
+ * Branch's group opening (`buildMidgardMpfDeletionOpening`). A deletion's
+ * terminal Branch must keep two other children
+ * (`midgardMpfTerminalBranchKeepsTwoChildren`); an insertion or update leaves
+ * it undefined, since its excluding side is the authenticated predecessor.
+ */
 export const buildMidgardMpfProofFoldTrace = ({
   key,
   value,
   steps,
+  deletionOpening,
 }: {
   readonly key: Uint8Array;
   readonly value: Uint8Array;
   readonly steps: readonly MidgardMpfProofStep[];
+  readonly deletionOpening?: Uint8Array;
 }): MidgardMpfProofFoldTrace => {
   const frames = buildMidgardMpfProofFrames(steps);
   const descriptor = buildMidgardMpfProofDescriptor(frames);
@@ -94,6 +104,18 @@ export const buildMidgardMpfProofFoldTrace = ({
     }
     if (frameIndex === frames.length - 1) {
       assertTerminalNeighborIsCanonical(path, frame);
+      if (
+        deletionOpening !== undefined &&
+        frame.step.kind === "branch" &&
+        !midgardMpfTerminalBranchKeepsTwoChildren(
+          frame.step.neighbors,
+          deletionOpening,
+        )
+      ) {
+        throw new Error(
+          "MPF terminal branch of a deletion does not keep two children",
+        );
+      }
     }
     const post: MidgardMpfProofFoldControl = {
       nextFrameIndex: frameIndex - 1,

@@ -4,8 +4,10 @@
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  buildMidgardMpfDeletionOpening,
   buildMidgardMpfProofFoldTrace,
   computeHash32,
+  type MidgardMpfProofFoldStep,
   type MidgardMpfProofFoldTrace,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
@@ -28,6 +30,8 @@ export type ValidationMachineLedgerMutationStep = {
   readonly postRoot: Buffer;
   /** Canonical bounded-frame form consumed by the deployed resolver chain. */
   readonly proofFoldTrace: MidgardMpfProofFoldTrace;
+  /** A deletion's terminal-Branch group opening; empty for an insertion. */
+  readonly deletionOpening: Buffer;
 };
 
 export type ValidationMachineValueMutationStep = {
@@ -119,10 +123,16 @@ export const applyValidationMachineLedgerMutationStep = async (
     );
   }
   const proof = await trie.prove(operation.key, operation.type === "insert");
+  const steps = parseMidgardMpfProofJson(proof.toJSON());
+  const deletionOpening =
+    operation.type === "delete"
+      ? await buildMidgardMpfDeletionOpening(trie, operation.key, steps)
+      : Buffer.alloc(0);
   const proofFoldTrace = buildMidgardMpfProofFoldTrace({
     key: operation.key,
     value: mutationValue,
-    steps: parseMidgardMpfProofJson(proof.toJSON()),
+    steps,
+    ...(operation.type === "delete" ? { deletionOpening } : {}),
   });
   if (operation.type === "delete") {
     await trie.delete(operation.key);
@@ -148,5 +158,23 @@ export const applyValidationMachineLedgerMutationStep = async (
     preRoot,
     postRoot,
     proofFoldTrace,
+    deletionOpening,
   };
 };
+
+/** The `ledgerDeltaProofFrame` auxiliary for one fold step of `step`: a
+ * deletion's terminal frame carries the group opening, every other frame an
+ * empty one. */
+export const ledgerDeltaProofFrameAuxiliary = (
+  step: ValidationMachineLedgerMutationStep,
+  foldStep: MidgardMpfProofFoldStep,
+) => ({
+  kind: "ledgerDeltaProofFrame" as const,
+  frame: foldStep.frame,
+  siblings: foldStep.membership.siblings,
+  opening:
+    step.operation.type === "delete" &&
+    foldStep.frame.frameIndex === step.proofFoldTrace.frames.length - 1
+      ? step.deletionOpening
+      : Buffer.alloc(0),
+});

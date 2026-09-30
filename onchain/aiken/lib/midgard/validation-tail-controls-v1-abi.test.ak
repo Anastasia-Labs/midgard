@@ -205,6 +205,7 @@ fn tail_auxiliaries() -> List<vm_machine_types.ValidationAuxiliaryWitnessV1> {
     vm_machine_types.LedgerDeltaProofFrameWitness {
       frame: proof_frame(),
       siblings: [h47],
+      opening: h48,
     },
     vm_machine_types.LedgerDeltaOperationWitness {
       operation_kind: 0,
@@ -260,9 +261,9 @@ test validation_tail_auxiliary_v1_typescript_corpus_is_exact() {
     constructors_are_exact(
       items,
       [24, 25, 26, 27, 28, 34, 35, 38, 39],
-      [11, 9, 6, 4, 3, 2, 4, 3, 2],
+      [11, 9, 6, 4, 3, 3, 4, 3, 2],
     ),
-    blake2b_256(cbor.serialise(items)) == #"8916ad7c26d34eafe62c93ed9c36be30d880fb102b918bb37f0b6d3dc27111e1",
+    blake2b_256(cbor.serialise(items)) == #"544436205849eb463fb2c0c4d4fcc461ff9d38fd44ad1c55d4107ff8f616f761",
   }
 }
 

@@ -6,6 +6,7 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   exactTrieRoot,
+  ledgerDeltaProofFrameAuxiliary,
   validationMachineLedgerRoot,
 } from "../src/validation-machine/ledger-mutation.js";
 import { makeOutput, outRefFromByte } from "./validation-fixtures.js";
@@ -61,5 +62,51 @@ describe("validation ledger roots at the header boundary", () => {
     expect(await validationMachineLedgerRoot([])).toEqual(
       Buffer.from(EMPTY_MERKLE_TREE_ROOT, "hex"),
     );
+  });
+
+  it("carries a deletion's group opening on its terminal proof frame only", async () => {
+    const entries = Array.from({ length: 48 }, (_, index) => ({
+      outRef: outRefFromByte(index + 1),
+      output: makeOutput(10_000_000n),
+    }));
+    const insertion = buildValidationMachineLedgerInsertOp({
+      key: outRefFromByte(0x80),
+      outputCbor: makeOutput(10_000_000n),
+    });
+    const steps = await buildValidationMachineLedgerMutationSteps({
+      initialEntries: entries,
+      operations: [
+        insertion,
+        ...entries.map(({ outRef }) => ({
+          type: "delete" as const,
+          key: outRef,
+        })),
+      ],
+    });
+    let opened = 0;
+    for (const step of steps) {
+      const frames = step.proofFoldTrace.steps.map((foldStep) =>
+        ledgerDeltaProofFrameAuxiliary(step, foldStep),
+      );
+      const terminal = step.proofFoldTrace.frames.at(-1);
+      const carried = frames.filter(({ opening }) => opening.length > 0);
+      if (step.operation.type === "insert") {
+        expect(step.deletionOpening).toHaveLength(0);
+        expect(carried).toHaveLength(0);
+        continue;
+      }
+      if (step.deletionOpening.length === 0) {
+        expect(carried).toHaveLength(0);
+        continue;
+      }
+      opened += 1;
+      expect(terminal?.step.kind).toBe("branch");
+      expect(carried).toHaveLength(1);
+      expect(carried[0]!.frame.frameIndex).toBe(
+        step.proofFoldTrace.frames.length - 1,
+      );
+      expect(carried[0]!.opening).toEqual(step.deletionOpening);
+    }
+    expect(opened).toBeGreaterThan(0);
   });
 });

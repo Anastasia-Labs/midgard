@@ -198,7 +198,7 @@ fn ledger_delta_pending_step(
       ),
     }
   } else {
-    expect LedgerDeltaProofFrameWitness { frame, siblings } = auxiliary
+    expect LedgerDeltaProofFrameWitness { frame, siblings, opening } = auxiliary
     when
       mpf_proof_fold_v1.fold_proof_frame_v1(
         pending.key,
@@ -206,6 +206,11 @@ fn ledger_delta_pending_step(
         pending.fold_control,
         frame,
         siblings,
+        if pending.operation_kind == 0 {
+          Some(opening)
+        } else {
+          None
+        },
       )
     is {
       None -> False
@@ -689,6 +694,7 @@ pub fn verify_ledger_delta_proof_frame_semantics_v1(
   witness: ValidationOneStepWitnessV1,
   frame: mpf_proof_fold_v1.ProofFrameV1,
   siblings: List<ByteArray>,
+  opening: ByteArray,
 ) -> Bool {
   let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
   expect control.pending_mutation_cbor != #""
@@ -703,7 +709,7 @@ pub fn verify_ledger_delta_proof_frame_semantics_v1(
     ledger_delta_pending_step(
       pre,
       witness,
-      LedgerDeltaProofFrameWitness { frame, siblings },
+      LedgerDeltaProofFrameWitness { frame, siblings, opening },
       control,
     ),
   }

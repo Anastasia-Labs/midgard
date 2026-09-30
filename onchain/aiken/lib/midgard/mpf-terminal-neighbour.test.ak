@@ -4,16 +4,21 @@
 //// terminal Leaf or Fork neighbour to its honest shape in every total
 //// mutation and in the resumable fold, in both directions: a tampered terminal
 //// Leaf key or skip, or a leaf re-read as a terminal Fork, is refused; the
-//// honest proofs still give the honest roots. A terminal Branch standing in
-//// for a node with a single other child is not covered.
+//// honest proofs still give the honest roots. A deletion's terminal Branch
+//// must keep two other children: a Branch standing in for a node with a single
+//// other child is refused, and a lone neighbour group is opened to show it
+//// holds two.
 
 use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, nibble, nibbles, suffix}
-use aiken/merkle_patricia_forestry/merkling.{sparse_merkle_16}
+use aiken/merkle_patricia_forestry/merkling.{
+  null_hash, null_hash_2, null_hash_4, null_hash_8, sparse_merkle_16,
+}
 use aiken/primitive/bytearray
+use midgard/mpf_branch_opening_fixture as node
 use midgard/mpf_proof_fold_v1 as fold
 use midgard/mpf_proof_v1 as proof
 use midgard/validation_merkle_v1 as merkle
@@ -105,9 +110,9 @@ test mpf_terminal_leaf_with_a_skip_mutates_to_the_honest_roots() {
   and {
     nibble(pa(), 0) == nibble(pb(), 0),
     nibble(pa(), 1) != nibble(pb(), 1),
-    proof.delete_root_paired_fold(a_and_b(), a, va, steps) == Some(only_b()),
-    proof.delete_root_two_fold(a_and_b(), a, va, steps) == Some(only_b()),
-    proof.delete_root(a_and_b(), a, va, steps) == Some(only_b()),
+    proof.delete_root_paired_fold(a_and_b(), a, va, steps, #"") == Some(
+      only_b(),
+    ),
     proof.insert_root_paired_fold(only_b(), a, va, steps) == Some(a_and_b()),
     proof.insert_root_two_fold(only_b(), a, va, steps) == Some(a_and_b()),
     proof.insert_root(only_b(), a, va, steps) == Some(a_and_b()),
@@ -127,9 +132,7 @@ test mpf_terminal_leaf_key_tamper_is_refused_on_delete() {
   let steps = [tampered_leaf_step()]
   and {
     proof.has(a_and_b(), a, va, steps),
-    proof.delete_root_paired_fold(a_and_b(), a, va, steps) == None,
-    proof.delete_root_two_fold(a_and_b(), a, va, steps) == None,
-    proof.delete_root(a_and_b(), a, va, steps) == None,
+    proof.delete_root_paired_fold(a_and_b(), a, va, steps, #"") == None,
   }
 }
 
@@ -147,9 +150,7 @@ test mpf_terminal_fork_masquerade_is_refused_on_delete() {
   let steps = [masquerading_fork_step()]
   and {
     proof.has(a_and_b(), a, va, steps),
-    proof.delete_root_paired_fold(a_and_b(), a, va, steps) == None,
-    proof.delete_root_two_fold(a_and_b(), a, va, steps) == None,
-    proof.delete_root(a_and_b(), a, va, steps) == None,
+    proof.delete_root_paired_fold(a_and_b(), a, va, steps, #"") == None,
   }
 }
 
@@ -207,9 +208,9 @@ test mpf_terminal_leaf_at_an_odd_cursor_mutates_to_the_honest_roots() {
     proof.insert_root_paired_fold(b_and_c(), a, va, steps) == Some(a_b_and_c()),
     proof.insert_root_two_fold(b_and_c(), a, va, steps) == Some(a_b_and_c()),
     proof.insert_root(b_and_c(), a, va, steps) == Some(a_b_and_c()),
-    proof.delete_root_paired_fold(a_b_and_c(), a, va, steps) == Some(b_and_c()),
-    proof.delete_root_two_fold(a_b_and_c(), a, va, steps) == Some(b_and_c()),
-    proof.delete_root(a_b_and_c(), a, va, steps) == Some(b_and_c()),
+    proof.delete_root_paired_fold(a_b_and_c(), a, va, steps, #"") == Some(
+      b_and_c(),
+    ),
   }
 }
 
@@ -287,19 +288,19 @@ test mpf_terminal_leaf_tamper_is_refused_across_a_longer_skip() {
     nibbles(pa(), 0, 3) == nibbles(pd(), 0, 3),
     nibble(pa(), 3) != nibble(pd(), 3),
     nibble(pa(), 4) != nibble(pd(), 4),
-    proof.delete_root_paired_fold(a_and_d(), a, va, honest) == Some(only_d()),
+    proof.delete_root_paired_fold(a_and_d(), a, va, honest, #"") == Some(
+      only_d(),
+    ),
     proof.insert_root_paired_fold(only_d(), a, va, honest) == Some(a_and_d()),
     proof.has(a_and_d(), a, va, first_nibble_moved),
     proof.has(a_and_d(), a, va, last_nibble_moved),
-    proof.delete_root_paired_fold(a_and_d(), a, va, first_nibble_moved) == None,
-    proof.delete_root_paired_fold(a_and_d(), a, va, last_nibble_moved) == None,
-    proof.delete_root(a_and_d(), a, va, first_nibble_moved) == None,
-    proof.delete_root(a_and_d(), a, va, last_nibble_moved) == None,
+    proof.delete_root_paired_fold(a_and_d(), a, va, first_nibble_moved, #"") == None,
+    proof.delete_root_paired_fold(a_and_d(), a, va, last_nibble_moved, #"") == None,
     proof.insert_root_paired_fold(only_d(), a, va, inflated) == None,
     proof.insert_root_two_fold(only_d(), a, va, inflated) == None,
-    fold_steps(a, va, first_nibble_moved) == None,
-    fold_steps(a, va, last_nibble_moved) == None,
-    fold_steps(a, va, inflated) == None,
+    fold_steps(a, va, first_nibble_moved, None) == None,
+    fold_steps(a, va, last_nibble_moved, None) == None,
+    fold_steps(a, va, inflated, None) == None,
   }
 }
 
@@ -393,7 +394,9 @@ fn deep_fork(prefix_length: Int) -> (ByteArray, ByteArray, mpf.ProofStep) {
 test mpf_terminal_fork_prefix_may_end_at_the_last_nibble() {
   let (including, excluding, step) = deep_fork(31)
   and {
-    proof.delete_root_paired_fold(including, a, va, [step]) == Some(excluding),
+    proof.delete_root_paired_fold(including, a, va, [step], #"") == Some(
+      excluding,
+    ),
     proof.insert_root_paired_fold(excluding, a, va, [step]) == Some(including),
   }
 }
@@ -402,9 +405,7 @@ test mpf_terminal_fork_prefix_past_the_path_is_refused() {
   let (including, excluding, step) = deep_fork(32)
   and {
     proof.has(including, a, va, [step]),
-    proof.delete_root_paired_fold(including, a, va, [step]) == None,
-    proof.delete_root_two_fold(including, a, va, [step]) == None,
-    proof.delete_root(including, a, va, [step]) == None,
+    proof.delete_root_paired_fold(including, a, va, [step], #"") == None,
     proof.insert_root_paired_fold(excluding, a, va, [step]) == None,
     proof.insert_root_two_fold(excluding, a, va, [step]) == None,
     proof.insert_root(excluding, a, va, [step]) == None,
@@ -434,6 +435,7 @@ fn fold_steps(
   key: ByteArray,
   value: ByteArray,
   steps: List<mpf.ProofStep>,
+  deletion_opening: Option<ByteArray>,
 ) -> Option<fold.ProofFoldControlV1> {
   let frames = build_frames(steps, 0, 0)
   let hashes = list.map(frames, fold.proof_frame_leaf_hash_v1)
@@ -445,7 +447,14 @@ fn fold_steps(
     peaks: merkle.build_frontier(hashes).peaks,
   }
   expect Some(initial) = fold.initial_fold_control_v1(key, value, descriptor)
-  fold_back(key, descriptor, initial, list.reverse(frames), hashes)
+  fold_back(
+    key,
+    descriptor,
+    initial,
+    list.reverse(frames),
+    hashes,
+    deletion_opening,
+  )
 }
 
 fn build_frames(
@@ -470,6 +479,7 @@ fn fold_back(
   control: fold.ProofFoldControlV1,
   frames: List<fold.ProofFrameV1>,
   hashes: List<ByteArray>,
+  deletion_opening: Option<ByteArray>,
 ) -> Option<fold.ProofFoldControlV1> {
   when frames is {
     [] -> Some(control)
@@ -485,9 +495,17 @@ fn fold_back(
         _ -> fail @"fold_back: at most two frames"
       }
       when
-        fold.fold_proof_frame_v1(key, descriptor, control, this, siblings)
+        fold.fold_proof_frame_v1(
+          key,
+          descriptor,
+          control,
+          this,
+          siblings,
+          deletion_opening,
+        )
       is {
-        Some(next) -> fold_back(key, descriptor, next, rest, hashes)
+        Some(next) ->
+          fold_back(key, descriptor, next, rest, hashes, deletion_opening)
         None -> None
       }
     }
@@ -495,11 +513,12 @@ fn fold_back(
 }
 
 test mpf_fold_terminal_leaf_with_a_skip_gives_the_honest_roots() {
-  expect Some(single) = fold_steps(a, va, [honest_leaf_step()])
+  expect Some(single) = fold_steps(a, va, [honest_leaf_step()], None)
   expect Some(odd) = fold_steps(
     a,
     va,
     [c_step(), odd_cursor_leaf_step(pb(), vb)],
+    None,
   )
   and {
     fold.fold_is_complete_v1(single),
@@ -512,27 +531,338 @@ test mpf_fold_terminal_leaf_with_a_skip_gives_the_honest_roots() {
 }
 
 test mpf_fold_refuses_a_tampered_terminal_leaf_key() {
-  fold_steps(a, va, [tampered_leaf_step()]) == None
+  fold_steps(a, va, [tampered_leaf_step()], None) == None
 }
 
 test mpf_fold_refuses_an_inflated_terminal_leaf_skip() {
-  fold_steps(a, va, [inflated_leaf_step()]) == None
+  fold_steps(a, va, [inflated_leaf_step()], None) == None
 }
 
 test mpf_fold_refuses_a_terminal_fork_masquerade() {
   and {
-    fold_steps(a, va, [masquerading_fork_step()]) == None,
-    fold_steps(a, va, [c_step(), odd_cursor_fork_masquerade(pb(), vb)]) == None,
+    fold_steps(a, va, [masquerading_fork_step()], None) == None,
+    fold_steps(a, va, [c_step(), odd_cursor_fork_masquerade(pb(), vb)], None) == None,
   }
 }
 
 test mpf_fold_bounds_the_terminal_fork_prefix() {
   let (including, excluding, inside) = deep_fork(31)
   let (_, _, outside) = deep_fork(32)
-  expect Some(accepted) = fold_steps(a, va, [inside])
+  expect Some(accepted) = fold_steps(a, va, [inside], None)
   and {
     accepted.including_root == including,
     accepted.excluding_root == excluding,
-    fold_steps(a, va, [outside]) == None,
+    fold_steps(a, va, [outside], None) == None,
   }
+}
+
+// ## A deletion's terminal Branch keeps two other children
+//
+// Each trie below is a single branch at the root whose children are leaves,
+// one per slot, keyed by `node.slot_key`. Deleting the leaf in slot `me`
+// through a terminal Branch leaves the other children in place; the successor
+// is canonical only when at least two of them remain. When they all sit in one
+// neighbour group, the group is opened down to the level where it splits.
+
+fn slot_path(slot: Int) -> ByteArray {
+  blake2b_256(node.slot_key(slot))
+}
+
+fn slot_children(slots: List<Int>) -> List<ByteArray> {
+  node.children(
+    list.map(
+      slots,
+      fn(slot) { Pair(slot, leaf(slot_path(slot), 1, node.slot_key(slot))) },
+    ),
+  )
+}
+
+// The honest root of the trie holding one leaf in each of `slots`.
+fn slots_root(slots: List<Int>) -> ByteArray {
+  when slots is {
+    [slot] -> leaf(slot_path(slot), 0, node.slot_key(slot))
+    _ -> combine(#"", node.merkle(slot_children(slots)))
+  }
+}
+
+fn branch_step(slots: List<Int>, me: Int) -> mpf.ProofStep {
+  mpf.Branch { skip: 0, neighbors: node.neighbors(slot_children(slots), me) }
+}
+
+fn honest_opening(slots: List<Int>, me: Int) -> ByteArray {
+  node.opening(slot_children(slots), me)
+}
+
+fn delete_slot(
+  slots: List<Int>,
+  me: Int,
+  opening: ByteArray,
+) -> Option<ByteArray> {
+  proof.delete_root_paired_fold(
+    slots_root([me, ..slots]),
+    node.slot_key(me),
+    node.slot_key(me),
+    [branch_step([me, ..slots], me)],
+    opening,
+  )
+}
+
+// The honest delete of `me` from a trie whose other children are `others`
+// gives the honest root of `others`.
+fn honest_delete_holds(others: List<Int>, me: Int) -> Bool {
+  delete_slot(others, me, honest_opening([me, ..others], me)) == Some(
+    slots_root(others),
+  )
+}
+
+fn fold_delete_slot(
+  others: List<Int>,
+  me: Int,
+  deletion_opening: Option<ByteArray>,
+) -> Option<fold.ProofFoldControlV1> {
+  fold_steps(
+    node.slot_key(me),
+    node.slot_key(me),
+    [branch_step([me, ..others], me)],
+    deletion_opening,
+  )
+}
+
+test mpf_terminal_branch_slot_keys_sit_in_their_slots() {
+  list.all(list.range(0, 15), fn(slot) { nibble(slot_path(slot), 0) == slot })
+}
+
+// The premise: a Branch naming the lone other child of a two-child node is a
+// valid membership proof, and the root it would leave behind is a branch with
+// one child, which no honest trie holds.
+test mpf_terminal_branch_masquerade_proves_membership_of_the_deleted_key() {
+  list.all(
+    [4, 6, 1, 12],
+    fn(other) {
+      let slots = [5, other]
+      and {
+        proof.has(
+          slots_root(slots),
+          node.slot_key(5),
+          node.slot_key(5),
+          [branch_step(slots, 5)],
+        ),
+        combine(#"", node.merkle(slot_children([other]))) != slots_root([other]),
+      }
+    },
+  )
+}
+
+// With `me` = 5 the lone neighbour sits in n1 (slot 4), n2 (slot 6), n4
+// (slot 1) or n8 (slot 12).
+test mpf_terminal_branch_masquerade_is_refused_on_delete() {
+  list.all(
+    [4, 6, 1, 12],
+    fn(other) {
+      and {
+        delete_slot([other], 5, #"") == None,
+        delete_slot([other], 5, honest_opening([5, other], 5)) == None,
+      }
+    },
+  )
+}
+
+test mpf_terminal_branch_with_only_n1_is_refused_with_any_opening() {
+  let children = slot_children([4, 5])
+  let forged = bytearray.concat(
+    leaf(slot_path(4), 1, node.slot_key(4)),
+    leaf(slot_path(4), 1, node.slot_key(4)),
+  )
+  and {
+    delete_slot([4], 5, #"") == None,
+    delete_slot([4], 5, forged) == None,
+    !proof.terminal_branch_keeps_two_children(
+      node.neighbors(children, 5),
+      forged,
+    ),
+  }
+}
+
+test mpf_terminal_branch_with_no_other_child_is_refused() {
+  let neighbors = bytearray.concat(
+    null_hash_8,
+    bytearray.concat(null_hash_4, bytearray.concat(null_hash_2, null_hash)),
+  )
+  and {
+    node.neighbors(slot_children([5]), 5) == neighbors,
+    !proof.terminal_branch_keeps_two_children(neighbors, #""),
+    proof.delete_root_paired_fold(
+      combine(#"", node.merkle(slot_children([5]))),
+      node.slot_key(5),
+      node.slot_key(5),
+      [mpf.Branch { skip: 0, neighbors }],
+      #"",
+    ) == None,
+  }
+}
+
+// Every depth a lone group can be opened at, with the non-empty part on the
+// left and on the right, for `me` in the lower half (5) and the upper (10).
+test mpf_terminal_branch_lone_group_is_opened_at_every_depth() {
+  and {
+    // n2 of 5 is 6..7: split at depth 0.
+    honest_delete_holds([6, 7], 5),
+    // n4 of 5 is 0..3: depth 0, then depth 1 on either side.
+    honest_delete_holds([1, 3], 5),
+    honest_delete_holds([0, 1], 5),
+    honest_delete_holds([2, 3], 5),
+    // n8 of 5 is 8..15: depth 0, depth 1 and depth 2 on either side.
+    honest_delete_holds([8, 12], 5),
+    honest_delete_holds([8, 10], 5),
+    honest_delete_holds([12, 14], 5),
+    honest_delete_holds([8, 9], 5),
+    honest_delete_holds([14, 15], 5),
+    honest_delete_holds([10, 11], 5),
+    honest_delete_holds([12, 13], 5),
+    // n8 of 10 is 0..7, n4 of 10 is 12..15, n2 of 10 is 8..9.
+    honest_delete_holds([0, 7], 10),
+    honest_delete_holds([6, 7], 10),
+    honest_delete_holds([13, 14], 10),
+    honest_delete_holds([8, 9], 10),
+    // More than two children in the lone group.
+    honest_delete_holds([8, 9, 15], 5),
+    honest_delete_holds([0, 1, 2, 3], 5),
+  }
+}
+
+test mpf_terminal_branch_opening_depths_are_as_derived() {
+  and {
+    bytearray.length(honest_opening([5, 6, 7], 5)) == 64,
+    bytearray.take(honest_opening([5, 0, 1], 5), 1) == #"00",
+    bytearray.take(honest_opening([5, 2, 3], 5), 1) == #"01",
+    bytearray.take(honest_opening([5, 8, 9], 5), 2) == #"0000",
+    bytearray.take(honest_opening([5, 14, 15], 5), 2) == #"0101",
+    bytearray.take(honest_opening([5, 10, 11], 5), 2) == #"0001",
+    bytearray.take(honest_opening([5, 12, 13], 5), 2) == #"0100",
+    honest_opening([5, 4, 12], 5) == #"",
+  }
+}
+
+// Two or more non-empty groups need no opening: whatever is sent is ignored.
+test mpf_terminal_branch_with_two_groups_ignores_the_opening() {
+  and {
+    honest_delete_holds([4, 12], 5),
+    honest_delete_holds([0, 6, 9], 5),
+    delete_slot([4, 12], 5, #"deadbeef") == Some(slots_root([4, 12])),
+    delete_slot([1, 6], 5, bytearray.concat(null_hash, null_hash)) == Some(
+      slots_root([1, 6]),
+    ),
+  }
+}
+
+// The lone n8 group of 5 holds slots 8 and 9. Each opening below either stops
+// at a single child or does not describe the group.
+test mpf_terminal_branch_refuses_a_tampered_opening() {
+  let others = [8, 9]
+  let children = slot_children([5, ..others])
+  let h8 = leaf(slot_path(8), 1, node.slot_key(8))
+  let h9 = leaf(slot_path(9), 1, node.slot_key(9))
+  let pair = bytearray.concat(h8, h9)
+  let honest = bytearray.concat(#"0000", pair)
+  let refused = fn(opening) { delete_slot(others, 5, opening) == None }
+  and {
+    honest_opening([5, ..others], 5) == honest,
+    delete_slot(others, 5, honest) == Some(slots_root(others)),
+    // Stops at depth 0 or 1, where one half is empty.
+    refused(
+      bytearray.concat(
+        node.merkle(list.take(list.drop(children, 8), 4)),
+        null_hash_4,
+      ),
+    ),
+    refused(
+      bytearray.concat(#"00", bytearray.concat(combine(h8, h9), null_hash_2)),
+    ),
+    // Halves that do not hash back to the group.
+    refused(bytearray.concat(#"0000", bytearray.concat(h9, h8))),
+    refused(bytearray.concat(#"0000", bytearray.concat(h8, h8))),
+    // A side byte pointing the wrong way.
+    refused(bytearray.concat(#"0100", pair)),
+    refused(bytearray.concat(#"0001", pair)),
+    // A depth that leaves no level to split: n8 opens at depth 2 at most.
+    refused(bytearray.concat(#"000000", pair)),
+    // Not a whole opening.
+    refused(#""),
+    refused(bytearray.drop(honest, 1)),
+    refused(pair),
+    refused(bytearray.concat(honest, #"00")),
+  }
+}
+
+// A null half is refused even where it would hash back: a lone group holding
+// one child, opened to that child and an empty slot, with the empty slot on
+// either side.
+test mpf_terminal_branch_refuses_an_opening_with_a_null_half() {
+  let h8 = leaf(slot_path(8), 1, node.slot_key(8))
+  let h9 = leaf(slot_path(9), 1, node.slot_key(9))
+  let right_null = bytearray.concat(#"0000", bytearray.concat(h8, null_hash))
+  let left_null = bytearray.concat(#"0000", bytearray.concat(null_hash, h9))
+  and {
+    delete_slot([8], 5, right_null) == None,
+    !proof.terminal_branch_keeps_two_children(
+      node.neighbors(slot_children([5, 8]), 5),
+      right_null,
+    ),
+    delete_slot([9], 5, left_null) == None,
+    !proof.terminal_branch_keeps_two_children(
+      node.neighbors(slot_children([5, 9]), 5),
+      left_null,
+    ),
+  }
+}
+
+// An opening cannot split below a single slot. A lone child whose own hash is
+// the combine of two 32-byte values (an inner node with a 32-nibble prefix,
+// say) hashes back to its group when read as a split one level further down,
+// but it is still one child. Shown for a lone n2, n4 and n8 group of 5.
+test mpf_terminal_branch_refuses_an_opening_below_a_single_slot() {
+  let left = blake2b_256(#"01")
+  let right = blake2b_256(#"02")
+  let lone = combine(left, right)
+  let halves = bytearray.concat(left, right)
+  let refused = fn(slot, sides) {
+    !proof.terminal_branch_keeps_two_children(
+      node.neighbors(node.children([Pair(5, left), Pair(slot, lone)]), 5),
+      bytearray.concat(sides, halves),
+    )
+  }
+  and {
+    refused(6, #"00"),
+    refused(0, #"0000"),
+    refused(8, #"000000"),
+  }
+}
+
+// The resumable fold binds the rule on a deletion only: an insertion folds
+// the same frames without it, since its excluding side is the authenticated
+// predecessor.
+test mpf_fold_terminal_branch_binds_deletion_only() {
+  expect Some(honest) = fold_delete_slot(
+    [8, 9],
+    5,
+    Some(honest_opening([5, 8, 9], 5)),
+  )
+  expect Some(two_groups) = fold_delete_slot([4, 12], 5, Some(#""))
+  expect Some(inserted) = fold_delete_slot([12], 5, None)
+  and {
+    honest.including_root == slots_root([5, 8, 9]),
+    honest.excluding_root == slots_root([8, 9]),
+    two_groups.excluding_root == slots_root([4, 12]),
+    fold_delete_slot([8, 9], 5, Some(#"")) == None,
+    fold_delete_slot([12], 5, Some(#"")) == None,
+    fold_delete_slot([4], 5, Some(#"")) == None,
+    inserted.including_root == slots_root([5, 12]),
+  }
+}
+
+// A vector the off-chain twin pins byte for byte: slot 5 deleted from a root
+// branch whose other children are slots 10 and 11, the lone n8 group opened at
+// depth 2 (left, then right).
+test mpf_terminal_branch_opening_cross_language_vector() {
+  honest_opening([5, 10, 11], 5) == #"000123f26c647a6f86b97488cf39e51aff07382b82473f0bc7078927eecaa0f1bd8152e855108067f344c569011ef098276c4fed20f7d705dfcb063d4052a3a20080"
 }

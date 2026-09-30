@@ -407,6 +407,8 @@ export type ValidationMachineWorkWitness = {
         readonly kind: "ledgerDeltaProofFrame";
         readonly frame: MidgardMpfProofFrame;
         readonly siblings: readonly Buffer[];
+        /** A deletion's terminal-Branch group opening, else empty. */
+        readonly opening: Buffer;
       }
     | null;
 };

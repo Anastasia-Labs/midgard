@@ -72,6 +72,7 @@ test incremental_mutation_matches_atomic_mutation_at_each_prefix_depth(
     initial,
     inner,
     [outer_hash],
+    None,
   )
   expect Some(terminal) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -79,13 +80,18 @@ test incremental_mutation_matches_atomic_mutation_at_each_prefix_depth(
     after_inner,
     outer,
     [inner_hash],
+    None,
   )
   let proof = [outer.step, inner.step]
   and {
     mpf_proof_fold_v1.fold_is_complete_v1(terminal),
-    mpf_proof_v1.delete_root(terminal.including_root, key, value, proof) == Some(
-      terminal.excluding_root,
-    ),
+    mpf_proof_v1.delete_root_paired_fold(
+      terminal.including_root,
+      key,
+      value,
+      proof,
+      #"",
+    ) == Some(terminal.excluding_root),
     mpf_proof_v1.insert_root(terminal.excluding_root, key, value, proof) == Some(
       terminal.including_root,
     ),
@@ -188,6 +194,7 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"95f4251f61f4a1f2896f30b61a07852c2ba70c01af74211e252189ba46d05b5a",
       first_two_root,
     ],
+    None,
   )
   expect Some(after_third) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -198,6 +205,7 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"99ebc08dce5d1546a8628f8f4f5baec65fc0d85f7142002a7ca3d51fa7051b9e",
       first_two_root,
     ],
+    None,
   )
   expect Some(after_second) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -208,6 +216,7 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"b1d2e32017535fb2d185011ce5b79b96512ee28661c415c76559a149f8d4f22b",
       last_two_root,
     ],
+    None,
   )
   expect Some(terminal) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -218,6 +227,7 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"dcb48b82764a667afbcf88c699636b9b7c16c8793b5707320df8130192265700",
       last_two_root,
     ],
+    None,
   )
   and {
     mpf_proof_fold_v1.fold_is_complete_v1(terminal),
@@ -240,5 +250,6 @@ test malformed_or_reordered_frame_fails_closed() {
     initial,
     third_frame(),
     [],
+    None,
   ) == None
 }

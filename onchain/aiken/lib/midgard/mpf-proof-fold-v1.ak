@@ -118,11 +118,15 @@ fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
 // including and excluding roots read differently (see
 // `mpf_proof_v1.terminal_leaf_neighbor_is_canonical` and
 // `terminal_fork_neighbor_is_canonical`). The same frame serves insertion and
-// deletion, so the check binds both directions.
+// deletion, so the Leaf and Fork checks bind both directions. A terminal
+// Branch is checked only in a deletion (`deletion_opening` is `Some`), where
+// its excluding root is the successor: `terminal_branch_keeps_two_children`
+// explains why insertion needs no check.
 fn frame_is_well_formed(
   path: ByteArray,
   frame: ProofFrameV1,
   is_terminal_frame: Bool,
+  deletion_opening: Option<ByteArray>,
 ) -> Bool {
   let skip = when frame.step is {
     mpf.Branch { skip, .. } -> skip
@@ -138,8 +142,17 @@ fn frame_is_well_formed(
     frame.next_cursor == frame.cursor + 1 + skip,
     frame.next_cursor <= path_nibble_count,
     when frame.step is {
-      mpf.Branch { neighbors, .. } ->
-        bytearray.length(neighbors) == 4 * digest_byte_count
+      mpf.Branch { neighbors, .. } -> and {
+          bytearray.length(neighbors) == 4 * digest_byte_count,
+          when deletion_opening is {
+            Some(opening) ->
+              !is_terminal_frame || mpf_proof_v1.terminal_branch_keeps_two_children(
+                neighbors,
+                opening,
+              )
+            None -> True
+          },
+        }
       mpf.Fork { neighbor, .. } -> and {
           neighbor_is_well_formed(neighbor),
           nibble(path, frame.next_cursor - 1) != neighbor.nibble,
@@ -304,12 +317,16 @@ pub fn initial_fold_control_v1(
   }
 }
 
+/// `deletion_opening` is `Some` when the fold decides a deletion, carrying the
+/// terminal Branch's group opening (empty when the proof needs none), and
+/// `None` for an insertion.
 pub fn fold_proof_frame_v1(
   key: ByteArray,
   descriptor: ProofDescriptorV1,
   control: ProofFoldControlV1,
   frame: ProofFrameV1,
   siblings: List<ByteArray>,
+  deletion_opening: Option<ByteArray>,
 ) -> Option<ProofFoldControlV1> {
   let path = blake2b_256(key)
   if and {
@@ -324,6 +341,7 @@ pub fn fold_proof_frame_v1(
       path,
       frame,
       frame.frame_index == descriptor.frame_count - 1,
+      deletion_opening,
     ),
     validation_merkle_v1.verify_membership(
       descriptor.frame_count,

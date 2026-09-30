@@ -87,6 +87,7 @@ import {
   initialMidgardResolvedInputsAccumulator,
   ZERO_32,
 } from "./input-resolution.js";
+import { ledgerDeltaProofFrameAuxiliary } from "./ledger-mutation.js";
 import {
   hashValidationMachineNativeScriptFrame,
   MAX_NATIVE_SCRIPT_SCAN_DEPTH,
@@ -2560,11 +2561,7 @@ export const completeValidationTrace = (
                         stage: 0,
                         replayScheduleHash: resolutionScheduleHash,
                       }),
-                      {
-                        kind: "ledgerDeltaProofFrame",
-                        frame: foldStep.frame,
-                        siblings: foldStep.membership.siblings,
-                      },
+                      ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
                     );
                     pendingMutation = {
                       ...pendingMutation,
@@ -2705,11 +2702,7 @@ export const completeValidationTrace = (
                       stage: 1,
                       replayScheduleHash: resolutionScheduleHash,
                     }),
-                    {
-                      kind: "ledgerDeltaProofFrame",
-                      frame: foldStep.frame,
-                      siblings: foldStep.membership.siblings,
-                    },
+                    ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
                   );
                   pendingMutation = {
                     ...pendingMutation,

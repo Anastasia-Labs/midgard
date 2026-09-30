@@ -249,7 +249,7 @@ beforeAll(async () => {
               spent_utxo: {
                 key: "",
                 value: "",
-                membership_proof: [],
+                opening: "",
                 delete_proof: [],
               },
             },

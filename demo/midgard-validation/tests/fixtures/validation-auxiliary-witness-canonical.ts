@@ -150,6 +150,7 @@ const ledgerMutation = {
   operation: { type: "delete", key: bytes("1c") },
   preRoot: hash(0x1d),
   postRoot: hash(0x1e),
+  deletionOpening: Buffer.alloc(0),
   proofFoldTrace: {
     descriptor: proofDescriptor,
     frames: [],
@@ -530,6 +531,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
       kind: "ledgerDeltaProofFrame",
       frame: proofFrame,
       siblings: [],
+      opening: Buffer.alloc(0),
     }),
   ],
   [

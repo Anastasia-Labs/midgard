@@ -37,6 +37,7 @@ import {
   encoded,
   raw,
 } from "./union-plan.conservation-position.js";
+import { proveDeltaUnit } from "./union-plan.prove-delta-unit.js";
 import * as S from "./union-schemas.js";
 
 /** Deterministic complete-domain replay. Every action commits its exact predecessor. */
@@ -137,18 +138,12 @@ export const planConservationFold = async ({
     const oldDelta = deltas.get(unit) ?? 0n;
     const nextDelta = oldDelta + quantity;
     const key = Buffer.from(unit, "hex");
-    let proof: Proof;
+    let proved: Awaited<ReturnType<typeof proveDeltaUnit>>;
     if (oldDelta === 0n) {
       await trie.insert(key, encodeCbor(nextDelta));
-      proof = Data.from(
-        (await trie.prove(key)).toCBOR().toString("hex"),
-        Proof,
-      );
+      proved = await proveDeltaUnit(trie, key, false);
     } else {
-      proof = Data.from(
-        (await trie.prove(key)).toCBOR().toString("hex"),
-        Proof,
-      );
+      proved = await proveDeltaUnit(trie, key, nextDelta === 0n);
       await trie.delete(key);
       if (nextDelta !== 0n) await trie.insert(key, encodeCbor(nextDelta));
     }
@@ -165,7 +160,7 @@ export const planConservationFold = async ({
       returnPosition,
       fold(continuation),
       encoded(
-        { ...layout, old_delta: oldDelta, proof },
+        { ...layout, old_delta: oldDelta, ...proved },
         S.ConservationUpdateArgs,
       ),
     );

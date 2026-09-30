@@ -4,7 +4,18 @@ import "./codec/hash.js";
 import "./validation-merkle.js";
 import "./mpf-proof-fold.parse-midgard-mpf-proof-json.js";
 import "./mpf-proof-fold.encode-midgard-mpf-proof-frame.js";
+import "./mpf-deletion-opening.js";
 import "./mpf-proof-fold.build-midgard-mpf-proof-fold-trace.js";
+export {
+  buildMidgardMpfDeletionOpening,
+  type MidgardMpfBranchLike,
+  midgardMpfDeletionOpening,
+  midgardMpfTerminalBranchKeepsTwoChildren,
+  type MidgardMpfTrieLike,
+  NULL_HASH_2,
+  NULL_HASH_4,
+  NULL_HASH_8,
+} from "./mpf-deletion-opening.js";
 export { buildMidgardMpfProofFoldTrace } from "./mpf-proof-fold.build-midgard-mpf-proof-fold-trace.js";
 export {
   buildMidgardMpfProofDescriptor,

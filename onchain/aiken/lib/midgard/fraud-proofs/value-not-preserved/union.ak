@@ -47,12 +47,15 @@ pub fn empty_delta_root() -> ByteArray {
 /// The inductive map invariant is: only nonzero deltas are stored. Starting
 /// empty, every canonical occurrence inserts, updates, or removes exactly its
 /// unit. Empty at exact domain exhaustion proves the universal zero claim.
+/// `opening` is read only by a removal
+/// (`mpf_proof_v1.terminal_branch_keeps_two_children`).
 pub fn apply_contribution(
   root: ByteArray,
   unit: ByteArray,
   quantity: Int,
   old_delta: Int,
   proof: mpf.Proof,
+  opening: ByteArray,
 ) -> ByteArray {
   expect bytearray.length(unit) >= 28 && bytearray.length(unit) <= 60
   expect quantity != 0
@@ -66,6 +69,7 @@ pub fn apply_contribution(
       unit,
       cbor.serialise(old_delta),
       proof,
+      opening,
     )
   } else {
     mpf_proof_v1.update_root(

@@ -372,10 +372,10 @@ test mpf_proof_v1_total_root_mutations_do_not_call_partial_paths_first() {
       updated_root,
     ),
     mpf_proof_v1.update_root(null_hash, key, value, updated_value, []) == None,
-    mpf_proof_v1.delete_root(singleton_root(), key, value, []) == Some(
+    mpf_proof_v1.delete_root_paired_fold(singleton_root(), key, value, [], #"") == Some(
       null_hash,
     ),
-    mpf_proof_v1.delete_root(null_hash, key, value, []) == None,
+    mpf_proof_v1.delete_root_paired_fold(null_hash, key, value, [], #"") == None,
   }
 }
 
@@ -401,12 +401,6 @@ test mpf_proof_v1_two_fold_mutations_match_the_existing_total_mutations() {
       updated_value,
       [],
     ),
-    mpf_proof_v1.delete_root_two_fold(singleton_root(), key, value, []) == mpf_proof_v1.delete_root(
-      singleton_root(),
-      key,
-      value,
-      [],
-    ),
   }
 }
 
@@ -415,11 +409,10 @@ test mpf_proof_v1_two_fold_mutations_reject_wrong_predecessors() {
   and {
     mpf_proof_v1.insert_root_two_fold(singleton_root(), key, value, []) == None,
     mpf_proof_v1.update_root_two_fold(null_hash, key, value, updated_value, []) == None,
-    mpf_proof_v1.delete_root_two_fold(null_hash, key, value, []) == None,
   }
 }
 
-fn paired_fold_matches_two_fold(proof: mpf.Proof) -> Bool {
+fn paired_fold_matches_reference_folds(proof: mpf.Proof) -> Bool {
   let path = blake2b_256(key)
   let predecessor_without_key = test_excluding_root(path, 0, proof)
   let predecessor_with_key = test_including_root(
@@ -459,12 +452,8 @@ fn paired_fold_matches_two_fold(proof: mpf.Proof) -> Bool {
       key,
       value,
       proof,
-    ) == mpf_proof_v1.delete_root_two_fold(
-      predecessor_with_key,
-      key,
-      value,
-      proof,
-    ),
+      #"",
+    ) == Some(predecessor_without_key),
   }
 }
 
@@ -493,12 +482,14 @@ test mpf_proof_v1_paired_fold_matches_all_admissible_proof_shapes() {
     },
   ]
   and {
-    paired_fold_matches_two_fold([]),
-    paired_fold_matches_two_fold(fixture.adversarial_non_membership_steps(1)),
-    paired_fold_matches_two_fold(terminal_fork),
-    paired_fold_matches_two_fold(nonterminal_fork),
-    paired_fold_matches_two_fold(terminal_leaf),
-    paired_fold_matches_two_fold(nonterminal_leaf),
+    paired_fold_matches_reference_folds([]),
+    paired_fold_matches_reference_folds(
+      fixture.adversarial_non_membership_steps(1),
+    ),
+    paired_fold_matches_reference_folds(terminal_fork),
+    paired_fold_matches_reference_folds(nonterminal_fork),
+    paired_fold_matches_reference_folds(terminal_leaf),
+    paired_fold_matches_reference_folds(nonterminal_leaf),
   }
 }
 
@@ -571,7 +562,7 @@ test mpf_proof_v1_paired_fold_rejects_wrong_predecessors_and_more_than_64_steps(
       absent_value,
       [],
     ) == None,
-    mpf_proof_v1.delete_root_paired_fold(null_hash, key, value, []) == None,
+    mpf_proof_v1.delete_root_paired_fold(null_hash, key, value, [], #"") == None,
     mpf_proof_v1.insert_root_paired_fold(
       oversized_absence_root,
       key,
@@ -590,6 +581,7 @@ test mpf_proof_v1_paired_fold_rejects_wrong_predecessors_and_more_than_64_steps(
       key,
       value,
       oversized,
+      #"",
     ) == None,
   }
 }

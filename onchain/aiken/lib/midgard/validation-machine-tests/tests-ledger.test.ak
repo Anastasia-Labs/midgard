@@ -1,7 +1,10 @@
 use aiken/cbor
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
-use aiken/merkle_patricia_forestry/merkling.{null_hash}
+use aiken/merkle_patricia_forestry/helpers.{combine}
+use aiken/merkle_patricia_forestry/merkling.{
+  null_hash, null_hash_2, null_hash_4,
+}
 use aiken/primitive/bytearray
 use env
 use midgard/fraud_proofs/native_tx/compact.{
@@ -309,13 +312,16 @@ test ledger_delta_output_finish_is_exact() {
   )
 }
 
-test ledger_delta_proof_frame_advances_only_authenticated_frame() {
+// One terminal Branch frame of a pending mutation of `operation_kind`. The
+// claimed successor is the fold without the deletion rule (as for an
+// insertion), so the step holds exactly when that rule does not refuse it.
+fn ledger_delta_terminal_branch_frame(
+  neighbors: ByteArray,
+  operation_kind: Int,
+  opening: ByteArray,
+) -> Bool {
   let key = #"616273656e742d6b6579"
   let value = #"696e7365727465642d76616c7565"
-  let neighbors = h_a
-    |> bytearray.concat(h_b)
-    |> bytearray.concat(h_c)
-    |> bytearray.concat(zero)
   let frame = mpf_proof_fold_v1.ProofFrameV1 {
     version: 1,
     frame_index: 0,
@@ -343,10 +349,11 @@ test ledger_delta_proof_frame_advances_only_authenticated_frame() {
     fold_control,
     frame,
     [],
+    None,
   )
   let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
     authorization_stage: 1,
-    operation_kind: 1,
+    operation_kind,
     key,
     value,
     descriptor,
@@ -382,7 +389,47 @@ test ledger_delta_proof_frame_advances_only_authenticated_frame() {
     },
     frame,
     [],
+    opening,
   )
+}
+
+test ledger_delta_proof_frame_advances_only_authenticated_frame() {
+  ledger_delta_terminal_branch_frame(
+    h_a
+      |> bytearray.concat(h_b)
+      |> bytearray.concat(h_c)
+      |> bytearray.concat(zero),
+    1,
+    #"",
+  )
+}
+
+// A deletion's terminal Branch frame must keep two other children
+// (`mpf_proof_v1.terminal_branch_keeps_two_children`). The lone n8 group below
+// holds h_a and h_b in slots 8 and 9 and is opened down to them; the same
+// group with one child is refused, whatever is sent. An insertion folds either
+// frame without the rule.
+test ledger_delta_deletion_frame_keeps_a_terminal_branch_with_two_children() {
+  let lone_n8 = fn(pair) {
+    combine(combine(pair, null_hash_2), null_hash_4)
+      |> bytearray.concat(null_hash_4)
+      |> bytearray.concat(null_hash_2)
+      |> bytearray.concat(null_hash)
+  }
+  let two = lone_n8(combine(h_a, h_b))
+  let one = lone_n8(combine(h_a, null_hash))
+  let opening = bytearray.concat(#"0000", bytearray.concat(h_a, h_b))
+  and {
+    ledger_delta_terminal_branch_frame(two, 0, opening),
+    !ledger_delta_terminal_branch_frame(two, 0, #""),
+    !ledger_delta_terminal_branch_frame(one, 0, #""),
+    !ledger_delta_terminal_branch_frame(
+      one,
+      0,
+      bytearray.concat(#"0000", bytearray.concat(h_a, null_hash)),
+    ),
+    ledger_delta_terminal_branch_frame(one, 1, #""),
+  }
 }
 
 test ledger_delta_finalize_applies_only_authenticated_root_transition() {

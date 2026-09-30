@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/semantic resolver publication",
-  "blueprintSha256": "7df3ff0d3decec36da7bf15f3d3dac0db0e7e8b04b3a1dbfb4a457c8946d2be2",
+  "blueprintSha256": "818cd9f2421b99676554f9eb357e3caee0085527178608e6413ae90a13ea5ded",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -116,13 +116,13 @@
       "name": "ledgerDeltaFinalize",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 13417,
+      "signedBytes": 14244,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 2967,
+      "signedByteMargin": 2140,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 2455
+      "publicationReserveMargin": 1628
     },
     {
       "name": "ledgerDeltaOperation",
@@ -164,13 +164,13 @@
       "name": "ledgerDeltaProofFrame",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 13857,
+      "signedBytes": 14700,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 2527,
+      "signedByteMargin": 1684,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 2015
+      "publicationReserveMargin": 1172
     },
     {
       "name": "ledgerDeltaReplay",
@@ -1097,5 +1097,5 @@
       "publicationReserveMargin": 1518
     }
   ],
-  "ledgerSha256": "6591363db03814e7985b0a3f567072989e8988e6192ed9d4b5316eed3f621992"
+  "ledgerSha256": "84d3d1c0dfe79594c332e5a8801bcdc86cc20505ef9e81d379ce99577b798a86"
 }

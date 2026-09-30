@@ -27,9 +27,9 @@ fn opening() -> mpf.Proof {
 
 test skipped_leaf_branch_uses_its_actual_neighbor_nibble() {
   and {
-    proof.delete_root(before, key, value, opening()) == Some(after),
-    proof.delete_root_paired_fold(before, key, value, opening()) == Some(after),
-    proof.delete_root_two_fold(before, key, value, opening()) == Some(after),
+    proof.delete_root_paired_fold(before, key, value, opening(), #"") == Some(
+      after,
+    ),
     proof.does_not_have(after, key, opening()),
     proof.insert_root(after, key, value, opening()) == Some(before),
     proof.insert_root_paired_fold(after, key, value, opening()) == Some(before),

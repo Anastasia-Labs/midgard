@@ -286,8 +286,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
-    "max": 636,
-    "reason": "planConservationFold is the dominant indivisible declaration (596 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 631,
+    "reason": "planConservationFold is the dominant indivisible declaration (590 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/workflow.create-manifest-bound-value-conservation-workflow.ts",
@@ -706,7 +706,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/transition-trace-challenger.transition-trace-challenger-tooling.ts",
-    "max": 1962,
+    "max": 1961,
     "reason": "Retained test registration “transition-trace challenger tooling” (1878 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1516,8 +1516,8 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
-    "max": 2850,
-    "reason": "completeValidationTrace is the dominant indivisible declaration (2725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 2843,
+    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
@@ -1551,7 +1551,7 @@
   },
   {
     "file": "midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts",
-    "max": 598,
+    "max": 600,
     "reason": "This canonical fixture is imported directly as .ts by the auxiliary-witness golden CLI under Node strip-types. Retain its self-contained source boundary: .js facet imports have no corresponding source JavaScript, and changing the loader or fixture import contract is outside a pure module move."
   },
   {

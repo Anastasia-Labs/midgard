@@ -339,6 +339,7 @@ export const ValidationAuxiliaryWitnessSchema = Data.Enum([
     LedgerDeltaProofFrameWitness: Data.Object({
       frame: ProofFrameSchema,
       siblings: ByteArrayListSchema,
+      opening: Data.Bytes(),
     }),
   }),
   Data.Object({

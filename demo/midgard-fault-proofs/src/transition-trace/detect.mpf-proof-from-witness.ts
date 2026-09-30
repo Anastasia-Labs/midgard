@@ -1,4 +1,5 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
+import { midgardMpfTerminalBranchKeepsTwoChildren } from "@al-ft/midgard-core";
 import {
   decodeMidgardSpendInputItem,
   encodeMidgardSpendInputItem,
@@ -175,6 +176,34 @@ export const mpfProofFromWitness = ({
       "missingWitnessData",
       `${label} is not a well-formed MPF proof.`,
       cause,
+    );
+  }
+};
+
+/** A delete witness whose proof ends in a Branch must keep two other children
+ * in that branch, shown by its neighbour groups or by the group `opening`
+ * (`terminal_branch_keeps_two_children`); otherwise the post-delete root it
+ * derives is one the honest trie never holds, and the chain refuses it. */
+export const requireDeletionKeepsTwoChildren = ({
+  proof,
+  opening,
+  label,
+}: {
+  readonly proof: SDK.Proof;
+  readonly opening: string;
+  readonly label: string;
+}): void => {
+  const terminal = proof.at(-1);
+  if (terminal === undefined || !("Branch" in terminal)) return;
+  if (
+    !midgardMpfTerminalBranchKeepsTwoChildren(
+      exactHexBytes(terminal.Branch.neighbors, `${label}.neighbors`),
+      exactHexBytes(opening, `${label}.opening`),
+    )
+  ) {
+    throw transitionTraceError(
+      "missingWitnessData",
+      `${label} ends in a Branch that does not keep two other children.`,
     );
   }
 };

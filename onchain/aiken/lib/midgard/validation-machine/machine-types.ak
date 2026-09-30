@@ -292,6 +292,9 @@ pub type ValidationAuxiliaryWitnessV1 {
   LedgerDeltaProofFrameWitness {
     frame: mpf_proof_fold_v1.ProofFrameV1,
     siblings: List<ByteArray>,
+    /// Deletion only: the group opening a terminal Branch frame needs
+    /// (`mpf_proof_v1.terminal_branch_keeps_two_children`). Empty otherwise.
+    opening: ByteArray,
   }
   LedgerDeltaOperationWitness {
     operation_kind: Int,

@@ -139,10 +139,14 @@ pub type SourceMembershipMismatchWitness {
   }
 }
 
+/// `delete_proof` authenticates `(key, value)` against the pre-root and derives
+/// the post-root in one fold. `opening` opens a lone neighbour group of a
+/// terminal `Branch` step (`mpf_proof_v1.terminal_branch_keeps_two_children`)
+/// and is empty when the proof needs none.
 pub type LedgerDeleteWitness {
   key: ByteArray,
   value: ByteArray,
-  membership_proof: Proof,
+  opening: ByteArray,
   delete_proof: Proof,
 }
 
@@ -665,10 +669,11 @@ pub fn ledger_outref_key(outref: OutputReference) -> ByteArray {
 }
 
 /// Membership of `(key, value)` in the ledger MPF at `root`. `pub` for the
-/// same reason as [`ledger_trie`](#ledger_trie): this is the single
-/// ledger-membership witness path (`apply_l2_spends` fetches spent-input
-/// descriptors through it), and the value-not-preserved family must fetch
-/// them the identical way rather than through a second binding path.
+/// same reason as [`ledger_trie`](#ledger_trie): the value-not-preserved
+/// family fetches spent-input descriptors through it rather than through a
+/// second binding path. A delete witness does not call it: its paired fold
+/// already requires the including root to equal `root`
+/// (`apply_delete_witness`).
 pub fn verify_ledger_membership(
   root: ByteArray,
   key: ByteArray,
@@ -687,18 +692,20 @@ fn verify_ledger_non_membership(
   True
 }
 
+/// The paired fold in `delete_root` proves `(key, value)` is in `root` (its
+/// including root must equal `root`) and derives the successor, so no
+/// separate membership proof is taken.
 pub fn apply_delete_witness(
   root: ByteArray,
   witness: LedgerDeleteWitness,
 ) -> ByteArray {
-  expect
-    verify_ledger_membership(
-      root,
-      witness.key,
-      witness.value,
-      witness.membership_proof,
-    )
-  delete_root(root, witness.key, witness.value, witness.delete_proof)
+  delete_root(
+    root,
+    witness.key,
+    witness.value,
+    witness.delete_proof,
+    witness.opening,
+  )
 }
 
 pub fn apply_insert_witness(
@@ -1974,6 +1981,7 @@ pub fn delete_root(
   key: ByteArray,
   value: ByteArray,
   proof: Proof,
+  opening: ByteArray,
 ) -> ByteArray {
   let trie = if root == env.empty_merkle_tree_root {
     mpf.empty
@@ -1985,6 +1993,7 @@ pub fn delete_root(
     key,
     value,
     proof,
+    opening,
   )
   next_root
 }
@@ -2001,7 +2010,7 @@ test canonical_fork_insertion() {
 
 test canonical_fork_deletion() {
   let v = prefix_fixture.fork()
-  delete_root(v.before, v.key, v.value, v.proof) == v.after
+  delete_root(v.before, v.key, v.value, v.proof, #"") == v.after
 }
 
 test canonical_fork_membership() {
@@ -2026,7 +2035,7 @@ test canonical_leaf_insertion() {
 
 test canonical_leaf_deletion() {
   let v = prefix_fixture.leaf()
-  delete_root(v.before, v.key, v.value, v.proof) == v.after
+  delete_root(v.before, v.key, v.value, v.proof, #"") == v.after
 }
 
 test canonical_leaf_membership() {
