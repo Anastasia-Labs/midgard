@@ -1,12 +1,14 @@
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardRedeemerWitnessItem,
+  materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
   createCompleteCanonicalReplayUnion,
+  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
   VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
@@ -89,4 +91,64 @@ describe("accepted redeemer data outside the serialiseData image", () => {
       );
     },
   );
+
+  it("classifies a normal transaction committed TxIsInvalid as a mistag whichever decode refusal fires first", async () => {
+    const predecessor = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: GENESIS_HEADER_HASH,
+      utxos: [{ key: outRefCbor(71, 0n), value: output() }],
+    });
+    const committed = decodeMidgardNativeTxFullFromCanonicalCbor(
+      buildFixtureTransaction({
+        ...base,
+        redeemerWitnesses: [
+          encodeMidgardRedeemerWitnessItem({
+            purpose: "Spend",
+            index: 0n,
+            redeemerCbor: Buffer.from("d8798101", "hex"),
+            executionUnits: { memory: 1n, steps: 2n },
+          }),
+        ],
+      }).canonicalCbor,
+    );
+    // The redeemer refusal fires before the validity-flag refusal, but the
+    // committed TxIsInvalid tag is what leaves the validity domain.
+    const fixture = await buildRetainedValidationBlockFixture({
+      subject: {
+        kind: "normal",
+        nativeTx: materializeMidgardNativeTxFromCanonical({
+          version: committed.version,
+          validity: "TxIsInvalid",
+          body: committed.body,
+          witnessSet: committed.witnessSet,
+        }),
+      },
+      priorLedgerRoot: predecessor.header.utxosRoot,
+      prevHeaderHash: predecessor.headerHash,
+      blockEndTimeMs: 1_900_000_000_000,
+      blockSlot: 0n,
+    });
+    const { decision } = await classifyRetainedReasonFixture({
+      observation: authenticatedHeaderObservation(fixture),
+      payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+      deploymentFingerprint,
+      releaseFinalityAuthority,
+      replayer: createCompleteCanonicalReplayUnion([
+        VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
+        L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
+        REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
+      ]),
+      predecessor: {
+        observation: authenticatedHeaderObservation(predecessor),
+        payloadEnvelopeCbor: predecessor.payloadEnvelopeCbor,
+      },
+    });
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "l2TxMistag",
+      violationId: "l2-tx-mistag",
+      position: "0",
+      headerHash: fixture.headerHash,
+    });
+  });
 });

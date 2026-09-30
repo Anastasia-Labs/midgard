@@ -391,13 +391,19 @@ export const admitValidationTraceReplayContext = async ({
     );
     if (replayResult._tag === "Left") {
       if (replayResult.left instanceof DirectValidationTraceUnavailable) {
+        // A normal source committed as anything but TxIsValid is outside the
+        // validity domain whichever decode refusal fired first, exactly as
+        // the transition replay records it.
         prerequisites.push(
           ...replayPrerequisiteFailure(
             evidence.headerHash,
             source.eventKey,
-            replayResult.left.rejectionCode === RejectCodes.InvalidFieldType
-              ? "representable_field_shape"
-              : "representable_validity_flag",
+            source.phase === "L2Transaction" &&
+              source.entry.validity !== "TxIsValid"
+              ? "representable_validity_flag"
+              : replayResult.left.rejectionCode === RejectCodes.InvalidFieldType
+                ? "representable_field_shape"
+                : "representable_validity_flag",
           ).failures,
         );
         // The canonical validator rejected before any ledger mutation. Keep

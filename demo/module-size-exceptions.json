@@ -271,8 +271,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/validation-dispute/replay.admit-validation-trace-replay-context.ts",
-    "max": 502,
-    "reason": "admitValidationTraceReplayContext is the dominant indivisible declaration (439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 508,
+    "reason": "admitValidationTraceReplayContext is the dominant indivisible declaration (445 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/validation-dispute/submit/semantic-redeemers.semantic-action-fields.ts",
