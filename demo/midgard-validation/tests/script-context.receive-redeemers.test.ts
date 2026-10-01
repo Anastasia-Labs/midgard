@@ -93,9 +93,9 @@ describe("receive redeemers in the script context (ruling 1)", () => {
     expect(entries.map((entry) => purposeTag(entry.purpose))).toEqual([1n, 3n]);
     const receivePurpose = entries[1]!.purpose as DataConstr;
     expect(receivePurpose.fields[0]).toBeInstanceOf(DataB);
-    expect(
-      Buffer.from((receivePurpose.fields[0] as DataB).bytes.toBuffer()),
-    ).toEqual(Buffer.from(RECEIVE_HASH, "hex"));
+    expect(Buffer.from((receivePurpose.fields[0] as DataB).bytes)).toEqual(
+      Buffer.from(RECEIVE_HASH, "hex"),
+    );
     // The script's own purpose is the receive purpose.
     expect(purposeTag(constrAt(context, 2))).toBe(3n);
   });

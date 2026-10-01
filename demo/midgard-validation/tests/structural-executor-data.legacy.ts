@@ -15,7 +15,7 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
+  type KV,
 } from "@harmoniclabs/plutus-data";
 
 import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
@@ -78,11 +78,8 @@ export const legacySemanticReaders = (
     return values;
   };
 
-  const dataPairValues = (
-    root: Bytes,
-    count: bigint,
-  ): DataPair<Data, Data>[] => {
-    const values: DataPair<Data, Data>[] = [];
+  const dataPairValues = (root: Bytes, count: bigint): KV<Data, Data>[] => {
+    const values: KV<Data, Data>[] = [];
     let cursor = Buffer.from(root);
     let remaining = count;
     while (remaining > 0n) {
@@ -92,7 +89,7 @@ export const legacySemanticReaders = (
           `missing authenticated CEK Data-pair node ${rootHex(cursor)}`,
         );
       }
-      values.push(new DataPair(dataValue(node.key), dataValue(node.value)));
+      values.push({ fst: dataValue(node.key), snd: dataValue(node.value) });
       cursor = Buffer.from(node.tail);
       remaining -= 1n;
     }

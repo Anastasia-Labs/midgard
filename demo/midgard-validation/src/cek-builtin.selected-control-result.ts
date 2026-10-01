@@ -172,7 +172,7 @@ export const directByteLength = (
   if (decoded.type.kind !== "bytes" || !(decoded.payload instanceof DataB)) {
     throw new Error("V1 builtin requires a byte string");
   }
-  return decoded.payload.bytes.toBuffer().length;
+  return decoded.payload.bytes.length;
 };
 
 export const midgardCekDirectBuiltinCostSizes = (
@@ -204,7 +204,7 @@ export const midgardCekDirectBuiltinCostSizes = (
     if (message.type.kind !== "string" || !(message.payload instanceof DataB)) {
       throw new Error("trace requires a string message");
     }
-    return Object.freeze([BigInt(message.payload.bytes.toBuffer().length), 1n]);
+    return Object.freeze([BigInt(message.payload.bytes.length), 1n]);
   }
   if (tag === 31n) {
     if (arguments_.length !== 3) {

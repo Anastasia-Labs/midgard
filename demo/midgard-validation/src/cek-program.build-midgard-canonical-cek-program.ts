@@ -52,6 +52,45 @@ import {
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 /**
+ * Whether every builtin sits under exactly the type-instantiation forces its
+ * signature implies — no more, no fewer — as the only forces directly around
+ * it. The canonical CEK graph commits those forces as ordinary force nodes, so
+ * a builtin is only ever reached through its full instantiation.
+ */
+const hasExactBuiltinForces = (body: UPLCTerm): boolean => {
+  const pending: { readonly term: UPLCTerm; readonly forces: number }[] = [
+    { term: body, forces: 0 },
+  ];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    const { term, forces } = next;
+    if (term instanceof Force) {
+      pending.push({ term: term.forced, forces: forces + 1 });
+      continue;
+    }
+    if (term instanceof Builtin) {
+      if (forces !== getNRequiredForces(term.builtinTag)) return false;
+      continue;
+    }
+    if (term instanceof Delay) {
+      pending.push({ term: term.delayedTerm, forces: 0 });
+    } else if (term instanceof Lambda) {
+      pending.push({ term: term.body, forces: 0 });
+    } else if (term instanceof Application) {
+      pending.push({ term: term.func, forces: 0 });
+      pending.push({ term: term.arg, forces: 0 });
+    } else if (term instanceof Constr) {
+      for (const item of term.terms) pending.push({ term: item, forces: 0 });
+    } else if (term instanceof Case) {
+      pending.push({ term: term.constrTerm, forces: 0 });
+      for (const item of term.continuations) {
+        pending.push({ term: item, forces: 0 });
+      }
+    }
+  }
+  return true;
+};
+
+/**
  * Decodes a PlutusV3/MidgardV1 Flat/CBOR program into the canonical,
  * hash-addressed CEK graph used by the canonical V1 proof profile. Raw UPLC is an SDK input;
  * the returned envelope is the consensus script payload.
@@ -66,16 +105,16 @@ export const buildMidgardCanonicalCekProgram = (
 
   const flat = canonicalFlatProgramBytes(raw);
   const program = parseUPLC(flat, "flat");
-  const reencoded = Buffer.from(UPLCEncoder.compile(program).toBuffer().buffer);
-  if (!flat.equals(reencoded)) {
+  const reencoded = Buffer.from(UPLCEncoder.compile(program));
+  if (!flat.equals(reencoded) || !hasExactBuiltinForces(program.body)) {
     throw new Error(
       "V1 requires canonical Flat bytes with exactly the builtin forces implied by UPLC 1.1.0",
     );
   }
   if (
-    program.version.major !== 1n ||
-    program.version.minor !== 1n ||
-    program.version.patch !== 0n
+    program.version.major !== 1 ||
+    program.version.minor !== 1 ||
+    program.version.patch !== 0
   ) {
     throw new Error(
       `V1 supports only UPLC 1.1.0, received ${program.version.toString()}`,
@@ -207,7 +246,7 @@ export const buildMidgardCanonicalCekProgram = (
 
   const addTerm = (term: UPLCTerm): Hash32 => {
     if (term instanceof UPLCVar) {
-      return addTermNode({ kind: "variable", index: term.deBruijn });
+      return addTermNode({ kind: "variable", index: BigInt(term.deBruijn) });
     }
     if (term instanceof Delay) {
       return addTermNode({
@@ -221,8 +260,8 @@ export const buildMidgardCanonicalCekProgram = (
     if (term instanceof Application) {
       return addTermNode({
         kind: "application",
-        function: addTerm(term.funcTerm),
-        argument: addTerm(term.argTerm),
+        function: addTerm(term.func),
+        argument: addTerm(term.arg),
       });
     }
     if (term instanceof UPLCConst) {
@@ -234,25 +273,19 @@ export const buildMidgardCanonicalCekProgram = (
     if (term instanceof Force) {
       return addTermNode({
         kind: "force",
-        term: addTerm(term.termToForce),
+        term: addTerm(term.forced),
       });
     }
     if (term instanceof ErrorUPLC) {
       return addTermNode({ kind: "error" });
     }
     if (term instanceof Builtin) {
-      let root = addTermNode({
+      // The type-instantiation forces around a polymorphic builtin are
+      // ordinary Force terms in the AST, committed by the Force arm above.
+      return addTermNode({
         kind: "builtin",
-        tag: BigInt(term.tag),
+        tag: BigInt(term.builtinTag),
       });
-      // Harmonic's AST erases the type-instantiation forces which its Flat
-      // encoder inserts around polymorphic builtins. Restore those nodes so
-      // the committed graph and its CEK costs match the canonical Flat term.
-      const requiredForces = getNRequiredForces(term.tag);
-      for (let index = 0; index < requiredForces; index += 1) {
-        root = addTermNode({ kind: "force", term: root });
-      }
-      return root;
     }
     if (term instanceof Constr) {
       return addTermNode({
@@ -287,9 +320,9 @@ export const buildMidgardCanonicalCekProgram = (
 
   const envelope = Object.freeze({
     uplcVersion: [
-      program.version.major,
-      program.version.minor,
-      program.version.patch,
+      BigInt(program.version.major),
+      BigInt(program.version.minor),
+      BigInt(program.version.patch),
     ] as const,
     termRoot,
     nodeCount: BigInt(material.size),

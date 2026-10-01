@@ -8,11 +8,10 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
   DataMap,
-  type DataPair,
+  type KV,
 } from "@harmoniclabs/plutus-data";
 import { Constr } from "@lucid-evolution/lucid";
 
@@ -22,7 +21,7 @@ import {
   MidgardScriptPurpose,
   midgardScriptPurposeData,
 } from "./midgard-redeemers.js";
-import { midgardDataPair } from "./plutus-data-iterative.pair.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { txOutRefData } from "./tx-out-ref.js";
 
 type ResolvedInput = {
@@ -115,21 +114,20 @@ const addressData = (
 };
 
 /** Policies and asset names ordered by their bytes. */
-const multiAssetPairs = (assets: ScriptMintValue): DataPair<Data, Data>[] =>
+const multiAssetPairs = (assets: ScriptMintValue): KV<Data, Data>[] =>
   [...assets.entries()]
     .sort(([left], [right]) => compareHex(left, right))
-    .map(([policyId, names]) =>
-      midgardDataPair(
-        bytes(policyId),
-        new DataMap(
-          [...names.entries()]
-            .sort(([left], [right]) => compareHex(left, right))
-            .map(([name, quantity]) =>
-              midgardDataPair(bytes(name), new DataI(quantity)),
-            ),
-        ),
+    .map(([policyId, names]) => ({
+      fst: bytes(policyId),
+      snd: new DataMap(
+        [...names.entries()]
+          .sort(([left], [right]) => compareHex(left, right))
+          .map(([name, quantity]) => ({
+            fst: bytes(name),
+            snd: new DataI(quantity),
+          })),
       ),
-    );
+    }));
 
 const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
   const coin = output.value.lovelace;
@@ -137,10 +135,10 @@ const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
     ...(coin === 0n
       ? []
       : [
-          midgardDataPair(
-            bytes(""),
-            new DataMap([midgardDataPair(bytes(""), new DataI(coin))]),
-          ),
+          {
+            fst: bytes(""),
+            snd: new DataMap([{ fst: bytes(""), snd: new DataI(coin) }]),
+          },
         ]),
     ...multiAssetPairs(output.value.assets),
   ]);
@@ -154,7 +152,7 @@ const datumData = (output: MidgardTxOutput): DataConstr => {
   if (datum === undefined) {
     return constr(0, []);
   }
-  return constr(2, [dataFromCbor(datum.cbor)]);
+  return constr(2, [plutusDataFromCborIterative(datum.cbor)]);
 };
 
 export const scriptContextTxOutData = (
@@ -197,7 +195,7 @@ const validRangeData = (
   ]);
 
 const redeemerData = (redeemer: MidgardLedgerRedeemer): Data =>
-  dataFromCbor(redeemer.dataCbor);
+  plutusDataFromCborIterative(redeemer.dataCbor);
 
 const redeemersData = (
   redeemers: ScriptContextView["redeemers"],
@@ -208,12 +206,7 @@ const redeemersData = (
       const purpose = purposeData(entry.purpose);
       return purpose === undefined
         ? []
-        : [
-            midgardDataPair(
-              fixedShapeData(purpose),
-              redeemerData(entry.redeemer),
-            ),
-          ];
+        : [{ fst: fixedShapeData(purpose), snd: redeemerData(entry.redeemer) }];
     }),
   );
 
@@ -221,11 +214,10 @@ const withdrawalsData = (
   observers: ScriptContextView["observers"],
 ): DataMap<Data, Data> =>
   new DataMap(
-    [...observers]
-      .sort()
-      .map((observer) =>
-        midgardDataPair(constr(1, [bytes(observer)]), new DataI(0n)),
-      ),
+    [...observers].sort().map((observer) => ({
+      fst: constr(1, [bytes(observer)]),
+      snd: new DataI(0n),
+    })),
   );
 
 const bytesList = (values: readonly string[]): DataList =>
@@ -274,7 +266,7 @@ const spendDatumData = (
     return none();
   }
 
-  return some(dataFromCbor(datum.cbor));
+  return some(plutusDataFromCborIterative(datum.cbor));
 };
 
 const cardanoScriptInfoData = (

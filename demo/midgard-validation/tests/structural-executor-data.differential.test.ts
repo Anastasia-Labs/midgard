@@ -32,7 +32,6 @@ import {
   readMidgardCekSemanticBlob,
   readMidgardCekSemanticData,
 } from "../src/cek-executor.structural-executor-data.js";
-import { midgardDataPair } from "../src/plutus-data-iterative.pair.js";
 import { harmonicDataDifference } from "./plutus-data-iterative.recursive-oracles.js";
 import { legacySemanticReaders } from "./structural-executor-data.legacy.js";
 
@@ -145,7 +144,7 @@ const builders = (rng: FuzzRng) => ({
     ),
   list: (items: Data[]): Data => new DataList(items),
   map: (entries: [Data, Data][]): Data =>
-    new DataMap(entries.map(([key, value]) => midgardDataPair(key, value))),
+    new DataMap(entries.map(([key, value]) => ({ fst: key, snd: value }))),
   constr: (index: bigint, fields: Data[]): Data =>
     new DataConstr(index, fields),
 });

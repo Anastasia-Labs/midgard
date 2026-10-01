@@ -4,7 +4,6 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
 } from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +22,7 @@ describe("V1 content-addressed Data scanner", () => {
     const data = new DataConstr(0n, [
       new DataList([new DataI(1n), new DataI(2n)]),
       new DataMap([
-        new DataPair(new DataI(3n), new DataB(Buffer.from("abcd", "hex"))),
+        { fst: new DataI(3n), snd: new DataB(Buffer.from("abcd", "hex")) },
       ]),
     ]);
     const raw = encodeMidgardCekPlutusData(data);

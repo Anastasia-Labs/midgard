@@ -7,7 +7,6 @@ import {
 } from "@harmoniclabs/plutus-data";
 
 import {
-  asByteArray,
   encodeCardanoBytes,
   encodeCardanoInteger,
   encodeSmallCborArgument,
@@ -54,7 +53,7 @@ export const encodeMidgardCekPlutusData = (data: Data): Buffer => {
     } else if (next instanceof DataI) {
       out.push(encodeCardanoInteger(next.int));
     } else if (next instanceof DataB) {
-      out.push(encodeCardanoBytes(asByteArray(next.bytes)));
+      out.push(encodeCardanoBytes(next.bytes));
     } else if (next instanceof DataList) {
       pushList(next.list);
     } else if (isPlutusDataMap(next)) {

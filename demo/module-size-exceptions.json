@@ -1511,7 +1511,7 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 2444,
+    "max": 2443,
     "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
@@ -1526,7 +1526,7 @@
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
-    "max": 827,
+    "max": 824,
     "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

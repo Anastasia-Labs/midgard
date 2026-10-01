@@ -6,7 +6,6 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
 } from "@harmoniclabs/plutus-data";
 import { Machine } from "@harmoniclabs/plutus-machine";
 import { Application, Builtin, UPLCConst } from "@harmoniclabs/uplc";
@@ -108,7 +107,7 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
     ).toBe(5n);
 
     const data = new DataMap([
-      new DataPair(new DataI(1n), new DataList([new DataB(new Uint8Array(2))])),
+      { fst: new DataI(1n), snd: new DataList([new DataB(new Uint8Array(2))]) },
     ]);
     expect(midgardCekDataMemorySize(data)).toBe(19n);
   });

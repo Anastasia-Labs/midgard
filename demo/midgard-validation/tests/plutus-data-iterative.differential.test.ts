@@ -1,6 +1,6 @@
 /**
  * Differential tests for the iterative Plutus Data reader, writer and memory
- * size against the code they replace: harmonic 1.2.6 `dataFromCbor` for the
+ * size against the code they replace: the pinned harmonic `dataFromCbor` for the
  * reader (same accept/reject decision and the same value, byte-string array
  * class included) and the old recursive encoder and memory function, vendored
  * in `plutus-data-iterative.recursive-oracles.ts`, for the other two
@@ -26,7 +26,6 @@ import { describe, expect, it } from "vitest";
 import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
 import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
 import { midgardCekDataMemorySize } from "../src/plutus-data-iterative.memory.js";
-import { midgardDataPair } from "../src/plutus-data-iterative.pair.js";
 import {
   harmonicDataDifference,
   recursiveEncodeMidgardCekPlutusData,
@@ -241,7 +240,7 @@ const harmonicBuilders = {
     ),
   list: (items: Data[]): Data => new DataList(items),
   map: (entries: [Data, Data][]): Data =>
-    new DataMap(entries.map(([key, value]) => midgardDataPair(key, value))),
+    new DataMap(entries.map(([key, value]) => ({ fst: key, snd: value }))),
   constr: (index: bigint, fields: Data[]): Data =>
     new DataConstr(index, fields),
 };

@@ -22,7 +22,6 @@ import {
   midgardConstantTypeToTags,
 } from "./cek-constant.payload-matches-type.js";
 import {
-  asByteArray,
   type MidgardCekCanonicalConstant,
   type MidgardCekConstantType,
   type MidgardCekConstantWitness,
@@ -61,9 +60,7 @@ const semanticUplcConstant = (
         throw new Error("V1 string payload is not DataB");
       }
       return UPLCConst.str(
-        new TextDecoder("utf-8", { fatal: true }).decode(
-          asByteArray(payload.bytes),
-        ),
+        new TextDecoder("utf-8", { fatal: true }).decode(payload.bytes),
       );
     }
     case "unit":
@@ -202,7 +199,7 @@ export const midgardCekConstantMemorySize = (
       if (!(payload instanceof DataB)) {
         throw new Error("V1 byte payload is not DataB");
       }
-      return midgardCekByteStringMemorySize(asByteArray(payload.bytes));
+      return midgardCekByteStringMemorySize(payload.bytes);
     case "unit":
     case "boolean":
       if (!(payload instanceof DataConstr)) {

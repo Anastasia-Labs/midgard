@@ -4,10 +4,8 @@ import {
   dataFromCbor,
   // ok: midgard/no-recursive-plutus-data
   DataI,
-  DataPair,
   // ruleid: midgard/no-recursive-plutus-data
   dataToCbor as encode,
-  type Data,
 } from "@harmoniclabs/plutus-data";
 // ok: midgard/no-recursive-plutus-data
 import { type eqData } from "@harmoniclabs/plutus-data";
@@ -23,12 +21,7 @@ import { Cbor } from "@harmoniclabs/cbor";
 import { decode } from "cborg";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
-declare const left: Data;
-declare const right: Data;
 declare const hex: string;
-
-// ruleid: midgard/no-recursive-plutus-data
-export const pair = new DataPair(left, right);
 
 // ruleid: midgard/no-recursive-plutus-data
 export const decoded = LucidData.from(hex);

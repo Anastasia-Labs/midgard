@@ -8,11 +8,6 @@
  * The BLS finalVerify expression walk is in the same set: its witness
  * arrives with any depth, and it must reach the ten-leaf refusal without
  * recursion.
- *
- * Map-shaped values stay red: harmonic 1.2.6 `DataPair` builds its assertion
- * message by stringifying both halves, so a deep map cannot be constructed
- * as a harmonic value at all. Those cases are `it.fails` until the owner
- * decides the pair-construction question (dependency upgrade or bypass).
  */
 import { isMainThread } from "node:worker_threads";
 
@@ -27,6 +22,8 @@ import {
   DataConstr,
   DataI,
   DataList,
+  DataMap,
+  type KV,
 } from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
@@ -70,6 +67,10 @@ const pathDepth = (value: Data): number => {
       current = current.list[0]!;
     } else if (current instanceof DataConstr) {
       current = current.fields[0]!;
+    } else if (current instanceof DataMap) {
+      const entry = (current.map as readonly KV<Data, Data>[])[0]!;
+      expect(entry.fst).toEqual(new DataI(0n));
+      current = entry.snd;
     } else {
       break;
     }
@@ -79,20 +80,30 @@ const pathDepth = (value: Data): number => {
   return depth;
 };
 
-/** Every node is four memory words; the innermost integer 0 adds one. */
-const expectedMemory = (depth: number): bigint => BigInt(depth) * 4n + 5n;
+/**
+ * Every node is four memory words, and a map level's integer key 0 adds five
+ * more; the innermost integer 0 adds five.
+ */
+const expectedMemory = (shape: DeepDataShape, depth: number): bigint =>
+  BigInt(depth) * (shape === "map" ? 9n : 4n) + 5n;
+
+/** Bytes per level in the canonical encoding, which writes maps definite. */
+const encodedLevelBytes = (shape: DeepDataShape): number =>
+  shape === "constr" ? 4 : 2;
 
 /** The one-path value `deepPlutusDataCbor` encodes, built without decoding. */
 const deepHarmonicValue = (shape: DeepDataShape, depth: number): Data => {
   let value: Data = new DataI(0n);
   for (let level = 0; level < depth; level += 1) {
     value =
-      shape === "constr" ? new DataConstr(0n, [value]) : new DataList([value]);
+      shape === "constr"
+        ? new DataConstr(0n, [value])
+        : shape === "map"
+          ? new DataMap([{ fst: new DataI(0n), snd: value }])
+          : new DataList([value]);
   }
   return value;
 };
-
-const caseFor = (shape: DeepDataShape) => (shape === "map" ? it.fails : it);
 
 export const registerNoRecursionDepthCases = (thread: DepthThread): void => {
   it("runs on the intended thread", () => {
@@ -124,7 +135,7 @@ export const registerNoRecursionDepthCases = (thread: DepthThread): void => {
     const depth = REDEEMER[shape];
     const cbor = deepPlutusDataCbor(shape, depth);
     describe(`${shape} at the redeemer maximum depth ${depth.toString()}`, () => {
-      caseFor(shape)(
+      it(
         "decodes it",
         () => {
           const value = plutusDataFromCborIterative(Buffer.from(cbor));
@@ -133,21 +144,15 @@ export const registerNoRecursionDepthCases = (thread: DepthThread): void => {
         CASE_TIMEOUT_MS,
       );
 
-      // A deep map cannot be built as a harmonic value (see above), so its
-      // writer and semantic-read cases wait on the same decision as its
-      // decode. The others build the value directly, so each site is
-      // exercised on its own.
-      if (shape === "map") return;
       it(
         "encodes and sizes it",
         () => {
           const value = deepHarmonicValue(shape, depth);
           const encoded = encodeMidgardCekPlutusData(value);
-          // The canonical encoder writes indefinite containers.
-          expect(encoded.length).toBe(
-            shape === "constr" ? depth * 4 + 1 : depth * 2 + 1,
+          expect(encoded.length).toBe(depth * encodedLevelBytes(shape) + 1);
+          expect(midgardCekDataMemorySize(value)).toBe(
+            expectedMemory(shape, depth),
           );
-          expect(midgardCekDataMemorySize(value)).toBe(expectedMemory(depth));
         },
         CASE_TIMEOUT_MS,
       );

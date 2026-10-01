@@ -13,7 +13,7 @@ import {
   DataI,
   DataList,
   DataMap,
-  type DataPair,
+  type KV,
 } from "@harmoniclabs/plutus-data";
 
 import {
@@ -26,7 +26,6 @@ import {
   sameBytes,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
-import { midgardDataPair } from "./plutus-data-iterative.pair.js";
 
 /** The authenticated semantic material a structural executor has installed. */
 export type MidgardCekSemanticDataMaterial = {
@@ -121,7 +120,7 @@ type NodeFrame = {
   pendingValue: Bytes | undefined;
   pendingKey: Data | undefined;
   readonly items: Data[];
-  readonly entries: DataPair<Data, Data>[];
+  readonly entries: KV<Data, Data>[];
 };
 
 const childSequence = (
@@ -271,7 +270,7 @@ export const readMidgardCekSemanticData = (
         continue;
       }
       if (frame.pairs) {
-        frame.entries.push(midgardDataPair(frame.pendingKey!, result));
+        frame.entries.push({ fst: frame.pendingKey!, snd: result });
         frame.pendingKey = undefined;
       } else {
         frame.items.push(result);

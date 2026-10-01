@@ -5,16 +5,14 @@ import {
   DataI,
   DataList,
   DataMap,
-  type DataPair,
+  type KV,
 } from "@harmoniclabs/plutus-data";
-
-import { midgardDataPair } from "./plutus-data-iterative.pair.js";
 
 /**
  * CBOR -> harmonic `Data` without recursion.
  *
- * This reader accepts and rejects exactly the inputs harmonic 1.2.6
- * `dataFromCbor` (`Cbor.parse` from `@harmoniclabs/cbor` 1.6.6 followed by
+ * This reader accepts and rejects exactly the inputs the pinned harmonic
+ * `dataFromCbor` (`Cbor.parse` from `@harmoniclabs/cbor` followed by
  * `dataFromCborObj`) accepts and rejects, and builds the same `Data` value, but
  * keeps its own frame stack so any byte-cap-legal nesting depth decodes. The
  * behaviour it reproduces, pinned by the differential test:
@@ -66,7 +64,7 @@ type ArrayFrame = {
 type MapFrame = {
   readonly type: "map";
   readonly length: bigint;
-  readonly pairs: DataPair<Data, Data>[];
+  readonly pairs: KV<Data, Data>[];
   key: Data | undefined;
 };
 
@@ -331,7 +329,7 @@ export const plutusDataFromCborIterative = (bytes: Uint8Array): Data => {
         item = undefined;
         break;
       }
-      parent.pairs.push(midgardDataPair(parent.key, itemData(item)));
+      parent.pairs.push({ fst: parent.key, snd: itemData(item) });
       parent.key = undefined;
       item = undefined;
       if (BigInt(parent.pairs.length) !== parent.length) break;

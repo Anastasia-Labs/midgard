@@ -83,7 +83,6 @@ import {
   type MidgardCekMapConversionControl,
   verifyMidgardCekCoreStep,
 } from "./cek-machine.js";
-import { midgardDataPair } from "./plutus-data-iterative.pair.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 export class StructuralExecutor {
@@ -986,7 +985,7 @@ export class StructuralExecutor {
           ) {
             throw new Error("mapData requires canonical Data pairs");
           }
-          return midgardDataPair(item.fields[0]!, item.fields[1]!);
+          return { fst: item.fields[0]!, snd: item.fields[1]! };
         }),
       );
       resultType = { kind: "data" };
@@ -1614,7 +1613,7 @@ export class StructuralExecutor {
         dataNodes: [top.node],
         listNodes: [],
         pairNodes: [],
-        scalarPreimages: [source.payload.bytes.toBuffer()],
+        scalarPreimages: [source.payload.bytes],
       });
       return;
     }

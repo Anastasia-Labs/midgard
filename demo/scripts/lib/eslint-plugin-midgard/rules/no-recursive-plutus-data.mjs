@@ -10,8 +10,6 @@
 // recursive library entry points in the production source trees:
 //   - the recursive `@harmoniclabs/plutus-data` functions (`dataFromCbor`,
 //     `dataToCbor`, their `Obj` forms, `eqData`, `cloneData`, the JSON pair);
-//   - `new DataPair(...)` outside the one pair factory: harmonic 1.2.6 builds
-//     the constructor's assertion message by stringifying both halves;
 //   - `@harmoniclabs/plutus-machine` names other than the pinned reference
 //     evaluator's (`Machine` evaluates over recursive Data);
 //   - `Cbor` from `@harmoniclabs/cbor` (`Cbor.parse` / `Cbor.encode`);
@@ -36,8 +34,6 @@ export const PRODUCTION_SOURCE_TREES = [
 ];
 
 const LUCID_DATA_TREES = ["midgard-core/src/", "midgard-validation/src/"];
-
-const PAIR_FACTORY = "midgard-validation/src/plutus-data-iterative.pair.ts";
 
 const RECURSIVE_HARMONIC_DATA = new Set([
   "cloneData",
@@ -69,14 +65,12 @@ export default defineRule({
     type: "problem",
     docs: {
       description:
-        "Ban recursive Plutus Data readers, writers and constructors in production source.",
+        "Ban recursive Plutus Data readers and writers in production source.",
     },
     schema: [],
     messages: {
       recursiveHarmonic:
         "`{{name}}` from @harmoniclabs/plutus-data walks Data recursively and overflows the stack on deep values that the carriers admit. Fix: decode with `plutusDataFromCborIterative` (midgard-validation/src/plutus-data-iterative.decode.ts) and encode with `encodeMidgardCekPlutusData` (plutus-data-iterative.encode.ts); compare or copy with an explicit-stack walk.",
-      dataPair:
-        "`new DataPair(...)` stringifies both halves recursively in harmonic plutus-data 1.2.6. Fix: build the pair with `midgardDataPair` from midgard-validation/src/plutus-data-iterative.pair.ts.",
       machine:
         "`{{name}}` from @harmoniclabs/plutus-machine is outside the pinned reference evaluator; `Machine` evaluates over recursive Data. Fix: evaluate through the structural CEK executor (cek-executor.ts); only BnCEK, CEKConst, CEKError, ExBudget, PartialBuiltin and costModelV3ToBuiltinCosts may be imported.",
       harmonicCbor:
@@ -135,16 +129,6 @@ export default defineRule({
           ) {
             lucidDataNames.add(specifier.local.name);
           }
-        }
-      },
-      NewExpression(node) {
-        const callee = unwrap(node.callee);
-        if (
-          file !== PAIR_FACTORY &&
-          callee.type === "Identifier" &&
-          callee.name === "DataPair"
-        ) {
-          report({ node, messageId: "dataPair" });
         }
       },
       CallExpression(node) {

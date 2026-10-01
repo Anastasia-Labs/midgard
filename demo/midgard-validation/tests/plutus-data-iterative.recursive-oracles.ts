@@ -13,7 +13,6 @@ import {
 } from "@harmoniclabs/plutus-data";
 
 import {
-  asByteArray,
   encodeCardanoBytes,
   encodeCardanoInteger,
   encodeSmallCborArgument,
@@ -32,7 +31,7 @@ export const recursiveEncodeMidgardCekPlutusData = (data: Data): Buffer => {
     return encodeCardanoInteger(data.int);
   }
   if (data instanceof DataB) {
-    return encodeCardanoBytes(asByteArray(data.bytes));
+    return encodeCardanoBytes(data.bytes);
   }
   if (data instanceof DataList) {
     return encodeCardanoList(
@@ -113,13 +112,13 @@ export const recursiveMidgardCekDataMemorySize = (value: Data): bigint => {
     return 4n + midgardCekIntegerMemorySize(value.int);
   }
   if (value instanceof DataB) {
-    return 4n + byteLengthOrOne(asByteArray(value.bytes));
+    return 4n + byteLengthOrOne(value.bytes);
   }
   throw new Error("V1 data constant has an unknown node");
 };
 
 const describeBytes = (value: DataB): string => {
-  const raw = value.bytes.toBuffer();
+  const raw = value.bytes;
   return `${Buffer.isBuffer(raw) ? "Buffer" : raw.constructor.name}:${Buffer.from(raw).toString("hex")}`;
 };
 

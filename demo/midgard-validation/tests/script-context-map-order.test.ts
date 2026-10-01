@@ -15,6 +15,7 @@ import {
   Delay,
   ErrorUPLC,
   Force,
+  getNRequiredForces,
   Lambda,
   UPLCBuiltinTag,
   UPLCConst,
@@ -65,7 +66,13 @@ const DUPLICATE_KEY_MAP = "a241ff0141ff02";
 
 const EX_UNITS = [1_000_000_000n, 1_000_000_000n] as const;
 
-const builtin = (tag: UPLCBuiltinTag): UPLCTerm => new Builtin(tag);
+const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
+  let term: UPLCTerm = new Builtin(tag);
+  for (let force = 0; force < getNRequiredForces(tag); force += 1) {
+    term = new Force(term);
+  }
+  return term;
+};
 const apply = (fn: UPLCTerm, ...args: UPLCTerm[]): UPLCTerm =>
   args.reduce<UPLCTerm>((term, arg) => new Application(term, arg), fn);
 const constrFields = (data: UPLCTerm): UPLCTerm =>
@@ -101,9 +108,7 @@ const guard = (condition: UPLCTerm): UPLCTerm =>
     ),
   );
 const flat = (body: UPLCTerm): Buffer =>
-  Buffer.from(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)).toBuffer().buffer,
-  );
+  Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)));
 
 const context = new UPLCVar(0);
 

@@ -1095,10 +1095,6 @@
       "sites": [
         "): string => Data.to(toLocalPlutusData(value) as never, undefined, options);"
       ]
-    },
-    "midgard-validation/src/script-context.ts": {
-      "reason": "Owner decision pending: the datum and redeemer reads here run before phase B's script try, so a deep value stops there instead of reaching a recursive harmonic path inside the try, where a throw would be committed as a script failure. They switch to the iterative reader once the DataPair and UPLCConst eager messages are removed.",
-      "sites": ["dataFromCbor,"]
     }
   },
   "midgard/scoped-utxo-override": {

@@ -14,8 +14,6 @@ import {
   type ConstValue,
 } from "@harmoniclabs/uplc";
 
-import { isByteStringLike } from "./plutus-data-narrowing.js";
-
 export type MidgardCekConstantType =
   | { readonly kind: "integer" }
   | { readonly kind: "bytes" }
@@ -87,6 +85,8 @@ const parseTypeAt = (
         type: { kind: "blsMillerLoopResult" },
         nextOffset: offset + 1,
       };
+    case ConstTyTag.value:
+    case ConstTyTag.array:
     default:
       throw new Error("V1 constant has an unknown type tag");
   }
@@ -103,14 +103,10 @@ export const parseMidgardCekConstantType = (
 };
 
 export const asByteArray = (value: unknown): Uint8Array => {
-  if (!isByteStringLike(value)) {
+  if (!(value instanceof Uint8Array)) {
     throw new Error("V1 bytes constant has an invalid value");
   }
-  const bytes = value.toBuffer();
-  if (!(bytes instanceof Uint8Array)) {
-    throw new Error("V1 bytes constant did not produce bytes");
-  }
-  return bytes;
+  return value;
 };
 
 export const semanticData = (

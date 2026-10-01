@@ -19,7 +19,6 @@ import {
   mapHeaderLength,
   type MutableFrame,
   replaceFrame,
-  scalarBytes,
   scalarSummary,
   type ScanWork,
   type StructuredData,
@@ -84,7 +83,7 @@ export const buildMidgardCekDataScanTrace = (
       if (data instanceof DataI || data instanceof DataB) {
         const summary = scalarSummary(data);
         const encoded = encodeMidgardCekPlutusData(data);
-        if (data instanceof DataB && scalarBytes(data).length > 9_215) {
+        if (data instanceof DataB && data.bytes.length > 9_215) {
           throw new Error(
             "CEK Data scanner byte leaf exceeds its proof envelope",
           );

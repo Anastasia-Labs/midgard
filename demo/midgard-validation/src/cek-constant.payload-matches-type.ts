@@ -8,7 +8,6 @@ import {
 import { type ConstType, ConstTyTag } from "@harmoniclabs/uplc";
 
 import {
-  asByteArray,
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   type MidgardCekConstantType,
   type MidgardCekConstantWitness,
@@ -58,7 +57,7 @@ const payloadMatchesType = (
     case "string":
       if (!(payload instanceof DataB)) return false;
       try {
-        const bytes = asByteArray(payload.bytes);
+        const bytes = payload.bytes;
         return sameBytes(
           Buffer.from(
             new TextDecoder("utf-8", { fatal: true }).decode(bytes),
@@ -97,13 +96,9 @@ const payloadMatchesType = (
     case "data":
       return true;
     case "blsG1":
-      return (
-        payload instanceof DataB && asByteArray(payload.bytes).length === 48
-      );
+      return payload instanceof DataB && payload.bytes.length === 48;
     case "blsG2":
-      return (
-        payload instanceof DataB && asByteArray(payload.bytes).length === 96
-      );
+      return payload instanceof DataB && payload.bytes.length === 96;
     case "blsMillerLoopResult":
       return false;
   }

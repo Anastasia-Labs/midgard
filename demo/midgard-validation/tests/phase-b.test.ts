@@ -675,7 +675,7 @@ describe("phase B validation", () => {
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
-        ).toBuffer().buffer,
+        ),
       ),
     );
     const script = plutusV3ScriptWitness(program.envelopeCbor);
@@ -714,7 +714,7 @@ describe("phase B validation", () => {
             [1, 1, 0],
             new Application(selfApplication, selfApplication),
           ),
-        ).toBuffer().buffer,
+        ),
       ),
     );
     const script = plutusV3ScriptWitness(program.envelopeCbor);

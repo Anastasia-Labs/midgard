@@ -10,7 +10,6 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
 } from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
@@ -124,8 +123,8 @@ describe("V1 semantic Data commitment", () => {
 
   it("uses definite serialiseData maps without reordering raw pairs", () => {
     const value = new DataMap([
-      new DataPair(new DataB(Buffer.from("11", "hex")), new DataI(1)),
-      new DataPair(new DataB(Buffer.alloc(0)), new DataI(2)),
+      { fst: new DataB(Buffer.from("11", "hex")), snd: new DataI(1) },
+      { fst: new DataB(Buffer.alloc(0)), snd: new DataI(2) },
     ]);
     const committed = commitMidgardCekDataTree(value);
     expect(encodeMidgardCekPlutusData(value).toString("hex")).toBe(

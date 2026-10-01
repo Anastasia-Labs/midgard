@@ -6,7 +6,6 @@ import {
   DataList,
 } from "@harmoniclabs/plutus-data";
 
-import { asByteArray } from "./cek-constant.semantic-data.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 /**
@@ -54,7 +53,7 @@ export const midgardCekDataMemorySize = (value: Data): bigint => {
     } else if (next instanceof DataI) {
       total += 4n + midgardCekIntegerMemorySize(next.int);
     } else if (next instanceof DataB) {
-      total += 4n + midgardCekByteStringMemorySize(asByteArray(next.bytes));
+      total += 4n + midgardCekByteStringMemorySize(next.bytes);
     } else {
       throw new Error("V1 data constant has an unknown node");
     }

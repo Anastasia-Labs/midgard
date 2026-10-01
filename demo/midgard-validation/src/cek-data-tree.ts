@@ -29,7 +29,7 @@ import {
   encodeMidgardCekPlutusData,
   midgardCekIntegerMemorySize,
 } from "./cek-constant.js";
-import { isByteStringLike, isPlutusDataMap } from "./plutus-data-narrowing.js";
+import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 type HashedMaterial<Node> = {
   readonly node: Node;
@@ -114,17 +114,6 @@ const addExact = <Node>(
     throw new Error("CEK semantic material hash collision");
   }
   entries.set(key, material);
-};
-
-const asByteArray = (value: unknown): Uint8Array => {
-  if (!isByteStringLike(value)) {
-    throw new Error("Plutus Data bytes leaf has an invalid byte string");
-  }
-  const bytes = value.toBuffer();
-  if (!(bytes instanceof Uint8Array)) {
-    throw new Error("Plutus Data bytes leaf did not produce bytes");
-  }
-  return bytes;
 };
 
 /**
@@ -385,7 +374,7 @@ export const commitMidgardCekDataTree = (
           memory: 4n + midgardCekIntegerMemorySize(operation.data.int),
         };
       } else if (operation.data instanceof DataB) {
-        const bytes = asByteArray(operation.data.bytes);
+        const bytes = operation.data.bytes;
         node = {
           kind: "bytes",
           bytesRoot: addBlob(bytes),
