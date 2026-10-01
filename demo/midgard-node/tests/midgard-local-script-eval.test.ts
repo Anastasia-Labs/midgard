@@ -2,7 +2,6 @@ import "node:fs";
 import "node:path";
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-validation";
-import "@al-ft/midgard-validation/local-script-eval";
 import "@al-ft/midgard-validation/midgard-redeemers";
 import "@al-ft/midgard-validation/script-context";
 import "@al-ft/midgard-validation/script-source";
@@ -21,7 +20,6 @@ import {
   hashMidgardVersionedScript,
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
-import { evaluateScriptWithHarmonic } from "@al-ft/midgard-validation/local-script-eval";
 import {
   decodeMidgardRedeemers,
   MidgardRedeemerTag,
@@ -36,6 +34,7 @@ import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  evaluateScriptStructurally,
   ledgerRedeemer,
   lucidContext,
   makeMidgardContextProbeRedeemerCborHex,
@@ -441,7 +440,7 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context)).toMatchObject({
+    expect(evaluateScriptStructurally(scriptBytes, context)).toMatchObject({
       kind: "accepted",
     });
   });
@@ -483,7 +482,7 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context).kind).toBe(
+    expect(evaluateScriptStructurally(scriptBytes, context).kind).toBe(
       "script_invalid",
     );
   });
@@ -530,13 +529,13 @@ describe("Midgard local script evaluation primitives", () => {
     };
 
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
         buildMidgardScriptContext(contextView, purpose, validRedeemer),
       ),
     ).toMatchObject({ kind: "accepted" });
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
         buildMidgardScriptContext(
           {
@@ -672,13 +671,13 @@ describe("Midgard local script evaluation primitives", () => {
     };
 
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
         buildMidgardScriptContext(contextView, spendPurpose, probeRedeemer),
       ),
     ).toMatchObject({ kind: "accepted" });
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
         buildMidgardScriptContext(
           { ...contextView, signatories: [] },
@@ -722,12 +721,12 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context)).toMatchObject({
+    expect(evaluateScriptStructurally(scriptBytes, context)).toMatchObject({
       kind: "accepted",
     });
   });
 
-  it("runs the MidgardV1 always-fail fixture through Harmonic", () => {
+  it("runs the MidgardV1 always-fail fixture through the structural executor", () => {
     const scriptBytes = Buffer.from(MIDGARD_ALWAYS_FAIL_SCRIPT_HEX, "hex");
     const scriptHash = hashMidgardScript(scriptBytes);
     const purpose = { kind: "receive" as const, scriptHash };
@@ -753,7 +752,7 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context).kind).toBe(
+    expect(evaluateScriptStructurally(scriptBytes, context).kind).toBe(
       "script_invalid",
     );
   });

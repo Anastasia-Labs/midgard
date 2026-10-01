@@ -33,7 +33,7 @@ import {
   buildMidgardCanonicalCekProgram,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  encodeScriptContextCbor,
+  encodeMidgardCekPlutusData,
   MidgardRedeemerTag,
   RejectCodes,
   runPhaseBValidationWithPatch,
@@ -204,15 +204,11 @@ type Scenario = {
   readonly spendRedeemer?: string;
   /** Adds a mint of the script's own policy; the order of the two redeemers. */
   readonly mint?: "spend-first" | "mint-first";
-  /** Runs the flat script with no CEK program material. */
-  readonly bareScript?: true;
 };
 
 const buildScenario = (scenario: Scenario) => {
   const program = buildMidgardCanonicalCekProgram(scenario.program);
-  const script = plutusV3ScriptWitness(
-    scenario.bareScript === true ? scenario.program : program.envelopeCbor,
-  );
+  const script = plutusV3ScriptWitness(program.envelopeCbor);
   const scriptHash = hashScriptWitness(script);
   const spent = outRefFromByte(0x5b);
   const spentOutput = scriptOutput(scriptHash, scenario.spentDatum);
@@ -258,10 +254,9 @@ const buildScenario = (scenario: Scenario) => {
         }),
     scriptLanguages: ["PlutusV3" as const],
   };
-  const sidecar =
-    scenario.bareScript === true
-      ? null
-      : encodeMidgardCekProgramMaterialSidecar([...program.material.values()]);
+  const sidecar = encodeMidgardCekProgramMaterialSidecar([
+    ...program.material.values(),
+  ]);
   return {
     spent,
     spentOutput,
@@ -327,7 +322,7 @@ const proofVerdict = async (
       blockSlot: 100n,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,
-      programMaterialSidecarCbor: sidecar!,
+      programMaterialSidecarCbor: sidecar,
       priorUtxosRoot: preRoot,
       postUtxosRoot:
         verdict === "accepted"
@@ -353,7 +348,9 @@ describe("script context map order", () => {
         "cardano",
       );
       // Script address, 10 ada, the inline datum as written, no script ref.
-      expect(Buffer.from(encodeScriptContextCbor(txOut)).toString("hex")).toBe(
+      expect(
+        Buffer.from(encodeMidgardCekPlutusData(txOut)).toString("hex"),
+      ).toBe(
         `d8799fd8799fd87a9f581c${"33".repeat(28)}ffd87a80ff` +
           `a140a1401a00989680d87b9f${datum}ffd87a80ff`,
       );
@@ -361,22 +358,18 @@ describe("script context map order", () => {
   });
 
   it("gives an order-sensitive script the datum in its own key order", async () => {
-    for (const bareScript of [undefined, true] as const) {
-      await expect(
-        nodeVerdict({
-          program: firstDatumKeyIsTwoBytes,
-          spentDatum: UNSORTED_MAP,
-          bareScript,
-        }),
-      ).resolves.toBe(`rejected ${RejectCodes.PlutusScriptInvalid}`);
-      await expect(
-        nodeVerdict({
-          program: firstDatumKeyIsTwoBytes,
-          spentDatum: SORTED_MAP,
-          bareScript,
-        }),
-      ).resolves.toBe("accepted");
-    }
+    await expect(
+      nodeVerdict({
+        program: firstDatumKeyIsTwoBytes,
+        spentDatum: UNSORTED_MAP,
+      }),
+    ).resolves.toBe(`rejected ${RejectCodes.PlutusScriptInvalid}`);
+    await expect(
+      nodeVerdict({
+        program: firstDatumKeyIsTwoBytes,
+        spentDatum: SORTED_MAP,
+      }),
+    ).resolves.toBe("accepted");
   });
 
   it("proves the verdict over the datum and redeemer maps the node evaluated", async () => {

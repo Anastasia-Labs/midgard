@@ -200,10 +200,7 @@ export class FixedValidationWorkerPool {
     if (this.closed) {
       throw new ValidationWorkerError({ message: "validation pool is closed" });
     }
-    const transferList =
-      request.kind === "phase_a"
-        ? [request.arena]
-        : [request.scriptBytes, request.contextCbor];
+    const transferList = [request.arena];
     return new Promise<ValidationWorkerResponse>((resolve, reject) => {
       this.queue.push({ request, transferList, resolve, reject });
       this.dispatch();

@@ -31,7 +31,6 @@ export const verifyScriptHeavyReport = (
     true,
     "everyTransactionHasPlutusSpend",
   );
-  equal(report.uplcInWorkers, true, "uplcInWorkers");
   equal(report.verdictMatchesInline, true, "verdictMatchesInline");
   equal(
     report.gateMode,

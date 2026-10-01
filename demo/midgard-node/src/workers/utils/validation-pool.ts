@@ -31,14 +31,7 @@ export type PhaseAJobRequest = {
   }>;
 };
 
-export type UplcJobRequest = {
-  readonly kind: "uplc";
-  readonly jobId: number;
-  readonly scriptBytes: ArrayBuffer;
-  readonly contextCbor: ArrayBuffer;
-};
-
-export type ValidationJobRequest = PhaseAJobRequest | UplcJobRequest;
+export type ValidationJobRequest = PhaseAJobRequest;
 
 export type ValidationCacheStats = {
   readonly size: number;
@@ -65,24 +58,13 @@ export type PhaseAJobResponse = {
   >;
 };
 
-export type UplcJobResponse = {
-  readonly kind: "uplc";
-  readonly jobId: number;
-  readonly result:
-    | { readonly ok: true; readonly cpu: bigint; readonly memory: bigint }
-    | { readonly ok: false; readonly detail: string };
-};
-
 export type WorkerFailure = {
   readonly kind: "job_failed";
   readonly jobId: number;
   readonly error: string;
 };
 
-export type ValidationWorkerResponse =
-  | PhaseAJobResponse
-  | UplcJobResponse
-  | WorkerFailure;
+export type ValidationWorkerResponse = PhaseAJobResponse | WorkerFailure;
 
 export type PhaseAWorkerInput = {
   readonly txId: Buffer;
@@ -139,10 +121,4 @@ export const packPhaseAJob = (
     };
   });
   return { kind: "phase_a", jobId, arena, txs: descriptors };
-};
-
-export const copyToTransferable = (bytes: Uint8Array): ArrayBuffer => {
-  const copy = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(copy).set(bytes);
-  return copy;
 };

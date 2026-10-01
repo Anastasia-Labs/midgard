@@ -5,7 +5,6 @@ import {
   hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
-import { DataConstr } from "@harmoniclabs/plutus-data";
 import {
   Application,
   Lambda,
@@ -24,11 +23,6 @@ import {
   RejectCodes,
   runPhaseBValidationWithPatch,
 } from "../src/index.js";
-import {
-  encodeScriptContextCbor,
-  evaluateScriptWithHarmonic,
-  evaluateUplcWithContextCbor,
-} from "../src/local-script-eval.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import type { PhaseBResultWithPatch } from "../src/phase-b.js";
 import type { PhaseBConfig, RejectCode, RejectedTx } from "../src/types.js";
@@ -635,7 +629,7 @@ describe("phase B validation", () => {
     );
   });
 
-  it("injects worker UPLC evaluation without changing coordinator-side context encoding", async () => {
+  it("injects the script evaluator without changing coordinator-side context encoding", async () => {
     const spent = outRefFromByte(0x2d);
     const script = plutusV3ScriptWitness(Buffer.from("010203", "hex"));
     const scriptHash = hashScriptWitness(script);
@@ -656,7 +650,7 @@ describe("phase B validation", () => {
       ]),
       {
         ...phaseBConfig,
-        evaluateScript: (_scriptBytes, contextCbor) =>
+        evaluateProofScript: (_scriptBytes, contextCbor) =>
           Effect.sync(() => {
             evaluatorCalls += 1;
             expect(contextCbor.byteLength).toBeGreaterThan(0);
@@ -751,7 +745,7 @@ describe("phase B validation", () => {
     expect(rejection.detail).toContain("declared mem=0 cpu=0");
   });
 
-  it("propagates worker infrastructure failures instead of rejecting the tx", async () => {
+  it("propagates evaluator infrastructure failures instead of rejecting the tx", async () => {
     const spent = outRefFromByte(0x2e);
     const script = plutusV3ScriptWitness(Buffer.from("010203", "hex"));
     const scriptHash = hashScriptWitness(script);
@@ -775,17 +769,9 @@ describe("phase B validation", () => {
         ]),
         {
           ...phaseBConfig,
-          evaluateScript: () => Effect.fail(new Error("worker crashed")),
+          evaluateProofScript: () => Effect.fail(new Error("worker crashed")),
         },
       ),
     ).rejects.toThrow("worker crashed");
-  });
-
-  it("keeps the split evaluator bit-identical to the composed inline seam", () => {
-    const script = Buffer.from("010203", "hex");
-    const context = new DataConstr(0, []);
-    expect(
-      evaluateUplcWithContextCbor(script, encodeScriptContextCbor(context)),
-    ).toStrictEqual(evaluateScriptWithHarmonic(script, context));
   });
 });

@@ -8,7 +8,6 @@ import type {
   MidgardLedgerTx,
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
-import type { LocalScriptEvalResult } from "./local-script-eval.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -203,6 +202,17 @@ export type PhaseALocalContext = {
   ) => boolean;
 };
 
+/** The verdict and spent budget of one script evaluation. */
+export type LocalScriptEvalResult =
+  | {
+      readonly kind: "accepted";
+      readonly budget: {
+        readonly cpu: bigint;
+        readonly memory: bigint;
+      };
+    }
+  | { readonly kind: "script_invalid"; readonly detail: string };
+
 /**
  * Configuration knobs for phase-B validation.
  */
@@ -210,10 +220,6 @@ export type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
-  readonly evaluateScript?: (
-    scriptBytes: Uint8Array,
-    contextCbor: Uint8Array,
-  ) => Effect.Effect<LocalScriptEvalResult, Error>;
   readonly evaluateProofScript?: (
     programEnvelopeCbor: Uint8Array,
     contextCbor: Uint8Array,

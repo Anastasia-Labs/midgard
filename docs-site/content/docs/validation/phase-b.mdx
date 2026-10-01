@@ -40,7 +40,7 @@ type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
-  // Optional process-local evaluateScript and evaluateProofScript callbacks.
+  // Optional process-local evaluateProofScript callback.
 };
 ```
 
@@ -107,25 +107,9 @@ V1 candidates carry verified CEK program material. Phase B verifies the combined
 attached/reference bundle, builds the context and execution graph, and runs
 `executeMidgardCekStructuralProgram` with the consensus step bound and declared
 budget. Missing or inconsistent proof material fails closed. A configured
-`evaluateProofScript` callback can supply the process-local executor.
-
-### Auxiliary `local-script-eval.ts` helper
-
-`evaluateScriptWithHarmonic` runs Untyped Plutus Core with the Harmonic Labs
-toolchain (`@harmoniclabs/uplc`, `@harmoniclabs/plutus-machine`,
-`@harmoniclabs/plutus-data`):
-
-```text
-export const evaluateScriptWithHarmonic = (
-  scriptBytes: Uint8Array,
-  scriptContext: Constr<unknown>,
-): LocalScriptEvalResult
-```
-
-This helper is not the default structural V1 executor. It parses the CBOR script body, applies the script to the script-context data,
-and evaluates via `Machine.eval`. A `CEKConst` result is `"accepted"` and
-reports the CPU/memory `budget` spent; anything else, or a thrown error, is
-`"script_invalid"` with a `detail` string.
+`evaluateProofScript` callback can supply the process-local executor; without
+one, every script runs through the structural executor. There is no other
+script evaluator.
 
 ### `script-source.ts`
 

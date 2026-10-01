@@ -1083,13 +1083,6 @@
       "reason": "Decodes and re-encodes the deployment manifest's fraud-proof catalogue membership proofs against their schema; the manifest is deployer configuration read locally, not transaction data.",
       "sites": ["proof = Data.from(", "const canonicalProofCbor = Data.to("]
     },
-    "midgard-validation/src/local-script-eval.ts": {
-      "reason": "The harmonic Machine fallback evaluator; it is unreachable for MidgardV1 (phase A refuses a missing CEK sidecar) and is deleted as a whole by the next lane rather than rewritten.",
-      "sites": [
-        "import { type Data, dataFromCbor } from \"@harmoniclabs/plutus-data\";",
-        "import { CEKConst, Machine } from \"@harmoniclabs/plutus-machine\";"
-      ]
-    },
     "midgard-validation/src/plutus-data.ts": {
       "reason": "Test-support encoder: its only callers are validation and node tests encoding fixed-shape fixtures. Moving it into test support is a separate change.",
       "sites": [

@@ -13,7 +13,6 @@ export * from "./cek-program.js";
 export * from "./ledger.js";
 export * from "./ledger-output-descriptor.js";
 export * from "./ledger-tx.js";
-export * from "./local-script-eval.js";
 export * from "./midgard-redeemers.js";
 export * from "./phase-a.js";
 export * from "./phase-b.js";
