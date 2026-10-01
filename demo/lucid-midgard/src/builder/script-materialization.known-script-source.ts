@@ -11,10 +11,7 @@ import {
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes, normalizeHex } from "@al-ft/midgard-core/hex";
-import {
-  collectMidgardAttachedProgramEnvelopes,
-  collectMidgardReferencedProgramEnvelopes,
-} from "@al-ft/midgard-core/script-proof";
+import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { CML } from "@lucid-evolution/lucid";
 
 import { type Assets, normalizeAssets } from "../core/assets.js";
@@ -304,10 +301,14 @@ export const assertCompleteTxProgramMaterial = (
         );
       }
     }
-    const envelopes = [
-      ...collectMidgardAttachedProgramEnvelopes(tx),
-      ...collectMidgardReferencedProgramEnvelopes(tx, resolved),
-    ];
+    for (const key of expected) {
+      if (!resolved.has(key)) {
+        throw new Error(`reference input ${key} has no resolved ledger output`);
+      }
+    }
+    const envelopes = collectMidgardEventProgramEnvelopes(tx, (key) =>
+      resolved.get(key),
+    );
     verifyMidgardCekProgramMaterialBundle(envelopes, programMaterial);
   } catch (cause) {
     throw new BuilderInvariantError(

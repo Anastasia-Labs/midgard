@@ -24,7 +24,7 @@ export {
   validationPhaseBDurationTimer,
 } from "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 export {
-  collectAcceptedReferenceProgramEnvelopes,
+  collectAcceptedProgramEnvelopes,
   isHistoryGateClosedCause,
   repeatScheduledWithCauseLogging,
   sampleValidationQueueWaits,

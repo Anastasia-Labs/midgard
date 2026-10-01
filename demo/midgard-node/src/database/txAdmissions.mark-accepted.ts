@@ -39,12 +39,12 @@ export const markAccepted = ({
   rows,
   leaseOwner,
   processedTxs,
-  referenceProgramEnvelopesByTxId,
+  programEnvelopesByTxId,
 }: {
   readonly rows: readonly Pick<Entry, Columns.TX_ID>[];
   readonly leaseOwner: string;
   readonly processedTxs: readonly ProcessedTx[];
-  readonly referenceProgramEnvelopesByTxId?: ReadonlyMap<
+  readonly programEnvelopesByTxId?: ReadonlyMap<
     string,
     readonly MidgardCekProgramEnvelope[]
   >;
@@ -92,17 +92,16 @@ export const markAccepted = ({
             acceptedPayloads,
             (payload) => {
               const txIdHex = payload.tx_id.toString("hex");
-              const referenceProgramEnvelopes =
-                referenceProgramEnvelopesByTxId?.get(txIdHex);
+              const programEnvelopes = programEnvelopesByTxId?.get(txIdHex);
               if (
-                referenceProgramEnvelopesByTxId !== undefined &&
-                referenceProgramEnvelopes === undefined
+                programEnvelopesByTxId !== undefined &&
+                programEnvelopes === undefined
               ) {
                 return Effect.fail(
                   new DatabaseError({
                     table: payloadTableName,
                     message:
-                      "Accepted admission is missing its Phase B reference-program resolution",
+                      "Accepted admission is missing its Phase B program resolution",
                     cause: txIdHex,
                   }),
                 );
@@ -111,9 +110,7 @@ export const markAccepted = ({
                 txId: payload.tx_id,
                 txCanonicalCbor: payload.tx_canonical_cbor,
                 sidecarCbor: payload.cek_program_material_sidecar_cbor,
-                ...(referenceProgramEnvelopes === undefined
-                  ? {}
-                  : { referenceProgramEnvelopes }),
+                ...(programEnvelopes === undefined ? {} : { programEnvelopes }),
               });
             },
             { discard: true },

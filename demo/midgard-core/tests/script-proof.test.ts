@@ -23,7 +23,7 @@ import {
 } from "../src/codec/versioned-script.js";
 import {
   collectMidgardAttachedProgramEnvelopes,
-  collectMidgardReferencedProgramEnvelopes,
+  collectMidgardEventProgramEnvelopes,
   decodeMidgardScriptProgramEnvelope,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardMintAssetLeaf,
@@ -268,7 +268,7 @@ describe("script proof primitives", () => {
     ).toThrow(/Trailing bytes/u);
   });
 
-  it("resolves historical reference programs from exact ledger outrefs", () => {
+  it("resolves an event's programs against the ledger state immediately before it", () => {
     // The ledger out-ref, in its one Midgard spelling: §5.3's fixed-index
     // field-0/1 item, so index 2 is `19 0002` and the key is 38 bytes.
     const outRef = encodeMidgardSpendInputItem({
@@ -373,15 +373,33 @@ describe("script proof primitives", () => {
       }),
     );
 
+    // Every input resolves against the state immediately before its own
+    // transaction: a reference present there contributes its script_ref
+    // program, and one absent there contributes nothing.
+    const preState = new Map([[outRef.toString("hex"), output]]);
     expect(
-      collectMidgardReferencedProgramEnvelopes(
-        tx,
-        new Map([[outRef.toString("hex"), output]]),
-      ),
+      collectMidgardEventProgramEnvelopes(tx, (key) => preState.get(key)),
     ).toEqual([expectedEnvelope]);
-    expect(() =>
-      collectMidgardReferencedProgramEnvelopes(tx, new Map()),
-    ).toThrow(/no resolved ledger output/u);
+    expect(collectMidgardEventProgramEnvelopes(tx, () => undefined)).toEqual(
+      [],
+    );
+    const plainOutput = encodeMidgardTxOutput({
+      address: midgardAddressFromText(
+        "addr1q9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzs02spk6",
+      ),
+      value: { lovelace: 2_000_000n, assets: new Map() },
+    });
+    expect(collectMidgardEventProgramEnvelopes(tx, () => plainOutput)).toEqual(
+      [],
+    );
+    expect(
+      collectMidgardEventProgramEnvelopes(attachedTx, (key) =>
+        preState.get(key),
+      ),
+    ).toEqual([expectedEnvelope, expectedEnvelope, expectedEnvelope]);
+    expect(
+      collectMidgardEventProgramEnvelopes(attachedTx, () => undefined),
+    ).toEqual(collectMidgardAttachedProgramEnvelopes(attachedTx));
     // A 31-byte tx_id: the wrapper lies about a 38-byte key's contents, so the
     // §5.3 decoder rejects it.
     expect(() =>

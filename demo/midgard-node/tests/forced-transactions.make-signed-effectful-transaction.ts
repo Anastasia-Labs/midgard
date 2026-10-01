@@ -89,6 +89,13 @@ export const makeOutput = (
 export const makeSignedEffectfulTransaction = (
   spendInput: Buffer,
   output: Buffer,
+  {
+    referenceInputs = [],
+    networkId = MIDGARD_NATIVE_NETWORK_ID_NONE,
+  }: {
+    readonly referenceInputs?: readonly Buffer[];
+    readonly networkId?: bigint;
+  } = {},
 ): {
   readonly transaction: MidgardNativeTxFull;
   readonly transactionId: Buffer;
@@ -96,7 +103,10 @@ export const makeSignedEffectfulTransaction = (
 } => {
   const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor: encodeByteList([spendInput]),
-    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+    referenceInputsPreimageCbor:
+      referenceInputs.length === 0
+        ? EMPTY_CBOR_LIST
+        : encodeByteList(referenceInputs),
     outputsPreimageCbor: encodeByteList([output]),
     fee: 0n,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
@@ -106,7 +116,7 @@ export const makeSignedEffectfulTransaction = (
     mintPreimageCbor: EMPTY_CBOR_LIST,
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
-    networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    networkId,
   };
   const bodyHash = computeMidgardNativeTxId({
     version: MIDGARD_NATIVE_TX_VERSION,

@@ -109,20 +109,57 @@ export const applyValidationLedgerMutations = async (
   return steps;
 };
 
-export const validationLedgerWitnesses = (
+const ledgerWitnessEntry = (
+  outRefHex: string,
+  output: Buffer,
+): ValidationMachineLedgerEntry => ({
+  outRef: Buffer.from(outRefHex, "hex"),
+  output: Buffer.from(output),
+});
+
+/**
+ * The ledger witnesses of a transaction the block applies: every spent and
+ * reference input resolves against the state immediately before the
+ * transaction, as on Cardano, so each one must be present there. A missing
+ * input is an invariant failure, never an omitted witness.
+ */
+export const acceptedTransactionLedgerWitnesses = (
+  state: ReadonlyMap<string, Buffer>,
+  subject: { readonly table: string; readonly txIdHex: string },
+  outRefHexes: readonly string[],
+): Effect.Effect<readonly ValidationMachineLedgerEntry[], DatabaseError> =>
+  Effect.gen(function* () {
+    const witnesses: ValidationMachineLedgerEntry[] = [];
+    for (const outRefHex of [...new Set(outRefHexes)].sort()) {
+      const output = state.get(outRefHex);
+      if (output === undefined) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: subject.table,
+            message:
+              "An applied transaction has an input that is absent from the state immediately before it",
+            cause: `tx_id=${subject.txIdHex},outref=${outRefHex}`,
+          }),
+        );
+      }
+      witnesses.push(ledgerWitnessEntry(outRefHex, output));
+    }
+    return witnesses;
+  });
+
+/**
+ * The ledger witnesses of a rejected forced transaction: the inputs present
+ * in the state immediately before it. A rejected forced transaction may name
+ * inputs that do not exist there (that is often why it was rejected), and
+ * those have no witness.
+ */
+export const rejectedForcedTransactionLedgerWitnesses = (
   state: ReadonlyMap<string, Buffer>,
   outRefHexes: readonly string[],
 ): readonly ValidationMachineLedgerEntry[] =>
   [...new Set(outRefHexes)].sort().flatMap((outRefHex) => {
     const output = state.get(outRefHex);
-    return output === undefined
-      ? []
-      : [
-          {
-            outRef: Buffer.from(outRefHex, "hex"),
-            output: Buffer.from(output),
-          },
-        ];
+    return output === undefined ? [] : [ledgerWitnessEntry(outRefHex, output)];
   });
 
 export const programMaterialSidecarForEnvelopes = (
