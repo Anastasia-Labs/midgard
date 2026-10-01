@@ -284,6 +284,51 @@ describe("e2e run summary", () => {
     expect(summary.nextSafeAction).toBe("investigate_unknown");
   });
 
+  it("reports a failed gate as failed when another gate is blocked", () => {
+    const summary = updateE2ERunSummary(
+      createE2ERunSummary({ runId: "e2e-run-failed-and-blocked" }),
+      {
+        steps: [
+          step({ id: "readyz", status: "success" }),
+          step({ id: "deposit", status: "timeout" }),
+          step({ id: "withdraw", status: "failed" }),
+        ],
+        db: [
+          {
+            label: "stack_fresh_deployment",
+            status: "failed",
+            source: "e2e-stack",
+            details: { missing: "initialize-submit" },
+          },
+          {
+            label: "deposit_projection",
+            status: "blocked",
+            source: "e2e-stack",
+            details: {},
+          },
+        ],
+        cleanRunGates: [
+          {
+            label: "stack_services",
+            status: "blocked",
+            source: "e2e-stack",
+            details: {},
+          },
+          {
+            label: "stack_deployment",
+            status: "failed",
+            source: "e2e-stack",
+            details: {},
+          },
+        ],
+      },
+    );
+
+    expect(summary.cleanRunVerdict).toBe("failed");
+    expect(summary.functionalVerdict).toBe("failed");
+    expect(summary.verdict).toBe("failed");
+  });
+
   it("lets later final transaction evidence satisfy a logical label after a rejected historical tx", () => {
     const rejectedTx = "ab".repeat(32);
     const confirmedTx = "cd".repeat(32);

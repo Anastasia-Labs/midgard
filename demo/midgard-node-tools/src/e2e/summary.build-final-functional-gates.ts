@@ -211,18 +211,18 @@ export const buildFinalFunctionalGates = ({
 const recomputeStepCleanRunVerdict = (
   steps: readonly StepSummary[],
 ): RunVerdict => {
-  if (steps.some((step) => step.status === "timeout")) {
-    return "blocked";
-  }
-  if (steps.some((step) => step.status === "signaled")) {
-    return "interrupted";
-  }
   if (
     steps.some(
       (step) => step.status === "failed" || step.status === "runner_error",
     )
   ) {
     return "failed";
+  }
+  if (steps.some((step) => step.status === "timeout")) {
+    return "blocked";
+  }
+  if (steps.some((step) => step.status === "signaled")) {
+    return "interrupted";
   }
   if (steps.length > 0 && steps.every((step) => step.status === "success")) {
     return "success";
@@ -236,14 +236,14 @@ const cleanRunGateVerdict = (
   if (cleanRunGates.length === 0) {
     return "success";
   }
+  if (cleanRunGates.some((gate) => gate.status === "failed")) {
+    return "failed";
+  }
   if (cleanRunGates.some((gate) => gate.status === "blocked")) {
     return "blocked";
   }
   if (cleanRunGates.some((gate) => gate.status === "interrupted")) {
     return "interrupted";
-  }
-  if (cleanRunGates.some((gate) => gate.status === "failed")) {
-    return "failed";
   }
   if (cleanRunGates.some((gate) => gate.status === "unknown")) {
     return "unknown";
@@ -256,11 +256,11 @@ const cleanRunGateVerdict = (
 
 const verdictSeverity = (verdict: RunVerdict): number => {
   switch (verdict) {
-    case "blocked":
-      return 5;
-    case "interrupted":
-      return 4;
     case "failed":
+      return 5;
+    case "blocked":
+      return 4;
+    case "interrupted":
       return 3;
     case "unknown":
       return 2;
@@ -291,11 +291,11 @@ export const recomputeCleanRunVerdict = ({
 export const recomputeFunctionalVerdict = (
   gates: readonly FinalFunctionalGate[],
 ): RunVerdict => {
-  if (gates.some((gate) => gate.status === "blocked")) {
-    return "blocked";
-  }
   if (gates.some((gate) => gate.status === "failed")) {
     return "failed";
+  }
+  if (gates.some((gate) => gate.status === "blocked")) {
+    return "blocked";
   }
   if (gates.length > 0 && gates.every((gate) => gate.status === "satisfied")) {
     return "success";
