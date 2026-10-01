@@ -69,7 +69,24 @@ export type RejectSubject =
   | {
       readonly arm: "OutputNonCanonical" | "OutputBelowMinAda";
       readonly index: bigint;
-    };
+    }
+  /**
+   * The first asset that inserts a new unit into the value accumulator once
+   * the accumulator has seen the distinct-asset bound. `index` is the input's
+   * position in the input-resolution schedule (spend and reference inputs
+   * merged and sorted by out-ref bytes; reference inputs hold a position but
+   * carry no assets) or the output's field ordinal, and `assetIndex` the
+   * asset's position in that value's policy-then-name order.
+   */
+  | {
+      readonly arm:
+        | "InputAssetAccumulationLimit"
+        | "OutputAssetAccumulationLimit";
+      readonly index: bigint;
+      readonly assetIndex: bigint;
+    }
+  /** As above, for the asset at mint-field position `index`. */
+  | { readonly arm: "MintAssetAccumulationLimit"; readonly index: bigint };
 
 /** The arm tags a {@link RejectSubject} can carry. */
 export type RejectSubjectArm = RejectSubject["arm"];

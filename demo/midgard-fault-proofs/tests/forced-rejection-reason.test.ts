@@ -152,6 +152,21 @@ const SUBJECT_CASES: readonly (readonly [
     { arm: "OutputBelowMinAda", index: 16n },
     { OutputBelowMinAda: { output_index: 16n } },
   ],
+  [
+    RejectCodes.AssetCount,
+    { arm: "InputAssetAccumulationLimit", index: 18n, assetIndex: 19n },
+    { InputAssetAccumulationLimit: { input_index: 18n, asset_index: 19n } },
+  ],
+  [
+    RejectCodes.AssetCount,
+    { arm: "OutputAssetAccumulationLimit", index: 20n, assetIndex: 21n },
+    { OutputAssetAccumulationLimit: { output_index: 20n, asset_index: 21n } },
+  ],
+  [
+    RejectCodes.AssetCount,
+    { arm: "MintAssetAccumulationLimit", index: 22n },
+    { MintAssetAccumulationLimit: { mint_index: 22n } },
+  ],
 ];
 
 /** Codes whose single arm carries no coordinate, with the arm the leaf must name. */
@@ -183,7 +198,6 @@ const UNCOMMITTED_DECODE_REASONS: readonly (readonly [
     RejectCodes.FieldPreimageSize,
     { FieldPreimageLengthMismatch: { field_index: 0n } },
   ],
-  [RejectCodes.AssetCount, { MintAssetAccumulationLimit: { mint_index: 0n } }],
 ];
 
 describe("forced rejection reason", () => {
@@ -252,7 +266,7 @@ describe("forced rejection reason", () => {
     ).toThrow(ForcedRejectionSubjectMissing);
   });
 
-  it("records only the four canonical-decode codes that can lack a subject", () => {
+  it("records only the three canonical-decode codes that can lack a subject", () => {
     const recorded = new Map(UNCOMMITTED_DECODE_REASONS);
     for (const code of LOCATED_CODES) {
       const rejection = { code, consensusPhase: "canonicalDecode" } as const;

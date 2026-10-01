@@ -6,11 +6,11 @@ import {
   type MidgardValue,
 } from "@al-ft/midgard-core/codec";
 
+import { checkValueAndMint } from "./phase-b.check-value-and-mint.js";
 import {
   type CandidateDecision,
   type CandidateNode,
   type CandidateStatus,
-  minAdaViolation,
   reject,
   resolveReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
@@ -20,12 +20,6 @@ import {
   type RejectSubject,
 } from "./reject-subject.js";
 import { PhaseBConfig, RejectCodes, RejectedTx } from "./types.js";
-import {
-  describeValueDelta,
-  isZeroValueDelta,
-  sumMidgardValues,
-  valuePreservationDelta,
-} from "./value-accounting.js";
 
 const validatePlainCandidateAgainstState = (
   node: CandidateNode,
@@ -78,7 +72,7 @@ const validatePlainCandidateAgainstState = (
   }
 
   const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
-  const inputValues: MidgardValue[] = [];
+  const spentValues = new Map<string, MidgardValue>();
   for (const inputOutRefHex of node.spentOutRefs) {
     if (spentByAccepted.has(inputOutRefHex)) {
       return fail(RejectCodes.DoubleSpend, inputOutRefHex);
@@ -109,7 +103,7 @@ const validatePlainCandidateAgainstState = (
           },
         );
       }
-      inputValues.push(output.value);
+      spentValues.set(inputOutRefHex, output.value);
     } catch (error) {
       return fail(
         RejectCodes.InvalidOutput,
@@ -153,25 +147,18 @@ const validatePlainCandidateAgainstState = (
     );
   }
 
-  const underFundedOutput = minAdaViolation(candidate);
-  if (underFundedOutput !== null) {
-    return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint", {
-      arm: "OutputBelowMinAda",
-      index: BigInt(underFundedOutput.index),
-    });
-  }
-
-  const delta = valuePreservationDelta(
-    sumMidgardValues(inputValues),
-    ledgerTx.fee,
-    candidate.derived.mintDelta,
-    candidate.derived.outputSum,
-  );
-  if (!isZeroValueDelta(delta)) {
+  const valueAndMint = checkValueAndMint({
+    candidate,
+    spentOutRefs: node.spentOutRefs,
+    referenceOutRefs: node.referenceOutRefs,
+    spentValues,
+  });
+  if (valueAndMint !== null) {
     return fail(
-      RejectCodes.ValueNotPreserved,
-      `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+      valueAndMint.code,
+      valueAndMint.detail,
       "valueAndMint",
+      valueAndMint.subject,
     );
   }
   return { index: node.index, accepted: true };

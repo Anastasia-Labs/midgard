@@ -115,6 +115,7 @@ import {
   advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
   initialMidgardResolvedInputsAccumulator,
+  orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 import {
@@ -510,18 +511,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
     );
     const redeemerWitnessesCollection = machineFieldTrace(8);
-    const inputSetScanItems = [
-      ...spendInputsCollection.items.map((item) => ({
-        sourceKind: "spend" as const,
-        collection: spendInputsCollection,
-        item,
-      })),
-      ...referenceInputsCollection.items.map((item) => ({
-        sourceKind: "reference" as const,
-        collection: referenceInputsCollection,
-        item,
-      })),
-    ].sort((left, right) => Buffer.compare(left.item.bytes, right.item.bytes));
+    const collections = {
+      spend: spendInputsCollection,
+      reference: referenceInputsCollection,
+    };
+    const inputSetScanItems = orderMidgardInputResolutionSchedule({
+      spend: spendInputsCollection.items,
+      reference: referenceInputsCollection.items,
+      keyOf: (item) => item.bytes,
+    }).map((node) => ({ ...node, collection: collections[node.sourceKind] }));
     const resolutionItems = inputSetScanItems.map(({ sourceKind, item }) => ({
       sourceKind,
       key: item.bytes,

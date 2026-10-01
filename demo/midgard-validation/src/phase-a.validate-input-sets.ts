@@ -79,8 +79,6 @@ export const consensusProfileRejectCode = (
       return RejectCodes.ScriptProgramSize;
     case "E_SCRIPT_PROGRAM_ENCODING":
       return RejectCodes.ScriptProgramEncoding;
-    case "E_ASSET_COUNT":
-      return RejectCodes.AssetCount;
   }
 };
 

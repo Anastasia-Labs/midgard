@@ -7,10 +7,10 @@ import {
 import { Effect } from "effect";
 
 import { LedgerColumns } from "./ledger.js";
+import { checkValueAndMint } from "./phase-b.check-value-and-mint.js";
 import {
   type CandidateDecision,
   type CandidateNode,
-  minAdaViolation,
   reject,
   resolveReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
@@ -27,12 +27,6 @@ import {
   RejectCodes,
   RejectedTx,
 } from "./types.js";
-import {
-  describeValueDelta,
-  isZeroValueDelta,
-  sumMidgardValues,
-  valuePreservationDelta,
-} from "./value-accounting.js";
 
 export const buildNodes = (
   candidates: readonly PhaseAValidatedTx[],
@@ -177,7 +171,7 @@ export const validateCandidateAgainstState = (
       );
     }
 
-    const inputValues: MidgardValue[] = [];
+    const spentValues = new Map<string, MidgardValue>();
     let sawScriptInput = false;
 
     const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
@@ -300,7 +294,7 @@ export const validateCandidateAgainstState = (
           }
         }
 
-        inputValues.push(output.value);
+        spentValues.set(inputOutRefHex, output.value);
       } catch (e) {
         return fail(
           RejectCodes.InvalidOutput,
@@ -329,30 +323,18 @@ export const validateCandidateAgainstState = (
       }
     }
 
-    const underFundedOutput = minAdaViolation(candidate);
-    if (underFundedOutput !== null) {
+    const valueAndMint = checkValueAndMint({
+      candidate,
+      spentOutRefs: node.spentOutRefs,
+      referenceOutRefs: node.referenceOutRefs,
+      spentValues,
+    });
+    if (valueAndMint !== null) {
       return fail(
-        RejectCodes.MinAda,
-        underFundedOutput.detail,
+        valueAndMint.code,
+        valueAndMint.detail,
         "valueAndMint",
-        {
-          arm: "OutputBelowMinAda",
-          index: BigInt(underFundedOutput.index),
-        },
-      );
-    }
-
-    const delta = valuePreservationDelta(
-      sumMidgardValues(inputValues),
-      ledgerTx.fee,
-      candidate.derived.mintDelta,
-      candidate.derived.outputSum,
-    );
-    if (!isZeroValueDelta(delta)) {
-      return fail(
-        RejectCodes.ValueNotPreserved,
-        `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
-        "valueAndMint",
+        valueAndMint.subject,
       );
     }
 

@@ -1,5 +1,5 @@
 import { decodeMidgardCekProgramEnvelope } from "./cek-proof.js";
-import { asArray, asBytes, asMap, decodeSingleCbor } from "./codec/cbor.js";
+import { asArray, decodeSingleCbor } from "./codec/cbor.js";
 import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   type MidgardForcedTxFull,
@@ -213,7 +213,6 @@ export const validateMidgardConsensusTx = (
     }
   }
 
-  const distinctAssets = new Set<string>();
   for (let index = 0; index < outputCbors.length; index += 1) {
     if (outputCbors[index]!.length > limits.maxLedgerOutputPreimageBytes) {
       return violation(
@@ -233,11 +232,6 @@ export const validateMidgardConsensusTx = (
         `output[${index.toString()}] Cardano Value ${cardanoValueBytes.toString()} > ${limits.maxOutputValueCborBytes.toString()}`,
       );
     }
-    for (const [policyId, assets] of output.value.assets) {
-      for (const assetName of assets.keys()) {
-        distinctAssets.add(`${policyId}.${assetName}`);
-      }
-    }
     // As for witnesses, decoding the output bounded a native reference script.
     if (
       output.script_ref !== undefined &&
@@ -253,31 +247,6 @@ export const validateMidgardConsensusTx = (
         );
       }
     }
-  }
-  const mintValue = decodeSingleCbor(tx.body.mintPreimageCbor);
-  if (!Array.isArray(mintValue)) {
-    for (const [policyValue, assetsValue] of asMap(mintValue, "native.mint")) {
-      const policyId = asBytes(policyValue, "native.mint.policy").toString(
-        "hex",
-      );
-      for (const assetNameValue of asMap(
-        assetsValue,
-        "native.mint.assets",
-      ).keys()) {
-        const assetName = asBytes(
-          assetNameValue,
-          "native.mint.asset_name",
-        ).toString("hex");
-        distinctAssets.add(`${policyId}.${assetName}`);
-      }
-    }
-  }
-  if (distinctAssets.size > limits.maxDistinctAssetCount) {
-    return violation(
-      "E_ASSET_COUNT",
-      "distinct_assets",
-      `${distinctAssets.size.toString()} > ${limits.maxDistinctAssetCount.toString()}`,
-    );
   }
   return null;
 };

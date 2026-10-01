@@ -35,8 +35,7 @@ export type MidgardConsensusViolationCode =
   | "E_LEDGER_OUTPUT_SIZE"
   | "E_VALUE_SIZE"
   | "E_SCRIPT_PROGRAM_SIZE"
-  | "E_SCRIPT_PROGRAM_ENCODING"
-  | "E_ASSET_COUNT";
+  | "E_SCRIPT_PROGRAM_ENCODING";
 
 export type MidgardConsensusViolation = {
   readonly code: MidgardConsensusViolationCode;

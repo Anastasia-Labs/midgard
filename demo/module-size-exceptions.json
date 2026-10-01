@@ -1516,7 +1516,7 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 3940,
+    "max": 3938,
     "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

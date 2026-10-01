@@ -1,9 +1,7 @@
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import {
   makeNativeTx,
-  makeOutput,
   nativeScriptWitness,
-  TEST_ADDRESS_BYTES,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import type { PhaseAConfig, QueuedTx } from "@al-ft/midgard-validation/types";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
@@ -15,7 +13,6 @@ import {
   WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
 } from "../../src/verification/phase-a-verifier.js";
 import {
-  assetMap,
   CONFIG,
   configFor,
   KEY,
@@ -286,23 +283,6 @@ describe("adjacent boundary", () => {
           requiredSignerItems: Array.from({ length: 16385 }, () =>
             Buffer.alloc(0),
           ),
-        }),
-    ],
-    [
-      // §5.1 caps an item's byte-string wrapper at `59 LLLL`, so a single output
-      // carrying more than the 16,384-asset guardrail cannot be *encoded* at all:
-      // 16,385 assets exceed 65,535 bytes of item, and the field preimage that
-      // would hold it is refused before the §5.4 aggregate bound is consulted.
-      // Under the retired counted grammar this fixture reached
-      // `E_FIELD_PREIMAGE_SIZE`, because item bytes were read with a general CBOR
-      // walk that accepts the four-byte `5a` head. `E_ASSET_COUNT` is still
-      // dominated — by a tighter rule than before.
-      RejectCodes.AssetCount,
-      RejectCodes.CborDeserialization,
-      () =>
-        makeNativeTx({
-          privateKey: KEY,
-          outputs: [makeOutput(1n, TEST_ADDRESS_BYTES, assetMap(20000))],
         }),
     ],
   ])(

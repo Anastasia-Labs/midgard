@@ -147,6 +147,22 @@ export const rejectionReasonOfSubject = (
       return { OutputNonCanonical: { output_index: subject.index } };
     case "OutputBelowMinAda":
       return { OutputBelowMinAda: { output_index: subject.index } };
+    case "InputAssetAccumulationLimit":
+      return {
+        InputAssetAccumulationLimit: {
+          input_index: subject.index,
+          asset_index: subject.assetIndex,
+        },
+      };
+    case "OutputAssetAccumulationLimit":
+      return {
+        OutputAssetAccumulationLimit: {
+          output_index: subject.index,
+          asset_index: subject.assetIndex,
+        },
+      };
+    case "MintAssetAccumulationLimit":
+      return { MintAssetAccumulationLimit: { mint_index: subject.index } };
     default: {
       const unreachable: never = subject;
       throw new Error(
@@ -280,9 +296,6 @@ const UNCOMMITTED_CANONICAL_DECODE_REASONS: Partial<
   [RejectCodes.InvalidOutput]: { OutputNonCanonical: { output_index: 0n } },
   [RejectCodes.FieldPreimageSize]: {
     FieldPreimageLengthMismatch: { field_index: 0n },
-  },
-  [RejectCodes.AssetCount]: {
-    MintAssetAccumulationLimit: { mint_index: 0n },
   },
 });
 
