@@ -2,7 +2,7 @@ use aiken/merkle_patricia_forestry as mpf
 use midgard/mpf_proof_v1 as proof
 
 const before =
-  #"88e28232999483e47f2779227d77d46358aad506223f4de36808d08fc57f11c4"
+  #"fd518b514bd5dc0c85159d10ceecac77613825d793b5025290291b458fcbd41f"
 
 const after =
   #"3e090fbdb93ef5cbeb10616c4f7238e36149d89d9974620230c304e36f7a517b"

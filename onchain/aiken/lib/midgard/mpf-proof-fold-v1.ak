@@ -105,11 +105,12 @@ pub fn encode_proof_descriptor_v1(descriptor: ProofDescriptorV1) -> ByteArray {
     |> bytearray.concat(validation_merkle_v1.encode_frontier(descriptor.peaks))
 }
 
+// As in `mpf_proof_v1`, the prefix length is fixed by the neighbour's hash, and
+// a terminal Fork bounds where the prefix ends.
 fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
   and {
     neighbor.nibble >= 0,
     neighbor.nibble < 16,
-    bytearray.length(neighbor.prefix) <= digest_byte_count,
     bytearray.length(neighbor.root) == digest_byte_count,
   }
 }
@@ -118,10 +119,12 @@ fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
 // including and excluding roots read differently (see
 // `mpf_proof_v1.terminal_leaf_neighbor_is_canonical` and
 // `terminal_fork_neighbor_is_canonical`). The same frame serves insertion and
-// deletion, so the Leaf and Fork checks bind both directions. A terminal
-// Branch is checked only in a deletion (`deletion_opening` is `Some`), where
-// its excluding root is the successor: `terminal_branch_keeps_two_children`
-// explains why insertion needs no check.
+// deletion. The Leaf check and the terminal Fork end bound bind both
+// directions. The Fork kind check applies only in a deletion
+// (`deletion_opening` is `Some`), where the excluding root is the successor;
+// an insertion's excluding root is compared with the authenticated
+// predecessor. A terminal Branch is likewise checked only in a deletion:
+// `terminal_branch_keeps_two_children` explains why insertion needs no check.
 fn frame_is_well_formed(
   path: ByteArray,
   frame: ProofFrameV1,
@@ -156,10 +159,18 @@ fn frame_is_well_formed(
       mpf.Fork { neighbor, .. } -> and {
           neighbor_is_well_formed(neighbor),
           nibble(path, frame.next_cursor - 1) != neighbor.nibble,
-          !is_terminal_frame || mpf_proof_v1.terminal_fork_neighbor_is_canonical(
-            frame.next_cursor,
-            neighbor,
-          ),
+          !is_terminal_frame || when deletion_opening is {
+            Some(_) ->
+              mpf_proof_v1.terminal_fork_neighbor_is_canonical(
+                frame.next_cursor,
+                neighbor,
+              )
+            None ->
+              mpf_proof_v1.terminal_fork_prefix_ends_inside_the_path(
+                frame.next_cursor,
+                neighbor,
+              )
+          },
         }
       mpf.Leaf { key, value, .. } -> and {
           bytearray.length(key) == digest_byte_count,

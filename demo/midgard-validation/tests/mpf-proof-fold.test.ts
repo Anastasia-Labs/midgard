@@ -234,7 +234,7 @@ describe("bounded MPF proof folding V1 terminal neighbour", () => {
     cursor % 2 === 0
       ? Buffer.concat([Buffer.from([0xff]), path.subarray(cursor / 2)])
       : Buffer.concat([
-          Buffer.from([0, path[(cursor - 1) / 2]! % 16]),
+          Buffer.from([0x10, path[(cursor - 1) / 2]! % 16]),
           path.subarray((cursor + 1) / 2),
         ]);
   const leaf = (key: Buffer, value: Buffer, skip: number) => ({
@@ -257,6 +257,13 @@ describe("bounded MPF proof folding V1 terminal neighbour", () => {
       key: a,
       value: va,
       steps: parseMidgardMpfProofJson(proofJson),
+    });
+  const foldDeletion = (proofJson: unknown) =>
+    buildMidgardMpfProofFoldTrace({
+      key: a,
+      value: va,
+      steps: parseMidgardMpfProofJson(proofJson),
+      deletionOpening: Buffer.alloc(0),
     });
   const trieOf = async (entries: readonly (readonly [Buffer, Buffer])[]) => {
     const store = new Store(undefined);
@@ -308,33 +315,35 @@ describe("bounded MPF proof folding V1 terminal neighbour", () => {
     );
   });
 
-  it("refuses a leaf re-read as a terminal fork on deletion and insertion", () => {
-    expect(() => fold([fork(1, 10, suffix(hash(b), 2), hash(vb))])).toThrow(
-      /terminal fork neighbor prefix is not a nibble path/u,
-    );
-    expect(() =>
-      fold([
-        leaf(hash(c), vc, 0),
-        fork(0, 0, suffix(hash(b), 1).subarray(1), hash(vb)),
+  it("refuses a leaf re-read as a terminal fork on deletion and insertion", async () => {
+    // Leaf and branch node preimages are disjoint, so a leaf re-read as a
+    // terminal Fork gives roots the honest trie does not have. On a deletion
+    // the Fork neighbour must also open like a branch preimage.
+    const onlyB = exactRoot(await trieOf([[b, vb]]));
+    const bAndC = exactRoot(
+      await trieOf([
+        [b, vb],
+        [c, vc],
       ]),
-    ).toThrow(/terminal fork neighbor prefix is not a nibble path/u);
-  });
-
-  it("refuses a terminal fork re-read as a leaf", () => {
-    // A fork beside `a` at nibble 2 whose 32-nibble prefix opens with 0: at
-    // next cursor 3 a leaf's suffix `00 ‖ nibble ‖ key[2..]` spells the same
-    // prefix when the key packs it.
-    const slot = 7;
-    const prefix = Buffer.concat([Buffer.from([0]), Buffer.alloc(31, 3)]);
-    const rereadKey = Buffer.concat([
-      Buffer.from([hash(a)[0]!, slot * 16 + prefix[1]!]),
-      prefix.subarray(2),
-    ]);
-    expect(suffix(rereadKey, 3)).toEqual(prefix);
-    expect(() => fold([fork(2, slot, prefix, hash(vc))])).not.toThrow();
-    expect(() => fold([leaf(rereadKey, vc, 2)])).toThrow(
-      /terminal leaf neighbor suffix reads as a fork neighbor prefix/u,
     );
+    const aBAndC = exactRoot(
+      await trieOf([
+        [a, va],
+        [b, vb],
+        [c, vc],
+      ]),
+    );
+    const even = [fork(1, 10, suffix(hash(b), 2), hash(vb))];
+    const odd = [
+      leaf(hash(c), vc, 0),
+      fork(0, 0, suffix(hash(b), 1).subarray(1), hash(vb)),
+    ];
+    expect(() => foldDeletion(even)).toThrow(
+      /terminal fork neighbor of a deletion does not open like a branch/u,
+    );
+    expect(fold(even).terminal.excludingRoot).not.toEqual(onlyB);
+    expect(foldDeletion(odd).terminal.includingRoot).not.toEqual(aBAndC);
+    expect(fold(odd).terminal.excludingRoot).not.toEqual(bAndC);
   });
 
   it("bounds a terminal fork prefix by the key path", () => {
@@ -343,7 +352,7 @@ describe("bounded MPF proof folding V1 terminal neighbour", () => {
       fork(31, neighborNibble, Buffer.alloc(prefixLength), hash(vc));
     expect(() => fold([deepFork(31)])).not.toThrow();
     expect(() => fold([deepFork(32)])).toThrow(
-      /terminal fork neighbor prefix is not a nibble path/u,
+      /terminal fork neighbor prefix does not end inside the key path/u,
     );
   });
 });

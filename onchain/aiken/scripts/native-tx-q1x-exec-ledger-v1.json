@@ -21,68 +21,68 @@
       ],
       "rows": {
         "q1x_f6_no_input_step_02_control_at_one_spend_input": {
-          "mem": 1126168,
-          "cpu": 505554651
+          "mem": 1125568,
+          "cpu": 505458651
         },
         "q1x_f6_no_input_step_02_at_one_spend_input": {
-          "mem": 1621761,
-          "cpu": 659363586
+          "mem": 1621361,
+          "cpu": 659299586
         },
         "q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
-          "mem": 24156451,
-          "cpu": 10046787532
+          "mem": 24155851,
+          "cpu": 10046691532
         },
         "q1x_f6_no_input_step_02_at_the_admissible_maximum": {
-          "mem": 24480963,
-          "cpu": 10186209109
+          "mem": 24480563,
+          "cpu": 10186145109
         },
         "q1x_f6_double_spend_step_04_control_at_one_spend_input": {
-          "mem": 1129312,
-          "cpu": 505660472
+          "mem": 1128712,
+          "cpu": 505564472
         },
         "q1x_f6_double_spend_step_04_at_one_spend_input": {
-          "mem": 1621439,
-          "cpu": 661426302
+          "mem": 1621039,
+          "cpu": 661362302
         },
         "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum": {
-          "mem": 24159595,
-          "cpu": 10046893353
+          "mem": 24158995,
+          "cpu": 10046797353
         },
         "q1x_f6_double_spend_step_04_at_the_admissible_maximum": {
-          "mem": 24480641,
-          "cpu": 10188271825
+          "mem": 24480241,
+          "cpu": 10188207825
         },
         "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness": {
-          "mem": 1133237,
-          "cpu": 508474996
+          "mem": 1132637,
+          "cpu": 508378996
         },
         "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness": {
-          "mem": 1796766,
-          "cpu": 723079509
+          "mem": 1796166,
+          "cpu": 722983509
         },
         "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum": {
-          "mem": 7190869,
-          "cpu": 3405710771
+          "mem": 7190269,
+          "cpu": 3405614771
         },
         "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum": {
-          "mem": 18372936,
-          "cpu": 7123454015
+          "mem": 18372336,
+          "cpu": 7123358015
         },
         "q1x_f6_missing_signature_step_04_control_at_one_address_witness": {
-          "mem": 1136394,
-          "cpu": 507082429
+          "mem": 1135794,
+          "cpu": 506986429
         },
         "q1x_f6_missing_signature_step_04_at_one_address_witness": {
-          "mem": 1772846,
-          "cpu": 710119221
+          "mem": 1772446,
+          "cpu": 710055221
         },
         "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum": {
-          "mem": 41695037,
-          "cpu": 16666587580
+          "mem": 41694437,
+          "cpu": 16666491580
         },
         "q1x_f6_missing_signature_step_04_at_the_admissible_maximum": {
-          "mem": 49803523,
-          "cpu": 19389243349
+          "mem": 49815723,
+          "cpu": 19391195349
         }
       }
     }
@@ -92,32 +92,32 @@
       "claim": "Q11 no-input step-02 at 1 spend input",
       "minus": "q1x_f6_no_input_step_02_control_at_one_spend_input",
       "from": "q1x_f6_no_input_step_02_at_one_spend_input",
-      "mem": 495593,
-      "cpu": 153808935,
+      "mem": 495793,
+      "cpu": 153840935,
       "basisFit": "fits"
     },
     {
       "claim": "Q11 no-input step-02 at 296 spend inputs",
       "minus": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
       "from": "q1x_f6_no_input_step_02_at_the_admissible_maximum",
-      "mem": 324512,
-      "cpu": 139421577,
+      "mem": 324712,
+      "cpu": 139453577,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 1 spend input",
       "minus": "q1x_f6_double_spend_step_04_control_at_one_spend_input",
       "from": "q1x_f6_double_spend_step_04_at_one_spend_input",
-      "mem": 492127,
-      "cpu": 155765830,
+      "mem": 492327,
+      "cpu": 155797830,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 296 spend inputs",
       "minus": "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum",
       "from": "q1x_f6_double_spend_step_04_at_the_admissible_maximum",
-      "mem": 321046,
-      "cpu": 141378472,
+      "mem": 321246,
+      "cpu": 141410472,
       "basisFit": "fits"
     },
     {
@@ -142,16 +142,16 @@
       "claim": "Q16 missing-signature step-04 at 1 address witness",
       "minus": "q1x_f6_missing_signature_step_04_control_at_one_address_witness",
       "from": "q1x_f6_missing_signature_step_04_at_one_address_witness",
-      "mem": 636452,
-      "cpu": 203036792,
+      "mem": 636652,
+      "cpu": 203068792,
       "basisFit": "fits"
     },
     {
       "claim": "Q16 missing-signature step-04, one 32-witness Scan batch at 318 address witnesses",
       "minus": "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum",
       "from": "q1x_f6_missing_signature_step_04_at_the_admissible_maximum",
-      "mem": 8108486,
-      "cpu": 2722655769,
+      "mem": 8121286,
+      "cpu": 2724703769,
       "basisFit": "fits",
       "measurementScope": "One `Scan` step over a 318-witness field 7: since c2237b30 step-04 visits `witness_scan_batch_size` = 32 witnesses per step and carries a checkpoint, so the absence walk over all 318 takes several steps. Net of its paired fixture, but not fixture-matched: the measured test also runs `opened_field_walk` and `walk_fold(32)` to build the expected checkpoint, which the control does not, so the net includes that test-side work. This row does not measure a direct walk over all 318 witnesses, which the 2026-08 reading put at 40,237,813 mem, ~3.0x the memory basis. It alone does not establish signed-transaction fit or carriage feasibility."
     }
@@ -166,8 +166,8 @@
     "maxCpuGrowth": 100000000,
     "memoryGrowth": -171081,
     "cpuGrowth": -14387358,
-    "memoryHeadroom": 12878954,
-    "cpuHeadroom": 7858621528,
+    "memoryHeadroom": 12878754,
+    "cpuHeadroom": 7858589528,
     "toleranceRationale": "The door pays one blake2b_256 over a preimage that does grow with cardinality - 43 bytes at one input, 11,843 at 296 - so the honest growth is the hash of ~11.8 KB more and nothing else, measured at ~4,600 mem. The band has to hold that plus the control-subtraction artifact described in `deltaAttribution` (|171,081| mem, |14,387,358| cpu), and has to sit far below any per-item regression. Both were measured rather than assumed: a step regressed to walk the whole 296-item collection costs +25,127,050 mem / +8,363,297,421 cpu against the same control, and one regressed to walk only half of it +12,129,016 mem / +4,062,287,469 cpu. The bands below are therefore ~1.5x (mem) and ~7x (cpu) the observed artifact, which now uses about 68% of the memory band, and ~48x (mem) and ~40x (cpu) below the cheapest regression measured, so neither a half-collection walk nor anything dearer can hide inside them. cpu is carried as its own two-sided band because it is the axis a walk regression moves proportionally hardest against its own tolerance.",
     "minMemoryGrowth": -250000,
     "minCpuGrowth": -100000000,

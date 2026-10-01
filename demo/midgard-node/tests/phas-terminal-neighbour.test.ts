@@ -50,50 +50,6 @@ describe("PHAS terminal neighbour", () => {
   );
 
   it.effect(
-    "refuses a PHAS non-membership proof whose terminal leaf suffix reads as a fork prefix",
-    () =>
-      Effect.gen(function* () {
-        // path(04) = 6 4 2 ...: a leaf at next cursor 3 whose key bytes from
-        // byte 2 on are all nibbles has the suffix a fork prefix would spell.
-        const absent = Buffer.from("04", "hex");
-        const path = Buffer.from(blake2b(32).update(absent).digest());
-        const leafStep = (tail: Buffer) =>
-          ({
-            Leaf: {
-              skip: 2n,
-              key: Buffer.concat([
-                Buffer.from([path[0]!, 0x70]),
-                tail,
-              ]).toString("hex"),
-              value: "0b".repeat(32),
-            },
-          }) as SDK.ProofStep;
-        const verify = (tail: Buffer) =>
-          verifyKeyValuePhasNonMembershipProof({
-            root: Buffer.alloc(32, 0x0e).toString("hex"),
-            key: absent,
-            proof: [leafStep(tail)],
-          }).pipe(Effect.either);
-
-        const nibbleTail = yield* verify(Buffer.alloc(30, 3));
-        const otherTail = yield* verify(
-          Buffer.concat([Buffer.alloc(29, 3), Buffer.from([0x10])]),
-        );
-
-        expect(nibbleTail._tag).toBe("Left");
-        expect(
-          String(nibbleTail._tag === "Left" && nibbleTail.left.cause),
-        ).toMatch(
-          /terminal leaf proof neighbor suffix reads as a fork neighbor prefix/iu,
-        );
-        expect(otherTail._tag).toBe("Left");
-        expect(
-          String(otherTail._tag === "Left" && otherTail.left.cause),
-        ).not.toMatch(/suffix reads as a fork neighbor prefix/iu);
-      }),
-  );
-
-  it.effect(
     "refuses a PHAS non-membership proof that re-reads a present leaf as a terminal fork",
     () =>
       Effect.gen(function* () {
@@ -111,8 +67,8 @@ describe("PHAS terminal neighbour", () => {
           proof: membership,
         });
         // The present leaf sits at odd cursor 1. Re-read as a branch at nibble
-        // 0 whose prefix is its suffix without the 0x00 marker, it collapses to
-        // the same leaf hash.
+        // 0 whose prefix is its suffix without the leaf marker, it collapses to
+        // a branch hash, and leaf and branch node preimages are disjoint.
         const path = Buffer.from(blake2b(32).update(present).digest());
         const masquerade = {
           Fork: {

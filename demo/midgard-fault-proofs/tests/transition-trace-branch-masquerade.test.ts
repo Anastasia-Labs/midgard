@@ -41,7 +41,7 @@ const suffix = (path: Uint8Array, cursor: number): Buffer =>
   cursor % 2 === 0
     ? Buffer.concat([Buffer.from([0xff]), path.subarray(cursor / 2)])
     : Buffer.concat([
-        Buffer.from([0, nibble(path, cursor)]),
+        Buffer.from([0x10, nibble(path, cursor)]),
         path.subarray((cursor + 1) / 2),
       ]);
 const merkle = (hashes: readonly Buffer[]): Buffer => {

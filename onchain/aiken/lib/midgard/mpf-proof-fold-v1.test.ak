@@ -231,8 +231,8 @@ test proof_fold_matches_real_typescript_trie_roots() {
   )
   and {
     mpf_proof_fold_v1.fold_is_complete_v1(terminal),
-    terminal.excluding_root == #"a636554b7a642f6a7cf97a544d21b858c3dab7450c2aa178b8279a91fae41541",
-    terminal.including_root == #"341d675c5ea37d8fa4eed271f4d62f4546a441102c30271281f7ffceb6ea6300",
+    terminal.excluding_root == #"2b72758188dc14b87ba28b533af911cd3334d5107b8675b0c25e5591fed87707",
+    terminal.including_root == #"a5bcc7afdc6b05a45d6d6f322b8fdcc8a513af75ee19fc71dd37ada99aa6efa5",
   }
 }
 

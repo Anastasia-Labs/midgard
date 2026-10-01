@@ -3,8 +3,9 @@
 //// node the path collapses into in the excluding root. These tests pin a
 //// terminal Leaf or Fork neighbour to its honest shape in every total
 //// mutation and in the resumable fold, in both directions: a tampered terminal
-//// Leaf key or skip, or a leaf re-read as a terminal Fork, is refused; the
-//// honest proofs still give the honest roots. A deletion's terminal Branch
+//// Leaf key or skip is refused, and a leaf re-read as a terminal Fork matches
+//// no authenticated root, because leaf and branch node preimages are
+//// disjoint; the honest proofs still give the honest roots. A deletion's terminal Branch
 //// must keep two other children: a Branch standing in for a node with a single
 //// other child is refused, and a lone neighbour group is opened to show it
 //// holds two.
@@ -188,8 +189,9 @@ fn odd_cursor_leaf_step(path: ByteArray, value: ByteArray) {
 }
 
 // A leaf at odd cursor 1 re-read as a branch at nibble 0 whose prefix is the
-// leaf's suffix without its 0x00 marker: the collapse of this fork equals the
-// true leaf hash, so a predecessor check against the true root accepts it.
+// leaf's suffix without its marker. A leaf preimage never opens with a nibble
+// and a branch preimage always does, so the collapse of this fork differs from
+// the true leaf hash and matches no authenticated root.
 fn odd_cursor_fork_masquerade(path: ByteArray, value: ByteArray) {
   mpf.Fork {
     skip: 0,
@@ -335,13 +337,20 @@ test mpf_terminal_leaf_check_compares_exactly_the_skipped_nibbles() {
   )
 }
 
-// A terminal fork prefix is accepted exactly when every byte is a nibble and
-// the neighbour's own branching nibble, at `next_cursor + length`, is at most
-// nibble 63.
+// A terminal fork prefix is accepted exactly when the neighbour's own branching
+// nibble, at `next_cursor + length`, is at most nibble 63, and its first byte,
+// if any, is a nibble: only the first byte decides whether a node preimage is a
+// branch, so later bytes are not read.
 test mpf_terminal_fork_check_bounds_and_types_the_prefix() {
   let root = blake2b_256(#"0e")
   let accepts = fn(next_cursor, prefix) {
     proof.terminal_fork_neighbor_is_canonical(
+      next_cursor,
+      mpf.Neighbor { nibble: 0, prefix, root },
+    )
+  }
+  let bounded = fn(next_cursor, prefix) {
+    proof.terminal_fork_prefix_ends_inside_the_path(
       next_cursor,
       mpf.Neighbor { nibble: 0, prefix, root },
     )
@@ -353,13 +362,21 @@ test mpf_terminal_fork_check_bounds_and_types_the_prefix() {
     accepts(32, builtin.replicate_byte(31, 15)),
     !accepts(32, builtin.replicate_byte(32, 15)),
     accepts(1, builtin.replicate_byte(32, 0)),
-    !accepts(1, #"10"),
-    !accepts(1, #"ff"),
-    !accepts(1, #"000010"),
-    !accepts(
+    accepts(1, #"0f"),
+    accepts(1, #"000010"),
+    accepts(
       1,
       #"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0fff",
     ),
+    !accepts(1, #"10"),
+    !accepts(1, #"ff"),
+    !accepts(1, #"10000000"),
+    bounded(1, #"10"),
+    bounded(1, #"ff"),
+    bounded(63, #""),
+    !bounded(64, #""),
+    bounded(32, builtin.replicate_byte(31, 16)),
+    !bounded(32, builtin.replicate_byte(32, 0)),
   }
 }
 
@@ -410,132 +427,6 @@ test mpf_terminal_fork_prefix_past_the_path_is_refused() {
     proof.insert_root_two_fold(excluding, a, va, [step]) == None,
     proof.insert_root(excluding, a, va, [step]) == None,
   }
-}
-
-// ## A terminal Fork does not re-read as a terminal Leaf
-//
-// At an odd next cursor a leaf's suffix is `00 ‖ nibble ‖ key bytes`. A fork
-// neighbour whose prefix has that length and opens with nibble 0 re-reads as
-// the leaf whose key packs the prefix and whose value is the fork's root: the
-// including root is the same, the collapse is not.
-
-// The fork beside `a` at nibble 2: a 32-nibble prefix opening with 0, so its
-// own branch sits at nibble 35.
-const deep_neighbour_slot = 7
-
-fn deep_neighbour_prefix() -> ByteArray {
-  bytearray.push(builtin.replicate_byte(31, 3), 0)
-}
-
-fn deep_neighbour_root() -> ByteArray {
-  blake2b_256(#"0d")
-}
-
-fn deep_neighbour_pre() -> ByteArray {
-  combine(
-    nibbles(pa(), 0, 2),
-    sparse_merkle_16(
-      nibble(pa(), 2),
-      leaf(pa(), 3, va),
-      deep_neighbour_slot,
-      combine(deep_neighbour_prefix(), deep_neighbour_root()),
-    ),
-  )
-}
-
-fn deep_neighbour_post() -> ByteArray {
-  combine(
-    bytearray.concat(
-      nibbles(pa(), 0, 2),
-      bytearray.push(deep_neighbour_prefix(), deep_neighbour_slot),
-    ),
-    deep_neighbour_root(),
-  )
-}
-
-fn deep_neighbour_fork() -> mpf.ProofStep {
-  mpf.Fork {
-    skip: 2,
-    neighbor: mpf.Neighbor {
-      nibble: deep_neighbour_slot,
-      prefix: deep_neighbour_prefix(),
-      root: deep_neighbour_root(),
-    },
-  }
-}
-
-fn deep_neighbour_leaf_reread() -> mpf.ProofStep {
-  let prefix = deep_neighbour_prefix()
-  let key = bytearray.drop(prefix, 2)
-    |> bytearray.push(
-        deep_neighbour_slot * 16 + builtin.index_bytearray(prefix, 1),
-      )
-    |> bytearray.push(builtin.index_bytearray(pa(), 0))
-  mpf.Leaf { skip: 2, key, value: deep_neighbour_root() }
-}
-
-// The premise: both steps prove `a` a member of the same root.
-test mpf_terminal_fork_re_read_as_a_leaf_proves_membership() {
-  and {
-    nibble(pa(), 2) != deep_neighbour_slot,
-    proof.has(deep_neighbour_pre(), a, va, [deep_neighbour_fork()]),
-    proof.has(deep_neighbour_pre(), a, va, [deep_neighbour_leaf_reread()]),
-  }
-}
-
-test mpf_terminal_fork_re_read_as_a_leaf_is_refused_on_delete() {
-  expect Some(folded) = fold_steps(a, va, [deep_neighbour_fork()], Some(#""))
-  and {
-    proof.delete_root_paired_fold(
-      deep_neighbour_pre(),
-      a,
-      va,
-      [deep_neighbour_fork()],
-      #"",
-    ) == Some(deep_neighbour_post()),
-    folded.including_root == deep_neighbour_pre(),
-    folded.excluding_root == deep_neighbour_post(),
-    proof.delete_root_paired_fold(
-      deep_neighbour_pre(),
-      a,
-      va,
-      [deep_neighbour_leaf_reread()],
-      #"",
-    ) == None,
-    fold_steps(a, va, [deep_neighbour_leaf_reread()], Some(#"")) == None,
-  }
-}
-
-// A leaf whose key tail is all nibbles is refused exactly where a fork could
-// stand in for it: at an odd next cursor from 3, where the suffix is at most
-// 32 bytes, to 59, where the fork's own branch still lies inside the path. A
-// key tail with any byte of 16 or more is never refused.
-test mpf_terminal_leaf_check_refuses_exactly_the_fork_readings() {
-  let nibble_key = builtin.replicate_byte(32, 0)
-  let other_key = bytearray.concat(builtin.replicate_byte(31, 0), #"10")
-  list.all(
-    list.range(1, 64),
-    fn(next_cursor) {
-      and {
-        proof.terminal_leaf_neighbor_is_canonical(
-          nibble_key,
-          nibble_key,
-          next_cursor - 1,
-          next_cursor,
-        ) == !and {
-          next_cursor % 2 == 1,
-          next_cursor >= 3,
-          next_cursor <= 59,
-        },
-        proof.terminal_leaf_neighbor_is_canonical(
-          other_key,
-          other_key,
-          next_cursor - 1,
-          next_cursor,
-        ),
-      }
-    },
-  )
 }
 
 // ## The resumable fold binds the same terminal frame
@@ -664,10 +555,22 @@ test mpf_fold_refuses_an_inflated_terminal_leaf_skip() {
   fold_steps(a, va, [inflated_leaf_step()], None) == None
 }
 
+// On insertion the fold does not read the fork's prefix kind: a leaf re-read
+// as a terminal Fork gives a predecessor root that is not the authenticated
+// one, so the caller's root comparison refuses it.
 test mpf_fold_refuses_a_terminal_fork_masquerade() {
+  expect Some(even) = fold_steps(a, va, [masquerading_fork_step()], None)
+  expect Some(odd) = fold_steps(
+    a,
+    va,
+    [c_step(), odd_cursor_fork_masquerade(pb(), vb)],
+    None,
+  )
   and {
-    fold_steps(a, va, [masquerading_fork_step()], None) == None,
-    fold_steps(a, va, [c_step(), odd_cursor_fork_masquerade(pb(), vb)], None) == None,
+    even.excluding_root != only_b(),
+    odd.excluding_root != b_and_c(),
+    odd.including_root != a_b_and_c(),
+    fold_steps(a, va, [masquerading_fork_step()], Some(#"")) == None,
   }
 }
 
@@ -990,7 +893,7 @@ test mpf_fold_terminal_branch_binds_deletion_only() {
 // branch whose other children are slots 10 and 11, the lone n8 group opened at
 // depth 2 (left, then right).
 test mpf_terminal_branch_opening_cross_language_vector() {
-  honest_opening([5, 10, 11], 5) == #"000123f26c647a6f86b97488cf39e51aff07382b82473f0bc7078927eecaa0f1bd8152e855108067f344c569011ef098276c4fed20f7d705dfcb063d4052a3a20080"
+  honest_opening([5, 10, 11], 5) == #"000124ad99ebbc63b632ebc3667337d6acf7309b9129dd2991caa9422f307381c91d9b61e4dff12c06adfb269d41e9cc73eb8592229e3f7bba464971d09ef9387a92"
 }
 
 // A deletion's non-terminal Branch is not held to the rule: the other
@@ -1040,8 +943,8 @@ test mpf_fold_exempts_a_non_terminal_branch_from_the_two_children_rule() {
     fold.fold_is_complete_v1(done),
     done.including_root == before,
     done.excluding_root == after,
-    before == #"8973842c15e9d348695f901360031115e25e2cc5a16b07bc895c68b6ab06ef0c",
-    after == #"20b8ca8282f99ed4d9e2614e624bed5a8686df0f314b178ed25a873c5e37d05b",
-    neighbors == #"3d02058fedc23b15b37613b8e6a7b636fcce05e681da425e4c1bc46945c5e2b885c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000",
+    before == #"deea504f5dd62d0f93f1d187a6108222fec6169d866ee5f98beb7f5113c01a0b",
+    after == #"9a08e7fa845a1c0024c7e3f9d04b94e507b98b573e48b7b690746c9af9a4ad3c",
+    neighbors == #"2ab79ee3f8c7b358e94d8f1fc9cbf21ccf39362e19a522bb89366e5446fde48585c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000",
   }
 }

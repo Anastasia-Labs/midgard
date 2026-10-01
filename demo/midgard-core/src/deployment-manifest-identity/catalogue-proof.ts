@@ -85,7 +85,7 @@ const mpfPathNibbles = (
   return Buffer.from(result);
 };
 
-const mpfSuffix = (path: Uint8Array, cursor: number): Buffer => {
+export const mpfSuffix = (path: Uint8Array, cursor: number): Buffer => {
   if (
     !Number.isSafeInteger(cursor) ||
     cursor < 0 ||
@@ -100,7 +100,7 @@ const mpfSuffix = (path: Uint8Array, cursor: number): Buffer => {
     ]);
   }
   return Buffer.concat([
-    Buffer.from([0, mpfNibbleAt(path, cursor)]),
+    Buffer.from([0x10, mpfNibbleAt(path, cursor)]),
     Buffer.from(path).subarray((cursor + 1) / 2),
   ]);
 };
@@ -125,12 +125,12 @@ const mpfSparseChildrenRoot = (
   return Buffer.from(level[0]!);
 };
 
-type FraudProofCatalogueMpfEntry = {
+export type FraudProofCatalogueMpfEntry = {
   readonly path: Buffer;
   readonly valueHash: Buffer;
 };
 
-const reconstructFraudProofCatalogueMpfNode = (
+export const reconstructFraudProofCatalogueMpfNode = (
   entries: readonly FraudProofCatalogueMpfEntry[],
   cursor: number,
 ): Buffer => {

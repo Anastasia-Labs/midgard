@@ -18,11 +18,13 @@ const path_nibble_count: Int = 64
 /// number of steps any single proof may contain, however it is carried.
 pub const maximum_proof_step_count: Int = 64
 
+// The prefix length is not bounded here: the neighbour's hash fixes it, and a
+// terminal Fork bounds where the prefix ends
+// (`terminal_fork_prefix_ends_inside_the_path`).
 fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
   and {
     neighbor.nibble >= 0,
     neighbor.nibble < 16,
-    bytearray.length(neighbor.prefix) <= digest_byte_count,
     bytearray.length(neighbor.root) == digest_byte_count,
   }
 }
@@ -58,82 +60,58 @@ fn nibbles_agree(left: ByteArray, right: ByteArray, from: Int, to: Int) -> Bool 
   }
 }
 
-fn bytes_are_nibbles(bytes: ByteArray, index: Int, length: Int) -> Bool {
-  if index >= length {
-    True
-  } else {
-    index_bytearray(bytes, index) < 16 && bytes_are_nibbles(
-      bytes,
-      index + 1,
-      length,
-    )
-  }
-}
-
 /// The last step of a proof is the only one whose neighbour the two roots of
 /// a mutation read differently. The including side places the neighbour beside
 /// the proven path at `next_cursor - 1`; the excluding side collapses the node
-/// into it. Nothing else in the proof authenticates the neighbour's shape, so
-/// these two predicates pin a terminal `Leaf` or `Fork` neighbour to the one
-/// the honest trie has. Without them a prover chooses among successor roots
-/// that relocate the neighbour to a path with no known preimage, freezing it.
+/// into it.
 ///
-/// A terminal `Branch` in a deletion is pinned by
-/// `terminal_branch_keeps_two_children` below.
+/// Leaf and branch node preimages are disjoint. A branch preimage is its
+/// prefix, one byte per nibble and each below 16, followed by the merkle root
+/// of its children. A leaf preimage opens with 0xff at an even cursor and with
+/// 0x10 at an odd one, never with a byte below 16. So wherever a root is
+/// compared with an authenticated one, a leaf and a branch cannot stand in for
+/// each other. The checks below cover what that comparison does not reach.
 ///
 /// A terminal `Leaf` neighbour shares the node's skipped prefix with the
 /// proven path. The excluding root reads those key nibbles and the including
 /// root never does, so without this a deletion could rewrite them, and an
 /// insertion could claim a longer skip than the true divergence.
 ///
-/// Its suffix also must not read as a terminal `Fork` prefix. At an odd
-/// `next_cursor` the suffix is `00 ‖ nibble ‖ key[(next_cursor + 1) / 2 ..]`,
-/// so when those key bytes are all nibbles a fork neighbour re-reads as this
-/// leaf: the including root is unchanged and the excluding root is not the
-/// fork's collapse. An honest leaf is refused here only when its key has
-/// those bytes all below 16, which then proves only as the fork.
+/// A terminal `Branch` in a deletion is pinned by
+/// `terminal_branch_keeps_two_children` below.
 pub fn terminal_leaf_neighbor_is_canonical(
   path: ByteArray,
   key: ByteArray,
   cursor: Int,
   next_cursor: Int,
 ) -> Bool {
-  and {
-    nibbles_agree(path, key, cursor, next_cursor - 1),
-    !leaf_suffix_reads_as_fork_prefix(key, next_cursor),
-  }
+  nibbles_agree(path, key, cursor, next_cursor - 1)
 }
 
-// The suffix of `key` at `next_cursor` passes as a terminal fork prefix there:
-// `neighbor_is_well_formed` bounds its length, and
-// `terminal_fork_neighbor_is_canonical` its end and its bytes. An even cursor's
-// suffix opens with 0xff, never a nibble.
-fn leaf_suffix_reads_as_fork_prefix(key: ByteArray, next_cursor: Int) -> Bool {
-  let from = ( next_cursor + 1 ) / 2
-  let prefix_length = 2 + digest_byte_count - from
-  and {
-    next_cursor % 2 == 1,
-    prefix_length <= digest_byte_count,
-    next_cursor + prefix_length < path_nibble_count,
-    bytes_are_nibbles(key, from, digest_byte_count),
-  }
+/// A terminal `Fork` neighbour's own branching nibble, at
+/// `next_cursor + length(prefix)`, lies inside the path. Every terminal Fork
+/// reading checks this, in both directions.
+pub fn terminal_fork_prefix_ends_inside_the_path(
+  next_cursor: Int,
+  neighbor: mpf.Neighbor,
+) -> Bool {
+  next_cursor + bytearray.length(neighbor.prefix) < path_nibble_count
 }
 
-/// A terminal `Fork` neighbour is a branch: its prefix is a nibble string, and
-/// its own branching nibble, at `next_cursor + length(prefix)`, lies inside the
-/// path. Without this a leaf neighbour re-reads as a branch whose prefix is the
-/// leaf's suffix bytes: the including root is unchanged, and the collapse of a
-/// terminal fork builds a node no honest trie has. On insertion at an odd
-/// cursor the same re-reading also passes the predecessor check against the
-/// true root, which let a present key be proven absent.
+/// A deletion's terminal `Fork` neighbour is a branch, never a leaf. The
+/// neighbour's hash authenticates `prefix ‖ root`, and by the disjointness
+/// above its first byte says which kind of node it is: a branch prefix opens
+/// with a nibble (or is empty), a leaf preimage with 0x10 or 0xff. Only a
+/// deletion needs the kind check: its excluding root is the successor, while
+/// an insertion's or a non-membership proof's excluding root is compared with
+/// the authenticated predecessor, which already fixes the kind.
 pub fn terminal_fork_neighbor_is_canonical(
   next_cursor: Int,
   neighbor: mpf.Neighbor,
 ) -> Bool {
-  let prefix_length = bytearray.length(neighbor.prefix)
   and {
-    next_cursor + prefix_length < path_nibble_count,
-    bytes_are_nibbles(neighbor.prefix, 0, prefix_length),
+    terminal_fork_prefix_ends_inside_the_path(next_cursor, neighbor),
+    bytearray.is_empty(neighbor.prefix) || index_bytearray(neighbor.prefix, 0) < 16,
   }
 }
 
@@ -335,7 +313,7 @@ fn non_membership_proof_is_well_formed(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
-        terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
+        terminal_fork_prefix_ends_inside_the_path(next_cursor, neighbor),
       }
     }
     [mpf.Fork { skip, neighbor }, ..steps] -> {
@@ -489,7 +467,7 @@ fn do_excluding_strict(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
-        terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
+        terminal_fork_prefix_ends_inside_the_path(next_cursor, neighbor),
       } {
         Some(excluding_terminal_fork(path, cursor, skip, neighbor))
       } else {
@@ -719,7 +697,7 @@ fn do_insert_pair_strict(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
-        terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
+        terminal_fork_prefix_ends_inside_the_path(next_cursor, neighbor),
       } {
         let predecessor = excluding_terminal_fork(path, cursor, skip, neighbor)
         let inserted = combine(suffix(path, next_cursor), new_value_hash)
@@ -1327,12 +1305,10 @@ pub fn committed_root(root: ByteArray) -> ByteArray {
 /// of 2026-08-23 on #625 (decision 0005, wave #617). The `insert_root` fold-in
 /// below travels with it — both, or neither.
 ///
-/// The terminal step must also name its neighbour canonically
-/// (`terminal_fork_neighbor_is_canonical`, `terminal_leaf_neighbor_is_canonical`).
-/// A present key's own leaf at an odd depth otherwise re-reads as a terminal
-/// fork neighbour whose collapse equals the true root, proving the key absent;
-/// and `insert_root` reads the terminal leaf's skip, which only the leaf check
-/// ties to the true divergence.
+/// The terminal Leaf check (`terminal_leaf_neighbor_is_canonical`) ties the
+/// leaf's skip to the true divergence, which `insert_root` relies on. A Fork
+/// reading of a present key's own leaf cannot match the authenticated root,
+/// because leaf and branch node preimages are disjoint.
 pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool {
   let path = blake2b_256(key)
   let well_formed = and {

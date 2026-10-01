@@ -967,8 +967,8 @@ test accepts_trace_link_fault() {
   )
   let first_proof = trace_membership(first)
   let second_proof = trace_membership(second)
-  let phas_root = #"3bcfcd1e874525cfeeebf5e14ca50d42f13e40eb5aec6035553e387334073b11"
-  let root = #"7dcbc5316a6560bab11727549dde22de2571a24942627f1085befa031ea9a21b"
+  let phas_root = #"11c11a47e2535bc274909e7745319d95ff62b1d1a6bdc2ce11ef27743e5738da"
+  let root = #"fb52b5d24775a6d3d068ffee0bdc1f3fd0df169d16c6bcc2ed239417dad3f32b"
   let adjacent = transition_trace.AdjacentTraceProof {
     lower: transition_trace.RootMembershipProof {
       ..first_proof,
@@ -2322,8 +2322,9 @@ test rejects_an_inflated_terminal_leaf_skip_against_an_honest_deposit_step() fai
 }
 
 // The near leaf at odd cursor 1 re-read as a branch at nibble 0 whose prefix
-// is its suffix without the 0x00 marker: its collapse equals the true leaf, so
-// the predecessor check against the true pre-root passes.
+// is its suffix without its marker. Leaf and branch node preimages are
+// disjoint, so its collapse is not the true leaf and the predecessor check
+// against the true pre-root refuses it.
 test rejects_a_terminal_fork_masquerade_against_an_honest_deposit_step() fail {
   let near_path = blake2b_256(deposit_near_key)
   let masquerade = [
@@ -3140,8 +3141,8 @@ test accepts_duplicate_trace_event_fault() {
   let right_step = step(1, event_key, ledger_state.Withdrawal, h32_b, h32_c)
   let left_trace = trace_membership(left_step)
   let right_trace = trace_membership(right_step)
-  let phas_root = #"dbf61b46d5c4def32178e8415221a5f46769dffe0ce62557a3d7498069936dcf"
-  let root = #"30207d3fb9261eef53138441ef4ece4ba72f3e2e9f79e2004a122f1bffb305d3"
+  let phas_root = #"df64f827b76c8b113a639af3a96beb006fb7e8105cd3a9005432473b4a204eac"
+  let root = #"8c803cca83c457c9ebe70456bf8dcd622f10f3da25bcf0514181ebe44dccca56"
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     transition_trace_root: root,

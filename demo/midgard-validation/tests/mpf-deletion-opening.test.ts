@@ -74,7 +74,7 @@ const proveSteps = async (
 // Computed independently from the Aiken fixture
 // (`mpf_terminal_branch_opening_cross_language_vector`).
 const CROSS_LANGUAGE_OPENING =
-  "000123f26c647a6f86b97488cf39e51aff07382b82473f0bc7078927eecaa0f1bd8152e855108067f344c569011ef098276c4fed20f7d705dfcb063d4052a3a20080";
+  "000124ad99ebbc63b632ebc3667337d6acf7309b9129dd2991caa9422f307381c91d9b61e4dff12c06adfb269d41e9cc73eb8592229e3f7bba464971d09ef9387a92";
 
 const subsets = (items: readonly number[], size: number): number[][] =>
   size === 0

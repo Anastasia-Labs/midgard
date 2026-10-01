@@ -232,7 +232,7 @@ export const computeLeafHash = (
 ): Buffer => {
   const head =
     prefix.length % 2 > 0
-      ? Buffer.concat([Buffer.from([0]), nibbles(prefix.slice(0, 1))])
+      ? Buffer.concat([Buffer.from([0x10]), nibbles(prefix.slice(0, 1))])
       : Buffer.from([255]);
   const tail = Buffer.from(
     prefix.length % 2 > 0 ? prefix.slice(1) : prefix,

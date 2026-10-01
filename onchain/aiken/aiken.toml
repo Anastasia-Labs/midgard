@@ -31,8 +31,8 @@ version = "v1.4.0"
 source = "github"
 
 [[dependencies]]
-name = "aiken-lang/merkle-patricia-forestry"
-version = "2.0.0"
+name = "anastasia-labs/merkle-patricia-forestry"
+version = "ff9a33ce1b6e25170703f6eab67368c1ec6028c7"
 source = "github"
 
 [config]

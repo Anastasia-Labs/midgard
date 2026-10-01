@@ -24,30 +24,19 @@ import { buildMidgardValidationMerkleMembership } from "./validation-merkle.js";
 
 // The terminal frame's neighbour is the one the including and excluding roots
 // read two ways, so its shape is pinned to the honest trie's (the twin of
-// `terminal_leaf_neighbor_is_canonical` and
+// `terminal_leaf_neighbor_is_canonical`,
+// `terminal_fork_prefix_ends_inside_the_path` and
 // `terminal_fork_neighbor_is_canonical` in `mpf-proof-v1.ak`). A terminal Leaf
-// shares the skipped nibbles with the proven path, and its suffix does not
-// read as a terminal Fork prefix (at an odd next cursor the suffix is
-// `00 ‖ nibble ‖ key bytes`, so a fork could stand in for a leaf whose key
-// tail is all nibbles); a terminal Fork neighbour is a branch, so its prefix
-// is a nibble string whose own branching nibble lies inside the path.
-const leafSuffixReadsAsForkPrefix = (
-  key: Uint8Array,
-  nextCursor: number,
-): boolean => {
-  const from = Math.floor((nextCursor + 1) / 2);
-  const prefixLength = 2 + 32 - from;
-  return (
-    nextCursor % 2 === 1 &&
-    prefixLength <= 32 &&
-    nextCursor + prefixLength < PATH_NIBBLE_COUNT &&
-    key.subarray(from, 32).every((byte) => byte < 16)
-  );
-};
-
+// shares the skipped nibbles with the proven path. A terminal Fork's own
+// branching nibble lies inside the path. On a deletion the excluding root is
+// not compared with an authenticated root, so there the Fork neighbour must
+// also open like a branch preimage: an empty prefix or a first byte below 16.
+// Leaf and branch node preimages are disjoint (a leaf preimage never starts
+// with a byte below 16), so that first byte is enough.
 const assertTerminalNeighborIsCanonical = (
   path: Uint8Array,
   frame: MidgardMpfProofFrame,
+  isDeletion: boolean,
 ): void => {
   if (frame.step.kind === "leaf") {
     const key = frame.step.key;
@@ -62,21 +51,18 @@ const assertTerminalNeighborIsCanonical = (
         );
       }
     }
-    if (leafSuffixReadsAsForkPrefix(key, frame.nextCursor)) {
-      throw new Error(
-        "MPF terminal leaf neighbor suffix reads as a fork neighbor prefix",
-      );
-    }
     return;
   }
   if (frame.step.kind === "fork") {
     const prefix = frame.step.neighbor.prefix;
-    if (
-      frame.nextCursor + prefix.length >= PATH_NIBBLE_COUNT ||
-      prefix.some((byte) => byte > 15)
-    ) {
+    if (frame.nextCursor + prefix.length >= PATH_NIBBLE_COUNT) {
       throw new Error(
-        "MPF terminal fork neighbor prefix is not a nibble path inside the key path",
+        "MPF terminal fork neighbor prefix does not end inside the key path",
+      );
+    }
+    if (isDeletion && prefix.length > 0 && prefix[0]! > 15) {
+      throw new Error(
+        "MPF terminal fork neighbor of a deletion does not open like a branch",
       );
     }
   }
@@ -124,7 +110,11 @@ export const buildMidgardMpfProofFoldTrace = ({
       throw new Error("MPF proof fold frame continuity is invalid");
     }
     if (frameIndex === frames.length - 1) {
-      assertTerminalNeighborIsCanonical(path, frame);
+      assertTerminalNeighborIsCanonical(
+        path,
+        frame,
+        deletionOpening !== undefined,
+      );
       if (
         deletionOpening !== undefined &&
         frame.step.kind === "branch" &&

@@ -296,6 +296,13 @@ jobs:
       - name: Check native V1 n01-n09 transaction vectors
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check
+      # The MPF node encoding (leaf and branch node preimages disjoint), taken
+      # from the MPF library alone. The vitest suites in midgard-core and
+      # midgard-node and the generated Aiken module recompute it; this step keeps
+      # both artifacts what the library produces.
+      - name: Check MPF node-encoding golden vectors
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:check
       # The §12.7 canonical-decodability channel (#596). It emits both artifacts
       # from one generator run on exactly the footing of the four above, and it
       # was left unwired when it landed — so an edited producer plus a `:sync`

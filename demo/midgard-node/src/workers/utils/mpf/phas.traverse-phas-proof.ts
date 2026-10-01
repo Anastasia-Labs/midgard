@@ -22,35 +22,11 @@ const PATH_NIBBLE_COUNT = 64;
 // The terminal step's neighbour is the one the excluding root reads as the
 // node the proven path collapses into, so a non-membership proof pins it to
 // the honest trie's shape (the twin of `terminal_leaf_neighbor_is_canonical`
-// and `terminal_fork_neighbor_is_canonical` in `mpf-proof-v1.ak`, which
+// and `terminal_fork_prefix_ends_inside_the_path` in `mpf-proof-v1.ak`, which
 // `does_not_have` applies). A terminal Leaf shares the skipped nibbles with
-// the proven path, and its suffix does not read as a terminal Fork prefix (at
-// an odd next cursor the suffix is `00 ‖ nibble ‖ key bytes`, so a fork could
-// stand in for a leaf whose key tail is all nibbles); a terminal Fork
-// neighbour is a branch, so its prefix is a nibble string whose own branching
-// nibble lies inside the path.
-const leafSuffixReadsAsForkPrefix = (
-  neighborPath: string,
-  nextCursor: number,
-): boolean => {
-  const from = Math.floor((nextCursor + 1) / 2);
-  const prefixLength = 2 + 32 - from;
-  if (
-    nextCursor % 2 !== 1 ||
-    prefixLength > 32 ||
-    nextCursor + prefixLength >= PATH_NIBBLE_COUNT
-  ) {
-    return false;
-  }
-  // A key byte is below 16 exactly when its high nibble is 0.
-  for (let byte = from; byte < 32; byte += 1) {
-    if (neighborPath[2 * byte] !== "0") {
-      return false;
-    }
-  }
-  return true;
-};
-
+// the proven path, and a terminal Fork neighbour's own branching nibble lies
+// inside the path. A leaf read as a Fork cannot match the authenticated root,
+// because leaf and branch node preimages are disjoint.
 const assertTerminalLeafNeighborIsCanonical = (
   path: string,
   neighborPath: string,
@@ -67,23 +43,15 @@ const assertTerminalLeafNeighborIsCanonical = (
       "Terminal leaf proof neighbor does not share the skipped path prefix",
     );
   }
-  if (leafSuffixReadsAsForkPrefix(neighborPath, nextCursor)) {
-    throw new Error(
-      "Terminal leaf proof neighbor suffix reads as a fork neighbor prefix",
-    );
-  }
 };
 
-const assertTerminalForkNeighborIsCanonical = (
+const assertTerminalForkPrefixEndsInsideThePath = (
   nextCursor: number,
   prefix: Buffer,
 ): void => {
-  if (
-    nextCursor + prefix.length >= PATH_NIBBLE_COUNT ||
-    prefix.some((byte) => byte > 15)
-  ) {
+  if (nextCursor + prefix.length >= PATH_NIBBLE_COUNT) {
     throw new Error(
-      "Terminal fork proof neighbor prefix is not a nibble path inside the key path",
+      "Terminal fork proof neighbor prefix does not end inside the key path",
     );
   }
 };
@@ -120,7 +88,7 @@ const traversePhasProof = (
     const skip = parseProofInteger(step.Fork.skip, "fork skip");
     const neighbor = step.Fork.neighbor;
     if (mode.kind === "excluding" && proof[index + 1] === undefined) {
-      assertTerminalForkNeighborIsCanonical(
+      assertTerminalForkPrefixEndsInsideThePath(
         cursor + 1 + skip,
         proofBytes(neighbor.prefix, "fork neighbor prefix"),
       );

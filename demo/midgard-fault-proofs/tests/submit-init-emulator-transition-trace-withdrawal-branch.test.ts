@@ -403,6 +403,54 @@ describe("transition-trace withdrawal delete ending in a Leaf", () => {
   }, 240_000);
 });
 
+// A leaf at cursor 1 opens with 0x10, never with a branch's prefix nibble. A
+// terminal Fork whose neighbour is that leaf, split into a "prefix" and a
+// "root", is refused on the neighbour's first byte.
+describe("transition-trace withdrawal delete ending in a Fork", () => {
+  it("defends an honest withdrawal step against a terminal Fork standing in for the spent output's leaf neighbour", async () => {
+    const harnessed = await makeHarness();
+    // A neighbour in another root slot: the honest delete ends in a Leaf.
+    const neighbourKey = Array.from({ length: 256 }, (_, byte) =>
+      otherKey(byte),
+    ).find((key) => nibble0(key) !== nibble0(spentKey))!;
+    const pre = await trieOf([spentKey, neighbourKey]);
+    const post = await trieOf([neighbourKey]);
+    const honestProof = await sdkProof(pre, spentKey);
+    expect(honestProof.map((step) => Object.keys(step)[0])).toEqual(["Leaf"]);
+    const neighbourPath = Buffer.from(computeHash32(neighbourKey));
+    const leafSuffix = Buffer.concat([
+      Buffer.from([0x10, neighbourPath[0]! & 15]),
+      neighbourPath.subarray(1),
+    ]);
+    const valueHash = Buffer.from(computeHash32(descriptor(neighbourKey)));
+    const slot = nibble0(neighbourKey);
+    const neighbourNode = await pre.childAt(slot.toString(16));
+    expect(combine(leafSuffix, valueHash)).toEqual(neighbourNode?.hash);
+    const neighbor = {
+      nibble: BigInt(slot),
+      prefix: leafSuffix.toString("hex"),
+      root: valueHash.toString("hex"),
+    };
+    const masquerade: SDK.Proof = [{ Fork: { skip: 0n, neighbor } }];
+
+    const { lifecycle, faultProof, submit } = await commitWithdrawalStep(
+      harnessed,
+      rootHex(pre),
+      rootHex(post),
+    );
+    await expectRefusedAndKept(
+      harnessed,
+      lifecycle,
+      faultProof({
+        key: spentKey.toString("hex"),
+        value: descriptor(spentKey).toString("hex"),
+        opening: "",
+        delete_proof: masquerade,
+      }).then(submit),
+    );
+  }, 240_000);
+});
+
 // Withdrawing the only ledger entry leaves an empty ledger, which a block
 // commits as the protocol's empty root, never as the MPF library's all-zero
 // null root.

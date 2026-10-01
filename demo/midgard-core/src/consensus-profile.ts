@@ -415,7 +415,7 @@ export const MIDGARD_CONSENSUS_PROFILE = Object.freeze({
   ) as 1,
   scriptProofSchemaVersion: 1,
   ledgerOutputSchemaVersion: 1,
-  mpfProofSchemaVersion: 1,
+  mpfProofSchemaVersion: 2,
   deploymentManifestSchemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
   protocolInfoApiVersion: MIDGARD_PROTOCOL_INFO_API_VERSION,
   limits: MIDGARD_CONSENSUS_LIMITS,
