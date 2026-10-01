@@ -10,6 +10,7 @@ import {
   encodeCardanoBytes,
   encodeCardanoInteger,
   encodeSmallCborArgument,
+  type MidgardCekDataIntegerLayout,
 } from "./cek-constant.semantic-data.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
@@ -28,9 +29,15 @@ const TAG_102_PAIR = Buffer.from([0x82]);
  *
  * The walk keeps its own stack, so any nesting depth encodes: lists and
  * constructor fields are indefinite (`9f ... ff`) unless empty (`80`), maps
- * are definite, and constructors use tags 121-127, 1280-1400 or 102.
+ * are definite, and constructors use tags 121-127, 1280-1400 or 102. A bignum
+ * magnitude over 64 bytes is chunked as Cardano writes it unless the caller
+ * selects another `integerLayout` (see `MidgardCekDataIntegerLayout`).
  */
-export const encodeMidgardCekPlutusData = (data: Data): Buffer => {
+export const encodeMidgardCekPlutusData = (
+  data: Data,
+  options: { readonly integerLayout?: MidgardCekDataIntegerLayout } = {},
+): Buffer => {
+  const integerLayout = options.integerLayout ?? "cardanoChunked";
   const out: Buffer[] = [];
   // Work items in reverse emission order: a Data node still to encode, or the
   // marker that closes an open list.
@@ -51,7 +58,7 @@ export const encodeMidgardCekPlutusData = (data: Data): Buffer => {
     if (next === CLOSE_LIST) {
       out.push(BREAK);
     } else if (next instanceof DataI) {
-      out.push(encodeCardanoInteger(next.int));
+      out.push(encodeCardanoInteger(next.int, integerLayout));
     } else if (next instanceof DataB) {
       out.push(encodeCardanoBytes(next.bytes));
     } else if (next instanceof DataList) {
@@ -71,7 +78,7 @@ export const encodeMidgardCekPlutusData = (data: Data): Buffer => {
         out.push(
           encodeSmallCborArgument(6, 102n),
           TAG_102_PAIR,
-          encodeCardanoInteger(next.constr),
+          encodeCardanoInteger(next.constr, integerLayout),
         );
       }
       pushList(next.fields);

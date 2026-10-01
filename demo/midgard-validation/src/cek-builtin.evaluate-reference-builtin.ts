@@ -26,6 +26,7 @@ import {
 import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekCanonicalConstant,
+  encodeMidgardCekPlutusData,
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   midgardCekConstantMemorySize,
   type MidgardCekConstantWitness,
@@ -237,6 +238,24 @@ const evaluateReferenceBuiltin = (
       "V1 BLS finalVerify requires its dedicated expression witness",
     );
   }
+  if (tag === 51n) {
+    // serialiseData writes Cardano's exact Data CBOR: definite maps, chunked
+    // byte strings and bignum magnitudes over 64 bytes.
+    const [argument] = arguments_;
+    if (arguments_.length !== 1 || argument?.kind !== "constant") {
+      throw new Error("serialiseData requires one Data constant");
+    }
+    const decoded = decodeMidgardCekConstantWitness(argument.witness);
+    if (decoded.type.kind !== "data") {
+      throw new Error("serialiseData requires Data");
+    }
+    return referenceConstantToDirectWitness(
+      CEKConst.fromUplc(
+        UPLCConst.byteString(encodeMidgardCekPlutusData(decoded.payload)),
+      ),
+      true,
+    );
+  }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
@@ -249,7 +268,7 @@ const evaluateReferenceBuiltin = (
   if (!(result instanceof CEKConst)) {
     throw new Error("reference builtin returned a non-constant value");
   }
-  return referenceConstantToDirectWitness(result, tag === 51n);
+  return referenceConstantToDirectWitness(result);
 };
 
 const directFailureIsCharged = (

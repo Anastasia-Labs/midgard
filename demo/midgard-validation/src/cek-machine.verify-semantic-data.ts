@@ -7,7 +7,10 @@ import {
   encodeMidgardCekPlutusData,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
-import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import {
+  commitMidgardCekDataTree,
+  encodeMidgardCekDataTreeInteger,
+} from "./cek-data-tree.js";
 import {
   canonicalBytesLeaf,
   canonicalIntegerLeaf,
@@ -369,7 +372,7 @@ export const verifySemanticData = (
         if (
           decoded instanceof DataI &&
           decoded.int > 127n &&
-          sameBytes(encodeMidgardCekPlutusData(decoded), raw)
+          sameBytes(encodeMidgardCekDataTreeInteger(decoded.int), raw)
         ) {
           constructor = decoded.int;
         }

@@ -101,6 +101,18 @@ type DataWork =
       readonly list: ListWork;
     };
 
+/**
+ * CBOR of an integer leaf, or of a large constructor index, as a Data tree
+ * commitment records it: the deployed single-block integer form, where a
+ * magnitude over 64 bytes is one definite byte string. Every node that opens
+ * or reveals a tree integer uses this encoding. It changes at redeploy 1
+ * together with the on-chain integer checker.
+ */
+export const encodeMidgardCekDataTreeInteger = (value: bigint): Buffer =>
+  encodeMidgardCekPlutusData(new DataI(value), {
+    integerLayout: "deployedTreeSingleBlock",
+  });
+
 const rootKey = (root: Uint8Array): string => Buffer.from(root).toString("hex");
 
 const addExact = <Node>(
@@ -245,9 +257,7 @@ export const commitMidgardCekDataTree = (
           memory,
         };
       } else {
-        const constructorCbor = encodeMidgardCekPlutusData(
-          new DataI(data.constr),
-        );
+        const constructorCbor = encodeMidgardCekDataTreeInteger(data.constr);
         node = {
           kind: "constrLarge",
           constructorCborRoot: addBlob(constructorCbor),
@@ -366,7 +376,7 @@ export const commitMidgardCekDataTree = (
 
       let node: MidgardCekDataNode;
       if (operation.data instanceof DataI) {
-        const cbor = encodeMidgardCekPlutusData(operation.data);
+        const cbor = encodeMidgardCekDataTreeInteger(operation.data.int);
         node = {
           kind: "integer",
           cborRoot: addBlob(cbor),

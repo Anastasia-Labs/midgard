@@ -17,7 +17,10 @@ import {
   encodeMidgardCekPlutusData,
   midgardCekDataMemorySize,
 } from "../src/cek-constant.js";
-import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
+import {
+  commitMidgardCekDataTree,
+  encodeMidgardCekDataTreeInteger,
+} from "../src/cek-data-tree.js";
 
 describe("V1 semantic Data commitment", () => {
   it("encodes the complete signed Cardano integer domain canonically", () => {
@@ -49,10 +52,19 @@ describe("V1 semantic Data commitment", () => {
     const hugeMagnitude = (1n << 2_048n) - 1n;
     const positive = encodeMidgardCekPlutusData(new DataI(hugeMagnitude));
     const negative = encodeMidgardCekPlutusData(new DataI(-(1n << 2_048n)));
-    expect(positive.subarray(0, 4).toString("hex")).toBe("c2590100");
-    expect(negative.subarray(0, 4).toString("hex")).toBe("c3590100");
-    expect(positive.length).toBe(260);
-    expect(negative.length).toBe(260);
+    // Cardano chunks a magnitude over 64 bytes: 256 bytes are four 64-byte
+    // chunks inside an indefinite byte string.
+    expect(positive.subarray(0, 4).toString("hex")).toBe("c25f5840");
+    expect(negative.subarray(0, 4).toString("hex")).toBe("c35f5840");
+    expect(positive.length).toBe(267);
+    expect(negative.length).toBe(267);
+    // The Data tree commitment keeps the deployed single-block form.
+    expect(
+      encodeMidgardCekDataTreeInteger(hugeMagnitude)
+        .subarray(0, 4)
+        .toString("hex"),
+    ).toBe("c2590100");
+    expect(encodeMidgardCekDataTreeInteger(hugeMagnitude).length).toBe(260);
     expect(midgardCekDataMemorySize(new DataI(hugeMagnitude))).toBe(261n);
     expect(midgardCekDataMemorySize(new DataI(-(1n << 2_048n)))).toBe(261n);
   });

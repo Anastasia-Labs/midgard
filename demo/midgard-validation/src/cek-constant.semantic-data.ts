@@ -259,13 +259,38 @@ const shortestBigEndianMagnitude = (value: bigint): Buffer => {
   return Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
 };
 
-export const encodeCardanoInteger = (value: bigint): Buffer => {
+/**
+ * How a bignum magnitude over 64 bytes is written. `cardanoChunked` is
+ * Cardano's `serialiseData` form: an indefinite byte string of 64-byte
+ * chunks. `deployedTreeSingleBlock` is the deployed Data tree commitment
+ * form: one definite byte string. Only the Data tree commitment selects the
+ * latter; it changes at redeploy 1 together with the on-chain integer
+ * checker.
+ */
+export type MidgardCekDataIntegerLayout =
+  | "cardanoChunked"
+  | "deployedTreeSingleBlock";
+
+const encodeBignumMagnitude = (
+  magnitude: bigint,
+  layout: MidgardCekDataIntegerLayout,
+): Buffer => {
+  const bytes = shortestBigEndianMagnitude(magnitude);
+  return layout === "cardanoChunked"
+    ? encodeCardanoBytes(bytes)
+    : encodeCborBytes(bytes);
+};
+
+export const encodeCardanoInteger = (
+  value: bigint,
+  layout: MidgardCekDataIntegerLayout = "cardanoChunked",
+): Buffer => {
   if (value >= 0n) {
     return value <= UINT64_MAX
       ? encodeSmallCborArgument(0, value)
       : Buffer.concat([
           Buffer.from([0xc2]),
-          encodeCborBytes(shortestBigEndianMagnitude(value)),
+          encodeBignumMagnitude(value, layout),
         ]);
   }
   const magnitude = -value - 1n;
@@ -273,6 +298,6 @@ export const encodeCardanoInteger = (value: bigint): Buffer => {
     ? encodeSmallCborArgument(1, magnitude)
     : Buffer.concat([
         Buffer.from([0xc3]),
-        encodeCborBytes(shortestBigEndianMagnitude(magnitude)),
+        encodeBignumMagnitude(magnitude, layout),
       ]);
 };

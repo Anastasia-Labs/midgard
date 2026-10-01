@@ -149,7 +149,7 @@ export const hashMidgardCekConstantWitness = (
     kind: "constant",
     typeRoot: hashMidgardCekBlobChunk(witness.typeCbor),
     payloadRoot: semantic.root,
-    payloadLength: BigInt(encodeMidgardCekPlutusData(decoded.payload).length),
+    payloadLength: semantic.cborLength,
     semanticRoot: semantic.root,
     memory: midgardCekConstantMemorySize(decoded.type, decoded.payload),
   });

@@ -59,7 +59,10 @@ import {
   midgardCekConstantMemorySize,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
-import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import {
+  commitMidgardCekDataTree,
+  encodeMidgardCekDataTreeInteger,
+} from "./cek-data-tree.js";
 import {
   type Bytes,
   type EnvironmentNode,
@@ -1552,7 +1555,9 @@ export class StructuralExecutor {
         listNodes: fieldsTop.lists,
         pairNodes: [],
         scalarPreimages:
-          indexTop === null ? [] : [encodeMidgardCekPlutusData(index.payload)],
+          indexTop === null
+            ? []
+            : [encodeMidgardCekDataTreeInteger(index.payload.int)],
       });
       return;
     }
@@ -1592,7 +1597,7 @@ export class StructuralExecutor {
         dataNodes: [top.node],
         listNodes: [],
         pairNodes: [],
-        scalarPreimages: [encodeMidgardCekPlutusData(source.payload)],
+        scalarPreimages: [encodeMidgardCekDataTreeInteger(source.payload.int)],
       });
       return;
     }
@@ -1647,7 +1652,7 @@ export class StructuralExecutor {
         scalarPreimages:
           source.payload.constr <= 127n
             ? []
-            : [encodeMidgardCekPlutusData(new DataI(source.payload.constr))],
+            : [encodeMidgardCekDataTreeInteger(source.payload.constr)],
       });
       return;
     }
