@@ -334,9 +334,10 @@ describe("forced duplicated-input order: the committed rejection reason", () => 
     try {
       // Source verification routes the thread by a boolean: with valid
       // endpoints its output must go to the game validator, not the award. A
-      // boolean result carries no clause trace, so the pin names source_v1
-      // returning false, which rules out its every `expect` and every other
-      // validator in the transaction.
+      // boolean result carries no clause trace, so the pin checks only that
+      // source_v1 is the validator that failed and that its whole trace is
+      // the false return, not a failed `expect`. It does not name which
+      // routing conjunct was false.
       await expectOnchainRefusal(() => dispute.verifySource(), {
         refusedBy: "fraud_proofs/validation_trace/source_v1",
         check: /^Validator returned false$/u,

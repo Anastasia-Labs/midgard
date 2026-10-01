@@ -15,6 +15,13 @@ export const TRACED_REFUSALS =
   process.env.MIDGARD_EMULATOR_TRACED_REFUSALS === "1";
 
 /**
+ * The one validator module the traced run traces. Every other validator runs
+ * plain and fails without a trace, so a traced refusal in this run came from
+ * this module.
+ */
+export const TRACED_REFUSAL_MODULE = process.env.MIDGARD_TRACED_REFUSAL_MODULE;
+
+/**
  * A verbose-traced step is up to about twice its plain size, so many cannot
  * be published under the 16,384-byte L1 envelope. The traced run exists only
  * to attribute each refusal to its check; the plain run is the one that proves

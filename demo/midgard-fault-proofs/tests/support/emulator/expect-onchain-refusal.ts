@@ -1,4 +1,8 @@
-import { recordCheckedPin, TRACED_REFUSALS } from "./traced-refusals.js";
+import {
+  recordCheckedPin,
+  TRACED_REFUSAL_MODULE,
+  TRACED_REFUSALS,
+} from "./traced-refusals.js";
 
 /**
  * The check a negative expects to refuse it. `refusedBy` names the validator
@@ -39,7 +43,9 @@ const refusalTrace = (text: string): string | null => {
  *
  * `pin` names the refusing check. Plain builds carry no trace, so the pin is
  * checked only in the traced run (scripts/run-traced-refusals.mjs), which
- * fails a pinned refusal that arrives untraced.
+ * traces `refusedBy` alone: a refusal that arrives untraced came from another
+ * validator and fails, so a matching trace names both the script that failed
+ * and its check. A pin naming another module is checked in that module's run.
  */
 export const expectOnchainRefusal = async (
   build: () => Promise<unknown>,
@@ -62,16 +68,19 @@ export const expectOnchainRefusal = async (
       `expected an on-chain validator refusal, got a non-validator failure: ${text}`,
     );
   }
-  if (pin === undefined) return text;
+  if (pin === undefined || !TRACED_REFUSALS) return text;
   const { refusedBy, check } = pin;
+  if (TRACED_REFUSAL_MODULE === undefined) {
+    throw new Error(
+      "the traced refusal run names no traced module (MIDGARD_TRACED_REFUSAL_MODULE)",
+    );
+  }
+  if (refusedBy !== TRACED_REFUSAL_MODULE) return text;
   const trace = refusalTrace(text);
   if (trace === null) {
-    if (TRACED_REFUSALS) {
-      throw new Error(
-        `expected ${refusedBy} to refuse with a trace matching ${String(check)}, but the refusing validator is untraced: ${text}`,
-      );
-    }
-    return text;
+    throw new Error(
+      `expected ${refusedBy} to refuse with a trace matching ${String(check)}, but an untraced validator refused: ${text}`,
+    );
   }
   if (!check.test(trace)) {
     throw new Error(

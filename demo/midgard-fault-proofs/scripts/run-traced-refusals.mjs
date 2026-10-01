@@ -6,14 +6,17 @@
  * A plain build carries no traces, so the default run can only see that some
  * validator refused. A negative pins its refusal with
  * `expectOnchainRefusal(build, { refusedBy: "<module>", check: /<trace>/ })`;
- * this script reads every `refusedBy` literal from the test files, builds the
- * blueprint again with verbose traces, swaps exactly those modules into the
- * plain blueprint, and runs the pinned negatives against the result. Every
- * other validator keeps its plain code and hash.
+ * this script reads every `refusedBy` literal from the test files and builds
+ * the blueprint again with verbose traces. For each named module it swaps
+ * that module alone into the plain blueprint and runs the negatives pinned to
+ * it against the result. Every other validator keeps its plain code and hash.
  *
- * Only the cases holding a pin run. The run fails unless every declared pin
- * was checked against a trace: a pin whose case is skipped, or whose refusal
- * arrives untraced, cannot pass silently.
+ * Only the cases holding a pin run, one run per pinned module, and in each
+ * run that module is the only traced one. A plain validator's failure carries
+ * no trace, so a traced refusal names the module that failed: a pin whose
+ * transaction another validator refuses arrives untraced and fails. The run
+ * fails unless every declared pin was checked against a trace: a pin whose
+ * case is skipped, or whose refusal arrives untraced, cannot pass silently.
  *
  *   node scripts/run-traced-refusals.mjs [test file ...]
  *
@@ -25,7 +28,7 @@
  * blueprint's profile and is cached under onchain/aiken/build/traced-refusals
  * until the sources or compiler change.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   globSync,
@@ -144,15 +147,18 @@ const buildTraced = (profile) => {
 };
 
 /**
- * A project's plain blueprint with every handler of each named module traced,
+ * A project's plain blueprint with every handler of one module traced,
  * written next to its traced build. Its build record is the plain one's,
  * rebound to the overlay's bytes: both come from the same sources, compiler
  * and profile.
  */
-const writeOverlay = (plainBlueprint, modules) => {
+const writeOverlay = (plainBlueprint, module) => {
   const record = plainRecord(plainBlueprint);
   const tracedBlueprint = buildTraced(record.profile.name);
-  const overlayBlueprint = resolve(dirname(tracedBlueprint), "overlay.json");
+  const overlayBlueprint = resolve(
+    dirname(tracedBlueprint),
+    `overlay.${module.replaceAll("/", ".")}.json`,
+  );
   const plain = JSON.parse(readFileSync(plainBlueprint, "utf8"));
   const traced = new Map(
     JSON.parse(readFileSync(tracedBlueprint, "utf8")).validators.map(
@@ -160,19 +166,17 @@ const writeOverlay = (plainBlueprint, modules) => {
     ),
   );
   const moduleOf = (title) => title.slice(0, title.indexOf("."));
-  for (const module of modules) {
-    const swapped = plain.validators.filter(
-      (validator) => moduleOf(validator.title) === module,
-    );
-    if (swapped.length === 0) fail(`refusedBy names no validator: ${module}`);
-    for (const validator of swapped) {
-      const replacement = traced.get(validator.title);
-      if (replacement === undefined) {
-        fail(`traced blueprint lacks ${validator.title}`);
-      }
-      validator.compiledCode = replacement.compiledCode;
-      validator.hash = replacement.hash;
+  const swapped = plain.validators.filter(
+    (validator) => moduleOf(validator.title) === module,
+  );
+  if (swapped.length === 0) fail(`refusedBy names no validator: ${module}`);
+  for (const validator of swapped) {
+    const replacement = traced.get(validator.title);
+    if (replacement === undefined) {
+      fail(`traced blueprint lacks ${validator.title}`);
     }
+    validator.compiledCode = replacement.compiledCode;
+    validator.hash = replacement.hash;
   }
   writeFileSync(overlayBlueprint, JSON.stringify(plain, null, 2) + "\n");
   writeFileSync(
@@ -228,38 +232,82 @@ const projects = [
   },
 ].filter((project) => project.files.length > 0);
 
+/** At most this many Vitest runs at once; MIDGARD_TRACED_REFUSALS_JOBS overrides. */
+const jobs = Math.max(
+  1,
+  Number.parseInt(process.env.MIDGARD_TRACED_REFUSALS_JOBS ?? "4", 10) || 1,
+);
+
+/** One Vitest run, its output held and printed whole when it exits. */
+const runVitest = ({ label, args, env }) =>
+  new Promise((resolveRun, rejectRun) => {
+    const child = spawn(
+      resolve(packageRoot, "node_modules/.bin/vitest"),
+      args,
+      { cwd: packageRoot, env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const output = [];
+    child.stdout.on("data", (chunk) => output.push(chunk));
+    child.stderr.on("data", (chunk) => output.push(chunk));
+    child.on("error", rejectRun);
+    child.on("close", (status) => {
+      process.stdout.write(
+        `\n[traced-refusals] ${label}\n${Buffer.concat(output).toString()}`,
+      );
+      resolveRun(status);
+    });
+  });
+
 mkdirSync(buildDirectory, { recursive: true });
 writeFileSync(checkedPinsLog, "");
+const runs = [];
 for (const project of projects) {
-  const selected = project.files.flatMap((file) => pins.get(file));
-  const overlay = writeOverlay(
-    await project.blueprint(),
-    new Set(selected.map(({ module }) => module)),
-  );
-  const run = spawnSync(
-    resolve(packageRoot, "node_modules/.bin/vitest"),
-    [
-      "run",
-      "--project",
-      project.name,
-      "-t",
-      casePattern(selected.map(({ name }) => name)),
-      ...project.files,
-    ],
-    {
-      cwd: packageRoot,
-      stdio: "inherit",
+  const blueprint = await project.blueprint();
+  const modules = new Map();
+  for (const file of project.files) {
+    for (const { module, name } of pins.get(file)) {
+      const run = modules.get(module) ?? { files: new Set(), names: [] };
+      run.files.add(file);
+      run.names.push(name);
+      modules.set(module, run);
+    }
+  }
+  for (const [module, { files: moduleFiles, names }] of modules) {
+    // Only this module is traced, so a traced refusal is its own.
+    const overlay = writeOverlay(blueprint, module);
+    runs.push({
+      label: `${project.name}: ${module}`,
+      args: [
+        "run",
+        "--project",
+        project.name,
+        "-t",
+        casePattern(names),
+        ...moduleFiles,
+      ],
       env: {
         ...process.env,
         [project.overlayVariable]: overlay,
         MIDGARD_EMULATOR_TRACED_REFUSALS: "1",
+        MIDGARD_TRACED_REFUSAL_MODULE: module,
         MIDGARD_TRACED_REFUSALS_LOG: checkedPinsLog,
       },
-    },
-  );
-  if (run.error) throw run.error;
-  if (run.status !== 0) fail(`${project.name}: vitest exited ${run.status}`);
+    });
+  }
 }
+const failed = [];
+let next = 0;
+await Promise.all(
+  Array.from({ length: Math.min(jobs, runs.length) }, async () => {
+    while (next < runs.length) {
+      const run = runs[next];
+      next += 1;
+      const status = await runVitest(run);
+      if (status !== 0) failed.push(`${run.label}: vitest exited ${status}`);
+    }
+  }),
+);
+if (failed.length > 0) fail(failed.join("\n"));
 
 // Every declared pin must have been checked against a trace, and every
 // checked pin must be one this script read and traced.
