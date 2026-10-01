@@ -299,10 +299,7 @@ export const validationAuxiliaryWitnessData = (
     case "ledgerOutputProofStep":
       return new Constr(32, [ledgerOutputProofWitnessData(auxiliary.witness)]);
     case "ledgerOutputProofFinalize":
-      return new Constr(33, [
-        bytes(auxiliary.descriptorCbor),
-        signerProofData(auxiliary.signerProof),
-      ]);
+      return new Constr(33, [signerProofData(auxiliary.signerProof)]);
     case "scriptSourceHashBlock":
       return new Constr(36, [
         chunkProofData(auxiliary.chunkProof),

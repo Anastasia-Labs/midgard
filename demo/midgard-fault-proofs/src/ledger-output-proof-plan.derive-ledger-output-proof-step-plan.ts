@@ -1,8 +1,15 @@
+import {
+  encodeMidgardLedgerOutputCommitment,
+  midgardLedgerOutputDescriptorOfTerminalFacts,
+  type MidgardLedgerOutputReferenceScriptLanguage,
+  type MidgardValidationMerkleFrontier,
+} from "@al-ft/midgard-core";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import { ValidationOneStepWitness } from "@al-ft/midgard-sdk";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {
+  bytes,
   controlData,
   controlFromCarrier,
   datumTraverseItems,
@@ -75,7 +82,7 @@ export const deriveLedgerOutputProofStepPlan = ({
   else if (stage === 2n || stage === 3n || stage === 4n) {
     // `SpanAttach` routes first at the content stages: the span-attach step
     // (role 23) records the window commitment every later consumer binds to.
-    if (witness.index === 5 && witness.fields.length === 4) roleIndex = 23;
+    if (witness.index === 5 && witness.fields.length === 2) roleIndex = 23;
     else if (stage === 3n) roleIndex = 8;
     else if (stage === 4n) roleIndex = 9;
     // `NoWitness` at the datum stage is the terminal finish hand-off
@@ -149,11 +156,18 @@ export type LedgerOutputProofFinalizePlan = {
    * empty exactly at the thin terminal (all four facts recorded).
    */
   readonly attachRoles: readonly number[];
+  /**
+   * The descriptor the terminal control determines
+   * (`ledger_output_proof_v1.terminal_descriptor_v1`): the descriptor yields
+   * pin it field by field and the thin terminal requires the recorded
+   * scan-facts fact to commit exactly these bytes.
+   */
+  readonly descriptorCbor: string;
 };
 
 /**
  * Fact-commitment slots live at control items 13-16 in role order (role 0 ->
- * item 13). The attach order is `[[2, 3], [0], [1]]`; the first group whose
+ * item 13). The attach order is `[[2, 3], [1], [0]]`; the first group whose
  * facts are all missing is the group this step attaches.
  */
 export const ledgerOutputProofFactAttachRoles = (
@@ -161,7 +175,7 @@ export const ledgerOutputProofFactAttachRoles = (
 ): readonly number[] => {
   const missing = (role: number): boolean =>
     optionInner(control[13 + role], "fact commitment") === null;
-  for (const group of [[2, 3], [0], [1]])
+  for (const group of [[2, 3], [1], [0]])
     if (group.every(missing)) return group;
   return [];
 };
@@ -204,6 +218,7 @@ export const deriveLedgerOutputProofFinalizePlan = ({
     controlCbor,
     ...deriveLedgerOutputProofFinalizeClaims(control),
     attachRoles: ledgerOutputProofFactAttachRoles(control),
+    descriptorCbor: deriveLedgerOutputProofTerminalDescriptorCbor(control),
   };
 };
 
@@ -248,4 +263,98 @@ export const deriveLedgerOutputProofFinalizeClaims = (
     ]);
   }
   return { claimedValueSummary, claimedDatumSummary };
+};
+
+const frontierOf = (
+  count: Data | undefined,
+  peaks: Data | undefined,
+  label: string,
+): MidgardValidationMerkleFrontier => {
+  if (!Array.isArray(peaks)) throw new Error(`${label} peaks must be a list`);
+  return {
+    count: Number(integer(count, `${label} count`)),
+    peaks: peaks.map((peak) => {
+      const [height, hash] = items(peak, 2, `${label} peak`);
+      return {
+        height: Number(integer(height, `${label} peak height`)),
+        hash: Buffer.from(bytes(hash, `${label} peak hash`), "hex"),
+      };
+    }),
+  };
+};
+
+const summaryOf = (value: Data, label: string) => {
+  const [root, cborLength, memory] = items(value, 3, label);
+  return {
+    root: Buffer.from(bytes(root, `${label} root`), "hex"),
+    cborLength: integer(cborLength, `${label} CBOR length`),
+    memory: integer(memory, `${label} memory`),
+  };
+};
+
+/**
+ * The descriptor a terminal LOP control determines, read from its wire items
+ * exactly as `ledger_output_proof_v1.terminal_descriptor_v1` reads the
+ * decoded control: the output scan's fields, the folded value and datum
+ * summaries and, with a reference script, the script-hash trace's digest and
+ * the chunk frontier.
+ */
+export const deriveLedgerOutputProofTerminalDescriptorCbor = (
+  control: readonly Data[],
+): string => {
+  if (integer(control[1], "output proof stage") !== 6n)
+    throw new Error("Descriptor requires the terminal output proof control");
+  const scan = items(control[5]!, 23, "output scan");
+  const totalLength = Number(integer(control[3], "output length"));
+  const valueInner = optionInner(control[6], "value control");
+  const valueResult =
+    valueInner === null
+      ? null
+      : optionInner(items(valueInner, 7, "value control")[6], "value result");
+  if (valueResult === null)
+    throw new Error("Terminal value control must carry its folded summary");
+  let datum: ReturnType<typeof summaryOf> | null = null;
+  if (integer(scan[16], "datum offset") !== -1n) {
+    const datumResult = optionInner(
+      datumTraverseItems(control)[9],
+      "datum result",
+    );
+    if (datumResult === null)
+      throw new Error("Terminal datum traversal must carry its folded summary");
+    datum = summaryOf(datumResult, "datum summary");
+  }
+  const language = Number(integer(scan[19], "reference script language"));
+  let referenceScript = null;
+  if (language !== -1) {
+    if (language !== 0 && language !== 3 && language !== 128)
+      throw new Error("Reference script language is outside the V1 set");
+    const hashInner = optionInner(control[10], "script hash control");
+    if (hashInner === null)
+      throw new Error("Terminal reference script must carry its hash trace");
+    const chainingValue = bytes(
+      items(hashInner, 9, "script hash control")[4],
+      "script hash chaining value",
+    );
+    referenceScript = {
+      language: language as MidgardLedgerOutputReferenceScriptLanguage,
+      digest: Buffer.from(chainingValue, "hex").subarray(0, 28),
+      totalLength:
+        totalLength - Number(integer(scan[20], "reference script item offset")),
+      frontier: frontierOf(control[8], control[9], "reference script"),
+    };
+  }
+  return encodeMidgardLedgerOutputCommitment(
+    midgardLedgerOutputDescriptorOfTerminalFacts({
+      outputIndex: Number(integer(control[2], "output index")),
+      totalLength,
+      itemCommitment: Buffer.from(bytes(control[4], "item commitment"), "hex"),
+      address: Buffer.from(bytes(scan[5], "address"), "hex"),
+      lovelace: integer(scan[6], "lovelace"),
+      assetFrontier: frontierOf(scan[14], scan[15], "asset"),
+      cardanoValueSize: Number(integer(scan[7], "Cardano value size")),
+      value: summaryOf(valueResult, "value summary"),
+      datum,
+      referenceScript,
+    }),
+  ).toString("hex");
 };

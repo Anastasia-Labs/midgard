@@ -3,6 +3,7 @@ use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/cek_data_traverse_v1 as traverse
 use midgard/ledger_output_proof_raw as raw
+use midgard/ledger_output_proof_span as span
 use midgard/ledger_output_proof_stages as narrow
 use midgard/ledger_output_proof_v1 as proof
 use midgard/ledger_output_scan_v1 as scan
@@ -22,7 +23,7 @@ fn same_step(
 ) -> Bool {
   let frame = raw.open(proof.encode_control_v1(control))
   let result = if is_span_attach(witness) {
-    narrow.span_attach(frame, witness)
+    span.attach(frame, witness)
   } else if control.stage == proof.stage_structure {
     if witness == proof.LedgerOutputProofNoWitness {
       narrow.structure_finish(frame, witness)
@@ -69,34 +70,33 @@ fn check_chain(
   if control.stage == proof.stage_datum_traversal || control.stage == proof.stage_terminal || control.stage == proof.stage_value_fold && control.output_scan.asset_count > 0 {
     True
   } else {
-    let witness = if and {
-      control.span_window == None,
-      or {
-        control.stage == proof.stage_reference_script_commitment,
-        control.stage == proof.stage_script_hash,
-      },
-    } {
-      expect proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof } = chunks
-      proof.LedgerOutputProofSpanAttach {
-        start: 0,
-        length: bytearray.length(output),
-        chunk_proof,
-        next_chunk_proof,
-      }
-    } else {
-      when proof.step_v1(control, proof.LedgerOutputProofNoWitness) is {
-        Some(_) -> proof.LedgerOutputProofNoWitness
-        None ->
-          when
-            proof.step_v1(
-              control,
-              proof.LedgerOutputProofWindow { bytes: output },
-            )
-          is {
-            Some(_) -> proof.LedgerOutputProofWindow { bytes: output }
-            None -> chunks
-          }
-      }
+    expect proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof } = chunks
+    let attach = proof.LedgerOutputProofSpanAttach {
+      chunk_proof,
+      next_chunk_proof,
+    }
+    let window = when control.span_window is {
+      None -> chunks
+      Some(recorded) ->
+        proof.LedgerOutputProofWindow {
+          bytes: bytearray.slice(
+            output,
+            recorded.start,
+            recorded.start + recorded.length - 1,
+          ),
+        }
+    }
+    let witness = when proof.step_v1(control, attach) is {
+      Some(_) -> attach
+      None ->
+        when proof.step_v1(control, proof.LedgerOutputProofNoWitness) is {
+          Some(_) -> proof.LedgerOutputProofNoWitness
+          None ->
+            when proof.step_v1(control, window) is {
+              Some(_) -> window
+              None -> chunks
+            }
+        }
     }
     and {
       same_step(control, witness),

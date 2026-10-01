@@ -680,6 +680,48 @@ fn unchecked_bytes_scalar(data: Data) -> bytes_control.CekDataBytesControlV1 {
   }
 }
 
+fn unchecked_optional(data: Data, decode: fn(Data) -> scalar) -> Option<scalar> {
+  let Pair(tag, fields) = builtin.un_constr_data(data)
+  if tag == 1 {
+    None
+  } else {
+    expect [inner] = fields
+    Some(decode(inner))
+  }
+}
+
+/// The `(absolute_start, length)` the next datum traversal step reads from
+/// the output, or `None` when it reads nothing: the traverse machine's own
+/// span selection over the frame's datum sub-control (item 7). The frame is
+/// the dispatcher-pinned pre control, so its sub-controls are read with
+/// direct builtins; only the fields the span selection reads are rebuilt.
+pub fn next_source_span(control: raw.Frame) -> Option<(Int, Int)> {
+  expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
+  expect
+      [
+        version, stage, start, length, offset, root, _pending, int_data,
+        byte_data, _result,
+      ]
+    = builtin.un_list_data(data)
+  let current = traverse.DataTraverseControlV1 {
+    version: builtin.un_i_data(version),
+    stage: builtin.un_i_data(stage),
+    source_start: builtin.un_i_data(start),
+    source_length: builtin.un_i_data(length),
+    offset: builtin.un_i_data(offset),
+    frame_root: builtin.un_b_data(root),
+    pending_large_expected_children: None,
+    integer: unchecked_optional(int_data, unchecked_integer_scalar),
+    bytes: unchecked_optional(byte_data, unchecked_bytes_scalar),
+    result: None,
+  }
+  when traverse.prevalidated_next_source_span(current) is {
+    None -> None
+    Some(span) -> Some((span.absolute_start, span.length))
+  }
+}
+
 fn claimed_integer_traverse(
   claimed: Data,
 ) -> (traverse.DataTraverseControlV1, integer_control.CekDataIntegerControlV1) {

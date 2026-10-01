@@ -280,8 +280,6 @@ export const LedgerOutputProofWitnessSchema = Data.Enum([
   }),
   Data.Object({
     LedgerOutputProofSpanAttach: Data.Object({
-      start: Data.Integer(),
-      length: Data.Integer(),
       chunk_proof: BoundedItemChunkProofSchema,
       next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
     }),

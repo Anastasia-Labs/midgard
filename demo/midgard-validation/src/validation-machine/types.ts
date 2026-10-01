@@ -112,7 +112,6 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "ledgerOutputProofFinalize";
-        readonly descriptorCbor: Buffer;
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {

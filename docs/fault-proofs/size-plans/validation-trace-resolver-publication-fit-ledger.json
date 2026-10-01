@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/semantic resolver publication",
-  "blueprintSha256": "636e8b9fe6cbc2cf247175c3303fa18ee61660891928e14620fad831be4fae1f",
+  "blueprintSha256": "451f8dcb0bacb8aa124bd1d3a2c357a7ca0a1f2cc72b85482baa04bd79de1252",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -260,49 +260,49 @@
       "name": "phaseANativeScriptsAllOrAnyContainerFramePayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 12441,
+      "signedBytes": 12362,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3943,
+      "signedByteMargin": 4022,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3431
+      "publicationReserveMargin": 3510
     },
     {
       "name": "phaseANativeScriptsAllOrAnyEmptyContainerPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 11977,
+      "signedBytes": 11865,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4407,
+      "signedByteMargin": 4519,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3895
+      "publicationReserveMargin": 4007
     },
     {
       "name": "phaseANativeScriptsAtLeastContainerFramePayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 12410,
+      "signedBytes": 12337,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3974,
+      "signedByteMargin": 4047,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3462
+      "publicationReserveMargin": 3535
     },
     {
       "name": "phaseANativeScriptsAtLeastEmptyContainerPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 11960,
+      "signedBytes": 11873,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4424,
+      "signedByteMargin": 4511,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3912
+      "publicationReserveMargin": 3999
     },
     {
       "name": "phaseANativeScriptsFrame",
@@ -332,85 +332,85 @@
       "name": "phaseANativeScriptsSignatureAboveLastPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 12665,
+      "signedBytes": 12588,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3719,
+      "signedByteMargin": 3796,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3207
+      "publicationReserveMargin": 3284
     },
     {
       "name": "phaseANativeScriptsSignatureBelowFirstPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 12629,
+      "signedBytes": 12552,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3755,
+      "signedByteMargin": 3832,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3243
+      "publicationReserveMargin": 3320
     },
     {
       "name": "phaseANativeScriptsSignatureBetweenPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 12804,
+      "signedBytes": 12732,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3580,
+      "signedByteMargin": 3652,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3068
+      "publicationReserveMargin": 3140
     },
     {
       "name": "phaseANativeScriptsSignatureEmptyPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 12468,
+      "signedBytes": 12392,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3916,
+      "signedByteMargin": 3992,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3404
+      "publicationReserveMargin": 3480
     },
     {
       "name": "phaseANativeScriptsSignatureMembershipPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 12560,
+      "signedBytes": 12485,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3824,
+      "signedByteMargin": 3899,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3312
+      "publicationReserveMargin": 3387
     },
     {
       "name": "phaseANativeScriptsTimelockPayload",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 14635,
+      "signedBytes": 14561,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 1749,
+      "signedByteMargin": 1823,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 1237
+      "publicationReserveMargin": 1311
     },
     {
       "name": "phaseANativeScriptsTokenHead",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 11703,
+      "signedBytes": 11623,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4681,
+      "signedByteMargin": 4761,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 4169
+      "publicationReserveMargin": 4249
     },
     {
       "name": "phaseAScriptPreconditions",
@@ -476,13 +476,13 @@
       "name": "resolveInputsMembershipFinalize",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 14863,
+      "signedBytes": 14855,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 1521,
+      "signedByteMargin": 1529,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 1009
+      "publicationReserveMargin": 1017
     },
     {
       "name": "resolveInputsMembershipStep",
@@ -584,13 +584,13 @@
       "name": "scriptSourcesOutputProofFinalize",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 14857,
+      "signedBytes": 14856,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 1527,
+      "signedByteMargin": 1528,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 1015
+      "publicationReserveMargin": 1016
     },
     {
       "name": "scriptSourcesOutputProofFinish",
@@ -1097,5 +1097,5 @@
       "publicationReserveMargin": 1518
     }
   ],
-  "ledgerSha256": "860f02e60bbf4ef4b2ed3bd6d5f6a714920830f3f90b427c94dc2528c64e9874"
+  "ledgerSha256": "028298698e54fc4fa32b42d8dd377b6c8b2200bd4b6b8e9204a8bdb833510a1c"
 }

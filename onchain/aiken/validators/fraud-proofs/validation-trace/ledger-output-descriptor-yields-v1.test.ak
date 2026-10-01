@@ -7,15 +7,16 @@
 //// chained fact attachment: each attachment step carries one canonical
 //// descriptor-yield group (`ledger-output-descriptor-*-yield.ak`, which read
 //// the dispatcher redeemer back through `unique_semantic_dispatch_v1` and
-//// re-state `descriptor_is_exact_v1` piecewise) and records the group's fact
-//// commitments; the thin terminal carries no yields and requires every
-//// recorded fact to equal its recomputation from one redeemer triple. These
+//// pin the control-derived descriptor piecewise) and records the group's
+//// fact commitments; the thin terminal carries no yields and requires the
+//// recorded scan fact to commit exactly the redeemer's descriptor. These
 //// vectors drive the deployed validators through `main.spend` /
 //// `main.withdraw` over the honest three-step attachment chain plus thin
 //// terminal of a protected script output, pin the ten-field redeemer wire
 //// layout and the prepare routing (resolver 8, semantic slot 3), and show
 //// that the chain refuses an omitted yield, a role permutation, a wrong or
-//// replayed grouping, a forged leaf summary, a missing / cross-output /
+//// replayed grouping, a forged leaf summary, a substituted value or datum
+//// claim at the scan-facts group, a missing / cross-output /
 //// stale fact at the terminal, yield indices at the thin terminal, a
 //// receive-scan splice that skips the descriptor leaf, a non-terminal
 //// control and a duplicated dispatcher input, while the two rejection arms
@@ -53,7 +54,9 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{forced_tx_proof_commitment_v1}
 use midgard/ledger_output_commitment_v1 as commitment
+use midgard/ledger_output_proof_raw as lop_raw
 use midgard/ledger_output_proof_roles as roles
+use midgard/ledger_output_proof_stages as lop_stages
 use midgard/ledger_output_proof_v1 as proof
 use midgard/ledger_output_v1
 use midgard/rejection_reason_v1.{
@@ -195,36 +198,29 @@ fn advanced(
 }
 
 /// Drive the typed proof to its terminal stage; the only datum these outputs
-/// carry is the trivial `d87980`. On entering the first span-consuming stage
-/// a span-attach step records the whole-output window the datum head then
-/// binds through `window: Some(output)`.
+/// carry is the trivial `d87980`. At the datum stage a span-attach step
+/// records the window from the datum head's span to the end of the output,
+/// which the datum head then binds through its `window`.
 fn until_terminal(
   control: proof.LedgerOutputProofControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   output: ByteArray,
+  datum_constructor: Int,
   fuel: Int,
 ) -> proof.LedgerOutputProofControlV1 {
   expect fuel > 0
+  let attach = proof.LedgerOutputProofSpanAttach {
+    chunk_proof,
+    next_chunk_proof: None,
+  }
   if control.stage == proof.stage_terminal {
     control
-  } else if and {
-    control.span_window == None,
-    control.stage == proof.stage_datum_traversal,
-  } {
+  } else if proof.step_v1(control, attach) != None {
     until_terminal(
-      advanced(
-        proof.step_v1(
-          control,
-          proof.LedgerOutputProofSpanAttach {
-            start: 0,
-            length: bytearray.length(output),
-            chunk_proof,
-            next_chunk_proof: None,
-          },
-        ),
-      ),
+      advanced(proof.step_v1(control, attach)),
       chunk_proof,
       output,
+      datum_constructor,
       fuel - 1,
     )
   } else {
@@ -233,12 +229,25 @@ fn until_terminal(
       if datum_control.stage == traverse.stage_head {
         proof.LedgerOutputProofDatum {
           action: traverse.HeadSequence { expected_children: 0 },
-          window: Some(output),
+          window: {
+            expect Some(window) = control.span_window
+            Some(
+              bytearray.slice(
+                output,
+                window.start,
+                window.start + window.length - 1,
+              ),
+            )
+          },
         }
       } else if datum_control.stage == traverse.stage_fold {
         proof.LedgerOutputProofDatum {
           action: traverse.FinalizeFrame {
-            frame: data_frame.initial_small_constr_frame_v1(0, #"", 0),
+            frame: data_frame.initial_small_constr_frame_v1(
+              datum_constructor,
+              #"",
+              0,
+            ),
             parent: None,
           },
           window: None,
@@ -258,33 +267,43 @@ fn until_terminal(
       advanced(proof.step_v1(control, witness)),
       chunk_proof,
       output,
+      datum_constructor,
       fuel - 1,
     )
   }
 }
 
 fn terminal_of(output: ByteArray) -> proof.LedgerOutputProofControlV1 {
+  terminal_with_datum_constructor(output, 0)
+}
+
+/// `terminal_of` for an output whose inline datum is the empty constructor
+/// `datum_constructor`.
+fn terminal_with_datum_constructor(
+  output: ByteArray,
+  datum_constructor: Int,
+) -> proof.LedgerOutputProofControlV1 {
   let Pair(item_commitment, chunk_proof) = one_chunk_material(0, output)
   until_terminal(
     proof.initial_control_v1(0, bytearray.length(output), item_commitment),
     chunk_proof,
     output,
+    datum_constructor,
     256,
   )
 }
 
 /// The terminal control after `count` canonical fact-attachment steps
-/// (`fact_attach_groups_v1` order: [2, 3], [0], [1]).
+/// (`fact_attach_groups_v1` order: [2, 3], [1], [0]).
 fn with_fact_groups(
   terminal: proof.LedgerOutputProofControlV1,
-  descriptor_cbor: ByteArray,
   count: Int,
 ) -> proof.LedgerOutputProofControlV1 {
   if count == 0 {
     terminal
   } else {
-    expect Some(next) = proof.fact_attach_v1(terminal, descriptor_cbor)
-    with_fact_groups(next, descriptor_cbor, count - 1)
+    expect Some(next) = proof.fact_attach_v1(terminal)
+    with_fact_groups(next, count - 1)
   }
 }
 
@@ -462,7 +481,7 @@ fn pre_of(
   let terminal = terminal_of(output)
   let descriptor_cbor = commitment.encode(honest_descriptor(terminal))
   let control_cbor = proof.encode_control_v1(
-    with_fact_groups(terminal, descriptor_cbor, attached_groups),
+    with_fact_groups(terminal, attached_groups),
   )
   let work_cbor = ss_raw.append_extension_v1(
     base_witness_cbor(
@@ -543,13 +562,13 @@ fn accepting_fixture(output: ByteArray) -> FinalizeFixtureV1 {
 }
 
 /// The honest fact-attachment step for canonical group `group_index` (0 the
-/// leaf summaries [2, 3], 1 the scan facts [0], 2 the reference script [1]):
+/// leaf summaries [2, 3], 1 the reference script [1], 2 the scan facts [0]):
 /// the successor re-carries the frame with the group's facts recorded.
 fn attach_fixture(output: ByteArray, group_index: Int) -> FinalizeFixtureV1 {
   let f = pre_of(output, context_network_zero, group_index)
   let terminal = terminal_of(output)
   let next_cbor = proof.encode_control_v1(
-    with_fact_groups(terminal, f.descriptor_cbor, group_index + 1),
+    with_fact_groups(terminal, group_index + 1),
   )
   with_successor_cbor(
     f,
@@ -621,7 +640,6 @@ fn rejecting_fixture(
 
 fn auxiliary_of(f: FinalizeFixtureV1) -> Data {
   let auxiliary: Data = LedgerOutputProofFinalizeWitness {
-    descriptor_cbor: f.descriptor_cbor,
     signer_proof: f.signer_proof,
   }
   auxiliary
@@ -963,25 +981,26 @@ test attach_wins_leaf_summary_group() {
   }
 }
 
-/// The honest scan-facts attachment step (canonical group [0]).
-test attach_wins_scan_facts_group() {
+/// The honest reference-script attachment step (canonical group [1]).
+test attach_wins_reference_script_group() {
   let f = attach_fixture(protected_script_datum_output, 1)
   let redeemer = honest_attach_redeemer(f, 1)
   let tx = finalize_tx(f, redeemer, group_pairs(1), [])
   and {
     run_dispatcher(f, redeemer, tx),
-    run_scan_facts_yield(tx),
+    run_reference_script_yield(tx),
   }
 }
 
-/// The honest reference-script attachment step (canonical group [1]).
-test attach_wins_reference_script_group() {
+/// The honest scan-facts attachment step (canonical group [0], last: its
+/// yield reads the three facts recorded before it).
+test attach_wins_scan_facts_group() {
   let f = attach_fixture(protected_script_datum_output, 2)
   let redeemer = honest_attach_redeemer(f, 2)
   let tx = finalize_tx(f, redeemer, group_pairs(2), [])
   and {
     run_dispatcher(f, redeemer, tx),
-    run_reference_script_yield(tx),
+    run_scan_facts_yield(tx),
   }
 }
 
@@ -1109,37 +1128,17 @@ test terminal_refuses_missing_fact() fail {
   )
 }
 
-/// Facts recorded for another output's descriptor (a cross-dispute forgery)
-/// do not match the terminal's recomputation from its own descriptor bytes.
+/// Another output's descriptor (a cross-dispute forgery) does not match the
+/// scan fact the terminal's own control recorded, so the thin terminal
+/// refuses to splice its leaf.
 test terminal_refuses_cross_output_facts() fail {
   let output = protected_script_datum_output
-  let terminal = terminal_of(output)
-  let foreign_descriptor = commitment.encode(
-    honest_descriptor(terminal_of(protected_script_plain_output)),
-  )
-  let forged_control_cbor = proof.encode_control_v1(
-    with_fact_groups(terminal, foreign_descriptor, 3),
-  )
-  let work_cbor = ss_raw.append_extension_v1(
-    base_witness_cbor(
-      context_network_zero,
-      0,
-      vm_witness.empty_receive_purpose_scan_control(),
-    ),
-    forged_control_cbor,
-  )
-  let pre = machine_pre(context_network_zero, work_cbor)
+  let honest = pre_of(output, context_network_zero, 3)
   let f = FinalizeFixtureV1 {
-    pre,
-    transition: ValidationOneStepWitnessV1 {
-      work_witness_cbor: work_cbor,
-      claimed_successor: pre,
-    },
-    descriptor_cbor: commitment.encode(honest_descriptor(terminal)),
-    signer_proof: NoSignerSetProof,
-    control_cbor: forged_control_cbor,
-    value_claim: honest_value(terminal),
-    datum_claim: honest_datum(terminal),
+    ..honest,
+    descriptor_cbor: commitment.encode(
+      honest_descriptor(terminal_of(protected_script_plain_output)),
+    ),
   }
   let terminal_fixture = with_successor_cbor(
     f,
@@ -1251,7 +1250,7 @@ test finalize_emits_missing_witness_terminal() {
 /// (the initial LOP control) aborts in the shared `terminal_scan` clause.
 test yield_refuses_non_terminal_control() fail {
   let output = protected_script_datum_output
-  let f = attach_fixture(output, 1)
+  let f = attach_fixture(output, 2)
   let Pair(item_commitment, _chunk_proof) = one_chunk_material(0, output)
   let initial = proof.initial_control_v1(
     0,
@@ -1268,14 +1267,14 @@ test yield_refuses_non_terminal_control() fail {
     [0],
     [0],
   )
-  run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(1), []))
+  run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(2), []))
 }
 
 /// Two inputs at dispatcher script addresses defeat the yields' unique
 /// dispatch: `unique_semantic_dispatch_v1` requires exactly one.
 test yield_refuses_two_dispatcher_inputs() fail {
-  let f = attach_fixture(protected_script_datum_output, 1)
-  let redeemer = honest_attach_redeemer(f, 1)
+  let f = attach_fixture(protected_script_datum_output, 2)
+  let redeemer = honest_attach_redeemer(f, 2)
   let base = fixture.ct_thread_input(ct_asset)
   let second = l1.Input {
     ..base,
@@ -1284,5 +1283,243 @@ test yield_refuses_two_dispatcher_inputs() fail {
       output_index: 7,
     },
   }
-  run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(1), [second]))
+  run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(2), [second]))
+}
+
+// ---------------------------------------------------------------------------
+// One successor per attachment step
+// ---------------------------------------------------------------------------
+
+/// The canonical index of the attachment group `group`.
+fn group_index_of(group: List<Int>) -> Int {
+  expect Some(index) = list.index_of(proof.fact_attach_groups_v1(), group)
+  index
+}
+
+/// Whether every descriptor yield of the attachment group at `group_index`
+/// accepts `tx`.
+fn group_yields_accept(group_index: Int, tx: l1.Transaction) -> Bool {
+  list.all(
+    group_roles(group_index),
+    fn(role) {
+      if role == 0 {
+        run_scan_facts_yield(tx)
+      } else if role == 1 {
+        run_reference_script_yield(tx)
+      } else if role == 2 {
+        run_datum_summary_yield(tx)
+      } else {
+        run_value_summary_yield(tx)
+      }
+    },
+  )
+}
+
+/// The attachment step of `group` from the same pre-state as the honest
+/// step, with the redeemer carrying `descriptor_cbor` and the claimed
+/// successor recording whatever the dispatcher's split attachment records
+/// for that redeemer.
+fn attach_with_descriptor(
+  output: ByteArray,
+  group: List<Int>,
+  descriptor_cbor: ByteArray,
+) -> FinalizeFixtureV1 {
+  let f = pre_of(output, context_network_zero, group_index_of(group))
+  attach_with_claims(
+    output,
+    group,
+    descriptor_cbor,
+    f.value_claim,
+    f.datum_claim,
+  )
+}
+
+/// `attach_with_descriptor` with the redeemer also carrying the claimed
+/// value and datum summaries.
+fn attach_with_claims(
+  output: ByteArray,
+  group: List<Int>,
+  descriptor_cbor: ByteArray,
+  value_claim: summary.DataSummaryV1,
+  datum_claim: Option<summary.DataSummaryV1>,
+) -> FinalizeFixtureV1 {
+  let group_index = group_index_of(group)
+  let f = pre_of(output, context_network_zero, group_index)
+  let value_data: Data = value_claim
+  let datum_data: Data = datum_claim
+  expect Some(next) = lop_stages.fact_attach(
+    lop_raw.open(f.control_cbor),
+    group,
+    descriptor_cbor,
+    value_data,
+    datum_data,
+  )
+  with_successor_cbor(
+    FinalizeFixtureV1 { ..f, descriptor_cbor, value_claim, datum_claim },
+    ss_raw.append_extension_v1(
+      base_witness_cbor(
+        context_network_zero,
+        0,
+        vm_witness.empty_receive_purpose_scan_control(),
+      ),
+      lop_raw.encode(next),
+    ),
+  )
+}
+
+/// Whether the deployed prepare, dispatcher and every group yield accept the
+/// attachment step `f` of the group at `group_index`.
+fn attach_accepted(f: FinalizeFixtureV1, group_index: Int) -> Bool {
+  let redeemer = honest_attach_redeemer(f, group_index)
+  let tx = finalize_tx(f, redeemer, group_pairs(group_index), [])
+  let prepared: Data = prepare_semantic_resolution(
+    resolution_of(f),
+    f.transition,
+    auxiliary_of(f),
+  )
+  let expected: Data = prepared_of(f)
+  and {
+    prepared == expected,
+    run_dispatcher(f, redeemer, tx),
+    group_yields_accept(group_index, tx),
+  }
+}
+
+/// From one pre-state, the honest attachment of `group` wins, and a redeemer
+/// carrying `forged_descriptor` either reaches the same successor or is
+/// refused: the step has exactly one successor.
+fn group_admits_one_successor(
+  group: List<Int>,
+  forged_descriptor: ByteArray,
+) -> Bool {
+  let output = protected_script_datum_output
+  admits_one_successor_against(
+    output,
+    group,
+    attach_with_descriptor(output, group, forged_descriptor),
+  )
+}
+
+/// From the pre-state of `forged`, the honest attachment of `group` over
+/// `output` wins and `forged` either reaches the same successor or is
+/// refused.
+fn admits_one_successor_against(
+  output: ByteArray,
+  group: List<Int>,
+  forged: FinalizeFixtureV1,
+) -> Bool {
+  let group_index = group_index_of(group)
+  let honest = attach_fixture(output, group_index)
+  let honest_hash = validation_trace_v1.hash_machine_state(
+    honest.transition.claimed_successor,
+  )
+  let forged_hash = validation_trace_v1.hash_machine_state(
+    forged.transition.claimed_successor,
+  )
+  and {
+    honest.pre == forged.pre,
+    honest.descriptor_cbor != forged.descriptor_cbor,
+    attach_accepted(honest, group_index),
+    or {
+      forged_hash == honest_hash,
+      !attach_accepted(forged, group_index),
+    },
+  }
+}
+
+/// The leaf-summary group [2, 3] with undecodable descriptor bytes.
+test fact_attach_leaf_group_admits_one_successor() {
+  group_admits_one_successor([2, 3], #"00")
+}
+
+/// The reference-script group [1] with a descriptor whose lovelace differs.
+test fact_attach_reference_script_group_admits_one_successor() {
+  let descriptor = honest_descriptor(terminal_of(protected_script_datum_output))
+  group_admits_one_successor(
+    [1],
+    commitment.encode(
+      commitment.LedgerOutputCommitmentV1 {
+        ..descriptor,
+        lovelace: descriptor.lovelace + 1,
+      },
+    ),
+  )
+}
+
+/// The scan-facts group [0] of an output without a reference script, with a
+/// descriptor claiming a Plutus V3 reference script.
+test fact_attach_scan_group_admits_one_successor() {
+  let descriptor = honest_descriptor(terminal_of(protected_script_datum_output))
+  group_admits_one_successor(
+    [0],
+    commitment.encode(
+      commitment.LedgerOutputCommitmentV1 {
+        ..descriptor,
+        reference_script_language: 3,
+        reference_script_hash: #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        reference_script_total_length: 1,
+        reference_script_item_commitment: zero,
+      },
+    ),
+  )
+}
+
+/// The scan-facts group [0] with a redeemer claiming another output's value
+/// summary and a descriptor whose composites are rebuilt from that claim:
+/// only the role-3 fact the earlier group recorded refuses it.
+test fact_attach_scan_group_refuses_substituted_value_claim() {
+  let output = protected_script_datum_output
+  let other = terminal_of(
+    #"a300581d7811111111111111111111111111111111111111111111111111111111018201a00243d87980",
+  )
+  let descriptor = honest_descriptor(terminal_of(output))
+  let other_descriptor = honest_descriptor(other)
+  admits_one_successor_against(
+    output,
+    [0],
+    attach_with_claims(
+      output,
+      [0],
+      commitment.encode(
+        commitment.LedgerOutputCommitmentV1 {
+          ..descriptor,
+          cardano_tx_out: other_descriptor.cardano_tx_out,
+          midgard_tx_out: other_descriptor.midgard_tx_out,
+        },
+      ),
+      honest_value(other),
+      honest_datum(terminal_of(output)),
+    ),
+  )
+}
+
+/// The scan-facts group [0] with a redeemer claiming another datum summary
+/// and a descriptor whose composites and spend datum are rebuilt from that
+/// claim: only the role-2 fact the earlier group recorded refuses it.
+test fact_attach_scan_group_refuses_substituted_datum_claim() {
+  let output = protected_script_datum_output
+  let other = terminal_with_datum_constructor(
+    #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00243d87a80",
+    1,
+  )
+  let descriptor = honest_descriptor(terminal_of(output))
+  let other_descriptor = honest_descriptor(other)
+  admits_one_successor_against(
+    output,
+    [0],
+    attach_with_claims(
+      output,
+      [0],
+      commitment.encode(
+        commitment.LedgerOutputCommitmentV1 {
+          ..descriptor,
+          cardano_tx_out: other_descriptor.cardano_tx_out,
+          midgard_tx_out: other_descriptor.midgard_tx_out,
+          cardano_spend_datum: other_descriptor.cardano_spend_datum,
+        },
+      ),
+      honest_value(terminal_of(output)),
+      honest_datum(other),
+    ),
+  )
 }

@@ -17,6 +17,10 @@ import {
   nextMidgardCekDataTraverseSpan,
 } from "./cek-data-traverse.js";
 import { advanceMidgardLedgerOutputProof } from "./ledger-output-proof.advance-midgard-ledger-output-proof.js";
+import {
+  midgardLedgerOutputAttachWindowLength,
+  midgardLedgerOutputWindowCovers,
+} from "./ledger-output-proof.authenticated-output-span.js";
 import { initialMidgardLedgerOutputProofControl } from "./ledger-output-proof.is-well-formed-midgard-ledger-output-proof-control.js";
 import {
   MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX,
@@ -85,21 +89,23 @@ export const buildMidgardLedgerOutputProofTrace = ({
   /**
    * The span-attach discipline of the restructured step family: the chunk
    * merkle verification of an output span runs once, in a dedicated
-   * span-attach step recording a maximal window `(start, min(chunkBytes,
-   * total - start))`; every subsequent span-consuming step binds the whole
-   * recorded window bytes by digest. A new window is attached only when the
-   * required span leaves the recorded one.
+   * span-attach step recording the maximal window at the span the consuming
+   * stage demands, `(start, min(chunkBytes, total - start))`; every
+   * subsequent span-consuming step binds the whole recorded window bytes by
+   * digest. The step derives the window itself, and a new window is
+   * attached only when the demanded span leaves the recorded one.
    */
   const windowBytesFor = (absoluteStart: number, length: number): Buffer => {
-    const recorded = control.spanWindow;
     if (
-      recorded === null ||
-      absoluteStart < recorded.start ||
-      absoluteStart + length > recorded.start + recorded.length
+      !midgardLedgerOutputWindowCovers({
+        spanWindow: control.spanWindow,
+        absoluteStart,
+        length,
+      })
     ) {
-      const windowLength = Math.min(
-        MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-        bytes.length - absoluteStart,
+      const windowLength = midgardLedgerOutputAttachWindowLength(
+        bytes.length,
+        absoluteStart,
       );
       const chunks = spanChunkWitness({
         item,
@@ -111,8 +117,6 @@ export const buildMidgardLedgerOutputProofTrace = ({
       }
       append({
         kind: "spanAttach",
-        start: absoluteStart,
-        length: windowLength,
         chunkProof: chunks.chunkProof,
         nextChunkProof: chunks.nextChunkProof,
       });
@@ -120,8 +124,11 @@ export const buildMidgardLedgerOutputProofTrace = ({
     const window = control.spanWindow;
     if (
       window === null ||
-      absoluteStart < window.start ||
-      absoluteStart + length > window.start + window.length
+      !midgardLedgerOutputWindowCovers({
+        spanWindow: window,
+        absoluteStart,
+        length,
+      })
     ) {
       throw new Error("V1 output proof span window does not cover the span");
     }

@@ -263,8 +263,6 @@ export const ledgerOutputProofWitnessData = (
       ]);
     case "spanAttach":
       return new Constr(5, [
-        int(witness.start),
-        int(witness.length),
         chunkProofData(witness.chunkProof),
         option(witness.nextChunkProof, chunkProofData),
       ]);

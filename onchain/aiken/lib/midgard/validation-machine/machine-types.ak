@@ -310,10 +310,10 @@ pub type ValidationAuxiliaryWitnessV1 {
   LedgerOutputProofStepWitness {
     witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1,
   }
-  LedgerOutputProofFinalizeWitness {
-    descriptor_cbor: ByteArray,
-    signer_proof: SignerSetProofV1,
-  }
+  /// A fact-attachment or finalize step on a terminal output proof. The
+  /// descriptor is not a witness field: it is derived from the terminal
+  /// control.
+  LedgerOutputProofFinalizeWitness { signer_proof: SignerSetProofV1 }
   LedgerDeltaProofFrameWitness {
     frame: mpf_proof_fold_v1.ProofFrameV1,
     siblings: List<ByteArray>,

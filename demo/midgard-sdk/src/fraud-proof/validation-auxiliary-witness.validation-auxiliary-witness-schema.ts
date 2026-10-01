@@ -331,7 +331,6 @@ export const ValidationAuxiliaryWitnessSchema = Data.Enum([
   }),
   Data.Object({
     LedgerOutputProofFinalizeWitness: Data.Object({
-      descriptor_cbor: Data.Bytes(),
       signer_proof: SignerSetProofSchema,
     }),
   }),

@@ -963,7 +963,6 @@ pub fn script_sources_rejects_wrong_output_network(
         network_mismatch_rejection_code,
       ),
     },
-    material.descriptor_cbor,
     vm_machine_types.NoSignerSetProof,
   )
 }

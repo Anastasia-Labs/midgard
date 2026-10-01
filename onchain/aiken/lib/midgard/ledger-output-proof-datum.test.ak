@@ -105,15 +105,13 @@ fn datum_ready(
     commitment,
   )
   let at_datum = until_datum(initial, chunk_proof, 64)
-  // The span-attach step records the whole output as the bound window every
-  // datum-stage step below consumes.
+  // The span-attach step records the window from the datum head's span to the
+  // end of the output, which every datum-stage step below consumes.
   Pair(
     advanced(
       proof.step_v1(
         at_datum,
         proof.LedgerOutputProofSpanAttach {
-          start: 0,
-          length: bytearray.length(output),
           chunk_proof,
           next_chunk_proof: None,
         },
@@ -121,6 +119,24 @@ fn datum_ready(
     ),
     chunk_proof,
   )
+}
+
+/// The bytes of the window `control` records, sliced out of `output`.
+fn recorded_window(
+  control: proof.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> ByteArray {
+  expect Some(window) = control.span_window
+  slice_len(output, window.start, window.length)
+}
+
+/// `recorded_window` with its first byte flipped.
+fn mutated_window(
+  control: proof.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> ByteArray {
+  let window = recorded_window(control, output)
+  bytearray.concat(#"00", slice_len(window, 1, bytearray.length(window) - 1))
 }
 
 fn active_datum(
@@ -227,7 +243,7 @@ fn same_datum_step(
     action,
     window: when traverse.next_source_span_v1(datum_control) is {
       None -> None
-      Some(_) -> Some(output)
+      Some(_) -> Some(recorded_window(control, output))
     },
   }
   let next = advanced(proof.step_v1(control, typed_witness))
@@ -416,10 +432,7 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
 /// refused by the consuming stage yield's binding clause.
 test datum_window_with_mutated_bytes_fails() fail {
   let Pair(ready, _chunk_proof) = datum_ready(large_datum_output)
-  let mutated = bytearray.concat(
-    #"00",
-    slice_len(large_datum_output, 1, bytearray.length(large_datum_output) - 1),
-  )
+  let mutated = mutated_window(ready, large_datum_output)
   let witness_data: Data = proof.LedgerOutputProofDatum {
     action: traverse.HeadLargeConstructor {
       constructor_cbor_length: 11,
@@ -508,10 +521,7 @@ test large_fields_with_mutated_window_fails_closed() fail {
     large_datum_output,
     256,
   )
-  let mutated = bytearray.concat(
-    #"00",
-    slice_len(large_datum_output, 1, bytearray.length(large_datum_output) - 1),
-  )
+  let mutated = mutated_window(large_fields, large_datum_output)
   let witness_data: Data = proof.LedgerOutputProofDatum {
     action: traverse.NoAction,
     window: Some(mutated),

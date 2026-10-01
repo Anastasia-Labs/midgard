@@ -8,7 +8,6 @@ import {
   hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   decodeCekContextCborArray,
   validationTraceDescriptorDataFromCore,
@@ -29,6 +28,10 @@ import { forgeDirectMapConversionSuccessor } from "./cek-direct-map-conversion-f
 import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtures.build-accepted-claim-over-rejecting-transaction-fixture.js";
 import { buildForcedValidationDisputeCommitments } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildNativeTransactionTrace } from "./validation-dispute-fixtures.build-native-transaction-trace.js";
+import {
+  forgeLedgerOutputProofSuccessor,
+  type LedgerOutputProofSuccessorForgery,
+} from "./validation-dispute-fixtures.forge-ledger-output-proof-successor.js";
 import { forgeRedeemerFoldTrace } from "./validation-dispute-fixtures.forge-redeemer-select.js";
 import { withMaximumValueAssetProof } from "./value-asset-maximum.js";
 
@@ -78,6 +81,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   cekDirectMapConversion = false,
   assetCount = 0,
   dishonestChallenger = false,
+  ledgerOutputProofForgery,
   maximumAssetProof = false,
   lateNativeItem = false,
   nativeItemWidth = 0,
@@ -156,6 +160,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly cekDirectMapConversion?: boolean;
   readonly assetCount?: number;
   readonly dishonestChallenger?: boolean;
+  /** With `dishonestChallenger`: see {@link LedgerOutputProofSuccessorForgery}. */
+  readonly ledgerOutputProofForgery?: LedgerOutputProofSuccessorForgery;
   readonly maximumAssetProof?: boolean;
   readonly lateNativeItem?: boolean;
   readonly nativeItemWidth?: number;
@@ -612,79 +618,22 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   }
   if (
     dishonestChallenger &&
-    (resolveInputsKind === "membershipStep" ||
+    (ledgerOutputProofForgery !== undefined ||
+      resolveInputsKind === "membershipStep" ||
       (disputedPhase === "scriptSources" && scriptSourcesSemanticIndex === 2))
   ) {
     // Ledger-output-proof step: the evidence builder demands the exact
     // adjacent successor work witness, so a bare forged work root dies
-    // locally. Supply a well-encoded dishonest continuation instead — the
-    // honest successor with its output-proof control's leading small-int
-    // item flipped in place — so refusal reaches the on-chain stage yield.
-    // The carrier holds constr items the Midgard test codec refuses, so the
-    // control is located through Lucid's Data decode and patched at the
-    // byte level (an in-place flip keeps every enclosing length header, so
-    // the patched carrier is exactly the disputed witness with only its
-    // extension bytes exchanged).
-    const successorIndex = disputedLowIndex + 1;
-    const adjacent = operatorWitnesses[successorIndex]!;
-    const carrierHex = adjacent.cbor.toString("hex");
-    const carrierItems = Data.from(
-      aikenSerialisedPlutusDataCborPreservingMapOrder(carrierHex),
-    );
-    if (!Array.isArray(carrierItems)) {
-      throw new Error("output proof successor carrier must be a list");
-    }
-    const controlHex =
-      resolveInputsKind === "membershipStep"
-        ? (() => {
-            const pendingHex = carrierItems[9];
-            if (typeof pendingHex !== "string") {
-              throw new Error("pending input item must be bytes");
-            }
-            const pendingItems = Data.from(
-              aikenSerialisedPlutusDataCborPreservingMapOrder(pendingHex),
-            );
-            if (
-              !Array.isArray(pendingItems) ||
-              typeof pendingItems[4] !== "string"
-            ) {
-              throw new Error("pending input output proof must be bytes");
-            }
-            return pendingItems[4];
-          })()
-        : carrierItems[30];
-    if (typeof controlHex !== "string") {
-      throw new Error("output proof control item must be bytes");
-    }
-    let controlAt = carrierHex.indexOf(controlHex);
-    while (controlAt >= 0 && controlAt % 2 !== 0) {
-      controlAt = carrierHex.indexOf(controlHex, controlAt + 1);
-    }
-    if (controlAt < 0) {
-      throw new Error(
-        "output proof control bytes not found in the successor carrier",
-      );
-    }
-    const controlStart = controlAt / 2;
-    const cbor = Buffer.from(adjacent.cbor);
-    // The control is a 17-item raw frame (header 0x91) whose first item is a
-    // single-byte small integer; flipping its low bit keeps the encoding
-    // well-formed while guaranteeing a mismatch with the honest successor.
-    if (cbor[controlStart] !== 0x91 || cbor[controlStart + 1]! > 0x17) {
-      throw new Error(
-        "output proof control does not open with a 17-item frame and small-int item",
-      );
-    }
-    cbor[controlStart + 1] = cbor[controlStart + 1]! ^ 0x01;
-    operatorWitnesses[successorIndex] = { ...adjacent, cbor };
-    operatorStates[successorIndex] = {
-      ...operatorStates[successorIndex]!,
-      workRoot: hashMidgardValidationWorkWitness({
-        phase: adjacent.phase,
-        programCounter: adjacent.programCounter,
-        witnessCbor: cbor,
-      }),
-    };
+    // locally. Supply a well-encoded dishonest continuation instead, so
+    // refusal reaches the on-chain step.
+    forgeLedgerOutputProofSuccessor({
+      trace: challengerTrace,
+      disputedLowIndex,
+      pendingInputCarrier: disputedPhase === "resolveInputs",
+      forgery: ledgerOutputProofForgery ?? "versionFlip",
+      operatorStates,
+      operatorWitnesses,
+    });
   }
   const operatorTrace: DeterministicValidationMachineTrace = {
     ...challengerTrace,

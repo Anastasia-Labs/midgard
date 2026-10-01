@@ -7,7 +7,7 @@ export const items = (value: Data, count: number, label: string): Data[] => {
   return value;
 };
 
-const bytes = (value: Data | undefined, label: string): string => {
+export const bytes = (value: Data | undefined, label: string): string => {
   if (typeof value !== "string") throw new Error(`${label} must be bytes`);
   return value;
 };

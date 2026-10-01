@@ -98,7 +98,7 @@ export const VALIDATION_AUXILIARY_SHAPES = {
   transactionRedeemerItemBegin: [29, 1],
   ledgerOutputProofBegin: [31, 4],
   ledgerOutputProofStep: [32, 1],
-  ledgerOutputProofFinalize: [33, 2],
+  ledgerOutputProofFinalize: [33, 1],
   ledgerDeltaProofFrame: [34, 2],
   ledgerDeltaOperation: [35, 4],
   scriptSourceHashBlock: [36, 2],

@@ -149,8 +149,8 @@ fn reference_script_facts(
 ///     (`demo/midgard-validation/src/ledger-output-descriptor.ts`), the encoder
 ///     every committed descriptor in DA and persistence comes from; and
 ///   * on-chain, the staged `ledger_output_proof_v1` admission machine, whose
-///     `descriptor_is_exact_v1` proves the same facts from authenticated output
-///     chunks across many transactions.
+///     `terminal_descriptor_v1` derives the same descriptor from authenticated
+///     output chunks across many transactions.
 ///
 /// The staged machine exists because the *validation machine* meets outputs it
 /// cannot afford to hold whole. A one-step transition-trace rule is the

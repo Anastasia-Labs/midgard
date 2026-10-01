@@ -521,7 +521,6 @@ export const canonicalValidationAuxiliaryWitnesses = [
     33,
     auxiliary({
       kind: "ledgerOutputProofFinalize",
-      descriptorCbor: bytes("22"),
       signerProof,
     }),
   ],
