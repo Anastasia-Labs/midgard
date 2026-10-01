@@ -102,17 +102,13 @@ fn until_terminal(
       expect Some(datum_control) = control.datum
       if datum_control.stage == traverse.stage_head {
         proof.LedgerOutputProofDatum {
-          action: traverse.HeadSequence { expected_children: 0 },
+          action: traverse.HeadSequence,
           window: Some(window_bytes),
         }
       } else if datum_control.stage == traverse.stage_fold {
         proof.LedgerOutputProofDatum {
           action: traverse.FinalizeFrame {
-            frame: frame.initial_small_constr_frame_v1(
-              datum_constructor,
-              #"",
-              0,
-            ),
+            frame: frame.initial_small_constr_frame_v1(datum_constructor, #""),
             parent: None,
           },
           window: None,

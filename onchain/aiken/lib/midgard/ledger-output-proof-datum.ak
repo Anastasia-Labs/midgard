@@ -28,7 +28,7 @@ fn fold_control(control: raw.Frame) -> List<Data> {
   expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 10
+  expect list.length(items) == 9
   expect integer(items, 0) == 1
   expect integer(items, 1) == traverse.stage_fold
   expect integer(items, 2) >= 0 && integer(items, 2) <= 4294967295
@@ -37,10 +37,7 @@ fn fold_control(control: raw.Frame) -> List<Data> {
   expect bytearray.length(builtin.un_b_data(field(items, 5))) == 32
   let none = builtin.constr_data(1, [])
   expect
-    field(items, 6) == none && field(items, 7) == none && field(items, 8) == none && field(
-      items,
-      9,
-    ) == none
+    field(items, 6) == none && field(items, 7) == none && field(items, 8) == none
   items
 }
 
@@ -153,7 +150,7 @@ pub fn finalize_frame(
             builtin.i_data(transition.next_stage)
           } else if index == 5 {
             builtin.b_data(transition.next_frame_root)
-          } else if index == 9 {
+          } else if index == 8 {
             result_data
           } else {
             old
@@ -225,16 +222,9 @@ pub fn head_scalar(
 ) -> Option<stages.StepResult> {
   let current = head_control(control)
   let (action, source_bytes) = head_source(control, current, witness)
-  expect Pair(1, [item_length]) = builtin.un_constr_data(action)
+  expect Pair(1, []) = builtin.un_constr_data(action)
   expect Some(bytes) = source_bytes
-  next_control(
-    control,
-    traverse.prevalidated_head_scalar(
-      current,
-      bytes,
-      builtin.un_i_data(item_length),
-    ),
-  )
+  next_control(control, traverse.prevalidated_head_scalar(current, bytes))
 }
 
 pub fn head_sequence(
@@ -243,15 +233,11 @@ pub fn head_sequence(
 ) -> Option<stages.StepResult> {
   let current = head_control(control)
   let (action, source_bytes) = head_source(control, current, witness)
-  expect Pair(2, [expected_children]) = builtin.un_constr_data(action)
+  expect Pair(2, []) = builtin.un_constr_data(action)
   expect Some(bytes) = source_bytes
   next_simple_control(
     control,
-    traverse.prevalidated_head_sequence(
-      current,
-      bytes,
-      builtin.un_i_data(expected_children),
-    ),
+    traverse.prevalidated_head_sequence(current, bytes),
   )
 }
 
@@ -269,32 +255,31 @@ pub fn head_large_constructor(
 ) -> Option<stages.StepResult> {
   let current = head_control(control)
   let (action, source_bytes) = head_source(control, current, witness)
-  expect Pair(4, [constructor_length,
-        expected_children]) = builtin.un_constr_data(action)
+  expect Pair(4, []) = builtin.un_constr_data(action)
   expect Some(bytes) = source_bytes
   next_control(
     control,
-    traverse.prevalidated_head_large_constructor(
-      current,
-      bytes,
-      builtin.un_i_data(constructor_length),
-      builtin.un_i_data(expected_children),
-    ),
+    traverse.prevalidated_head_large_constructor(current, bytes),
   )
 }
 
+/// Validating decode of a head-window traverse sub-control: `stage_head`, or
+/// the `stage_close` position of an open-ended frame, whose head window is the
+/// next child's head unless it starts with the 0xff break (the close role).
+/// Restates `head_stage_is_well_formed` / `closed_stage_is_well_formed` with
+/// all three optional slots absent.
 fn head_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
   expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
-        version, stage, start, length, offset, root, pending, int_control,
+        version, stage_data, start, length, offset, root, int_control,
         byte_control, result,
       ]
     = builtin.un_list_data(data)
-  expect
-    builtin.un_i_data(version) == 1 && builtin.un_i_data(stage) == traverse.stage_head
+  let stage = builtin.un_i_data(stage_data)
+  expect builtin.un_i_data(version) == 1
   let source_start = builtin.un_i_data(start)
   let source_length = builtin.un_i_data(length)
   let cursor = builtin.un_i_data(offset)
@@ -302,18 +287,21 @@ fn head_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect source_start >= 0 && source_start <= 4294967295
   expect source_length > 0 && source_length <= 4294967295
   expect cursor >= 0 && cursor < source_length
-  expect bytearray.length(frame_root) == 32 || frame_root == #"" && cursor == 0
-  let none = builtin.constr_data(1, [])
   expect
-    pending == none && int_control == none && byte_control == none && result == none
+    if stage == traverse.stage_head {
+      bytearray.length(frame_root) == 32 || frame_root == #"" && cursor == 0
+    } else {
+      stage == traverse.stage_close && bytearray.length(frame_root) == 32
+    }
+  let none = builtin.constr_data(1, [])
+  expect int_control == none && byte_control == none && result == none
   traverse.DataTraverseControlV1 {
     version: 1,
-    stage: traverse.stage_head,
+    stage,
     source_start,
     source_length,
     offset: cursor,
     frame_root,
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: None,
@@ -350,8 +338,7 @@ fn next_simple_control(
   when result is {
     None -> None
     Some(next) -> {
-      expect
-        next.pending_large_expected_children == None && next.integer == None && next.bytes == None && next.result == None
+      expect next.integer == None && next.bytes == None && next.result == None
       let none = builtin.constr_data(1, [])
       let data = builtin.list_data(
         [
@@ -361,7 +348,6 @@ fn next_simple_control(
           builtin.i_data(next.source_length),
           builtin.i_data(next.offset),
           builtin.b_data(next.frame_root),
-          none,
           none,
           none,
           none,
@@ -388,10 +374,7 @@ fn scalar_prefix(
   expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
-      [
-        version, stage, start, length, offset, root, pending, int_data,
-        byte_data, result,
-      ]
+      [version, stage, start, length, offset, root, int_data, byte_data, result]
     = builtin.un_list_data(data)
   expect builtin.un_i_data(version) == 1 && builtin.un_i_data(stage) == kind
   let source_start = builtin.un_i_data(start)
@@ -403,7 +386,7 @@ fn scalar_prefix(
   expect cursor >= 0 && cursor <= source_length
   expect frame_root == #"" || bytearray.length(frame_root) == 32
   let none = builtin.constr_data(1, [])
-  expect pending == none && result == none
+  expect result == none
   let active = if kind == traverse.stage_integer {
     expect byte_data == none
     int_data
@@ -432,7 +415,6 @@ fn integer_scalar_control(control: raw.Frame) -> traverse.DataTraverseControlV1 
     source_length,
     offset: cursor,
     frame_root,
-    pending_large_expected_children: None,
     integer: Some(integer),
     bytes: None,
     result: None,
@@ -455,7 +437,6 @@ fn bytes_scalar_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
     source_length,
     offset: cursor,
     frame_root,
-    pending_large_expected_children: None,
     integer: None,
     bytes: Some(bytes),
     result: None,
@@ -469,8 +450,7 @@ fn completed_scalar(
   when result is {
     None -> None
     Some(next) -> {
-      expect
-        next.pending_large_expected_children == None && next.integer == None && next.bytes == None
+      expect next.integer == None && next.bytes == None
       expect Some(result_data) = cbor.deserialise(
         traverse.encode_optional_summary_v1(next.result),
       )
@@ -483,7 +463,6 @@ fn completed_scalar(
           builtin.i_data(next.source_length),
           builtin.i_data(next.offset),
           builtin.b_data(next.frame_root),
-          none,
           none,
           none,
           result_data,
@@ -700,8 +679,8 @@ pub fn next_source_span(control: raw.Frame) -> Option<(Int, Int)> {
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
-        version, stage, start, length, offset, root, _pending, int_data,
-        byte_data, _result,
+        version, stage, start, length, offset, root, int_data, byte_data,
+        _result,
       ]
     = builtin.un_list_data(data)
   let current = traverse.DataTraverseControlV1 {
@@ -711,7 +690,6 @@ pub fn next_source_span(control: raw.Frame) -> Option<(Int, Int)> {
     source_length: builtin.un_i_data(length),
     offset: builtin.un_i_data(offset),
     frame_root: builtin.un_b_data(root),
-    pending_large_expected_children: None,
     integer: unchecked_optional(int_data, unchecked_integer_scalar),
     bytes: unchecked_optional(byte_data, unchecked_bytes_scalar),
     result: None,
@@ -737,7 +715,6 @@ fn claimed_integer_traverse(
       source_length,
       offset,
       frame_root,
-      pending_large_expected_children: None,
       integer: Some(scalar),
       bytes: None,
       result: None,
@@ -761,7 +738,6 @@ fn claimed_bytes_traverse(
       source_length,
       offset,
       frame_root,
-      pending_large_expected_children: None,
       integer: None,
       bytes: Some(scalar),
       result: None,
@@ -846,7 +822,7 @@ pub fn advance_integer(
     Some(next) -> {
       expect
         next.source_start == integer.source_start && next.source_length == integer.source_length
-      replace_scalar(control, 7, integer_control.control_data_v1(next))
+      replace_scalar(control, 6, integer_control.control_data_v1(next))
     }
   }
 }
@@ -858,31 +834,36 @@ pub fn advance_bytes(
 ) -> Option<stages.StepResult> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
   expect stages.facts_empty(control)
-  let scalar = unchecked_bytes_scalar(claimed_scalar_payload(claimed_scalar))
+  let (source_start, source_length, _offset, _root, scalar_data) = claimed_scalar_fields(
+    claimed_scalar,
+  )
+  let scalar = unchecked_bytes_scalar(scalar_data)
   expect scalar.stage != bytes_control.stage_terminal
+  // The enclosing traverse end bounds a measuring step's chunk window; the
+  // measured extent stays inside it (`step_measure`), and every other stage
+  // keeps the scalar's extent.
+  let source_end = source_start + source_length
   let (action, bytes) = source(
     control,
-    bytes_control.prevalidated_next_source_span(scalar),
+    bytes_control.prevalidated_next_source_span(scalar, source_end),
     witness,
   )
   expect Pair(0, []) = builtin.un_constr_data(action)
-  when bytes_control.prevalidated_step_v1(scalar, bytes) is {
+  when bytes_control.prevalidated_step_v1(scalar, source_end, bytes) is {
     None -> None
     Some(next) -> {
-      expect
-        next.source_start == scalar.source_start && next.source_length == scalar.source_length
-      replace_scalar(control, 8, bytes_control.control_data_v1(next))
+      expect next.source_start == scalar.source_start
+      replace_scalar(control, 7, bytes_control.control_data_v1(next))
     }
   }
 }
 
 /// Validating decode of a large-stage traverse sub-control (stages 3 and 4).
 /// The large transitions run the traverse machine's own control-shape checks
-/// rather than a scalar claim: their controls carry states (pending children,
-/// the streaming constructor blob) the scalar attestation yields deliberately
-/// do not serve, so these yields re-state every clause of
-/// `control_is_well_formed` for their stage locally — the shared prefix
-/// ranges, the pending-children window, the absent bytes/result slots and
+/// rather than a scalar claim: their controls carry a state (the streaming
+/// constructor blob) the scalar attestation yields deliberately do not serve,
+/// so these yields re-state every clause of `control_is_well_formed` for their
+/// stage locally — the shared prefix ranges, the absent bytes/result slots and
 /// `nested_integer_fits` over the fully validated integer sub-control —
 /// without linking the bytes codec the stage can never hold.
 fn large_stage_control(
@@ -893,10 +874,7 @@ fn large_stage_control(
   expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
-      [
-        version, stage, start, length, offset, root, pending, int_data,
-        byte_data, result,
-      ]
+      [version, stage, start, length, offset, root, int_data, byte_data, result]
     = builtin.un_list_data(data)
   expect builtin.un_i_data(version) == 1 && builtin.un_i_data(stage) == kind
   let source_start = builtin.un_i_data(start)
@@ -907,9 +885,6 @@ fn large_stage_control(
   expect source_length > 0 && source_length <= 4294967295
   expect cursor >= 0 && cursor <= source_length
   expect frame_root == #"" || bytearray.length(frame_root) == 32
-  expect Pair(0, [children_data]) = builtin.un_constr_data(pending)
-  let children = builtin.un_i_data(children_data)
-  expect children >= 0 && children <= 4294967295
   let none = builtin.constr_data(1, [])
   expect byte_data == none && result == none
   expect Pair(0, [inner]) = builtin.un_constr_data(int_data)
@@ -937,7 +912,6 @@ fn large_stage_control(
     source_length,
     offset: cursor,
     frame_root,
-    pending_large_expected_children: Some(children),
     integer: Some(integer),
     bytes: None,
     result: None,
@@ -1026,7 +1000,7 @@ pub fn advance_large_constructor(
         Some(next) -> {
           expect
             next.source_start == integer.source_start && next.source_length == integer.source_length
-          replace_scalar(control, 7, integer_control.control_data_v1(next))
+          replace_scalar(control, 6, integer_control.control_data_v1(next))
         }
       }
     }
@@ -1034,7 +1008,9 @@ pub fn advance_large_constructor(
 }
 
 /// The `NoAction` completion of a streamed large constructor: its sequence
-/// header byte opens the field frame (traverse stage 4). This restates
+/// header byte opens the field frame (traverse stage 4) — 0x80 the empty
+/// field list (straight to the fold), 0x9f an open-ended one (its mandatory
+/// first field's head). This restates
 /// `cek_data_traverse_v1.prevalidated_advance_large_fields` with the direct
 /// simple-control successor; the one successor clause that does not follow
 /// from the pre control's stage-4 clauses — a head successor must still have
@@ -1045,7 +1021,6 @@ pub fn advance_large_fields(
 ) -> Option<stages.StepResult> {
   let current = large_stage_control(control, traverse.stage_large_fields)
   expect Some(integer) = current.integer
-  expect Some(children) = current.pending_large_expected_children
   expect Some(active_blob) = integer.blob
   let (action, bytes) = source(
     control,
@@ -1058,22 +1033,17 @@ pub fn advance_large_fields(
     witness,
   )
   expect Pair(0, []) = builtin.un_constr_data(action)
-  let sequence_header = if children == 0 {
-    128
-  } else {
-    159
-  }
   when Pair(bytes, blob.finalize_v1(active_blob)) is {
-    Pair(Some(window), Some(constructor_cbor_root)) ->
-      if bytearray.at(window, 0) == sequence_header {
+    Pair(Some(window), Some(constructor_cbor_root)) -> {
+      let header = bytearray.at(window, 0)
+      if header == 128 || header == 159 {
         let opened = frame.initial_large_constr_frame_v1(
           constructor_cbor_root,
           integer.source_length,
           integer.memory,
           current.frame_root,
-          children,
         )
-        let next_stage = if children == 0 {
+        let next_stage = if header == 128 {
           traverse.stage_fold
         } else {
           traverse.stage_head
@@ -1089,7 +1059,6 @@ pub fn advance_large_fields(
                 stage: next_stage,
                 offset: current.offset + 1,
                 frame_root: frame.hash_frame_v1(opened),
-                pending_large_expected_children: None,
                 integer: None,
               },
             ),
@@ -1098,12 +1067,13 @@ pub fn advance_large_fields(
       } else {
         None
       }
+    }
     _ -> None
   }
 }
 
 /// Validating decode of a close-stage traverse sub-control: every clause of
-/// `closed_stage_is_well_formed` for `stage_close`, with all four optional
+/// `closed_stage_is_well_formed` for `stage_close`, with all three optional
 /// slots absent, so no scalar codec is linked.
 fn close_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
@@ -1111,8 +1081,8 @@ fn close_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
-        version, stage, start, length, offset, root, pending, int_control,
-        byte_control, result,
+        version, stage, start, length, offset, root, int_control, byte_control,
+        result,
       ]
     = builtin.un_list_data(data)
   expect
@@ -1126,8 +1096,7 @@ fn close_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect cursor >= 0 && cursor < source_length
   expect bytearray.length(frame_root) == 32
   let none = builtin.constr_data(1, [])
-  expect
-    pending == none && int_control == none && byte_control == none && result == none
+  expect int_control == none && byte_control == none && result == none
   traverse.DataTraverseControlV1 {
     version: 1,
     stage: traverse.stage_close,
@@ -1135,15 +1104,16 @@ fn close_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
     source_length,
     offset: cursor,
     frame_root,
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: None,
   }
 }
 
-/// The `NoAction` close step: the container's indefinite-length break byte
-/// moves the traversal to the fold stage (traverse stage 5).
+/// The `NoAction` close step: the open-ended container's authenticated 0xff
+/// break, at the head of the close-stage window, moves the traversal to the
+/// fold stage (traverse stage 5). Any other window is the next child's head,
+/// taken by a head role instead.
 pub fn close(control: raw.Frame, witness: Data) -> Option<stages.StepResult> {
   let current = close_control(control)
   let (action, bytes) = source(

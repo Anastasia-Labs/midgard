@@ -228,7 +228,7 @@ fn until_terminal(
       expect Some(datum_control) = control.datum
       if datum_control.stage == traverse.stage_head {
         proof.LedgerOutputProofDatum {
-          action: traverse.HeadSequence { expected_children: 0 },
+          action: traverse.HeadSequence,
           window: {
             expect Some(window) = control.span_window
             Some(
@@ -246,7 +246,6 @@ fn until_terminal(
             frame: data_frame.initial_small_constr_frame_v1(
               datum_constructor,
               #"",
-              0,
             ),
             parent: None,
           },

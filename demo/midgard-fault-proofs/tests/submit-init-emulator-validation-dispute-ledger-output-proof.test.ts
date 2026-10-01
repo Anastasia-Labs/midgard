@@ -177,6 +177,24 @@ it.each([
   300_000,
 );
 
+// A finalize step over a datum-bearing output: the finalize plan reads the
+// datum traversal's folded result, which the datum-less rows above never
+// carry.
+it("proves a script-sources datum+value summary attach over a datum-bearing output through permanent proof and removal", async () => {
+  const result = await runForcedValidationDisputeScenario(
+    ({ operatorVkey, now }) =>
+      buildForgedOperatorSuccessorValidationDisputeFixture({
+        operatorVkey,
+        now,
+        disputedPhase: "scriptSources",
+        scriptSourcesSemanticIndex: 3,
+        disputedMatchOrdinal: 0,
+        outputDatumCbor: MULTI_YIELD_DATUM_CBOR,
+      }),
+  );
+  expectPositiveBasis(result, "script-sources datum-bearing finalize");
+}, 300_000);
+
 it("proves script-sources output-proof semantic 2 through permanent proof and removal", async () => {
   const result = await runForcedValidationDisputeScenario(
     ({ operatorVkey, now }) =>
@@ -430,6 +448,62 @@ it.each([
           disputedMatchOrdinal: 0,
           dishonestChallenger: true,
           ledgerOutputProofForgery: "descriptorBoundLeafFacts",
+        }),
+      ),
+    ).rejects.toThrow(/semantic-resolution failed: EvaluatorError/);
+  },
+  300_000,
+);
+
+// One successor per head step. The nested `[1, 2, 3]` list of the multi-yield
+// datum is its second head-sequence step (after the outer constructor).
+// Every head takes no argument: the pushed frame is open-ended, its
+// `expected_children` pinned to zero and its close left to the authenticated
+// break, so the honest head proves and a successor recording a child count
+// (what a head taking that count from the redeemer admitted) is refused.
+const NESTED_HEAD_SEQUENCE = {
+  ledgerOutputDatumAction: "headSequence",
+  disputedMatchOrdinal: 1,
+  outputDatumCbor: MULTI_YIELD_DATUM_CBOR,
+} as const;
+
+it.each([
+  ["scriptSources", { scriptSourcesSemanticIndex: 2 }],
+  ["resolveInputs", { resolveInputsKind: "membershipStep" as const }],
+] as const)(
+  "proves a %s nested datum head-sequence step through permanent proof and removal",
+  async (disputedPhase, selector) => {
+    const result = await runForcedValidationDisputeScenario(
+      ({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase,
+          ...selector,
+          ...NESTED_HEAD_SEQUENCE,
+        }),
+    );
+    expectPositiveBasis(result, `${disputedPhase} nested head-sequence step`);
+  },
+  300_000,
+);
+
+it.each([
+  ["scriptSources", { scriptSourcesSemanticIndex: 2 }],
+  ["resolveInputs", { resolveInputsKind: "membershipStep" as const }],
+] as const)(
+  "refuses a %s head-sequence successor recording an open frame child count",
+  async (disputedPhase, selector) => {
+    await expect(
+      runForcedValidationDisputeScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase,
+          ...selector,
+          ...NESTED_HEAD_SEQUENCE,
+          dishonestChallenger: true,
+          ledgerOutputProofForgery: "openFrameChildCount",
         }),
       ),
     ).rejects.toThrow(/semantic-resolution failed: EvaluatorError/);

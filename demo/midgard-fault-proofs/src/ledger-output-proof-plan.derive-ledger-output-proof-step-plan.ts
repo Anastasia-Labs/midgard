@@ -253,7 +253,7 @@ export const deriveLedgerOutputProofFinalizeClaims = (
   if (datumOffset === -1n) claimedDatumSummary = none();
   else {
     const datumResult = optionInner(
-      datumTraverseItems(control)[9],
+      datumTraverseItems(control)[8],
       "datum result",
     );
     if (datumResult === null)
@@ -316,7 +316,7 @@ export const deriveLedgerOutputProofTerminalDescriptorCbor = (
   let datum: ReturnType<typeof summaryOf> | null = null;
   if (integer(scan[16], "datum offset") !== -1n) {
     const datumResult = optionInner(
-      datumTraverseItems(control)[9],
+      datumTraverseItems(control)[8],
       "datum result",
     );
     if (datumResult === null)

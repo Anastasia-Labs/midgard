@@ -65,9 +65,7 @@ describe("ledger output proof successor carriage", () => {
 describe("ledger output proof datum role selection", () => {
   const controlAtTraverseStage = (stage: bigint): Data[] => {
     const control: Data[] = Array.from({ length: 12 }, () => 0n);
-    control[7] = new Constr(0, [
-      [1n, stage, 0n, 1n, 0n, "", new Constr(1, []), 0n, 0n, 0n],
-    ]);
+    control[7] = new Constr(0, [[1n, stage, 0n, 1n, 0n, "", 0n, 0n, 0n]]);
     return control;
   };
   const integerControl = controlAtTraverseStage(1n);
@@ -177,7 +175,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       some(integerWire),
       NONE,
       NONE,
@@ -212,7 +209,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       some(integerWire),
       NONE,
       NONE,
@@ -257,7 +253,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       some(integerWire),
       NONE,
       NONE,
@@ -290,7 +285,6 @@ describe("ledger output proof step claims", () => {
       2n,
       ROOT,
       NONE,
-      NONE,
       some(bytesWire),
       NONE,
     ]);
@@ -320,7 +314,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       NONE,
       NONE,
       NONE,
@@ -360,7 +353,6 @@ describe("ledger output proof finalize claims", () => {
       8n,
       8n,
       ROOT,
-      NONE,
       NONE,
       NONE,
       some(["22".repeat(32), 3n, 4n]),

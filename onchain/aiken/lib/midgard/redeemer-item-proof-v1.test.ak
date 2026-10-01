@@ -184,7 +184,7 @@ test redeemer_item_rejects_mutated_header_tail_and_chunk_evidence() {
 
 test redeemer_item_terminal_data_summary_agrees_with_typescript() {
   let terminal = redeemer_item_proof_v1.decode_control_v1(
-    #"900101030001085820f7f0d1013b70311a09ce7afa0e0ff24d93f67af1ce449ce73e699c88058f93ed2020000004010a14d8799f8a010704010140d87a80d87a80d87a80d8799f8358200c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da20105ffff",
+    #"900101030001085820f7f0d1013b70311a09ce7afa0e0ff24d93f67af1ce449ce73e699c88058f93ed2020000004010a14d8799f89010704010140d87a80d87a80d8799f8358200c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da20105ffff",
   )
   expect Some(summary) = redeemer_item_proof_v1.finalize_v1(terminal)
   expect Some(traversal) = terminal.traversal

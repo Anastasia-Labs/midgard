@@ -113,10 +113,7 @@ export const buildMidgardCekDataTraverseTrace = ({
         : Buffer.from(hashMidgardCekDataFrame(parent.frame));
     switch (node.kind) {
       case "list":
-        return initialMidgardCekDataListFrame({
-          tail,
-          expectedChildren: node.children.length,
-        });
+        return initialMidgardCekDataListFrame({ tail });
       case "map":
         return initialMidgardCekDataMapFrame({
           tail,
@@ -126,7 +123,6 @@ export const buildMidgardCekDataTraverseTrace = ({
         return initialMidgardCekDataSmallConstrFrame({
           constructor: node.constructor,
           tail,
-          expectedChildren: node.children.length,
         });
       case "constrLarge":
         if (largeConstructor === null) {
@@ -137,7 +133,6 @@ export const buildMidgardCekDataTraverseTrace = ({
           constructorCborLength: BigInt(node.constructorCborLength),
           constructorMemory: largeConstructor.memory,
           tail,
-          expectedChildren: node.children.length,
         });
     }
   };
@@ -149,17 +144,18 @@ export const buildMidgardCekDataTraverseTrace = ({
     const operation = operations.pop()!;
     if (operation.kind === "visit") {
       const node = nodes[operation.nodeIndex]!;
+      // A first child is read at `Head`; every later child of an open-ended
+      // frame is read from the `Close` window that would otherwise hold the
+      // break.
       if (
-        control.stage !== MidgardCekDataTraverseStages.Head ||
+        (control.stage !== MidgardCekDataTraverseStages.Head &&
+          control.stage !== MidgardCekDataTraverseStages.Close) ||
         control.offset !== node.start
       ) {
         throw new Error("V1 CEK Data traversal evidence lost source position");
       }
       if (node.kind === "scalar") {
-        emit({
-          kind: "headScalar",
-          itemLength: node.end - node.start,
-        });
+        emit({ kind: "headScalar" });
         while (
           (currentStage() === MidgardCekDataTraverseStages.Integer &&
             control.integer!.stage !== MidgardCekDataIntegerStages.Terminal) ||
@@ -190,11 +186,7 @@ export const buildMidgardCekDataTraverseTrace = ({
       if (node.kind === "map") {
         emit({ kind: "headMap" });
       } else if (node.kind === "constrLarge") {
-        emit({
-          kind: "headLargeConstructor",
-          constructorCborLength: node.constructorCborLength,
-          expectedChildren: node.children.length,
-        });
+        emit({ kind: "headLargeConstructor" });
         while (
           currentStage() === MidgardCekDataTraverseStages.LargeConstructor
         ) {
@@ -216,10 +208,7 @@ export const buildMidgardCekDataTraverseTrace = ({
           memory: control.integer.memory,
         };
       } else {
-        emit({
-          kind: "headSequence",
-          expectedChildren: node.children.length,
-        });
+        emit({ kind: "headSequence" });
       }
       const frame = initialFrame(node, operation.parent, largeConstructor);
       if (node.kind === "constrLarge") {

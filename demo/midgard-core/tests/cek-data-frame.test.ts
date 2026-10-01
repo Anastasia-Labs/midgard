@@ -63,7 +63,6 @@ describe("authenticated CEK Data frames V1", () => {
       constructorCborLength: 16_384n,
       constructorMemory: 16_388n,
       tail: Buffer.alloc(32, 0x42),
-      expectedChildren: children.length,
     });
     let frame = appendAll(initial, children);
 
@@ -139,15 +138,12 @@ describe("authenticated CEK Data frames V1", () => {
   });
 
   it("finalizes exact empty and small-container summaries", () => {
-    const emptyList = initialMidgardCekDataListFrame({
-      expectedChildren: 0,
-    });
+    const emptyList = initialMidgardCekDataListFrame();
     const emptyMap = initialMidgardCekDataMapFrame({
       expectedChildren: 0,
     });
     const emptyConstr = initialMidgardCekDataSmallConstrFrame({
       constructor: 127n,
-      expectedChildren: 0,
     });
 
     expect(finalizeMidgardCekDataFrame(emptyList)).toStrictEqual(
@@ -166,9 +162,7 @@ describe("authenticated CEK Data frames V1", () => {
 
   it("fails closed for forged frames and wrong fold order", () => {
     const children = [summary(0x31, 1n, 5n), summary(0x32, 2n, 6n)];
-    const initial = initialMidgardCekDataListFrame({
-      expectedChildren: children.length,
-    });
+    const initial = initialMidgardCekDataListFrame();
     const full = appendAll(initial, children);
     const firstMembership = childMembership(children, 0);
     const forgedEmpty = {
@@ -209,14 +203,13 @@ describe("authenticated CEK Data frames V1", () => {
       constructorCborLength: 16_384n,
       constructorMemory: 16_388n,
       tail: Buffer.alloc(32, 0x42),
-      expectedChildren: 2,
     });
 
     expect(encodeMidgardCekDataFrame(frame).toString("hex")).toBe(
-      `8b01005820${"c7".repeat(32)}1940001940045820${"42".repeat(32)}020080008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000`,
+      `8b01005820${"c7".repeat(32)}1940001940045820${"42".repeat(32)}000080008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000`,
     );
     expect(hashMidgardCekDataFrame(frame).toString("hex")).toBe(
-      "f1f01b15e143b47b513a5be7c071a57709fa88b183a9220a9a81a1307b5334db",
+      "4933e73934afebd5eb26cbaf32513b4e660ba5f1f2d4a42dba9cbd5aa75d6711",
     );
   });
 });

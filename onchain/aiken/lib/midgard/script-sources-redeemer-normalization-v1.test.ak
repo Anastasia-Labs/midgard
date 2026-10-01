@@ -48,7 +48,6 @@ fn fold_control() -> cek_data_traverse_v1.DataTraverseControlV1 {
     source_length: 10,
     offset: 10,
     frame_root: hash_a,
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: None,
@@ -63,7 +62,6 @@ fn finalize_control() -> cek_data_traverse_v1.DataTraverseControlV1 {
     source_length: 12,
     offset: 12,
     frame_root: hash_b,
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: None,
@@ -259,7 +257,7 @@ fn outer_normalized_fold_map_state() -> normalization.OuterNormalizedScriptSourc
 }
 
 fn terminal_finalize_frame() -> cek_data_frame_v1.DataFrameV1 {
-  cek_data_frame_v1.initial_list_frame_v1(#"", 0)
+  cek_data_frame_v1.initial_list_frame_v1(#"")
 }
 
 fn terminal_finalize_action() -> cek_data_traverse_v1.DataTraverseActionV1 {
@@ -278,7 +276,6 @@ fn terminal_finalize_control() -> cek_data_traverse_v1.DataTraverseControlV1 {
     source_length: 12,
     offset: 12,
     frame_root: cek_data_frame_v1.hash_frame_v1(frame),
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: None,
@@ -286,13 +283,12 @@ fn terminal_finalize_control() -> cek_data_traverse_v1.DataTraverseControlV1 {
 }
 
 fn append_parent_frame() -> cek_data_frame_v1.DataFrameV1 {
-  cek_data_frame_v1.initial_list_frame_v1(#"", 2)
+  cek_data_frame_v1.initial_list_frame_v1(#"")
 }
 
 fn parent_append_finalize_frame() -> cek_data_frame_v1.DataFrameV1 {
   cek_data_frame_v1.initial_list_frame_v1(
     cek_data_frame_v1.hash_frame_v1(append_parent_frame()),
-    0,
   )
 }
 
@@ -312,7 +308,6 @@ fn parent_append_finalize_control() -> cek_data_traverse_v1.DataTraverseControlV
     source_length: 12,
     offset: 6,
     frame_root: cek_data_frame_v1.hash_frame_v1(frame),
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: None,
@@ -828,7 +823,7 @@ test finalize_frame_action_only_identity_rejects_frame_parent_family_and_hash_mu
   }
   let wrong_parent = cek_data_traverse_v1.FinalizeFrame {
     frame,
-    parent: Some(cek_data_frame_v1.initial_list_frame_v1(#"", 0)),
+    parent: Some(cek_data_frame_v1.initial_list_frame_v1(#"")),
   }
   and {
     normalization.traversal_action_identity_is_bound_v1(
@@ -1433,7 +1428,6 @@ test finalize_shared_core_matches_generic_terminal_completion() {
       ..control,
       stage: transition.next_stage,
       frame_root: transition.next_frame_root,
-      pending_large_expected_children: None,
       integer: None,
       bytes: None,
       result: transition.next_result,
@@ -1464,17 +1458,16 @@ test finalize_shared_core_matches_generic_authenticated_parent_append() {
     action,
   )
   and {
-    parent_frame.expected_children == 2,
+    parent_frame.expected_children == 0,
     parent_frame.child_count == 0,
     next_parent.child_count == 1,
-    transition.next_stage == cek_data_traverse_v1.stage_head,
+    transition.next_stage == cek_data_traverse_v1.stage_close,
     transition.next_frame_root == cek_data_frame_v1.hash_frame_v1(next_parent),
     transition.next_result == None,
     generic_next == cek_data_traverse_v1.DataTraverseControlV1 {
       ..control,
       stage: transition.next_stage,
       frame_root: transition.next_frame_root,
-      pending_large_expected_children: None,
       integer: None,
       bytes: None,
       result: transition.next_result,
@@ -1591,7 +1584,9 @@ test finalize_parent_append_authenticated_prefix_hash_equals_generic_and_expecte
 test finalize_terminal_rejects_frame_nonfinalized_parent_and_offset_mutations() {
   let control = terminal_finalize_control()
   let frame = terminal_finalize_frame()
-  let nonfinalized = cek_data_frame_v1.initial_list_frame_v1(#"", 1)
+  // A list is finalizable at any count (its break closes it), so the frame
+  // that cannot finalize is a map short of its header count.
+  let nonfinalized = cek_data_frame_v1.initial_map_frame_v1(#"", 2)
   and {
     cek_data_traverse_v1.prevalidated_finalize_frame_transition_v1(
       control.frame_root,
@@ -1639,10 +1634,10 @@ test finalize_parent_append_rejects_absent_wrong_malformed_and_full_parent() {
     ..parent,
     expected_children: -1,
   }
-  let full_parent = cek_data_frame_v1.initial_list_frame_v1(#"", 0)
+  // Only a map carries a header count, so only a map parent can be full.
+  let full_parent = cek_data_frame_v1.initial_map_frame_v1(#"", 0)
   let full_parent_child = cek_data_frame_v1.initial_list_frame_v1(
     cek_data_frame_v1.hash_frame_v1(full_parent),
-    0,
   )
   and {
     cek_data_traverse_v1.prevalidated_finalize_frame_transition_v1(
@@ -1664,7 +1659,7 @@ test finalize_parent_append_rejects_absent_wrong_malformed_and_full_parent() {
       control.offset,
       control.source_length,
       frame,
-      Some(cek_data_frame_v1.initial_list_frame_v1(#"", 1)),
+      Some(cek_data_frame_v1.initial_list_frame_v1(hash_a)),
     ) == None,
     cek_data_traverse_v1.prevalidated_finalize_frame_transition_v1(
       control.frame_root,

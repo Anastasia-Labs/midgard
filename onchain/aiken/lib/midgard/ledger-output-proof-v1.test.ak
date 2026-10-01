@@ -27,7 +27,7 @@ const malformed_nonminimal_output =
   #"b80200581d7811111111111111111111111111111111111111111111111111111111018200a0"
 
 const cross_language_long_terminal_control =
-  #"91010600192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770d8799f8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f8358201779e0023b9273af30dcfadb5e5ec557763a8c2c3af34f57fb2a2ad59f50ada018301852ffffd8799f8a0107185419142719142740d87a80d87a80d87a80d8799f8358202aa2efa1446b0d53ad8a806d29396c82aca037037c095811d7948f5304d3896219142719138cffff02818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80d87a80d87a80d87a80d87a80d87a80"
+  #"91010600192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770d8799f8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f8358201779e0023b9273af30dcfadb5e5ec557763a8c2c3af34f57fb2a2ad59f50ada018301852ffffd8799f890107185419142719142740d87a80d87a80d8799f8358202aa2efa1446b0d53ad8a806d29396c82aca037037c095811d7948f5304d3896219142719138cffff02818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80d87a80d87a80d87a80d87a80d87a80"
 
 fn one_chunk_material(
   output_index: Int,
@@ -332,12 +332,12 @@ test authenticates_the_inline_datum_semantics_from_output_chunks() {
     ledger_output_proof_v1.step_v1(
       datum_windowed,
       datum(
-        cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+        cek_data_traverse_v1.HeadSequence,
         Some(recorded_window(datum_windowed, small_datum_output)),
       ),
     ),
   )
-  let frame = cek_data_frame_v1.initial_small_constr_frame_v1(0, #"", 0)
+  let frame = cek_data_frame_v1.initial_small_constr_frame_v1(0, #"")
   let datum_authenticated = advanced(
     ledger_output_proof_v1.step_v1(
       datum_opened,
@@ -509,7 +509,7 @@ test fails_closed_for_a_substituted_inline_datum_item_chunk() {
     ledger_output_proof_v1.step_v1(
       datum_windowed,
       datum(
-        cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+        cek_data_traverse_v1.HeadSequence,
         Some(
           builtin.replicate_byte(
             bytearray.length(
@@ -523,10 +523,7 @@ test fails_closed_for_a_substituted_inline_datum_item_chunk() {
     // A datum step without the span-attach step has no window to bind to.
     ledger_output_proof_v1.step_v1(
       datum_ready,
-      datum(
-        cek_data_traverse_v1.HeadSequence { expected_children: 0 },
-        Some(small_datum_output),
-      ),
+      datum(cek_data_traverse_v1.HeadSequence, Some(small_datum_output)),
     ) == None,
   }
 }

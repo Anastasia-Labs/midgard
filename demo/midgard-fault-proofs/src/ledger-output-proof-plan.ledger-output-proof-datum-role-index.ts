@@ -41,7 +41,7 @@ export const controlFromCarrier = (
 /**
  * Traversal stage of the datum sub-control carried at LOP control item 7, as
  * `scalar_control` in `lib/midgard/ledger-output-proof-datum.ak` reads it: the
- * item is `Constr(0, [[version, stage, ..8 more]])` and the on-chain scalar
+ * item is `Constr(0, [[version, stage, ..7 more]])` and the on-chain scalar
  * actions pin `stage` against `cek_data_traverse_v1.stage_integer` (1) or
  * `stage_bytes` (2). The action constructor alone does not discriminate the
  * two, so the planner must read the same field the validators pin.
@@ -55,7 +55,7 @@ const datumTraverseStage = (control: readonly Data[]): bigint => {
   )
     throw new Error("Datum traversal sub-control is malformed");
   return integer(
-    items(wrapper.fields[0]!, 10, "datum traversal control")[1],
+    items(wrapper.fields[0]!, 9, "datum traversal control")[1],
     "datum traversal stage",
   );
 };
@@ -135,7 +135,7 @@ export const datumTraverseItems = (control: readonly Data[]): Data[] => {
   const wrapper = constr(control[7], "datum traversal item");
   if (wrapper.index !== 0 || wrapper.fields.length !== 1)
     throw new Error("Datum traversal sub-control is malformed");
-  return items(wrapper.fields[0]!, 10, "datum traversal control");
+  return items(wrapper.fields[0]!, 9, "datum traversal control");
 };
 
 // ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ const scalarClaim = (
   family: "integer" | "bytes",
 ): Data => {
   const fields = datumTraverseItems(control);
-  const slot = family === "integer" ? 7 : 8;
+  const slot = family === "integer" ? 6 : 7;
   const inner = optionInner(fields[slot], `traversal ${family} control`);
   if (inner === null)
     throw new Error(

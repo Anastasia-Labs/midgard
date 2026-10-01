@@ -206,7 +206,6 @@ pub fn initial_datum_data(offset: Int, length: Int) -> Data {
       none,
       none,
       none,
-      none,
     ],
   )
 }

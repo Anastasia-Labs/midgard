@@ -100,6 +100,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   disputedMatchOrdinal,
   worstCaseWitness = false,
   ledgerOutputValueOpening = false,
+  ledgerOutputDatumAction,
   permutationWitnessMutation,
   outputDatumCbor,
   outputLovelace,
@@ -212,6 +213,16 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
    * execution order are genuinely different permutations.
    */
   readonly ledgerOutputValueOpening?: boolean;
+  /**
+   * Narrow the disputed step to a ledger-output-proof datum step taking this
+   * traversal action (combine with {@link disputedMatchOrdinal} to reach a
+   * later one, e.g. a nested head).
+   */
+  readonly ledgerOutputDatumAction?:
+    | "headScalar"
+    | "headSequence"
+    | "headMap"
+    | "headLargeConstructor";
   /**
    * Forge the disputed step's permutation witness (a mixed-width mint context
    * item or a ledger-output value step) in the challenger's own trace, so the
@@ -414,6 +425,15 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
             auxiliary?.kind === "ledgerOutputProofStep" &&
             auxiliary.witness?.kind === "value" &&
             auxiliary.witness.previous !== null
+          );
+        })()) &&
+      (ledgerOutputDatumAction === undefined ||
+        (() => {
+          const auxiliary = challengerTrace.witnesses[index]!.auxiliary;
+          return (
+            auxiliary?.kind === "ledgerOutputProofStep" &&
+            auxiliary.witness?.kind === "datum" &&
+            auxiliary.witness.action?.kind === ledgerOutputDatumAction
           );
         })()) &&
       (disputedPhase !== "phaseAScriptPreconditions" ||

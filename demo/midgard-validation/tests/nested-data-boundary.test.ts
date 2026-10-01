@@ -365,42 +365,31 @@ describe("canonical V1 nested Cardano Data boundary", () => {
           step.next.datum,
         ).toString("hex"),
         action:
-          action.kind === "headLargeConstructor"
+          action.kind === "foldList"
             ? {
-                constructorCborLength: action.constructorCborLength,
-                expectedChildren: action.expectedChildren,
+                frame: jsonDataFrame(action.frame),
+                childIndex: action.childIndex,
+                child: jsonDataSummary(action.child),
+                siblingHexes: action.siblings.map(hex),
               }
-            : action.kind === "headSequence"
+            : action.kind === "foldMap"
               ? {
-                  expectedChildren: action.expectedChildren,
+                  frame: jsonDataFrame(action.frame),
+                  pairIndex: action.pairIndex,
+                  key: jsonDataSummary(action.key),
+                  value: jsonDataSummary(action.value),
+                  keySiblingHexes: action.keySiblings.map(hex),
+                  valueSiblingHexes: action.valueSiblings.map(hex),
                 }
-              : action.kind === "headScalar"
-                ? { itemLength: action.itemLength }
-                : action.kind === "foldList"
-                  ? {
-                      frame: jsonDataFrame(action.frame),
-                      childIndex: action.childIndex,
-                      child: jsonDataSummary(action.child),
-                      siblingHexes: action.siblings.map(hex),
-                    }
-                  : action.kind === "foldMap"
-                    ? {
-                        frame: jsonDataFrame(action.frame),
-                        pairIndex: action.pairIndex,
-                        key: jsonDataSummary(action.key),
-                        value: jsonDataSummary(action.value),
-                        keySiblingHexes: action.keySiblings.map(hex),
-                        valueSiblingHexes: action.valueSiblings.map(hex),
-                      }
-                    : action.kind === "finalizeFrame"
-                      ? {
-                          frame: jsonDataFrame(action.frame),
-                          parent:
-                            action.parent === null
-                              ? null
-                              : jsonDataFrame(action.parent),
-                        }
-                      : {},
+              : action.kind === "finalizeFrame"
+                ? {
+                    frame: jsonDataFrame(action.frame),
+                    parent:
+                      action.parent === null
+                        ? null
+                        : jsonDataFrame(action.parent),
+                  }
+                : {},
       };
     });
     // The Aiken twin's `maximum_cardano_nested_data_*` constants are rebound

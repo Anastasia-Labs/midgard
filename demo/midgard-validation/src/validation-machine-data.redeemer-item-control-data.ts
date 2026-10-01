@@ -99,7 +99,6 @@ export const redeemerItemControlData = (
       int(traversal.sourceLength),
       int(traversal.offset),
       bytes(traversal.frameRoot),
-      option(traversal.pendingLargeExpectedChildren, int),
       option(traversal.integer, integerControlData),
       option(traversal.bytes, bytesControlData),
       option(traversal.result, summaryData),

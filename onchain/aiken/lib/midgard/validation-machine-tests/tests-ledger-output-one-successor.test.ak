@@ -453,7 +453,7 @@ fn datum_output_descriptor(output_cbor: ByteArray) -> ByteArray {
     lop.step_v1(
       windowed,
       lop.LedgerOutputProofDatum {
-        action: cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+        action: cek_data_traverse_v1.HeadSequence,
         window: Some(recorded_window_bytes(windowed, output_cbor)),
       },
     ),
@@ -463,7 +463,7 @@ fn datum_output_descriptor(output_cbor: ByteArray) -> ByteArray {
       opened,
       lop.LedgerOutputProofDatum {
         action: cek_data_traverse_v1.FinalizeFrame {
-          frame: cek_data_frame_v1.initial_small_constr_frame_v1(0, #"", 0),
+          frame: cek_data_frame_v1.initial_small_constr_frame_v1(0, #""),
           parent: None,
         },
         window: None,
