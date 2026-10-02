@@ -8,6 +8,7 @@ overrides:
   '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1': 6.2.0-2
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1': 6.2.0-2
   '@lucid-evolution/uplc@0.2.23': file:vendor/uplc-0.2.23-midgard.1.tgz
+  '@aiken-lang/merkle-patricia-forestry': file:vendor/mpf-1.3.1-midgard.1.tgz
 
 patchedDependencies:
   '@lucid-evolution/core-types@0.3.0':
@@ -64,8 +65,8 @@ importers:
   da-committee-node:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
@@ -211,8 +212,8 @@ importers:
         version: 2.9.0
     devDependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/midgard-test-support':
         specifier: workspace:*
         version: link:../midgard-test-support
@@ -238,8 +239,8 @@ importers:
   midgard-fault-proofs:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
@@ -290,8 +291,8 @@ importers:
   midgard-node:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/lucid-midgard':
         specifier: workspace:*
         version: link:../lucid-midgard
@@ -483,8 +484,8 @@ importers:
   midgard-node-tools:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/lucid-midgard':
         specifier: workspace:*
         version: link:../lucid-midgard
@@ -680,8 +681,8 @@ importers:
         version: 2.2.0
     devDependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/midgard-test-support':
         specifier: workspace:*
         version: link:../midgard-test-support
@@ -746,8 +747,8 @@ importers:
   midgard-validation:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
@@ -850,8 +851,8 @@ importers:
         version: 3.3.4
     devDependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
-        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+        specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
+        version: file:vendor/mpf-1.3.1-midgard.1.tgz
       '@al-ft/midgard-test-support':
         specifier: workspace:*
         version: link:../midgard-test-support
@@ -879,9 +880,9 @@ importers:
 
 packages:
 
-  '@aiken-lang/merkle-patricia-forestry@https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain':
-    resolution: {path: /off-chain, tarball: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e}
-    version: 1.3.1-midgard.0
+  '@aiken-lang/merkle-patricia-forestry@file:vendor/mpf-1.3.1-midgard.1.tgz':
+    resolution: {integrity: sha512-obIY6aAb6iSKMHJBVTu2p7GpUoXxw3aBWr5loBN22MX7NsJOqFWcGmfdJgNDCCdStK60sgD8iYzRsDrNKWREEQ==, tarball: file:vendor/mpf-1.3.1-midgard.1.tgz}
+    version: 1.3.1-midgard.1
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
     resolution: {integrity: sha512-sSPPjO1Zye82YVqrUGIKrli/Zt2pPkZkQd/jv9k6AzjIZdNPD3hvuB2yH6RHeZUO8+K57bu9r7Rlyf7VGbhhTQ==}
@@ -4189,7 +4190,7 @@ packages:
 
 snapshots:
 
-  '@aiken-lang/merkle-patricia-forestry@https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain':
+  '@aiken-lang/merkle-patricia-forestry@file:vendor/mpf-1.3.1-midgard.1.tgz':
     dependencies:
       blake2b: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
       level: 8.0.1

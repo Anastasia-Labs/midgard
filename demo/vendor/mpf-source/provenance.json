@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "upstreamRepository": "https://github.com/Anastasia-Labs/merkle-patricia-forestry",
+  "upstreamCommit": "b139785f7c118854f9824c26cc443e2df95cb50e",
+  "localFixCommit": "a0f8c2410ec07d9b45b02539817e980a17845c5f",
+  "publishedFix": false,
+  "license": "MPL-2.0",
+  "sourceFiles": {
+    "off-chain/.gitattributes": "3f801888e4d91755648ba3b2d314457a5d6490326916e055b31f4a21325df20c",
+    "off-chain/.nvmrc": "cc3da1f70e0f67962a6e3db12853e3e61bd4694c5ff7b36cc91df6b665b9ff8f",
+    "off-chain/CHANGELOG.md": "897299723668110740c1d4bf06346eb8d9ce4bc59d6b2b391377fb373091a2f3",
+    "off-chain/LICENSE": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+    "off-chain/README.md": "d30ef3fec6599bc2dfbed70a9354a61e76802df7f75195eeb58c07e233626b13",
+    "off-chain/ava.config.js": "607934d041e80039f1c60857876f2eedaa90a69ca803ce85c3fecb6f92de4416",
+    "off-chain/lib/cbor.js": "0b8038bce643ead26fe581f918fbde88809d58c2c62e454bb5d0ad6604ca1996",
+    "off-chain/lib/crypto.js": "fb1feed184869ae4cd105614a521f4aa72bac69df6fc2a20ecc51cc31d5268a3",
+    "off-chain/lib/helpers.js": "08e846fdb2d814e1fee67d4f17e5a35d79476133a351059a9b33ec8ad39792b8",
+    "off-chain/lib/index.js": "e5e79f720d1b14e1a1190e6bc16b4990722c9f0eebf2674a44a67491b95cface",
+    "off-chain/lib/store.js": "cf59c31d3b9d08dded62741270aaa9c42954c0606042d7ca8426b3909c421bc2",
+    "off-chain/lib/trie.js": "4cc5b6d0d4d52e83f52a8d49a904249aed0f1efa20b54bf9fb3369db21e30329",
+    "off-chain/package-lock.json": "5ae53fa70bedd3be922dfe616ea1a2205104c0bbe691c76bb253942fc2b08a06",
+    "off-chain/package.json": "23325d3fac9c21051014362df9a4098c658bcef6e4c4be9158f32ec4fa91bca6",
+    "off-chain/tests/cbor.test.js": "925aa80157abf1e2e539d3c939afb2e4eca5f7b5da7dd8d8d4d6eda3202d016c",
+    "off-chain/tests/helpers.test.js": "3b24676cc5aadf5a57f69f4af7ed64880ea9bcf09b85381c45427221fdbac891",
+    "off-chain/tests/midgard-runtime.test.js": "87d3eef55e1ddb2184c410c8a2773ee8e78075de9dc65da398ab930b43ca4b43",
+    "off-chain/tests/trie.test.js": "f8ef22713e3aed631e0f99d80a7f49ac92bc38d5ab02326041755b93a324f5b8",
+    "off-chain/tsconfig.json": "765c6e2f805a76fc3151dba3d1aa6a1da559d8bd6e1c2d404ead226a8bc7237f",
+    "off-chain/yarn.lock": "55f6c304c0a05148d48e35857f17e1285ad38751b7c39ad5bb9ded89b2e410b3"
+  },
+  "build": {
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "tsup": "8.3.0",
+    "typescript": "5.6.3",
+    "esbuild": "0.23.1"
+  },
+  "verification": "All rebuilt package members match the preserved tarball; npm packing differs in archive bytes only.",
+  "sourceArchiveSha256": "e8c07f573ce7b61fe970e57e52aa7795688b6c9859b238949ffb55bbb32d07cc"
+}
