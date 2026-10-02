@@ -38,6 +38,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/event-history-ready-append.test.ts
  *   tests/l1-event-history-initialization-emulator.test.ts
  *   tests/event-history-recovery.test.ts
+ *   tests/event-history-recovery-lease-lapse.test.ts
  *   tests/native-mpf-local-finalization.test.ts
  *   tests/l1-event-history-signed-intent-emulator.test.ts
  *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
