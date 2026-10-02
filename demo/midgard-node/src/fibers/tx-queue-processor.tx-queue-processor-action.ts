@@ -222,10 +222,6 @@ export const txQueueProcessorAction = (
                       bucketConcurrency:
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                       enforceScriptBudget: true,
-                      ...(nodeConfig.VALIDATION_UPLC_IN_WORKERS &&
-                      validationPool.poolSize > 0
-                        ? { evaluateScript: validationPool.evaluateScript }
-                        : {}),
                     },
                   });
                   yield* validationPhaseBLatencyGauge(

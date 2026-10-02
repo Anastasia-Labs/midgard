@@ -41,7 +41,7 @@ status rather than treating every failure as an invalid transaction.
 | Native format and output codecs                        | [`midgard-core/src/codec/`](../../midgard-core/src/codec)                                                                                  |
 | Stateless validation                                   | [`validatePhaseASingle` / `runPhaseAValidation`](../../midgard-validation/src/phase-a.ts)                                                  |
 | Dependency-aware state validation                      | [`runPhaseBValidationWithPatch`](../../midgard-validation/src/phase-b.ts)                                                                  |
-| Script execution and budget handling                   | [`local-script-eval.ts`](../../midgard-validation/src/local-script-eval.ts)                                                                |
+| Script execution and budget handling                   | [`phase-b.run-local-script-evaluation.ts`](../../midgard-validation/src/phase-b.run-local-script-evaluation.ts)                            |
 | Script source and context construction                 | [`script-source.ts`](../../midgard-validation/src/script-source.ts), [`script-context.ts`](../../midgard-validation/src/script-context.ts) |
 | Redeemer purpose/index semantics                       | [`midgard-redeemers.ts`](../../midgard-validation/src/midgard-redeemers.ts)                                                                |
 | Canonical ledger-output material                       | [`ledger-output-descriptor.ts`](../../midgard-validation/src/ledger-output-descriptor.ts)                                                  |

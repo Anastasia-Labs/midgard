@@ -1507,12 +1507,6 @@ export const registerAdmissionsTests = () => {
                     })),
                   }),
                 ),
-              evaluateScript: () =>
-                Effect.fail(
-                  new ValidationWorkerError({
-                    message: "unexpected script evaluation",
-                  }),
-                ),
             };
             const lucid = {
               api: { currentSlot: () => 0 },

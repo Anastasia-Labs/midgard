@@ -3,6 +3,7 @@ import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
+  encodeCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   MIDGARD_NATIVE_TX_VERSION,
@@ -21,7 +22,6 @@ import {
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
 import { CML } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -79,7 +79,7 @@ describe("validation queue-wait metric sampling", () => {
 });
 
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+  Buffer.from(encodeCbor(items.map((item) => Buffer.from(item))));
 
 const makeNativeTx = ({
   spent,

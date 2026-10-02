@@ -695,13 +695,6 @@ const drainReplica = async (
             cause,
           }),
       }),
-    evaluateScript: () =>
-      Effect.fail(
-        new ValidationWorkerError({
-          message:
-            "The Phase 1 chain corpus is script-free; use the UPLC worker benchmark for script evaluation",
-        }),
-      ),
   };
   return runInDatabase(
     database,
@@ -717,7 +710,6 @@ const drainReplica = async (
         VALIDATION_WORKER_POOL_SIZE: poolSize,
         VALIDATION_WORKER_INLINE_THRESHOLD: 0,
         VALIDATION_WORKER_CHUNK_SIZE: chunkSize,
-        VALIDATION_UPLC_IN_WORKERS: false,
       };
       const globals = yield* Globals;
       const cache = yield* makeMempoolLedgerCacheService(

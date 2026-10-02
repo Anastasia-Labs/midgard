@@ -8,6 +8,7 @@ import {
   Application,
   Builtin,
   ErrorUPLC,
+  Force,
   Lambda,
   UPLCConst,
   UPLCEncoder,
@@ -36,7 +37,7 @@ const compile = (version: readonly [number, number, number]): Buffer => {
       UPLCConst.int(41),
     ),
   );
-  return Buffer.from(UPLCEncoder.compile(program).toBuffer().buffer);
+  return Buffer.from(UPLCEncoder.compile(program));
 };
 
 const compileLargeString = (byteLength: number): Buffer => {
@@ -44,14 +45,11 @@ const compileLargeString = (byteLength: number): Buffer => {
     [1, 1, 0],
     UPLCConst.str("x".repeat(byteLength)),
   );
-  return Buffer.from(UPLCEncoder.compile(program).toBuffer().buffer);
+  return Buffer.from(UPLCEncoder.compile(program));
 };
 
 const compileError = (): Buffer =>
-  Buffer.from(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new ErrorUPLC())).toBuffer()
-      .buffer,
-  );
+  Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new ErrorUPLC())));
 
 const materialShape = (
   entries: Iterable<{
@@ -117,14 +115,14 @@ describe("canonical V1 CEK programs", () => {
     const canonical = buildMidgardCanonicalCekProgram(
       Buffer.from(
         UPLCEncoder.compile(
-          new UPLCProgram([1, 1, 0], Builtin.headList),
-        ).toBuffer().buffer,
+          new UPLCProgram([1, 1, 0], new Force(Builtin.headList)),
+        ),
       ),
     );
     expect(canonical.material.size).toBeGreaterThanOrEqual(2);
 
-    // Bare and over-forced Flat both decode to Harmonic's same normalized
-    // Builtin AST. Neither is the canonical UPLC 1.1.0 encoding.
+    // A polymorphic builtin with too few or too many forces directly around
+    // it is not the canonical UPLC 1.1.0 encoding.
     expect(() =>
       buildMidgardCanonicalCekProgram(Buffer.from("0101007430", "hex")),
     ).toThrow(/exactly the builtin forces/u);

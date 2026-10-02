@@ -147,7 +147,7 @@ describe("independent validation event replay", () => {
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
-        ).toBuffer().buffer,
+        ),
       ),
     );
     const spent = outRefFromByte(0x1d);

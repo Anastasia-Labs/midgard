@@ -93,10 +93,10 @@ import {
   type MidgardRawEnvelopePhaseAProjection,
   projectMidgardRawEnvelopeForPhaseAV1,
 } from "../ledger-tx.js";
-import type { LocalScriptEvalResult } from "../local-script-eval.js";
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
 import { validatePhaseASingle } from "../phase-a.js";
 import { runPhaseBValidationWithPatch } from "../phase-b.js";
+import type { LocalScriptEvalResult } from "../types.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "../types.js";
 import { RejectCodes } from "../types.js";
 import {

@@ -1,4 +1,5 @@
 import type { MidgardCekMachineState } from "@al-ft/midgard-core";
+import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {
@@ -282,4 +283,4 @@ export const encodeMidgardCekCoreStepDataCbor = (step: {
   readonly post: MidgardCekMachineState;
   readonly witness: MidgardCekCoreStepWitness;
 }): Buffer =>
-  Buffer.from(Data.to(midgardCekCoreStepData(step) as unknown as Data), "hex");
+  lucidDataToCborIterative(midgardCekCoreStepData(step) as unknown as Data);

@@ -16,16 +16,15 @@ import {
   type MidgardCekValueNode,
   verifyMidgardCekProgramMaterial,
 } from "@al-ft/midgard-core";
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 
 import { type MidgardCekConstantValueWitness } from "./cek-builtin.js";
 import {
-  encodeMidgardCekCanonicalConstant,
+  encodeMidgardCekCanonicalDataConstant,
   midgardCekConstantMemorySize,
 } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { type MidgardCekCoreStepWitness } from "./cek-machine.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 export type Bytes = Uint8Array;
 
@@ -151,7 +150,7 @@ export const buildMidgardCekExecutionGraph = (
           }),
         ];
       }
-      const payload = dataFromCbor(constant.payloadCbor);
+      const payload = plutusDataFromCborIterative(constant.payloadCbor);
       const semantic = commitMidgardCekDataTree(payload);
       if (!sameBytes(semantic.root, constant.semanticRoot)) {
         throw new Error(
@@ -232,10 +231,10 @@ export const buildMidgardCekExecutionGraph = (
     return root;
   };
 
-  const context = encodeMidgardCekCanonicalConstant(
-    UPLCConst.data(dataFromCbor(Buffer.from(contextCbor))),
+  const context = encodeMidgardCekCanonicalDataConstant(
+    plutusDataFromCborIterative(contextCbor),
   );
-  const contextPayload = dataFromCbor(context.payloadCbor);
+  const contextPayload = plutusDataFromCborIterative(context.payloadCbor);
   const contextSemantic = commitMidgardCekDataTree(contextPayload);
   for (const [key, entry] of contextSemantic.dataNodes) {
     addEntry({

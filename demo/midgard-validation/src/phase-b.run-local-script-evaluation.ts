@@ -1,6 +1,7 @@
 import {
   decodeMidgardCekProgramEnvelope,
   decodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialSidecar,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeScriptIntegrityHashForLanguages,
@@ -13,11 +14,6 @@ import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
 } from "./cek-executor.js";
-import {
-  encodeScriptContextCbor,
-  evaluateScriptWithHarmonic,
-  type LocalScriptEvalResult,
-} from "./local-script-eval.js";
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
 import {
@@ -27,11 +23,16 @@ import {
   requiredScriptLanguages,
   type ResolvedReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
+import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
 import {
   buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
 } from "./script-context.js";
-import { PhaseBConfig, RejectCodes } from "./types.js";
+import {
+  type LocalScriptEvalResult,
+  PhaseBConfig,
+  RejectCodes,
+} from "./types.js";
 
 export const runLocalScriptEvaluation = (
   node: CandidateNode,
@@ -58,9 +59,10 @@ export const runLocalScriptEvaluation = (
     if (discovered.kind === "rejected") {
       return discovered;
     }
-    let proofProgramMaterial: ReturnType<
-      typeof decodeMidgardCekProgramMaterialSidecar
-    > | null = null;
+    // Phase A refuses a candidate without a sidecar. One that reaches here
+    // without it runs on empty material, so every script goes through the
+    // structural executor.
+    let proofProgramMaterial: MidgardCekProgramMaterialSidecar = [];
     if (candidate.submission.programMaterialSidecarCbor !== null) {
       try {
         proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
@@ -165,7 +167,7 @@ export const runLocalScriptEvaluation = (
               execution.purpose,
               redeemer,
             );
-      const contextCbor = encodeScriptContextCbor(context);
+      const contextCbor = encodeMidgardCekPlutusData(context);
       const executionBudget =
         config.enforceScriptBudget === false
           ? undefined
@@ -174,62 +176,49 @@ export const runLocalScriptEvaluation = (
               memory: redeemer.exUnits.memory,
             };
       let result: LocalScriptEvalResult;
-      if (proofProgramMaterial !== null) {
-        if (config.evaluateProofScript !== undefined) {
-          result = yield* config.evaluateProofScript(
-            execution.resolved.source.scriptBytes,
-            contextCbor,
-            executionBudget,
-          );
-        } else {
-          try {
-            const envelope = decodeMidgardCekProgramEnvelope(
-              execution.resolved.source.scriptBytes,
-            );
-            const graph = buildMidgardCekExecutionGraph(
-              envelope,
-              proofProgramMaterial,
-              contextCbor,
-            );
-            const cek = executeMidgardCekStructuralProgram({
-              root: graph.root,
-              material: graph.material.values(),
-              constantWitnesses: graph.constantWitnesses,
-              maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
-              executionBudget,
-            });
-            result =
-              cek.stopReason === "budgetExceeded" ||
-              cek.terminalState.mode === "haltSuccess"
-                ? {
-                    kind: "accepted",
-                    budget: {
-                      cpu: cek.terminalState.cpu,
-                      memory: cek.terminalState.memory,
-                    },
-                  }
-                : {
-                    kind: "script_invalid",
-                    detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
-                  };
-          } catch (cause) {
-            result = {
-              kind: "script_invalid",
-              detail: `V1 CEK execution failed closed: ${String(cause)}`,
-            };
-          }
-        }
+      if (config.evaluateProofScript !== undefined) {
+        result = yield* config.evaluateProofScript(
+          execution.resolved.source.scriptBytes,
+          contextCbor,
+          executionBudget,
+        );
       } else {
-        result =
-          config.evaluateScript === undefined
-            ? evaluateScriptWithHarmonic(
-                execution.resolved.source.scriptBytes,
-                context,
-              )
-            : yield* config.evaluateScript(
-                execution.resolved.source.scriptBytes,
-                contextCbor,
-              );
+        try {
+          const envelope = decodeMidgardCekProgramEnvelope(
+            execution.resolved.source.scriptBytes,
+          );
+          const graph = buildMidgardCekExecutionGraph(
+            envelope,
+            proofProgramMaterial,
+            contextCbor,
+          );
+          const cek = executeMidgardCekStructuralProgram({
+            root: graph.root,
+            material: graph.material.values(),
+            constantWitnesses: graph.constantWitnesses,
+            maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+            executionBudget,
+          });
+          result =
+            cek.stopReason === "budgetExceeded" ||
+            cek.terminalState.mode === "haltSuccess"
+              ? {
+                  kind: "accepted",
+                  budget: {
+                    cpu: cek.terminalState.cpu,
+                    memory: cek.terminalState.memory,
+                  },
+                }
+              : {
+                  kind: "script_invalid",
+                  detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
+                };
+        } catch (cause) {
+          result = {
+            kind: "script_invalid",
+            detail: `V1 CEK execution failed closed: ${String(cause)}`,
+          };
+        }
       }
       if (result.kind === "script_invalid") {
         return {

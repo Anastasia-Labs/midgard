@@ -14,8 +14,6 @@ import {
   type ConstValue,
 } from "@harmoniclabs/uplc";
 
-import { isByteStringLike } from "./plutus-data-narrowing.js";
-
 export type MidgardCekConstantType =
   | { readonly kind: "integer" }
   | { readonly kind: "bytes" }
@@ -87,6 +85,8 @@ const parseTypeAt = (
         type: { kind: "blsMillerLoopResult" },
         nextOffset: offset + 1,
       };
+    case ConstTyTag.value:
+    case ConstTyTag.array:
     default:
       throw new Error("V1 constant has an unknown type tag");
   }
@@ -103,14 +103,10 @@ export const parseMidgardCekConstantType = (
 };
 
 export const asByteArray = (value: unknown): Uint8Array => {
-  if (!isByteStringLike(value)) {
+  if (!(value instanceof Uint8Array)) {
     throw new Error("V1 bytes constant has an invalid value");
   }
-  const bytes = value.toBuffer();
-  if (!(bytes instanceof Uint8Array)) {
-    throw new Error("V1 bytes constant did not produce bytes");
-  }
-  return bytes;
+  return value;
 };
 
 export const semanticData = (
@@ -253,11 +249,6 @@ export const encodeCardanoBytes = (bytes: Uint8Array): Buffer => {
   return Buffer.concat(chunks);
 };
 
-export const encodeCardanoList = (items: readonly Buffer[]): Buffer =>
-  items.length === 0
-    ? Buffer.from([0x80])
-    : Buffer.concat([Buffer.from([0x9f]), ...items, Buffer.from([0xff])]);
-
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
 const shortestBigEndianMagnitude = (value: bigint): Buffer => {
@@ -268,13 +259,38 @@ const shortestBigEndianMagnitude = (value: bigint): Buffer => {
   return Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
 };
 
-export const encodeCardanoInteger = (value: bigint): Buffer => {
+/**
+ * How a bignum magnitude over 64 bytes is written. `cardanoChunked` is
+ * Cardano's `serialiseData` form: an indefinite byte string of 64-byte
+ * chunks. `deployedTreeSingleBlock` is the deployed Data tree commitment
+ * form: one definite byte string. Only the Data tree commitment selects the
+ * latter; it changes at redeploy 1 together with the on-chain integer
+ * checker.
+ */
+export type MidgardCekDataIntegerLayout =
+  | "cardanoChunked"
+  | "deployedTreeSingleBlock";
+
+const encodeBignumMagnitude = (
+  magnitude: bigint,
+  layout: MidgardCekDataIntegerLayout,
+): Buffer => {
+  const bytes = shortestBigEndianMagnitude(magnitude);
+  return layout === "cardanoChunked"
+    ? encodeCardanoBytes(bytes)
+    : encodeCborBytes(bytes);
+};
+
+export const encodeCardanoInteger = (
+  value: bigint,
+  layout: MidgardCekDataIntegerLayout = "cardanoChunked",
+): Buffer => {
   if (value >= 0n) {
     return value <= UINT64_MAX
       ? encodeSmallCborArgument(0, value)
       : Buffer.concat([
           Buffer.from([0xc2]),
-          encodeCborBytes(shortestBigEndianMagnitude(value)),
+          encodeBignumMagnitude(value, layout),
         ]);
   }
   const magnitude = -value - 1n;
@@ -282,6 +298,6 @@ export const encodeCardanoInteger = (value: bigint): Buffer => {
     ? encodeSmallCborArgument(1, magnitude)
     : Buffer.concat([
         Buffer.from([0xc3]),
-        encodeCborBytes(shortestBigEndianMagnitude(magnitude)),
+        encodeBignumMagnitude(magnitude, layout),
       ]);
 };

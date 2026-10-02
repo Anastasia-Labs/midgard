@@ -1,6 +1,5 @@
 import {
   deserializePhaseACandidate,
-  type LocalScriptEvalResult,
   type PhaseAResult,
   type RejectedTx,
 } from "@al-ft/midgard-validation";
@@ -8,7 +7,6 @@ import { Duration, Effect, Layer, Metric } from "effect";
 
 import { resolveWorkerEntry } from "../fibers/resolve-worker-entry.js";
 import {
-  copyToTransferable,
   packPhaseAJob,
   type ValidationJobRequest,
   type ValidationWorkerResponse,
@@ -22,7 +20,6 @@ import {
   poolSizeGauge,
   queueDepthGauge,
   serializeDuration,
-  uplcJobDuration,
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
@@ -38,10 +35,6 @@ const makeValidationPool = Effect.gen(function* () {
       poolSize: 0,
       consensusProfile: deploymentIdentity.consensusProfile,
       runPhaseAChunk: () =>
-        Effect.fail(
-          new ValidationWorkerError({ message: "validation pool is disabled" }),
-        ),
-      evaluateScript: () =>
         Effect.fail(
           new ValidationWorkerError({ message: "validation pool is disabled" }),
         ),
@@ -160,43 +153,6 @@ const makeValidationPool = Effect.gen(function* () {
               ).pipe(Effect.asVoid),
             ),
           ),
-        ),
-      );
-    },
-    evaluateScript: (scriptBytes, contextCbor) => {
-      const request: ValidationJobRequest = {
-        kind: "uplc",
-        jobId: pool.allocateJobId(),
-        scriptBytes: copyToTransferable(scriptBytes),
-        contextCbor: copyToTransferable(contextCbor),
-      };
-      const jobStartedAt = Date.now();
-      return runJob(request).pipe(
-        Effect.flatMap((response) => {
-          if (response.kind !== "uplc") {
-            return Effect.fail(
-              new ValidationWorkerError({
-                message: `expected uplc response, got ${response.kind}`,
-              }),
-            );
-          }
-          return Effect.succeed<LocalScriptEvalResult>(
-            response.result.ok
-              ? {
-                  kind: "accepted",
-                  budget: {
-                    cpu: response.result.cpu,
-                    memory: response.result.memory,
-                  },
-                }
-              : { kind: "script_invalid", detail: response.result.detail },
-          );
-        }),
-        Effect.ensuring(
-          Metric.update(
-            uplcJobDuration,
-            Duration.millis(Date.now() - jobStartedAt),
-          ).pipe(Effect.asVoid),
         ),
       );
     },
