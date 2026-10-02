@@ -2,8 +2,8 @@
 
 Status: Active — no-go for an open public preprod deployment.
 
-Source, GitHub and worktree reconciliation: 2026-10-02, 06:11 UTC
-(01:11 CDT). Last full readiness review: 2026-09-01.
+Source, GitHub and worktree reconciliation: 2026-10-02, 06:35 UTC
+(01:35 CDT). Last full readiness review: 2026-09-01.
 This update does not rerun launch acceptance or close any release gate.
 
 This is the release acceptance checklist for an externally reachable deployment.
@@ -71,6 +71,17 @@ No corresponding published branch was found in the fetched origin refs.
 | `midgard-t161`, `midgard-r1b` / `t161-input-resolution`, `r1b-pin-live-script-refs` | Both `299f12824`; 2 total; 0 each    | Same commits, count once. Input resolution is not proof that live script-material retention is complete.                               |
 | `midgard-f1v3` / `f1-v3-terminal`                                                   | `d1ad70a7a`; 5; 2                    | MPF/encoding and artifact work; dependency edits still require reproducible packaging and combined rebuild/redeploy evidence.          |
 | `midgard-rlo` / `redeemer-ledger-order`                                             | `5d3d84846`; 10; 1                   | Redeemer/one-successor work and an untracked probe; outstanding proof/review work remains unverified.                                  |
+
+Two follow-up tickets filed after the earlier snapshot remain OPEN and deferred:
+[#728](https://github.com/Anastasia-Labs/midgard/issues/728) assesses the pinned
+MPF encoding's collision/preimage assumptions after reproducible dependencies,
+supported transaction-shape fit and missing proof directions. No practical
+exploit or observed preprod/devnet failure is demonstrated in its evidence;
+a reachable construction and measured work are required before classifying it
+as a launch blocker. [#729](https://github.com/Anastasia-Labs/midgard/issues/729)
+tracks pure-move splits of the oversized committee and MPF process modules after
+T161's necessary behavior changes. The cleanup is not evidence of behavior
+repair or acceptance, and neither ticket closes an existing launch gate.
 
 ### Reliability epic #696
 
