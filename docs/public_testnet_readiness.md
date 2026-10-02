@@ -144,6 +144,80 @@ tickets/comments/PR checks. It did not execute application tests, revalidate
 historical run artifacts, deploy, reset state, run chaos drills or measure
 throughput. The unchecked gates below remain release requirements.
 
+## October 31 delivery target
+
+The owner requires readiness this month: **2026-10-31**, with acceptance sign-off
+targeted for Friday, October 30. There are 21 weekdays from October 2 through
+October 30, inclusive. This is a deadline plan, not a measured completion forecast
+or evidence that the release is ready. The current no-go and all requirements
+below still apply.
+
+At this snapshot there are **65 unchecked acceptance gates** and **28 open child
+tickets out of 31** in #696. They are different units: gates combine implementation,
+integration, review and release evidence; several tickets contribute to one gate.
+The three closed tickets include two inventories. The October 1 batch of 17 local
+reliability commits is not 17 accepted tasks per day. There is insufficient
+observed completion history to extrapolate days remaining at a measured pace.
+
+The planning assumption is five parallel workstreams with independent review
+capacity throughout the month. Capacity and named owners are **unconfirmed**;
+this document neither assigns contributors nor dispatches their existing work.
+By October 4, reconcile every gate to an owner, current implementation, missing
+evidence or decision, dependencies and a dated next result. Missing public
+release/operations evidence must be investigated immediately, alongside #696.
+For example, this checkout has no root `SECURITY.md`; package publication,
+artifact provenance and backup/restore acceptance remain unverified. Do not
+assume reliability ticket closure covers those requirements.
+
+| Parallel workstream           | Required outcome and main dependencies                                                                                                                                                                                                                                                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rollback and funds            | Complete #698, #713 and #725–#727: durable reservations, retained DA, reversible terminals/corrections and watcher recovery within `k`. Independent review must precede final live drills.                                                                                                                                                      |
+| Contracts and execution       | Resolve [#683](https://github.com/Anastasia-Labs/midgard/issues/683) and [#695](https://github.com/Anastasia-Labs/midgard/issues/695), both open and unassigned at this inspection. Reconcile the correctness branches, builtin/redeemer parity, reproducible dependencies and multi-operator execution before rebuilding the release identity. |
+| Runtime and clients           | Integrate admission, frame sizing, lease/socket lifecycle, funding runway, bounded retries, startup/readiness and supervisor fixes from #696. Verify deposit/withdraw/operator paths and the public SDK, including outstanding #724 guides.                                                                                                     |
+| Public release and operations | Establish approved parameters/participation, manifest and references, TLS/custody, supported hardware and retention, immutable artifacts/package publication, provenance, alerts, incident contacts and demonstrated fresh-host restore. Audit existing infrastructure before estimating missing implementation.                                |
+| Integration and acceptance    | Select one maintained integration branch without overwriting worktrees; combine reviewed changes once, publish its exact SHA and run full required suites/CI. Complete #711/#714/#715 review and #706/#722/#723 final-run evidence with the public release profile.                                                                             |
+
+| Date, America/Chicago | Required result                                                                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| October 2–4           | Audit all 65 gates, confirm workstream/reviewer capacity, name owners and identify every unassigned blocker. Choose the integration destination and reconcile duplicate stack/correctness implementations before merging.             |
+| By October 5          | Resolve public participation, supported non-canonical claims, parameter/economic approvals, signer custody and funding decisions so the candidate can have one approved identity.                                                     |
+| By October 8          | Demonstrate the rollback repairs and contract/execution approach with focused adversarial evidence. Surface any unresolved correctness or operations work that cannot fit before candidate freeze.                                    |
+| By October 12         | Produce an integrated candidate with complete required suites and no unexplained failures; finish public ingress, artifacts and recovery infrastructure needed for acceptance. Historical focused passes cannot substitute.           |
+| October 13–14         | Finish independent review, rebuild reproducibly and freeze the candidate's source, images, SDK packages, manifest, blueprint, references and public parameters. Prepare the scenario dependency schedule and funded roles.            |
+| By October 15         | Deploy the fresh public-profile acceptance candidate and begin eligible lifecycle scenarios. Record exact event times and projected completion times for every long timer; deployment time alone starts none of those clocks.         |
+| October 15–27         | Execute the complete public user/operator, fraud-proof, DA, multi-operator and recovery acceptance; collect exact payouts and authority/rollback evidence. Run independent release/operations verification in parallel.               |
+| October 28–30         | Finish evidence review and applicable reruns, publish approved artifacts and operational documentation, and close each gate against the final release identity. This period is not enough for a new full public bond-withdrawal wait. |
+| October 31            | Release only after all gates have current accepted evidence. Any remaining required gate means no-go; report the specific blocker, owner and revised earliest evidence date.                                                          |
+
+The [public profile](../config/deployments/preprod-public.yaml) currently sets
+seven-day block maturity and **nine days plus eight minutes** for DA bond
+withdrawal, alongside a three-day DA challenge window, two-day full response
+window and two-day slash grace. These are lifecycle-dependent waits, not a
+single deployment soak. Start each scenario as soon as its prerequisites allow;
+its schedule must account for sequential waits and L1 confirmation. A withdrawal
+wait begun on October 18 finishes on October 27 plus eight minutes at the
+earliest, before confirmation and evidence review. Shorter testing-profile
+timings cannot close a public-profile gate.
+
+Use the maintained
+[live acceptance runbook](../.agents/skills/midgard-e2e-acceptance/references/live-acceptance.md)
+and its finalizer. The runbook currently requires 22 recovery drills; #722's four
+previously unrun drills are a subset. The 52 historical watcher results are not
+release evidence for all 55 installed source categories. Require each applicable
+proof direction and payout, exact deployment identity, and both successful
+functional and clean-run verdicts, with no remaining safe action. Check the
+runtime catalogue against the frozen release rather than treating these counts
+as permanent authority.
+
+Escalate missing owners/capacity on October 4, unresolved correctness approaches
+on October 8, an incomplete integrated candidate on October 12, or an inability
+to start the public acceptance scenarios on October 15. Recalculate the earliest
+completion from actual event times whenever a repair or redeployment invalidates
+evidence; do not assume a nine-day rerun fits the final three days. Keep deferred
+#728/#729 behind required acceptance unless evidence establishes a reachable
+defect that blocks a gate. This schedule does not defer canonical functionality,
+security, recovery or required operational readiness to meet the date.
+
 ## Public claim and protocol scope
 
 - [ ] Publish one security claim across announcements, SDK, operator, and challenger
