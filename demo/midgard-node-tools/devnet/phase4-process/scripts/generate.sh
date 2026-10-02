@@ -73,6 +73,20 @@ docker run --rm --user "$(id -u):$(id -g)" \
 # Use the verified Preprod consensus and active ledger configuration. Local
 # identities and funded accounts belong to this isolated chain.
 node "$script_dir/../../preprod/apply-configuration.mjs" "$MIDGARD_PHASE4_RUN_DIR/genesis"
+# The pool's operational certificate is issued once at KES period 0 and never
+# reissued, so this chain forges for maxKESEvolutions KES periods and then
+# halts for good. The profile's isolatedChain consensus lengthens the period
+# for this chain only; the watcher journeys compare the live chain with it.
+profile="$script_dir/../../preprod/configuration.json"
+shelley_genesis="$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json"
+isolated_consensus=$(jq -ec '.isolatedChain.consensus | select(type == "object")' "$profile") \
+  || die "the Preprod profile has no isolatedChain consensus"
+jq --argjson isolated "$isolated_consensus" '. + $isolated' "$shelley_genesis" >"$shelley_genesis.isolated"
+mv "$shelley_genesis.isolated" "$shelley_genesis"
+jq -e --argjson isolated "$isolated_consensus" \
+  '. as $genesis | all($isolated | keys[]; $genesis[.] == $isolated[.]) and .maxKESEvolutions <= 64' \
+  "$shelley_genesis" >/dev/null \
+  || die "generated genesis must carry the isolatedChain consensus and at most 64 KES evolutions"
 cp "$script_dir/../../preprod/configuration.json" "$MIDGARD_PHASE4_RUN_DIR/config/preprod-configuration.json"
 jq -e '(.extraConfig.stakePools.data | length) == 1 and (.extraConfig.stakeCredentials.data | length) == 1' \
   "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" >/dev/null \
@@ -95,10 +109,12 @@ byron_hash=$(docker run --rm --user "$(id -u):$(id -g)" \
   --entrypoint cardano-cli "$cardano_image" \
   byron genesis print-genesis-hash --genesis-json /run/genesis/byron-genesis.json)
 
+# One pool and no peers: below Warning, cardano-node's stdout is per-slot
+# chatter at tens of megabytes a minute.
 jq -n \
   --arg byron "$byron_hash" --arg shelley "$shelley_hash" \
   --arg alonzo "$alonzo_hash" --arg conway "$conway_hash" --arg dijkstra "$dijkstra_hash" \
-  '{Protocol:"Cardano",ConsensusMode:"PraosMode",RequiresNetworkMagic:"RequiresMagic",ByronGenesisFile:"/genesis/byron-genesis.json",ByronGenesisHash:$byron,ShelleyGenesisFile:"/genesis/shelley-genesis.json",ShelleyGenesisHash:$shelley,AlonzoGenesisFile:"/genesis/alonzo-genesis.json",AlonzoGenesisHash:$alonzo,ConwayGenesisFile:"/genesis/conway-genesis.json",ConwayGenesisHash:$conway,DijkstraGenesisFile:"/genesis/dijkstra-genesis.json",DijkstraGenesisHash:$dijkstra,"LastKnownBlockVersion-Major":2,"LastKnownBlockVersion-Minor":0,"LastKnownBlockVersion-Alt":0,TestShelleyHardForkAtEpoch:0,TestAllegraHardForkAtEpoch:0,TestMaryHardForkAtEpoch:0,TestAlonzoHardForkAtEpoch:0,TestBabbageHardForkAtEpoch:0,TestConwayHardForkAtEpoch:0,ExperimentalHardForksEnabled:true,TxSubmissionInitDelay:0,TraceOptions:{"":{severity:"Info",detail:"DNormal",backends:["Stdout MachineFormat"]}}}' \
+  '{Protocol:"Cardano",ConsensusMode:"PraosMode",RequiresNetworkMagic:"RequiresMagic",ByronGenesisFile:"/genesis/byron-genesis.json",ByronGenesisHash:$byron,ShelleyGenesisFile:"/genesis/shelley-genesis.json",ShelleyGenesisHash:$shelley,AlonzoGenesisFile:"/genesis/alonzo-genesis.json",AlonzoGenesisHash:$alonzo,ConwayGenesisFile:"/genesis/conway-genesis.json",ConwayGenesisHash:$conway,DijkstraGenesisFile:"/genesis/dijkstra-genesis.json",DijkstraGenesisHash:$dijkstra,"LastKnownBlockVersion-Major":2,"LastKnownBlockVersion-Minor":0,"LastKnownBlockVersion-Alt":0,TestShelleyHardForkAtEpoch:0,TestAllegraHardForkAtEpoch:0,TestMaryHardForkAtEpoch:0,TestAlonzoHardForkAtEpoch:0,TestBabbageHardForkAtEpoch:0,TestConwayHardForkAtEpoch:0,ExperimentalHardForksEnabled:true,TxSubmissionInitDelay:0,TraceOptions:{"":{severity:"Warning",detail:"DNormal",backends:["Stdout MachineFormat"]}}}' \
   >"$MIDGARD_PHASE4_RUN_DIR/config/config.json"
 "$script_dir/validate-custom-chain-config.sh" \
   "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" \

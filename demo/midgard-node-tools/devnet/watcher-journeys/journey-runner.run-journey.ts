@@ -37,6 +37,7 @@ import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { verifyJourneyPublicDa } from "./public-da-preflight.js";
 import { measureJourneyStage } from "./stage-timing.js";
 import { prepareJourneyHistory } from "./staging.js";
+import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 
 /** One shared service lifecycle for acceptance and genuine history prerequisites. */
 export const runJourney = async (
@@ -233,6 +234,7 @@ export const runJourney = async (
     const running = await session.ensureWatcher();
     const { config, requireLive, operations, trustedHeadRevision } = running;
     diagnostics = running.diagnostics;
+    const verifiedHeaders = createJourneyVerifiedHeaders(running, directory);
     const workflowBaseline = baseline?.get(staged.current.headerHash) ?? [];
     await writeJourneyArtifact(join(directory, "session.json"), {
       sessionDirectory: session.directory,
@@ -308,13 +310,9 @@ export const runJourney = async (
           decision: "fault_detected",
           category: fixture.category,
         });
-        expect(
-          records.find(
-            ({ decision }) =>
-              decision.headerHash === staged.predecessor.headerHash,
-          )?.decision,
-        ).toMatchObject({ decision: "healthy" });
-        return decision;
+        return (
+          (await verifiedHeaders.collect([staged.predecessor])) && decision
+        );
       },
       900_000,
     );
@@ -371,11 +369,11 @@ export const runJourney = async (
       "healthy processing after correction",
       async () => {
         requireLive();
-        const decision = (await readDecisions()).find(
-          ({ decision }) => decision.headerHash === successor.headerHash,
-        )?.decision;
+        const decision = await verifiedHeaders.collectHealthy(
+          staged.predecessor,
+          successor,
+        );
         if (decision === undefined) return undefined;
-        expect(decision).toMatchObject({ decision: "healthy" });
         expect(
           await provider.getUtxosWithUnit(
             contracts.stateQueue.spendingScriptAddress,
@@ -396,6 +394,7 @@ export const runJourney = async (
       trustedHeadRevision,
       timing?.allowances.healthySuccessorObservationMs ?? 1_800_000,
     );
+    await verifiedHeaders.retain();
     await writeJourneyArtifact(
       join(context.runDirectory, "work/journeys/head.json"),
       {

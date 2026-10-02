@@ -55,6 +55,11 @@ export async function verifyJourneyConfiguration(input: {
   const liveGenesis = await query("queryNetwork/genesisConfiguration", {
     era: "shelley",
   });
+  // generate.sh applies the isolated chain's consensus over Preprod's.
+  const consensus = {
+    ...preprod.consensus,
+    ...preprod.isolatedChain.consensus,
+  };
   const expectedGenesis = {
     startTime: genesis.systemStart,
     networkMagic: genesis.networkMagic,
@@ -62,8 +67,8 @@ export async function verifyJourneyConfiguration(input: {
     activeSlotsCoefficient: "1/20",
     epochLength: preprod.consensus.epochLength,
     securityParameter: preprod.consensus.securityParam,
-    slotsPerKesPeriod: preprod.consensus.slotsPerKESPeriod,
-    maxKesEvolutions: preprod.consensus.maxKESEvolutions,
+    slotsPerKesPeriod: consensus.slotsPerKESPeriod,
+    maxKesEvolutions: consensus.maxKESEvolutions,
     maxLovelaceSupply: preprod.consensus.maxLovelaceSupply,
     updateQuorum: preprod.consensus.updateQuorum,
   };

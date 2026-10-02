@@ -1,5 +1,13 @@
 name: ${MIDGARD_PHASE4_COMPOSE_PROJECT:?MIDGARD_PHASE4_COMPOSE_PROJECT is required}
 
+# Docker keeps a container's whole stdout unless capped; uncapped, these four
+# filled the host within days. Nothing reads these logs.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 100m
+    max-file: "3"
+
 services:
   cardano-node:
     image: ghcr.io/intersectmbo/cardano-node:11.1.0@sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a
@@ -40,6 +48,7 @@ services:
       timeout: 2s
       retries: 60
     restart: "no"
+    logging: *logging
 
   ogmios:
     image: cardanosolutions/ogmios:v7.0.0@sha256:8892ef5f77b94f1c95427cf9f2b40e6235a32b27a8b1e378db02289f3991617f
@@ -68,6 +77,7 @@ services:
       timeout: 2s
       retries: 60
     restart: "no"
+    logging: *logging
 
   kupo:
     image: cardanosolutions/kupo:v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e
@@ -99,6 +109,7 @@ services:
       timeout: 2s
       retries: 60
     restart: "no"
+    logging: *logging
 
   postgres:
     image: postgres:15.15-alpine@sha256:d4c38e1c60871a1e8fe5d05b639980ac7827c9e6920a5df663a16f86f398aca6
@@ -112,8 +123,13 @@ services:
     ports:
       - "127.0.0.1:${MIDGARD_PHASE4_POSTGRES_PORT:-5544}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1",
+        ]
       interval: 2s
       timeout: 2s
       retries: 60
     restart: "no"
+    logging: *logging

@@ -6,6 +6,7 @@ export default defineConfig({
   // its own workers.
   entry: {
     index: "src/index.ts",
+    "devnet-stack": "src/devnet-stack.ts",
     "corpus-chain-builder": "src/workers/corpus-chain-builder.ts",
   },
   format: ["esm"],

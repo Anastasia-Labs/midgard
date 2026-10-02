@@ -44,14 +44,19 @@ Verify `.env` without printing seed phrases:
 - `RUN_GENESIS_ON_STARTUP=false`;
 - distinct operator, reference-script, merge, user, and DA submitter roles;
 - `MIDGARD_DEPLOYMENT_MANIFEST_PATH` points to the producer runtime manifest;
-- `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity; and
+- `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity;
 - the native MPF owner is pinned: `MPF_NATIVE_OWNER_BINARY_PATH=/app/native/architecture-g-owner`,
   `MPF_NATIVE_OWNER_SIDECAR_PATH` set, and `MPF_NATIVE_OWNER_BINARY_SHA256` set
   to the value printed by
   `$COMPOSE run --rm --no-deps --entrypoint cat midgard-node /app/native/architecture-g-owner.sha256`.
   `.env.example` leaves the SHA-256 blank on purpose, and the node refuses to
   `listen` without it (under `restart: always` that is a crash loop). Re-pin
-  after every image rebuild.
+  after every image rebuild; and
+- the L1 history source is pinned: `L1_HISTORY_GENESIS_LOSSLESS_SHA256` set
+  to the `sha256` printed by
+  `$COMPOSE run --rm --no-deps midgard-node node ./dist/index.js history-genesis-pin`
+  against the intended chain. `listen` refuses to start without it, and a
+  different value means a different chain, not a setting to refresh.
 
 For a fresh deployment, configure explicit positive integers for
 `MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES`,
@@ -604,7 +609,10 @@ Retain the deposit block's confirmation and merge evidence with the run.
 
 ### Submit two baseline L2 transfers
 
-Require the DA committee node to remain ready first:
+Require the DA committee node to remain ready first. Rerun an interrupted
+transfer with its same submission ID and arguments: the node CLI journals the
+signed transaction before submitting it, so the rerun returns or resubmits that
+transaction instead of signing a second one. A new transfer needs a new ID.
 
 ```bash
 curl -sf http://127.0.0.1:8787/healthz
@@ -619,7 +627,7 @@ node "$TOOLS_CLI" e2e-run-step \
   --summary-out "$L2_TRANSFER_A_STEP" \
   --timeout-ms 300000 \
   -- \
-  bash -lc "$COMPOSE exec -T midgard-node node dist/index.js submit-l2-transfer --wallet-seed-phrase-env USER_SEED_PHRASE --endpoint http://127.0.0.1:3000 --l2-address '$DEST_A' --lovelace 2000000"
+  bash -lc "$COMPOSE exec -T midgard-node node dist/index.js submit-l2-transfer --submission-id '$RUN_ID:transfer-a' --wallet-seed-phrase-env USER_SEED_PHRASE --endpoint http://127.0.0.1:3000 --l2-address '$DEST_A' --lovelace 2000000"
 
 L2_TRANSFER_B_LOG="logs/$RUN_ID/submit-l2-transfer-b.log"
 L2_TRANSFER_B_STEP="$E2E_STEP_DIR/submit-l2-transfer-b.json"
@@ -630,7 +638,7 @@ node "$TOOLS_CLI" e2e-run-step \
   --summary-out "$L2_TRANSFER_B_STEP" \
   --timeout-ms 300000 \
   -- \
-  bash -lc "$COMPOSE exec -T midgard-node node dist/index.js submit-l2-transfer --wallet-seed-phrase-env USER_SEED_PHRASE --endpoint http://127.0.0.1:3000 --l2-address '$DEST_B' --lovelace 1500000"
+  bash -lc "$COMPOSE exec -T midgard-node node dist/index.js submit-l2-transfer --submission-id '$RUN_ID:transfer-b' --wallet-seed-phrase-env USER_SEED_PHRASE --endpoint http://127.0.0.1:3000 --l2-address '$DEST_B' --lovelace 1500000"
 ```
 
 Use the `txId` fields from the two step summaries with `/tx-status?tx_hash=`.
@@ -810,11 +818,14 @@ stop: the sweep is not runnable and must not be replaced with manual proof CLI
 steps or a hand-authored success record.
 
 The same artifact must record a real withdrawal through order, reserve, payout
-init, every payout add, and payout conclude. The executable commands for that
-leg (`submit-withdrawal`, `withdrawal-status`,
-`resolve-event-settlement-proof --kind withdrawal`, `initialize-payout`,
-`add-reserve-funds-to-payout`, `conclude-payout`, `payout-status`) are in
-sections 5 to 11 of
+init, every payout add, and payout conclude. The node's settlement worker
+submits the reserve absorb and every payout transaction itself; do not run the
+manual `absorb-confirmed-deposit-to-reserve`, `initialize-payout`,
+`add-reserve-funds-to-payout` or `conclude-payout` verbs against the running
+node. Read the worker's transactions from its `settlement_attempts` journal.
+The commands that submit and watch that leg (`submit-withdrawal`,
+`withdrawal-status`, `resolve-event-settlement-proof --kind withdrawal`,
+`payout-status`) are in sections 5 to 10 of
 [DEPOSIT_SEND_AND_WITHDRAW.md](../../../../demo/midgard-node/docs/DEPOSIT_SEND_AND_WITHDRAW.md).
 Skip its manual `/commit` and `/merge` calls, which are devnet-only: wait for
 the commit fiber and rerun the `await-automatic-merge` step above instead. Hash the canonical expected and
