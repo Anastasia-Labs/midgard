@@ -5,6 +5,7 @@ import {
   E2E_STATE_CORRECTION_ACCEPTANCE_SCHEMA_VERSION,
   type E2EStateCorrectionAcceptance,
   parseE2EStateCorrectionAcceptance,
+  REQUIRED_STATE_CORRECTION_GATE_LABELS,
   REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS,
   stateCorrectionAcceptanceEvidence,
 } from "../src/commands/e2e-state-correction-acceptance.js";
@@ -152,16 +153,20 @@ describe("state-correction acceptance evidence", () => {
     );
   });
 
-  it("fails the finalizer gate when the artifact is absent or bound to another run", () => {
-    expect(
-      stateCorrectionAcceptanceEvidence({
-        expectedRunId: "fresh-final-release",
-      }).db,
-    ).toContainEqual(
-      expect.objectContaining({
-        label: "state_correction_acceptance",
-        status: "failed",
-      }),
+  it("blocks every gate as not run when the artifact is absent, and fails one bound to another run", () => {
+    const absent = stateCorrectionAcceptanceEvidence({
+      expectedRunId: "fresh-final-release",
+    });
+    expect(absent.db.map((gate) => gate.label)).toEqual([
+      ...REQUIRED_STATE_CORRECTION_GATE_LABELS,
+    ]);
+    for (const gate of absent.db) {
+      expect(gate.status).toBe("blocked");
+      expect(gate.details.reason).toBe("not run");
+    }
+    expect(absent.transactions).toEqual([]);
+    expect(absent.notes.join("\n")).toContain(
+      "release readiness stays blocked",
     );
 
     const fixture = finalizedFixture();

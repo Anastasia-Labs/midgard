@@ -215,7 +215,10 @@ The e2e acceptance runbook matches the CLIs it drives.
 - Runs on:
   - `.agents/skills/midgard-e2e-acceptance/**`
   - `demo/midgard-node/src/index*.ts`
+  - `demo/midgard-node/src/commands/prepare-hub-oracle-nonce.resume-signed.ts`
   - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-node-tools/docs/PREPROD_STACK.md`
+  - `demo/midgard-node-tools/package.json`
 - Mode: runs in the pre-push hook
 
 ### `aiken-fmt`

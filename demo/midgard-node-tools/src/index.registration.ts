@@ -4,7 +4,6 @@ import { failCli, writeJson } from "midgard-node/commands/cli-runtime";
 import { loadRuntimeDotenv } from "midgard-node/runtime-env";
 
 import packageJson from "../package.json" with { type: "json" };
-import * as E2EFinalizeSummaryCommand from "./commands/e2e-finalize-summary.js";
 import * as StressWalletsCommand from "./commands/stress-wallets/index.js";
 
 loadRuntimeDotenv();
@@ -19,71 +18,6 @@ program
   .description(
     "Midgard node e2e, stress, and acceptance tooling. Every command here drives a node from the outside; none of them ship in the operator binary.",
   );
-
-const E2E_TX_STATUSES = new Set([
-  "submitted",
-  "confirmed",
-  "queued",
-  "accepted",
-  "committed",
-  "rejected",
-  "unknown",
-] as const);
-
-type E2ETxStatus = NonNullable<
-  E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
->[number]["status"];
-
-const E2E_TX_HASH_PATTERN = /^[0-9a-f]{64}$/i;
-
-const E2E_TX_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
-
-const parseTxEvidenceOption = (
-  value: string,
-): NonNullable<
-  E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
->[number] => {
-  const [label, txHash, status, ...sourceParts] = value.split(":");
-  const normalizedStatus = status?.toLowerCase();
-  const source = sourceParts.join(":").trim();
-  if (
-    label === undefined ||
-    label.length === 0 ||
-    txHash === undefined ||
-    !E2E_TX_HASH_PATTERN.test(txHash) ||
-    status === undefined ||
-    normalizedStatus === undefined ||
-    !E2E_TX_STATUSES.has(normalizedStatus as E2ETxStatus) ||
-    sourceParts.length === 0 ||
-    !E2E_TX_LABEL_PATTERN.test(label) ||
-    source.length === 0 ||
-    source.toLowerCase().includes("observedtxhashes")
-  ) {
-    throw new Error(
-      "--tx must use label:64hexTxHash:status:source with a non-raw source and status one of submitted, confirmed, queued, accepted, committed, rejected, unknown",
-    );
-  }
-  return {
-    label,
-    txHash: txHash.toLowerCase(),
-    status: normalizedStatus as E2ETxStatus,
-    source,
-  };
-};
-
-export const parseTxEvidenceOptions = (
-  values: unknown,
-): NonNullable<
-  E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
-> =>
-  Array.isArray(values)
-    ? values.map((value) => {
-        if (typeof value !== "string") {
-          throw new Error("--tx must be provided as a string.");
-        }
-        return parseTxEvidenceOption(value);
-      })
-    : [];
 
 export const stressCliLoggerLayer = Logger.replace(
   Logger.defaultLogger,

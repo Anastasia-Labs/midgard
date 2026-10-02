@@ -406,6 +406,12 @@ export {
   type WatcherReferenceScriptIdentity,
 } from "./runtime/deployment-identity.js";
 export {
+  authorWatcherDeploymentRelease,
+  type WatcherDeploymentReleasePaths,
+  type WatcherDeploymentReleaseWriter,
+  type WatcherExistingAuthorityPolicy,
+} from "./runtime/deployment-release-authoring.js";
+export {
   startWatcherOperationsHttpServer,
   WATCHER_OPERATIONS_HTTP,
   type WatcherOperationsHttpServer,

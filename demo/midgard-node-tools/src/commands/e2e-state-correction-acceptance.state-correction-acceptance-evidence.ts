@@ -26,24 +26,26 @@ export const stateCorrectionAcceptanceEvidence = ({
   readonly notes: readonly string[];
 } => {
   if (evidence === undefined || evidencePath === undefined) {
+    // No run produces this evidence yet (an e2e-stack run drives no fault
+    // proof), so each gate is blocked as not run: never satisfied, and never
+    // a functional failure of the run that was checked.
     return {
-      db: [
-        {
-          label: REQUIRED_STATE_CORRECTION_GATE_LABELS[0],
-          status: "failed",
-          source: "e2e-finalize-summary",
-          details: {
-            missing: "--state-correction-evidence",
-            requiredFamilies: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.join(","),
-            requiredRecoveryDrills:
-              REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS.join(","),
-          },
+      db: REQUIRED_STATE_CORRECTION_GATE_LABELS.map((label) => ({
+        label,
+        status: "blocked",
+        source: "e2e-finalize-summary",
+        details: {
+          reason: "not run",
+          missing: "--state-correction-evidence",
+          requiredFamilies: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.join(","),
+          requiredRecoveryDrills:
+            REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS.join(","),
         },
-      ],
+      })),
       transactions: [],
       rawEvidence: [],
       notes: [
-        "State-correction acceptance is incomplete: no strict Q57/C83-C85/W45 evidence artifact was supplied.",
+        "State-correction acceptance was not run: no strict Q57/C83-C85/W45 evidence artifact was supplied, so release readiness stays blocked.",
       ],
     };
   }

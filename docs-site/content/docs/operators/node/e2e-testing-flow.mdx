@@ -1,55 +1,44 @@
 ---
 title: "End-to-End Testing Flow"
-description: "The acceptance sequence for the operator runtime: fresh deployment through deposit, transfers, attestation, and merge, with pass criteria."
+description: "The one-command Preprod acceptance run: deployment, DA, deposits, transfers, automatic merge and finality, withdrawals and payouts, with pass criteria and recovery."
 ---
 
 The end-to-end (E2E) acceptance flow verifies that a change has not broken the real
-Midgard operator path: it drives a full deployment through deposit, L2 transfers,
-block commit, data-availability attestation, and merge, then checks health, database
-state, balances, and logs.
+Midgard operator path. One command, `e2e-stack` in `midgard-node-tools`, deploys
+or resumes a Cardano Preprod deployment with local providers, starts the node, DA
+committee, public retained DA and watcher, and runs wallet journeys: deposit,
+L2 transfer, automatic merge and finality, withdrawal and automatic payout.
 
 <Callout type="warn" title="Advanced acceptance path">
   This is the operator acceptance overview, not a user quickstart. A clean
   public-testnet acceptance gate is still a [project
-  blocker](/docs/getting-started/status), so treat a green run as the current
-  baseline evidence, not completion of the full acceptance contract.
+  blocker](/docs/getting-started/status): a green run proves the functional
+  path, not the full release-readiness contract.
 </Callout>
-
-## The step wrappers
-
-Three `midgard-node-tools` commands structure the run so every step produces a
-durable, machine-readable summary:
-
-- **`e2e-run-step`**: wraps a one-shot command, capturing a raw log and a JSON step
-  summary. Flags: `--id`, `--cwd`, `--raw-log`, `--summary-out`, `--timeout-ms`,
-  then `--` followed by the wrapped command.
-- **`e2e-start-service`**: starts a long-running service (the node or the DA committee
-  node) and waits on its readiness URL. Flags include `--service`, `--ready-url`,
-  `--health-url`, `--pid-file`, `--ready-timeout-ms`, `--poll-interval-ms`.
-- **`e2e-finalize-summary`**: aggregates the step summaries, transaction hashes, and
-  the node log into `logs/$RUN_ID/summary.json` and `summary.md` with a verdict.
 
 ## Prerequisites
 
 <Steps>
   <Step>
-    **Toolchain**: `pnpm` (see [Local Dev](/docs/getting-started/local-dev)) and
-    a built node and tools (`pnpm build` in each of `demo/midgard-node` and
-    `demo/midgard-node-tools`).
+    **Toolchain**: the workspace dependencies installed with `pnpm` (see [Local
+    Dev](/docs/getting-started/local-dev)), Node 22.16 or newer, the pinned
+    Aiken compiler, Docker Compose 2.21 or newer, Go, Rust/Cargo and Linux
+    `flock`. The command builds the contracts, runtimes and images itself.
   </Step>
   <Step>
-    **On-chain code**: a compiled Aiken blueprint (`plutus.json`), see [On-Chain
-    Validators](/docs/onchain/overview).
+    **L1 backend**: local Kupmios (Cardano node + Ogmios + Kupo), see [Running
+    the L1 Backend](/docs/getting-started/l1-backend). The run refuses any other
+    provider or remote failover.
   </Step>
   <Step>
-    **L1 backend**: local Kupmios (Cardano node + Ogmios + Kupo) for the
-    `docker-compose.kupmios.yaml` override, see [Running the L1
-    Backend](/docs/getting-started/l1-backend). Acceptance requires
-    `L1_PROVIDER=Kupmios` with no remote failover.
+    **Configuration**: a stack configuration JSON copied from
+    `demo/midgard-node-tools/config/preprod-stack.example.json`, naming (never
+    holding) the wallet, DA and transport secrets in the node `.env`. The full
+    specification is `demo/midgard-node-tools/docs/PREPROD_STACK.md`.
   </Step>
   <Step>
     **Local feedback gate**: for transaction-preparation changes, run the lower
-    layers first and record them in the evidence.
+    layers first.
   </Step>
 </Steps>
 
@@ -60,157 +49,73 @@ pnpm run test:tx-prep:node
 pnpm run test:tx-prep:emulator
 ```
 
-## Choose a run mode
+## Run it
 
-Pick a mode before any state-changing command:
+From the repository root, check the configuration offline, then run:
 
-| Mode                              | When                                                                                                                               |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **Fresh deployment**              | Starting a new acceptance identity on purpose (fresh one-shot, fresh reference scripts, fresh `init`, matching local state reset). |
-| **Attach / resume**               | A complete deployment already exists; run or continue it. Do **not** run `init`; start via `listen` / Docker.                      |
-| **Continue interrupted pre-init** | A fresh deployment failed before `init`; resume only within the same documented identity.                                          |
-| **Diagnose post-init**            | `init` or a later step may have succeeded; reconcile chain/DB/run-state before acting.                                             |
-| **Fresh redeploy recovery**       | Required only by the [state-reset rules](/docs/operators/node/compatibility-rules).                                                |
+```bash
+pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/stack.json --check
+pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/stack.json
+```
 
-<Callout type="warn" title="Do not fresh-redeploy on every failure">
-  Provider, wallet, DA, projection, scheduler, and merge failures are gates to
-  fix or wait through, not redeploy triggers. Never combine clean local
-  databases with an old on-chain manifest or an old hub-oracle one-shot outref.
-</Callout>
+`--check` starts nothing and spends nothing. `--setup-only` stops after setup
+and readiness, leaving the services running. The same command, with the same
+configuration, attaches to a complete deployment or resumes an interrupted one:
+every confirmed step is reconciled against Cardano and the saved records, never
+repeated. A fresh deployment needs fresh local storage; run it from a separate
+linked worktree rather than deleting volumes.
 
-## The fresh-run sequence
+## What the run does
 
 <Mermaid
   chart={`flowchart TD
-  A["pnpm build + compose build"] --> B["hub-oracle one-shot nonce"]
-  B --> C["patch .env, reset local state"]
-  C --> D["publish node-runtime reference scripts"]
-  D --> E["init protocol"]
-  E --> F["register + activate operator"]
-  F --> G["start DA committee, independent retained reader, producer preflight"]
-  G --> H["start node, wait /readyz"]
-  H --> I["submit-deposit, wait for /deposit-status projected"]
-  I --> P["deposit block commit, attestation, automatic merge"]
-  P --> J["submit L2 transfers A + B"]
-  J --> K["poll /tx-status until committed"]
-  K --> L["DA attestation: sign, submit, apply"]
-  L --> M["merge until stateQueue empty"]
-  M --> Q["state correction and recovery acceptance"]
-  Q --> N["e2e-finalize-summary"]`}
+  A["prerequisites: builds"] --> B["providers: Cardano node, Ogmios, Kupo, Postgres"]
+  B --> C["storage and wallet checks"]
+  C --> D["hub-oracle one-shot nonce"]
+  D --> E["node-runtime reference scripts"]
+  E --> F["db:migrate + init, verified manifest"]
+  F --> G["register + activate operator"]
+  G --> H["generate DA, retained DA and watcher services"]
+  H --> I["DA committee ready, producer DA preflight, node + watcher ready"]
+  I --> J["per cycle: deposit absorbed, exact L2 credit"]
+  J --> K["transfer committed, payload read over public DA, finalized"]
+  K --> L["withdrawal, automatic payout to the exact destination"]`}
 />
 
-Each state-changing step is wrapped in `e2e-run-step`. From
-`demo/midgard-node`, protocol init uses:
-
-```bash
-TOOLS_CLI=../midgard-node-tools/dist/index.js
-RUN_ID="e2e-run-$(date -u +%Y%m%dT%H%M%SZ)"
-E2E_STEP_DIR="logs/$RUN_ID/steps"
-mkdir -p "$E2E_STEP_DIR"
-
-node "$TOOLS_CLI" e2e-run-step \
-  --id init-protocol \
-  --cwd "$(pwd)" \
-  --raw-log "logs/$RUN_ID/init.log" \
-  --summary-out "$E2E_STEP_DIR/init.json" \
-  --timeout-ms 1200000 \
-  -- \
-  node dist/index.js init \
-  --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
-```
-
-Configure the DA writer and the separate SELECT-only public retained-DA process
-using the [DA committee guide](/docs/watchers/da-committee-node). Acceptance
-requires PostgreSQL-backed storage, a distinct public-reader identity and
-credentials, and a manifest-bound public retrieval probe. The public libp2p
-listener has no HTTP readiness endpoint.
-
-The committee service (from `demo/da-committee-node`) must also be ready on
-its configured `/readyz` before L2 activity. This abbreviated command assumes
-those role-specific environments and manifests are already prepared:
-
-```bash
-DA_NODE_DIR="$(cd ../da-committee-node && pwd)"
-node "$TOOLS_CLI" e2e-start-service \
-  --service da-committee-node \
-  --cwd "$DA_NODE_DIR" \
-  --ready-url http://127.0.0.1:8787/readyz \
-  --health-url http://127.0.0.1:8787/healthz \
-  --raw-log "$DA_NODE_DIR/run/e2e-da-committee-node.log" \
-  --pid-file "$DA_NODE_DIR/run/e2e-da-committee-node.pid" \
-  --ready-timeout-ms 180000 \
-  -- pnpm start
-```
-
-<Callout type="info" title="Key rules baked into the flow">
-  Keep `RUN_GENESIS_ON_STARTUP=false` and run protocol init explicitly. Use a
-  fresh, funded operator-wallet UTxO for the hub-oracle one-shot. Host DB-backed
-  commands need `POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433`; `/tx-status` takes
-  `tx_hash`. Do not use `attest-state-queue-once` as the acceptance path; the DA
-  committee must sign, submit, and apply the attestation. Every command used in
-  this flow is documented in the [CLI
-  reference](/docs/operators/node/cli-reference).
-</Callout>
-
-## What a green run proves
-
-The baseline sequence exercises a deposit, two L2 transfers, DA attestation,
-automatic merge, and final balances. Wait for the deposit block to settle before
-spending its output: deposits execute after transactions within a block.
-
-The finalizer's full acceptance contract additionally requires independent
-state-correction, exact economics, withdrawal/reserve/payout, both forced
-classification directions, crash/rollback, and availability-capability evidence.
-Missing adapters or evidence keep those gates blocked. Baseline success alone
-cannot produce full release acceptance; see [fault-proof workflows](/docs/fault-proofs/overview)
-and [release status](/docs/getting-started/status).
-
-## Artifacts
-
-Use a unique run directory such as `logs/$RUN_ID/` and retain:
-
-- `steps/*.json`: one structured summary per `e2e-run-step` (with `observedTxHashes`).
-- per-step raw logs at their explicit `--raw-log` paths and the complete node log
-  for the acceptance window.
-- `deployment-run-state.json`: the run-state used across nonce and reference-script
-  publication.
-- `summary.json` and `summary.md`: the finalized dashboard from
-  `e2e-finalize-summary`.
+The node merges through its automatic merge worker; no manual `/commit`,
+`/merge` or repair command is used. Every command the run executes is saved
+with its raw log and structured summary, and every transaction intent is saved
+before it is first submitted.
 
 ## Pass criteria
 
-`e2e-finalize-summary` must report `functionalVerdict`, `cleanRunVerdict`, and
-`verdict` as `success`, with `nextSafeAction: none_run_complete`. The full
-state-correction and recovery gates above must pass, alongside:
+A run passes when the command exits 0 and:
 
-- one consumed deposit and two accepted L2 admissions;
-- `/healthz` healthy and `/readyz` ready with no readiness reasons;
-- both L2 transaction statuses are `committed`, with balances reflecting the transfers;
-- `pending_block_finalizations` finalized; `mempool`, `processed_mempool`, `blocks`,
-  and unfinished local mutation jobs all zero after merges;
-- `immutable` and `confirmed_ledger` contain the merged results;
-- `stateQueue.headers` is empty after the final merge;
-- the final log scan shows no unexplained error, failure, abandon, or crash entries.
+- `journey-summary.json` in the run directory reports `wallet-journey-complete`
+  with the configured number of cycles, and every step in `stack-journal.json`
+  is complete;
+- each cycle shows the exact L2 credit and debit including fees, a committed
+  transfer whose payload was retrieved over public libp2p DA, confirmed-ledger
+  finality, and the exact L1 payout destination and value; and
+- the node's `/readyz` has no reasons, automatic settlement is healthy, the
+  watcher is live and ready, and every DA committee member is ready.
 
-## Common failure modes
+## What a green run does not prove
 
-Classify a blocker and take the safe next action rather than resubmitting blindly:
+The release-readiness gates (every launch-scope fault-proof family, exact slash
+and reward economics, the reserve and payout sequence, both forced-classification
+directions, and the crash/rollback matrix) need evidence this run does not
+produce. See [fault-proof workflows](/docs/fault-proofs/overview) and
+[release status](/docs/getting-started/status).
 
-| Blocker                              | Safe next action                                                                                               |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Local Kupmios unhealthy              | Run `l1-provider-preflight --json`; fix local Kupo/Ogmios/Cardano-node. Do not switch to a remote provider.    |
-| Fresh one-shot mismatch              | Stop. Attach/resume if already initialized; otherwise restart fresh with a new one-shot and matching manifest. |
-| Operator registered but not active   | Reconcile operator lifecycle; use activate-only recovery only when chain state proves registration exists.     |
-| Deposit not projected                | Check `inclusionTime` in `/deposit-status`; the node projects it once due. Check `/readyz` if it stays late.   |
-| DA node not ready before L2 activity | Stop before transfers. Fix DA wallet/config/provider and restart the DA node.                                  |
-| DA payload conflict or root mismatch | Stop. Do not merge. Diagnose payload construction and the endpoint set.                                        |
-| DA signatures below threshold        | Start enough DA signer instances or fix peer propagation. Do not lower the threshold.                          |
-| Merge skipped by state-queue lease   | Inspect `stateQueueMutationLease` in `/readyz` and unfinished mutation jobs; wait or repair the stuck job.     |
+## When the run stops
 
-Before repeating a submitted milestone, use the relevant `reconcile` command
-with `--json` and resolve ambiguous transaction observations. Use `--repair`
-only when that result explicitly supports it. Acceptance requires automatic
-merge; `reconcile merge-complete --repair` cannot establish that evidence.
+The run stops with a message rather than guessing. It never repeats an
+ambiguous submission, never builds a second hub-oracle nonce, and refuses a
+changed deployment identity or mismatched local storage. Read the message, fix
+the cause (funding, configuration, a provider, or simply waiting for Cardano),
+and rerun the same command. Do not wipe the run directory, volumes or local
+databases, and do not run deployment or wallet commands by hand around it.
 
 ## Related
 

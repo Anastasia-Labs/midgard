@@ -10,6 +10,7 @@ import {
 import * as ContractDeploymentInfo from "./contract-deployment-info.js";
 import {
   type DeploymentRunCliOptions,
+  HUB_ORACLE_NONCE_SIGNED_STEP,
   type PendingHubOracleNonceAttempt,
 } from "./deployment-run-state.record-hub-oracle-nonce.js";
 
@@ -19,10 +20,21 @@ export const loadPendingHubOracleNonceAttempt = async ({
   readonly options: DeploymentRunCliOptions;
 }): Promise<PendingHubOracleNonceAttempt | null> => {
   const state = await loadDeploymentRunState(options.runStatePath);
-  const step = state?.steps.hubOracleNonce;
+  const signed = state?.steps[HUB_ORACLE_NONCE_SIGNED_STEP];
+  const recorded = state?.steps.hubOracleNonce;
+  // A signed record for a transaction `hubOracleNonce` does not name is newer
+  // than any recorded submission: that transaction may already be on chain.
+  const step =
+    signed !== undefined && recorded?.txHashes?.[0] !== signed.txHashes?.[0]
+      ? signed
+      : recorded;
   if (step === undefined || step.status !== "submitted") {
     return null;
   }
+  const signedTxCbor =
+    signed?.txHashes?.[0] === step.txHashes?.[0]
+      ? signed?.details?.signedTxCbor
+      : undefined;
   const txHash = step.txHashes?.[0];
   const address = step.details?.address;
   const lovelace = step.details?.lovelace;
@@ -42,6 +54,7 @@ export const loadPendingHubOracleNonceAttempt = async ({
     address,
     lovelace,
     inlineDatum,
+    ...(signedTxCbor === undefined ? {} : { signedTxCbor }),
   };
 };
 

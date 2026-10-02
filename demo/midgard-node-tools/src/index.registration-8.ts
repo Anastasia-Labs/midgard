@@ -1,8 +1,5 @@
 import "./index.registration-7.js";
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import { Effect } from "effect";
 import {
   collectStringOption,
@@ -20,7 +17,6 @@ import { runPipelinedCommitProcessAcceptance } from "./commands/e2e-pipelined-co
 import * as E2EProcessCleanupCommand from "./commands/e2e-process-cleanup.js";
 import * as E2EServiceCommand from "./commands/e2e-service.js";
 import * as Phase4T1RecoveryCommand from "./commands/phase4-t1-recovery.js";
-import { runCommandStep } from "./e2e/runner.js";
 import { program } from "./index.registration.js";
 
 program
@@ -164,67 +160,6 @@ program
   });
 
 program
-  .command("e2e-run-step")
-  .description("Run one acceptance command through the structured e2e runner")
-  .requiredOption("--id <id>", "Step id")
-  .requiredOption("--cwd <path>", "Working directory")
-  .requiredOption("--raw-log <path>", "Raw log path")
-  .option("--summary-out <path>", "Write the step summary JSON to this path")
-  .option("--timeout-ms <ms>", "Step timeout in milliseconds")
-  .option(
-    "--env-file <path>",
-    "Dotenv-compatible env file to apply before explicit --env overrides; repeatable",
-    collectStringOption,
-    [],
-  )
-  .option(
-    "--env <KEY=VALUE>",
-    "Explicit environment override; repeatable and applied after --env-file",
-    collectStringOption,
-    [],
-  )
-  .option(
-    "--env-inheritance <mode>",
-    "Environment inheritance mode: process or none",
-    "process",
-  )
-  .argument("<command>", "Command to execute")
-  .argument("[args...]", "Command arguments")
-  .action(async (command, args, opts) => {
-    const timeoutMs =
-      typeof opts.timeoutMs === "string"
-        ? parsePositiveIntegerOption(opts.timeoutMs, "--timeout-ms")
-        : undefined;
-    try {
-      const summary = await runCommandStep({
-        id: opts.id,
-        command,
-        args,
-        cwd: opts.cwd,
-        envFiles: parseStringListOption(opts.envFile, "--env-file"),
-        env: parseEnvOverrides(parseStringListOption(opts.env, "--env")),
-        envInheritance: parseE2EEnvInheritanceOption(opts.envInheritance),
-        rawLogPath: opts.rawLog,
-        ...(timeoutMs === undefined ? {} : { timeoutMs }),
-      });
-      if (typeof opts.summaryOut === "string" && opts.summaryOut.length > 0) {
-        await mkdir(dirname(opts.summaryOut), { recursive: true });
-        await writeFile(
-          opts.summaryOut,
-          `${JSON.stringify(summary, null, 2)}\n`,
-          "utf8",
-        );
-      }
-      writeJson(summary);
-      if (summary.status !== "success") {
-        process.exitCode = 1;
-      }
-    } catch (error) {
-      failCli("e2e-run-step", error);
-    }
-  });
-
-program
   .command("e2e-start-service")
   .description(
     "Start a long-running e2e service, write a PID file, and wait for readiness",
@@ -286,5 +221,47 @@ program
       failCli("e2e-start-service", error);
     }
   });
+
+program
+  .command("e2e-stack")
+  .description(
+    "Set up or resume the persistent local-provider Preprod stack and verify wallet journeys",
+  )
+  .requiredOption(
+    "--config <file>",
+    "Absolute path of the stack configuration JSON",
+  )
+  .option(
+    "--setup-only",
+    "Finish after setup; Compose continues supervising services",
+  )
+  .option(
+    "--check",
+    "Run the offline configuration checks only: no build, service start or transaction",
+  )
+  .action(
+    async (options: {
+      config: string;
+      setupOnly?: boolean;
+      check?: boolean;
+    }) => {
+      try {
+        const [major, minor] = process.versions.node.split(".").map(Number);
+        if (major! < 22 || (major === 22 && minor! < 16))
+          throw new Error("Node 22.16 or newer is required");
+        const { runStackController } = await import(
+          "./full-stack/controller.js"
+        );
+        await runStackController(options);
+      } catch (error) {
+        console.error(
+          error instanceof Error
+            ? error.message
+            : "Stack command failed; inspect saved artifacts",
+        );
+        process.exitCode = 1;
+      }
+    },
+  );
 
 program.parse(process.argv);

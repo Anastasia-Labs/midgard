@@ -9,9 +9,11 @@ import { Lucid } from "../services/lucid.js";
 import {
   awaitExactTransactionConfirmation,
   awaitSubmittedTransactionConfirmation,
+  BeforeSignedTransactionSubmission,
   signSubmitTransaction,
   TxConfirmError,
 } from "../transactions/utils.js";
+import { resumeSignedHubOracleNonceTransaction } from "./prepare-hub-oracle-nonce.resume-signed.js";
 
 export const DEFAULT_NONCE_LOVELACE = 5_000_000n;
 const DEFAULT_CONFIRMATION_RECONCILE_TIMEOUT_MS = 300_000;
@@ -37,12 +39,22 @@ export type SubmittedHubOracleNonceAttempt = {
   readonly address: string;
   readonly lovelace: string;
   readonly inlineDatum: string;
+  /** Present when the attempt was recorded before its first submission. */
+  readonly signedTxCbor?: string;
+};
+
+export type SignedHubOracleNonceAttempt = SubmittedHubOracleNonceAttempt & {
+  readonly signedTxCbor: string;
 };
 
 export type PrepareHubOracleNonceOptions = {
   readonly confirmationReconcileTimeoutMs?: number;
   readonly outputLookupTimeoutMs?: number;
   readonly pollIntervalMs?: number;
+  /** Must durably record the signed transaction; a failure blocks submission. */
+  readonly beforeSubmission?: (
+    attempt: SignedHubOracleNonceAttempt,
+  ) => Effect.Effect<void, unknown>;
   readonly onSubmitted?: (
     attempt: SubmittedHubOracleNonceAttempt,
   ) => Effect.Effect<void, unknown>;
@@ -202,6 +214,12 @@ export const reconcileHubOracleOneShotNonceAttemptProgram = (
       DEFAULT_NONCE_RECOVERY_POLL_INTERVAL_MS,
     );
     const amountLovelace = BigInt(attempt.lovelace);
+    if (attempt.signedTxCbor !== undefined)
+      yield* resumeSignedHubOracleNonceTransaction({
+        lucid,
+        txHash: attempt.txHash,
+        signedTxCbor: attempt.signedTxCbor,
+      });
     yield* awaitTxHashConfirmation({
       lucid,
       txHash: attempt.txHash,
@@ -328,7 +346,22 @@ export const prepareHubOracleOneShotNonceProgram = (
           )}`,
         ),
     });
-    const submission = yield* signSubmitTransaction(lucid, unsigned);
+    const submit = signSubmitTransaction(lucid, unsigned);
+    const { beforeSubmission } = options;
+    const submission = yield* beforeSubmission === undefined
+      ? submit
+      : submit.pipe(
+          Effect.provideService(BeforeSignedTransactionSubmission, {
+            persist: ({ txHash, signedTxCbor }) =>
+              beforeSubmission({
+                txHash,
+                signedTxCbor,
+                address,
+                lovelace: amountLovelace.toString(10),
+                inlineDatum,
+              }),
+          }),
+        );
     const attempt: SubmittedHubOracleNonceAttempt = {
       txHash: submission.txHash,
       address,

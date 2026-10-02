@@ -1,0 +1,79 @@
+{
+  "nodeRoot": "/absolute/path/to/midgard/demo/midgard-node",
+  "envFile": "/absolute/path/to/midgard/demo/midgard-node/.env",
+  "runDirectory": "/absolute/path/to/midgard/demo/midgard-node/logs/preprod-stack",
+  "endpoint": "http://127.0.0.1:3000",
+  "timeoutMs": 14400000,
+  "wallets": {
+    "operator": {
+      "seedEnv": "L1_OPERATOR_SEED_PHRASE",
+      "minimumLovelace": "1000000000"
+    },
+    "merge": {
+      "seedEnv": "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
+      "minimumLovelace": "1000000000"
+    },
+    "reference": {
+      "seedEnv": "L1_REFERENCE_SCRIPT_SEED_PHRASE",
+      "minimumLovelace": "5000000000"
+    },
+    "settlement": {
+      "seedEnv": "L1_SETTLEMENT_SEED_PHRASE",
+      "minimumLovelace": "1000000000"
+    },
+    "user": { "seedEnv": "STACK_USER_SEED", "minimumLovelace": "100000000" },
+    "recipient": {
+      "seedEnv": "STACK_RECIPIENT_SEED",
+      "minimumLovelace": "100000000"
+    },
+    "daSubmitter": {
+      "seedEnv": "STACK_DA_SUBMITTER_SEED",
+      "minimumLovelace": "1000000000"
+    },
+    "prover": {
+      "seedEnv": "STACK_PROVER_SEED",
+      "minimumLovelace": "3000000000"
+    },
+    "availability": {
+      "seedEnv": "STACK_AVAILABILITY_SEED",
+      "minimumLovelace": "1000000000"
+    }
+  },
+  "da": {
+    "ports": {
+      "database": 15433,
+      "committeeApiBase": 8787,
+      "committeeTransportBase": 39101,
+      "retainedTransport": 39200
+    },
+    "members": [
+      {
+        "seedEnv": "STACK_DA_SIGNER_0_SEED",
+        "transportEnv": "STACK_DA_MEMBER_0_TRANSPORT"
+      },
+      {
+        "seedEnv": "STACK_DA_SIGNER_1_SEED",
+        "transportEnv": "STACK_DA_MEMBER_1_TRANSPORT"
+      }
+    ],
+    "producerTransportEnv": "STACK_DA_PRODUCER_TRANSPORT",
+    "retainedTransportEnv": "STACK_DA_RETAINED_TRANSPORT",
+    "submitterSeedEnv": "STACK_DA_SUBMITTER_SEED",
+    "databasePasswordEnv": "STACK_DA_WRITER_PASSWORD",
+    "readerPasswordEnv": "STACK_DA_READER_PASSWORD"
+  },
+  "watcher": {
+    "processTemplate": "/absolute/path/to/midgard/demo/midgard-watcher/watcher-process.example.json",
+    "authorityTemplate": "/absolute/path/to/midgard/demo/midgard-watcher/authority.example.json",
+    "releaseDirectory": "/absolute/path/to/midgard/demo/midgard-node/logs/preprod-stack/release",
+    "releaseInput": "/absolute/path/to/private/watcher-release-input.json",
+    "bearerFile": "/absolute/path/to/private/watcher-bearer",
+    "configDirectory": "/absolute/path/to/midgard/demo/midgard-node/logs/preprod-stack/watcher-config",
+    "composeEnvFile": "/absolute/path/to/private/watcher-compose.env"
+  },
+  "journey": {
+    "depositLovelace": "20000000",
+    "transferLovelace": "10000000",
+    "cycles": 2
+  }
+}

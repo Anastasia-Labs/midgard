@@ -1,10 +1,6 @@
 import { createTrackedTempDirFactory } from "@al-ft/midgard-test-support/temp-files";
 
 import {
-  REQUIRED_FRESH_E2E_STEP_IDS,
-  REQUIRED_FRESH_TRANSACTION_LABELS,
-} from "../src/commands/e2e-finalize-summary.js";
-import {
   E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
   type E2EL2StressSummary,
 } from "../src/commands/e2e-stress-l2-throughput/index.js";
@@ -15,7 +11,6 @@ import {
   type StepSummary,
   type TxObservation,
 } from "../src/e2e/runner.js";
-import { type TransactionEvidence } from "../src/e2e/summary.js";
 
 export const makeTempDir = createTrackedTempDirFactory("midgard-e2e-summary-");
 
@@ -77,37 +72,6 @@ export const submittedObservation = ({
   field,
   stepId,
 });
-
-export const requiredFreshSuccessSteps = (): readonly StepSummary[] =>
-  REQUIRED_FRESH_E2E_STEP_IDS.map((id) => step({ id, status: "success" }));
-
-export const requiredFreshTransactions = (
-  extras: readonly TransactionEvidence[] = [],
-): readonly TransactionEvidence[] => [
-  ...REQUIRED_FRESH_TRANSACTION_LABELS.map<TransactionEvidence>(
-    (label, index) => ({
-      label,
-      txHash: `${(index + 1).toString(16).padStart(2, "0")}`.repeat(32),
-      status:
-        label === "l2-transfer-a" || label === "l2-transfer-b"
-          ? "committed"
-          : "confirmed",
-      source: "test",
-    }),
-  ),
-  ...extras,
-];
-
-export const satisfiedHttp = [
-  {
-    label: "readyz",
-    method: "GET",
-    url: "http://127.0.0.1:3000/readyz",
-    statusCode: 200,
-    semanticStatus: "satisfied",
-    source: "runner",
-  },
-] as const;
 
 export const stressSummary = (
   patch: Partial<E2EL2StressSummary> = {},

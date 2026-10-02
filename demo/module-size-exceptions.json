@@ -646,8 +646,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
-    "max": 694,
-    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 733,
+    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated recovered DA branch source; exact measured line count."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
@@ -1591,8 +1591,8 @@
   },
   {
     "file": "midgard-watcher/src/index.ts",
-    "max": 753,
-    "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation."
+    "max": 759,
+    "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation. Integrated recovered DA branch source; exact measured line count."
   },
   {
     "file": "midgard-watcher/src/indexers/user-event-indexer/local-history.prepare-watcher-local-user-event-readmission.ts",

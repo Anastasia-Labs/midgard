@@ -44,6 +44,12 @@ export const l1KupmiosEnvironment = (
   ogmiosUrl: env.L1_OGMIOS_KEY ?? "",
 });
 
+/** L1_PROVIDER_FAILOVER is off when unset, blank or "false" in any case. */
+export const l1ProviderFailoverEnabled = (value: string | undefined) =>
+  value !== undefined &&
+  value.trim() !== "" &&
+  value.trim().toLowerCase() !== "false";
+
 export type StressNetwork = "Mainnet" | "Preprod";
 
 /**
