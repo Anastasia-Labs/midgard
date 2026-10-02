@@ -17,6 +17,10 @@ import {
   evaluateWatcherMultiProviderConsistency,
   type WatcherMultiProviderConsistency,
 } from ".././multi-provider-consistency.js";
+import {
+  freezeRollbackSnapshotJson,
+  ownedRollbackSnapshotJson,
+} from "./durable-authority.rollback-authority-canonical.js";
 import { exactPlainRecord, sameStrings } from "./records.js";
 import {
   type PersistedConsistencyEvidence,
@@ -63,9 +67,19 @@ const decodePersistedObservation = (
   }
 };
 
+// A process-owned store is deeply frozen, so an index derived from it cannot
+// go stale. Rewind evaluation and journal replay look the same store up once
+// per transition; decoding every observation each time made each durable
+// operation cost the whole retained store again. Caller-owned stores are
+// re-indexed on every call.
+const ownedStoreIndexes = new WeakMap<object, PersistedObservationIndex>();
+
 export const indexPersistedObservations = (
   store: WatcherDurableStore,
 ): PersistedObservationIndex => {
+  const owned = ownedRollbackSnapshotJson.has(store);
+  const cached = owned ? ownedStoreIndexes.get(store) : undefined;
+  if (cached !== undefined) return cached;
   const points = new Map(
     store.chainPoints.map((point) => [point.chainPointId, point] as const),
   );
@@ -75,6 +89,9 @@ export const indexPersistedObservations = (
     if (observation === null) {
       continue;
     }
+    // Decoded from validated bytes, so process-owned; shared through the
+    // cache, so immutable.
+    freezeRollbackSnapshotJson(observation);
     const digest = observation.observationDigest;
     if (index.has(digest)) {
       index.set(digest, null);
@@ -89,6 +106,7 @@ export const indexPersistedObservations = (
       }),
     );
   }
+  if (owned) ownedStoreIndexes.set(store, index);
   return index;
 };
 

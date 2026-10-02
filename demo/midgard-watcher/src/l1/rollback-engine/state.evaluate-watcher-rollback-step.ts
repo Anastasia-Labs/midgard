@@ -3,7 +3,12 @@ import {
   type WatcherDurableStore,
   watcherSameCanonicalJson,
 } from "../../storage/durable-store.js";
-import { type WatcherFinalityPolicy } from ".././finality-engine.js";
+import {
+  evaluateWatcherFinality,
+  parseWatcherFinalityState,
+  type WatcherFinalityPolicy,
+} from ".././finality-engine.js";
+import { type WatcherMultiProviderConsistency } from ".././multi-provider-consistency.js";
 import {
   emptyRemovedRecords,
   makeResult,
@@ -32,6 +37,99 @@ import {
   type WatcherRollbackResult,
   type WatcherRollbackState,
 } from "./types.js";
+
+/**
+ * A native rollback below the durable frontier whose replacement block is the
+ * frontier itself carries no rewind: the chain-sync source re-delivered the
+ * chain this authority already holds (for example after a resubscribe whose
+ * intersection is an ancestor of the frontier). Absorb it without persisting
+ * anything, so the forward path handles the deeper observation as ordinary
+ * canonical progress. Anything the finality engine itself quarantines, any
+ * other point or content, a stale lineage, or evidence that is not durably
+ * journaled stays a refusal.
+ */
+const alreadyAppliedRewind = (
+  policy: WatcherFinalityPolicy,
+  store: WatcherDurableStore,
+  rollbackState: WatcherRollbackState,
+  rollbackBootstrapState: WatcherRollbackState,
+  previousFinalityStateInput: unknown,
+  consistencyInput: unknown,
+  finalityResultInput: unknown,
+  transportAttestationsInput: unknown,
+  authenticatedSnapshotEvidence:
+    | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+    | null,
+): WatcherRollbackResult | null => {
+  const previous = parseWatcherFinalityState(
+    previousFinalityStateInput,
+    policy,
+  );
+  if (
+    previous === null ||
+    previous.stateDigest !==
+      (BigInt(rollbackState.transitionCount) === 0n
+        ? rollbackState.bootstrapFinalityState.stateDigest
+        : rollbackState.currentFinalityStateDigest)
+  ) {
+    return null;
+  }
+  const finalityResult = evaluateWatcherFinality(
+    policy,
+    previous,
+    consistencyInput,
+  );
+  const frontier =
+    previous.phase === "pending"
+      ? previous.pending
+      : previous.phase === "finalized"
+        ? previous.finalized
+        : null;
+  const consistency = consistencyInput as WatcherMultiProviderConsistency;
+  const agreement = consistency.agreement;
+  if (
+    !watcherSameCanonicalJson(finalityResult, finalityResultInput) ||
+    finalityResult.protocolDecision === "quarantined" ||
+    ["rewind_pending", "quarantine_incident"].includes(finalityResult.action) ||
+    frontier === null ||
+    consistency.status !== "agreed" ||
+    agreement === null ||
+    agreement.pointDigest !== frontier.pointDigest ||
+    agreement.blockHash !== frontier.blockHash ||
+    agreement.slot !== frontier.slot ||
+    agreement.blockNo !== frontier.blockNo ||
+    agreement.blockContentDigest !== frontier.blockContentDigest ||
+    verifyPersistedConsistencyEvidence(
+      policy,
+      store,
+      consistency,
+      transportAttestationsInput,
+      undefined,
+      authenticatedSnapshotEvidence,
+    ) === null
+  ) {
+    return null;
+  }
+  const sourceStoreDigest = storeDigest(store);
+  return makeResult({
+    action: "duplicate_rewind",
+    protocolDecision: "hold",
+    reasonCodes: ["rewind_already_applied"],
+    alertCodes: [],
+    sourceRevision: store.revision,
+    nextRevision: store.revision,
+    instructionDigest: null,
+    sourceStoreDigest,
+    nextStoreDigest: sourceStoreDigest,
+    removedRecords: emptyRemovedRecords(),
+    nextStore: store,
+    rollbackState,
+    rollbackBootstrapState,
+    trustedCheckpointStateDigest: trustedCheckpointStateDigest(
+      rollbackBootstrapState,
+    ),
+  });
+};
 
 export const evaluateWatcherRollbackStep = (
   policy: WatcherFinalityPolicy,
@@ -75,6 +173,22 @@ export const evaluateWatcherRollbackStep = (
     finalityResultInput,
   );
   if (typeof transition === "string") {
+    const alreadyApplied =
+      transition === "malformed_finality_result" ||
+      transition === "invalid_finality_transition"
+        ? alreadyAppliedRewind(
+            policy,
+            store,
+            rollbackState,
+            rollbackBootstrapState,
+            previousFinalityStateInput,
+            consistencyInput,
+            finalityResultInput,
+            transportAttestationsInput,
+            authenticatedSnapshotEvidence,
+          )
+        : null;
+    if (alreadyApplied !== null) return alreadyApplied;
     const bindingReasons: readonly WatcherRollbackReasonCode[] = [
       "deployment_mismatch",
       "blueprint_mismatch",

@@ -11,7 +11,7 @@ import {
   authenticatesCanonicalBlock,
   commitRollbackDurableAuthority,
   currentRollbackFinalityState,
-  storeWithAuthenticatedObservations,
+  nextAuthenticatedEvidenceWithinRecoveryHorizon,
 } from "./durable-authority.commit-rollback-durable-authority.js";
 import {
   makeRollbackDurableTrustedHead,
@@ -107,22 +107,14 @@ export const persistWatcherRollbackDurableCanonicalProgress = async (input: {
       finalityResult,
     });
   }
-  const nextStore = storeWithAuthenticatedObservations(
-    runtime.snapshot.currentStore,
-    input.observations,
-  );
-  const nextHistory = Object.freeze([
-    ...runtime.snapshot.consistencyHistory.filter(
-      ({ consistencyDigest }) =>
-        consistencyDigest !== input.consistency.consistencyDigest,
-    ),
-    input.consistency,
-  ]);
-  if (nextHistory.length > 6_483) {
-    throw new Error(
-      "watcher authenticated consistency history exceeds its bound",
-    );
-  }
+  const { store: nextStore, history: nextHistory } =
+    nextAuthenticatedEvidenceWithinRecoveryHorizon({
+      source: runtime.snapshot.currentStore,
+      history: runtime.snapshot.consistencyHistory,
+      observations: input.observations,
+      consistency: input.consistency,
+      frontier: finalityResult.state,
+    });
   assertCanonicalProgressEvidence(
     runtime.policy,
     runtime.snapshot.currentStore,

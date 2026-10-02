@@ -59,6 +59,7 @@ export const isNetwork = (value: unknown): value is (typeof NETWORKS)[number] =>
 export const WATCHER_ROLLBACK_REASON_CODES = [
   "rewind_applied",
   "duplicate_instruction",
+  "rewind_already_applied",
   "post_finality_incident",
   "malformed_policy",
   "malformed_store",

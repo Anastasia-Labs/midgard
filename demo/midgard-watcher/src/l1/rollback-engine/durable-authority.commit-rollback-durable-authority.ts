@@ -30,6 +30,7 @@ import { type WatcherMultiProviderConsistency } from ".././multi-provider-consis
 import {
   makeRollbackDurableAuthorityHandle,
   makeRollbackDurableAuthoritySnapshot,
+  WATCHER_ROLLBACK_CONSISTENCY_HISTORY_BOUND,
 } from "./durable-authority.decode-rollback-durable-authority-snapshot.js";
 import {
   makeRollbackDurableTrustedHead,
@@ -38,6 +39,7 @@ import {
 import { sameStrings } from "./records.js";
 import { sorted } from "./state.js";
 import {
+  WATCHER_ROLLBACK_BOUNDS,
   type WatcherRollbackDurableAuthority,
   type WatcherRollbackDurableAuthorityRuntime,
   type WatcherRollbackDurableObservationResult,
@@ -258,6 +260,139 @@ export const storeWithAuthenticatedObservations = (
       correctionResults: source.correctionResults,
     },
   });
+};
+
+const frontierBlockNo = (state: WatcherFinalityState): bigint | null => {
+  const frontier =
+    state.phase === "pending"
+      ? state.pending
+      : state.phase === "finalized"
+        ? state.finalized
+        : null;
+  return frontier === null ? null : BigInt(frontier.blockNo);
+};
+
+/**
+ * Appends one authenticated canonical observation to the durable evidence and
+ * retires the evidence that has fallen out of the recovery horizon.
+ *
+ * Every reader of this evidence looks at most
+ * `WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth` blocks below the durable
+ * frontier: a pre-finality rewind removes only points at or above its
+ * replacement, a post-finality recovery path is at most that many blocks
+ * long, and a pending restart replays only the pending block's predecessor.
+ * Under Praos chain selection the tip block number never decreases across a
+ * reorg, so no rollback within k = 2160 can fork below the horizon taken from
+ * any frontier this authority has held. Evidence below it is unreadable by
+ * construction; keeping it made the history grow with uptime until the bound
+ * below refused every durable write.
+ *
+ * The new input, every retained history entry's observations, and every chain
+ * point another record still references are never retired.
+ */
+export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
+  readonly source: WatcherDurableStore;
+  readonly history: readonly WatcherMultiProviderConsistency[];
+  readonly observations: readonly WatcherNormalizedL1Block[];
+  readonly consistency: WatcherMultiProviderConsistency;
+  readonly frontier: WatcherFinalityState;
+}): Readonly<{
+  store: WatcherDurableStore;
+  history: readonly WatcherMultiProviderConsistency[];
+}> => {
+  const appended = storeWithAuthenticatedObservations(
+    input.source,
+    input.observations,
+  );
+  const appendedHistory = [
+    ...input.history.filter(
+      ({ consistencyDigest }) =>
+        consistencyDigest !== input.consistency.consistencyDigest,
+    ),
+    input.consistency,
+  ];
+  const anchor = frontierBlockNo(input.frontier);
+  const horizon =
+    anchor === null
+      ? null
+      : anchor - WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth;
+  const retained =
+    horizon === null || horizon <= 0n
+      ? appendedHistory
+      : appendedHistory.filter(
+          (consistency) =>
+            consistency === input.consistency ||
+            consistency.agreement === null ||
+            BigInt(consistency.agreement.blockNo) >= horizon,
+        );
+  let store = appended;
+  if (horizon !== null && retained.length !== appendedHistory.length) {
+    const kept = new Set([
+      ...input.observations.map(({ observationDigest }) => observationDigest),
+      ...retained.flatMap(
+        ({ observationEvidenceDigests }) => observationEvidenceDigests,
+      ),
+    ]);
+    const points = new Map(
+      appended.chainPoints.map((point) => [point.chainPointId, point]),
+    );
+    const belowHorizon = (chainPointId: string): boolean => {
+      const point = points.get(chainPointId);
+      return point !== undefined && BigInt(point.blockNo) < horizon;
+    };
+    const retainedEntries = new Set(retained);
+    const retired = new Set(
+      appendedHistory
+        .filter((consistency) => !retainedEntries.has(consistency))
+        .flatMap(({ observationEvidenceDigests }) => observationEvidenceDigests)
+        .filter((digest) => !kept.has(digest)),
+    );
+    const retiredObservations = new Set(
+      appended.l1Observations.filter(
+        ({ observationId, chainPointId }) =>
+          retired.has(observationId) && belowHorizon(chainPointId),
+      ),
+    );
+    const l1Observations = appended.l1Observations.filter(
+      (observation) => !retiredObservations.has(observation),
+    );
+    const referenced = new Set([
+      ...l1Observations.map(({ chainPointId }) => chainPointId),
+      ...appended.protocolUtxos.map(({ chainPointId }) => chainPointId),
+      ...appended.spentProtocolUtxos.flatMap(
+        ({ chainPointId, spentAtChainPointId }) => [
+          chainPointId,
+          spentAtChainPointId,
+        ],
+      ),
+      ...appended.reconstructedStates.map(({ chainPointId }) => chainPointId),
+      ...appended.confirmations.map(({ chainPointId }) => chainPointId),
+    ]);
+    const retiredPoints = new Set(
+      [...retiredObservations]
+        .map(({ chainPointId }) => chainPointId)
+        .filter((chainPointId) => !referenced.has(chainPointId)),
+    );
+    store = makeWatcherDurableStore({
+      deploymentMarker: appended.deploymentMarker,
+      revision: appended.revision,
+      records: {
+        ...appended,
+        l1Observations,
+        chainPoints: appended.chainPoints.filter(
+          ({ chainPointId }) => !retiredPoints.has(chainPointId),
+        ),
+      },
+    });
+  }
+  // The horizon spans 2,161 heights and the bound admits three retained
+  // agreements per height, so this is an invariant assertion.
+  if (retained.length > WATCHER_ROLLBACK_CONSISTENCY_HISTORY_BOUND) {
+    throw new Error(
+      "watcher authenticated consistency history exceeds its bound",
+    );
+  }
+  return Object.freeze({ store, history: Object.freeze(retained) });
 };
 
 export const authenticatesCanonicalBlock = (input: {
