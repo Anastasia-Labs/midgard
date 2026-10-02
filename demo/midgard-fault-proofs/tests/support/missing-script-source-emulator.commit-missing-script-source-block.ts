@@ -45,11 +45,12 @@ import {
 export const buildMissingScriptSourceUniverse = (
   fixture: MissingScriptSourceFixture,
   expectedPresence = fixture.shape.presentAt !== "absent",
+  purposeIndex = 0,
 ) =>
   buildRetainedMissingScriptSourceUniverse({
     eventKey: fixture.eventKey,
     purposeKind: fixture.shape.purposeKind,
-    purposeIndex: 0,
+    purposeIndex,
     authenticatedValidationTraceEntries: fixture.descriptorEntries,
     retainedValidationWitnessEntries: fixture.retainedEntries,
     expectedValidationTracesRoot: fixture.expectedRoot,

@@ -2,9 +2,7 @@ import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-prof
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import type { RejectCode, RejectedTx } from "@al-ft/midgard-validation/types";
-import { RejectCodes } from "@al-ft/midgard-validation/types";
 
-import { type WatcherForcedOperatorVerdict } from "../indexers/user-event-indexer.js";
 import {
   STAGE_ORDER,
   WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES,
@@ -104,51 +102,6 @@ const ZERO_ROOT = "00".repeat(32);
  */
 export const normalizeRootHex = (root: string): string =>
   root === ZERO_ROOT ? EMPTY_MERKLE_TREE_ROOT : root;
-
-/**
- * Exact canonical rejection-to-forced-verdict partition used by forced-order
- * replay below.
- *
- * The class boundaries this partition has always published are unchanged;
- * #640 re-spells each one as the `RejectionReasonV1` constructor tag the
- * forced leaf now carries (`ForcedInclusionTxV1.verdict`). The one code the
- * node classifier phase-splits — `E_NATIVE_SCRIPT_INVALID` becomes
- * `WitnessNativeScriptFalse` when Phase A rejects and
- * `ExecutionNativeScriptFalse` when Phase B does — is split identically
- * here, so an exact-arm comparison against the authenticated leaf verdict
- * never flags an honest operator. Both arms bridge to the same frozen
- * rejection code, so nothing on-chain distinguishes them; the phase only
- * picks which tag the leaf carries.
- */
-export const watcherBlockReplayForcedValidityForRejectCode = (
-  code: RejectCode,
-  phase: "phaseA" | "phaseB",
-): WatcherForcedOperatorVerdict => {
-  if (code === RejectCodes.InputNotFound) {
-    return "InputNotFound";
-  }
-  if (
-    code === RejectCodes.InvalidSignature ||
-    code === RejectCodes.MissingRequiredWitness
-  ) {
-    return "AddressWitnessSignatureInvalid";
-  }
-  if (code === RejectCodes.NativeScriptInvalid) {
-    return phase === "phaseA"
-      ? "WitnessNativeScriptFalse"
-      : "ExecutionNativeScriptFalse";
-  }
-  if (
-    code === RejectCodes.PlutusScriptInvalid ||
-    code === RejectCodes.PlutusEvaluationUnavailable
-  ) {
-    return "PlutusExecutionFailed";
-  }
-  if (code === RejectCodes.MinFee) {
-    return "FeeBelowMinimum";
-  }
-  return "ValueNotPreserved";
-};
 
 /**
  * Attributes one canonical rejection to a replay stage.

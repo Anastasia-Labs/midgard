@@ -19,6 +19,7 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
+import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
@@ -182,6 +183,8 @@ export const makeHarness = async () => {
         label: `unused-script-witness-step-${(index + 1).toString()}`,
       });
       references.push(published.utxo);
+      // The traced run publishes verbose-traced steps; the plain run proves fit.
+      if (TRACED_REFUSALS) continue;
       expect(
         published.publicationMeasurement.completeSignedBytes,
         `step ${(index + 1).toString()} publication`,

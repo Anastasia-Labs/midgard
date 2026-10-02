@@ -20,6 +20,10 @@ import {
 } from "./measurement.js";
 import { type ReferenceScriptPublishingContracts } from "./reference-script-publisher.js";
 import { publishStateQueueYieldReferenceScript } from "./reference-scripts.publish-authenticated-validation-dispute-control.js";
+import {
+  TRACED_REFUSALS,
+  withTracedPublicationEnvelope,
+} from "./traced-refusals.js";
 
 // Publishes a deployed validator as a plain reference-script UTxO at the
 // publisher wallet address, following the hash-checked deployment
@@ -45,21 +49,23 @@ export const publishPlainReferenceScriptUtxo = async ({
     scriptHashToCredential("2f".repeat(28)),
   );
   const lovelace = 20_000_000n;
-  const unsigned = await lucid
-    .newTx()
-    .pay.ToAddressWithData(parkAddress, undefined, { lovelace }, script)
-    .complete()
-    .catch((cause: unknown) => {
-      throw new Error(
-        `${label} reference-script publication failed (applied script CBOR ${(script.script.length / 2).toString()} bytes): ${String(cause)}`,
-      );
-    });
+  const unsigned = await withTracedPublicationEnvelope(lucid, () =>
+    lucid
+      .newTx()
+      .pay.ToAddressWithData(parkAddress, undefined, { lovelace }, script)
+      .complete(),
+  ).catch((cause: unknown) => {
+    throw new Error(
+      `${label} reference-script publication failed (applied script CBOR ${(script.script.length / 2).toString()} bytes): ${String(cause)}`,
+    );
+  });
   const signed = await unsigned.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
   const publicationMeasurement = measureCompleteSignedTransaction(signedCbor);
   if (
+    !TRACED_REFUSALS &&
     publicationMeasurement.completeSignedBytes >
-    VAN_ROSSEM_PUBLICATION_TARGET_BYTES
+      VAN_ROSSEM_PUBLICATION_TARGET_BYTES
   ) {
     throw new Error(
       `${label} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and exceeds the 15,872-byte publication target`,

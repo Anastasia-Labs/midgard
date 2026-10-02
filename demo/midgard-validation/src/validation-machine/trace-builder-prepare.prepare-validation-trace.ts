@@ -60,7 +60,6 @@ import {
   decodeMidgardNativeTxWitnessSetCompact,
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
-  decodeMidgardVersionedScript,
   decodeSingleCbor,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
@@ -91,7 +90,7 @@ import {
 } from "../ledger-output-descriptor.js";
 import {
   type MidgardRawEnvelopePhaseAProjection,
-  projectMidgardRawEnvelopeForPhaseAV1,
+  projectMidgardMalformedNativeWitnessEnvelopeV1,
 } from "../ledger-tx.js";
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
 import { validatePhaseASingle } from "../phase-a.js";
@@ -116,6 +115,7 @@ import {
   advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
   initialMidgardResolvedInputsAccumulator,
+  orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 import {
@@ -226,38 +226,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       });
       ledgerDescriptorState.set(outRefHex, outputMaterial.descriptorCbor);
     }
-    let rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
-      null;
-    if (
+    const rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
       !("ledgerTx" in phaseA) &&
-      phaseA.code === RejectCodes.InvalidFieldType &&
-      phaseA.consensusPhase === "canonicalDecode"
-    ) {
-      try {
-        const projected = projectMidgardRawEnvelopeForPhaseAV1(
-          queued.txCbor,
-          queued.sourceKind,
-        );
-        if (
-          projected.canonicalSubmittedTx === null &&
-          projected.scriptWitnesses.some(
-            ({ languageTag, versionedItemBytes }) => {
-              if (languageTag !== 0) return false;
-              try {
-                decodeMidgardVersionedScript(versionedItemBytes);
-                return false;
-              } catch {
-                return true;
-              }
-            },
-          )
-        )
-          rawExecutionProjection = projected;
-      } catch {
-        // Non-field-6 malformed material remains the original fail-closed
-        // canonicalDecode rejection.
-      }
-    }
+      phaseA.consensusPhase === "canonicalDecode" &&
+      phaseA.subject?.arm === "WitnessNativeScriptMalformed"
+        ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
+            queued.txCbor,
+            queued.sourceKind,
+          )?.projection ?? null)
+        : null;
     const phaseALedgerTx =
       "ledgerTx" in phaseA
         ? phaseA.ledgerTx
@@ -534,18 +511,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
     );
     const redeemerWitnessesCollection = machineFieldTrace(8);
-    const inputSetScanItems = [
-      ...spendInputsCollection.items.map((item) => ({
-        sourceKind: "spend" as const,
-        collection: spendInputsCollection,
-        item,
-      })),
-      ...referenceInputsCollection.items.map((item) => ({
-        sourceKind: "reference" as const,
-        collection: referenceInputsCollection,
-        item,
-      })),
-    ].sort((left, right) => Buffer.compare(left.item.bytes, right.item.bytes));
+    const collections = {
+      spend: spendInputsCollection,
+      reference: referenceInputsCollection,
+    };
+    const inputSetScanItems = orderMidgardInputResolutionSchedule({
+      spend: spendInputsCollection.items,
+      reference: referenceInputsCollection.items,
+      keyOf: (item) => item.bytes,
+    }).map((node) => ({ ...node, collection: collections[node.sourceKind] }));
     const resolutionItems = inputSetScanItems.map(({ sourceKind, item }) => ({
       sourceKind,
       key: item.bytes,

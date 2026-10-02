@@ -30,6 +30,7 @@ export * from "./family-definition.js";
 export * from "./family-definitions.js";
 export * from "./family-l1-observation.js";
 export * from "./field-carriage-prerequisite.js";
+export * from "./forced-rejection-reason.js";
 export * from "./funding-requirements.js";
 export * from "./funding-requirements-test-support.js";
 export * from "./funding-reservation-permit.js";

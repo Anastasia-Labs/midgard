@@ -83,7 +83,7 @@ export const runLocalScriptEvaluation = (
         .filter((execution) => execution.resolved.source.origin === "inline")
         .map((execution) => execution.resolved.source.sourceId),
     );
-    for (const source of inlineSources) {
+    for (const [position, source] of inlineSources.entries()) {
       if (!usedInlineSourceIds.has(source.sourceId)) {
         const kind =
           source.nativeScript === undefined ? "non-native" : "native";
@@ -92,10 +92,22 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.InvalidFieldType,
           detail: `extraneous ${kind} script witness ${source.sourceId}`,
           consensusPhase: "scriptSources",
+          subject: {
+            arm: "UnusedScriptWitness",
+            index: BigInt(ledgerTx.scriptWitnesses[position]!.index),
+          },
         };
       }
     }
 
+    // Execution ordinals are positions in the discovered execution list
+    // (spend, mint, observe, receive), native and non-native alike.
+    const executionIndexOf = new Map(
+      discovered.executions.map((execution, index) => [
+        execution,
+        BigInt(index),
+      ]),
+    );
     for (const execution of discovered.executions) {
       if (execution.resolved.version !== "NativeCardano") {
         continue;
@@ -113,6 +125,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.NativeScriptInvalid,
           detail: `native script verification failed for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
           consensusPhase: "nativeScripts",
+          subject: {
+            arm: "ExecutionNativeScriptFalse",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
     }
@@ -134,6 +150,7 @@ export const runLocalScriptEvaluation = (
         code: RejectCodes.InvalidFieldType,
         detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
         consensusPhase: "scriptIntegrity",
+        subject: { arm: "ScriptIntegrityHashMismatch" },
       };
     }
 
@@ -152,6 +169,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.PlutusScriptInvalid,
           detail: "ReceivingScript requires MidgardV1 context",
           consensusPhase: "cek",
+          subject: {
+            arm: "ReceivePurposePlutusV3Forbidden",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
 
@@ -226,6 +247,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
           consensusPhase: "cek",
+          subject: {
+            arm: "PlutusExecutionFailed",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
       if (
@@ -238,6 +263,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: budget exceeded (spent mem=${result.budget.memory} cpu=${result.budget.cpu}, declared mem=${redeemer.exUnits.memory} cpu=${redeemer.exUnits.steps})`,
           consensusPhase: "cek",
+          subject: {
+            arm: "PlutusExecutionFailed",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
     }

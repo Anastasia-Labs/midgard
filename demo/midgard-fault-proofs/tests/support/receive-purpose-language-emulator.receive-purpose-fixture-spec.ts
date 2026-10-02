@@ -35,6 +35,17 @@ export type ReceivePurposeFixtureSpec = Readonly<{
    * witnesses at 64 per transaction.
    */
   purposeCount: number;
+  /**
+   * Adds a passing native receive purpose whose script hash sorts before the
+   * accused one, so the accused receive is execution 1, not execution 0.
+   * Only with a lone PlutusV3 receive.
+   */
+  leadingNativeReceive?: boolean;
+  /**
+   * The execution index the operator's forced verdict names; defaults to the
+   * accused receive's own.
+   */
+  committedExecutionIndex?: number;
   /** Extra committed L2 transactions widening the validation-traces trie. */
   decoyTransactionCount?: number;
   /** Byte seeding the spent out-ref so fixtures in one harness stay distinct. */

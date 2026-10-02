@@ -5,6 +5,7 @@ import {
   encodeMidgardFieldPreimage,
   encodeMidgardForcedTxCanonical,
   encodeMidgardNativeScript,
+  encodeMidgardSpendInputItem,
   encodeMidgardVersionedScript,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
@@ -38,28 +39,35 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
-export const setup = async ({
-  signerCount = 1,
-  falseScript = false,
-  invalidSignature = false,
-  depth = 0,
-  maximumField = false,
-  fieldBytes = 32768,
-  prefixCount = 0,
-  deepScript = false,
-  wrongReason = false,
-}: {
+type TransactionOptions = {
   signerCount?: number;
   falseScript?: boolean;
   invalidSignature?: boolean;
-  depth?: number;
   maximumField?: boolean;
   fieldBytes?: number;
   prefixCount?: number;
   deepScript?: boolean;
-  wrongReason?: boolean;
-} = {}) => {
-  const h = await makeNativeScriptInvalidEmulatorHarness();
+  /**
+   * Spend one input, so the node's classifier reaches the witness native
+   * scripts instead of rejecting an input-free transaction first.
+   */
+  spendInput?: boolean;
+};
+
+/**
+ * The submitted transaction: `prefixCount` true `all []` scripts, then the
+ * native script under test, in field 6, and one signature per key in field 7.
+ */
+export const buildNativeScriptInvalidTransaction = ({
+  signerCount = 1,
+  falseScript = false,
+  invalidSignature = false,
+  maximumField = false,
+  fieldBytes = 32768,
+  prefixCount = 0,
+  deepScript = false,
+  spendInput = false,
+}: TransactionOptions = {}) => {
   const keys = Array.from({ length: signerCount }, (_, index) => {
     const seed = Buffer.alloc(32);
     seed.writeUInt32BE(index + 1, 28);
@@ -118,7 +126,14 @@ export const setup = async ({
     scripts = [decoy(padding), ...prefix, scriptItem];
   }
   const base = makeNativeTx({
-    spendInputCbors: [],
+    spendInputCbors: spendInput
+      ? [
+          encodeMidgardSpendInputItem({
+            txId: Buffer.alloc(32, 0x5a),
+            outputIndex: 0,
+          }),
+        ]
+      : [],
     fee: 7n,
     scriptTxWitsPreimageCbor: encodeMidgardFieldPreimage(scripts),
     addrTxWitsPreimageCbor: encodeMidgardFieldPreimage([]),
@@ -150,6 +165,23 @@ export const setup = async ({
     },
   });
   const tx = materializeMidgardForcedTxFromCanonical(submitted);
+  return { scripts, scriptItem, witnesses, submitted, tx };
+};
+
+export const setup = async ({
+  depth = 0,
+  wrongReason = false,
+  committedScriptIndex,
+  ...transactionOptions
+}: TransactionOptions & {
+  depth?: number;
+  wrongReason?: boolean;
+  /** The script the committed reason names; the last script by default. */
+  committedScriptIndex?: bigint;
+} = {}) => {
+  const h = await makeNativeScriptInvalidEmulatorHarness();
+  const { scripts, witnesses, submitted, tx } =
+    buildNativeScriptInvalidTransaction(transactionOptions);
   const txId = computeMidgardNativeTxId(tx).toString("hex");
   const proofSource = deriveMidgardForcedTxProofSource(tx);
   const credential = getAddressDetails(
@@ -164,7 +196,8 @@ export const setup = async ({
       ) - 1,
   });
   const key = fixture.eventKey.ForcedTransactionEventKey.tx_order_id;
-  const scriptIndex = BigInt(scripts.length - 1);
+  const scriptIndex = committedScriptIndex ?? BigInt(scripts.length - 1);
+  const scriptItem = scripts[Number(scriptIndex)]!;
   const reason = wrongReason
     ? ("FeeBelowMinimum" as const)
     : { WitnessNativeScriptFalse: { script_index: scriptIndex } };

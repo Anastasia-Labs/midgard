@@ -1,5 +1,7 @@
+import { classifyMidgardWitnessScriptItem } from "@al-ft/midgard-core";
 import {
   decodeMidgardFieldPreimage,
+  decodeMidgardVersionedScript,
   deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeMidgardNativeTxCanonical,
   MidgardScriptHashPrefixes,
@@ -234,6 +236,60 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
   } catch (error) {
     throw new MidgardLedgerTxDecodeError("ledger", error);
   }
+};
+
+/**
+ * The raw-envelope projection Phase A and the validation trace both use for a
+ * transaction whose only decode failure is a malformed field-6 native script,
+ * with the witness that failure names.
+ *
+ * The rejection must cite the item the witness-script decoding proof finds
+ * faulty, because that proof convicts a rejection whose named item is sound.
+ * So the subject is the first item the shared proof classifier finds faulty,
+ * which is native-malformed: a header the projection admits always parses,
+ * and a node- or depth-limit item exceeds the field size cap. It is null if
+ * the first faulty item has another class.
+ *
+ * Returns null when the transaction is not in this case.
+ */
+export const projectMidgardMalformedNativeWitnessEnvelopeV1 = (
+  txCbor: Uint8Array,
+  sourceKind: "normal" | "forced" = "normal",
+): {
+  readonly projection: MidgardRawEnvelopePhaseAProjection;
+  readonly malformedScriptIndex: number | null;
+} | null => {
+  let projection: MidgardRawEnvelopePhaseAProjection;
+  try {
+    projection = projectMidgardRawEnvelopeForPhaseAV1(txCbor, sourceKind);
+  } catch {
+    // Non-field-6 malformed material stays a fail-closed canonical rejection.
+    return null;
+  }
+  if (projection.canonicalSubmittedTx !== null) return null;
+  const nativeDecodeFails = projection.scriptWitnesses.some(
+    ({ languageTag, versionedItemBytes }) => {
+      if (languageTag !== 0) return false;
+      try {
+        decodeMidgardVersionedScript(versionedItemBytes);
+        return false;
+      } catch {
+        return true;
+      }
+    },
+  );
+  if (!nativeDecodeFails) return null;
+  const firstFaulty = projection.scriptWitnesses
+    .map(({ index, versionedItemBytes }) => ({
+      index,
+      itemClass: classifyMidgardWitnessScriptItem(versionedItemBytes).itemClass,
+    }))
+    .find(({ itemClass }) => itemClass !== "noFault");
+  return {
+    projection,
+    malformedScriptIndex:
+      firstFaulty?.itemClass === "nativeMalformed" ? firstFaulty.index : null,
+  };
 };
 
 export const computeMidgardTxIdFromCanonicalCbor = (

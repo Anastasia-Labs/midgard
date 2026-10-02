@@ -21,6 +21,7 @@ import { Effect } from "effect";
 import {
   decodeMidgardSubmittedTxFromCanonicalCbor,
   MidgardLedgerTxDecodeError,
+  projectMidgardMalformedNativeWitnessEnvelopeV1,
 } from "./ledger-tx/codec.js";
 import type { MidgardLedgerTx, MidgardSubmittedTx } from "./ledger-tx/types.js";
 import {
@@ -65,6 +66,7 @@ const validateNativeScriptWitnesses = (
         RejectCodes.NativeScriptInvalid,
         `native script verification failed for script index ${witness.index}`,
         "phaseANativeScripts",
+        { arm: "WitnessNativeScriptFalse", index: BigInt(witness.index) },
       );
     }
   }
@@ -87,6 +89,7 @@ const validateRequiredObservers = (tx: MidgardLedgerTx): RejectedTx | null => {
         RejectCodes.InvalidFieldType,
         `required observers must be strictly ordered and unique at index ${index}`,
         "phaseAScriptPreconditions",
+        { arm: "ObserverOrderInvalid", index: BigInt(index) },
       );
     }
   }
@@ -105,6 +108,7 @@ const validateScriptEvaluationPreconditions = (
       RejectCodes.InvalidFieldType,
       "missing script_integrity_hash for plutus witness bundle",
       "phaseAScriptPreconditions",
+      { arm: "ScriptIntegrityHashMissing" },
     );
   }
 
@@ -114,6 +118,7 @@ const validateScriptEvaluationPreconditions = (
       RejectCodes.InvalidFieldType,
       "network_id is required when plutus witness bundles use required observers",
       "phaseAScriptPreconditions",
+      { arm: "ObserversForbiddenOnUntaggedNetwork" },
     );
   }
 
@@ -138,7 +143,33 @@ export const validatePhaseASingle = (
           ? RejectCodes.InvalidOutput
           : RejectCodes.InvalidFieldType
         : RejectCodes.CborDeserialization;
-    return reject(queuedTx.txId, code, codecErrorDetail(e));
+    const outputIndex =
+      e instanceof MidgardLedgerTxDecodeError
+        ? e.invalidOutputIndex
+        : undefined;
+    // A malformed field-6 native script is the one decode failure the
+    // validation trace commits, so it names the script it proves malformed.
+    const malformedScriptIndex =
+      code === RejectCodes.InvalidFieldType
+        ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
+            queuedTx.txCbor,
+            queuedTx.sourceKind,
+          )?.malformedScriptIndex ?? null)
+        : null;
+    return reject(
+      queuedTx.txId,
+      code,
+      codecErrorDetail(e),
+      "canonicalDecode",
+      outputIndex !== undefined
+        ? { arm: "OutputNonCanonical", index: BigInt(outputIndex) }
+        : malformedScriptIndex !== null
+          ? {
+              arm: "WitnessNativeScriptMalformed",
+              index: BigInt(malformedScriptIndex),
+            }
+          : undefined,
+    );
   }
 
   const { ledgerTx } = submittedTx;

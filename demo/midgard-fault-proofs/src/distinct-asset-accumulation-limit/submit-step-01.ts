@@ -148,6 +148,7 @@ export const submitDistinctAssetAccumulationStep01Forced = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  unsafeSkipLocalViolationCheckForTest = false,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DistinctAssetAccumulationContracts;
@@ -162,8 +163,14 @@ export const submitDistinctAssetAccumulationStep01Forced = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /**
+   * Emulator negative only: submit a coordinate that does not name the
+   * subject's rejection reason, so the validator's bind refuses it.
+   */
+  readonly unsafeSkipLocalViolationCheckForTest?: boolean;
 }) => {
-  classifyDistinctAssetAccumulationFinding(finding);
+  if (!unsafeSkipLocalViolationCheckForTest)
+    classifyDistinctAssetAccumulationFinding(finding);
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,

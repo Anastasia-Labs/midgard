@@ -2,7 +2,12 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardForcedTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { makeReturn } from "@al-ft/midgard-sdk";
+import {
+  type ForcedRejection,
+  forcedRejectionReason,
+  ForcedRejectionSubjectMissing,
+} from "@al-ft/midgard-fault-proofs";
+import { makeReturn, rejectionReasonArmOf } from "@al-ft/midgard-sdk";
 import {
   buildCanonicalTransitionEffect,
   type CanonicalTransitionEffect,
@@ -24,12 +29,24 @@ import {
   type WatcherForcedOperatorVerdict,
 } from "../indexers/user-event-indexer.js";
 import { type ValidatedEventAuthority } from "./block-replay.watcher-block-replay-prior-state.js";
-import { watcherBlockReplayForcedValidityForRejectCode } from "./block-replay.watcher-block-replay-rejection-projection.js";
 import {
   fail,
   type WatcherBlockReplayCommittedStep,
   type WatcherBlockReplayForcedValidationFact,
 } from "./block-replay.watcher-block-replay-result.js";
+
+/**
+ * The arm the node would record for a canonical rejection, or null when the
+ * rejection carries no exact subject, which the node refuses to commit.
+ */
+const canonicalRejectionArm = (rejection: ForcedRejection): string | null => {
+  try {
+    return rejectionReasonArmOf(forcedRejectionReason(rejection));
+  } catch (error) {
+    if (error instanceof ForcedRejectionSubjectMissing) return null;
+    throw error;
+  }
+};
 
 export const applyAcceptedCandidate = (
   state: Map<string, Buffer>,
@@ -102,10 +119,10 @@ export const replayForcedTransitionEffect = async (input: {
   if ("code" in phaseA) {
     phaseAStatus = "rejected";
     phaseARejectCode = phaseA.code;
-    canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
-      phaseA.code,
-      "phaseA",
-    );
+    const arm = canonicalRejectionArm(phaseA);
+    if (arm === null)
+      return fail("canonical_validation_threw", "$.phaseA.forced");
+    canonicalOperatorValidity = arm;
   } else {
     const phaseB = await makeReturn(
       runPhaseBValidationWithPatch(
@@ -125,10 +142,10 @@ export const replayForcedTransitionEffect = async (input: {
       }
       phaseBStatus = "rejected";
       phaseBRejectCode = phaseB.rejected[0]!.code;
-      canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
-        phaseBRejectCode,
-        "phaseB",
-      );
+      const arm = canonicalRejectionArm(phaseB.rejected[0]!);
+      if (arm === null)
+        return fail("canonical_validation_threw", "$.phaseB.forced");
+      canonicalOperatorValidity = arm;
     } else {
       if (phaseB.accepted.length !== 1) {
         return fail("canonical_validation_threw", "$.phaseB.forced");

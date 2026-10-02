@@ -21,5 +21,6 @@ export {
   decodeMidgardLedgerTxFromCanonicalCbor,
   decodeMidgardTxCommitmentsFromCanonicalCbor,
   encodeMidgardLedgerTxToCanonicalCbor,
+  projectMidgardMalformedNativeWitnessEnvelopeV1,
   projectMidgardRawEnvelopeForPhaseAV1,
 } from "./codec.project-midgard-raw-envelope-for-phase-av1.js";
