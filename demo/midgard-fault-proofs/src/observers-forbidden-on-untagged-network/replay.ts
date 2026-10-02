@@ -6,6 +6,11 @@ import { Data } from "@lucid-evolution/lucid";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
+  acceptedTransactionSubject,
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   buildObserversForbiddenArtifact,
   type ObserversForbiddenArtifact,
   ObserversForbiddenForcedSourcePayloadSchema,
@@ -25,19 +30,20 @@ import {
 export const OBSERVERS_FORBIDDEN_VIOLATION_ID =
   "observers-forbidden-on-untagged-network" as const;
 
-export type ObserversForbiddenReplayDetection = Readonly<{
-  detectionId: string;
-  headerHash: string;
-  violationId: typeof OBSERVERS_FORBIDDEN_VIOLATION_ID;
-  position: bigint;
-  transactionId: string;
-  networkId: 0 | 1 | 255;
-  scriptIntegrityHash: string;
-  observerCount: number;
-  source: "accepted" | "forced";
-  direction: "wrongfulAcceptance" | "wrongfulRejection";
-  forcedIndex?: number;
-}>;
+export type ObserversForbiddenReplayDetection = DetectionSubject &
+  Readonly<{
+    detectionId: string;
+    headerHash: string;
+    violationId: typeof OBSERVERS_FORBIDDEN_VIOLATION_ID;
+    position: bigint;
+    transactionId: string;
+    networkId: 0 | 1 | 255;
+    scriptIntegrityHash: string;
+    observerCount: number;
+    source: "accepted" | "forced";
+    direction: "wrongfulAcceptance" | "wrongfulRejection";
+    forcedIndex?: number;
+  }>;
 
 const integrityHashHex = (value: Uint8Array): string =>
   Buffer.from(value).toString("hex");
@@ -85,6 +91,7 @@ export const detectObserversForbiddenAcceptedRawReplay = (
       if (!observersForbiddenEvidenceCloses(evidence)) continue;
       detections.push(
         Object.freeze({
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${OBSERVERS_FORBIDDEN_VIOLATION_ID}:accepted:${transaction.index.toString()}:${transaction.nodeTxId}`,
           headerHash: block.headerHash,
           violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID,
@@ -156,6 +163,7 @@ export const detectObserversForbiddenForcedReplay = (
       if (!observersForbiddenEvidenceCloses(evidence)) return;
       detections.push(
         Object.freeze({
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${OBSERVERS_FORBIDDEN_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
           headerHash: block.headerHash,
           violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID,

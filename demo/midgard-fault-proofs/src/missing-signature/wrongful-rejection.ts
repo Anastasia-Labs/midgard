@@ -17,6 +17,7 @@ import {
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 
 export const MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID =
   "missing-signature-wrongful-rejection" as const;
@@ -104,6 +105,7 @@ export const detectMissingSignatureForcedTransaction = (
     ? []
     : [
         {
+          ...forcedTransactionSubject(forced.key),
           detectionId: `${MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID}:${forcedIndex}:${forced.value.tx_id}`,
           headerHash,
           violationId: MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,

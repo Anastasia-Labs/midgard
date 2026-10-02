@@ -27,6 +27,7 @@ import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { detectZeroInputForcedReplay } from "../zero-input/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
+import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
 import {
   completeReplayFindings,
   type ReplayPrerequisiteFailure,
@@ -51,6 +52,7 @@ export const detectInvalidRanges = async (
       ? []
       : [
           {
+            ...acceptedTransactionSubject(transaction.nodeTxId),
             detectionId: `invalid-range:${transactionIndex.toString()}:${transaction.nodeTxId}:${reason}`,
             headerHash: evidence.headerHash,
             violationId: "invalid-range",
@@ -60,6 +62,7 @@ export const detectInvalidRanges = async (
         ];
   });
   const forced = detectInvalidRangeForcedReplay(evidence).map((detection) => ({
+    ...subjectOf(detection),
     detectionId: detection.detectionId,
     headerHash: detection.headerHash,
     violationId: detection.violationId,
@@ -81,6 +84,7 @@ export const detectZeroInputs = async (
     })
       ? [
           {
+            ...acceptedTransactionSubject(transaction.nodeTxId),
             detectionId: `zero-input:${transactionIndex.toString()}:${transaction.nodeTxId}`,
             headerHash: evidence.headerHash,
             violationId: "zero-input",
@@ -91,6 +95,7 @@ export const detectZeroInputs = async (
       : [],
   );
   const forced = detectZeroInputForcedReplay(evidence).map((detection) => ({
+    ...subjectOf(detection),
     detectionId: detection.detectionId,
     headerHash: detection.headerHash,
     violationId: detection.violationId,
@@ -110,6 +115,7 @@ export const detectL2TxMistags = async (
     transaction.nativeTxCompact.validity_code === 1n
       ? [
           {
+            ...acceptedTransactionSubject(transaction.nodeTxId),
             detectionId: `l2-tx-mistag:${transactionIndex.toString()}:${transaction.nodeTxId}:1`,
             headerHash: evidence.headerHash,
             violationId: "l2-tx-mistag",
@@ -138,6 +144,7 @@ export const detectMinFees = async (
     return fee < minimumFee
       ? [
           {
+            ...acceptedTransactionSubject(transaction.nodeTxId),
             detectionId: `${MIN_FEE_VIOLATION_ID}:${transactionIndex.toString()}:${transaction.nodeTxId}:${fee.toString()}:${minimumFee.toString()}`,
             headerHash: evidence.headerHash,
             violationId: MIN_FEE_VIOLATION_ID,
@@ -165,6 +172,7 @@ export const detectCommittedFieldShape = (
           );
         }
         return {
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${COMMITTED_FIELD_SHAPE_VIOLATION_ID}:${transactionIndex.toString()}:${transaction.nodeTxId}:${fieldIndex.toString()}`,
           headerHash: evidence.headerHash,
           violationId: COMMITTED_FIELD_SHAPE_VIOLATION_ID,
@@ -191,6 +199,7 @@ export const detectCanonicalDecodability = (
         return fieldEvidence.isViolation
           ? [
               {
+                ...acceptedTransactionSubject(transaction.nodeTxId),
                 detectionId: `${CANONICAL_DECODABILITY_VIOLATION_ID}:${transactionIndex.toString()}:${transaction.nodeTxId}:${fieldIndex.toString()}:${fieldEvidence.verdict.toString()}`,
                 headerHash: evidence.headerHash,
                 violationId: CANONICAL_DECODABILITY_VIOLATION_ID,
@@ -247,6 +256,7 @@ export const detectMissingSignatures = async (
         ? []
         : [
             {
+              ...acceptedTransactionSubject(transaction.nodeTxId),
               detectionId: `${MISSING_SIGNATURE_VIOLATION_ID}:${transactionIndex.toString()}:${signerIndex.toString()}:${transaction.nodeTxId}:${requiredSignerHash}`,
               headerHash: evidence.headerHash,
               violationId: MISSING_SIGNATURE_VIOLATION_ID,
@@ -322,6 +332,7 @@ export const detectMissingNativeScriptTransactions = async (
       }
       return [
         {
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID}:${transactionIndex.toString()}:${inputIndex.toString()}:${producer.transactionIndex.toString()}:${input.outputIndex.toString()}:${transaction.nodeTxId}:${producer.transaction.nodeTxId}:${expectedScriptHash}`,
           headerHash: evidence.headerHash,
           violationId: MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID,

@@ -7,8 +7,10 @@ import {
   type MidgardValue as CoreMidgardValue,
   type MidgardVersionedScript,
   protectMidgardAddress,
+  validateCanonicalPlutusDataCbor,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
@@ -123,6 +125,42 @@ export const normalizePlutusData = (data: PlutusDataLike): CML.PlutusData => {
   }
   const bytes = typeof data === "string" ? fromHex(data, "datum") : data;
   return CML.PlutusData.from_cbor_bytes(bytes);
+};
+
+/**
+ * Redeemer data exactly as committed: the bytes `serialiseData` emits for its
+ * value (§6.2), the only spelling phase A admits. A `CML.PlutusData` is a
+ * value, so it is serialised in that form here — CML's own encoder spells
+ * lists and constructor fields definite-length, which is not it. Bytes or hex
+ * are the caller's own encoding: they pass through unchanged when already in
+ * that form and are refused, never rewritten, when they are not.
+ */
+export const redeemerDataCbor = (data: PlutusDataLike): Buffer => {
+  if (typeof data !== "string" && !(data instanceof Uint8Array)) {
+    try {
+      return Buffer.from(
+        aikenSerialisedPlutusDataCborPreservingMapOrder(
+          Buffer.from(data.to_cbor_bytes()).toString("hex"),
+        ),
+        "hex",
+      );
+    } catch (error) {
+      throw new BuilderInvariantError(
+        "Redeemer data must be supported Plutus Data",
+        String(error),
+      );
+    }
+  }
+  const bytes =
+    typeof data === "string" ? fromHex(data, "redeemer.data") : data;
+  try {
+    return validateCanonicalPlutusDataCbor(bytes, "redeemer.data");
+  } catch (error) {
+    throw new BuilderInvariantError(
+      "Redeemer data bytes must be the serialiseData encoding of their value; pass a CML.PlutusData to have the builder encode it",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 };
 
 const isMidgardScript = (script: ScriptRefLike): script is MidgardScript =>

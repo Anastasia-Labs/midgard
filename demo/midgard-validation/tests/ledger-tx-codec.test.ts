@@ -217,8 +217,10 @@ describe("Midgard ledger transaction codec", () => {
 
   it("round-trips script witnesses and decoded redeemers", () => {
     const script = plutusV3ScriptWitness(Buffer.from("4d010000332222", "hex"));
+    // Lucid's `canonical` option spells definite-length fields (`d8798101`),
+    // which is not the `serialiseData` form redeemer data must use.
     const redeemerData = Buffer.from(
-      plutusDataToCborHex(new Constr(0, [1n]), { canonical: true }),
+      plutusDataToCborHex(new Constr(0, [1n])),
       "hex",
     );
     const redeemerTxWitsPreimageCbor = makeRedeemersCbor([

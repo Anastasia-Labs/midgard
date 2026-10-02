@@ -45,6 +45,7 @@ import {
   hashMintDeclaredWalkCheckpoint,
   planMintDeclaredAssetLimitStagedWalk,
 } from "../src/mint-declared-asset-limit/staged-plan.js";
+import { acceptedTransactionSubject } from "../src/workflow/detection-subject.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 
 const txId = "00".repeat(31).concat("01");
@@ -339,6 +340,7 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
       position: bigint,
       detectionId: string,
     ): MintDeclaredAssetLimitReplayDetection => ({
+      ...acceptedTransactionSubject(txId),
       detectionId,
       headerHash: "22".repeat(28),
       violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,

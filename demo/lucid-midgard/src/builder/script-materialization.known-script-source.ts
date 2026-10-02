@@ -19,7 +19,7 @@ import { CML } from "@lucid-evolution/lucid";
 
 import { type Assets, normalizeAssets } from "../core/assets.js";
 import { BuilderInvariantError } from "../core/errors.js";
-import { normalizePlutusData, normalizeScriptRef } from "../core/output.js";
+import { normalizeScriptRef, redeemerDataCbor } from "../core/output.js";
 import type {
   Redeemer,
   ScriptLanguage,
@@ -163,7 +163,7 @@ export const normalizeExUnits = (
 };
 
 export const redeemerDataBytes = (redeemer: Redeemer): Buffer =>
-  Buffer.from(normalizePlutusData(redeemer.data).to_cbor_bytes());
+  redeemerDataCbor(redeemer.data);
 
 const nativeScriptFromLike = (
   script: CML.NativeScript | Uint8Array | string,

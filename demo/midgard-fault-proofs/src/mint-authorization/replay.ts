@@ -18,6 +18,7 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
+import { acceptedTransactionSubject } from "../workflow/detection-subject.js";
 import {
   collectReplayFindingBatches,
   replayPrerequisiteFailure,
@@ -170,6 +171,7 @@ export const detectMintAuthorizationReplay = async ({
         sourceIndex,
       });
       return prepared.map((item) => ({
+        ...acceptedTransactionSubject(source.txId),
         detectionId: mintAuthorizationDetectionId(item.coordinate),
         headerHash: block.headerHash,
         violationId: SDK.MINT_AUTHORIZATION_VIOLATION_ID,

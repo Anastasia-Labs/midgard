@@ -28,3 +28,5 @@ import "./typed-reason-retained-classification.ordinary-machine-cases.js";
 import "./typed-reason-retained-classification.typed-reasons-classified-from-committed-retained-da.js";
 import "./typed-reason-retained-classification.ordinary-retained-plutus-replay-admission.js";
 import "./typed-reason-retained-classification.forced-retained-plutus-origin-admission.js";
+import "./typed-reason-retained-classification.accepted-redeemer-data-outside-the-serialise-data-image.js";
+import "./typed-reason-retained-classification.forced-redeemer-data-outside-the-serialise-data-image.js";

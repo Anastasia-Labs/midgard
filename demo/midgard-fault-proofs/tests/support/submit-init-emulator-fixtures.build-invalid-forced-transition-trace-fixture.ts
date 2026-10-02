@@ -48,13 +48,7 @@ import {
   transitionTraceOutRef,
 } from "./submit-init-emulator-shared.js";
 
-export const buildInvalidForcedTransitionTraceFixture = async ({
-  operatorVkey,
-  now,
-  fieldPreimageLengthMismatchIndex,
-  fieldItemWidthIllegalCoordinate,
-  redeemerMalformedIndex,
-}: {
+type ForcedTransitionTraceFixtureInput = {
   readonly operatorVkey: string;
   readonly now: number;
   readonly fieldPreimageLengthMismatchIndex?: number;
@@ -63,7 +57,46 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     readonly itemIndex: number;
   };
   readonly redeemerMalformedIndex?: number;
-}) => {
+  /**
+   * Commits the forced transaction ForcedTxValid with one Spend redeemer whose
+   * data is exactly these bytes. Such a block carries no invalid-forced no-op
+   * step, so the fixture has no transition fault proof.
+   */
+  readonly acceptedRedeemerDataHex?: string;
+};
+
+type ForcedTransitionTraceFixture = Awaited<
+  ReturnType<typeof buildForcedTransitionTraceFixture>
+>;
+
+export function buildInvalidForcedTransitionTraceFixture(
+  input: ForcedTransitionTraceFixtureInput & {
+    readonly acceptedRedeemerDataHex: string;
+  },
+): Promise<Omit<ForcedTransitionTraceFixture, "proof">>;
+export function buildInvalidForcedTransitionTraceFixture(
+  input: ForcedTransitionTraceFixtureInput & {
+    readonly acceptedRedeemerDataHex?: undefined;
+  },
+): Promise<
+  Omit<ForcedTransitionTraceFixture, "proof"> & {
+    readonly proof: NonNullable<ForcedTransitionTraceFixture["proof"]>;
+  }
+>;
+export function buildInvalidForcedTransitionTraceFixture(
+  input: ForcedTransitionTraceFixtureInput,
+): Promise<ForcedTransitionTraceFixture> {
+  return buildForcedTransitionTraceFixture(input);
+}
+
+const buildForcedTransitionTraceFixture = async ({
+  operatorVkey,
+  now,
+  fieldPreimageLengthMismatchIndex,
+  fieldItemWidthIllegalCoordinate,
+  redeemerMalformedIndex,
+  acceptedRedeemerDataHex,
+}: ForcedTransitionTraceFixtureInput) => {
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
   const finalUtxo = transitionTraceRawEntry(
@@ -88,14 +121,15 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     referenceByte: "b1",
     outputByte: "b2",
     witnessByte: "b8",
-    ...(redeemerMalformedIndex === undefined
+    ...(redeemerMalformedIndex === undefined &&
+    acceptedRedeemerDataHex === undefined
       ? {}
       : {
           redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimage([
             encodeMidgardRedeemerWitnessItem({
               purpose: "Spend",
-              index: BigInt(redeemerMalformedIndex),
-              redeemerCbor: Buffer.from("00", "hex"),
+              index: BigInt(redeemerMalformedIndex ?? 0),
+              redeemerCbor: Buffer.from(acceptedRedeemerDataHex ?? "00", "hex"),
               executionUnits: { memory: 1n, steps: 2n },
             }),
           ]),
@@ -117,35 +151,40 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    verdict: {
-      ForcedTxInvalid: {
-        reason:
-          redeemerMalformedIndex !== undefined
-            ? {
-                RedeemerMalformed: {
-                  redeemer_index: BigInt(redeemerMalformedIndex),
-                },
-              }
-            : fieldItemWidthIllegalCoordinate !== undefined
-              ? {
-                  FieldItemWidthIllegal: {
-                    field_index: BigInt(
-                      fieldItemWidthIllegalCoordinate.fieldIndex,
-                    ),
-                    item_index: BigInt(
-                      fieldItemWidthIllegalCoordinate.itemIndex,
-                    ),
-                  },
-                }
-              : fieldPreimageLengthMismatchIndex === undefined
-                ? { PlutusExecutionFailed: { execution_index: 0n } }
-                : {
-                    FieldPreimageLengthMismatch: {
-                      field_index: BigInt(fieldPreimageLengthMismatchIndex),
-                    },
-                  },
-      },
-    },
+    verdict:
+      acceptedRedeemerDataHex !== undefined
+        ? ("ForcedTxValid" as const)
+        : {
+            ForcedTxInvalid: {
+              reason:
+                redeemerMalformedIndex !== undefined
+                  ? {
+                      RedeemerMalformed: {
+                        redeemer_index: BigInt(redeemerMalformedIndex),
+                      },
+                    }
+                  : fieldItemWidthIllegalCoordinate !== undefined
+                    ? {
+                        FieldItemWidthIllegal: {
+                          field_index: BigInt(
+                            fieldItemWidthIllegalCoordinate.fieldIndex,
+                          ),
+                          item_index: BigInt(
+                            fieldItemWidthIllegalCoordinate.itemIndex,
+                          ),
+                        },
+                      }
+                    : fieldPreimageLengthMismatchIndex === undefined
+                      ? { PlutusExecutionFailed: { execution_index: 0n } }
+                      : {
+                          FieldPreimageLengthMismatch: {
+                            field_index: BigInt(
+                              fieldPreimageLengthMismatchIndex,
+                            ),
+                          },
+                        },
+            },
+          },
   };
   const step = {
     schema_version: 1n,
@@ -184,7 +223,8 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
         step_count: 1n,
         initial_state_hash: h32("c2"),
         terminal_state_hash: h32("c3"),
-        verdict: "Rejected",
+        verdict:
+          acceptedRedeemerDataHex === undefined ? "Rejected" : "Accepted",
         rejection_code_hash: h32("c4"),
       },
       valueSchema: ValidationTraceDescriptorSchema,
@@ -281,12 +321,6 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     expectedHeaderHash: headerHash,
     committedHeader: header,
   });
-  const fault = invalidOneStepTransitionFault(
-    await buildInvalidForcedTransactionNoOpWitness({
-      reconstruction,
-      stepIndex: 0n,
-    }),
-  );
   return {
     header,
     headerHash,
@@ -294,6 +328,17 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     eventKey,
     forcedNativeTx,
     forcedTransaction,
-    proof: buildTransitionFaultProof({ reconstruction, fault }),
+    proof:
+      acceptedRedeemerDataHex === undefined
+        ? buildTransitionFaultProof({
+            reconstruction,
+            fault: invalidOneStepTransitionFault(
+              await buildInvalidForcedTransactionNoOpWitness({
+                reconstruction,
+                stepIndex: 0n,
+              }),
+            ),
+          })
+        : undefined,
   };
 };

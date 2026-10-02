@@ -12,6 +12,7 @@ import {
 import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
 import { forcedTxFromCoreCompact } from "./step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "./transition-trace/witnesses.js";
+import { forcedTransactionSubject } from "./workflow/detection-subject.js";
 
 export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {
   return block.reconstruction.forcedTransactions.flatMap(
@@ -62,6 +63,7 @@ export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {
       );
       return [
         Object.freeze({
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `min-fee:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
           violationId: "min-fee" as const,
           headerHash: block.headerHash,

@@ -1,9 +1,9 @@
 import {
   decodeMidgardRedeemerWitnessFieldPreimage,
   MIDGARD_REDEEMER_PURPOSE_TAGS,
+  validateCanonicalPlutusDataCbor,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import { lucidDataFromCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import { CML, Constr } from "@lucid-evolution/lucid";
 
 import { txOutRefData } from "./tx-out-ref.js";
@@ -43,21 +43,16 @@ const ensureSupportedTag = (tag: number, fieldName: string): void => {
   }
 };
 
-const decodeRedeemerDataCborHex = (
-  value: unknown,
-  fieldName: string,
-): string => {
-  const dataCborHex =
-    value instanceof Uint8Array
-      ? Buffer.from(value).toString("hex")
-      : encodeCbor(value).toString("hex");
-  try {
-    lucidDataFromCborIterative(dataCborHex);
-  } catch (e) {
-    throw new Error(`${fieldName} must encode Plutus Data: ${String(e)}`);
-  }
-  return dataCborHex;
-};
+/**
+ * §6.2: redeemer data must be exactly the bytes `serialiseData` emits for its
+ * value — the `redeemerCanonicity` fault proof rejects any other spelling, so
+ * a decodable but non-canonical encoding is rejected here too.
+ */
+const decodeRedeemerDataCborHex = (value: unknown, fieldName: string): string =>
+  validateCanonicalPlutusDataCbor(
+    value instanceof Uint8Array ? value : encodeCbor(value),
+    fieldName,
+  ).toString("hex");
 
 /**
  * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. The §5.3 decoder
@@ -65,7 +60,7 @@ const decodeRedeemerDataCborHex = (
  * `index`/`ex_units` uints, and trailing bytes after the execution units all
  * reject there — and this function only adapts the result into the shape the
  * validation machine consumes, re-checking the narrower Midgard builder tag set
- * and that the redeemer payload is Plutus `Data`.
+ * and that the redeemer payload is canonical Plutus `Data`.
  *
  * The retired counted scheme accepted two spellings here (a raw array of
  * four-element arrays, or a CBOR map keyed by pointer). §6.1 admits one byte

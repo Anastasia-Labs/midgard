@@ -15,6 +15,10 @@ import {
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import {
   prepareWitnessScriptDecodingEvidence,
@@ -67,6 +71,7 @@ export const detectWitnessScriptDecodingCompleteReplay = (
         prepared.resultClass,
       );
       detections.push({
+        ...acceptedTransactionSubject(transactionId),
         detectionId: `${violationId}:${transactionIndex.toString()}:${transactionId}:${scriptIndex.toString()}:${prepared.resultClass.toString()}`,
         headerHash: evidence.headerHash,
         violationId,
@@ -131,6 +136,7 @@ export const detectWitnessScriptDecodingCompleteReplay = (
       prepared.finding.accusedClass,
     );
     detections.push({
+      ...forcedTransactionSubject(transaction.key),
       detectionId: `${violationId}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${scriptIndex.toString()}:${prepared.resultClass.toString()}`,
       headerHash: evidence.headerHash,
       violationId,

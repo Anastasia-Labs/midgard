@@ -9,12 +9,13 @@ import {
 import { EventKey } from "@al-ft/midgard-sdk";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   applyUTxOStatePatch,
   buildMidgardCanonicalCekProgram,
+  DirectValidationTraceUnavailable,
   MidgardRedeemerTag,
   RejectCodes,
   replayValidationMachineEvent,
@@ -236,6 +237,68 @@ describe("independent validation event replay", () => {
       upsertedOutRefs: [],
     });
   });
+
+  // Phase A refuses these redeemer data bytes at canonicalDecode (the first
+  // spells a constructor's fields definite-length, the second is not Plutus
+  // Data), so the replay owes the typed direct-proof failure, not a defect
+  // from the trace re-decoding the bytes phase A refused.
+  it.each([
+    ["normal", "d8798101"],
+    ["normal", "60"],
+    ["forced", "d8798101"],
+    ["forced", "60"],
+  ] as const)(
+    "returns the typed canonicalDecode failure for %s redeemer data %s",
+    async (sourceKind, redeemerDataHex) => {
+      const fixture = plainTransfer();
+      const transaction = makeNativeTx({
+        spendInputs: [fixture.spent],
+        outputs: [fixture.output],
+        redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+          { tag: 0, index: 0n, data: Buffer.from(redeemerDataHex, "hex") },
+        ]),
+        scriptLanguages: ["PlutusV3"],
+      });
+      const normal = await replayInput(transaction, fixture.entries);
+      const input: ValidationMachineEventReplayInput =
+        sourceKind === "normal"
+          ? normal
+          : {
+              ...normal,
+              sourceKind: "forced",
+              canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+                materializeMidgardForcedTxFromCanonical(transaction.tx),
+              ),
+              eventKeyCbor: Buffer.from(
+                Data.to(
+                  {
+                    ForcedTransactionEventKey: {
+                      tx_order_id: {
+                        transactionId: "22".repeat(32),
+                        outputIndex: 0n,
+                      },
+                    },
+                  },
+                  EventKey,
+                ),
+                "hex",
+              ),
+            };
+      const exit = await Effect.runPromiseExit(
+        replayValidationMachineEvent(input),
+      );
+      if (Exit.isSuccess(exit)) {
+        throw new Error("replay accepted redeemer data phase A refuses");
+      }
+      expect([...Cause.defects(exit.cause)]).toEqual([]);
+      const failures = [...Cause.failures(exit.cause)];
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toBeInstanceOf(DirectValidationTraceUnavailable);
+      expect(
+        (failures[0] as DirectValidationTraceUnavailable).rejectionCode,
+      ).toBe(RejectCodes.InvalidFieldType);
+    },
+  );
 
   it("refuses stale prior ledger context before deriving a transaction verdict", async () => {
     const fixture = plainTransfer();

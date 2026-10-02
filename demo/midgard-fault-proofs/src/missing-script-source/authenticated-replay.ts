@@ -13,6 +13,10 @@ import {
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
 import type { MissingScriptSourceArtifact } from "./actuator.js";
 import {
   type MissingScriptSourceEvidence,
@@ -171,6 +175,7 @@ const replayCandidates = async (block: CanonicalBlockEvidence) => {
         const finding: MissingScriptSourceReplayFinding = {
           evidence,
           detection: {
+            ...acceptedTransactionSubject(transaction.nodeTxId),
             detectionId: `${violationId}:accepted:${position.toString()}:${transaction.nodeTxId}:${universe.purpose.absoluteIndex.toString()}`,
             headerHash: block.headerHash,
             violationId,
@@ -257,6 +262,7 @@ const replayCandidates = async (block: CanonicalBlockEvidence) => {
         const finding: MissingScriptSourceReplayFinding = {
           evidence,
           detection: {
+            ...forcedTransactionSubject(transaction.key),
             detectionId: `${violationId}:forced:${position.toString()}:${transaction.value.tx_id}:${universe.purpose.absoluteIndex.toString()}`,
             headerHash: block.headerHash,
             violationId,

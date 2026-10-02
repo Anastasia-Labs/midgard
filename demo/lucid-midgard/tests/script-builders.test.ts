@@ -212,6 +212,115 @@ describe("V1 script and mint feature surface", () => {
     expect(completed.toHash()).toBe(completed.txIdHex);
   });
 
+  describe("redeemer data encoding", () => {
+    const cmlInteger = (value: number): CML.PlutusData =>
+      CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString()));
+    const cmlList = (items: readonly CML.PlutusData[]): CML.PlutusDataList => {
+      const list = CML.PlutusDataList.new();
+      for (const item of items) list.add(item);
+      return list;
+    };
+    const cmlMap = (pairs: readonly [number, number][]): CML.PlutusData => {
+      const map = CML.PlutusMap.new();
+      for (const [key, value] of pairs)
+        map.set(cmlInteger(key), cmlInteger(value));
+      return CML.PlutusData.new_map(map);
+    };
+
+    const committedRedeemerData = async (
+      data: CML.PlutusData | Uint8Array | string,
+    ): Promise<string> => {
+      const midgard = await LucidMidgard.new(fakeProvider, {
+        network: "Preview",
+        networkId: 0,
+      });
+      const completed = await midgard
+        .newTx()
+        .attach.Script({
+          kind: "plutus-v3",
+          language: "PlutusV3",
+          script: rawPlutusV3Script,
+        })
+        .collectFrom(
+          [
+            makeUtxo(makeOutRef(0x41), scriptAddress(plutusV3Hash), {
+              lovelace: 2_000_000n,
+            }),
+          ],
+          { data, exUnits: { mem: 1n, steps: 1n } },
+        )
+        .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
+        .complete({ fee: 0n });
+      const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
+      const [witness, ...rest] = decodeMidgardRedeemerWitnessFieldPreimage(
+        tx.witnessSet.redeemerTxWitsPreimageCbor,
+      );
+      expect(rest).toEqual([]);
+      return Buffer.from(witness!.redeemerCbor).toString("hex");
+    };
+
+    // CML spells each of these definite-length (d8798101, 8101, a single
+    // 70-byte string); the committed bytes must be `serialiseData`'s.
+    it.each([
+      [
+        "constructor",
+        () =>
+          CML.PlutusData.new_constr_plutus_data(
+            CML.ConstrPlutusData.new(0n, cmlList([cmlInteger(1)])),
+          ),
+        "d8799f01ff",
+      ],
+      [
+        "list",
+        () => CML.PlutusData.new_list(cmlList([cmlInteger(1)])),
+        "9f01ff",
+      ],
+      [
+        "map in insertion order",
+        () =>
+          cmlMap([
+            [2, 1],
+            [1, 2],
+          ]),
+        "a202010102",
+      ],
+      [
+        "70-byte string",
+        () => CML.PlutusData.new_bytes(new Uint8Array(70).fill(1)),
+        `5f5840${"01".repeat(64)}46${"01".repeat(6)}ff`,
+      ],
+    ] as const)(
+      "commits a CML %s in its serialiseData form",
+      async (_label, build, expected) => {
+        await expect(committedRedeemerData(build())).resolves.toBe(expected);
+      },
+    );
+
+    it.each(["d8799f01ff", "9f01ff", "a202010102", "80", "d87980"])(
+      "passes canonical caller bytes %s through unchanged",
+      async (hex) => {
+        await expect(committedRedeemerData(hex)).resolves.toBe(hex);
+        await expect(
+          committedRedeemerData(Buffer.from(hex, "hex")),
+        ).resolves.toBe(hex);
+      },
+    );
+
+    it.each(["d8798101", "8101", "bf0102ff", "1801", "60"])(
+      "refuses non-canonical caller bytes %s rather than rewriting them",
+      async (hex) => {
+        await expect(committedRedeemerData(hex)).rejects.toThrow(
+          /Redeemer data bytes must be the serialiseData encoding/u,
+        );
+        await expect(
+          committedRedeemerData(Buffer.from(hex, "hex")),
+        ).rejects.toThrow(
+          /Redeemer data bytes must be the serialiseData encoding/u,
+        );
+      },
+    );
+  });
+
   it("completes canonical historical reference scripts with exact material", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",

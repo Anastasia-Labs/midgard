@@ -39,6 +39,10 @@ import {
   replayContextIdentity,
 } from "./complete-replay.replay-context-identity.js";
 import {
+  acceptedTransactionSubject,
+  withdrawalSubject,
+} from "./detection-subject.js";
+import {
   detectMissingNativeScriptUtxoFromHistoricalCorpus,
   type HistoricalNativeScriptCorpus,
 } from "./historical-native-script-corpus.js";
@@ -65,6 +69,7 @@ export const detectWithdrawnReferenceInputs = async (
           }
           return [
             {
+              ...acceptedTransactionSubject(transaction.nodeTxId),
               detectionId: `${WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID}:${transactionIndex.toString()}:${inputIndex.toString()}:${withdrawalIndex.toString()}:${transaction.nodeTxId}:${committedWithdrawalKeyBytes(withdrawal.key)}`,
               headerHash: evidence.headerHash,
               violationId: WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
@@ -84,6 +89,7 @@ export const detectReferenceInputNoIdxViolations = (
   detectReferenceInputNoIdxViolationsFromTransactions(
     evidence.transactions,
   ).map((detection) => ({
+    ...acceptedTransactionSubject(detection.badTxId),
     detectionId: `${REFERENCE_INPUT_NO_IDX_VIOLATION_ID}:${detection.badTxIndex.toString()}:${detection.badReferenceInputIndex.toString()}:${detection.badTxId}:${detection.producingTxId}:${detection.badReferenceInputOutputIndex.toString()}:${detection.producingTxOutputCount.toString()}`,
     headerHash: evidence.headerHash,
     violationId: REFERENCE_INPUT_NO_IDX_VIOLATION_ID,
@@ -136,6 +142,7 @@ export const detectDoubleWithdraws = (
       const firstKey = committedWithdrawalKeyBytes(first.key);
       const secondKey = committedWithdrawalKeyBytes(second.key);
       detections.push({
+        ...withdrawalSubject(first.key, second.key),
         detectionId: `${DOUBLE_WITHDRAW_VIOLATION_ID}:${firstIndex.toString()}:${secondIndex.toString()}:${firstKey}:${secondKey}`,
         headerHash: evidence.headerHash,
         violationId: DOUBLE_WITHDRAW_VIOLATION_ID,

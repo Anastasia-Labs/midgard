@@ -36,6 +36,7 @@ import {
   hashObserverOrderWalkCheckpoint,
   planObserverOrderInvalidStagedWalk,
 } from "../src/observer-order-invalid/staged-plan.js";
+import { acceptedTransactionSubject } from "../src/workflow/detection-subject.js";
 import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
@@ -265,6 +266,7 @@ describe("observerOrderInvalid V1 semantics", () => {
       position: bigint,
       detectionId: string,
     ): ObserverOrderInvalidReplayDetection => ({
+      ...acceptedTransactionSubject(txId),
       detectionId,
       headerHash: "22".repeat(28),
       violationId: OBSERVER_ORDER_INVALID_VIOLATION_ID,
