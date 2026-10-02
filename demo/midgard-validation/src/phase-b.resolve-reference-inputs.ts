@@ -10,10 +10,7 @@ import {
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
-import {
-  collectMidgardAttachedProgramEnvelopes,
-  decodeMidgardScriptProgramEnvelope,
-} from "@al-ft/midgard-core/script-proof";
+import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import type {
@@ -230,19 +227,12 @@ export const resolveReferenceInputs = (
           ? decodeMidgardForcedTxFullFromCanonicalCbor
           : decodeMidgardNativeTxFullFromCanonicalCbor
       )(node.candidate.submission.txCbor);
-      const envelopes = [
-        ...collectMidgardAttachedProgramEnvelopes(canonicalTx),
-      ];
-      for (const input of inputs) {
-        if (input.output.script_ref === undefined) continue;
-        const envelope = decodeMidgardScriptProgramEnvelope(
-          input.output.script_ref,
-        );
-        if (envelope !== null) {
-          envelopes.push(envelope);
-        }
-      }
-      verifyMidgardCekProgramMaterialBundle(envelopes, material);
+      // Every reference input is present here, so this is the event's whole
+      // program set, the one block builders and DA committee members derive.
+      verifyMidgardCekProgramMaterialBundle(
+        collectMidgardEventProgramEnvelopes(canonicalTx, stateValue),
+        material,
+      );
     } catch (cause) {
       return reject(
         node.candidate.ledgerTx.txId,

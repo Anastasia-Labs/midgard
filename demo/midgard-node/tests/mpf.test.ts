@@ -8,6 +8,7 @@ import "level";
 import "vitest";
 import "../src/database/utils/ledger.js";
 import "../src/database/utils/tx.js";
+import "../src/mpf/event-window.js";
 import "../src/mpf/index.js";
 import "./midgard-output-helpers.js";
 import "./mpf.build-deep-shared-mpf-dag.js";
@@ -21,6 +22,10 @@ import { Level } from "level";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 
 import * as Ledger from "../src/database/utils/ledger.js";
+import {
+  acceptedTransactionLedgerWitnesses,
+  rejectedForcedTransactionLedgerWitnesses,
+} from "../src/mpf/event-window.js";
 import {
   applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
   applyTraceLedgerOpsToMpf,
@@ -44,7 +49,7 @@ import {
   ledgerOutputToInsertBatchOp,
   MidgardMpf,
   MpfBatchOp,
-  orderDecodedMempoolTxsForLedgerApplication,
+  refuseMalformedMempoolCandidates,
   resetMpfArenaLimits,
   setMpfScratchBuild,
   type TransitionTraceSourceEvent,
@@ -2321,59 +2326,10 @@ describe("Midgard MPF wrapper", () => {
     }),
   );
 
-  it.effect(
-    "orders same-block child transactions after the transactions that produce their inputs",
-    () =>
-      Effect.gen(function* () {
-        const producer = makeDecodedMempoolTx({
-          txHash: makeTxHash(1),
-          spent: [makeOutRef(1)],
-          produced: [makeOutRef(2)],
-        });
-        const consumer = makeDecodedMempoolTx({
-          txHash: makeTxHash(2),
-          spent: [makeOutRef(2)],
-          produced: [makeOutRef(3)],
-        });
-
-        const ordered = yield* orderDecodedMempoolTxsForLedgerApplication([
-          consumer,
-          producer,
-        ]);
-
-        expect(ordered.map((tx) => tx.txHash.toString("hex"))).toStrictEqual([
-          producer.txHash.toString("hex"),
-          consumer.txHash.toString("hex"),
-        ]);
-      }),
-  );
-
-  it.effect("fails closed on cyclic same-block transaction dependencies", () =>
-    Effect.gen(function* () {
-      const left = makeDecodedMempoolTx({
-        txHash: makeTxHash(1),
-        spent: [makeOutRef(2)],
-        produced: [makeOutRef(1)],
-      });
-      const right = makeDecodedMempoolTx({
-        txHash: makeTxHash(2),
-        spent: [makeOutRef(1)],
-        produced: [makeOutRef(2)],
-      });
-
-      const result = yield* orderDecodedMempoolTxsForLedgerApplication([
-        left,
-        right,
-      ]).pipe(Effect.either);
-
-      expect(result._tag).toBe("Left");
-    }),
-  );
-
   it.effect("fails closed on duplicate normal L2 transaction ids", () =>
     Effect.gen(function* () {
       const txHash = makeTxHash(3);
-      const result = yield* orderDecodedMempoolTxsForLedgerApplication([
+      const result = yield* refuseMalformedMempoolCandidates([
         makeDecodedMempoolTx({
           txHash,
           spent: [makeOutRef(3)],
@@ -2388,6 +2344,39 @@ describe("Midgard MPF wrapper", () => {
 
       expect(result._tag).toBe("Left");
     }),
+  );
+
+  it.effect(
+    "fails closed when an applied transaction's input is absent from the state before it",
+    () =>
+      Effect.gen(function* () {
+        const present = "aa".repeat(36);
+        const absent = "bb".repeat(36);
+        const state = new Map([[present, Buffer.from("01", "hex")]]);
+        const subject = { table: "test", txIdHex: "cc".repeat(32) };
+
+        const witnesses = yield* acceptedTransactionLedgerWitnesses(
+          state,
+          subject,
+          [present, present],
+        );
+        expect(witnesses.map((entry) => entry.outRef.toString("hex"))).toEqual([
+          present,
+        ]);
+
+        const result = yield* acceptedTransactionLedgerWitnesses(
+          state,
+          subject,
+          [present, absent],
+        ).pipe(Effect.either);
+        expect(result._tag).toBe("Left");
+        expect(
+          rejectedForcedTransactionLedgerWitnesses(state, [
+            present,
+            absent,
+          ]).map((entry) => entry.outRef.toString("hex")),
+        ).toEqual([present]);
+      }),
   );
 
   it.effect(

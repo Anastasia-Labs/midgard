@@ -271,7 +271,7 @@ describe("phase B execution subjects", () => {
       [[a, lockedBy(PASSING_HASH)]],
       RejectCodes.PlutusScriptInvalid,
       {
-        evaluateScript: () =>
+        evaluateProofScript: () =>
           Effect.succeed({ kind: "script_invalid", detail: "fixture" }),
       },
     );

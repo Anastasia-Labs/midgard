@@ -23,6 +23,64 @@ import {
   sourceEventFingerprints,
 } from "./payload.source-event-fingerprints.js";
 
+/**
+ * The committed `event_to_step` map, keyed by the canonical event-key
+ * fingerprint. Rejects a negative step index, a phase that does not match
+ * the event-key variant, and a repeated event key.
+ */
+export const parseEventToStep = (
+  body: SDK.DaPayloadBody,
+): ReadonlyMap<string, SDK.EventToStepValue> => {
+  const eventToStep = new Map<string, SDK.EventToStepValue>();
+  for (const [index, [keyHex, valueHex]] of body.event_to_step.entries()) {
+    const fast = parseCanonicalL2EventToStep(keyHex, valueHex);
+    const eventKey =
+      fast === undefined
+        ? decodeCanonicalData<SDK.EventKey>(
+            keyHex,
+            SDK.EventKeySchema as never,
+            `event_to_step[${index.toString()}].key`,
+          )
+        : ({
+            L2TransactionEventKey: {
+              tx_id: fast.eventKey.slice(
+                L2_EVENT_KEY_PREFIX.length,
+                -L2_EVENT_KEY_SUFFIX.length,
+              ),
+            },
+          } satisfies SDK.EventKey);
+    const value =
+      fast === undefined
+        ? decodeCanonicalData<SDK.EventToStepValue>(
+            valueHex,
+            SDK.EventToStepValueSchema as never,
+            `event_to_step[${index.toString()}].value`,
+          )
+        : { step_index: fast.stepIndex, phase: fast.phase };
+    if (value.step_index < 0n) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "event_to_step step_index must be non-negative",
+      );
+    }
+    if (value.phase !== eventPhase(eventKey)) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "event_to_step phase does not match event key variant",
+      );
+    }
+    const fingerprint = fast?.eventKey ?? eventKeyFingerprint(eventKey);
+    if (eventToStep.has(fingerprint)) {
+      throw new DaPayloadValidationError(
+        "duplicate_key",
+        `duplicate event_to_step event key ${fingerprint}`,
+      );
+    }
+    eventToStep.set(fingerprint, value);
+  }
+  return eventToStep;
+};
+
 export const validateTraceCoverage = (payload: SDK.DaPayload): void => {
   const body = payload.block_body;
   const counts = body.counts;
@@ -135,53 +193,7 @@ export const validateTraceCoverage = (payload: SDK.DaPayload): void => {
     }
   }
 
-  const eventToStep = new Map<string, SDK.EventToStepValue>();
-  for (const [index, [keyHex, valueHex]] of body.event_to_step.entries()) {
-    const fast = parseCanonicalL2EventToStep(keyHex, valueHex);
-    const eventKey =
-      fast === undefined
-        ? decodeCanonicalData<SDK.EventKey>(
-            keyHex,
-            SDK.EventKeySchema as never,
-            `event_to_step[${index.toString()}].key`,
-          )
-        : ({
-            L2TransactionEventKey: {
-              tx_id: fast.eventKey.slice(
-                L2_EVENT_KEY_PREFIX.length,
-                -L2_EVENT_KEY_SUFFIX.length,
-              ),
-            },
-          } satisfies SDK.EventKey);
-    const value =
-      fast === undefined
-        ? decodeCanonicalData<SDK.EventToStepValue>(
-            valueHex,
-            SDK.EventToStepValueSchema as never,
-            `event_to_step[${index.toString()}].value`,
-          )
-        : { step_index: fast.stepIndex, phase: fast.phase };
-    if (value.step_index < 0n) {
-      throw new DaPayloadValidationError(
-        "coverage_mismatch",
-        "event_to_step step_index must be non-negative",
-      );
-    }
-    if (value.phase !== eventPhase(eventKey)) {
-      throw new DaPayloadValidationError(
-        "coverage_mismatch",
-        "event_to_step phase does not match event key variant",
-      );
-    }
-    const fingerprint = fast?.eventKey ?? eventKeyFingerprint(eventKey);
-    if (eventToStep.has(fingerprint)) {
-      throw new DaPayloadValidationError(
-        "duplicate_key",
-        `duplicate event_to_step event key ${fingerprint}`,
-      );
-    }
-    eventToStep.set(fingerprint, value);
-  }
+  const eventToStep = parseEventToStep(body);
 
   for (const sourceEvent of sourceEvents) {
     const mapped = eventToStep.get(sourceEvent);

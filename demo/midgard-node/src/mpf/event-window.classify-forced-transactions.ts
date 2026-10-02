@@ -8,7 +8,7 @@ import {
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import {
   collectMidgardAttachedProgramEnvelopes,
-  collectMidgardReferencedProgramEnvelopes,
+  collectMidgardEventProgramEnvelopes,
 } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -27,11 +27,12 @@ import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { sha256 } from "../sha256.js";
 import {
+  acceptedTransactionLedgerWitnesses,
   applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
   type ForcedProgramMaterialSidecarResolver,
   forcedRejectionVerdict,
-  validationLedgerWitnesses,
+  rejectedForcedTransactionLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";
 import {
   ledgerOutputToInsertBatchOp,
@@ -117,17 +118,36 @@ export const classifyForcedTransactions = <R>({
             cause,
           }),
       });
-      // Malformed attached script/output bytes remain a deterministic Phase A
-      // rejection. No material can be authenticated for a non-envelope.
-      const attachedEnvelopes = (() => {
+      // The program material of a forced transaction is the shared per-event
+      // set: its attached programs plus the script_refs of its reference
+      // inputs present in the state immediately before it, whatever its
+      // verdict. Malformed attached script/output bytes remain a deterministic
+      // Phase A rejection: no material can be authenticated for a
+      // non-envelope.
+      const eventEnvelopes = yield* (() => {
         try {
-          return collectMidgardAttachedProgramEnvelopes(canonicalTx);
+          collectMidgardAttachedProgramEnvelopes(canonicalTx);
         } catch {
-          return Object.freeze([]) as readonly MidgardCekProgramEnvelope[];
+          return Effect.succeed(
+            Object.freeze([]) as readonly MidgardCekProgramEnvelope[],
+          );
         }
+        return Effect.try({
+          try: () =>
+            collectMidgardEventProgramEnvelopes(canonicalTx, (outRefHex) =>
+              state.get(outRefHex),
+            ),
+          catch: (cause) =>
+            new DatabaseError({
+              table: ForcedTransactionsDB.tableName,
+              message:
+                "A ledger output referenced by a forced transaction has a malformed script_ref",
+              cause,
+            }),
+        });
       })();
-      let programMaterialSidecarCbor =
-        yield* resolveProgramMaterialSidecar(attachedEnvelopes);
+      const programMaterialSidecarCbor =
+        yield* resolveProgramMaterialSidecar(eventEnvelopes);
       const phaseA = yield* runPhaseAValidation(
         [
           {
@@ -171,41 +191,7 @@ export const classifyForcedTransactions = <R>({
         rejectionCode = phaseA.rejected[0]!.code;
         verdict = yield* forcedRejectionVerdict(phaseA.rejected[0]!);
       } else {
-        let acceptedCandidate = phaseA.accepted[0]!;
-        if (
-          acceptedCandidate.graph.referenceOutRefHexes.every((outRef) =>
-            state.has(outRef),
-          )
-        ) {
-          // A malformed referenced ledger output is classified by Phase B.
-          const referencedEnvelopes = (() => {
-            try {
-              return collectMidgardReferencedProgramEnvelopes(
-                canonicalTx,
-                state,
-              );
-            } catch {
-              return Object.freeze([]) as readonly MidgardCekProgramEnvelope[];
-            }
-          })();
-          if (referencedEnvelopes.length > 0) {
-            programMaterialSidecarCbor = yield* resolveProgramMaterialSidecar([
-              ...attachedEnvelopes,
-              ...referencedEnvelopes,
-            ]);
-            acceptedCandidate = {
-              ...acceptedCandidate,
-              submission: {
-                ...acceptedCandidate.submission,
-                programMaterialSidecarCbor,
-              },
-            };
-          }
-        }
-        ledgerWitnessEntries = validationLedgerWitnesses(state, [
-          ...acceptedCandidate.graph.spentOutRefHexes,
-          ...acceptedCandidate.graph.referenceOutRefHexes,
-        ]);
+        const acceptedCandidate = phaseA.accepted[0]!;
         const phaseB = yield* runPhaseBValidationWithPatch(
           [acceptedCandidate],
           state,
@@ -226,11 +212,27 @@ export const classifyForcedTransactions = <R>({
               }),
           ),
         );
+        const inputOutRefHexes = [
+          ...acceptedCandidate.graph.spentOutRefHexes,
+          ...acceptedCandidate.graph.referenceOutRefHexes,
+        ];
         if (phaseB.rejected.length > 0) {
           rejectionCode = phaseB.rejected[0]!.code;
           verdict = yield* forcedRejectionVerdict(phaseB.rejected[0]!);
+          ledgerWitnessEntries = rejectedForcedTransactionLedgerWitnesses(
+            state,
+            inputOutRefHexes,
+          );
         } else {
           verdict = "ForcedTxValid";
+          ledgerWitnessEntries = yield* acceptedTransactionLedgerWitnesses(
+            state,
+            {
+              table: ForcedTransactionsDB.tableName,
+              txIdHex: txId.toString("hex"),
+            },
+            inputOutRefHexes,
+          );
           transitionEffect = canonicalTransitionEffectFromStatePatch(
             phaseB.statePatch,
           );

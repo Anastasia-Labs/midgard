@@ -40,12 +40,17 @@ export const persistVerifiedAdmissionBundle = ({
   txId,
   txCanonicalCbor,
   sidecarCbor,
-  referenceProgramEnvelopes,
+  programEnvelopes,
 }: {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly sidecarCbor: Buffer;
-  readonly referenceProgramEnvelopes?: readonly MidgardCekProgramEnvelope[];
+  /**
+   * The transaction's program set as Phase B resolved it
+   * (`collectMidgardEventProgramEnvelopes`). Required when the transaction
+   * has reference inputs; otherwise its attached programs are the whole set.
+   */
+  readonly programEnvelopes?: readonly MidgardCekProgramEnvelope[];
 }): Effect.Effect<void, DatabaseError, Database | NodeConfig> =>
   Effect.try({
     try: () => decodeMidgardCekProgramMaterialSidecar(sidecarCbor),
@@ -67,15 +72,12 @@ export const persistVerifiedAdmissionBundle = ({
               tx.body.referenceInputsPreimageCbor,
               "reference_inputs_preimage",
             ).length > 0;
-          if (hasReferenceInputs && referenceProgramEnvelopes === undefined) {
+          if (hasReferenceInputs && programEnvelopes === undefined) {
             throw new Error(
               "accepted transaction reference inputs lack Phase B resolution",
             );
           }
-          return [
-            ...collectMidgardAttachedProgramEnvelopes(tx),
-            ...(referenceProgramEnvelopes ?? []),
-          ] as const;
+          return programEnvelopes ?? collectMidgardAttachedProgramEnvelopes(tx);
         },
         catch: (cause) =>
           new DatabaseError({

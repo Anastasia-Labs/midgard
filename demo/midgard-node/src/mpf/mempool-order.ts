@@ -1,5 +1,5 @@
 /**
- * Ordering decoded mempool transactions for ledger application and establishing the effective end time.
+ * Decoded mempool block candidates: structural refusal and the effective end time.
  */
 
 import { Effect } from "effect";
@@ -28,21 +28,24 @@ export const establishEffectiveEndTimeFromDecodedMempool = (
   processedOnlyEndTime ??
   depositOnlyEndTime;
 
-export const orderDecodedMempoolTxsForLedgerApplication = (
+/**
+ * Refuses a block candidate whose decoded mempool transactions cannot form a
+ * block: a repeated transaction id, an out-ref produced twice, or a
+ * transaction that spends one out-ref twice or spends its own output. It
+ * does not order the candidates. Phase B validates them sequentially, as on
+ * Cardano, and the block commits its accepted transactions in exactly that
+ * application order (`runPhaseBValidationWithPatch`).
+ */
+export const refuseMalformedMempoolCandidates = (
   decodedMempoolTxs: readonly DecodedMempoolTxForCommit[],
-): Effect.Effect<readonly DecodedMempoolTxForCommit[], DatabaseError, never> =>
+): Effect.Effect<void, DatabaseError, never> =>
   Effect.gen(function* () {
-    if (decodedMempoolTxs.length <= 1) {
-      return decodedMempoolTxs;
-    }
-
-    const txByHash = new Map<string, DecodedMempoolTxForCommit>();
-    const originalIndexByTxHash = new Map<string, number>();
+    const txHashes = new Set<string>();
     const producerByOutRef = new Map<string, string>();
 
-    for (const [index, decoded] of decodedMempoolTxs.entries()) {
+    for (const decoded of decodedMempoolTxs) {
       const txHashHex = decoded.txHash.toString("hex");
-      if (txByHash.has(txHashHex)) {
+      if (txHashes.has(txHashHex)) {
         return yield* Effect.fail(
           new DatabaseError({
             table: MempoolDB.tableName,
@@ -52,8 +55,7 @@ export const orderDecodedMempoolTxsForLedgerApplication = (
           }),
         );
       }
-      txByHash.set(txHashHex, decoded);
-      originalIndexByTxHash.set(txHashHex, index);
+      txHashes.add(txHashHex);
 
       for (const produced of decoded.produced) {
         const outRefHex = produced[Ledger.Columns.OUTREF].toString("hex");
@@ -72,18 +74,9 @@ export const orderDecodedMempoolTxsForLedgerApplication = (
       }
     }
 
-    const dependenciesByTxHash = new Map<string, Set<string>>();
-    const dependentsByTxHash = new Map<string, Set<string>>();
-    for (const txHashHex of txByHash.keys()) {
-      dependenciesByTxHash.set(txHashHex, new Set());
-      dependentsByTxHash.set(txHashHex, new Set());
-    }
-
     for (const decoded of decodedMempoolTxs) {
       const txHashHex = decoded.txHash.toString("hex");
-      const dependencies = dependenciesByTxHash.get(txHashHex)!;
       const spentByThisTx = new Set<string>();
-
       for (const spent of decoded.spent) {
         const spentHex = spent.toString("hex");
         if (spentByThisTx.has(spentHex)) {
@@ -97,12 +90,7 @@ export const orderDecodedMempoolTxsForLedgerApplication = (
           );
         }
         spentByThisTx.add(spentHex);
-
-        const producerTxHash = producerByOutRef.get(spentHex);
-        if (producerTxHash === undefined) {
-          continue;
-        }
-        if (producerTxHash === txHashHex) {
+        if (producerByOutRef.get(spentHex) === txHashHex) {
           return yield* Effect.fail(
             new DatabaseError({
               table: MempoolDB.tableName,
@@ -112,52 +100,6 @@ export const orderDecodedMempoolTxsForLedgerApplication = (
             }),
           );
         }
-
-        dependencies.add(producerTxHash);
-        dependentsByTxHash.get(producerTxHash)!.add(txHashHex);
       }
     }
-
-    const byOriginalIndex = (left: string, right: string) =>
-      originalIndexByTxHash.get(left)! - originalIndexByTxHash.get(right)!;
-    const ready = [...dependenciesByTxHash.entries()]
-      .filter(([, dependencies]) => dependencies.size === 0)
-      .map(([txHashHex]) => txHashHex)
-      .sort(byOriginalIndex);
-    const queued = new Set(ready);
-    const ordered: DecodedMempoolTxForCommit[] = [];
-
-    while (ready.length > 0) {
-      const txHashHex = ready.shift()!;
-      ordered.push(txByHash.get(txHashHex)!);
-
-      for (const dependentTxHash of dependentsByTxHash.get(txHashHex)!) {
-        const dependencies = dependenciesByTxHash.get(dependentTxHash)!;
-        dependencies.delete(txHashHex);
-        if (dependencies.size === 0 && !queued.has(dependentTxHash)) {
-          ready.push(dependentTxHash);
-          queued.add(dependentTxHash);
-          ready.sort(byOriginalIndex);
-        }
-      }
-    }
-
-    if (ordered.length !== decodedMempoolTxs.length) {
-      const blockedTxIds = [...dependenciesByTxHash.entries()]
-        .filter(([, dependencies]) => dependencies.size > 0)
-        .map(([txHashHex, dependencies]) => ({
-          tx_id: txHashHex,
-          depends_on: [...dependencies].sort(),
-        }));
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: MempoolDB.tableName,
-          message:
-            "Refusing to build a block because same-block mempool dependencies are cyclic",
-          cause: JSON.stringify(blockedTxIds),
-        }),
-      );
-    }
-
-    return ordered;
   });

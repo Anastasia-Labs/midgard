@@ -38,7 +38,7 @@ import {
 } from "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 import {
   admissionToQueuedTx,
-  collectAcceptedReferenceProgramEnvelopes,
+  collectAcceptedProgramEnvelopes,
   runPhaseAForBatch,
   sampleValidationQueueWaits,
   selectValidationBatchSize,
@@ -208,7 +208,7 @@ export const txQueueProcessorAction = (
 
             const pendingWithdrawalOutRefHexes =
               yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
-            const { phaseB, allRejected, referenceProgramEnvelopesByTxId } =
+            const { phaseB, allRejected, programEnvelopesByTxId } =
               yield* phaseBSequence.runDecision(
                 Effect.gen(function* () {
                   const cachedState = yield* ledgerCache.currentState;
@@ -231,8 +231,8 @@ export const txQueueProcessorAction = (
                     Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
                   );
 
-                  const referenceProgramEnvelopesByTxId =
-                    collectAcceptedReferenceProgramEnvelopes(
+                  const programEnvelopesByTxId =
+                    collectAcceptedProgramEnvelopes(
                       phaseB.accepted,
                       cachedState,
                     );
@@ -243,7 +243,7 @@ export const txQueueProcessorAction = (
                   return {
                     phaseB,
                     allRejected,
-                    referenceProgramEnvelopesByTxId,
+                    programEnvelopesByTxId,
                   };
                 }),
               );
@@ -276,7 +276,7 @@ export const txQueueProcessorAction = (
                     processedTxs: phaseB.accepted.map(
                       processedTxFromValidatedTx,
                     ),
-                    referenceProgramEnvelopesByTxId,
+                    programEnvelopesByTxId,
                   });
                   yield* validationMempoolInsertDurationTimer(
                     Effect.succeed(

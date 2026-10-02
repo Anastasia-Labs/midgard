@@ -50,6 +50,7 @@ import {
 } from "./commit-rejection.js";
 import { MpfError } from "./errors.js";
 import {
+  acceptedTransactionLedgerWitnesses,
   applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
   classifyForcedTransactions,
@@ -57,7 +58,6 @@ import {
   resolveIncludedDepositEntriesForWindow,
   resolveIncludedForcedTransactionEntriesForWindow,
   resolveIncludedWithdrawalEntriesForWindow,
-  validationLedgerWitnesses,
 } from "./event-window.js";
 import {
   collapseLedgerDelta,
@@ -70,7 +70,7 @@ import { encodeTransactionRootValue } from "./ledger-hydration.js";
 import {
   type DecodedMempoolTxForCommit,
   establishEffectiveEndTimeFromDecodedMempool,
-  orderDecodedMempoolTxsForLedgerApplication,
+  refuseMalformedMempoolCandidates,
 } from "./mempool-order.js";
 import {
   applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
@@ -478,8 +478,7 @@ export const processMpfs = (
         classified.ledgerOutRef.toString("hex"),
       ),
     );
-    const orderedDecodedMempoolTxs =
-      yield* orderDecodedMempoolTxsForLedgerApplication(decodedMempoolTxs);
+    yield* refuseMalformedMempoolCandidates(decodedMempoolTxs);
 
     const consensusProfile =
       config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE;
@@ -494,7 +493,7 @@ export const processMpfs = (
     }
     if (
       (includedForcedTransactionEntries.length > 0 ||
-        orderedDecodedMempoolTxs.length > 0) &&
+        decodedMempoolTxs.length > 0) &&
       (config.forcedValidation === undefined || effectiveEndTime === undefined)
     ) {
       return yield* Effect.fail(
@@ -502,7 +501,7 @@ export const processMpfs = (
           table: ForcedTransactionsDB.tableName,
           message:
             "V1 transactions require an exact block-time validation context",
-          cause: `forced_count=${includedForcedTransactionEntries.length.toString()},normal_count=${orderedDecodedMempoolTxs.length.toString()},effective_end_time=${effectiveEndTime?.toISOString() ?? "missing"}`,
+          cause: `forced_count=${includedForcedTransactionEntries.length.toString()},normal_count=${decodedMempoolTxs.length.toString()},effective_end_time=${effectiveEndTime?.toISOString() ?? "missing"}`,
         }),
       );
     }
@@ -584,7 +583,7 @@ export const processMpfs = (
     >();
     const proofNormalProgramMaterialByTxId = new Map<string, Buffer>();
 
-    yield* Effect.forEach(orderedDecodedMempoolTxs, (decoded) =>
+    yield* Effect.forEach(decodedMempoolTxs, (decoded) =>
       Effect.gen(function* () {
         const txHashHex = decoded.txHash.toString("hex");
         const withdrawnOutRef = decoded.spent.find((outRef) =>
@@ -768,10 +767,10 @@ export const processMpfs = (
         });
       }
 
-      const acceptedByTxId = new Map(
-        proofPhaseB.accepted.map((accepted) => [
-          accepted.ledgerTx.txId.toString("hex"),
-          accepted,
+      const decodedByTxHashForCommit = new Map(
+        decodedMempoolTxs.map((decoded) => [
+          decoded.txHash.toString("hex"),
+          decoded,
         ]),
       );
       const proofNormalReplayState = new Map(
@@ -804,10 +803,22 @@ export const processMpfs = (
       transactionOps.length = 0;
       transactionSourceOps.length = 0;
       sizeOfProcessedTxs = 0;
-      for (const decoded of orderedDecodedMempoolTxs) {
-        const txIdHex = decoded.txHash.toString("hex");
-        const accepted = acceptedByTxId.get(txIdHex);
-        if (accepted === undefined) continue;
+      // The block commits its normal transactions in exactly the order Phase B
+      // applied them: every input resolves against the state before its own
+      // transaction, as on Cardano.
+      for (const accepted of proofPhaseB.accepted) {
+        const txIdHex = accepted.ledgerTx.txId.toString("hex");
+        const decoded = decodedByTxHashForCommit.get(txIdHex);
+        if (decoded === undefined) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: MempoolDB.tableName,
+              message:
+                "Phase B accepted a transaction that is not a block candidate",
+              cause: `tx_id=${txIdHex}`,
+            }),
+          );
+        }
         const ledgerOps: readonly MpfBatchOp[] = [
           ...accepted.graph.spentOutRefHexes.map((outRef) => ({
             type: "delete" as const,
@@ -823,10 +834,14 @@ export const processMpfs = (
         proofNormalLedgerOpsByTxId.set(txIdHex, ledgerOps);
         proofNormalLedgerWitnessesByTxId.set(
           txIdHex,
-          validationLedgerWitnesses(proofNormalReplayState, [
-            ...accepted.graph.spentOutRefHexes,
-            ...accepted.graph.referenceOutRefHexes,
-          ]),
+          yield* acceptedTransactionLedgerWitnesses(
+            proofNormalReplayState,
+            { table: MempoolDB.tableName, txIdHex },
+            [
+              ...accepted.graph.spentOutRefHexes,
+              ...accepted.graph.referenceOutRefHexes,
+            ],
+          ),
         );
         proofNormalLedgerMutationsByTxId.set(
           txIdHex,
@@ -1008,7 +1023,7 @@ export const processMpfs = (
         }),
     );
     const decodedByTxHash = new Map(
-      orderedDecodedMempoolTxs.map((decoded) => [
+      decodedMempoolTxs.map((decoded) => [
         decoded.txHash.toString("hex"),
         decoded,
       ]),

@@ -165,28 +165,30 @@ export const collectMidgardAttachedProgramEnvelopes = (
 };
 
 /**
- * Resolves V1 programs made available by the transaction's reference
- * inputs. Map keys are the lowercase hex encoding of the exact canonical
- * output-reference CBOR bytes committed by the transaction; values are the
- * corresponding canonical ledger-output bytes.
+ * The V1 programs one event needs: every input resolves against the ledger
+ * state immediately before its own transaction, as on Cardano. The set is
+ * the programs physically attached to the transaction plus the script_ref
+ * program of each reference input present in `preStateOutput`, the ledger
+ * state immediately before the event. A reference input absent from that
+ * state contributes nothing; the event's own verdict answers for it.
+ *
+ * `preStateOutput` maps the lowercase hex encoding of the exact canonical
+ * output-reference CBOR committed by the transaction to the corresponding
+ * canonical ledger-output bytes. Block builders and DA committee members
+ * call this one function, so both derive the same program set.
  */
-export const collectMidgardReferencedProgramEnvelopes = (
+export const collectMidgardEventProgramEnvelopes = (
   tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
-  resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array>,
+  preStateOutput: (outRefHex: string) => Uint8Array | undefined,
 ): readonly MidgardCekProgramEnvelope[] => {
-  const envelopes: MidgardCekProgramEnvelope[] = [];
-  const referenceInputs = decodeMidgardNativeByteListPreimage(
+  const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx)];
+  // Program sources taken from ledger state: the reference inputs.
+  for (const outRef of decodeMidgardNativeByteListPreimage(
     tx.body.referenceInputsPreimageCbor,
     "reference_inputs_preimage",
-  );
-  for (const [index, outRef] of referenceInputs.entries()) {
-    const key = Buffer.from(outRef).toString("hex");
-    const outputCbor = resolvedOutputsByOutRef.get(key);
-    if (outputCbor === undefined) {
-      throw new Error(
-        `reference input ${index.toString()} (${key}) has no resolved ledger output`,
-      );
-    }
+  )) {
+    const outputCbor = preStateOutput(Buffer.from(outRef).toString("hex"));
+    if (outputCbor === undefined) continue;
     const script = decodeMidgardTxOutput(outputCbor).script_ref;
     if (script === undefined) continue;
     const envelope = decodeMidgardScriptProgramEnvelope(script);
