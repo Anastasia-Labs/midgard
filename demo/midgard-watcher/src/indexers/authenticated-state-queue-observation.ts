@@ -20,19 +20,29 @@ import "./authenticated-state-queue-observation.create-watcher-state-queue-obser
 import "./authenticated-state-queue-observation.authenticate-persisted-bootstrap-topology.js";
 import "./authenticated-state-queue-observation.restore-persisted-observation-chain.js";
 import "./authenticated-state-queue-observation.restore-longest-persisted-observation-chain.js";
+import "./authenticated-state-queue-observation.merged-headers.js";
 export { unsafeCorrectionLockWitnessForTest } from "./authenticated-state-queue-observation.correction-lock-witness.js";
 export { createWatcherStateQueueObservationSource } from "./authenticated-state-queue-observation.create-watcher-state-queue-observation-source.js";
+export {
+  resolveMergedHeadersAtBoundary as unsafeResolveMergedWatcherStateQueueHeadersForTest,
+  type WatcherMergedHeaderReaders,
+} from "./authenticated-state-queue-observation.merged-headers.js";
 export {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
   stateQueueProgressRecordDue,
   WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION,
   WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS,
+  WATCHER_STATE_QUEUE_REMOVAL_KINDS,
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherCorrectionLockObservation,
+  type WatcherMergedHeaderProof,
+  type WatcherReleasedHeaderProof,
+  type WatcherRemovedHeaderProof,
   type WatcherStateQueueHeaderObservation,
   type WatcherStateQueueObservationSource,
   type WatcherStateQueueRecovery,
+  type WatcherStateQueueRemovalKind,
 } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 export { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "./authenticated-state-queue-observation.parse-persisted-observation.js";
 export { unsafeSelectWatcherStateQueueRawCandidatesForTest } from "./authenticated-state-queue-observation.queue-output.js";

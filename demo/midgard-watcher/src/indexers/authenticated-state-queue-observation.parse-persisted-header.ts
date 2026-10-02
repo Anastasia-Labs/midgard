@@ -142,7 +142,52 @@ export type WatcherStateQueueObservationSource = Readonly<{
   resolveRetainedHeader(
     input: Readonly<{ headerHash: string }>,
   ): Promise<WatcherStateQueueHeaderObservation>;
+  /**
+   * Headers of `observation` that left the L1 queue at release finality,
+   * merged into confirmed state or removed, by hash.
+   */
+  resolveMergedHeaders?(
+    input: Readonly<{
+      observation: WatcherAuthenticatedStateQueueObservation;
+    }>,
+  ): Promise<ReadonlyMap<string, WatcherReleasedHeaderProof>>;
 }>;
+
+/** L1 evidence that a queued header was merged into confirmed state. */
+export type WatcherMergedHeaderProof = Readonly<{
+  headerHash: string;
+  mergeTransactionHash: string;
+  mergeBlockHash: string;
+  mergeSlot: string;
+  mergeBlockNo: string;
+  confirmationDepth: string;
+}>;
+
+/** The state-queue mint redeemers whose burn removes one queued header. */
+export const WATCHER_STATE_QUEUE_REMOVAL_KINDS = Object.freeze([
+  "RemoveFraudulentBlockHeader",
+  "RemoveUnattestedBlockAfterTimeout",
+  "RemoveUnavailableBlockAfterTimeout",
+] as const);
+
+export type WatcherStateQueueRemovalKind =
+  (typeof WATCHER_STATE_QUEUE_REMOVAL_KINDS)[number];
+
+/** L1 evidence that a queued header was removed from the queue. */
+export type WatcherRemovedHeaderProof = Readonly<{
+  headerHash: string;
+  removalTransactionHash: string;
+  removalKind: WatcherStateQueueRemovalKind;
+  removalBlockHash: string;
+  removalSlot: string;
+  removalBlockNo: string;
+  confirmationDepth: string;
+}>;
+
+/** A queued header no longer in the L1 queue at release finality. */
+export type WatcherReleasedHeaderProof =
+  | WatcherMergedHeaderProof
+  | WatcherRemovedHeaderProof;
 
 export type WatcherStateQueueRecovery = Readonly<{
   previous: WatcherAuthenticatedStateQueueObservation;

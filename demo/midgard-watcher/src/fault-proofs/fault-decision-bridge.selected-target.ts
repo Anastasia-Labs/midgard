@@ -14,11 +14,14 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherCorrectionLockObservation,
+  type WatcherReleasedHeaderProof,
   type WatcherStateQueueHeaderObservation,
+  type WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
+import type { WatcherClassificationWarning } from "./fault-decision-bridge.classification-miss.js";
 import { type WatcherPersistedFaultDecisionRecord } from "./fault-decision-journal.js";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -92,10 +95,28 @@ export type BridgeApplication = Pick<
   "classifyHeader" | "deploymentFingerprint" | "installedCategories"
 >;
 
+export type WatcherUnverifiedHeaderWarning = Readonly<{
+  event: "unverified_merged" | "unverified_removed";
+  headerHash: string;
+  /** The merge or removal transaction. */
+  transactionHash: string;
+  removalKind?: WatcherStateQueueRemovalKind;
+  /** The header was the finalized CorrectionLock's Locked target. */
+  lockedCorrectionTarget: boolean;
+}>;
+
 export type BridgeDependencies = Readonly<{
-  /** Availability observations are reconciled before this bridge is invoked. */
+  /** Queued headers merged or removed on L1 at release finality, by hash. */
+  mergedHeaders?(
+    observation: WatcherAuthenticatedStateQueueObservation,
+  ): Promise<ReadonlyMap<string, WatcherReleasedHeaderProof>>;
+  /**
+   * Availability observations are reconciled before this bridge is invoked.
+   * Merged headers are passed so their public DA is never read.
+   */
   pendingAvailabilityHeaders?(
     observation: WatcherAuthenticatedStateQueueObservation,
+    merged?: ReadonlySet<string>,
   ): ReadonlySet<string> | Promise<ReadonlySet<string>>;
   assertObservation(
     observation: WatcherAuthenticatedStateQueueObservation,
@@ -121,6 +142,18 @@ export type BridgeDependencies = Readonly<{
     header: WatcherStateQueueHeaderObservation,
   ): Promise<WatcherStateQueueHeaderObservation | undefined>;
   operationsSink?: WatcherOperationsSink;
+  /**
+   * Operator warning, once per header released on L1 unverified, skipped
+   * past its challengeability horizon or deferred.
+   */
+  warn?(
+    warning: WatcherUnverifiedHeaderWarning | WatcherClassificationWarning,
+  ): void;
+  /**
+   * Wait before the `consecutive`-th retry of a deferred suffix. Omitted, a
+   * deferred suffix is retried on every wake.
+   */
+  deferredRetryDelayMs?(consecutive: number): number;
   nowMs?(): bigint;
   monotonicNowMs?(): number;
   requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;
@@ -234,6 +267,8 @@ const exactLockedFraudProof = (
 export const selectedTarget = (input: {
   readonly observation: WatcherAuthenticatedStateQueueObservation;
   readonly decisions: readonly HeaderDecision[];
+  /** Headers L1 already merged or removed; none can be a runnable target. */
+  readonly merged?: ReadonlySet<string>;
 }): WatcherFaultDecisionTarget | null => {
   const lock = input.observation.finalizedCorrectionLock;
   if (lock === null) {
@@ -260,7 +295,7 @@ export const selectedTarget = (input: {
         });
   }
   const locked = exactLockedFraudProof(lock);
-  if (locked === null) return null;
+  if (locked === null || input.merged?.has(locked.headerHash)) return null;
   const match = faults.find(
     (decision) =>
       decision.headerHash === locked.headerHash &&

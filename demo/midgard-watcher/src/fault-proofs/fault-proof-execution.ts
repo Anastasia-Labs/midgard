@@ -7,7 +7,6 @@ import {
   type FraudProofWorkflowTerminal,
   isWorkflowActuationRevokedError,
   LocalKupmiosCheckpointChangedError,
-  LocalKupmiosTransportUnavailableError,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
   type WorkflowAdapterRunner,
@@ -20,8 +19,10 @@ import {
   type WatcherProverFundingAuthorityFactory,
 } from "../funding/prover-funding-authority.js";
 import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.js";
+import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import type {
   WatcherCompletedFaultProofVerification,
   WatcherFaultProofApplication,
@@ -233,7 +234,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           terminal,
         });
       } catch (cause) {
-        if (cause instanceof LocalKupmiosTransportUnavailableError)
+        if (isWatcherL1TransientFailure(cause))
           return {
             kind: "retryable",
             resume: "backoff",
@@ -373,9 +374,13 @@ export const createWatcherFaultProofExecution = (dependencies: {
             reason: error.message,
           };
         }
+        // Any read that only failed to reach Kupo, Ogmios, the node or a
+        // provider, or found this watcher's own DA node not up yet, waits and
+        // runs again; it says nothing about the fault.
         if (
           error instanceof FundingProviderTransportUnavailable ||
-          error instanceof LocalKupmiosTransportUnavailableError
+          isWatcherL1TransientFailure(error) ||
+          isWatcherRetainedDaTransportUnavailable(error)
         ) {
           record("reconciling");
           return {

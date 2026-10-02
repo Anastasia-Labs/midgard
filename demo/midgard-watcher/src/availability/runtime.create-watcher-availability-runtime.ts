@@ -1,6 +1,7 @@
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import {
   type LocalKupmiosFraudProofRawSource,
+  retainedDaAttemptsOnlyUnavailable,
   settleLocalKupmiosReads,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -43,7 +44,13 @@ import {
 } from "./pool-observation.js";
 import { createWatcherL1AvailabilityPayloadSource } from "./published-payload.js";
 import {
+  createWatcherAvailabilityReconcileRetry,
+  watcherAvailabilityStatusDetail,
+} from "./runtime.reconcile-retry.js";
+import {
+  availabilityUndecidable,
   DA_CHALLENGE_WINDOW_MS,
+  dropReleasedHeaders,
   releaseWatcherAvailabilityWorkflows,
   required,
   WatcherAvailabilityCapitalShortfall,
@@ -53,11 +60,13 @@ import {
   WatcherAvailabilityTimeoutPoolUnavailable,
   type WatcherAvailabilityWorkflowRefusal,
   watcherAvailabilityWorkflowRefusal,
+  type WatcherReleasedHeadersReader,
 } from "./runtime.release-watcher-availability-workflows.js";
 import {
   buildAdmittedWatcherAvailabilityOperation,
   selectWatcherAvailabilityFunding,
   watcherAvailabilityTimeoutCollateralLovelace,
+  watcherAvailabilityValidity,
 } from "./runtime.select-watcher-availability-funding.js";
 
 /** Concrete independent actor: signed release, public DA, exact L1 intake and durable executor. */
@@ -70,6 +79,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     rawSource: LocalKupmiosFraudProofRawSource;
     currentObservation(): WatcherAuthenticatedStateQueueObservation;
   }>;
+  mergedHeaders?: WatcherReleasedHeadersReader;
   proverWalletAddress: string;
   onStatusTransition?: (event: WatcherAvailabilityStatusTransition) => void;
   /**
@@ -172,6 +182,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
   let lastPoolReadFailure: string | undefined;
   let serial: Promise<void> = Promise.resolve();
   let lastBlockedStatus: string | undefined;
+  const retry = createWatcherAvailabilityReconcileRetry();
   const reportTransition = (
     observation: WatcherAuthenticatedStateQueueObservation,
     startedAt: number,
@@ -194,12 +205,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           pendingHeaders: Object.freeze([...report.pendingHeaders]),
           ...(report.detail === undefined
             ? {}
-            : {
-                // Preserve the concise cause, never an embedded transaction payload.
-                detail: report.detail
-                  .replace(/[a-fA-F0-9]{128,}/g, "[hex omitted]")
-                  .slice(0, 2048),
-              }),
+            : { detail: watcherAvailabilityStatusDetail(report.detail) }),
         }),
         observationDigest: observation.observationDigest,
         nativePoint: Object.freeze({ ...observation.nativePoint }),
@@ -207,10 +213,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
         observedAt: new Date().toISOString(),
       }),
     );
-  };
-  const validity = () => {
-    const now = BigInt(Date.now());
-    return { validFrom: now - 30_000n, validTo: now + 60_000n };
   };
   const assertCurrent = (epoch: number): void => {
     if (closed || epoch !== generation || current === null)
@@ -379,7 +381,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
             fundingInput: funds.funding,
             outputLovelace: openingLovelace,
             feeLovelace: parameters.max_open_fee_lovelace,
-            ...validity(),
+            ...watcherAvailabilityValidity(),
           }),
       };
     }
@@ -392,7 +394,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         const resources = {
           collateralInputs: funds.collateral,
           feeLovelace,
-          ...validity(),
+          ...watcherAvailabilityValidity(),
         };
         if (action.action === "open") {
           // The Open's inclusive upper bound must stay before the header's
@@ -524,6 +526,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     actuate: boolean,
   ): Promise<void> => {
     const epoch = generation;
+    const ticket = retry.request();
     const work = serial.then(async () => {
       if (closed || epoch !== generation) return;
       assertWatcherStateQueueObservation(observation);
@@ -531,17 +534,15 @@ export const createWatcherAvailabilityRuntime = async (input: {
       current = observation;
       pending = new Set(
         observation.finalizedHeaders
-          .filter(
-            ({ daAvailability }) =>
-              daAvailability !== "Unattested" &&
-              !("Published" in daAvailability),
-          )
+          .filter((header) => !availabilityUndecidable(header))
           .map(({ headerHash }) => headerHash),
       );
       report = { phase: "waiting", pendingHeaders: [...pending] };
       let poolRead: WatcherDaBondPoolObservation | undefined;
       let poolReadFailure: string | undefined;
       try {
+        await dropReleasedHeaders(pending, observation, input.mergedHeaders);
+        report = { phase: "waiting", pendingHeaders: [...pending] };
         assertCurrent(epoch);
         // E5: the pool is read on every reconciliation, pending headers or
         // not, and only reported: neither its state nor a failed read changes
@@ -647,7 +648,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         const ordered = orderWatcherAvailabilityActions(
           selectWatcherAvailabilityActions(
             candidates,
-            validity().validFrom,
+            watcherAvailabilityValidity().validFrom,
             openWindow,
           ),
         );
@@ -746,11 +747,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         };
       } catch (cause) {
         if (epoch !== generation || closed) return;
-        report = {
-          phase: "blocked",
-          pendingHeaders: [...pending],
-          detail: cause instanceof Error ? cause.message : String(cause),
-        };
+        report = retry.failed(cause, [...pending]);
       } finally {
         // Diagnostics describe the completed reconciliation, not its temporary
         // waiting state. A revoked observation cannot emit a recovery signal.
@@ -760,6 +757,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
             else if (poolReadFailure !== undefined)
               input.onDaBondPoolReadFailure(poolReadFailure);
           } finally {
+            retry.settle(ticket, () => reconcile(observation, actuate));
             reportTransition(observation, startedAt);
           }
         }
@@ -770,7 +768,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
   };
   return {
     reconcile,
-    pendingAvailabilityHeaders: async (observation) => {
+    pendingAvailabilityHeaders: async (observation, merged) => {
       assertWatcherStateQueueObservation(observation);
       const epoch = generation;
       const assertCurrentClassification = () => {
@@ -795,7 +793,11 @@ export const createWatcherAvailabilityRuntime = async (input: {
         headerHash,
         daAvailability,
       } of observation.finalizedHeaders) {
-        if (daAvailability === "Unattested" || "Published" in daAvailability)
+        if (
+          daAvailability === "Unattested" ||
+          "Published" in daAvailability ||
+          merged?.has(headerHash) === true
+        )
           continue;
         if ("Challenged" in daAvailability || pending.has(headerHash)) {
           result.add(headerHash);
@@ -817,14 +819,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
             unavailable = false;
             break;
           }
-          if (
-            payload.attempts.some(
-              ({ status }) =>
-                status !== "not_found" &&
-                status !== "transport_error" &&
-                status !== "timeout",
-            )
-          )
+          if (!retainedDaAttemptsOnlyUnavailable(payload.attempts))
             unavailable = false;
         }
         if (unavailable) result.add(headerHash);
@@ -834,6 +829,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     },
     invalidateForRollback: (point) => {
       generation += 1;
+      retry.cancel();
       if (
         current !== null &&
         point !== undefined &&
@@ -853,6 +849,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     invalidateForShutdown: () => {
       generation += 1;
       closed = true;
+      retry.cancel();
     },
     status: () => ({
       ...report,
@@ -864,6 +861,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     close: async () => {
       generation += 1;
       closed = true;
+      retry.cancel();
       await serial;
       l1PayloadBinding.close();
       await publicDa.close();

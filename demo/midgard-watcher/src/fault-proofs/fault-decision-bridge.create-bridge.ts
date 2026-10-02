@@ -1,6 +1,5 @@
 import {
   type HeaderDecision,
-  LocalKupmiosCheckpointChangedError,
   type WorkflowActuationPermitController,
 } from "@al-ft/midgard-fault-proofs";
 
@@ -11,6 +10,16 @@ import {
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
+import {
+  classificationMissRecorder,
+  deferredRetryBackoff,
+} from "./fault-decision-bridge.classification-miss.js";
+import {
+  assertDurableDecisionEvidence,
+  durableFaultDecisions,
+  verificationRecorder,
+} from "./fault-decision-bridge.classification-record.js";
+import { unverifiedMergedRecorder } from "./fault-decision-bridge.merged-headers.js";
 import { preservesPendingTargetEvidence } from "./fault-decision-bridge.preserves-pending-target-evidence.js";
 import {
   assertExactFinalizedHeaderOrder,
@@ -28,7 +37,6 @@ import {
   WatcherFaultDecisionRetired,
   type WatcherFaultDecisionTarget,
 } from "./fault-decision-bridge.selected-target.js";
-import { type WatcherPersistedFaultDecisionRecord } from "./fault-decision-journal.js";
 import { type WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
 
 export const createBridge = (input: {
@@ -66,6 +74,9 @@ export const createBridge = (input: {
   // Only the selected fault retains private replay/actuation authority. Healthy
   // decisions can depend on moving settlement/event context and are not reused.
   let targetClassification: ClassificationBinding | null = null;
+  const mergedRecorder = unverifiedMergedRecorder(input.dependencies);
+  const misses = classificationMissRecorder(input.dependencies);
+  const retryBackoff = deferredRetryBackoff(input.dependencies);
 
   const invalidate = (reason: string): void => {
     input.dependencies.retainDecisionAuthorities(null);
@@ -81,6 +92,8 @@ export const createBridge = (input: {
     preparedResult = null;
     targetClassification = null;
     classificationDeferred = false;
+    retryBackoff.reset();
+    mergedRecorder.reset();
   };
 
   const prepare = async (
@@ -92,9 +105,16 @@ export const createBridge = (input: {
         "state-queue observation differs from the fault-proof deployment",
       );
     }
+    // Startup and runtime classification share this rule: a header merged on
+    // L1 is resolved before any availability or DA read and never classified.
+    const merged =
+      (await input.dependencies.mergedHeaders?.(candidate)) ?? new Map();
+    await mergedRecorder.recordAll(candidate, merged);
     const pendingAvailability =
-      (await input.dependencies.pendingAvailabilityHeaders?.(candidate)) ??
-      new Set<string>();
+      (await input.dependencies.pendingAvailabilityHeaders?.(
+        candidate,
+        new Set(merged.keys()),
+      )) ?? new Set<string>();
     for (const headerHash of pendingAvailability) {
       const header = candidate.finalizedHeaders.find(
         (header) => header.headerHash === headerHash,
@@ -145,20 +165,9 @@ export const createBridge = (input: {
       );
     const classifiedBindings = new Map<string, ClassificationBinding>();
     let reusedTargetDecision: HeaderDecision | null = null;
-    const persisted = await input.dependencies.readRecords();
-    const persistedByObservation = new Map<
-      string,
-      WatcherPersistedFaultDecisionRecord
-    >();
-    for (const record of persisted) {
-      const key = `${record.decision.headerHash}\u0000${record.decision.authenticatedObservationDigest}`;
-      if (persistedByObservation.has(key)) {
-        throw new Error(
-          "durable decision evidence repeats a header observation identity",
-        );
-      }
-      persistedByObservation.set(key, record);
-    }
+    const durableFaults = durableFaultDecisions(
+      await input.dependencies.readRecords(),
+    );
     let retainedPendingDecision: HeaderDecision | null = null;
     const assertRetainedTargetAuthority = () => {
       if (target === null || actuationController === null)
@@ -189,8 +198,15 @@ export const createBridge = (input: {
       while (!classificationFailed) {
         const index = nextHeaderIndex;
         nextHeaderIndex += 1;
-        if (index >= candidate.finalizedHeaders.length) return;
+        if (index >= deferredFromIndex) return;
         const header = candidate.finalizedHeaders[index]!;
+        if (
+          merged.has(header.headerHash) ||
+          misses.skippedPastHorizon(header.headerHash)
+        ) {
+          classifications[index] = null;
+          continue;
+        }
         if (pendingAvailability.has(header.headerHash)) {
           try {
             if (
@@ -217,21 +233,18 @@ export const createBridge = (input: {
           }
           continue;
         }
-        const nowMs = input.dependencies.nowMs ?? (() => BigInt(Date.now()));
-        const monotonicNowMs =
-          input.dependencies.monotonicNowMs ?? (() => performance.now());
-        const queuedAtMs = nowMs().toString();
-        let startedMonotonicMs = monotonicNowMs();
-        let startedAtMs = queuedAtMs;
+        const verification = verificationRecorder(
+          input.dependencies,
+          header.headerHash,
+        );
         let verificationSubjectDigest: string | null = null;
+        let predecessor: WatcherStateQueueHeaderObservation | undefined;
         try {
           const admitted = authenticatedHeaderObservation(candidate, header);
           const authenticatedObservationDigest =
             await input.dependencies.observationDigest(admitted);
           verificationSubjectDigest = authenticatedObservationDigest;
-          startedAtMs = nowMs().toString();
-          startedMonotonicMs = monotonicNowMs();
-          let predecessor: WatcherStateQueueHeaderObservation | undefined;
+          verification.start();
           try {
             predecessor =
               await input.dependencies.resolvePredecessorHeader?.(header);
@@ -308,32 +321,8 @@ export const createBridge = (input: {
               "production classifier changed the authenticated queue identity",
             );
           }
-          const prior = persistedByObservation.get(
-            `${decision.headerHash}\u0000${decision.authenticatedObservationDigest}`,
-          );
-          if (
-            prior !== undefined &&
-            prior.decision.decisionDigest !== decision.decisionDigest
-          ) {
-            throw new Error(
-              "fresh production classification differs from durable decision evidence",
-            );
-          }
-          input.dependencies.operationsSink?.recordVerification({
-            subjectDigest: authenticatedObservationDigest,
-            queuedAtMs,
-            startedAtMs,
-            completedAtMs: nowMs().toString(),
-            elapsedMs: Math.ceil(
-              monotonicNowMs() - startedMonotonicMs,
-            ).toString(),
-            outcome:
-              decision.decision === "fault_detected"
-                ? "fault_detected"
-                : decision.decision === "healthy"
-                  ? "verified"
-                  : "unprovable_gap",
-          });
+          assertDurableDecisionEvidence(durableFaults, decision);
+          verification.recordDecision(authenticatedObservationDigest, decision);
           if (contextIdentity !== undefined) {
             classifiedBindings.set(header.headerHash, {
               contextIdentity,
@@ -343,36 +332,26 @@ export const createBridge = (input: {
           }
           classifications[index] = decision;
         } catch (error) {
-          if (error instanceof LocalKupmiosCheckpointChangedError) {
-            // Capture drift is an incomplete classification, not fault evidence.
-            // Preserve only the classified prefix and retry this suffix on the
-            // next canonical wake through the existing deferred path.
+          const miss = misses.resolve({
+            error,
+            observation: candidate,
+            index,
+            merged,
+            predecessor,
+            verification,
+            subjectDigest: verificationSubjectDigest,
+          });
+          if (miss.outcome === "fail") {
+            classificationFailed = true;
+            classificationFailure = miss.failure;
+            return;
+          }
+          // A deferral keeps only the classified prefix and retries this
+          // suffix on a later wake, through the same path as a pending
+          // predecessor attestation; a skip goes on with the next header.
+          if (miss.outcome === "defer")
             deferredFromIndex = Math.min(deferredFromIndex, index);
-            classifications[index] = null;
-            continue;
-          }
-          classificationFailed = true;
-          classificationFailure = error;
-          if (verificationSubjectDigest !== null) {
-            try {
-              input.dependencies.operationsSink?.recordVerification({
-                subjectDigest: verificationSubjectDigest,
-                queuedAtMs,
-                startedAtMs,
-                completedAtMs: nowMs().toString(),
-                elapsedMs: Math.ceil(
-                  monotonicNowMs() - startedMonotonicMs,
-                ).toString(),
-                outcome: "failed",
-              });
-            } catch (diagnosticError) {
-              classificationFailure = new AggregateError(
-                [error, diagnosticError],
-                "fault classification and failure diagnostics failed",
-                { cause: error },
-              );
-            }
-          }
+          classifications[index] = null;
         }
       }
     };
@@ -406,7 +385,8 @@ export const createBridge = (input: {
       if (decision === undefined) {
         throw new Error("bounded production classification omitted a header");
       }
-      await input.dependencies.append(decision);
+      if (decision.decision === "fault_detected")
+        await input.dependencies.append(decision);
     }
     // Classification may finish out of order, but append and CorrectionLock
     // target selection remain in exact finalized queue order.
@@ -435,7 +415,11 @@ export const createBridge = (input: {
     input.dependencies.assertObservation(candidate);
     if (retainedPendingDecision !== null || reusedTargetDecision !== null)
       assertRetainedTargetAuthority();
-    const selected = selectedTarget({ observation: candidate, decisions });
+    const selected = selectedTarget({
+      observation: candidate,
+      decisions,
+      merged: new Set(merged.keys()),
+    });
     const selectedDecision =
       selected === null
         ? null
@@ -514,6 +498,11 @@ export const createBridge = (input: {
     classificationDeferred =
       pendingAvailability.size > 0 ||
       deferredFromIndex < candidate.finalizedHeaders.length;
+    // A pending availability header is rechecked on every wake, as before.
+    retryBackoff.settle(
+      pendingAvailability.size === 0 &&
+        deferredFromIndex < candidate.finalizedHeaders.length,
+    );
     preparedResult = Object.freeze({
       observationDigest: candidate.observationDigest,
       decisionDigests: Object.freeze(
@@ -596,7 +585,8 @@ export const createBridge = (input: {
     },
     retryDeferredClassification: async (candidate) => {
       await serial;
-      if (classificationDeferred) await serializedPrepare(candidate, true);
+      if (classificationDeferred && retryBackoff.due())
+        await serializedPrepare(candidate, true);
     },
     dispatchPrepared,
     invalidateForRollback: () => invalidate("native_chain_rollback"),

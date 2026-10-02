@@ -170,6 +170,22 @@ export const startWatcherTrustedHeadAuthorityServer = async (input: {
   });
 };
 
+/** Connection failures before the request reached the authority. */
+const CONNECT_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/** Transport loss after the request may have reached the authority. */
+const IN_FLIGHT_LOSS_CODES: ReadonlySet<string> = new Set([
+  "UND_ERR_SOCKET",
+  "ECONNRESET",
+  "EPIPE",
+]);
+
 export const createWatcherTrustedHeadAuthorityClient = (input: {
   readonly endpoint: string;
   readonly httpSecret: string;
@@ -215,18 +231,31 @@ export const createWatcherTrustedHeadAuthorityClient = (input: {
         return value;
       } catch (error) {
         const cause = error instanceof TypeError ? error.cause : undefined;
+        const code =
+          cause instanceof Error &&
+          "code" in cause &&
+          typeof cause.code === "string"
+            ? cause.code
+            : undefined;
+        // A listener that is down (a restarting authority) never saw the
+        // request, so it is waited for until the deadline. A connection lost
+        // in flight keeps its three-attempt bound.
+        const transient =
+          code !== undefined &&
+          (CONNECT_FAILURE_CODES.has(code) ||
+            (attempt < 2 && IN_FLIGHT_LOSS_CODES.has(code)));
         if (
           init !== undefined ||
-          attempt >= 2 ||
           signal.aborted ||
           (response !== undefined && !response.ok) ||
-          !(cause instanceof Error) ||
-          !("code" in cause) ||
-          typeof cause.code !== "string" ||
-          !["UND_ERR_SOCKET", "ECONNRESET", "EPIPE"].includes(cause.code)
+          !transient
         )
           throw error;
-        await retryDelay(100 * 2 ** attempt, undefined, { signal });
+        await retryDelay(Math.min(100 * 2 ** attempt, 1_000), undefined, {
+          signal,
+        }).catch(() => {
+          throw error;
+        });
       }
     }
   };

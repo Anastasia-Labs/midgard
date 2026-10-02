@@ -157,13 +157,15 @@ describe("independent monotonic watcher trusted-head authority", () => {
       }),
     ).rejects.toThrow("sidecar record MAC");
 
-    const tail = await makeChain();
-    const tailPath = join(tail.path, "00000000000000000002.json");
-    const tailBytes = await readFile(tailPath, "utf8");
-    await writeFile(tailPath, tailBytes.slice(0, -1), "utf8");
+    // A torn final record is crash debris and is dropped on open (see
+    // trusted-head-authority-crash-recovery.test.ts); an earlier one is not.
+    const truncated = await makeChain();
+    const truncatedPath = join(truncated.path, "00000000000000000001.json");
+    const truncatedBytes = await readFile(truncatedPath, "utf8");
+    await writeFile(truncatedPath, truncatedBytes.slice(0, -1), "utf8");
     await expect(
       openWatcherTrustedHeadAuthorityStore({
-        directory: tail.path,
+        directory: truncated.path,
         policy: finalityPolicy,
         recordAuthenticationKey,
       }),

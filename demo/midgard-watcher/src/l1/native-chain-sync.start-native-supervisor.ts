@@ -427,7 +427,7 @@ export const startNativeSupervisor = async (
     ready,
     new Promise<never>((_, reject) => {
       startupTimer = setTimeout(
-        () => reject(new Error("native chain-sync startup timed out")),
+        () => reject(new NativeChainSyncStartupFailure("startup_timed_out")),
         input.startupTimeoutMs,
       );
     }),

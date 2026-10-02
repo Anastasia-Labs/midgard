@@ -1,6 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { type FileHandle, open } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 
 import { type WatcherRollbackDurableTrustedHead } from "../l1/rollback-engine.js";
@@ -160,16 +159,6 @@ export const parseJson = (bytes: Uint8Array): unknown => {
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch {
     throw new Error("trusted-head authority record is malformed");
-  }
-};
-
-export const syncDirectory = async (directory: string): Promise<void> => {
-  let handle: FileHandle | undefined;
-  try {
-    handle = await open(directory, "r");
-    await handle.sync();
-  } finally {
-    await handle?.close();
   }
 };
 

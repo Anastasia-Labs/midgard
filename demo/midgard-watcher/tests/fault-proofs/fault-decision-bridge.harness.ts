@@ -6,6 +6,7 @@ import {
 import { vi } from "vitest";
 
 import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.js";
+import type { BridgeDependencies } from "../../src/fault-proofs/fault-decision-bridge.selected-target.js";
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import type { WatcherFaultProofProgressRequest } from "../../src/fault-proofs/fault-proof-progress-authority.js";
@@ -30,7 +31,13 @@ export const harness = (input: {
   readonly operationsSink?: WatcherOperationsSink;
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
-  readonly pendingAvailabilityHeaders?: () => ReadonlySet<string>;
+  readonly pendingAvailabilityHeaders?: (
+    observation: WatcherAuthenticatedStateQueueObservation,
+    merged?: ReadonlySet<string>,
+  ) => ReadonlySet<string>;
+  readonly mergedHeaders?: BridgeDependencies["mergedHeaders"];
+  readonly warn?: BridgeDependencies["warn"];
+  readonly deferredRetryDelayMs?: BridgeDependencies["deferredRetryDelayMs"];
   readonly resolvePredecessorOverride?: (
     header: WatcherStateQueueHeaderObservation,
   ) => Promise<WatcherStateQueueHeaderObservation | undefined>;
@@ -92,6 +99,13 @@ export const harness = (input: {
       ...(input.pendingAvailabilityHeaders === undefined
         ? {}
         : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),
+      ...(input.mergedHeaders === undefined
+        ? {}
+        : { mergedHeaders: input.mergedHeaders }),
+      ...(input.warn === undefined ? {} : { warn: input.warn }),
+      ...(input.deferredRetryDelayMs === undefined
+        ? {}
+        : { deferredRetryDelayMs: input.deferredRetryDelayMs }),
       retainDecisionAuthorities: (digest) =>
         retainedDecisionAuthorities.push(digest),
       decisionUsesLocalEventHistory: () =>

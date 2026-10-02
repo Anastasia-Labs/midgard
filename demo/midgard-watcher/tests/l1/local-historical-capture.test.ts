@@ -365,7 +365,7 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
                 Object.entries(assets)
                   .filter(([unit]) => unit !== "lovelace")
                   .map(([unit, amount]) => [
-                    `${unit.slice(0, 56)}.${unit.slice(56)}`,
+                    unit.replace(/^(.{56})(?=.)/u, "$1."),
                     amount.toString(),
                   ]),
               ),

@@ -1,11 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
-import {
-  type FileHandle,
-  mkdir,
-  open,
-  readdir,
-  realpath,
-} from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { mkdir, readdir, realpath, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setImmediate as yieldScan } from "node:timers/promises";
 
@@ -18,6 +13,14 @@ import {
   type WatcherRollbackDurableTrustedHead,
 } from "../l1/rollback-engine.js";
 import { watcherCanonicalJson } from "../storage/durable-store.js";
+import {
+  isTornJsonRecord,
+  publishExclusiveFile,
+  removeStagedRecordFiles,
+  STAGED_RECORD_FILE,
+  stagedRecordPath,
+  syncDirectory,
+} from "../storage/exclusive-record-file.js";
 import {
   canonicalDirectory,
   exactRecord,
@@ -35,7 +38,6 @@ import {
   sameCanonical,
   sameHead,
   sha256,
-  syncDirectory,
   type TrustedHeadAuthorityRecord,
   TrustedHeadCallerError,
   WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION,
@@ -45,7 +47,9 @@ import {
 /**
  * Opens the operationally independent append-only freshness store. Every
  * startup replays the complete directory and rejects gaps, substitutions,
- * malformed/HMAC-invalid records, and non-canonical bytes.
+ * malformed/HMAC-invalid records, and non-canonical bytes. Opening first
+ * removes staging files and one torn final record that a crashed writer left
+ * (see `scan`); every later read stays strict.
  */
 export const openWatcherTrustedHeadAuthorityStore = async (input: {
   readonly directory: string;
@@ -178,20 +182,45 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
       recordSha256: string;
     }>
   >();
-  const scan = async (): Promise<Readonly<{
+  /**
+   * Replays the chain. While opening (`dropTornFinal`), a final record that is
+   * empty or not UTF-8 JSON is removed after every earlier record is admitted.
+   * Publication now stages every record, so only the earlier writer, which
+   * created the revision name before writing and fsyncing it, leaves one when
+   * it is killed. That compare-and-swap never returned true. The watcher
+   * commits its SQLite snapshot before it asks for the swap and, on restart,
+   * republishes that snapshot as the one direct successor of the head found
+   * here (`prepareWatcherRollbackDurableTrustedHeadReconciliation`), so
+   * falling back one revision loses nothing; that reconciliation refuses any
+   * wider rollback. Deleting the final record was already undetectable here.
+   * A torn record that is not final, or met after opening, fails closed.
+   */
+  const scan = async (
+    dropTornFinal = false,
+  ): Promise<Readonly<{
     head: WatcherRollbackDurableTrustedHead;
     recordSha256: string;
   }> | null> => {
     const entries = await readdir(directory, { withFileTypes: true });
-    const names = entries.map((entry) => {
+    const names = entries.flatMap((entry) => {
+      // A compare-and-swap in flight stages its record here before linking.
+      if (entry.isFile() && STAGED_RECORD_FILE.test(entry.name)) return [];
       if (!entry.isFile() || !RECORD_FILE.test(entry.name)) {
         throw new Error(
           "trusted-head authority directory has an unknown entry",
         );
       }
-      return entry.name;
+      return [entry.name];
     });
     names.sort();
+    const finalName = names.at(-1);
+    const tornFinal =
+      dropTornFinal &&
+      finalName !== undefined &&
+      finalName === recordName(BigInt(names.length - 1)) &&
+      isTornJsonRecord(readFileSync(join(directory, finalName)))
+        ? names.pop()!
+        : null;
     const retainedNames = new Set(names.slice(-MAX_CACHED_RECORDS));
     for (const name of admittedRecords.keys()) {
       if (!retainedNames.has(name)) admittedRecords.delete(name);
@@ -255,10 +284,15 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
         });
       }
     }
+    if (tornFinal !== null) {
+      await unlink(join(directory, tornFinal));
+      await syncDirectory(directory);
+    }
     return previous;
   };
 
-  await scan();
+  await removeStagedRecordFiles(directory);
+  await scan(true);
 
   return Object.freeze({
     readRecordAuthenticationKeyId: async () =>
@@ -285,19 +319,15 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
         recordAuthenticationKey,
       });
 
-      const path = join(directory, recordName(nextRevision));
-      let handle: FileHandle | undefined;
       try {
-        handle = await open(path, "wx", 0o600);
-        await handle.writeFile(watcherCanonicalJson(sidecarRecord), {
-          encoding: "utf8",
+        await publishExclusiveFile({
+          stagingPath: stagedRecordPath(directory),
+          path: join(directory, recordName(nextRevision)),
+          bytes: watcherCanonicalJson(sidecarRecord),
         });
-        await handle.sync();
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
         throw error;
-      } finally {
-        await handle?.close();
       }
       await syncDirectory(directory);
       return sameHead((await scan())?.head ?? null, next);

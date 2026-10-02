@@ -34,6 +34,16 @@ if (mode === "retry_intersection" && startup.intersection.kind === "point") {
   process.exit(69);
 }
 
+// The node did not answer: the helper reports the given startup code.
+if (mode.startsWith("fail:")) {
+  emit({
+    code: mode.slice("fail:".length),
+    kind: "error",
+    schemaVersion: startup.schemaVersion,
+  });
+  process.exit(69);
+}
+
 if (mode === "no_ready") {
   setInterval(() => undefined, 1000);
   await new Promise(() => {});

@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 
 import {
+  DaRequestResponseProtocol,
   daRequestResponseProtocolId,
+  decodeDaAttestationsByHeaderRequestCbor,
+  decodeDaEventToStepByEventRequestCbor,
+  decodeDaPayloadByHeaderRequestCbor,
+  decodeDaPayloadChunkRequestCbor,
+  decodeDaProofBundleByHeaderRequestCbor,
+  decodeDaTraceStepByIndexRequestCbor,
   normalizeDaDeploymentFingerprintHex,
 } from "@al-ft/midgard-core/da-transport";
 import {
@@ -13,6 +20,7 @@ import {
 
 import { type WatcherConfig } from "../runtime/config.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import type { WatcherPublicDaRequest } from "./public-da-client.js";
 import {
@@ -29,6 +37,51 @@ import {
   WATCHER_RETAINED_DA_RUNTIME,
   type WatcherRetainedDaRuntime,
 } from "./retained-da-runtime.retained-da-request-permits.js";
+
+const HEADER_REQUEST_DECODERS: Readonly<
+  Partial<
+    Record<
+      DaRequestResponseProtocol,
+      (payload: Uint8Array) => Readonly<{ headerHash: Buffer }>
+    >
+  >
+> = Object.freeze({
+  [DaRequestResponseProtocol.payloadByHeader]:
+    decodeDaPayloadByHeaderRequestCbor,
+  [DaRequestResponseProtocol.metadataByHeader]:
+    decodeDaPayloadByHeaderRequestCbor,
+  [DaRequestResponseProtocol.payloadChunk]: decodeDaPayloadChunkRequestCbor,
+  [DaRequestResponseProtocol.proofBundleByHeader]:
+    decodeDaProofBundleByHeaderRequestCbor,
+  [DaRequestResponseProtocol.traceStepByIndex]:
+    decodeDaTraceStepByIndexRequestCbor,
+  [DaRequestResponseProtocol.eventToStepByEvent]:
+    decodeDaEventToStepByEventRequestCbor,
+  [DaRequestResponseProtocol.attestationsByHeader]:
+    decodeDaAttestationsByHeaderRequestCbor,
+});
+
+/**
+ * The `da_fetch_failure` subject of one request: its header, so any later
+ * outcome for that header (a successful fetch of any kind, a decision, a
+ * merge, a removal) clears it. A request that names no header keeps its own
+ * payload digest.
+ */
+export const watcherDaFetchSubjectDigest = (
+  args: Pick<RetainedDaLibp2pRequest, "protocol" | "payload">,
+): string => {
+  const decode = HEADER_REQUEST_DECODERS[args.protocol];
+  if (decode !== undefined) {
+    try {
+      return watcherDaFetchAlertSubject(
+        decode(args.payload).headerHash.toString("hex"),
+      );
+    } catch {
+      // A request this watcher could not decode is still reported.
+    }
+  }
+  return createHash("sha256").update(args.payload).digest("hex");
+};
 
 class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
   private readonly peerById: ReadonlyMap<string, AdmittedPeer>;
@@ -64,9 +117,7 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
         "retained-DA request timeout differs from the admitted watcher configuration",
       );
     }
-    const subjectDigest = createHash("sha256")
-      .update(args.payload)
-      .digest("hex");
+    const subjectDigest = watcherDaFetchSubjectDigest(args);
     const startedAtMs = Date.now().toString();
     const startedMonotonicMs = performance.now();
     const signal = AbortSignal.any([

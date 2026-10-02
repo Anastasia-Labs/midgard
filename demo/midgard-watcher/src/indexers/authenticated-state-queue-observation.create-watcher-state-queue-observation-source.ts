@@ -7,6 +7,7 @@ import {
   readAdmittedLocalKupmiosRawBlockAtPoint,
   readAdmittedLocalKupmiosRawTransaction,
   readAdmittedLocalKupmiosUnitHistoryAtPoint,
+  readAdmittedLocalKupmiosUtxosByOutRefAtPoint,
   withLocalKupmiosSourceCapture,
 } from "@al-ft/midgard-fault-proofs";
 
@@ -27,6 +28,7 @@ import {
   watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
 import { deriveObservation } from "./authenticated-state-queue-observation.derive-observation.js";
+import { resolveMergedHeadersAtBoundary } from "./authenticated-state-queue-observation.merged-headers.js";
 import {
   admittedHeaders,
   admittedSources,
@@ -350,6 +352,26 @@ export const createWatcherStateQueueObservationSource = ({
         admittedHeaders.add(header);
         return header;
       }, inclusionRawSource ?? rawSource),
+    // Merge evidence is read at release finality even for an inclusion view.
+    resolveMergedHeaders: ({ observation }) =>
+      capture(async () => {
+        assertWatcherStateQueueObservation(observation);
+        return await resolveMergedHeadersAtBoundary({
+          observation,
+          authority,
+          readers: {
+            readBoundary: () =>
+              readAdmittedLocalKupmiosBoundary({ source: rawSource }),
+            readOutRefs: (outRefs, point) =>
+              readAdmittedLocalKupmiosUtxosByOutRefAtPoint({
+                source: rawSource,
+                point,
+                outRefs,
+              }),
+            readTransaction: readers.readTransaction,
+          },
+        });
+      }),
   } satisfies WatcherStateQueueObservationSource);
   admittedSources.add(source);
   return source;

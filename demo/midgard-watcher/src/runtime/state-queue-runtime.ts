@@ -272,9 +272,13 @@ const createRuntime = async (input: {
             // Keep queue evidence cached while waking yielded proofs on fresh
             // canonical progress. Inclusion-capable sources wake once later in
             // coordinator order, after finalized history has advanced.
+            // Without inclusion wakes this is the only later wake, so a
+            // classification deferred on public DA retries here as well.
             admitCatchupProgress(nativeBlock);
-            if (caughtUp && input.source.observeIncluded === undefined)
+            if (caughtUp && input.source.observeIncluded === undefined) {
+              await bridge.retryDeferredClassification(included);
               await bridge.recoverExisting({ nativeProgress: nativeBlock });
+            }
             return;
           }
           if (localObservation === null) {

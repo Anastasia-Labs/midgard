@@ -81,6 +81,12 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
   return { openRefused, timeoutsDeferred };
 };
 
+/** The validity interval every availability transaction is built with. */
+export const watcherAvailabilityValidity = () => {
+  const now = BigInt(Date.now());
+  return { validFrom: now - 30_000n, validTo: now + 60_000n };
+};
+
 /**
  * Collateral a Timeout can need (spec #685 G9/D4). Its fee is
  * `min(penalty, taken) + c` with `c <= max_timeout_fee`, and the ledger holds

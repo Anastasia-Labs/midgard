@@ -1,4 +1,7 @@
-import type { LocalKupmiosFraudProofRawSource } from "@al-ft/midgard-fault-proofs";
+import {
+  type LocalKupmiosFraudProofRawSource,
+  LocalKupmiosTransportUnavailableError,
+} from "@al-ft/midgard-fault-proofs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -278,6 +281,49 @@ describe("availability reconciliation status transitions", () => {
     );
     expect(runtime.status().detail).toBe("actual availability failure");
     await runtime.close();
+  });
+});
+
+describe("availability reconciliation retry on a quiet queue", () => {
+  const transient = () =>
+    new LocalKupmiosTransportUnavailableError("ogmios is unavailable");
+
+  it("waits out an L1 transient on its own timer and reconciles again exactly once", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const events: WatcherAvailabilityStatusTransition[] = [];
+    const runtime = await fixture((event) => events.push(event));
+    io.reconcile.mockRejectedValueOnce(transient());
+    await runtime.reconcile(observation(1), false);
+    expect(runtime.status()).toMatchObject({
+      phase: "waiting",
+      detail: "ogmios is unavailable",
+    });
+    expect(io.reconcile).toHaveBeenCalledTimes(1);
+    // No new block arrives; the retry alone completes the reconciliation.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(io.reconcile).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(io.reconcile).toHaveBeenCalledTimes(2);
+    expect(runtime.status().phase).toBe("ready");
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(io.reconcile).toHaveBeenCalledTimes(2);
+    // A transient wait is not a blocked diagnostic, so it never emits one.
+    expect(events).toEqual([]);
+    await runtime.close();
+  });
+
+  it("reports a genuine refusal blocked, and a block or close supersedes its retry", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const runtime = await fixture();
+    io.reconcile.mockRejectedValueOnce(new Error("snapshot boundary changed"));
+    await runtime.reconcile(observation(1), false);
+    expect(runtime.status().phase).toBe("blocked");
+    io.reconcile.mockRejectedValueOnce(new Error("snapshot boundary changed"));
+    await runtime.reconcile(observation(2), false);
+    expect(io.reconcile).toHaveBeenCalledTimes(2);
+    await runtime.close();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(io.reconcile).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -49,6 +49,7 @@ import {
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import { createEmulatorChainTransport } from "../support/emulator-chain-transport.js";
 import { serveEmulatorRetainedDa } from "../support/emulator-retained-da.js";
+import { operationsVerifiedHeader } from "../support/operations-verified-header.js";
 import { createPublishedWatcherDeploymentAuthority } from "../support/published-deployment-authority.js";
 import { stagePublishedDepositTrace } from "../support/published-deposit-trace.js";
 import { startWatcherTrustedHeadAuthorityChildForTest } from "../support/trusted-head-process-fixture.js";
@@ -480,6 +481,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       }
       return records;
     };
+    const verifiedHealthy = (headerHash: string) =>
+      operationsVerifiedHeader(watcher!.operations.api, headerHash);
     runtimeDiagnostics = async () => ({
       runtime: watcher!.status(),
       coordinator: watcher!.coordinator.status(),
@@ -506,11 +509,12 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
             category: "transitionTrace",
           });
           expect(
-            records.find(
+            records.some(
               ({ decision }) =>
                 decision.headerHash === staged.predecessor.headerHash,
-            )?.decision,
-          ).toMatchObject({ decision: "healthy" });
+            ),
+          ).toBe(false);
+          expect(verifiedHealthy(staged.predecessor.headerHash)).toBe(true);
           return;
         }
         requireLiveRuntime();
@@ -747,12 +751,12 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       "continued processing after correction",
       async () => {
         for (;;) {
-          const records = await readDecisions();
-          const decision = records.find(
-            ({ decision }) => decision.headerHash === successor.headerHash,
-          );
-          if (decision !== undefined) {
-            expect(decision.decision).toMatchObject({ decision: "healthy" });
+          if (verifiedHealthy(successor.headerHash)) {
+            expect(
+              (await readDecisions()).some(
+                ({ decision }) => decision.headerHash === successor.headerHash,
+              ),
+            ).toBe(false);
             expect(
               await deployment.emulator.getUtxosWithUnit(
                 deployment.contracts.stateQueue.spendingScriptAddress,

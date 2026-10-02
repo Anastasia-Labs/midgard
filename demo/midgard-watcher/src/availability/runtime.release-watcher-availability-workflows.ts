@@ -8,9 +8,37 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
-import { type WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
+import {
+  type WatcherAuthenticatedStateQueueObservation,
+  type WatcherReleasedHeaderProof,
+} from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
 import { type WatcherDaBondPoolObservation } from "./pool-observation.js";
+
+/** Queued headers merged or removed on L1 at release finality, by hash. */
+export type WatcherReleasedHeadersReader = (
+  observation: WatcherAuthenticatedStateQueueObservation,
+) => Promise<ReadonlyMap<string, WatcherReleasedHeaderProof>>;
+
+/** True when `header` is unattested or its DA is published. */
+export const availabilityUndecidable = ({
+  daAvailability,
+}: WatcherAuthenticatedStateQueueObservation["finalizedHeaders"][number]): boolean =>
+  daAvailability === "Unattested" || "Published" in daAvailability;
+
+/**
+ * Deletes from `pending` every header `read` proves merged or removed: it can
+ * no longer be challenged and its DA may be pruned, so it is never pending,
+ * snapshotted, alerted or actuated.
+ */
+export const dropReleasedHeaders = async (
+  pending: Set<string>,
+  observation: WatcherAuthenticatedStateQueueObservation,
+  read: WatcherReleasedHeadersReader | undefined,
+): Promise<void> => {
+  for (const headerHash of ((await read?.(observation)) ?? new Map()).keys())
+    pending.delete(headerHash);
+};
 
 /**
  * A due Open (or the preparation of its challenger coin) the wallet could not
@@ -132,8 +160,10 @@ export type WatcherAvailabilityRuntime = Readonly<{
     observation: WatcherAuthenticatedStateQueueObservation,
     actuate: boolean,
   ): Promise<void>;
+  /** Headers in `merged` are skipped: L1 already merged them. */
   pendingAvailabilityHeaders(
     observation: WatcherAuthenticatedStateQueueObservation,
+    merged?: ReadonlySet<string>,
   ): Promise<ReadonlySet<string>>;
   invalidateForRollback(point?: WatcherNativeChainSyncPoint): void;
   invalidateForShutdown(): void;

@@ -45,6 +45,7 @@ import {
   startWatcherNativeChainSyncWithRetry,
   type WatcherNativeChainSyncPoint,
   type WatcherNativeChainSyncRuntime,
+  watcherNativeChainSyncStartupTimeoutMs,
 } from "../l1/native-chain-sync.js";
 import { createWatcherDurableRuntime } from "../storage/durable-runtime.js";
 import {
@@ -54,7 +55,6 @@ import {
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
 import {
   createWatcherChainCoordinator,
-  recoverWatcherCoordinatorAfterRestart,
   type WatcherChainCoordinator,
 } from "./chain-coordinator.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
@@ -69,6 +69,10 @@ import {
   watcherDaBondPoolReadFailureReporter,
   watcherDaBondPoolReporter,
 } from "./operations-observability.js";
+import {
+  refusePermanently,
+  WatcherPermanentRefusalError,
+} from "./permanent-refusal.js";
 import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
@@ -93,6 +97,7 @@ import {
   watcherRestartIntersectionCandidates,
   type WatcherRuntime,
 } from "./watcher-runtime.create-watcher-native-event-handler.js";
+import { attemptWatcherRestartQuarantineRecovery } from "./watcher-runtime.restart-quarantine.js";
 
 /**
  * Production start/replay composition. All release, source, secret and proof
@@ -109,14 +114,18 @@ export const createWatcherRuntime = async (input: {
 }): Promise<WatcherRuntime> => {
   const startup = createWatcherStartupProgress(input.onStartupProgress);
   await startup("runtime_configuration", () =>
-    requireWatcherRuntimeConfig(input.config),
+    refusePermanently("runtime_configuration", () =>
+      requireWatcherRuntimeConfig(input.config),
+    ),
   );
   await prepareJournalDirectory(input.config.workflowJournalDirectory);
   const deploymentAuthority = await startup("deployment_authority", () =>
-    loadWatcherVerifiedDeploymentAuthority({
-      path: input.config.deploymentAuthorityPath,
-      ruleBundlePath: input.config.ruleBundlePath,
-    }),
+    refusePermanently("deployment_authority", () =>
+      loadWatcherVerifiedDeploymentAuthority({
+        path: input.config.deploymentAuthorityPath,
+        ruleBundlePath: input.config.ruleBundlePath,
+      }),
+    ),
   );
   const { deploymentIdentity } = deploymentAuthority;
   const policy = makeWatcherFinalityPolicy(
@@ -135,8 +144,11 @@ export const createWatcherRuntime = async (input: {
     policy.maximumPreFinalityRollbackDepth !== releaseDepth ||
     policy.maximumPostFinalityRecoveryDepth !== "2160"
   ) {
-    throw new Error(
-      "watcher production finality differs from the verified release",
+    throw new WatcherPermanentRefusalError(
+      "finality_policy",
+      new Error(
+        "watcher production finality differs from the verified release",
+      ),
     );
   }
   const localL1Source = input.config.watcherConfig.l1.source;
@@ -325,42 +337,15 @@ export const createWatcherRuntime = async (input: {
         ? await restoreQueue()
         : null;
     if (earlyQueue !== null) {
-      const { stateQueueRuntime } = earlyQueue;
-      const retained = durable.readFinality();
-      const candidates = watcherRestartIntersectionCandidates({
-        progressHead: blockProgress.readHead(),
-        progressCandidates: blockProgress.readCandidates(),
-        authorityFinalized: retained.finalized,
-        stateQueueCursor: stateQueueRuntime.replayIntersection,
-      });
-      const bootstrap = await startWatcherNativeChainSyncWithRetry({
-        binaryPath: input.config.nativeChainSyncBinaryPath,
-        watcherConfig: input.config.watcherConfig,
-        intersectionCandidates: candidates.map(({ blockHash, slot }) => ({
-          kind: "point" as const,
-          blockHash,
-          slot,
-        })),
-        startupTimeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
-        onEvent: async () => undefined,
-      });
-      try {
-        const boundary = readWatcherNativeRecoveryBoundary({
-          nativeAuthority: bootstrap.authority,
-          admittedIntersections: candidates,
-        });
-        if (
-          await recoverWatcherCoordinatorAfterRestart({
-            durable,
-            restartIntersection: boundary.selectedIntersection,
-          })
-        )
-          throw new Error(
-            "Watcher restart remains quarantined: authenticated recovery evidence is incomplete",
-          );
-      } finally {
-        await bootstrap.close();
-      }
+      await startup("post_finality_recovery", () =>
+        attemptWatcherRestartQuarantineRecovery({
+          durable,
+          blockProgress,
+          stateQueueCursor: earlyQueue.stateQueueRuntime.replayIntersection,
+          binaryPath: input.config.nativeChainSyncBinaryPath,
+          watcherConfig: input.config.watcherConfig,
+        }),
+      );
     }
     const blueprintBytes = await readFile(
       input.config.faultProofInfrastructure.blueprintPath,
@@ -384,7 +369,7 @@ export const createWatcherRuntime = async (input: {
     void eventHistory.done.then(retireEventHistory, retireEventHistory);
     const { faultProofApplication, faultProofReadiness } = await startup(
       "workflow_readiness",
-      async () => {
+      async ({ retryL1Read }) => {
         const faultProofApplication = createWatcherFaultProofApplication({
           deploymentAuthority,
           replayTranscriptStore: sqlite.replayTranscripts,
@@ -405,15 +390,19 @@ export const createWatcherRuntime = async (input: {
             category,
           );
           await prepareJournalDirectory(journalDirectory);
+          // Readiness only reads L1 and builds nothing: an L1 transient
+          // repeats this read, never the allocation above.
           faultProofReadiness.push(
-            await faultProofApplication.assertStartupReady({
-              mode: "resume",
-              category,
-              deploymentFingerprint: deploymentIdentity.manifestId,
-              headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
-              journalDirectory,
-              runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-            }),
+            await retryL1Read(() =>
+              faultProofApplication.assertStartupReady({
+                mode: "resume",
+                category,
+                deploymentFingerprint: deploymentIdentity.manifestId,
+                headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
+                journalDirectory,
+                runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+              }),
+            ),
           );
         }
         return { faultProofApplication, faultProofReadiness };
@@ -440,12 +429,17 @@ export const createWatcherRuntime = async (input: {
     proverFundingStore = await openWatcherSqliteProverFundingReservationStore({
       path: input.config.watcherConfig.storage.path,
     });
-    const proverFundingProtocolParameters =
-      await createWatcherProtocolParameterRuntimeAuthority({
-        deploymentIdentity,
-        ogmiosUrl: ogmiosService.endpoint,
-        timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
-      });
+    const proverFundingProtocolParameters = await startup(
+      "protocol_parameters",
+      ({ retryL1Read }) =>
+        retryL1Read(() =>
+          createWatcherProtocolParameterRuntimeAuthority({
+            deploymentIdentity,
+            ogmiosUrl: ogmiosService.endpoint,
+            timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+          }),
+        ),
+    );
     const proverFundingAuthorityFactory =
       createWatcherProverFundingAuthorityFactory({
         launchScope: faultProofApplication.installedCategories,
@@ -523,6 +517,9 @@ export const createWatcherRuntime = async (input: {
         rawSource: inclusionRawSource,
         currentObservation: stateQueueRuntime.current,
       },
+      mergedHeaders: async (observation) =>
+        (await stateQueueSource.resolveMergedHeaders?.({ observation })) ??
+        new Map(),
       proverWalletAddress,
       onStatusTransition: input.onAvailabilityStatusTransition,
       // E5: the pool readout and its alerts reach /v1/status; they never make
@@ -592,7 +589,9 @@ export const createWatcherRuntime = async (input: {
             Object.freeze({ kind: "point", blockHash, slot }),
         ),
       ),
-      startupTimeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+      startupTimeoutMs: watcherNativeChainSyncStartupTimeoutMs(
+        input.config.watcherConfig,
+      ),
       onEvent: createWatcherNativeEventHandler({
         coordinator: coordinatorReady,
         onCaughtUp: resolveCaughtUp,

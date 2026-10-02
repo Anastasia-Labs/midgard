@@ -1,4 +1,5 @@
 import { type WatcherConfig } from "../runtime/config.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
   type ReadIdentityFile,
@@ -13,6 +14,30 @@ import {
   type WatcherNativeChainSyncRuntime,
 } from "./native-chain-sync.exact-record.js";
 import { startWatcherNativeChainSync } from "./native-chain-sync.open-watcher-native-exact-point-query.js";
+import { isWatcherNativeNodeUnavailable } from "./transient-failure.js";
+import { retryWatcherL1Transient } from "./transient-retry.js";
+
+export type WatcherNativeNodeWait = Readonly<{
+  event: "native_node_unavailable";
+  code: string;
+  retryAfterMs: number;
+}>;
+
+const writeNodeWait = (warning: WatcherNativeNodeWait): void => {
+  process.stderr.write(
+    `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "warn", ...warning })}\n`,
+  );
+};
+
+/**
+ * Bound on one native process start: spawn, node handshake, intersection and
+ * tip. It is a process-start bound, not a per-request one, so a node that is
+ * slow to answer after its own restart is not cut off at the request timeout.
+ * A start that still times out is retried like any node-unavailable start.
+ */
+export const watcherNativeChainSyncStartupTimeoutMs = (
+  watcherConfig: WatcherConfig,
+): number => Math.max(120_000, watcherConfig.l1.requestTimeoutMs);
 
 export const startWatcherNativeChainSyncWithRetry = async (input: {
   readonly binaryPath: string;
@@ -22,6 +47,9 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
   readonly unsafeSpawnForTest?: SpawnProcess;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
+  /** Defaults to one JSON line on stderr when the node first does not answer. */
+  readonly warn?: (warning: WatcherNativeNodeWait) => void;
+  readonly retryDelayMs?: (retry: number) => number;
 }): Promise<WatcherNativeChainSyncRuntime> => {
   if (
     input.intersectionCandidates.length === 0 ||
@@ -46,6 +74,28 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
     seen.add(key);
     return parsed;
   });
+  // An unanswering node restarts the whole walk, newest candidate first, after
+  // a capped backoff; it never ends startup.
+  return await retryWatcherL1Transient(() => walk(input, candidates), {
+    transient: isWatcherNativeNodeUnavailable,
+    onRetry: (error, retry, retryAfterMs) => {
+      if (retry === 1)
+        (input.warn ?? writeNodeWait)({
+          event: "native_node_unavailable",
+          code: (error as NativeChainSyncStartupFailure).code,
+          retryAfterMs,
+        });
+    },
+    ...(input.retryDelayMs === undefined
+      ? {}
+      : { delayMs: input.retryDelayMs }),
+  });
+};
+
+const walk = async (
+  input: Parameters<typeof startWatcherNativeChainSyncWithRetry>[0],
+  candidates: readonly WatcherNativeChainSyncPoint[],
+): Promise<WatcherNativeChainSyncRuntime> => {
   let lastIntersectionFailure: NativeChainSyncStartupFailure | undefined;
   for (const intersection of candidates) {
     try {

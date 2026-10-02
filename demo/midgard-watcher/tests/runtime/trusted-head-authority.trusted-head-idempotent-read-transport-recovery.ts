@@ -163,6 +163,87 @@ describe("trusted-head idempotent read transport recovery", () => {
     );
   });
 
+  /** A port nothing listens on yet, and a way to start listening on it. */
+  const laterListener = async (listener: RequestListener) => {
+    const probe = createServer();
+    await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const address = probe.address();
+    if (address === null || typeof address === "string")
+      throw new Error("test authority requires TCP");
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    const server = createServer(listener);
+    return {
+      endpoint: `http://127.0.0.1:${address.port}`,
+      listen: async () =>
+        await new Promise<void>((resolve) =>
+          server.listen(address.port, "127.0.0.1", resolve),
+        ),
+      close: async () => {
+        server.closeAllConnections();
+        if (server.listening)
+          await new Promise<void>((resolve) => server.close(() => resolve()));
+      },
+    };
+  };
+
+  it("waits for a restarting authority's listener and reads the head exactly once", async () => {
+    const expected = head(policy(), 0, "10");
+    let requests = 0;
+    const authority = await laterListener((_request, response) => {
+      requests += 1;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ head: expected }));
+    });
+    try {
+      const read = client(authority.endpoint, 5_000).readCurrent();
+      // Longer than the three in-flight attempts take (100 + 200 ms).
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      expect(requests).toBe(0);
+      await authority.listen();
+      expect(await read).toEqual(expected);
+      expect(requests).toBe(1);
+    } finally {
+      await authority.close();
+    }
+  });
+
+  it("gives up on a listener that never returns at the original read deadline", async () => {
+    const authority = await laterListener(() => undefined);
+    const started = performance.now();
+    await expect(
+      client(authority.endpoint, 600).readCurrent(),
+    ).rejects.toMatchObject({
+      message: "fetch failed",
+      cause: expect.objectContaining({ code: "ECONNREFUSED" }),
+    });
+    const elapsed = performance.now() - started;
+    expect(elapsed).toBeGreaterThanOrEqual(550);
+    expect(elapsed).toBeLessThan(2_000);
+  });
+
+  it("never retries a CAS against a listener that is down", async () => {
+    let writes = 0;
+    const authority = await laterListener((request, response) => {
+      if (request.method === "POST") writes += 1;
+      response.end("{}");
+    });
+    try {
+      const started = performance.now();
+      await expect(
+        client(authority.endpoint, 5_000).compareAndSwap({
+          expectedTrustedHead: null,
+          nextTrustedHead: head(policy(), 0, "10"),
+        }),
+      ).rejects.toThrow("fetch failed");
+      expect(performance.now() - started).toBeLessThan(1_000);
+      await authority.listen();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(writes).toBe(0);
+    } finally {
+      await authority.close();
+    }
+  });
+
   it("never retries an ambiguous CAS whose response connection was lost", async () => {
     let writes = 0;
     await withServer(

@@ -1,6 +1,7 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import {
   type CorrectionLockDatum,
+  type DaAvailabilityStateQueueStatus,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   Header,
   type Header as HeaderType,
@@ -53,6 +54,7 @@ export const encodedHeader = (header: HeaderType) => {
 export const observation = (
   headers: readonly HeaderType[],
   lockDatum: CorrectionLockDatum = "Idle",
+  daAvailability: readonly DaAvailabilityStateQueueStatus[] = [],
 ): WatcherAuthenticatedStateQueueObservation => {
   const encoded = headers.map(encodedHeader);
   return Object.freeze({
@@ -88,7 +90,7 @@ export const observation = (
           headerCborHex: cbor,
           stateQueueNodeCborHex: "d87980",
           linkedListDatumCborHex: "d87980",
-          daAvailability: "Unattested",
+          daAvailability: daAvailability[index] ?? "Unattested",
           queueOutRef: `${"17".repeat(32)}#${index.toString()}`,
           nextHeaderHash: encoded[index + 1]?.hash ?? null,
           observedTransactionHash: "18".repeat(32),

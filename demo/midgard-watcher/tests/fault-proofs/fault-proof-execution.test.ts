@@ -6,10 +6,12 @@ import {
   LocalKupmiosTransportUnavailableError,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
+import { KupmiosError } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
+import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -250,6 +252,70 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(
       await test.fixture.journal.load(test.fixture.initial.workflowId),
     ).toEqual(entries);
+  });
+
+  it.each([
+    [
+      "a retryable Lucid Kupmios error",
+      () =>
+        new KupmiosError({
+          protocol: "kupo",
+          operation: "getUtxosByOutRef",
+          status: 503,
+        }),
+    ],
+    [
+      "a refused provider connection",
+      () =>
+        Object.assign(new TypeError("fetch failed"), {
+          cause: Object.assign(new Error("connect ECONNREFUSED"), {
+            code: "ECONNREFUSED",
+          }),
+        }),
+    ],
+    [
+      "a public-DA transport that did not start",
+      () =>
+        new Error("workflow runtime loader failed", {
+          cause: new WatcherRetainedDaTransportUnavailableError(
+            new Error("listen EADDRINUSE: address already in use"),
+            1_000,
+          ),
+        }),
+    ],
+  ])(
+    "backs off %s from the provider layer without submitting",
+    async (_label, failure) => {
+      const test = await setup();
+      const before = await test.fixture.records();
+      // The error escapes the workflow as the provider raised it.
+      test.runOrResume.mockRejectedValueOnce(failure());
+      expect(await test.execution.execute(test.input)).toMatchObject({
+        kind: "retryable",
+        resume: "backoff",
+        retryAfterMs: 1000,
+      });
+      expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
+      expect(test.setAlert).not.toHaveBeenCalled();
+      expect(await test.fixture.records()).toEqual(before);
+    },
+  );
+
+  it("keeps a provider error the provider does not mark retryable hard", async () => {
+    const test = await setup();
+    const failure = new KupmiosError({
+      protocol: "kupo",
+      operation: "getUtxosByOutRef",
+      status: 200,
+    });
+    test.runOrResume.mockRejectedValueOnce(failure);
+    await expect(test.execution.execute(test.input)).rejects.toBe(failure);
+    expect(test.setAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "proof_submission_failure",
+        active: true,
+      }),
+    );
   });
 
   it("backs off completed verification transport outages without funding or journal changes", async () => {

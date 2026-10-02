@@ -3,6 +3,7 @@ import {
   type DeploymentManifestCardanoProtocolParameters,
   deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { LocalKupmiosTransportUnavailableError } from "@al-ft/midgard-fault-proofs";
 
 import {
   assertVerifiedWatcherDeploymentIdentity,
@@ -79,21 +80,40 @@ const queryLiveProtocolParameters = async ({
     throw new Error("prover funding Ogmios timeout is out of bounds");
   }
   const id = "midgard-watcher-prover-funding-parameters-v1";
-  const response = await fetchImpl(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "queryLedgerState/protocolParameters",
-      id,
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "queryLedgerState/protocolParameters",
+        id,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (cause) {
+    // A refused or reset connection is recognised by its cause code; an
+    // Ogmios that did not answer in time is typed here.
+    if (cause instanceof Error && cause.name === "TimeoutError")
+      throw new LocalKupmiosTransportUnavailableError(
+        "prover funding Ogmios query timed out",
+        { cause },
+      );
+    throw cause;
+  }
   const body = await response.text();
   if (!response.ok) {
-    throw new Error(
-      `prover funding Ogmios query failed with HTTP ${response.status.toString()}`,
-    );
+    const message = `prover funding Ogmios query failed with HTTP ${response.status.toString()}`;
+    // A busy or restarting Ogmios, not an answer about the parameters.
+    if (
+      response.status === 408 ||
+      response.status === 425 ||
+      response.status === 429 ||
+      response.status >= 500
+    )
+      throw new LocalKupmiosTransportUnavailableError(message);
+    throw new Error(message);
   }
   let value: unknown;
   try {

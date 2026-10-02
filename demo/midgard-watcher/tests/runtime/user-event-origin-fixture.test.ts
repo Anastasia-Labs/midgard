@@ -262,4 +262,46 @@ describe("synthetic user-event origin query indexes", () => {
       await fixture.close();
     }
   });
+
+  it("serves an empty-name token under Kupo's `<policy>.` pattern, keyed by the bare policy", async () => {
+    const tokenPolicy = "d3".repeat(28);
+    const outputs = CML.TransactionOutputList.new();
+    for (const assets of [{ [tokenPolicy]: 5n }, { [`${tokenPolicy}aa`]: 6n }])
+      outputs.add(
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(address),
+          assetsToValue({ lovelace: 2_000_000n, ...assets }),
+        ),
+      );
+    const body = CML.TransactionBody.new(
+      CML.TransactionInputList.new(),
+      outputs,
+      9n,
+    );
+    const txHash = CML.hash_transaction(body).to_hex();
+    const fixture = await createSyntheticUserEventOriginFixture();
+    try {
+      await fixture.makeBlock({
+        transactions: [
+          CML.Transaction.new(
+            body,
+            CML.TransactionWitnessSet.new(),
+            true,
+          ).to_cbor_hex(),
+        ],
+      });
+      const emptyName = await matches(`${tokenPolicy}.`);
+      expect(
+        emptyName.map((row) => [row.transaction_id, row.output_index]),
+      ).toEqual([[txHash, 0]]);
+      expect(
+        (emptyName[0] as unknown as { value: { assets: object } }).value.assets,
+      ).toEqual({ [tokenPolicy]: "5" });
+      expect(
+        (await matches(`${tokenPolicy}.aa`)).map((row) => row.output_index),
+      ).toEqual([1]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });

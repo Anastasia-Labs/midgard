@@ -3,6 +3,10 @@
 import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 
 import {
+  isWatcherPermanentRefusal,
+  WATCHER_PERMANENT_REFUSAL_EXIT_CODE,
+} from "./runtime/permanent-refusal.js";
+import {
   runWatcherCommand,
   WATCHER_COMMAND_FAILURE_EXIT_CODE,
   WATCHER_PACKAGE_NAME,
@@ -39,6 +43,15 @@ export const watcherFailureCauses = (error: unknown) => {
   }
   return causes;
 };
+
+/**
+ * A refusal no restart can clear exits with its own code, so a supervisor can
+ * stop restarting on it; every other failure keeps exit code 70.
+ */
+export const watcherFailureExitCode = (error: unknown): number =>
+  isWatcherPermanentRefusal(error)
+    ? WATCHER_PERMANENT_REFUSAL_EXIT_CODE
+    : WATCHER_COMMAND_FAILURE_EXIT_CODE;
 
 export const parseWatcherArguments = (
   arguments_: readonly string[],
@@ -99,13 +112,14 @@ export const main = async (arguments_: readonly string[]): Promise<number> => {
         command: parsed.command,
         state: "failed_closed",
         productionReady: false,
+        permanentRefusal: isWatcherPermanentRefusal(error),
         error:
           error instanceof Error ? error.message : "unknown production failure",
         errorStack: error instanceof Error ? error.stack : undefined,
         errorCauses: watcherFailureCauses(error),
       })}\n`,
     );
-    return WATCHER_COMMAND_FAILURE_EXIT_CODE;
+    return watcherFailureExitCode(error);
   }
 };
 
@@ -113,4 +127,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   process.exitCode = await main(process.argv.slice(2));
 }
 
-export { WATCHER_COMMAND_FAILURE_EXIT_CODE };
+export {
+  WATCHER_COMMAND_FAILURE_EXIT_CODE,
+  WATCHER_PERMANENT_REFUSAL_EXIT_CODE,
+};

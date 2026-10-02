@@ -14,6 +14,8 @@ import {
   type WatcherStateQueueObservationSource,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { watcherDeferredRetryDelayMs } from "./fault-decision-bridge.classification-miss.js";
 import { createBridge } from "./fault-decision-bridge.create-bridge.js";
 import {
   ACTION_CONFIRMATION_DEPTH,
@@ -32,6 +34,11 @@ import {
   type WatcherFaultProofSupervisor,
 } from "./fault-proof-supervisor.js";
 
+const writeWarning: NonNullable<BridgeDependencies["warn"]> = (warning) =>
+  process.stderr.write(
+    `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "warn", ...warning })}\n`,
+  );
+
 export const createWatcherFaultDecisionBridge = async (input: {
   readonly application: WatcherFaultProofApplication;
   readonly supervisor: WatcherFaultProofSupervisor;
@@ -42,6 +49,8 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly operationsSink?: WatcherOperationsSink;
   readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
+  /** Defaults to one JSON line on stderr per warning. */
+  readonly warn?: BridgeDependencies["warn"];
 }): Promise<WatcherFaultDecisionBridge> => {
   assertWatcherFaultProofApplication(input.application);
   const journal = await openWatcherFaultDecisionJournal({
@@ -84,6 +93,11 @@ export const createWatcherFaultDecisionBridge = async (input: {
           rollbackGeneration,
         }),
       deadlineForHeader: watcherFaultProofDeadline,
+      deferredRetryDelayMs: watcherDeferredRetryDelayMs,
+      mergedHeaders: async (observation) =>
+        (await input.stateQueueSource.resolveMergedHeaders?.({
+          observation,
+        })) ?? new Map(),
       resolvePredecessorHeader: async (header) => {
         const decoded = Data.from(header.headerCborHex, Header);
         if (decoded.prevHeaderHash === GENESIS_HEADER_HASH) return undefined;
@@ -95,6 +109,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
         ? {}
         : { operationsSink: input.operationsSink }),
       ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
+      warn: input.warn ?? writeWarning,
       requestProgress: input.supervisor.requestProgress,
       revokeAuthority: input.supervisor.revokeAuthority,
       unfinishedObjectiveCount: () =>

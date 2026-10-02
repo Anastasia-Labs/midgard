@@ -4,6 +4,8 @@ import {
   assertWatcherProtocolParameterRuntimeAuthority,
   unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest,
 } from "../../src/funding/prover-funding.js";
+import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
+import { retryWatcherL1Transient } from "../../src/l1/transient-retry.js";
 import {
   makeWatcherDeploymentAuthorityFixture,
   WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
@@ -133,5 +135,69 @@ describe("production prover protocol-parameter authority V1", () => {
     await expect(
       invoke({ deploymentIdentity: { ...deploymentIdentity } }),
     ).rejects.toThrow("invalid_field");
+  });
+
+  it("types an Ogmios that is down or busy as an L1 transient, so startup waits and then binds once", async () => {
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
+    const outages: (() => Response)[] = [
+      () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      },
+      () => {
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(new Error("connect ECONNREFUSED"), {
+            code: "ECONNREFUSED",
+          }),
+        });
+      },
+      () => new Response("starting", { status: 503 }),
+    ];
+    const fetchImpl = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const outage = outages.shift();
+        if (outage !== undefined) return outage();
+        const request = JSON.parse(String(init?.body)) as {
+          readonly id: string;
+        };
+        return response(request.id, ogmiosParameters());
+      },
+    ) as unknown as typeof fetch;
+    const retries: string[] = [];
+    const authority = await retryWatcherL1Transient(
+      () =>
+        unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+          deploymentIdentity,
+          ogmiosUrl: "http://127.0.0.1:1337",
+          timeoutMs: 10_000,
+          fetchImpl,
+        }),
+      { delayMs: () => 1, onRetry: (error) => retries.push(error.message) },
+    );
+    expect(authority.snapshot).toEqual(
+      WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(retries).toEqual([
+      "prover funding Ogmios query timed out",
+      "fetch failed",
+      "prover funding Ogmios query failed with HTTP 503",
+    ]);
+  });
+
+  it("keeps a refused protocol-parameter query hard", async () => {
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
+    const failure =
+      await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+        deploymentIdentity,
+        ogmiosUrl: "http://127.0.0.1:1337",
+        timeoutMs: 10_000,
+        fetchImpl: (async () =>
+          new Response("bad request", { status: 400 })) as typeof fetch,
+      }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "prover funding Ogmios query failed with HTTP 400",
+    );
+    expect(isWatcherL1TransientFailure(failure)).toBe(false);
   });
 });
