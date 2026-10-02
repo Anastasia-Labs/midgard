@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { isTransientOgmiosJsonRpcFailure } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { Cause, Duration, Effect, Runtime } from "effect";
 
 export type ProviderRetryOptions = {
@@ -160,12 +161,15 @@ export const isConnectionClassError = (error: unknown): boolean =>
 /**
  * True for a provider failure that a later attempt can clear: an error that
  * declares itself retryable (`KupmiosError`, the Ogmios slot-evidence and DA
- * quorum errors), a structured transport, resolver or connection code on any
- * cause, or a known transient provider message. A failure that names a
- * logic problem (a malformed datum, a wrong network) carries none of these,
- * and an error that declares itself non-retryable keeps its text out of the
- * message fallback (a DA capability mismatch on `request_timeout_ms` is not
- * a timeout).
+ * quorum errors), an Ogmios error answer whose code says the node cannot
+ * answer now (Kupmios marks every Ogmios error answer non-retryable, because
+ * Ogmios sends them all as HTTP 400), a structured transport, resolver or
+ * connection code on any cause, or a known transient provider message. A
+ * failure that names a logic problem (a malformed datum, a wrong network)
+ * carries none of these, and an error that declares itself non-retryable
+ * keeps its text out of the message fallback (a DA capability mismatch on
+ * `request_timeout_ms` is not a timeout; a Kupo HTTP 400 wrapped in a
+ * "Failed to fetch ..." error is not a transient read).
  */
 export const isRetryableProviderError = (error: unknown): boolean => {
   const chain = causeChain(error);
@@ -173,6 +177,7 @@ export const isRetryableProviderError = (error: unknown): boolean => {
     chain.some(
       (link) =>
         link.retryable === true ||
+        isTransientOgmiosJsonRpcFailure(link) ||
         link.name === "TimeoutError" ||
         hasTransientConnectionShape(link, [
           TRANSIENT_NODE_NET_CODES,

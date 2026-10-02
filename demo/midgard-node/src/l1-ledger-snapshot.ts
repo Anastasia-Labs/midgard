@@ -8,6 +8,7 @@ import {
   type WebSocketFactory,
   type WebSocketLike,
 } from "./l1-tx-order-carriage.js";
+import { ogmiosJsonRpcAnswerCode } from "./l1-tx-order-carriage.open-ogmios-session.js";
 
 export type LedgerSnapshotPoint = Readonly<{ slot: number; id: string }>;
 
@@ -80,31 +81,12 @@ const samePoint = (left: LedgerSnapshotPoint, right: LedgerSnapshotPoint) =>
  * this one's state from any other point. */
 export class LedgerPointUnavailable extends L1SourceUnavailable {}
 
-// The session reports a JSON-RPC error response as this message prefix
-// followed by the error object; nothing else carries its code.
-const OGMIOS_ERROR_PREFIX = "Ogmios chain-sync error: ";
-const ogmiosErrorCode = (cause: unknown): number | undefined => {
-  if (!(cause instanceof Error) || cause instanceof L1SourceUnavailable)
-    return undefined;
-  if (!cause.message.startsWith(OGMIOS_ERROR_PREFIX)) return undefined;
-  try {
-    const code = (
-      JSON.parse(cause.message.slice(OGMIOS_ERROR_PREFIX.length)) as {
-        readonly code?: unknown;
-      } | null
-    )?.code;
-    return typeof code === "number" ? code : undefined;
-  } catch {
-    return undefined;
-  }
-};
 // https://ogmios.dev/mini-protocols/local-state-query/ : 2000 is the only
-// acquisition failure. 2001 (era mismatch, across a hard fork) and 2003
-// (acquired state expired) say the acquired state can no longer answer; a
-// fresh acquisition can. Any other code, the JSON-RPC protocol ones included,
-// refuses this request itself and stays a refusal.
+// acquisition failure. The session already raises it, like every code that
+// says the node cannot answer now (2001 era mismatch, 2002 a ledger still in
+// Byron, 2003 acquired state expired), as an `L1SourceUnavailable`; any other
+// code refuses the request itself and stays a refusal.
 const ACQUIRE_FAILURE = 2000;
-const ACQUIRED_STATE_LOST = new Set([2001, 2003]);
 
 export const decodeLedgerSnapshotOutput = (
   value: unknown,
@@ -210,24 +192,11 @@ export const readAcquiredLedgerSnapshot = async ({
     captureSignal.throwIfAborted();
     const requestedPoint =
       selectedPoint ?? point(await session.request("queryLedgerState/tip", {}));
-    const query = async (method: string, params: Record<string, unknown>) => {
-      try {
-        return await session.request(method, params);
-      } catch (cause) {
-        const code = ogmiosErrorCode(cause);
-        if (code !== undefined && ACQUIRED_STATE_LOST.has(code))
-          throw new L1SourceUnavailable(
-            `Ogmios ${method} could not answer from the acquired ledger state: ${(cause as Error).message}`,
-            { cause },
-          );
-        throw cause;
-      }
-    };
     const acquired = record(
       await session
         .request("acquireLedgerState", { point: requestedPoint })
         .catch((cause: unknown) => {
-          if (ogmiosErrorCode(cause) !== ACQUIRE_FAILURE) throw cause;
+          if (ogmiosJsonRpcAnswerCode(cause) !== ACQUIRE_FAILURE) throw cause;
           throw new LedgerPointUnavailable(
             `Ogmios could not acquire ledger point ${requestedPoint.slot.toString()}.${requestedPoint.id}: ${(cause as Error).message}`,
             { cause },
@@ -241,7 +210,7 @@ export const readAcquiredLedgerSnapshot = async ({
       throw new LedgerPointUnavailable(
         "Ogmios acquired a different ledger point",
       );
-    const rawOutputs = await query("queryLedgerState/utxo", {
+    const rawOutputs = await session.request("queryLedgerState/utxo", {
       addresses: requested,
     });
     if (!Array.isArray(rawOutputs))
@@ -261,13 +230,16 @@ export const readAcquiredLedgerSnapshot = async ({
     // (Ogmios reconnected to its node): the outputs are discarded and a retry
     // acquires again.
     if (
-      !samePoint(point(await query("queryLedgerState/tip", {})), requestedPoint)
+      !samePoint(
+        point(await session.request("queryLedgerState/tip", {})),
+        requestedPoint,
+      )
     )
       throw new L1SourceUnavailable(
         "Ogmios ledger point changed during acquired capture",
       );
     const released = record(
-      await query("releaseLedgerState", {}),
+      await session.request("releaseLedgerState", {}),
       "Ogmios release",
     );
     if (released.released !== "ledgerState")

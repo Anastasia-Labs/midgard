@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 
+import {
+  formatOgmiosJsonRpcError,
+  OgmiosJsonRpcError,
+} from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -253,7 +257,10 @@ export const openRpc = async (
     pending.delete(response.id);
     if (response.error !== undefined) {
       waiter.reject(
-        new Error(`Ogmios replay error: ${JSON.stringify(response.error)}`),
+        new OgmiosJsonRpcError(
+          `Ogmios replay error: ${formatOgmiosJsonRpcError(response.error)}`,
+          response.error,
+        ),
       );
     } else {
       waiter.resolve(response.result);

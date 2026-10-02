@@ -2,6 +2,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect } from "effect";
 
+import { isRetryableProviderError } from "../provider-retry.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
 import { formatStateQueueTopology } from "../services/state-queue-topology.js";
 import { assertAvailabilityChallengeRewardAccountsRegisteredProgram } from "../transactions/availability-challenge-registration.js";
@@ -64,10 +65,6 @@ const writeStartupContractDeploymentInfoAfterFreshInit = (initTxHash: string) =>
     }),
   );
 
-const isRetryableProtocolStatusError = (error: SDK.LucidError): boolean =>
-  error.message.startsWith("Failed to fetch ") ||
-  error.message.startsWith("Failed to query ");
-
 export const fetchProtocolDeploymentStatusWithStartupRetry = (
   fetchStatus: () => Effect.Effect<
     Initialization.ProtocolDeploymentStatus,
@@ -95,7 +92,9 @@ export const fetchProtocolDeploymentStatusWithStartupRetry = (
       }
 
       lastError = statusAttempt.left;
-      if (!isRetryableProtocolStatusError(lastError)) {
+      // The read's own typed retryability decides (a Kupo 503 retries, a
+      // Kupo 400 does not), whatever text the SDK wrapper around it carries.
+      if (!isRetryableProviderError(lastError)) {
         return yield* Effect.fail(lastError);
       }
       if (attempt < maxAttempts) {

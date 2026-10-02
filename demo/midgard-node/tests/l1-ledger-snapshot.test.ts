@@ -430,6 +430,9 @@ describe("signed-header recovery capture failures", () => {
   it.each<Fault>([
     ["an expired acquired state", failing("queryLedgerState/utxo", 2003)],
     ["an era mismatch", failing("queryLedgerState/utxo", 2001)],
+    ["a ledger still in Byron", failing("queryLedgerState/utxo", 2002)],
+    ["a server failure", failing("queryLedgerState/utxo", -32603)],
+    ["an era mismatch on acquisition", failing("acquireLedgerState", 2001)],
     ["acquired state lost", answering("queryLedgerState/tip", fork)],
     ["a socket lost mid-scan", losingSocket],
   ])("waits out %s as a source outage", async (_label, make) => {
@@ -441,6 +444,8 @@ describe("signed-header recovery capture failures", () => {
 
   it.each<Fault>([
     ["an invalid-params refusal", failing("queryLedgerState/utxo", -32602)],
+    ["an unknown-method refusal", failing("queryLedgerState/utxo", -32601)],
+    ["an invalid-genesis refusal", failing("queryLedgerState/utxo", 2004)],
     ["a malformed acquisition", answering("acquireLedgerState", {})],
     ["a repeated outref", answering("queryLedgerState/utxo", [output, output])],
     ["an invalid release", answering("releaseLedgerState", { released: 0 })],
