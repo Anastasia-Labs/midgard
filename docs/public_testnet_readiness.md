@@ -1,10 +1,10 @@
 # Public Testnet Readiness Checklist
 
-Status: Active — no-go for an open public testnet.
+Status: Active — no-go for an open public preprod deployment.
 
-Last full readiness review: 2026-09-01. Consolidated: 2026-09-07. Updated
-2026-09-12 for the forced-submission merge and watcher journey status.
-This edit does not rerun launch acceptance or close any release gate.
+Source, GitHub and worktree reconciliation: 2026-10-02, 06:11 UTC
+(01:11 CDT). Last full readiness review: 2026-09-01.
+This update does not rerun launch acceptance or close any release gate.
 
 This is the release acceptance checklist for an externally reachable deployment.
 It covers adversarial safety, deployment identity, recovery, user and operator
@@ -20,6 +20,118 @@ unit tests, and local emulator success do not establish public readiness. Use th
 Close a gate only with evidence from the release revision: owner/reviewer, exact
 command and environment, artifact location, result, and known limitations.
 Previously implemented portions of a combined gate still need release verification.
+
+## Evidence and integration snapshot
+
+The canonical filename is `docs/public_testnet_readiness.md`, as named in
+[issue #724](https://github.com/Anastasia-Labs/midgard/issues/724).
+"Public preprod" means an externally reachable deployment using the public
+claim and approved public profile. `preprod-testing` and
+`local-devnet-testing` are bounded testing profiles, with fault proofs explicitly
+accepted as non-functional; they cannot satisfy that claim. See the
+[deployment profiles](../config/deployments/README.md#live-testing-profiles).
+
+Use these status terms independently:
+
+| Status             | Required evidence                                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Implemented        | Behavior exists in the named source snapshot; a dirty patch is identified as uncommitted.                                                 |
+| Committed / pushed | Exact commit and branch; a local commit alone is not published.                                                                           |
+| Merged             | Named destination and ancestry or merged PR. Inclusion in a topic branch is not default-branch integration.                               |
+| Tested             | Named command, revision, environment, executed count, result and artifacts. Historical or owner-reported results keep that qualification. |
+| In progress        | Open work, incomplete review or integration, including committed implementations with unfinished acceptance.                              |
+| Unverified         | Evidence is missing, stale, incomplete, skipped or from another revision/deployment. This cannot close a checkbox.                        |
+
+The inventory below was read without modifying the implementation worktrees.
+It supersedes older descriptions of the lifecycle lane as entirely uncommitted.
+Dirty-path counts exclude the generated `onchain/aiken/plutus.json` and are
+observations at this snapshot, not locks on other sessions' work.
+
+| Source / worktree                                                        | Observed revision and integration                                                                                                                             | Readiness implication                                                                                                                                             |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub default branch `staging`                                          | `41284d897`; the checkpoint and reliability tips are not its ancestors.                                                                                       | Default-branch launch readiness is not established by the topic implementations.                                                                                  |
+| Published checkpoint `colll78/canonical-v1-watcher-l1-source-checkpoint` | `dae1120a5`; [PR #471](https://github.com/Anastasia-Labs/midgard/pull/471) is OPEN into `tx-validation`, with no checks attached in the inspected rollup.     | DA pool, automatic settlement and earlier watcher work are integrated into this topic, not merged through #471.                                                   |
+| Main checkout `midgard`                                                  | `3027be19c`, one committed module-splitting change beyond the published checkpoint, plus dirty node/watcher/funding/retention/startup and full-stack work.    | Source inspection and the October 1 local test reports do not establish committed or release-bound acceptance.                                                    |
+| Reliability worktree `midgard-lifecycle`                                 | `colll78/devnet-lifecycle`: published `ef0c0f1a3`, local `f87d2c3f1`; 17 commits after `3027be19c`, six beyond the published tip, and 110 dirty source paths. | [Epic #696](https://github.com/Anastasia-Labs/midgard/issues/696) is the current reliability tracker. The program is not merged into the checkpoint or `staging`. |
+| Verification mirror `midgard-lc-verify`                                  | Detached `3027be19c`, 517 dirty source paths.                                                                                                                 | Older mirror; its tests cannot certify the current lifecycle tree.                                                                                                |
+| Early run `midgard-lc2`                                                  | Detached `4f6f3786c`, one dirty source path; [#706](https://github.com/Anastasia-Labs/midgard/issues/706) reports the isolated journey/drills in progress.    | This precedes later fixes. No completed final-run receipt was found in the ticket.                                                                                |
+
+Eight other distinct local correctness/stack tips remain outside both published
+checkpoint and reliability histories, and outside `staging`. Their 79 commits
+after `3027be19c` are implementation inventory, not 79 accepted launch changes.
+No corresponding published branch was found in the fetched origin refs.
+
+| Worktree / branch                                                                   | Tip; new commits; dirty source paths | Integration or verification still needed                                                                                               |
+| ----------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `midgard-deepdata` / `deep-data-iterative`                                          | `c976edff5`; 7; 15                   | Pending Cardano-builtin parity work has a reported program-layout mismatch; current resolution is unverified.                          |
+| `midgard-la` / `la-exact-reason`                                                    | `022207346`; 23; 0                   | Exact reasons and proof coverage need combined integration with deep-data and canonical redeemers.                                     |
+| `midgard-f3port` / `f3-canonical-redeemer-data-split`                               | `921634ecf`; 12; 0                   | Current redeemer port; distinct from the DA-frame step-down issue #719. Do not also import the older pre-split copy.                   |
+| `midgard-e2estack` / `e2e-stack`                                                    | `48b41e52a`; 15; 0                   | Separate stack implementation, to reconcile with `devnet-stack` in the lifecycle lane and the main checkout's dirty `full-stack` work. |
+| `midgard-r0spec` / `r0-spec-pack`                                                   | `7495ed976`; 5; 0                    | Specification work does not prove corresponding runtime or validator implementation.                                                   |
+| `midgard-t161`, `midgard-r1b` / `t161-input-resolution`, `r1b-pin-live-script-refs` | Both `299f12824`; 2 total; 0 each    | Same commits, count once. Input resolution is not proof that live script-material retention is complete.                               |
+| `midgard-f1v3` / `f1-v3-terminal`                                                   | `d1ad70a7a`; 5; 2                    | MPF/encoding and artifact work; dependency edits still require reproducible packaging and combined rebuild/redeploy evidence.          |
+| `midgard-rlo` / `redeemer-ledger-order`                                             | `5d3d84846`; 10; 1                   | Redeemer/one-successor work and an untracked probe; outstanding proof/review work remains unverified.                                  |
+
+### Reliability epic #696
+
+Ticket state, implementation and acceptance are separate. In particular, a
+closed inventory ticket means the investigation finished, not that its defects
+were repaired. These are the live GitHub states inspected for this update;
+local commits below may be ahead of the ticket text.
+
+| Tickets                                                                                                                                                                                                                                                                                                              | Observed state and evidence                                                                                                                                              | Remaining gate                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [#700](https://github.com/Anastasia-Labs/midgard/issues/700)                                                                                                                                                                                                                                                         | CLOSED; shared Ogmios code classification pushed in `ef0c0f1a3`. Closing comment reports 215 node, 31 core and 163 committee tests plus three typechecks.                | Batched review #714 and final integration/live evidence; those reports were not rerun here.                                                                                                                              |
+| [#705](https://github.com/Anastasia-Labs/midgard/issues/705), [#710](https://github.com/Anastasia-Labs/midgard/issues/710)                                                                                                                                                                                           | CLOSED inventories. #710's body still says in progress; its final closing comment completes the sweep.                                                                   | Findings are open in #698, #713 and #725–#727. Neither closure establishes rollback recovery.                                                                                                                            |
+| [#697](https://github.com/Anastasia-Labs/midgard/issues/697)                                                                                                                                                                                                                                                         | OPEN, in progress. `79e71b24f` contains displaced signed-intent recovery, but the ticket identifies a test-only production-routing gap and a post-CAS history-wait race. | Production-path regression, soundness review and restart evidence.                                                                                                                                                       |
+| [#698](https://github.com/Anastasia-Labs/midgard/issues/698)                                                                                                                                                                                                                                                         | OPEN, implemented patch under adversarial review/refinement in the dirty lifecycle tree.                                                                                 | Retire instead of delete at confirmation, retain reservations to the safe boundary, rebroadcast identical bytes, remove the halt latch, and test v1/v2→v3 migrations.                                                    |
+| [#699](https://github.com/Anastasia-Labs/midgard/issues/699)                                                                                                                                                                                                                                                         | OPEN; locally committed in `68d1ded92`, beyond the published lifecycle tip. Signed retained bytes remain servable during quarantine.                                     | Review and publication. The responder still refuses new L1 response submission under quarantine; authority recovery belongs to #713.                                                                                     |
+| [#701](https://github.com/Anastasia-Labs/midgard/issues/701), [#719](https://github.com/Anastasia-Labs/midgard/issues/719)                                                                                                                                                                                           | OPEN. Base-aware budgeting/step-down exists in pushed `d16c007ff`; follow-up patch/review is in progress.                                                                | Kill surviving mutants, prove non-speculative SQL effects/readiness/hold budgets and measured ceilings; handle non-monotonic candidate size safely.                                                                      |
+| [#702](https://github.com/Anastasia-Labs/midgard/issues/702), [#703](https://github.com/Anastasia-Labs/midgard/issues/703)                                                                                                                                                                                           | OPEN, in progress. #702 has local lease-reclaim, tracked-control-plane-hold and journal-lock commits `d33b650a2`, `e9d8067d0`, `60068c567`.                              | Publish and review; prove socket cleanup, bounded observation/removal stores and both-polarity regressions.                                                                                                              |
+| [#704](https://github.com/Anastasia-Labs/midgard/issues/704)                                                                                                                                                                                                                                                         | OPEN; local `aad43c2a2` selects 10 confirmations for live testing, 3 for emulator, 30 for public/mainnet.                                                                | Its response-budget test counts 700 s of the 720 s small testing window, but A1 retrieval, A7 rebuild and B6 retry terms remain TODO tests. Complete-budget acceptance is unverified.                                    |
+| [#707](https://github.com/Anastasia-Labs/midgard/issues/707), [#726](https://github.com/Anastasia-Labs/midgard/issues/726)                                                                                                                                                                                           | OPEN. #707's manifest-derived housekeeping patch is under review; #726 is not started in the ticket.                                                                     | Preserve incomplete/challenge-relevant records, serialize prunes under history authority, and retain removed-header DA bytes until removal is more than `k = 2160` blocks deep. Time retention alone is insufficient.    |
+| [#708](https://github.com/Anastasia-Labs/midgard/issues/708)                                                                                                                                                                                                                                                         | OPEN, queued.                                                                                                                                                            | Measured per-role genesis funding/runway for months unattended; owner ruling is no refill loop.                                                                                                                          |
+| [#709](https://github.com/Anastasia-Labs/midgard/issues/709), [#712](https://github.com/Anastasia-Labs/midgard/issues/712), [#713](https://github.com/Anastasia-Labs/midgard/issues/713)                                                                                                                             | OPEN, queued recovery work.                                                                                                                                              | Replace restart loops with evidenced holds/recovery; cover history owner, reversible correction, committee quarantine, watcher visibility, supervisor exit classification and the 65,534-parameter revival query limit.  |
+| [#711](https://github.com/Anastasia-Labs/midgard/issues/711), [#714](https://github.com/Anastasia-Labs/midgard/issues/714), [#715](https://github.com/Anastasia-Labs/midgard/issues/715), [#720](https://github.com/Anastasia-Labs/midgard/issues/720), [#721](https://github.com/Anastasia-Labs/midgard/issues/721) | OPEN review, regression and cleanup obligations. The sticky-verdict, readiness-clearing and watcher-rewind commits are pushed.                                           | Independent review and fiber-level clearing regression; formatting/module limits and supervisor exit 78 handling remain obligations.                                                                                     |
+| [#716](https://github.com/Anastasia-Labs/midgard/issues/716), [#717](https://github.com/Anastasia-Labs/midgard/issues/717), [#718](https://github.com/Anastasia-Labs/midgard/issues/718)                                                                                                                             | OPEN, ticket says not started. Main checkout has an uncommitted early HTTP listener/readiness patch, while lifecycle startup gaps remain tracked.                        | Bounded owning-operation retries; bind health before waits and expose the actual stage; report stopped commit loops, verified genesis/tip cadence and staged frame pressure. A constant `starting` reason is incomplete. |
+| [#725](https://github.com/Anastasia-Labs/midgard/issues/725), [#727](https://github.com/Anastasia-Labs/midgard/issues/727)                                                                                                                                                                                           | OPEN, not started in the tickets; identified by #710.                                                                                                                    | Confirmation-depth terminals/abandonment, released funding, quiet-block history gaps, offline rollback and sticky watcher quarantine must recover within `k`, with separate adversarial review.                          |
+| [#706](https://github.com/Anastasia-Labs/midgard/issues/706), [#722](https://github.com/Anastasia-Labs/midgard/issues/722), [#723](https://github.com/Anastasia-Labs/midgard/issues/723)                                                                                                                             | OPEN; early lc2 run in progress, four previously unrun drills being attempted; final proof blocked on fix lanes.                                                         | Fresh final-dist deployment, exact payouts, unattended full journey and all drills. `restart-cardano-node`, `stop-kupo`, `stop-ogmios`, `kill-public-retained-da` lack completed ticket evidence.                        |
+| [#724](https://github.com/Anastasia-Labs/midgard/issues/724)                                                                                                                                                                                                                                                         | OPEN; this change reconciles the readiness checklist only.                                                                                                               | Deposit/withdraw guide and watcher README remain separate documentation work; this update does not close the whole issue.                                                                                                |
+
+### What has actually been tested
+
+- Historical watcher evidence now records **52 accepted family results** on
+  2026-09-16: 34 preserved and 18 on a replacement deployment. The
+  [journey record](fault-proofs/automatic-watcher-journeys.md#retained-live-status)
+  names `/var/tmp/midgard-watcher-completion-20260916/accepted-family-index.json`
+  and the recovered-run limitations. It is not a clean single-revision run of
+  all 55 installed categories, nor proof of the newer rollback/reliability fixes.
+- The [pooled DA bond live record](fault-proofs/automatic-watcher-journeys.md#live-status-and-process-evidence)
+  reports all six steps on 2026-09-29, about 91 minutes, on a fresh
+  `local-devnet-testing` deployment with real committee readiness/metrics and
+  real CLI evidence. It was the fifth attempt. This remains historical local
+  acceptance, not public-profile or final reliability acceptance.
+- Automatic reserve settlement/payout is integrated in topic commit
+  `98bf75197`. Its [verification ledger](../demo/midgard-node/docs/automatic-settlement-verification.md)
+  records focused SQL/native/emulator successes and broad-gate failures,
+  including a stale fit-ledger/blueprint identity. It explicitly lacks live
+  node/watcher soak and performance acceptance. Manual CLI verbs are no longer
+  the only implementation, but public payout acceptance remains open.
+- October 1 reports in the main checkout's **untracked** <!-- doc-links:external -->
+  `docs/exec-plans/public-testnet-decisions-2026-10-01/` describe focused
+  funding, archive, startup and transaction-preparation passes on dirty source,
+  with broad fault-proof and node database gates still failed. They used the
+  superseded 12-confirmation patch and are not final-tree or 10-confirmation
+  release evidence. No full-suite pass is inferred from their focused reruns.
+- GitHub returned no workflow runs for `colll78/devnet-lifecycle` in the
+  inspected branch query, and no attached checks for #471's current head.
+  Earlier checkpoint Node/Watcher CI failures at other SHAs do not test these
+  tips. CI for the combined release revision is **unverified**.
+
+This reconciliation read source, commit ancestry, dirty worktrees and GitHub
+tickets/comments/PR checks. It did not execute application tests, revalidate
+historical run artifacts, deploy, reset state, run chaos drills or measure
+throughput. The unchecked gates below remain release requirements.
 
 ## Public claim and protocol scope
 
@@ -42,8 +154,9 @@ Previously implemented portions of a combined gate still need release verificati
       the L1 order carries no validity field and `OperatorVerdictV1` is the only
       committed operator claim. Its encoding is bound into the consensus profile
       as `forcedTransactionSourceEncoding`, so a manifest published before it
-      fails deployment identity and must be republished. The format is merged
-      and locally verified; it is not deployed or live-accepted anywhere.
+      fails deployment identity and must be republished. The format is integrated
+      into the checkpoint topic and has local verification; #471 remains open.
+      No current public-profile, release-bound live acceptance is established here.
 - [ ] Publish a threat model covering runtime, APIs, key/admin compromise, L1
       provider compromise and rate limits, spam, read amplification, mempool behavior,
       operational DoS, and incident assumptions. Publish `SECURITY.md` with scope,
@@ -151,6 +264,9 @@ Previously implemented portions of a combined gate still need release verificati
       submissions, then retry suitable signed bytes or rebuild under fresh authority.
       Test provisional terminal disappearance, restart, unresolved wallet inputs,
       and post-finalization incident recovery.
+      Confirmation depth (10/12/30 in the inspected trees) is a liveness threshold,
+      not Cardano finality. The automatic recovery bound is `k = 2160`; #698,
+      #713 and #725–#727 track premature irreversible transitions and sticky holds.
 - [ ] Anchor deposit/withdrawal events and commit barriers to stable indexed
       chain points. Test appearance, disappearance, reappearance at another point,
       and conflicting same-event payloads before projection/finalization. Readiness
@@ -184,6 +300,16 @@ Previously implemented portions of a combined gate still need release verificati
       no duplicate blocks, lost mempool txs, unbounded finalization, or divergence.
       Verify transaction-root reset/replay after DB commit and exact canonical payload
       transitions between mempool, processed, latest, and confirmed tables.
+- [ ] Accept shared verified history and deterministic foreign-block import across
+      at least two independently operated nodes. Authenticate every header root,
+      count and execution result before extending it; verify rotation, restart,
+      rollback, peer outages and finalization without a fabricated local signed
+      journal. Root-only foreign-base matching is not this acceptance (#695).
+- [ ] Provide authenticated checkpoint/rejoin after an outage beyond hot retention,
+      including handled events, deposit consumption, settlement and deployment
+      identity. Verify complete recent replay and atomic installation; matching a
+      claimed state root alone does not prove valid execution. No accepted importer
+      or multi-operator catch-up run is established by the inspected work.
 - [ ] Recover a submitted header before its local submitted marker, including
       deposit-only/user-event-only commits. Resolve by canonical header hash; do not
       build a competitor on the same base. Preserve the pending journal and finalize
@@ -222,6 +348,9 @@ Previously implemented portions of a combined gate still need release verificati
       Make inclusion/settlement proof artifacts verifiable externally or explicitly
       describe privileged proof-resolution access. Complete tx-order lifecycle
       coverage under the canonical scope gate above.
+      Automatic settlement/payout is implemented in `98bf75197`; retain the
+      focused evidence and limits in its verification ledger above. The final
+      real-stack exact-payout journey is still owed under #723.
 - [ ] Provide register/activate/deactivate/deregister/status and bond/slash docs.
       Runbook: `docs-site/content/docs/operators/node/operator-lifecycle.mdx`.
       Permissionless activation must support empty/head/middle/tail insertion and
@@ -240,6 +369,13 @@ Previously implemented portions of a combined gate still need release verificati
       rewind, retirement, or inactivity slashing. Verify deterministic slash/reward
       flows for active, retired, registered, duplicate, bad-state, bad-settlement,
       and partially inactivity-slashed operators.
+      [#683](https://github.com/Anastasia-Labs/midgard/issues/683) remains an open
+      on-chain attribution blocker: each descendant removal must bind the slashed
+      operator to that removed header, with matching builder and refusal tests.
+      [#695](https://github.com/Anastasia-Labs/midgard/issues/695) separately tracks
+      complete foreign-header execution/commitment verification before extending
+      it; a matching UTxO root or DA signature alone is insufficient. Neither
+      repair nor a live exploit reproduction is established by this review.
 - [ ] Accept safe rekey preserving bonds/scheduler semantics or explicitly require
       retire, unlock, recover, and re-register. Ruling 2026-09-15: no rekey; the
       runbook documents retire → unlock → recover → re-register. Test behavior during bond holds,
@@ -281,6 +417,11 @@ Previously implemented portions of a combined gate still need release verificati
       covering full tx payloads, opened preimages, proof metadata, and member counts.
       Independent committee/storage nodes validate the exact header/payload relation,
       attest it, and serve retained data independently of the producer.
+      Prove bounded complete-frame construction, including the resulting ledger,
+      scripts and traces, at release sizes. Step-down mitigates oversized candidate
+      selection but does not remove a full-state frame ceiling. The live testing
+      profiles also lack response time for a complete 4 MiB tranche; their
+      availability behavior is not public-profile size acceptance.
 - [ ] Persist versioned proof bundles independent of transient node internals:
       header, root role/schema/root/count, canonical key/value CBOR, membership and
       applicable non-membership/deletion CBOR, field preimages, source payload hash,
@@ -298,16 +439,12 @@ Previously implemented portions of a combined gate still need release verificati
       [manual recovery](fault-proofs/manual-recovery-runbook.md) runbooks externally.
       The [automatic watcher journeys](fault-proofs/automatic-watcher-journeys.md)
       harness is the acceptance vehicle for this gate on a real devnet. As of
-      2026-09-13 ten of the 54 non-interactive families (`transitionTrace`,
-      `zeroInput`, `invalidRange`, `invalidSignature`, `mintAuthorization`,
-      `minFee`, `spendInputSignerMissing`, `protectedOutputSignerMissing`,
-      `observersForbiddenOnUntaggedNetwork`, `inputSetUniqueness`) have a
-      completed live journey on the merged code's 55-family deployment.
-      Preserve these per-step-finality passes with their existing provenance;
-      they do not establish the new inclusion/reconciliation behavior. Later
-      execution-policy evidence and finalized stamps are recorded separately.
-      Watcher installation covers all 55 source categories; installation is not
-      acceptance.
+      2026-09-16 the maintained journey record reports 52 accepted families across
+      two preserved/recovered deployments, replacing the older ten-family count.
+      Preserve their receipts and provenance; they do not establish clean
+      final-revision acceptance, the new within-`k` recovery behavior, or all
+      canonical categories. Watcher installation covers all 55 source categories;
+      installation is not acceptance. See the evidence snapshot above and #725–#727.
 - [ ] Expose machine-readable rule/reject-code to family, script hashes, DA needs,
       and supported/disabled/unsupported status. Status cannot excuse missing
       normative coverage. Public tooling must not rely on incompatible-output or
@@ -340,6 +477,10 @@ Previously implemented portions of a combined gate still need release verificati
       merge, withdrawal/reserve/payout, and restart. Verify DB/chain/API state without
       manual edits; retain tx hashes, queue state, balances, health/readiness, logs,
       and DB artifacts. Compose smoke must verify startup and safe port exposure.
+      `devnet-stack` is implemented on the reliability branch in `84000fe08`;
+      reconcile the separate `e2e-stack` branch and dirty `full-stack` work before
+      selecting the release harness. #706 is an early run; #723 requires final
+      dist and all fixes. A harness implementation is not a passing receipt.
 - [ ] Accept persistent restart after projection, admission, submission,
       confirmation, merge, and payout; apply the crash cases above. Set pass/fail
       thresholds for spam, valid/invalid throughput, provider throttling, DB
