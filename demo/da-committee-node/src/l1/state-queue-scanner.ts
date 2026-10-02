@@ -11,6 +11,7 @@ import type {
   ObservedStateQueueSnapshot,
   StateQueueHeaderRecord,
 } from "../domain.js";
+import { finalityHeldHeaderHashes } from "../store/retention.js";
 import { bytesToHex, normalizeHex } from "../utils/hex.js";
 import { classifyDaAttestationMarker } from "./attestation-marker.js";
 import type { ChainSyncCursor, ChainSyncEvent } from "./provider.js";
@@ -135,8 +136,10 @@ export type StateQueueScanConfig = {
   ) => void;
   /**
    * Receives the retention exemption sets of this scan's L1 snapshot: the
-   * `ConfirmedState` header hash and the hash of every live queue header.
-   * Called only when the provider returned a full state-queue snapshot.
+   * `ConfirmedState` header hash and the hash of every live queue header,
+   * with the headers a release-final reader still sees queued
+   * (`finalityHeldHeaderHashes`). Called only when the provider returned a
+   * full state-queue snapshot.
    */
   readonly recordL1View?: (view: StateQueueL1View) => void;
   /**
@@ -312,7 +315,15 @@ export const scanStateQueue = async (
       confirmedHeaderHash: normalizeHex(snapshot.confirmedHeaderHash, {
         fieldName: "state queue confirmed header hash",
       }),
-      liveQueueHeaderHashes: current.map(({ headerHash }) => headerHash),
+      liveQueueHeaderHashes: [
+        ...new Set([
+          ...current.map(({ headerHash }) => headerHash),
+          ...finalityHeldHeaderHashes(observation.deferredHeaderHashes, [
+            ...(config.previousHeaders ?? []),
+            ...observation.records,
+          ]),
+        ]),
+      ],
     });
   }
   if (snapshot !== undefined) {

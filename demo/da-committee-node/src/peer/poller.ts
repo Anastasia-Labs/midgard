@@ -2,6 +2,7 @@ import type {
   DaAttestationExchange,
   DaAttestationPeer,
 } from "../da/libp2p/attestations.js";
+import { isVerifiedPayload } from "../da/libp2p/attestations.store-backed-da-attestation-protocol.js";
 import type { DaSignatureRecord } from "../domain.js";
 import type { DaCommitteeValidation } from "../signer.js";
 import type { CommitteeStore } from "../store.js";
@@ -67,8 +68,11 @@ export class PeerSignaturePoller {
           deploymentFingerprint: this.deps.deploymentFingerprint,
           headerHash,
         });
+      // Until this member holds the verified payload there is no commitment
+      // to judge peer signatures against; a record without verified bytes is
+      // a local gap, not the peer's fault, and the next poll retries.
       const verifiedPayload = await this.deps.store.getDaPayload(headerHash);
-      if (verifiedPayload === undefined) {
+      if (!isVerifiedPayload(verifiedPayload)) {
         return;
       }
       const expectedCommitment = deriveExpectedDaAvailabilityCommitment({

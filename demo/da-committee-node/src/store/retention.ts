@@ -22,7 +22,9 @@ import type { CommitteeStore } from "../store.js";
  * confirmed head or of a header still live in the L1 state queue. Both
  * exemption sets come from the poller's latest authenticated L1 view, never
  * from local header rows, so the retained set is bounded by one head, the live
- * queue, and the payloads whose block ended within the horizon.
+ * queue, and the payloads whose block ended within the horizon. The live set
+ * is the queue as a release-final reader sees it: the scanner adds
+ * `finalityHeldHeaderHashes` to the queue at the tip.
  */
 
 export type RetentionCandidate = {
@@ -92,6 +94,48 @@ export const retentionQueueReference = (
     : view.liveQueueHeaderHashes.has(headerHash)
       ? "live_in_queue"
       : "none";
+
+/**
+ * Headers whose payloads stay retained although L1 at its tip no longer lists
+ * them: every header a not-yet-final checkpoint moved or took out of the
+ * queue, and the newest header whose merge is final. A reader at release
+ * finality still sees each as queued, or as the confirmed head its queue
+ * extends. Each is released once a later merge is final at the deployment's
+ * finality depth, the only depth either source is judged at.
+ */
+export const finalityHeldHeaderHashes = (
+  deferredHeaderHashes: readonly string[],
+  headers: readonly StateQueueHeaderRecord[],
+): readonly string[] => {
+  const finalMerges = headers.filter(
+    ({ status, finalized, observedChainPoint }) =>
+      status === "merged" &&
+      finalized &&
+      observedChainPoint.providerSource ===
+        "authenticated_state_queue_transition_v1" &&
+      typeof observedChainPoint.blockHeight === "number",
+  );
+  // Header records are never pruned, so the newest block is found without
+  // spreading every record into one call's arguments.
+  const newestBlock = finalMerges.reduce(
+    (newest, { observedChainPoint }) =>
+      Math.max(newest, observedChainPoint.blockHeight!),
+    Number.NEGATIVE_INFINITY,
+  );
+  return [
+    ...new Set([
+      ...deferredHeaderHashes,
+      // Merges sharing the newest block are kept together: block order alone
+      // cannot tell which of them is last.
+      ...finalMerges
+        .filter(
+          ({ observedChainPoint }) =>
+            observedChainPoint.blockHeight === newestBlock,
+        )
+        .map(({ headerHash }) => headerHash),
+    ]),
+  ];
+};
 
 const isTerminalStatus = (status: StateQueueHeaderRecord["status"]): boolean =>
   status === "merged" || status === "removed";

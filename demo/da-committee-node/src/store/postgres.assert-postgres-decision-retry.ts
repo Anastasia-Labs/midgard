@@ -15,6 +15,7 @@ import {
   parseL1SourceState,
   UNKNOWN_STATE_QUEUE_STATUS,
 } from "../store.js";
+import type { PostgresStoreInstanceLockEvents } from "./postgres.instance-lock.js";
 
 export type JsonRecordRow = {
   readonly record: unknown;
@@ -44,14 +45,8 @@ export const COMMITTEE_TABLES = [
   "peer_nonces",
 ] as const;
 
-export type PostgresCommitteeStoreOptions = {
-  /**
-   * Called once if the session holding the store's instance lock ends while
-   * the store is open. The store then refuses every decision effect, and the
-   * process must stop: another committee node process may now take the lock.
-   */
-  readonly onInstanceLockLost?: (error: Error) => void;
-};
+/** The instance lock's events; see `PostgresStoreInstanceLock`. */
+export type PostgresCommitteeStoreOptions = PostgresStoreInstanceLockEvents;
 
 export const ensureL1SourceStateRow = async (
   client: PoolClient,

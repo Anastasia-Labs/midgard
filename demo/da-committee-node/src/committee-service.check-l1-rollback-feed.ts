@@ -141,11 +141,22 @@ export const checkL1RollbackFeed = async (
       "chain-sync rollback replay does not match the durable rollback generation",
     );
   }
+  // A rollback undoes a decision only if it reaches below the chain point the
+  // decision recorded. A decision with no recorded point (one persisted from a
+  // peer's signature on an observation that carried none) cannot be placed
+  // against a rollback point; the tick's observation check judges it instead,
+  // and fails closed if its output is gone or forked.
+  const placed = decisions.filter(
+    (
+      decision,
+    ): decision is L1ObservedDecision & {
+      readonly slot: number;
+      readonly blockHash: string;
+    } => decision.slot !== undefined && decision.blockHash !== undefined,
+  );
   for (const rollback of replayedRollbacks) {
-    for (const decision of decisions) {
+    for (const decision of placed) {
       if (
-        decision.slot === undefined ||
-        decision.blockHash === undefined ||
         rollback.point.slot < decision.slot ||
         (rollback.point.slot === decision.slot &&
           rollback.point.blockHash !== decision.blockHash)

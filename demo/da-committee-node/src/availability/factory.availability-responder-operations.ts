@@ -24,6 +24,7 @@ import {
   type StateQueueReplayWebSocket,
   type StateQueueReplayWebSocketFactory,
 } from "../l1/state-queue-replay-provider.js";
+import { AvailabilityResponderAwaitingScanError } from "./responder.js";
 
 export type AvailabilityResponderL1Readers = Readonly<{
   /** The aligned Kupmios tip: Kupo and Ogmios at one chain point. */
@@ -99,10 +100,9 @@ export const availabilityResponderOperations = (input: {
 }) => {
   const { readers } = input;
   let expectedRollbackGeneration: number | undefined;
-  const awaitingScan = () =>
-    new Error(
-      "Availability responder awaits the next canonical committee node L1 scan before acting",
-    );
+  // Still thrown, so the SDK aborts the step and releases its lease; the
+  // responder tick reports it as a wait, not a failure.
+  const awaitingScan = () => new AvailabilityResponderAwaitingScanError();
   const readBoundary = async (): Promise<
     SDK.DaAvailabilityCanonicalBoundary &
       Readonly<{ blockHash: string; blockNo: number }>

@@ -95,10 +95,29 @@ export type CommitteeL1SubmitterPreflightSnapshot = {
 };
 
 export type CommitteeRetentionReadinessSnapshot = {
-  readonly status: "not_checked" | "ok" | "failed" | "l1_view_stale";
+  /**
+   * `skipped`: no pass has run since the view was last stale, and the last
+   * pass was skipped on a view younger than the staleness bound. Only
+   * `not_checked`, `failed` and `l1_view_stale` make the committee not ready.
+   */
+  readonly status:
+    | "not_checked"
+    | "ok"
+    | "failed"
+    | "l1_view_stale"
+    | "skipped";
   readonly checkedAt?: string;
   /** Age of the last fresh authenticated L1 view, when it is stale. */
   readonly l1ViewAgeMs?: number;
+  /**
+   * The last pass skipped for want of a view from its own tick while the
+   * last accepted view was younger than the staleness bound. Detail only.
+   */
+  readonly skippedPass?: {
+    readonly reason: "l1_view_unavailable" | "tick_in_flight";
+    readonly checkedAt: string;
+    readonly l1ViewAgeMs: number;
+  };
   readonly scanned: number;
   readonly retained: number;
   readonly prunable: number;

@@ -94,7 +94,7 @@ export const startFakeOgmios = async ({
       }
       if (rpc.method === "queryNetwork/genesisConfiguration") {
         if (failSlotGenesisQuery && rpc.id !== MAGIC_PREFLIGHT_ID) {
-          return reply(500, { error: "genesis unavailable" });
+          return reply(400, { error: "genesis refused" });
         }
         return reply(200, {
           jsonrpc: "2.0",
@@ -289,7 +289,7 @@ describe.each(KUPMIOS_SITES)("$name on Custom", ({ build }) => {
       failure: "a failing Shelley genesis query",
       ogmios: { networkMagic: CUSTOM_MAGIC, failSlotGenesisQuery: true },
       reason:
-        /the Shelley genesis query from the Ogmios at .* failed: HTTP 500/u,
+        /the Shelley genesis query from the Ogmios at .* failed: HTTP 400/u,
     },
     {
       failure: "an Ogmios on another network",

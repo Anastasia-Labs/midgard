@@ -5,10 +5,7 @@ import { CommitteeService } from "../../src/committee-service.js";
 import { type ChainSyncCursor } from "../../src/l1/provider.js";
 import { L1SourceIntegrityError } from "../../src/l1/source-integrity.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
-import {
-  createCommitteeTickRunner,
-  L1_VIEW_UNAVAILABLE_EXIT_CODE,
-} from "../../src/tick-runner.js";
+import { createCommitteeTickRunner } from "../../src/tick-runner.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
   makeObservedNode,
@@ -284,10 +281,9 @@ export const registerL1IntegrityTests = () => {
       });
     });
 
-    it("lets a sustained observation failure reach the L1-view fatal exit without quarantining", async () => {
+    it("lets a sustained observation failure reach the L1-view deadline without quarantining or exiting", async () => {
       const { service, source, durable } = await observedCommittee("44");
       const fatalMs = 240_000;
-      const exits: number[] = [];
       const runner = createCommitteeTickRunner({
         tick: async () => service.tick(),
         runAvailabilityResponse: async () => undefined,
@@ -299,9 +295,6 @@ export const registerL1IntegrityTests = () => {
         startedAtMs: source.nowMs,
         nowMs: () => source.nowMs,
         write: () => undefined,
-        shutdown: async () => undefined,
-        exit: (code) => exits.push(code),
-        shutdownGraceMs: 10,
       });
       await runner.runTick();
       expect(service.latestL1View()?.observedAtMs).toBe(source.nowMs);
@@ -310,11 +303,11 @@ export const registerL1IntegrityTests = () => {
       for (let elapsed = 0; elapsed < fatalMs; elapsed += 60_000) {
         source.nowMs += 60_000;
         await runner.runTick();
-        expect(exits).toEqual([]);
+        expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
       }
       source.nowMs += 1;
       await runner.runTick();
-      expect(exits).toEqual([L1_VIEW_UNAVAILABLE_EXIT_CODE]);
+      expect(runner.liveness().l1ViewUnavailable).toBeDefined();
       expect((await durable()).l1Source?.status).toBe("healthy");
     });
   });

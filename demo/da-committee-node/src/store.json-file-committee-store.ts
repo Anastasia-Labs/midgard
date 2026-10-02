@@ -1,13 +1,4 @@
-import { randomUUID } from "node:crypto";
-import {
-  type FileHandle,
-  mkdir,
-  open as openFile,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { daRetentionPruneDecision } from "@al-ft/midgard-core";
@@ -54,6 +45,10 @@ import {
   UNKNOWN_STATE_QUEUE_STATUS,
 } from "./store.committee-store.js";
 import {
+  JsonStoreLease,
+  type JsonStoreLeaseOptions,
+} from "./store.json-file-lease.js";
+import {
   assertDecisionRetry,
   emptyStoreData,
   isCanonicalIsoTimestamp,
@@ -82,9 +77,7 @@ import {
 
 export class JsonFileCommitteeStore implements CommitteeStore {
   private readonly filePath: string;
-  private readonly lockPath: string;
-  private readonly lockHandle: FileHandle;
-  private readonly lockOwner: string;
+  private readonly lease: JsonStoreLease;
   private writeQueue: Promise<void> = Promise.resolve();
   private readonly inFlightDecisions = new InFlightDecisionAttempts();
   private closePromise: Promise<void> | undefined;
@@ -93,51 +86,27 @@ export class JsonFileCommitteeStore implements CommitteeStore {
 
   private constructor(args: {
     readonly filePath: string;
-    readonly lockPath: string;
-    readonly lockHandle: FileHandle;
-    readonly lockOwner: string;
+    readonly lease: JsonStoreLease;
   }) {
     this.filePath = args.filePath;
-    this.lockPath = args.lockPath;
-    this.lockHandle = args.lockHandle;
-    this.lockOwner = args.lockOwner;
+    this.lease = args.lease;
   }
 
-  static async open(path: string): Promise<JsonFileCommitteeStore> {
+  static async open(
+    path: string,
+    options: JsonStoreLeaseOptions = {},
+  ): Promise<JsonFileCommitteeStore> {
     const filePath = path.endsWith(".json")
       ? path
       : await committeeStoreFilePath(path);
     await mkdir(dirname(filePath), { recursive: true });
-    const lockPath = `${filePath}.lock`;
-    const lockOwner = `${process.pid.toString()}:${randomUUID()}`;
-    let lockHandle: FileHandle;
+    const lease = await JsonStoreLease.acquire(`${filePath}.lock`, options);
+    const store = new JsonFileCommitteeStore({ filePath, lease });
     try {
-      lockHandle = await openFile(lockPath, "wx", 0o600);
-    } catch (error) {
-      if (isNodeError(error) && error.code === "EEXIST") {
-        throw new Error(
-          `committee node file store is already exclusively leased: ${lockPath}; close the active committee node or perform explicit stale-lock recovery`,
-        );
-      }
-      throw error;
-    }
-    const store = new JsonFileCommitteeStore({
-      filePath,
-      lockPath,
-      lockHandle,
-      lockOwner,
-    });
-    try {
-      await lockHandle.writeFile(
-        `${JSON.stringify({ schemaVersion: 1, owner: lockOwner })}\n`,
-        "utf8",
-      );
-      await lockHandle.sync();
       await store.read();
       return store;
     } catch (error) {
-      await lockHandle.close().catch(() => undefined);
-      await unlink(lockPath).catch(() => undefined);
+      await lease.release().catch(() => undefined);
       throw error;
     }
   }
@@ -147,8 +116,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       this.closing = true;
       this.closePromise = (async () => {
         await this.writeQueue.catch(() => undefined);
-        await this.lockHandle.close();
-        await unlink(this.lockPath);
+        await this.lease.release();
         this.closed = true;
       })();
     }
@@ -802,7 +770,8 @@ export class JsonFileCommitteeStore implements CommitteeStore {
   }
 
   private async write(data: StoreData): Promise<void> {
-    const tmpPath = `${this.filePath}.${this.lockOwner.replace(":", "-")}.tmp`;
+    await this.lease.assertHeld();
+    const tmpPath = `${this.filePath}.${this.lease.owner.replace(":", "-")}.tmp`;
     await writeFile(tmpPath, `${JSON.stringify(data, jsonReplacer, 2)}\n`);
     await rename(tmpPath, this.filePath);
   }

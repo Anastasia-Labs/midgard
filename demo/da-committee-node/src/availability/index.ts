@@ -7,7 +7,9 @@ export {
 export {
   AvailabilityResponder,
   type AvailabilityResponderAction,
+  AvailabilityResponderAwaitingScanError,
   type AvailabilityResponderChallenge,
   type AvailabilityResponderDeps,
   type AvailabilityResponderReport,
+  availabilityResponderReportLine,
 } from "./responder.js";

@@ -1,83 +1,24 @@
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   AvailabilityResponder,
-  type AvailabilityResponderChallenge,
+  AvailabilityResponderAwaitingScanError,
   type AvailabilityResponderDeps,
+  availabilityResponderReportLine,
 } from "../src/availability/responder.js";
 import { retainedAvailabilityPayload } from "../src/availability/retained-payload.js";
 import type { DaPayloadRecord } from "../src/domain.js";
-
-const deploymentIdentity = "11".repeat(28);
-const deploymentFingerprint = "22".repeat(32);
-const payload = Uint8Array.from([1, 2, 3, 4]);
-const commitment = SDK.buildDaAvailabilityCommitment({
+import {
+  challengeFixture,
+  commitment,
+  deploymentFingerprint,
   deploymentIdentity,
-  headerHash: "33".repeat(28),
   payload,
-  responseGeometry: SDK.availabilityResponseGeometry({
-    chunkByteLength: 4096,
-    trancheByteLength: 4 * 1024 * 1024,
-    maxTrancheCount: 16,
-  }),
-});
-
-const utxo = (outputIndex: number): UTxO => ({
-  txHash: "66".repeat(32),
-  outputIndex,
-  address: "retained-challenge-address",
-  assets: { lovelace: 100_000_000n },
-});
-
-const challengeFixture = (
-  bytes: Uint8Array = payload,
-): { challenge: AvailabilityResponderChallenge; stored: DaPayloadRecord } => {
-  const frozen = SDK.buildDaAvailabilityCommitment({
-    deploymentIdentity,
-    headerHash: commitment.header_hash,
-    payload: bytes,
-    responseGeometry: commitment.response_geometry,
-  });
-  const parameters = SDK.daAvailabilityParameters({
-    responseGeometry: commitment.response_geometry,
-    ...SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
-    challengerBondLovelace: 12_000_000_000n,
-    maxOpenFeeLovelace: 500_000n,
-    maxPublicationFeeLovelace: 500_000n,
-    maxSettlementFeeLovelace: 500_000n,
-    maxCloseFeeLovelace: 1_000_000n,
-    maxTimeoutFeeLovelace: 1_200_000n,
-  });
-  const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
-    commitment: frozen,
-    challengerFundingOutRef: {
-      transactionId: "99".repeat(32),
-      outputIndex: 0n,
-    },
-    challenger: "aa".repeat(28),
-    openedAt: 1_000n,
-    parameters,
-  });
-  return {
-    challenge: {
-      record: { utxo: utxo(0), datum: plan.record },
-      terminal: { utxo: utxo(1), datum: plan.terminalAccumulator },
-      queue: utxo(2),
-      tranches: plan.trancheThreads.map((datum, index) => ({
-        utxo: utxo(index + 3),
-        datum,
-      })),
-    },
-    stored: {
-      ...record,
-      payloadCborHex: Buffer.from(bytes).toString("hex"),
-      payloadSha256: computeDaSha256Hash(bytes).toString("hex"),
-    },
-  };
-};
+  record,
+  utxo,
+} from "./helpers/availability-challenge.js";
 
 describe("availability responder lifecycle", () => {
   it("answers retained data when the public source withholds after attestation, then settles and closes", async () => {
@@ -240,17 +181,6 @@ describe("availability responder lifecycle", () => {
   });
 });
 
-const record: DaPayloadRecord = {
-  deploymentFingerprint,
-  headerHash: commitment.header_hash,
-  payloadSchemaVersion: 1,
-  payloadCborHex: Buffer.from(payload).toString("hex"),
-  payloadSha256: computeDaSha256Hash(payload).toString("hex"),
-  sourcePeerId: "retained-committee-peer",
-  fetchedAt: "2026-09-08T00:00:00.000Z",
-  validationStatus: "verified",
-};
-
 const retained = (stored: DaPayloadRecord | undefined) =>
   retainedAvailabilityPayload({
     store: { getDaPayload: async () => stored },
@@ -289,5 +219,126 @@ describe("retained availability responses", () => {
     await expect(
       retained({ ...record, deploymentFingerprint: "55".repeat(32) }),
     ).rejects.toThrow(/this deployment/);
+  });
+});
+
+describe("availability responder awaiting the committee's next L1 scan", () => {
+  const awaitingScan = {
+    status: "awaiting_scan",
+    detail: new AvailabilityResponderAwaitingScanError().message,
+  };
+
+  const responderWith = (
+    overrides: Partial<
+      Pick<AvailabilityResponderDeps, "reconcile" | "discover" | "execute">
+    >,
+  ) => {
+    const fixture = challengeFixture();
+    const discover = vi.fn(
+      overrides.discover ?? (async () => [fixture.challenge]),
+    );
+    const execute = vi.fn(
+      overrides.execute ?? (async () => "confirmed" as const),
+    );
+    const responder = new AvailabilityResponder({
+      deploymentIdentity,
+      deploymentFingerprint,
+      store: { getDaPayload: async () => fixture.stored },
+      discover,
+      execute,
+      reconcile: overrides.reconcile ?? (async () => "ready"),
+      now: () => 2_000,
+    });
+    return { responder, discover, execute };
+  };
+
+  it("reports a reconcile refused for a lagging cursor as awaiting_scan and discovers nothing", async () => {
+    const { responder, discover, execute } = responderWith({
+      reconcile: async () => {
+        throw new AvailabilityResponderAwaitingScanError();
+      },
+    });
+    expect(await responder.tick()).toStrictEqual({
+      challenges: 0,
+      ...awaitingScan,
+    });
+    expect(discover).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("reports a discovery refused for a lagging cursor as awaiting_scan", async () => {
+    const { responder, execute } = responderWith({
+      discover: async () => {
+        throw new AvailabilityResponderAwaitingScanError();
+      },
+    });
+    expect(await responder.tick()).toStrictEqual({
+      challenges: 0,
+      ...awaitingScan,
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("reports an action refused for a lagging cursor as awaiting_scan, not failed", async () => {
+    const { responder, execute } = responderWith({
+      execute: async () => {
+        throw new AvailabilityResponderAwaitingScanError();
+      },
+    });
+    expect(await responder.tick()).toStrictEqual({
+      challenges: 1,
+      headerHash: commitment.header_hash,
+      ...awaitingScan,
+    });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("still throws a genuine reconcile error and still fails a genuine action error", async () => {
+    await expect(
+      responderWith({
+        reconcile: async () => {
+          throw new Error("kupmios read failed");
+        },
+      }).responder.tick(),
+    ).rejects.toThrow("kupmios read failed");
+    expect(
+      await responderWith({
+        execute: async () => {
+          throw new Error("submit rejected");
+        },
+      }).responder.tick(),
+    ).toMatchObject({ status: "failed", detail: "submit rejected" });
+  });
+
+  it("logs awaiting_scan as one compact stdout line and only failures to stderr", () => {
+    const line = availabilityResponderReportLine({
+      challenges: 0,
+      status: "awaiting_scan",
+      detail: awaitingScan.detail,
+    });
+    expect(line?.stream).toBe("stdout");
+    expect(line?.line.split("\n")).toEqual([
+      JSON.stringify({
+        event: "availability_responder",
+        challenges: 0,
+        ...awaitingScan,
+      }),
+      "",
+    ]);
+    for (const status of ["failed", "unavailable"] as const) {
+      expect(
+        availabilityResponderReportLine({ challenges: 1, status }),
+      ).toEqual({
+        stream: "stderr",
+        line: `${JSON.stringify({ event: "availability_responder", challenges: 1, status })}\n`,
+      });
+    }
+    expect(
+      availabilityResponderReportLine({ challenges: 1, status: "confirmed" })
+        ?.stream,
+    ).toBe("stdout");
+    expect(
+      availabilityResponderReportLine({ challenges: 0, status: "idle" }),
+    ).toBeUndefined();
   });
 });

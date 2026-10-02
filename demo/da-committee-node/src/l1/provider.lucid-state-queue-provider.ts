@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type {
   ChainPoint,
@@ -7,6 +7,7 @@ import type {
   ObservedStateQueueSnapshot,
 } from "../domain.js";
 import { canonicalJson } from "./canonical-json.js";
+import type { ChainPointResolver } from "./provider.chain-point-batch.js";
 import {
   ChainMovedDuringSnapshotError,
   STATE_QUEUE_REPLAY_ATTEMPTS,
@@ -24,7 +25,7 @@ export class LucidStateQueueProvider implements StateQueueProvider {
   private readonly stateQueueAddress: string;
   private readonly stateQueuePolicyId: string;
   private readonly providerSource: string;
-  private readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
+  private readonly chainPointResolver?: ChainPointResolver;
   private readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
   private readonly tipBlockNoResolver: () => Promise<number>;
   private readonly replayCheckpoints: NonNullable<
@@ -49,7 +50,11 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     readonly stateQueueAddress: string;
     readonly stateQueuePolicyId: string;
     readonly providerSource: string;
-    readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
+    /**
+     * Its `resolveAll`, when present, must reach the snapshot builder, which
+     * resolves a whole snapshot against one aligned tip through it.
+     */
+    readonly chainPointResolver?: ChainPointResolver;
     readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
     /**
      * Reads the tip block height. A snapshot reads it right after its

@@ -264,6 +264,21 @@ const expectStillPending = async (f: Fixture) => {
 
 const expectRefused = async (f: Fixture, message: string | RegExp) => {
   await expect(f.responder.tick()).rejects.toThrow(message);
+  expectNothingReleased(f);
+};
+
+/** Aborted like a refusal, but reported as the wait it is, not thrown. */
+const expectAwaitingScan = async (f: Fixture) => {
+  await expect(f.responder.tick()).resolves.toStrictEqual({
+    challenges: 0,
+    status: "awaiting_scan",
+    detail:
+      "Availability responder awaits the next canonical committee node L1 scan before acting",
+  });
+  expectNothingReleased(f);
+};
+
+const expectNothingReleased = (f: Fixture) => {
   expect(f.discover).not.toHaveBeenCalled();
   expect(f.state()).toBe("pending");
   expect(f.journal.reservedOutRefs(f.ours.actor)).toEqual(
@@ -368,28 +383,6 @@ describe("committee responder after a rival spent its step's inputs", () => {
       "Availability input spend lies above the canonical boundary",
     ],
     [
-      "the tip moves during the height read",
-      (f: Fixture) => {
-        f.chain.tipOverrides = [
-          undefined,
-          undefined,
-          { slot: f.chain.slot + 1 },
-        ];
-      },
-      "awaits the next canonical committee node L1 scan",
-    ],
-    [
-      "the height is read at a tip other than the cursor's point",
-      (f: Fixture) => {
-        f.chain.tipOverrides = [
-          undefined,
-          { blockHash: "ef".repeat(32) },
-          { blockHash: "ef".repeat(32) },
-        ];
-      },
-      "awaits the next canonical committee node L1 scan",
-    ],
-    [
       "Ogmios serves the spend without its raw transaction",
       (f: Fixture) => {
         delete f.chain.evidence!.cbor;
@@ -403,6 +396,40 @@ describe("committee responder after a rival spent its step's inputs", () => {
       try {
         arrange(f);
         await expectRefused(f, message);
+      } finally {
+        f.journal.close();
+      }
+    },
+  );
+
+  it.each([
+    [
+      "the tip moves during the height read",
+      (f: Fixture) => {
+        f.chain.tipOverrides = [
+          undefined,
+          undefined,
+          { slot: f.chain.slot + 1 },
+        ];
+      },
+    ],
+    [
+      "the height is read at a tip other than the cursor's point",
+      (f: Fixture) => {
+        f.chain.tipOverrides = [
+          undefined,
+          { blockHash: "ef".repeat(32) },
+          { blockHash: "ef".repeat(32) },
+        ];
+      },
+    ],
+  ])(
+    "awaits the next scan and releases nothing when %s",
+    async (_label, arrange) => {
+      const f = await fixture("settle", 3);
+      try {
+        arrange(f);
+        await expectAwaitingScan(f);
       } finally {
         f.journal.close();
       }

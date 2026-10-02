@@ -4,6 +4,10 @@ import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 
 import { PublicRetainedDaListener } from "./da/libp2p/PublicRetainedDaListener.js";
 import { loadPublicRetainedDaRuntimeConfig } from "./public-retained-da-config.js";
+import {
+  listenPublicRetainedDaHealth,
+  type PublicRetainedDaHealthServer,
+} from "./public-retained-da-health.js";
 import { stopPublicRetainedDaRuntime } from "./public-retained-da-runtime.js";
 import { PostgresPublicRetainedDaStore } from "./store/public-retained-da.js";
 
@@ -47,7 +51,53 @@ const main = async (): Promise<void> => {
   process.stdout.write(
     `midgard-public-retained-da listening on ${listener.getMultiaddrs().join(", ")}\n`,
   );
-  await waitForShutdown(listener, store);
+  const health = await listenHealthFromEnv(listener, store).catch(
+    async (error: unknown) => {
+      await stopPublicRetainedDaRuntime({ listener, store }).catch(
+        () => undefined,
+      );
+      throw error;
+    },
+  );
+  try {
+    await waitForShutdown(listener, store);
+  } finally {
+    await health?.close();
+  }
+};
+
+/** A header hash no state-queue header has: the probe only reaches the store. */
+const PROBE_HEADER_HASH = "00".repeat(28);
+
+/**
+ * `/healthz` and `/readyz` for the reader's supervisor, on
+ * DA_PUBLIC_RETAINED_DA_HEALTH_PORT (DA_PUBLIC_RETAINED_DA_HEALTH_HOST,
+ * default 127.0.0.1). Without a port the reader serves no HTTP at all.
+ */
+const listenHealthFromEnv = async (
+  listener: PublicRetainedDaListener,
+  store: PostgresPublicRetainedDaStore,
+): Promise<PublicRetainedDaHealthServer | undefined> => {
+  const port = process.env.DA_PUBLIC_RETAINED_DA_HEALTH_PORT;
+  if (port === undefined || port === "") return undefined;
+  if (!/^\d+$/u.test(port) || Number(port) > 65_535) {
+    throw new Error(
+      "DA_PUBLIC_RETAINED_DA_HEALTH_PORT must be a TCP port number",
+    );
+  }
+  const host = process.env.DA_PUBLIC_RETAINED_DA_HEALTH_HOST ?? "127.0.0.1";
+  const health = await listenPublicRetainedDaHealth({
+    port: Number(port),
+    host,
+    listener,
+    probeStore: async () => {
+      await store.getStateQueueHeader(PROBE_HEADER_HASH);
+    },
+  });
+  process.stdout.write(
+    `midgard-public-retained-da health on http://${host}:${port}\n`,
+  );
+  return health;
 };
 
 const waitForShutdown = async (
@@ -86,6 +136,9 @@ Dedicated public retained-DA TCP/Noise/Yamux reader. It requires:
   DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE
   DA_PUBLIC_RETAINED_DA_DATABASE_URL
   DA_PUBLIC_RETAINED_DA_DATABASE_ROLE
+
+Optional: DA_PUBLIC_RETAINED_DA_HEALTH_PORT (and _HOST, default 127.0.0.1)
+serves /healthz and /readyz for a supervisor.
 
 The database role must have SELECT and no DML privileges on
 committee_da_payloads and committee_state_queue_headers. File stores and the
