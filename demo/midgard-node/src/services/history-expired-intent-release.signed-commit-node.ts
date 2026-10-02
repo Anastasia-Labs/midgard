@@ -8,6 +8,7 @@ import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import { type LedgerSnapshotOutput } from "../l1-ledger-snapshot.js";
 import {
   C,
+  type CanonicalDepth,
   failure,
   ROOT_TAIL_HEADER_HASH,
   sha,
@@ -284,17 +285,32 @@ export type Decision =
    * the next source point decides again. */
   | Readonly<{ kind: "defer"; reason: string; sticky: boolean }>
   | Readonly<{ kind: "replace"; cause: string }>
-  | Readonly<{ kind: "revive"; revived: Pending.Record; node: QueueNode }>;
+  /** `displaced`: this node's locally finalized blocks on the same base (and
+   * their descendants), earliest first, that an L1 rollback took off the
+   * chain while `revived` now holds the base's slot at confirmation depth.
+   * The repair abandons them before it revives `revived`. */
+  | Readonly<{
+      kind: "revive";
+      revived: Pending.Record;
+      node: QueueNode;
+      displaced: readonly Pending.Record[];
+    }>;
 
 /** Authenticated evidence of the chain at the checkpoint: its exact-point
- * queue, and which signed commits (the active journal's and its replaced
+ * queue, which signed commits (the active journal's and its replaced
  * siblings') the owner's journaled canonical history holds (presence is proof
- * a commit landed; absence proves nothing, as retention is bounded). The
- * correction observer's view is read in `decide` itself, under a share lock,
- * so a re-derivation sees any change. */
+ * a commit landed; absence proves nothing, as retention is bounded), and the
+ * transaction that history shows spending the active journal's base output,
+ * when one other than its signed commit did. `canonicalDepth`, when given,
+ * says how deep that history holds a transaction; only with it can a locally
+ * finalized sibling be shown displaced (see `decide`). The correction
+ * observer's view is read in `decide` itself, under a share lock, so a
+ * re-derivation sees any change. */
 export type ReleaseEvidence = Readonly<{
   queue: QueueView;
+  baseSpend?: string | undefined;
   canonicalHistory: ReadonlySet<string>;
+  canonicalDepth?: CanonicalDepth | undefined;
   contracts: StateQueueContracts;
   rewindAuthority: StateQueueCorrectionRewindAuthority;
 }>;

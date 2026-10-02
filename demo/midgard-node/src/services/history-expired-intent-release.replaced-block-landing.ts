@@ -1,6 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import {
@@ -12,6 +11,10 @@ import * as Pending from "../database/pendingBlockFinalizations.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { type EventHistorySourceBinding } from "../l1-event-history-source.js";
 import { journalAbandonment } from "./canonical-journal-recovery.js";
+import {
+  journalBase,
+  sameBaseJournals,
+} from "./history-expired-intent-release.base-spend.js";
 import {
   type QueueNode,
   type QueueView,
@@ -104,18 +107,19 @@ export const replacedBlockLanding = (
   return evidence === undefined ? undefined : { onQueue: undefined, evidence };
 };
 
-/** This node's journals built on the same base output as `record` (so their
- * commits spend what its commit spends) that were abandoned for replacement.
- * Sorted by header. */
+/** This node's journals built on the same base as `record` (the same base
+ * output, or another incarnation of the same non-root base node, so their
+ * commits and its commit are mutually exclusive) that were abandoned for
+ * replacement. Sorted by header. */
 export const replacedSiblings = (record: Pending.Record) =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{ header_hash: Buffer }>`SELECT header_hash
-      FROM pending_block_finalizations
-      WHERE base_tail_out_ref = ${record[C.BASE_TAIL_OUT_REF]}
-        AND status = ${Pending.Status.Abandoned}
-        AND header_hash <> ${record[C.HEADER_HASH]}
-      ORDER BY header_hash`;
+    const rows = (yield* sameBaseJournals(journalBase(record), [
+      record[C.HEADER_HASH],
+    ]))
+      .filter(({ status }) => status === Pending.Status.Abandoned)
+      .sort((left, right) =>
+        Buffer.compare(left.header_hash, right.header_hash),
+      );
     const siblings: Pending.Record[] = [];
     for (const row of rows) {
       const found = yield* Pending.retrieveByHeaderHash(row.header_hash);

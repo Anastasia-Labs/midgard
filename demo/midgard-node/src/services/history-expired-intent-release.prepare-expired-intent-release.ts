@@ -34,12 +34,18 @@ import type { NodeConfigDep } from "./config.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
 import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
+import { scanBaseSpend } from "./history-expired-intent-release.base-spend.js";
+import {
+  declineBeforeTtl,
+  heldBaseOutput,
+} from "./history-expired-intent-release.before-ttl.js";
 import { decide } from "./history-expired-intent-release.decide.js";
 import {
   effective,
   openRetainedNativeOwner,
   persistedReplay,
 } from "./history-expired-intent-release.open-retained-native-owner.js";
+import { rederiveDecision } from "./history-expired-intent-release.rederive-decision.js";
 import {
   includedInCanonicalHistory,
   replacedSiblings,
@@ -54,6 +60,7 @@ import {
 import {
   activeSignedIntent,
   C,
+  declinedBeforeTtl,
   deferralKey,
   deferredUntilObserved,
   failure,
@@ -69,11 +76,14 @@ import {
   type StateQueueCorrectionRewindAuthority,
   stateQueueCorrectionRewindDisposition,
 } from "./state-queue-correction-rewind.js";
+import { nativeOwnerOpenWait } from "./state-queue-correction-rewind.prepare-state-queue-correction-rewind.js";
 
 /**
- * Recovery preparation: once the active signed intent's TTL is reached at
- * this checkpoint, reads the exact-point queue and confirms, replaces or
- * revives (see the module comment). Defers while a correction rewind is owed
+ * Recovery preparation: once the active signed intent cannot land at this
+ * checkpoint (its TTL is reached, or the canonical history shows its base
+ * output spent by another transaction or a replaced sibling's commit
+ * included), reads the exact-point queue and confirms, replaces or revives
+ * (see the module comment). Defers while a correction rewind is owed
  * (it may resolve this very journal) or while another plan is retained (its
  * owner resumes it first).
  */
@@ -123,7 +133,18 @@ export const prepareExpiredIntentRelease = (input: {
         }
         if (intent === undefined) return undefined;
         const ttl = signedTtl(intent.signedTxCbor);
-        if (ttl === undefined || BigInt(checkpoint.head.slot) < ttl)
+        if (ttl === undefined) return undefined;
+        const expired = BigInt(checkpoint.head.slot) >= ttl;
+        const baseSpend = yield* scanBaseSpend({
+          ...intent,
+          binding: input.binding,
+          fromHeight: -1,
+          toHeight: checkpoint.head.height,
+          declined: declinedBeforeTtl(input.deferral, deferralKey(intent)),
+        });
+        // Before the TTL, only evidence that its base output is gone (or its
+        // own retained plan, which is resumed) reconciles the intent.
+        if (!expired && baseSpend === undefined && retained === undefined)
           return undefined;
         const journal = yield* replaceableJournal(
           intent.headerHash,
@@ -132,6 +153,9 @@ export const prepareExpiredIntentRelease = (input: {
         return {
           ...journal,
           ttl,
+          expired,
+          baseSpend,
+          key: deferralKey(intent),
           identity: journalIdentity(journal.record),
           retainedPlan: retained !== undefined,
           // The retained plan's CAS moves the native root from its candidate
@@ -170,8 +194,21 @@ export const prepareExpiredIntentRelease = (input: {
       capture.ledger.outputs,
       input.contracts,
     );
+    const context = `signed commit ${signedTx} of block ${header} (TTL slot ${derived.ttl.toString()}, head slot ${checkpoint.head.slot.toString()})`;
+    const { baseSpend } = derived;
+    const decline = (reason: string) =>
+      declineBeforeTtl({
+        ...derived,
+        deferral: input.deferral,
+        reportKey,
+        context,
+        reason,
+      });
+    const held = heldBaseOutput(derived, queue, record[C.BASE_TAIL_OUT_REF]);
+    if (held !== undefined && (yield* decline(held))) return;
     const evidence: ReleaseEvidence = {
       queue,
+      baseSpend: baseSpend?.kind === "spent" ? baseSpend.txHash : undefined,
       canonicalHistory: yield* owned(
         replacedSiblings(record).pipe(
           Effect.flatMap((siblings) =>
@@ -188,37 +225,33 @@ export const prepareExpiredIntentRelease = (input: {
       contracts: input.contracts,
       rewindAuthority: input.rewindAuthority,
     };
-    // Re-derives the decision and the unchanged journal inside the caller's
-    // transaction.
     const current = (expected: Decision["kind"]) =>
-      Effect.gen(function* () {
-        const journal = yield* replaceableJournal(
-          headerHash,
-          checkpoint.manifestId,
-        );
-        if (journalIdentity(journal.record) !== derived.identity)
-          return yield* Effect.fail(
-            failure(`Signed-intent journal ${header} identity changed`),
-          );
-        const decision = effective(
-          yield* decide(journal.record, evidence),
-          derived.retainedPlan,
-        );
-        if (decision.kind !== expected)
-          return yield* Effect.fail(
-            failure(
-              `Signed-intent decision for ${header} changed from ${expected} to ${decision.kind}`,
-            ),
-          );
-        return { ...journal, decision };
+      rederiveDecision({
+        headerHash,
+        manifestId: checkpoint.manifestId,
+        identity: derived.identity,
+        evidence,
+        retainedPlan: derived.retainedPlan,
+        expected,
       });
     const decision = effective(
       yield* owned(decide(record, evidence)),
       derived.retainedPlan,
     );
     const globals = yield* Globals;
-    const context = `signed commit ${signedTx} of block ${header} (TTL slot ${derived.ttl.toString()}, head slot ${checkpoint.head.slot.toString()})`;
+    // An owner that cannot open yet keeps the gate closed; others are fatal.
+    const openOwner = openRetainedNativeOwner(globals, config).pipe(
+      Effect.catchIf(
+        (error) => nativeOwnerOpenWait(error) !== undefined,
+        (error) =>
+          reportOnce(
+            reportKey,
+            `Cannot reconcile ${context} yet: ${nativeOwnerOpenWait(error)!}. The history gate stays closed.`,
+          ).pipe(Effect.as(undefined)),
+      ),
+    );
 
+    if (decision.kind === "wait" && (yield* decline(decision.reason))) return;
     if (decision.kind === "wait") {
       yield* reportOnce(
         reportKey,
@@ -227,14 +260,10 @@ export const prepareExpiredIntentRelease = (input: {
       return;
     }
     if (decision.kind === "defer") {
-      const key = deferralKey({
-        headerHash,
-        intendedTxHash: record[C.INTENDED_TX_HASH]!,
-      });
-      if (decision.sticky) input.deferral.current = key;
+      if (decision.sticky) input.deferral.current = derived.key;
       else
         input.deferral.untilObserved = deferredUntilObserved(
-          key,
+          derived.key,
           yield* owned(observerFingerprint(input.rewindAuthority)),
         );
       yield* reportOnce(
@@ -259,7 +288,8 @@ export const prepareExpiredIntentRelease = (input: {
         // base root (a journal never promoted) is base to base: the native
         // root never left the base, local finalization replays the journal,
         // and replaying here would strand the plan outside its roots.
-        const owner = yield* openRetainedNativeOwner(globals, config);
+        const owner = yield* openOwner;
+        if (owner === undefined) return;
         yield* preparation.assertCurrent;
         yield* Effect.tryPromise({
           try: () => owner.recover(persistedReplay(record.nativeMpfReplay!)),
@@ -355,7 +385,8 @@ export const prepareExpiredIntentRelease = (input: {
     );
     if (config.SPECULATIVE_COMMIT_BUILD)
       yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
-    const owner = yield* openRetainedNativeOwner(globals, config);
+    const owner = yield* openOwner;
+    if (owner === undefined) return;
     yield* preparation.assertCurrent;
     const diagnostics = yield* Effect.tryPromise({
       try: () => owner.diagnostics(),

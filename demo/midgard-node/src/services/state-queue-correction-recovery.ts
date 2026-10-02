@@ -94,11 +94,14 @@ export const authorizeStateQueueCorrectionReinclusion = (
 
 /** One block reopened by an admitted correction: a block the correction
  * removed, or a descendant proven never to reach L1 because its commit spends
- * the removed block's consumed queue node. */
+ * the removed block's consumed queue node. `displaced`: a locally finalized
+ * block that an L1 rollback took off the chain, whose base slot another block
+ * of this node now holds at confirmation depth (see the signed-intent release
+ * decision); it is abandoned like an unlanded one. */
 export type StateQueueCorrectedBlock = Readonly<{
   headerHash: string;
   transitionDigest: string;
-  kind: "removed" | "unlanded";
+  kind: "removed" | "unlanded" | "displaced";
 }>;
 
 const Status = PendingBlockFinalizationsDB.Status;
@@ -112,15 +115,18 @@ const REMOVED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
   Status.ObservedWaitingStability,
   Status.Finalized,
 ];
-/** An unlanded descendant was never observed on L1. */
-const UNLANDED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
-  Status.PendingSubmission,
-  Status.SubmittedLocalFinalizationPending,
-  Status.SubmittedUnconfirmed,
-];
+/** Journal statuses of a block this node never observed on L1. Observed and
+ * finalized journals landed; they are never treated as unlanded. The one
+ * definition every unlanded check reads. */
+export const UNLANDED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
+  [
+    Status.PendingSubmission,
+    Status.SubmittedLocalFinalizationPending,
+    Status.SubmittedUnconfirmed,
+  ];
 /** Statuses reached only after local finalization wrote ImmutableDB and
  * BlocksDB and applied the block's withdrawal ledger effects. */
-const LOCALLY_FINALIZED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
+export const LOCALLY_FINALIZED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
   [
     Status.SubmittedUnconfirmed,
     Status.ObservedWaitingStability,
@@ -263,7 +269,11 @@ export const reincludeStateQueueCorrectedBlocks = (
               .map(PendingBlockFinalizationsDB.txMemberToEntry);
             const status = record[J.STATUS];
             const allowed =
-              kind === "removed" ? REMOVED_STATUSES : UNLANDED_STATUSES;
+              kind === "removed"
+                ? REMOVED_STATUSES
+                : kind === "displaced"
+                  ? LOCALLY_FINALIZED_STATUSES
+                  : UNLANDED_STATUSES;
             const removedAwaitingAck =
               kind === "removed" &&
               status === Status.PendingSubmission &&
