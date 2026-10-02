@@ -305,7 +305,7 @@ export const STATE_QUEUE_CORRECTION_REWIND_CONFLICT =
 /** One scheduled correction step. A transient failure is logged and retried
  * on the next tick. A rewind integrity failure (the node cannot re-apply a
  * rewound block) is not transient: it raises
- * `state_queue_correction_rewind_conflict`, which holds the commit and
+ * `state_queue_correction_rewind_conflict`, which holds the commit, merge and
  * settlement fibers, and the step keeps refusing its own effects (the
  * observer reconciliation that raises it runs before any submission) while
  * every later tick re-derives the removal against L1. The first step that
@@ -343,7 +343,7 @@ export const attestationTimeoutCorrectionStep = <R>(
                 globals,
                 HaltSource.stateQueueCorrectionRewind,
                 STATE_QUEUE_CORRECTION_REWIND_CONFLICT,
-                `${integrity.message} Block commitment and settlement are held, and the correction re-derives the removal against L1 on every tick until it agrees.`,
+                `${integrity.message} Block commitment, merge and settlement are held, and the correction re-derives the removal against L1 on every tick until it agrees.`,
               ),
         ),
       );

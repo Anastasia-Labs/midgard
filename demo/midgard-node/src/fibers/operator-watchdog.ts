@@ -181,13 +181,18 @@ const deferWatchdog = (input: {
 /**
  * One watchdog tick. `beforeStrike` runs before any strike or forced
  * retirement is built; a refusal defers the watchdog until the time it names
- * and strikes nobody.
+ * and strikes nobody. `whileNoStrikeDue` runs on an idle or waiting tick, so
+ * a reason the gate raised clears without a strike falling due; a wait is cut
+ * short to the time it returns. Neither has a default, so a caller that
+ * passes a gate cannot leave its reasons without a clear.
  */
 export const makeOperatorWatchdogTick = <R = never>(
   beforeStrike: (
     nowMs: number,
-  ) => Effect.Effect<ManifestGateDecision, never, R> = () =>
-    Effect.succeed({ ok: true }),
+  ) => Effect.Effect<ManifestGateDecision, never, R>,
+  whileNoStrikeDue: (
+    nowMs: number,
+  ) => Effect.Effect<number | undefined, never, R>,
 ): Effect.Effect<
   void,
   never,
@@ -275,10 +280,19 @@ export const makeOperatorWatchdogTick = <R = never>(
             `🐕 Operator watchdog idle: takeover blocked (${planning.plan.reason}: ${planning.plan.detail}).`,
           );
         }
+        yield* whileNoStrikeDue(nowMs);
         return yield* defer(reason, nowMs + OPERATOR_WATCHDOG_IDLE_RECHECK_MS);
       }
-      case "wait":
-        return yield* defer(decision.reason, decision.untilMs);
+      case "wait": {
+        // A wait can last a whole shift; a raised gate reason retries sooner.
+        const retryAtMs = yield* whileNoStrikeDue(nowMs);
+        return yield* defer(
+          decision.reason,
+          retryAtMs === undefined
+            ? decision.untilMs
+            : Math.min(decision.untilMs, retryAtMs),
+        );
+      }
       case "strike":
       case "force_retire": {
         if (
@@ -396,7 +410,10 @@ export const makeOperatorWatchdogTick = <R = never>(
 
 /** The tick without a strike gate, for callers that verified the deployment
  * manifest themselves. */
-export const operatorWatchdogTick = makeOperatorWatchdogTick();
+export const operatorWatchdogTick = makeOperatorWatchdogTick(
+  () => Effect.succeed({ ok: true }),
+  () => Effect.succeed(undefined),
+);
 
 export const operatorWatchdogFiber = (
   schedule: Schedule.Schedule<number>,
@@ -414,8 +431,9 @@ export const operatorWatchdogFiber = (
       return;
     }
     // Every lifecycle verb verifies the deployment manifest before it acts;
-    // the watchdog verifies it before its first strike and retries a failed
-    // verification (see `makeManifestStrikeGate`).
+    // the watchdog verifies it before its first strike, retries a failed
+    // verification, and re-verifies a raised reason on ticks with no strike
+    // due (see `makeManifestStrikeGate`).
     const globals = yield* Globals;
     const gate = yield* makeManifestStrikeGate(
       globals,
@@ -424,7 +442,10 @@ export const operatorWatchdogFiber = (
     yield* Effect.logInfo(
       `🐕 Operator watchdog fiber started (patience_ms=${nodeConfig.OPERATOR_WATCHDOG_PATIENCE_MS.toString()}).`,
     );
-    const action = makeOperatorWatchdogTick(gate.beforeStrike).pipe(
+    const action = makeOperatorWatchdogTick(
+      gate.beforeStrike,
+      gate.whileNoStrikeDue,
+    ).pipe(
       Effect.withSpan("operator-watchdog-fiber"),
       // The tick's error channel is `never`; anything caught here is a defect.
       Effect.catchAllCause(Effect.logError),

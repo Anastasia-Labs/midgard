@@ -189,9 +189,15 @@ describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
       process.kill(childPids[0]!, "SIGKILL");
       await waitUntil(() => childPids.length === 2);
       expect(childPids).toHaveLength(2);
+      // Kill the restarted child only once it serves, so the second restart
+      // follows the death of a running owner, not a restart still loading.
+      expect((await service.diagnostics()).childRestarts).toBe(1);
       process.kill(childPids[1]!, "SIGKILL");
       await waitUntil(() => service.restartHealth().restartsInWindow === 2);
-      expect(service.restartHealth().restartsInWindow).toBe(2);
+      expect(service.restartHealth()).toMatchObject({
+        restartsInWindow: 2,
+        failedRestartsInWindow: 0,
+      });
       const closedAt = Date.now();
       await service.close();
       closed = true;

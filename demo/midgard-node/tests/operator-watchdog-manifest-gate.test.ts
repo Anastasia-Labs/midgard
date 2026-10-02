@@ -46,6 +46,8 @@ const gateOver = (outcomes: readonly Outcome[]) => {
   return {
     beforeStrike: (nowMs: number): ManifestGateDecision =>
       Effect.runSync(gate.beforeStrike(nowMs)),
+    whileNoStrikeDue: (nowMs: number): number | undefined =>
+      Effect.runSync(gate.whileNoStrikeDue(nowMs)),
     verifications: () => verifications,
     raised: () => Effect.runSync(Ref.get(globals.LIVENESS_REASONS)).get(SOURCE),
   };
@@ -133,5 +135,75 @@ describe("operator watchdog manifest strike gate", () => {
     expect(gate.raised()).toBe(OPERATOR_WATCHDOG_MANIFEST_MISMATCH);
     expect(gate.beforeStrike(recheck + recheck)).toEqual({ ok: true });
     expect(gate.raised()).toBeUndefined();
+  });
+
+  it("re-verifies on its retry cadence while no strike is due, and clears an unverified reason once a verification succeeds", () => {
+    const gate = gateOver(["error", "error", "error", "error", "match"]);
+    const base = OPERATOR_WATCHDOG_MANIFEST_RETRY_BASE_MS;
+    // Three failures while a strike was due raise the reason.
+    gate.beforeStrike(0);
+    gate.beforeStrike(base);
+    gate.beforeStrike(3 * base);
+    expect(gate.raised()).toBe(OPERATOR_WATCHDOG_MANIFEST_UNVERIFIED);
+    // The strike stops being due. Before the retry is due nothing is verified,
+    // and the next retry time is handed back so the watchdog ticks by then.
+    expect(gate.whileNoStrikeDue(7 * base - 1)).toBe(7 * base);
+    expect(gate.verifications()).toBe(3);
+    // A failing retry keeps the reason and backs off.
+    expect(gate.whileNoStrikeDue(7 * base)).toBe(15 * base);
+    expect(gate.verifications()).toBe(4);
+    expect(gate.raised()).toBe(OPERATOR_WATCHDOG_MANIFEST_UNVERIFIED);
+    // The next retry succeeds: the reason clears with no strike due.
+    expect(gate.whileNoStrikeDue(15 * base)).toBeUndefined();
+    expect(gate.verifications()).toBe(5);
+    expect(gate.raised()).toBeUndefined();
+    expect(gate.beforeStrike(15 * base + 1)).toEqual({ ok: true });
+    expect(gate.verifications()).toBe(5);
+  });
+
+  it("clears a mismatch on an idle re-read that matches", () => {
+    const gate = gateOver(["mismatch", "mismatch", "match"]);
+    const recheck = OPERATOR_WATCHDOG_MANIFEST_MISMATCH_RECHECK_MS;
+    gate.beforeStrike(0);
+    expect(gate.raised()).toBe(OPERATOR_WATCHDOG_MANIFEST_MISMATCH);
+    expect(gate.whileNoStrikeDue(recheck - 1)).toBe(recheck);
+    expect(gate.whileNoStrikeDue(recheck)).toBe(2 * recheck);
+    expect(gate.raised()).toBe(OPERATOR_WATCHDOG_MANIFEST_MISMATCH);
+    expect(gate.whileNoStrikeDue(2 * recheck)).toBeUndefined();
+    expect(gate.raised()).toBeUndefined();
+    expect(gate.verifications()).toBe(3);
+  });
+
+  it("verifies nothing while no strike is due and no reason is raised", () => {
+    const gate = gateOver(["error"]);
+    expect(gate.whileNoStrikeDue(0)).toBeUndefined();
+    // Two failures while a strike was due are below the reason's threshold.
+    gate.beforeStrike(0);
+    gate.beforeStrike(OPERATOR_WATCHDOG_MANIFEST_RETRY_BASE_MS);
+    for (const nowMs of [10 * OPERATOR_WATCHDOG_MANIFEST_RETRY_MAX_MS, 1e12])
+      expect(gate.whileNoStrikeDue(nowMs)).toBeUndefined();
+    expect(gate.verifications()).toBe(2);
+    expect(gate.raised()).toBeUndefined();
+  });
+
+  it("still refuses a due strike, and keeps the reason, while idle re-verifications keep failing", () => {
+    const gate = gateOver(["error"]);
+    const base = OPERATOR_WATCHDOG_MANIFEST_RETRY_BASE_MS;
+    gate.beforeStrike(0);
+    gate.beforeStrike(base);
+    gate.beforeStrike(3 * base);
+    expect(gate.whileNoStrikeDue(7 * base)).toBe(15 * base);
+    expect(gate.raised()).toBe(OPERATOR_WATCHDOG_MANIFEST_UNVERIFIED);
+    // A strike becomes due again: refused before and at its retry.
+    expect(gate.beforeStrike(15 * base - 1)).toMatchObject({
+      ok: false,
+      reason: "manifest_unverified",
+    });
+    expect(gate.beforeStrike(15 * base)).toMatchObject({
+      ok: false,
+      reason: "manifest_unverified",
+    });
+    expect(gate.raised()).toBe(OPERATOR_WATCHDOG_MANIFEST_UNVERIFIED);
+    expect(gate.verifications()).toBe(5);
   });
 });

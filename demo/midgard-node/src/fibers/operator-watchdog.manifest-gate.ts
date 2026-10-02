@@ -56,8 +56,22 @@ export type ManifestStrikeGate<R> = Readonly<{
   beforeStrike: (
     nowMs: number,
   ) => Effect.Effect<ManifestGateDecision, never, R>;
+  /** Run on every tick on which no strike is due. While a reason is raised it
+   * verifies again on the same retry cadence, so the reason clears once the
+   * manifest verifies rather than at the next due strike, which may never
+   * come. With no reason raised it verifies nothing. Returns the time of its
+   * next retry while a reason stays raised, so the caller ticks by then. */
+  whileNoStrikeDue: (
+    nowMs: number,
+  ) => Effect.Effect<number | undefined, never, R>;
   state: Effect.Effect<ManifestGateState>;
 }>;
+
+/** Whether `state` has a liveness reason raised. */
+const reasonRaised = (state: ManifestGateState): boolean =>
+  state.verdict === "mismatch" ||
+  (state.verdict === "unverified" &&
+    state.consecutiveErrors >= OPERATOR_WATCHDOG_MANIFEST_UNVERIFIED_AFTER);
 
 /**
  * Every lifecycle verb verifies the deployment manifest before it acts; the
@@ -66,8 +80,9 @@ export type ManifestStrikeGate<R> = Readonly<{
  * failure) no longer disables the watchdog for the process's lifetime. A
  * verification error is retried with bounded backoff. A confirmed mismatch
  * refuses every strike, is surfaced in readiness, and is re-read at a slow
- * cadence. Once verified the verdict is kept: the manifest cannot change
- * without a redeploy and a restart.
+ * cadence. A raised reason is re-verified on ticks with no strike due as
+ * well, so it clears without waiting for a strike. Once verified the verdict
+ * is kept: the manifest cannot change without a redeploy and a restart.
  */
 export const makeManifestStrikeGate = <R>(
   globals: Pick<Globals, "LIVENESS_REASONS">,
@@ -167,5 +182,12 @@ export const makeManifestStrikeGate = <R>(
         );
         return { ok: true } as const;
       });
-    return { beforeStrike, state: Ref.get(state) };
+    const whileNoStrikeDue = (nowMs: number) =>
+      Effect.gen(function* () {
+        if (!reasonRaised(yield* Ref.get(state))) return undefined;
+        yield* beforeStrike(nowMs);
+        const after = yield* Ref.get(state);
+        return reasonRaised(after) ? after.retryAtMs : undefined;
+      });
+    return { beforeStrike, whileNoStrikeDue, state: Ref.get(state) };
   });

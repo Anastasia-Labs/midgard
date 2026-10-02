@@ -30,6 +30,11 @@ export const L1_CONTROL_PLANE_HOLDER_OVERRUN_GRACE_MS = 60_000;
 export const L1_CONTROL_PLANE_WEDGED_WAIT_FACTOR = 3;
 /** Consecutive hold timeouts in one scope that make it a liveness reason. */
 export const L1_CONTROL_PLANE_HOLD_TIMEOUT_STREAK = 3;
+/** A scope's hold-timeout streak stops being a liveness reason this many
+ * multiples of its timed-out hold budget after its latest timeout, unless the
+ * scope holds or waits for the permit. A scope entered only conditionally may
+ * never hold again to reset its streak. */
+export const L1_CONTROL_PLANE_HOLD_TIMEOUT_QUIET_FACTOR = 3;
 
 export type L1ControlPlaneActivity = {
   readonly holder: {
@@ -45,6 +50,9 @@ export type L1ControlPlaneActivity = {
    */
   readonly unregisteredHoldBudgetMs: number;
   readonly consecutiveHoldTimeouts: ReadonlyMap<string, number>;
+  /** Per scope with a streak: until when it is reported with the scope
+   * neither holding nor waiting. */
+  readonly holdTimeoutQuietUntilMs: ReadonlyMap<string, number>;
 };
 
 export type L1ControlPlaneWaiter = {
@@ -59,6 +67,7 @@ export const initialL1ControlPlaneActivity = (): L1ControlPlaneActivity => ({
   waiters: new Map(),
   unregisteredHoldBudgetMs: DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   consecutiveHoldTimeouts: new Map(),
+  holdTimeoutQuietUntilMs: new Map(),
 });
 
 /**
@@ -107,7 +116,7 @@ export const l1ControlPlaneWedgedGauge = Metric.gauge(
  * The liveness reasons the L1 control plane raises at `nowMs`: a holder whose
  * interruption has not completed long after its deadline, a waiter blocked
  * for several multiples of the largest hold, and a scope whose holds keep
- * timing out.
+ * timing out, while it holds, waits, or timed out recently.
  */
 export const l1ControlPlaneLivenessReasons = (
   activity: L1ControlPlaneActivity,
@@ -138,8 +147,16 @@ export const l1ControlPlaneLivenessReasons = (
       `l1_control_plane_wedged:waiter=${oldest.scope}:wait_ms=${(nowMs - oldest.sinceMs).toString()}`,
     );
   }
+  const active = new Set<string>(
+    [...activity.waiters.values()].map((waiter) => waiter.scope),
+  );
+  if (holder !== null) active.add(holder.scope);
   for (const [scope, count] of activity.consecutiveHoldTimeouts) {
-    if (count >= L1_CONTROL_PLANE_HOLD_TIMEOUT_STREAK) {
+    if (
+      count >= L1_CONTROL_PLANE_HOLD_TIMEOUT_STREAK &&
+      (active.has(scope) ||
+        nowMs <= (activity.holdTimeoutQuietUntilMs.get(scope) ?? -Infinity))
+    ) {
       reasons.push(
         `l1_control_plane_hold_timeouts:${scope}:${count.toString()}`,
       );
@@ -229,7 +246,9 @@ const recordHoldExit = (
   current: L1ControlPlaneActivity,
   scope: string,
   holdStartedAtMs: number,
+  holdBudgetMs: number,
   exit: Exit.Exit<unknown, unknown>,
+  nowMs: number,
 ): L1ControlPlaneActivity => {
   const activity =
     current.holder?.sinceMs === holdStartedAtMs
@@ -244,15 +263,21 @@ const recordHoldExit = (
   // Interrupted from outside, the hold says nothing about its own budget.
   if (!timedOut && Exit.isInterrupted(exit)) return activity;
   const consecutiveHoldTimeouts = new Map(activity.consecutiveHoldTimeouts);
+  const holdTimeoutQuietUntilMs = new Map(activity.holdTimeoutQuietUntilMs);
   if (timedOut) {
     consecutiveHoldTimeouts.set(
       scope,
       (consecutiveHoldTimeouts.get(scope) ?? 0) + 1,
     );
+    holdTimeoutQuietUntilMs.set(
+      scope,
+      nowMs + L1_CONTROL_PLANE_HOLD_TIMEOUT_QUIET_FACTOR * holdBudgetMs,
+    );
   } else {
     consecutiveHoldTimeouts.delete(scope);
+    holdTimeoutQuietUntilMs.delete(scope);
   }
-  return { ...activity, consecutiveHoldTimeouts };
+  return { ...activity, consecutiveHoldTimeouts, holdTimeoutQuietUntilMs };
 };
 
 /**
@@ -412,8 +437,17 @@ export const withL1ControlPlane = <A, E, R>(
             Effect.gen(function* () {
               yield* Fiber.interrupt(watchdog);
               yield* l1ControlPlaneWedgedGauge(Effect.succeed(0));
+              const holdBudgetMs =
+                (yield* Ref.get(deadlineMs)) - holdStartedAtMs;
               yield* updateActivity(globals, (activity) =>
-                recordHoldExit(activity, scope, holdStartedAtMs, exit),
+                recordHoldExit(
+                  activity,
+                  scope,
+                  holdStartedAtMs,
+                  holdBudgetMs,
+                  exit,
+                  Date.now(),
+                ),
               );
               yield* holdTimer(
                 Effect.succeed(Duration.millis(Date.now() - holdStartedAtMs)),
