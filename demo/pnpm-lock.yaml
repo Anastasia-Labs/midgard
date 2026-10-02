@@ -272,6 +272,9 @@ importers:
       '@lucid-evolution/scalus-uplc':
         specifier: 0.1.3
         version: 0.1.3
+      '@lucid-evolution/uplc':
+        specifier: file:../vendor/uplc-0.2.23-midgard.1.tgz
+        version: file:vendor/uplc-0.2.23-midgard.1.tgz
       '@types/json-bigint':
         specifier: 1.0.4
         version: 1.0.4

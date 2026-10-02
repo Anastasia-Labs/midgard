@@ -2,10 +2,14 @@ import {
   makeSpendingValidator as makeSdkSpendingValidator,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
+import { encodeCborArrayRaw, readCborBytes } from "@al-ft/midgard-core/codec";
 import {
   applyDoubleCborEncoding,
-  applyParamsToScript,
+  Data,
+  fromHex,
+  toHex,
 } from "@lucid-evolution/lucid";
+import { apply_params_to_script } from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -55,7 +59,18 @@ describe("emulator blueprint application boundary", () => {
       (validator) => validator.title === title,
     )!;
     const params = [policyId, policyId];
-    const expected = applyParamsToScript(entry.compiledCode, params);
+    const expected = applyDoubleCborEncoding(
+      toHex(
+        apply_params_to_script(
+          encodeCborArrayRaw(params.map((param) => fromHex(Data.to(param)))),
+          readCborBytes(
+            fromHex(applyDoubleCborEncoding(entry.compiledCode)),
+            0,
+            "independent application",
+          ).value,
+        ),
+      ),
+    );
     expect(applyCompiledScript(blueprint, title, params)).toBe(expected);
     expect(applyCompiledScript(blueprint, title, params)).toBe(expected);
     expect(() => applyCompiledScript(blueprint, title, [policyId])).toThrow(
