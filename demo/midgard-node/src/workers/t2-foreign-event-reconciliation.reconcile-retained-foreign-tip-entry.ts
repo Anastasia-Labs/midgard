@@ -23,6 +23,9 @@ import {
   type T2ForeignEventResolution,
 } from "./t2-foreign-event-reconciliation.resolve-t2-foreign-event-evidence.js";
 
+/** How the `markAwaiting` call below stores an `invalid` verdict. */
+const STORED_INVALID_PREFIX = "invalid:";
+
 export const reconcileRetainedForeignTipEntry = (
   initialEntry: ForeignTipReconciliationsDB.Entry,
 ): Effect.Effect<
@@ -208,6 +211,33 @@ export const reconcileRetainedForeignTipEntry = (
           payload,
           payloadError,
         });
+        // A stored `invalid` is positive evidence against the block, so it
+        // stays until a payload held this pass verifies against the header (a
+        // held payload that fails yields a fresh `invalid`). A pass that only
+        // lost the failing payload must not weaken it to `missing` or `Ready`.
+        const storedReason =
+          entry[ForeignTipReconciliationsDB.Columns.BLOCKING_REASON];
+        const storedInvalidDetail = storedReason?.startsWith(
+          STORED_INVALID_PREFIX,
+        )
+          ? storedReason.slice(STORED_INVALID_PREFIX.length)
+          : undefined;
+        if (
+          storedInvalidDetail !== undefined &&
+          payload === undefined &&
+          !(
+            resolution.type === "AwaitingForeignDa" &&
+            resolution.reason === "invalid"
+          )
+        ) {
+          return {
+            type: "AwaitingForeignDa",
+            foreignHeaderHash,
+            reason: "invalid",
+            detail: storedInvalidDetail,
+            present: emptyIds(),
+          } as const;
+        }
         if (resolution.type === "AwaitingForeignDa") {
           yield* ForeignTipReconciliationsDB.markAwaiting({
             foreignHeaderHash,

@@ -242,11 +242,14 @@ export const reconcileOverdueAwaitingEventsAgainstRetainedForeignTips = ({
   );
 
 /**
- * The read-only gate for a speculative build, which must not write. It refuses
- * whenever the ordinary gate could: an unverified row whose stored verdict no
- * window lifts or whose window can still collide with the block, or a
- * resolved row holding late events only a replay can classify. The refusal hands the build back to the ordinary path, which
- * replays.
+ * The read-only gate for a speculative build, which must not write. It reads
+ * only stored verdicts, and refuses on an unverified row whose stored verdict
+ * no window lifts or whose window can still collide with the block, or on a
+ * resolved row holding late events only a replay can classify. It cannot see
+ * a verdict no replay has derived yet: a row never replayed (still
+ * `pending_evidence`) whose payload would fail verification gates only by its
+ * window until the ordinary path replays it. A refusal hands the build back to
+ * the ordinary path, which replays.
  */
 export const assessRetainedForeignTipWindows = ({
   eventsIngestedThrough,

@@ -34,10 +34,14 @@ export type Unresolved = {
 };
 
 /**
- * Verdicts no window can lift: the foreign block is malformed or its payload
- * failed verification (`invalid`), or verified DA proves it already carries
- * one of this node's events. Each refuses every commit, as before the window
- * gate existed, and a row holding one is never pruned by time.
+ * Verdicts no window can lift. Each refuses every commit, as before the window
+ * gate existed, and the prune keeps a row while it holds one.
+ * - `invalid`: the foreign header is malformed on its face, or a DA payload
+ *   this node held for it failed verification against it. The replay keeps a
+ *   stored `invalid` until a payload verifies against the header, so neither
+ *   losing the failing payload nor time lifts it.
+ * - `foreign_event_present_requires_finalization`: verified DA proves the
+ *   block carries one of this node's events. Each replay derives it afresh.
  */
 const UNCONDITIONAL_REASONS: readonly AwaitingForeignDa["reason"][] = [
   "invalid",

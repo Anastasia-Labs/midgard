@@ -27,6 +27,7 @@ import {
   indexForcedTransaction,
   indexWithdrawal,
   INGESTED_PAST_WINDOW,
+  NONEMPTY_ROOT,
   nonEmptyWindowHeader,
   oneDepositPayload,
   onNode,
@@ -82,26 +83,37 @@ const staleWindow = {
 };
 
 describe("foreign-tip verdicts the window cannot lift", () => {
-  it("classifies a non-empty root with a zero count as invalid from the header alone", async () => {
-    const header = nonEmptyWindowHeader({ depositCount: 0n });
-    const result = await Effect.runPromise(
-      Effect.flatMap(SDK.hashBlockHeader(header), (foreignHeaderHash) =>
-        resolveT2ForeignEventEvidence({
-          foreignHeaderHash,
-          header,
-          candidateIds: {
-            deposits: [],
-            forcedTransactions: [],
-            withdrawals: [],
-          },
-        }),
-      ),
-    );
-    expect(result).toMatchObject({
-      type: "AwaitingForeignDa",
-      reason: "invalid",
-      detail: "foreign header event root/count evidence is inconsistent",
-    });
+  it("classifies a header whose event root and count disagree as invalid from the header alone, for every event kind", async () => {
+    const pairs = [
+      ["depositsRoot", "depositCount"],
+      ["forcedTransactionsRoot", "forcedTransactionCount"],
+      ["withdrawalsRoot", "withdrawalCount"],
+    ] as const;
+    for (const [root, count] of pairs) {
+      for (const header of [
+        headerFor({ [root]: NONEMPTY_ROOT, totalEventCount: 1n }),
+        headerFor({ [count]: 1n, totalEventCount: 1n }),
+      ]) {
+        const result = await Effect.runPromise(
+          Effect.flatMap(SDK.hashBlockHeader(header), (foreignHeaderHash) =>
+            resolveT2ForeignEventEvidence({
+              foreignHeaderHash,
+              header,
+              candidateIds: {
+                deposits: [],
+                forcedTransactions: [],
+                withdrawals: [],
+              },
+            }),
+          ),
+        );
+        expect(result).toMatchObject({
+          type: "AwaitingForeignDa",
+          reason: "invalid",
+          detail: "foreign header event root/count evidence is inconsistent",
+        });
+      }
+    }
   });
 
   it("keeps refusing a self-inconsistent foreign header with an empty window, before and after the horizon, while an honest one commits", async () => {
@@ -230,16 +242,24 @@ describe("foreign window occupancy for every event kind", () => {
             return { hash, outside, inside: yield* gate() };
           }),
         );
+        // ... and closed at the end: an event at exactly the end lies inside.
+        const atEnd = await onNode(
+          Effect.gen(function* () {
+            yield* recordForeignTip(nonEmptyWindowHeader());
+            yield* index(new Date(WINDOW_END_MS), status as never);
+            return yield* gate();
+          }),
+        );
         expect(result.outside.type).toBe("Ready");
-        expect(result.inside).toMatchObject({
-          type: "AwaitingForeignDa",
-          foreignHeaderHash: result.hash,
-          reason: "missing",
-        });
-        if (result.inside.type === "AwaitingForeignDa")
-          expect(result.inside.detail).toContain(
-            "gate=pending_event_in_window",
-          );
+        for (const refusal of [result.inside, atEnd]) {
+          expect(refusal).toMatchObject({
+            type: "AwaitingForeignDa",
+            foreignHeaderHash: result.hash,
+            reason: "missing",
+          });
+          if (refusal.type === "AwaitingForeignDa")
+            expect(refusal.detail).toContain("gate=pending_event_in_window");
+        }
       });
     }
   }
