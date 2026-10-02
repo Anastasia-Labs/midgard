@@ -13,6 +13,7 @@ import {
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
 } from "../database/index.js";
+import * as SettlementJournal from "../database/settlement.js";
 import { blockCommitmentAction } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
 import {
@@ -37,7 +38,7 @@ import {
 import {
   PIPELINE_STATUS_ENDPOINT,
   PROTOCOL_INFO_ENDPOINT,
-} from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import * as ProtocolInfoCommand from "./protocol-info.js";
 
 type PipelineStatusCountRow = {
@@ -67,6 +68,27 @@ type PipelineStatusCountOnlyRow = {
 
 const bigintString = (value: bigint | number | string): string =>
   BigInt(value).toString();
+
+/** How many failing settlement jobs `/pipeline-status` names. */
+export const PIPELINE_STATUS_FAILING_SETTLEMENT_JOB_LIMIT = 20;
+
+export const encodePipelineStatusSettlement = ({
+  unfinishedJobs,
+  failingJobs,
+}: {
+  readonly unfinishedJobs: bigint;
+  readonly failingJobs: readonly SettlementJournal.SettlementFailingJob[];
+}) => ({
+  unfinishedJobs: unfinishedJobs.toString(),
+  failingJobs: failingJobs.map((job) => ({
+    kind: job.kind,
+    eventId: job.event_id,
+    phase: job.phase,
+    failures: job.failures,
+    lastError: job.last_error,
+    dueAt: job.due_at.toISOString(),
+  })),
+});
 
 export const encodePipelineStatusOldestActive = (
   oldestActive: PipelineStatusOldestActiveRow | undefined,
@@ -101,6 +123,7 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
     processedMempoolTxCountRows,
     unfinishedMutationJobs,
     leaseInspection,
+    settlementBacklog,
   ] = yield* Effect.all(
     [
       sql<PipelineStatusCountRow>`SELECT
@@ -127,6 +150,9 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
       sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM processed_mempool`,
       MutationJobsDB.countUnfinished,
       StateQueueMutationLeasesDB.inspect({ recentLimit: 5 }),
+      SettlementJournal.inspectBacklog(
+        PIPELINE_STATUS_FAILING_SETTLEMENT_JOB_LIMIT,
+      ),
     ],
     { concurrency: "unbounded" },
   );
@@ -183,6 +209,7 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
     localMutationJobs: {
       unfinished: unfinishedMutationJobs.toString(),
     },
+    settlement: encodePipelineStatusSettlement(settlementBacklog),
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>

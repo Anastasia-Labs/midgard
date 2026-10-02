@@ -6,6 +6,7 @@ import { Effect, Option, Schedule } from "effect";
 import {
   ForcedTransactionsDB,
   MempoolDB,
+  MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
@@ -100,6 +101,37 @@ export const successfulLocalFinalizationRecoveryProgram = (
       0,
     );
 
+    const recoveryOutput = (
+      mempoolLedgerDeletedOutRefHexes: readonly string[],
+    ): WorkerOutput => ({
+      type: "SuccessfulLocalFinalizationRecoveryOutput",
+      finalizedHeaderHash: confirmedHeaderHash,
+      mempoolTxsCount:
+        record.txMembers.length + workerInput.data.mempoolTxsCountSoFar,
+      sizeOfBlocksTxs:
+        journalTxsSize + workerInput.data.sizeOfProcessedTxsSoFar,
+      mempoolLedgerDeletedOutRefHexes,
+    });
+
+    // markFinalized is the job's last durable step, so a finalized journal
+    // proves the block was applied locally and only the job's completion
+    // record (or the ack of either write) was lost. Applying the block again
+    // would end in markFinalized refusing a journal that is no longer active,
+    // on every tick. The first attempt's ledger deletes already reached the
+    // parent as the full reload its failed output triggers.
+    if (
+      record[PendingBlockFinalizationsDB.Columns.STATUS] ===
+      PendingBlockFinalizationsDB.Status.Finalized
+    ) {
+      yield* MutationJobsDB.markCompleted(
+        MutationJobsDB.localBlockFinalizationJobId(confirmedHeaderHash),
+      );
+      yield* Effect.logWarning(
+        `🔹 Pending block journal ${confirmedHeaderHash} is already finalized; closed its local finalization job without applying the block again.`,
+      );
+      return recoveryOutput([]);
+    }
+
     return yield* withLocalBlockFinalizationJob(
       {
         headerHash: confirmedHeaderHash,
@@ -135,15 +167,7 @@ export const successfulLocalFinalizationRecoveryProgram = (
         yield* PendingBlockFinalizationsDB.markFinalized(
           confirmedHeaderHashBuffer,
         );
-        return {
-          type: "SuccessfulLocalFinalizationRecoveryOutput" as const,
-          finalizedHeaderHash: confirmedHeaderHash,
-          mempoolTxsCount:
-            record.txMembers.length + workerInput.data.mempoolTxsCountSoFar,
-          sizeOfBlocksTxs:
-            journalTxsSize + workerInput.data.sizeOfProcessedTxsSoFar,
-          mempoolLedgerDeletedOutRefHexes,
-        } satisfies WorkerOutput;
+        return recoveryOutput(mempoolLedgerDeletedOutRefHexes);
       }),
     );
   });

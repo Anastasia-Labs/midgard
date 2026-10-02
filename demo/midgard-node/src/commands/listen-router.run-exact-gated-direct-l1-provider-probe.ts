@@ -13,11 +13,13 @@ import {
 } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
 
 /**
- * Deduplicated raw-provider fallback used only when the shared Lucid control
- * plane is busy. It cannot bootstrap readiness: a recent exact HubOracle probe
- * is required, and direct successes never refresh that exact timestamp.
+ * Deduplicated raw-provider preflight `/readyz` runs when cached evidence is
+ * not fresh. It runs only on fresh exact HubOracle evidence from the
+ * background refresher and never touches the shared Lucid control plane, so
+ * it cannot bootstrap readiness, and direct successes never refresh that
+ * exact timestamp.
  */
-export const runBusyL1ProviderReadinessProbe = <E, R>({
+export const runExactGatedDirectL1ProviderProbe = <E, R>({
   globals,
   directProbe,
   now,
@@ -57,7 +59,7 @@ export const runBusyL1ProviderReadinessProbe = <E, R>({
             current.lastFailure !== null
           ) {
             return {
-              mode: "live_preflight_control_plane_busy",
+              mode: "exact_gated_direct_preflight",
               healthy: false,
               error: current.lastFailure,
               publishedRevision: current.evidenceRevision,
@@ -90,7 +92,7 @@ export const runBusyL1ProviderReadinessProbe = <E, R>({
                   : `Exact HubOracle evidence is ${Math.max(0, observedAtMs - current.lastExactSuccessAtMs).toString()}ms old (max ${maxExactAgeMs.toString()}ms)`;
             if (current.lastExactObservationKind === "exact_failure") {
               return {
-                mode: "live_preflight_control_plane_busy",
+                mode: "exact_gated_direct_preflight",
                 healthy: false,
                 error:
                   current.lastExactFailure ??
@@ -100,7 +102,7 @@ export const runBusyL1ProviderReadinessProbe = <E, R>({
             }
             if (current.lastExactObservationKind === "exact_success") {
               return {
-                mode: "live_preflight_control_plane_busy",
+                mode: "exact_gated_direct_preflight",
                 healthy: false,
                 error,
                 publishedRevision: current.evidenceRevision,
@@ -154,68 +156,10 @@ export const runBusyL1ProviderReadinessProbe = <E, R>({
 
     const current = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
     return {
-      mode: "busy",
+      mode: "direct_preflight_in_flight",
       baseRevision: current.evidenceRevision,
     } as const;
   });
-
-export const runCombinedL1ReadinessProbe = <A, E1, R1, E2, R2>(
-  hubOracleProbe: Effect.Effect<A, E1, R1>,
-  localOgmiosSlotProbe: Effect.Effect<SubmitSlotSnapshot, E2, R2>,
-): Effect.Effect<SubmitSlotSnapshot, E1 | E2, R1 | R2> =>
-  hubOracleProbe.pipe(Effect.zipRight(localOgmiosSlotProbe));
-
-export const resolveL1ProviderReadinessEvidence = ({
-  probe,
-  lastSuccessAtMs,
-  lastFailure,
-  cachedOgmiosSlot,
-  nowMs,
-  maxAgeMs,
-}: {
-  readonly probe: L1ProviderReadinessProbe;
-  readonly lastSuccessAtMs: number;
-  readonly lastFailure: string | null;
-  readonly cachedOgmiosSlot: SubmitSlotSnapshot | null;
-  readonly nowMs: number;
-  readonly maxAgeMs: number;
-}) => {
-  const evidenceAgeMs =
-    lastSuccessAtMs <= 0 ? null : Math.max(0, nowMs - lastSuccessAtMs);
-  if (probe.mode === "busy" || probe.mode === "cached_fresh") {
-    const healthy = evidenceAgeMs !== null && evidenceAgeMs <= maxAgeMs;
-    return {
-      healthy,
-      mode:
-        probe.mode === "cached_fresh"
-          ? ("cached_fresh" as const)
-          : ("cached_control_plane_busy" as const),
-      evidenceAgeMs,
-      ogmiosSlot: healthy ? cachedOgmiosSlot : null,
-      error: healthy
-        ? null
-        : (lastFailure ??
-          (evidenceAgeMs === null
-            ? "No successful cached L1 provider evidence"
-            : `Cached L1 provider evidence is ${evidenceAgeMs.toString()}ms old (max ${maxAgeMs.toString()}ms)`)),
-    };
-  }
-  return probe.healthy
-    ? {
-        healthy: true,
-        mode: probe.mode,
-        evidenceAgeMs: 0,
-        error: null,
-        ogmiosSlot: probe.ogmiosSlot,
-      }
-    : {
-        healthy: false,
-        mode: probe.mode,
-        evidenceAgeMs,
-        error: probe.error,
-        ogmiosSlot: null,
-      };
-};
 
 export const resolveL1ProviderReadinessSnapshot = ({
   probe,
@@ -258,14 +202,16 @@ export const resolveL1ProviderReadinessSnapshot = ({
       break;
     case "direct_success":
       healthy = latestSuccessIsFresh && exactPrerequisiteIsFresh;
+      // A stale exact prerequisite is named first: it is what stops the direct
+      // probe from refreshing, so the direct age is only its symptom.
       error = healthy
         ? null
-        : !latestSuccessIsFresh
-          ? `Direct L1 provider evidence is ${evidenceAgeMs?.toString() ?? "missing"}ms old (max ${maxAgeMs.toString()}ms)`
-          : evidence.lastExactObservationKind !== "exact_success"
-            ? (evidence.lastExactFailure ??
-              "Direct L1 provider evidence has no active exact prerequisite")
-            : `Exact HubOracle prerequisite is ${exactEvidenceAgeMs?.toString() ?? "missing"}ms old (max ${maxExactAgeMs.toString()}ms)`;
+        : evidence.lastExactObservationKind !== "exact_success"
+          ? (evidence.lastExactFailure ??
+            "Direct L1 provider evidence has no active exact prerequisite")
+          : !exactPrerequisiteIsFresh
+            ? `Exact HubOracle prerequisite is ${exactEvidenceAgeMs?.toString() ?? "missing"}ms old (max ${maxExactAgeMs.toString()}ms)`
+            : `Direct L1 provider evidence is ${evidenceAgeMs?.toString() ?? "missing"}ms old (max ${maxAgeMs.toString()}ms)`;
       break;
     case "exact_failure":
       error =
@@ -280,11 +226,13 @@ export const resolveL1ProviderReadinessSnapshot = ({
   }
 
   const probeRevision =
-    probe.mode === "cached_fresh" || probe.mode === "busy"
+    probe.mode === "cached_fresh" || probe.mode === "direct_preflight_in_flight"
       ? probe.baseRevision
       : probe.publishedRevision;
   const localMode =
-    probe.mode === "busy" ? "cached_control_plane_busy" : probe.mode;
+    probe.mode === "direct_preflight_in_flight"
+      ? "cached_direct_preflight_in_flight"
+      : probe.mode;
   const snapshotMode =
     evidence.lastObservationKind === null
       ? "snapshot_uninitialized"

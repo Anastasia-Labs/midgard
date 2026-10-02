@@ -60,6 +60,7 @@ export const reconcileVisibleWithdrawalUTxOs = (
       insertEntries: WithdrawalsDB.insertEntries,
       emptyLogMessage: "No withdrawal UTxOs found.",
       foundLogMessage: (count) => `${count} withdrawal UTxO(s) found.`,
+      source: "withdrawal",
     });
   });
 

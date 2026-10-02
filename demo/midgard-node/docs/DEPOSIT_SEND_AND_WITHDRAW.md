@@ -5,13 +5,22 @@ This runbook covers the operator-facing preprod flow for:
 1. submitting an L1 deposit,
 2. committing and merging the deposit block, then spending its L2 value,
 3. committing and merging the later transfer block,
-4. absorbing the confirmed deposit into the reserve,
+4. waiting for the node to absorb the consumed deposit into the reserve,
 5. submitting a signed withdrawal order for a selected L2 UTxO,
 6. committing and merging the withdrawal block, and
-7. initializing, funding, and concluding the L1 payout.
+7. waiting for the node to initialize, fund, and conclude the L1 payout.
 
 The commands below resolve settlement UTxOs, PHAS proofs, and reference scripts
 internally. No step requires hand-built CBOR or manually assembled proofs.
+
+`listen` settles on L1 by itself (see "Automatic L1 settlement" in the
+[README](../README.md#automatic-l1-settlement)): its settlement worker absorbs
+consumed deposits into the reserve and pays out valid finalized withdrawals.
+Sections 5 and 9 only watch that work. Do not run `absorb-confirmed-deposit-to-reserve`,
+`initialize-payout`, `add-reserve-funds-to-payout` or `conclude-payout` against a
+deployment whose node is running: they spend the same protocol UTxOs as the
+worker, and a settlement completed without the node's receipt then needs
+reconciliation.
 
 **The manual `/commit` and `/merge` calls in sections 2, 4 and 8 are for a
 local devnet only.** They bypass the node's commit fiber and automatic merge
@@ -34,6 +43,10 @@ configured:
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
 - `L1_REFERENCE_SCRIPT_SEED_PHRASE`
 - `L1_REFERENCE_SCRIPT_ADDRESS`
+- `L1_SETTLEMENT_SEED_PHRASE`: a funded wallet the settlement worker owns,
+  holding fee funds and a separate ADA-only collateral UTxO
+- `L1_HISTORY_GENESIS_LOSSLESS_SHA256` (from `node dist/index.js history-genesis-pin`
+  against the intended chain)
 - `HUB_ORACLE_ONE_SHOT_TX_HASH`
 - `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX`
 - `POSTGRES_*`
@@ -191,10 +204,15 @@ confirmation/attestation lifecycle to finish.
 
 ## 3. Submit The L2 Send Transaction
 
-Send part of the deposited value to the destination wallet:
+Send part of the deposited value to the destination wallet. Reuse the same
+`TRANSFER_SUBMISSION_ID` and arguments if you retry an interrupted transfer;
+the rerun returns or resubmits the transaction signed the first time and never
+signs a second one. A new transfer needs a new ID.
 
 ```sh
+export TRANSFER_SUBMISSION_ID="transfer-$(node -p 'crypto.randomUUID()')"
 TRANSFER_JSON="$(node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --wallet-seed-phrase-env USER_SEED_PHRASE \
   --endpoint "$MIDGARD_NODE_URL" \
   --l2-address "$DEST_L2_ADDRESS" \
@@ -246,17 +264,20 @@ node dist/index.js resolve-event-settlement-proof \
 
 The output must include `settlementOutRef`, `root`, and `proofCbor`.
 
-## 5. Absorb The Confirmed Deposit To Reserve
+## 5. Wait For The Deposit To Reach The Reserve
+
+Once a merge folds the deposit into confirmed state, `/deposit-status` reports
+it `consumed` and the settlement worker queues its absorb. Wait for that, then
+check the reserve:
 
 ```sh
-ABSORB_JSON="$(node dist/index.js absorb-confirmed-deposit-to-reserve \
-  --deposit-event-id "$DEPOSIT_EVENT_ID")"
-
-printf '%s\n' "$ABSORB_JSON" | jq .
+curl -fsS "$MIDGARD_NODE_URL/deposit-status?eventId=$DEPOSIT_EVENT_ID" | jq .
 node dist/index.js reserve-utxos | jq .
 ```
 
-The reserve output should contain the deposited lovelace and no datum.
+Within a few L1 confirmations of `consumed`, the reserve holds a UTxO with the
+deposited value and no datum. `/readyz` reports the worker's state under
+`settlement`.
 
 ## 6. Select A Destination L2 UTxO For Withdrawal
 
@@ -389,62 +410,31 @@ Expected withdrawal status fields:
 - `settlementOutRef` is non-null
 - `payoutUtxoCount` is `0` before initialization
 
-## 9. Initialize The Payout
+## 9. Wait For The Automatic Payout
+
+The settlement worker queues the payout as soon as the withdrawal is finalized
+and valid. It initializes the payout, funds it from the reserve with as many
+reserve inputs as it needs, and concludes it by paying exactly the withdrawn
+L2 value to the recorded L1 address. Poll the payout until it is concluded:
 
 ```sh
-INIT_PAYOUT_JSON="$(node dist/index.js initialize-payout \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")"
-
-printf '%s\n' "$INIT_PAYOUT_JSON" | jq .
-
-node dist/index.js payout-status \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID" | jq .
-```
-
-The payout phase should be `initialized` unless the initial payout UTxO already
-contains part of the target value.
-
-## 10. Fund The Payout From Reserve
-
-Run reserve funding until `payout-status.phase` becomes `funded`:
-
-```sh
-while true; do
+PAYOUT_PHASE=""
+for attempt in $(seq 1 120); do
   PAYOUT_STATUS_JSON="$(node dist/index.js payout-status \
-    --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")"
-  printf '%s\n' "$PAYOUT_STATUS_JSON" | jq .
-
-  PAYOUT_PHASE="$(printf '%s\n' "$PAYOUT_STATUS_JSON" | jq -r '.phase')"
-  test "$PAYOUT_PHASE" = "funded" && break
-
-  node dist/index.js add-reserve-funds-to-payout \
-    --withdrawal-event-id "$WITHDRAWAL_EVENT_ID" | jq .
+    --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")" || PAYOUT_STATUS_JSON=""
+  PAYOUT_PHASE="$(printf '%s\n' "$PAYOUT_STATUS_JSON" | jq -r '.phase // empty')"
+  printf 'PAYOUT_PHASE=%s\n' "$PAYOUT_PHASE"
+  test "$PAYOUT_PHASE" = "concluded" && break
+  sleep 15
 done
+test "$PAYOUT_PHASE" = "concluded"
 ```
 
-The funding command picks the reserve UTxO with the largest lovelace
-contribution among those the validators can spend: no datum, no reference
-script, and any change left at least the minimum UTxO lovelace. Anyone can
-pay to the reserve address, so it skips UTxOs outside that shape. If none
-qualifies, it fails closed with a diagnostic. `--reserve-out-ref
-<txHash#outputIndex>` names the reserve UTxO to spend instead, and is refused
-with the reason when that UTxO cannot fund the payout.
+The phase moves through `not_initialized`, `initialized`, `partially_funded`
+and `funded` to `concluded`. Each step waits for the manifest's confirmation
+depth, so expect several minutes per step.
 
-## 11. Conclude The Payout
-
-```sh
-CONCLUDE_JSON="$(node dist/index.js conclude-payout \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")"
-
-printf '%s\n' "$CONCLUDE_JSON" | jq .
-
-node dist/index.js payout-status \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID" | jq .
-```
-
-After conclusion, `payout-status.phase` should be `concluded`.
-
-## 12. Final Balance Checks
+## 10. Final Balance Checks
 
 Verify the withdrawn L2 UTxO was removed:
 
@@ -458,8 +448,8 @@ Verify the L1 payout target received the withdrawn value:
 node dist/index.js l1-utxos --address "$DEST_L1_ADDRESS" | jq .
 ```
 
-At minimum, check that the L1 UTxO list includes the concluded payout
-transaction hash from `CONCLUDE_JSON.txHash` and the expected lovelace value.
+At minimum, check that the L1 UTxO list holds an output with exactly the
+withdrawn value (`l2Value` from `WITHDRAWAL_JSON`).
 
 ## Troubleshooting
 
@@ -512,16 +502,24 @@ Do not initialize payout for invalid withdrawals. Inspect `validity` and
 `validityDetail`. Invalid withdrawals are committed into the withdrawal root
 and must use the invalid-withdrawal refund path instead of the payout path.
 
-### `initialize-payout` Cannot Resolve Settlement Proof
+### The Deposit Absorb Or Payout Does Not Progress
 
-The withdrawal block has not been merged yet, the event id is not canonical
-`SDK.OutputReference` CBOR hex, or the settlement UTxO for the projected header
-is missing from L1.
+Check `/readyz`: its `settlement` block reports the worker's state and detail.
+The worker retries a failed step with backoff and records the reason in the
+`settlement_jobs` table's `last_error`, so read that row for the event rather
+than rerunning the step by hand. Common causes: the settlement wallet ran out of
+fee funds or lost its ADA-only collateral UTxO; the withdrawal block has not been
+merged yet, so its settlement UTxO does not exist; or the reserve cannot fund
+the payout (next section).
 
-### Payout Funding Is Underfunded
+### The Reserve Cannot Fund A Payout
 
 Run `reserve-utxos` and compare its `spendableTotals` with
 `payout-status.remainingAssets`. `totals` also counts UTxOs marked
 `spendable: false` (their `unspendableReason` names the datum or reference
-script), which the validators refuse to spend. The funding command only
-consumes spendable reserve UTxOs that contribute to the remaining target value.
+script), which the validators refuse to spend. Funding only consumes spendable
+reserve UTxOs that contribute to the remaining target value, and a reserve UTxO
+that holds tokens cannot leave change below the minimum UTxO lovelace. A reserve
+whose lovelace sits only in token-bearing UTxOs can therefore hold enough in
+total and still fail to fund a lovelace-heavy payout. Paying a pure-ADA,
+datum-free UTxO to the reserve address gives the worker an input it can use.

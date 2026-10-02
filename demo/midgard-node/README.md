@@ -238,7 +238,22 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
    node dist/index.js register-operator
    node dist/index.js activate-operator
+   node dist/index.js history-genesis-pin
+   #   -> after approving the chain, copy its sha256 into .env as
+   #      L1_HISTORY_GENESIS_LOSSLESS_SHA256
    ```
+
+   `L1_HISTORY_GENESIS_LOSSLESS_SHA256` pins the L1 chain the node's event
+   history is read from: the lowercase SHA-256 of the Shelley genesis that
+   Ogmios returns for `queryNetwork/genesisConfiguration`, decoded without
+   rounding its integers (algorithm `ogmios-shelley-result-lossless-v1`).
+   `listen` re-checks it on every Ogmios socket its history source opens and
+   fails at startup when it is unset or when the chain differs. The operator
+   approves this value: `history-genesis-pin` (`--ogmios-url` overrides
+   `L1_OGMIOS_KEY`) prints the pin of whatever chain the endpoint serves, so
+   run it against an L1 you trust to be the deployment's chain and keep the
+   same value across restarts. A changed pin means a different chain, not a
+   setting to refresh.
 
    `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
    and the DA producer manifest. `deploymentInfo/` is gitignored and mounted
@@ -530,12 +545,15 @@ from `dist/`.
 ## Submit A Midgard L2 Transfer
 
 Build and submit a key-signed Midgard-native transfer directly against the
-running node.
+running node. Give each transfer its own `--submission-id`, and reuse that ID
+to retry an interrupted transfer.
 
 ```sh
 cd midgard-node
 pnpm build
+export TRANSFER_SUBMISSION_ID="transfer-$(node -p 'crypto.randomUUID()')"
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000
 ```
@@ -543,14 +561,17 @@ node dist/index.js submit-l2-transfer \
 Useful options:
 
 ```sh
+# Each example is a separate transfer: export a new TRANSFER_SUBMISSION_ID first.
 # Override the default USER_WALLET seed source.
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000 \
   --wallet-seed-phrase-env USER_WALLET
 
 # Provide the seed phrase directly and send additional assets.
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000 \
   --wallet-seed-phrase "<seed phrase>" \
@@ -568,6 +589,23 @@ Notes:
   deposit and L2 transfer flows.
 - The command queries `/utxos`, builds a balanced Midgard-native transaction
   with explicit change, and submits it to `/submit`.
+- With `--submission-id`, the signed transaction is written to a local journal
+  before it is submitted. If the command fails or is killed, rerun it with the
+  same ID and the same arguments: it never selects inputs or signs again. When
+  the node already knows the journaled transaction (any `/tx-status` other than
+  `not_found`) the rerun prints the saved result with that status; otherwise it
+  resubmits the exact journaled bytes. A failure that leaves the outcome
+  unknown (connection refused or reset, timeout, 5xx) says to rerun with the
+  same ID. Reusing an ID with a different signer, destination or value is
+  refused; a new transfer needs a new ID. The result also carries
+  `submissionId` and `signedTxCbor`.
+- The journal lives in `--submission-journal-dir`, else
+  `$MIDGARD_L2_TRANSFER_JOURNAL_DIR`, else `~/.midgard/l2-transfer-submissions`.
+  A rerun must see the same directory, so keep it on durable storage (not an
+  ephemeral container filesystem).
+- Without `--submission-id` every run builds, signs and submits a new
+  transfer. Rerunning after an ambiguous failure can then pay twice when the
+  wallet has other UTxOs.
 
 ## Build An Unsigned L1 Deposit
 

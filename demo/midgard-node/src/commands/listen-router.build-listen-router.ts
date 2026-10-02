@@ -83,7 +83,7 @@ import {
   PROTOCOL_INFO_ENDPOINT,
   STATE_QUEUE_ENDPOINT,
   TX_STATUS_ENDPOINT,
-} from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import { READINESS_ENDPOINT } from "./readiness.js";
 
 /**

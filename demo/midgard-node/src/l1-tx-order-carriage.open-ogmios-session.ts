@@ -1,5 +1,9 @@
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
+import {
+  L1SourceUnavailable,
+  OgmiosRequestTimeout,
+} from "./l1-source-unavailable.js";
 import { type OgmiosSession } from "./l1-tx-order-carriage.fetch-kupo-spend.js";
 import {
   HEX_28,
@@ -94,12 +98,12 @@ export const openOgmiosSession = async ({
     waiter.resolve(message.result);
   }) as (event: never) => void);
   socket.addEventListener("error", (() => {
-    failAll(new Error("Ogmios chain-sync socket failed"));
+    failAll(new L1SourceUnavailable("Ogmios chain-sync socket failed"));
     close();
   }) as (event: never) => void);
   socket.addEventListener("close", (() => {
     signal?.removeEventListener("abort", abort);
-    failAll(new Error("Ogmios chain-sync socket closed"));
+    failAll(new L1SourceUnavailable("Ogmios chain-sync socket closed"));
   }) as (event: never) => void);
 
   try {
@@ -108,7 +112,9 @@ export const openOgmiosSession = async ({
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         failAll(
-          new Error(`Ogmios chain-sync did not open within ${timeoutMs}ms`),
+          new L1SourceUnavailable(
+            `Ogmios chain-sync did not open within ${timeoutMs}ms`,
+          ),
         );
         close();
       }, timeoutMs);
@@ -156,7 +162,7 @@ export const openOgmiosSession = async ({
             : setTimeout(() => {
                 pending.delete(id);
                 reject(
-                  new Error(
+                  new OgmiosRequestTimeout(
                     `Ogmios ${method} did not answer within ${requestTimeout}ms`,
                   ),
                 );
@@ -176,7 +182,11 @@ export const openOgmiosSession = async ({
         } catch (cause) {
           clearTimeout(timer);
           pending.delete(id);
-          reject(new Error(`Failed to send Ogmios ${method}`, { cause }));
+          reject(
+            new L1SourceUnavailable(`Failed to send Ogmios ${method}`, {
+              cause,
+            }),
+          );
         }
       });
     },

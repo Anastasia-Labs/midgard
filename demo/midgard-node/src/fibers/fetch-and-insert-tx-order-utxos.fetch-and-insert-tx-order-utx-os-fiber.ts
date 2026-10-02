@@ -1,7 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Schedule } from "effect";
 
-import { DatabaseError } from "../database/utils/common.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -17,7 +15,7 @@ export const fetchAndInsertTxOrderUTxOsFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
-  SDK.LucidError | DatabaseError,
+  never,
   | MidgardContracts
   | ContractDeploymentIdentity
   | Lucid

@@ -315,9 +315,13 @@ export const runWithStaleOperatorWalletRetry = <A, E, R>({
 
     if (lastResult._tag === "Left") {
       if (lastResult.left instanceof StaleOperatorWalletRetrySignal) {
+        // The signal already discarded an intent-free journal, so this
+        // matches nothing then, and markAbandoned never touches a journal
+        // with a signed intent; either refusal must not replace the submit
+        // error the commit reports.
         yield* PendingBlockFinalizationsDB.markAbandoned(
           lastResult.left.pendingHeaderHash,
-        );
+        ).pipe(Effect.catchAll(() => Effect.void));
         return yield* Effect.fail(lastResult.left.txSubmitError);
       }
       if (previousPendingHeaderHash !== undefined) {

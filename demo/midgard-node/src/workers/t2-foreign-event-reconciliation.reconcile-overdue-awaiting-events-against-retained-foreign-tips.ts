@@ -9,7 +9,20 @@ import {
   WithdrawalsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { isHistoryProducerGateClosed } from "../services/event-history-producer.js";
 import { ContractDeploymentIdentity, Database } from "../services/index.js";
+import {
+  activeEvidenceScope,
+  awaiting,
+  entryVerdict,
+  entryWindow,
+  firstBlocking,
+  pruneSettledForeignTipReconciliations,
+  refusesUnconditionally,
+  storedVerdictRefusesUnconditionally,
+  undecodableUnresolved,
+  type Unresolved,
+} from "./t2-foreign-event-reconciliation.foreign-window-gate.js";
 import { reconcileRetainedForeignTipEntry } from "./t2-foreign-event-reconciliation.reconcile-retained-foreign-tip-entry.js";
 import {
   emptyIds,
@@ -104,66 +117,209 @@ const resolvedWindowHasAwaitingEvents = (
   });
 
 /**
- * Replays every retained foreign window, including resolved evidence, so
- * indexer-late Awaiting rows remain recoverable after restart or after the
- * live state-queue tip advances beyond the foreign header.
+ * Replays every retained foreign window of the active deployment, including
+ * resolved evidence, so indexer-late Awaiting rows remain recoverable after
+ * restart or after the live state-queue tip advances beyond the foreign
+ * header. Each row is replayed on its own: one that fails is logged and
+ * treated as unverified rather than failing the commit. An unverified row
+ * refuses the commit only while its own window can still collide with the
+ * block (see `windowBlockingCauses` in the window-gate module), unless its
+ * verdict is one no window lifts; it is never marked resolved without
+ * verified DA. Settled rows are pruned after the pass.
  */
-export const reconcileOverdueAwaitingEventsAgainstRetainedForeignTips =
-  (): Effect.Effect<
-    T2ForeignEventResolution,
-    DatabaseError,
-    Database | ContractDeploymentIdentity
-  > =>
-    Effect.gen(function* () {
-      const history =
-        yield* ForeignTipReconciliationsDB.retrieveEvidenceHistory;
-      const combinedAbsent = {
-        deposits: [] as string[],
-        forcedTransactions: [] as string[],
-        withdrawals: [] as string[],
-      };
-      let firstAwaiting: T2ForeignEventResolution | undefined;
-      for (const entry of history) {
-        if (
-          entry[ForeignTipReconciliationsDB.Columns.STATUS] ===
-            ForeignTipReconciliationsDB.Status.Resolved &&
-          !(yield* resolvedWindowHasAwaitingEvents(entry))
-        ) {
-          continue;
-        }
-        const resolution = yield* reconcileRetainedForeignTipEntry(entry);
-        if (resolution.type === "AwaitingForeignDa") {
-          firstAwaiting ??= resolution;
-        } else {
-          combinedAbsent.deposits.push(...resolution.absent.deposits);
-          combinedAbsent.forcedTransactions.push(
-            ...resolution.absent.forcedTransactions,
-          );
-          combinedAbsent.withdrawals.push(...resolution.absent.withdrawals);
-        }
-      }
-      return (
-        firstAwaiting ??
-        ({
-          type: "Ready",
-          absent: {
-            deposits: normalizedIds(combinedAbsent.deposits),
-            forcedTransactions: normalizedIds(
-              combinedAbsent.forcedTransactions,
-            ),
-            withdrawals: normalizedIds(combinedAbsent.withdrawals),
-          },
-        } as const)
-      );
-    }).pipe(
-      Effect.mapError((cause) =>
-        cause instanceof DatabaseError
-          ? cause
-          : new DatabaseError({
-              table: "t2_foreign_event_reconciliation",
-              message:
-                "Failed to reconcile overdue events against retained foreign tips",
-              cause,
-            }),
-      ),
+export const reconcileOverdueAwaitingEventsAgainstRetainedForeignTips = ({
+  eventsIngestedThrough,
+  now = new Date(),
+}: {
+  readonly eventsIngestedThrough: Date;
+  readonly now?: Date;
+}): Effect.Effect<
+  T2ForeignEventResolution,
+  DatabaseError,
+  Database | ContractDeploymentIdentity
+> =>
+  Effect.gen(function* () {
+    const history = yield* ForeignTipReconciliationsDB.retrieveEvidenceHistory(
+      yield* activeEvidenceScope,
     );
+    const unresolved: Unresolved[] = [
+      ...(yield* undecodableUnresolved(history.undecodable)),
+    ];
+    const combinedAbsent = {
+      deposits: [] as string[],
+      forcedTransactions: [] as string[],
+      withdrawals: [] as string[],
+    };
+    for (const entry of history.entries) {
+      if (
+        entry[ForeignTipReconciliationsDB.Columns.STATUS] ===
+          ForeignTipReconciliationsDB.Status.Resolved &&
+        !(yield* resolvedWindowHasAwaitingEvents(entry))
+      ) {
+        continue;
+      }
+      const window = entryWindow(entry);
+      const replayed = yield* Effect.either(
+        reconcileRetainedForeignTipEntry(entry).pipe(
+          Effect.catchAllDefect((defect) =>
+            Effect.fail(
+              new DatabaseError({
+                table: ForeignTipReconciliationsDB.tableName,
+                message: "Foreign-tip reconciliation replay died",
+                cause: String(defect),
+              }),
+            ),
+          ),
+        ),
+      );
+      if (
+        replayed._tag === "Left" &&
+        isHistoryProducerGateClosed(replayed.left)
+      ) {
+        // A recovery the history owner is running, not a fault of this row.
+        return yield* Effect.fail(replayed.left);
+      }
+      if (replayed._tag === "Left") {
+        yield* Effect.logWarning(
+          `🔹 Foreign-tip reconciliation replay failed header_hash=${window.foreignHeaderHash}; its window still gates the commit: ${replayed.left.message}`,
+          replayed.left,
+        );
+        unresolved.push({
+          window,
+          resolution: awaiting(window, "replay_failed", replayed.left.message),
+          unconditional: storedVerdictRefusesUnconditionally(
+            entryVerdict(entry),
+          ),
+        });
+      } else if (replayed.right.type === "AwaitingForeignDa") {
+        unresolved.push({
+          window,
+          resolution: replayed.right,
+          unconditional: refusesUnconditionally(replayed.right.reason),
+        });
+      } else {
+        combinedAbsent.deposits.push(...replayed.right.absent.deposits);
+        combinedAbsent.forcedTransactions.push(
+          ...replayed.right.absent.forcedTransactions,
+        );
+        combinedAbsent.withdrawals.push(...replayed.right.absent.withdrawals);
+      }
+    }
+    const blocking = yield* firstBlocking(unresolved, eventsIngestedThrough);
+    const pruned = yield* Effect.either(
+      pruneSettledForeignTipReconciliations({ now, eventsIngestedThrough }),
+    );
+    if (pruned._tag === "Left") {
+      yield* Effect.logWarning(
+        `🔹 Foreign-tip reconciliation prune failed; retrying next pass: ${pruned.left.message}`,
+      );
+    }
+    if (blocking !== undefined) return blocking;
+    if (unresolved.length > 0) {
+      yield* Effect.logInfo(
+        `🔹 ${unresolved.length.toString()} foreign-tip reconciliation(s) still lack verified DA, but no event of the next block lies in their windows; committing past them (first header_hash=${unresolved[0]!.window.foreignHeaderHash}).`,
+      );
+    }
+    return {
+      type: "Ready",
+      absent: {
+        deposits: normalizedIds(combinedAbsent.deposits),
+        forcedTransactions: normalizedIds(combinedAbsent.forcedTransactions),
+        withdrawals: normalizedIds(combinedAbsent.withdrawals),
+      },
+    } as const;
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof DatabaseError
+        ? cause
+        : new DatabaseError({
+            table: "t2_foreign_event_reconciliation",
+            message:
+              "Failed to reconcile overdue events against retained foreign tips",
+            cause,
+          }),
+    ),
+  );
+
+/**
+ * The read-only gate for a speculative build, which must not write. It refuses
+ * whenever the ordinary gate could: an unverified row whose stored verdict no
+ * window lifts or whose window can still collide with the block, or a
+ * resolved row holding late events only a replay can classify. The refusal hands the build back to the ordinary path, which
+ * replays.
+ */
+export const assessRetainedForeignTipWindows = ({
+  eventsIngestedThrough,
+}: {
+  readonly eventsIngestedThrough: Date;
+}): Effect.Effect<
+  T2ForeignEventResolution,
+  DatabaseError,
+  Database | ContractDeploymentIdentity
+> =>
+  Effect.gen(function* () {
+    const history = yield* ForeignTipReconciliationsDB.retrieveEvidenceHistory(
+      yield* activeEvidenceScope,
+    );
+    const unresolved: Unresolved[] = [
+      ...(yield* undecodableUnresolved(history.undecodable)),
+    ];
+    for (const entry of history.entries) {
+      const window = entryWindow(entry);
+      if (
+        entry[ForeignTipReconciliationsDB.Columns.STATUS] ===
+        ForeignTipReconciliationsDB.Status.Awaiting
+      ) {
+        unresolved.push({
+          window,
+          resolution: awaiting(
+            window,
+            "replay_required",
+            entry[ForeignTipReconciliationsDB.Columns.BLOCKING_REASON] ??
+              "awaiting",
+          ),
+          unconditional: storedVerdictRefusesUnconditionally(
+            entryVerdict(entry),
+          ),
+        });
+      } else if (yield* resolvedWindowHasAwaitingEvents(entry)) {
+        return awaiting(
+          window,
+          "replay_required",
+          "late_event_in_resolved_window",
+        );
+      }
+    }
+    return (
+      (yield* firstBlocking(unresolved, eventsIngestedThrough)) ??
+      ({ type: "Ready", absent: emptyIds() } as const)
+    );
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof DatabaseError
+        ? cause
+        : new DatabaseError({
+            table: "t2_foreign_event_reconciliation",
+            message: "Failed to assess retained foreign-tip windows",
+            cause,
+          }),
+    ),
+  );
+
+/**
+ * The commit's foreign-tip gate. Every event table is ingested through
+ * `eventsIngestedThrough`. A speculative build must not write, so it takes the
+ * read-only check and leaves any replay to the ordinary build.
+ */
+export const gateCommitOnRetainedForeignTips = ({
+  speculative,
+  eventsIngestedThrough,
+}: {
+  readonly speculative: boolean;
+  readonly eventsIngestedThrough: Date;
+}) =>
+  speculative
+    ? assessRetainedForeignTipWindows({ eventsIngestedThrough })
+    : reconcileOverdueAwaitingEventsAgainstRetainedForeignTips({
+        eventsIngestedThrough,
+      });

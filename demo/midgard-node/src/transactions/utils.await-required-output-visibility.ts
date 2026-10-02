@@ -255,6 +255,8 @@ export class TxSignError extends Data.TaggedError("TxSignError")<
 export class TxSubmitError extends Data.TaggedError("TxSubmitError")<
   SDK.GenericErrorFields & {
     readonly txHash: string;
+    /** The slot a no-inline defer is due at, when the submit was deferred. */
+    readonly dueSlot?: number;
   }
 > {}
 

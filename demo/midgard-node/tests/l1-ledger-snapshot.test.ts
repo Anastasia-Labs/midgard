@@ -1,10 +1,16 @@
+import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { DatabaseError } from "../src/database/utils/common.js";
 import {
+  LedgerPointUnavailable,
   type LedgerSnapshotPoint,
   readAcquiredLedgerSnapshot,
 } from "../src/l1-ledger-snapshot.js";
+import { L1SourceUnavailable } from "../src/l1-source-unavailable.js";
 import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
+import { isRecoverableHistorySourceFailure } from "../src/services/event-history-owner.source-failure.js";
+import { captureRecoveryQueueAtPoint } from "../src/services/history-signed-header-recovery.js";
 
 const point = { slot: 123, id: "ab".repeat(32) };
 const fork = { slot: 123, id: "cd".repeat(32) };
@@ -363,5 +369,104 @@ describe("acquired node ledger snapshot", () => {
     expect(
       socket.requests.some(({ method }) => method === "releaseLedgerState"),
     ).toBe(false);
+  });
+});
+
+type Fault = [string, () => Socket, LedgerSnapshotPoint?];
+const failing = (method: string, code: number) => () => {
+  const socket = new Socket();
+  const reply = socket.reply;
+  socket.rawReply = (request) =>
+    JSON.stringify(
+      request.method === method
+        ? { id: request.id, error: { code, message: "x", data: "detail" } }
+        : { id: request.id, result: reply(request) },
+    );
+  return socket;
+};
+const answering = (method: string, result: unknown) => () => {
+  const socket = new Socket();
+  const reply = socket.reply;
+  socket.reply = (request) =>
+    request.method === method ? result : reply(request);
+  return socket;
+};
+const losingSocket = () => {
+  const socket = new Socket();
+  const reply = socket.reply;
+  socket.reply = (request) => {
+    if (request.method === "queryLedgerState/utxo") socket.close();
+    return reply(request);
+  };
+  return socket;
+};
+// Signed-header recovery's capture over the real wire session.
+const recover = (socket: Socket, at: LedgerSnapshotPoint = point) =>
+  Effect.runPromise(
+    Effect.either(
+      captureRecoveryQueueAtPoint((signal) => socket.read(signal, 200, at)),
+    ),
+  );
+const refusal = async (socket: Socket) => {
+  const result = await recover(socket);
+  if (Either.isRight(result)) return expect.unreachable("capture succeeded");
+  expect(result.left).toBeInstanceOf(DatabaseError);
+  return result.left;
+};
+
+describe("signed-header recovery capture failures", () => {
+  it.each<Fault>([
+    ["an acquisition refusal", failing("acquireLedgerState", 2000)],
+    ["an acquisition of another point", () => new Socket(), fork],
+  ])("leaves the recovery pending on %s", async (_label, make, at) => {
+    const socket = make();
+    expect(await recover(socket, at)).toEqual(Either.right(undefined));
+    expect(socket.requests.map(({ method }) => method)).toEqual([
+      "acquireLedgerState",
+    ]);
+    expect(socket.closed).toBe(true);
+  });
+
+  it.each<Fault>([
+    ["an expired acquired state", failing("queryLedgerState/utxo", 2003)],
+    ["an era mismatch", failing("queryLedgerState/utxo", 2001)],
+    ["acquired state lost", answering("queryLedgerState/tip", fork)],
+    ["a socket lost mid-scan", losingSocket],
+  ])("waits out %s as a source outage", async (_label, make) => {
+    const error = await refusal(make());
+    expect(error.cause).toBeInstanceOf(L1SourceUnavailable);
+    expect(error.cause).not.toBeInstanceOf(LedgerPointUnavailable);
+    expect(isRecoverableHistorySourceFailure(error)).toBe(true);
+  });
+
+  it.each<Fault>([
+    ["an invalid-params refusal", failing("queryLedgerState/utxo", -32602)],
+    ["a malformed acquisition", answering("acquireLedgerState", {})],
+    ["a repeated outref", answering("queryLedgerState/utxo", [output, output])],
+    ["an invalid release", answering("releaseLedgerState", { released: 0 })],
+  ])("still stops the owner on %s", async (_label, make) => {
+    const error = await refusal(make());
+    expect(error.cause).not.toBeInstanceOf(L1SourceUnavailable);
+    expect(isRecoverableHistorySourceFailure(error)).toBe(false);
+  });
+
+  it("proceeds exactly once when a later attempt can acquire its point", async () => {
+    const reads: Socket[] = [
+      failing("acquireLedgerState", 2000)(),
+      new Socket(),
+    ];
+    const attempts = [await recover(reads[0]!), await recover(reads[1]!)];
+    expect(attempts[0]).toEqual(Either.right(undefined));
+    const captured = Either.getOrThrow(attempts[1]!);
+    expect(captured?.point).toEqual(point);
+    expect(captured?.outputs).toHaveLength(1);
+    expect(
+      reads.map(
+        (socket) =>
+          socket.requests.filter(
+            ({ method }) => method === "queryLedgerState/utxo",
+          ).length,
+      ),
+    ).toEqual([0, 1]);
   });
 });

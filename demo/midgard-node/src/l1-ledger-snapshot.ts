@@ -1,6 +1,7 @@
 import type { Assets } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 
+import { L1SourceUnavailable } from "./l1-source-unavailable.js";
 import {
   normalizeOgmiosWebSocketUrl,
   openOgmiosSession,
@@ -71,6 +72,39 @@ const point = (value: unknown): LedgerSnapshotPoint => {
 };
 const samePoint = (left: LedgerSnapshotPoint, right: LedgerSnapshotPoint) =>
   left.slot === right.slot && left.id === right.id;
+
+/** The node cannot serve ledger state at this exact point: Ogmios refused to
+ * acquire it (it left the node's rollback window or the selected chain) or
+ * acquired another one. It says nothing about what the point holds. A caller
+ * pinned to the point waits for another point of its own; it never reads
+ * this one's state from any other point. */
+export class LedgerPointUnavailable extends L1SourceUnavailable {}
+
+// The session reports a JSON-RPC error response as this message prefix
+// followed by the error object; nothing else carries its code.
+const OGMIOS_ERROR_PREFIX = "Ogmios chain-sync error: ";
+const ogmiosErrorCode = (cause: unknown): number | undefined => {
+  if (!(cause instanceof Error) || cause instanceof L1SourceUnavailable)
+    return undefined;
+  if (!cause.message.startsWith(OGMIOS_ERROR_PREFIX)) return undefined;
+  try {
+    const code = (
+      JSON.parse(cause.message.slice(OGMIOS_ERROR_PREFIX.length)) as {
+        readonly code?: unknown;
+      } | null
+    )?.code;
+    return typeof code === "number" ? code : undefined;
+  } catch {
+    return undefined;
+  }
+};
+// https://ogmios.dev/mini-protocols/local-state-query/ : 2000 is the only
+// acquisition failure. 2001 (era mismatch, across a hard fork) and 2003
+// (acquired state expired) say the acquired state can no longer answer; a
+// fresh acquisition can. Any other code, the JSON-RPC protocol ones included,
+// refuses this request itself and stays a refusal.
+const ACQUIRE_FAILURE = 2000;
+const ACQUIRED_STATE_LOST = new Set([2001, 2003]);
 
 export const decodeLedgerSnapshotOutput = (
   value: unknown,
@@ -176,16 +210,38 @@ export const readAcquiredLedgerSnapshot = async ({
     captureSignal.throwIfAborted();
     const requestedPoint =
       selectedPoint ?? point(await session.request("queryLedgerState/tip", {}));
+    const query = async (method: string, params: Record<string, unknown>) => {
+      try {
+        return await session.request(method, params);
+      } catch (cause) {
+        const code = ogmiosErrorCode(cause);
+        if (code !== undefined && ACQUIRED_STATE_LOST.has(code))
+          throw new L1SourceUnavailable(
+            `Ogmios ${method} could not answer from the acquired ledger state: ${(cause as Error).message}`,
+            { cause },
+          );
+        throw cause;
+      }
+    };
     const acquired = record(
-      await session.request("acquireLedgerState", { point: requestedPoint }),
+      await session
+        .request("acquireLedgerState", { point: requestedPoint })
+        .catch((cause: unknown) => {
+          if (ogmiosErrorCode(cause) !== ACQUIRE_FAILURE) throw cause;
+          throw new LedgerPointUnavailable(
+            `Ogmios could not acquire ledger point ${requestedPoint.slot.toString()}.${requestedPoint.id}: ${(cause as Error).message}`,
+            { cause },
+          );
+        }),
       "Ogmios acquisition",
     );
-    if (
-      acquired.acquired !== "ledgerState" ||
-      !samePoint(point(acquired.point), requestedPoint)
-    )
-      throw new Error("Ogmios acquired a different ledger point");
-    const rawOutputs = await session.request("queryLedgerState/utxo", {
+    if (acquired.acquired !== "ledgerState")
+      throw new Error("Ogmios acquisition must acquire the ledger state");
+    if (!samePoint(point(acquired.point), requestedPoint))
+      throw new LedgerPointUnavailable(
+        "Ogmios acquired a different ledger point",
+      );
+    const rawOutputs = await query("queryLedgerState/utxo", {
       addresses: requested,
     });
     if (!Array.isArray(rawOutputs))
@@ -201,15 +257,17 @@ export const readAcquiredLedgerSnapshot = async ({
       throw new Error("Ogmios ledger snapshot repeats an output reference");
     // This query is deliberately still acquired. It checks the state queried,
     // not whether this point remains on the current selected branch.
+    // A different answer means the acquired state was lost under the scan
+    // (Ogmios reconnected to its node): the outputs are discarded and a retry
+    // acquires again.
     if (
-      !samePoint(
-        point(await session.request("queryLedgerState/tip", {})),
-        requestedPoint,
-      )
+      !samePoint(point(await query("queryLedgerState/tip", {})), requestedPoint)
     )
-      throw new Error("Ogmios ledger point changed during acquired capture");
+      throw new L1SourceUnavailable(
+        "Ogmios ledger point changed during acquired capture",
+      );
     const released = record(
-      await session.request("releaseLedgerState", {}),
+      await query("releaseLedgerState", {}),
       "Ogmios release",
     );
     if (released.released !== "ledgerState")

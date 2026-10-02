@@ -51,10 +51,15 @@ import {
  * Architecture G, and emulator transactions. E is a real signed commit the
  * production commit worker handed to L1, dropped from the emulator mempool
  * before any block included it (the live 3b61adb6 shape). Only chain-point
- * names and the history transport are synthetic. The history owner replaces
- * E exactly when a source point at or past E's TTL shows E's base still the
- * queue tail, or a block that is not E holding its slot; it confirms E when
- * E holds it.
+ * names and the history transport are synthetic. By the owner ruling of
+ * 2026-09-26 ("replace an intent once it can't land on the current chain,
+ * meaning the observed head is past its TTL or D is already spent by
+ * something else"), the history owner replaces E once a source point at or
+ * past E's TTL shows E's base still the queue tail or a block that is not E
+ * holding its slot, or, before the TTL, once the journaled canonical history
+ * shows D's output spent by another transaction (see
+ * signed-intent-early-release-emulator.test.ts); it confirms E when E holds
+ * it.
  */
 
 const C = Pending.Columns;
@@ -329,7 +334,7 @@ const foreignSuccessorView = async (h: Handle, journal: Pending.Record) => {
   };
 };
 
-it("replaces a signed commit whose base slot a foreign block holds, never before its TTL", async () => {
+it("replaces a signed commit whose base slot a foreign block holds in the queue view alone only at its TTL: with no journaled spend of its base output it can still land (owner ruling 2026-09-26)", async () => {
   const view = makeRewritableQueueTransport();
   const h = await openHistoryProductionOwnerLifecycle({
     transportFactory: view.transportFactory,
@@ -345,7 +350,9 @@ it("replaces a signed commit whose base slot a foreign block holds, never before
     const untouched = await snapshotUnreplaced(header);
     const foreign = await foreignSuccessorView(h, journal);
     view.setRewrite(foreign.rewrite);
-    // F holds D's slot before E's TTL: nothing is decided before the TTL.
+    // F holds D's slot in the rewritten queue view before E's TTL, but no
+    // journaled canonical transaction spent D's output: by the ruling only
+    // the TTL or a spend of D decides, so nothing is decided before the TTL.
     moveToExactSlot(h, ttl - 1);
     await h.synchronize();
     await expectUnreplaced(header, untouched);

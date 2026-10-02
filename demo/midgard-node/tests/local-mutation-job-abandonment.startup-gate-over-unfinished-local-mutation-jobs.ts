@@ -50,14 +50,14 @@ describe("startup gate over unfinished local mutation jobs", () => {
   );
 
   it.effect(
-    "still refuses a running job from a crash, exactly as before, even for a live submitted block",
+    "hands a running job from a crash to the runtime for a live submitted block, instead of refusing every restart",
     () =>
       isolatedDb(
         Effect.gen(function* () {
           const crashed = header("crashed");
           yield* observedJournal(crashed);
           yield* runningLocalJob(crashed);
-          expect(yield* startupGate).toEqual([localJobId(crashed)]);
+          expect(yield* startupGate).toBeUndefined();
           expect((yield* readJob(localJobId(crashed)))[J.STATUS]).toBe(
             MutationJobsDB.Status.Running,
           );
@@ -111,9 +111,9 @@ describe("startup gate over unfinished local mutation jobs", () => {
     isolatedDb(
       Effect.gen(function* () {
         const removed = header("removed-then-start");
-        yield* observedJournal(removed);
         yield* runningLocalJob(removed);
         expect(yield* startupGate).toEqual([localJobId(removed)]);
+        yield* observedJournal(removed);
         yield* PendingBlockFinalizationsDB.markCorrectedAfterStateQueueRemoval(
           removed,
           "01".repeat(32),
@@ -123,7 +123,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
     ),
   );
 
-  it("classifies merge finalizations and a failed local finalization of a submitted, unfinalized block as runtime-owned", () => {
+  it("classifies merge finalizations and an unfinished local finalization of a submitted, unfinalized block as runtime-owned", () => {
     const job = (
       overrides: Partial<Record<MutationJobsDB.Columns, unknown>>,
     ): MutationJobsDB.Entry =>
@@ -144,18 +144,42 @@ describe("startup gate over unfinished local mutation jobs", () => {
       Status.SubmittedUnconfirmed,
       Status.ObservedWaitingStability,
     ];
+    // A failed job whose journal is finalized lost only its completion
+    // record, to a transient after markFinalized committed.
     for (const status of Object.values(Status))
       expect(
         classifyUnfinishedMutationJobOnStartup(job({}), status),
         status,
-      ).toBe(runtime.includes(status) ? "runtime" : "refuse");
+      ).toBe(
+        runtime.includes(status)
+          ? "runtime"
+          : status === Status.Finalized
+            ? "complete"
+            : "refuse",
+      );
     expect(classifyUnfinishedMutationJobOnStartup(job({}), undefined)).toBe(
       "refuse",
     );
+    // A running job is a process killed mid-way: the same retry owns it, and a
+    // finalized journal records that only markCompleted was lost.
+    for (const status of Object.values(Status))
+      expect(
+        classifyUnfinishedMutationJobOnStartup(
+          job({ [J.STATUS]: MutationJobsDB.Status.Running }),
+          status,
+        ),
+        `running/${status}`,
+      ).toBe(
+        runtime.includes(status)
+          ? "runtime"
+          : status === Status.Finalized
+            ? "complete"
+            : "refuse",
+      );
     expect(
       classifyUnfinishedMutationJobOnStartup(
         job({ [J.STATUS]: MutationJobsDB.Status.Running }),
-        Status.ObservedWaitingStability,
+        undefined,
       ),
     ).toBe("refuse");
     // The merge fiber retries every merge finalization idempotently, failed

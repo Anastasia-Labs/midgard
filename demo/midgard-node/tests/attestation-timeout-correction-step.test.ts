@@ -4,6 +4,7 @@ import { Cause, Effect, Exit, FiberId, Ref, Runtime } from "effect";
 import { UnknownException } from "effect/Cause";
 import { describe, expect, it } from "vitest";
 
+import { STATE_QUEUE_CORRECTION_REWIND_CONFLICT } from "../src/fibers/attestation-timeout-correction.attestation-timeout-correction-action.js";
 import {
   attestationTimeoutCorrectionReadinessBounds,
   attestationTimeoutCorrectionStep,
@@ -12,6 +13,7 @@ import {
   withTimeoutCorrectionProgress,
 } from "../src/fibers/attestation-timeout-correction.js";
 import type { AttestationTimeoutCorrectionHealth } from "../src/services/globals.js";
+import { HaltSource } from "../src/services/liveness-halt.js";
 import { StateQueueCorrectionRewindIntegrityError } from "../src/services/state-queue-correction-observer.js";
 
 const unattestedHeader = { headerHash: "cd".repeat(32), deadlineMs: 1_000 };
@@ -25,6 +27,15 @@ const health = () =>
     consecutiveFailures: 0,
     oldestUnattestedHeader: unattestedHeader,
   });
+
+const liveness = () => ({
+  LIVENESS_REASONS: Ref.unsafeMake<ReadonlyMap<string, string>>(new Map()),
+});
+
+const raised = (globals: ReturnType<typeof liveness>) =>
+  Effect.runSync(Ref.get(globals.LIVENESS_REASONS)).get(
+    HaltSource.stateQueueCorrectionRewind,
+  );
 
 const integrity = () =>
   new StateQueueCorrectionRewindIntegrityError(
@@ -81,36 +92,94 @@ describe("attestation-timeout correction step", () => {
   });
 
   it("logs a transient failure and succeeds, so the schedule retries it", async () => {
+    const globals = liveness();
     const exit = await Effect.runPromiseExit(
       attestationTimeoutCorrectionStep(
         Effect.fail(new Error("Kupo unavailable")),
         health(),
+        globals,
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     const defect = await Effect.runPromiseExit(
-      attestationTimeoutCorrectionStep(Effect.die(new Error("boom")), health()),
+      attestationTimeoutCorrectionStep(
+        Effect.die(new Error("boom")),
+        health(),
+        globals,
+      ),
     );
     expect(Exit.isSuccess(defect)).toBe(true);
+    // A transient failure raises nothing.
+    expect(raised(globals)).toBeUndefined();
   });
 
-  it("fails with the rewind integrity failure however it is wrapped, so the fiber stops", async () => {
+  it("raises the rewind conflict however the integrity failure is wrapped, and the fiber keeps running", async () => {
     const error = integrity();
     for (const [shape, cause] of Object.entries(wrappings(error))) {
+      const globals = liveness();
       const exit = await Effect.runPromiseExit(
-        attestationTimeoutCorrectionStep(Effect.failCause(cause), health()),
+        attestationTimeoutCorrectionStep(
+          Effect.failCause(cause),
+          health(),
+          globals,
+        ),
       );
-      if (!Exit.isFailure(exit)) throw new Error(`${shape}: must fail`);
-      const failures = [...Cause.failures(exit.cause)];
-      expect(failures, shape).toHaveLength(1);
-      expect(failures[0], shape).toBe(error);
+      expect(Exit.isSuccess(exit), shape).toBe(true);
+      expect(raised(globals), shape).toBe(
+        STATE_QUEUE_CORRECTION_REWIND_CONFLICT,
+      );
     }
+  });
+
+  it("keeps the conflict raised until a step re-derives in agreement, then clears it once", async () => {
+    const globals = liveness();
+    const recorded = health();
+    // Each tick re-derives the removal against L1; the correction's own
+    // effects run only on a tick whose re-derivation agrees.
+    const outcomes: ("conflict" | "transient" | "agrees")[] = [
+      "conflict",
+      "conflict",
+      "transient",
+      "agrees",
+      "agrees",
+    ];
+    let corrections = 0;
+    const seen: (string | undefined)[] = [];
+    for (const outcome of outcomes) {
+      await Effect.runPromise(
+        attestationTimeoutCorrectionStep(
+          Effect.suspend(() => {
+            if (outcome === "conflict") return Effect.fail(integrity());
+            if (outcome === "transient")
+              return Effect.fail(new Error("Kupo unavailable"));
+            corrections += 1;
+            return Effect.void;
+          }),
+          recorded,
+          globals,
+        ),
+      );
+      seen.push(raised(globals));
+    }
+    expect(seen).toEqual([
+      STATE_QUEUE_CORRECTION_REWIND_CONFLICT,
+      STATE_QUEUE_CORRECTION_REWIND_CONFLICT,
+      // A transient failure neither clears nor re-raises it.
+      STATE_QUEUE_CORRECTION_REWIND_CONFLICT,
+      undefined,
+      undefined,
+    ]);
+    // No correction ran while the re-derivation disagreed; one per agreeing
+    // tick afterwards.
+    expect(corrections).toBe(2);
   });
 
   it("counts failures since the last success for readiness, and a success resets the count", async () => {
     const recorded = health();
     const step = (action: Effect.Effect<void, unknown>) =>
-      Effect.runPromiseExit(attestationTimeoutCorrectionStep(action, recorded));
+      Effect.runPromiseExit(
+        attestationTimeoutCorrectionStep(action, recorded, liveness()),
+      );
     await step(Effect.fail(new Error("Kupo unavailable")));
     await step(Effect.die(new Error("Ogmios hung up")));
     await step(Effect.failCause(Cause.fail(integrity())));

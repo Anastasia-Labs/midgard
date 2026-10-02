@@ -20,6 +20,7 @@ import "./transfer-build-core.js";
 import "./submit-l2-transfer.compare-assets-by-coverage.js";
 import "./submit-l2-transfer.submit-native-transfer-tx.js";
 import "./submit-l2-transfer.prepare-l2-terminal-drain-program.js";
+import "./submit-l2-transfer.submission-journal.js";
 export {
   FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY,
   fetchNodeUtxos,
@@ -27,6 +28,7 @@ export {
   parseSubmitL2TransferConfig,
   type PreparedL2TerminalDrain,
   type PreparedL2Transfer,
+  ResumableNativeTransferSubmitError,
   selectTransferInputs,
   type SubmitL2TransferConfig,
   type SubmitL2TransferResult,
@@ -36,7 +38,20 @@ export {
   submitL2TransferProgram,
 } from "./submit-l2-transfer.prepare-l2-terminal-drain-program.js";
 export {
+  defaultTransferSubmissionJournalDir,
+  type JournaledL2TransferResult,
+  parseTransferSubmissionId,
+  submitJournaledL2TransferProgram,
+  submitL2TransferCommandProgram,
+  type SubmitL2TransferSubmission,
+  TRANSFER_SUBMISSION_JOURNAL_DIR_ENV,
+  transferSubmissionJournalPath,
+} from "./submit-l2-transfer.submission-journal.js";
+export {
+  buildL2TransferForSenderProgram,
+  type L2TransferSender,
   prepareL2TransferProgram,
+  resolveL2TransferSenderProgram,
   submitNativeTransferTx,
 } from "./submit-l2-transfer.submit-native-transfer-tx.js";
 export {

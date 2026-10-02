@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
@@ -128,6 +130,64 @@ export const releaseLedgerStoreLease = (
       WHERE store_name = 'ledger' AND lease_owner = ${owner}`;
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to release ledger MPF lease"),
+  );
+
+/** Owner prefixes of the ledger MPF leases only a node process takes: block
+ * commitment and the speculative builder (`node-commit:`), and the node's own
+ * payload audit (`node-audit:`). The offline `reconcile` and `mpf-audit`
+ * commands take theirs as `commit:` and `audit:`, so a live one may exist
+ * beside the node and never carries these prefixes. */
+export const NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX = "node-commit:";
+export const NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX = "node-audit:";
+export const NODE_PROCESS_LEDGER_LEASE_OWNER_PREFIXES: readonly string[] = [
+  NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX,
+  NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX,
+];
+
+export const nodeProcessCommitLeaseOwner = (): string =>
+  `${NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX}${randomUUID()}`;
+
+export const nodeProcessAuditLeaseOwner = (): string =>
+  `${NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX}${randomUUID()}`;
+
+/** Clears the ledger MPF lease when its owner carries one of `prefixes`,
+ * whoever took it, and returns the owner it cleared. Only a caller that proved
+ * no live process holds such a lease may run it: see
+ * releaseLedgerStoreLeaseOfPreviousNodeProcess. */
+export const retireLedgerStoreLeaseOfOwnerPrefixes = (
+  prefixes: readonly string[],
+): Effect.Effect<
+  { readonly owner: string; readonly expiresAt: Date | null } | undefined,
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (prefixes.length === 0) return undefined;
+    const sql = yield* SqlClient.SqlClient;
+    const ownedByPrefix = sql.or(
+      prefixes.map((prefix) => sql`starts_with(lease_owner, ${prefix})`),
+    );
+    const rows = yield* sql<{
+      readonly lease_owner: string;
+      readonly lease_expires_at: Date | null;
+    }>`WITH previous AS (
+        SELECT lease_owner, lease_expires_at FROM ${sql(tableName)}
+        WHERE store_name = 'ledger' AND ${ownedByPrefix}
+        FOR UPDATE
+      )
+      UPDATE ${sql(tableName)} AS state SET
+        lease_owner = NULL, lease_expires_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      FROM previous
+      WHERE state.store_name = 'ledger'
+        AND state.lease_owner = previous.lease_owner
+      RETURNING previous.lease_owner, previous.lease_expires_at`;
+    const row = rows[0];
+    return row === undefined
+      ? undefined
+      : { owner: row.lease_owner, expiresAt: row.lease_expires_at };
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to retire ledger MPF lease"),
   );
 
 export const renewLedgerStoreLease = ({

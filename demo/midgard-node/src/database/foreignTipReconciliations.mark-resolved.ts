@@ -55,25 +55,201 @@ export const retrieveByForeignHeaderHash = (
     ),
   );
 
-export const retrieveEvidenceHistory: Effect.Effect<
-  readonly Entry[],
+/** The deployment and consensus profile whose retained evidence applies. */
+export type EvidenceScope = {
+  /** Absent only for a dev bundle without a marker; then no row is excluded. */
+  readonly manifestId: string | undefined;
+  readonly consensusProfileId: string;
+};
+
+/** The stored verdict of a row, read from its columns without decoding. */
+export type StoredVerdict = {
+  readonly blockingReason: string | null;
+  readonly commitments: {
+    readonly depositsRoot: string;
+    readonly depositCount: bigint;
+    readonly forcedTransactionsRoot: string;
+    readonly forcedTransactionCount: bigint;
+    readonly withdrawalsRoot: string;
+    readonly withdrawalCount: bigint;
+  };
+};
+
+type VerdictColumns = Pick<
+  RawEntry,
+  | Columns.BLOCKING_REASON
+  | Columns.DEPOSITS_ROOT
+  | Columns.DEPOSIT_COUNT
+  | Columns.FORCED_TRANSACTIONS_ROOT
+  | Columns.FORCED_TRANSACTION_COUNT
+  | Columns.WITHDRAWALS_ROOT
+  | Columns.WITHDRAWAL_COUNT
+>;
+
+const storedVerdict = (row: VerdictColumns): StoredVerdict => ({
+  blockingReason: row[Columns.BLOCKING_REASON],
+  commitments: {
+    depositsRoot: row[Columns.DEPOSITS_ROOT],
+    depositCount: BigInt(row[Columns.DEPOSIT_COUNT]),
+    forcedTransactionsRoot: row[Columns.FORCED_TRANSACTIONS_ROOT],
+    forcedTransactionCount: BigInt(row[Columns.FORCED_TRANSACTION_COUNT]),
+    withdrawalsRoot: row[Columns.WITHDRAWALS_ROOT],
+    withdrawalCount: BigInt(row[Columns.WITHDRAWAL_COUNT]),
+  },
+});
+
+/** A stored row that no longer decodes; its window is still readable. */
+export type UndecodableEvidence = {
+  readonly foreignHeaderHash: Buffer;
+  readonly blockStartTime: Date;
+  readonly blockEndTime: Date;
+  readonly verdict: StoredVerdict;
+  readonly cause: DatabaseError;
+};
+
+/**
+ * Evidence of the active deployment and profile only, decoded row by row: a
+ * row that no longer decodes is returned beside the others instead of failing
+ * the whole history.
+ */
+export const retrieveEvidenceHistory = (
+  scope: EvidenceScope,
+): Effect.Effect<
+  {
+    readonly entries: readonly Entry[];
+    readonly undecodable: readonly UndecodableEvidence[];
+  },
   DatabaseError,
   Database
-> = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<RawEntry>`
-    SELECT * FROM ${sql(tableName)}
-    ORDER BY ${sql(Columns.BLOCK_START_TIME)} ASC,
-             ${sql(Columns.BLOCK_END_TIME)} ASC,
-             ${sql(Columns.CREATED_AT)} ASC
-  `;
-  return yield* Effect.forEach(rows, decodeEntry, { concurrency: 1 });
-}).pipe(
-  sqlErrorToDatabaseError(
-    tableName,
-    "Failed to retrieve foreign-tip reconciliation evidence history",
-  ),
-);
+> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      scope.manifestId === undefined
+        ? yield* sql<RawEntry>`
+            SELECT * FROM ${sql(tableName)}
+            WHERE ${sql(Columns.CONSENSUS_PROFILE_ID)} = ${scope.consensusProfileId}
+            ORDER BY ${sql(Columns.BLOCK_START_TIME)} ASC,
+                     ${sql(Columns.BLOCK_END_TIME)} ASC,
+                     ${sql(Columns.CREATED_AT)} ASC
+          `
+        : yield* sql<RawEntry>`
+            SELECT * FROM ${sql(tableName)}
+            WHERE ${sql(Columns.CONSENSUS_PROFILE_ID)} = ${scope.consensusProfileId}
+              AND ${sql(Columns.DEPLOYMENT_MANIFEST_ID)} = ${scope.manifestId}
+            ORDER BY ${sql(Columns.BLOCK_START_TIME)} ASC,
+                     ${sql(Columns.BLOCK_END_TIME)} ASC,
+                     ${sql(Columns.CREATED_AT)} ASC
+          `;
+    const entries: Entry[] = [];
+    const undecodable: UndecodableEvidence[] = [];
+    for (const row of rows) {
+      const decoded = yield* Effect.either(decodeEntry(row));
+      if (decoded._tag === "Right") {
+        entries.push(decoded.right);
+      } else {
+        undecodable.push({
+          foreignHeaderHash: row[Columns.FOREIGN_HEADER_HASH],
+          blockStartTime: row[Columns.BLOCK_START_TIME],
+          blockEndTime: row[Columns.BLOCK_END_TIME],
+          verdict: storedVerdict(row),
+          cause: decoded.left,
+        });
+      }
+    }
+    return { entries, undecodable };
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve foreign-tip reconciliation evidence history",
+    ),
+  );
+
+/** A row whose foreign block ended before `cutoff`, read without decoding. */
+export type PruneCandidate = {
+  readonly foreignHeaderHash: Buffer;
+  readonly manifestId: string;
+  readonly consensusProfileId: string;
+  readonly blockStartTime: Date;
+  readonly blockEndTime: Date;
+  readonly verdict: StoredVerdict;
+};
+
+export const retrievePruneCandidates = (
+  cutoff: Date,
+): Effect.Effect<readonly PruneCandidate[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<
+      VerdictColumns &
+        Pick<
+          RawEntry,
+          | Columns.FOREIGN_HEADER_HASH
+          | Columns.DEPLOYMENT_MANIFEST_ID
+          | Columns.CONSENSUS_PROFILE_ID
+          | Columns.BLOCK_START_TIME
+          | Columns.BLOCK_END_TIME
+        >
+    >`
+      SELECT ${sql(Columns.FOREIGN_HEADER_HASH)},
+             ${sql(Columns.DEPLOYMENT_MANIFEST_ID)},
+             ${sql(Columns.CONSENSUS_PROFILE_ID)},
+             ${sql(Columns.BLOCK_START_TIME)},
+             ${sql(Columns.BLOCK_END_TIME)},
+             ${sql(Columns.BLOCKING_REASON)},
+             ${sql(Columns.DEPOSITS_ROOT)},
+             ${sql(Columns.DEPOSIT_COUNT)},
+             ${sql(Columns.FORCED_TRANSACTIONS_ROOT)},
+             ${sql(Columns.FORCED_TRANSACTION_COUNT)},
+             ${sql(Columns.WITHDRAWALS_ROOT)},
+             ${sql(Columns.WITHDRAWAL_COUNT)}
+      FROM ${sql(tableName)}
+      WHERE ${sql(Columns.BLOCK_END_TIME)} < ${cutoff}
+      ORDER BY ${sql(Columns.BLOCK_END_TIME)} ASC,
+               ${sql(Columns.FOREIGN_HEADER_HASH)} ASC
+    `;
+    return rows.map((row) => ({
+      foreignHeaderHash: row[Columns.FOREIGN_HEADER_HASH],
+      manifestId: row[Columns.DEPLOYMENT_MANIFEST_ID],
+      consensusProfileId: row[Columns.CONSENSUS_PROFILE_ID],
+      blockStartTime: row[Columns.BLOCK_START_TIME],
+      blockEndTime: row[Columns.BLOCK_END_TIME],
+      verdict: storedVerdict(row),
+    }));
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve foreign-tip reconciliations past the challengeability horizon",
+    ),
+  );
+
+/**
+ * Deletes the named rows, re-checking the horizon in the statement itself so a
+ * row can only ever leave once its foreign block ended before `cutoff`.
+ */
+export const deleteSettled = ({
+  foreignHeaderHashes,
+  cutoff,
+}: {
+  readonly foreignHeaderHashes: readonly Buffer[];
+  readonly cutoff: Date;
+}): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (foreignHeaderHashes.length === 0) return 0;
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ [Columns.FOREIGN_HEADER_HASH]: Buffer }>`
+      DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.FOREIGN_HEADER_HASH)} IN ${sql.in(foreignHeaderHashes)}
+        AND ${sql(Columns.BLOCK_END_TIME)} < ${cutoff}
+      RETURNING ${sql(Columns.FOREIGN_HEADER_HASH)}
+    `;
+    return rows.length;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to prune settled foreign-tip reconciliations",
+    ),
+  );
 
 export const countAwaiting: Effect.Effect<number, DatabaseError, Database> =
   Effect.gen(function* () {

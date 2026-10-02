@@ -246,16 +246,59 @@ export type RetentionL1View = {
 };
 
 /**
+ * The SQL condition under which a DA payload is held although L1 at its tip no
+ * longer lists its header: the newest merged header whose merge is final, and
+ * every header a merge or removal not yet final has taken out of the queue. A
+ * reader at release finality still sees those headers, or their successor
+ * whose predecessor they are, as queued. Each is released once a later merge
+ * of that chain is final. Both sources record a transition only at the
+ * manifest's L1 finality depth, so that depth is the single bound here.
+ *
+ * `deploymentIdentityDigest` is the verified manifest ID; a node running a
+ * derived contract bundle records no authenticated transitions, so nothing is
+ * held.
+ */
+export const finalityHeldPayload = (
+  sql: SqlClient.SqlClient,
+  deploymentIdentityDigest: Buffer | undefined,
+) =>
+  deploymentIdentityDigest === undefined
+    ? sql`FALSE`
+    : sql`${sql(Columns.HEADER_HASH)} IN (
+        SELECT latest.header_hash FROM (
+          SELECT terminal.header_hash FROM da_payload_terminal_outcomes AS terminal
+          WHERE terminal.terminal_outcome = 'merged'
+            AND terminal.deployment_identity_digest = ${deploymentIdentityDigest}
+          ORDER BY terminal.block_no DESC, terminal.transaction_index DESC
+          LIMIT 1) AS latest
+        UNION ALL
+        SELECT decode(removed.header_hex, 'hex')
+        FROM state_queue_terminal_observer_states AS observer,
+          jsonb_array_elements(
+            CASE jsonb_typeof(observer.state_record)
+              WHEN 'string' THEN (observer.state_record #>> '{}')::jsonb
+              ELSE observer.state_record
+            END -> 'pending') AS pending(transition),
+          jsonb_array_elements_text(
+            pending.transition -> 'removedHeaderHashes') AS removed(header_hex)
+        WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}
+          -- Filtered, not projected to NULL: a NULL in the held set would make
+          -- NOT IN unknown for every row and stop all pruning.
+          AND removed.header_hex ~ '^[0-9a-f]{56}$')`;
+
+/**
  * Retention prune (GOAL_SPEC 9.4 / Q54), the SQL form of the core
  * `daRetentionPruneDecision`.
  *
  * A DA payload is removed when its block END TIME is strictly older than
  * `challengeableCutoff` (now - block maturity - worst-case proof-time bound)
  * OR its header has an authenticated `removed` terminal outcome under this
- * deployment, unless it is the L1 confirmed head's payload or its header is
- * live in the L1 state queue. `block_end_time` is NOT NULL, so every row is
- * decidable and the retained set is bounded by one head, the live queue, and
- * the payloads whose block ended within the horizon.
+ * deployment, unless it is the L1 confirmed head's payload, its header is
+ * live in the L1 state queue, or it is `finalityHeldPayload`.
+ * `block_end_time` is NOT NULL, so every row is decidable and the retained set
+ * is bounded by one head, the live queue, the headers released within the
+ * last finality depth of blocks, and the payloads whose block ended within the
+ * horizon.
  *
  * `deploymentIdentityDigest` is the verified manifest ID; a node running a
  * derived contract bundle has no authenticated terminal outcomes to consult,
@@ -283,6 +326,7 @@ export const pruneBeyondRetention = (args: {
       DELETE FROM ${sql(tableName)}
       WHERE (${sql(Columns.BLOCK_END_TIME)} < ${args.challengeableCutoff} OR ${removed})
         AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
+        AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest)}
       RETURNING ${sql(Columns.HEADER_HASH)}`;
     return rows.length;
   }).pipe(

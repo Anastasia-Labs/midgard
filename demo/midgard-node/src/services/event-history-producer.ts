@@ -219,8 +219,17 @@ export const assertHistoryProducer = (
       : Effect.provideService(HistoryProducer, permit),
   );
 
+/** Carries a failure of the producer's own work past the owner, so it is not
+ * mistaken for a refusal to register or keep the producer. */
+class ProducerWorkFailure<E> {
+  constructor(readonly error: E) {}
+}
+
 /** Register the entire operation, including worker termination and cache deltas.
  * Network calls run outside SQL. Individual writes use withHistoryWrite.
+ * The work's own failures keep their type. A refused registration, and a
+ * superseded producer whether the owner or the work noticed it, are the
+ * gate's PRODUCER_REQUIRED refusal.
  */
 export const runHistoryProducer = <A, E, R>(work: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -234,9 +243,20 @@ export const runHistoryProducer = <A, E, R>(work: Effect.Effect<A, E, R>) =>
       .runProducer((token, assertCurrent, coverage) =>
         assertCurrent.pipe(
           Effect.zipRight(
-            Effect.provideService(work, HistoryProducer, { token, coverage }),
+            Effect.provideService(work, HistoryProducer, {
+              token,
+              coverage,
+            }).pipe(Effect.mapError((error) => new ProducerWorkFailure(error))),
           ),
         ),
       )
-      .pipe(Effect.mapError(unavailable));
+      .pipe(
+        Effect.mapError((error) =>
+          !(error instanceof ProducerWorkFailure)
+            ? unavailable(error)
+            : error.error instanceof HistoryRecoverySuperseded
+              ? unavailable(error.error)
+              : (error.error as E),
+        ),
+      );
   });

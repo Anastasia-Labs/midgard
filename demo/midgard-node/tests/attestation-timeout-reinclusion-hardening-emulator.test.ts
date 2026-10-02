@@ -25,6 +25,7 @@ import {
   assertRewoundRemovalsStand,
   parseStateQueueCorrectionObserverState,
 } from "../src/services/state-queue-correction-observer.js";
+import { blockedReasons } from "../src/services/state-queue-correction-rewind.load-retained-chain.js";
 import {
   C,
   captureStoredState,
@@ -752,9 +753,8 @@ it("returns a removed block's L2 transfer, withdrawal, forced transaction and de
   }
 }, 1_200_000);
 
-it("aborts the repair when the removed chain stops proving after the native root moved, and resumes the retained plan once it proves again", async () => {
+it("holds the repair when the removed chain stops proving after the native root moved, and resumes the retained plan in-process once it proves again", async () => {
   const scenario = await openCorrectionRewindScenario({ blocks: 1 });
-  let h: Pick<Lifecycle, "close"> = scenario.h;
   try {
     const [removedHeader] = scenario.headers as [string];
     const removed = await readJournal(removedHeader);
@@ -763,17 +763,18 @@ it("aborts the repair when the removed chain stops proving after the native root
     const deposits = await readDeposits();
     // Between the plan and the repair transaction, the journal stops being
     // this deployment's block. The repair re-proves the chain under its own
-    // lock and refuses; nothing it would write commits.
+    // lock and holds the gate closed; nothing it would write commits.
     const owner = await openNativeOwner(scenario.h);
     const restore = owner.restoreCanonicalRoot.bind(owner);
     let deployment: Record<string, unknown> | undefined;
     owner.restoreCanonicalRoot = async (plan) => {
       await restore(plan);
-      deployment = await updateJournal(removedHeader, {
+      deployment ??= await updateJournal(removedHeader, {
         [C.DEPLOYMENT_MANIFEST_ID]: foreignManifest(removed),
       });
     };
-    expect(await failureText(scenario.nextSourceBlock())).toContain(
+    await scenario.nextSourceBlockWhileRefused();
+    expect([...blockedReasons.values()]).toContain(
       `Retained correction rewind ${removedHeader} is no longer provable: removed block ${removedHeader} belongs to another deployment`,
     );
     expect(deployment).toBeDefined();
@@ -786,15 +787,13 @@ it("aborts the repair when the removed chain stops proving after the native root
     expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
       "prepared",
     ]);
-    // Once the chain proves again, the restarted process resumes the retained
-    // plan from the moved native root and completes it.
-    const restarted = await scenario.h.restartRuntime({
-      afterStop: async () => {
-        await updateJournal(removedHeader, deployment!);
-      },
-    });
-    h = restarted;
-    expect(await nativeRoot(restarted)).toBe(removed[C.BASE_UTXOS_ROOT]);
+    // Once the chain proves again, the same process resumes the retained plan
+    // from the moved native root and completes it.
+    owner.restoreCanonicalRoot = restore;
+    await updateJournal(removedHeader, deployment!);
+    await scenario.nextSourceBlock();
+    expect(blockedReasons.size).toBe(0);
+    expect(await nativeRoot(scenario.h)).toBe(removed[C.BASE_UTXOS_ROOT]);
     expect((await readSqlLedgerRoot()).root_hex).toBe(
       removed[C.BASE_UTXOS_ROOT],
     );
@@ -804,21 +803,20 @@ it("aborts the repair when the removed chain stops proving after the native root
     expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
       "applied",
     ]);
-    const next = await commitNextBlock(restarted);
+    const next = await commitNextBlock(scenario.h);
     expect(
       (await readJournal(next.submittedHeaderHash)).depositEventIds.map(hex),
     ).toEqual(removed.depositEventIds.map(hex));
   } finally {
-    await closeLifecycle(h);
+    await closeLifecycle(scenario.h);
   }
 }, 900_000);
 
-it("refuses to resume a retained plan whose unlanded member stopped proving, and resumes it once the member proves again", async () => {
+it("holds a retained plan whose unlanded member stopped proving, and resumes it in-process once the member proves again", async () => {
   const scenario = await openCorrectionRewindScenario({
     blocks: 2,
     unlandedTail: true,
   });
-  let h: Pick<Lifecycle, "close"> = scenario.h;
   try {
     const [removedHeader, childHeader] = scenario.headers as [string, string];
     const parent = await readJournal(removedHeader);
@@ -832,7 +830,7 @@ it("refuses to resume a retained plan whose unlanded member stopped proving, and
     const deposits = await readDeposits();
     // Between the plan and the repair transaction, the unlanded member's
     // journal records an L1 observation. The repair re-proves the retained
-    // members under its own lock and refuses; nothing it would write commits.
+    // members under its own lock and holds; nothing it would write commits.
     const owner = await openNativeOwner(scenario.h);
     const restore = owner.restoreCanonicalRoot.bind(owner);
     let observed: Record<string, unknown> | undefined;
@@ -842,7 +840,8 @@ it("refuses to resume a retained plan whose unlanded member stopped proving, and
         [C.STATUS]: Pending.Status.ObservedWaitingStability,
       });
     };
-    expect(await failureText(scenario.nextSourceBlock())).toContain(
+    await scenario.nextSourceBlockWhileRefused();
+    expect([...blockedReasons.values()]).toContain(
       `Retained correction rewind member ${childHeader} is no longer provably unlanded: descendant ${childHeader} of removed block ${removedHeader} is not removed by an admitted correction yet (journal status ${Pending.Status.ObservedWaitingStability})`,
     );
     expect(observed).toBeDefined();
@@ -859,15 +858,13 @@ it("refuses to resume a retained plan whose unlanded member stopped proving, and
       expect.objectContaining({ headerHash: removedHeader, kind: "removed" }),
       expect.objectContaining({ headerHash: childHeader, kind: "unlanded" }),
     ]);
-    // Once the member proves again, the restarted process resumes the
-    // retained plan and abandons both journals.
-    const restarted = await scenario.h.restartRuntime({
-      afterStop: async () => {
-        await updateJournal(childHeader, observed!);
-      },
-    });
-    h = restarted;
-    expect(await nativeRoot(restarted)).toBe(parent[C.BASE_UTXOS_ROOT]);
+    // Once the member proves again, the same process resumes the retained
+    // plan and abandons both journals.
+    owner.restoreCanonicalRoot = restore;
+    await updateJournal(childHeader, observed!);
+    await scenario.nextSourceBlock();
+    expect(blockedReasons.size).toBe(0);
+    expect(await nativeRoot(scenario.h)).toBe(parent[C.BASE_UTXOS_ROOT]);
     expect((await readSqlLedgerRoot()).root_hex).toBe(
       parent[C.BASE_UTXOS_ROOT],
     );
@@ -878,7 +875,7 @@ it("refuses to resume a retained plan whose unlanded member stopped proving, and
     expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
       "applied",
     ]);
-    const next = await commitNextBlock(restarted);
+    const next = await commitNextBlock(scenario.h);
     expect(
       (await readJournal(next.submittedHeaderHash)).depositEventIds
         .map(hex)
@@ -887,13 +884,12 @@ it("refuses to resume a retained plan whose unlanded member stopped proving, and
       [...parent.depositEventIds, ...child.depositEventIds].map(hex).sort(),
     );
   } finally {
-    await closeLifecycle(h);
+    await closeLifecycle(scenario.h);
   }
 }, 900_000);
 
-it("refuses to rewind from a native root outside the removed chain without preparing a plan, and rewinds once the root is the chain's", async () => {
+it("holds the rewind from a native root outside the removed chain without preparing a plan, and rewinds in-process once the root is the chain's", async () => {
   const scenario = await openCorrectionRewindScenario({ blocks: 1 });
-  let h: Pick<Lifecycle, "close"> = scenario.h;
   try {
     const [removedHeader] = scenario.headers as [string];
     const removed = await readJournal(removedHeader);
@@ -909,20 +905,24 @@ it("refuses to rewind from a native root outside the removed chain without prepa
       ...(await diagnostics()),
       durableRoot: foreignRoot,
     });
-    const failure = await failureText(scenario.nextSourceBlock());
-    owner.diagnostics = diagnostics;
-    expect(failure).toContain(
+    await scenario.nextSourceBlockWhileRefused();
+    await scenario.nextSourceBlockWhileRefused();
+    expect([...blockedReasons.values()]).toEqual([
       `Native MPF durable root ${foreignRoot} is outside the removed chain ${removedHeader}; refusing to rewind`,
-    );
-    await expectNoRewind(scenario, untouched);
-    const restarted = await scenario.h.restartRuntime();
-    h = restarted;
-    expect(await nativeRoot(restarted)).toBe(removed[C.BASE_UTXOS_ROOT]);
+    ]);
+    const { native, ...stored } = untouched;
+    expect(await readRecoveryPlans()).toEqual([]);
+    expect(await captureStoredState(scenario)).toEqual(stored);
+    expect((await diagnostics()).durableRoot).toBe(native);
+    owner.diagnostics = diagnostics;
+    await scenario.nextSourceBlock();
+    expect(blockedReasons.size).toBe(0);
+    expect(await nativeRoot(scenario.h)).toBe(removed[C.BASE_UTXOS_ROOT]);
     expect((await readJournal(removedHeader))[C.STATUS]).toBe(
       Pending.Status.Abandoned,
     );
   } finally {
-    await closeLifecycle(h);
+    await closeLifecycle(scenario.h);
   }
 }, 900_000);
 

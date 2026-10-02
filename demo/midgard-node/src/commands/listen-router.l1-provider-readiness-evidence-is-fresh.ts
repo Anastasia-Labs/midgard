@@ -25,31 +25,26 @@ export const SUBMIT_ENDPOINT: string = "submit";
 
 export const DEPOSIT_BUILD_ENDPOINT: string = "deposit/build";
 
-export const READINESS_L1_PROVIDER_LIVE_TIMEOUT_MS = 2_000;
-
+/**
+ * How `/readyz` answered the L1 provider question: from fresh cached
+ * evidence, from the cache because another request's direct preflight is in
+ * flight, or through the direct raw-provider preflight that only runs on
+ * fresh exact HubOracle evidence.
+ */
 export type L1ProviderReadinessProbe =
   | { readonly mode: "cached_fresh"; readonly baseRevision: number }
-  | { readonly mode: "busy"; readonly baseRevision: number }
   | {
-      readonly mode: "live";
+      readonly mode: "direct_preflight_in_flight";
+      readonly baseRevision: number;
+    }
+  | {
+      readonly mode: "exact_gated_direct_preflight";
       readonly healthy: true;
       readonly ogmiosSlot: SubmitSlotSnapshot;
       readonly publishedRevision: number;
     }
   | {
-      readonly mode: "live";
-      readonly healthy: false;
-      readonly error: string;
-      readonly publishedRevision: number;
-    }
-  | {
-      readonly mode: "live_preflight_control_plane_busy";
-      readonly healthy: true;
-      readonly ogmiosSlot: SubmitSlotSnapshot;
-      readonly publishedRevision: number;
-    }
-  | {
-      readonly mode: "live_preflight_control_plane_busy";
+      readonly mode: "exact_gated_direct_preflight";
       readonly healthy: false;
       readonly error: string;
       readonly publishedRevision: number;
@@ -174,7 +169,7 @@ export const readinessProbeFromLatestExactObservation = (
     };
   }
   return {
-    mode: "live_preflight_control_plane_busy",
+    mode: "exact_gated_direct_preflight",
     healthy: false,
     error:
       evidence.lastObservationKind === "exact_failure"
@@ -183,26 +178,6 @@ export const readinessProbeFromLatestExactObservation = (
         : "L1 provider evidence changed while a direct probe was in flight",
     publishedRevision: evidence.evidenceRevision,
   };
-};
-
-export const reconcileReadinessProbeWithExactEvidence = ({
-  probe,
-  evidence,
-}: {
-  readonly probe: L1ProviderReadinessProbe;
-  readonly evidence: L1ProviderHealthEvidence;
-}): L1ProviderReadinessProbe => {
-  if (probe.mode !== "live_preflight_control_plane_busy") {
-    return probe;
-  }
-  if (
-    evidence.evidenceRevision > probe.publishedRevision &&
-    (evidence.lastObservationKind === "exact_success" ||
-      evidence.lastObservationKind === "exact_failure")
-  ) {
-    return readinessProbeFromLatestExactObservation(evidence);
-  }
-  return probe;
 };
 
 export const recordDirectProbeFailure = ({
@@ -231,7 +206,7 @@ export const recordDirectProbeFailure = ({
       });
       return [
         {
-          mode: "live_preflight_control_plane_busy",
+          mode: "exact_gated_direct_preflight",
           healthy: false,
           error,
           publishedRevision: updated.evidenceRevision,
@@ -267,7 +242,7 @@ export const recordDirectProbeSuccess = ({
       });
       return [
         {
-          mode: "live_preflight_control_plane_busy",
+          mode: "exact_gated_direct_preflight",
           healthy: true,
           ogmiosSlot,
           publishedRevision: updated.evidenceRevision,

@@ -15,10 +15,16 @@ import "./foreignTipReconciliations.mark-resolved.js";
 export {
   clear,
   countAwaiting,
+  deleteSettled,
+  type EvidenceScope,
   markAwaiting,
   markResolved,
+  type PruneCandidate,
   retrieveByForeignHeaderHash,
   retrieveEvidenceHistory,
+  retrievePruneCandidates,
+  type StoredVerdict,
+  type UndecodableEvidence,
 } from "./foreignTipReconciliations.mark-resolved.js";
 export {
   Columns,

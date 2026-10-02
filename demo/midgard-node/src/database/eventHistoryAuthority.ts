@@ -1,8 +1,13 @@
-import { SqlClient } from "@effect/sql";
-import { Context, Effect, Option } from "effect";
+import { SqlClient, type SqlError } from "@effect/sql";
+import { Clock, Context, Effect, Option } from "effect";
 
 import type { LedgerSnapshotPoint } from "../l1-ledger-snapshot.js";
 import type { Database } from "../services/database.js";
+import {
+  type HeldLease,
+  nextPredecessorLeaseWaitStep,
+  PredecessorLeaseWait,
+} from "./eventHistoryAuthority.predecessor-lease-wait.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "event_history_authority";
@@ -212,12 +217,65 @@ export const withRecovery = <A, E, R>(
 ): Effect.Effect<A, E | DatabaseError, R | Database> =>
   withState(token, "recovering", mutation, true);
 
+export { PredecessorLeaseWait };
+
+type Claim = { readonly claimed: Token } | HeldLease;
+
+const claim = (
+  deployment: Buffer,
+  ownerToken: string,
+  ttl: number,
+): Effect.Effect<Claim, DatabaseError | SqlError.SqlError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const inserted = yield* sql<Row>`INSERT INTO event_history_authority
+      (deployment_identity, owner_token, generation, state, reason, lease_until)
+      VALUES (${deployment}, ${ownerToken}::uuid, 0, 'recovering', 'startup revalidation',
+        clock_timestamp() + (${ttl} * interval '1 millisecond'))
+      ON CONFLICT (singleton) DO NOTHING RETURNING *`;
+        if (inserted[0] !== undefined)
+          return { claimed: tokenFromRow(inserted[0]) };
+        const row = yield* lockedRow;
+        if (!row.deployment_identity.equals(deployment))
+          return yield* Effect.fail(
+            failure("History authority belongs to another deployment"),
+          );
+        if (
+          row.state !== "suspended" &&
+          row.lease_live &&
+          row.owner_token !== ownerToken
+        ) {
+          const [left] = yield* sql<{ readonly remaining_ms: number }>`SELECT
+        ceil(extract(epoch FROM lease_until - clock_timestamp()) * 1000)::integer AS remaining_ms
+        FROM event_history_authority WHERE singleton = true`;
+          return {
+            heldBy: row.owner_token,
+            generation: row.generation,
+            leaseUntil: row.lease_until,
+            remainingMs: Math.max(0, left?.remaining_ms ?? 0),
+          };
+        }
+        const rows = yield* sql<Row>`UPDATE event_history_authority
+      SET owner_token = ${ownerToken}::uuid, generation = generation + 1,
+          state = 'recovering', reason = 'startup revalidation',
+          lease_until = clock_timestamp() + (${ttl} * interval '1 millisecond'), updated_at = clock_timestamp()
+      WHERE singleton = true RETURNING *`;
+        return { claimed: tokenFromRow(rows[0]!) };
+      }),
+    );
+  });
+
 /** Claim an absent, expired or suspended owner. A foreign deployment is never
  * overwritten. Even the same owner must advance generation and revalidate
  * after restart. A suspended row confers no authority, so its lease end is not
  * compared with the clock: release and suspend stamp it with
  * clock_timestamp(), and a backward wall-clock step would otherwise make a
- * released owner read as live and refuse its successor. */
+ * released owner read as live and refuse its successor. Another token's live
+ * lease refuses, unless PredecessorLeaseWait is provided: then a lease nobody
+ * renews is waited out and claimed by the same transaction, and is never
+ * taken while live. */
 export const acquire = (input: {
   readonly deploymentIdentity: string;
   readonly ownerToken: string;
@@ -229,36 +287,41 @@ export const acquire = (input: {
       "Deployment identity",
     );
     const ttl = yield* duration(input.leaseDurationMs);
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const inserted = yield* sql<Row>`INSERT INTO event_history_authority
-      (deployment_identity, owner_token, generation, state, reason, lease_until)
-      VALUES (${deployment}, ${input.ownerToken}::uuid, 0, 'recovering', 'startup revalidation',
-        clock_timestamp() + (${ttl} * interval '1 millisecond'))
-      ON CONFLICT (singleton) DO NOTHING RETURNING *`;
-        if (inserted[0] !== undefined) return tokenFromRow(inserted[0]);
-        const row = yield* lockedRow;
-        if (!row.deployment_identity.equals(deployment))
-          return yield* Effect.fail(
-            failure("History authority belongs to another deployment"),
+    const wait = yield* Effect.serviceOption(PredecessorLeaseWait);
+    let waitStartedAt: number | undefined;
+    let seen: HeldLease | undefined;
+    for (;;) {
+      const result = yield* claim(deployment, input.ownerToken, ttl);
+      const now = yield* Clock.currentTimeMillis;
+      if ("claimed" in result) {
+        if (waitStartedAt !== undefined)
+          yield* Effect.logInfo(
+            `History authority claimed as generation ${result.claimed.generation} after waiting ${(now - waitStartedAt).toString()} ms for the previous owner's lease to expire`,
           );
-        if (
-          row.state !== "suspended" &&
-          row.lease_live &&
-          row.owner_token !== input.ownerToken
-        )
-          return yield* Effect.fail(
-            failure("History authority still has a live owner"),
-          );
-        const rows = yield* sql<Row>`UPDATE event_history_authority
-      SET owner_token = ${input.ownerToken}::uuid, generation = generation + 1,
-          state = 'recovering', reason = 'startup revalidation',
-          lease_until = clock_timestamp() + (${ttl} * interval '1 millisecond'), updated_at = clock_timestamp()
-      WHERE singleton = true RETURNING *`;
-        return tokenFromRow(rows[0]!);
-      }),
-    );
+        return result.claimed;
+      }
+      if (Option.isNone(wait))
+        return yield* Effect.fail(
+          failure("History authority still has a live owner"),
+        );
+      if (waitStartedAt === undefined) {
+        waitStartedAt = now;
+        yield* Effect.logWarning(
+          `Startup is waiting for the history authority lease of owner ${result.heldBy} (generation ${result.generation}) to expire in ${result.remainingMs.toString()} ms: a node that was killed cannot release it. Startup fails if it is renewed, or still live after ${(ttl + wait.value.marginMs).toString()} ms.`,
+        );
+      }
+      const step = nextPredecessorLeaseWaitStep({
+        held: result,
+        previous: seen,
+        waitStartedAt,
+        now,
+        boundMs: ttl + wait.value.marginMs,
+        pollIntervalMs: wait.value.pollIntervalMs,
+      });
+      if ("refuse" in step) return yield* Effect.fail(failure(step.refuse));
+      seen = result;
+      yield* Effect.sleep(step.sleepMs);
+    }
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to acquire history authority"),
   );

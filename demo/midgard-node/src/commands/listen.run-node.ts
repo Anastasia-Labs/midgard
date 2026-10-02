@@ -8,16 +8,7 @@ import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import {
-  Cause,
-  Duration,
-  Effect,
-  Layer,
-  Option,
-  pipe,
-  Ref,
-  Schedule,
-} from "effect";
+import { Cause, Effect, Layer, Option, pipe, Ref } from "effect";
 
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
 import {
@@ -25,30 +16,14 @@ import {
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
+import { PredecessorLeaseWait } from "../database/eventHistoryAuthority.js";
 import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
-  admissionBacklogGaugeFiber,
-  attestationTimeoutCorrectionFiber,
-  blockCommitmentFiber,
-  blockConfirmationFiber,
-  daPublicationReconcilerFiber,
   fetchAndInsertTxOrderUTxOs,
-  fetchAndInsertTxOrderUTxOsFiber,
-  mergeFiber,
-  monitorMempoolFiber,
-  mpfPayloadAuditFiber,
-  nativeMpfOwnerSupervisorFiber,
-  operatorWatchdogFiber,
   refreshAdmissionBacklogGauge,
-  retentionSweeperFiber,
-  speculativeCommitBuilderFiber,
-  speculativeCommitSubmitterFiber,
-  txQueueProcessorFiber,
-  userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
-import { settlementFiber } from "../fibers/settlement.js";
 import * as Genesis from "../genesis.js";
 import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
@@ -66,7 +41,6 @@ import {
   NodeConfig,
   validationPoolLayer,
   WriteBehind,
-  writeBehindFiber,
 } from "../services/index.js";
 import {
   initializeArchitectureGOwner,
@@ -74,6 +48,7 @@ import {
 } from "../services/native-mpf-startup.js";
 import { settlementWalletAddress } from "../services/settlement.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
+import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
   logStartupFailure,
   retainedPayloadServerThread,
@@ -84,8 +59,10 @@ import {
   assertStartupMutationJobsRecoverable,
   ensureProtocolInitializedOnStartup,
   hydratePendingBlockFinalizationOnStartup,
+  releaseStateQueueLeasesOfPreviousNodeProcess,
   seedLatestLocalBlockBoundaryOnStartup,
 } from "./listen-startup.js";
+import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.release-ledger-store-lease-of-previous-node-process.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 /**
@@ -220,6 +197,8 @@ export const runNode = (
             ),
           );
           yield* hydratePendingBlockFinalizationOnStartup;
+          yield* releaseStateQueueLeasesOfPreviousNodeProcess;
+          yield* releaseLedgerStoreLeaseOfPreviousNodeProcess;
           yield* assertStartupMutationJobsRecoverable;
           yield* runStartupProviderStepWithRetry(
             "Startup tx-order catch-up",
@@ -274,6 +253,13 @@ export const runNode = (
           startupPrepared = true;
         }),
     }).pipe(
+      // A predecessor killed without releasing its history lease is waited
+      // out, not treated as a live owner; a lease still renewed past one
+      // duration plus the margin is one, and startup fails as before.
+      Effect.provideService(PredecessorLeaseWait, {
+        marginMs: 10_000,
+        pollIntervalMs: 2_000,
+      }),
       Effect.mapError(
         (cause) =>
           new DatabaseInitializationError({
@@ -340,62 +326,18 @@ export const runNode = (
         ),
       );
 
-    /**
-     * Builds a fixed Effect schedule from a millisecond interval.
-     */
-    const mkSchedule = (millisBetweenRuns: number) =>
-      Schedule.spaced(Duration.millis(millisBetweenRuns));
-
     const program = Effect.all(
-      [
-        admissionBacklogGaugeFiber(
-          mkSchedule(nodeConfig.ADMISSION_BACKLOG_REFRESH_MS),
-        ),
-        historyOwner.awaitStopped,
-        settlementFiber,
-        writeBehindFiber,
-        appThread,
-        retainedPayloadServerThread(retrieveRetainedDaPayload),
-        daPublicationReconcilerFiber(
-          mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
-        ),
-        blockCommitmentFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
-        ),
-        blockConfirmationFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
-        ),
-        operatorWatchdogFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
-        ),
-        nodeConfig.SPECULATIVE_COMMIT_BUILD
-          ? userEventBarrierRefresherFiber(
-              mkSchedule(nodeConfig.USER_EVENT_BARRIER_REFRESH_MS),
-            )
-          : Effect.void,
-        nodeConfig.SPECULATIVE_COMMIT_BUILD
-          ? speculativeCommitBuilderFiber
-          : Effect.void,
-        nodeConfig.SPECULATIVE_COMMIT_BUILD
-          ? speculativeCommitSubmitterFiber
-          : Effect.void,
-        fetchAndInsertTxOrderUTxOsFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
-        ),
-        retentionSweeperFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
-        ),
-        mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
-        attestationTimeoutCorrectionFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
-        ),
-        mpfPayloadAuditFiber,
-        nativeMpfOwnerSupervisorFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
-        ),
-        withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
-        txQueueProcessorFiber(mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS)),
-      ],
+      runNodeFiberSet({
+        nodeConfig,
+        withMonitoring,
+        startupFibers: {
+          historyOwnerStopped: historyOwner.awaitStopped,
+          appThread,
+          retainedPayloadServer: retainedPayloadServerThread(
+            retrieveRetainedDaPayload,
+          ),
+        },
+      }),
       {
         concurrency: "unbounded",
       },

@@ -38,6 +38,13 @@ const DEFAULT_STALE_PROVIDER_VALIDITY_RETRY_MAX_ATTEMPTS = Math.ceil(
   DEFAULT_SIGNED_TX_INLINE_WAIT_MS / SLOT_LENGTH_MS,
 );
 
+/** Ogmios reports a spent or missing input as JSON-RPC error 3117 with its
+ * outrefs under `data.unknownOutputReferences`. A provider wrapper can carry
+ * that error only as formatted text (an `Error.cause` is not enumerable), so
+ * the text forms are matched as well as the structured field. */
+const UNKNOWN_OUTPUT_REFERENCE_TEXT_REGEX =
+  /unknownOutputReferences|JSON-RPC error 3117\b|"code":\s*3117\b/;
+
 export const isUnknownOutputReferenceSubmitError = (
   error: unknown,
 ): boolean => {
@@ -58,7 +65,9 @@ export const isUnknownOutputReferenceSubmitError = (
   }
   return errorTextSearchStrings(error).some(
     (message) =>
-      message.includes("BadInputsUTxO") || message.includes("UnknownInput"),
+      message.includes("BadInputsUTxO") ||
+      message.includes("UnknownInput") ||
+      UNKNOWN_OUTPUT_REFERENCE_TEXT_REGEX.test(message),
   );
 };
 

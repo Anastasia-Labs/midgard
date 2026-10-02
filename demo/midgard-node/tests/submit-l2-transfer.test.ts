@@ -16,3 +16,5 @@ import "./midgard-output-helpers.js";
 import "./submit-l2-transfer.submit-l2-transfer-config-helpers.js";
 import "./submit-l2-transfer.submit-l2-transfer-tx-building.js";
 import "./submit-l2-transfer.submit-l2-transfer-program.js";
+import "./submit-l2-transfer.submission-journal.js";
+import "./submit-l2-transfer.exclude-out-ref.js";

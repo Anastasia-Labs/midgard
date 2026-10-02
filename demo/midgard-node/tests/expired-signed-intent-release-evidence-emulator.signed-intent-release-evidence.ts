@@ -246,7 +246,7 @@ describe.sequential("signed-intent release evidence", () => {
     }
   }, 900_000);
 
-  it("replaces a signed commit built on the root once the confirmed state shows a foreign block took the root's slot, never before its TTL", async () => {
+  it("replaces a signed commit built on the root once the confirmed state shows a foreign block took the root's slot, only at its TTL while the history journals no spend of its base output (owner ruling 2026-09-26)", async () => {
     const view = makeRewritableQueueTransport();
     const h = await openHistoryProductionOwnerLifecycle({
       transportFactory: view.transportFactory,

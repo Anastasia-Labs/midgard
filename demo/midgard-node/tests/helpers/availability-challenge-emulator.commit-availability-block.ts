@@ -41,8 +41,9 @@ const hashHeader = (header: SDK.Header): Promise<string> =>
  * Commits one block with the real `CommitBlockHeader` (the SDK builder the
  * node uses) after the queue's tail, signed by the responder as the
  * scheduler's active operator. The header is empty (no events), valid for
- * `validForMs` from now, with `end_time = validTo - 1`, and carries over from
- * its anchor (the confirmed state for an empty queue, else the tail).
+ * `validForMs` from now (or over an explicit `validity` interval), with
+ * `end_time = validTo - 1`, and carries over from its anchor (the confirmed
+ * state for an empty queue, else the tail).
  *
  * Returns an `AvailabilityFixture` for the committed block: `target`,
  * `payload`, `commitment` and `queueUnit` are the block's, and the root and
@@ -50,7 +51,11 @@ const hashHeader = (header: SDK.Header): Promise<string> =>
  */
 export const commitAvailabilityBlock = async (
   f: AvailabilityCommitFixture,
-  options: { payloadBytes?: number; validForMs?: number } = {},
+  options: {
+    payloadBytes?: number;
+    validForMs?: number;
+    validity?: { readonly validFromMs: number; readonly validToMs: number };
+  } = {},
 ): Promise<AvailabilityCommittedBlock> => {
   const { lucid, contracts } = f;
   const payloadBytes = options.payloadBytes ?? 14_021;
@@ -86,8 +91,9 @@ export const commitAvailabilityBlock = async (
       endTime: node.header.endTime,
     };
   }
-  const validFrom = f.emulator.now();
-  const validTo = validFrom + (options.validForMs ?? 60_000);
+  const validFrom = options.validity?.validFromMs ?? f.emulator.now();
+  const validTo =
+    options.validity?.validToMs ?? validFrom + (options.validForMs ?? 60_000);
   const header: SDK.Header = {
     prevUtxosRoot: anchor.utxosRoot,
     utxosRoot: anchor.utxosRoot,

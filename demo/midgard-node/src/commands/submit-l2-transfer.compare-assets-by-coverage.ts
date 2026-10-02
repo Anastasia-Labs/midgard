@@ -4,6 +4,7 @@ import {
   encodeMidgardAddressText,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
+import { outRefLabel, parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { type Assets } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -28,6 +29,12 @@ export type SubmitL2TransferConfig = {
   readonly submitRequestTimeoutMs?: number;
   readonly utxoRequestTimeoutMs?: number;
   readonly networkId: bigint;
+  /**
+   * Sender outputs never selected as inputs (normalized `txHash#index`
+   * labels, sorted, unique): outputs the wallet has already committed
+   * elsewhere, such as to a withdrawal the node has not seen yet.
+   */
+  readonly excludedOutRefs: readonly string[];
 };
 
 export type SubmitL2TransferResult = {
@@ -71,7 +78,15 @@ export const FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY = {
   maxDelayMs: 1_000,
 } as const satisfies NativeTransferSubmitRetryPolicy;
 
-export class RetryableNativeTransferSubmitError extends Error {}
+/**
+ * A submit outcome that the same signed bytes may be retried against: the node
+ * was unreachable, timed out, or answered 5xx. The node may or may not hold
+ * the transaction.
+ */
+export class ResumableNativeTransferSubmitError extends Error {}
+
+/** A resumable failure that the in-process retry policy also retries. */
+export class RetryableNativeTransferSubmitError extends ResumableNativeTransferSubmitError {}
 
 export const isDurableAdmissionFailure = (
   status: number,
@@ -190,6 +205,7 @@ export const parseSubmitL2TransferConfig = ({
   nodeEndpoint,
   submitRequestTimeoutMs,
   utxoRequestTimeoutMs,
+  excludeOutRefs = [],
 }: {
   readonly l2Address: string;
   readonly lovelace: string;
@@ -197,6 +213,7 @@ export const parseSubmitL2TransferConfig = ({
   readonly nodeEndpoint?: string;
   readonly submitRequestTimeoutMs?: number;
   readonly utxoRequestTimeoutMs?: number;
+  readonly excludeOutRefs?: readonly string[];
 }): SubmitL2TransferConfig => {
   let addressBytes: ReturnType<typeof midgardAddressFromText>;
   try {
@@ -221,8 +238,25 @@ export const parseSubmitL2TransferConfig = ({
     ...(submitRequestTimeoutMs === undefined ? {} : { submitRequestTimeoutMs }),
     ...(utxoRequestTimeoutMs === undefined ? {} : { utxoRequestTimeoutMs }),
     networkId: BigInt(addressDetails.networkId),
+    excludedOutRefs: parseExcludedOutRefs(excludeOutRefs),
   };
 };
+
+/** Normalizes `--exclude-out-ref` values into sorted, unique labels. */
+const parseExcludedOutRefs = (labels: readonly string[]): readonly string[] =>
+  [
+    ...new Set(
+      labels.map((label) => {
+        try {
+          return outRefLabel(parseOutRefLabel(label));
+        } catch (cause) {
+          throw new Error(
+            `Invalid --exclude-out-ref "${label.trim()}": ${String(cause)}`,
+          );
+        }
+      }),
+    ),
+  ].sort();
 
 /**
  * Builds the requested transfer asset map from the normalized command config.

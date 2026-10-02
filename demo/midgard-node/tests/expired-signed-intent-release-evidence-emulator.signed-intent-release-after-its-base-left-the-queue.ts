@@ -37,7 +37,7 @@ import {
 describe.sequential(
   "signed-intent release after its base left the queue",
   () => {
-    it("replaces a signed commit whose base was merged with a foreign successor, never before its TTL", async () => {
+    it("replaces a signed commit whose base was merged with a foreign successor only at its TTL while the history journals no spend of its base output (owner ruling 2026-09-26)", async () => {
       const view = makeRewritableQueueTransport();
       const scenario = await openCorrectionRewindScenario({
         blocks: 2,

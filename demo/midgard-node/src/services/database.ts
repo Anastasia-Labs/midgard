@@ -1,8 +1,18 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
-import { Context, Data, Duration, Effect, Layer, Redacted } from "effect";
+import {
+  Context,
+  Data,
+  Duration,
+  Effect,
+  Layer,
+  Redacted,
+  Schedule,
+} from "effect";
 
+import { isConnectionClassError } from "../provider-retry.js";
 import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";
 
 /**
@@ -35,6 +45,46 @@ export const databaseConnectTimeout = (
   }
 };
 
+export type DatabaseStartupRetryOptions = {
+  readonly baseDelay: Duration.DurationInput;
+  readonly maxDelay: Duration.DurationInput;
+  /** How long a pool keeps waiting for a server that will not connect. */
+  readonly budget: Duration.DurationInput;
+};
+
+export const DATABASE_STARTUP_RETRY: DatabaseStartupRetryOptions = {
+  baseDelay: Duration.millis(500),
+  maxDelay: Duration.seconds(5),
+  budget: Duration.minutes(15),
+};
+
+/**
+ * Rebuilds `layer` while it fails because PostgreSQL cannot be reached or
+ * will not yet take a connection (restarting, in recovery, out of slots),
+ * logging the unready reason. Any other failure (bad credentials, a missing
+ * database, a configuration error) fails at once.
+ */
+export const retryDatabaseConnectionAtStartup = <A, E, R>(
+  layer: Layer.Layer<A, E, R>,
+  role: DatabasePoolRole,
+  options: DatabaseStartupRetryOptions = DATABASE_STARTUP_RETRY,
+): Layer.Layer<A, E, R> =>
+  Layer.retry(
+    layer,
+    Schedule.exponential(options.baseDelay).pipe(
+      Schedule.union(Schedule.spaced(options.maxDelay)),
+      Schedule.upTo(options.budget),
+      Schedule.whileInput((error: E) => isConnectionClassError(error)),
+      Schedule.tapInput((error: E) =>
+        isConnectionClassError(error)
+          ? Effect.logWarning(
+              `Database unready: reason=database_unreachable; the ${role} pool waits and reconnects. cause=${formatUnknownError(error, { includeCause: true })}`,
+            )
+          : Effect.void,
+      ),
+    ),
+  );
+
 /**
  * Builds the PostgreSQL client layer from the decoded node configuration.
  */
@@ -62,7 +112,7 @@ const createPgLayerEffect = (
       // does not change statement, request, or endpoint latency timeouts.
       connectTimeout: databaseConnectTimeout(role),
     });
-    return Layer.mapError(pgClientLayer, (e) => {
+    const mappedLayer = Layer.mapError(pgClientLayer, (e) => {
       switch (e._tag) {
         case "ConfigError":
           return new ConfigError({
@@ -84,6 +134,7 @@ const createPgLayerEffect = (
           });
       }
     });
+    return retryDatabaseConnectionAtStartup(mappedLayer, role);
   }).pipe(Effect.orDie);
 
 /**

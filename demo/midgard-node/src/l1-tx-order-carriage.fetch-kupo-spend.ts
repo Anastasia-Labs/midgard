@@ -1,5 +1,6 @@
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
+import { KupoNotYetIndexed } from "./l1-source-unavailable.js";
 import {
   DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
   exactPoint,
@@ -174,8 +175,10 @@ export const fetchKupoMatch = async ({
       match.output_index === outRef.outputIndex,
   );
   const [match] = matches;
+  // Absence from a lagging index is not absence from the chain: the caller
+  // decides whether this read may wait for the index to catch up.
   if (match === undefined) {
-    throw new Error(
+    throw new KupoNotYetIndexed(
       `Kupo has no match for ${outRef.txHash}#${outRef.outputIndex.toString()}`,
     );
   }
@@ -226,7 +229,7 @@ export const fetchKupoAncestorPoint = async ({
   );
   const body = await fetchJsonWithTimeout(fetchImpl, url, timeoutMs);
   if (body === null || typeof body !== "object") {
-    throw new Error(
+    throw new KupoNotYetIndexed(
       `Kupo has no checkpoint before slot ${exact.toString()}; the order's ` +
         "creating block is behind this index's checkpoint horizon",
     );

@@ -1,6 +1,7 @@
 import { Effect, Schedule } from "effect";
 
 import { type MpfAuditResult, runMpfAudit } from "../commands/mpf-audit.js";
+import { NODE_PROCESS_MPF_AUDIT_LEASES } from "../commands/mpf-audit-leases.js";
 import { MpfEngineStateDB } from "../database/index.js";
 import {
   Database,
@@ -17,7 +18,8 @@ export const shouldRunMpfPayloadAudit = (
  * The running node's ledger audit: under Architecture G the persisted root is
  * the native owner's durable root, read lazily so the audit reads it under its
  * leases, after the no-active-submission check, at the same ledger point it
- * recomputes.
+ * recomputes. It runs under the node-process lease names, so a restart after a
+ * kill mid-audit retires its leases at startup.
  */
 export const runLedgerPayloadAudit: Effect.Effect<
   MpfAuditResult,
@@ -26,6 +28,7 @@ export const runLedgerPayloadAudit: Effect.Effect<
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   return yield* runMpfAudit({
+    leases: NODE_PROCESS_MPF_AUDIT_LEASES,
     readNativeDurableRoot: Effect.gen(function* () {
       const owner = yield* globals.NATIVE_MPF_OWNER;
       if (owner === undefined) {

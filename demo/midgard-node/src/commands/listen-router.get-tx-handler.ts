@@ -1,4 +1,4 @@
-import "./listen-router.run-busy-l1-provider-readiness-probe.js";
+import "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { hexToBytes } from "@al-ft/midgard-core/hex";

@@ -1,7 +1,4 @@
-import { randomUUID } from "node:crypto";
-
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
-import { Worker } from "worker_threads";
 
 import {
   ForeignTipReconciliationsDB,
@@ -30,6 +27,7 @@ import {
   WorkerOutput,
 } from "../workers/utils/commit-block-header.js";
 import { WorkerError } from "../workers/utils/common.js";
+import { extendCommitmentHoldForBacklog } from "./block-commitment.commit-hold-budget.js";
 import {
   commitBlockCounter,
   commitBlockNumTxGauge,
@@ -45,14 +43,13 @@ import {
   takeCommitWorkerOutput,
   totalTxSizeGauge,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
+import { runCommitWorkerInThread } from "./block-commitment.run-commit-worker-in-thread.js";
 import { publishCommitMempoolLedgerMutation } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-failure-classification.js";
 import { nativeMpfWorkerInput } from "./native-mpf-worker-input.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
-import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 import { registerSlotAwareDueWork } from "./slot-aware-due-work.js";
 import { reduceSpeculativeCommitState } from "./speculative-commit-state.js";
-import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
 
 /**
  * Launches one commitment worker, applies its result to global node state, and
@@ -170,7 +167,8 @@ export const buildAndSubmitCommitmentBlockAction = (
             "commit-block-header",
             nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
           );
-    const ledgerStoreLeaseOwner = `commit:${randomUUID()}`;
+    const ledgerStoreLeaseOwner =
+      MpfEngineStateDB.nodeProcessCommitLeaseOwner();
     const databaseRuntime = yield* Effect.runtime<Database>();
     const releaseTerminatedWorkerLedgerLease = () =>
       Runtime.runPromise(databaseRuntime)(
@@ -184,103 +182,40 @@ export const buildAndSubmitCommitmentBlockAction = (
         ),
       );
 
-    const worker = Effect.async<WorkerOutput, WorkerError, never>((resume) => {
-      Effect.runSync(Effect.logInfo(`👷 Starting block commitment worker...`));
-      const worker = new Worker(
-        resolveWorkerEntry(import.meta.url, "commit-block-header.js"),
-        {
-          workerData: {
-            nativeMpf: nativeMpfInput,
-            history,
-            data: {
-              availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
-              availableLocalFinalizationBlock:
-                AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-              currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
-              forcedValidationSlotConfig: canonicalSlotConfigForLucid(
-                lucid.api,
-              ),
-              localFinalizationPending: LOCAL_FINALIZATION_PENDING,
-              ledgerStoreLeaseOwner,
-              mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
-              sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
-              stateQueueLeaseToken,
-              baseSnapshotId: BASE_SNAPSHOT_ID,
-              stateQueueHasUnmergedTail: STATE_QUEUE_HAS_UNMERGED_TAIL,
-            },
-          } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
-          transferList:
-            nativeMpfInput === undefined ? [] : [nativeMpfInput.port],
-        },
-      );
-      const terminate = makeAwaitedWorkerTerminator(
-        worker,
-        releaseTerminatedWorkerLedgerLease,
-      );
-      let settled = false;
-      const cleanup = () => {
-        worker.off("message", onMessage);
-        worker.off("error", onError);
-        worker.off("exit", onExit);
-      };
-      const settle = (result: Effect.Effect<WorkerOutput, WorkerError>) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        void terminate().then(
-          () => resume(result),
-          (cause) =>
-            resume(
-              Effect.fail(
-                new WorkerError({
-                  worker: "commit-block-header",
-                  message: "Failed to terminate commitment worker.",
-                  cause,
-                }),
-              ),
-            ),
-        );
-      };
-      const onMessage = (message: CommitWorkerMessage) => {
-        const output = takeCommitWorkerOutput(
+    // Size this hold from the batch it serves before the worker starts, so a
+    // large batch is not cut off by a budget sized for a small one.
+    yield* extendCommitmentHoldForBacklog(
+      globals,
+      nodeConfig.COMMIT_MAX_L2_TX_COUNT,
+    );
+    const worker = runCommitWorkerInThread({
+      workerOptions: {
+        workerData: {
+          nativeMpf: nativeMpfInput,
+          history,
+          data: {
+            availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
+            availableLocalFinalizationBlock: AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+            currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
+            forcedValidationSlotConfig: canonicalSlotConfigForLucid(lucid.api),
+            localFinalizationPending: LOCAL_FINALIZATION_PENDING,
+            ledgerStoreLeaseOwner,
+            mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
+            sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
+            stateQueueLeaseToken,
+            baseSnapshotId: BASE_SNAPSHOT_ID,
+            stateQueueHasUnmergedTail: STATE_QUEUE_HAS_UNMERGED_TAIL,
+          },
+        } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
+        transferList: nativeMpfInput === undefined ? [] : [nativeMpfInput.port],
+      },
+      takeOutput: (message: CommitWorkerMessage): WorkerOutput | undefined =>
+        takeCommitWorkerOutput(
           globals,
           message,
           nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-        );
-        if (output !== undefined) settle(Effect.succeed(output));
-      };
-      const onError = (e: Error) => {
-        settle(
-          Effect.fail(
-            new WorkerError({
-              worker: "commit-block-header",
-              message: `Error in commitment worker: ${e}`,
-              cause: e,
-            }),
-          ),
-        );
-      };
-      const onExit = (code: number) => {
-        settle(
-          Effect.fail(
-            new WorkerError({
-              worker: "commit-block-header",
-              message: `Commitment worker exited before producing output with code: ${code}`,
-              cause: `exit code ${code}`,
-            }),
-          ),
-        );
-      };
-      worker.on("message", onMessage);
-      worker.on("error", onError);
-      worker.on("exit", onExit);
-      return Effect.promise(async () => {
-        if (!settled) {
-          settled = true;
-          cleanup();
-        }
-        await terminate();
-      });
+        ),
+      releaseLedgerLease: releaseTerminatedWorkerLedgerLease,
     });
 
     const workerOutput: WorkerOutput = yield* worker.pipe(

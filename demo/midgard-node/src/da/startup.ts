@@ -15,8 +15,12 @@ import {
 } from "../services/index.js";
 import { fetchDaParamsUtxo } from "../transactions/da-attestation.js";
 import {
-  assertDaEnvelopeCapabilityQuorum,
+  createDaLibp2pProducerProbeTransport,
+  type DaEnvelopeCapabilityMode,
+  type DaEnvelopeCapabilityPeerResult,
+  type DaProducerPublicationManifest,
   loadDaProducerPublicationManifestFromEnv,
+  probeDaEnvelopeCapabilities,
 } from "./libp2p-producer.js";
 
 export const assertDaThresholdCompatible = (
@@ -128,18 +132,122 @@ export const assertDaHardeningProviderStartup = ({
         ),
       catch: (cause) => cause as DatabaseInitializationError,
     });
-    yield* Effect.tryPromise({
-      try: () =>
-        assertDaEnvelopeCapabilityQuorum({
-          manifest,
-          mode: envelopeMode,
-        }),
-      catch: (cause) =>
-        new DatabaseInitializationError({
-          message: `DA ${envelopeMode} envelope capability quorum failed at startup`,
-          cause,
-        }),
-    });
+    yield* assertDaEnvelopeCapabilityQuorumOnStartup(manifest, envelopeMode);
+  });
+
+/**
+ * Too few committee peers answered capably yet, but enough have not answered
+ * at all that the quorum can still form: peers starting, restarting or not
+ * yet dialable. The startup provider retry waits and probes again.
+ */
+export class DaCapabilityQuorumPendingError extends Error {
+  readonly retryable = true;
+  override readonly name = "DaCapabilityQuorumPendingError";
+}
+
+/**
+ * Enough committee signers answered and rejected this node's DA envelope
+ * capabilities that no quorum can form: a configuration disagreement no
+ * waiting clears.
+ */
+export class DaCapabilityMismatchError extends Error {
+  readonly retryable = false;
+  override readonly name = "DaCapabilityMismatchError";
+}
+
+/**
+ * Judges one capability probe round. A signer counts against the quorum only
+ * when every one of its peers answered and rejected; an unreachable or
+ * undecodable peer may still answer capably later.
+ */
+export const classifyDaEnvelopeCapabilityQuorum = (
+  manifest: Pick<DaProducerPublicationManifest, "threshold">,
+  mode: DaEnvelopeCapabilityMode,
+  results: readonly DaEnvelopeCapabilityPeerResult[],
+): DaCapabilityQuorumPendingError | DaCapabilityMismatchError | undefined => {
+  const signers = new Set(results.map((result) => result.signerIndex));
+  const capable = new Set(
+    results.filter((result) => result.capable).map((r) => r.signerIndex),
+  );
+  if (capable.size >= manifest.threshold) {
+    return undefined;
+  }
+  const rejected = results.filter(
+    (result) => !result.capable && result.capabilities !== undefined,
+  );
+  const unanswered = results.filter(
+    (result) => !result.capable && result.capabilities === undefined,
+  );
+  const rejectingSigners = [...signers].filter((signer) =>
+    results
+      .filter((result) => result.signerIndex === signer)
+      .every((result) => !result.capable && result.capabilities !== undefined),
+  );
+  const describe = (peers: readonly DaEnvelopeCapabilityPeerResult[]) =>
+    peers
+      .map(
+        (result) =>
+          `${result.peerId}[${result.signerIndex.toString()}]=${result.error ?? "incapable"}`,
+      )
+      .join(",");
+  const counts = `capable_signers=${capable.size.toString()},threshold=${manifest.threshold.toString()},rejecting_signers=${rejectingSigners.length.toString()},unanswered_peers=${unanswered.length.toString()}`;
+  if (signers.size - rejectingSigners.length < manifest.threshold) {
+    // Only the rejections are named: an unreachable peer's transport error
+    // text must not make this refusal look transient.
+    return new DaCapabilityMismatchError(
+      `DA ${mode} envelope capabilities rejected by the committee: ${counts},rejections=${describe(rejected)}`,
+    );
+  }
+  return new DaCapabilityQuorumPendingError(
+    `DA ${mode} envelope capability quorum not yet reached: ${counts},peers=${describe([...rejected, ...unanswered])}`,
+  );
+};
+
+const probeOverDialOnlyTransport = async (
+  manifest: DaProducerPublicationManifest,
+  mode: DaEnvelopeCapabilityMode,
+): Promise<readonly DaEnvelopeCapabilityPeerResult[]> => {
+  const transport = await createDaLibp2pProducerProbeTransport(manifest, {
+    mode: "dial-only",
+  });
+  try {
+    return await probeDaEnvelopeCapabilities({ manifest, mode, transport });
+  } finally {
+    await transport.close?.();
+  }
+};
+
+/**
+ * One startup capability-quorum round: a quorum still forming fails with a
+ * retryable cause the startup provider retry waits out; a committee that
+ * answered and rejected fails terminally.
+ */
+export const assertDaEnvelopeCapabilityQuorumOnStartup = (
+  manifest: DaProducerPublicationManifest,
+  mode: DaEnvelopeCapabilityMode,
+  probe: (
+    manifest: DaProducerPublicationManifest,
+    mode: DaEnvelopeCapabilityMode,
+  ) => Promise<
+    readonly DaEnvelopeCapabilityPeerResult[]
+  > = probeOverDialOnlyTransport,
+): Effect.Effect<void, DatabaseInitializationError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const verdict = classifyDaEnvelopeCapabilityQuorum(
+        manifest,
+        mode,
+        await probe(manifest, mode),
+      );
+      if (verdict !== undefined) {
+        throw verdict;
+      }
+    },
+    catch: (cause) =>
+      new DatabaseInitializationError({
+        message: `DA ${mode} envelope capability quorum failed at startup`,
+        cause,
+      }),
   });
 
 /**

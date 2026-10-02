@@ -1,10 +1,32 @@
+import "./utils.js";
+
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { ForeignTipReconciliationsDB } from "../src/database/index.js";
+import {
+  DepositsDB,
+  ForeignTipReconciliationsDB,
+} from "../src/database/index.js";
 import { sha256 } from "../src/sha256.js";
+import {
+  pruneSettledForeignTipReconciliations,
+  reconcileOverdueAwaitingEventsAgainstRetainedForeignTips,
+} from "../src/workers/t2-foreign-event-reconciliation.js";
+import {
+  headerFor,
+  IN_WINDOW,
+  indexDeposit,
+  INGESTED_PAST_WINDOW,
+  nonEmptyWindowHeader,
+  onNode,
+  recordForeignTip,
+  WINDOW_END_MS,
+} from "./foreign-tip-gate.fixtures.js";
 
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const NONEMPTY_ROOT = "11".repeat(32);
@@ -281,5 +303,154 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
         evidence: daIdentity(),
       }),
     ).toThrow(/cannot be replaced/u);
+  });
+});
+
+const gate = () =>
+  reconcileOverdueAwaitingEventsAgainstRetainedForeignTips({
+    eventsIngestedThrough: INGESTED_PAST_WINDOW,
+  });
+
+const retainedHashes = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ readonly hash: string }>`
+    SELECT encode(foreign_header_hash, 'hex') AS hash
+    FROM foreign_tip_reconciliations ORDER BY block_end_time
+  `;
+  return rows.map((row) => row.hash);
+});
+
+/** A stale non-empty foreign block over (startMs, endMs]. */
+const staleHeader = (startMs: number, endMs: number) =>
+  nonEmptyWindowHeader({
+    startTime: BigInt(startMs),
+    endTime: BigInt(endMs),
+  });
+
+describe("retained foreign-tip evidence scoping and isolation", () => {
+  it("ignores another deployment's evidence instead of failing the commit", async () => {
+    const result = await onNode(
+      Effect.gen(function* () {
+        yield* recordForeignTip(nonEmptyWindowHeader(), OTHER_MARKER);
+        yield* indexDeposit({ [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW });
+        const otherOnly = yield* gate();
+        const active = yield* recordForeignTip(
+          nonEmptyWindowHeader({ prevHeaderHash: "44".repeat(28) }),
+        );
+        return { otherOnly, active, both: yield* gate() };
+      }),
+    );
+    expect(result.otherOnly.type).toBe("Ready");
+    expect(result.both).toMatchObject({
+      type: "AwaitingForeignDa",
+      foreignHeaderHash: result.active,
+      reason: "missing",
+    });
+  });
+
+  it("isolates a row that cannot be replayed, keeps replaying the others, and still gates on its window", async () => {
+    const result = await onNode(
+      Effect.gen(function* () {
+        const broken = yield* recordForeignTip(nonEmptyWindowHeader());
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`
+          UPDATE foreign_tip_reconciliations
+          SET foreign_header_cbor = ${Buffer.from("d87980", "hex")}
+          WHERE foreign_header_hash = ${Buffer.from(broken, "hex")}
+        `;
+        // A healthy empty-root foreign block right after the broken window.
+        yield* recordForeignTip(
+          headerFor({
+            startTime: BigInt(WINDOW_END_MS),
+            endTime: BigInt(WINDOW_END_MS + 10_000),
+          }),
+        );
+        const released = yield* indexDeposit({
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(WINDOW_END_MS + 5_000),
+        });
+        const emptyBrokenWindow = yield* gate();
+        yield* indexDeposit({ [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW });
+        return {
+          broken,
+          released,
+          emptyBrokenWindow,
+          occupiedBrokenWindow: yield* gate(),
+        };
+      }),
+    );
+    expect(result.emptyBrokenWindow).toEqual({
+      type: "Ready",
+      absent: {
+        deposits: [result.released],
+        forcedTransactions: [],
+        withdrawals: [],
+      },
+    });
+    expect(result.occupiedBrokenWindow).toMatchObject({
+      type: "AwaitingForeignDa",
+      foreignHeaderHash: result.broken,
+      reason: "replay_failed",
+    });
+  });
+});
+
+describe("settled foreign-tip evidence pruning", () => {
+  it("prunes only rows past the horizon, from both now and the ingestion barrier, that no event can still reach", async () => {
+    const horizonMs = MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
+    const base = 10_000_000;
+    const lateEndMs = base + 50_000 + horizonMs;
+    const result = await onNode(
+      Effect.gen(function* () {
+        const settled = yield* recordForeignTip(
+          staleHeader(base, base + 10_000),
+        );
+        const occupied = yield* recordForeignTip(
+          staleHeader(base + 20_000, base + 30_000),
+        );
+        yield* indexDeposit({
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(base + 25_000),
+        });
+        const otherDeployment = yield* recordForeignTip(
+          staleHeader(base + 40_000, base + 50_000),
+          OTHER_MARKER,
+        );
+        yield* indexDeposit({
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(base + 45_000),
+        });
+        const lateIngested = yield* recordForeignTip(
+          staleHeader(lateEndMs - 10_000, lateEndMs),
+        );
+        const recent = yield* recordForeignTip(nonEmptyWindowHeader());
+        const behindBarrier = yield* pruneSettledForeignTipReconciliations({
+          now: new Date(),
+          eventsIngestedThrough: new Date(lateEndMs + horizonMs / 2),
+        });
+        const afterBehindBarrier = yield* retainedHashes;
+        const caughtUp = yield* pruneSettledForeignTipReconciliations({
+          now: new Date(),
+          eventsIngestedThrough: INGESTED_PAST_WINDOW,
+        });
+        return {
+          ids: { settled, occupied, otherDeployment, lateIngested, recent },
+          behindBarrier,
+          afterBehindBarrier,
+          caughtUp,
+          afterCaughtUp: yield* retainedHashes,
+          awaiting: yield* ForeignTipReconciliationsDB.countAwaiting,
+        };
+      }),
+    );
+    expect(result.behindBarrier).toBe(2);
+    expect(result.afterBehindBarrier).toEqual([
+      result.ids.occupied,
+      result.ids.lateIngested,
+      result.ids.recent,
+    ]);
+    expect(result.caughtUp).toBe(1);
+    expect(result.afterCaughtUp).toEqual([
+      result.ids.occupied,
+      result.ids.recent,
+    ]);
+    expect(result.awaiting).toBe(2);
   });
 });

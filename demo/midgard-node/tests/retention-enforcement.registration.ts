@@ -83,9 +83,11 @@ describe.skipIf(!dbEnabled)(
 
     it("collects and reloads terminal authority through the durable observer store", async () => {
       const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const deleted = await run(
+      const outcome = await run(
         Effect.gen(function* () {
           const f = yield* seedPublished(old);
+          // The later final merge releases f; the newest final head stays held.
+          const later = yield* seedPublished(old, 2);
           const sql = yield* SqlClient.SqlClient;
           const canonicalJson = (value: unknown): string =>
             value === null || typeof value !== "object"
@@ -105,9 +107,9 @@ describe.skipIf(!dbEnabled)(
             deploymentIdentityDigest: deploymentManifest.manifestId,
             stateQueuePolicyId:
               deploymentManifest.contracts.stateQueueMint.scriptHash,
-            cursorQueue: f.transition.nextQueue,
+            cursorQueue: later.transition.nextQueue,
             pending: [],
-            admitted: [f.transition],
+            admitted: [f.transition, later.transition],
             retractedTransactionHashes: [],
             postFinalityRollbackIncidents: [],
           };
@@ -128,10 +130,15 @@ describe.skipIf(!dbEnabled)(
               yield* Effect.promise(() => store.load()),
             ),
           ).toEqual(state);
-          return yield* prune();
+          return {
+            deleted: yield* prune(),
+            remaining: yield* remainingHashes,
+            later: later.headerHash.toString("hex"),
+          };
         }),
       );
-      expect(deleted).toBe(1);
+      expect(outcome.deleted).toBe(1);
+      expect(outcome.remaining).toEqual([outcome.later]);
     });
     it("retains a block_end_time exactly at the horizon and prunes 1ms past it", async () => {
       const cutoff = computeChallengeableCutoff(NOW);

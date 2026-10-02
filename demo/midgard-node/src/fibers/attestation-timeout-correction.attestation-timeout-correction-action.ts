@@ -28,6 +28,11 @@ import {
   StateQueueCorrectionRewindIntegrityError,
 } from "../services/index.js";
 import {
+  clearLivenessIncident,
+  HaltSource,
+  raiseLivenessIncident,
+} from "../services/liveness-halt.js";
+import {
   observeAndRecordAttestationTimeoutQueue,
   reconcileStateQueueCorrections,
   TIMEOUT_CORRECTION_LEASE_HOLDER,
@@ -293,14 +298,24 @@ export const findStateQueueCorrectionRewindIntegrityError = (
   return searchCause(cause);
 };
 
+/** The readiness reason a rewind integrity failure raises. */
+export const STATE_QUEUE_CORRECTION_REWIND_CONFLICT =
+  "state_queue_correction_rewind_conflict";
+
 /** One scheduled correction step. A transient failure is logged and retried
- * on the next tick; a rewind integrity failure is not transient (the node
- * cannot re-apply a rewound block), so it fails the fiber and stops the node.
- * Every outcome is recorded in `health`, which readiness reads. */
+ * on the next tick. A rewind integrity failure (the node cannot re-apply a
+ * rewound block) is not transient: it raises
+ * `state_queue_correction_rewind_conflict`, which holds the commit and
+ * settlement fibers, and the step keeps refusing its own effects (the
+ * observer reconciliation that raises it runs before any submission) while
+ * every later tick re-derives the removal against L1. The first step that
+ * completes, so whose re-derivation agrees, clears it. Never fails. Every
+ * outcome is recorded in `health`, which readiness reads. */
 export const attestationTimeoutCorrectionStep = <R>(
   action: Effect.Effect<void, unknown, R>,
   health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
-): Effect.Effect<void, StateQueueCorrectionRewindIntegrityError, R> =>
+  globals: Pick<Globals, "LIVENESS_REASONS">,
+): Effect.Effect<void, never, R> =>
   action.pipe(
     Effect.zipRight(
       Ref.update(health, (current) => ({
@@ -308,6 +323,9 @@ export const attestationTimeoutCorrectionStep = <R>(
         lastProgressAtMs: Date.now(),
         consecutiveFailures: 0,
       })),
+    ),
+    Effect.zipRight(
+      clearLivenessIncident(globals, HaltSource.stateQueueCorrectionRewind),
     ),
     Effect.catchAllCause((cause) => {
       const recordFailure = Ref.update(health, (current) => ({
@@ -321,8 +339,11 @@ export const attestationTimeoutCorrectionStep = <R>(
         Effect.zipRight(
           integrity === undefined
             ? Effect.logWarning(cause)
-            : Effect.logError(integrity.message).pipe(
-                Effect.zipRight(Effect.fail(integrity)),
+            : raiseLivenessIncident(
+                globals,
+                HaltSource.stateQueueCorrectionRewind,
+                STATE_QUEUE_CORRECTION_REWIND_CONFLICT,
+                `${integrity.message} Block commitment and settlement are held, and the correction re-derives the removal against L1 on every tick until it agrees.`,
               ),
         ),
       );

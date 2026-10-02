@@ -22,7 +22,11 @@ export type T2ForeignEventResolution =
       readonly reason:
         | "missing"
         | "invalid"
-        | "foreign_event_present_requires_finalization";
+        | "foreign_event_present_requires_finalization"
+        // The retained row could not be replayed this pass.
+        | "replay_failed"
+        // A read-only (speculative) pass found a row only a replay can settle.
+        | "replay_required";
       readonly detail: string;
       readonly present: T2CandidateEventIds;
     };
@@ -93,19 +97,43 @@ const verifyForeignPayload = ({
     );
   }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
+export type EventCommitments = Pick<
+  SDK.Header,
+  | "depositsRoot"
+  | "depositCount"
+  | "forcedTransactionsRoot"
+  | "forcedTransactionCount"
+  | "withdrawalsRoot"
+  | "withdrawalCount"
+>;
+
+/** Each event root is empty exactly when its count is zero. A header that
+ * breaks this is malformed on its face, whatever its DA payload says. */
+export const eventCommitmentsAreConsistent = (
+  commitments: EventCommitments,
+): boolean =>
+  (
+    [
+      [commitments.depositsRoot, commitments.depositCount],
+      [commitments.forcedTransactionsRoot, commitments.forcedTransactionCount],
+      [commitments.withdrawalsRoot, commitments.withdrawalCount],
+    ] as const
+  ).every(
+    ([root, count]) => (root === SDK.EMPTY_MERKLE_TREE_ROOT) === (count === 0n),
+  );
+
+// Runs only on a header that passed `eventCommitmentsAreConsistent`.
 const classifyCategory = ({
   candidateIds,
   root,
-  count,
   payloadEntries,
 }: {
   readonly candidateIds: readonly string[];
   readonly root: string;
-  readonly count: bigint;
   readonly payloadEntries?: readonly SDK.DaPayloadEntry[];
 }):
   | { readonly status: "ready"; readonly absent: readonly string[] }
-  | { readonly status: "missing" | "invalid" }
+  | { readonly status: "missing" }
   | {
       readonly status: "present";
       readonly present: readonly string[];
@@ -113,11 +141,8 @@ const classifyCategory = ({
     } => {
   const normalized = normalizedIds(candidateIds);
   if (root === SDK.EMPTY_MERKLE_TREE_ROOT) {
-    return count === 0n
-      ? { status: "ready", absent: normalized }
-      : { status: "invalid" };
+    return { status: "ready", absent: normalized };
   }
-  if (count === 0n) return { status: "invalid" };
   if (normalized.length === 0) return { status: "ready", absent: [] };
   if (payloadEntries === undefined) return { status: "missing" };
   const foreignIds = new Set(payloadEntries.map(([key]) => key.toLowerCase()));
@@ -151,6 +176,16 @@ export const resolveT2ForeignEventEvidence = ({
         foreignHeaderHash,
         reason: "invalid",
         detail: "foreign header hash binding is invalid",
+        present: emptyIds(),
+      };
+    }
+    // Before any DA question: no payload can repair a malformed header.
+    if (!eventCommitmentsAreConsistent(header)) {
+      return {
+        type: "AwaitingForeignDa",
+        foreignHeaderHash,
+        reason: "invalid",
+        detail: "foreign header event root/count evidence is inconsistent",
         present: emptyIds(),
       };
     }
@@ -195,35 +230,19 @@ export const resolveT2ForeignEventEvidence = ({
     const deposits = classifyCategory({
       candidateIds: candidateIds.deposits,
       root: header.depositsRoot,
-      count: header.depositCount,
       payloadEntries: payload?.block_body.deposits,
     });
     const forcedTransactions = classifyCategory({
       candidateIds: candidateIds.forcedTransactions,
       root: header.forcedTransactionsRoot,
-      count: header.forcedTransactionCount,
       payloadEntries: payload?.block_body.forced_transactions,
     });
     const withdrawals = classifyCategory({
       candidateIds: candidateIds.withdrawals,
       root: header.withdrawalsRoot,
-      count: header.withdrawalCount,
       payloadEntries: payload?.block_body.withdrawals,
     });
     const classifications = { deposits, forcedTransactions, withdrawals };
-    if (
-      Object.values(classifications).some(
-        (classification) => classification.status === "invalid",
-      )
-    ) {
-      return {
-        type: "AwaitingForeignDa",
-        foreignHeaderHash,
-        reason: "invalid",
-        detail: "foreign header event root/count evidence is inconsistent",
-        present: emptyIds(),
-      };
-    }
     if (
       Object.values(classifications).some(
         (classification) => classification.status === "missing",

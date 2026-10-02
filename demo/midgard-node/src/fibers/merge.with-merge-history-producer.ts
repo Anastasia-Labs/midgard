@@ -18,6 +18,10 @@ import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/state-queue-topology.js";
+import {
+  recordMergeTickIdleness,
+  skipIdleMergeTick,
+} from "./merge.idle-backoff.js";
 import { mergeActionWithL1ControlPlaneHeld } from "./merge.merge-action-with-l1-control-plane-held.js";
 import {
   type ConfirmedMerge,
@@ -229,7 +233,21 @@ export const mergeFiber = (
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟠 Merge fiber started.");
-    const action = mergeAction().pipe(
+    const globals = yield* Globals;
+    const nodeConfig = yield* NodeConfig;
+    const action = Effect.gen(function* () {
+      if (yield* skipIdleMergeTick(globals)) return;
+      const result = yield* mergeAction().pipe(
+        Effect.tapErrorCause(() =>
+          recordMergeTickIdleness(globals, undefined, 0),
+        ),
+      );
+      yield* recordMergeTickIdleness(
+        globals,
+        result,
+        nodeConfig.WAIT_BETWEEN_MERGE_TXS,
+      );
+    }).pipe(
       Effect.withSpan("merge-confirmed-state-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );

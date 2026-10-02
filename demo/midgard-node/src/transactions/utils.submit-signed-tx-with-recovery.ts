@@ -355,6 +355,22 @@ export const submitSignedTxWithRecovery = (
         continue;
       }
 
+      if (
+        isUnknownOutputReferenceSubmitError(e) &&
+        options.inlineWaitPolicy === "defer_positive_wait" &&
+        options.unknownInputsFailFast === true
+      ) {
+        // An owner that opted in never blocks on a status wait: it keeps its
+        // durable intent and its own reconciliation decides whether this
+        // exact transaction landed or its inputs were spent by another.
+        return yield* Effect.fail(
+          new Error(
+            `Tx ${txHash} submit reported unknown inputs in no-inline mode; failing without an inline confirmation wait: ${submitError}`,
+            { cause: e },
+          ),
+        );
+      }
+
       if (isUnknownOutputReferenceSubmitError(e)) {
         yield* Effect.logWarning(
           `Tx submit reported unknown inputs for ${txHash}; verifying the exact transaction through provider-neutral status before failing: ${submitError}`,

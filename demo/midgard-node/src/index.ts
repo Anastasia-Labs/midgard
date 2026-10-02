@@ -16,6 +16,7 @@ import "./commands/da-bond.js";
 import "./commands/da-bond-files.js";
 import "./commands/deployment-run-state.js";
 import "./commands/event-settlement-proof.js";
+import "./commands/history-genesis-pin.js";
 import "./commands/l1-provider-preflight.js";
 import "./commands/l1-utxos.js";
 import "./commands/listen.js";

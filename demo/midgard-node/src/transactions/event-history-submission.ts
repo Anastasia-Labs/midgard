@@ -21,9 +21,14 @@ import {
 import * as Journal from "../database/eventHistorySubmissions.js";
 import { Database } from "../services/database.js";
 import {
+  indexedL1Slot,
+  settleExpiredHistoryAttempt,
+} from "./event-history-submission.indexed-l1-slot.js";
+import {
   awaitSubmittedTransactionConfirmation,
   submitSignedTxWithRecovery,
 } from "./utils.js";
+import { TX_CONFIRMATION_POLL_INTERVAL_MS } from "./utils.parse-structured-outside-validity-interval-details.js";
 
 export class HistorySubmissionError extends EffectData.TaggedError(
   "HistorySubmissionError",
@@ -270,6 +275,16 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
       catch: wrap,
     });
     const history = kind === "Deposit" ? pair.deposit : pair.withdrawal;
+    const plainUnreserved = (reserved: ReadonlySet<string>) => (utxo: UTxO) =>
+      !reserved.has(outRefLabel(utxo)) &&
+      utxo.datum == null &&
+      utxo.datumHash == null &&
+      utxo.scriptRef == null &&
+      !Object.keys(utxo.assets).some(
+        (unit) =>
+          unit.startsWith(pair.deposit.list.policyId) ||
+          unit.startsWith(pair.withdrawal.list.policyId),
+      );
     const walletAddress = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: wrap,
@@ -292,7 +307,9 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
         );
       row = existing.value;
     } else {
-      const reserved = yield* Journal.reservedInputs(walletAddress);
+      // Outputs a dead submission's expired attempt holds are free to take.
+      const tipSlot = yield* indexedL1Slot(lucid);
+      const reserved = yield* Journal.reservedInputs(walletAddress, tipSlot);
       const candidates = yield* Effect.tryPromise({
         try: () => lucid.utxosAt(walletAddress),
         catch: wrap,
@@ -300,15 +317,7 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
       const nonce = candidates
         .filter(
           (utxo) =>
-            !reserved.has(outRefLabel(utxo)) &&
-            utxo.datum == null &&
-            utxo.datumHash == null &&
-            utxo.scriptRef == null &&
-            !Object.keys(utxo.assets).some(
-              (unit) =>
-                unit.startsWith(pair.deposit.list.policyId) ||
-                unit.startsWith(pair.withdrawal.list.policyId),
-            ) &&
+            plainUnreserved(reserved)(utxo) &&
             (nonceInput === undefined ||
               outRefLabel(nonceInput) === outRefLabel(utxo)),
         )
@@ -337,7 +346,7 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
         return yield* Effect.fail(
           wrap("Prepared request changed its reserved nonce"),
         );
-      row = yield* Journal.reserve(stored);
+      row = yield* Journal.reserve(stored, tipSlot);
     }
     const request = yield* Effect.try({
       try: () => decodeHistorySubmissionRequest(row.request),
@@ -371,13 +380,45 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
     };
     return yield* Effect.tryPromise({
       try: async () => {
+        let heldInput: string | undefined;
         const save = async (
           checkpoint: SDK.EventHistorySubmissionCheckpoint,
         ) => {
-          row = await run(Journal.saveCheckpoint(row, checkpoint));
+          // The indexed slot lets this attempt take over inputs of another
+          // submission's expired attempt, which would otherwise wedge it.
+          const tipSlot =
+            checkpoint.pending === undefined
+              ? undefined
+              : await run(indexedL1Slot(lucid));
+          const saved = await run(
+            Journal.saveCheckpoint(row, checkpoint, tipSlot).pipe(
+              Effect.catchTag("HistoryInputReservedError", (reserved) =>
+                Effect.as(
+                  reserved.outRef === heldInput
+                    ? Effect.void
+                    : Effect.logInfo(
+                        `History submission ${submissionId} is waiting for local submission ${reserved.holder ?? "unknown"} to settle its transaction on input ${reserved.outRef}, then rebuilds against the current list`,
+                      ),
+                  reserved,
+                ),
+              ),
+            ),
+          );
+          if (saved instanceof Journal.HistoryInputReservedError) {
+            heldInput = saved.outRef;
+            throw new SDK.EventHistoryInputReservedError(saved.outRef);
+          }
+          row = saved;
         };
         const transport = historySubmissionTransport(lucid, walletAddress);
-        const retryDelayMs = 1_000;
+        // A reserved input frees once its holder's transaction settles, which
+        // it observes no faster than its confirmation poll, or once the
+        // holder's attempt expires, so the SDK rebuilds at that cadence until
+        // the deadline. The deadline carries one predecessor-protection wait;
+        // each predecessor that lands first adds its own, so a submission
+        // queued behind several can stop with a rerun time. Output
+        // visibility then spans 8 polls, about TX_OUTPUT_VISIBILITY_TIMEOUT_MS.
+        const retryDelayMs = TX_CONFIRMATION_POLL_INTERVAL_MS;
         const submit = async (
           tx: ReturnType<LucidEvolution["fromTx"]>,
           attempt: SDK.EventHistorySubmissionAttempt,
@@ -405,25 +446,27 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
               assertHistorySubmissionAttempt(attempt);
               const status = await transport.observe(attempt);
               if (status.kind === "Confirmed") return status;
+              const expired = await run(
+                settleExpiredHistoryAttempt(lucid, attempt, transport.observe),
+              );
+              if (expired !== undefined) return expired;
               // Re-sign/rebroadcast the identical completed body. This also recovers
               // a crash before the original signature, without allocating another ID.
               return submit(lucid.fromTx(attempt.transactionCbor), attempt);
             },
+            observe: async (attempt) => {
+              assertHistorySubmissionAttempt(attempt);
+              return transport.observe(attempt);
+            },
             funding: async () => {
-              const reserved = await run(Journal.reservedInputs(walletAddress));
+              const reserved = await run(
+                Journal.reservedInputs(
+                  walletAddress,
+                  await run(indexedL1Slot(lucid)),
+                ),
+              );
               return (await lucid.utxosAt(walletAddress))
-                .filter(
-                  (utxo) =>
-                    !reserved.has(outRefLabel(utxo)) &&
-                    utxo.datum == null &&
-                    utxo.datumHash == null &&
-                    utxo.scriptRef == null &&
-                    !Object.keys(utxo.assets).some(
-                      (unit) =>
-                        unit.startsWith(pair.deposit.list.policyId) ||
-                        unit.startsWith(pair.withdrawal.list.policyId),
-                    ),
-                )
+                .filter(plainUnreserved(reserved))
                 .sort(compareOutRefs);
             },
             now,

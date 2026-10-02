@@ -12,12 +12,26 @@ import * as Journal from "../database/settlement.js";
 import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
 import { NodeConfig, type NodeConfigDep } from "./config.js";
 import { ContractDeploymentIdentity } from "./midgard-contracts.js";
+import {
+  describeSettlementError,
+  isSettlementInputsSpentRejection,
+  settlementCall,
+  settlementCheck,
+} from "./settlement-call.js";
 import { readSettlementOutputEvidence } from "./settlement-output.js";
 
 export type SettlementHealth = {
   observedAt: number;
   state: "starting" | "running" | "waiting" | "error";
   detail: string;
+  /** Set by the node while worker runs keep dying: how many in a row, since
+   * when, and the latest failure. */
+  workerFailures?: { count: number; since: number; last: string };
+  /** Set by the worker on a report made at the end of a tick that ran
+   * without failing. Only such a report proves a worker run healthy, so only
+   * it clears the node's failure streak; the node strips it before
+   * publishing the health. */
+  tickCompleted?: boolean;
 };
 
 export const settlementWalletAddress = (config: NodeConfigDep): string => {
@@ -127,7 +141,7 @@ export const exactStatus = (
   lucid: Pick<LucidEvolution, "transactionStatus">,
   hash: string,
 ) =>
-  Effect.tryPromise(async () => {
+  settlementCall(`transactionStatus ${hash}`, async () => {
     const status = await lucid.transactionStatus(hash);
     if (
       status.txHash !== hash ||
@@ -156,8 +170,9 @@ export const reconcileAttempt = (
   Effect.gen(function* () {
     const config = yield* NodeConfig;
     const identity = yield* ContractDeploymentIdentity;
-    const { validToSlot } = yield* Effect.try(() =>
-      inspectSettlementAttempt(attempt),
+    const { validToSlot } = yield* settlementCheck(
+      "inspect settlement attempt",
+      () => inspectSettlementAttempt(attempt),
     );
     const status = yield* exactStatus(lucid, attempt.tx_hash);
     if (status.status === "confirmed") {
@@ -181,7 +196,7 @@ export const reconcileAttempt = (
         const blockHash = status.confirmation.blockHash;
         if (blockHash === undefined)
           return "waiting for confirmation block identity";
-        const exact = yield* Effect.tryPromise(() =>
+        const exact = yield* settlementCall("Kupo output evidence", () =>
           readSettlementOutputEvidence(config.L1_KUPO_KEY, attempt, blockHash),
         );
         if (!exact)
@@ -200,7 +215,7 @@ export const reconcileAttempt = (
       );
       return "confirmed settlement transaction";
     }
-    const before = yield* Effect.tryPromise(() =>
+    const before = yield* settlementCall("indexer sync", () =>
       synchronizePublicationIndexerPoint(
         config.L1_OGMIOS_KEY,
         config.L1_KUPO_KEY,
@@ -209,14 +224,14 @@ export const reconcileAttempt = (
     if (before.slot >= validToSlot) {
       const observed = yield* exactStatus(lucid, attempt.tx_hash);
       const inputs = attempt.fee_inputs.map(parseOutRefLabel);
-      const visible = yield* Effect.tryPromise(() =>
+      const visible = yield* settlementCall("fee input utxosByOutRef", () =>
         lucid.utxosByOutRef(inputs),
       );
       const expiredParents = yield* Journal.expiredParents(
         owner,
         inputs.map((out) => out.txHash),
       );
-      const after = yield* Effect.tryPromise(() =>
+      const after = yield* settlementCall("indexer sync", () =>
         synchronizePublicationIndexerPoint(
           config.L1_OGMIOS_KEY,
           config.L1_KUPO_KEY,
@@ -261,9 +276,27 @@ export const reconcileAttempt = (
     const provider = lucid.config().provider;
     if (provider === undefined)
       return yield* Effect.fail(new Error("Settlement provider unavailable"));
-    const hash = yield* Effect.tryPromise(() =>
-      provider.submitTx(attempt.signed_cbor),
+    // The exact body is resubmitted every tick until its status reads
+    // confirmed. While it waits in a mempool (or in a block the indexer has
+    // not reached) the node refuses the copy because its inputs are spent;
+    // that is progress, not a failure, and the next tick reads its status. A
+    // body whose inputs another transaction spent never confirms; past its
+    // validity bound the expiry check above refuses it as ambiguous.
+    const submitted = yield* settlementCall(
+      "submit settlement transaction",
+      () => provider.submitTx(attempt.signed_cbor),
+    ).pipe(
+      Effect.map((hash) => ({ hash })),
+      Effect.catchIf(
+        (error) => isSettlementInputsSpentRejection(error.cause),
+        (error) =>
+          Effect.succeed({
+            waiting: `settlement transaction ${attempt.tx_hash} not confirmed yet; its resubmission is refused because its inputs are already spent (by it in a mempool, or by a block): ${describeSettlementError(error.cause).slice(0, 500)}`,
+          }),
+      ),
     );
+    if ("waiting" in submitted) return submitted.waiting;
+    const hash = submitted.hash;
     if (hash !== attempt.tx_hash)
       return yield* Effect.fail(
         new Error("Settlement submit returned a different transaction hash"),
@@ -282,7 +315,7 @@ export const reconcileSettlementReceipts = (
     const config = yield* NodeConfig;
     const receipts = yield* Journal.attempts(job);
     if (receipts.length > 0)
-      yield* Effect.tryPromise(() =>
+      yield* settlementCall("indexer sync", () =>
         synchronizePublicationIndexerPoint(
           config.L1_OGMIOS_KEY,
           config.L1_KUPO_KEY,

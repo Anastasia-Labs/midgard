@@ -18,7 +18,7 @@ import {
   errorMessage,
   HEALTH_ENDPOINT,
   TX_STATUS_ENDPOINT,
-} from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import { resolveTxStatusBatch } from "./tx-status.js";
 
 export const postTxStatusBatchHandler = Effect.gen(function* () {

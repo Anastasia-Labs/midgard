@@ -21,10 +21,18 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  * for, and the reason the shard scheme exists.
  *
  *   tests/admission-writer.test.ts
+ *   tests/canonical-journal-recovery-replacement-siblings.test.ts
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
  *   tests/event-history-submission-emulator.test.ts
+ *   tests/event-history-submission-concurrency-emulator.test.ts
  *   tests/event-history-submission-journal.test.ts
+ *   tests/event-history-submission-publication-expiry-emulator.test.ts
+ *   tests/event-history-submission-reservations.test.ts
+ *   tests/event-history-submission-revival-emulator.test.ts
+ *   tests/event-history-submission-takeover-emulator.test.ts
  *   tests/settlement-journal.test.ts
+ *   tests/settlement-ownership-handoff.test.ts
+ *   tests/settlement-tick-reporting.test.ts
  *   tests/event-history-authority.test.ts
  *   tests/event-history-journal.test.ts
  *   tests/event-history-ready-append.test.ts
@@ -53,6 +61,11 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts
  *   tests/tx-order-carriage-l1-observation.test.ts
+ *   tests/user-event-ingestion-idempotent-reconcile.test.ts
+ *   tests/block-commitment-signed-intent-skip.test.ts
+ *   tests/history-retention-prune.test.ts
+ *   tests/readiness-honest-degradation-route.test.ts
+ *   tests/state-queue-mutation-lease-settle-retry.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:

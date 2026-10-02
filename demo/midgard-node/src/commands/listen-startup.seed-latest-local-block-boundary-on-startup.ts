@@ -11,13 +11,21 @@ import {
 } from "../database/index.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/index.js";
 import {
+  type CanonicalCommittedHeader,
   fetchCanonicalCommittedHeaders,
-  journalAbandonment,
-  localJournalHasPayloadMembers,
+  findSignedIntentReplacementIntegrityError,
   reviveEarliestCanonicalPayloadJournal,
 } from "../services/canonical-journal-recovery.js";
 import { signedCommitNode } from "../services/history-expired-intent-release.js";
 import { Globals, Lucid, MidgardContracts } from "../services/index.js";
+import {
+  HaltSource,
+  raiseLivenessIncident,
+} from "../services/liveness-halt.js";
+import {
+  SIGNED_INTENT_UNDECIDED,
+  SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
+} from "../services/signed-intent-undecided.js";
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
@@ -30,6 +38,88 @@ import {
   deserializeStateQueueUTxO,
   serializeStateQueueUTxO,
 } from "../workers/utils/commit-block-header.js";
+
+/**
+ * Startup's recovery over the journals of the canonical queue, and the local
+ * block boundary it seeds: the latest of the tip's end time, the tip's
+ * journal's and the revived journal's.
+ *
+ * Only the earliest unattributed abandoned payload journal is revived, under
+ * the single-active guard of reviveEarliestCanonicalPayloadJournal. A
+ * replaced journal is revived only by the history owner from its
+ * authenticated view; a correction-abandoned one is never revived.
+ *
+ * A replaced block that won its slot after the node moved past its base
+ * (`SignedIntentReplacementIntegrityError`, refused before anything is
+ * written) cannot be decided from this one view either. As in steady state
+ * (blockConfirmationStep), it raises `signed_intent_undecided`, which holds
+ * block commitment before any commit fiber starts; confirmation re-derives it
+ * on every tick and clears it. Every other failure still fails startup.
+ */
+export const recoverCanonicalJournalsOnStartup = ({
+  globals,
+  canonicalHeaders,
+  latestHeaderHash,
+  latestEndTimeMs,
+}: {
+  readonly globals: Pick<Globals, "LIVENESS_REASONS">;
+  readonly canonicalHeaders: readonly CanonicalCommittedHeader[];
+  readonly latestHeaderHash: Option.Option<Buffer>;
+  readonly latestEndTimeMs: number;
+}) =>
+  Effect.gen(function* () {
+    const revivedPayloadJournal = yield* reviveEarliestCanonicalPayloadJournal({
+      canonicalHeaders,
+      logPrefix: "Startup",
+    }).pipe(
+      Effect.catchAllCause((cause) => {
+        const integrity = findSignedIntentReplacementIntegrityError(cause);
+        return integrity === undefined
+          ? Effect.failCause(cause)
+          : raiseLivenessIncident(
+              globals,
+              HaltSource.blockConfirmationSignedIntent,
+              SIGNED_INTENT_UNDECIDED,
+              `${integrity.message} Startup revived no journal; block commitment is held, the signed intent stays in place, and confirmation re-derives it on every tick.`,
+              { escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS },
+            ).pipe(Effect.as(Option.none<CanonicalCommittedHeader>()));
+      }),
+    );
+    let seededBoundaryMs = latestEndTimeMs;
+    if (Option.isSome(latestHeaderHash)) {
+      const latestJournal =
+        yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+          latestHeaderHash.value,
+        );
+      if (Option.isSome(latestJournal)) {
+        seededBoundaryMs = Math.max(
+          latestJournal.value[
+            PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
+          ].getTime(),
+          latestEndTimeMs,
+        );
+        yield* Effect.logInfo(
+          `Seeded latest local block boundary from pending-finalization journal for header ${latestHeaderHash.value.toString("hex")}: ${new Date(seededBoundaryMs).toISOString()}`,
+        );
+      }
+    }
+    if (Option.isSome(revivedPayloadJournal)) {
+      seededBoundaryMs = Math.max(
+        seededBoundaryMs,
+        revivedPayloadJournal.value.endTimeMs,
+        revivedPayloadJournal.value.journal.pipe(
+          Option.match({
+            onNone: () => 0,
+            onSome: (journal) =>
+              journal[
+                PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
+              ].getTime(),
+          }),
+        ),
+      );
+    }
+    return seededBoundaryMs;
+  });
 
 /**
  * Seeds the in-memory local block-boundary cache from the current state-queue
@@ -111,67 +201,23 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
       }
     }
   }
-  const canonicalHeaders = yield* fetchCanonicalCommittedHeaders;
-  const revivedPayloadJournal = yield* reviveEarliestCanonicalPayloadJournal({
-    canonicalHeaders,
-    logPrefix: "Startup",
+  const latestHeaderHash =
+    latestBlock.datum.key === "Empty"
+      ? Option.none<Buffer>()
+      : Option.some(
+          Buffer.from(
+            yield* SDK.hashBlockHeader(
+              yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum),
+            ),
+            "hex",
+          ),
+        );
+  const seededBoundaryMs = yield* recoverCanonicalJournalsOnStartup({
+    globals,
+    canonicalHeaders: yield* fetchCanonicalCommittedHeaders,
+    latestHeaderHash,
+    latestEndTimeMs,
   });
-  let seededBoundaryMs = latestEndTimeMs;
-  if (latestBlock.datum.key !== "Empty") {
-    const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
-      latestBlock.datum,
-    );
-    const latestHeaderHash = Buffer.from(
-      yield* SDK.hashBlockHeader(latestHeader),
-      "hex",
-    );
-    const finalizedJournal =
-      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(latestHeaderHash);
-    if (Option.isSome(finalizedJournal)) {
-      const journalBoundaryMs =
-        finalizedJournal.value[
-          PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
-        ].getTime();
-      seededBoundaryMs = Math.max(journalBoundaryMs, latestEndTimeMs);
-      // Only an unattributed abandonment is revived here, as in the
-      // earliest-journal revival above. A replaced journal is revived only by
-      // the history owner from its authenticated view; a correction-abandoned
-      // one is never revived.
-      if (
-        finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
-          PendingBlockFinalizationsDB.Status.Abandoned &&
-        localJournalHasPayloadMembers(finalizedJournal.value) &&
-        journalAbandonment(finalizedJournal.value) === "unattributed" &&
-        Option.isNone(revivedPayloadJournal)
-      ) {
-        yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
-          latestHeaderHash,
-          BigInt(Date.now()),
-        );
-        yield* Effect.logWarning(
-          `Revived abandoned pending-finalization journal for canonical payload-bearing state-queue tip ${latestHeaderHash.toString("hex")}; local finalization recovery will replay the block payload.`,
-        );
-      }
-      yield* Effect.logInfo(
-        `Seeded latest local block boundary from pending-finalization journal for header ${latestHeaderHash.toString("hex")}: ${new Date(seededBoundaryMs).toISOString()}`,
-      );
-    }
-  }
-  if (Option.isSome(revivedPayloadJournal)) {
-    seededBoundaryMs = Math.max(
-      seededBoundaryMs,
-      revivedPayloadJournal.value.endTimeMs,
-      revivedPayloadJournal.value.journal.pipe(
-        Option.match({
-          onNone: () => 0,
-          onSome: (journal) =>
-            journal[
-              PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
-            ].getTime(),
-        }),
-      ),
-    );
-  }
   const deletedSupersededPreSubmitJournals =
     yield* PendingBlockFinalizationsDB.deleteSupersededAbandonedUnsubmitted();
   if (deletedSupersededPreSubmitJournals > 0) {
@@ -263,13 +309,16 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
 
 /**
  * Journal statuses of a submitted block whose local finalization has not
- * completed. A failed finalization attempt for such a block is owned by the
- * runtime: the commit worker retries it while the block is live, and if the
- * block is removed on L1 the correction path abandons the journal and removes
- * the moot job with it. Refusing startup here would stop the correction observer from ever
- * admitting that removal.
+ * completed. An unfinished finalization attempt for such a block, failed or
+ * killed mid-way, is owned by the runtime: the commit worker retries it while
+ * the block is live (`start` re-arms the row, and the retry is idempotent:
+ * ImmutableDB rows already written are filtered, every later step is a
+ * guarded status update), and if the block is removed on L1 the correction
+ * path abandons the journal and removes the moot job with it. Refusing
+ * startup here would stop the correction observer from ever admitting that
+ * removal.
  */
-const RUNTIME_OWNED_FAILED_FINALIZATION_JOURNAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
+const RUNTIME_OWNED_UNFINISHED_FINALIZATION_JOURNAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
   [
     PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
     PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
@@ -280,14 +329,16 @@ export const LOCAL_FINALIZATION_JOB_ID_PATTERN = new RegExp(
   `^${MutationJobsDB.Kind.LocalBlockFinalization}:([0-9a-f]{56})$`,
 );
 
-/** The header of a failed local-finalization job, or none for any other job. */
-export const failedLocalFinalizationHeader = (
+/** The header of an unfinished (running or failed) local-finalization job,
+ * or none for any other job. */
+export const unfinishedLocalFinalizationHeader = (
   job: MutationJobsDB.Entry,
 ): Buffer | undefined => {
   if (
     job[MutationJobsDB.Columns.KIND] !==
       MutationJobsDB.Kind.LocalBlockFinalization ||
-    job[MutationJobsDB.Columns.STATUS] !== MutationJobsDB.Status.Failed
+    (job[MutationJobsDB.Columns.STATUS] !== MutationJobsDB.Status.Failed &&
+      job[MutationJobsDB.Columns.STATUS] !== MutationJobsDB.Status.Running)
   )
     return undefined;
   const match = LOCAL_FINALIZATION_JOB_ID_PATTERN.exec(
@@ -297,27 +348,49 @@ export const failedLocalFinalizationHeader = (
 };
 
 /**
- * Whether startup may hand an unfinished job to the runtime. Two kinds
- * qualify:
+ * What startup does with an unfinished job. It runs under this process's
+ * acquired history authority, so no other node process is mid-way through
+ * any job: a running row is a process that died (SIGKILL, OOM, power loss)
+ * before recording the outcome.
  *
- * - a confirmed-merge finalization, failed or running (a crash mid-way): it
- *   is idempotent, and every merge attempt first finalizes each merge L1
- *   confirmed that this database has not (finalizeLandedMergesProgram);
- * - a failed local-finalization job whose own journal still records its
- *   submitted block as awaiting local finalization.
+ * "runtime" hands the job over:
+ * - a confirmed-merge finalization, failed or running: it is idempotent, and
+ *   every merge attempt first finalizes each merge L1 confirmed that this
+ *   database has not (finalizeLandedMergesProgram);
+ * - a failed or running local-finalization job whose own journal still
+ *   records its submitted block as awaiting local finalization.
  *
- * Every other unfinished job refuses: a running local finalization (a crash
- * mid-mutation), and a failed one whose journal is missing, finalized,
- * abandoned or never submitted.
+ * "complete" closes a running or failed local-finalization job whose
+ * journal is finalized: marking the journal finalized is the job's last
+ * durable step, so only its completion record was lost, to a process that
+ * died before markCompleted or to a transient that failed markCompleted (or
+ * the ack of markFinalized's commit) after it. The commit worker closes the
+ * same job the same way at runtime.
+ *
+ * Every other unfinished job refuses: a local finalization whose journal is
+ * missing, abandoned or never submitted, and a malformed job id.
  */
 export const classifyUnfinishedMutationJobOnStartup = (
   job: MutationJobsDB.Entry,
   journalStatus: PendingBlockFinalizationsDB.Status | undefined,
-): "runtime" | "refuse" =>
-  job[MutationJobsDB.Columns.KIND] ===
-    MutationJobsDB.Kind.ConfirmedMergeFinalization ||
-  (failedLocalFinalizationHeader(job) !== undefined &&
-    journalStatus !== undefined &&
-    RUNTIME_OWNED_FAILED_FINALIZATION_JOURNAL_STATUSES.includes(journalStatus))
-    ? "runtime"
+): "runtime" | "complete" | "refuse" => {
+  if (
+    job[MutationJobsDB.Columns.KIND] ===
+    MutationJobsDB.Kind.ConfirmedMergeFinalization
+  )
+    return "runtime";
+  if (
+    unfinishedLocalFinalizationHeader(job) === undefined ||
+    journalStatus === undefined
+  )
+    return "refuse";
+  if (
+    RUNTIME_OWNED_UNFINISHED_FINALIZATION_JOURNAL_STATUSES.includes(
+      journalStatus,
+    )
+  )
+    return "runtime";
+  return journalStatus === PendingBlockFinalizationsDB.Status.Finalized
+    ? "complete"
     : "refuse";
+};

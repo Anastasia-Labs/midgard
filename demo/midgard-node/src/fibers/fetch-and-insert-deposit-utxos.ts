@@ -70,6 +70,7 @@ export const persistDepositUTxOs = (
     insertEntries: DepositsDB.insertEntries,
     emptyLogMessage: "🏦 No deposit UTxOs found.",
     foundLogMessage: (count) => `🏦 ${count} deposit UTxOs found.`,
+    source: "deposit",
   });
 
 export const reconcileVisibleDepositUTxOs = (

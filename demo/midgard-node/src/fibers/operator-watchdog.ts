@@ -45,6 +45,10 @@ import {
   type TakeoverError,
 } from "../transactions/operators/takeover.js";
 import {
+  makeManifestStrikeGate,
+  type ManifestGateDecision,
+} from "./operator-watchdog.manifest-gate.js";
+import {
   decideOperatorWatchdogAction,
   recordOperatorWatchdogSkip,
   recordOperatorWatchdogTakeover,
@@ -174,203 +178,225 @@ const deferWatchdog = (input: {
   );
 };
 
-export const operatorWatchdogTick: Effect.Effect<
+/**
+ * One watchdog tick. `beforeStrike` runs before any strike or forced
+ * retirement is built; a refusal defers the watchdog until the time it names
+ * and strikes nobody.
+ */
+export const makeOperatorWatchdogTick = <R = never>(
+  beforeStrike: (
+    nowMs: number,
+  ) => Effect.Effect<ManifestGateDecision, never, R> = () =>
+    Effect.succeed({ ok: true }),
+): Effect.Effect<
   void,
   never,
-  Globals | Lucid | MidgardContracts | NodeConfig
-> = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  const lucid = yield* Lucid;
-  const contracts = yield* MidgardContracts;
-  const globals = yield* Globals;
+  Globals | Lucid | MidgardContracts | NodeConfig | R
+> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+    const lucid = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    const globals = yield* Globals;
 
-  const currentSlot = lucid.api.currentSlot();
-  const due = checkSlotAwareDueWork({
-    kind: DUE_WORK_KIND,
-    key: DUE_WORK_KEY,
-    currentSlot,
-  });
-  if (due.status === "skip") {
-    return;
-  }
-
-  // The shared Lucid's selected wallet belongs to the L1 control-plane holder
-  // (a merge signs with the merge wallet), so the tick reads with the
-  // configured operator identity and selects the operator wallet only once it
-  // holds the permit.
-  const prepared = yield* Effect.either(
-    Effect.all([
-      resolveOwnOperatorKeyHashProgram(lucid.operatorMainAddress),
-      planTakeoverProgram(lucid.api, contracts),
-    ]),
-  );
-  if (prepared._tag === "Left") {
-    yield* Effect.logWarning(
-      `🐕 Operator watchdog could not read the operator directory this tick: ${errorMessage(prepared.left)}`,
-    );
-    const nowMs = Date.now();
-    return yield* deferWatchdog({
-      lucid: lucid.api,
+    const currentSlot = lucid.api.currentSlot();
+    const due = checkSlotAwareDueWork({
+      kind: DUE_WORK_KIND,
+      key: DUE_WORK_KEY,
       currentSlot,
-      nowMs,
-      untilMs: nowMs + OPERATOR_WATCHDOG_IDLE_RECHECK_MS,
-      reason: "directory_read_failed",
-      dependencyKey: "provider",
     });
-  }
-  const [ownOperatorKey, planning] = prepared.right;
-  const nowMs = Number(planning.nowMs);
-  const schedulerRef = schedulerRefOf(planning.snapshot);
-  const defer = (reason: string, untilMs: number) =>
-    deferWatchdog({
-      lucid: lucid.api,
-      currentSlot,
-      nowMs,
-      untilMs,
-      reason,
-      dependencyKey: `scheduler=${schedulerRef}`,
-    });
-
-  if (schedulerRef === lastSpentSchedulerRef) {
-    return yield* defer(
-      "provider_behind_own_takeover",
-      nowMs + OPERATOR_WATCHDOG_IDLE_RECHECK_MS,
-    );
-  }
-
-  const decision = decideOperatorWatchdogAction({
-    enabled: nodeConfig.OPERATOR_WATCHDOG_ENABLED,
-    nowMs,
-    patienceMs: nodeConfig.OPERATOR_WATCHDOG_PATIENCE_MS,
-    ownOperatorKey,
-    ownOperatorIsActive:
-      SDK.findNodeByKey(planning.snapshot.active, ownOperatorKey) !== undefined,
-    plan: toWatchdogPlan(planning.plan),
-  });
-
-  switch (decision.action) {
-    case "idle": {
-      const reason =
-        planning.plan.kind === "blocked"
-          ? `takeover_blocked:${planning.plan.reason}`
-          : decision.reason;
-      if (planning.plan.kind === "blocked") {
-        yield* Effect.logInfo(
-          `🐕 Operator watchdog idle: takeover blocked (${planning.plan.reason}: ${planning.plan.detail}).`,
-        );
-      }
-      return yield* defer(reason, nowMs + OPERATOR_WATCHDOG_IDLE_RECHECK_MS);
-    }
-    case "wait":
-      return yield* defer(decision.reason, decision.untilMs);
-    case "strike":
-    case "force_retire": {
-      if (
-        planning.plan.kind !== "ready" &&
-        planning.plan.kind !== "strikes-exhausted"
-      ) {
-        return;
-      }
-      const plan = planning.plan;
-      type TakeoverOutcome = {
-        readonly kind: "strike" | "force_retire";
-        readonly txHash: string;
-        readonly detail: string;
-      };
-      const submission: Effect.Effect<
-        TakeoverOutcome,
-        TakeoverError,
-        NodeConfig
-      > =
-        plan.kind === "ready"
-          ? submitInactivityStrikeProgram(
-              lucid.api,
-              contracts,
-              lucid.referenceScriptsAddress,
-              { ...planning, plan },
-              { label: `operator-watchdog strike (${decision.tier})` },
-            ).pipe(
-              Effect.map((result) => ({
-                kind: "strike",
-                txHash: result.txHash,
-                detail: `struck ${result.skippedOperator} → ${result.newOperator} (strikes=${result.struckInactivityStrikes.toString()}, tier=${result.tier})`,
-              })),
-            )
-          : configuredOperatorEconomicsProgram.pipe(
-              Effect.flatMap((economics) =>
-                retireOperatorProgram(
-                  lucid.api,
-                  contracts,
-                  lucid.referenceScriptsAddress,
-                  {
-                    snapshot: planning.snapshot,
-                    operatorKeyHash: plan.currentOperator,
-                    mode: "forced-inactivity",
-                    economics,
-                  },
-                  {
-                    label: `operator-watchdog force-retire (${decision.tier})`,
-                  },
-                ),
-              ),
-              Effect.map((result) => ({
-                kind: "force_retire",
-                txHash: result.txHash,
-                detail: `force-retired ${plan.currentOperator} (retired bond=${result.retiredBondLovelace.toString()})`,
-              })),
-            );
-      const guarded = yield* Effect.either(
-        withL1ControlPlaneIfAvailable(
-          globals,
-          { scope: "operator_watchdog", maxHoldMs: 180_000 },
-          lucid.switchToOperatorsMainWallet.pipe(
-            Effect.zipRight(Effect.either(submission)),
-          ),
-        ),
-      );
-      if (guarded._tag === "Left") {
-        recordOperatorWatchdogSkip({
-          reason: "control_plane_hold_timeout",
-          atMs: Date.now(),
-        });
-        yield* Effect.logWarning(
-          `🐕 Operator watchdog gave up the L1 control plane: ${errorMessage(guarded.left)}`,
-        );
-        return;
-      }
-      const outcome = guarded.right;
-      if (outcome._tag === "None") {
-        yield* Effect.logInfo(
-          "🐕 Operator watchdog skipped this tick: the L1 control plane is busy.",
-        );
-        return;
-      }
-      const result = outcome.value;
-      if (result._tag === "Left") {
-        const error = result.left;
-        const reason =
-          error instanceof OperatorFundingShortfall
-            ? "insufficient_funds"
-            : "submission_failed";
-        recordOperatorWatchdogSkip({ reason, atMs: Date.now() });
-        yield* Effect.logWarning(
-          `🐕 Operator watchdog could not ${decision.action.replace("_", "-")} ${decision.skippedOperator} (${reason}): ${errorMessage(error)}`,
-        );
-        return;
-      }
-      lastSpentSchedulerRef = schedulerRef;
-      recordOperatorWatchdogTakeover({
-        txHash: result.right.txHash,
-        atMs: Date.now(),
-        kind: result.right.kind,
-      });
-      yield* Effect.logInfo(
-        `🐕 Operator watchdog ${result.right.detail}; tx=${result.right.txHash}`,
-      );
+    if (due.status === "skip") {
       return;
     }
-  }
-});
+
+    // The shared Lucid's selected wallet belongs to the L1 control-plane holder
+    // (a merge signs with the merge wallet), so the tick reads with the
+    // configured operator identity and selects the operator wallet only once it
+    // holds the permit.
+    const prepared = yield* Effect.either(
+      Effect.all([
+        resolveOwnOperatorKeyHashProgram(lucid.operatorMainAddress),
+        planTakeoverProgram(lucid.api, contracts),
+      ]),
+    );
+    if (prepared._tag === "Left") {
+      yield* Effect.logWarning(
+        `🐕 Operator watchdog could not read the operator directory this tick: ${errorMessage(prepared.left)}`,
+      );
+      const nowMs = Date.now();
+      return yield* deferWatchdog({
+        lucid: lucid.api,
+        currentSlot,
+        nowMs,
+        untilMs: nowMs + OPERATOR_WATCHDOG_IDLE_RECHECK_MS,
+        reason: "directory_read_failed",
+        dependencyKey: "provider",
+      });
+    }
+    const [ownOperatorKey, planning] = prepared.right;
+    const nowMs = Number(planning.nowMs);
+    const schedulerRef = schedulerRefOf(planning.snapshot);
+    const defer = (reason: string, untilMs: number) =>
+      deferWatchdog({
+        lucid: lucid.api,
+        currentSlot,
+        nowMs,
+        untilMs,
+        reason,
+        dependencyKey: `scheduler=${schedulerRef}`,
+      });
+
+    if (schedulerRef === lastSpentSchedulerRef) {
+      return yield* defer(
+        "provider_behind_own_takeover",
+        nowMs + OPERATOR_WATCHDOG_IDLE_RECHECK_MS,
+      );
+    }
+
+    const decision = decideOperatorWatchdogAction({
+      enabled: nodeConfig.OPERATOR_WATCHDOG_ENABLED,
+      nowMs,
+      patienceMs: nodeConfig.OPERATOR_WATCHDOG_PATIENCE_MS,
+      ownOperatorKey,
+      ownOperatorIsActive:
+        SDK.findNodeByKey(planning.snapshot.active, ownOperatorKey) !==
+        undefined,
+      plan: toWatchdogPlan(planning.plan),
+    });
+
+    switch (decision.action) {
+      case "idle": {
+        const reason =
+          planning.plan.kind === "blocked"
+            ? `takeover_blocked:${planning.plan.reason}`
+            : decision.reason;
+        if (planning.plan.kind === "blocked") {
+          yield* Effect.logInfo(
+            `🐕 Operator watchdog idle: takeover blocked (${planning.plan.reason}: ${planning.plan.detail}).`,
+          );
+        }
+        return yield* defer(reason, nowMs + OPERATOR_WATCHDOG_IDLE_RECHECK_MS);
+      }
+      case "wait":
+        return yield* defer(decision.reason, decision.untilMs);
+      case "strike":
+      case "force_retire": {
+        if (
+          planning.plan.kind !== "ready" &&
+          planning.plan.kind !== "strikes-exhausted"
+        ) {
+          return;
+        }
+        const plan = planning.plan;
+        // L1 time, as every deferral of the tick.
+        const gate = yield* beforeStrike(nowMs);
+        if (!gate.ok) {
+          recordOperatorWatchdogSkip({ reason: gate.reason, atMs: Date.now() });
+          return yield* defer(gate.reason, gate.untilMs);
+        }
+        type TakeoverOutcome = {
+          readonly kind: "strike" | "force_retire";
+          readonly txHash: string;
+          readonly detail: string;
+        };
+        const submission: Effect.Effect<
+          TakeoverOutcome,
+          TakeoverError,
+          NodeConfig
+        > =
+          plan.kind === "ready"
+            ? submitInactivityStrikeProgram(
+                lucid.api,
+                contracts,
+                lucid.referenceScriptsAddress,
+                { ...planning, plan },
+                { label: `operator-watchdog strike (${decision.tier})` },
+              ).pipe(
+                Effect.map((result) => ({
+                  kind: "strike",
+                  txHash: result.txHash,
+                  detail: `struck ${result.skippedOperator} → ${result.newOperator} (strikes=${result.struckInactivityStrikes.toString()}, tier=${result.tier})`,
+                })),
+              )
+            : configuredOperatorEconomicsProgram.pipe(
+                Effect.flatMap((economics) =>
+                  retireOperatorProgram(
+                    lucid.api,
+                    contracts,
+                    lucid.referenceScriptsAddress,
+                    {
+                      snapshot: planning.snapshot,
+                      operatorKeyHash: plan.currentOperator,
+                      mode: "forced-inactivity",
+                      economics,
+                    },
+                    {
+                      label: `operator-watchdog force-retire (${decision.tier})`,
+                    },
+                  ),
+                ),
+                Effect.map((result) => ({
+                  kind: "force_retire",
+                  txHash: result.txHash,
+                  detail: `force-retired ${plan.currentOperator} (retired bond=${result.retiredBondLovelace.toString()})`,
+                })),
+              );
+        const guarded = yield* Effect.either(
+          withL1ControlPlaneIfAvailable(
+            globals,
+            { scope: "operator_watchdog", maxHoldMs: 180_000 },
+            lucid.switchToOperatorsMainWallet.pipe(
+              Effect.zipRight(Effect.either(submission)),
+            ),
+          ),
+        );
+        if (guarded._tag === "Left") {
+          recordOperatorWatchdogSkip({
+            reason: "control_plane_hold_timeout",
+            atMs: Date.now(),
+          });
+          yield* Effect.logWarning(
+            `🐕 Operator watchdog gave up the L1 control plane: ${errorMessage(guarded.left)}`,
+          );
+          return;
+        }
+        const outcome = guarded.right;
+        if (outcome._tag === "None") {
+          yield* Effect.logInfo(
+            "🐕 Operator watchdog skipped this tick: the L1 control plane is busy.",
+          );
+          return;
+        }
+        const result = outcome.value;
+        if (result._tag === "Left") {
+          const error = result.left;
+          const reason =
+            error instanceof OperatorFundingShortfall
+              ? "insufficient_funds"
+              : "submission_failed";
+          recordOperatorWatchdogSkip({ reason, atMs: Date.now() });
+          yield* Effect.logWarning(
+            `🐕 Operator watchdog could not ${decision.action.replace("_", "-")} ${decision.skippedOperator} (${reason}): ${errorMessage(error)}`,
+          );
+          return;
+        }
+        lastSpentSchedulerRef = schedulerRef;
+        recordOperatorWatchdogTakeover({
+          txHash: result.right.txHash,
+          atMs: Date.now(),
+          kind: result.right.kind,
+        });
+        yield* Effect.logInfo(
+          `🐕 Operator watchdog ${result.right.detail}; tx=${result.right.txHash}`,
+        );
+        return;
+      }
+    }
+  });
+
+/** The tick without a strike gate, for callers that verified the deployment
+ * manifest themselves. */
+export const operatorWatchdogTick = makeOperatorWatchdogTick();
 
 export const operatorWatchdogFiber = (
   schedule: Schedule.Schedule<number>,
@@ -388,25 +414,17 @@ export const operatorWatchdogFiber = (
       return;
     }
     // Every lifecycle verb verifies the deployment manifest before it acts;
-    // the watchdog verifies once at start, since the manifest cannot change
-    // without a redeploy and a restart.
-    const verification = yield* Effect.either(
+    // the watchdog verifies it before its first strike and retries a failed
+    // verification (see `makeManifestStrikeGate`).
+    const globals = yield* Globals;
+    const gate = yield* makeManifestStrikeGate(
+      globals,
       verifyConfiguredDeploymentManifestProgram,
     );
-    if (verification._tag === "Left" || !verification.right.ok) {
-      const detail =
-        verification._tag === "Left"
-          ? errorMessage(verification.left)
-          : verification.right.mismatches.join("; ");
-      yield* Effect.logError(
-        `🐕 Operator watchdog not started: deployment manifest verification failed (${detail}); missed shifts must be struck by hand.`,
-      );
-      return;
-    }
     yield* Effect.logInfo(
       `🐕 Operator watchdog fiber started (patience_ms=${nodeConfig.OPERATOR_WATCHDOG_PATIENCE_MS.toString()}).`,
     );
-    const action = operatorWatchdogTick.pipe(
+    const action = makeOperatorWatchdogTick(gate.beforeStrike).pipe(
       Effect.withSpan("operator-watchdog-fiber"),
       // The tick's error channel is `never`; anything caught here is a defect.
       Effect.catchAllCause(Effect.logError),

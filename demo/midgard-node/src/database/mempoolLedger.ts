@@ -11,6 +11,7 @@ import {
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
 import * as Ledger from "./utils/ledger.js";
+import { retrievePendingLedgerOutRefHexes } from "./withdrawals.js";
 
 export const tableName = "mempool_ledger";
 const INSERT_ROW_CHUNK_SIZE = 10_000;
@@ -223,6 +224,12 @@ export const retrieveByAddress = (
     ),
   );
 
+/**
+ * The wallet view of an address: its spendable entries, minus every outref a
+ * pending withdrawal names. Admission refuses any spend of those
+ * (`retrievePendingLedgerOutRefHexes` is the set it checks), so offering one
+ * to a wallet only yields a transaction that is certain to be rejected.
+ */
 export const retrieveSpendableByAddress = (
   address: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
@@ -231,7 +238,7 @@ export const retrieveSpendableByAddress = (
       `${tableName} db: attempt to retrieve spendable Ledger UTxOs`,
     );
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql<EntryWithTimeStamp>`SELECT ${sql(
+    const entries = yield* sql<EntryWithTimeStamp>`SELECT ${sql(
       tableName,
     )}.* FROM ${sql(tableName)}
       LEFT JOIN ${sql(DepositsDB.tableName)}
@@ -239,6 +246,15 @@ export const retrieveSpendableByAddress = (
          = ${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)}
       WHERE ${sql(tableName)}.${sql(Columns.ADDRESS)} = ${address}
         AND ${spendablePredicate(sql)}`;
+    if (entries.length === 0) return entries;
+    const pendingWithdrawalOutRefHexes =
+      yield* retrievePendingLedgerOutRefHexes;
+    return entries.filter(
+      (entry) =>
+        !pendingWithdrawalOutRefHexes.has(
+          entry[Columns.OUTREF].toString("hex"),
+        ),
+    );
   }).pipe(
     Effect.withLogSpan(`retrieveSpendableByAddress ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
+import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
   CommitBuildCalibrationDB,
   MempoolDB,
@@ -70,13 +72,14 @@ import {
   getLatestBlockDatumEndTime,
   resolveCommitAppendFenceEndTimeCapLocal,
 } from "./commit-block-header/state-queue.js";
+import { measureCommitDaPayloadUpperBound } from "./commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
   recoverLocalFinalizationAgainstConfirmedBlock,
   submitDepositOnlyCommit,
   submitTxBackedCommit,
 } from "./commit-block-header/submission.js";
-import { reconcileOverdueAwaitingEventsAgainstRetainedForeignTips } from "./t2-foreign-event-reconciliation.js";
+import { gateCommitOnRetainedForeignTips } from "./t2-foreign-event-reconciliation.js";
 import {
   deserializeStateQueueUTxO,
   type SpeculativeCandidateInvalidatedOutput,
@@ -89,6 +92,7 @@ import {
   type CommitSchedulerStateQueueEvidence,
   type CurrentOperatorSchedulerWindow,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
+  emptyBlockDaPayloadUpperBoundBytes,
   establishEndTimeFromTxRequests,
   planCommitBatchBudgets,
   planSchedulerAwareCommitSelection,
@@ -96,6 +100,7 @@ import {
   selectCommitTxCandidates,
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
+  stepDownCommitSelectionToDaFrame,
   updateCommitBuildEwma,
 } from "./utils/commit-block-planner.js";
 import {
@@ -442,15 +447,20 @@ export const databaseOperationsProgram = (
             msPerTxEwma: calibration.msPerTxEwma,
             safetyFactor: nodeConfig.COMMIT_BUILD_EWMA_SAFETY_FACTOR,
           });
+    const daFrameInnerLimit = maxDaPayloadInnerBytes(
+      readDaHardeningConfig().envelopeMode,
+    );
+    const commitBatchBudgetLimits = {
+      ...DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
+      maxL2TxCount: nodeConfig.COMMIT_MAX_L2_TX_COUNT,
+      maxLedgerOpCount: nodeConfig.COMMIT_MAX_LEDGER_OP_COUNT,
+      maxTransitionStepCount: nodeConfig.COMMIT_MAX_TRANSITION_STEP_COUNT,
+      maxDaPayloadBytes: daFrameInnerLimit,
+      estimatedCommitBuildMsPerTx,
+    };
     const budgetedCommitSelection = planCommitBatchBudgets({
       candidateSelection: schedulerAwareCommitSelection.candidateSelection,
-      limits: {
-        ...DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
-        maxL2TxCount: nodeConfig.COMMIT_MAX_L2_TX_COUNT,
-        maxLedgerOpCount: nodeConfig.COMMIT_MAX_LEDGER_OP_COUNT,
-        maxTransitionStepCount: nodeConfig.COMMIT_MAX_TRANSITION_STEP_COUNT,
-        estimatedCommitBuildMsPerTx,
-      },
+      limits: commitBatchBudgetLimits,
     });
     const batchSelectedAtMs = Date.now();
     if (
@@ -461,7 +471,7 @@ export const databaseOperationsProgram = (
         `🔹 Commit batch planner selected tx_count=${budgetedCommitSelection.plan.selectedTxCount.toString()}, tx_bytes=${budgetedCommitSelection.plan.selectedTxBytes.toString()}, estimated_da_payload_bytes=${budgetedCommitSelection.plan.estimatedDaPayloadBytes.toString()}, estimated_commit_build_ms=${budgetedCommitSelection.plan.estimatedCommitBuildMs.toString()}, stop_reason=${budgetedCommitSelection.plan.stopReason}, pruned_tx_count=${budgetedCommitSelection.prunedTxCount.toString()}.`,
       );
     }
-    const candidateSelection = budgetedCommitSelection.candidateSelection;
+    let candidateSelection = budgetedCommitSelection.candidateSelection;
     yield* Effect.logInfo(
       `pipeline_trace phase=batch_selected at_ms=${batchSelectedAtMs.toString()} elapsed_ms=${Math.max(0, batchSelectedAtMs - workerStartedAtMs).toString()} selected_tx_count=${budgetedCommitSelection.plan.selectedTxCount.toString()} selected_tx_bytes=${budgetedCommitSelection.plan.selectedTxBytes.toString()} stop_reason=${budgetedCommitSelection.plan.stopReason}`,
     );
@@ -564,16 +574,16 @@ export const databaseOperationsProgram = (
       }).pipe(Effect.provideService(Lucid, lucid));
     }
 
-    if (speculativeBuild === undefined) {
-      const foreignEventResolution =
-        yield* reconcileOverdueAwaitingEventsAgainstRetainedForeignTips();
-      if (foreignEventResolution.type === "AwaitingForeignDa") {
-        return {
-          type: "AwaitingForeignDaOutput",
-          foreignHeaderHash: foreignEventResolution.foreignHeaderHash,
-          reason: `${foreignEventResolution.reason}:${foreignEventResolution.detail}`,
-        } satisfies WorkerOutput;
-      }
+    const foreignEventResolution = yield* gateCommitOnRetainedForeignTips({
+      speculative: speculativeBuild !== undefined,
+      eventsIngestedThrough: userEventOnlyEndTime,
+    });
+    if (foreignEventResolution.type === "AwaitingForeignDa") {
+      return {
+        type: "AwaitingForeignDaOutput",
+        foreignHeaderHash: foreignEventResolution.foreignHeaderHash,
+        reason: `${foreignEventResolution.reason}:${foreignEventResolution.detail}`,
+      } satisfies WorkerOutput;
     }
 
     // Events after a source-owned block's fixed end are not work for it; an
@@ -639,20 +649,25 @@ export const databaseOperationsProgram = (
       transactionsMpf,
       base: commitBase,
     });
-    const nativeMpfContext: NativeMpfBuildContext = {
-      client: nativeMpfClient,
-      handle: yield* Effect.tryPromise({
-        try: () => nativeMpfClient.fork(commitBase.root),
-        catch: (cause) =>
-          new CommitWorkerInvariantError({
-            message: `Architecture G fork failed: ${String(cause)}`,
-          }),
-      }),
-      ownerBinarySha256: workerInput.nativeMpf.ownerBinarySha256,
-    };
-    if (nativeMpfState !== undefined) {
-      nativeMpfState.context = nativeMpfContext;
-    }
+    const nativeMpfOwnerBinarySha256 = workerInput.nativeMpf.ownerBinarySha256;
+    const forkNativeMpfContext = Effect.gen(function* () {
+      const context: NativeMpfBuildContext = {
+        client: nativeMpfClient,
+        handle: yield* Effect.tryPromise({
+          try: () => nativeMpfClient.fork(commitBase.root),
+          catch: (cause) =>
+            new CommitWorkerInvariantError({
+              message: `Architecture G fork failed: ${String(cause)}`,
+            }),
+        }),
+        ownerBinarySha256: nativeMpfOwnerBinarySha256,
+      };
+      if (nativeMpfState !== undefined) {
+        nativeMpfState.context = context;
+      }
+      return context;
+    });
+    let nativeMpfContext = yield* forkNativeMpfContext;
     yield* Effect.logInfo(
       `🔹 Commit base hydration phase completed duration_ms=${Math.max(
         0,
@@ -662,8 +677,7 @@ export const databaseOperationsProgram = (
     if (speculativeBuild !== undefined) {
       yield* reachPipelinedCommitCrashCheckpoint("speculative_mid_build");
     }
-    const mpfProcessingStartedAtMs = Date.now();
-    mpfProcessingPasses += 1;
+    let mpfProcessingStartedAtMs = Date.now();
     // Canonical V1 is the only consensus profile this node can carry: the
     // deployment manifest parser and the derived-contract path both reject
     // anything that is not exactly MIDGARD_CONSENSUS_PROFILE_V1, so forced
@@ -679,63 +693,105 @@ export const databaseOperationsProgram = (
         ),
       );
     }
-    const processed = yield* processMpfs(
-      transactionsMpf,
-      candidateSelection.candidateTxs,
-      {
-        fixedBlockEndTime: fixedHistoryEndTime,
-        currentBlockStartTime: canBuildOnConfirmedBlock
-          ? currentBlockStartTime
-          : undefined,
-        processedOnlyEndTime:
-          candidateSelection.sourceTable === ProcessedMempoolDB.tableName
-            ? candidateSelection.candidateTxs[0]?.[TxColumns.TIMESTAMPTZ]
+    // Only now is the base ledger known, and every block carries all of it.
+    const daFramePlan = planCommitBatchBudgets({
+      candidateSelection,
+      limits: commitBatchBudgetLimits,
+      baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
+    });
+    if (daFramePlan.prunedTxCount > 0) {
+      yield* Effect.logInfo(
+        `🔹 Commit batch planner trimmed the selection to the base ledger's DA frame tx_count=${daFramePlan.plan.selectedTxCount.toString()}, estimated_da_payload_bytes=${daFramePlan.plan.estimatedDaPayloadBytes.toString()}, base_utxo_entry_count=${commitBase.utxoPayloadAggregate.entryCount.toString()}, pruned_tx_count=${daFramePlan.prunedTxCount.toString()}.`,
+      );
+    }
+    const daFrameBuild = yield* stepDownCommitSelectionToDaFrame({
+      candidateSelection: daFramePlan.candidateSelection,
+      baseEmptyBlockInnerBytes: emptyBlockDaPayloadUpperBoundBytes(
+        commitBase.utxoPayloadAggregate,
+      ),
+      maxInnerBytes: daFrameInnerLimit,
+      process: (selection) => {
+        mpfProcessingStartedAtMs = Date.now();
+        mpfProcessingPasses += 1;
+        return processMpfs(transactionsMpf, selection.candidateTxs, {
+          fixedBlockEndTime: fixedHistoryEndTime,
+          currentBlockStartTime: canBuildOnConfirmedBlock
+            ? currentBlockStartTime
             : undefined,
-        depositVisibilityBarrierTime: canBuildOnConfirmedBlock
-          ? depositIngestionBarrierTime
-          : undefined,
-        withdrawalVisibilityBarrierTime: canBuildOnConfirmedBlock
-          ? withdrawalIngestionBarrierTime
-          : undefined,
-        txOrderVisibilityBarrierTime: canBuildOnConfirmedBlock
-          ? txOrderIngestionBarrierTime
-          : undefined,
-        depositOnlyEndTime: canBuildOnConfirmedBlock
-          ? effectiveUserEventOnlyEndTime
-          : undefined,
-        initialLedgerEntries,
-        consensusProfile: deploymentIdentity.consensusProfile,
-        forcedValidation: {
-          expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
-          minFeeA: nodeConfig.MIN_FEE_A,
-          minFeeB: nodeConfig.MIN_FEE_B,
-          bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-          slotForUnixTime: (unixTimeMs) =>
-            BigInt(
-              unixTimeToSlotForConfig(unixTimeMs, proofValidationSlotConfig),
-            ),
-        },
-        selectedBaseUtxoRoot: commitBase.root,
-        payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
-        baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
-        recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
-        excludedDepositEventIds:
-          speculativeBuild === undefined
-            ? undefined
-            : new Set(speculativeBuild.excludedDepositEventIds),
-        excludedForcedTransactionEventIds:
-          speculativeBuild === undefined
-            ? undefined
-            : new Set(speculativeBuild.excludedForcedTransactionEventIds),
-        excludedWithdrawalEventIds:
-          speculativeBuild === undefined
-            ? undefined
-            : new Set(speculativeBuild.excludedWithdrawalEventIds),
-        deferDatabaseWrites: speculativeBuild !== undefined,
-        onMempoolLedgerReverted: notifyParent?.(MEMPOOL_LEDGER_REVERTED_NOTICE),
-        nativeMpf: nativeMpfContext,
+          processedOnlyEndTime:
+            selection.sourceTable === ProcessedMempoolDB.tableName
+              ? selection.candidateTxs[0]?.[TxColumns.TIMESTAMPTZ]
+              : undefined,
+          depositVisibilityBarrierTime: canBuildOnConfirmedBlock
+            ? depositIngestionBarrierTime
+            : undefined,
+          withdrawalVisibilityBarrierTime: canBuildOnConfirmedBlock
+            ? withdrawalIngestionBarrierTime
+            : undefined,
+          txOrderVisibilityBarrierTime: canBuildOnConfirmedBlock
+            ? txOrderIngestionBarrierTime
+            : undefined,
+          depositOnlyEndTime: canBuildOnConfirmedBlock
+            ? effectiveUserEventOnlyEndTime
+            : undefined,
+          initialLedgerEntries,
+          consensusProfile: deploymentIdentity.consensusProfile,
+          forcedValidation: {
+            expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+            minFeeA: nodeConfig.MIN_FEE_A,
+            minFeeB: nodeConfig.MIN_FEE_B,
+            bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+            slotForUnixTime: (unixTimeMs) =>
+              BigInt(
+                unixTimeToSlotForConfig(unixTimeMs, proofValidationSlotConfig),
+              ),
+          },
+          selectedBaseUtxoRoot: commitBase.root,
+          payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
+          baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
+          recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
+          excludedDepositEventIds:
+            speculativeBuild === undefined
+              ? undefined
+              : new Set(speculativeBuild.excludedDepositEventIds),
+          excludedForcedTransactionEventIds:
+            speculativeBuild === undefined
+              ? undefined
+              : new Set(speculativeBuild.excludedForcedTransactionEventIds),
+          excludedWithdrawalEventIds:
+            speculativeBuild === undefined
+              ? undefined
+              : new Set(speculativeBuild.excludedWithdrawalEventIds),
+          deferDatabaseWrites: speculativeBuild !== undefined,
+          onMempoolLedgerReverted: notifyParent?.(
+            MEMPOOL_LEDGER_REVERTED_NOTICE,
+          ),
+          nativeMpf: nativeMpfContext,
+        });
       },
-    );
+      measure: (built) =>
+        measureCommitDaPayloadUpperBound({
+          ...built,
+          rejectedTxIds: built.rejectedMempoolTxHashes,
+        }),
+      // A superseded pass's ledger fork and transactions trie never reach
+      // commit; the next pass rebuilds both from the same base.
+      rebase: Effect.gen(function* () {
+        const superseded = nativeMpfContext.handle;
+        if (nativeMpfState !== undefined) nativeMpfState.context = undefined;
+        yield* Effect.tryPromise({
+          try: () => nativeMpfClient.discard(superseded),
+          catch: (cause) =>
+            new CommitWorkerInvariantError({
+              message: `Architecture G discard failed: ${String(cause)}`,
+            }),
+        });
+        yield* transactionsMpf.resetToEmpty();
+        nativeMpfContext = yield* forkNativeMpfContext;
+      }),
+    });
+    const processed = daFrameBuild.processed;
+    candidateSelection = daFrameBuild.candidateSelection;
     const mpfProcessingFinishedAtMs = Date.now();
     yield* Effect.logInfo(
       `pipeline_trace phase=mpf_processing_finished at_ms=${mpfProcessingFinishedAtMs.toString()} duration_ms=${Math.max(0, mpfProcessingFinishedAtMs - mpfProcessingStartedAtMs).toString()}`,

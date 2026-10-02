@@ -21,6 +21,7 @@ import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import { withHistoryWrite } from "./event-history-producer.js";
 import { Database, Lucid, MidgardContracts } from "./index.js";
+import { ROOT_TAIL_HEADER_HASH } from "./state-queue-correction-rewind.admitted-removals.js";
 
 export type CanonicalCommittedHeaderIdentity = {
   readonly headerHash: Buffer;
@@ -56,7 +57,10 @@ const SIGNED_INTENT_REPLACEMENT_DOMAIN = "midgard-signed-intent-replacement-v1";
  * replaced this way.
  */
 export const signedIntentReplacementDigest = (
-  record: PendingBlockFinalizationsDB.Record,
+  record: Pick<
+    PendingBlockFinalizationsDB.Record,
+    typeof J.HEADER_HASH | typeof J.INTENDED_TX_HASH | typeof J.SIGNED_TX_CBOR
+  >,
 ): string | undefined => {
   const intended = record[J.INTENDED_TX_HASH];
   const signed = record[J.SIGNED_TX_CBOR];
@@ -200,7 +204,9 @@ export const reviveReplacedCanonicalJournal = (
           header_hash: Buffer;
           status: PendingBlockFinalizationsDB.Status;
         }>`SELECT header_hash, status FROM pending_block_finalizations
-          WHERE base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+          WHERE (base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+              OR (${!record[J.BASE_TAIL_HEADER_HASH].equals(ROOT_TAIL_HEADER_HASH)}
+                AND base_tail_header_hash = ${record[J.BASE_TAIL_HEADER_HASH]} AND base_utxos_root = ${record[J.BASE_UTXOS_ROOT]}))
             AND header_hash <> ${headerHash}
           ORDER BY created_at, header_hash FOR UPDATE`;
         const landed = siblings.find(({ status }) =>
@@ -317,7 +323,9 @@ const assertNoLandedReplacementSibling = (
       header_hash: Buffer;
       status: PendingBlockFinalizationsDB.Status;
     }>`SELECT header_hash, status FROM pending_block_finalizations
-      WHERE base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+      WHERE (base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+          OR (${!record[J.BASE_TAIL_HEADER_HASH].equals(ROOT_TAIL_HEADER_HASH)}
+            AND base_tail_header_hash = ${record[J.BASE_TAIL_HEADER_HASH]} AND base_utxos_root = ${record[J.BASE_UTXOS_ROOT]}))
         AND header_hash <> ${record[J.HEADER_HASH]}
       ORDER BY created_at, header_hash`;
     const landed = siblings.find(({ status }) =>

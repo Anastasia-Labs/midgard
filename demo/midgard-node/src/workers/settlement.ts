@@ -1,28 +1,21 @@
-import { parentPort } from "node:worker_threads";
+import { parentPort, workerData } from "node:worker_threads";
 
-import { Cause, Effect } from "effect";
+import { Effect } from "effect";
 
+import type { SettlementWorkerData } from "../fibers/settlement.js";
 import {
   settlementProgram,
   settlementWorkerLayer,
 } from "../services/settlement.js";
+import { runSettlementWorker } from "./settlement.run-settlement-worker.js";
 
 if (parentPort !== null) {
   const port = parentPort;
-  void Effect.runPromise(
-    settlementProgram((health) => port.postMessage(health)).pipe(
-      Effect.provide(settlementWorkerLayer),
-      Effect.catchAllCause((cause) =>
-        Effect.sync(() => {
-          port.postMessage({
-            observedAt: Date.now(),
-            state: "error",
-            detail: Cause.pretty(cause).slice(0, 2000),
-          });
-          process.exitCode = 1;
-          port.close();
-        }),
-      ),
-    ),
+  void runSettlementWorker(
+    port,
+    settlementProgram(
+      (health) => port.postMessage(health),
+      (workerData as SettlementWorkerData | undefined)?.ownerToken,
+    ).pipe(Effect.provide(settlementWorkerLayer)),
   );
 }

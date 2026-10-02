@@ -28,7 +28,10 @@ import {
   readBoundRecoveryLedgerSnapshot,
 } from "../l1-event-history-source.js";
 import type { HistoryTransportOptions } from "../l1-event-history-transport.js";
-import { LEDGER_SCAN_TIMEOUT_MS } from "../l1-ledger-snapshot.js";
+import {
+  LEDGER_SCAN_TIMEOUT_MS,
+  LedgerPointUnavailable,
+} from "../l1-ledger-snapshot.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
@@ -141,12 +144,42 @@ export const signedHeaderRecoveryHoldSlot = (bindingDigest: string) =>
     }),
   );
 
+/** The exact-point queue capture a recovery validates. A point the node can
+ * no longer serve (out of its rollback window, or off the selected chain)
+ * leaves the recovery pending, retried on the owner's doubling backoff at the
+ * checkpoint it then holds; the capture is never re-anchored to another
+ * point. Any other failure keeps its cause, so a lost source still reads as
+ * an outage and everything else stays terminal. Waiting admits nothing: the
+ * capture is only an input to validateRecoveryStateQueue. */
+export const captureRecoveryQueueAtPoint = <A>(
+  read: (signal: AbortSignal) => Promise<A>,
+): Effect.Effect<A | undefined, DatabaseError> =>
+  Effect.tryPromise({
+    try: read,
+    catch: (cause) =>
+      cause instanceof LedgerPointUnavailable
+        ? cause
+        : failure(
+            `Exact-point recovery queue capture failed: ${formatUnknownError(cause, { includeCause: true })}`,
+            cause,
+          ),
+  }).pipe(
+    Effect.catchIf(
+      (error): error is LedgerPointUnavailable =>
+        error instanceof LedgerPointUnavailable,
+      (unavailable) =>
+        Effect.logWarning(
+          `Signed-header recovery stays pending: ${unavailable.message}`,
+        ).pipe(Effect.as(undefined)),
+    ),
+  );
+
 /** First published recovery slice: an orphan-funded deposit-only header whose
  * exact original confirmed base is freshly restored on L1. Includes observed
  * deposit-only headers before any local-finalization job/DA work. Other published
  * shapes stay pending until their complete confirmed-ledger inverse is available.
  * Canonical absence through signed TTL plus finality is mandatory even when the
- * old base output is unspent. A local archive or queue absence cannot authorize it.
+ * old base output is unspent.
  */
 export const prepareSignedHeaderRecovery = (input: {
   readonly binding: EventHistorySourceBinding;
@@ -259,22 +292,17 @@ export const prepareSignedHeaderRecovery = (input: {
       return yield* Effect.fail(
         failure("Recovery journal roots disagree with retained native replay"),
       );
-    const capture = yield* Effect.tryPromise({
-      try: (signal) =>
-        readBoundRecoveryLedgerSnapshot({
-          ...input.transport,
-          timeoutMs: LEDGER_SCAN_TIMEOUT_MS,
-          binding: input.binding,
-          addresses: [input.contracts.stateQueue.spendingScriptAddress],
-          at: checkpoint.head,
-          signal,
-        }),
-      catch: (cause) =>
-        failure(
-          `Exact-point recovery queue capture failed: ${formatUnknownError(cause, { includeCause: true })}`,
-          cause,
-        ),
-    });
+    const capture = yield* captureRecoveryQueueAtPoint((signal) =>
+      readBoundRecoveryLedgerSnapshot({
+        ...input.transport,
+        timeoutMs: LEDGER_SCAN_TIMEOUT_MS,
+        binding: input.binding,
+        addresses: [input.contracts.stateQueue.spendingScriptAddress],
+        at: checkpoint.head,
+        signal,
+      }),
+    );
+    if (capture === undefined) return;
     yield* preparation.assertCurrent;
     const target = yield* validateRecoveryStateQueue({
       outputs: capture.ledger.outputs,

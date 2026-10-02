@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Either, Option } from "effect";
 
@@ -20,6 +18,7 @@ import {
 } from "../mpf/index.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { materializeLedgerDeltaSuffix } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
+import * as AuditLeases from "./mpf-audit-leases.js";
 
 /**
  * Which independently recomputed ledger point the persisted MPF root matched.
@@ -323,14 +322,17 @@ const readLevelDbLedgerRoot = (path: string) =>
  * `readNativeDurableRoot` is the running node's native owner read. Without it
  * (the offline `mpf-audit` command) the durable `__root__` marker is read from
  * the LevelDB store directly, which is the native owner's store and so still
- * describes the committed tip.
+ * describes the committed tip. `leases` defaults to the offline command's; the
+ * running node passes its own, which its startup retires after a kill.
  */
 export const runMpfAudit = ({
   acknowledgeClean = false,
   readNativeDurableRoot,
+  leases = AuditLeases.OFFLINE_MPF_AUDIT_LEASES,
 }: {
   readonly acknowledgeClean?: boolean;
   readonly readNativeDurableRoot?: Effect.Effect<string, unknown>;
+  readonly leases?: AuditLeases.MpfAuditLeases;
 } = {}): Effect.Effect<MpfAuditResult, unknown, Database | NodeConfig> =>
   Effect.gen(function* () {
     const startedAt = performance.now();
@@ -339,14 +341,14 @@ export const runMpfAudit = ({
       readNativeDurableRoot ?? readLevelDbLedgerRoot(config.LEDGER_MPF_DB_PATH);
 
     const stateQueueResult = yield* StateQueueMutationLeasesDB.tryWithLease(
-      "mpf-payload-audit",
+      leases.stateQueueHolder,
       (stateQueueLeaseToken) =>
         Effect.gen(function* () {
           if (yield* PendingBlockFinalizationsDB.hasActive) {
             return skipped(startedAt, "active_pending_submission");
           }
 
-          const leaseOwner = `audit:${randomUUID()}`;
+          const leaseOwner = leases.ledgerStoreOwner();
           const mpfLeaseResult =
             yield* MpfEngineStateDB.tryWithLedgerStoreLease(
               leaseOwner,

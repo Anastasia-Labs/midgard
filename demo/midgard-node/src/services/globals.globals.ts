@@ -1,5 +1,5 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { Duration, Effect, Metric, Queue, Ref } from "effect";
+import { Effect, Queue, Ref } from "effect";
 
 import {
   idleSpeculativeCommitState,
@@ -8,17 +8,16 @@ import {
 } from "../fibers/speculative-commit-state.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
+import type { IdleBackoffState } from "./globals.idle-backoff.js";
+import {
+  initialL1ControlPlaneActivity,
+  type L1ControlPlaneActivity,
+} from "./globals.l1-control-plane.js";
 import {
   type AdmissionBacklogGaugeState,
   type AttestationTimeoutCorrectionHealth,
   type CommitPipelinePhase,
   type CommitSubmitWake,
-  DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
-  l1ControlPlaneAcquisitionCounter,
-  l1ControlPlaneHoldTimer,
-  l1ControlPlaneTimeoutCounter,
-  L1ControlPlaneTimeoutError,
-  l1ControlPlaneWaitTimer,
   type L1ProviderHealthEvidence,
   type MempoolLedgerDeltaLog,
 } from "./globals.next-l1-provider-health-evidence.js";
@@ -176,6 +175,37 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const HEARTBEAT_BLOCK_CONFIRMATION = yield* Ref.make<number>(now);
     const HEARTBEAT_MERGE = yield* Ref.make<number>(now);
     const HEARTBEAT_TX_QUEUE_PROCESSOR = yield* Ref.make<number>(now);
+    const HEARTBEAT_SPECULATIVE_COMMIT_BUILDER = yield* Ref.make<number>(now);
+    const HEARTBEAT_SPECULATIVE_COMMIT_SUBMITTER = yield* Ref.make<number>(now);
+
+    // Who holds and who waits for L1_CONTROL_PLANE, read by readiness to tell
+    // a wedged permit from a busy one.
+    const L1_CONTROL_PLANE_ACTIVITY = yield* Ref.make<L1ControlPlaneActivity>(
+      initialL1ControlPlaneActivity(),
+    );
+    // Conditions that stop the node making progress without stopping any
+    // fiber, keyed by their source; each source clears its own once it
+    // recovers. Readiness reports them.
+    const LIVENESS_REASONS = yield* Ref.make<ReadonlyMap<string, string>>(
+      new Map(),
+    );
+    // Set by the commitment fiber each tick: true while it found no pending
+    // tx or user-event work, so the confirmation fiber may back off.
+    const COMMIT_PIPELINE_IDLE = yield* Ref.make<boolean>(false);
+    // The backlog that tick counted, which sizes the commitment's L1
+    // control-plane hold without querying it again under the permit.
+    const COMMIT_PIPELINE_BACKLOG = yield* Ref.make<{
+      readonly mempoolTxCount: number;
+      readonly pendingUserEventCount: number;
+    }>({ mempoolTxCount: 0, pendingUserEventCount: 0 });
+    const IDLE_BACKOFF = yield* Ref.make<ReadonlyMap<string, IdleBackoffState>>(
+      new Map(),
+    );
+    // The last state each recurring status log reported, so it logs once per
+    // change rather than once per tick.
+    const LOGGED_STATES = yield* Ref.make<ReadonlyMap<string, string>>(
+      new Map(),
+    );
     const ATTESTATION_TIMEOUT_CORRECTION_HEALTH =
       yield* Ref.make<AttestationTimeoutCorrectionHealth>({
         lastProgressAtMs: now,
@@ -220,67 +250,21 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       HEARTBEAT_BLOCK_CONFIRMATION,
       HEARTBEAT_MERGE,
       HEARTBEAT_TX_QUEUE_PROCESSOR,
+      HEARTBEAT_SPECULATIVE_COMMIT_BUILDER,
+      HEARTBEAT_SPECULATIVE_COMMIT_SUBMITTER,
       ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
+      L1_CONTROL_PLANE_ACTIVITY,
+      LIVENESS_REASONS,
+      COMMIT_PIPELINE_IDLE,
+      COMMIT_PIPELINE_BACKLOG,
+      IDLE_BACKOFF,
+      LOGGED_STATES,
     };
   }),
 }) {}
 
-export const withL1ControlPlane = <A, E, R>(
-  globals: Globals,
-  options: {
-    readonly scope: string;
-    readonly maxHoldMs?: number;
-  },
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | Error, R> => {
-  const maxHoldMs = options.maxHoldMs ?? DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS;
-  const waitTimer = Metric.tagged(
-    l1ControlPlaneWaitTimer,
-    "scope",
-    options.scope,
-  );
-  const holdTimer = Metric.tagged(
-    l1ControlPlaneHoldTimer,
-    "scope",
-    options.scope,
-  );
-  const acquisitionCounter = Metric.tagged(
-    l1ControlPlaneAcquisitionCounter,
-    "scope",
-    options.scope,
-  );
-  const timeoutCounter = Metric.tagged(
-    l1ControlPlaneTimeoutCounter,
-    "scope",
-    options.scope,
-  );
-  return Effect.gen(function* () {
-    const waitStartedAtMs = Date.now();
-    return yield* globals.L1_CONTROL_PLANE.withPermits(1)(
-      Effect.gen(function* () {
-        yield* waitTimer(
-          Effect.succeed(Duration.millis(Date.now() - waitStartedAtMs)),
-        );
-        yield* Metric.increment(acquisitionCounter);
-        const holdStartedAtMs = Date.now();
-        return yield* effect.pipe(
-          Effect.timeoutFail({
-            duration: Duration.millis(maxHoldMs),
-            onTimeout: () =>
-              new L1ControlPlaneTimeoutError(options.scope, maxHoldMs),
-          }),
-          Effect.tapError((error) =>
-            error instanceof L1ControlPlaneTimeoutError
-              ? Metric.increment(timeoutCounter)
-              : Effect.void,
-          ),
-          Effect.ensuring(
-            holdTimer(
-              Effect.succeed(Duration.millis(Date.now() - holdStartedAtMs)),
-            ),
-          ),
-        );
-      }),
-    );
-  });
-};
+/**
+ * Runs `effect` under the process-wide L1 control-plane permit, with its hold
+ * capped; see `globals.l1-control-plane.ts`.
+ */
+export { withL1ControlPlane } from "./globals.l1-control-plane.js";

@@ -113,8 +113,9 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
           referenceScriptAuthPolicyDeploymentInfo(resolvedPolicy);
         return transitionDeploymentStep(
           {
+            // `mode` is how the run state was created and must stay equal to
+            // its creation event; a fresh redeploy is recorded on the step.
             ...state,
-            mode: options.freshRedeploy ? "fresh" : state.mode,
             identity: {
               ...state.identity,
               ...currentIdentity,

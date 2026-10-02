@@ -1,7 +1,7 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { Data, Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
@@ -57,31 +57,19 @@ export const retrieve = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve history submission"),
   );
 
-const reserveInputs = (submissionId: string, inputs: readonly string[]) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    for (const outRef of [...new Set(inputs)].sort()) {
-      yield* sql`INSERT INTO event_history_submission_inputs (out_ref, submission_id)
-      VALUES (${outRef}, ${submissionId}) ON CONFLICT (out_ref) DO NOTHING`;
-      const owners = yield* sql<{
-        submission_id: string;
-      }>`SELECT submission_id FROM event_history_submission_inputs WHERE out_ref = ${outRef}`;
-      if (owners[0]?.submission_id !== submissionId)
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "History transaction input is reserved by another submission",
-            cause: outRef,
-          }),
-        );
-    }
-  });
+/** Another submission already holds an input of the pending attempt. The
+ * surrounding transaction rolled back, so nothing was recorded. */
+export class HistoryInputReservedError extends Data.TaggedError(
+  "HistoryInputReservedError",
+)<{
+  readonly message: string;
+  readonly outRef: string;
+  readonly holder: string | undefined;
+}> {}
 
-const pendingInputReferences = (
-  checkpoint: SDK.EventHistorySubmissionCheckpoint,
-) => {
-  if (checkpoint.pending === undefined) return [];
+/** Inputs and validity upper bound (TTL slot) of the pending attempt. */
+const pendingSpend = (checkpoint: SDK.EventHistorySubmissionCheckpoint) => {
+  if (checkpoint.pending === undefined) return { inputs: [], ttl: undefined };
   const body = CML.Transaction.from_cbor_hex(
     checkpoint.pending.transactionCbor,
   ).body();
@@ -97,13 +85,81 @@ const pendingInputReferences = (
       );
     }
   }
-  return refs;
+  return { inputs: refs, ttl: body.ttl() };
 };
 
+/** A holder can no longer spend a reserved input other than its nonce once
+ * its current checkpoint has no pending attempt spending it (the attempt
+ * settled or was rebuilt), or that attempt's validity ended below the caller's
+ * observed L1 tip slot. An unreadable checkpoint counts as still spending. */
+const holderReleased = (
+  holder: Pick<Row, "nonce_out_ref" | "checkpoint">,
+  outRef: string,
+  tipSlot: number | undefined,
+) => {
+  if (outRef === holder.nonce_out_ref) return false;
+  try {
+    const { inputs, ttl } = pendingSpend(holder.checkpoint);
+    return (
+      !inputs.includes(outRef) ||
+      (ttl !== undefined && tipSlot !== undefined && ttl < BigInt(tipSlot))
+    );
+  } catch {
+    return false;
+  }
+};
+
+/** Locks each input row in sorted order, inserted or already held. With
+ * `takeover`, an input its holder can no longer spend moves to this
+ * submission: the input row lock and the holder row share lock keep that
+ * decision atomic with the holder's own saves. A holder saving right now is
+ * live; skipping its locked row also keeps lock waits acyclic. */
+const reserveInputs = (
+  submissionId: string,
+  inputs: readonly string[],
+  takeover?: { readonly tipSlot: number | undefined },
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    for (const outRef of [...new Set(inputs)].sort()) {
+      const [owner] = yield* sql<{
+        submission_id: string;
+      }>`INSERT INTO event_history_submission_inputs (out_ref, submission_id)
+      VALUES (${outRef}, ${submissionId})
+      ON CONFLICT (out_ref) DO UPDATE SET submission_id = event_history_submission_inputs.submission_id
+      RETURNING submission_id`;
+      if (owner?.submission_id === submissionId) continue;
+      const [holder] =
+        takeover === undefined || owner === undefined
+          ? []
+          : yield* sql<Row>`SELECT * FROM event_history_submissions
+            WHERE submission_id = ${owner.submission_id} FOR SHARE SKIP LOCKED`;
+      if (
+        holder !== undefined &&
+        holderReleased(holder, outRef, takeover?.tipSlot)
+      ) {
+        yield* sql`UPDATE event_history_submission_inputs SET submission_id = ${submissionId}
+          WHERE out_ref = ${outRef} AND submission_id = ${holder.submission_id}`;
+        continue;
+      }
+      return yield* Effect.fail(
+        new HistoryInputReservedError({
+          message:
+            "History transaction input is reserved by another submission",
+          outRef,
+          holder: owner?.submission_id,
+        }),
+      );
+    }
+  });
+
 /** ON CONFLICT never overwrites intent. Concurrent creators reload the winner;
- * a competing submission ID cannot reserve an already assigned nonce. */
+ * a competing submission ID cannot reserve an already assigned nonce. A wallet
+ * output that another submission reserved only as an input it can no longer
+ * spend (see `reservedInputs`) is taken over as this nonce. */
 export const reserve = (
   input: Omit<Row, "revision">,
+  l1TipSlot?: number,
 ): Effect.Effect<Row, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -127,9 +183,18 @@ export const reserve = (
               cause: input.submission_id,
             }),
           );
-        yield* reserveInputs(result.value.submission_id, [
-          result.value.nonce_out_ref,
-        ]);
+        // A nonce held by another ID is a conflicting intent, not a wait.
+        yield* reserveInputs(
+          result.value.submission_id,
+          [result.value.nonce_out_ref],
+          { tipSlot: l1TipSlot },
+        ).pipe(
+          Effect.catchTag("HistoryInputReservedError", ({ message, outRef }) =>
+            Effect.fail(
+              new DatabaseError({ table: tableName, message, cause: outRef }),
+            ),
+          ),
+        );
         return result.value;
       }),
     );
@@ -141,11 +206,18 @@ export const reserve = (
   );
 
 /** A stale process must reload/reconcile instead of replacing another body's
- * pending checkpoint. The caller resolves this write before any signature. */
+ * pending checkpoint. The caller resolves this write before any signature.
+ * A pending input another submission can still spend fails with
+ * HistoryInputReservedError and records nothing; `l1TipSlot`, when observed,
+ * lets it take over inputs of a holder's expired attempt. The submission then
+ * holds exactly its nonce and the new pending attempt's inputs: the workflow
+ * drops or replaces a pending attempt only once it settled, so every other
+ * reservation is released. */
 export const saveCheckpoint = (
   row: Row,
   checkpoint: SDK.EventHistorySubmissionCheckpoint,
-): Effect.Effect<Row, DatabaseError, Database> =>
+  l1TipSlot?: number,
+): Effect.Effect<Row, DatabaseError | HistoryInputReservedError, Database> =>
   Effect.gen(function* () {
     if (checkpoint.requestHash !== row.checkpoint.requestHash)
       return yield* Effect.fail(
@@ -156,8 +228,8 @@ export const saveCheckpoint = (
         }),
       );
     const sql = yield* SqlClient.SqlClient;
-    const inputs = yield* Effect.try({
-      try: () => pendingInputReferences(checkpoint),
+    const { inputs } = yield* Effect.try({
+      try: () => pendingSpend(checkpoint),
       catch: (cause) =>
         new DatabaseError({
           table: tableName,
@@ -181,7 +253,12 @@ export const saveCheckpoint = (
               cause: row.submission_id,
             }),
           );
-        yield* reserveInputs(row.submission_id, inputs);
+        yield* reserveInputs(row.submission_id, inputs, {
+          tipSlot: l1TipSlot,
+        });
+        yield* sql`DELETE FROM event_history_submission_inputs
+          WHERE submission_id = ${row.submission_id} AND out_ref <> ${rows[0]!.nonce_out_ref}
+          AND NOT ${sql.in("out_ref", inputs)}`;
         return rows[0]!;
       }),
     );
@@ -192,17 +269,28 @@ export const saveCheckpoint = (
     ),
   );
 
+/** The wallet's outputs other submissions may still spend, as nonces or
+ * inputs of their pending attempts. An input its holder can no longer spend at
+ * `l1TipSlot` is left out, so a new nonce or funding set can take it over;
+ * otherwise a holder that died with every wallet output in its attempt would
+ * starve every later submission of that wallet. */
 export const reservedInputs = (
   walletAddress: string,
+  l1TipSlot?: number,
 ): Effect.Effect<ReadonlySet<string>, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      out_ref: string;
-    }>`SELECT inputs.out_ref FROM event_history_submission_inputs inputs
+    const rows = yield* sql<
+      Pick<Row, "nonce_out_ref" | "checkpoint"> & { out_ref: string }
+    >`SELECT inputs.out_ref, submissions.nonce_out_ref, submissions.checkpoint
+      FROM event_history_submission_inputs inputs
       JOIN event_history_submissions submissions USING (submission_id)
       WHERE submissions.wallet_address = ${walletAddress}`;
-    return new Set(rows.map((row) => row.out_ref));
+    return new Set(
+      rows
+        .filter((row) => !holderReleased(row, row.out_ref, l1TipSlot))
+        .map((row) => row.out_ref),
+    );
   }).pipe(
     sqlErrorToDatabaseError(
       tableName,
