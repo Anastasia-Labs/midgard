@@ -15,6 +15,7 @@ import {
   runRebroadcastFiber,
   type UnacceptedSignedIntent,
 } from "../src/fibers/signed-intent-rebroadcast.js";
+import { initialL1ControlPlaneActivity } from "../src/services/globals.l1-control-plane.js";
 
 const BASE = `${"aa".repeat(32)}#0`;
 
@@ -252,6 +253,9 @@ describe("signed-intent rebroadcast tick", () => {
           RESET_IN_PROGRESS: yield* Ref.make(false),
           COMMIT_WORKER_ACTIVE: yield* Ref.make(false),
           L1_CONTROL_PLANE: yield* Effect.makeSemaphore(1),
+          L1_CONTROL_PLANE_ACTIVITY: yield* Ref.make(
+            initialL1ControlPlaneActivity(),
+          ),
         };
       }),
     );

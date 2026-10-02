@@ -267,7 +267,10 @@ export type RebroadcastFailures = { last: string | undefined };
 export const rebroadcastTick = <R>(
   globals: Pick<
     Globals,
-    "RESET_IN_PROGRESS" | "COMMIT_WORKER_ACTIVE" | "L1_CONTROL_PLANE"
+    | "RESET_IN_PROGRESS"
+    | "COMMIT_WORKER_ACTIVE"
+    | "L1_CONTROL_PLANE"
+    | "L1_CONTROL_PLANE_ACTIVITY"
   >,
   deps: RebroadcastDeps<R>,
   state: RebroadcastState,

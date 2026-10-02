@@ -1,11 +1,7 @@
 import { Deferred, Effect, Fiber, Logger, Metric, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  Globals,
-  withL1ControlPlane,
-  withL1ControlPlaneWaitTimeout,
-} from "../src/services/globals.js";
+import { Globals, withL1ControlPlane } from "../src/services/globals.js";
 import { l1ControlPlaneWedgedGauge } from "../src/services/globals.l1-control-plane.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
 
@@ -33,18 +29,16 @@ const wedgedGauge = Metric.value(l1ControlPlaneWedgedGauge).pipe(
 );
 
 /**
- * A hold taken without registering, like a scheduled merge's, whose
- * uninterruptible body blocks until `release` (a local finalization stuck on
- * a database acquisition): its hold timeout cannot complete.
+ * A raw permit taken without registering, whose uninterruptible body blocks
+ * until `release` (a local finalization stuck on a database acquisition):
+ * no hold deadline applies and the holder watchdog cannot see it.
  */
 const hungUnregisteredHold = (
   globals: Globals,
   entered: Deferred.Deferred<void>,
   release: Deferred.Deferred<void>,
 ) =>
-  withL1ControlPlaneWaitTimeout(
-    globals,
-    { scope: "scheduled_merge", waitTimeoutMs: 1_000, maxHoldMs: 20 },
+  globals.L1_CONTROL_PLANE.withPermits(1)(
     Effect.uninterruptible(
       Deferred.succeed(entered, undefined).pipe(
         Effect.zipRight(Deferred.await(release)),
@@ -89,7 +83,6 @@ describe("L1 control-plane waiter wedge watchdog", () => {
         const errorsWhileWedged = errors.length;
         yield* Deferred.succeed(release, undefined);
         const ran = yield* Fiber.join(waiter);
-        // Its hold timed out long ago; it fails once its body lets it.
         yield* Fiber.await(holder);
         return {
           gaugeWhileWedged,

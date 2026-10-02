@@ -1,16 +1,11 @@
-import { Duration, Effect, Metric, Option, Ref } from "effect";
+import { Duration, Effect, Option, Ref } from "effect";
 
 import { Globals } from "./globals.globals.js";
-import {
-  DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
-  l1ControlPlaneAcquisitionCounter,
-  l1ControlPlaneHoldTimer,
-  l1ControlPlaneTimeoutCounter,
-  L1ControlPlaneTimeoutError,
-  l1ControlPlaneWaitTimer,
-  type MempoolLedgerDelta,
-} from "./globals.next-l1-provider-health-evidence.js";
+import { runRegisteredL1ControlPlaneHold } from "./globals.l1-control-plane.js";
+import { type MempoolLedgerDelta } from "./globals.next-l1-provider-health-evidence.js";
 
+/** Runs `effect` only when the permit is free, as a registered hold: the
+ * wedge and hold-timeout readiness reasons see it like any other scope. */
 export const withL1ControlPlaneIfAvailable = <A, E, R>(
   globals: Globals,
   options: {
@@ -19,56 +14,20 @@ export const withL1ControlPlaneIfAvailable = <A, E, R>(
   },
   effect: Effect.Effect<A, E, R>,
 ) =>
-  globals.L1_CONTROL_PLANE.withPermitsIfAvailable(1)(
-    withL1ControlPlaneHeld(options, effect),
-  );
-
-const withL1ControlPlaneHeld = <A, E, R>(
-  options: {
-    readonly scope: string;
-    readonly maxHoldMs?: number;
-  },
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | Error, R> => {
-  const maxHoldMs = options.maxHoldMs ?? DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS;
-  const holdTimer = Metric.tagged(
-    l1ControlPlaneHoldTimer,
-    "scope",
-    options.scope,
-  );
-  const acquisitionCounter = Metric.tagged(
-    l1ControlPlaneAcquisitionCounter,
-    "scope",
-    options.scope,
-  );
-  const timeoutCounter = Metric.tagged(
-    l1ControlPlaneTimeoutCounter,
-    "scope",
-    options.scope,
-  );
-  return Effect.gen(function* () {
-    yield* Metric.increment(acquisitionCounter);
-    const holdStartedAtMs = Date.now();
-    return yield* effect.pipe(
-      Effect.timeoutFail({
-        duration: Duration.millis(maxHoldMs),
-        onTimeout: () =>
-          new L1ControlPlaneTimeoutError(options.scope, maxHoldMs),
-      }),
-      Effect.tapError((error) =>
-        error instanceof L1ControlPlaneTimeoutError
-          ? Metric.increment(timeoutCounter)
-          : Effect.void,
-      ),
-      Effect.ensuring(
-        holdTimer(
-          Effect.succeed(Duration.millis(Date.now() - holdStartedAtMs)),
-        ),
+  Effect.suspend(() => {
+    const waitStartedAtMs = Date.now();
+    return globals.L1_CONTROL_PLANE.withPermitsIfAvailable(1)(
+      runRegisteredL1ControlPlaneHold(
+        globals,
+        options,
+        waitStartedAtMs,
+        effect,
       ),
     );
   });
-};
 
+/** Waits at most `waitTimeoutMs` for the permit, then holds it as a
+ * registered hold: the wedge and hold-timeout readiness reasons see it. */
 export const withL1ControlPlaneWaitTimeout = <A, E, R>(
   globals: Globals,
   options: {
@@ -89,12 +48,14 @@ export const withL1ControlPlaneWaitTimeout = <A, E, R>(
       if (Option.isNone(acquired)) {
         return Option.none<A>();
       }
-      yield* Metric.tagged(
-        l1ControlPlaneWaitTimer,
-        "scope",
-        options.scope,
-      )(Effect.succeed(Duration.millis(Date.now() - waitStartedAtMs)));
-      return yield* restore(withL1ControlPlaneHeld(options, effect)).pipe(
+      return yield* restore(
+        runRegisteredL1ControlPlaneHold(
+          globals,
+          options,
+          waitStartedAtMs,
+          effect,
+        ),
+      ).pipe(
         Effect.map(Option.some),
         Effect.ensuring(globals.L1_CONTROL_PLANE.release(1)),
       );
