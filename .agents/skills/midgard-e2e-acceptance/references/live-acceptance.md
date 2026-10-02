@@ -693,8 +693,9 @@ header's `end_time` can sit up to about 419 s after its commit (the commit
 validity range minus its 60 s backdate). The merge then needs about 20 s of
 slot alignment and L1 confirmation, and queued headers merge one after
 another. The budget below is derived from the compiled profile's block
-maturity: maturity + 420 s end-time lead + 20 s alignment + 180 s L1
-confirmation + 300 s for sequential merges, which is 1,820 s on
+maturity and confirmation depth: maturity + 420 s end-time lead + 20 s
+alignment + L1 confirmation at twice the 20 s mean block time per confirmation
+(400 s at depth 10) + 300 s for sequential merges, which is 2,040 s on
 preprod-testing. Start it right after the last header commits. The outer step
 timeout is always 60 s longer than the inner deadline, so the loop, not the
 runner, reports a timeout.
@@ -704,7 +705,11 @@ BLOCK_MATURITY_MS="$(node --input-type=module -e '
   import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
   process.stdout.write(String(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs));
 ')" || exit 1
-export MERGE_WAIT_S=$(( BLOCK_MATURITY_MS / 1000 + 420 + 20 + 180 + 300 ))
+CONFIRMATION_DEPTH="$(node --input-type=module -e '
+  import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core";
+  process.stdout.write(String(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth));
+')" || exit 1
+export MERGE_WAIT_S=$(( BLOCK_MATURITY_MS / 1000 + 420 + 20 + CONFIRMATION_DEPTH * 40 + 300 ))
 AUTOMATIC_MERGE_LOG="logs/$RUN_ID/await-automatic-merge.log"
 AUTOMATIC_MERGE_STEP="$E2E_STEP_DIR/await-automatic-merge.json"
 node "$TOOLS_CLI" e2e-run-step \

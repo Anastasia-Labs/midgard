@@ -1,7 +1,7 @@
 name: local-devnet-testing
 network: Custom
 l1_finality:
-  confirmation_depth: 3
+  confirmation_depth: 10
 timing:
   block_maturity_ms: 900000
   dispute_response_window_ms: 60000

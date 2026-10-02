@@ -16,17 +16,18 @@ import {
  */
 /**
  * Confirmation depth per deployment profile, also written out. The compiled
- * profile selects the row: testing profiles run at 3, public profiles at 30.
+ * profile selects the row: live testing profiles run at 10, public profiles at
+ * 30.
  */
 const RELEASE_DEPTH_BY_PROFILE: Readonly<Record<string, number>> = {
   mainnet: 30,
   "preprod-public": 30,
-  "preprod-testing": 3,
-  "local-devnet-testing": 3,
+  "preprod-testing": 10,
+  "local-devnet-testing": 10,
 };
 const RELEASE_DEPTH =
   RELEASE_DEPTH_BY_PROFILE[SELECTED_DEPLOYMENT_PROFILE.name]!;
-const OTHER_PROFILE_DEPTH = RELEASE_DEPTH === 3 ? 30 : 3;
+const OTHER_PROFILE_DEPTH = RELEASE_DEPTH === 10 ? 30 : 10;
 const DEPTH_REFUSAL = new RegExp(
   `l1Finality\\.confirmationDepth must equal the deployment profile value ${RELEASE_DEPTH.toString()}$`,
 );

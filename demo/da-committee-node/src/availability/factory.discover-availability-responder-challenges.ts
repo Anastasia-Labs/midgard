@@ -122,6 +122,17 @@ export const discoverAvailabilityResponderChallenges = async (
   });
 };
 
+/**
+ * A responder transaction is valid from this long before it is built (clock
+ * skew) until AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS after that lower bound,
+ * so it can land for at most span minus backdate after it is built. A signed
+ * transaction that has not landed is rebroadcast, and never replaced until its
+ * validity has passed; tests/availability-response-budget.test.ts counts that
+ * wait against the response window.
+ */
+export const AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS = 60_000;
+export const AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS = 120_000;
+
 export const buildAvailabilityResponderTransaction = async (
   lucid: LucidEvolution,
   deployment: SDK.DaAvailabilityDeployment,
@@ -135,8 +146,11 @@ export const buildAvailabilityResponderTransaction = async (
       : action.kind === "settle"
         ? p.max_settlement_fee_lovelace
         : p.max_close_fee_lovelace;
-  const validFrom = BigInt(Math.max(0, nowMs - 60_000));
-  const unconstrainedUpper = validFrom + 120_000n;
+  const validFrom = BigInt(
+    Math.max(0, nowMs - AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS),
+  );
+  const unconstrainedUpper =
+    validFrom + BigInt(AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS);
   const deadlineUpper = action.challenge.record.datum.response_deadline + 1n;
   const validTo =
     action.kind === "publish" && deadlineUpper < unconstrainedUpper

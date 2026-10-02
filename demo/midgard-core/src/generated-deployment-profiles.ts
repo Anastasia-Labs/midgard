@@ -91,7 +91,7 @@ export const DEPLOYMENT_PROFILES = {
     name: "preprod-testing",
     network: "Preprod",
     l1_finality: {
-      confirmation_depth: 3,
+      confirmation_depth: 10,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -135,7 +135,7 @@ export const DEPLOYMENT_PROFILES = {
     name: "local-devnet-testing",
     network: "Custom",
     l1_finality: {
-      confirmation_depth: 3,
+      confirmation_depth: 10,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -226,9 +226,9 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-public":
     "b2660905760a27e23fdcccc7adb25a7991a1cf16caa806283fa29621622b3ea2",
   "preprod-testing":
-    "6ac7c84ebbcf1dee6659eb5028617b6a565acc70b917e138563f6e95c2dd4cda",
+    "fbcb47384c0a18383634fe8bc3ea701c96b77e542bbdee1e915e1d0dba08760b",
   "local-devnet-testing":
-    "d830215686d4a23d94dceb93a64e469076efb1f9abc419fa4231eef7575a57a0",
+    "1c9d94796c4cc2a2c9ca1f7b9d85083823b8a783f9ca2f4d38a8b50c07c86347",
   "preprod-emulator-testing":
     "482c50df9e885112e61c445def8f410db4770ea7683fcea86353b067182a50f3",
 } as const;

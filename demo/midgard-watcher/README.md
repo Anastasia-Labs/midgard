@@ -254,8 +254,9 @@ External-provider mode requires independent provider identities. The installed
 CLI process parser is narrower: it requires `mode: "acceptance"`,
 `targetNetwork` of `"Preprod"` or `"Custom"`, and `local_node` authority, with
 confirmation depth and prefinality rollback depth equal to the compiled
-deployment profile's `l1_finality.confirmation_depth` (3 for the testing
-profiles, 30 for `mainnet` and `preprod-public`), and postfinality recovery
+deployment profile's `l1_finality.confirmation_depth` (10 for the live testing
+profiles, 3 for `preprod-emulator-testing`, 30 for `mainnet` and
+`preprod-public`), and postfinality recovery
 bound 2160. `Custom` admits an explicitly bound isolated devnet, the network the
 automatic watcher journeys run against; it is not a relaxation of finality or
 rollback policy. The authority process enforces the same policy.

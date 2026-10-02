@@ -8,7 +8,7 @@ import { createSyntheticStateQueueObservationFixture } from "../support/state-qu
 // Real observation and concrete Kupo/Ogmios source, synthetic local transport.
 // No transaction submission, Plutus evaluation, or public-chain inclusion.
 
-/** The compiled deployment profile's release depth (3 testing, 30 public). */
+/** The compiled deployment profile's release depth (10 live testing, 30 public). */
 const RELEASE_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 describe("state-queue catch-up source finality", () => {
   it("observes a later finalized commit after the source's initial boundary", async () => {

@@ -19,9 +19,13 @@ test("confirmation policy is explicit, validated, and bound into profile identit
   const profiles = readProfiles();
   assert.equal(
     profiles["local-devnet-testing"].l1_finality.confirmation_depth,
+    10,
+  );
+  assert.equal(profiles["preprod-testing"].l1_finality.confirmation_depth, 10);
+  assert.equal(
+    profiles["preprod-emulator-testing"].l1_finality.confirmation_depth,
     3,
   );
-  assert.equal(profiles["preprod-testing"].l1_finality.confirmation_depth, 3);
   for (const name of ["mainnet", "preprod-public"]) {
     assert.equal(profiles[name].l1_finality.confirmation_depth, 30);
   }
@@ -119,8 +123,8 @@ test("every DA response window covers the minimum response budget, and the bound
   const expected = {
     mainnet: 1_440_000,
     "preprod-public": 1_440_000,
-    "preprod-testing": 360_000,
-    "local-devnet-testing": 360_000,
+    "preprod-testing": 640_000,
+    "local-devnet-testing": 640_000,
     "preprod-emulator-testing": 360_000,
   };
   for (const [name, profile] of Object.entries(profiles)) {

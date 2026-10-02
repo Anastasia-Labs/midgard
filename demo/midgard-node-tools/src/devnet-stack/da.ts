@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+
 import { psql } from "./chain.js";
 import { type DeployContext, nodeCli } from "./deploy.js";
 import { requireSuccess } from "./exec.js";
@@ -193,7 +195,11 @@ export const committeeEnvironment = (input: {
     CARDANO_LOCAL_NODE_CONFIG_PATH: layout.hostCardanoConfig,
     CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: chainSyncBinary,
     CARDANO_NETWORK_MAGIC: String(run.networkMagic),
-    CARDANO_FINALITY_DEPTH: "3",
+    // The committee refuses any value but its manifest's confirmation depth,
+    // which is the compiled deployment profile's.
+    CARDANO_FINALITY_DEPTH: String(
+      DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+    ),
     DA_SIGNER_INDEX: String(member.index),
     DA_SIGNER_KEY_SOURCE: `cardano-seed:${member.seed}`,
     DA_L1_SUBMISSION_ENABLED: "true",
