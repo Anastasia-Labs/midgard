@@ -48,7 +48,7 @@ It is intentionally strict about scope:
 
 A Midgard L2 script context orders its redeemer map as Cardano does, and the order does not depend on the order of the transaction's redeemer witness list.
 
-1. Cardano keys its redeemers by `PlutusPurpose AsIx`, whose derived order is (tag, index), and `txInfoRedeemers` is `Map.toList` of that map, so the context map is (tag, index) ascending (cardano-ledger `347ff73c`: `Conway/Scripts.hs`, `Alonzo/TxWits.hs`, `Babbage/TxInfo.hs`; plutus `de88d284`: `AssocMap.unsafeFromList` does not re-sort).
+1. Cardano keys its redeemers by `PlutusPurpose AsIx`, whose derived order is (tag, index), and `txInfoRedeemers` is `Map.toList` of that map, so the context map is (tag, index) ascending (cardano-ledger `347ff73c`: Conway/Scripts.hs, Alonzo/TxWits.hs, Babbage/TxInfo.hs; plutus `de88d284`: `AssocMap.unsafeFromList` does not re-sort).
 2. Midgard's redeemer tags are `Spend` 0, `Mint` 1, `Reward` 3 and `Receive` 6, so the map holds spends, then mints, then observers, then receives, each by pointer index ascending. A pointer index is the purpose's position among the transaction's sorted spent inputs, mint policies, observers or receive hashes.
 3. `MidgardV1` contexts include the `Receive` entries last. `PlutusV3` contexts have no receiving purpose and omit them.
 4. Native scripts take no redeemer, so a native-script purpose has no map entry, and a redeemer that points at one is refused as extraneous.

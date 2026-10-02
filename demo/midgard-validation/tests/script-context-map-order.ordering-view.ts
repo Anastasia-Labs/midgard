@@ -43,7 +43,7 @@ export const orderingView = (): {
     redeemer: {
       tag,
       index,
-      dataCbor: Buffer.from(dataToCbor(new DataI(value)).toBuffer()),
+      dataCbor: Buffer.from(dataToCbor(new DataI(value))),
       exUnits: { memory: 0n, steps: 0n },
     },
   });
