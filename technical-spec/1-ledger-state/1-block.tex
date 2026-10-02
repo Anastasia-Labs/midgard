@@ -78,6 +78,8 @@ $v_i : \T{L2TransactionSourceV1}$; forced-transaction leaves use their
 \T{TxOrderId} key and \T{ForcedInclusionTxV1} value.
 The figure is a schematic binary hash tree illustrating authentication, not the Midgard trie wire encoding.
 The implementation uses the pinned Merkle Patricia Forestry trie with compressed paths and its prescribed branch hashing.
+Leaf and branch node preimages are disjoint: a leaf commits a marker byte (\texttt{0xff} at an even cursor, \texttt{0x10} followed by the cursor nibble at an odd cursor), the remaining key path and the value hash, while a branch commits its prefix nibbles, each below \texttt{0x10}, followed by its 32-byte merkle root.
+The first byte or the preimage length therefore decides the node kind.
 The header commits to the trie root together with the domain and count through \code{transition\_trace.commit\_counted\_root}; the canonical empty root uses the shared empty-tree sentinel.
 The \code{forced\_transactions\_root}, \code{transition\_trace\_root}, \code{event\_to\_step\_root}, and \code{validation\_traces\_root} use the same authenticated-map commitment pattern with their own key and value types.
 

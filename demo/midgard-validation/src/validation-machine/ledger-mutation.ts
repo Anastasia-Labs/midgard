@@ -4,8 +4,10 @@
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  buildMidgardMpfDeletionOpening,
   buildMidgardMpfProofFoldTrace,
   computeHash32,
+  type MidgardMpfProofFoldStep,
   type MidgardMpfProofFoldTrace,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
@@ -28,6 +30,8 @@ export type ValidationMachineLedgerMutationStep = {
   readonly postRoot: Buffer;
   /** Canonical bounded-frame form consumed by the deployed resolver chain. */
   readonly proofFoldTrace: MidgardMpfProofFoldTrace;
+  /** A deletion's terminal-Branch group opening; empty for an insertion. */
+  readonly deletionOpening: Buffer;
 };
 
 export type ValidationMachineValueMutationStep = {
@@ -44,6 +48,23 @@ export type ValidationMachineValueMutationStep = {
 
 export const exactTrieRoot = (trie: Trie): Buffer =>
   trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
+
+const MPF_EMPTY_ROOT = Buffer.alloc(32);
+const COMMITTED_EMPTY_LEDGER_ROOT = computeHash32(Buffer.alloc(0));
+
+/**
+ * The ledger root Midgard commits for the trie an MPF library root names; twin
+ * of `mpf_proof_v1.committed_root`. MPF names the empty trie with 32 zero
+ * bytes, while a Midgard header commits `blake2b256(empty)` for an empty
+ * ledger. Every ledger root the validation machine carries, and so every root
+ * a claim compares with a block's `utxos_root`, is in the committed encoding,
+ * so an emptied ledger has exactly one name. Proof folds keep the library
+ * encoding.
+ */
+export const committedLedgerRoot = (libraryRoot: Buffer): Buffer =>
+  libraryRoot.equals(MPF_EMPTY_ROOT)
+    ? Buffer.from(COMMITTED_EMPTY_LEDGER_ROOT)
+    : Buffer.from(libraryRoot);
 
 export const buildValidationMachineLedgerInsertOp = ({
   key,
@@ -85,11 +106,7 @@ export const validationMachineLedgerRoot = async (
   entries: readonly ValidationMachineLedgerEntry[],
 ): Promise<Buffer> => {
   const trie = await createLedgerTrie(entries);
-  // Midgard headers commit blake2b256(empty) for an empty ledger. MPF's zero
-  // sentinel remains internal to proof folds and intermediate mutation roots.
-  return trie.hash == null
-    ? computeHash32(Buffer.alloc(0))
-    : exactTrieRoot(trie);
+  return committedLedgerRoot(exactTrieRoot(trie));
 };
 
 export const buildValidationMachineLedgerMutationSteps = async (input: {
@@ -108,7 +125,7 @@ export const applyValidationMachineLedgerMutationStep = async (
   trie: Trie,
   operation: ValidationMachineLedgerOp,
 ): Promise<ValidationMachineLedgerMutationStep> => {
-  const preRoot = exactTrieRoot(trie);
+  const libraryPreRoot = exactTrieRoot(trie);
   const mutationValue =
     operation.type === "insert"
       ? Buffer.from(operation.value)
@@ -119,17 +136,23 @@ export const applyValidationMachineLedgerMutationStep = async (
     );
   }
   const proof = await trie.prove(operation.key, operation.type === "insert");
+  const steps = parseMidgardMpfProofJson(proof.toJSON());
+  const deletionOpening =
+    operation.type === "delete"
+      ? await buildMidgardMpfDeletionOpening(trie, operation.key, steps)
+      : Buffer.alloc(0);
   const proofFoldTrace = buildMidgardMpfProofFoldTrace({
     key: operation.key,
     value: mutationValue,
-    steps: parseMidgardMpfProofJson(proof.toJSON()),
+    steps,
+    ...(operation.type === "delete" ? { deletionOpening } : {}),
   });
   if (operation.type === "delete") {
     await trie.delete(operation.key);
   } else {
     await trie.insert(operation.key, operation.value);
   }
-  const postRoot = exactTrieRoot(trie);
+  const libraryPostRoot = exactTrieRoot(trie);
   const foldPreRoot =
     operation.type === "delete"
       ? proofFoldTrace.terminal.includingRoot
@@ -138,15 +161,36 @@ export const applyValidationMachineLedgerMutationStep = async (
     operation.type === "delete"
       ? proofFoldTrace.terminal.excludingRoot
       : proofFoldTrace.terminal.includingRoot;
-  if (!foldPreRoot.equals(preRoot) || !foldPostRoot.equals(postRoot)) {
+  if (
+    !foldPreRoot.equals(libraryPreRoot) ||
+    !foldPostRoot.equals(libraryPostRoot)
+  ) {
     throw new Error(
       "bounded MPF proof fold disagrees with the applied ledger mutation",
     );
   }
   return {
     operation,
-    preRoot,
-    postRoot,
+    preRoot: committedLedgerRoot(libraryPreRoot),
+    postRoot: committedLedgerRoot(libraryPostRoot),
     proofFoldTrace,
+    deletionOpening,
   };
 };
+
+/** The `ledgerDeltaProofFrame` auxiliary for one fold step of `step`: a
+ * deletion's terminal frame carries the group opening, every other frame an
+ * empty one. */
+export const ledgerDeltaProofFrameAuxiliary = (
+  step: ValidationMachineLedgerMutationStep,
+  foldStep: MidgardMpfProofFoldStep,
+) => ({
+  kind: "ledgerDeltaProofFrame" as const,
+  frame: foldStep.frame,
+  siblings: foldStep.membership.siblings,
+  opening:
+    step.operation.type === "delete" &&
+    foldStep.frame.frameIndex === step.proofFoldTrace.frames.length - 1
+      ? step.deletionOpening
+      : Buffer.alloc(0),
+});

@@ -63,7 +63,11 @@ stock Aiken has no role in this repository.
 
 It depends on `aiken-lang/stdlib`, `aiken-lang/fuzz`,
 `anastasia-labs/aiken-design-patterns`, `keyan-m/aiken-scott-utils`, and
-`aiken-lang/merkle-patricia-forestry`.
+`anastasia-labs/merkle-patricia-forestry`, a fork of the upstream 2.1.0 release
+in which leaf and branch node preimages are disjoint: an odd-cursor leaf
+commits the marker byte `0x10` before its cursor nibble (an even-cursor leaf
+keeps `0xff`), while every branch preimage starts with a prefix nibble below
+`0x10` or is exactly 32 bytes.
 
 <Callout type="info" title="Blueprint entrypoint naming">
   In `plutus.json`, each validator entrypoint is titled `<module>.<validator>.<purpose>`, for example `state_queue.spend.spend`, `hub_oracle.mint.mint`, or

@@ -120,7 +120,7 @@ const hashStoredNode = (node: StoredNode): Buffer => {
   if (node.__kind === "Leaf") {
     const odd = node.prefix.length % 2 === 1;
     const head = odd
-      ? Buffer.from([0, Number.parseInt(node.prefix[0]!, 16)])
+      ? Buffer.from([0x10, Number.parseInt(node.prefix[0]!, 16)])
       : Buffer.from([0xff]);
     const tail = packedNibbles(odd ? node.prefix.slice(1) : node.prefix);
     return digest(head, tail, digest(Buffer.from(node.value, "hex")));

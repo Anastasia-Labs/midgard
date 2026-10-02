@@ -17,6 +17,7 @@ import {
   exactHexBytes,
   mpfProofFromWitness,
   normalizedMpfRoot,
+  requireDeletionKeepsTwoChildren,
   verifyProofRoot,
 } from "./detect.mpf-proof-from-witness.js";
 import { transitionTraceError } from "./errors.js";
@@ -87,23 +88,16 @@ const replayL2TransactionTransition = (
         `${label} is not ordered and bound to its authenticated spend input.`,
       );
     }
-    const membershipProof = mpfProofFromWitness({
-      key,
-      value,
-      proof: item.membership_proof,
-      label: `${label}.membership_proof`,
-    });
     const deleteProof = mpfProofFromWitness({
       key,
       value,
       proof: item.delete_proof,
       label: `${label}.delete_proof`,
     });
-    verifyProofRoot({
-      proof: membershipProof,
-      includingItem: true,
-      expectedRoot: root,
-      label: `${label}.membership_proof`,
+    requireDeletionKeepsTwoChildren({
+      proof: item.delete_proof,
+      opening: item.opening,
+      label: `${label}.delete_proof`,
     });
     verifyProofRoot({
       proof: deleteProof,

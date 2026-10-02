@@ -167,11 +167,7 @@ export const committedStepsForEffects = async (
       const preRoot = root;
       cursor += group.effect.operations.length;
       if (group.effect.operations.length > 0) {
-        const machineRoot = mutationSteps[cursor - 1]!.postRoot.toString("hex");
-        root =
-          machineRoot === "00".repeat(32)
-            ? SDK.EMPTY_MERKLE_TREE_ROOT
-            : machineRoot;
+        root = mutationSteps[cursor - 1]!.postRoot.toString("hex");
       }
       return Object.freeze({
         schema_version: 1n,

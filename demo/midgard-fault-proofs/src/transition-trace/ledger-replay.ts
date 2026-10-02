@@ -1,5 +1,9 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { decodeMidgardSpendInputItem } from "@al-ft/midgard-core";
+import {
+  buildMidgardMpfDeletionOpening,
+  decodeMidgardSpendInputItem,
+  parseMidgardMpfProofJson,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -45,17 +49,19 @@ export const createTransitionTraceLedgerReplay = async ({
       const value = values.get(key.toString("hex"));
       if (value === undefined)
         throw new Error("Transition replay cannot delete an absent input");
-      const proof = Data.from(
-        (await trie.prove(key)).toCBOR().toString("hex"),
-        SDK.Proof,
+      const proved = await trie.prove(key);
+      const opening = await buildMidgardMpfDeletionOpening(
+        trie,
+        key,
+        parseMidgardMpfProofJson(proved.toJSON()),
       );
       await trie.delete(key);
       values.delete(key.toString("hex"));
       return {
         key: key.toString("hex"),
         value: value.toString("hex"),
-        membership_proof: proof,
-        delete_proof: proof,
+        opening: opening.toString("hex"),
+        delete_proof: Data.from(proved.toCBOR().toString("hex"), SDK.Proof),
       };
     },
     async insert(

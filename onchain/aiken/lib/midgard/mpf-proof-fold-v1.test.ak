@@ -72,6 +72,7 @@ test incremental_mutation_matches_atomic_mutation_at_each_prefix_depth(
     initial,
     inner,
     [outer_hash],
+    None,
   )
   expect Some(terminal) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -79,13 +80,18 @@ test incremental_mutation_matches_atomic_mutation_at_each_prefix_depth(
     after_inner,
     outer,
     [inner_hash],
+    None,
   )
   let proof = [outer.step, inner.step]
   and {
     mpf_proof_fold_v1.fold_is_complete_v1(terminal),
-    mpf_proof_v1.delete_root(terminal.including_root, key, value, proof) == Some(
-      terminal.excluding_root,
-    ),
+    mpf_proof_v1.delete_root_paired_fold(
+      terminal.including_root,
+      key,
+      value,
+      proof,
+      #"",
+    ) == Some(terminal.excluding_root),
     mpf_proof_v1.insert_root(terminal.excluding_root, key, value, proof) == Some(
       terminal.including_root,
     ),
@@ -188,6 +194,7 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"95f4251f61f4a1f2896f30b61a07852c2ba70c01af74211e252189ba46d05b5a",
       first_two_root,
     ],
+    None,
   )
   expect Some(after_third) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -198,6 +205,7 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"99ebc08dce5d1546a8628f8f4f5baec65fc0d85f7142002a7ca3d51fa7051b9e",
       first_two_root,
     ],
+    None,
   )
   expect Some(after_second) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -208,6 +216,7 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"b1d2e32017535fb2d185011ce5b79b96512ee28661c415c76559a149f8d4f22b",
       last_two_root,
     ],
+    None,
   )
   expect Some(terminal) = mpf_proof_fold_v1.fold_proof_frame_v1(
     key,
@@ -218,11 +227,12 @@ test proof_fold_matches_real_typescript_trie_roots() {
       #"dcb48b82764a667afbcf88c699636b9b7c16c8793b5707320df8130192265700",
       last_two_root,
     ],
+    None,
   )
   and {
     mpf_proof_fold_v1.fold_is_complete_v1(terminal),
-    terminal.excluding_root == #"a636554b7a642f6a7cf97a544d21b858c3dab7450c2aa178b8279a91fae41541",
-    terminal.including_root == #"341d675c5ea37d8fa4eed271f4d62f4546a441102c30271281f7ffceb6ea6300",
+    terminal.excluding_root == #"2b72758188dc14b87ba28b533af911cd3334d5107b8675b0c25e5591fed87707",
+    terminal.including_root == #"a5bcc7afdc6b05a45d6d6f322b8fdcc8a513af75ee19fc71dd37ada99aa6efa5",
   }
 }
 
@@ -240,5 +250,6 @@ test malformed_or_reordered_frame_fails_closed() {
     initial,
     third_frame(),
     [],
+    None,
   ) == None
 }

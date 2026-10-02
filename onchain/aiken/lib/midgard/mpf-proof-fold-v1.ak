@@ -9,6 +9,7 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
+use midgard/mpf_proof_v1
 use midgard/validation_merkle_v1
 
 pub const proof_fold_version: Int = 1
@@ -104,16 +105,32 @@ pub fn encode_proof_descriptor_v1(descriptor: ProofDescriptorV1) -> ByteArray {
     |> bytearray.concat(validation_merkle_v1.encode_frontier(descriptor.peaks))
 }
 
+// As in `mpf_proof_v1`, the prefix length is fixed by the neighbour's hash, and
+// a terminal Fork bounds where the prefix ends.
 fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
   and {
     neighbor.nibble >= 0,
     neighbor.nibble < 16,
-    bytearray.length(neighbor.prefix) <= digest_byte_count,
     bytearray.length(neighbor.root) == digest_byte_count,
   }
 }
 
-fn frame_is_well_formed(path: ByteArray, frame: ProofFrameV1) -> Bool {
+// The terminal frame is the deepest one, and the only one whose neighbour the
+// including and excluding roots read differently (see
+// `mpf_proof_v1.terminal_leaf_neighbor_is_canonical` and
+// `terminal_fork_neighbor_is_canonical`). The same frame serves insertion and
+// deletion. The Leaf check and the terminal Fork end bound bind both
+// directions. The Fork kind check applies only in a deletion
+// (`deletion_opening` is `Some`), where the excluding root is the successor;
+// an insertion's excluding root is compared with the authenticated
+// predecessor. A terminal Branch is likewise checked only in a deletion:
+// `terminal_branch_keeps_two_children` explains why insertion needs no check.
+fn frame_is_well_formed(
+  path: ByteArray,
+  frame: ProofFrameV1,
+  is_terminal_frame: Bool,
+  deletion_opening: Option<ByteArray>,
+) -> Bool {
   let skip = when frame.step is {
     mpf.Branch { skip, .. } -> skip
     mpf.Fork { skip, .. } -> skip
@@ -128,11 +145,32 @@ fn frame_is_well_formed(path: ByteArray, frame: ProofFrameV1) -> Bool {
     frame.next_cursor == frame.cursor + 1 + skip,
     frame.next_cursor <= path_nibble_count,
     when frame.step is {
-      mpf.Branch { neighbors, .. } ->
-        bytearray.length(neighbors) == 4 * digest_byte_count
+      mpf.Branch { neighbors, .. } -> and {
+          bytearray.length(neighbors) == 4 * digest_byte_count,
+          when deletion_opening is {
+            Some(opening) ->
+              !is_terminal_frame || mpf_proof_v1.terminal_branch_keeps_two_children(
+                neighbors,
+                opening,
+              )
+            None -> True
+          },
+        }
       mpf.Fork { neighbor, .. } -> and {
           neighbor_is_well_formed(neighbor),
           nibble(path, frame.next_cursor - 1) != neighbor.nibble,
+          !is_terminal_frame || when deletion_opening is {
+            Some(_) ->
+              mpf_proof_v1.terminal_fork_neighbor_is_canonical(
+                frame.next_cursor,
+                neighbor,
+              )
+            None ->
+              mpf_proof_v1.terminal_fork_prefix_ends_inside_the_path(
+                frame.next_cursor,
+                neighbor,
+              )
+          },
         }
       mpf.Leaf { key, value, .. } -> and {
           bytearray.length(key) == digest_byte_count,
@@ -140,6 +178,12 @@ fn frame_is_well_formed(path: ByteArray, frame: ProofFrameV1) -> Bool {
           nibble(path, frame.next_cursor - 1) != nibble(
             key,
             frame.next_cursor - 1,
+          ),
+          !is_terminal_frame || mpf_proof_v1.terminal_leaf_neighbor_is_canonical(
+            path,
+            key,
+            frame.cursor,
+            frame.next_cursor,
           ),
         }
     },
@@ -284,12 +328,16 @@ pub fn initial_fold_control_v1(
   }
 }
 
+/// `deletion_opening` is `Some` when the fold decides a deletion, carrying the
+/// terminal Branch's group opening (empty when the proof needs none), and
+/// `None` for an insertion.
 pub fn fold_proof_frame_v1(
   key: ByteArray,
   descriptor: ProofDescriptorV1,
   control: ProofFoldControlV1,
   frame: ProofFrameV1,
   siblings: List<ByteArray>,
+  deletion_opening: Option<ByteArray>,
 ) -> Option<ProofFoldControlV1> {
   let path = blake2b_256(key)
   if and {
@@ -300,7 +348,12 @@ pub fn fold_proof_frame_v1(
     control.next_frame_index < descriptor.frame_count,
     frame.frame_index == control.next_frame_index,
     frame.next_cursor == control.expected_next_cursor,
-    frame_is_well_formed(path, frame),
+    frame_is_well_formed(
+      path,
+      frame,
+      frame.frame_index == descriptor.frame_count - 1,
+      deletion_opening,
+    ),
     validation_merkle_v1.verify_membership(
       descriptor.frame_count,
       descriptor.peaks,

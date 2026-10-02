@@ -78,7 +78,7 @@ const unproven_root =
 
 /// A genuinely populated trie: the MPF library's own 29-element "fruits"
 /// fixture with `apple[uid: 58]` removed, i.e. its `without_apple` root
-/// (`build/packages/aiken-lang-merkle-patricia-forestry/lib/aiken/`
+/// (`build/packages/anastasia-labs-merkle-patricia-forestry/lib/aiken/`
 /// `merkle-patricia-forestry.tests.ak`). Borrowed rather than synthesised
 /// because a genuine multi-step absence witness cannot be written by hand —
 /// and the library's own `example_insert` selector proves this root and the
@@ -89,7 +89,7 @@ const unproven_root =
 /// inspects the key, it hashes whatever ByteArray the redeemer names, so a
 /// Midgard `encode_midgard_tx_input` key and a fruit name walk identically.
 const populated_root =
-  #"cb7812785c2f6b56e3dba69923e37625e94953257915d25f1041f43cefd5cb62"
+  #"657ba71331b58ff290847f747f81ab44e5f6716c9c0a1b7936ab3db9b3e5a425"
 
 /// The key absent from `populated_root`.
 const absent_key = "apple[uid: 58]"
@@ -101,7 +101,7 @@ const populated_absence_proof: mpf.Proof =
   [
     mpf.Branch {
       skip: 0,
-      neighbors: #"c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d79519b8cdfbd053e5a86cf28a781debae71638cd77f85aad4b88869373d9dcfd",
+      neighbors: #"670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32f69f145e31d2dc69b65adb5fc2c9d9e87c48210d874d2a2d613793ca90ed906e25069a7a1fd46757d09286b9ee4f67753a06fc706f938d01b200791fd9518f4279519b8cdfbd053e5a86cf28a781debae71638cd77f85aad4b88869373d9dcfd",
     },
     mpf.Leaf {
       skip: 0,

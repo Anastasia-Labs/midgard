@@ -11,4 +11,5 @@ export type TransitionTraceFinalCase = Readonly<{
   corruptDatum?: boolean;
   corruptSourceReference?: boolean;
   datumBytes?: number;
+  drained?: boolean;
 }>;

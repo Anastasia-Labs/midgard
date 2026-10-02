@@ -43,9 +43,9 @@ fn opening() -> mpf.Proof {
 test deletion_preserves_terminal_fork_shared_prefix() {
   and {
     proof.has(before, key, value, opening()),
-    proof.delete_root(before, key, value, opening()) == Some(after),
-    proof.delete_root_paired_fold(before, key, value, opening()) == Some(after),
-    proof.delete_root_two_fold(before, key, value, opening()) == Some(after),
+    proof.delete_root_paired_fold(before, key, value, opening(), #"") == Some(
+      after,
+    ),
   }
 }
 
@@ -108,6 +108,7 @@ test resumable_frames_preserve_the_same_terminal_fork_prefix() {
     initial,
     third,
     [],
+    None,
   )
   expect Some(after_second) = fold.fold_proof_frame_v1(
     key,
@@ -115,6 +116,7 @@ test resumable_frames_preserve_the_same_terminal_fork_prefix() {
     after_third,
     second,
     [first_hash],
+    None,
   )
   expect Some(terminal) = fold.fold_proof_frame_v1(
     key,
@@ -122,6 +124,7 @@ test resumable_frames_preserve_the_same_terminal_fork_prefix() {
     after_second,
     first,
     [second_hash],
+    None,
   )
   and {
     fold.fold_is_complete_v1(terminal),
