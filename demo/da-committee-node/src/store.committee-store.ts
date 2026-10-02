@@ -221,6 +221,20 @@ export interface CommitteeStore {
     readonly lastError?: string;
     readonly signature?: DaSignatureRecord;
   }): Promise<void>;
+  /**
+   * Atomically records the quarantined source and stops every decision that
+   * depends on it: each header with a persisted decision becomes
+   * `conflicted`, and its signature broadcasts, L1 submissions, peer
+   * broadcasts and decision effects fail.
+   *
+   * Retained payloads are deliberately left untouched. Quarantine is a hold
+   * on chain authority, not evidence about bytes: a payload this member
+   * verified and signed keeps its bytes, digest and `verified` status, so it
+   * can still be served and used to answer an availability challenge for the
+   * commitment it was signed under. Divergent bytes stay `conflicted` as
+   * they were. Readers that make a new decision gate on the header and the
+   * source state, never on the payload status alone.
+   */
   quarantineL1Decisions(state: L1SourceState): Promise<void>;
   upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void>;
   listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;

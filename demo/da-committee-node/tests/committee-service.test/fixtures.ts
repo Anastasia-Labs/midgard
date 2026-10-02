@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { afterAll, afterEach } from "vitest";
 
+import { retainedAvailabilityPayload } from "../../src/availability/retained-payload.js";
 import { type CommitteeConfig } from "../../src/config.js";
 import {
   type DaPayloadCandidate,
@@ -63,6 +64,29 @@ export const expectedCommitment = (
     headerHash,
     payloadCborHex: payloadCbor.toString("hex"),
   });
+
+/**
+ * The retained bytes that answer the one commitment this member signed for
+ * `headerHash`, read the way the availability responder reads them.
+ */
+export const retainedSignedPayload = async (
+  store: JsonFileCommitteeStore,
+  config: CommitmentConfig & Pick<CommitteeConfig, "deploymentFingerprint">,
+  headerHash: string,
+): Promise<Uint8Array | undefined> => {
+  const signed = await store.listDaSignatures(headerHash);
+  if (signed.length !== 1) {
+    throw new Error(`expected one signature, found ${signed.length}`);
+  }
+  return retainedAvailabilityPayload({
+    store,
+    deploymentFingerprint: config.deploymentFingerprint,
+    deploymentIdentity: config.hubOraclePolicyId,
+    commitment: SDK.parseDaAvailabilityCommitmentCbor(
+      signed[0]!.availabilityCommitmentCbor,
+    ),
+  });
+};
 
 /**
  * Moves the persisted replay anchor to `queue`, as if it had run ahead of the

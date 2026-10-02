@@ -27,6 +27,7 @@ import {
   expectedCommitment,
   failPayloadSource,
   openJsonCommitteeStore,
+  retainedSignedPayload,
   runAnchorAheadOfObservations,
 } from "./fixtures.js";
 
@@ -137,12 +138,10 @@ export const registerRollbackTests = () => {
       status: "conflicted",
       validationErrors: [expect.stringContaining("l1_source_quarantined")],
     });
+    // Quarantine holds decisions, not the bytes this member signed.
     await expect(
-      restartedStore.getDaPayload(headerHash),
-    ).resolves.toMatchObject({
-      validationStatus: "conflicted",
-      validationError: expect.stringContaining("l1_source_quarantined"),
-    });
+      retainedSignedPayload(restartedStore, configWithDaHash, headerHash),
+    ).resolves.toEqual(payloadCbor);
     await expect(
       restartedStore.getDaSignature({
         headerHash,
@@ -203,6 +202,7 @@ export const registerRollbackTests = () => {
     await afterQuarantine.initialize();
     await expect(afterQuarantine.tick()).resolves.toMatchObject({
       scannedHeaders: 0,
+      signedHeaders: 0,
       errors: [expect.stringContaining("L1 source quarantined")],
     });
     expect(publishCalls).toBe(0);

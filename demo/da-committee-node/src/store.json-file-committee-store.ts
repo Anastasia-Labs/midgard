@@ -360,18 +360,8 @@ export class JsonFileCommitteeStore implements CommitteeStore {
               : record,
           ]),
         ),
-        daPayloads: Object.fromEntries(
-          Object.entries(data.daPayloads).map(([key, record]) => [
-            key,
-            affectedHeaders.has(record.headerHash)
-              ? {
-                  ...record,
-                  validationStatus: "conflicted",
-                  validationError: errorCode,
-                }
-              : record,
-          ]),
-        ),
+        // Retained payloads are left exactly as they were: see
+        // `CommitteeStore.quarantineL1Decisions`.
         daSignatures: Object.fromEntries(
           Object.entries(data.daSignatures).map(([key, record]) => [
             key,

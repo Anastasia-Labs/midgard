@@ -3,10 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  type CommitteeL1ClientConfig,
-  l1SourceAuthorityDigest,
-} from "../config.js";
+import { type CommitteeL1ClientConfig } from "../config.js";
 import {
   correctionLockValidatorFromDeploymentInfo,
   daAttestationValidatorsFromDeployment,
@@ -27,6 +24,7 @@ import {
 } from "./factory.discover-availability-responder-challenges.js";
 import { availabilityResponderReferenceScripts } from "./reference-scripts.js";
 import { AvailabilityResponder } from "./responder.js";
+import { assertAvailabilityResponderSourceHealthy } from "./source-authority.js";
 
 export const availabilityResponderFromConfig = async (
   config: CommitteeL1ClientConfig,
@@ -129,20 +127,8 @@ export const availabilityResponderFromConfig = async (
     hubOracleRefInput: hubOracle.utxo,
   };
   const reportedSkips = new Set<string>();
-  const assertSourceHealthy = async (): Promise<void> => {
-    const source = await store.getL1SourceState();
-    if (
-      source?.status !== "healthy" ||
-      source.sourceMode !== "local_node" ||
-      source.network !== config.network ||
-      source.authoritySha256 !==
-        l1SourceAuthorityDigest(config.network, config.l1Source)
-    ) {
-      throw new Error(
-        "Availability responder requires a healthy authenticated committee node L1 source; rollback recovery must finish first",
-      );
-    }
-  };
+  const assertSourceHealthy = (): Promise<void> =>
+    assertAvailabilityResponderSourceHealthy(store, config);
   const provider = lucid.config().provider;
   if (provider === undefined)
     throw new Error("Availability responder has no transaction provider");

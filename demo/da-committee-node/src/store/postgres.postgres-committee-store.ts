@@ -442,18 +442,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
              WHERE header_hash = ANY($1::text[])`,
             [headerHashes, reason, quarantined.quarantinedAt],
           );
-          await client.query(
-            `UPDATE committee_da_payloads
-             SET record =
-                   record ||
-                   jsonb_build_object(
-                     'validationStatus', 'conflicted',
-                     'validationError', $2::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-            [headerHashes, reason],
-          );
+          // Retained payloads are left exactly as they were: see
+          // `CommitteeStore.quarantineL1Decisions`.
           await client.query(
             `UPDATE committee_da_signatures
              SET record = record || jsonb_build_object(
