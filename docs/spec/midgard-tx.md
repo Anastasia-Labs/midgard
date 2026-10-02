@@ -359,6 +359,10 @@ Item-level rules:
   (`ensureSupportedCardanoRedeemerTag`,
   `demo/midgard-core/src/codec/native-redeemer.ts`). `index`, `ex_memory`,
   and `ex_steps` are canonical minimal CBOR uints and MUST be non-negative.
+  The field's item order is free: a script context's redeemer map is in
+  Cardano ledger order, (`purpose_tag`, `index`) ascending, whatever the
+  order of the items here (`docs/script-context-invariants.md`, "Redeemers
+  in Midgard L2 contexts").
 
 - **Fields 2/5/6/8** are variable-width; top-level access is by enveloped
   walk (one head decode + byte jump per skipped item). Their interior

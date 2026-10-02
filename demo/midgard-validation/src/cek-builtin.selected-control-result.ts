@@ -135,11 +135,11 @@ const decodedDirectConstant = (value: MidgardCekDirectValueWitness) => {
 };
 
 const directValueMemorySize = (value: MidgardCekDirectValueWitness): bigint => {
+  // An opaque value has no committed size. The only builtin positions that
+  // admit one are the polymorphic branches of tags 26, 27, 28, 31 and 36,
+  // which midgardCekDirectBuiltinCostSizes sizes without reading them.
   if (value.kind === "opaque") {
-    if (value.root.length !== 32) {
-      throw new Error("V1 opaque CEK value root must be bytes32");
-    }
-    return 1n;
+    throw new Error("V1 opaque CEK value has no memory size");
   }
   if (value.kind === "blsMillerLoop") {
     if (value.expressionRoot.length !== 32) {

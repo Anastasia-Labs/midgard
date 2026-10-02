@@ -83,7 +83,6 @@ export const discoverLocalScriptExecutions = (
         readonly kind: "added";
         readonly execution: RequiredScriptExecution;
       } => {
-    expectedPointers.add(midgardRedeemerPointerKey(pointer));
     const resolved = resolveScriptSource(purpose.scriptHash, sources);
     if (resolved === undefined) {
       return {
@@ -98,7 +97,10 @@ export const discoverLocalScriptExecutions = (
         },
       };
     }
+    // A native script runs without a redeemer, so a redeemer at its pointer
+    // stays unexpected and is refused below as extraneous.
     if (resolved.version !== "NativeCardano") {
+      expectedPointers.add(midgardRedeemerPointerKey(pointer));
       const redeemer = findRedeemerByPointer(redeemers, pointer);
       if (redeemer === undefined) {
         return {
@@ -240,12 +242,6 @@ export const discoverLocalScriptExecutions = (
     }
   }
 
-  const purposeByPointer = new Map(
-    executions.map((execution) => [
-      midgardRedeemerPointerKey(execution.pointer),
-      execution.purpose,
-    ]),
-  );
   return {
     kind: "discovered",
     executions,
@@ -260,13 +256,17 @@ export const discoverLocalScriptExecutions = (
       observers,
       signatories: candidate.derived.witnessKeyHashHexes,
       mint: mintValue,
-      // Witness-list order, which is the order the fault proof commits the
-      // context's redeemer map in.
-      redeemers: redeemers.flatMap((redeemer) => {
-        const purpose = purposeByPointer.get(
-          midgardRedeemerPointerKey(redeemer),
-        );
-        return purpose === undefined ? [] : [{ purpose, redeemer }];
+      // Ledger order, (tag, index) ascending: executions are discovered
+      // spends, mints, observers, then receives, each by pointer index. A
+      // native script has no redeemer and no map entry.
+      redeemers: executions.flatMap((execution) => {
+        if (execution.resolved.version === "NativeCardano") {
+          return [];
+        }
+        const redeemer = findRedeemerByPointer(redeemers, execution.pointer);
+        return redeemer === undefined
+          ? []
+          : [{ purpose: execution.purpose, redeemer }];
       }),
     },
   };

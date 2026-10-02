@@ -12,6 +12,7 @@ import {
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
   buildForgedOperatorSuccessorValidationDisputeFixture,
+  expectOnchainRefusal,
   runForcedValidationDisputeScenario as runScenario,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -224,6 +225,161 @@ describe("bounded CEK context registered lifecycle", () => {
     );
     expect(result.awardResult?.txHash).toHaveLength(64);
     expect(result.removal?.transactions.length).toBeGreaterThan(0);
+  }, 900_000);
+
+  // The transaction's one Plutus script spends and mints, and its witness
+  // list holds the Mint redeemer before the Spend redeemer. Ledger order
+  // puts the Spend first, so the honest fold selects the Mint (purpose
+  // frontier 1, witness item 0) and then the Spend (frontier 0, item 1).
+  // These cases call the unmeasured runner, so the fit ledger's measured
+  // set stays the 24 shapes above.
+  it.each([0, 1])(
+    "proves redeemer select %s of a spend-and-mint context whose witness list is out of ledger order",
+    async (cekRedeemerSelectOrdinal) => {
+      const result = await runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal,
+        }),
+      );
+      expect(result.awardResult?.txHash).toHaveLength(64);
+      expect(result.removal?.transactions.length).toBeGreaterThan(0);
+    },
+    900_000,
+  );
+
+  // Negative polarity: after the honest Mint select has lowered the purpose
+  // bound to frontier 1, the challenger selects the Mint again instead of
+  // the Spend. Its redeemer item and successor are genuine, but the
+  // execution leaf at frontier 0 names the Spend, so select-authenticate
+  // refuses it.
+  it("refuses a redeemer select at the purpose bound against an honest block", async () => {
+    const refusal = await expectOnchainRefusal(() =>
+      runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal: 1,
+          cekRedeemerSelectDonorOrdinal: 0,
+        }),
+      ),
+    );
+    expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
+  }, 900_000);
+
+  // A select could name any purpose below the bound, so from the first
+  // state the challenger could skip the Mint and select the Spend, reach a
+  // successor the honest block does not contain, and win against it. The
+  // execution leaf at `purpose_bound - 1` names the Mint, so there is one
+  // successor and this select is refused.
+  it("refuses a redeemer select that skips a purpose against an honest block", async () => {
+    const refusal = await expectOnchainRefusal(() =>
+      runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal: 0,
+          cekRedeemerSelectDonorOrdinal: 1,
+        }),
+      ),
+    );
+    expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
+  }, 900_000);
+
+  // From the honest Mint select the challenger hands the item proof a
+  // `total_length` one byte longer. The execution leaf, siblings, item
+  // commitment and item frontier root are genuine and its successor is the
+  // one that length yields, so only the item commitment's length pin in
+  // select-authenticate refuses it.
+  it("refuses a redeemer select with a forged item length against an honest block", async () => {
+    const refusal = await expectOnchainRefusal(() =>
+      runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal: 0,
+          cekRedeemerSelectLengthDelta: 1,
+        }),
+      ),
+    );
+    expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
+  }, 900_000);
+
+  // The native mint policy sits above the Plutus spend in ledger order, so
+  // the honest fold first skips the mint's native execution leaf and then
+  // selects the spend. The skip settles directly from select-authenticate.
+  it("proves the redeemer skip over a native execution above a Plutus spend", async () => {
+    const result = await runScenario(({ operatorVkey, now }) =>
+      buildForgedOperatorSuccessorValidationDisputeFixture({
+        operatorVkey,
+        now,
+        disputedPhase: "cek",
+        plutusSelection: true,
+        cekSelection: true,
+        cekContextStage: 9,
+        cekRedeemerSkipOrdinal: 0,
+      }),
+    );
+    expect(result.awardResult?.txHash).toHaveLength(64);
+    expect(result.removal?.transactions.length).toBeGreaterThan(0);
+  }, 900_000);
+
+  // The honest select at ordinal 0 is proved above; a skip of the same
+  // purpose from the same state names a native execution leaf the frontier
+  // does not hold.
+  it("refuses a redeemer skip in place of an honest select", async () => {
+    const refusal = await expectOnchainRefusal(() =>
+      runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekPlutusMint: true,
+          cekContextStage: 9,
+          cekRedeemerSelectOrdinal: 0,
+          cekRedeemerSkipForgery: true,
+        }),
+      ),
+    );
+    expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
+  }, 900_000);
+
+  // At the skip point the challenger selects the Plutus spend instead: the
+  // execution leaf there is the native mint's, so the select is refused.
+  it("refuses a redeemer select in place of an honest skip", async () => {
+    const refusal = await expectOnchainRefusal(() =>
+      runScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase: "cek",
+          plutusSelection: true,
+          cekSelection: true,
+          cekContextStage: 9,
+          cekRedeemerSkipOrdinal: 0,
+          cekRedeemerSelectDonorOrdinal: 0,
+        }),
+      ),
+    );
+    expect(refusal).toMatch(/redeemerSelectAuthenticate transaction failed/);
   }, 900_000);
 
   it.each(["restart", "cancel"])(

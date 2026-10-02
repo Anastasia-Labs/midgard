@@ -21,15 +21,19 @@ import {
   buildConflictComponents,
   LedgerColumns,
   RejectCodes,
-  runPhaseBValidationWithPatch,
 } from "../src/index.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import type { PhaseBResultWithPatch } from "../src/phase-b.js";
-import type { PhaseBConfig, RejectCode, RejectedTx } from "../src/types.js";
 import {
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
 } from "../src/value-accounting.js";
+import {
+  expectSinglePhaseBRejection,
+  phaseBConfig,
+  preState,
+  runPhaseB,
+} from "./phase-b.harness.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -42,35 +46,8 @@ import {
   TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
-const phaseBConfig: PhaseBConfig = {
-  nowCardanoSlotNo: 100n,
-  bucketConcurrency: 1,
-};
-
-const runPhaseB = (
-  candidates: Parameters<typeof runPhaseBValidationWithPatch>[0],
-  preState: Parameters<typeof runPhaseBValidationWithPatch>[1],
-  config = phaseBConfig,
-) =>
-  Effect.runPromise(runPhaseBValidationWithPatch(candidates, preState, config));
-
 const txIds = (txs: PhaseBResultWithPatch["accepted"]) =>
   txs.map((tx) => tx.ledgerTx.txId.toString("hex"));
-
-const preState = (
-  entries: readonly (readonly [outRef: Buffer, output: Buffer])[],
-) =>
-  new Map(entries.map(([outRef, output]) => [outRef.toString("hex"), output]));
-
-const expectSinglePhaseBRejection = (
-  result: PhaseBResultWithPatch,
-  expectedCode: RejectCode,
-): RejectedTx => {
-  expect(result.accepted).toHaveLength(0);
-  expect(result.rejected).toHaveLength(1);
-  expect(result.rejected[0].code).toBe(expectedCode);
-  return result.rejected[0];
-};
 
 describe("phase B validation", () => {
   it("matches the pairwise conflict oracle on randomized ready waves", () => {

@@ -319,12 +319,7 @@ pub fn canonical_item_action_hash(
       expect [traversal_action_data] = item_fields
       let Pair(tag, fields) = builtin.un_constr_data(traversal_action_data)
       item_tag == 2 && if action_family == head_family {
-        or {
-          tag == 1 && list.length(fields) == 1,
-          tag == 2 && list.length(fields) == 1,
-          tag == 3 && fields == [],
-          tag == 4 && list.length(fields) == 2,
-        }
+        tag >= 1 && tag <= 4 && fields == []
       } else if action_family == attach_scalar_family {
         tag == 5 && list.length(fields) == 1 && data_is_none(chunk_proof_data) && data_is_none(
           next_chunk_proof_data,
@@ -372,11 +367,10 @@ pub fn action_matches_family_v1(
     cek_data_traverse_v1.FoldMap { .. } -> action_family == fold_map_family
     cek_data_traverse_v1.FinalizeFrame { .. } ->
       action_family == finalize_frame_family
-    cek_data_traverse_v1.HeadScalar { .. } -> action_family == head_family
-    cek_data_traverse_v1.HeadSequence { .. } -> action_family == head_family
+    cek_data_traverse_v1.HeadScalar -> action_family == head_family
+    cek_data_traverse_v1.HeadSequence -> action_family == head_family
     cek_data_traverse_v1.HeadMap -> action_family == head_family
-    cek_data_traverse_v1.HeadLargeConstructor { .. } ->
-      action_family == head_family
+    cek_data_traverse_v1.HeadLargeConstructor -> action_family == head_family
     cek_data_traverse_v1.AttachScalar { .. } ->
       action_family == attach_scalar_family
     cek_data_traverse_v1.FoldList { .. } -> action_family == fold_list_family
@@ -985,25 +979,25 @@ pub fn traversal_serialization_template_v1(
 ) -> FamilyTraversalSerializationTemplateV1 {
   if action_family == fold_map_family {
     FoldMapFrameRootTemplate {
-      prefix_before_frame_root_cbor: encode_definite_array_header(10)
+      prefix_before_frame_root_cbor: encode_definite_array_header(9)
         |> bytearray.concat(cbor.serialise(traversal.version))
         |> bytearray.concat(cbor.serialise(traversal.stage))
         |> bytearray.concat(cbor.serialise(traversal.source_start))
         |> bytearray.concat(cbor.serialise(traversal.source_length))
         |> bytearray.concat(cbor.serialise(traversal.offset)),
-      suffix_after_frame_root_cbor: #"d87a80d87a80d87a80d87a80",
+      suffix_after_frame_root_cbor: #"d87a80d87a80d87a80",
     }
   } else {
     expect action_family == finalize_frame_family
     FinalizeFrameTemplate {
-      prefix_before_stage_cbor: encode_definite_array_header(10)
+      prefix_before_stage_cbor: encode_definite_array_header(9)
         |> bytearray.concat(cbor.serialise(traversal.version)),
       source_fields_before_frame_root_cbor: cbor.serialise(
         traversal.source_start,
       )
         |> bytearray.concat(cbor.serialise(traversal.source_length))
         |> bytearray.concat(cbor.serialise(traversal.offset)),
-      suffix_before_result_cbor: #"d87a80d87a80d87a80",
+      suffix_before_result_cbor: #"d87a80d87a80",
     }
   }
 }

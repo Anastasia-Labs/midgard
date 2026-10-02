@@ -48,7 +48,7 @@ validator main(
           ..context,
           stage: 1,
           redeemer_context_control_hash: hash_cek_redeemer_context_control_v1(
-            initial_cek_redeemer_context_control_v1(),
+            initial_cek_redeemer_context_control_v1(staged.native.purpose_count),
           ),
           execution_memory_limit: next_item.execution_memory,
           execution_cpu_limit: next_item.execution_steps,

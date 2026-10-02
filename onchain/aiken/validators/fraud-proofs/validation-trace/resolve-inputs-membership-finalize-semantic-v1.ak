@@ -1,11 +1,12 @@
 //// ResolveInputs membership-finalize dispatcher. Descriptor exactness of the
 //// pending terminal ledger-output-proof control runs in the four
 //// authenticated descriptor yields (`ledger-output-descriptor-*-yield.ak`,
-//// conjunction == `descriptor_is_exact_v1`), spread over the fact-attachment
-//// steps: each attachment transaction carries one canonical group of
-//// descriptor yields and records their fact commitments in the terminal
-//// control; the thin terminal step carries no descriptor yields, recomputes
-//// all four commitments from one redeemer triple, and performs the
+//// conjunction == the descriptor `terminal_descriptor_v1` derives), spread
+//// over the fact-attachment steps: each attachment transaction carries one
+//// canonical group of descriptor yields and records their fact commitments,
+//// each covering only what its yield pins, in the terminal control; the thin
+//// terminal step carries no descriptor yields, requires the recorded role-0
+//// fact to commit exactly its descriptor bytes, and performs the
 //// input-signer-authorization arms and the accumulator successor itself. See
 //// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md
 //// Decision section.
@@ -46,10 +47,10 @@ pub type ActionV1 {
     /// `pending.output_proof_cbor` and attested by every descriptor yield.
     control_cbor: ByteArray,
     /// `DataSummaryV1` on the wire; pinned by the value-summary yield and
-    /// consumed by the scan-facts yield.
+    /// consumed by the scan-facts yield. Unused at the thin terminal.
     claimed_value_summary: Data,
     /// `Option<DataSummaryV1>` on the wire; pinned by the datum-summary yield
-    /// and consumed by the scan-facts yield.
+    /// and consumed by the scan-facts yield. Unused at the thin terminal.
     claimed_datum_summary: Data,
     /// The descriptor roles whose facts this step attaches — exactly the
     /// first canonical `fact_attach_groups_v1` group with unrecorded facts —
@@ -98,10 +99,7 @@ validator main(
         attach_roles,
         yield_ref_input_indices,
       }) -> {
-        let auxiliary = LedgerOutputProofFinalizeWitness {
-          descriptor_cbor,
-          signer_proof,
-        }
+        let auxiliary = LedgerOutputProofFinalizeWitness { signer_proof }
         let auxiliary_data: Data = auxiliary
         continue_winning(
           ResolveInputs,
@@ -157,7 +155,8 @@ fn membership_finalize_dispatch(
     // A fact-attachment step: the group's descriptor yields attest their
     // exactness clauses over exactly these control bytes, this descriptor and
     // these claimed summaries; the successor records the group's fact
-    // commitments in the pending terminal control.
+    // commitments, each over only what its yield pinned, in the pending
+    // terminal control.
     and {
       validation_semantic_yield_v1.require_semantic_yields_v1(
         tx,
@@ -208,8 +207,6 @@ fn membership_finalize_dispatch(
       descriptor_cbor,
       signer_proof,
       control_cbor,
-      claimed_value_summary,
-      claimed_datum_summary,
       yield_ref_input_indices,
       control,
       pending,
@@ -224,27 +221,20 @@ fn membership_terminal_dispatch(
   descriptor_cbor: ByteArray,
   signer_proof: SignerSetProofV1,
   control_cbor: ByteArray,
-  claimed_value_summary: Data,
-  claimed_datum_summary: Data,
   yield_ref_input_indices: List<Int>,
   control: carrier.ResolveInputsControlRawV1,
   pending: carrier.PendingRawV1,
   frame: ledger_output_proof_raw.Frame,
 ) -> Bool {
   and {
-    // The thin terminal carries no descriptor yields: every fact commitment
-    // recorded by the attachment steps must equal the commitment recomputed
-    // from this redeemer's descriptor bytes and claimed summaries, which
-    // together re-state `descriptor_is_exact_v1` on exactly these control
-    // bytes and this descriptor; the monolith checked it before the rejection
-    // arm, so the gate runs in every branch.
+    // The thin terminal carries no descriptor yields: the recorded role-0
+    // fact must commit exactly this redeemer's descriptor bytes. The last
+    // attachment group recorded it after its yield pinned every descriptor
+    // field against these control bytes and the other three facts; the
+    // monolith checked it before the rejection arm, so the gate runs in
+    // every branch.
     yield_ref_input_indices == [],
-    lop_stages.facts_are_exact(
-      frame,
-      descriptor_cbor,
-      claimed_value_summary,
-      claimed_datum_summary,
-    ),
+    lop_stages.facts_are_exact(frame, descriptor_cbor),
     descriptor_cbor == pending.descriptor_cbor,
     control_cbor == pending.output_proof_cbor,
     carrier.control_raw_is_bound(pre, transition, control, pending),

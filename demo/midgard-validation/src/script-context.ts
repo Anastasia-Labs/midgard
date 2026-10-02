@@ -34,8 +34,8 @@ export type ScriptContextAddressEncoding = "cardano" | "midgard";
 export type ScriptMintValue = ReadonlyMap<string, ReadonlyMap<string, bigint>>;
 
 /**
- * `redeemers` is in the order of the transaction's redeemer witness list; the
- * redeemer map of the context keeps it.
+ * The context's redeemer map is in ledger order, (tag, index) ascending,
+ * whatever the order of `redeemers`.
  */
 export type ScriptContextView = {
   readonly txId: Buffer;
@@ -197,12 +197,25 @@ const validRangeData = (
 const redeemerData = (redeemer: MidgardLedgerRedeemer): Data =>
   plutusDataFromCborIterative(redeemer.dataCbor);
 
+// Cardano orders its redeemer map by (tag, index), and Midgard's redeemer
+// tags follow the same order: spend, mint, reward, then receiving.
+const compareRedeemerPointers = (
+  left: ScriptContextView["redeemers"][number],
+  right: ScriptContextView["redeemers"][number],
+): number =>
+  left.redeemer.tag - right.redeemer.tag ||
+  (left.redeemer.index < right.redeemer.index
+    ? -1
+    : left.redeemer.index > right.redeemer.index
+      ? 1
+      : 0);
+
 const redeemersData = (
   redeemers: ScriptContextView["redeemers"],
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
 ): DataMap<Data, Data> =>
   new DataMap(
-    redeemers.flatMap((entry) => {
+    [...redeemers].sort(compareRedeemerPointers).flatMap((entry) => {
       const purpose = purposeData(entry.purpose);
       return purpose === undefined
         ? []

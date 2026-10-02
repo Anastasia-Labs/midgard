@@ -19,17 +19,30 @@ encodings. Decode only the active sub-control. The control contains the machine
 items, a committed span window, and four descriptor-fact commitments.
 
 Attach the authenticated output span in a separate machine step. It verifies
-chunk membership once and records start, length, and digest. Subsequent window
-consumers require containment, exact length, and digest equality before slicing.
+chunk membership once and records start, length, and digest. The window is
+derived from the pre control, never chosen by the redeemer: it starts at the
+span the consuming stage reads next (the datum stage's next source span, the
+reference-script stage's next chunk span, or the script-hash stage's next
+content span) and runs for `min(chunk_bytes, total_length - start)` bytes. The
+attach is admitted only while the recorded window does not cover that span, so
+the chunk proofs are its only witness data and a pre control has at most one
+span-attach successor. Subsequent window consumers require containment, exact
+length, and digest equality before slicing.
 Scalar attestation yields bind decoded scalar claims to the same authenticated
 dispatcher action consumed by the stage yield.
 
 Attach descriptor facts in checkpointed groups: datum and value summaries,
-then scan facts, then reference-script facts. Each attachment executes its
-required yields and checks the exact successor control. Commitments bind the
-role, descriptor and associated summaries. The thin terminal recomputes all four
-commitments from its descriptor before authorization and successor/rejection
-checks; it performs no descriptor-yield executions itself.
+then reference-script facts, then scan facts. Each attachment executes its
+required yields and checks the exact successor control. Every commitment is
+derived from the terminal control alone, so an attachment step has exactly one
+successor whatever the redeemer carries: role 3 commits the value summary,
+role 2 the datum summary, role 1 the reference-script language, hash, total
+length and item commitment, and role 0 the whole descriptor bytes the control
+determines. The last group's scan-facts yield checks the three earlier facts
+against the same descriptor, so the thin terminal's only fact gate is that the
+recorded role-0 fact commits exactly the redeemer's descriptor bytes, before
+authorization and successor/rejection checks; it performs no descriptor-yield
+executions itself.
 
 The conjunction across authenticated steps must equal the original predicate.
 A fact cannot be omitted, duplicated, reordered, or reused for a different

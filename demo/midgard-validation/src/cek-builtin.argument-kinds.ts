@@ -286,6 +286,27 @@ export type MidgardCekDirectValueWitness =
   | { readonly kind: "opaque"; readonly root: Bytes }
   | { readonly kind: "blsMillerLoop"; readonly expressionRoot: Bytes };
 
+// An opaque presentation carries no type, so it fits only a polymorphic
+// position; a constant or Miller-loop presentation fits as its runtime twin.
+const directMatchesKind = (
+  value: MidgardCekDirectValueWitness,
+  kind: RuntimeValueKind,
+): boolean =>
+  value.kind === "opaque" ? kind === "any" : matchesKind(value, kind);
+
+export const directArgumentsMatchKinds = (
+  tag: number,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): boolean => {
+  const kinds = argumentKinds(tag);
+  return (
+    arguments_.length === kinds.length &&
+    arguments_.every((argument, index) =>
+      directMatchesKind(argument, kinds[index]),
+    )
+  );
+};
+
 export const directWitnessPayloadBytes = (
   values: readonly (
     | MidgardCekRuntimeValueWitness

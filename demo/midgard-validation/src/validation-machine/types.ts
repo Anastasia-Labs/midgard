@@ -112,7 +112,6 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "ledgerOutputProofFinalize";
-        readonly descriptorCbor: Buffer;
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
@@ -298,18 +297,18 @@ export type ValidationMachineWorkWitness = {
         readonly kind: "cekRedeemerContextSelect";
         readonly control: MidgardCekRedeemerContextControl;
         readonly itemIndex: number;
-        readonly itemCount: number;
         readonly totalLength: number;
         readonly itemCommitment: Buffer;
-        readonly redeemerSiblings: readonly Buffer[];
-        readonly purposeFrontierIndex: number;
         readonly purpose: {
           readonly purposeKind: 0 | 1 | 2 | 3;
           readonly purposeIndex: bigint;
           readonly scriptHash: Buffer;
           readonly subject: Buffer;
-          readonly siblings: readonly Buffer[];
         };
+        readonly executionLanguageTag: 3 | 128;
+        readonly sourceLeaf: Buffer;
+        readonly executionSiblings: readonly Buffer[];
+        readonly itemFrontierRoot: Buffer;
       }
     | {
         readonly kind: "redeemerItemStep";
@@ -409,6 +408,13 @@ export type ValidationMachineWorkWitness = {
         readonly siblings: readonly Buffer[];
         /** A deletion's terminal-Branch group opening, else empty. */
         readonly opening: Buffer;
+      }
+    | {
+        readonly kind: "cekRedeemerContextSkip";
+        readonly control: MidgardCekRedeemerContextControl;
+        readonly purposeLeaf: Buffer;
+        readonly sourceLeaf: Buffer;
+        readonly executionSiblings: readonly Buffer[];
       }
     | null;
 };

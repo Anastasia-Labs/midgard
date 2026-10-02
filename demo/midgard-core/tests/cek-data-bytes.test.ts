@@ -8,7 +8,9 @@ import {
   encodeMidgardCekDataBytesControl,
   finalizeMidgardCekDataBytes,
   hashMidgardCekDataNode,
+  indefiniteMidgardCekDataBytesLength,
   initialMidgardCekDataBytesControl,
+  initialMidgardCekDataBytesMeasureControl,
   MIDGARD_CEK_DATA_BYTES_MAX_SOURCE_SPAN,
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
   MidgardCekDataBytesStages,
@@ -58,7 +60,10 @@ describe("authenticated CEK Data bytes V1", () => {
           syntaxBytes: source.subarray(0, MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES),
           sourceLength: source.length,
         }),
-      ).toBe(length);
+      ).toBe(length > 64 ? null : length);
+      expect(indefiniteMidgardCekDataBytesLength(source.length)).toBe(
+        length > 64 ? length : null,
+      );
       for (const { sourceBytes } of trace.steps) {
         if (sourceBytes !== null) {
           expect(sourceBytes.length).toBeLessThanOrEqual(
@@ -68,7 +73,7 @@ describe("authenticated CEK Data bytes V1", () => {
       }
       expect(
         trace.steps.some(
-          ({ control }) => control.stage === MidgardCekDataBytesStages.Break,
+          ({ control }) => control.stage === MidgardCekDataBytesStages.Measure,
         ),
       ).toBe(length > 64);
     },
@@ -146,6 +151,15 @@ describe("authenticated CEK Data bytes V1", () => {
       Buffer.from([0x41, 0x6a, 0x00]),
     ]),
     Buffer.from([0x40, 0x00]),
+    // A short leading chunk measures to a canonical total length; the content
+    // pass refuses its layout.
+    Buffer.concat([
+      Buffer.from([0x5f, 0x41, 0x6a, 0x58, 0x40]),
+      Buffer.alloc(64, 0x6a),
+      Buffer.from([0xff]),
+    ]),
+    // The source ends before the break.
+    Buffer.concat([Buffer.from([0x5f, 0x58, 0x40]), Buffer.alloc(64, 0x6a)]),
   ])("rejects malformed or noncanonical byte Data CBOR %#", (source) => {
     expect(() =>
       buildMidgardCekDataBytesTrace({
@@ -160,7 +174,7 @@ describe("authenticated CEK Data bytes V1", () => {
       sourceStart: 9,
       sourceLength: 70,
     });
-    const span = nextMidgardCekDataBytesSpan(initial)!;
+    const span = nextMidgardCekDataBytesSpan(initial, 79)!;
 
     expect(span).toStrictEqual({
       absoluteStart: 9,
@@ -170,19 +184,85 @@ describe("authenticated CEK Data bytes V1", () => {
       advanceMidgardCekDataBytes({
         control: initial,
         sourceBytes: null,
+        sourceEnd: 79,
       }),
     ).toBeNull();
     expect(
       advanceMidgardCekDataBytes({
         control: initial,
         sourceBytes: Buffer.alloc(span.length - 1),
+        sourceEnd: 79,
       }),
     ).toBeNull();
     expect(
       advanceMidgardCekDataBytes({
         control: initial,
         sourceBytes: Buffer.alloc(span.length + 1),
+        sourceEnd: 79,
       }),
     ).toBeNull();
+  });
+
+  it("measures an indefinite string from its authenticated chunk headers", () => {
+    const source = encodeCardanoDataBytes(Buffer.alloc(65, 0x6a));
+    const sourceEnd = 9 + source.length;
+    const initial = initialMidgardCekDataBytesMeasureControl({
+      sourceStart: 9,
+    });
+    const window = (control: typeof initial): Buffer => {
+      const span = nextMidgardCekDataBytesSpan(control, sourceEnd)!;
+      return source.subarray(
+        span.absoluteStart - 9,
+        span.absoluteStart - 9 + span.length,
+      );
+    };
+
+    expect(nextMidgardCekDataBytesSpan(initial, sourceEnd)).toStrictEqual({
+      absoluteStart: 10,
+      length: 2,
+    });
+    const afterFirst = advanceMidgardCekDataBytes({
+      control: initial,
+      sourceBytes: window(initial),
+      sourceEnd,
+    })!;
+    expect(afterFirst).toMatchObject({
+      stage: MidgardCekDataBytesStages.Measure,
+      sourceLength: 67,
+    });
+    const atBreak = advanceMidgardCekDataBytes({
+      control: afterFirst,
+      sourceBytes: window(afterFirst),
+      sourceEnd,
+    })!;
+    expect(window(atBreak).toString("hex")).toBe("ff");
+    expect(
+      advanceMidgardCekDataBytes({
+        control: atBreak,
+        sourceBytes: Buffer.from([0x00]),
+        sourceEnd,
+      }),
+    ).toBeNull();
+    expect(
+      advanceMidgardCekDataBytes({
+        control: atBreak,
+        sourceBytes: window(atBreak),
+        sourceEnd,
+      }),
+    ).toMatchObject({
+      stage: MidgardCekDataBytesStages.Blob,
+      sourceLength: 70,
+      bytesLength: 65,
+    });
+    // The enclosing source ends before the break: the last chunk cannot be
+    // measured, since a break must still follow it.
+    expect(
+      advanceMidgardCekDataBytes({
+        control: afterFirst,
+        sourceBytes: window(afterFirst),
+        sourceEnd: sourceEnd - 1,
+      }),
+    ).toBeNull();
+    expect(nextMidgardCekDataBytesSpan(afterFirst, 9 + 67)).toBeNull();
   });
 });

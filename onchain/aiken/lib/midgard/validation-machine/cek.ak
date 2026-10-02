@@ -21,12 +21,13 @@ use midgard/validation_machine/machine_types.{
   CekContextFinalizeWitness, CekContextPartsControlV1, CekContextSeedWitness,
   CekCoreStepWitness, CekFinalContextControlV1, CekMintContextItemWitness,
   CekOutputContextItemWitness, CekRedeemerContextControlV1,
-  CekRedeemerContextSelectWitness, CekResolvedContextItemWitness,
-  CekSignerContextItemWitness, CekTxInfoAssemblyControlV1,
-  CekTxInfoFinalizeWitness, CekWitnessControlV1, NativeExecutionScanWitness,
-  NativeScriptsControlV1, NoAuxiliaryWitness, RedeemerItemStepWitness,
-  RedeemerScanBeginWitness, TransactionFieldChunkWitness,
-  ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
+  CekRedeemerContextSelectWitness, CekRedeemerContextSkipWitness,
+  CekResolvedContextItemWitness, CekSignerContextItemWitness,
+  CekTxInfoAssemblyControlV1, CekTxInfoFinalizeWitness, CekWitnessControlV1,
+  NativeExecutionScanWitness, NativeScriptsControlV1, NoAuxiliaryWitness,
+  RedeemerItemStepWitness, RedeemerScanBeginWitness,
+  TransactionFieldChunkWitness, ValidationAuxiliaryWitnessV1,
+  ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/shared.{
   cek_machine_state_hash, finalize_cek_observer_items_v1,
@@ -729,7 +730,9 @@ fn verify_cek_redeemer_selection(
       Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> False
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) ->
         if next.stage == redeemer_item_proof_v1.stage_terminal {
-          let redeemer_context = initial_cek_redeemer_context_control_v1()
+          let redeemer_context = initial_cek_redeemer_context_control_v1(
+            native_control.purpose_count,
+          )
           and {
             current_matches,
             cek_context_successor_is_exact(
@@ -1368,57 +1371,58 @@ fn verify_cek_redeemer_data_step(
   completed_memory: Int,
 ) -> Bool {
   when auxiliary is {
+    // The fold walks the execution frontier downwards from the purpose
+    // bound. The execution leaf at `purpose_bound - 1` was appended with that
+    // purpose's leaf, source and redeemer item, so it admits one step only: a
+    // select when it names a redeemer, a skip when it is a native execution.
     CekRedeemerContextSelectWitness {
       control,
       item_index,
-      item_count,
       total_length,
       item_commitment,
-      redeemer_siblings,
-      purpose_frontier_index,
       purpose_kind,
       purpose_index,
       script_hash,
       subject,
-      purpose_siblings,
+      execution_language_tag,
+      source_leaf,
+      execution_siblings,
+      item_frontier_root,
     } -> {
-      let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
+      let item_count = native_control.redeemer_count
+      let frontier = control.purpose_bound - 1
+      let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash_unchecked(
         item_index,
         item_commitment,
       )
-      let purpose_leaf = script_proof_v1.purpose_leaf_hash(
-        purpose_kind,
-        purpose_index,
-        script_hash,
-        subject,
-      )
       let current_matches = and {
-        cek_redeemer_context_control_is_well_formed(
-          native_control.redeemer_count,
-          control,
-        ),
         hash_cek_redeemer_context_control_v1(control) == context_control.redeemer_context_control_hash,
         control.active_scan_hash == #"",
-      }
-      let membership_matches = and {
-        item_index == native_control.redeemer_count - control.cursor - 1,
-        item_count == native_control.redeemer_count,
+        // [execution-leaf]
         validation_merkle_v1.verify_membership(
-          native_control.redeemer_count,
-          native_control.redeemer_peaks,
+          native_control.execution_count,
+          native_control.execution_peaks,
+          frontier,
+          script_proof_v1.execution_leaf_hash_unchecked(
+            execution_language_tag,
+            script_proof_v1.purpose_leaf_hash_unchecked(
+              purpose_kind,
+              purpose_index,
+              script_hash,
+              subject,
+            ),
+            source_leaf,
+            redeemer_leaf,
+          ),
+          execution_siblings,
+        ),
+        // [item-length]
+        bounded_item_v1.commitment_from_frontier_root(
+          redeemer_item_proof_v1.redeemer_field_index,
           item_index,
-          redeemer_leaf,
-          redeemer_siblings,
-        ),
-        purpose_frontier_index >= 0,
-        purpose_frontier_index < native_control.purpose_count,
-        validation_merkle_v1.verify_membership(
-          native_control.purpose_count,
-          native_control.purpose_peaks,
-          purpose_frontier_index,
-          purpose_leaf,
-          purpose_siblings,
-        ),
+          total_length,
+          item_frontier_root,
+        ) == item_commitment,
       }
       when
         script_context_v1.script_purpose_summary_v1(
@@ -1431,7 +1435,6 @@ fn verify_cek_redeemer_data_step(
         None ->
           if and {
             current_matches,
-            membership_matches,
             purpose_kind == 3,
             context_control.language_tag == 3,
           } {
@@ -1455,6 +1458,7 @@ fn verify_cek_redeemer_data_step(
                   item_control,
                 ),
                 active_redeemer_leaf: redeemer_leaf,
+                purpose_bound: frontier,
               },
               execution_cursor,
               completed_cpu,
@@ -1475,7 +1479,6 @@ fn verify_cek_redeemer_data_step(
           )
           and {
             current_matches,
-            membership_matches,
             cek_redeemer_context_main_successor(
               pre,
               witness,
@@ -1488,6 +1491,7 @@ fn verify_cek_redeemer_data_step(
                 ),
                 active_redeemer_leaf: redeemer_leaf,
                 active_purpose: purpose,
+                purpose_bound: frontier,
               },
               execution_cursor,
               completed_cpu,
@@ -1497,23 +1501,56 @@ fn verify_cek_redeemer_data_step(
         }
       }
     }
+    CekRedeemerContextSkipWitness {
+      control,
+      purpose_leaf,
+      source_leaf,
+      execution_siblings,
+    } -> {
+      let frontier = control.purpose_bound - 1
+      and {
+        hash_cek_redeemer_context_control_v1(control) == context_control.redeemer_context_control_hash,
+        control.active_scan_hash == #"",
+        // [native-execution]
+        validation_merkle_v1.verify_membership(
+          native_control.execution_count,
+          native_control.execution_peaks,
+          frontier,
+          script_proof_v1.execution_leaf_hash_unchecked(
+            0,
+            purpose_leaf,
+            source_leaf,
+            #"",
+          ),
+          execution_siblings,
+        ),
+        cek_redeemer_context_main_successor(
+          pre,
+          witness,
+          native_control,
+          context_control,
+          CekRedeemerContextControlV1 { ..control, purpose_bound: frontier },
+          execution_cursor,
+          completed_cpu,
+          completed_memory,
+        ),
+      }
+    }
     RedeemerItemStepWitness {
       redeemer_control: Some(redeemer_control),
       control: item_control,
       witness: item_witness,
     } -> {
+      // The select built the item control that `active_scan_hash` pins:
+      // `item_count` from the native control; `item_index`,
+      // `item_commitment` and the redeemer leaf from the execution leaf it
+      // proved; `total_length` from the item commitment; `mode` and the
+      // expected tag from the purpose (descriptor mode only for a receive in
+      // a PlutusV3 context, with the active purpose left empty). `step_v1`
+      // never rewrites those fields, so the pin proves them at every item
+      // step and nothing else here re-checks them.
       let current_matches = and {
-        cek_redeemer_context_control_is_well_formed(
-          native_control.redeemer_count,
-          redeemer_control,
-        ),
         hash_cek_redeemer_context_control_v1(redeemer_control) == context_control.redeemer_context_control_hash,
-        item_control.item_count == native_control.redeemer_count,
-        item_control.item_index == native_control.redeemer_count - redeemer_control.cursor - 1,
-        script_proof_v1.redeemer_item_leaf_hash(
-          item_control.item_index,
-          item_control.item_commitment,
-        ) == redeemer_control.active_redeemer_leaf,
         redeemer_control.active_scan_hash == redeemer_item_proof_v1.hash_control_v1(
           item_control,
         ),
@@ -1549,6 +1586,7 @@ fn verify_cek_redeemer_data_step(
                 active_redeemer_leaf: #"",
                 active_purpose: empty_data_summary_v1(),
                 current_redeemer: next_current,
+                purpose_bound: redeemer_control.purpose_bound,
               }
             }
           } else {
@@ -1559,15 +1597,6 @@ fn verify_cek_redeemer_data_step(
           }
           and {
             current_matches,
-            if next.mode == redeemer_item_proof_v1.mode_descriptor {
-              and {
-                item_control.expected_purpose_tag == 6,
-                context_control.language_tag == 3,
-                redeemer_control.active_purpose == empty_data_summary_v1(),
-              }
-            } else {
-              bytearray.length(redeemer_control.active_purpose.root) == 32
-            },
             cek_redeemer_context_main_successor(
               pre,
               witness,

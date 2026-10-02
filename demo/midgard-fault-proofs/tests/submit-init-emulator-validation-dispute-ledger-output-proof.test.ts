@@ -8,13 +8,16 @@
  *
  * The monolithic five-execution finalize was restructured into three
  * descriptor fact-attach steps and a thin terminal: each finalize-shaped
- * machine step attaches one fact group (`[[2, 3], [0], [1]]` — datum+value
- * summaries, then scan facts, then reference script) with only that group's
- * descriptor yields in the transaction, and the terminal carries no
- * descriptor yields at all — it requires all four recorded facts to match
- * the redeemer's descriptor exactly. Likewise the per-step span yield was
- * replaced by a single span-attach step (stage role 23) that records the
- * window commitment every later consumer binds its redeemer bytes to. Every
+ * machine step attaches one fact group (`[[2, 3], [1], [0]]` — datum+value
+ * summaries, then reference script, then scan facts) with only that group's
+ * descriptor yields in the transaction. Every fact is derived from the
+ * terminal control alone, so each attach step has one successor, and the
+ * terminal carries no descriptor yields at all — `facts_are_exact` (the
+ * recorded scan fact commits exactly the redeemer's descriptor) is its only
+ * gate. Likewise the per-step span yield was replaced by a single
+ * span-attach step (stage role 23) whose window is derived from the span the
+ * consuming stage demands, admitted only while the recorded window fails to
+ * cover it; every later consumer binds its redeemer bytes to that window. Every
  * positive path below is asserted under the 13,200,000-memory /
  * 8,000,000,000-step basis the fit ledger enforces.
  */
@@ -149,12 +152,12 @@ it("proves resolve-inputs membershipStep through permanent proof and removal", a
 }, 300_000);
 
 // The four finalize-shaped steps of one resolve-inputs membership proof, in
-// machine order: the datum+value summary attach, the scan-facts attach, the
-// reference-script attach and the thin terminal (no descriptor yields).
+// machine order: the datum+value summary attach, the reference-script attach,
+// the scan-facts attach and the thin terminal (no descriptor yields).
 it.each([
   [0, "datum+value summary attach [2,3]"],
-  [1, "scan-facts attach [0]"],
-  [2, "reference-script attach [1]"],
+  [1, "reference-script attach [1]"],
+  [2, "scan-facts attach [0]"],
   [3, "thin terminal []"],
 ])(
   "proves resolve-inputs membershipFinalize ordinal %i (%s) through permanent proof and removal",
@@ -174,6 +177,24 @@ it.each([
   300_000,
 );
 
+// A finalize step over a datum-bearing output: the finalize plan reads the
+// datum traversal's folded result, which the datum-less rows above never
+// carry.
+it("proves a script-sources datum+value summary attach over a datum-bearing output through permanent proof and removal", async () => {
+  const result = await runForcedValidationDisputeScenario(
+    ({ operatorVkey, now }) =>
+      buildForgedOperatorSuccessorValidationDisputeFixture({
+        operatorVkey,
+        now,
+        disputedPhase: "scriptSources",
+        scriptSourcesSemanticIndex: 3,
+        disputedMatchOrdinal: 0,
+        outputDatumCbor: MULTI_YIELD_DATUM_CBOR,
+      }),
+  );
+  expectPositiveBasis(result, "script-sources datum-bearing finalize");
+}, 300_000);
+
 it("proves script-sources output-proof semantic 2 through permanent proof and removal", async () => {
   const result = await runForcedValidationDisputeScenario(
     ({ operatorVkey, now }) =>
@@ -189,8 +210,8 @@ it("proves script-sources output-proof semantic 2 through permanent proof and re
 
 it.each([
   [0, "datum+value summary attach [2,3]"],
-  [1, "scan-facts attach [0]"],
-  [2, "reference-script attach [1]"],
+  [1, "reference-script attach [1]"],
+  [2, "scan-facts attach [0]"],
   [3, "thin terminal []"],
 ])(
   "proves script-sources output-proof semantic 3 ordinal %i (%s) through permanent proof and removal",
@@ -256,9 +277,10 @@ it("refuses a forged resolve-inputs fact-attach successor against an honest trac
   ).rejects.toThrow(/semantic-resolution failed: EvaluatorError/);
 }, 300_000);
 
-// The thin terminal requires all four recorded facts to match the redeemer's
-// descriptor exactly: a forged terminal claim dies at the facts/authorization
-// conjunction with no descriptor yields present to launder it.
+// The thin terminal requires the recorded scan fact to commit exactly the
+// redeemer's descriptor: a forged terminal claim dies at the
+// facts/authorization conjunction with no descriptor yields present to
+// launder it.
 it("refuses a forged resolve-inputs thin-terminal successor against an honest trace", async () => {
   await expect(
     runForcedValidationDisputeScenario(({ operatorVkey, now }) =>
@@ -380,3 +402,111 @@ it("refuses a forged advance-bytes successor against an honest trace", async () 
     ),
   ).rejects.toThrow(/semantic-resolution failed: EvaluatorError/);
 }, 300_000);
+
+// One successor per attach step. Each adversary claims, from the honest
+// pre-state, a successor the redeemer-chosen attach used to admit: a span
+// window one byte before the demanded span (sized and digested as an honest
+// window at that start), and leaf-summary facts committed together with a
+// prover-chosen descriptor. The derived attach refuses both.
+it.each([
+  ["scriptSources", { scriptSourcesSemanticIndex: 2 }],
+  ["resolveInputs", { resolveInputsKind: "membershipStep" as const }],
+] as const)(
+  "refuses a %s span-attach successor recording an off-demand window",
+  async (disputedPhase, selector) => {
+    await expect(
+      runForcedValidationDisputeScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase,
+          ...selector,
+          disputedMatchOrdinal: 9,
+          outputDatumCbor: MULTI_YIELD_DATUM_CBOR,
+          dishonestChallenger: true,
+          ledgerOutputProofForgery: "offDemandSpanWindow",
+        }),
+      ),
+    ).rejects.toThrow(/semantic-resolution failed: EvaluatorError/);
+  },
+  300_000,
+);
+
+it.each([
+  ["scriptSources", { scriptSourcesSemanticIndex: 3 }],
+  ["resolveInputs", { resolveInputsKind: "membershipFinalize" as const }],
+] as const)(
+  "refuses a %s leaf-summary attach successor with descriptor-bound facts",
+  async (disputedPhase, selector) => {
+    await expect(
+      runForcedValidationDisputeScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase,
+          ...selector,
+          disputedMatchOrdinal: 0,
+          dishonestChallenger: true,
+          ledgerOutputProofForgery: "descriptorBoundLeafFacts",
+        }),
+      ),
+    ).rejects.toThrow(/semantic-resolution failed: EvaluatorError/);
+  },
+  300_000,
+);
+
+// One successor per head step. The nested `[1, 2, 3]` list of the multi-yield
+// datum is its second head-sequence step (after the outer constructor).
+// Every head takes no argument: the pushed frame is open-ended, its
+// `expected_children` pinned to zero and its close left to the authenticated
+// break, so the honest head proves and a successor recording a child count
+// (what a head taking that count from the redeemer admitted) is refused.
+const NESTED_HEAD_SEQUENCE = {
+  ledgerOutputDatumAction: "headSequence",
+  disputedMatchOrdinal: 1,
+  outputDatumCbor: MULTI_YIELD_DATUM_CBOR,
+} as const;
+
+it.each([
+  ["scriptSources", { scriptSourcesSemanticIndex: 2 }],
+  ["resolveInputs", { resolveInputsKind: "membershipStep" as const }],
+] as const)(
+  "proves a %s nested datum head-sequence step through permanent proof and removal",
+  async (disputedPhase, selector) => {
+    const result = await runForcedValidationDisputeScenario(
+      ({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase,
+          ...selector,
+          ...NESTED_HEAD_SEQUENCE,
+        }),
+    );
+    expectPositiveBasis(result, `${disputedPhase} nested head-sequence step`);
+  },
+  300_000,
+);
+
+it.each([
+  ["scriptSources", { scriptSourcesSemanticIndex: 2 }],
+  ["resolveInputs", { resolveInputsKind: "membershipStep" as const }],
+] as const)(
+  "refuses a %s head-sequence successor recording an open frame child count",
+  async (disputedPhase, selector) => {
+    await expect(
+      runForcedValidationDisputeScenario(({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase,
+          ...selector,
+          ...NESTED_HEAD_SEQUENCE,
+          dishonestChallenger: true,
+          ledgerOutputProofForgery: "openFrameChildCount",
+        }),
+      ),
+    ).rejects.toThrow(/semantic-resolution failed: EvaluatorError/);
+  },
+  300_000,
+);

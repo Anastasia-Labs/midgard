@@ -31,6 +31,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeterministicValidationMachineTrace,
   buildMidgardCanonicalCekProgram,
+  buildMidgardScriptContext,
+  buildPlutusV3ScriptContext,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   encodeMidgardCekPlutusData,
@@ -39,6 +41,10 @@ import {
   runPhaseBValidationWithPatch,
   scriptContextTxOutData,
 } from "../src/index.js";
+import {
+  orderingView,
+  redeemerMapEntries,
+} from "./script-context-map-order.ordering-view.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -55,7 +61,8 @@ import {
 // A node evaluates a script over the context it builds; a fault proof
 // adjudicates it over the context the transaction commits, where datum and
 // redeemer maps keep their CBOR entry order and duplicate keys and the redeemer
-// map follows the witness list. These tests pin that the two contexts agree.
+// map is in ledger order, (tag, index) ascending, whatever the witness list
+// order. These tests pin that the two contexts agree.
 
 /** `{h'ff': 1, h'0000': 2}`: not in byte order. */
 const UNSORTED_MAP = "a241ff0142000002";
@@ -153,22 +160,27 @@ const firstOutputDatumKeyIsTwoBytes = firstKeyIsTwoBytes(
   ),
 );
 
-/** A PlutusV3 script: the context's first redeemer is for a spend. */
-const firstRedeemerIsSpend = flat(
-  guard(
-    apply(
-      builtin(UPLCBuiltinTag.equalsInteger),
+/** A PlutusV3 script: the context's first redeemer has purpose `tag`. */
+const firstRedeemerPurposeIs = (tag: number): Buffer =>
+  flat(
+    guard(
       apply(
-        builtin(UPLCBuiltinTag.fstPair),
+        builtin(UPLCBuiltinTag.equalsInteger),
         apply(
-          builtin(UPLCBuiltinTag.unConstrData),
-          firstKey(nth(constrFields(nth(constrFields(context), 0)), 9)),
+          builtin(UPLCBuiltinTag.fstPair),
+          apply(
+            builtin(UPLCBuiltinTag.unConstrData),
+            firstKey(nth(constrFields(nth(constrFields(context), 0)), 9)),
+          ),
         ),
+        UPLCConst.int(tag),
       ),
-      UPLCConst.int(1),
     ),
-  ),
-);
+  );
+
+/** PlutusV3 `ScriptPurpose` is `Minting` (0) or `Spending` (1) here. */
+const firstRedeemerIsMint = firstRedeemerPurposeIs(0);
+const firstRedeemerIsSpend = firstRedeemerPurposeIs(1);
 
 const identity = flat(new Lambda(new UPLCVar(0)));
 
@@ -340,6 +352,35 @@ const proofVerdict = async (
 };
 
 describe("script context map order", () => {
+  it("builds the redeemer map in ledger order from a view in any order", () => {
+    const { view, spend } = orderingView();
+    // MidgardV1: spend (1), mint (0), observe (2), receive (3) purposes.
+    expect(
+      redeemerMapEntries(
+        buildMidgardScriptContext(view, spend.purpose, spend.redeemer),
+        8,
+      ),
+    ).toEqual([
+      [1, 0n],
+      [1, 1n],
+      [0, 2n],
+      [2, 3n],
+      [3, 4n],
+    ]);
+    // PlutusV3 has no receiving purpose, so it omits that redeemer.
+    expect(
+      redeemerMapEntries(
+        buildPlutusV3ScriptContext(view, spend.purpose, spend.redeemer),
+        9,
+      ),
+    ).toEqual([
+      [1, 0n],
+      [1, 1n],
+      [0, 2n],
+      [2, 3n],
+    ]);
+  });
+
   it("builds a TxOut whose datum keeps its key order and duplicate keys", () => {
     for (const datum of [UNSORTED_MAP, SORTED_MAP, DUPLICATE_KEY_MAP]) {
       const outputCbor = scriptOutput("33".repeat(28), datum);
@@ -399,19 +440,23 @@ describe("script context map order", () => {
     }
   });
 
-  it("orders the redeemer map by the witness list", async () => {
+  it("orders the redeemer map by purpose whatever the witness list order", async () => {
     for (const mint of ["spend-first", "mint-first"] as const) {
-      const expected = mint === "spend-first" ? "accepted" : "rejected";
-      const scenario = { program: firstRedeemerIsSpend, mint };
-      await expect(nodeVerdict(scenario)).resolves.toBe(
-        expected === "accepted"
-          ? "accepted"
-          : `rejected ${RejectCodes.PlutusScriptInvalid}`,
-      );
-      await expect(proofVerdict(scenario, expected)).resolves.toBe(expected);
+      for (const [program, expected] of [
+        [firstRedeemerIsSpend, "accepted"],
+        [firstRedeemerIsMint, "rejected"],
+      ] as const) {
+        const scenario = { program, mint };
+        await expect(nodeVerdict(scenario)).resolves.toBe(
+          expected === "accepted"
+            ? "accepted"
+            : `rejected ${RejectCodes.PlutusScriptInvalid}`,
+        );
+        await expect(proofVerdict(scenario, expected)).resolves.toBe(expected);
+      }
       await expect(
         proofVerdict({ program: identity, mint }, "accepted"),
       ).resolves.toBe("accepted");
     }
-  });
+  }, 60_000);
 });

@@ -192,16 +192,16 @@ export const ValidationAuxiliaryWitnessSchema = Data.Enum([
     CekRedeemerContextSelectWitness: Data.Object({
       control: CekRedeemerContextControlSchema,
       item_index: Data.Integer(),
-      item_count: Data.Integer(),
       total_length: Data.Integer(),
       item_commitment: Data.Bytes(),
-      redeemer_siblings: ByteArrayListSchema,
-      purpose_frontier_index: Data.Integer(),
       purpose_kind: Data.Integer(),
       purpose_index: Data.Integer(),
       script_hash: Data.Bytes(),
       subject: Data.Bytes(),
-      purpose_siblings: ByteArrayListSchema,
+      execution_language_tag: Data.Integer(),
+      source_leaf: Data.Bytes(),
+      execution_siblings: ByteArrayListSchema,
+      item_frontier_root: Data.Bytes(),
     }),
   }),
   Data.Object({
@@ -331,7 +331,6 @@ export const ValidationAuxiliaryWitnessSchema = Data.Enum([
   }),
   Data.Object({
     LedgerOutputProofFinalizeWitness: Data.Object({
-      descriptor_cbor: Data.Bytes(),
       signer_proof: SignerSetProofSchema,
     }),
   }),
@@ -388,6 +387,14 @@ export const ValidationAuxiliaryWitnessSchema = Data.Enum([
     MintFoldAssetWitness: Data.Object({
       chunk_proof: BoundedItemChunkProofSchema,
       next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+    }),
+  }),
+  Data.Object({
+    CekRedeemerContextSkipWitness: Data.Object({
+      control: CekRedeemerContextControlSchema,
+      purpose_leaf: Data.Bytes(),
+      source_leaf: Data.Bytes(),
+      execution_siblings: ByteArrayListSchema,
     }),
   }),
 ]);

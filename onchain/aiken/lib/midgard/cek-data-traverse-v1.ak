@@ -47,18 +47,21 @@ pub type DataTraverseControlV1 {
   source_length: Int,
   offset: Int,
   frame_root: ByteArray,
-  pending_large_expected_children: Option<Int>,
   integer: Option<cek_data_integer_v1.CekDataIntegerControlV1>,
   bytes: Option<cek_data_bytes_v1.CekDataBytesControlV1>,
   result: Option<cek_data_v1.DataSummaryV1>,
 }
 
+/// Every head action takes no argument: the item length, the constructor
+/// length and the child count are all read from the authenticated head window
+/// (an indefinite sequence closes at its authenticated 0xff break; an
+/// indefinite byte string is measured by the bytes sub-control).
 pub type DataTraverseActionV1 {
   NoAction
-  HeadScalar { item_length: Int }
-  HeadSequence { expected_children: Int }
+  HeadScalar
+  HeadSequence
   HeadMap
-  HeadLargeConstructor { constructor_cbor_length: Int, expected_children: Int }
+  HeadLargeConstructor
   AttachScalar { parent: Option<cek_data_frame_v1.DataFrameV1> }
   FoldList {
     frame: cek_data_frame_v1.DataFrameV1,
@@ -139,13 +142,6 @@ fn optional_summary_is_well_formed(
   }
 }
 
-fn optional_uint32_is_well_formed(value: Option<Int>) -> Bool {
-  when value is {
-    None -> True
-    Some(exact) -> uint32_is_well_formed(exact)
-  }
-}
-
 fn nested_integer_fits(
   control: DataTraverseControlV1,
   integer: cek_data_integer_v1.CekDataIntegerControlV1,
@@ -171,7 +167,6 @@ fn head_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
       bytearray.length(control.frame_root) == 32,
       control.offset == 0,
     },
-    control.pending_large_expected_children == None,
     control.integer == None,
     control.bytes == None,
     control.result == None,
@@ -182,7 +177,6 @@ fn integer_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   when control.integer is {
     None -> False
     Some(integer) -> and {
-        control.pending_large_expected_children == None,
         control.bytes == None,
         control.result == None,
         nested_integer_fits(control, integer, True),
@@ -194,7 +188,6 @@ fn bytes_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   when control.bytes is {
     None -> False
     Some(bytes_control) -> and {
-        control.pending_large_expected_children == None,
         control.integer == None,
         control.result == None,
         cek_data_bytes_v1.control_is_well_formed(bytes_control),
@@ -210,7 +203,6 @@ fn large_constructor_stage_is_well_formed(
   when control.integer is {
     None -> False
     Some(integer) -> and {
-        control.pending_large_expected_children != None,
         control.bytes == None,
         control.result == None,
         nested_integer_fits(control, integer, True),
@@ -223,7 +215,6 @@ fn large_fields_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   when control.integer is {
     None -> False
     Some(integer) -> and {
-        control.pending_large_expected_children != None,
         integer.stage == cek_data_integer_v1.stage_terminal,
         control.bytes == None,
         control.result == None,
@@ -236,7 +227,6 @@ fn large_fields_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
 fn closed_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   and {
     bytearray.length(control.frame_root) == 32,
-    control.pending_large_expected_children == None,
     control.integer == None,
     control.bytes == None,
     control.result == None,
@@ -252,7 +242,6 @@ fn terminal_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   and {
     control.offset == control.source_length,
     control.frame_root == #"",
-    control.pending_large_expected_children == None,
     control.integer == None,
     control.bytes == None,
     control.result != None,
@@ -270,7 +259,6 @@ pub fn control_is_well_formed(control: DataTraverseControlV1) -> Bool {
     uint32_is_well_formed(control.offset),
     control.offset <= control.source_length,
     optional_hash_is_well_formed(control.frame_root),
-    optional_uint32_is_well_formed(control.pending_large_expected_children),
     optional_summary_is_well_formed(control.result),
     if control.stage == stage_head {
       head_stage_is_well_formed(control)
@@ -304,23 +292,12 @@ pub fn initial_control_v1(
     source_length,
     offset: 0,
     frame_root: #"",
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: None,
   }
   expect control_is_well_formed(control)
   control
-}
-
-fn encode_optional_int(value: Option<Int>) -> ByteArray {
-  when value is {
-    None -> #"d87a80"
-    Some(exact) ->
-      cbor.serialise(exact)
-        |> bytearray.concat(#"ff")
-        |> bytearray.concat(#"d8799f", _)
-  }
 }
 
 fn encode_optional_integer(
@@ -369,31 +346,16 @@ pub fn encode_optional_summary_v1(
 
 pub fn encode_control_v1(control: DataTraverseControlV1) -> ByteArray {
   expect control_is_well_formed(control)
-  encode_definite_array_header(10)
+  encode_definite_array_header(9)
     |> bytearray.concat(cbor.serialise(control.version))
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.source_start))
     |> bytearray.concat(cbor.serialise(control.source_length))
     |> bytearray.concat(cbor.serialise(control.offset))
     |> bytearray.concat(encode_definite_bytes(control.frame_root))
-    |> bytearray.concat(
-        encode_optional_int(control.pending_large_expected_children),
-      )
     |> bytearray.concat(encode_optional_integer(control.integer))
     |> bytearray.concat(encode_optional_bytes(control.bytes))
     |> bytearray.concat(encode_optional_summary_v1(control.result))
-}
-
-fn optional_int_from_data(data: Data) -> Option<Int> {
-  let Pair(index, fields) = builtin.un_constr_data(data)
-  if index == 1 {
-    expect fields == []
-    None
-  } else {
-    expect index == 0
-    expect [value] = fields
-    Some(builtin.un_i_data(value))
-  }
 }
 
 fn optional_integer_from_data(
@@ -448,8 +410,7 @@ pub fn control_from_data_v1(data: Data) -> DataTraverseControlV1 {
   expect
       [
         version_data, stage_data, source_start_data, source_length_data,
-        offset_data, frame_root_data, pending_large_data, integer_data,
-        bytes_data, result_data,
+        offset_data, frame_root_data, integer_data, bytes_data, result_data,
       ]
     = builtin.un_list_data(data)
   let control = DataTraverseControlV1 {
@@ -459,7 +420,6 @@ pub fn control_from_data_v1(data: Data) -> DataTraverseControlV1 {
     source_length: builtin.un_i_data(source_length_data),
     offset: builtin.un_i_data(offset_data),
     frame_root: builtin.un_b_data(frame_root_data),
-    pending_large_expected_children: optional_int_from_data(pending_large_data),
     integer: optional_integer_from_data(integer_data),
     bytes: optional_bytes_from_data(bytes_data),
     result: optional_summary_from_data(result_data),
@@ -496,7 +456,10 @@ pub fn next_source_span_v1(
 pub fn prevalidated_next_source_span(
   control: DataTraverseControlV1,
 ) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
-  if control.stage == stage_head {
+  if or {
+    control.stage == stage_head,
+    control.stage == stage_close,
+  } {
     Some(
       cek_source_blob_v1.CekSourceBlobSpanV1 {
         absolute_start: control.source_start + control.offset,
@@ -511,11 +474,11 @@ pub fn prevalidated_next_source_span(
     cek_data_integer_v1.prevalidated_next_source_span(integer)
   } else if control.stage == stage_bytes {
     expect Some(bytes_control) = control.bytes
-    cek_data_bytes_v1.prevalidated_next_source_span(bytes_control)
-  } else if or {
-    control.stage == stage_large_fields,
-    control.stage == stage_close,
-  } {
+    cek_data_bytes_v1.prevalidated_next_source_span(
+      bytes_control,
+      control.source_start + control.source_length,
+    )
+  } else if control.stage == stage_large_fields {
     Some(
       cek_source_blob_v1.CekSourceBlobSpanV1 {
         absolute_start: control.source_start + control.offset,
@@ -534,6 +497,8 @@ fn argument_byte_count(additional: Int) -> Int {
     2
   } else if additional == 26 {
     4
+  } else if additional == 27 {
+    8
   } else {
     -1
   }
@@ -546,6 +511,8 @@ fn argument_is_minimal(additional: Int, value: Int) -> Bool {
     value > 255
   } else if additional == 26 {
     value > 65535
+  } else if additional == 27 {
+    value > uint32_max
   } else {
     False
   }
@@ -658,11 +625,16 @@ fn checked_control(
   }
 }
 
+/// After a child attaches, a map continues to its next header-counted child
+/// or to its fold; every open-ended frame moves to `stage_close`, whose head
+/// window either holds the authenticated 0xff break or the next child's head.
 fn next_parent_stage(frame: cek_data_frame_v1.DataFrameV1) -> Int {
-  if frame.child_count < frame.expected_children {
-    stage_head
-  } else if frame.kind == cek_data_frame_v1.map_frame {
-    stage_fold
+  if frame.kind == cek_data_frame_v1.map_frame {
+    if frame.child_count < frame.expected_children {
+      stage_head
+    } else {
+      stage_fold
+    }
   } else {
     stage_close
   }
@@ -763,7 +735,6 @@ fn attach_summary(
           stage: transition.next_stage,
           offset,
           frame_root: transition.next_frame_root,
-          pending_large_expected_children: None,
           integer: None,
           bytes: None,
           result: transition.next_result,
@@ -772,51 +743,93 @@ fn attach_summary(
   }
 }
 
-pub fn prevalidated_head_scalar(
-  control: DataTraverseControlV1,
-  bytes: ByteArray,
-  item_length: Int,
-) -> Option<DataTraverseControlV1> {
-  if or {
-    item_length <= 0,
-    !uint32_is_well_formed(item_length),
-    control.offset + item_length > control.source_length,
-  } {
+/// The encoded length of the integer item whose head starts at `offset` of
+/// the authenticated window: the canonical argument of a major-0/1 head, or a
+/// c2/c3 tag with its definite major-2 magnitude. Anything else (including an
+/// indefinite magnitude) has no length here and fails closed.
+fn integer_item_length(bytes: ByteArray, offset: Int) -> Option<Int> {
+  if offset >= bytearray.length(bytes) {
     None
   } else {
-    let first = bytearray.at(bytes, 0)
-    if or {
-      first / 32 <= 1,
+    let first = bytearray.at(bytes, offset)
+    if first / 32 <= 1 {
+      when read_canonical_argument(bytes, offset) is {
+        None -> None
+        Some(argument) -> Some(argument.next_offset - offset)
+      }
+    } else if or {
       first == 194,
       first == 195,
     } {
-      checked_control(
-        DataTraverseControlV1 {
-          ..control,
-          stage: stage_integer,
-          integer: Some(
-            cek_data_integer_v1.initial_control_v1(
-              control.source_start + control.offset,
-              item_length,
-            ),
-          ),
-        },
-      )
-    } else if first / 32 == 2 {
-      checked_control(
-        DataTraverseControlV1 {
-          ..control,
-          stage: stage_bytes,
-          bytes: Some(
-            cek_data_bytes_v1.initial_control_v1(
-              control.source_start + control.offset,
-              item_length,
-            ),
-          ),
-        },
-      )
+      when read_canonical_argument(bytes, offset + 1) is {
+        Some(magnitude) ->
+          if magnitude.major == 2 {
+            Some(magnitude.next_offset - offset + magnitude.value)
+          } else {
+            None
+          }
+        None -> None
+      }
     } else {
       None
+    }
+  }
+}
+
+/// A scalar head: the integer or definite byte-string length is read from the
+/// window; an indefinite byte string (0x5f) starts the bytes sub-control's
+/// measuring pass instead. The derived extent must fit the source.
+pub fn prevalidated_head_scalar(
+  control: DataTraverseControlV1,
+  bytes: ByteArray,
+) -> Option<DataTraverseControlV1> {
+  let first = bytearray.at(bytes, 0)
+  let item_start = control.source_start + control.offset
+  if first == 95 {
+    checked_control(
+      DataTraverseControlV1 {
+        ..control,
+        stage: stage_bytes,
+        bytes: Some(cek_data_bytes_v1.initial_measure_control_v1(item_start)),
+      },
+    )
+  } else if first / 32 == 2 {
+    when read_canonical_argument(bytes, 0) is {
+      None -> None
+      Some(argument) -> {
+        let item_length = argument.next_offset + argument.value
+        if control.offset + item_length <= control.source_length {
+          checked_control(
+            DataTraverseControlV1 {
+              ..control,
+              stage: stage_bytes,
+              bytes: Some(
+                cek_data_bytes_v1.initial_control_v1(item_start, item_length),
+              ),
+            },
+          )
+        } else {
+          None
+        }
+      }
+    }
+  } else {
+    when integer_item_length(bytes, 0) is {
+      None -> None
+      Some(item_length) ->
+        if control.offset + item_length <= control.source_length {
+          checked_control(
+            DataTraverseControlV1 {
+              ..control,
+              stage: stage_integer,
+              integer: Some(
+                cek_data_integer_v1.initial_control_v1(item_start, item_length),
+              ),
+            },
+          )
+        } else {
+          None
+        }
     }
   }
 }
@@ -825,60 +838,66 @@ fn opened_frame_control(
   control: DataTraverseControlV1,
   frame: cek_data_frame_v1.DataFrameV1,
   head_length: Int,
+  stage: Int,
 ) -> Option<DataTraverseControlV1> {
   checked_control(
     DataTraverseControlV1 {
       ..control,
-      stage: if frame.expected_children == 0 {
-        stage_fold
-      } else {
-        stage_head
-      },
+      stage,
       offset: control.offset + head_length,
       frame_root: cek_data_frame_v1.hash_frame_v1(frame),
     },
   )
 }
 
+/// The stage an open-ended sequence header opens: 0x80 is the canonical empty
+/// sequence (straight to the fold), 0x9f an indefinite one whose first child
+/// is mandatory (`stage_head` has no close transition); every later child or
+/// the 0xff break is read at `stage_close`. Any other header fails closed.
+fn sequence_header_stage(header: Int) -> Option<Int> {
+  if header == 128 {
+    Some(stage_fold)
+  } else if header == 159 {
+    Some(stage_head)
+  } else {
+    None
+  }
+}
+
 pub fn prevalidated_head_sequence(
   control: DataTraverseControlV1,
   bytes: ByteArray,
-  expected_children: Int,
 ) -> Option<DataTraverseControlV1> {
-  if !uint32_is_well_formed(expected_children) {
-    None
-  } else {
-    let sequence_header = if expected_children == 0 {
-      128
-    } else {
-      159
-    }
-    when parse_small_constructor_head(bytes) is {
-      Some(head) ->
-        if and {
-          head.prefix_length < bytearray.length(bytes),
-          bytearray.at(bytes, head.prefix_length) == sequence_header,
-        } {
-          let frame = cek_data_frame_v1.initial_small_constr_frame_v1(
-            head.constructor,
-            control.frame_root,
-            expected_children,
-          )
-          opened_frame_control(control, frame, head.prefix_length + 1)
-        } else {
-          None
+  when parse_small_constructor_head(bytes) is {
+    Some(head) ->
+      if head.prefix_length < bytearray.length(bytes) {
+        when sequence_header_stage(bytearray.at(bytes, head.prefix_length)) is {
+          None -> None
+          Some(stage) ->
+            opened_frame_control(
+              control,
+              cek_data_frame_v1.initial_small_constr_frame_v1(
+                head.constructor,
+                control.frame_root,
+              ),
+              head.prefix_length + 1,
+              stage,
+            )
         }
-      None ->
-        if bytearray.at(bytes, 0) == sequence_header {
-          let frame = cek_data_frame_v1.initial_list_frame_v1(
-            control.frame_root,
-            expected_children,
+      } else {
+        None
+      }
+    None ->
+      when sequence_header_stage(bytearray.at(bytes, 0)) is {
+        None -> None
+        Some(stage) ->
+          opened_frame_control(
+            control,
+            cek_data_frame_v1.initial_list_frame_v1(control.frame_root),
+            1,
+            stage,
           )
-          opened_frame_control(control, frame, 1)
-        } else {
-          None
-        }
-    }
+      }
   }
 }
 
@@ -897,42 +916,57 @@ pub fn prevalidated_head_map(
           control.frame_root,
           argument.value * 2,
         )
-        opened_frame_control(control, frame, argument.next_offset)
+        opened_frame_control(
+          control,
+          frame,
+          argument.next_offset,
+          if argument.value == 0 {
+            stage_fold
+          } else {
+            stage_head
+          },
+        )
       } else {
         None
       }
   }
 }
 
+/// A large constructor head (tag 102 over a two-element array): the
+/// constructor integer's encoded length is read from the window after the
+/// three-byte prefix; its field sequence header is read once the integer is
+/// streamed (`prevalidated_advance_large_fields`).
 pub fn prevalidated_head_large_constructor(
   control: DataTraverseControlV1,
   bytes: ByteArray,
-  constructor_cbor_length: Int,
-  expected_children: Int,
 ) -> Option<DataTraverseControlV1> {
   if and {
-    constructor_cbor_length > 0,
-    uint32_is_well_formed(constructor_cbor_length),
-    uint32_is_well_formed(expected_children),
     bytearray.length(bytes) >= 3,
     slice_len(bytes, 0, 3) == #"d86682",
-    control.offset + 3 + constructor_cbor_length < control.source_length,
   } {
-    let offset = control.offset + 3
-    checked_control(
-      DataTraverseControlV1 {
-        ..control,
-        stage: stage_large_constructor,
-        offset,
-        pending_large_expected_children: Some(expected_children),
-        integer: Some(
-          cek_data_integer_v1.initial_control_v1(
-            control.source_start + offset,
-            constructor_cbor_length,
-          ),
-        ),
-      },
-    )
+    when integer_item_length(bytes, 3) is {
+      None -> None
+      Some(constructor_cbor_length) -> {
+        let offset = control.offset + 3
+        if offset + constructor_cbor_length < control.source_length {
+          checked_control(
+            DataTraverseControlV1 {
+              ..control,
+              stage: stage_large_constructor,
+              offset,
+              integer: Some(
+                cek_data_integer_v1.initial_control_v1(
+                  control.source_start + offset,
+                  constructor_cbor_length,
+                ),
+              ),
+            },
+          )
+        } else {
+          None
+        }
+      }
+    }
   } else {
     None
   }
@@ -947,18 +981,11 @@ fn step_head(
     None -> None
     Some(bytes) ->
       when action is {
-        HeadScalar { item_length } ->
-          prevalidated_head_scalar(control, bytes, item_length)
-        HeadSequence { expected_children } ->
-          prevalidated_head_sequence(control, bytes, expected_children)
+        HeadScalar -> prevalidated_head_scalar(control, bytes)
+        HeadSequence -> prevalidated_head_sequence(control, bytes)
         HeadMap -> prevalidated_head_map(control, bytes)
-        HeadLargeConstructor { constructor_cbor_length, expected_children } ->
-          prevalidated_head_large_constructor(
-            control,
-            bytes,
-            constructor_cbor_length,
-            expected_children,
-          )
+        HeadLargeConstructor ->
+          prevalidated_head_large_constructor(control, bytes)
         _ -> None
       }
   }
@@ -1023,7 +1050,13 @@ pub fn prevalidated_advance_bytes(
   source_bytes: Option<ByteArray>,
 ) -> Option<DataTraverseControlV1> {
   expect Some(bytes_control) = control.bytes
-  when cek_data_bytes_v1.step_v1(bytes_control, source_bytes) is {
+  when
+    cek_data_bytes_v1.step_v1(
+      bytes_control,
+      control.source_start + control.source_length,
+      source_bytes,
+    )
+  is {
     None -> None
     Some(next_bytes) ->
       Some(DataTraverseControlV1 { ..control, bytes: Some(next_bytes) })
@@ -1138,14 +1171,8 @@ pub fn prevalidated_advance_large_fields(
   if action != NoAction {
     None
   } else {
-    expect Some(expected_children) = control.pending_large_expected_children
     expect Some(integer) = control.integer
     expect Some(blob) = integer.blob
-    let sequence_header = if expected_children == 0 {
-      128
-    } else {
-      159
-    }
     when
       Pair(
         exact_source_bytes(control, source_bytes),
@@ -1153,36 +1180,34 @@ pub fn prevalidated_advance_large_fields(
       )
     is {
       Pair(Some(bytes), Some(constructor_cbor_root)) ->
-        if bytearray.at(bytes, 0) == sequence_header {
-          let frame = cek_data_frame_v1.initial_large_constr_frame_v1(
-            constructor_cbor_root,
-            integer.source_length,
-            integer.memory,
-            control.frame_root,
-            expected_children,
-          )
-          checked_control(
-            DataTraverseControlV1 {
-              ..control,
-              stage: if expected_children == 0 {
-                stage_fold
-              } else {
-                stage_head
+        when sequence_header_stage(bytearray.at(bytes, 0)) is {
+          None -> None
+          Some(stage) -> {
+            let frame = cek_data_frame_v1.initial_large_constr_frame_v1(
+              constructor_cbor_root,
+              integer.source_length,
+              integer.memory,
+              control.frame_root,
+            )
+            checked_control(
+              DataTraverseControlV1 {
+                ..control,
+                stage,
+                offset: control.offset + 1,
+                frame_root: cek_data_frame_v1.hash_frame_v1(frame),
+                integer: None,
               },
-              offset: control.offset + 1,
-              frame_root: cek_data_frame_v1.hash_frame_v1(frame),
-              pending_large_expected_children: None,
-              integer: None,
-            },
-          )
-        } else {
-          None
+            )
+          }
         }
       _ -> None
     }
   }
 }
 
+/// The `NoAction` transition of `stage_close`: the authenticated head window
+/// starts with the 0xff break that closes the open-ended frame. Any other
+/// window is the next child's head, taken by a head action instead.
 pub fn prevalidated_close(
   control: DataTraverseControlV1,
   source_bytes: Option<ByteArray>,
@@ -1267,7 +1292,6 @@ fn step_finalize_frame(
           ..control,
           stage: transition.next_stage,
           frame_root: transition.next_frame_root,
-          pending_large_expected_children: None,
           integer: None,
           bytes: None,
           result: transition.next_result,
@@ -1398,7 +1422,11 @@ pub fn step_v1(
   } else if control.stage == stage_large_fields {
     prevalidated_advance_large_fields(control, source_bytes, action)
   } else if control.stage == stage_close {
-    prevalidated_close(control, source_bytes, action)
+    if action == NoAction {
+      prevalidated_close(control, source_bytes, action)
+    } else {
+      step_head(control, source_bytes, action)
+    }
   } else if control.stage == stage_fold {
     step_fold(control, source_bytes, action)
   } else {

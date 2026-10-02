@@ -8,6 +8,7 @@ export {
   deriveLedgerOutputProofFinalizeClaims,
   deriveLedgerOutputProofFinalizePlan,
   deriveLedgerOutputProofStepPlan,
+  deriveLedgerOutputProofTerminalDescriptorCbor,
   ledgerOutputProofFactAttachRoles,
   type LedgerOutputProofFinalizePlan,
 } from "./ledger-output-proof-plan.derive-ledger-output-proof-step-plan.js";

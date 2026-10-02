@@ -285,7 +285,6 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
           work_witness_cbor: finalize_pre_cbor,
           claimed_successor: finalize_post,
         },
-        descriptor_cbor,
         vm_machine_types.NoSignerSetProof,
       ),
     }

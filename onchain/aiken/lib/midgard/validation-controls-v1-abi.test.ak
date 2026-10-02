@@ -141,7 +141,7 @@ fn auxiliary_constructor_is_exact(data: Data, expected_tag: Int) -> Bool {
 
 fn auxiliary_corpus_is_exact(items: List<Data>, expected_tag: Int) -> Bool {
   when items is {
-    [] -> expected_tag == 40
+    [] -> expected_tag == 41
     [item, ..rest] -> and {
         auxiliary_constructor_is_exact(item, expected_tag),
         auxiliary_corpus_is_exact(rest, expected_tag + 1),
@@ -166,6 +166,7 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
     active_redeemer_leaf: h54,
     active_purpose: empty,
     current_redeemer: summary,
+    purpose_bound: 2,
   }
   let final_control = vm_machine_types.CekFinalContextControlV1 {
     tx_info: summary,
@@ -237,8 +238,8 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
     vm_witness.encode_script_integrity_compact_witness_v1(native) == #"825883981a41014102410341040058204a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a00800058204b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b00800080008000808000800080000058204c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c01",
     vm_witness.encode_script_integrity_witness_set_witness_v1(native, h4d, h4e) == #"845883981a41014102410341040058204a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a00800058204b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b00800080008000808000800080000058204c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c0258204d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d58204e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
     vm_witness.encode_script_integrity_finalize_witness_v1(native, h4f, h50) == #"845883981a41014102410341040058204a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a00800058204b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b00800080008000808000800080000058204c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c0358204f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f58205050505050505050505050505050505050505050505050505050505050505050",
-    vm_witness.encode_cek_redeemer_context_control_v1(redeemer_control) == #"8601845820525252525252525252525252525252525252525252525252525252525252525201010158205353535353535353535353535353535353535353535353535353535353535353582054545454545454545454545454545454545454545454545454545454545454548340000083582051515151515151515151515151515151515151515151515151515151515151510101",
-    vm_witness.hash_cek_redeemer_context_control_v1(redeemer_control) == #"3dfab23fb96dece2da964d3b0b62ef26006400b04b676b6ccfc18ac5da438c10",
+    vm_witness.encode_cek_redeemer_context_control_v1(redeemer_control) == #"870184582052525252525252525252525252525252525252525252525252525252525252520101015820535353535353535353535353535353535353535353535353535353535353535358205454545454545454545454545454545454545454545454545454545454545454834000008358205151515151515151515151515151515151515151515151515151515151515151010102",
+    vm_witness.hash_cek_redeemer_context_control_v1(redeemer_control) == #"9e83fc03038683584b8f6909209ffcfcc9595fb939625bebede4a5d81b238d22",
     vm_witness.encode_cek_final_context_control_v1(final_control) == #"83835820515151515151515151515151515151515151515151515151515151515151515101018358205151515151515151515151515151515151515151515151515151515151515151010183582051515151515151515151515151515151515151515151515151515151515151510101",
     vm_witness.hash_cek_final_context_control_v1(final_control) == #"a4fdda392c9324034244f6b4674441a320d90d819521ccc9b62ff37c0dfdc10b",
     vm_witness.encode_cek_context_parts_control_v1(parts_control) == #"8384582052525252525252525252525252525252525252525252525252525252525252520101018358205151515151515151515151515151515151515151515151515151515151515151010183582051515151515151515151515151515151515151515151515151515151515151510101",
@@ -250,14 +251,14 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
 
 // V-10 (#532). Both rejection tests below used to assert against
 // `auxiliary_constructor_is_exact`, a test-local reimplementation of the ABI.
-// `ValidationAuxiliaryWitnessV1` has exactly 40 constructors (tags 0..39), so
-// `auxiliary_fixture.auxiliary_arity(40)` hits the generated catch-all `_ ->
+// `ValidationAuxiliaryWitnessV1` has exactly 41 constructors (tags 0..40), so
+// `auxiliary_fixture.auxiliary_arity(41)` hits the generated catch-all `_ ->
 // -1` and `list.length([]) == -1` is False — the sentinel proved a sentinel is
 // a sentinel and the production decoder was never invoked at all. They now
 // invoke the generated `ValidationAuxiliaryWitnessV1` decoder directly,
 // copying the sound sibling in validation-tail-controls-v1-abi.test.ak.
-test validation_auxiliary_v1_rejects_adjacent_tag_40() fail {
-  expect Some(data) = cbor.deserialise(#"d9052180")
+test validation_auxiliary_v1_rejects_adjacent_tag_41() fail {
+  expect Some(data) = cbor.deserialise(#"d9052280")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }
@@ -275,6 +276,28 @@ test validation_auxiliary_v1_accepts_the_canonical_constructor_zero() {
   expect Some(data) = cbor.deserialise(#"d87980")
   expect decoded: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   decoded == vm_machine_types.NoAuxiliaryWitness
+}
+
+/// Tag 40 is the last constructor: the redeemer fold's native-execution skip.
+test validation_auxiliary_v1_accepts_the_redeemer_context_skip_at_tag_40() {
+  expect Some(data) = cbor.deserialise(
+    #"d905219fd8799f00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ff4040d8799f400000ffd8799f400000ff01ff58202e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e58202f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f80ff",
+  )
+  expect decoded: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
+  when decoded is {
+    vm_machine_types.CekRedeemerContextSkipWitness {
+      control,
+      purpose_leaf,
+      source_leaf,
+      execution_siblings,
+    } -> and {
+        control.purpose_bound == 1,
+        purpose_leaf == #"2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+        source_leaf == #"2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f",
+        execution_siblings == [],
+      }
+    _ -> False
+  }
 }
 
 test resolve_inputs_v1_rejects_malformed_accumulator() fail {

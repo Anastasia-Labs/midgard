@@ -6,6 +6,7 @@ import { CEKConst, CEKError } from "@harmoniclabs/plutus-machine";
 
 import {
   type Bytes,
+  directArgumentsMatchKinds,
   directWitnessPayloadBytes,
   type MidgardCekDirectValueWitness,
   sameBytes,
@@ -35,6 +36,9 @@ export const verifyMidgardCekDirectBuiltin = (
   arguments_: readonly MidgardCekDirectValueWitness[],
   result: MidgardCekDirectValueWitness,
 ): boolean => {
+  // mapData (38) and unMapData (43) succeed only through the map-conversion
+  // arm, so each map step has one successor.
+  if (tag === 38n || tag === 43n) return false;
   try {
     if (
       directWitnessPayloadBytes([...arguments_, result]) >
@@ -97,6 +101,9 @@ export const verifyMidgardCekDirectBuiltinFailure = (
     ) {
       return false;
     }
+    // A known failure applies only to well-typed arguments; an ill-typed
+    // application fails through the type-failure arm instead.
+    if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
     return evaluateMidgardCekDirectBuiltin(tag, arguments_).kind === "failure";
   } catch {
     return false;

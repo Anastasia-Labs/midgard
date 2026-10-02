@@ -6,6 +6,8 @@ import {
   hashMidgardCekDataFrameChild,
   type MidgardCekDataFrame,
   type MidgardCekDataFrameBase,
+  midgardCekDataFrameCompleteFoldCursor,
+  midgardCekDataFrameSequenceChildren,
   validateMidgardCekDataFrame,
 } from "./cek-data-frame.validate-midgard-cek-data-frame.js";
 import {
@@ -21,6 +23,8 @@ import {
   summarizeMidgardCekSmallConstrData,
 } from "./cek-semantic.js";
 import { ensureHash32 } from "./codec/hash.js";
+
+const UINT32_MAX = 0xffff_ffff;
 import {
   appendMidgardValidationMerkleLeaf,
   emptyMidgardValidationMerkleFrontier,
@@ -29,11 +33,11 @@ import {
 
 const initialBase = ({
   tail,
-  expectedChildren,
+  expectedChildren = 0,
   sequence,
 }: {
   readonly tail: Bytes;
-  readonly expectedChildren: number;
+  readonly expectedChildren?: number;
   readonly sequence: MidgardCekDataSequenceSummary;
 }): MidgardCekDataFrameBase => ({
   tail: exactOptionalHash(tail, "cek_data_frame.tail"),
@@ -50,18 +54,15 @@ const initialBase = ({
 export const initialMidgardCekDataSmallConstrFrame = ({
   constructor,
   tail = Buffer.alloc(0),
-  expectedChildren,
 }: {
   readonly constructor: bigint;
   readonly tail?: Bytes;
-  readonly expectedChildren: number;
 }): MidgardCekDataFrame => {
   const frame = {
     kind: "constrSmall",
     constructor,
     ...initialBase({
       tail,
-      expectedChildren,
       sequence: emptyMidgardCekDataListSummary(),
     }),
   } as const;
@@ -74,13 +75,11 @@ export const initialMidgardCekDataLargeConstrFrame = ({
   constructorCborLength,
   constructorMemory,
   tail = Buffer.alloc(0),
-  expectedChildren,
 }: {
   readonly constructorCborRoot: Bytes;
   readonly constructorCborLength: bigint;
   readonly constructorMemory: bigint;
   readonly tail?: Bytes;
-  readonly expectedChildren: number;
 }): MidgardCekDataFrame => {
   const frame = {
     kind: "constrLarge",
@@ -89,7 +88,6 @@ export const initialMidgardCekDataLargeConstrFrame = ({
     constructorMemory,
     ...initialBase({
       tail,
-      expectedChildren,
       sequence: emptyMidgardCekDataListSummary(),
     }),
   } as const;
@@ -99,16 +97,13 @@ export const initialMidgardCekDataLargeConstrFrame = ({
 
 export const initialMidgardCekDataListFrame = ({
   tail = Buffer.alloc(0),
-  expectedChildren,
 }: {
   readonly tail?: Bytes;
-  readonly expectedChildren: number;
-}): MidgardCekDataFrame => {
+} = {}): MidgardCekDataFrame => {
   const frame = {
     kind: "list",
     ...initialBase({
       tail,
-      expectedChildren,
       sequence: emptyMidgardCekDataListSummary(),
     }),
   } as const;
@@ -142,7 +137,11 @@ export const appendMidgardCekDataFrameChild = (
   try {
     validateMidgardCekDataFrame(frame);
     exactSummary(child, "cek_data_frame_child.summary");
-    if (frame.foldCursor !== 0 || frame.childCount >= frame.expectedChildren) {
+    if (
+      frame.foldCursor !== 0 ||
+      frame.childCount >=
+        (frame.kind === "map" ? frame.expectedChildren : UINT32_MAX)
+    ) {
       return null;
     }
     const childFrontier = appendMidgardValidationMerkleLeaf(
@@ -174,14 +173,10 @@ export const foldMidgardCekDataFrameListChild = ({
 }): MidgardCekDataFrame | null => {
   try {
     validateMidgardCekDataFrame(frame);
-    if (
-      frame.kind === "map" ||
-      frame.childCount !== frame.expectedChildren ||
-      frame.foldCursor >= frame.expectedChildren
-    ) {
+    if (frame.kind === "map" || frame.foldCursor >= frame.childCount) {
       return null;
     }
-    const expectedIndex = frame.expectedChildren - frame.foldCursor - 1;
+    const expectedIndex = frame.childCount - frame.foldCursor - 1;
     const leafHash = hashMidgardCekDataFrameChild(childIndex, child);
     if (
       childIndex !== expectedIndex ||
@@ -273,13 +268,9 @@ export const finalizeMidgardCekDataFrame = (
 ): MidgardCekDataSummary | null => {
   try {
     validateMidgardCekDataFrame(frame);
-    const expectedFoldCursor =
-      frame.kind === "map"
-        ? frame.expectedChildren / 2
-        : frame.expectedChildren;
     if (
-      frame.childCount !== frame.expectedChildren ||
-      frame.foldCursor !== expectedFoldCursor
+      frame.childCount !== midgardCekDataFrameSequenceChildren(frame) ||
+      frame.foldCursor !== midgardCekDataFrameCompleteFoldCursor(frame)
     ) {
       return null;
     }

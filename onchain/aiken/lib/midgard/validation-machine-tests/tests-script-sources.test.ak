@@ -999,7 +999,6 @@ test script_sources_collects_protected_receive_source() {
       work_witness_cbor,
       claimed_successor: post,
     },
-    material.descriptor_cbor,
     vm_machine_types.NoSignerSetProof,
   )
 }
@@ -1069,7 +1068,6 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
       work_witness_cbor,
       claimed_successor: terminal,
     },
-    material.descriptor_cbor,
     vm_machine_types.EmptySignerSetProof { peaks: [] },
   )
 }

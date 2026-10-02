@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/cek_data_bytes_v1
 use midgard/fraud_proofs/native_tx/codec.{slice_len}
@@ -17,70 +18,125 @@ fn finish_trace(
   control: cek_data_bytes_v1.CekDataBytesControlV1,
   source: ByteArray,
   source_start: Int,
+  source_end: Int,
 ) -> cek_data_bytes_v1.CekDataBytesControlV1 {
   if control.stage == cek_data_bytes_v1.stage_terminal {
     control
   } else {
     expect
-      cek_data_bytes_v1.prevalidated_next_source_span(control) == cek_data_bytes_v1.next_source_span_v1(
+      cek_data_bytes_v1.prevalidated_next_source_span(control, source_end) == cek_data_bytes_v1.next_source_span_v1(
         control,
+        source_end,
       )
-    when cek_data_bytes_v1.next_source_span_v1(control) is {
-      None -> {
-        expect Some(next) = cek_data_bytes_v1.step_v1(control, None)
-        finish_trace(next, source, source_start)
-      }
-      Some(span) -> {
-        let source_bytes = slice_len(
-          source,
-          span.absolute_start - source_start,
-          span.length,
-        )
-        expect Some(next) = cek_data_bytes_v1.step_v1(
-          control,
-          Some(source_bytes),
-        )
-        finish_trace(next, source, source_start)
-      }
+    expect Some(next) = cek_data_bytes_v1.step_v1(
+      control,
+      source_end,
+      window(control, source, source_start, source_end),
+    )
+    finish_trace(next, source, source_start, source_end)
+  }
+}
+
+/// The authenticated window the next step of `control` reads, sliced out of
+/// `source` (which starts at absolute `source_start`).
+fn window(
+  control: cek_data_bytes_v1.CekDataBytesControlV1,
+  source: ByteArray,
+  source_start: Int,
+  source_end: Int,
+) -> Option<ByteArray> {
+  when cek_data_bytes_v1.next_source_span_v1(control, source_end) is {
+    None -> None
+    Some(span) ->
+      Some(slice_len(source, span.absolute_start - source_start, span.length))
+  }
+}
+
+/// Measures the indefinite byte string `source` (0x5f opener at absolute 0)
+/// and returns the control that leaves the measuring stage, or `None` when a
+/// measuring step refuses the authenticated window.
+fn measured(
+  source: ByteArray,
+) -> Option<cek_data_bytes_v1.CekDataBytesControlV1> {
+  measure_from(
+    cek_data_bytes_v1.initial_measure_control_v1(0),
+    source,
+    bytearray.length(source),
+  )
+}
+
+fn measure_from(
+  control: cek_data_bytes_v1.CekDataBytesControlV1,
+  source: ByteArray,
+  source_end: Int,
+) -> Option<cek_data_bytes_v1.CekDataBytesControlV1> {
+  if control.stage != cek_data_bytes_v1.stage_measure {
+    Some(control)
+  } else {
+    when
+      cek_data_bytes_v1.step_v1(
+        control,
+        source_end,
+        window(control, source, 0, source_end),
+      )
+    is {
+      None -> None
+      Some(next) -> measure_from(next, source, source_end)
     }
   }
 }
 
-fn finish_to_break(
+/// True when some step of the honest-window trace from `control` refuses.
+fn trace_refused(
   control: cek_data_bytes_v1.CekDataBytesControlV1,
   source: ByteArray,
-  source_start: Int,
-) -> cek_data_bytes_v1.CekDataBytesControlV1 {
-  if control.stage == cek_data_bytes_v1.stage_break {
-    control
+  source_end: Int,
+) -> Bool {
+  if control.stage == cek_data_bytes_v1.stage_terminal {
+    False
   } else {
-    when cek_data_bytes_v1.next_source_span_v1(control) is {
-      None -> {
-        expect Some(next) = cek_data_bytes_v1.step_v1(control, None)
-        finish_to_break(next, source, source_start)
-      }
-      Some(span) -> {
-        let source_bytes = slice_len(
-          source,
-          span.absolute_start - source_start,
-          span.length,
-        )
-        expect Some(next) = cek_data_bytes_v1.step_v1(
-          control,
-          Some(source_bytes),
-        )
-        finish_to_break(next, source, source_start)
-      }
+    when
+      cek_data_bytes_v1.step_v1(
+        control,
+        source_end,
+        window(control, source, 0, source_end),
+      )
+    is {
+      None -> True
+      Some(next) -> trace_refused(next, source, source_end)
     }
   }
+}
+
+fn measured_length(source: ByteArray) -> Option<Int> {
+  when measured(source) is {
+    None -> None
+    Some(control) -> Some(control.bytes_length)
+  }
+}
+
+fn indefinite(chunks: List<ByteArray>) -> ByteArray {
+  chunks
+    |> list.foldr(#"ff", fn(chunk, tail) { bytearray.concat(chunk, tail) })
+    |> bytearray.concat(#"5f", _)
+}
+
+fn chunk(length: Int) -> ByteArray {
+  let header = if length < 24 {
+    bytearray.from_int_big_endian(64 + length, 1)
+  } else {
+    #"58" |> bytearray.concat(bytearray.from_int_big_endian(length, 1))
+  }
+  bytearray.concat(header, builtin.replicate_byte(length, 106))
 }
 
 test proves_canonical_chunked_bytes_in_raw_and_virtual_coordinates() {
   let source = source_65()
   let terminal = finish_trace(
-    cek_data_bytes_v1.initial_control_v1(17, 70),
+    cek_data_bytes_v1.initial_measure_control_v1(17),
     source,
     17,
+    87,
   )
   expect Some(summary) = cek_data_bytes_v1.finalize_v1(terminal)
   and {
@@ -107,65 +163,106 @@ test decodes_the_typescript_terminal_control() {
 }
 
 test canonical_cardano_framing_boundaries_derive_exact_content_lengths() {
-  [
-    cek_data_bytes_v1.parse_syntax_v1(#"40", 1),
-    cek_data_bytes_v1.parse_syntax_v1(#"416a", 2),
-    cek_data_bytes_v1.parse_syntax_v1(#"576a", 24),
-    cek_data_bytes_v1.parse_syntax_v1(#"5818", 26),
-    cek_data_bytes_v1.parse_syntax_v1(#"583f", 65),
-    cek_data_bytes_v1.parse_syntax_v1(#"5840", 66),
-    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 70),
-    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 134),
-    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 136),
-  ] == [
-    Some(0),
-    Some(1),
-    Some(23),
-    Some(24),
-    Some(63),
-    Some(64),
-    Some(65),
-    Some(128),
-    Some(129),
-  ]
+  and {
+    [
+      cek_data_bytes_v1.parse_syntax_v1(#"40", 1),
+      cek_data_bytes_v1.parse_syntax_v1(#"416a", 2),
+      cek_data_bytes_v1.parse_syntax_v1(#"576a", 24),
+      cek_data_bytes_v1.parse_syntax_v1(#"5818", 26),
+      cek_data_bytes_v1.parse_syntax_v1(#"583f", 65),
+      cek_data_bytes_v1.parse_syntax_v1(#"5840", 66),
+    ] == [Some(0), Some(1), Some(23), Some(24), Some(63), Some(64)],
+    [
+      measured_length(indefinite([chunk(64), chunk(1)])),
+      measured_length(indefinite([chunk(64), chunk(64)])),
+      measured_length(indefinite([chunk(64), chunk(64), chunk(1)])),
+    ] == [Some(65), Some(128), Some(129)],
+  }
+}
+
+/// An indefinite opener never reaches the definite syntax stage: it is
+/// measured from the authenticated chunk headers instead.
+test the_definite_syntax_stage_refuses_an_indefinite_opener() {
+  and {
+    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 70) == None,
+    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 134) == None,
+  }
 }
 
 test rejects_noncanonical_and_impossible_framing_lengths() {
   and {
     cek_data_bytes_v1.parse_syntax_v1(#"5817", 25) == None,
     cek_data_bytes_v1.parse_syntax_v1(#"5841", 67) == None,
-    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 68) == None,
-    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 69) == None,
-    cek_data_bytes_v1.parse_syntax_v1(#"5f58", 93) == None,
     cek_data_bytes_v1.parse_syntax_v1(#"596a", 66) == None,
+    // An indefinite string of at most one chunk is not canonical.
+    measured_length(indefinite([chunk(1)])) == None,
+    measured_length(indefinite([chunk(64)])) == None,
+    // An empty chunk, an oversized chunk and a short leading chunk are not
+    // canonical chunkings.
+    measured_length(indefinite([chunk(64), #"40", chunk(1)])) == None,
+    measured_length(
+      #"5f5841"
+        |> bytearray.concat(builtin.replicate_byte(65, 106))
+        |> bytearray.concat(#"416aff"),
+    ) == None,
+    // A short leading chunk measures to a canonical total length; its
+    // layout is refused by the content pass.
+    measured_length(indefinite([chunk(1), chunk(64)])) == Some(65),
+    trace_refused(
+      cek_data_bytes_v1.initial_measure_control_v1(0),
+      indefinite([chunk(1), chunk(64)]),
+      70,
+    ),
+    // A non-bytes chunk header.
+    measured_length(indefinite([chunk(64), #"01"])) == None,
   }
 }
 
 test rejects_a_malformed_authenticated_chunk_header() {
   let source = source_65()
-  let initial = cek_data_bytes_v1.initial_control_v1(17, 70)
-  expect Some(blob_control) = cek_data_bytes_v1.step_v1(
-    initial,
-    Some(slice_len(source, 0, 2)),
+  expect Some(blob_control) = measure_from(
+    cek_data_bytes_v1.initial_measure_control_v1(0),
+    source,
+    70,
   )
-  expect Some(span) = cek_data_bytes_v1.next_source_span_v1(blob_control)
-  let source_bytes = slice_len(source, span.absolute_start - 17, span.length)
+  expect blob_control.stage == cek_data_bytes_v1.stage_blob
+  expect Some(span) = cek_data_bytes_v1.next_source_span_v1(blob_control, 70)
+  let source_bytes = slice_len(source, span.absolute_start, span.length)
   let malformed = #"00"
     |> bytearray.concat(
         slice_len(source_bytes, 1, bytearray.length(source_bytes) - 1),
       )
-  cek_data_bytes_v1.step_v1(blob_control, Some(malformed)) == None
+  cek_data_bytes_v1.step_v1(blob_control, 70, Some(malformed)) == None
 }
 
 test rejects_a_missing_or_wrong_indefinite_break() {
-  let break_control = finish_to_break(
-    cek_data_bytes_v1.initial_control_v1(17, 70),
-    source_65(),
-    17,
+  let source = source_65()
+  let initial = cek_data_bytes_v1.initial_measure_control_v1(0)
+  expect Some(after_first) = cek_data_bytes_v1.step_v1(
+    initial,
+    70,
+    window(initial, source, 0, 70),
   )
+  expect Some(at_break) = cek_data_bytes_v1.step_v1(
+    after_first,
+    70,
+    window(after_first, source, 0, 70),
+  )
+  expect at_break.stage == cek_data_bytes_v1.stage_measure
+  expect Some(break_window) = window(at_break, source, 0, 70)
   and {
-    cek_data_bytes_v1.step_v1(break_control, None) == None,
-    cek_data_bytes_v1.step_v1(break_control, Some(#"00")) == None,
+    break_window == #"ff",
+    cek_data_bytes_v1.step_v1(at_break, 70, None) == None,
+    cek_data_bytes_v1.step_v1(at_break, 70, Some(#"00")) == None,
+    // The enclosing source ends before the break: the last chunk cannot be
+    // measured, since a break must still follow it.
+    cek_data_bytes_v1.step_v1(
+      after_first,
+      69,
+      window(after_first, source, 0, 69),
+    ) == None,
+    // The enclosing source ends at the break: there is nothing to measure.
+    cek_data_bytes_v1.next_source_span_v1(after_first, 67) == None,
   }
 }
 
@@ -177,6 +274,7 @@ fn trace_pins_wire_data(
   control: cek_data_bytes_v1.CekDataBytesControlV1,
   source: ByteArray,
   source_start: Int,
+  source_end: Int,
 ) -> Bool {
   expect Some(wire_data) = cbor.deserialise(
     cek_data_bytes_v1.encode_control_v1(control),
@@ -185,27 +283,28 @@ fn trace_pins_wire_data(
   if control.stage == cek_data_bytes_v1.stage_terminal {
     True
   } else {
-    let source_bytes = when cek_data_bytes_v1.next_source_span_v1(control) is {
-      None -> None
-      Some(span) ->
-        Some(slice_len(source, span.absolute_start - source_start, span.length))
-    }
-    expect Some(next) = cek_data_bytes_v1.step_v1(control, source_bytes)
-    trace_pins_wire_data(next, source, source_start)
+    expect Some(next) = cek_data_bytes_v1.step_v1(
+      control,
+      source_end,
+      window(control, source, source_start, source_end),
+    )
+    trace_pins_wire_data(next, source, source_start, source_end)
   }
 }
 
 test bytes_control_data_matches_wire_encoding() {
   and {
     trace_pins_wire_data(
-      cek_data_bytes_v1.initial_control_v1(17, 70),
+      cek_data_bytes_v1.initial_measure_control_v1(17),
       source_65(),
       17,
+      87,
     ),
     trace_pins_wire_data(
       cek_data_bytes_v1.initial_control_v1(0, 4),
       #"436b6b6b",
       0,
+      4,
     ),
   }
 }

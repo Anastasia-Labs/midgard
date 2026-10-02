@@ -177,6 +177,28 @@ export const finalizeMidgardCekObserverItems = (input: {
     ? summarizeMidgardCekListData(input.items)
     : summarizeMidgardCekMapData(input.items);
 
+/**
+ * The redeemer map is folded down the execution frontier. `purposeBound`
+ * starts at the purpose count. Each select or skip step proves the execution
+ * leaf at exactly `purposeBound - 1` against the native control's execution
+ * frontier; that membership (`[execution-leaf]` / `[native-execution]`) is the
+ * pin, so the frontier index is derived and never named by the witness. The
+ * step is a select (auxiliary constructor 17) when the leaf carries a redeemer
+ * item leaf (language 3 or 128), and a skip (constructor 40) when it is a
+ * native execution (language 0, empty redeemer leaf); only one can apply at a
+ * given bound. Each select or skip lowers the bound by exactly one. The item
+ * steps between a select and its finish walk the selected item under
+ * `activeScanHash` without moving the bound. The select's
+ * `totalLength` is fixed by the item commitment through
+ * `commitment_from_frontier_root` (`[item-length]`). The fold completes at
+ * `cursor === redeemerCount`. Pairs are prepended, so the finished map
+ * follows the frontier ascending, which is Cardano's (tag, index) ledger
+ * order. On chain the monolithic verifier is `verify_cek_redeemer_data_step`
+ * in `cek.ak`; the split chain is `cek-context-redeemer-select-authenticate`,
+ * then `-select-initialize`, `-select-hash` and `-select-finish` for a
+ * select, and select-authenticate routes a skip straight to
+ * `cek-context-settle`.
+ */
 export type MidgardCekRedeemerContextControl = {
   readonly cursor: number;
   readonly mapItems: MidgardCekDataSequenceSummary;
@@ -184,17 +206,20 @@ export type MidgardCekRedeemerContextControl = {
   readonly activeRedeemerLeaf: Buffer;
   readonly activePurpose: MidgardCekDataSummary;
   readonly currentRedeemer: MidgardCekDataSummary;
+  readonly purposeBound: number;
 };
 
-export const initialMidgardCekRedeemerContextControl =
-  (): MidgardCekRedeemerContextControl => ({
-    cursor: 0,
-    mapItems: emptyMidgardCekDataPairSummary(),
-    activeScanHash: Buffer.alloc(0),
-    activeRedeemerLeaf: Buffer.alloc(0),
-    activePurpose: emptyMidgardCekDataSummary(),
-    currentRedeemer: emptyMidgardCekDataSummary(),
-  });
+export const initialMidgardCekRedeemerContextControl = (
+  purposeCount: number,
+): MidgardCekRedeemerContextControl => ({
+  cursor: 0,
+  mapItems: emptyMidgardCekDataPairSummary(),
+  activeScanHash: Buffer.alloc(0),
+  activeRedeemerLeaf: Buffer.alloc(0),
+  activePurpose: emptyMidgardCekDataSummary(),
+  currentRedeemer: emptyMidgardCekDataSummary(),
+  purposeBound: purposeCount,
+});
 
 export const encodeMidgardCekRedeemerContextControl = (
   control: MidgardCekRedeemerContextControl,
@@ -206,6 +231,7 @@ export const encodeMidgardCekRedeemerContextControl = (
     control.activeRedeemerLeaf,
     encodeMidgardCekDataSummary(control.activePurpose),
     encodeMidgardCekDataSummary(control.currentRedeemer),
+    BigInt(control.purposeBound),
   ]);
 
 export const hashMidgardCekRedeemerContextControl = (

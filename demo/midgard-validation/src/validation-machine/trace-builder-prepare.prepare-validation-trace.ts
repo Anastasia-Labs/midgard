@@ -2181,8 +2181,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             );
           }
           // Chained descriptor-fact attachment: each canonical group is one
-          // checkpointed machine step over the same finalize witness shape;
-          // the thin terminal finalize below requires all four facts exact.
+          // checkpointed machine step over the same finalize witness shape,
+          // its commitments derived from the terminal control alone; the thin
+          // terminal finalize below requires the scan fact to commit exactly
+          // the resolved descriptor.
           let factsProof = outputProof.terminal;
           while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
             pushWitness(
@@ -2194,14 +2196,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               }),
               {
                 kind: "ledgerOutputProofFinalize",
-                descriptorCbor,
                 signerProof: { kind: "none" },
               },
             );
-            const attached = attachMidgardLedgerOutputProofFacts(
-              factsProof,
-              descriptorCbor,
-            );
+            const attached = attachMidgardLedgerOutputProofFacts(factsProof);
             if (attached === null) {
               return yield* Effect.fail(
                 new Error("ledger output proof fact attachment failed closed"),
@@ -2219,7 +2217,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             }),
             {
               kind: "ledgerOutputProofFinalize",
-              descriptorCbor,
               signerProof,
             },
           );
@@ -2893,8 +2890,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               }
               // Chained descriptor-fact attachment: each canonical group is
               // one checkpointed machine step over the same finalize witness
-              // shape; the thin terminal finalize below requires all four
-              // facts exact.
+              // shape, its commitments derived from the terminal control
+              // alone; the thin terminal finalize below requires the scan
+              // fact to commit exactly the output's descriptor.
               let factsProof = outputProof.terminal;
               while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
                 pushWitness(
@@ -2916,14 +2914,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   }),
                   {
                     kind: "ledgerOutputProofFinalize",
-                    descriptorCbor: outputMaterial.descriptorCbor,
                     signerProof: { kind: "none" },
                   },
                 );
-                const attached = attachMidgardLedgerOutputProofFacts(
-                  factsProof,
-                  outputMaterial.descriptorCbor,
-                );
+                const attached =
+                  attachMidgardLedgerOutputProofFacts(factsProof);
                 if (attached === null) {
                   return yield* Effect.fail(
                     new Error(
@@ -2952,7 +2947,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 }),
                 {
                   kind: "ledgerOutputProofFinalize",
-                  descriptorCbor: outputMaterial.descriptorCbor,
                   signerProof,
                 },
               );

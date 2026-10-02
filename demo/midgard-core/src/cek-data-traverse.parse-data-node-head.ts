@@ -1,4 +1,5 @@
 import {
+  indefiniteMidgardCekDataBytesLength,
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
   parseMidgardCekDataBytesSyntax,
 } from "./cek-data-bytes.js";
@@ -98,10 +99,12 @@ const scalarEnd = (bytes: Buffer, start: number): number | null => {
           syntaxBytes,
           sourceLength,
         }) !== null
-      : parseMidgardCekDataBytesSyntax({
-          syntaxBytes,
-          sourceLength,
-        }) !== null;
+      : first === 0x5f
+        ? indefiniteMidgardCekDataBytesLength(sourceLength) !== null
+        : parseMidgardCekDataBytesSyntax({
+            syntaxBytes,
+            sourceLength,
+          }) !== null;
   return valid ? end : null;
 };
 
