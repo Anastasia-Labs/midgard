@@ -6,7 +6,7 @@
   },
   {
     "file": "da-committee-node/src/da/libp2p/payload-protocols.da-libp2p-payload-protocol-handlers.ts",
-    "max": 512,
+    "max": 511,
     "reason": "DaLibp2pPayloadProtocolHandlers is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
@@ -851,8 +851,8 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/journey-runner.run-journey.ts",
-    "max": 507,
-    "reason": "runJourney is the dominant indivisible declaration (468 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 506,
+    "reason": "runJourney is the dominant indivisible declaration (464 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/journey-session.open-journey-session.ts",
@@ -1011,7 +1011,7 @@
   },
   {
     "file": "midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
-    "max": 1015,
+    "max": 1010,
     "reason": "makeEventHistoryOwner is the dominant indivisible declaration (952 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1041,7 +1041,7 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.database-operations-program.ts",
-    "max": 1263,
+    "max": 1319,
     "reason": "databaseOperationsProgram is the dominant indivisible declaration (1153 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1271,8 +1271,8 @@
   },
   {
     "file": "midgard-node/tests/l1-control-plane.test.ts",
-    "max": 1419,
-    "reason": "Retained test registration “L1 control-plane serialization” (1397 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 1257,
+    "reason": "Retained test registration “L1 control-plane serialization” (1237 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
@@ -1471,8 +1471,8 @@
   },
   {
     "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
-    "max": 567,
-    "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (487 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 560,
+    "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (480 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-sdk/tests/availability-challenge.q58-canonical-da-availability-commitment-v1.ts",
@@ -1581,13 +1581,13 @@
   },
   {
     "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
-    "max": 874,
-    "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (813 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 872,
+    "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
-    "max": 620,
-    "reason": "createBridge is the dominant indivisible declaration (588 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 610,
+    "reason": "createBridge is the dominant indivisible declaration (575 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
@@ -1626,18 +1626,18 @@
   },
   {
     "file": "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
-    "max": 540,
-    "reason": "createWatcherOperationsObservability is the dominant indivisible declaration (512 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 521,
+    "reason": "createWatcherOperationsObservability is the dominant indivisible declaration (504 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts",
-    "max": 1585,
+    "max": 1564,
     "reason": "createWatcherUserEventRuntime is the dominant indivisible declaration (1488 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
-    "max": 781,
-    "reason": "createWatcherRuntime is the dominant indivisible declaration (686 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 780,
+    "reason": "createWatcherRuntime is the dominant indivisible declaration (680 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/storage/public-da-client.watcher-public-da-client.ts",
@@ -1686,7 +1686,7 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts",
-    "max": 838,
+    "max": 842,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1781,7 +1781,7 @@
   },
   {
     "file": "midgard-watcher/tests/storage/retained-da-runtime.test.ts",
-    "max": 1218,
+    "max": 1145,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1806,7 +1806,7 @@
   },
   {
     "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
-    "max": 1055,
+    "max": 1054,
     "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (1006 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

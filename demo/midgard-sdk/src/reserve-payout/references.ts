@@ -1,4 +1,4 @@
-import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   type LucidEvolution,
   type Script,
@@ -7,62 +7,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { isSameScriptRef } from "../reference-scripts.js";
+import {
+  fetchReferenceScriptUtxosProgram,
+  type ReferenceScriptAuthPolicyRef,
+  type ReferenceScriptResolved,
+} from "../reference-scripts.js";
 import * as SDK from "./primitives.js";
-
-type ReferenceScriptTarget = {
-  readonly name: string;
-  readonly script: Script;
-};
-
-export type ReferenceScriptResolved = {
-  readonly name: string;
-  readonly utxo: UTxO;
-};
-
-const fetchReferenceScriptUtxosProgram = (
-  lucid: LucidEvolution,
-  referenceScriptsAddress: string,
-  targets: readonly ReferenceScriptTarget[],
-): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const referenceScriptUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(referenceScriptsAddress),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
-          cause,
-        }),
-    });
-    return yield* Effect.forEach(targets, (target) =>
-      Effect.gen(function* () {
-        const resolved = [...referenceScriptUtxos]
-          .filter((utxo) => isSameScriptRef(utxo.scriptRef, target.script))
-          .sort(compareOutRefs)[0];
-        if (resolved === undefined) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message: "Missing reference script",
-              cause: `${target.name} at ${referenceScriptsAddress}`,
-            }),
-          );
-        }
-        return {
-          name: target.name,
-          utxo: resolved,
-        };
-      }),
-    );
-  }).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof SDK.StateQueueError
-        ? cause
-        : new SDK.StateQueueError({
-            message: "Failed to resolve required reference scripts",
-            cause,
-          }),
-    ),
-  );
 
 export type ReservePayoutReferenceScripts = {
   readonly depositMinting?: UTxO;
@@ -100,6 +50,9 @@ const referenceScriptFieldByName = new Map<
   keyof ReservePayoutReferenceScripts
 >(referenceScriptFields);
 
+/** Resolves the targets no explicit reference covers, each through its role
+ * token under `authPolicy` (the node's live resolution; a payout build runs
+ * in the settlement worker's bounded heap, so it never lists the wallet). */
 export const resolveReferenceScriptsProgram = (
   lucid: LucidEvolution,
   address: string | undefined,
@@ -107,6 +60,7 @@ export const resolveReferenceScriptsProgram = (
     readonly name: string;
     readonly script: Script;
   }[],
+  authPolicy: ReferenceScriptAuthPolicyRef,
   explicit?: ReservePayoutReferenceScripts,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
@@ -123,6 +77,7 @@ export const resolveReferenceScriptsProgram = (
       lucid,
       address,
       unresolvedTargets,
+      authPolicy,
     );
   });
 

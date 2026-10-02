@@ -986,7 +986,7 @@
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
-    "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts": {
+    "midgard-watcher/src/runtime/operations-observability.alert-book.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [
         "left.code.localeCompare(right.code) ||",

@@ -17,6 +17,7 @@ import { captureEventHistoryWitness } from "./history-proof.js";
 import {
   type EventHistoryDeployment,
   type EventHistoryPresence,
+  EventHistoryReadError,
   fetchEventHistoryOrders,
 } from "./history-query.js";
 
@@ -59,7 +60,10 @@ export const historyEventFromPresence = (
     anchor.node.payload === "RootContent" ||
     !("Order" in anchor.node.payload)
   )
-    throw new Error("Expected an authenticated history Order");
+    throw new EventHistoryReadError(
+      "Expected an authenticated history Order",
+      "authenticated-state-invalid",
+    );
   const captured = captureEventHistoryWitness(
     history,
     deployment.policyId,
@@ -72,8 +76,9 @@ export const historyEventFromPresence = (
   const time = Number(facts.inclusion_time);
   const inclusionTime = new Date(time);
   if (!Number.isSafeInteger(time) || !Number.isFinite(inclusionTime.getTime()))
-    throw new Error(
+    throw new EventHistoryReadError(
       "History inclusion time cannot be represented by the event reader",
+      "authenticated-state-invalid",
     );
   const eventCbor = plutusConstrFieldCbor(captured.payloadCbor, [0]);
   const base: HistoryEventUTxO = {
@@ -107,6 +112,8 @@ export const historyEventFromPresence = (
       };
 };
 
+/** Its `cause` is the refusal itself; `eventHistoryReadErrorOf` recovers a
+ * classified one. */
 export const historyEventReadError = (cause: unknown) =>
   new LucidError({
     message: `Failed to read authenticated event history: ${String(cause)}`,

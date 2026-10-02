@@ -8,6 +8,7 @@ import "./reference-scripts.reference-script-auth-timelock-ms.js";
 import "./reference-scripts.reference-script-auth-token-names.js";
 import "./reference-scripts.create-reference-script-auth-policy.js";
 import "./reference-scripts.resolve-reference-script-publication-layout.js";
+import "./reference-scripts.fetch-reference-script-utxos-program.js";
 export {
   assertReferenceScriptAuthMinimumRemaining,
   assertReferenceScriptRawBodiesFitL1Envelope,
@@ -36,6 +37,13 @@ export {
   SCRIPT_REF_OUTPUT_LOVELACE,
   SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE,
 } from "./reference-scripts.create-reference-script-auth-policy.js";
+export {
+  acceptsReferenceScriptUtxo,
+  fetchReferenceScriptUtxosProgram,
+  REFERENCE_SCRIPT_PER_TARGET_READ_LIMIT,
+  type ReferenceScriptProviderRead,
+  resolveReferenceScriptUtxo,
+} from "./reference-scripts.fetch-reference-script-utxos-program.js";
 export {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,

@@ -26,6 +26,53 @@ export type AuthenticatedHistoryNode = {
   readonly key: string | null;
 };
 
+/** Whether a refused history read can clear on a later read.
+ * `snapshot-stale`: the provider's view is incomplete or straddles a change
+ * (a partial list, retained data not yet or no longer visible).
+ * `authenticated-state-invalid`: authenticated state breaks a rule no read
+ * repairs. `invalid-request`: the caller asked for a malformed key. */
+export type EventHistoryReadClassification =
+  | "snapshot-stale"
+  | "authenticated-state-invalid"
+  | "invalid-request";
+
+/** A classified refusal. Its `name` and `message` are those of the plain
+ * `Error` it replaces, so rendered text is unchanged. */
+export class EventHistoryReadError extends Error {
+  readonly _tag = "EventHistoryReadError";
+  readonly retryable: boolean;
+
+  constructor(
+    message: string,
+    readonly classification: EventHistoryReadClassification,
+  ) {
+    super(message);
+    this.retryable = classification === "snapshot-stale";
+  }
+}
+
+const RETAINED_DATA_UNAVAILABLE =
+  "Authenticated retained event data is unavailable on L1";
+
+const stale = (message: string) =>
+  new EventHistoryReadError(message, "snapshot-stale");
+
+const invalid = (message: string) =>
+  new EventHistoryReadError(message, "authenticated-state-invalid");
+
+/** The classified refusal `error` is, or wraps one level down (the
+ * `LucidError` the history event readers fail with). */
+export const eventHistoryReadErrorOf = (
+  error: unknown,
+): EventHistoryReadError | undefined =>
+  error instanceof EventHistoryReadError
+    ? error
+    : typeof error === "object" &&
+        error !== null &&
+        (error as { cause?: unknown }).cause instanceof EventHistoryReadError
+      ? ((error as { cause?: unknown }).cause as EventHistoryReadError)
+      : undefined;
+
 export const eventHistoryKey = (id: OutputReference) =>
   hashHexWithBlake2b(Data.to(id, OutputReference), 32);
 
@@ -46,11 +93,11 @@ export const authenticateHistoryNodes = (
       utxo.scriptRef != null ||
       utxo.datum == null
     ) {
-      throw new Error("Invalid authenticated history output shape");
+      throw invalid("Invalid authenticated history output shape");
     }
     const node = Data.from(utxo.datum, EventHistoryNode);
     if (node.protected_until > EVENT_HISTORY_MAX_PROTECTION_TIME)
-      throw new Error(
+      throw invalid(
         "History protection timestamp exceeds its funded encoding width",
       );
     const key = node.position === "Root" ? null : node.position.Key[0];
@@ -59,15 +106,15 @@ export const authenticateHistoryNodes = (
       tokens[0]![0] !== deployment.policyId + (key ?? "") ||
       tokens[0]![1] !== 1n
     ) {
-      throw new Error("History token does not authenticate its complete key");
+      throw invalid("History token does not authenticate its complete key");
     }
     if (
       (key === null) !== (node.payload === "RootContent") ||
       (key !== null && node.next !== null && key >= node.next)
     ) {
-      throw new Error("Invalid history role or successor ordering");
+      throw invalid("Invalid history role or successor ordering");
     }
-    if (seen.has(key)) throw new Error("Duplicate authenticated history key");
+    if (seen.has(key)) throw invalid("Duplicate authenticated history key");
     seen.add(key);
     result.push({ utxo, node, key });
   }
@@ -90,7 +137,10 @@ export const selectHistoryWitness = (
   key: string,
 ): AuthenticatedHistoryNode => {
   if (!/^[0-9a-f]{64}$/u.test(key))
-    throw new Error("History key must be a full 32-byte lowercase hash");
+    throw new EventHistoryReadError(
+      "History key must be a full 32-byte lowercase hash",
+      "invalid-request",
+    );
   const candidates = nodes.filter(
     (entry) =>
       entry.key === key ||
@@ -98,7 +148,7 @@ export const selectHistoryWitness = (
         (entry.node.next === null || key < entry.node.next)),
   );
   if (candidates.length !== 1)
-    throw new Error(
+    throw stale(
       "History snapshot has no unique authenticated witness; refresh the L1 snapshot",
     );
   return candidates[0]!;
@@ -121,12 +171,10 @@ const openHistoryOrder = (
     anchor.node.payload === "RootContent" ||
     !("Order" in anchor.node.payload)
   )
-    throw new Error("History presence requires an authenticated Order");
+    throw invalid("History presence requires an authenticated Order");
   const facts = anchor.node.payload.Order.facts;
   if (datumToHash(Data.to(facts.event_id, OutputReference)) !== anchor.key) {
-    throw new Error(
-      "History order identity differs from its authenticated key",
-    );
+    throw invalid("History order identity differs from its authenticated key");
   }
   let loaded: { payload: EventHistoryPayload; retainedDataUtxo?: UTxO };
   let rawPayload: string;
@@ -145,11 +193,10 @@ const openHistoryOrder = (
           aikenSerialisedPlutusDataCborPreservingMapOrder(candidate.datum),
         ) === expectedHash,
     );
-    if (utxo?.datum == null)
-      throw new Error("Authenticated retained event data is unavailable on L1");
+    if (utxo?.datum == null) throw stale(RETAINED_DATA_UNAVAILABLE);
     const retained = Data.from(utxo.datum, EventHistoryData);
     if (retained.event_key !== anchor.key)
-      throw new Error(
+      throw invalid(
         "Retained event data does not bind its authenticated order",
       );
     rawPayload = plutusConstrFieldCbor(utxo.datum, [1]);
@@ -166,9 +213,7 @@ const openHistoryOrder = (
     "Inline" in facts.location &&
     BigInt(payloadCbor.length / 2) > deployment.inlineLimitBytes
   ) {
-    throw new Error(
-      "Authenticated inline payload exceeds the deployment bound",
-    );
+    throw invalid("Authenticated inline payload exceeds the deployment bound");
   }
   const payloadId =
     "DepositPayload" in payload
@@ -178,7 +223,7 @@ const openHistoryOrder = (
     payloadId.transactionId !== facts.event_id.transactionId ||
     payloadId.outputIndex !== facts.event_id.outputIndex
   ) {
-    throw new Error("Payload identity differs from the authenticated order");
+    throw invalid("Payload identity differs from the authenticated order");
   }
   return { kind: "Present", anchor, payloadCbor, ...loaded };
 };
@@ -195,12 +240,12 @@ const completeHistorySnapshot = (
         : left.key.localeCompare(right.key),
   );
   if (ordered[0]?.key !== null)
-    throw new Error(
+    throw stale(
       "Authenticated history Root is unavailable; refresh the L1 snapshot",
     );
   for (let index = 0; index < ordered.length; index++) {
     if (ordered[index]!.node.next !== (ordered[index + 1]?.key ?? null))
-      throw new Error(
+      throw stale(
         "Authenticated history snapshot has missing or disconnected nodes; refresh L1",
       );
   }
@@ -221,53 +266,113 @@ export const readEventHistoryOrders = (
     )
     .map((anchor) => openHistoryOrder(anchor, deployment, retainedUtxos));
 
+type HistoryProvider = { utxosAt(address: string): Promise<UTxO[]> };
+
+/** List reads one history read takes at most while the list keeps moving
+ * under its retention read. */
+const HISTORY_SNAPSHOT_LIST_READ_LIMIT = 3;
+
+const sameOutRefs = (left: readonly UTxO[], right: readonly UTxO[]) => {
+  const keys = (utxos: readonly UTxO[]) =>
+    utxos.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`).sort();
+  const [a, b] = [keys(left), keys(right)];
+  return a.length === b.length && a.every((key, index) => key === b[index]);
+};
+
+/**
+ * The list and retention reads are separate provider reads, so a retirement
+ * and reclaim landing between them leave a listed order whose retained data
+ * is gone. On that refusal the list is read again: a list that moved is
+ * returned to be opened afresh, while an unchanged list, any other refusal or
+ * a list that keeps moving rethrows `refusal`.
+ */
+const relistAfterRetentionMiss = async (
+  provider: HistoryProvider,
+  deployment: EventHistoryDeployment,
+  listUtxos: readonly UTxO[],
+  listReads: number,
+  refusal: unknown,
+): Promise<UTxO[]> => {
+  if (
+    !(refusal instanceof EventHistoryReadError) ||
+    refusal.message !== RETAINED_DATA_UNAVAILABLE ||
+    listReads >= HISTORY_SNAPSHOT_LIST_READ_LIMIT
+  )
+    throw refusal;
+  const relisted = await provider.utxosAt(deployment.address);
+  if (sameOutRefs(listUtxos, relisted)) throw refusal;
+  return relisted;
+};
+
 export const fetchEventHistoryOrders = async (
-  provider: { utxosAt(address: string): Promise<UTxO[]> },
+  provider: HistoryProvider,
   deployment: EventHistoryDeployment,
 ): Promise<EventHistoryPresence[]> => {
-  const nodes = completeHistorySnapshot(
-    authenticateHistoryNodes(
-      await provider.utxosAt(deployment.address),
-      deployment,
-    ),
-  );
-  const orders = nodes.filter(
-    (entry) =>
-      entry.node.payload !== "RootContent" && "Order" in entry.node.payload,
-  );
-  const external = orders.some(
-    (entry) =>
-      entry.node.payload !== "RootContent" &&
-      "Order" in entry.node.payload &&
-      "External" in entry.node.payload.Order.facts.location,
-  );
-  const retained = external
-    ? await provider.utxosAt(deployment.retentionAddress)
-    : [];
-  return orders.map((anchor) => openHistoryOrder(anchor, deployment, retained));
+  let listUtxos = await provider.utxosAt(deployment.address);
+  for (let listReads = 1; ; listReads++) {
+    const nodes = completeHistorySnapshot(
+      authenticateHistoryNodes(listUtxos, deployment),
+    );
+    const orders = nodes.filter(
+      (entry) =>
+        entry.node.payload !== "RootContent" && "Order" in entry.node.payload,
+    );
+    const external = orders.some(
+      (entry) =>
+        entry.node.payload !== "RootContent" &&
+        "Order" in entry.node.payload &&
+        "External" in entry.node.payload.Order.facts.location,
+    );
+    const retained = external
+      ? await provider.utxosAt(deployment.retentionAddress)
+      : [];
+    try {
+      return orders.map((anchor) =>
+        openHistoryOrder(anchor, deployment, retained),
+      );
+    } catch (refusal) {
+      listUtxos = await relistAfterRetentionMiss(
+        provider,
+        deployment,
+        listUtxos,
+        listReads,
+        refusal,
+      );
+    }
+  }
 };
 
 /** Canonical chain UTxOs provide authority. Returned bytes are only preimages. */
 export const fetchEventHistoryWitness = async (
-  provider: { utxosAt(address: string): Promise<UTxO[]> },
+  provider: HistoryProvider,
   deployment: EventHistoryDeployment,
   id: OutputReference,
 ): Promise<EventHistoryWitness> => {
   const key = await Effect.runPromise(eventHistoryKey(id));
-  const nodes = authenticateHistoryNodes(
-    await provider.utxosAt(deployment.address),
-    deployment,
-  );
-  const anchor = selectHistoryWitness(nodes, key);
-  if (
-    anchor.key !== key ||
-    anchor.node.payload === "RootContent" ||
-    "Filler" in anchor.node.payload
-  )
-    return { kind: "Absent", anchor };
-  const retained =
-    "External" in anchor.node.payload.Order.facts.location
-      ? await provider.utxosAt(deployment.retentionAddress)
-      : [];
-  return openHistoryOrder(anchor, deployment, retained);
+  let listUtxos = await provider.utxosAt(deployment.address);
+  for (let listReads = 1; ; listReads++) {
+    const nodes = authenticateHistoryNodes(listUtxos, deployment);
+    const anchor = selectHistoryWitness(nodes, key);
+    if (
+      anchor.key !== key ||
+      anchor.node.payload === "RootContent" ||
+      "Filler" in anchor.node.payload
+    )
+      return { kind: "Absent", anchor };
+    const retained =
+      "External" in anchor.node.payload.Order.facts.location
+        ? await provider.utxosAt(deployment.retentionAddress)
+        : [];
+    try {
+      return openHistoryOrder(anchor, deployment, retained);
+    } catch (refusal) {
+      listUtxos = await relistAfterRetentionMiss(
+        provider,
+        deployment,
+        listUtxos,
+        listReads,
+        refusal,
+      );
+    }
+  }
 };

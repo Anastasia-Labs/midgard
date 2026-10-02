@@ -1,20 +1,10 @@
-import {
-  CML,
-  Data,
-  datumToHash,
-  type TxSignBuilder,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
 
-import { CredentialD, Value } from "../common.js";
 import { MAX_VALIDITY_RANGE_LENGTH_MS } from "../protocol-parameters.js";
-import { assetsToValue } from "../reserve-payout/assets.js";
 import {
   buildEventHistoryAdmission,
   buildEventHistoryPublication,
-  type EventHistoryAdmission,
   type EventHistoryBuildContext,
-  type EventHistoryPayloadInput,
   EventHistoryPredecessorConflictError,
   EventHistoryPredecessorProtectedError,
 } from "./history-build.js";
@@ -22,6 +12,22 @@ import {
   prepareEventHistoryPayload,
   prepareEventHistoryPayloadCbor,
 } from "./history-payload.js";
+import {
+  abandonAttempts,
+  abandonPublicationReceipt,
+  adoptLandedAbandonedAdmission,
+  adoptLandedAbandonedPublication,
+  type EventHistoryAbandonedAttempt,
+} from "./history-submit-abandoned.js";
+import {
+  type EventHistorySubmissionRequest,
+  eventHistorySubmissionRequestHash,
+} from "./history-submit-request.js";
+
+export {
+  type EventHistorySubmissionRequest,
+  eventHistorySubmissionRequestHash,
+} from "./history-submit-request.js";
 
 type OutRef = Pick<UTxO, "txHash" | "outputIndex">;
 export type EventHistorySubmissionAttempt = OutRef & {
@@ -36,15 +42,23 @@ export type EventHistorySubmissionAttempt = OutRef & {
 export type EventHistorySubmissionCheckpoint = {
   readonly requestHash: string;
   readonly publication?: OutRef;
-  /** Retain the completed publication for exact-body recovery after rollback. */
+  /** Retain the completed publication for exact-body recovery after a
+   * rollback, until its validity ends unseen and it is abandoned. */
   readonly publicationAttempt?: EventHistorySubmissionAttempt;
   readonly admission?: EventHistorySubmissionAttempt;
   readonly pending?: EventHistorySubmissionAttempt;
+  /** Attempts settled as InputConflict. They hold no input reservations, and
+   * each is kept while a rollback could still land it (see
+   * adoptLandedAbandonedAdmission). */
+  readonly abandoned?: readonly EventHistoryAbandonedAttempt[];
 };
 
-/** InputConflict means a definitive ledger rejection, never a timeout or an
- * absent provider output. A confirmed transaction whose outputs are not visible
- * is still Confirmed. The driver polls the specific publication separately. */
+/** InputConflict means the attempt cannot land on the current chain: a
+ * definitive ledger rejection, or a validity interval that ended below a
+ * chain point the provider indexed without seeing it. Never a confirmation
+ * timeout or an absent provider output alone. A confirmed transaction whose
+ * outputs are not visible is still Confirmed. The driver polls the specific
+ * publication separately. */
 export type EventHistorySubmissionOutcome =
   | { readonly kind: "Confirmed" }
   | { readonly kind: "InputConflict" }
@@ -65,8 +79,23 @@ export class EventHistorySubmissionPendingError extends Error {
   }
 }
 
+/** Thrown by a driver's `save` when it recorded nothing because another local
+ * submission already holds one of the pending attempt's inputs. The attempt
+ * was neither persisted nor broadcast, so the workflow rebuilds against the
+ * current chain, as after an L1 input conflict. */
+export class EventHistoryInputReservedError extends Error {
+  constructor(readonly outRef: string) {
+    super(`History transaction input ${outRef} is held by another submission`);
+    this.name = "EventHistoryInputReservedError";
+  }
+}
+
 export type EventHistorySubmissionDriver = {
-  /** Must durably replace the checkpoint before resolving. */
+  /** Must durably replace the checkpoint before resolving. When the new
+   * checkpoint carries a pending attempt whose inputs another local
+   * submission holds, it must write nothing and throw
+   * EventHistoryInputReservedError; that is the only error the workflow
+   * retries. Any other failure stops it for reconciliation. */
   readonly save: (
     checkpoint: EventHistorySubmissionCheckpoint,
   ) => Promise<void>;
@@ -77,6 +106,11 @@ export type EventHistorySubmissionDriver = {
     attempt: EventHistorySubmissionAttempt,
   ) => Promise<EventHistorySubmissionOutcome>;
   readonly reconcile: (
+    attempt: EventHistorySubmissionAttempt,
+  ) => Promise<EventHistorySubmissionOutcome>;
+  /** Reads the exact hash's L1 status without broadcasting. Without it, an
+   * abandoned admission that a rollback lands is never adopted. */
+  readonly observe?: (
     attempt: EventHistorySubmissionAttempt,
   ) => Promise<EventHistorySubmissionOutcome>;
   readonly funding: () => Promise<readonly UTxO[]>;
@@ -97,40 +131,6 @@ export const eventHistoryProtectionWaitBoundMs = (
 ): number =>
   Number(MAX_VALIDITY_RANGE_LENGTH_MS + recipe.protectionDurationMs) +
   ADMISSION_LOWER_BOUND_BACKOFF_MS;
-
-export type EventHistorySubmissionRequest = Omit<
-  EventHistoryAdmission,
-  "validFrom" | "validTo" | "externalData" | "payload" | "payloadCbor"
-> &
-  EventHistoryPayloadInput;
-
-export const eventHistorySubmissionRequestHash = (
-  policyId: string,
-  request: EventHistorySubmissionRequest,
-  recipe: EventHistoryBuildContext["recipe"],
-): string => {
-  if (request.payload !== undefined && request.payloadCbor !== undefined)
-    throw new Error("History payload must have exactly one encoding source");
-  const plan =
-    request.payloadCbor === undefined
-      ? prepareEventHistoryPayload(request.payload, request.reclaimAuth, recipe)
-      : prepareEventHistoryPayloadCbor(
-          request.payloadCbor,
-          request.reclaimAuth,
-          recipe,
-        );
-  const fields = [
-    Data.to(policyId),
-    plan.payloadCbor,
-    Data.to(request.reclaimAuth, CredentialD),
-    Data.to(assetsToValue(request.assets), Value),
-    Data.to(request.structuralLovelace),
-    Data.to(request.structuralRefundKey),
-  ];
-  const list = CML.PlutusData.from_cbor_hex(Data.to([])).as_list()!;
-  for (const field of fields) list.add(CML.PlutusData.from_cbor_hex(field));
-  return datumToHash(CML.PlutusData.new_list(list).to_cbor_hex());
-};
 
 /** Both event kinds use the same publication/admission state machine. It never
  * changes the nonce, original funds, payload or reclaim authorization on retry.
@@ -235,6 +235,10 @@ export const submitEventHistory = async ({
     await driver.waitUntil(target);
     checkTime();
   };
+  const nonceSpent = async () =>
+    (await context.lucid.utxosByOutRef([request.nonce])).length !== 1;
+  const revive = () =>
+    adoptLandedAbandonedAdmission(checkpoint, driver, nonceSpent, save);
   const resolve = async (
     attempt: EventHistorySubmissionAttempt,
     operation: () => Promise<EventHistorySubmissionOutcome>,
@@ -258,7 +262,10 @@ export const submitEventHistory = async ({
     const outRef = { txHash: attempt.txHash, outputIndex: attempt.outputIndex };
     await save(
       outcome.kind === "InputConflict"
-        ? settled
+        ? {
+            ...settled,
+            abandoned: abandonAttempts(checkpoint, [attempt], driver.now()),
+          }
         : {
             ...settled,
             ...(attempt.phase === "Publication"
@@ -269,7 +276,8 @@ export const submitEventHistory = async ({
     return outcome;
   };
   // Publication outputs may disappear in a rollback. Reconcile the exact body
-  // before admission, even when an earlier run saved a confirmation receipt.
+  // before admission, even when an earlier run saved a confirmation receipt;
+  // one that can no longer land is abandoned and published again.
   if (checkpoint.publication !== undefined) {
     const publication = checkpoint.publicationAttempt;
     if (
@@ -291,7 +299,14 @@ export const submitEventHistory = async ({
         cause,
       );
     }
-    if (outcome.kind !== "Confirmed")
+    if (outcome.kind === "InputConflict") {
+      // Settle a pending admission first. Rewriting it unchanged could meet
+      // another submission's hold on its inputs; once settled it holds none.
+      const pending = checkpoint.pending;
+      if (pending !== undefined)
+        await resolve(pending, () => driver.reconcile(pending));
+      await save(abandonPublicationReceipt(checkpoint, driver.now()));
+    } else if (outcome.kind !== "Confirmed")
       throw new EventHistorySubmissionPendingError(
         checkpoint,
         "Original history publication confirmation is unresolved",
@@ -301,8 +316,17 @@ export const submitEventHistory = async ({
   // on resume too, so a rollback cannot turn a local checkpoint into evidence.
   if (checkpoint.admission !== undefined) {
     const { admission, ...rest } = checkpoint;
-    await save({ ...rest, pending: admission });
+    // Another submission's stale-view attempt can hold a receipt input.
+    for (;;)
+      try {
+        await save({ ...rest, pending: admission });
+        break;
+      } catch (cause) {
+        if (!(cause instanceof EventHistoryInputReservedError)) throw cause;
+        await waitUntil(checkTime() + retryDelayMs);
+      }
   }
+  if (checkpoint.pending?.phase === "Admission") await revive();
   if (checkpoint.pending !== undefined) {
     const pending = checkpoint.pending;
     await resolve(pending, () => driver.reconcile(pending));
@@ -321,11 +345,30 @@ export const submitEventHistory = async ({
       outputIndex,
       transactionCbor: tx.toCBOR(),
     };
-    await save({ ...checkpoint, pending: attempt });
+    // resolve() settled every earlier attempt, so this adds a pending attempt
+    // and never replaces one that could still land.
+    try {
+      await save({ ...checkpoint, pending: attempt });
+    } catch (cause) {
+      // Another local submission is spending an input, so this body would
+      // meet an L1 input conflict. Nothing is in flight; the caller rebuilds.
+      if (cause instanceof EventHistoryInputReservedError)
+        return { kind: "InputReserved" } as const;
+      throw cause;
+    }
     return resolve(attempt, () => driver.submit(tx, attempt));
   };
+  // Every loop below settles its broadcasts before exhausting its attempts,
+  // so nothing is in flight and a rerun can continue at once.
+  const exhausted = (message: string) =>
+    new EventHistorySubmissionPendingError(
+      checkpoint,
+      message,
+      undefined,
+      checkTime(),
+    );
   const requireNonce = async () => {
-    if ((await context.lucid.utxosByOutRef([request.nonce])).length !== 1)
+    if ((await nonceSpent()) && !(await revive()))
       throw new EventHistorySubmissionPendingError(
         checkpoint,
         "History nonce is unavailable; reconcile its spending transaction",
@@ -333,12 +376,21 @@ export const submitEventHistory = async ({
   };
   if (plan.kind === "External" && checkpoint.publication === undefined) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      checkTime();
+      const now = checkTime();
       await requireNonce();
+      // An abandoned admission (adopted by requireNonce) or publication that
+      // a rollback landed replaces publishing again.
+      if (checkpoint.admission !== undefined)
+        return { ...checkpoint, admission: checkpoint.admission };
+      if (await adoptLandedAbandonedPublication(checkpoint, driver, save))
+        break;
       const built = await buildEventHistoryPublication(
         { ...context, fundingInputs: await driver.funding() },
         plan.payloadCbor,
         request.reclaimAuth,
+        // An admission's upper bound: a holder that dies with this attempt
+        // pending releases its funding once the bound passes.
+        now - ADMISSION_LOWER_BOUND_BACKOFF_MS + validityDurationMs,
       );
       const outcome = await broadcast(
         "Publication",
@@ -346,11 +398,13 @@ export const submitEventHistory = async ({
         built.publicationOutputIndex,
       );
       if (outcome.kind === "Confirmed") break;
+      // A local reservation lasts until its holder settles on L1; only the
+      // deadline bounds waiting for that, not the rebuild attempts.
+      if (outcome.kind === "InputReserved") attempt--;
       if (attempt < maxAttempts) await waitUntil(checkTime() + retryDelayMs);
     }
     if (checkpoint.publication === undefined)
-      throw new EventHistorySubmissionPendingError(
-        checkpoint,
+      throw exhausted(
         "History publication exhausted its input-conflict attempts",
       );
   }
@@ -376,6 +430,8 @@ export const submitEventHistory = async ({
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const now = checkTime();
     await requireNonce();
+    if (checkpoint.admission !== undefined)
+      return { ...checkpoint, admission: checkpoint.admission };
     let built: Awaited<ReturnType<typeof buildEventHistoryAdmission>>;
     try {
       built = await buildEventHistoryAdmission(
@@ -421,10 +477,8 @@ export const submitEventHistory = async ({
     );
     if (outcome.kind === "Confirmed" && checkpoint.admission !== undefined)
       return { ...checkpoint, admission: checkpoint.admission };
+    if (outcome.kind === "InputReserved") attempt--;
     if (attempt < maxAttempts) await waitUntil(checkTime() + retryDelayMs);
   }
-  throw new EventHistorySubmissionPendingError(
-    checkpoint,
-    "History admission exhausted its input-conflict attempts",
-  );
+  throw exhausted("History admission exhausted its input-conflict attempts");
 };

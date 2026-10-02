@@ -15,6 +15,8 @@ import {
   authenticateUTxOs,
   type AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
+  type UnexpectedAuthenticUTxOCountFields,
+  unexpectedAuthenticUTxOCountFields,
 } from "./internals.js";
 import { HeaderHashSchema } from "./ledger-state.js";
 
@@ -95,7 +97,7 @@ export const utxosToCorrectionLockUTxOs = (
 
 export class CorrectionLockError extends EffectData.TaggedError(
   "CorrectionLockError",
-)<GenericErrorFields> {}
+)<GenericErrorFields & UnexpectedAuthenticUTxOCountFields> {}
 
 /** Fetches the one deployment-bound lock token at its dedicated validator. */
 export const fetchCorrectionLockUTxOProgram = (
@@ -111,10 +113,9 @@ export const fetchCorrectionLockUTxOProgram = (
     policyId: config.hubOraclePolicyId,
     utxoLabel: "correction lock",
     conversionFunction: utxosToCorrectionLockUTxOs,
-    onUnexpectedAuthenticUTxOCount: () =>
+    onUnexpectedAuthenticUTxOCount: (count) =>
       new CorrectionLockError({
         message: "Failed to fetch the correction-lock UTxO",
-        cause:
-          "Exactly one authentic correction-lock UTxO was expected, but none or more were found",
+        ...unexpectedAuthenticUTxOCountFields("correction lock", count),
       }),
   });

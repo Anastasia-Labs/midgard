@@ -37,6 +37,8 @@ import {
   authenticateUTxOs,
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
+  type UnexpectedAuthenticUTxOCountFields,
+  unexpectedAuthenticUTxOCountFields,
 } from "./internals.js";
 
 export type HubOracleConfig = {
@@ -250,9 +252,9 @@ export const incompleteHubOracleInitTxProgram = (
     }
   });
 
-export class HubOracleError extends EffectData.TaggedError(
-  "HubOracleError",
-)<GenericErrorFields> {}
+export class HubOracleError extends EffectData.TaggedError("HubOracleError")<
+  GenericErrorFields & UnexpectedAuthenticUTxOCountFields
+> {}
 
 const validateHubOracleOneShotNonceMarkerHex = (
   markerHex: string,
@@ -354,11 +356,10 @@ export const fetchHubOracleUTxOProgram = (
       policyId: config.hubOraclePolicyId,
       utxoLabel: "hub oracle",
       conversionFunction: utxosToHubOracleUTxOs,
-      onUnexpectedAuthenticUTxOCount: () =>
+      onUnexpectedAuthenticUTxOCount: (count) =>
         new HubOracleError({
           message: "Failed to fetch the hub oracle UTxO",
-          cause:
-            "Exactly one hub oracle UTxO was expected, but none or more were found",
+          ...unexpectedAuthenticUTxOCountFields("hub oracle", count),
         }),
     },
   );

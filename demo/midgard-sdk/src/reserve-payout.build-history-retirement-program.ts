@@ -313,28 +313,21 @@ export const buildHistoryRetirementProgram = (
           ? event.facts.structural_lovelace
           : structuralMinimum,
     };
+    const role = event.kind === "Deposit" ? "deposit" : "withdrawal";
     const resolved = yield* resolveReferenceScriptsProgram(
       lucid,
       config.referenceScriptsAddress,
       [
+        { name: `${role} spending`, script: history.list.spendingScript },
         {
-          name:
-            event.kind === "Deposit"
-              ? "deposit spending"
-              : "withdrawal spending",
-          script: history.list.spendingScript,
-        },
-        {
-          name:
-            event.kind === "Deposit"
-              ? "deposit history retirement"
-              : "withdrawal history retirement",
+          name: `${role} history retirement`,
           script: history.retirement.withdrawalScript,
         },
         ...(initialize
           ? [{ name: "payout minting", script: contracts.payout.mintingScript }]
           : []),
       ],
+      contracts.referenceScriptAuth,
       config.referenceScripts,
     );
     const refs = mergeReferenceScripts(config.referenceScripts, resolved);

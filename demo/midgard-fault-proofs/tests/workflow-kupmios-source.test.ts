@@ -19,3 +19,4 @@ import "./workflow-kupmios-source.signed-recovery-fixture.js";
 import "./workflow-kupmios-source.production-signed-intent-recovery-through-concrete-kupo-ogmios-transports.js";
 import "./workflow-kupmios-source.registration.js";
 import "./workflow-kupmios-source.typed-raw-source-transport-failures.js";
+import "./workflow-kupmios-source.kupo-value-assets.js";

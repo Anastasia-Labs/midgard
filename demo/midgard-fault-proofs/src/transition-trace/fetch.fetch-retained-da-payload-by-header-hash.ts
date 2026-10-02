@@ -11,6 +11,11 @@ import {
   type RetainedDaFetchAttempt,
   type RetainedDaPayloadFetchResult,
 } from "./fetch.admit-retained-da-provenance.js";
+import {
+  retainedDaAttemptsAvailability,
+  retainedDaAttemptsOnlyUnavailable,
+  RetainedDaPayloadUnavailableError,
+} from "./fetch.retained-da-payload-unavailable.js";
 
 export const fetchRetainedDaPayloadByHeaderHash = async ({
   headerHash,
@@ -53,15 +58,19 @@ export const fetchRetainedDaPayloadByHeaderHash = async ({
     }
   }
 
-  throw transitionTraceError(
-    "fetchFailed",
-    `Unable to fetch retained DA payload for header_hash ${normalizedHeaderHash}: ${attempts
-      .map(
-        (attempt) =>
-          `${attempt.sourceId}/${attempt.sourcePeerId} ${attempt.protocol} ${attempt.status} ${attempt.detail}`,
-      )
-      .join("; ")}`,
-  );
+  const message = `Unable to fetch retained DA payload for header_hash ${normalizedHeaderHash}: ${attempts
+    .map(
+      (attempt) =>
+        `${attempt.sourceId}/${attempt.sourcePeerId} ${attempt.protocol} ${attempt.status} ${attempt.detail}`,
+    )
+    .join("; ")}`;
+  if (attempts.length > 0 && retainedDaAttemptsOnlyUnavailable(attempts))
+    throw new RetainedDaPayloadUnavailableError(
+      normalizedHeaderHash,
+      message,
+      retainedDaAttemptsAvailability(attempts),
+    );
+  throw transitionTraceError("fetchFailed", message);
 };
 
 const sleep = async (ms: number): Promise<void> => {

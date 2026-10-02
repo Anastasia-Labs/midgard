@@ -120,6 +120,7 @@ export const buildConcludePayoutTxProgram = (
         { name: "payout spending", script: contracts.payout.spendingScript },
         { name: "payout minting", script: contracts.payout.mintingScript },
       ],
+      contracts.referenceScriptAuth,
       config.referenceScripts,
     );
     const refs = mergeReferenceScripts(
