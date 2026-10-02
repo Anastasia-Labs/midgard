@@ -18,6 +18,7 @@ import {
   DepositsDB,
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
+  TxAdmissionsDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "../../database/index.js";
@@ -32,8 +33,23 @@ import {
 } from "../../mpf/index.js";
 import { Database } from "../../services/index.js";
 import { TxSubmitError } from "../../transactions/utils.js";
+import {
+  type CommitDaFrameMeasurement,
+  DA_PAYLOAD_UPPER_BOUND_HEADER,
+  DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
+} from "../utils/commit-block-planner.js";
 
 export const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
+
+/**
+ * Share of the V1 submit frame past which every commit logs frame pressure.
+ * The payload carries the whole L2 UTxO set, so it grows with the ledger, not
+ * with the work a block does. When the UTxO list dominates the payload, at one
+ * half the ledger can still grow as much as it already has before the
+ * pre-submit refusal halts block production; a block heavy with its own
+ * content can cross this point, and the frame, on a much smaller ledger.
+ */
+export const DA_PAYLOAD_FRAME_PRESSURE_RATIO = 0.5;
 
 const daEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   key.toString("hex"),
@@ -66,7 +82,19 @@ export const daProgramMaterialFromSidecars = (
     ),
   );
 
-export const assertPreSubmitDaPayloadSize = ({
+type DaPayloadBlockContent = {
+  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
+  readonly includedDepositEntries: readonly DepositsDB.Entry[];
+  readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
+  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
+  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
+  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
+  readonly eventToStepMembers: readonly RetainedEventToStepMember[];
+  readonly validationTraceMembers: readonly RetainedValidationTraceMember[];
+};
+
+/** Exact inner DaPayloadV1 bytes of the block the node submits. */
+const daPayloadInnerBytes = ({
   headerHash,
   header,
   utxoPayloadAggregate,
@@ -78,20 +106,10 @@ export const assertPreSubmitDaPayloadSize = ({
   eventToStepMembers,
   validationTraceMembers,
   cekProgramMaterial,
-  envelopeMode = readDaHardeningConfig().envelopeMode,
-}: {
+}: DaPayloadBlockContent & {
   readonly headerHash: string;
   readonly header: SDK.Header;
-  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
-  readonly includedDepositEntries: readonly DepositsDB.Entry[];
-  readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
-  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
-  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
-  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
-  readonly eventToStepMembers: readonly RetainedEventToStepMember[];
-  readonly validationTraceMembers: readonly RetainedValidationTraceMember[];
   readonly cekProgramMaterial: readonly SDK.DaPayloadEntry[];
-  readonly envelopeMode?: DaPayloadEmissionMode;
 }): Effect.Effect<number, DatabaseError> =>
   Effect.gen(function* () {
     const transactionSources = yield* Effect.try({
@@ -164,7 +182,7 @@ export const assertPreSubmitDaPayloadSize = ({
         (entry) => entry.witnesses,
       ),
     };
-    const encodedBytes = SDK.daPayloadEncodedSizeFromUtxoAggregate(
+    return SDK.daPayloadEncodedSizeFromUtxoAggregate(
       {
         version: SDK.DA_PAYLOAD_VERSION,
         block_body: {
@@ -191,27 +209,164 @@ export const assertPreSubmitDaPayloadSize = ({
       },
       utxoPayloadAggregate,
     );
+  });
+
+export const assertPreSubmitDaPayloadSize = ({
+  headerHash,
+  header,
+  utxoPayloadAggregate,
+  envelopeMode = readDaHardeningConfig().envelopeMode,
+  ...content
+}: DaPayloadBlockContent & {
+  readonly headerHash: string;
+  readonly header: SDK.Header;
+  readonly cekProgramMaterial: readonly SDK.DaPayloadEntry[];
+  readonly envelopeMode?: DaPayloadEmissionMode;
+}): Effect.Effect<number, DatabaseError> =>
+  Effect.gen(function* () {
+    const encodedBytes = yield* daPayloadInnerBytes({
+      headerHash,
+      header,
+      utxoPayloadAggregate,
+      ...content,
+    });
     const projection = projectDaPayloadSizes(encodedBytes, envelopeMode);
     const effectiveInnerLimit = maxDaPayloadInnerBytes(envelopeMode);
-    if (
-      encodedBytes > effectiveInnerLimit ||
-      projection.storedBytesUpperBound > DA_TRANSPORT_LIMITS.maxPayloadBytes ||
-      projection.requestBytesUpperBound > DA_TRANSPORT_LIMITS.maxPayloadBytes
-    ) {
+    const utilisation = (encodedBytes / effectiveInnerLimit).toFixed(4);
+    const utxoListBytes =
+      SDK.daPayloadEntriesEncodedSizeFromAggregate(utxoPayloadAggregate);
+    const exceedsFrame = (innerBytes: number): boolean => {
+      const sizes = projectDaPayloadSizes(innerBytes, envelopeMode);
+      return (
+        innerBytes > effectiveInnerLimit ||
+        sizes.storedBytesUpperBound > DA_TRANSPORT_LIMITS.maxPayloadBytes ||
+        sizes.requestBytesUpperBound > DA_TRANSPORT_LIMITS.maxPayloadBytes
+      );
+    };
+    if (exceedsFrame(encodedBytes)) {
+      // The same post-block ledger with no events and no traces. The aggregate
+      // already includes this block's own outputs, so this does not say
+      // whether a smaller selection over the base ledger would fit.
+      const emptyHeader: SDK.Header = {
+        ...header,
+        withdrawalCount: 0n,
+        forcedTransactionCount: 0n,
+        l2TransactionCount: 0n,
+        depositCount: 0n,
+        totalEventCount: 0n,
+        transitionStepCount: 0n,
+        validationTraceCount: 0n,
+      };
+      const emptyBlockBytes = SDK.daPayloadEncodedSizeFromUtxoAggregate(
+        {
+          version: SDK.DA_PAYLOAD_VERSION,
+          block_body: {
+            header_hash: headerHash,
+            header: emptyHeader,
+            utxos: [],
+            withdrawals: [],
+            forced_transactions: [],
+            transactions: [],
+            deposits: [],
+            transition_trace: [],
+            event_to_step: [],
+            validation_trace_witnesses: [],
+            transaction_preimages: [],
+            forced_transaction_preimages: [],
+            cek_program_material: [],
+            validation_traces: [],
+            counts: {
+              withdrawalCount: 0n,
+              forcedTransactionCount: 0n,
+              l2TransactionCount: 0n,
+              depositCount: 0n,
+              totalEventCount: 0n,
+              transitionStepCount: 0n,
+              validationTraceCount: 0n,
+            },
+          },
+        },
+        utxoPayloadAggregate,
+      );
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
           message:
             "Refusing to prepare or submit a block whose DA payload cannot fit the V1 submit frame",
-          cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()},utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()},utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
+          cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()},frame_utilisation=${utilisation},utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()},utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()},utxo_list_bytes=${utxoListBytes.toString()},post_block_ledger_without_events_inner_bytes=${emptyBlockBytes.toString()},post_block_ledger_without_events_exceeds_frame=${String(exceedsFrame(emptyBlockBytes))}`,
         }),
       );
     }
     yield* Effect.logInfo(
-      `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
+      `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()} da_payload_frame_utilisation=${utilisation} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
     );
+    if (encodedBytes >= effectiveInnerLimit * DA_PAYLOAD_FRAME_PRESSURE_RATIO) {
+      const headroomBytes = effectiveInnerLimit - encodedBytes;
+      const entriesUntilFrame =
+        utxoPayloadAggregate.entryCount === 0
+          ? "unknown"
+          : Math.floor(
+              headroomBytes /
+                (utxoPayloadAggregate.encodedTupleBytes /
+                  utxoPayloadAggregate.entryCount),
+            ).toString();
+      yield* Effect.logWarning(
+        `da_payload_frame_pressure=high header_hash=${headerHash} da_payload_frame_utilisation=${utilisation} da_payload_pressure_ratio=${DA_PAYLOAD_FRAME_PRESSURE_RATIO.toString()} da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_headroom_bytes=${headroomBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_list_bytes=${utxoListBytes.toString()} utxo_entries_until_frame_at_mean_size=${entriesUntilFrame}`,
+      );
+    }
     return encodedBytes;
   });
+
+/**
+ * Measures a built block before its header exists: the same content the
+ * pre-submit check sizes, under the longest-encoding header, so a block this
+ * admits is admitted there. Content the submit path would refuse for another
+ * reason is left unmeasured, to be refused by that path as before.
+ */
+export const measureCommitDaPayloadUpperBound = ({
+  rejectedTxIds,
+  ...content
+}: DaPayloadBlockContent & {
+  readonly rejectedTxIds: readonly Buffer[];
+}): Effect.Effect<CommitDaFrameMeasurement | undefined, never, Database> =>
+  Effect.gen(function* () {
+    const sidecars = yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
+      content.processedMempoolTxs.map((entry) => entry[TxColumns.TX_ID]),
+    );
+    if (sidecars.length !== content.processedMempoolTxs.length) {
+      return yield* Effect.fail(
+        `transactions=${content.processedMempoolTxs.length.toString()},program_material_sidecars=${sidecars.length.toString()}`,
+      );
+    }
+    const cekProgramMaterial = yield* Effect.try(() =>
+      daProgramMaterialFromSidecars([
+        ...sidecars.map((entry) => entry.sidecarCbor),
+        ...forcedProgramMaterialSidecars(
+          content.includedForcedTransactionEntries,
+        ),
+      ]),
+    );
+    const innerBytesUpperBound = yield* daPayloadInnerBytes({
+      ...content,
+      headerHash: DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
+      header: DA_PAYLOAD_UPPER_BOUND_HEADER,
+      cekProgramMaterial,
+    });
+    return {
+      innerBytesUpperBound,
+      acceptedTxCount: content.processedMempoolTxs.length,
+      rejectedTxIds,
+    } satisfies CommitDaFrameMeasurement;
+  }).pipe(
+    Effect.catchAll((cause) =>
+      Effect.as(
+        Effect.logWarning(
+          `commit_da_frame_measurement=unavailable cause=${formatUnknownError(cause)}`,
+        ),
+        undefined,
+      ),
+    ),
+  );
 
 export class StaleOperatorWalletRetrySignal extends Data.TaggedError(
   "StaleOperatorWalletRetrySignal",

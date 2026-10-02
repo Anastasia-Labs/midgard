@@ -8,12 +8,16 @@ import "./commit-end-time.js";
 import "./commit-block-planner.commit-scheduler-evidence-key.js";
 import "./commit-block-planner.plan-earliest-commit-scheduler-due-work.js";
 import "./commit-block-planner.plan-scheduler-aware-commit-selection.js";
+import "./commit-block-planner.select-commit-tx-candidates.js";
 export {
   calibratedCommitBuildMsPerTx,
   clampCommitBuildMsPerTx,
+  COMMIT_DA_FRAME_STEP_DOWN_SAFETY,
   type CommitBatchBudgetLimits,
   type CommitBatchPlan,
   type CommitBatchStopReason,
+  type CommitDaFrameMeasurement,
+  type CommitDaFrameStepDown,
   type CommitSchedulerDiscoveryStage,
   type CommitSchedulerState,
   type CommitSchedulerStateQueueEvidence,
@@ -31,10 +35,8 @@ export {
 } from "./commit-block-planner.commit-scheduler-evidence-key.js";
 export {
   establishEndTimeFromTxRequests,
-  planCommitBatchBudgets,
   planEarliestCommitSchedulerDueWork,
   type SchedulerAwareCommitSelectionPlan,
-  selectCommitTxCandidates,
 } from "./commit-block-planner.plan-earliest-commit-scheduler-due-work.js";
 export {
   buildSuccessfulCommitBatches,
@@ -47,3 +49,14 @@ export {
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
 } from "./commit-block-planner.plan-scheduler-aware-commit-selection.js";
+export {
+  buildCommitTxCandidateSelection,
+  DA_PAYLOAD_UPPER_BOUND_HEADER,
+  DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
+  emptyBlockDaPayloadUpperBoundBytes,
+  estimatedTxDaPayloadBytes,
+  planCommitBatchBudgets,
+  planCommitDaFrameStepDown,
+  selectCommitTxCandidates,
+  stepDownCommitSelectionToDaFrame,
+} from "./commit-block-planner.select-commit-tx-candidates.js";
