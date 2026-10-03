@@ -92,7 +92,7 @@ validator main(
           tx.reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        when args is {
+        let (expected_script_hash, expected_state) = when args is {
           FoldInput(FoldArgs { value_witness, .. }) -> {
             let spend_input = spend_input_at(
               spend_inputs_view,
@@ -109,10 +109,7 @@ validator main(
               input_cursor: state.input_cursor + 1,
               claimed_delta: state.claimed_delta + claimed_quantity,
             }
-            and {
-              output_script_hash == own_script_hash,
-              output_state_data == expected,
-            }
+            (own_script_hash, expected)
           }
           FinishInputs { .. } -> {
             expect state.input_cursor == spend_input_count(spend_inputs_view)
@@ -123,11 +120,12 @@ validator main(
               committed_fee: state.committed_fee,
               claimed_delta: state.claimed_delta,
             }
-            and {
-              output_script_hash == step_03_validator_script_hash,
-              output_state_data == expected,
-            }
+            (step_03_validator_script_hash, expected)
           }
+        }
+        and {
+          output_script_hash == expected_script_hash,
+          output_state_data == expected_state,
         }
       }
     }

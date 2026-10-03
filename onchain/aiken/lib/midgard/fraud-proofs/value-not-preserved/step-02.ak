@@ -145,7 +145,9 @@ pub fn spent_input_claimed_quantity_v1(
     )
 
   // 2. Total + canonical decoding of the committed bytes.
-  let descriptor = ledger_output_commitment_v1.decode(witness.descriptor_cbor)
+  let descriptor = ledger_output_commitment_v1.decode_canonical_schema(
+    witness.descriptor_cbor,
+  )
 
   when claimed_asset is {
     // 3a. The lovelace value is a scalar field of the descriptor itself; no
