@@ -41,9 +41,11 @@ import {
 const producedFundingInputs = ({
   signed,
   walletAddress,
+  allowEmpty,
 }: {
   readonly signed: TxSigned;
   readonly walletAddress: string;
+  readonly allowEmpty: boolean;
 }): readonly WorkflowFundingReservedInput[] => {
   const body = signed.toTransaction().body();
   const outputs = body.outputs();
@@ -75,7 +77,7 @@ const producedFundingInputs = ({
       }),
     );
   }
-  if (produced.length === 0) {
+  if (produced.length === 0 && !allowEmpty) {
     throw new Error("production transaction omitted reserved-wallet change");
   }
   return Object.freeze(produced);
@@ -157,6 +159,10 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     producedInputs: producedFundingInputs({
       signed,
       walletAddress: state.snapshot.walletAddress,
+      // A validated bond-backed slash spends no reserved wallet funding and
+      // may pay a different authenticated prover. Its unspent reservation
+      // inputs remain owned by the caller; the reward is not caller change.
+      allowEmpty: readFraudSlashFundingAuthority(signed) !== null,
     }),
   });
   state.snapshot = parseStateSnapshot(

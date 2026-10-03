@@ -9,6 +9,10 @@ import {
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
 import {
+  assertAuthenticatedFraudSlashReward,
+  isExactFraudSlashRewardOutput,
+} from "./funding-reservation-permit.assert-authenticated-fraud-slash-reward.js";
+import {
   addAssets,
   isProtocolFundingContract,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
@@ -26,7 +30,6 @@ import {
   workflowRuntimeFundingMinimumFee,
 } from "./runtime-funding-policy.js";
 import { workflowTransactionReferenceInputOutRefs } from "./transaction-boundary.js";
-
 export const assertRuntimeTransactionBound = async ({
   state,
   action,
@@ -97,10 +100,6 @@ export const assertRuntimeTransactionBound = async ({
         [
           "economics policy digest",
           slash.economicsPolicyDigest === policy.economicsPolicyDigest,
-        ],
-        [
-          "reward address",
-          slash.rewardAddress === state.snapshot.walletAddress,
         ],
         ["operator bond", BigInt(slash.operatorBondLovelace) === bond],
         ["reward", BigInt(slash.rewardLovelace) === reward],
@@ -180,6 +179,13 @@ export const assertRuntimeTransactionBound = async ({
     outRefs: [...workflowTransactionReferenceInputOutRefs(signed)].sort(),
     label: "runtime funding reference inputs",
   });
+  if (slash !== null)
+    assertAuthenticatedFraudSlashReward(
+      slash,
+      references,
+      contracts,
+      state.snapshot.walletAddress,
+    );
   let referenceScriptBytes = 0n;
   const scriptIdentities = new Map(
     policy.referenceScripts.map(({ outRef, scriptHash }) => [
@@ -400,20 +406,15 @@ export const assertRuntimeTransactionBound = async ({
     )
       throw new Error("funding output violates exact min-Ada or maxValueSize");
     addAssets(outputAssets, output.assets);
+    if (slash !== null && isExactFraudSlashRewardOutput(raw, slash)) {
+      rewardOutputs += 1;
+      if (output.address === state.snapshot.walletAddress)
+        addAssets(walletOutputAssets, output.assets);
+      continue;
+    }
     if (output.address === state.snapshot.walletAddress) {
-      if (slash !== null) {
-        rewardOutputs += 1;
-        if (
-          raw.amount().coin().toString() !== slash.rewardLovelace ||
-          raw.amount().has_multiassets() ||
-          raw.datum() !== undefined ||
-          raw.script_ref() !== undefined
-        ) {
-          throw new Error(
-            "fraud slash reward differs from exact release economics",
-          );
-        }
-      }
+      if (slash !== null)
+        throw new Error("fraud slash cannot pay unrelated caller change");
       addAssets(walletOutputAssets, output.assets);
       continue;
     }
@@ -484,8 +485,7 @@ export const assertRuntimeTransactionBound = async ({
       }
     }
   }
-  // Proof workflows may use withdraw-zero yielding, but never withdraw funds
-  // or certify/deposit stake through the prover funding surface.
+  // Withdraw-zero yielding never authorizes stake withdrawals or deposits.
   const withdrawals = body.withdrawals();
   if (withdrawals !== undefined) {
     const keys = withdrawals.keys();

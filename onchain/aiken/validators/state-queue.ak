@@ -654,14 +654,15 @@ pub fn availability_status_update_is_authorized_v1(
 /// removed node is the anchor's current successor.  That structural relation
 /// is the authority for pruning: after an earlier child has been removed, the
 /// anchor can point directly at a later descendant whose own `prev_header_hash`
-/// (and operator) necessarily names the original chain rather than the anchor.
-/// Requiring the descendant's operator to equal the fraudulent block's
-/// operator would therefore deadlock correction whenever the scheduler rotates.
+/// necessarily names the original chain rather than the anchor. The operator
+/// being slashed must be the removed descendant's own operator, including
+/// after scheduler rotation; the fraud proof remains bound to the anchor.
 pub fn remove_fraudulent_blocks_link_v1(
   state_queue_policy_id: PolicyId,
   inputs: List<Input>,
   outputs: List<Output>,
   mint: assets.Value,
+  fraudulent_operator: VerificationKeyHash,
   fraudulent_blocks_header_hash: ByteArray,
   fraudulent_node_input_outref: OutputReference,
   fraudulent_node_output_index: Int,
@@ -691,8 +692,9 @@ pub fn remove_fraudulent_blocks_link_v1(
     // lovelace. It may gain the removed node's, which the SDK builder folds in.
     expect fraudulent_header_lovelace_change >= 0
     expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode = removed_node_header_data
-    expect
-      decode_header_view(removed_node_header).protocol_version == protocol_version_v1
+    let removed_header_view = decode_header_view(removed_node_header)
+    expect removed_header_view.protocol_version == protocol_version_v1
+    expect removed_header_view.operator_vkey == fraudulent_operator
     True
   }
     |> finalize_linked_list(state_queue_policy_id)
@@ -700,9 +702,8 @@ pub fn remove_fraudulent_blocks_link_v1(
 
 /// Remove the fraud-proved block itself once it is the terminal queue node.
 ///
-/// Unlike descendant pruning, this branch must bind the removed header's own
-/// operator to the operator being slashed: this is the target block rather than
-/// a structurally invalid descendant committed by a later scheduled operator.
+/// As with descendant pruning, the slash names the removed header's operator.
+/// Here the removed node is the fraud-proved target itself.
 pub fn remove_last_fraudulent_block_v1(
   state_queue_policy_id: PolicyId,
   inputs: List<Input>,
@@ -1462,9 +1463,10 @@ pub fn validate_remove_fraudulent_v1(
     correction_lock_address,
   )
 
-  // Slash the fraudulent operator:
-  // 1. Let `slashing_approach` be a sum type indicating whether the
-  //    fraudulent operator is active, retired, or already slashed.
+  // Slash the operator of the block removed by this transaction. The target
+  // and each descendant bind that identity from their own removed header.
+  // 1. Let `slashing_approach` indicate whether that operator is active,
+  //    retired, or already slashed.
   expect
     when slashing_approach is {
       SlashActiveOperator {
@@ -1583,14 +1585,15 @@ pub fn validate_remove_fraudulent_v1(
         //     > The successor node is also considered fraudulent because
         //     > of getting appended to a fraudulent block, so it does not
         //     > need to have an associated fraud proof token. Its own
-        //     > operator is deliberately irrelevant: the authenticated
-        //     > list link proves it is a descendant of the removed anchor,
-        //     > including after operator rotation or earlier pruning.
+        //     > operator must match the slash: the authenticated list link proves
+        //     > descent from the fraud-proved anchor, while the removed
+        //     > header identifies its culpable operator after rotation.
         remove_fraudulent_blocks_link_v1(
           own_policy_id,
           inputs: inputs,
           outputs: outputs,
           mint: mint,
+          fraudulent_operator: fraudulent_operator,
           fraudulent_blocks_header_hash: fraudulent_blocks_header_hash,
           fraudulent_node_input_outref: fraudulent_node_input_outref,
           fraudulent_node_output_index: fraudulent_node_output_index,
