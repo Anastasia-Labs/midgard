@@ -17,7 +17,7 @@
   },
   "scripts": {
     "clean": "rimraf dist node_modules",
-    "build": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm",
+    "build": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --max-old-space-size=6144\" tsup src/index.ts --minify --format esm && NODE_OPTIONS=\"${NODE_OPTIONS:-} --max-old-space-size=6144\" tsup src/workers/* --minify --format esm",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
