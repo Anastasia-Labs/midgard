@@ -16,13 +16,21 @@
 //
 // `--all` runs the whole suite (`aiken check` with no `-m`) under the same
 // rules: it prints the collected count and fails on zero, on any failing
-// test, and on a missing report. CI's full-suite step runs through it.
+// test, and on a missing report.
+//
+// Complete CI coverage uses a fresh source-derived module plan and raw reports:
+//   --plan-shards <count> [--seed <uint32>] --output <plan.json>
+//   --shard <index> --plan <plan.json> --output <artifact.json>
+//   --collect-shards --plan <plan.json> --reports <directory>
+// Optional collector --baseline <report.json> proves exact full-record equality
+// in a controlled measurement. CI derives coverage from current source modules.
 
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
+import { runShardInvocation } from "./complete-test-shards.mjs";
 
 const MAX_SELECTOR_COUNT = 64;
 const MAX_SELECTOR_LENGTH = 256;
@@ -143,7 +151,10 @@ export const evaluateSelectorReport = (selector, result) => {
       diagnostic: `focused selector ${label}: collected=${String(total)}, passed=${String(passed)}, failed=${String(failed)}${listFailures(report)}`,
     };
   }
-  if (result.status !== null && result.status !== 0) {
+  if (
+    result.status !== 0 ||
+    (result.signal !== undefined && result.signal !== null)
+  ) {
     return {
       selector,
       total,
@@ -186,37 +197,47 @@ const isMain =
 if (isMain) {
   let exitCode = 1;
   try {
-    const selectors = parseInvocation(process.argv.slice(2));
+    const args = process.argv.slice(2);
     const environment = process.env.MIDGARD_AIKEN_ENV;
     if (environment !== undefined && !VALID_ENVIRONMENT.test(environment)) {
       throw new Error("MIDGARD_AIKEN_ENV contains an invalid environment name");
     }
     const binary = defaultAikenBinary();
-    assertPinnedAiken(binary);
     const context = {
       binary,
       projectDirectory: resolve(dirname(fileURLToPath(import.meta.url)), ".."),
       environment,
     };
 
-    const outcomes = selectors.map((selector) =>
-      runSelector(selector, context),
-    );
-    for (const outcome of outcomes) {
-      if (outcome.ok) {
-        process.stdout.write(
-          `${JSON.stringify({
-            selector: describeSelector(outcome.selector),
-            collected: outcome.total,
-            passed: outcome.passed,
-            failed: outcome.failed,
-          })}\n`,
-        );
-      } else {
-        console.error(outcome.diagnostic);
+    if (["--plan-shards", "--shard", "--collect-shards"].includes(args[0])) {
+      process.stdout.write(
+        `${JSON.stringify(runShardInvocation(args, context))}\n`,
+      );
+      process.exitCode = 0;
+      exitCode = 0;
+    } else {
+      const selectors = parseInvocation(args);
+      assertPinnedAiken(binary);
+
+      const outcomes = selectors.map((selector) =>
+        runSelector(selector, context),
+      );
+      for (const outcome of outcomes) {
+        if (outcome.ok) {
+          process.stdout.write(
+            `${JSON.stringify({
+              selector: describeSelector(outcome.selector),
+              collected: outcome.total,
+              passed: outcome.passed,
+              failed: outcome.failed,
+            })}\n`,
+          );
+        } else {
+          console.error(outcome.diagnostic);
+        }
       }
+      exitCode = outcomes.every((outcome) => outcome.ok) ? 0 : 1;
     }
-    exitCode = outcomes.every((outcome) => outcome.ok) ? 0 : 1;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
   } finally {
