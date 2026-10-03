@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.7
 # Built from demo/. midgard-chain-sync is not in the image: services mount the host
 # build (midgard-watcher native:build), the one pinned Go build of that binary.
+# This isolated image owns its copied source and output tree. Use the same
+# compiler recipes directly; shared-checkout leases and Git receipts belong to
+# contributor builds, and the repository tooling is outside this demo context.
 FROM node:22.22.2 AS build
 RUN corepack enable
 WORKDIR /workspace/demo
@@ -24,7 +27,7 @@ COPY midgard-sdk ./midgard-sdk
 COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY da-committee-node ./da-committee-node
-RUN pnpm --filter @al-ft/lucid-midgard build && pnpm --filter @al-ft/midgard-core build && pnpm --filter @al-ft/midgard-sdk build && pnpm --filter @al-ft/midgard-validation build && pnpm --filter @al-ft/midgard-fault-proofs build && pnpm --filter da-committee-node build
+RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw && pnpm --filter @al-ft/midgard-core run build:contrib-raw && pnpm --filter @al-ft/midgard-sdk run build:contrib-raw && pnpm --filter @al-ft/midgard-validation run build:contrib-raw && pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw && pnpm --filter da-committee-node run build:contrib-raw
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm --filter da-committee-node deploy --prod /prod/da
 FROM node:22.22.2-bookworm-slim
 WORKDIR /app

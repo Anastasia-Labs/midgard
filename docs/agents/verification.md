@@ -17,8 +17,8 @@ report each command with its result. A smoke test does not replace a required
 check. Blind spot: selection is by path, so a check whose trigger is too narrow
 is silently skipped; CI is the final gate. [hook: pre-push]
 
-These checks are not in the preflight registry yet; run them by hand when you
-change their paths. [review]
+Deployment parameter checks below still need a manual invocation. Transaction
+preparation lanes are selected by preflight and listed here for direct use. [review]
 
 | Change                                                                   | Checks                                                                                                                                                                              |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

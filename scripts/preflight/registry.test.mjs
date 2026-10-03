@@ -117,7 +117,8 @@ test("an Aiken library edit selects format, focused tests, blueprint, ledgers an
   assert.ok(ids.includes("exec-ledger:carriage"));
   assert.ok(!ids.some((id) => id.startsWith("demo-")));
 
-  const golden = "onchain/aiken/lib/midgard/cek-core-step-goldens/identity.test.ak";
+  const golden =
+    "onchain/aiken/lib/midgard/cek-core-step-goldens/identity.test.ak";
   assert.ok(selectedIds([golden]).includes("golden:cek-core-step-v1"));
 });
 
@@ -234,12 +235,12 @@ test("new validation runs the documented commands with its own prerequisites", (
     [
       "docs-site-build",
       ["node-modules", "docs-site-node-modules"],
-      [["pnpm", "--dir", "docs-site", "run", "build"]],
+      [["corepack", "pnpm", "run", "build"]],
     ],
     [
       "docs-site-typecheck",
       ["node-modules", "docs-site-node-modules"],
-      [["pnpm", "--dir", "docs-site", "run", "types:check"]],
+      [["corepack", "pnpm", "run", "types:check"]],
     ],
     ["spec-build", ["nix"], [["make", "spec"]]],
     [
@@ -326,7 +327,6 @@ test("workspace lint and its helper tests cover source, rules, and baseline move
     assert.equal(byId.get(id).warnOnly, false);
   }
 });
-
 
 test("golden output manifests select every split Aiken artifact", () => {
   const channel = byId.get("golden:cek-core-step-v1");

@@ -63,6 +63,12 @@ jobs:
       - name: Check the generated required-checks list
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --check-docs
+      - name: Check deterministic contributor build guards
+        if: ${{ !cancelled() }}
+        run: node scripts/contrib/enroll-builds.mjs
+      - name: Exercise contributor guard causal controls
+        if: ${{ !cancelled() }}
+        run: node scripts/contrib/review-controls.mjs
       - name: Check agent documentation links
         if: ${{ !cancelled() }}
         run: node scripts/agents/check-doc-links.mjs

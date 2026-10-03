@@ -217,15 +217,26 @@ export const main = async (
       }
     }
   } else {
-    const run = await runPreflight({
-      root,
-      plan,
-      probes: probes ?? createProbeSet({ root, env }),
-      base,
-      env,
-      log: stderr,
-      ...(runStep === undefined ? {} : { runStep }),
-    });
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    process.on("SIGINT", abort);
+    process.on("SIGTERM", abort);
+    let run;
+    try {
+      run = await runPreflight({
+        root,
+        plan,
+        probes: probes ?? createProbeSet({ root, env }),
+        base,
+        env,
+        log: stderr,
+        signal: controller.signal,
+        ...(runStep === undefined ? {} : { runStep }),
+      });
+    } finally {
+      process.off("SIGINT", abort);
+      process.off("SIGTERM", abort);
+    }
     results = run.results;
     exitCode = run.exitCode;
     say("\npreflight summary\n");

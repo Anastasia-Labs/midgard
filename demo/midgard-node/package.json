@@ -17,7 +17,7 @@
   },
   "scripts": {
     "clean": "rimraf dist node_modules",
-    "build": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm",
+    "build": "node ../../scripts/contrib.mjs build --package midgard-node",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
@@ -80,7 +80,8 @@
     "corpus:mpf:seed": "pnpm run build && node dist/mpf-corpus-seed.js",
     "test:mpf:differential": "pnpm run native:mpf-owner:build && vitest run tests/mpf-differential.test.ts --reporter=default",
     "native:mpf-owner:check": "cargo fmt --check --manifest-path native/mpf-event-flat-wasm/Cargo.toml && cargo test --release --locked --manifest-path native/mpf-event-flat-wasm/Cargo.toml",
-    "native:mpf-owner:build": "cargo build --release --locked --bin architecture-g-owner --manifest-path native/mpf-event-flat-wasm/Cargo.toml",
+    "native:mpf-owner:build": "node ../../scripts/contrib.mjs native --package midgard-node",
+    "native:mpf-owner:build:contrib-raw": "cargo build --release --locked --bin architecture-g-owner --manifest-path native/mpf-event-flat-wasm/Cargo.toml",
     "test:mpf-native-owner": "pnpm run native:mpf-owner:build && vitest run tests/mpf-native-owner-protocol.test.ts tests/mpf-native-owner-service.test.ts tests/mpf-native-promotion-recovery.test.ts tests/mpf-runtime-config.test.ts --reporter=default",
     "test:mpf:architecture-g-corpus": "node --test scripts/mpf-architecture-g-corpus.test.mjs",
     "test:mpf:architecture-g-gate-config": "node --test scripts/mpf-architecture-g-gate-config.test.mjs scripts/mpf-architecture-g-candidate-input.test.mjs",
@@ -111,7 +112,8 @@
     "test:da-canonical-v1-e2e": "export NODE_ENV='emulator' && export MIDGARD_RUN_DA_PHASE5_JOINED_E2E='1' && vitest run tests/da-hardening.test.ts tests/da-payload-libp2p-producer.test.ts tests/da-multi-peer-integration.test.ts tests/da-multi-process-10k-integration.test.ts tests/da-publication-reconciler-e2e.test.ts --reporter=default",
     "test:da-phase5-10k-smoke": "export NODE_ENV='emulator' && vitest run tests/da-multi-process-10k-integration.test.ts --reporter=default",
     "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build && pnpm run build",
-    "test": "export NODE_ENV='emulator' && vitest run --disableConsoleIntercept"
+    "test": "export NODE_ENV='emulator' && vitest run --disableConsoleIntercept",
+    "build:contrib-raw": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm"
   },
   "keywords": [
     "cardano",

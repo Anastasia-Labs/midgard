@@ -19,6 +19,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { checkBuild } from "../../scripts/contrib/build.mjs";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const coreRoot = resolve(repoRoot, "demo/midgard-core");
@@ -30,6 +31,9 @@ const fail = (message) => {
   );
   process.exit(1);
 };
+
+const closure = checkBuild(repoRoot, "@al-ft/midgard-core");
+if (closure.status !== "fresh") fail(closure.reason);
 
 // Check 1: source digest stamp.
 let stamp;

@@ -38,6 +38,12 @@ export const FULL_RUN = [
   // Preflight itself: a selection bug cannot be allowed to select itself out.
   "scripts/preflight.mjs",
   "scripts/preflight/**",
+  // Contributor execution and package-manager dispatch are shared by builds,
+  // registered generators and all preflight children.
+  "scripts/contrib.mjs",
+  "scripts/contrib/**",
+  "scripts/pnpm.mjs",
+  "scripts/bin/**",
 ];
 
 // The kill switch. It forces a full run; it never disables checks.

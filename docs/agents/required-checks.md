@@ -64,6 +64,10 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/midgard-test-support/**`
 - `scripts/preflight.mjs`
 - `scripts/preflight/**`
+- `scripts/contrib.mjs`
+- `scripts/contrib/**`
+- `scripts/pnpm.mjs`
+- `scripts/bin/**`
 
 ## Capabilities
 
@@ -85,6 +89,28 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `git-merge-tree`: git 2.38 or later.
 
 ## Checks
+
+### `contributor-build-guards`
+
+Workspace builds use the resource and provenance guard.
+
+- Command: `node scripts/contrib/enroll-builds.mjs`
+- Fix: `node scripts/contrib/enroll-builds.mjs --write`
+- Runs on:
+  - `scripts/contrib/**`
+  - `scripts/contrib.mjs`
+  - `demo/*/package.json`
+- Mode: runs in the pre-push hook
+
+### `contributor-causal-controls`
+
+Artifact and boundary guards reject their causal mutants.
+
+- Command: `node scripts/contrib/review-controls.mjs`
+- Runs on:
+  - `scripts/contrib/**`
+  - `scripts/contrib.mjs`
+- Mode: runs in the pre-push hook
 
 ### `merge-conflicts`
 
@@ -648,6 +674,48 @@ Blueprint rebuild into a temporary file (never the tracked plutus.json).
   - `onchain/aiken/**/*.ak`
 - Needs: `aiken`
 
+### `tx-preparation:sdk`
+
+Transaction preparation sdk acceptance lane.
+
+- Command: `pnpm --dir demo run test:tx-prep:sdk`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-node/src/fibers/**`
+  - `demo/midgard-node/src/workers/**`
+  - `demo/midgard-node/src/utils/commit-submission*.ts`
+  - `demo/midgard-node-tools/src/**`
+- Needs: `node-modules`, `blueprint`
+
+### `tx-preparation:node`
+
+Transaction preparation node acceptance lane.
+
+- Command: `pnpm --dir demo run test:tx-prep:node`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-node/src/fibers/**`
+  - `demo/midgard-node/src/workers/**`
+  - `demo/midgard-node/src/utils/commit-submission*.ts`
+  - `demo/midgard-node-tools/src/**`
+- Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
+
+### `tx-preparation:emulator`
+
+Transaction preparation emulator acceptance lane.
+
+- Command: `pnpm --dir demo run test:tx-prep:emulator`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-node/src/fibers/**`
+  - `demo/midgard-node/src/workers/**`
+  - `demo/midgard-node/src/utils/commit-submission*.ts`
+  - `demo/midgard-node-tools/src/**`
+- Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
+
 ### `docs-site-links`
 
 Repository-local Markdown and MDX links resolve.
@@ -667,7 +735,7 @@ Repository-local Markdown and MDX links resolve.
 
 Build the documentation site and its SDK examples.
 
-- Command: `pnpm --dir docs-site run build`
+- Command: `(cd docs-site && corepack pnpm run build)`
 - Runs on:
   - `docs-site/**`
   - `**/*.md`
@@ -681,7 +749,7 @@ Build the documentation site and its SDK examples.
 
 Generate and typecheck the documentation site's types.
 
-- Command: `pnpm --dir docs-site run types:check`
+- Command: `(cd docs-site && corepack pnpm run types:check)`
 - Runs on:
   - `docs-site/**`
   - `**/*.md`

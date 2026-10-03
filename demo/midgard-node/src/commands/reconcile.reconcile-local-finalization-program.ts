@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { commitLeaseOwner } from "@al-ft/midgard-core/commit-lease-owner";
 import { Effect, Option } from "effect";
 
 import {
@@ -139,7 +140,7 @@ export const reconcileLocalFinalizationProgram = ({
         availableConfirmedBlock: "",
         availableLocalFinalizationBlock: serialized,
         currentBlockStartTimeMs: 0,
-        ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
+        ledgerStoreLeaseOwner: commitLeaseOwner(randomUUID()),
         localFinalizationPending: true,
         mempoolTxsCountSoFar: 0,
         sizeOfProcessedTxsSoFar: 0,
