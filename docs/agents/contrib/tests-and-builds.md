@@ -33,6 +33,10 @@ file contents; timestamps cannot establish freshness. Doctor and preflight use
 the same dist verdict. Inputs conservatively include dependency tests and
 fixtures, so some unrelated edits can require an extra rebuild.
 
+The Go helper disables ambient Git stamping with `-buildvcs=false`: linked
+worktrees and source archives must not discover an unrelated ancestor repository.
+Its native receipt records source, compiler and binary identities instead.
+
 Guarded children use Corepack to select each project's declared package manager,
 including bare `pnpm --dir ...` inside nested recipes. The demo pins pnpm 9 and
 the docs site pins pnpm 10; an ambient executable cannot select their version.

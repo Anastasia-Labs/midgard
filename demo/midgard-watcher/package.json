@@ -31,7 +31,7 @@
     "format-check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" vitest.config.ts package.json tsconfig.json README.md",
     "lint": "eslint . --max-warnings=0",
     "native:build": "node ../../scripts/contrib.mjs native --package midgard-watcher",
-    "native:build:contrib-raw": "mkdir -p dist/native && go -C native-chain-sync build -trimpath -o ../dist/native/midgard-chain-sync .",
+    "native:build:contrib-raw": "mkdir -p dist/native && go -C native-chain-sync build -buildvcs=false -trimpath -o ../dist/native/midgard-chain-sync .",
     "native:test": "go -C native-chain-sync test ./...",
     "replay": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js replay",
     "start": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js start",
